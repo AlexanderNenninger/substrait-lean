@@ -1444,8 +1444,8 @@ user knowing the profiles; the override keeps the choice inspectable.
 An engine profile is tied to the engine's versions: it records the version,
 or range, its facts were probed at. A run on another version warns, and a
 run on another major version is refused until the probes are re-run. A new
-version that changes a fact gets a new fact with `supersedes` (CLAUDE.md,
-"Engine facts") and a new row in the profile. Facts hold for the version they
+version that changes a fact gets a new fact with `supersedes` (the `engine-fact`
+skill) and a new row in the profile. Facts hold for the version they
 were probed at, and the profile is only as good as its facts.
 
 ### D15. Where the observations live

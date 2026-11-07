@@ -254,6 +254,122 @@ def year_months(ym: dict, err: Err = ValueError) -> int:
 # --- Regular expressions ----------------------------------------------------
 
 
+_PLAIN_NOT = set("\\.+*?()|[]{}^$")
+_ESCAPABLE = set("\\.+*?()|[]{}^$-dDwWsSnt")
+_NOT_IN_CLASS = set("[]\\-&~^")
+
+
+def simple_regex(p: str) -> bool:
+    """`Text.simpleRegex`: is `p` in the subset of patterns that compile in
+    RE2 and Rust and that `SubstraitLean/Regex.lean` evaluates?"""
+
+    def count(cs: str) -> tuple[int, str] | None:
+        ds = cs[: len(cs) - len(cs.lstrip("0123456789"))]
+        if not ds or len(ds) > 4 or int(ds) > 1000:
+            return None
+        return int(ds), cs[len(ds) :]
+
+    def quantifier(cs: str) -> str | None:
+        if cs[:1] in ("*", "+", "?") and cs:
+            return cs[1:]
+        if cs[:1] != "{":
+            return cs
+        c = count(cs[1:])
+        if c is None:
+            return None
+        n, r = c
+        if r[:1] == "}":
+            return r[1:]
+        if r[:2] == ",}":
+            return r[2:]
+        if r[:1] == ",":
+            c2 = count(r[1:])
+            if c2 is None:
+                return None
+            m, r = c2
+            return r[1:] if r[:1] == "}" and n <= m else None
+        return None
+
+    def class_items(fuel: int, cs: str) -> str | None:
+        while fuel > 0:
+            fuel -= 1
+            if not cs:
+                return None
+            if cs[0] == "]":
+                return cs[1:]
+            if cs[0] == "\\" and len(cs) > 1:
+                if cs[1] not in "dDwWsS\\[]-^":
+                    return None
+                cs = cs[2:]
+            elif len(cs) > 2 and cs[1] == "-":
+                a, b = cs[0], cs[2]
+                if not (a not in _NOT_IN_CLASS and b not in _NOT_IN_CLASS and a <= b):
+                    return None
+                cs = cs[3:]
+            elif cs[0] not in _NOT_IN_CLASS:
+                cs = cs[1:]
+            else:
+                return None
+        return None
+
+    def class_body(cs: str) -> str | None:
+        if cs[:1] == "^":
+            cs = cs[1:]
+        if cs[:1] == "]":
+            return None
+        return class_items(len(cs) + 1, cs)
+
+    def alternatives(fuel: int, cs: str) -> str | None:
+        while fuel > 0:
+            fuel -= 1
+            r = sequence(fuel, cs)
+            if r is None:
+                return None
+            if r[:1] != "|":
+                return r
+            cs = r[1:]
+        return None
+
+    def sequence(fuel: int, cs: str) -> str | None:
+        while fuel > 0:
+            fuel -= 1
+            if not cs:
+                return ""
+            c = cs[0]
+            if c in ")|":
+                return cs
+            if c in "^$":
+                r: str | None = cs[1:]
+            elif c == "\\" and len(cs) > 1:
+                if cs[1] in "bB":
+                    r = cs[2:]
+                elif cs[1] in _ESCAPABLE:
+                    r = quantifier(cs[2:])
+                else:
+                    return None
+            elif c == ".":
+                r = quantifier(cs[1:])
+            elif c == "(":
+                body = cs[3:] if cs[1:3] == "?:" else cs[1:]
+                inner = alternatives(fuel, body)
+                if inner is None or inner[:1] != ")":
+                    return None
+                r = quantifier(inner[1:])
+            elif c == "[":
+                b = class_body(cs[1:])
+                r = None if b is None else quantifier(b)
+            elif c not in _PLAIN_NOT:
+                r = quantifier(cs[1:])
+            else:
+                return None
+            if r is None:
+                return None
+            cs = r
+        return None
+
+    return len(p) <= 200 and alternatives(3 * len(p) + 3, p) == ""
+
+
 def regex_groups(p: str, err: Err = ValueError) -> int:
     """The entries `regexp_match(s, p)` has on a match: its capture groups, or
     the whole match if there are none (`Text.regexGroups`). Groups are counted

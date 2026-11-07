@@ -840,6 +840,12 @@ class Dialect:
         """TRUE when `a` is TRUE, FALSE when it is FALSE or NULL."""
         return f"({a} IS TRUE)"
 
+    def where(self, a: str) -> str:
+        """The condition `a` in a `WHERE`, which keeps a row only when it is
+        TRUE: `is_true(a)`, or `a` itself where `is_true` would hide a
+        correlation from the engine (Snowflake's `EXISTS`)."""
+        return self.is_true(a)
+
     def case_when(self, c: str, t: str, e: str) -> str:
         """`t` when `c` is TRUE, else `e` (also when `c` is NULL)."""
         return f"(CASE WHEN {c} THEN {t} ELSE {e} END)"
@@ -1383,7 +1389,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
 
 #: The kind of each `black_box.Ty` (#325; `Parse.bbKind`).
 _BB_KINDS: dict[str, Any] = {"int": "int", "double": "float", "str": "str", "bool": "bool",
-                             "date": "date", "atom": "other", "any": "other",
+                             "date": "date", "timestamp": "time", "atom": "other", "any": "other",
                              "doubles": Lst("float"), "ints": Lst("int"),
                              "strs": Lst("str")}  # fmt: skip
 
@@ -3646,7 +3652,7 @@ class _Writer:
                 ks = kinds(i)
                 self.check_refs(cond, len(ks))
                 with self.slot(r, 0):
-                    where = d.is_true(self.expr(cond, lambda j: self.ref(a, self.c(j)), ks, "bool"))
+                    where = d.where(self.expr(cond, lambda j: self.ref(a, self.c(j)), ks, "bool"))
                 return self.select(
                     self.passthrough(a, n, ordered),
                     d.subquery(self.rel(i, ordered), a),
@@ -3759,7 +3765,7 @@ class _Writer:
                     return self.ref(la, self.c(j)) if j < nl else self.ref(ra, self.c(j - nl))
 
                 with self.slot(r, 0):
-                    cond = d.is_true(self.expr(on, side, kinds(left) + kinds(right), "bool"))
+                    cond = d.where(self.expr(on, side, kinds(left) + kinds(right), "bool"))
                 rsub = d.subquery(self.rel(right, False), ra)
                 exists = f"{'NOT ' if anti else ''}EXISTS (SELECT 1 FROM {rsub} WHERE {cond})"
                 return self.select(

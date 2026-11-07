@@ -328,6 +328,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     """
     _check_numbers(query)
     _check_intervals(query)
+    _check_regex_operators(query)
     query = expand_table_shorthand(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
@@ -2039,6 +2040,33 @@ def _check_numbers(query: str) -> None:
             raise Unsupported(
                 f"the number {m.group()!r}: an underscore not between two digits is read "
                 "differently by DuckDB and SQLGlot"
+            )
+
+
+def _check_regex_operators(query: str) -> None:
+    """Refuse `s ~ p` and `s !~ p`: DuckDB's `~` matches anywhere in `s`
+    (`regexp_matches`), but SQLGlot reads it as `regexp_full_match`, so the
+    tree cannot tell them apart (upstream/bugs/SG-10.json). A `~` before an
+    operand is the bitwise not."""
+    from sqlglot.tokens import TokenType
+
+    try:
+        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
+    except sg.errors.TokenError:
+        return  # the parser reports it
+    operand = {TokenType.STRING, TokenType.NUMBER, TokenType.VAR, TokenType.IDENTIFIER,
+               TokenType.R_PAREN, TokenType.R_BRACKET, TokenType.NULL, TokenType.TRUE,
+               TokenType.FALSE}  # fmt: skip
+    for k, tok in enumerate(tokens):
+        if tok.token_type != TokenType.TILDE or k == 0:
+            continue
+        before = tokens[k - 1]
+        if before.token_type == TokenType.NOT and before.text == "!" and k > 1:
+            before = tokens[k - 2]
+        if before.token_type in operand:
+            raise Unsupported(
+                "the regular expression operator ~ is not supported yet: SQLGlot reads it as "
+                "regexp_full_match, DuckDB as regexp_matches; write regexp_matches(s, p)"
             )
 
 

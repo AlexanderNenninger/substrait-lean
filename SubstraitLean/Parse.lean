@@ -205,6 +205,7 @@ def litKind : Value → Kind
 /-- A black box's type as a kind (#325). -/
 def bbKind : BlackBox.Ty → Kind
   | .int => .int | .double => .float | .str => .str | .bool => .bool | .date => .date
+  | .timestamp => .time
   | .doubles => .list .float | .ints => .list .int | .strs => .list .str
   | .atom | .any => .other
 
