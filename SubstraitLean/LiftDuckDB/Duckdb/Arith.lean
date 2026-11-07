@@ -27,7 +27,7 @@ theorem Substrait.liftDuckDB.divInt_agree : ∀ (x y : Substrait.Value),
             (Substrait.Expr.un Substrait.UnFn.not
               (Substrait.Expr.bin Substrait.BinFn.eq
                 (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))
-                (Substrait.Expr.lit (Substrait.Value.int 0))))
+                (Substrait.Expr.lit (Substrait.Value.float 0))))
             (Substrait.Expr.bin Substrait.BinFn.fdiv
               (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
               (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))
@@ -42,19 +42,19 @@ theorem Substrait.liftDuckDB.divInt_agree : ∀ (x y : Substrait.Value),
                 (Substrait.Expr.ifThen
                   (Substrait.Expr.bin Substrait.BinFn.eq
                     (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-                    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan)))
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
                   (Substrait.Expr.ifThen
                     (Substrait.Expr.bin Substrait.BinFn.lt
                       (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-                      (Substrait.Expr.lit (Substrait.Value.int 0)))
-                    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+                      (Substrait.Expr.lit (Substrait.Value.float 0)))
+                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
                     (Substrait.Expr.ifThen
                       (Substrait.Expr.bin Substrait.BinFn.lt
-                        (Substrait.Expr.lit (Substrait.Value.int 0))
+                        (Substrait.Expr.lit (Substrait.Value.float 0))
                         (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)))
-                      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
-                      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan)))))))))
+                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
+                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))))))))
         (Substrait.DuckFn.eval Substrait.Semantics.duckdb Substrait.DuckFn.divInt [x, y]) := by
   lift_tac2
 
@@ -63,7 +63,7 @@ abbrev Substrait.liftDuckDB.divInt : Substrait.LiftEntry Substrait.Semantics.duc
   (Substrait.Expr.un Substrait.UnFn.not
     (Substrait.Expr.bin Substrait.BinFn.eq
       (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))
-      (Substrait.Expr.lit (Substrait.Value.int 0))))
+      (Substrait.Expr.lit (Substrait.Value.float 0))))
   (Substrait.Expr.bin Substrait.BinFn.fdiv
     (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
     (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))
@@ -78,18 +78,18 @@ abbrev Substrait.liftDuckDB.divInt : Substrait.LiftEntry Substrait.Semantics.duc
       (Substrait.Expr.ifThen
         (Substrait.Expr.bin Substrait.BinFn.eq
           (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan)))
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.lt
             (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-            (Substrait.Expr.lit (Substrait.Value.int 0)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+            (Substrait.Expr.lit (Substrait.Value.float 0)))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
           (Substrait.Expr.ifThen
-            (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+            (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
               (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))))),
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.divInt_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.divInt)
@@ -105,19 +105,19 @@ theorem Substrait.liftDuckDB.divDouble_agree : ∀ (x y : Substrait.Value),
             (Substrait.Expr.bin Substrait.BinFn.and
               (Substrait.Expr.bin Substrait.BinFn.or
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
               (Substrait.Expr.bin Substrait.BinFn.or
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
             (Substrait.Expr.ifThen
               (Substrait.Expr.un Substrait.UnFn.not
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                  (Substrait.Expr.lit (Substrait.Value.int 0))))
+                  (Substrait.Expr.lit (Substrait.Value.float 0))))
               (Substrait.Expr.bin Substrait.BinFn.fdiv (Substrait.Expr.field 0)
                 (Substrait.Expr.field 1))
               (Substrait.Expr.ifThen
@@ -128,17 +128,17 @@ theorem Substrait.liftDuckDB.divDouble_agree : ∀ (x y : Substrait.Value),
                   (Substrait.Expr.lit Substrait.Value.null)
                   (Substrait.Expr.ifThen
                     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan)))
-                    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
+                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
                     (Substrait.Expr.ifThen
                       (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-                        (Substrait.Expr.lit (Substrait.Value.int 0)))
-                      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+                        (Substrait.Expr.lit (Substrait.Value.float 0)))
+                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
                       (Substrait.Expr.ifThen
                         (Substrait.Expr.bin Substrait.BinFn.lt
-                          (Substrait.Expr.lit (Substrait.Value.int 0)) (Substrait.Expr.field 0))
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))))))))
+                          (Substrait.Expr.lit (Substrait.Value.float 0)) (Substrait.Expr.field 0))
+                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
+                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))))))
         (Substrait.DuckFn.eval Substrait.Semantics.duckdb Substrait.DuckFn.divDouble [x, y]) := by
   lift_tac2
 
@@ -147,19 +147,19 @@ abbrev Substrait.liftDuckDB.divDouble : Substrait.LiftEntry Substrait.Semantics.
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.bin Substrait.BinFn.or
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
     (Substrait.Expr.bin Substrait.BinFn.or
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.ifThen
     (Substrait.Expr.un Substrait.UnFn.not
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-        (Substrait.Expr.lit (Substrait.Value.int 0))))
+        (Substrait.Expr.lit (Substrait.Value.float 0))))
     (Substrait.Expr.bin Substrait.BinFn.fdiv (Substrait.Expr.field 0) (Substrait.Expr.field 1))
     (Substrait.Expr.ifThen (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 1))
       (Substrait.Expr.lit Substrait.Value.null)
@@ -167,17 +167,17 @@ abbrev Substrait.liftDuckDB.divDouble : Substrait.LiftEntry Substrait.Semantics.
         (Substrait.Expr.lit Substrait.Value.null)
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int 0)))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+              (Substrait.Expr.lit (Substrait.Value.float 0)))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
             (Substrait.Expr.ifThen
-              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
                 (Substrait.Expr.field 0))
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan)))))))),
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))))))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.divDouble_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.divDouble)
@@ -193,19 +193,19 @@ theorem Substrait.liftDuckDB.modDouble_agree : ∀ (x y : Substrait.Value),
             (Substrait.Expr.bin Substrait.BinFn.and
               (Substrait.Expr.bin Substrait.BinFn.or
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
               (Substrait.Expr.un Substrait.UnFn.not
                 (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 1))))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
             (Substrait.Expr.ifThen
               (Substrait.Expr.bin Substrait.BinFn.and
                 (Substrait.Expr.un Substrait.UnFn.not
                   (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 0)))
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                  (Substrait.Expr.lit (Substrait.Value.int 0))))
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+                  (Substrait.Expr.lit (Substrait.Value.float 0))))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
               (Substrait.Expr.bin Substrait.BinFn.fmod (Substrait.Expr.field 0)
                 (Substrait.Expr.field 1)))))
         (Substrait.DuckFn.eval Substrait.Semantics.duckdb Substrait.DuckFn.modDouble [x, y]) := by
@@ -216,19 +216,19 @@ abbrev Substrait.liftDuckDB.modDouble : Substrait.LiftEntry Substrait.Semantics.
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.bin Substrait.BinFn.or
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
     (Substrait.Expr.un Substrait.UnFn.not
       (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 1))))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.and
       (Substrait.Expr.un Substrait.UnFn.not
         (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 0)))
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-        (Substrait.Expr.lit (Substrait.Value.int 0))))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+        (Substrait.Expr.lit (Substrait.Value.float 0))))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
     (Substrait.Expr.bin Substrait.BinFn.fmod (Substrait.Expr.field 0) (Substrait.Expr.field 1))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.modDouble_agree⟩
 
@@ -245,57 +245,59 @@ theorem Substrait.liftDuckDB.power_agree : ∀ (x y : Substrait.Value),
             (Substrait.Expr.bin Substrait.BinFn.and
               (Substrait.Expr.bin Substrait.BinFn.and
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))
+                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))
                 (Substrait.Expr.bin Substrait.BinFn.and
                   (Substrait.Expr.un Substrait.UnFn.not
                     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
                   (Substrait.Expr.un Substrait.UnFn.not
                     (Substrait.Expr.bin Substrait.BinFn.or
                       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
                       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))))))
+                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))))
               (Substrait.Expr.un Substrait.UnFn.not
                 (Substrait.Expr.bin Substrait.BinFn.eq
                   (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
                   (Substrait.Expr.field 1))))
             (Substrait.Expr.ifThen
-              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
                 (Substrait.Expr.field 1))
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
-              (Substrait.Expr.lit (Substrait.Value.int 0)))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
+              (Substrait.Expr.lit (Substrait.Value.float 0)))
             (Substrait.Expr.ifThen
               (Substrait.Expr.bin Substrait.BinFn.and
                 (Substrait.Expr.bin Substrait.BinFn.and
                   (Substrait.Expr.bin Substrait.BinFn.and
                     (Substrait.Expr.un Substrait.UnFn.not
                       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
                     (Substrait.Expr.un Substrait.UnFn.not
                       (Substrait.Expr.bin Substrait.BinFn.or
                         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
                         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+                          (Substrait.Expr.lit
+                            (Substrait.Value.float Substrait.FloatCode.negInf))))))
                   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-                    (Substrait.Expr.lit (Substrait.Value.int 0))))
+                    (Substrait.Expr.lit (Substrait.Value.float 0))))
                 (Substrait.Expr.bin Substrait.BinFn.and
                   (Substrait.Expr.bin Substrait.BinFn.and
                     (Substrait.Expr.un Substrait.UnFn.not
                       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
                     (Substrait.Expr.un Substrait.UnFn.not
                       (Substrait.Expr.bin Substrait.BinFn.or
                         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
                         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+                          (Substrait.Expr.lit
+                            (Substrait.Value.float Substrait.FloatCode.negInf))))))
                   (Substrait.Expr.un Substrait.UnFn.not
                     (Substrait.Expr.bin Substrait.BinFn.eq
                       (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
                       (Substrait.Expr.field 1)))))
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
               (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0)
                 (Substrait.Expr.field 1)))))
         (Substrait.DuckFn.eval Substrait.Semantics.duckdb Substrait.DuckFn.power [x, y]) := by
@@ -306,57 +308,57 @@ abbrev Substrait.liftDuckDB.power : Substrait.LiftEntry Substrait.Semantics.duck
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.bin Substrait.BinFn.and
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))
       (Substrait.Expr.bin Substrait.BinFn.and
         (Substrait.Expr.un Substrait.UnFn.not
           (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
         (Substrait.Expr.un Substrait.UnFn.not
           (Substrait.Expr.bin Substrait.BinFn.or
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf)))))))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))))
     (Substrait.Expr.un Substrait.UnFn.not
       (Substrait.Expr.bin Substrait.BinFn.eq
         (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
         (Substrait.Expr.field 1))))
   (Substrait.Expr.ifThen
-    (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 0))
+    (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
       (Substrait.Expr.field 1))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf))
-    (Substrait.Expr.lit (Substrait.Value.int 0)))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
+    (Substrait.Expr.lit (Substrait.Value.float 0)))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.and
       (Substrait.Expr.bin Substrait.BinFn.and
         (Substrait.Expr.bin Substrait.BinFn.and
           (Substrait.Expr.un Substrait.UnFn.not
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
           (Substrait.Expr.un Substrait.UnFn.not
             (Substrait.Expr.bin Substrait.BinFn.or
               (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
               (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))))
         (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-          (Substrait.Expr.lit (Substrait.Value.int 0))))
+          (Substrait.Expr.lit (Substrait.Value.float 0))))
       (Substrait.Expr.bin Substrait.BinFn.and
         (Substrait.Expr.bin Substrait.BinFn.and
           (Substrait.Expr.un Substrait.UnFn.not
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
           (Substrait.Expr.un Substrait.UnFn.not
             (Substrait.Expr.bin Substrait.BinFn.or
               (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
               (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))))
+                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))))
         (Substrait.Expr.un Substrait.UnFn.not
           (Substrait.Expr.bin Substrait.BinFn.eq
             (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
             (Substrait.Expr.field 1)))))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
     (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0) (Substrait.Expr.field 1))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.power_agree⟩
 

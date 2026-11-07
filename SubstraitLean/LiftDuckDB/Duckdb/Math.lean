@@ -24,8 +24,8 @@ theorem Substrait.liftDuckDB.elementary_sqrt_agree : ∀ (x : Substrait.Value),
       (Substrait.Expr.evalP Substrait.Profile.reference [x]
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.int 0)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+            (Substrait.Expr.lit (Substrait.Value.float 0)))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
         (Substrait.DuckFn.elementary Substrait.FMath.sqrt) [x]) := by
@@ -34,8 +34,8 @@ theorem Substrait.liftDuckDB.elementary_sqrt_agree : ∀ (x : Substrait.Value),
 abbrev Substrait.liftDuckDB.elementary_sqrt : Substrait.LiftEntry Substrait.Semantics.duckdb (Substrait.DuckFn.elementary Substrait.FMath.sqrt) :=
   ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":17,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-    (Substrait.Expr.lit (Substrait.Value.int 0)))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+    (Substrait.Expr.lit (Substrait.Value.float 0)))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_sqrt_agree⟩
 
@@ -66,12 +66,12 @@ theorem Substrait.liftDuckDB.elementary_ln_agree : ∀ (x : Substrait.Value),
       (Substrait.Expr.evalP Substrait.Profile.reference [x]
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.int 0)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+            (Substrait.Expr.lit (Substrait.Value.float 0)))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int 0)))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+              (Substrait.Expr.lit (Substrait.Value.float 0)))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
             (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln)
               (Substrait.Expr.field 0)))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
@@ -81,12 +81,12 @@ theorem Substrait.liftDuckDB.elementary_ln_agree : ∀ (x : Substrait.Value),
 abbrev Substrait.liftDuckDB.elementary_ln : Substrait.LiftEntry Substrait.Semantics.duckdb (Substrait.DuckFn.elementary Substrait.FMath.ln) :=
   ⟨"{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":19,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"-inf\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-    (Substrait.Expr.lit (Substrait.Value.int 0)))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+    (Substrait.Expr.lit (Substrait.Value.float 0)))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int 0)))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+      (Substrait.Expr.lit (Substrait.Value.float 0)))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_ln_agree⟩
 
@@ -100,12 +100,12 @@ theorem Substrait.liftDuckDB.elementary_log10_agree : ∀ (x : Substrait.Value),
       (Substrait.Expr.evalP Substrait.Profile.reference [x]
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.int 0)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+            (Substrait.Expr.lit (Substrait.Value.float 0)))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int 0)))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+              (Substrait.Expr.lit (Substrait.Value.float 0)))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
             (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10)
               (Substrait.Expr.field 0)))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
@@ -115,12 +115,12 @@ theorem Substrait.liftDuckDB.elementary_log10_agree : ∀ (x : Substrait.Value),
 abbrev Substrait.liftDuckDB.elementary_log10 : Substrait.LiftEntry Substrait.Semantics.duckdb (Substrait.DuckFn.elementary Substrait.FMath.log10) :=
   ⟨"{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":20,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"-inf\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-    (Substrait.Expr.lit (Substrait.Value.int 0)))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+    (Substrait.Expr.lit (Substrait.Value.float 0)))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int 0)))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+      (Substrait.Expr.lit (Substrait.Value.float 0)))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_log10_agree⟩
 
@@ -134,12 +134,12 @@ theorem Substrait.liftDuckDB.elementary_log2_agree : ∀ (x : Substrait.Value),
       (Substrait.Expr.evalP Substrait.Profile.reference [x]
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.int 0)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+            (Substrait.Expr.lit (Substrait.Value.float 0)))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int 0)))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+              (Substrait.Expr.lit (Substrait.Value.float 0)))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
             (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2)
               (Substrait.Expr.field 0)))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
@@ -149,12 +149,12 @@ theorem Substrait.liftDuckDB.elementary_log2_agree : ∀ (x : Substrait.Value),
 abbrev Substrait.liftDuckDB.elementary_log2 : Substrait.LiftEntry Substrait.Semantics.duckdb (Substrait.DuckFn.elementary Substrait.FMath.log2) :=
   ⟨"{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":21,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"-inf\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-    (Substrait.Expr.lit (Substrait.Value.int 0)))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+    (Substrait.Expr.lit (Substrait.Value.float 0)))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int 0)))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))
+      (Substrait.Expr.lit (Substrait.Value.float 0)))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_log2_agree⟩
 
@@ -169,10 +169,10 @@ theorem Substrait.liftDuckDB.elementary_sin_agree : ∀ (x : Substrait.Value),
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.or
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
         (Substrait.DuckFn.elementary Substrait.FMath.sin) [x]) := by
@@ -182,10 +182,10 @@ abbrev Substrait.liftDuckDB.elementary_sin : Substrait.LiftEntry Substrait.Seman
   ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":22,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_sin_agree⟩
 
@@ -200,10 +200,10 @@ theorem Substrait.liftDuckDB.elementary_cos_agree : ∀ (x : Substrait.Value),
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.or
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
         (Substrait.DuckFn.elementary Substrait.FMath.cos) [x]) := by
@@ -213,10 +213,10 @@ abbrev Substrait.liftDuckDB.elementary_cos : Substrait.LiftEntry Substrait.Seman
   ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":23,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_cos_agree⟩
 
@@ -231,10 +231,10 @@ theorem Substrait.liftDuckDB.elementary_tan_agree : ∀ (x : Substrait.Value),
         (Substrait.Expr.ifThen
           (Substrait.Expr.bin Substrait.BinFn.or
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
             (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
         (Substrait.DuckFn.elementary Substrait.FMath.tan) [x]) := by
@@ -244,10 +244,10 @@ abbrev Substrait.liftDuckDB.elementary_tan : Substrait.LiftEntry Substrait.Seman
   ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":24,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.posInf)))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negInf))))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_tan_agree⟩
 
@@ -263,15 +263,15 @@ theorem Substrait.liftDuckDB.elementary_asin_agree : ∀ (x : Substrait.Value),
           (Substrait.Expr.bin Substrait.BinFn.and
             (Substrait.Expr.un Substrait.UnFn.not
               (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
             (Substrait.Expr.bin Substrait.BinFn.lt
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.one))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.one))
               (Substrait.Expr.field 0)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negOne)))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negOne)))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
             (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin)
               (Substrait.Expr.field 0)))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
@@ -283,14 +283,15 @@ abbrev Substrait.liftDuckDB.elementary_asin : Substrait.LiftEntry Substrait.Sema
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.un Substrait.UnFn.not
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
     (Substrait.Expr.bin Substrait.BinFn.lt
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.one)) (Substrait.Expr.field 0)))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.one))
+      (Substrait.Expr.field 0)))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negOne)))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negOne)))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_asin_agree⟩
 
@@ -306,15 +307,15 @@ theorem Substrait.liftDuckDB.elementary_acos_agree : ∀ (x : Substrait.Value),
           (Substrait.Expr.bin Substrait.BinFn.and
             (Substrait.Expr.un Substrait.UnFn.not
               (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
             (Substrait.Expr.bin Substrait.BinFn.lt
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.one))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.one))
               (Substrait.Expr.field 0)))
-          (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
           (Substrait.Expr.ifThen
             (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negOne)))
-            (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negOne)))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
             (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos)
               (Substrait.Expr.field 0)))))
       (Substrait.DuckFn.eval Substrait.Semantics.duckdb
@@ -326,14 +327,15 @@ abbrev Substrait.liftDuckDB.elementary_acos : Substrait.LiftEntry Substrait.Sema
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.un Substrait.UnFn.not
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))))
+        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))
     (Substrait.Expr.bin Substrait.BinFn.lt
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.one)) (Substrait.Expr.field 0)))
-  (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.one))
+      (Substrait.Expr.field 0)))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-      (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.negOne)))
-    (Substrait.Expr.lit (Substrait.Value.int Substrait.FloatCode.nan))
+      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negOne)))
+    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_acos_agree⟩
 
