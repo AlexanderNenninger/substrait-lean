@@ -771,7 +771,9 @@ def test_a_window_sum_of_both_infinities_is_nan_as_in_the_reference():
     con.put("t", pa.table({"i": [0, 1, 2], "x": [1.0, math.inf, -math.inf]}))
     t = con.table("t")
     w = ibis.window(order_by=t.i, preceding=1, following=0)
-    report = sv.verify(t.mutate(s=t.x.mean().over(w)).order_by("i"), requires={"t": [_.i.notnull()]})
+    report = sv.verify(
+        t.mutate(s=t.x.mean().over(w)).order_by("i"), requires={"t": [_.i.notnull()]}
+    )
     for engine in ("duckdb", "polars"):
         got = report.run(con, engine, unverified=True).column("s").to_pylist()
         assert got[:2] == [1.0, math.inf] and math.isnan(got[2]), engine
