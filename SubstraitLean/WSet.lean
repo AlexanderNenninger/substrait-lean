@@ -217,47 +217,83 @@ def Rel.delta (δ : String → String) : Rel → Rel
 
 /-! ## The evaluator -/
 
+/-- Whether a weighted set has positive total weight: DBSP's `[w > 0]`,
+which `DISTINCT`, semi and anti joins and a left join's padding read. -/
+def WSet.positive {K : Type} [Add K] [Zero K] [LT K] [DecidableLT K] (z : WSet K) : Bool :=
+  decide (0 < (List.map (·.2) z).sum)
+
+/-- What `Rel.evalK` reads where it does not recurse: the rows of the ordered
+and aggregate nodes (`fetch`, windows, aggregates), the presence test of
+`DISTINCT`, semi joins and left joins, and the arity a left join pads to.
+The default reads nothing: no rows, nothing present, no padding. -/
+structure Seam (K : Type) where
+  ord : Rel → WSet K := fun _ => []
+  pos : WSet K → Bool := fun _ => false
+  arity : Rel → Nat := fun _ => 0
+
+theorem List.filter_const_false' {α : Type} (l : List α) : l.filter (fun _ => false) = [] := by simp
+
 section EvalK
 
 variable {K : Type} [Mul K] [One K]
 
-/-- Weighted semantics of the incremental fragment, with the scalar
-functions of `I`. Mirrors `Rel.eval` there. -/
-def Rel.evalK (I : Impl) (cat : WCatalog K) : Rel → WSet K
+/-- Weighted semantics, with the scalar functions of `I`. Union appends,
+cross and join multiply weights, `DISTINCT` keeps each present row once,
+semi and anti joins keep the left rows whose matches are (not) present, and
+a left join pads the left rows whose matches are not. `fetch`, windows and
+aggregates read the seam `S`. -/
+def Rel.evalK (I : Impl) (cat : WCatalog K) (S : Seam K := {}) : Rel → WSet K
   | .read t => cat t
   | .values _ rows => WSet.lift rows
-  | .filter r c => WSet.filter (fun row => (c.eval row I).isTrue) (r.evalK I cat)
-  | .project r es => WSet.map (fun row => row ++ es.map (·.eval row I)) (r.evalK I cat)
-  | .emit r m => WSet.map (fun row => m.map (row.getD · .null)) (r.evalK I cat)
-  | .cross a b => WSet.cross (a.evalK I cat) (b.evalK I cat)
+  | .filter r c => WSet.filter (fun row => (c.eval row I).isTrue) (r.evalK I cat S)
+  | .project r es => WSet.map (fun row => row ++ es.map (·.eval row I)) (r.evalK I cat S)
+  | .emit r m => WSet.map (fun row => m.map (row.getD · .null)) (r.evalK I cat S)
+  | .cross a b => WSet.cross (a.evalK I cat S) (b.evalK I cat S)
   | .join a b .inner on =>
-      WSet.filter (fun row => (on.eval row I).isTrue) (WSet.cross (a.evalK I cat) (b.evalK I cat))
-  | .unionAll a b => a.evalK I cat ++ b.evalK I cat
-  | .orderBy r keys => (r.evalK I cat).mergeSort fun x y => sortLe keys x.1 y.1
-  -- Outside the incremental fragment; every theorem excludes these.
-  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _
-  | .aggregate _ _ _ | .unnest _ _ => []
+      WSet.filter (fun row => (on.eval row I).isTrue)
+        (WSet.cross (a.evalK I cat S) (b.evalK I cat S))
+  | .join a b .left on => (a.evalK I cat S).flatMap fun x =>
+      let ms := WSet.filter (fun row => (on.eval row I).isTrue) (WSet.cross [x] (b.evalK I cat S))
+      if S.pos ms then ms else [(x.1 ++ List.replicate (S.arity b) .null, x.2)]
+  | .unionAll a b => a.evalK I cat S ++ b.evalK I cat S
+  | .orderBy r keys => (r.evalK I cat S).mergeSort fun x y => sortLe keys x.1 y.1
+  | .distinct r =>
+      let z := r.evalK I cat S
+      ((dedup (List.map (·.1) z)).filter fun row => S.pos (WSet.filter (· == row) z)).map (·, 1)
+  | .semi a b anti on => WSet.filter (fun x => S.pos (WSet.filter
+      (fun y => (on.eval (x ++ y) I).isTrue) (b.evalK I cat S)) != anti) (a.evalK I cat S)
+  | .unnest r c => (r.evalK I cat S).flatMap fun x => (unnestRow c x.1).map (·, x.2)
+  | r@(.fetch _ _ _) | r@(.window _ _ _ _) | r@(.aggregate _ _ _) => S.ord r
 
 variable {I : Impl}
 
 /-- A plan only depends on the tables it reads. -/
-theorem Rel.evalK_congr {C cat : WCatalog K} :
-    ∀ {r : Rel}, (∀ t ∈ r.tables, C t = cat t) → r.evalK I C = r.evalK I cat
+theorem Rel.evalK_congr {C cat : WCatalog K} {S : Seam K} :
+    ∀ {r : Rel}, (∀ t ∈ r.tables, C t = cat t) → r.evalK I C S = r.evalK I cat S
   | .read t, h => h t (by simp [tables])
   | .values _ _, _ => rfl
-  | .filter r _, h | .project r _, h | .emit r _, h | .orderBy r _, h => by
+  | .filter r _, h | .project r _, h | .emit r _, h | .orderBy r _, h | .distinct r, h
+  | .unnest r _, h => by
       simp only [evalK, evalK_congr (r := r) h]
-  | .fetch _ _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .distinct _, _
-  | .aggregate _ _ _, _ | .unnest _ _, _ => rfl
-  | .cross a b, h | .unionAll a b, h => by
+  | .fetch _ _ _, _ | .window _ _ _ _, _ | .aggregate _ _ _, _ => rfl
+  | .cross a b, h | .unionAll a b, h | .join a b .inner _, h | .join a b .left _, h
+  | .semi a b _ _, h => by
       simp only [tables, List.mem_append] at h
       simp only [evalK, evalK_congr (r := a) (fun t ht => h t (.inl ht)),
         evalK_congr (r := b) (fun t ht => h t (.inr ht))]
-  | .join a b .inner _, h => by
-      simp only [tables, List.mem_append] at h
-      simp only [evalK, evalK_congr (r := a) (fun t ht => h t (.inl ht)),
-        evalK_congr (r := b) (fun t ht => h t (.inr ht))]
-  | .join _ _ .left _, _ => rfl
+
+/-- On the incremental fragment the seam is never read. -/
+theorem Rel.evalK_seam {cat : WCatalog K} {S S' : Seam K} :
+    ∀ {r : Rel}, r.Incremental → r.evalK I cat S = r.evalK I cat S'
+  | .read _, _ | .values _ _, _ => rfl
+  | .filter r _, h | .project r _, h | .emit r _, h | .orderBy r _, h => by
+      simp only [evalK, evalK_seam (r := r) (S := S) (S' := S') h]
+  | .cross a b, h | .unionAll a b, h | .join a b .inner _, h => by
+      simp only [evalK, evalK_seam (r := a) (S := S) (S' := S') h.1,
+        evalK_seam (r := b) (S := S) (S' := S') h.2]
+  | .join _ _ .left _, h => h.elim
+  | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h
+  | .aggregate _ _ _, h | .unnest _ _, h => h.elim
 
 /-- **Incremental maintenance is sound**, for any weights: the new result is
 the old result plus the output of the delta plan `Rel.delta δ r`, run on the
@@ -339,13 +375,26 @@ theorem Rel.delta_evalK_eq {C C' cat Δ : WCatalog K} {δ δ' : String → Strin
           (fun t ht => h3 t (.inl ht)) (fun t ht => h4 t (.inl ht)),
         delta_evalK_eq (r := b) (fun t ht => h1 t (.inr ht)) (fun t ht => h2 t (.inr ht))
           (fun t ht => h3 t (.inr ht)) (fun t ht => h4 t (.inr ht))]
-  | .join _ _ .left _, _, _, _, _ | .fetch _ _ _, _, _, _, _ | .window _ _ _ _, _, _, _, _
-  | .semi _ _ _ _, _, _, _, _ | .distinct _, _, _, _, _ | .aggregate _ _ _, _, _, _, _
-  | .unnest _ _, _, _, _, _ => rfl
+  | .join a b .left _, h1, h2, h3, h4 => by
+      simp only [tables, List.mem_append] at h1 h2 h3 h4
+      simp [delta, evalK,
+        delta_evalK_eq (r := a) (fun t ht => h1 t (.inl ht)) (fun t ht => h2 t (.inl ht))
+          (fun t ht => h3 t (.inl ht)) (fun t ht => h4 t (.inl ht)),
+        evalK_congr (r := a) (fun t ht => h1 t (.inl ht)),
+        evalK_congr (r := a) (fun t ht => h3 t (.inl ht))]
+  | .semi a b _ _, h1, h2, h3, h4 => by
+      simp only [tables, List.mem_append] at h1 h2 h3 h4
+      simp [delta, evalK,
+        delta_evalK_eq (r := a) (fun t ht => h1 t (.inl ht)) (fun t ht => h2 t (.inl ht))
+          (fun t ht => h3 t (.inl ht)) (fun t ht => h4 t (.inl ht))]
+  | .unnest r _, h1, h2, h3, h4 => by
+      simp only [delta, evalK, delta_evalK_eq (r := r) h1 h2 h3 h4]
+  | .distinct _, _, _, _, _ => by simp [delta, evalK, List.filter_const_false']
+  | .fetch _ _ _, _, _, _, _ | .window _ _ _ _, _, _, _, _ | .aggregate _ _ _, _, _, _, _ => rfl
 
 /-- **Changing the weights commutes with evaluation**: a map `h` that keeps
 `*` and `1` sends the evaluation over `K` to the evaluation over `L` of the
-mapped tables. On every plan: outside the fragment both sides are `[]`. -/
+mapped tables, on every plan, with the default seam. -/
 theorem Rel.evalK_mapW {L : Type} [Mul L] [One L] {h : K → L}
     (hmul : ∀ a b, h (a * b) = h a * h b) (hone : h 1 = 1) {cat : WCatalog K} :
     ∀ r : Rel, (r.evalK I cat).mapW h = r.evalK I (fun t => (cat t).mapW h)
@@ -370,43 +419,110 @@ theorem Rel.evalK_mapW {L : Type} [Mul L] [One L] {h : K → L}
   | .orderBy r _ => by
       simp only [evalK]; rw [← evalK_mapW hmul hone r]
       exact List.map_mergeSort (f := fun (x : Row × K) => (x.1, h x.2)) fun _ _ _ _ => rfl
-  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _
-  | .aggregate _ _ _ | .unnest _ _ => rfl
+  | .join a b .left _ => by
+      simp only [evalK]; rw [← evalK_mapW hmul hone a]
+      simp [WSet.mapW, List.flatMap_map, ← List.map_eq_flatMap]
+  | .semi a b _ _ => by
+      simp only [evalK]; rw [← evalK_mapW hmul hone a]
+      simp [WSet.mapW, WSet.filter, List.filter_map, Function.comp_def]
+  | .unnest r _ => by
+      simp only [evalK]; rw [← evalK_mapW hmul hone r]
+      simp [WSet.mapW, List.map_flatMap, List.flatMap_map, Function.comp_def]
+  | .distinct _ => by simp [evalK, WSet.mapW, List.filter_const_false']
+  | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
 
 end EvalK
 
 /-! ## Agreement with bag semantics -/
 
-/-- On ordinary bags (every weight `1`), weighted evaluation over a semiring
-is `Rel.eval` with the same functions. -/
-theorem Rel.evalK_lift {K : Type} [Lean.Grind.Semiring K] {I : Impl} {cat : Catalog} :
-    ∀ {r : Rel}, r.Incremental →
-      r.evalK I (fun t => (WSet.lift (cat t).rows : WSet K)) = WSet.lift (r.eval cat I)
-  | .read _, _ => rfl
-  | .values _ _, _ => rfl
-  | .filter r _, h => by
-      simp only [evalK, eval]; rw [evalK_lift (r := r) h]
-      simp [WSet.filter, WSet.lift, List.filter_map, Function.comp_def]
-  | .project r _, h | .emit r _, h => by
-      simp only [evalK, eval]; rw [evalK_lift (r := r) h]
-      simp [WSet.map, WSet.lift]
-  | .cross a b, h => by
-      simp only [evalK, eval]; rw [evalK_lift (r := a) h.1, evalK_lift (r := b) h.2]
+theorem WSet.lift_filter {K : Type} [One K] (p : Row → Bool) (rows : Relation) :
+    (WSet.lift (rows.filter p) : WSet K) = WSet.filter p (WSet.lift rows) := by
+  simp [WSet.lift, WSet.filter, List.filter_map, Function.comp_def]
+
+theorem WSet.positive_lift (rows : Relation) : (WSet.lift rows : WSet Nat).positive = !rows.isEmpty := by
+  cases rows <;> simp [positive, lift] <;> omega
+
+/-- The seam of bags: ordered and aggregate nodes give their rows under
+`Rel.eval`, at weight `1`. -/
+def Seam.bags (cat : Catalog) (I : Impl) : Seam Nat where
+  ord r := WSet.lift (r.eval cat I)
+  pos := WSet.positive
+  arity r := r.arity cat
+
+theorem any_eq_not_isEmpty_filter (p : Row → Bool) (rows : Relation) :
+    rows.any p = !(rows.filter p).isEmpty := by
+  induction rows with
+  | nil => rfl
+  | cons x rows ih => by_cases h : p x <;> simp [h, ih]
+
+/-- **`Rel.eval` is `Rel.evalK` over `Nat`.** On bags, every plan's rows at
+weight `1` are its weighted evaluation, with the seam of bags at the ordered
+and aggregate nodes. Every unordered arm of `Rel.eval` (filter, project,
+emit, cross, joins, union, sort, `DISTINCT`, semi and anti joins, unnest)
+is the weighted one, stated once. -/
+theorem Rel.eval_eq_evalK {cat : Catalog} {I : Impl} :
+    ∀ r : Rel, r.evalK I (fun t => WSet.lift (cat t).rows) (Seam.bags cat I) = WSet.lift (r.eval cat I)
+  | .read _ | .values _ _ | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
+  | .filter r _ => by
+      simp only [evalK, eval, eval_eq_evalK r, ← WSet.lift_filter]
+  | .project r _ | .emit r _ => by
+      simp only [evalK, eval, eval_eq_evalK r]; simp [WSet.map, WSet.lift]
+  | .cross a b => by
+      simp only [evalK, eval, eval_eq_evalK a, eval_eq_evalK b]
       simp [WSet.cross, WSet.lift, crossRows, List.flatMap_map, List.map_flatMap,
-        Function.comp_def, Lean.Grind.Semiring.mul_one]
-  | .join a b .inner _, h => by
-      simp only [evalK, eval]; rw [evalK_lift (r := a) h.1, evalK_lift (r := b) h.2]
+        Function.comp_def]
+  | .join a b .inner _ => by
+      simp only [evalK, eval, eval_eq_evalK a, eval_eq_evalK b]
       simp [WSet.cross, WSet.filter, WSet.lift, crossRows, List.flatMap_map, List.map_flatMap,
-        List.filter_map, List.filter_flatMap, Function.comp_def, Lean.Grind.Semiring.mul_one]
-  | .unionAll a b, h => by
-      simp only [evalK, eval]; rw [evalK_lift (r := a) h.1, evalK_lift (r := b) h.2]
-      simp [WSet.lift]
-  | .orderBy r _, h => by
-      simp only [evalK, eval]; rw [evalK_lift (r := r) h]
-      simp only [WSet.lift]
-      exact (List.map_mergeSort (f := fun row => (row, (1 : K))) fun _ _ _ _ => rfl).symm
-  | .join _ _ .left _, h => h.elim
-  | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h
-  | .aggregate _ _ _, h | .unnest _ _, h => h.elim
+        List.filter_map, List.filter_flatMap, Function.comp_def]
+  | .join a b .left on => by
+      simp only [evalK, eval, eval_eq_evalK a, eval_eq_evalK b]
+      simp only [WSet.lift, List.flatMap_map, List.map_flatMap]
+      congr 1; funext x
+      have hms : WSet.filter (fun row => (on.eval row I).isTrue)
+          (WSet.cross [(x, 1)] (List.map (·, 1) (b.eval cat I))) =
+          WSet.lift (((b.eval cat I).map (x ++ ·)).filter fun row => (on.eval row I).isTrue) := by
+        simp [WSet.cross, WSet.filter, WSet.lift, List.filter_map, Function.comp_def]
+      simp only [hms, Seam.bags, WSet.positive_lift, leftJoinRow]
+      cases hE : (((b.eval cat I).map (x ++ ·)).filter fun row => (on.eval row I).isTrue).isEmpty <;>
+        simp [WSet.lift]
+  | .unionAll a b => by simp only [evalK, eval, eval_eq_evalK a, eval_eq_evalK b]; simp [WSet.lift]
+  | .orderBy r _ => by
+      simp only [evalK, eval, eval_eq_evalK r]
+      exact (List.map_mergeSort (f := fun row => (row, (1 : Nat))) fun _ _ _ _ => rfl).symm
+  | .distinct r => by
+      simp only [evalK, eval, eval_eq_evalK r]
+      have hm : List.map (·.1) (WSet.lift (r.eval cat I) : WSet Nat) = r.eval cat I := by
+        simp [WSet.lift, Function.comp_def]
+      rw [hm, List.filter_eq_self.mpr fun row hrow => ?_]
+      · rfl
+      · simp only [Seam.bags, ← WSet.lift_filter, WSet.positive_lift, Bool.not_eq_true',
+          List.isEmpty_eq_false_iff, ne_eq, List.filter_eq_nil_iff, beq_iff_eq]
+        exact fun h => h row (mem_dedup.mp hrow) rfl
+  | .semi a b anti _ => by
+      simp only [evalK, eval, eval_eq_evalK a, eval_eq_evalK b, ← WSet.lift_filter]
+      congr 1
+      refine List.filter_congr fun x _ => ?_
+      simp [Seam.bags, WSet.positive_lift, hasMatch,
+        any_eq_not_isEmpty_filter]
+  | .unnest r _ => by
+      simp only [evalK, eval, eval_eq_evalK r]
+      simp [WSet.lift, List.flatMap_map, List.map_flatMap]
+
+attribute [local instance] Lean.Grind.Semiring.natCast in
+/-- On ordinary bags (every weight `1`), weighted evaluation over a semiring
+is `Rel.eval` with the same functions: `Rel.eval_eq_evalK` with its weights
+cast from `Nat` to `K`. -/
+theorem Rel.evalK_lift {K : Type} [Lean.Grind.Semiring K] {I : Impl} {cat : Catalog}
+    {r : Rel} (h : r.Incremental) :
+    r.evalK I (fun t => (WSet.lift (cat t).rows : WSet K)) = WSet.lift (r.eval cat I) := by
+  have hl : ∀ rows : Relation, (WSet.lift rows : WSet K) = (WSet.lift rows : WSet Nat).mapW Nat.cast :=
+    fun rows => by
+      simp only [WSet.lift, WSet.mapW, List.map_map]
+      exact List.map_congr_left fun _ _ => by rw [Function.comp_apply, Lean.Grind.Semiring.natCast_one]
+  have hcat : (fun t => (WSet.lift (cat t).rows : WSet K)) =
+      fun t => (WSet.lift (cat t).rows : WSet Nat).mapW Nat.cast := funext fun t => hl _
+  rw [hcat, ← evalK_mapW (fun a b => Lean.Grind.Semiring.natCast_mul a b)
+    Lean.Grind.Semiring.natCast_one, evalK_seam (S' := Seam.bags cat I) h, eval_eq_evalK, ← hl]
 
 end Substrait
