@@ -115,13 +115,16 @@ def test_duckdb_is_within_the_bound_of_the_correctly_rounded_sum(xs: list[float]
     s, mag = exact(xs)
     if abs(s) > 2**1000:
         return
+    # Rounding to the nearest double: within `u` relatively, and half the
+    # smallest subnormal below the normal range.
+    half_sub = Fraction(1, 2**1075)
     cr = Fraction(math.fsum(xs))
-    assert abs(cr - s) <= U * abs(s)
+    assert abs(cr - s) <= U * abs(s) + half_sub
     got_sum, got_avg, *_ = duckdb_aggregates(xs)
-    assert abs(Fraction(got_sum) - cr) <= gamma(2 * n) * (mag + n * TINY) + U * abs(s)
+    assert abs(Fraction(got_sum) - cr) <= gamma(2 * n) * (mag + n * TINY) + U * abs(s) + half_sub
     cr_avg = Fraction(float(s / n))
-    assert abs(cr_avg - s / n) <= U * abs(s / n)
-    tol_avg = gamma(2 * n + 2) * (mag + n * TINY) / n + U * abs(s / n)
+    assert abs(cr_avg - s / n) <= U * abs(s / n) + half_sub
+    tol_avg = gamma(2 * n + 2) * (mag + n * TINY) / n + U * abs(s / n) + half_sub
     assert abs(Fraction(got_avg) - cr_avg) <= tol_avg
 
 

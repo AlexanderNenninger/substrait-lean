@@ -48,8 +48,8 @@ Rows per evidence level:
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 3 | 12 | 11 | 2 | 0 | 0 | 21 |
-| Polars | 28 | 0 | 13 | 0 | 1 | 0 | 16 |
-| spark | 16 | 9 | 11 | 0 | 1 | 0 | 14 |
+| Polars | 28 | 0 | 14 | 0 | 0 | 0 | 16 |
+| spark | 16 | 9 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
@@ -181,7 +181,7 @@ Rows per evidence level:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | probe | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json) |
-| every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE` | observed: within the plan's bound | source | tested: [polars-window-agg](../characterization/polars/facts/polars-window-agg.json) |
+| every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../characterization/polars/facts/polars-window-agg.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../characterization/polars/facts/polars-avg-int.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [polars-quantile](../characterization/polars/facts/polars-quantile.json) |
@@ -251,7 +251,7 @@ Refused on Polars, with no expression there:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `ANY` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [spark-sum-double](../characterization/spark/facts/spark-sum-double.json), [spark-avg-double](../characterization/spark/facts/spark-avg-double.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [spark-var-stddev](../characterization/spark/facts/spark-var-stddev.json), [spark-covar](../characterization/spark/facts/spark-covar.json), [spark-corr](../characterization/spark/facts/spark-corr.json) |
-| every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE`, `RUNNING_ADD`, `TREE` | observed: within the plan's bound | source | tested: [spark-window-agg](../characterization/spark/facts/spark-window-agg.json) |
+| every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE`, `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [spark-window-agg](../characterization/spark/facts/spark-window-agg.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `int_avg_decimal` (expression) | proof | proved `Spark.int_avg_decimal`; [spark-avg-int](../characterization/spark/facts/spark-avg-int.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | fuzz | tested: [spark-quantile](../characterization/spark/facts/spark-quantile.json) |
