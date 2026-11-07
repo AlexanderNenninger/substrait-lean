@@ -59,6 +59,51 @@ def Value.isTrue : Value → Bool
   | .bool true => true
   | _ => false
 
+/-! ## Numbers by kind (#923)
+
+The interface the analyses read numbers through. Today every number is an
+`int` (doubles are codes, dates days, timestamps microseconds, decimals their
+unscaled integers); #923 gives each kind its own constructor and changes only
+the definitions below. The lemmas hold before and after. -/
+
+/-- The kinds of numbers: integers, doubles (as codes), dates (days),
+timestamps (microseconds), times of day (microseconds since midnight) and
+decimals of a scale (their unscaled integers). -/
+inductive NumKind where
+  | int | float | date | ts | tod
+  | dec (scale : Nat)
+  deriving Repr, DecidableEq, Inhabited
+
+/-- The number of kind `k` with integer `i`. Until #923 every kind is an
+`int`. -/
+def NumKind.val (_ : NumKind) (i : Int) : Value := .int i
+
+/-- A number's kind and integer, or `none` for anything else. Until #923 the
+kind is `int`. -/
+def Value.numOf? : Value → Option (NumKind × Int)
+  | .int i => some (.int, i)
+  | _ => none
+
+/-- The integer a number carries, of whatever kind. -/
+def Value.num? (v : Value) : Option Int := v.numOf?.map (·.2)
+
+theorem NumKind.val_ne_null (k : NumKind) (i : Int) : k.val i ≠ .null := by
+  simp [NumKind.val]
+
+theorem NumKind.val_inj {k : NumKind} {i j : Int} (h : k.val i = k.val j) : i = j := by
+  simpa [NumKind.val] using h
+
+theorem Value.numOf?_some {v : Value} {k : NumKind} {i : Int} (h : v.numOf? = some (k, i)) :
+    v = k.val i := by
+  cases v <;> simp_all [Value.numOf?, NumKind.val]
+
+@[simp] theorem NumKind.num?_val (k : NumKind) (i : Int) : (k.val i).num? = some i := rfl
+
+theorem Value.num?_some {v : Value} {i : Int} (h : v.num? = some i) : ∃ k : NumKind, v = k.val i := by
+  cases v <;> simp_all [Value.num?, Value.numOf?, NumKind.val]
+
+theorem Value.num?_null : Value.null.num? = none := rfl
+
 /-! ## Column kinds
 
 Doubles, timestamps and dates all become integers in the model (see

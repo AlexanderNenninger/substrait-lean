@@ -321,5 +321,6 @@ end Substrait.Examples
 #print axioms Substrait.contract_sound_allowed
 #print axioms Substrait.Rel.floatOpenSafe_aggregate
 #print axioms Substrait.Rel.floatOpenSafe_of_closed
+#print axioms Substrait.contract_sound_allowed_closed
 #print axioms Substrait.Refresh.no_corruption
 #print axioms Substrait.Refresh.record_describes_table

@@ -799,9 +799,10 @@ class Dialect:
         raise self.refused(fn)
 
     def float_sum(self, v: str, o: str) -> str:
-        """`floatSum`: the doubles of `v` added one by one in the order of the
-        ordinal `o`, from +0.0 (rounding depends on the order)."""
-        raise Unsupported(f"{self.name}: SUM of doubles in row order is not implemented")
+        """`floatSumCR` (D25): the engine's own `SUM`, within the plan's bound
+        of the correctly rounded sum (`epsilon_sum_cr`). `o`, the row's
+        ordinal, is not needed."""
+        return f"SUM({v})"
 
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         """`AggFn.min`/`max` (`fn` is `MIN` or `MAX`) of the doubles of `v`, over
@@ -881,10 +882,9 @@ class Dialect:
         raise Unsupported(f"{self.name}: window sums are not implemented")
 
     def window_float_sum(self, v: str, over: str) -> str:
-        """`floatSum`: the frame's doubles added left to right, from 0.0."""
-        raise Unsupported(
-            f"{self.name} does not add a frame's doubles in order, and the rounding depends on it"
-        )
+        """`floatSumCR` of the frame's doubles (D25): the engine's own `SUM`,
+        within the plan's bound of it."""
+        return f"SUM({v}) {over}"
 
     def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
         """`varOf` of the frame's doubles (at least one, two for a sample):
@@ -3814,9 +3814,10 @@ class _Writer:
         m = len(ks)
         for e in [*groups, *(x for ms in measures for x in (ms.arg, ms.filter) if x is not None)]:
             self.check_refs(e, m)
-        # Double sums add in Lean's list order, which needs the ordinal.
-        sums = any(ms.fn in ("fsum", "avg") for ms in measures)
-        needs = ordered or sums
+        # Double sums need no ordinal: the reference's is the exact sum
+        # rounded once (D25), and the engine's own order is within the plan's
+        # bound of it.
+        needs = ordered
         a = self.alias()
 
         def ref(j: int) -> str:

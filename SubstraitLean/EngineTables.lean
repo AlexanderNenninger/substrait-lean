@@ -141,16 +141,16 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_equality", .native []),
   -- Partials merged in finishing order are trees the reference allows, but a
   -- constant vector's `fl(k · x)` is not known to be one (#633): within #85's
-  -- bound, which `float-bounds` proves for both (`StdModel.epsilon_sum`).
+  -- bound of the reference's correctly rounded sum (`StdModel.epsilon_sum_cr`).
   -- Which order depends on the parallel plan, so at two threads or more runs
   -- vary (3 to 4 values in 5 runs), each within the bound. `fsum` (Kahan)
   -- does not vary.
   (none, "sum_order", ({ ObsRow.approxWithin "plan" ["duckdb-sum-double", "duckdb-avg-double"] with
-    note := "Sequential only at one thread; partials merged in finishing order at more threads or when spilled (ANY); a constant vector, or a constant-compressed segment, is added as one fl(k · x), which is not known to be a tree sum (#633). Every one of them is within the plan's bound (StdModel.epsilon_sum).",
+    note := "Sequential only at one thread; partials merged in finishing order at more threads or when spilled (ANY); a constant vector, or a constant-compressed segment, is added as one fl(k · x), which is not known to be a tree sum (#633). Every one of them is within the plan's bound of the reference's correctly rounded sum (StdModel.epsilon_sum_cr, D25).",
     rerun := some { floats := .within "plan" },
-    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum"
+    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }).proved
-    "FloatBounds.StdModel.epsilon_sum"),
+    "FloatBounds.StdModel.epsilon_sum_cr"),
   (none, "avg_int_result", .native ["duckdb-R6"]),
   (none, "empty_group_aggregates", .native []),
   (none, "null_order", .native ["duckdb-F2"]),
@@ -258,16 +258,16 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_equality", .native ["polars-nan-equality"]),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound, which `float-bounds` proves for
-  -- both (`StdModel.epsilon_sum`, `Rnd.kahan_near`).
+  -- both (`StdModel.epsilon_sum_cr`, `Rnd.kahan_near`).
   -- Run to run the order varies (morsels, pipelines), within the plan's bound,
   -- whatever the input's size: a grouped sum of [1e16, 1, 1, -1e16] gave 2.0,
   -- 1.0 and 0.0 over 200 runs on 10 threads (always 0.0 with
   -- POLARS_MAX_THREADS ≤ 2).
   (none, "sum_order", ({ ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
     rerun := some { floats := .within "plan" },
-    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum"
+    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"] }).proved
-    "FloatBounds.StdModel.epsilon_sum"),
+    "FloatBounds.StdModel.epsilon_sum_cr"),
   (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
     rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
@@ -405,9 +405,9 @@ def Profile.spark.obs : ObsTable := [
   -- allows, within #85's bound, varying run to run with the partitioning.
   (none, "sum_order", ({ ObsRow.approxWithin "plan" ["spark-sum-double", "spark-avg-double"] with
     rerun := some { floats := .within "plan" },
-    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum"
+    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["spark-sum-double", "spark-avg-double", "spark-exec-parallel"] }).proved
-    "FloatBounds.StdModel.epsilon_sum"),
+    "FloatBounds.StdModel.epsilon_sum_cr"),
   (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Spark.int_avg_decimal"),
   (none, "empty_group_aggregates", .native ["spark-sum-int", "spark-sum-double"]),
   -- Unstated, Spark puts NULLs first in an ascending key; the writer states
