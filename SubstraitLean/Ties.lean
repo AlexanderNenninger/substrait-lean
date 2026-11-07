@@ -439,14 +439,16 @@ theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : L
         | nil => rw [hvs] at hx; simp [AggFn.apply] at hx
         | cons v vs =>
           rw [hvs] at hx hn
-          simp only [AggFn.apply, Value.int.injEq] at hx hn
-          subst hx hn
-          have hint : ∀ w ∈ v :: vs, ∃ i, w = .int i ∧ b.Mem i := by
+          simp only [AggFn.apply] at hx hn
+          have hx' := sumOf_unscaled hx
+          simp only [Value.unscaled?, Option.some.injEq] at hn
+          subst hx' hn
+          have hint : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i := by
             intro w hw
             have hw' : w ∈ mi.inputs grp := hvs ▸ hw
             obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hw'
             have hm := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) mi.arg
-            obtain ⟨i, b', he, hb', hi⟩ := AVal.intsOnly_mem honly hm hnn
+            obtain ⟨i, b', he, hb', hi⟩ := AVal.unscaledOnly_mem honly hm hnn
             rw [hb] at hb'; cases hb'
             exact ⟨i, he, hi⟩
           obtain ⟨hlo, hhi⟩ := intSum_bounds hint

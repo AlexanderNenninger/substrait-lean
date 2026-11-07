@@ -73,10 +73,10 @@ def AggExtra (t : ProfileTable) (f : AggFn) : Prop :=
 def AggFn.AllowedChoice (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
   | .fsum => if vs = [] then v = .null else
-      ∃ b ∈ t.allows "agg.fsum" "sum_order" [], ∃ c, SumOrder b vs c ∧ v = .int c
+      ∃ b ∈ t.allows "agg.fsum" "sum_order" [], ∃ c, SumOrder b vs c ∧ v = .float c
   | .avg => if vs = [] then v = .null else
       ∃ b ∈ t.allows "agg.fsum" "sum_order" [], ∃ c, SumOrder b vs c ∧
-        v = .int (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
+        v = .float (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
   | .var _ _ => ∃ b ∈ t.allows "agg.var" "stat_algo" [], StatAlgo b f vs v
   | .cov _ | .corr => ∃ b ∈ t.allows "agg.stat" "stat_algo" [], StatAlgo b f vs v
   | .quantile true num scale => if vs = [] then v = .null else

@@ -108,19 +108,23 @@ theorem ObsCtx.exactCol_parts (h : ctx.exactCol q col = true) :
 mutual
 theorem Value.Equiv.eq_of_exactCol (h : ctx.exactCol q col = true) :
     ∀ a b, Value.Equiv q ctx col a b → a = b
-  | .null, .null, _ => rfl
-  | .bool _, .bool _, e => congrArg _ e
-  | .int _, .int _, e => congrArg _ ((ObsCtx.exactCol_parts h).2.1 _ _ e)
-  | .str _, .str _, e => congrArg _ ((ObsCtx.exactCol_parts h).2.2 _ _ e)
-  | .list as, .list bs, e => by
-    have hl := (ObsCtx.exactCol_parts h).1
-    unfold Value.Equiv at e; simp only [hl] at e
-    exact congrArg _ (Value.EquivList.eq_of_exactCol h as bs e)
-  | .null, .bool _, e | .null, .int _, e | .null, .str _, e | .null, .list _, e
-  | .bool _, .null, e | .bool _, .int _, e | .bool _, .str _, e | .bool _, .list _, e
-  | .int _, .null, e | .int _, .bool _, e | .int _, .str _, e | .int _, .list _, e
-  | .str _, .null, e | .str _, .bool _, e | .str _, .int _, e | .str _, .list _, e
-  | .list _, .null, e | .list _, .bool _, e | .list _, .int _, e | .list _, .str _, e => e.elim
+  | .null, b, e => by cases b <;> first | rfl | exact e.elim
+  | .bool _, b, e => by cases b <;> first | exact e.elim | exact congrArg _ e
+  | .int _, b, e | .float _, b, e | .date _, b, e | .ts _, b, e | .tod _, b, e => by
+    cases b <;> first | exact e.elim | exact congrArg _ ((ObsCtx.exactCol_parts h).2.1 _ _ e)
+  | .dec _ _, b, e => by
+    cases b <;> try exact e.elim
+    obtain ⟨hs, e⟩ := e
+    rw [hs, (ObsCtx.exactCol_parts h).2.1 _ _ e]
+  | .str _, b, e => by
+    cases b <;> first | exact e.elim | exact congrArg _ ((ObsCtx.exactCol_parts h).2.2 _ _ e)
+  | .list as, b, e | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    all_goals
+      rename_i bs
+      have hl := (ObsCtx.exactCol_parts h).1
+      unfold Value.Equiv at e; simp only [hl] at e
+      exact congrArg _ (Value.EquivList.eq_of_exactCol h as bs e)
 
 theorem Value.EquivList.eq_of_exactCol (h : ctx.exactCol q col = true) :
     ∀ as bs, Value.EquivList q ctx col as bs → as = bs
