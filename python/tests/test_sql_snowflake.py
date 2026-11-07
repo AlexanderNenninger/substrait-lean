@@ -259,6 +259,25 @@ def test_temporal_literals():
         SNOWFLAKE.result_kind("interval")
 
 
+def test_time_range_frames_order_by_microseconds():
+    """A RANGE offset over a timestamp must be an INTERVAL on Snowflake, which
+    holds whole milliseconds at most and cuts finer ones (Snowflake behaviour
+    recorded privately): the frame orders by the key in microseconds and
+    takes the offset as a number, exactly."""
+    from sverify.engine import written_plan
+    from sverify_dev import coverage
+
+    case = next(c for c in coverage.CASES if c.label == "rolling sum by time")
+    plan = json.loads(written_plan(to_substrait_json(case.build())))
+    sql = to_sql(plan, SNOWFLAKE, deterministic=True)
+    assert re.search(
+        r"ORDER BY DATE_PART\(EPOCH_MICROSECOND, [^)]+\) ASC NULLS LAST"
+        r" RANGE BETWEEN 604799999999 PRECEDING AND CURRENT ROW",
+        sql,
+    )
+    sqlglot.parse_one(sql, read="snowflake")
+
+
 def test_strings_escape_backslashes():
     assert SNOWFLAKE.str_lit("it's a\\b") == "'it''s a\\\\b'"
 

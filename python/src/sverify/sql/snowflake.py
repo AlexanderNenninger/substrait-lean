@@ -156,6 +156,12 @@ class SnowflakeDialect(Dialect):
     def interval_lit(self, micros: int) -> str:
         return str(micros)
 
+    def range_time_key(self, x: str) -> str:
+        # A RANGE offset over a timestamp must be an INTERVAL, which takes
+        # whole milliseconds at most (finer ones are cut): the key as
+        # microseconds since the epoch takes the offset exactly.
+        return f"DATE_PART(EPOCH_MICROSECOND, {x})"
+
     # Integers: exact NUMBER(38,0) arithmetic, then the i64 range check.
 
     def checked(self, r: str, *, row: bool = True) -> str:
@@ -219,6 +225,12 @@ class SnowflakeDialect(Dialect):
 
     def float_eq(self, a: str, b: str) -> str:
         return f"({a} = {b})"
+
+    def not_distinct(self, a: str, b: str) -> str:
+        # The same as the CASE, NaN, the zeros and NULL included (Snowflake
+        # behaviour recorded privately); a correlated EXISTS on the CASE
+        # failed to compile on some data (`002031 Unsupported subquery type`).
+        return f"EQUAL_NULL({a}, {b})"
 
     def float_lt(self, a: str, b: str) -> str:
         return f"({a} < {b})"
