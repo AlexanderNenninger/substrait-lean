@@ -2,10 +2,14 @@
 # means for this query". `quirks` are entries of
 # catalogue/backend_semantics.py: its questions per
 # engine, and its section 8 on DataFusion as a backend (E and D entries).
+#
+# The pitfalls predate the engine facts (characterization/<engine>/facts/,
+# judged as characterization/README.md says). Where an `engines` note and a
+# fact disagree, the fact wins.
 
 [tie_order]
 description = "The result depends on how ties are broken: ROW_NUMBER, LIMIT or first/last over non-unique sort keys."
-engines = "No engine promises an order among ties; sorts are not stable across partitions. Snowflake tables have no row order, so sverify refuses such plans there unless deterministic=True."
+engines = "No engine promises an order among ties; sorts are not stable across partitions. Snowflake and Spark tables have no row order, so sverify writes such plans for them only when the ties are proved absent. reproducible=sv.equivalent() on report.run or a sink asks for the deterministic profile, which refuses a plan whose ties stay open and names the sv.unique(...) that would close them (docs/guide.md, D24)."
 quirks = []
 
 [null_ordering]
@@ -20,7 +24,7 @@ quirks = ["I1", "I3"]
 
 [division_by_zero]
 description = "x / 0 or x % 0 on data that can hold a zero."
-engines = "DataFusion, Snowflake, PostgreSQL raise on integers; DuckDB returns NULL; Polars returns null (int) or inf (float). Doubles give ±inf/NaN in DataFusion. Lean models it as a runtime error and proves it absent."
+engines = "DataFusion, Snowflake, PostgreSQL raise on integers; DuckDB 2.0 raises on integers under its default error_on_division_by_zero = true and returns NULL with it off (duckdb-R2), and its doubles give ±inf/NaN under the default ieee_floating_point_ops (duckdb-R5); Polars returns null (int) or inf (float). Doubles give ±inf/NaN in DataFusion. Lean models it as a runtime error and proves it absent."
 quirks = ["I4", "I5", "F5"]
 
 [decimal_scale]

@@ -76,7 +76,8 @@ def _(mo):
       is wrong.
 
     sverify compiles an Ibis expression with its own producer, so it means
-    what `docs/ibis-semantics.md` says, whichever backend it came from.
+    what `docs/reference-semantics.md` ("The Ibis frontend") says, whichever
+    backend it came from.
     Wherever the Ibis tag is `leaky`, no Ibis backend's own `execute` is
     guaranteed to match what was proved; `sverify.engines.run` is.
     """)

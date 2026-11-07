@@ -1,5 +1,5 @@
 """The meaning `verify` gives the Ibis operations whose result depends on the
-Ibis backend (`docs/ibis-semantics.md`).
+Ibis backend (`docs/reference-semantics.md`, "The Ibis frontend").
 
 Each expression goes through the vendored producer, as `verify` compiles it,
 and Lean's evaluation (`Rel.eval`) must give the documented rows: the meaning

@@ -23,7 +23,7 @@
     "Order class: (a) a tree whose nodes add their children in turn: fanout 16 for framed windows, with the frame's own node adding up to 15 leaf values and 30 nodes per level; per-thread sequential partials combined in finishing order for whole-partition frames. (b) Any tree: |ŝ − s| ≤ γ_h Σ|x_i| with h the most additions on one value's path (Higham §4.2); h ≤ n − 1 always, and for a framed window of n rows h grows with 45·⌈log₁₆ n⌉ (15 in each node on the way up, up to 30 in the frame's node per level), an estimate from the code's shape. `avg` divides once more. Within #85's bounds. (c) The source below; a probe at one thread gives 0.9999999999999999 for a running sum and an `OVER ()` sum of ten 0.1, the same as adding them in turn. (d) ANY (`FloatSums`): a framed window's sum is a tree sum of the frame's values, which SEQUENTIAL does not cover for frames over 16 rows. A whole-partition frame at one thread is SEQUENTIAL.",
     "The docs are silent on the summation order of windowed aggregates: a docs gap. No upstream test pins the double rounding; it may change between versions."
   ],
-  "reference": "`sum_order` over the frame: any order and grouping within #85's bound (`FloatSums`), as for `SUM` of doubles.",
+  "reference": "`sum_order` over the frame: `SUM` and `AVG` of the frame's doubles are `floatSumCR` and `floatAvgCR` (D25), as for `SUM` of doubles; DuckDB's tree is within the plan's bound (`StdModel.epsilon_sum_cr`).",
   "status": "open",
   "evidence": "probe",
   "provenance": [

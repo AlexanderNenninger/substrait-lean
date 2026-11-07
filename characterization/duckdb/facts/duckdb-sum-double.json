@@ -61,7 +61,7 @@
     "`SUM` and `AVG` of no rows, or of NULLs only, are NULL for DOUBLE, FLOAT and integer arguments (`sum-empty`): the clustered sum's state starts unset and finalizes to NULL.",
     "The docs are silent on the algorithm and on the constant run's product: a docs gap. No upstream test pins the constant run's product or the dependence on thread order; it may change between versions."
   ],
-  "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
+  "reference": "`AggFn.fsum` is `floatSumCR` (D25): the exact sum of the doubles, rounded once to nearest with ties to even; a NaN, or `+∞` with `-∞`, gives NaN, and one kind of infinity gives it. NULL without values. An engine's own order of additions is within the plan's bound (`sum_order`, `StdModel.epsilon_sum_cr`).",
   "status": "open",
   "evidence": "probe",
   "provenance": [

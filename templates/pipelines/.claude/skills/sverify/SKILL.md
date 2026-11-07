@@ -21,9 +21,15 @@ that happened to be there.
 
 ```bash
 pip install sverify                       # core: DuckDB, contracts, views
-pip install 'sverify[datafusion]'         # DataFusion as an engine (SQL needs no extra)
-pip install 'sverify[all]'                # every engine and table format
+pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
+pip install 'sverify[datafusion]'         # DataFusion, experimental and outside `all`
 ```
+
+DuckDB (the default), Polars (streaming) and Spark 4.x run plans, each with a
+proved profile (`semantics="duckdb"`, `"polars"`, `"spark"`). The SQL
+dialects (DuckDB, Spark, Snowflake) need no extra. DataFusion is outside the
+1.x promise
+([docs/stability.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)).
 
 Wheels bundle the checker, so no Lean toolchain is needed.
 
@@ -31,7 +37,7 @@ Wheels bundle the checker, so no Lean toolchain is needed.
 
 The function body is ordinary Ibis. Called on a source, it proves the
 contract and returns a `Node`; `refresh()` computes it, on DuckDB unless you
-pass `refresh(engine=...)`. `last_report` says what was proved.
+pass `refresh(engine=...)`. `report` says what was proved.
 `@sv.transform(check_engine=...)` says where checks on data run.
 
 ```python
@@ -58,7 +64,7 @@ def big_orders(orders):
 big = big_orders(orders)  # proved here, before any data runs
 big.refresh()
 assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
-report = big_orders.last_report
+report = big_orders.report
 assert report.proved
 print(report.facts["doubled"])  # what Lean established about the column
 ```
@@ -107,11 +113,12 @@ assert sv.verify(fixed, requires=bounded, ensures=[_.total > 5]).proved
 overflow at the declared width, bad casts); an error makes `proved` False.
 Sverify infers the bounds that rule most of them out (`amount * 2` needs
 `_.amount < 2**62`) and, by default (`on_inferred="error"`), reports each
-under `needs:` (`report.needed`) until `requires` states it or the
+under `needs:` (`report.needs`, ready for `requires=` as
+`report.suggested_requires`) until `requires` states it or the
 transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"ignore"` assumes it and checks it on the data, and
-`on_inferred="off"` infers and assumes nothing. For the rest, `report.hints`
-names the bound to add, and an unproved comparison with a constant comes with
+`on_inferred="off"` infers and assumes nothing. For the rest, the `hint:` lines of
+`str(report)` name the bound to add, and an unproved comparison with a constant comes with
 the precondition that proves it (`report.suggestions`). An integer `SUM` that
 may overflow is listed in `report.assumed` and checked at run time (an error
 with `on_inferred="off"`); a row cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
@@ -191,7 +198,7 @@ test_doubles_are_big()
   `ROW_NUMBER` depend on how ties break unless `requires` has a key on the
   partition and order columns (`sv.unique("device_id", "ts")`). Without it
   `verify` proves only what holds for every order of the ties (D24),
-  `report.deterministic` is False and `report.tie_places` names the window;
+  `report.deterministic` is False and `str(report)` names the window;
   a rerun that must give the same rows refuses the plan.
 * **SQL strings are DuckDB's SQL**, read by sverify's lift, which covers a
   subset so far (SELECT, WHERE, joins, subqueries and CTEs, GROUP BY with
@@ -202,19 +209,21 @@ test_doubles_are_big()
   `@sv.transform`), which models DuckDB's NaN and `±inf`.
 * **Counts across rows are not tracked**, so `COUNT(*) >= 1` per group and
   relations beyond "column plus constant" (`a < 2 * b`) aren't proved.
-* **Incremental maintenance** covers filters, projections, inner and cross
-  joins and `UNION ALL`; aggregates and windows recompute only the groups and
-  partitions a batch touches; other nodes (left joins, `DISTINCT`, `LIMIT`)
-  are recomputed and diffed on each refresh (see the `sverify-pipelines`
-  skill).
+* **Incremental maintenance** covers filters, projections, inner, cross,
+  semi and anti joins, `UNION ALL`, `DISTINCT`, `COUNT`, exact `SUM`/`AVG`
+  and `MIN`/`MAX` per group; other aggregates recompute the groups a batch
+  touches, windows on one `PARTITION BY` the touched partitions, and bounded
+  `RANGE` frames the touched frames; other nodes (left joins, `LIMIT`) are
+  recomputed and diffed on each refresh, and `node.status()` says which (see
+  the `sverify-pipelines` skill).
 * **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.engines.run_sharded`), since
-  the rounding would depend on the split; `float_order="any"` splits them
-  anyway, within a proved tolerance that `tolerance=True` reports per row.
+  the rounding would depend on the split; `reproducible=sv.equivalent(floats="plan")`
+  splits them anyway, within a proved tolerance that `tolerance=True` reports per row.
 
 ## More
 
 * [references/contracts.md](references/contracts.md): what Lean tracks,
   SQL transformations, composing contracts.
 * The `sverify-pipelines` skill: Delta and Iceberg sources, sinks, refresh.
-* The `sverify-engines` skill: running a plan on DuckDB, Polars, DataFusion,
-  Snowflake or Spark, and ASOF joins.
+* The `sverify-engines` skill: running a plan on DuckDB, Polars or Spark,
+  writing it as DuckDB, Spark or Snowflake SQL, and ASOF joins.
