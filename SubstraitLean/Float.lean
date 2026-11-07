@@ -20,10 +20,10 @@ Comparing doubles is then comparing codes, so filters such as `v > 0.5` or
 `v <> -9999.0` are modelled exactly and reuse all of the integer reasoning,
 and negation is code negation (the parser keeps NaN fixed under it).
 
-Float *arithmetic* rounds; it is computed with Lean's native `Float` and
-treated as "some double" by the contract checker, so no rounding facts are
-assumed. The conversions below go through the IEEE bit pattern and are
-trusted code.
+Float *arithmetic* rounds. `+ − × ÷` are the exact result rounded once
+(D31, `SubstraitLean/FloatArith.lean`), computed on the codes; `pow` and the
+libm functions are computed with Lean's native `Float` (`lift₂`). The
+conversions below go through the IEEE bit pattern and are trusted code.
 
 **Timestamps** are microseconds since 1970-01-01, dates are days, and
 day/second intervals are microseconds.
@@ -535,71 +535,10 @@ theorem codeLo_le {c s : Int} (h : s ≤ scaled c) : codeLo s ≤ c := by
   unfold scaled at h; unfold codeLo
   split at h <;> omega
 
-/-! ### Trusted: one double operation (#582)
-
-A double `+`, `-`, `*` or `/` of finite doubles whose exact result is well
-below the largest double is finite, and within a few `u` of the exact result
-of the codes' values. Stated on scaled values, so the checker bounds the
-result with integer interval arithmetic (`floatArith` in `Contracts.lean`)
-and rules out an overflow to `±∞` from the inputs' bounds (`BinFn.mayInf`).
-Proved for IEEE 754 rounding to nearest in `float-bounds/` as `core_add`,
-`core_sub`, `core_mul` and `core_div` (`FloatBounds/Arith.lean`), given its
-`NativeLink` and the code conversions above (`Decoded`), with `u · tiny`
-scaled to `1/2`. Axioms here so that the core needs no Mathlib. -/
-
-/-- A finite double's code. -/
+/-- A finite double's code. The bounds of one double operation on finite
+doubles (`add_scaled` …, trusted before D31) are theorems in
+`SubstraitLean/FloatArith.lean`. -/
 def IsFin (c : Int) : Prop := negInf < c ∧ c < posInf
-
-axiom add_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
-    (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) :
-    IsFin (lift₂ (· + ·) a b) ∧ (scaled (lift₂ (· + ·) a b) - (scaled a + scaled b)).natAbs ≤
-      ((scaled a).natAbs + (scaled b).natAbs) / 2 ^ 50 + 1
-
-axiom sub_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
-    (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) :
-    IsFin (lift₂ (· - ·) a b) ∧ (scaled (lift₂ (· - ·) a b) - (scaled a - scaled b)).natAbs ≤
-      ((scaled a).natAbs + (scaled b).natAbs) / 2 ^ 50 + 1
-
-axiom mul_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
-    (h : (scaled a).natAbs * (scaled b).natAbs ≤ 2 ^ 3171) :
-    IsFin (lift₂ (· * ·) a b) ∧
-      (2 ^ 1074 * scaled (lift₂ (· * ·) a b) - scaled a * scaled b).natAbs ≤
-        (scaled a).natAbs * (scaled b).natAbs / 2 ^ 50 + 2 ^ 1074
-
-axiom div_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
-    (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) :
-    IsFin (lift₂ (· / ·) a b) ∧
-      (scaled (lift₂ (· / ·) a b)).natAbs ≤
-        (scaled a).natAbs * (2 ^ 1074 + 2 ^ 1024) / (scaled b).natAbs + 1
-
-/-- `/` within its error, as `core_div` (`FloatBounds/Arith.lean`) states it:
-`|q − A / B| ≤ |A / B| / 2⁵⁰ + u · tiny`, here times `2⁵¹ · |B|`, scaled. The
-split `AVG` of D25 divides a rounded sum natively by the count
-(`twoPhaseAvg_near`, `SubstraitLean/Partition.lean`). -/
-axiom div_scaled_err {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
-    (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) :
-    IsFin (lift₂ (· / ·) a b) ∧
-      2 ^ 51 * (scaled (lift₂ (· / ·) a b) * scaled b - scaled a * 2 ^ 1074).natAbs ≤
-        2 * (scaled a).natAbs * 2 ^ 1074 + 2 ^ 50 * (scaled b).natAbs
-
-/-- Rounding keeps the sign (#441): a sum or product of non-negative finite
-doubles, and a quotient of one by a positive one, is non-negative, under the
-guards of `add_scaled`, `mul_scaled` and `div_scaled`. Code `0` is `+0.0`, and
-`ofFloat` gives it for `-0.0` too, so a code is at least `0` exactly where its
-double is. IEEE 754's rounding to nearest is monotone and rounds `0` to `0`
-(`StdModel.nonneg`); proved as `core_add_nonneg`, `core_mul_nonneg` and
-`core_div_nonneg` in `float-bounds/FloatBounds/Arith.lean`. -/
-axiom add_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b)
-    (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) (ha0 : 0 ≤ a) (hb0 : 0 ≤ b) :
-    0 ≤ lift₂ (· + ·) a b
-
-axiom mul_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b)
-    (h : (scaled a).natAbs * (scaled b).natAbs ≤ 2 ^ 3171) (ha0 : 0 ≤ a) (hb0 : 0 ≤ b) :
-    0 ≤ lift₂ (· * ·) a b
-
-axiom div_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
-    (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) (ha0 : 0 ≤ a) (hb0' : 0 ≤ b) :
-    0 ≤ lift₂ (· / ·) a b
 
 /-- `2⁵²`. -/
 def tolK : Nat := 2 ^ 52

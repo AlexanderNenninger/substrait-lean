@@ -155,7 +155,7 @@ theorem FloatCode.ofInt_ne_nan (i : Int) : FloatCode.ofInt i ≠ FloatCode.nan :
 theorem DuckDBSQL.ref_fdiv_float (a b : Int) :
     Profile.reference.bin .fdiv (.float a) (.float b) =
       if b = 0 then .error .divByZero else if nanCase .fdiv a b then .error .domain
-      else .ok (.float (FloatCode.lift₂ (· / ·) a b)) := by
+      else .ok (.float (FloatCode.fdiv a b)) := by
   by_cases hb : b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
     simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hb, hn, Issue.isError]
 
@@ -180,7 +180,7 @@ and `0 · ∞`. -/
 
 theorem DuckDBSQL.ref_fadd_float (a b : Int) :
     Profile.reference.bin .fadd (.float a) (.float b) =
-      if nanCase .fadd a b then .error .domain else .ok (.float (FloatCode.lift₂ (· + ·) a b)) := by
+      if nanCase .fadd a b then .error .domain else .ok (.float (FloatCode.fadd a b)) := by
   by_cases hn : nanCase .fadd a b <;>
     simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
 theorem DuckDBSQL.ref_fadd_null_l (y : Value) : Profile.reference.bin .fadd .null y = .ok .null := by
@@ -189,7 +189,7 @@ theorem DuckDBSQL.ref_fadd_null_r (x : Value) : Profile.reference.bin .fadd x .n
   cases x <;> rfl
 theorem DuckDBSQL.ref_fsub_float (a b : Int) :
     Profile.reference.bin .fsub (.float a) (.float b) =
-      if nanCase .fsub a b then .error .domain else .ok (.float (FloatCode.lift₂ (· - ·) a b)) := by
+      if nanCase .fsub a b then .error .domain else .ok (.float (FloatCode.fsub a b)) := by
   by_cases hn : nanCase .fsub a b <;>
     simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
 theorem DuckDBSQL.ref_fsub_null_l (y : Value) : Profile.reference.bin .fsub .null y = .ok .null := by
@@ -198,7 +198,7 @@ theorem DuckDBSQL.ref_fsub_null_r (x : Value) : Profile.reference.bin .fsub x .n
   cases x <;> rfl
 theorem DuckDBSQL.ref_fmul_float (a b : Int) :
     Profile.reference.bin .fmul (.float a) (.float b) =
-      if nanCase .fmul a b then .error .domain else .ok (.float (FloatCode.lift₂ (· * ·) a b)) := by
+      if nanCase .fmul a b then .error .domain else .ok (.float (FloatCode.fmul a b)) := by
   by_cases hn : nanCase .fmul a b <;>
     simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
 theorem DuckDBSQL.ref_fmul_null_l (y : Value) : Profile.reference.bin .fmul .null y = .ok .null := by
@@ -327,7 +327,7 @@ def DuckAgg.eval : Semantics → DuckAgg → List Value → Value
   | .duckdb, .avgBigint, vs =>
     match vs.filter (· != .null) with
     | [] => .null
-    | xs => .float (FloatCode.lift₂ (· / ·) (FloatCode.ofInt (intSum xs)) (FloatCode.ofInt xs.length))
+    | xs => .float (FloatCode.fdiv (FloatCode.ofInt (intSum xs)) (FloatCode.ofInt xs.length))
   | .reference, .avgBigint, vs => AggFn.apply .avg ((vs.map (UnFn.apply .itof)).filter (· != .null))
 
 end Substrait

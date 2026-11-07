@@ -2380,8 +2380,8 @@ theorem sub_ends {la ha lb hb si sj sr : Int} {k e : Nat} (li : la ≤ si) (hi :
     (hke : k ≤ e) : la - hb - e ≤ sr ∧ sr ≤ ha - lb + e := by omega
 
 theorem faddBound_mem' (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
-    {r : Int} (hr : sub = false → r = FloatCode.lift₂ (· + ·) i j)
-    (hr' : sub = true → r = FloatCode.lift₂ (· - ·) i j) :
+    {r : Int} (hr : sub = false → r = FloatCode.fadd i j)
+    (hr' : sub = true → r = FloatCode.fsub i j) :
     (faddBound sub x y).Mem r := by
   unfold faddBound
   split
@@ -2414,7 +2414,7 @@ theorem mul_ends {l h p q : Int} {k E : Nat} {K : Int} (hK : 0 < K) (hl : l ≤ 
   exact ⟨Int.ediv_le_of_le_mul hK a1, Int.le_ediv_of_mul_le hK a2⟩
 
 theorem fmulBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
-    (fmulBound x y).Mem (FloatCode.lift₂ (· * ·) i j) := by
+    (fmulBound x y).Mem (FloatCode.fmul i j) := by
   unfold fmulBound
   split
   · rename_i la ha lb hb hfa hfb
@@ -2449,7 +2449,7 @@ theorem endsMin_le {lb hb s : Int} (hl : lb ≤ s) (hh : s ≤ hb) : endsMin lb 
 
 set_option exponentiation.threshold 3200 in
 theorem fdivBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
-    (fdivBound x y).Mem (FloatCode.lift₂ (· / ·) i j) := by
+    (fdivBound x y).Mem (FloatCode.fdiv i j) := by
   unfold fdivBound
   split
   · rename_i la ha lb hb hfa hfb
@@ -2516,8 +2516,8 @@ theorem fdivOk_guard {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
   · simp at hok
 
 theorem faddBoundS_mem (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
-    {r : Int} (hr : sub = false → r = FloatCode.lift₂ (· + ·) i j)
-    (hr' : sub = true → r = FloatCode.lift₂ (· - ·) i j) :
+    {r : Int} (hr : sub = false → r = FloatCode.fadd i j)
+    (hr' : sub = true → r = FloatCode.fsub i j) :
     (faddBoundS sub x y).Mem r := by
   have hm := faddBound_mem' sub hx hy hr hr'
   unfold faddBoundS
@@ -2533,7 +2533,7 @@ theorem faddBoundS_mem (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy
   · exact hm
 
 theorem fmulBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
-    (fmulBoundS x y).Mem (FloatCode.lift₂ (· * ·) i j) := by
+    (fmulBoundS x y).Mem (FloatCode.fmul i j) := by
   have hm := fmulBound_mem hx hy
   unfold fmulBoundS
   split
@@ -2546,7 +2546,7 @@ theorem fmulBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
   · exact hm
 
 theorem fdivBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
-    (fdivBoundS x y).Mem (FloatCode.lift₂ (· / ·) i j) := by
+    (fdivBoundS x y).Mem (FloatCode.fdiv i j) := by
   have hm := fdivBound_mem hx hy
   unfold fdivBoundS
   split
@@ -2727,11 +2727,11 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
       · exact absurd rfl (Bound.ne_zero hj h0)
       · rfl
   case fadd =>
-    exact arith_sound (f := FloatCode.lift₂ (· + ·))
+    exact arith_sound (f := FloatCode.fadd)
       (fun hx hy => faddBoundS_mem false hx hy (fun _ => rfl) (fun h => by cases h))
       (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
   case fsub =>
-    exact arith_sound (f := FloatCode.lift₂ (· - ·))
+    exact arith_sound (f := FloatCode.fsub)
       (fun hx hy => faddBoundS_mem true hx hy (fun h => by cases h) (fun _ => rfl))
       (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
   case fmul => exact arith_sound fmulBoundS_mem (fun v w => by cases v <;> cases w <;> hf_tac) ha hb

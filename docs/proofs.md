@@ -78,16 +78,18 @@ engines is trusted, and kept small:
   so the theorem tells them apart by representation only.
 - The CLI's glue, `Main.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON.
-- The axioms about doubles, stated on scaled codes: `FloatCode.add_scaled`
-  and its siblings (`Float.lean`, `div_scaled_err` among them),
-  `FloatCode.exp_fin` (`Safety.lean`) and `varOf_props`, `covOf_props`,
-  `corrOf_props` (`StatProps.lean`). A `SUM` or `AVG` of doubles needs none
-  since D25: `floatSumCR`'s bounds are theorems (`FloatExact.lean`).
-  `float-bounds/` proves the axioms over the reals for the standard model of
-  rounding (`StdModel.core_add` … in `Arith.lean`, `core_var` … in
-  `CoreStats.lean`), and
-  there only `NativeLink` (`Link.lean`) stays trusted: Lean's `Float` rounds
-  as IEEE 754 binary64 does.
+- The axioms about doubles: `FloatCode.exp_fin` (`Safety.lean`, libm's
+  `exp`) and `varOf_props`, `covOf_props`, `corrOf_props`
+  (`StatProps.lean`). A `SUM` or `AVG` of doubles needs none since D25
+  (`FloatExact.lean`), and `+ − × ÷` none since D31: they are the exact
+  result rounded once (`FloatArith.lean`), and the bounds the checker
+  trusted for them before (`FloatCode.add_scaled` …, #582) are theorems.
+  `FloatArithCheck.lean` checks those operations against native doubles on
+  every build; each engine's fact states that its own are IEEE 754's.
+  `float-bounds/` proves the remaining axioms over the reals for the standard
+  model of rounding (`core_var` … in `CoreStats.lean`), and there only
+  `NativeLink` (`Link.lean`) stays trusted: Lean's `Float` rounds as IEEE 754
+  binary64 does.
 - The models of the engines' own functions: `Impl.Faithful` (`Guards.lean`)
   for the functions the SQL calls unguarded, `Profile.duckdb` (`Profile.lean`,
   `EngineTables.lean`) and `Polars.*` (`PolarsShims.lean`), each from the
@@ -110,10 +112,12 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `FloatFormat.lean` | Binary floating-point formats as integer codes in the SQL order |
-| `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
+| `Float.lean` | Doubles and timestamps as integer codes |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
 | `FloatMoments.lean` | Exact dyadic moments (`n Σx² − (Σx)²` and the co-moment) and correctly rounded square roots of rationals, for #918 |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
+| `FloatArith.lean` | `+ − × ÷` of doubles as the exact result rounded once (D31), IEEE 754's signed zeros and NaN, and their bounds (`add_scaled` …) |
+| `FloatArithCheck.lean` | D31's operations against native doubles, bit for bit, on edge values, ties and every exponent |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
