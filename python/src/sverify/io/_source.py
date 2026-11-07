@@ -31,6 +31,7 @@ from sverify.incremental import (
     Snapshot,
     SourceBatch,
     _apply_change,
+    content_digest,
     snapshot_diff,
 )
 from sverify.io._common import UNRECORDED, cursor_value
@@ -112,6 +113,8 @@ class _State:
     """The table is what `restore` returned."""
     fresh: bool = True
     """Nothing but the schema was handed out yet: no version was read."""
+    digest: tuple[int, str] | None = None
+    """The version and `content_digest` of its table, once computed."""
 
 
 class Source(Pipeable, ABC):
@@ -138,10 +141,13 @@ class Source(Pipeable, ABC):
     version of each source next to its cursor. A restarted job reads the
     whole table again, unless the source implements `restore`: then it
     starts from the table as of the cursor its sink recorded, and the first
-    refresh reads only what is new since (`read(cursor)`). A stored node
-    reading a source that cannot restore is recomputed and written again in
-    full, with versions above the ones its sink recorded, so its sink still
-    writes exactly once.
+    refresh reads only what is new since (`read(cursor)`). A source that
+    cannot restore has its sink record a digest of its contents: a restarted
+    job whose first read has the recorded digest resumes there, and writes
+    nothing (#889). Otherwise its stored nodes are recomputed and written
+    again in full, with versions above the ones their sink recorded, so the
+    sink still writes exactly once; a sink that holds other contents at a
+    version this process also reached is written over (#965).
 
     Args:
         name: The table's name in the plans that read it.
@@ -453,7 +459,23 @@ class Source(Pipeable, ABC):
         entry = st.log.at(version)
         return UNRECORDED if entry is None else entry.cursor
 
-    def _resume_after(self, version: int, cursor: Any = UNRECORDED) -> None:
+    @property
+    def digest(self) -> str | None:
+        """The content digest of the table as of the latest version, for a
+        source whose cursors do not last (`restore`): its versions count
+        this process's reads, so a sink records the digest with the version
+        and tells other contents at the same version (#965). None for a
+        source that restores, whose versions last."""
+        st = self._state
+        if st is None or self._durable():
+            return None
+        if st.digest is None or st.digest[0] != st.version:
+            st.digest = (st.version, content_digest(st.table))
+        return st.digest[1]
+
+    def _resume_after(
+        self, version: int, cursor: Any = UNRECORDED, digest: str | None = None
+    ) -> None:
         """A sink recorded this source at `version` in an earlier process,
         with `cursor` (its JSON form, `cursor_json`) if it recorded one.
 
@@ -463,7 +485,13 @@ class Source(Pipeable, ABC):
         read made only for the schema is dropped. Else number the versions
         of this process above `version`, so that they keep growing: the
         table read so far (or the first read) becomes version `version +
-        1`. Of several sinks' records, only the greatest version restores."""
+        1`. Of several sinks' records, only the greatest version restores.
+
+        A source that cannot restore restores by `digest`, the content digest
+        the sink recorded: if its first read has it, that read is the table
+        at `version`, and the node resumes from its sink (#889)."""
+        if digest is not None and not self._durable() and self._digest_restores(version, digest):
+            return
         st = self._state
         if st is not None and not st.fresh:
             self._above(version)
@@ -479,6 +507,29 @@ class Source(Pipeable, ABC):
             self._state = None  # read the whole table, above `version`
         elif st is not None:
             self._above(version)
+
+    def _digest_restores(self, version: int, digest: str) -> bool:
+        """Take the first read as the table at `version` if its content
+        digest is `digest`."""
+        st = self._state
+        if st is not None and (not st.fresh or st.restored):
+            return False
+        if version < self._base:
+            return False
+        self._base = version
+        st = self._st()
+        if content_digest(st.table) != digest:
+            return False
+        self._state = _State(
+            version,
+            st.table,
+            st.cursor,
+            ChangeLog(KEEP, floor=version),
+            oldest=version,
+            restored=True,
+            digest=(version, digest),
+        )
+        return True
 
     def _above(self, version: int) -> None:
         """Number the table read so far `version + 1`, if it is not above."""

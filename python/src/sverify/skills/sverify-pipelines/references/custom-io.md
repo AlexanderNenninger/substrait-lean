@@ -105,10 +105,12 @@ What such sources can and cannot promise:
   and the first refresh reads `read(cursor)`. `from_query` and `from_files`
   implement it. The cursor is recorded if it has a JSON form (datetimes,
   dates, decimals, bytes and tuples are tagged).
-* A source without `restore`, or whose `restore` returns None (the cursor's
-  rows are gone), is read in full again. Its versions continue above the
-  ones the job's sinks recorded, so the stored nodes reading it are
-  recomputed and written once, never skipped by mistake.
+* A source without `restore` has its sinks record a digest of its contents.
+  After a restart, a first read with the recorded digest resumes there and
+  writes nothing (#889). Otherwise, as for a `restore` that returns None
+  (the cursor's rows are gone), it is read in full again: its versions
+  continue above the ones the job's sinks recorded, so the stored nodes
+  reading it are recomputed and written once, never skipped by mistake.
 * Give `schema=` too: building a node needs the schema, and without it a
   restarted source reads the whole table once before it restores.
 * A table format with statistics and a change feed implements the full
