@@ -810,6 +810,10 @@ class CheckedCondition:
     the condition reads widened by its bound (`Report.epsilon`) and, for a
     sum, an average or a variance, kept to its sign
     (`EngineRobust.robust`, #1045). Such a condition needs no `sv.approx`."""
+    robust_on: tuple[str, ...] = field(default=(), repr=False, compare=False)
+    """The engines where `robust` is a theorem: their sums keep the sign
+    (`FloatBounds.StdModel.TreeSum.sign`). On the others it rests on the
+    engine's facts, and a route there is tested."""
     allowed: bool = field(default=False, repr=False, compare=False)
     """Proved on every result the reference allows, not only on the orders
     `proved` covers (`contract_sound_allowed`, or `contract_sound_allowed_closed`

@@ -110,6 +110,20 @@ def scaledOf (f : Float) : Option Nat :=
   if f.isNaN || f.isInf || f < 0 then none
   else some ((FloatCode.scaled (FloatCode.ofFloat f)).toNat + 1)
 
+/-- The `sum_order` behaviours whose sums keep the sign of values of one sign
+(`FloatBounds.StdModel.TreeSum.sign`): every order the engines' rows name
+but Kahan's (`COMPENSATED`), whose sign is a fact, not yet a theorem. -/
+def signKept : List String := ["EXACT", "ANY", "PAIRWISE", "SEQUENTIAL", "SCALED_CONSTANT"]
+
+/-- The engines whose sums keep the sign by the theorem: an engine-robust
+postcondition is proved there, and tested on the others. -/
+def signKeptOn : List String :=
+  Epsilon.epsEngines.filterMap fun (e, t) =>
+    if (t.allows "agg.fsum" "sum_order" []).all (signKept.contains ·) then some e else none
+
+-- Polars's in-memory `sum` is Kahan's (polars-sum-float).
+#guard signKeptOn == ["duckdb", "spark"]
+
 /-- The postconditions of an `ensures` plan as expressions over the output
 of `tr`, the transformation it selects from. -/
 def postOver (tr : Rel) (n : Nat) : Rel → Option (List Expr)
@@ -119,8 +133,9 @@ def postOver (tr : Rel) (n : Nat) : Rel → Option (List Expr)
   | r => if r == tr then some ((List.range n).map .field) else none
 
 /-- `"robust"` of a `--contract` request: per postcondition, in the order of
-`"ensures"`, whether it is certainly TRUE over the values every engine may
-give (`engineVal`): each double column `Report.epsilon` bounds widened by
+`"ensures"`, `{"robust": …, "proved_on": […]}`: whether it is certainly TRUE
+over the values every engine may give (`engineVal`), and the engines where
+that is a theorem (`signKeptOn`; tested on the others): each double column `Report.epsilon` bounds widened by
 its `"abs"`, and a sum's, average's or variance's kept to its sign (not a
 covariance's). Columns without a finite bound keep their abstract value: a
 postcondition reads only their sign (`floatBound`'s `signed` part, which
@@ -169,6 +184,7 @@ def robust (input : Json) : Except String Json := do
     match postOver tr env.length qr with
     | some ps => ps.map fun p => (p.absD E []).certainlyTrue
     | none => List.replicate k false
-  return toJson out
+  return toJson (out.map fun b => Json.mkObj [("robust", toJson b),
+    ("proved_on", toJson (if b then signKeptOn else []))])
 
 end Substrait.EngineRobust

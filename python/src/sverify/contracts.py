@@ -1567,7 +1567,9 @@ def _verify_once(
         else:
             e = next(rows)
             p = next(ens_iter)
-            holds_on_engines = bool(next(robust, False))
+            rb = next(robust, None) or {}
+            holds_on_engines = bool(rb.get("robust")) if isinstance(rb, dict) else bool(rb)
+            proved_on = tuple(rb.get("proved_on") or ()) if isinstance(rb, dict) else ()
             ties = bool(e.get("ties"))
             # It depends on how ties are ordered, which the search, on
             # `Rel.eval`'s one order, rarely shows; breaking the ties with
@@ -1586,6 +1588,7 @@ def _verify_once(
                     depends=None if depends is None else tuple(depends),
                     allowed=bool(e.get("allowed")),
                     robust=holds_on_engines,
+                    robust_on=proved_on,
                 )
             )
         checked[-1].condition = c

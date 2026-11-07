@@ -1050,6 +1050,21 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
     return replace(report.observation, bound=None), held
 
 
+def _robust_tested(report: Report, engine: str) -> bool:
+    """Does a postcondition run unheld on `engine` (`CheckedCondition.robust`)
+    where that rests on the engine's facts, not on a theorem (its sums are
+    Kahan's, whose sign `TreeSum.sign` does not cover, #1045)?"""
+    if report.observation.floats != "plan":
+        return False
+    return any(
+        c.proved
+        and not c.approx
+        and getattr(c, "robust", False)
+        and engine not in getattr(c, "robust_on", ())
+        for c in report.ensures
+    )
+
+
 # -- the re-check -------------------------------------------------------------
 
 
@@ -1462,7 +1477,7 @@ def choose(
             tuple(notes),
             (),
             got.cls,
-            got.evidence,
+            "tested" if got.evidence == "proved" and _robust_tested(report, e) else got.evidence,
             got.shims,
             reproducible,
             rerun_evidence,

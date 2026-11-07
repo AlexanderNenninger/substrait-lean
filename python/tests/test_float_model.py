@@ -85,9 +85,12 @@ def test_a_postcondition_that_holds_on_every_engine_is_not_held(con) -> None:
     refused before."""
     report = verify(con, [_.mean_x >= -2000])
     [c] = report.ensures
-    assert c.proved and c.robust
+    assert c.proved and c.robust and c.robust_on == ("duckdb", "spark")
     route = report.route("duckdb")
     assert not route.refused, route.reason
+    # On Polars, whose sums are Kahan's, the sign rests on a fact: tested.
+    polars = report.route("polars")
+    assert not polars.refused and polars.evidence == "tested"
 
 
 def test_a_sign_postcondition_runs_with_or_without_a_bound(con) -> None:
