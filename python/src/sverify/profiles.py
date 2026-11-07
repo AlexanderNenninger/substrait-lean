@@ -27,11 +27,36 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any, Literal
 
-from sverify._engine_settings import Setting
 from sverify._unsupported import SverifyWarning
 
 __all__ = ["ProfilePlugin", "Setting", "plugins"]
+
+Action = Literal["refuse", "warn"]
+
+
+@dataclass(frozen=True)
+class Setting:
+    """A setting a profile assumes."""
+
+    name: str
+    expected: tuple[Any, ...]
+    """The values the profile's facts hold under (normalised: lower-case
+    strings, bools)."""
+    action: Action
+    """`"refuse"` where a choice-table row depends on the setting, `"warn"`
+    where only behaviour sverify does not rely on changes."""
+    facts: tuple[str, ...] = ()
+    """The facts probed under it."""
+    affects: str = ""
+    """What it changes, for the message."""
+    options: tuple[str, ...] = ()
+    """The choice-table options it changes. A plan that depends on none of
+    them, or states the behaviour at each (`"stated"` in its dependency
+    report, as a sort's NULLS LAST), does not rely on the setting, and the
+    run only warns. Empty: every plan relies on it."""
+
 
 #: The entry-point group a package registers its profile under.
 GROUP = "sverify.profiles"

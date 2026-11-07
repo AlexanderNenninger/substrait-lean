@@ -43,33 +43,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
-Action = Literal["refuse", "warn"]
-
-
-@dataclass(frozen=True)
-class Setting:
-    """A setting a profile assumes."""
-
-    name: str
-    expected: tuple[Any, ...]
-    """The values the profile's facts hold under (normalised: lower-case
-    strings, bools)."""
-    action: Action
-    """`"refuse"` where a choice-table row depends on the setting, `"warn"`
-    where only behaviour sverify does not rely on changes."""
-    facts: tuple[str, ...] = ()
-    """The facts probed under it."""
-    affects: str = ""
-    """What it changes, for the message."""
-    options: tuple[str, ...] = ()
-    """The choice-table options it changes. A plan that depends on none of
-    them, or states the behaviour at each (`"stated"` in its dependency
-    report, as a sort's NULLS LAST), does not rely on the setting, and the
-    run only warns. Empty: every plan relies on it."""
-
+from sverify.profiles import Setting, plugins
 
 _R15 = tuple(
     f"duckdb-R15-{n}"
@@ -260,9 +236,7 @@ def settings_of(engine: str) -> tuple[Setting, ...]:
     installed profile from outside sverify (`sverify.profiles`)."""
     if engine in SETTINGS:
         return SETTINGS[engine]
-    from sverify import profiles
-
-    p = profiles.plugins().get(engine)
+    p = plugins().get(engine)
     return () if p is None else p.settings
 
 
@@ -377,9 +351,7 @@ def restore(engine: str, setting: Setting) -> str:
 
         v = SPARK_CONF.get(setting.name, _SPARK_DEFAULTS.get(setting.name, setting.expected[0]))
         return f'spark.conf.set("{setting.name}", "{v}")'
-    from sverify import profiles
-
-    p = profiles.plugins().get(engine)
+    p = plugins().get(engine)
     if p is not None and p.restore is not None:
         return p.restore(setting)
     return f"set {setting.name} back to {setting.expected[0]!r}"
