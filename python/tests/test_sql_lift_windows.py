@@ -29,7 +29,7 @@ QUERIES = [
     " FROM orders",
     "SELECT id, lag(amount) OVER (ORDER BY id) AS p, lead(amount, 2, -1) OVER (ORDER BY id DESC)"
     " AS n, first_value(amount) OVER (PARTITION BY customer ORDER BY id) AS f FROM orders",
-    "SELECT id, sum(amount) OVER (PARTITION BY customer) AS s,"
+    "SELECT id, sum(amount) OVER (PARTITION BY customer) AS s, avg(price) OVER () AS a,"
     " sum(amount) OVER (ORDER BY id) AS run,"
     " max(amount) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS m FROM orders",
     "SELECT id, ntile(2) OVER (ORDER BY id) AS nt, percent_rank() OVER (ORDER BY id) AS pr,"
@@ -58,13 +58,6 @@ def test_the_reference_lift_is_checked_too(query):
     plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
-
-
-def test_a_window_average_of_doubles_is_refused_until_it_has_a_bound():
-    """Lean lifts it (oracle A), and the engines refuse the plan it writes
-    back: its bound leaves out window functions (#1032)."""
-    result = check("SELECT id, avg(price) OVER () AS a FROM orders", TABLES)
-    assert not result.ok and result.stage == "oracle C" and "#1032" in result.detail
 
 
 @pytest.mark.parametrize(
