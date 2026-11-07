@@ -200,6 +200,37 @@ theorem allDecOf_scale {vs : List Value} {s t : Nat} (hs : allDecOf s vs = true)
   have b := List.all_eq_true.mp ht.2 w hw
   cases w <;> simp_all [Value.isDecOf]
 
+/-- Two lists with the same unscaled sum and the same scales have one `SUM`. -/
+theorem sumOf_eq_of {vs ws : List Value} (hi : intSum vs = intSum ws)
+    (hd : ∀ s, allDecOf s vs = allDecOf s ws) : sumOf vs = sumOf ws := by
+  rcases sumOf_cases vs with ⟨s, h1, e1⟩ | ⟨h1, e1⟩ <;>
+    rcases sumOf_cases ws with ⟨t, g1, f1⟩ | ⟨g1, f1⟩ <;> rw [e1, f1, hi]
+  · have hs : allDecOf s ws = true := by rw [← hd s]; exact h1
+    rw [allDecOf_scale hs g1]
+  · rw [hd s, g1] at h1; cases h1
+  · rw [← hd t, h1] at g1; cases g1
+
+@[simp] theorem sumOf_ne_null (vs : List Value) : sumOf vs ≠ .null := by
+  rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] <;> simp
+
+theorem sumOf_unscaled_eq (vs : List Value) : (sumOf vs).unscaled? = some (intSum vs) := by
+  rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] <;> rfl
+
+/-- A non-empty list's `SUM` is a decimal of scale `s` when all its values are. -/
+theorem isDecOf_sumOf {vs : List Value} (hne : vs ≠ []) (s : Nat) :
+    (sumOf vs).isDecOf s = vs.all (Value.isDecOf s) := by
+  have ha : allDecOf s vs = vs.all (Value.isDecOf s) := by
+    simp [allDecOf, List.isEmpty_eq_false_iff.mpr hne]
+  rcases sumOf_cases vs with ⟨t, h1, e⟩ | ⟨h1, e⟩ <;> rw [e]
+  · by_cases hts : t = s
+    · subst hts; rw [← ha, h1]; simp [Value.isDecOf]
+    · have : allDecOf s vs = false := by
+        cases h : allDecOf s vs
+        · rfl
+        · exact absurd (allDecOf_scale h1 h) hts
+      rw [← ha, this]; simp [Value.isDecOf, hts]
+  · rw [← ha, h1]; rfl
+
 /-- `SUM` does not depend on the order of its values. -/
 theorem sumOf_perm {vs ws : List Value} (h : vs.Perm ws) : sumOf vs = sumOf ws := by
   have hsum := intSum_perm h
