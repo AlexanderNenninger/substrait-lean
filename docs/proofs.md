@@ -26,6 +26,7 @@ and that the input rows meet the contract's preconditions.
 | A well-kinded plan evaluates to its kinds | `Rel.kinds_sound`, `Expr.kindT_sound` | `Kinds.lean` |
 | The fast evaluator computes the specification | `Rel.evalFast_eq` | `EvalFast.lean` |
 | `Rel.eval` gives a result the reference allows | `Rel.eval_allowed` | `Allowed.lean` |
+| An operator that factors through the multiset has one meaning over every order; a plan without choices one multiset, an unordered `FETCH` several | `Sem.eq_iff_of_permInv`, `Measure.orderAllowed_eq`, `Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two` | `Seam.lean` |
 | DuckDB, under its default settings, computes the reference | `Rel.duckdb_sound` | `Profile.lean` |
 | The generated DuckDB lowering computes the reference | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | Polars, after the shims, computes the reference | `Rel.polars_sound` and one `Polars.<shim>` lemma per shim | `PolarsShims.lean` |
@@ -181,6 +182,7 @@ generators, then the trusted reading and writing.
 | `Ties.lean` | Every row order the reference allows, and the checkers' soundness under all of them |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
+| `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps |
 | `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
 | `Options.lean` | The option catalogue and each profile's choices |
