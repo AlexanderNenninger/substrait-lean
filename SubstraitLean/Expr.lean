@@ -201,9 +201,10 @@ inductive UnFn where
   (#241), applied to the exact result (`BinFn.dadd`, `dsub`, `dmul`): wrapped
   around or clamped at the width. It leaves anything but an integer as it is. -/
   | fit (m : OverflowMode) (w : IntWidth)
-  /-- `x` is a number (a shim's guard, #185). The SQL printers write `x IS NOT
-  NULL`, since in SQL a non-NULL operand of a numeric function is a number. -/
-  | isNum
+  /-- `x` is a number of kind `k` (a shim's guard, #185, #923). The SQL
+  printers write `x IS NOT NULL`, since in SQL a non-NULL operand of a
+  function of numbers of kind `k` is one. -/
+  | isNum (k : NumKind)
   /-- A scalar black box of one argument (`SubstraitLean/BlackBox.lean`, #325):
   the table's row `name`. -/
   | bbox (name : String)
@@ -362,22 +363,34 @@ def Value.flatten : Value → Value
   | .list vs => .list (vs.flatMap fun | .list ws => ws | _ => [])
   | _ => .null
 
+/-- Is `v` a number of kind `k`? What `UnFn.isNum` tests. -/
+def Value.isNum : NumKind → Value → Bool
+  | .int, .int _ | .float, .float _ | .date, .date _ | .ts, .ts _ | .tod, .tod _ => true
+  | .dec s, .dec t _ => s == t
+  | _, _ => false
+
+/-- The integer a decimal operation reads: an integer, or a decimal's
+unscaled value (`Parse.decimalCall` brings both to one scale first). -/
+@[simp] def Value.unscaled? : Value → Option Int
+  | .int i | .dec _ i => some i
+  | _ => none
+
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
   | .isNull, .null => .bool true
   | .isNull, _ => .bool false
   | .neg, .int i => .int (-i)
-  | .itof, .int i => .int (FloatCode.ofInt i)
-  | .fneg, .int k => .int (FloatCode.neg k)
-  | .ffloor, .int c => .int (FloatCode.floor c)
-  | .fceil, .int c => .int (FloatCode.ceil c)
-  | .fround, .int c => .int (FloatCode.round c)
-  | .froundTo d, .int c => .int (FloatCode.roundTo d c)
-  | .ftoi, .int c => match FloatCode.toInt? c with
+  | .itof, .int i => .float (FloatCode.ofInt i)
+  | .fneg, .float k => .float (FloatCode.neg k)
+  | .ffloor, .float c => .float (FloatCode.floor c)
+  | .fceil, .float c => .float (FloatCode.ceil c)
+  | .fround, .float c => .float (FloatCode.round c)
+  | .froundTo d, .float c => .float (FloatCode.roundTo d c)
+  | .ftoi, .float c => match FloatCode.toInt? c with
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
-  | .ftoiOrNull, .int c => match FloatCode.toInt? c with
+  | .ftoiOrNull, .float c => match FloatCode.toInt? c with
     | some i => if fitsBits 64 i then .int i else .null
     | none => .null
   | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
@@ -397,40 +410,50 @@ def UnFn.apply : UnFn → Value → Value
   | .regexReplace p r g, .str s => .str (Text.regexReplace s p r g)
   | .md5, .str s => .str (Text.md5 s)
   | .sha256, .str s => .str (Text.sha256 s)
-  | .datePart p, .int ts => match Time.datePart p ts with
+  -- A time of day is a timestamp on 1970-01-01.
+  | .datePart p, .ts ts | .datePart p, .tod ts => match Time.datePart p ts with
     | some v => .int v
     | none => .null
-  | .dateTrunc u, .int ts => .int (Time.trunc u ts)
-  | .toDate, .int ts => .int (Time.days ts)
-  | .dayPart p, .int d => match Time.datePartDay p d with
+  | .dateTrunc u, .ts ts => .ts (Time.trunc u ts)
+  | .dateTrunc u, .tod t => .tod (Time.trunc u t)
+  | .toDate, .ts ts => .date (Time.days ts)
+  | .dayPart p, .date d => match Time.datePartDay p d with
     | some v => .int v
     | none => .null
-  | .dayTrunc u, .int d => .int (Time.truncDay u d)
-  | .addMonths m false, .int d => .int (Time.addMonths m d)
-  | .addMonths m true, .int ts => .int (Time.addMonthsUs m ts)
-  | .timeOfDay, .int ts => .int (Time.timeOfDay ts)
-  | .asTime, .int n => .int n
-  | .dateTime, .int d => .int (d * Time.usPerDay)
-  | .epochUs, .int ts => .int ts
-  | .strftime fmt, .int ts => .str (Time.strftime fmt ts)
-  | .bucket k o, .int ts => .int (Time.bucket k o ts)
-  | .fmath f, .int c => match f.apply c with
-    | some r => .int r
+  | .dayTrunc u, .date d => .date (Time.truncDay u d)
+  | .addMonths m false, .date d => .date (Time.addMonths m d)
+  | .addMonths m true, .ts ts => .ts (Time.addMonthsUs m ts)
+  -- A time of day plus an interval wraps around midnight through this.
+  | .timeOfDay, .ts ts | .timeOfDay, .tod ts => .tod (Time.timeOfDay ts)
+  | .asTime, .int n => .ts n
+  | .dateTime, .date d => .ts (d * Time.usPerDay)
+  | .epochUs, .ts ts => .int ts
+  | .strftime fmt, .ts ts => .str (Time.strftime fmt ts)
+  | .bucket k o, .ts ts => .ts (Time.bucket k o ts)
+  | .fmath f, .float c => match f.apply c with
+    | some r => .float r
     | none => .null
-  | .decimal _ _, v => v
-  | .dkind _ _, v => v
-  | .dround k, .int i => .int (roundDiv10 k i)
-  | .dtrunc k, .int i => .int (i.tdiv (10 ^ k))
-  | .ftod s, .int c => match FloatCode.toDecimal? c s with
+  -- A decimal's type: its unscaled integer at scale `s`.
+  | .decimal _ s, v | .dkind _ s, v => match v.unscaled? with
+    | some i => .dec s i
+    | none => .null
+  | .dround k, v => match v.unscaled? with
+    | some i => .int (roundDiv10 k i)
+    | none => .null
+  | .dtrunc k, v => match v.unscaled? with
+    | some i => .int (i.tdiv (10 ^ k))
+    | none => .null
+  | .ftod s, .float c => match FloatCode.toDecimal? c s with
     | some m => .int m
     | none => .null
-  | .dtof s, .int i => .int (FloatCode.ofDecimal i s)
-  | .structField i, .list vs => vs.getD i .null
+  | .dtof s, v => match v.unscaled? with
+    | some i => .float (FloatCode.ofDecimal i s)
+    | none => .null
+  | .structField i, .struct vs => vs.getD i .null
   | .listElement off, .list vs => Value.listElement off vs
   | .cardinality, .list vs => .int vs.length
   | .flatten, v => Value.flatten v
-  | .isNum, .int _ => .bool true
-  | .isNum, _ => .bool false
+  | .isNum k, v => .bool (v.isNum k)
   | .fit m w, .int i => .int (w.fit m i)
   | .fit _ _, v => v
   | .bbox n, v => BlackBox.callScalar n [v]
@@ -492,16 +515,41 @@ theorem HoFn.apply_congr (f : HoFn) (v : Value) {p q : Value → Value}
 #guard HoFn.allMatch.apply (.list []) (fun _ => .bool false) == .bool true
 #guard HoFn.anyMatch.apply .null (fun _ => .bool true) == .null
 
+/-- Two values of one numeric kind as integers in one order: the same
+constructor's payloads (a double's code orders as the double), and decimals
+of one scale (`Parse.decimalCall` brings operands to one scale). Values of
+different kinds or scales do not compare, so `=` is TRUE only of equal
+values (`isTrue_eq`). -/
+@[simp] def Value.numPair : Value → Value → Option (Int × Int)
+  | .int a, .int b | .float a, .float b | .date a, .date b | .ts a, .ts b
+  | .tod a, .tod b => some (a, b)
+  | .dec s a, .dec t b => if s = t then some (a, b) else none
+  | _, _ => none
+
+/-- Two numbers that compare are of one kind. -/
+theorem Value.numPair_some {a b : Value} {p q : Int} (h : a.numPair b = some (p, q)) :
+    ∃ k : NumKind, a = k.val p ∧ b = k.val q := by
+  cases a <;> cases b <;> simp at h
+  all_goals first
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.int, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.float, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.date, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.ts, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.tod, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨.dec _, rfl, rfl⟩)
+
+theorem Value.numPair_self {a : Value} {p q : Int} (h : a.numPair a = some (p, q)) : p = q := by
+  cases a <;> simp at h <;> omega
+
 mutual
 /-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
 the codes of doubles and times) by value, strings by code point, `FALSE <
 TRUE`, and lists lexicographically (`Value.listLt3`). -/
 def Value.lt3 : Value → Value → Option Bool
-  | .int a, .int b => some (decide (a < b))
   | .str a, .str b => some (decide (a < b))
   | .bool a, .bool b => some (!a && b)
-  | .list as, .list bs => Value.listLt3 as bs
-  | _, _ => none
+  | .list as, .list bs | .struct as, .struct bs => Value.listLt3 as bs
+  | a, b => (a.numPair b).map fun (x, y) => decide (x < y)
 
 /-- Lists element by element (#207): the first position where the elements
 differ decides, and a proper prefix sorts first. Two `NULL`s at a position
@@ -534,11 +582,12 @@ def Value.ofLt3 : Option Bool → Value
 /-- Whether `a < b` is TRUE, as `BinFn.apply .lt` decides it (`ltB_eq`): the
 comparison `GREATEST`/`LEAST` make. -/
 def Value.ltB : Value → Value → Bool
-  | .int a, .int b => decide (a < b)
   | .str a, .str b => decide (a < b)
   | .bool a, .bool b => !a && b
-  | .list a, .list b => (Value.ofLt3 (Value.listLt3 a b)).isTrue
-  | _, _ => false
+  | .list a, .list b | .struct a, .struct b => (Value.ofLt3 (Value.listLt3 a b)).isTrue
+  | a, b => match a.numPair b with
+    | some (x, y) => decide (x < y)
+    | none => false
 
 /-- `GREATEST(a, b)` skipping `NULL`s (`better a b`: `b` wins). -/
 def Value.pick (better : Value → Value → Bool) : Value → Value → Value
@@ -586,32 +635,49 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .least, a, b => Value.pick (fun a b => Value.ltB b a) a b
   | .and, a, b => and3 a b
   | .or, a, b => or3 a b
+  -- An interval (an integer) moves a timestamp, a date or a time of day.
   | .add, .int a, .int b => .int (a + b)
+  | .add, .ts a, .int b => .ts (a + b)
+  | .add, .int a, .ts b => .ts (a + b)
+  | .add, .tod a, .int b => .tod (a + b)
+  | .add, .int a, .tod b => .tod (a + b)
+  | .add, .date a, .int b => .date (a + b)
+  | .add, .int a, .date b => .date (a + b)
   | .sub, .int a, .int b => .int (a - b)
+  | .sub, .ts a, .int b => .ts (a - b)
+  | .sub, .tod a, .int b => .tod (a - b)
+  | .sub, .date a, .int b => .date (a - b)
+  | .sub, .ts a, .ts b | .sub, .tod a, .tod b | .sub, .date a, .date b => .int (a - b)
   | .mul, .int a, .int b => .int (a * b)
-  | .eq, .int a, .int b => .bool (a == b)
   | .eq, .bool a, .bool b => .bool (a == b)
   | .eq, .str a, .str b => .bool (a == b)
   -- Lists are equal element by element, NULL elements equal (DataFusion, DuckDB).
-  | .eq, .list a, .list b => .bool (decide (a = b))
-  | .lt, .int a, .int b => .bool (decide (a < b))
+  | .eq, .list a, .list b | .eq, .struct a, .struct b => .bool (decide (a = b))
+  | .eq, a, b => match a.numPair b with
+    | some (x, y) => .bool (x == y)
+    | none => .null
   -- Strings by code point, which is UTF-8 byte order (as `Value.le`).
   | .lt, .str a, .str b => .bool (decide (a < b))
   -- FALSE < TRUE, as in DataFusion.
   | .lt, .bool a, .bool b => .bool (!a && b)
   -- Lexicographically, element by element (#207).
-  | .lt, .list a, .list b => Value.ofLt3 (Value.listLt3 a b)
-  | .fadd, .int a, .int b => .int (FloatCode.lift₂ (· + ·) a b)
-  | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
-  | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
-  | .fdiv, .int a, .int b => .int (FloatCode.lift₂ (· / ·) a b)
-  | .fmod, .int a, .int b => .int (FloatCode.fmod a b)
+  | .lt, .list a, .list b | .lt, .struct a, .struct b => Value.ofLt3 (Value.listLt3 a b)
+  | .lt, a, b => match a.numPair b with
+    | some (x, y) => .bool (decide (x < y))
+    | none => .null
+  | .fadd, .float a, .float b => .float (FloatCode.lift₂ (· + ·) a b)
+  | .fsub, .float a, .float b => .float (FloatCode.lift₂ (· - ·) a b)
+  | .fmul, .float a, .float b => .float (FloatCode.lift₂ (· * ·) a b)
+  | .fdiv, .float a, .float b => .float (FloatCode.lift₂ (· / ·) a b)
+  | .fmod, .float a, .float b => .float (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
+  -- A time of day modulo a day (`Parse`'s wrap around midnight).
+  | .imod, .tod a, .int b => if b = 0 then .null else .tod (a.tmod b)
   -- Exponents beyond 64 overflow anyway (unless `|a| ≤ 1`); don't compute them.
   | .ipow, .int a, .int b =>
     if b < 0 ∨ (64 < b ∧ 1 < a.natAbs) then .null else .int (a ^ b.toNat)
-  | .fpow, .int a, .int b => .int (FloatCode.lift₂ Float.pow a b)
+  | .fpow, .float a, .float b => .float (FloatCode.lift₂ Float.pow a b)
   | .concat, .str a, .str b => .str (a ++ b)
   | .strpos, .str a, .str b => .int (Text.strpos a b)
   | .startsWith, .str a, .str b => .bool (Text.startsWith a b)
@@ -622,19 +688,28 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .strRepeat, .str s, .int n => .str (if Text.repeatFits s n then Text.repeatStr s n else "")
   | .ilike, .str a, .str b => .bool (Text.ilike a b)
   | .levenshtein, .str a, .str b => .int (Text.capped (Text.levenshtein a b))
-  | .dadd, .int a, .int b => .int (a + b)
-  | .dsub, .int a, .int b => .int (a - b)
-  | .dmul, .int a, .int b => .int (a * b)
-  | .ddiv, .int a, .int b => match roundDivInt? a b with
-    | some r => .int r
+  -- Decimals on their unscaled integers, at the scale `UnFn.decimal` then gives.
+  | .dadd, a, b => match a.unscaled?, b.unscaled? with
+    | some x, some y => .int (x + y)
+    | _, _ => .null
+  | .dsub, a, b => match a.unscaled?, b.unscaled? with
+    | some x, some y => .int (x - y)
+    | _, _ => .null
+  | .dmul, a, b => match a.unscaled?, b.unscaled? with
+    | some x, some y => .int (x * y)
+    | _, _ => .null
+  | .ddiv, a, b => match a.unscaled?, b.unscaled? with
+    | some x, some y => match roundDivInt? x y with
+      | some r => .int r
+      | none => .null
+    | _, _ => .null
+  | .dateAdd, .date d, .int n => .date (d + n)
+  | .dateDiff, .date d, .date e => .int (d - e)
+  | .fatan2, .float y, .float x => match atan2? y x with
+    | some r => .float r
     | none => .null
-  | .dateAdd, .int d, .int n => .int (d + n)
-  | .dateDiff, .int d, .int e => .int (d - e)
-  | .fatan2, .int y, .int x => match atan2? y x with
-    | some r => .int r
-    | none => .null
-  | .flogb, .int x, .int b => match logb? x b with
-    | some r => .int r
+  | .flogb, .float x, .float b => match logb? x b with
+    | some r => .float r
     | none => .null
   | .bit op, .int a, .int b => match op.apply a b with
     | some r => .int r
@@ -789,9 +864,12 @@ theorem Value.ltB_eq (a b : Value) : Value.ltB a b = (BinFn.apply .lt a b).isTru
   cases a <;> cases b <;> simp only [Value.ltB, BinFn.apply]
   all_goals first
     | rfl
-    | (rename_i x y; generalize decide (x < y) = d; cases d <;> rfl)
     | (rename_i x y; cases x <;> cases y <;> rfl)
-    | (rename_i x y; generalize Value.listLt3 x y = r; rcases r with _ | _ | _ <;> rfl)
+    | (generalize Value.listLt3 _ _ = r; rcases r with _ | _ | _ <;> rfl)
+    | (rename_i x y; generalize decide (x < y) = d; cases d <;> rfl)
+    | (generalize Value.numPair _ _ = r; rcases r with _ | ⟨x, y⟩
+       · rfl
+       · dsimp only; generalize decide (x < y) = d; cases d <;> rfl)
 
 /-- `pick` as the conditional on values. -/
 theorem Value.pick_eq (better : Value → Value → Bool) (v w : Value) :

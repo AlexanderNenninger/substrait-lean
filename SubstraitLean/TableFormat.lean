@@ -272,7 +272,7 @@ structure ColStats where
 NULL count is 0, and a number between the bounds unless every row is NULL. -/
 def ColStats.aval (s : ColStats) : AVal :=
   ⟨s.nulls != some 0, if s.rows.isSome && s.nulls == s.rows then none else some ⟨s.lo, s.hi⟩,
-   false, false, false, none⟩
+   false, false, false, none, none⟩
 
 /-- **Trusted:** the statistics describe column `c` of the file's rows. (A
 format that truncates maxima, like Delta for timestamps, is correct only
@@ -319,21 +319,18 @@ theorem stats_append {c : Nat} {added : List (Relation × ColStats)} {ins : Rela
   fun row h => stats_table hc row (hins row h)
 
 /-- The facts `sverify.io` states from the table's bound: a column without
-NULLs whose files all have both bounds is a non-NULL integer between the
+NULLs whose files all have both bounds is a non-NULL number between the
 least minimum and the greatest maximum. -/
 theorem stats_bounds {a : AVal} {lo hi : Int} {v : Value}
     (hnull : a.null = false) (hint : a.int = some ⟨some lo, some hi⟩)
     (hb : a.tt = false ∧ a.ff = false ∧ a.str = false) (hm : a.Mem v) :
-    ∃ i, v = .int i ∧ lo ≤ i ∧ i ≤ hi := by
-  cases v with
-  | null => simp_all [AVal.Mem]
-  | int i =>
-      obtain ⟨b, hb', hmem⟩ := hm
-      rw [hint] at hb'; cases hb'
-      simp only [Bound.Mem] at hmem
-      exact ⟨i, rfl, hmem.1 lo rfl, hmem.2 hi rfl⟩
-  | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ | list _ => simp_all [AVal.Mem]
+    ∃ (k : NumKind) (i : Int), v = k.val i ∧ lo ≤ i ∧ i ≤ hi := by
+  rcases AVal.mem_cases hm with ⟨_, hn⟩ | ⟨k, i, b, rfl, hb', hmem, -⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
+      ⟨_, _, hs, _⟩ | ⟨_, _, ht, _⟩
+  · simp_all
+  · rw [hint] at hb'; cases hb'
+    exact ⟨k, i, rfl, hmem.1 lo rfl, hmem.2 hi rfl⟩
+  all_goals simp_all
 
 /-- The fact `sverify.io` states from a table's bound in general: a value is
 NULL (only if some file has NULLs) or a number within the bound `b`, each side
@@ -343,26 +340,23 @@ maximum where NaN may occur). With NULLs this is the fact
 description (`Expr.refine` of `IS NULL` and of `OR`). -/
 theorem stats_fact {a : AVal} {b : Bound} {v : Value}
     (hint : a.int = some b) (hb : a.tt = false ∧ a.ff = false ∧ a.str = false) (hm : a.Mem v) :
-    (v = .null ∧ a.null = true) ∨ ∃ i, v = .int i ∧ b.Mem i := by
-  cases v with
-  | null => exact .inl ⟨rfl, hm⟩
-  | int i =>
-      obtain ⟨b', hb', hmem⟩ := hm
-      rw [hint] at hb'; cases hb'
-      exact .inr ⟨i, rfl, hmem⟩
-  | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ | list _ => simp_all [AVal.Mem]
+    (v = .null ∧ a.null = true) ∨ ∃ (k : NumKind) (i : Int), v = k.val i ∧ b.Mem i := by
+  rcases AVal.mem_cases hm with ⟨rfl, hn⟩ | ⟨k, i, b', rfl, hb', hmem, -⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
+      ⟨_, _, hs, _⟩ | ⟨_, _, ht, _⟩
+  · exact .inl ⟨rfl, hn⟩
+  · rw [hint] at hb'; cases hb'
+    exact .inr ⟨k, i, rfl, hmem⟩
+  all_goals simp_all
 
 /-- A column whose files are all entirely NULL (NULL count = row count) is
 NULL: the fact `c IS NULL`. -/
 theorem stats_all_null {a : AVal} {v : Value}
     (hint : a.int = none) (hb : a.tt = false ∧ a.ff = false ∧ a.str = false) (hm : a.Mem v) :
     v = .null := by
-  cases v with
-  | null => rfl
-  | int i => obtain ⟨_, h, _⟩ := hm; simp [hint] at h
-  | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ | list _ => simp_all [AVal.Mem]
+  rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨_, _, _, _, h, _⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
+      ⟨_, _, hs, _⟩ | ⟨_, _, ht, _⟩
+  · rfl
+  all_goals simp_all
 
 /-! ## Pruning files -/
 
@@ -390,11 +384,11 @@ theorem prune_sound (e : Expr) :
 
 -- The join of known bounds is the least minimum and the greatest maximum.
 #guard tableStats [([], ⟨some 3, some 9, some 0, none⟩), ([], ⟨some 1, some 5, some 0, none⟩)] ==
-    ⟨false, some ⟨some 1, some 9⟩, false, false, false, none⟩
+    ⟨false, some ⟨some 1, some 9⟩, false, false, false, none, none⟩
 -- A file of NULLs adds NULL and no bound; a file without a maximum loses it.
 #guard tableStats [([], ⟨some 3, some 9, some 0, none⟩), ([], ⟨none, none, some 4, some 4⟩)] ==
-    ⟨true, some ⟨some 3, some 9⟩, false, false, false, none⟩
+    ⟨true, some ⟨some 3, some 9⟩, false, false, false, none, none⟩
 #guard tableStats [([], ⟨some 3, some 9, some 1, some 5⟩), ([], ⟨some 1, none, some 0, none⟩)] ==
-    ⟨true, some ⟨some 1, none⟩, false, false, false, none⟩
+    ⟨true, some ⟨some 1, none⟩, false, false, false, none, none⟩
 
 end Substrait

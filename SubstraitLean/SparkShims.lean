@@ -177,10 +177,10 @@ def bin : BinFn → Value → Value → Value
   | .mul, .int a, .int b => if inI64 (a * b) then .int (a * b) else .null
   | .idiv, .int a, .int b => if b = 0 then .null else if inI64 (a.tdiv b) then .int (a.tdiv b) else .null
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
-  | .dateAdd, .int a, .int b =>
-    if -2 ^ 31 ≤ b ∧ b < 2 ^ 31 then .int (wrap32 (a + b)) else .null
-  | f, .int a, .int b =>
-    if nanCase f a b then .int FloatCode.nan else f.apply (.int a) (.int b)
+  | .dateAdd, .date a, .int b =>
+    if -2 ^ 31 ≤ b ∧ b < 2 ^ 31 then .date (wrap32 (a + b)) else .null
+  | f, .float a, .float b =>
+    if nanCase f a b then .float FloatCode.nan else f.apply (.float a) (.float b)
   | f, v, w => f.apply v w
 
 def written : Impl := ⟨UnFn.apply, bin⟩
@@ -195,34 +195,38 @@ side, where a verified plan does not go. -/
 theorem written_faithful : written.Faithful := by
   refine ⟨fun _ _ _ => rfl, fun f v w h => ?_⟩
   show bin f v w = f.apply v w
-  cases v <;> cases w <;> (try (cases f <;> rfl))
-  rename_i a b
-  have hfloat : bin f (.int a) (.int b) =
-      (if nanCase f a b then .int FloatCode.nan else f.apply (.int a) (.int b)) ∨
-      f = .add ∨ f = .sub ∨ f = .mul ∨ f = .idiv ∨ f = .imod ∨ f = .dateAdd := by
-    cases f <;> simp [bin]
-  rcases hfloat with he | rfl | rfl | rfl | rfl | rfl | rfl
-  · rw [he]
-    have : nanCase f a b = false := by
-      cases hn : nanCase f a b
-      · rfl
-      · exact absurd h (Polars.nanCase_issue hn)
-    simp [this]
-  all_goals simp only [BinFn.issue, wrapIf, rangeIssue] at h
-  · simp only [bin, BinFn.apply]; split at h <;> simp_all
-  · simp only [bin, BinFn.apply]; split at h <;> simp_all
-  · simp only [bin, BinFn.apply]; split at h <;> simp_all
-  · by_cases hb : b = 0 <;> by_cases hi : inI64 (a.tdiv b) = true <;> simp_all [bin, BinFn.apply]
-  · by_cases hb : b = 0 <;> simp_all [bin, BinFn.apply]
-  · split at h
+  unfold bin
+  split
+  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
+    split at h <;> simp_all [BinFn.apply]
+  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
+    split at h <;> simp_all [BinFn.apply]
+  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
+    split at h <;> simp_all [BinFn.apply]
+  · rename_i a b
+    simp only [BinFn.issue] at h
+    by_cases hb : b = 0 <;> by_cases hi : inI64 (a.tdiv b) = true <;> simp_all [BinFn.apply]
+  · rename_i a b
+    simp only [BinFn.issue] at h
+    by_cases hb : b = 0 <;> simp_all [BinFn.apply]
+  · rename_i a b
+    simp only [BinFn.issue, rangeIssue] at h
+    split at h
     · rename_i hr
       simp only [between, Bool.and_eq_true, decide_eq_true_eq] at hr
       have h1 : Time.dayMin = -719162 := rfl
       have h2 : Time.dayMax = 2932896 := rfl
       have hb : -2 ^ 31 ≤ b ∧ b < 2 ^ 31 := by omega
-      simp only [bin, BinFn.apply, hb, and_self, ite_true]
+      simp only [BinFn.apply, hb, and_self, ite_true]
       rw [wrap32_of_small (by omega) (by omega)]
     · simp at h
+  · rename_i a b
+    have : nanCase f a b = false := by
+      cases hn : nanCase f a b
+      · rfl
+      · exact absurd h (Polars.nanCase_issue hn)
+    simp [this]
+  · rfl
 
 end Substrait.Spark
 

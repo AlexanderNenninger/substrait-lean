@@ -65,17 +65,21 @@ def FrameBound.offset : FrameBound → Option Int
 /-- `y` comes at or after the point `d` units after `x` on the key `k` (for
 `d = 0`: not before `x`'s peers). -/
 def rangeFrom (k : SortKey) (d : Int) (x y : Row) : Bool :=
-  match x.getD k.col .null, y.getD k.col .null with
-  | .int vx, .int vy => if k.desc then decide (vy ≤ vx - d) else decide (vx + d ≤ vy)
-  | .null, .null => true
-  | a, b => decide (k.nullRank a < k.nullRank b)
+  -- Two numbers of one kind (`Value.numPair`, #923): a timestamp key and an
+  -- interval offset in its units.
+  match (x.getD k.col .null).numPair (y.getD k.col .null) with
+  | some (vx, vy) => if k.desc then decide (vy ≤ vx - d) else decide (vx + d ≤ vy)
+  | none => match x.getD k.col .null, y.getD k.col .null with
+    | .null, .null => true
+    | a, b => decide (k.nullRank a < k.nullRank b)
 
 /-- `y` comes at or before the point `d` units after `x` on the key `k`. -/
 def rangeTo (k : SortKey) (d : Int) (x y : Row) : Bool :=
-  match x.getD k.col .null, y.getD k.col .null with
-  | .int vx, .int vy => if k.desc then decide (vx - d ≤ vy) else decide (vy ≤ vx + d)
-  | .null, .null => true
-  | a, b => decide (k.nullRank b < k.nullRank a)
+  match (x.getD k.col .null).numPair (y.getD k.col .null) with
+  | some (vx, vy) => if k.desc then decide (vx - d ≤ vy) else decide (vy ≤ vx + d)
+  | none => match x.getD k.col .null, y.getD k.col .null with
+    | .null, .null => true
+    | a, b => decide (k.nullRank b < k.nullRank a)
 
 /-- The rows of `x`'s partition in its frame, in sort order: `pb` are the
 partition's rows before `x`, `pa` those after. -/
@@ -172,7 +176,7 @@ def samePart (part : List Nat) (x y : Row) : Bool :=
 def peer (sort : List SortKey) (x y : Row) : Bool := sortLe sort y x && sortLe sort x y
 
 /-- The double `a / b` of two integers. -/
-def floatRatio (a b : Nat) : Value := .int (FloatCode.lift₂ (· / ·) (FloatCode.ofInt a) (FloatCode.ofInt b))
+def floatRatio (a b : Nat) : Value := .float (FloatCode.lift₂ (· / ·) (FloatCode.ofInt a) (FloatCode.ofInt b))
 
 /-- The SQL standard's `NTILE(k)` of the `i`-th (from 0) of `n` rows: `k`
 buckets of `n / k` rows, the first `n % k` of them one row larger; with fewer

@@ -459,7 +459,7 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
     if ea == 0.0 && extra == 0.0 then return (0.0, pa && !inexact e)
     if ea == 0.0 then return (extra * unitRound * (← resultMag env e), false)
     none
-  | .ifThen c@(.bin .lt a (.lit (.int 0))) t@(.un .fneg a₁) f => do
+  | .ifThen c@(.bin .lt a (.lit (.float 0))) t@(.un .fneg a₁) f => do
     -- `abs` as the parser writes it: `rule_abs`, whatever the sign of `a`.
     if a₁ == a && f == a then
       let (ea, pa) ← exprEps engine env cols a

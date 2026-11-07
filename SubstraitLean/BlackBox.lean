@@ -73,9 +73,14 @@ inductive Ty where
   | any
   deriving Repr, DecidableEq
 
-/-- Is `v` NULL or an integer: an element of `doubles` or `ints`? -/
+/-- Is `v` NULL or an integer: an element of `ints`? -/
 def intOrNull : Value → Bool
   | .null | .int _ => true
+  | _ => false
+
+/-- Is `v` NULL or a double: an element of `doubles`? -/
+def floatOrNull : Value → Bool
+  | .null | .float _ => true
   | _ => false
 
 /-- Is `v` NULL or a string: an element of `strs`? -/
@@ -86,11 +91,13 @@ def strOrNull : Value → Bool
 /-- Is `v` NULL or a value of the type? -/
 def Ty.has : Ty → Value → Bool
   | _, .null => true
-  | .int, .int _ | .double, .int _ | .date, .int _ | .timestamp, .int _ => true
+  | .int, .int _ | .double, .float _ | .date, .date _ | .timestamp, .ts _ => true
   | .str, .str _ => true
   | .bool, .bool _ => true
-  | .atom, .int _ | .atom, .str _ | .atom, .bool _ => true
-  | .doubles, .list vs | .ints, .list vs => vs.all intOrNull
+  | .atom, .int _ | .atom, .float _ | .atom, .date _ | .atom, .ts _ | .atom, .tod _
+  | .atom, .dec _ _ | .atom, .str _ | .atom, .bool _ => true
+  | .doubles, .list vs => vs.all floatOrNull
+  | .ints, .list vs => vs.all intOrNull
   | .strs, .list vs => vs.all strOrNull
   | .any, _ => true
   | _, _ => false
@@ -111,8 +118,10 @@ inductive Law where
 some may be? -/
 def Law.holds (set : Bool) : Law → Value → Bool
   | .nonNull, v => !set || v != .null
-  | .atLeast k, .int i => decide (k ≤ i)
-  | .atMost k, .int i => decide (i ≤ k)
+  | .atLeast k, .int i | .atLeast k, .float i | .atLeast k, .date i | .atLeast k, .ts i
+  | .atLeast k, .tod i | .atLeast k, .dec _ i => decide (k ≤ i)
+  | .atMost k, .int i | .atMost k, .float i | .atMost k, .date i | .atMost k, .ts i
+  | .atMost k, .tod i | .atMost k, .dec _ i => decide (i ≤ k)
   | _, _ => true
 
 /-- When a scalar black box may raise. -/
@@ -205,17 +214,17 @@ def scalars : List Scalar := [
   -- infinity, and else in [-1, 1] (`duckdb-list-vectors`): at least `-1.0`,
   -- as NaN is above every number. `array_*` are the same functions.
   { name := "list_cosine_similarity", args := [.doubles, .doubles], result := .double,
-    raises := .sometimes, laws := [.atLeast (-codeOne)], sample := .int 0 },
+    raises := .sometimes, laws := [.atLeast (-codeOne)], sample := .float 0 },
   -- `1 - list_cosine_similarity`: in [0, 2], NaN or NULL likewise.
   { name := "list_cosine_distance", args := [.doubles, .doubles], result := .double,
-    raises := .sometimes, laws := [.atLeast 0], sample := .int 0 },
+    raises := .sometimes, laws := [.atLeast 0], sample := .float 0 },
   -- The Euclidean distance: `0.0` for empty lists, so not NULL.
   { name := "list_distance", args := [.doubles, .doubles], result := .double,
-    raises := .sometimes, laws := [.nonNull, .atLeast 0], sample := .int 0 },
+    raises := .sometimes, laws := [.nonNull, .atLeast 0], sample := .float 0 },
   { name := "list_inner_product", args := [.doubles, .doubles], result := .double,
-    raises := .sometimes, laws := [.nonNull], sample := .int 0 },
+    raises := .sometimes, laws := [.nonNull], sample := .float 0 },
   { name := "list_negative_inner_product", args := [.doubles, .doubles], result := .double,
-    raises := .sometimes, laws := [.nonNull], sample := .int 0 },
+    raises := .sometimes, laws := [.nonNull], sample := .float 0 },
   -- Of lists of length 3; it raises on others.
   { name := "array_cross_product", args := [.doubles, .doubles], result := .doubles,
     raises := .sometimes, laws := [.nonNull], sample := .list [] },
@@ -245,49 +254,49 @@ def scalars : List Scalar := [
     laws := [.nonNull], sample := .int 0 },
   { name := "try_varchar_bigint", args := [.str], result := .int, sample := .int 0 },
   { name := "varchar_double", args := [.str], result := .double, raises := .sometimes,
-    laws := [.nonNull], sample := .int 0 },
-  { name := "try_varchar_double", args := [.str], result := .double, sample := .int 0 },
+    laws := [.nonNull], sample := .float 0 },
+  { name := "try_varchar_double", args := [.str], result := .double, sample := .float 0 },
   { name := "varchar_boolean", args := [.str], result := .bool, raises := .sometimes,
     laws := [.nonNull], sample := .bool false },
   { name := "try_varchar_boolean", args := [.str], result := .bool, sample := .bool false },
   { name := "varchar_date", args := [.str], result := .date, raises := .sometimes,
-    laws := [.nonNull], sample := .int 0 },
-  { name := "try_varchar_date", args := [.str], result := .date, sample := .int 0 },
+    laws := [.nonNull], sample := .date 0 },
+  { name := "try_varchar_date", args := [.str], result := .date, sample := .date 0 },
   { name := "varchar_timestamp", args := [.str], result := .timestamp, raises := .sometimes,
-    laws := [.nonNull], sample := .int 0 },
-  { name := "try_varchar_timestamp", args := [.str], result := .timestamp, sample := .int 0 }]
+    laws := [.nonNull], sample := .ts 0 },
+  { name := "try_varchar_timestamp", args := [.str], result := .timestamp, sample := .ts 0 }]
 
 /-- The aggregate black boxes. -/
 def aggregates : List Aggregate := [
   -- `entropy(x)`: the Shannon entropy, in bits, of the counts of the
   -- distinct values; `0.0` without values. A double at least `+0.0`.
-  { name := "entropy", arg := .any, result := .double, empty := .int 0,
-    laws := [.nonNull, .atLeast 0], sample := .int 0 },
+  { name := "entropy", arg := .any, result := .double, empty := .float 0,
+    laws := [.nonNull, .atLeast 0], sample := .float 0 },
   -- The statistical aggregates of doubles (#326); the parser converts
   -- integers to doubles, as DuckDB does. NULL without values.
   -- `product(x)`: the product, in DuckDB's order.
-  { name := "product", arg := .double, result := .double, laws := [.nonNull], sample := .int 0 },
+  { name := "product", arg := .double, result := .double, laws := [.nonNull], sample := .float 0 },
   -- `kahan_sum(x)` (also `fsum`, `sumkahan`) and `favg(x)`: Kahan's
   -- compensated sum and its mean (`duckdb-kahan-sum`).
-  { name := "kahan_sum", arg := .double, result := .double, laws := [.nonNull], sample := .int 0 },
-  { name := "favg", arg := .double, result := .double, laws := [.nonNull], sample := .int 0 },
+  { name := "kahan_sum", arg := .double, result := .double, laws := [.nonNull], sample := .float 0 },
+  { name := "favg", arg := .double, result := .double, laws := [.nonNull], sample := .float 0 },
   -- `sem(x)`: the standard error of the mean, `0.0` for one value.
   { name := "sem", arg := .double, result := .double, laws := [.nonNull, .atLeast 0],
-    sample := .int 0 },
+    sample := .float 0 },
   -- `mad(x)`: the median of the absolute deviations from the median.
   { name := "mad", arg := .double, result := .double, laws := [.nonNull, .atLeast 0],
-    sample := .int 0 },
+    sample := .float 0 },
   -- `kurtosis(x)` (of a sample, NULL for fewer than 4 values),
   -- `kurtosis_pop(x)` (NULL for fewer than 2 values) and `skewness(x)` (for
   -- fewer than 3), both NULL also for equal ones. They raise where a moment is out of range: on an infinity
   -- or NaN, or a value whose fourth (third, for `skewness`) power
   -- overflows, from about `1e77` (`duckdb-moments`).
   { name := "kurtosis", arg := .double, result := .double, raises := .sometimes,
-    sample := .int 0 },
+    sample := .float 0 },
   { name := "kurtosis_pop", arg := .double, result := .double, raises := .sometimes,
-    sample := .int 0 },
+    sample := .float 0 },
   { name := "skewness", arg := .double, result := .double, raises := .sometimes,
-    sample := .int 0 }]
+    sample := .float 0 }]
 
 /-- Each name once, a scalar's or an aggregate's. -/
 example : (scalars.map (·.name) ++ aggregates.map (·.name)).Nodup :=
@@ -406,9 +415,9 @@ def evalScalar : String → List Value → Value
   | "base64", [.str s] => .str (base64 s)
   | "octet_length", [.str s] | "strlen", [.str s] => .int s.utf8ByteSize
   -- The sign of `±0.0` and of NaN is not in their codes.
-  | "signbit", [.int c] =>
+  | "signbit", [.float c] =>
     if c == 0 || c == FloatCode.nan then unevaluated "signbit at ±0.0 or NaN" else .bool (c < 0)
-  | "yearweek", [.int d] => yearweek d
+  | "yearweek", [.date d] => yearweek d
   | "bit_count", [.int i] => .int (bitCount i)
   | "list_sum", [.list vs] => match listSum vs with
     | some n => .int n
@@ -573,7 +582,7 @@ theorem base64_str (s : String) : ∃ t, callScalar "base64" [.str s] = .str t :
 
 /-- `entropy` over values is a double at least `+0.0`. -/
 theorem entropy_nonneg {vs : List Value} (hne : vs ≠ []) :
-    ∃ c, callAgg "entropy" vs = .int c ∧ 0 ≤ c := by
+    ∃ c, callAgg "entropy" vs = .float c ∧ 0 ≤ c := by
   have hf : aggregate? "entropy" = some (aggregates.head (by decide)) := rfl
   have h := Aggregate.call_ok (aggregate?_mem hf) hne
   simp only [callAgg, hf]
