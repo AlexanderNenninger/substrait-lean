@@ -97,7 +97,7 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
     | some p =>
       obtain ⟨p1, p2⟩ := p
       have := Value.numPair_self hp
-      simp only [Option.some.injEq, decide_eq_true_eq]; omega
+      simp only [decide_eq_true_eq]; omega
   all_goals
     cases hp : u.numPair v with
     | some p =>

@@ -68,8 +68,8 @@ def test_the_table_is_leans():
         if b.kind == "scalar":
             assert r["strict"] == b.strict
         else:
-            # A double's code: `0` is `+0.0`.
-            assert r["empty"] == ({"i64": "0"} if b.empty == 0.0 else {"null": {"i64": {}}})
+            # A double: `+0.0` (#923).
+            assert r["empty"] == ({"fp64": 0} if b.empty == 0.0 else {"null": {"i64": {}}})
 
 
 def test_a_black_box_is_under_sverifys_urn():

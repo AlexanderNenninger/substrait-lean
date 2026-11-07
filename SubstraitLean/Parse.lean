@@ -1590,9 +1590,12 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
   | _, [a, b], [(_, s₁), (_, s₂)] =>
     if comparisonFns.contains name then
       -- Both sides as decimals of the larger scale: values of one kind
-      -- compare (`Value.numPair`, #923).
+      -- compare (`Value.numPair`, #923). A side that is already a decimal
+      -- of that scale stays as it is, so contracts read its bounds.
       let s := max s₁ s₂
-      let side (k : Nat) (e : Expr) : Expr := .un (.dkind 38 s) (upscale k e)
+      let side (k : Nat) (e : Expr) : Expr := match e.kind cols with
+        | .dec _ s' => if k = 0 ∧ s' = s then e else .un (.dkind 38 s) (upscale k e)
+        | _ => .un (.dkind 38 s) (upscale k e)
       return some (← mkCall name [side (s - s₁) a, side (s - s₂) b])
     if decimalPassThrough.contains name && oneScale then return none
     throw s!"{name} of DECIMAL is not supported yet (#27)"

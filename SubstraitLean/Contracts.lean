@@ -2912,16 +2912,17 @@ theorem meetStrs_mem {x y : Option (List String)} {s : String} (hx : x.all (·.c
 def AVal.meetEq (a b : AVal) : AVal :=
   ⟨false, (match a.int, b.int with | some x, some y => some (x.meet y) | _, _ => none),
    a.tt && b.tt, a.ff && b.ff, a.str && b.str, meetStrs a.strs b.strs,
-   if a.int.isSome then a.nk else b.nk⟩
+   a.nk.orElse fun _ => b.nk⟩
 
 theorem AVal.meetEq_mem {a b : AVal} {v : Value} (ha : a.Mem v) (hb : b.Mem v) (hn : v ≠ .null) :
     (a.meetEq b).Mem v := by
   rcases AVal.mem_cases ha with ⟨rfl, _⟩ | ⟨k, i, x, rfl, hx, hxi, hk⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ |
     ⟨s, rfl, h⟩ | ⟨_, rfl | rfl, h⟩
   · exact absurd rfl hn
-  · obtain ⟨y, hy, hyi, _⟩ := AVal.mem_val.mp hb
+  · obtain ⟨y, hy, hyi, hk'⟩ := AVal.mem_val.mp hb
     rw [AVal.mem_val]
-    exact ⟨x.meet y, by simp [AVal.meetEq, hx, hy], Bound.mem_meet hxi hyi, by simp [AVal.meetEq, hx, hk]⟩
+    refine ⟨x.meet y, by simp [AVal.meetEq, hx, hy], Bound.mem_meet hxi hyi, ?_⟩
+    cases ha : a.nk <;> simp_all [AVal.meetEq]
   all_goals simp_all [AVal.Mem, AVal.meetEq]
   all_goals exact meetStrs_mem h.2 hb.2
 

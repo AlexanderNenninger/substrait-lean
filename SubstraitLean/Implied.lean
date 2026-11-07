@@ -184,10 +184,10 @@ def geTransfer (env : List AVal) (i j : Nat) (strict : Bool) : List AVal :=
     | _, _ => none
   let ai' : AVal :=
     ⟨ai.null, ii, ai.tt && (aj.tt || aj.ff), ai.ff && (aj.tt || aj.ff), ai.str && aj.str, ai.strs,
-      ai.nk⟩
+      ai.nk.orElse fun _ => aj.nk⟩
   let aj' : AVal :=
     ⟨aj.null, ij, aj.tt && (ai.tt || ai.ff), aj.ff && (ai.tt || ai.ff), aj.str && ai.str, aj.strs,
-      aj.nk⟩
+      aj.nk.orElse fun _ => ai.nk⟩
   refineCol (refineCol env i fun _ => ai') j fun _ => aj'
 
 def cmpAtom (env : List AVal) : Expr → List AVal
@@ -262,16 +262,30 @@ def Value.kind : Value → Nat
   | .float _ => 5 | .date _ => 6 | .ts _ => 7 | .tod _ => 8 | .struct _ => 9
   | .dec s _ => 10 + s
 
+/-- A value of a number's kind is a number of that kind. -/
+theorem Value.kind_val_eq {k : NumKind} {n : Int} {v : Value} (h : (k.val n).kind = v.kind) :
+    ∃ m, v = k.val m := by
+  cases k <;> cases v <;> simp [Value.kind, NumKind.val] at h ⊢
+  all_goals omega
+
 theorem AVal.mem_transfer {a b a' : AVal} {u v : Value} (hu : a.Mem u) (hv : b.Mem v)
     (hk : u.kind = v.kind) (hn : a'.null = a.null) (htt : a'.tt = (a.tt && (b.tt || b.ff)))
     (hff : a'.ff = (a.ff && (b.tt || b.ff))) (hs : a'.str = (a.str && b.str))
-    (hss : a'.strs = a.strs) (hnk : a'.nk = a.nk)
+    (hss : a'.strs = a.strs) (hnk : a'.nk = a.nk.orElse fun _ => b.nk)
     (hi : ∀ (k : NumKind) n, u = k.val n → ∃ c, a'.int = some c ∧ c.Mem n) : a'.Mem u := by
   rcases AVal.mem_cases hu with ⟨rfl, h⟩ | ⟨k, n, _, rfl, _, _, hk'⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ |
       ⟨_, rfl, h1, h2⟩ | ⟨_, rfl | rfl, h1, h2, h3⟩
   · simpa [AVal.Mem, hn] using h
   · obtain ⟨c, hc, hm⟩ := hi k n rfl
-    exact AVal.mem_val.mpr ⟨c, hc, hm, by rw [hnk]; exact hk'⟩
+    refine AVal.mem_val.mpr ⟨c, hc, hm, ?_⟩
+    rw [hnk]
+    cases ha : a.nk with
+    | some k' => rw [ha] at hk'; exact hk'
+    | none =>
+      -- The other side is a number of the same kind.
+      obtain ⟨m, rfl⟩ := Value.kind_val_eq hk
+      obtain ⟨_, _, _, hb⟩ := AVal.mem_val.mp hv
+      simpa using hb
   all_goals
     cases v <;> simp [Value.kind] at hk <;> try omega
     all_goals simp_all [AVal.Mem]
