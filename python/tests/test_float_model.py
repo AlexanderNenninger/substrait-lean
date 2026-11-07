@@ -174,23 +174,20 @@ def test_a_window_over_a_key_has_a_class() -> None:
         route = report.routes[engine]
         assert route.kind == "translated"
         assert route.cls in routes.CLASSES
-        assert route.cls == "exact" and route.evidence == "tested"
+        # The window's sort keys are options the plan meets (#1032): the
+        # evidence is that of the engine's row for their NULL placement.
+        assert route.cls == "exact"
+        assert route.evidence == ("tested" if engine == "duckdb" else "proved")
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
-def test_a_window_sum_of_doubles_runs_tested_with_no_bound(con, engine) -> None:
-    """The plan's bound leaves out window functions (#1032). A window `SUM`
-    of doubles still runs, but nothing claims it exact or proved: its column
-    has no bound, its route is observed on tested evidence, and a stated
-    tolerance on it is refused, naming the issue that lifts it."""
+def test_a_window_sum_of_doubles_is_within_the_plans_bound(con, engine) -> None:
+    """A window `SUM` of doubles is the engine's own, within the bound of the
+    input's row cap, as a grouped one is (#1032): not exact (Polars shims its
+    double sums)."""
     r = con.table("readings")
-    expr = r.mutate(s=r.x.sum().over(group_by=r.k))
-    report = sv.verify(expr, requires=REQ)
-    assert report.proved
-    assert report._epsilon is not None and report._epsilon["s"]["abs"] is None
-    assert "#1032" in report._epsilon["s"]["why"]
+    report = sv.verify(r.mutate(s=r.x.sum().over(group_by=r.k)), requires=REQ)
+    assert report.proved and report.route(engine).cls == (
+        "observed" if engine == "duckdb" else "shim"
+    )
     assert report.run(con, engine).num_rows == 3
-    route = report.routes[engine]
-    assert route.cls == "observed" and route.evidence == "tested"
-    tight = sv.verify(expr, requires=REQ, ensures=[sv.equivalent(floats=sv.within(abs=1e-3))])
-    assert not tight.proved and "s has no bound" in str(tight) and "#1032" in str(tight)

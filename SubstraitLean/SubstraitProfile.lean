@@ -109,6 +109,7 @@ def Profile.substrait.table : ProfileTable where
     -- `any_value` "selects an arbitrary value"; the degenerate cases are ST-3.
     (none, "sum_order", openAt "sum_order"),
     (none, "stat_algo", openAt "stat_algo"),
+    (none, "window_sum_algo", openAt "window_sum_algo"),
     (none, "stat_degenerate", openAt "stat_degenerate"),
     -- `avg` of an integer type returns it, and "truncates partial values".
     (none, "avg_int_result", .oneOf ["DECLARED_TYPE"]),

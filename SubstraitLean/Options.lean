@@ -109,6 +109,14 @@ def options : List OptionSpec := [
   -- `EXACT`: the correctly rounded formula over the exact moments, the reference's (D30).
   { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN", "EXACT"],
     extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
+  -- How an engine sums a window's frame of doubles (#1032): each frame
+  -- anew (`RECOMPUTE`, the reference's), a tree of partial sums (`TREE`), an
+  -- accumulator the frame only adds to (`RUNNING_ADD`), or one that adds the
+  -- rows entering a frame and subtracts those leaving it (`SLIDING`). The
+  -- first three are sums of the frame's values in some order; `SLIDING` is
+  -- not, and has no bound relative to the frame's own values.
+  { id := "window_sum_algo", substrait := none,
+    core := ["RECOMPUTE", "TREE", "RUNNING_ADD", "SLIDING"] },
   { id := "stat_degenerate", substrait := none, core := ["NULL", "NAN", "ERROR"],
     extra := [("NAN", "duckdb-corr")] },
   { id := "avg_int_result", substrait := none, core := ["DECLARED_TYPE", "FP64", "EXACT_TRUNCATE"],
@@ -496,6 +504,7 @@ def Profile.reference.table : ProfileTable where
     (none, "sum_order", .oneOf ["EXACT"]),
     -- D30: the exact moments rounded once; engines keep their own algorithms.
     (none, "stat_algo", .oneOf ["EXACT"]),
+    (none, "window_sum_algo", .oneOf ["RECOMPUTE"]),
     (none, "stat_degenerate", .oneOf ["NULL"]),
     (none, "avg_int_result", .oneOf ["DECLARED_TYPE"]),
     (none, "quantile_interp", .oneOf ["BETWEEN"]),
