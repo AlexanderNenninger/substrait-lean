@@ -755,6 +755,30 @@ def test_greatest_and_least_of_many_columns_run_in_one_pick():
     assert key == want
 
 
+def test_a_window_sum_of_both_infinities_is_nan_as_in_the_reference():
+    """A window `SUM` or `AVG` whose frame holds `+inf` and `-inf` is NaN in the
+    reference (`Rel.window`'s rows are not checked as an aggregate's are), as
+    DuckDB gives it; Polars's translation gave a domain error (#1062)."""
+    import math
+
+    import ibis
+    import pyarrow as pa
+    from ibis import _
+
+    import sverify as sv
+
+    con = sv.connect()
+    con.put("t", pa.table({"i": [0, 1, 2], "x": [1.0, math.inf, -math.inf]}))
+    t = con.table("t")
+    w = ibis.window(order_by=t.i, preceding=1, following=0)
+    report = sv.verify(
+        t.mutate(s=t.x.mean().over(w)).order_by("i"), requires={"t": [_.i.notnull()]}
+    )
+    for engine in ("duckdb", "polars"):
+        got = report.run(con, engine, unverified=True).column("s").to_pylist()
+        assert got[:2] == [1.0, math.inf] and math.isnan(got[2]), engine
+
+
 def test_aggregates_group_by_computed_keys():
     """sverify's Polars aggregate groups by computed key columns (`__sv_g0`,
     …), never by an input column as it is. PL-14: on Polars 2.1.0's streaming
