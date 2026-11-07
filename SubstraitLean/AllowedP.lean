@@ -321,30 +321,6 @@ end Mono
 
 /-! ## The reference -/
 
-/-! The reference's functions are `Impl.lean`, and `Expr.eval`, `Rel.eval` and
-their helpers are the `Impl.lean` instances of one definition: the agreement
-lemmas below hold by `rfl`, kept for one release. -/
-
-theorem Expr.evalI_lean (row : Row) (e : Expr) : e.eval row Impl.lean = e.eval row := rfl
-
-theorem evalI_lean_fun :
-    (fun (e : Expr) row => e.eval row Impl.lean) = fun e row => e.eval row := rfl
-
-theorem leftJoinRowI_lean (on : Expr) (n : Nat) (ys : Relation) (x : Row) :
-    leftJoinRow on n ys x Impl.lean = leftJoinRow on n ys x := rfl
-
-theorem hasMatchI_lean (on : Expr) (ys : Relation) (x : Row) :
-    hasMatch on ys x Impl.lean = hasMatch on ys x := rfl
-
-theorem Measure.inputsI_lean (m : Measure) (rows : Relation) :
-    m.inputs rows Impl.lean = m.inputs rows := rfl
-
-theorem groupKeyI_lean (gs : List Expr) (row : Row) : groupKey gs row Impl.lean = groupKey gs row :=
-  rfl
-
-theorem groupRowsI_lean (gs : List Expr) (rows : Relation) (k : Row) :
-    groupRows gs rows k Impl.lean = groupRows gs rows k := rfl
-
 /-- The reference's choices of the relational options. -/
 theorem reference_allows_sum :
     Profile.reference.table.allows "agg.fsum" "sum_order" [] = ["EXACT"] := by
@@ -545,39 +521,11 @@ theorem Rel.RefinesPUpTo.trans {o : Obs} {c₁ c₂ c₃ : ObsCtx} (hc : ObsCtx.
     obtain ⟨o₂, h₂', e₂⟩ := h₂ o₁ h₁'
     exact ⟨o₂, h₂', e₁.trans hc e₂⟩
 
-theorem Rel.RefinesPUpTo_mono {o' o : Obs} {ctx : ObsCtx} (hc : ctx.WF) (h : o'.le o = true)
-    {cat : Catalog} {Q P : ProfileTable} {q r : Rel} (hq : q.RefinesPUpTo o' ctx cat Q P r) :
-    q.RefinesPUpTo o ctx cat Q P r :=
-  fun out ho => by
-    obtain ⟨out', h', e⟩ := hq out ho
-    exact ⟨out', h', Relation.Equiv_mono hc h e⟩
-
 theorem Rel.RefinesP.refl (cat : Catalog) (P : ProfileTable) (r : Rel) : r.RefinesP cat P P r :=
   Rel.RefinesPUpTo.refl .default cat P r
 
 theorem Rel.RefinesP.trans {cat : Catalog} {P Q R : ProfileTable} {p q r : Rel}
     (h₁ : p.RefinesP cat R Q q) (h₂ : q.RefinesP cat Q P r) : p.RefinesP cat R P r :=
   Rel.RefinesPUpTo.trans (.self .default fun _ _ _ _ _ e₁ e₂ => e₁.trans e₂) h₁ h₂
-
-/-- A narrower profile, the same plan: `(t, r) ⊑ (u, r)`, exactly. -/
-theorem Rel.RefinesPUpTo.of_le {o : Obs} {ctx : ObsCtx} (hc : ctx.WF) {cat : Catalog}
-    {t u : ProfileTable} (h : t.Le u) (r : Rel) : r.RefinesPUpTo o ctx cat t u r :=
-  fun out ho => ⟨out, Rel.AllowedP_mono h ho, .refl hc out⟩
-
-/-- A narrower profile, the same plan: `(t, r) ⊑ (u, r)`. -/
-theorem Rel.RefinesP.of_le {cat : Catalog} {t u : ProfileTable} (h : t.Le u) (r : Rel) :
-    r.RefinesP cat t u r :=
-  Rel.RefinesPUpTo.of_le .default h r
-
-/-- `Rel.RefinesUpTo` is `⊑` up to the same observation under the reference. -/
-theorem Rel.refinesUpTo_iff_refinesPUpTo {o : Obs} {ctx : ObsCtx} {cat : Catalog} {q r : Rel} :
-    q.RefinesUpTo o ctx cat r ↔
-      q.RefinesPUpTo o ctx cat Profile.reference.table Profile.reference.table r := by
-  simp only [Rel.RefinesUpTo, Rel.RefinesPUpTo, Rel.allowedP_reference]
-
-/-- `Rel.RefinesBag` is `⊑` under the reference. -/
-theorem Rel.refines_iff_refinesP {cat : Catalog} {q r : Rel} :
-    q.RefinesBag cat r ↔ q.RefinesP cat Profile.reference.table Profile.reference.table r :=
-  Rel.refinesUpTo_iff_refinesPUpTo
 
 end Substrait
