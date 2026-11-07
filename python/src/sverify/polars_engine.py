@@ -1910,6 +1910,8 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         s = pl.Series(vs, dtype=pl.Float64)
         ddof = 1 if fn.endswith("_samp") else 0
         r = float(s.std(ddof=ddof) if fn.startswith("std") else s.var(ddof=ddof))  # pyrefly: ignore
+        # D30's clamp shim: at least 0, NaN kept (`Stat.clamp_near`, `FloatMoments.lean`).
+        r = r if math.isnan(r) else max(0.0, r)
         if math.isinf(r):
             # Finite values whose variance overflows (`Measure.makesInf`, #575).
             raise InfiniteResult(f"{fn} overflows to infinity")
@@ -2075,11 +2077,14 @@ class Measure:
                 shims.max_nan_greatest(r, pl.col(nan)),
             )
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
-            # `AggFn.var` (#54) with Polars's algorithm (`stat_algo = GENERIC`
-            # allows it); a sample of one is NULL in both. An infinity makes
+            # `AggFn.var` (#54) with Polars's algorithm, within the plan's
+            # bound of the exact moments rounded once (D30); a sample of one is
+            # NULL in both. An infinity makes
             # a deviation NaN (#257); finite values may overflow (#575).
             ddof = 1 if self.fn.endswith("_samp") else 0
             agg = v.std(ddof=ddof) if self.fn.startswith("std") else v.var(ddof=ddof)
+            # D30's clamp shim: at least 0, NaN kept (`Stat.clamp_near`, `FloatMoments.lean`).
+            agg = pl.when(agg.is_nan()).then(agg).otherwise(agg.clip(lower_bound=0.0))
             bad, inf = f"{name}_bad", f"{name}_inf"
             return NativeAgg(
                 {name: canon(agg), bad: v.is_infinite().any(),

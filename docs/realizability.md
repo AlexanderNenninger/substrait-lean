@@ -39,9 +39,9 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 24 | 1 | 1 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 14 | 1 | 2 | 8 | 0 | 15 | 7 |
-| spark | 4.3.0 | `Rel.spark_sound` | 6 | 25 | 1 | 1 | 3 | 0 | 14 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 23 | 1 | 2 | 4 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 3 | 8 | 0 | 15 | 7 |
+| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 2 | 3 | 0 | 14 | 0 |
 
 Rows per evidence level:
 
@@ -117,7 +117,7 @@ Rows per evidence level:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `ANY`, `SCALED_CONSTANT` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum`; [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
-| every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | proof | proved `FloatBounds.StdModel.core_var_chan`; [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
+| every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | probe | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [duckdb-quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json) |
@@ -179,7 +179,7 @@ Rows per evidence level:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum`; [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
-| every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | probe | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json) |
+| every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | probe | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../characterization/polars/facts/polars-avg-int.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [polars-quantile](../characterization/polars/facts/polars-quantile.json) |
@@ -248,7 +248,7 @@ Refused on Polars, with no expression there:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `ANY` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum`; [spark-sum-double](../characterization/spark/facts/spark-sum-double.json), [spark-avg-double](../characterization/spark/facts/spark-avg-double.json) |
-| every | `stat_algo` | open | `GENERIC` | `WELFORD_CHAN` | native | proof | proved `FloatBounds.StdModel.core_var_chan`; [spark-var-stddev](../characterization/spark/facts/spark-var-stddev.json), [spark-covar](../characterization/spark/facts/spark-covar.json), [spark-corr](../characterization/spark/facts/spark-corr.json) |
+| every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [spark-var-stddev](../characterization/spark/facts/spark-var-stddev.json), [spark-covar](../characterization/spark/facts/spark-covar.json), [spark-corr](../characterization/spark/facts/spark-corr.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `int_avg_decimal` (expression) | proof | proved `Spark.int_avg_decimal`; [spark-avg-int](../characterization/spark/facts/spark-avg-int.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | fuzz | tested: [spark-quantile](../characterization/spark/facts/spark-quantile.json) |

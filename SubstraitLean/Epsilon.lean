@@ -118,6 +118,40 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
     else none
   return (unscale t, rel)
 
+/-- The bound of a `VAR_*` or `STDDEV_*` over at most `rows` doubles in
+`[-B, B]` (D30): an engine's algorithm is within `StatProps`' `varTol` of
+the exact `V = S / d` (`core_var_chan` in `float-bounds`), the reference's
+value within `u · V` of it, so the two are within the sum. With
+`Q' ≤ n (B + tiny)²`, `√(Q' S) ≤ n (B + tiny) B` and `V ≤ n B² / d`. A
+deviation adds `sdNear`'s terms. The composition is not mechanised, so the
+bound is not marked proved. `COVAR_*` and `CORR` take pairs, whose bounds
+the abstract interpreter does not give per side: none yet. -/
+def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float := do
+  let .var sample sqrt := m.fn | none
+  let a := m.arg.absD env []
+  guard a.intsOnly
+  let b ← a.int
+  let lo ← b.lo
+  let hi ← b.hi
+  let n ← rows
+  guard (n ≤ 2 ^ 32)
+  let x := max (FloatCode.toFloat lo).abs (FloatCode.toFloat hi).abs
+  guard (!x.isNaN && !x.isInf && x ≤ Float.scaleB 1.0 398)
+  let u := Float.scaleB 1.0 (-53)
+  let tiny := Float.scaleB 1.0 (-1022)
+  let nf := Float.ofNat n
+  let d := Float.ofNat (if sample then max 1 (n - 1) else max 1 n)
+  let q := nf * (x + tiny) * (x + tiny)
+  let r := nf * (x + tiny) * x
+  let varTol := (160.0 * nf * u * r + 3970.0 * nf * nf * u * u * q + 800.0 * nf * nf * u * tiny) / d
+  let v := nf * x * x / d
+  let tv := (varTol + u * v) * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074)
+  if sqrt then
+    let st := tv.sqrt
+    return (st + u * (v.sqrt + st) + u * tiny + u * v.sqrt) * (1.0 + Float.scaleB 1.0 (-40)) +
+      Float.scaleB 1.0 (-1074)
+  else return tv
+
 /-! ## Per engine: the error carried through arithmetic
 
 `epsilon` below is the summation order's share, the same for every engine.
@@ -431,6 +465,10 @@ def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : Str
             ea == 0.0 && pa && pf && ordersProved)
         | .count => return (0.0, pf)
         | .min | .max => return (ea, pa && pf)
+        -- D30: an engine's statistic is within the plan's bound of the
+        -- reference's exact moments rounded once.
+        | .var _ _ => if ea == 0.0 && pf then return (← statEps env m r.maxRows, false) else none
+        | .cov _ | .corr => none
         | _ => if ea == 0.0 then some (0.0, false) else none
   | _ => none
 

@@ -142,7 +142,10 @@ def Profile.substrait.obs : ObsTable := [
   (none, "nan_kind", { cls := .refinesUpTo, q := { zeros := .canon } }),
   -- A consumer adds a double `SUM` in an order of its own: within the plan's
   -- bound of the reference's correctly rounded sum (D25, `epsilon_sum_cr`).
-  (none, "sum_order", { cls := .approx, q := { floats := .within "plan" } })]
+  (none, "sum_order", { cls := .approx, q := { floats := .within "plan" } }),
+  -- A consumer's own algorithm for a statistical aggregate: within the plan's
+  -- bound of the exact moments rounded once (D30).
+  (none, "stat_algo", { cls := .approx, q := { floats := .within "plan" } })]
 
 /-! ## Checks -/
 

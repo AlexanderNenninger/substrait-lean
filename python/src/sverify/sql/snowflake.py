@@ -305,6 +305,12 @@ class SnowflakeDialect(Dialect):
             "reference's bounds (Snowflake behaviour recorded privately)"
         )
 
+    def window_float_var(self, sample: bool, sqrt: bool, v: str, over: str) -> str:
+        raise Unsupported(
+            "Snowflake's VAR_SAMP, VAR_POP and STDDEV of doubles are outside the reference's "
+            "bounds (Snowflake behaviour recorded privately)"
+        )
+
     def float_sum(self, v: str, o: str) -> str:
         raise Unsupported(
             "Snowflake does not add doubles in a given order, and the rounding of a SUM or "
