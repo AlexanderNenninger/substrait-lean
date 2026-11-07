@@ -17,9 +17,9 @@ and that the input rows meet the contract's preconditions.
 | Guarantee | Theorem | Module |
 |---|---|---|
 | A proved postcondition is TRUE on every output row | `contract_sound` | `Contracts.lean` |
-| … in every row order the reference allows | `contract_sound_all` | `Ties.lean` |
-| A derived key holds on the output | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean`, `Ties.lean` |
-| A window's result does not depend on how its ties are broken | `Rel.window_deterministic`, `Rel.keyedWindows_sound` | `Keys.lean` |
+| … in every row order the reference allows | `contract_sound_all` | `Contracts.lean` |
+| A derived key holds on the output | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean` |
+| A window's result does not depend on how its ties are broken | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `Rel.mayIssues_sound` | `Safety.lean` |
 | Row caps rule out `SUM` overflow | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | The checker decides well-formedness | `Rel.checkWF_iff` | `Check.lean` |
@@ -178,7 +178,7 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
-| `Ties.lean` | Every row order the reference allows, and the checkers' soundness under all of them |
+| `Ties.lean` | Every row order the reference allows is one `Rel.Allowed` allows, and row caps keep them |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps |

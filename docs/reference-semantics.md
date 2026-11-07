@@ -55,7 +55,7 @@ A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
 of every allowed result. Where a plan leaves ties open, the contract checker
 proves its postconditions and keys over every order
-(`Rel.OrderAllowed`, `contract_sound_all`, `SubstraitLean/Ties.lean`), and
+(`Rel.OrderAllowed`, `contract_sound_all`, `SubstraitLean/OrderAllowed.lean`, `SubstraitLean/Contracts.lean`), and
 `Rel.eval`'s order is the deterministic profile's
 ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
 `Report.deterministic` is false where rows may tie in the order of a window,

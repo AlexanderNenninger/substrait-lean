@@ -220,4 +220,18 @@ theorem Rel.orderAllowed_arity {cat : Catalog} (hcat : cat.WF) :
     obtain ⟨_, _, _, _, rfl⟩ := mem_unnestRow h
     simp [arity, orderAllowed_arity hcat hwf.1 hi x hx]
 
+/-! ## Windows keyed on every order -/
+
+/-- Windows whose partition and sort columns contain a key on every order. -/
+def WindowKeys.SoundAll (T : WindowKeys) (cat : Catalog) : Prop :=
+  ∀ r part sort, T r part sort = true → r.WF cat → ∀ {i : Relation}, r.OrderAllowed cat i →
+    KeyOn (part ++ sort.map (·.col)) i
+
+theorem WindowKeys.SoundAll.sound {T : WindowKeys} {cat : Catalog} (h : T.SoundAll cat) :
+    T.Sound cat :=
+  fun r part sort ht hwf => h r part sort ht hwf (r.eval_orderAllowed cat)
+
+theorem WindowKeys.none_soundAll (cat : Catalog) : WindowKeys.none.SoundAll cat :=
+  fun _ _ _ h => by simp [WindowKeys.none] at h
+
 end Substrait

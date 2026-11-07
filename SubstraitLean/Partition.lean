@@ -1387,7 +1387,7 @@ theorem Sharding.coDisjoint {S : String → Bool} {K : String → Option (List N
 /-- **Sharded evaluation**: a linear plan's result on the whole tables is the
 union of its results on the shards. -/
 theorem Rel.eval_sharded {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys} {cat : Catalog}
-    {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) :
+    {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.SoundAll cat) :
     ∀ {r : Rel}, r.WF cat → r.linear S K T cat = true → (r.eval cat).Perm (cs.flatMap r.eval)
   | .read t, _, h => hs.split t h
   | .values _ _, _, h | .fetch _ _ _, _, h => by
@@ -1400,7 +1400,7 @@ theorem Rel.eval_sharded {S : String → Bool} {K : String → Option (List Nat)
       | some kc =>
         simp only [hk, List.all_eq_true, decide_eq_true_eq] at hkm
         simp only [eval]
-        exact windowEval_sharded (eval_sharded hs hT hw.1 hl) (hT r part sort hTw hw.1)
+        exact windowEval_sharded (eval_sharded hs hT hw.1 hl) (hT.sound r part sort hTw hw.1)
           ((hs.rows_disjoint hw.1 hl hk).imp fun hab a ha b hb => by
             cases hsp : samePart part a b
             · rfl
@@ -1537,7 +1537,7 @@ theorem Measure.splitOk_of_twoPhase {S : String → Bool} {K : String → Option
 
 /-- **Two-phase aggregation over shards**: aggregate each shard, then combine. -/
 theorem Rel.eval_twoPhase {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys} {cat : Catalog}
-    {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) (hne : cs ≠ []) {r : Rel} {gs : List Expr}
+    {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.SoundAll cat) (hne : cs ≠ []) {r : Rel} {gs : List Expr}
     {ms : List Measure} (hw : r.WF cat) (hr : r.linear S K T cat = true) (hms : ∀ m ∈ ms, m.twoPhase (r.keyCols S K T cat) = true) :
     (aggregateEval gs ms (r.eval cat)).Perm
       (aggregateEval (keyFields gs.length) (combineMeasures gs.length ms)
@@ -1837,7 +1837,7 @@ theorem aggregateEval_algFinish {gs : List Expr} {ms : List Measure} {rows : Rel
 /-- **Algebraic aggregation over shards**: every shard computes the partials,
 then they are combined and the final expressions give the aggregate. -/
 theorem Rel.eval_algebraic {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys}
-    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) {I : IntArgs}
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.SoundAll cat) {I : IntArgs}
     (hI : I.Sound cat) (hne : cs ≠ []) {r : Rel} {gs : List Expr} {ms : List Measure}
     (hw : r.WF cat) (hr : r.linear S K T cat = true)
     (hms : ∀ m ∈ ms, m.algebraic I r (r.keyCols S K T cat) = true) :
@@ -2309,7 +2309,7 @@ def Rel.shardSplit (S : String → Bool) (K : String → Option (List Nat)) (T :
   if r.linear S K T cat then some (r, .read P) else r.splitAgg S K T cat I P floats
 
 theorem Rel.splitAgg_sound {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys} {P : String}
-    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) {I : IntArgs}
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.SoundAll cat) {I : IntArgs}
     (hI : I.Sound cat) (hne : cs ≠ []) {C : Catalog} :
     ∀ {r p q : Rel}, r.WF cat → r.splitAgg S K T cat I P false = some (p, q) →
       (C P).rows = cs.flatMap p.eval → (r.eval cat).Perm (q.eval C)
@@ -2361,7 +2361,7 @@ theorem Rel.splitAgg_sound {S : String → Bool} {K : String → Option (List Na
 /-- **Sharded evaluation is sound**: run `p` on every shard, put the results
 in table `P`, and `q` gives the plan's result. -/
 theorem Rel.shardSplit_sound {S : String → Bool} {K : String → Option (List Nat)} {T : WindowKeys} {P : String}
-    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.Sound cat) {I : IntArgs}
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hT : T.SoundAll cat) {I : IntArgs}
     (hI : I.Sound cat) (hne : cs ≠ []) {C : Catalog}
     {r p q : Rel} (hw : r.WF cat) (h : r.shardSplit S K T cat I P false = some (p, q))
     (hC : (C P).rows = cs.flatMap p.eval) : (r.eval cat).Perm (q.eval C) := by

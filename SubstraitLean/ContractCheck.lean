@@ -537,7 +537,7 @@ def check (input : Json) : Except String Report := do
   -- One description of the inputs (`KnowledgeEnv.ofSpec`, sound by
   -- `KnowledgeEnv.ofSpec_sound`), computed once per table: the analyses
   -- read it at every read of every pass (#825). The window keys follow
-  -- from it (`KnowledgeEnv.Sound.windows`, `.windowsAll`).
+  -- from it (`KnowledgeEnv.Sound.windows`).
   let know (t : String) : Knowledge :=
     ⟨tableEnv (schemas t) (preOf t), (preOf t).flatMap Expr.factsOf, keysOf t, none⟩
   let knows := names.map fun t => (t, know t)

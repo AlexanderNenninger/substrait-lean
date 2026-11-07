@@ -638,7 +638,7 @@ def Rel.sumsPer (cat : Catalog) (A : String → List AVal) (F : String → List 
 
 theorem Rel.sumsPer_sound (hcat : cat.WF)
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows)
     (hP : ∀ t, ∀ kn ∈ P t, RowsPer kn.1 kn.2 (cat t).rows) :
     ∀ {u : Bool} {r : Rel} {e : Expr}, r.WF cat → r.Small cat → r.HasIssue cat u (.sumWraps, e) →
@@ -739,7 +739,7 @@ An integer `SUM` it leaves out cannot overflow. -/
 theorem Rel.issuesCapped_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {K : String → List (List Nat)} (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows)
     {caps : String → Option Nat} (hcap : ∀ t n, caps t = some n → (cat t).rows.length ≤ n)
     {P : String → List (List Nat × Nat)} (hP : ∀ t, ∀ kn ∈ P t, RowsPer kn.1 kn.2 (cat t).rows)
