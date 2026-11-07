@@ -156,7 +156,7 @@ REFUSED: dict[str, dict[str, str]] = {
     "rolling sum by time": NO_ROW_ORDER,
     "time + interval": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
     "time truncate": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
-    "date from columns": {"polars": "see #271", "snowflake": "grows past what it runs"},
+    "date from columns": {"polars": "see #271", "snowflake": "208 MB", "spark": "heap"},
 }
 
 TIE_FREE = {"rolling sum by time"}
