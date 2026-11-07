@@ -89,7 +89,7 @@ Decided on #185 ("Principles for the reference model"):
 |---|---|---|
 | 1 | **Follows Substrait, options included.** | A function means what its extension YAML says. An option set in the plan is part of its meaning. Where the reference overrides Substrait, it says so, with the reason ([Overrides](#overrides)). |
 | 2 | **The least surprising choice where Substrait is silent**, with its reason. | An option the plan omits, or behaviour the spec leaves open, gets one choice, written down below with the reason. |
-| 3 | **Every engine can follow it with reasonable effort.** | Types keep their declared widths (`i8`…`i64`); there are no unbounded integers. Every choice has a reasonable shim or translation on DuckDB, Polars, DataFusion, Spark and Snowflake, one that can be built and run. |
+| 3 | **Every engine can follow it with reasonable effort.** | Types keep their declared widths (`i8`…`i64`); there are no unbounded integers. Every choice has a reasonable shim or translation on each engine sverify supports, DuckDB, Polars, Spark and Snowflake ([the engines](stability.md#engines)), one that can be built and run. |
 | 4 | **Keeps optimizations provable.** | Filter pushdown, reordering, sharding and incremental maintenance stay provable. A rewrite refines the plan (`Rel.Refines`): it may narrow the set of allowed results, never widen it. This is why an error means "may raise" ([Errors](#errors)). |
 
 ## Overrides
@@ -606,17 +606,12 @@ engine differs ([the engines](stability.md#engines)).
 
 ## Trusted assumptions
 
-What a proof does not cover. A theorem about `Rel.eval` holds for the model;
-these links connect it to a real run.
-
-| Assumption | Where | Status |
-|---|---|---|
-| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`), and every relation an aggregate reads fewer than 2⁶³ (`Rel.sumRows`, #437). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …) and by `SUM` overflow (a `SUM` of values in `[-1, 1]`). | ✓ The theorems that need it take `Rel.Small`; an override of Substrait ([Overrides](#overrides)) |
-| **The frontends** produce the plan the user meant: the Ibis producer, and SQLGlot with sverify's own Substrait producer for SQL ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231), [PR #252](https://github.com/AlexanderNenninger/substrait-lean/pull/252)). The SQLGlot lift writes each function's options explicitly from the source dialect. | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/` | On `main`: the Ibis producer, and the SQLGlot lift for DuckDB's SQL (#252, #264). DataFusion's SQL producer is no longer a frontend (#211) |
-| **Black boxes are DuckDB's functions.** Each black box ([Black boxes](#black-boxes)) means the function DuckDB computes under its name, and DuckDB's keeps its row's laws. | `SubstraitLean/BlackBox.lean` | Tested: DuckDB on the SQL against DuckDB on the plan Lean writes back, and the laws on random data (`python/tests/test_black_box.py`) |
-| **The engines match their profiles.** Tier 1 replays the engine's own tests and fuzzing ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)); Tiers 2 and 3 are differentially tested only. | `characterization/` | Tested, not proved |
-| **The printers and `Parse.lean`.** The JSON parser and writer, the SQL printers and the Polars translator read and write plans faithfully, a shimmed plan's `isNum` as `IS NOT NULL` included. | `SubstraitLean/Parse.lean`, `Write.lean`, `Pretty.lean`, `python/src/sverify/sql/` | Golden and round-trip tests |
-| **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64 for arithmetic. The conversions between integers, decimals and doubles are computed exactly instead (`SubstraitLean/Conversions.lean`), behind `opaque` constants with their proved properties, and `#guard`s compare them with the native ones. An integer or decimal that IEEE would round to `±∞` (from 2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the largest finite double (#257). | `SubstraitLean/Float.lean`, `SubstraitLean/Conversions.lean` | Stated. The bounds of `SUM` and `AVG` are theorems since D25 (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign` in `FloatExact.lean`); the bounds of one `+`, `-`, `*`, `/` and `exp` are six axioms (`FloatCode.add_scaled` … `div_scaled_err` in `Float.lean`, `FloatCode.exp_fin` in `Safety.lean`, [#582](https://github.com/AlexanderNenninger/substrait-lean/issues/582)), proved in [`float-bounds/`](float-bounds.md) from `NativeLink`, the stated link of `Float` to IEEE rounding ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) and of `exp` to the platform's `libm`, within one ulp |
+A theorem about `Rel.eval` holds for the model; what links it to a real run
+is trusted: the size hypothesis (an override of Substrait,
+[Overrides](#overrides)), the frontends, black boxes as DuckDB's functions,
+the engines' match with their profiles, the printers and the parser, and
+native `Float`. [proofs.md, What is trusted](proofs.md#what-is-trusted)
+states each, with its status.
 
 ## Where things are decided
 

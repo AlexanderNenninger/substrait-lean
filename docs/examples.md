@@ -350,7 +350,7 @@ except RouteError as e:
 Under the reference `-7 % 2` is `-1`, as on DuckDB, so the postcondition
 does not hold there, and DuckDB refuses the plan. A zero divisor and integer
 overflow raise under `Profile.polars` as under the reference, so `verify`
-infers the same preconditions. [core-semantics.md](core-semantics.md#polars-as-a-profile)
+infers the same preconditions. [core-semantics.md](engine-profiles.md#polars-as-a-profile)
 says which choices the profile takes from Polars.
 
 ## 10. A verified plan for any Substrait consumer

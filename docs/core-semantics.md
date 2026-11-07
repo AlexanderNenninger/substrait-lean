@@ -1,24 +1,59 @@
 # The loose core: design
 
-Sverify's semantics will share one loose core in Lean, and every semantics
-sverify knows becomes a refinement of it: Substrait's, the reference's and
-each engine's
+Sverify's semantics share one loose core in Lean, and every semantics
+sverify knows is a refinement of it: Substrait's, the reference's and each
+engine's
 ([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444)).
 Plans are verified under the strict reference profile
 ([Terminology](#terminology)).
-This page is the design pass of step 3 of epic
-[#544](https://github.com/AlexanderNenninger/substrait-lean/issues/544). It
-lists, per function, the points where profiles differ, gives the tables that
-hold each profile's choices, says which values the core needs, states when a
-translation between two profiles is sound, and orders #444's steps. The
-approach is CASL's loose semantics and WebAssembly's profiles, applied to
+This page began as the design pass of step 3 of epic
+[#544](https://github.com/AlexanderNenninger/substrait-lean/issues/544), and
+both epics have closed. It lists, per function, the points where profiles
+differ, gives the tables that hold each profile's choices, says which values
+the core needs, and states when a translation between two profiles is sound.
+The approach is CASL's loose semantics and WebAssembly's profiles, applied to
 Substrait, with refinement as CompCert and Alive2 state it
-([Prior work](#prior-work)). Wave 3 of #544 builds its function tables in this shape.
+([Prior work](#prior-work)). Wave 3 of #544 built the function tables in this
+shape. Each engine's profile and shims are in
+[engine-profiles.md](engine-profiles.md).
 
 The choices this page left open were decided in its review
 ([Decisions](#decisions)). Everything else follows decisions already made on
 #185, #202, #209, #257, #336, #427 and #444; [reference-semantics.md](reference-semantics.md)
 records them.
+
+## Principles the code follows
+
+Four rules shape how the core states its guarantees
+([#1017](https://github.com/AlexanderNenninger/substrait-lean/issues/1017)).
+The decisions below apply them; they add no semantics of their own.
+
+- A side condition on a top-level theorem is a decidable predicate of the
+  plan, which the checker proves on each plan; the Python side trusts no
+  hypothesis. `Rel.closedB` is the side condition of
+  `contract_sound_allowed_closed`
+  ([#899](https://github.com/AlexanderNenninger/substrait-lean/issues/899),
+  [#1010](https://github.com/AlexanderNenninger/substrait-lean/pull/1010)),
+  `Expr.robustB` that of `contract_sound_allowed`, and `Rel.FloatOpenSafe`
+  comes with two sufficient conditions (`Rel.floatOpenSafe_of_closed`,
+  `Rel.floatOpenSafe_aggregate`), as the kind checker's `Rel.kinds_sound`
+  carries the kinds (D28).
+- Work across epics goes interface first. A change that several epics build
+  on lands as its interface before the epics change the definitions behind
+  it: the helpers of `Value` by kind
+  ([#1005](https://github.com/AlexanderNenninger/substrait-lean/pull/1005))
+  came before `Value`'s constructor per kind
+  ([D29](#d29-a-value-has-its-kind), #923).
+- The reference states a value; a profile states a distance from it. Where
+  engines compute a result in different ways, the reference fixes one value
+  and each engine's profile bounds how far the engine may be from it: the
+  correctly rounded sums and moments of
+  [D25](#d25-float-aggregates-are-correctly-rounded-exact-sums) and
+  [D30](#d30-statistical-aggregates-are-correctly-rounded-exact-moments),
+  with each engine within the plan's bound (`Relation.Near`).
+- Engines meet the reference through the `AllowedP` profile tables. A new
+  engine is a profile and a facts table, with no change to `Rel.eval` or
+  `Rel.Allowed` ([Translations between profiles](#translations-between-profiles)).
 
 ## Terminology
 
@@ -83,7 +118,7 @@ An option the plan states itself (`overflow: SILENT`) is a value choice too.
 A precondition only checked on the data, such as a `SUM`'s overflow bound
 (#316), needs its run-time check, the guard, on every engine; guard
 elimination (#83) drops the guards the inferred bounds rule out.
-[The Polars example](#the-polars-example) counts the shims for one engine.
+[The Polars example](engine-profiles.md#the-polars-example) counts the shims for one engine.
 
 ## The shape
 
@@ -242,7 +277,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `int.bit` | `bitwise_and`, `bitwise_or`, `bitwise_xor` | none |
 | core | `int.shift` | `bitwise_shift_left`, `bitwise_shift_right` | `shift_range` |
 | core | `dec.arith` | `add`, `subtract`, `multiply`, `negate`, `abs` on decimals | `overflow` (`ERROR` only), `decimal_rescale` |
-| core | `dec.div` | `divide`, `modulus` on decimals, `sverify_decimal_div` | refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
+| core | `dec.div` | `divide`, `modulus` on decimals, `sverify_decimal_div` | `divide` and `modulus` refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27); `sverify_decimal_div`, a decimal by an integer (how a windowed `AVG` is written), is read ([reference-semantics.md](reference-semantics.md#decimals)) |
 | core | `fp.arith` | `add`, `subtract`, `multiply` on doubles | `rounding`, `nan_creation`, `zero_sign` |
 | core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
 | core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |
@@ -948,237 +983,26 @@ the choices it uses: the option dependency report (step 3c) computes the
 set, and guard elimination (#83) drops the shims the inferred bounds rule
 out.
 
-### The Polars example
+### The engines' profiles
 
-Polars 2.1.0's characterization ([characterization/polars/README.md](../characterization/polars/README.md),
-with strings, dates and casts in
-[#570](https://github.com/AlexanderNenninger/substrait-lean/pull/570) and the
-remaining items in
-[#573](https://github.com/AlexanderNenninger/substrait-lean/pull/573)) lists
-where Polars differs from the reference. Sorted by the three kinds:
-
-Error side, no shim for a verified plan (15). The reference raises on each,
-so a verified plan never reaches Polars's behaviour:
-
-- integer `overflow` of `+ - ×`, negate and `**` (wraps,
-  [int-arith](../characterization/polars/facts/polars-int-arith.json)),
-  `abs(MIN)` ([int-abs](../characterization/polars/facts/polars-int-abs.json)),
-  `MIN / -1` and `sum` of `i32`, `i64`
-  ([int-divide](../characterization/polars/facts/polars-int-divide.json),
-  [sum-int](../characterization/polars/facts/polars-sum-int.json));
-- integer division and modulus by zero (`NULL`, int-divide,
-  [int-modulus](../characterization/polars/facts/polars-int-modulus.json));
-- doubles: `nan_creation`
-  ([double-arith](../characterization/polars/facts/polars-double-arith.json)),
-  division by zero
-  ([double-divide](../characterization/polars/facts/polars-double-divide.json)),
-  `x % 0`
-  ([double-modulus](../characterization/polars/facts/polars-double-modulus.json)),
-  `on_domain_error`, `on_log_zero`
-  ([math-domain](../characterization/polars/facts/polars-math-domain.json)),
-  `atan2(0, 0)` ([atan2](../characterization/polars/facts/polars-atan2.json)),
-  `±∞` in `sum`, `avg`, `variance`, `std_dev`
-  ([nonfinite-aggregates](../characterization/polars/facts/polars-nonfinite-aggregates.json));
-- `date_range`, past 9999 and PL-2's panic (#570's date-range), and
-  `substring_range` (#573's substring-range).
-
-Value side, shimmed (30). Seven of these are a written argument with no run-time
-cost: `round(mode='half_away_from_zero')`, `nulls_last`, `nan_max`,
-`strip_chars(' ')`, `explode`'s and the set operations' NULL arguments, and
-the quantile's `method`. The others are shims with a cost:
-
-- truncating division and modulus of negative integers (`//` floors,
-  int-divide, int-modulus), and the sign of a double modulus (double-modulus);
-- an empty `SUM` (0, [sum-float](../characterization/polars/facts/polars-sum-float.json)),
-  `avg` of integers ([avg-int](../characterization/polars/facts/polars-avg-int.json)),
-  `CORR` of one pair ([corr](../characterization/polars/facts/polars-corr.json)),
-  `mode`'s list ([mode](../characterization/polars/facts/polars-mode.json)),
-  the rank of NULL ([rank](../characterization/polars/facts/polars-rank.json));
-- `zero_sign` and `nan_kind` (`canon`, or `refines up to canon` in #568's
-  terms), and `round` to negative digits
-  ([round-digits](../characterization/polars/facts/polars-round-digits.json));
-- decimal result types and `decimal_rescale`
-  ([decimal-arith](../characterization/polars/facts/polars-decimal-arith.json),
-  [decimal-casts](../characterization/polars/facts/polars-decimal-casts.json)),
-  the `i64` against `fp64` comparison, `sum`'s widening of `i8`, `i16`, and
-  the implicit casts and literal types of #573;
-- 0-based positions of `substring`, `strpos` and `list_extract`,
-  `strpos`'s NULL, a regex's NULL without a match, `reverse` by graphemes
-  (#570), and `list_null_order` (#573).
-
-Open, native or `approx`: `tie_pick` and `tie_order` (Polars picks
-deterministically, which the reference allows), `sum_order` and `stat_algo`
-(`approx[D, ε]` within #85's bounds), and `log10`, `log2` an ulp off
-([log-base](../characterization/polars/facts/polars-log-base.json)).
-
-Refused: the shifts, `ntile`, `percent_rank`, `cume_dist` and seven string
-functions have no Polars expression, and `<`, `min`, `max` of lists raise in
-Polars where the reference does not, a raise the reference's raise set does
-not cover.
-
-So 15 of Polars's differences cost a verified plan nothing, 7 cost a
-written argument, and the 23 run-time shims left each implement a value the
-reference chose.
-
-For the prototype slice, `SubstraitLean/PolarsShims.lean` proves them, each
-shim of `python/src/sverify/_polars_shims.py` once, as `Polars.<name>`,
-against a model of Polars's own functions taken from its facts (the trusted
-part, as `Profile.duckdb` is for DuckDB):
-
-- the value shims: `int_div_trunc` and `int_mod_trunc` give `Int.tdiv` and
-  `Int.tmod`, `sum_empty_null` NULL for no values, `avg_int_declared` the
-  reference's truncated mean (which its clamp leaves), `round_half_away`
-  `roundMag`, `one_zero` `canon` on the codes of #444 step 1b, `strpos_chars`
-  and `substring_wrap` `Text.strpos` and `Text.substrWrap`, `null_order` the
-  key order `sortLe`, and `tie_order` `List.mergeSort` (any stable sort of a
-  total preorder is it);
-- the guards, each flagging exactly the rows or groups where the reference's
-  issue is (`int_overflows`, `div_overflows`, `zero_divisor`, A3's
-  `sum_leaves_i64`, B1's `sum_makes_nan`, A4's `makes_infinite` and
-  `agg_makes_infinite`), so a guard refuses exactly the batches the
-  precondition rules out. On Polars a double `SUM` is summed in Polars's own
-  order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
-  overflows, which differ from the sequential sum's only at the edge;
-- the error side: `Polars.written_faithful` (Polars, with the value shims,
-  agrees with the reference wherever the reference reports no issue) and
-  `Rel.polars_sound` (a plan `verify` proves free of issues, up to the
-  assumed ones whose guards stay, runs on Polars as `Rel.eval`).
-
-The Polars rows of `--options` name these theorems as their evidence. The
-`clustered` row stays tested, and so do the rows outside the slice.
-
-### Polars as a profile
-
-`Profile.polars` ([PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean))
-is the profile `verify(semantics="polars")` checks under, and the one
-`--contract` takes with `"profile": "polars"`. It is an evaluable `Profile`,
-as `Profile.duckdb` is, and it takes Polars's choice option by option (D21):
-
-| Option | `Profile.polars` | Polars 2.1.0 | Why |
-|---|---|---|---|
-| `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../characterization/polars/facts/polars-int-divide.json), [int-modulus](../characterization/polars/facts/polars-int-modulus.json)) | Polars's own value, so the native route needs no shim |
-| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/polars/facts/polars-double-arith.json)) | as under DuckDB's profile |
-| `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a verified plan never wraps |
-| `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
-| `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
-| every other option | the reference's | the table above | the translation keeps its written arguments and shims there |
-
-A plan states the choice: under `semantics="polars"` the Ibis producer
-writes integer `//` and `%` as `divide` and `modulus` with
-`division_type: FLOOR`, the parser reads them as `Expr.floorDivOf` and
-`Expr.floorModOf`, templates in the reference's truncating operations that
-cannot overflow on 64-bit operands, and `Write` writes them back as the
-calls. So the checker needs no profile of its own: it checks the plan the
-parser reads, and the report says `"profile": "polars"`. What is proved:
-
-- `Profile.polars_idiv`, `Profile.polars_imod`: on 64-bit integers the
-  templates are Polars's `//` and `%` (`Polars.floorDiv`, `Polars.floorMod`,
-  the trusted model of `PolarsShims.lean`); `Profile.polars_zero_divisor`:
-  a zero divisor raises.
-- `Polars.elaborate_eq`: evaluating an expression under `Profile.polars` is
-  evaluating its elaboration, each `//` and `%` replaced by its template,
-  under the reference. A contract proved of the parsed plan holds of the
-  plan under `Profile.polars`.
-- `Rel.allowed_polars_core`: `Allowed_polars ⊆ Allowed_core`, from the
-  choices table.
-
-On the routes: a plan verified under `Profile.polars` runs on Polars by
-`native`, where `polars_engine` runs Polars's `//` and `%` for the stated
-calls and the translation's shims elsewhere. DuckDB, DataFusion and Spark
-refuse a stated `FLOOR` before they run (`sverify._support`), and the
-transfer check fails on `division_type`. The re-check route targets the
-profile too: `--contract` with `"profile": "polars"` proves the reference
-plan again, its unstated `//` and `%` being the reference's `TRUNCATE`,
-which the translation shims. Tested, and trusted: that Polars computes
-`Polars.floorDiv` and `Polars.floorMod` (`tests/test_polars_profile.py` runs
-it against Python's floor division on random 64-bit values), and that the
-translation writes the stated calls as Polars's operators.
-
-### Spark as a profile
-
-`Profile.spark` ([SparkProfile.lean](../SubstraitLean/SparkProfile.lean)) is
-the profile `verify(semantics="spark")` checks under, and the one
-`--contract` takes with `"profile": "spark"` (#739). Its choices table,
-`Profile.spark.table` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)),
-records Spark 4.3.0 under `SPARK_CONF` (ANSI mode on, `TIMESTAMP_NTZ`, UTC)
-from its [facts](../characterization/spark/facts/). Option by option (D21):
-
-| Option | `Profile.spark` | Spark 4.3.0, ANSI | Why |
-|---|---|---|---|
-| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/spark/facts/spark-double-arith.json)) | as under DuckDB's and Polars's profiles |
-| `overflow`, `on_division_by_zero` | `ERROR` | `ERROR` ([int-arith](../characterization/spark/facts/spark-int-arith.json), [int-divide](../characterization/spark/facts/spark-int-divide.json)) | native: ANSI raises where the reference raises |
-| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../characterization/spark/facts/spark-math-domain.json)) | tightened, as the reference; a verified plan never reaches them |
-| `avg_int_result` | the reference's | `FP64` ([avg-int](../characterization/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
-| `null_order` | the reference's | first for an ascending key ([null-order](../characterization/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
-| every other option | the reference's | the table | native, or the writer's shims |
-
-Spark's profile states no choice of its own in a plan, so `Profile.spark`
-evaluates as the reference (`Profile.spark_eval`), and the report of a
-`"profile": "spark"` request is the reference's, marked `"spark"`. What it
-adds is the route: a plan verified under it runs on Spark by `native`, and
-on DuckDB by `transfer` where DuckDB's choices are within Spark's at every
-option the proof depends on. What is proved
-([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
-
-- `Spark.int_sum_decimal`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
-  on Spark raises as soon as a partial sum leaves 64 bits, which depends on
-  the order of the rows ([sum-int](../characterization/spark/facts/spark-sum-int.json));
-  the writer sums exact `DECIMAL(38,0)` values, and no partial sum of fewer
-  than 10¹⁸ 64-bit values leaves 38 digits, in any order.
-- `Spark.int_avg_decimal`, `Spark.null_order`, `Spark.one_zero`: the other
-  shims give the reference's value.
-- `Spark.written_faithful` and `Rel.spark_sound`: Spark under ANSI, as the
-  writer writes it, gives `Rel.eval`'s rows for a plan whose only issues are
-  assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the
-  error side (NaN, a `date_add` wrapped past 2³¹ days, SP-2) are where the
-  reference raises.
-- `Spark.decimal_negate_sub`: Spark's `-x` and `abs` round a decimal past 34
-  significant digits ([SP-1](../upstream/bugs/SP-1.json)); the writer
-  negates as `0 - x` there, exact where its type keeps the scale (up to 37
-  digits, or 38 at scale 6 or less), and refuses a `DECIMAL(38, s)` with
-  `s > 6`.
-- `Rel.allowed_spark_core`: `Allowed_spark ⊆ Allowed_core`.
-
-Decimals (#27) run on Spark at the reference's types, which are Spark's own
-up to 38 digits. Past them Spark cuts the scale to no less than 6
-([decimal-arith](../characterization/spark/facts/spark-decimal-arith.json)),
-so a sum or product whose type would pass 38 digits at a scale above 6 is
-refused. A double becomes a decimal as `round(x · 10ˢ)` in doubles, through
-`BIGINT`, since Spark's own cast reads the double's shortest text
-(`CAST(0.145 AS DECIMAL(10,2))` is 0.15 there, 0.14 in the reference), so a
-target past 18 digits is refused. Division by an integer, which an `AVG`
-of decimals is, is refused: Spark's decimal quotient rounds at a scale of
-its own first.
-
-A run on Spark reads the session's settings (`sverify._engine_settings`):
-ANSI mode, `timestampType`, the session time zone, `caseSensitive` and
-`escapedStringLiterals` refuse every run when they differ from `SPARK_CONF`;
-`legacy.statisticalAggregate`, `decimalOperations.allowPrecisionLoss` and
-`legacy.percentileDiscCalculation` refuse the plans whose options they
-change. A run on another Spark version warns, and on another major version is
-refused (D14). Tested, and trusted: that Spark computes as the model says
-(`tests/test_spark_profile.py`, `tests/test_sql_spark.py`).
+[The Polars example](engine-profiles.md#the-polars-example), which counts the
+shims for one engine, and Polars and Spark as profiles
+([Polars](engine-profiles.md#polars-as-a-profile),
+[Spark](engine-profiles.md#spark-as-a-profile)) are in
+[engine-profiles.md](engine-profiles.md).
 
 ## The steps of #444
 
-Each step is a PR or a short stack, and each ends in a theorem.
-
-| Step | What lands | What it proves | Status |
-|---|---|---|---|
-| 0 | This page. Wave 3's tables (#544 step 4) with a `group` column and the Python `Option`/`Fn` rows; `optionAccepts` read from the tables. | Nothing new; tests check the Lean and Python tables agree and that every function has a group. | Done: #562, #565, #566 |
-| 1a | The options table, `Choice`, `ProfileTable`, and `Profile.reference.table`. | `optionAccepts` equals the reference table's lookup (`#guard` over every group and option); no behaviour change. | #578 |
-| 1b | `-0.0` and the signed NaN in `FloatFormat`, with `canon`. | `canon` is idempotent and order-preserving; every existing operation commutes with it on the reference's codes. | In progress; with #575 |
-| 1c | `Expr.AllowedP` and `Rel.AllowedP P` over the choice points, the core table, and `Rel.Allowed := Rel.AllowedP Profile.reference`. The `null_order` choice point for a key's `UNSPECIFIED` direction and the clustered order relation; the parser accepts both from here on (it refuses them until then). | `Rel.AllowedP_mono` (a profile with smaller choices allows fewer results), hence `Allowed_reference ⊆ Allowed_core`; `Rel.AllowedP_congr` (a call or operator that refines makes the plan refine); `⊑` and its transitivity. `Rel.eval_allowed`, `Rel.allowed_perm_eval` and `Rel.Refines` carry over unchanged. |  |
-| 2 | `Profile.substrait`: every option `.asked yaml yaml`, `IEEE` zeros and NaNs, and `verify(semantics="substrait")`. | `Allowed_substrait ⊆ Allowed_core`; the diff with the reference as a generated list of the options where their choices differ (one zero, one NaN, `nan_creation`, the defaults). | [The Substrait profile](#the-substrait-profile) |
-| 3a | `Profile.duckdb.table s`, from the facts, replacing the hand-written diff's documentation (its functions stay). | `Allowed_duckdb ⊆ Allowed_core` for every `s`; the lift's soundness as refinement: what DuckDB's SQL does is allowed under `Profile.duckdb` (`Rel.duckdb_sound` and #242's lemmas restated). |  |
-| 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included (`Rel.duckdb_refines`, `Lowering.lowerRel_raises`). | [realizability.md](realizability.md) |
-| 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. | Designed: #577 |
-| 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. | [Substrait's test cases](#substraits-test-cases): 631 agree, 625 refused, 61 disagree (test cases at fault: ST-13, ST-14, ST-15) |
-| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. | Done for DuckDB and Polars: `tests/test_profiles_e2e.py` runs rows A1 to H1 on both, and F2 runs a plan checked under DuckDB's profile on Polars by the transfer check. Four rows wait: A4 (#575, finite double products from inferred bounds), C2 (no frontend writes an `UNSPECIFIED` sort direction), D1 (conditions proved over every open pick) and F1 (a contract checked under Polars's own choices). |
-
-Step 1b can run alongside 1a. Steps 2 and 3a both need 1c and touch
-different tables. The Lean side of step 0 and 1a can merge into one PR if
-wave 3 lands first.
+The steps of [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444)
+have landed, and the issue keeps their record: the tables (step 0, 1a), the
+signed zero and NaN codes (1b), `Rel.AllowedP` and the core table (1c), the
+Substrait profile (2, [The Substrait profile](#the-substrait-profile)), the
+DuckDB profile (3a), the obligations and the realizability table (3b,
+[realizability.md](realizability.md)), the option dependency report and the
+transfer check (3c), Substrait's test cases in CI (4,
+[Substrait's test cases](#substraits-test-cases)), and one query checked
+under the reference and run on DuckDB and Polars (5,
+`tests/test_profiles_e2e.py`).
 
 ## Prior work
 
@@ -1373,6 +1197,12 @@ and each engine profile fix the NULL order (DuckDB: `NULLS_LAST`,
 [F2](../characterization/duckdb/facts/duckdb-F2.json)). Substrait's sort
 directions include both, so a faithful profile has to read them. The parser
 keeps refusing them until step 1c lands the choice point and the relation.
+
+Amended (2026-11-07): step 1c landed, and the parser reads both in a sort
+relation's keys: an `UNSPECIFIED` or missing direction leaves the NULL order
+open, which the reference fixes as NULLs last (D8), and `CLUSTERED` is its
+own order relation. A window's or a measure's key must state its direction
+(`parseSortKey`).
 
 ### D7. Per-plan checks
 
@@ -1728,6 +1558,10 @@ Three consequences:
   stay choices of the engines, and the reference's row is `EXACT`.
 - `Rel.detPlan` is true of float aggregates, so `contract_sound_all` covers
   every result the reference allows for them.
+
+  Amended (2026-11-07, #1017): this holds of closed plans (`Rel.closedB`); a
+  plan with open measures (`Measure.openB`) goes through
+  `contract_sound_allowed` and `Rel.FloatOpenSafe`.
 - A tolerance is a metric: bounds add along a pipeline
   (`Near ε₁ a b → Near ε₂ b c → Near (ε₁ + ε₂) a c`), and no tolerance passes
   through a filter, group key or sort on a double column.
