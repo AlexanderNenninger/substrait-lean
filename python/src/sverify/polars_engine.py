@@ -1873,10 +1873,11 @@ def _int_output(f: dict) -> bool:
     return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
 
 
-def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
+def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
     """`Measure.eval` on the values a measure aggregates (NULLs dropped), with
     Polars's profile's choices: doubles added in turn (`SEQUENTIAL`), the
-    variance by Polars. A double sum of `+∞` and `-∞` raises (#257)."""
+    variance by Polars. A double sum of `+∞` and `-∞` raises (#257), except in
+    a window, where the reference still gives NaN."""
     if distinct:
         seen: set = set()
         vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
@@ -1919,7 +1920,7 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
             raise InfiniteResult(f"{fn} overflows to infinity")
         return r + 0.0
     if fn in ("fsum", "avg"):
-        if math.inf in vs and -math.inf in vs:
+        if not window and math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")
         acc = 0.0
         # In list order (`sum_order = SEQUENTIAL`), within the plan's bound of
@@ -2259,7 +2260,9 @@ def python_windows(
                             if v is not None and abs(v) >= 10**f.dtype.precision:  # pyrefly: ignore
                                 raise SumOverflow(f"SUM leaves {f.dtype}")
                         elif f.fn == "agg":
-                            v = _aggregate(f.agg, False, [x for x in vals if x is not None])
+                            v = _aggregate(
+                                f.agg, False, [x for x in vals if x is not None], window=True
+                            )
                         elif f.fn == "first_value":
                             v = vals[0] if vals else None
                         elif f.fn == "last_value":
