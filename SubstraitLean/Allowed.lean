@@ -52,9 +52,9 @@ inductive FloatSums : List Value → Int → Prop
 /-- What an aggregate of the values `vs`, taken in this order, may give. -/
 def AggFn.Allowed (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
-  | .fsum => if vs = [] then v = .null else ∃ c, FloatSums vs c ∧ v = .int c
+  | .fsum => if vs = [] then v = .null else ∃ c, FloatSums vs c ∧ v = .float c
   | .avg => if vs = [] then v = .null else
-      ∃ c, FloatSums vs c ∧ v = .int (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
+      ∃ c, FloatSums vs c ∧ v = .float (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
   | .var _ _ | .cov _ | .corr => StatProps f vs v
   -- A double between the two neighbours (#53).
   | .quantile true num scale => if vs = [] then v = .null else contAllowed num scale (sortVals vs) v

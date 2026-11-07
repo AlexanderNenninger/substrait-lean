@@ -252,13 +252,8 @@ theorem Expr.evalP_reference : ∀ (e : Expr) (row : Row),
         exact congrArg Except.ok
           (HoFn.apply_congr f _ fun x hx => Expr.refOutcome_val (h x hx))
 
-/-- A number: what `UnFn.isNum` tests. -/
-def Value.isNum : Value → Bool
-  | .int _ | .float _ | .dec _ _ => true
-  | _ => false
-
-theorem UnFn.apply_isNum (v : Value) : UnFn.apply .isNum v = .bool v.isNum := by
-  cases v <;> rfl
+theorem UnFn.apply_isNum (k : NumKind) (v : Value) : UnFn.apply (.isNum k) v = .bool (v.isNum k) :=
+  rfl
 
 /-! The special codes' order, which the generated proofs compare with. -/
 
@@ -415,10 +410,14 @@ def Profile.duckdb (s : DuckDBSettings) : Profile where
   un f v := match v with
     | .float x => (duckUn s f x).getD (Profile.reference.un f v)
     | _ => Profile.reference.un f v
-  bin f v w := match f.onFloats, v, w with
-    | true, .float x, .float y | false, .int x, .int y =>
-      (duckBin s f x y).getD (Profile.reference.bin f v w)
-    | _, _, _ => Profile.reference.bin f v w
+  bin f v w := match v, w with
+    | .float x, .float y =>
+      if f.onFloats then (duckBin s f x y).getD (Profile.reference.bin f v w)
+      else Profile.reference.bin f v w
+    | .int x, .int y =>
+      if f.onFloats then Profile.reference.bin f v w
+      else (duckBin s f x y).getD (Profile.reference.bin f v w)
+    | _, _ => Profile.reference.bin f v w
 
 /-- DuckDB's `%` by a positive divisor is the reference's (the wrap-around
 schema computes with it, `LoweringSearch.schema?`). -/
@@ -513,9 +512,10 @@ theorem Profile.duckdbWritten_faithful (s : DuckDBSettings) (hs : s.ieeeOps = tr
       split
       case h_3 => exact hr
       all_goals
-        cases f <;> simp only [duckBin, BinFn.duckdbWritten] at hw ⊢ <;>
+        cases f <;> simp only [duckBin, BinFn.duckdbWritten, BinFn.onFloats, Bool.false_eq_true,
+          ite_true, ite_false] at hw ⊢ <;>
           (try split) <;> (try split) <;> (try split) <;>
-          simp_all [BinFn.issue, nanIssue, domainIssue, BitOp.apply, atan2?, BinFn.onFloats] <;> omega
+          simp_all [BinFn.issue, nanIssue, domainIssue, BitOp.apply, atan2?] <;> omega
 
 /-- **A verified plan runs correctly on DuckDB.** When `Rel.mayIssues` reports
 nothing but integer `SUM`s that may wrap (which keep their check), on every

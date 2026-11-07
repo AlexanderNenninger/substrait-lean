@@ -1292,7 +1292,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .structField _, _ | .listElement _, _ | .flatten, _ => AVal.top
   | .cardinality, _ => ⟨true, some (.ge 0), false, false, false, none, some .int⟩
   | .raise _, _ => ⟨true, none, false, false, false, none, none⟩
-  | .isNum, _ => ⟨false, none, true, true, false, none, none⟩
+  | .isNum _, _ => ⟨false, none, true, true, false, none, none⟩
   | .fit _ _, _ => AVal.top
   | .bbox n, a => BlackBox.scalarAbs n !a.null
 
@@ -1970,7 +1970,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         Text.capped_le, Text.capped_nonneg, NumKind.val, AVal.MemNum]
   case structField | listElement | fit | flatten => exact AVal.mem_top _
   case raise => cases v <;> rfl
-  case isNum => cases v <;> rfl
+  case isNum k => simp only [UnFn.apply]; cases v.isNum k <;> rfl
   case cardinality =>
     cases v <;> simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.MemNum, Bound.ge, Bound.Mem]
   case regexMatch p =>

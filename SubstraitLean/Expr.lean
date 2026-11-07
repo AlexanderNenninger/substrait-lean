@@ -201,9 +201,10 @@ inductive UnFn where
   (#241), applied to the exact result (`BinFn.dadd`, `dsub`, `dmul`): wrapped
   around or clamped at the width. It leaves anything but an integer as it is. -/
   | fit (m : OverflowMode) (w : IntWidth)
-  /-- `x` is a number (a shim's guard, #185). The SQL printers write `x IS NOT
-  NULL`, since in SQL a non-NULL operand of a numeric function is a number. -/
-  | isNum
+  /-- `x` is a number of kind `k` (a shim's guard, #185, #923). The SQL
+  printers write `x IS NOT NULL`, since in SQL a non-NULL operand of a
+  function of numbers of kind `k` is one. -/
+  | isNum (k : NumKind)
   /-- A scalar black box of one argument (`SubstraitLean/BlackBox.lean`, #325):
   the table's row `name`. -/
   | bbox (name : String)
@@ -362,6 +363,12 @@ def Value.flatten : Value → Value
   | .list vs => .list (vs.flatMap fun | .list ws => ws | _ => [])
   | _ => .null
 
+/-- Is `v` a number of kind `k`? What `UnFn.isNum` tests. -/
+def Value.isNum (k : NumKind) (v : Value) : Bool :=
+  match v.numOf? with
+  | some (k', _) => k' == k
+  | none => false
+
 /-- The integer a decimal operation reads: an integer, or a decimal's
 unscaled value (`Parse.decimalCall` brings both to one scale first). -/
 @[simp] def Value.unscaled? : Value → Option Int
@@ -446,8 +453,7 @@ def UnFn.apply : UnFn → Value → Value
   | .listElement off, .list vs => Value.listElement off vs
   | .cardinality, .list vs => .int vs.length
   | .flatten, v => Value.flatten v
-  | .isNum, .int _ | .isNum, .float _ | .isNum, .dec _ _ => .bool true
-  | .isNum, _ => .bool false
+  | .isNum k, v => .bool (v.isNum k)
   | .fit m w, .int i => .int (w.fit m i)
   | .fit _ _, v => v
   | .bbox n, v => BlackBox.callScalar n [v]

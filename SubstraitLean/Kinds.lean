@@ -143,7 +143,7 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
   let need (c : Bool) (out : KT) : Option KT := if c then some out else none
   match f with
   | .not => need (t.okK .bool) (.kind .bool)
-  | .isNull | .isNum => some (.kind .bool)
+  | .isNull | .isNum _ => some (.kind .bool)
   | .neg => need (t.okI Kind.isInt) (.kind .int)
   | .itof => need (t.okI Kind.isInt) (.kind .float)
   | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ =>
@@ -312,7 +312,7 @@ theorem KT.has_join_right {a b : KT} {v : Value} (h : b.has v = true) : (a.join 
 /-- What `UnFn.apply` gives, by the function alone, for those whose result
 has one kind; `other` for the rest. -/
 def UnFn.out : UnFn → Kind
-  | .not | .isNull | .isNum => .bool
+  | .not | .isNull | .isNum _ => .bool
   | .itos | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 | .strftime _ => .str
   | .neg | .ftoi | .ftoiOrNull | .narrow _ | .narrowOrNull _ | .length | .ascii | .regexMatch _
