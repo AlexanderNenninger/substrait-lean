@@ -465,20 +465,20 @@ their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckArith, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
-    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
-    ``DuckDBSQL.ref_fmod_int, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
+    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
+    ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
-    ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
+    ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
     ``DuckDBSQL.apply_lt_null_l, ``DuckDBSQL.apply_lt_null_r, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_greatest, ``Lowering.ref_least,
     ``BinFn.apply, ``Value.pick, ``Value.ltB,
-    ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan, ``DuckDBSQL.ref_fpow_int,
-    ``DuckDBSQL.ref_fpow_null_l, ``DuckDBSQL.ref_fpow_null_r, ``DuckDBSQL.ref_ffloor_int,
-    ``DuckDBSQL.ref_ffloor_null, ``DuckDBSQL.ref_fadd_int, ``DuckDBSQL.ref_fsub_int,
-    ``DuckDBSQL.ref_fmul_int, ``DuckDBSQL.ref_fadd_null_l, ``DuckDBSQL.ref_fadd_null_r,
+    ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan, ``DuckDBSQL.ref_fpow_float,
+    ``DuckDBSQL.ref_fpow_null_l, ``DuckDBSQL.ref_fpow_null_r, ``DuckDBSQL.ref_ffloor_float,
+    ``DuckDBSQL.ref_ffloor_null, ``DuckDBSQL.ref_fadd_float, ``DuckDBSQL.ref_fsub_float,
+    ``DuckDBSQL.ref_fmul_float, ``DuckDBSQL.ref_fadd_null_l, ``DuckDBSQL.ref_fadd_null_r,
     ``DuckDBSQL.ref_fsub_null_l, ``DuckDBSQL.ref_fsub_null_r, ``DuckDBSQL.ref_fmul_null_l,
     ``DuckDBSQL.ref_fmul_null_r,
     ``DuckDBSQL.ite_or, ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
-    ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_int,
+    ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_float,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
     ``Bool.and_false, ``Bool.false_and, ``Bool.or_true, ``Bool.true_and] ++ extra)
@@ -657,14 +657,14 @@ def measureTerm (m : Measure) : MetaM Lean.Expr := do
 rows, then split on whether any value is not `NULL`. -/
 def aggTac (_defs : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
+    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
     ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r, ``AggFn.apply, ``nanCase, ``isInfCode,
     ``Substrait.Expr.evalP,
     ``Lowering.beq_int, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
     ``Bool.and_false, ``Bool.false_and, ``Outcome.Agree, ``List.length_cons, ``Lowering.ref_eq,
     ``Lowering.ref_lt, ``Lowering.ref_not, ``Lowering.ref_isNull, ``DuckDBSQL.apply_eq_int,
-    ``DuckDBSQL.apply_lt_int, ``Value.isTrue, ``decide_false, ``Bool.not_false]
+    ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``Value.isTrue, ``decide_false, ``Bool.not_false]
   `(tactic| (
     intro vs _
     simp only [List.map_cons, List.map_nil, Measure.eval, Measure.inputs, Measure.kept,
