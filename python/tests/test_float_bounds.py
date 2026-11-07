@@ -398,11 +398,13 @@ def test_statistics_are_tested_or_refused_never_proved() -> None:
     req = {"t": [_.x.between(-1e3, 1e3), _.y.between(-1e3, 1e3), sv.max_rows(1000)]}
     tol = [sv.equivalent(floats=sv.within(abs=1e-3))]
     var = sv.verify(t.group_by("k").aggregate(v=t.x.var()), requires=req, ensures=tol)
+    assert var._epsilon is not None
     assert var._epsilon["v"]["proved"] == {"abs": False}
     var.run(con, "duckdb")
     assert var.routes["duckdb"].evidence == "tested"
     for agg in (dict(c=t.x.cov(t.y)), dict(c=t.x.corr(t.y))):
         plain = sv.verify(t.group_by("k").aggregate(**agg), requires=req)
+        assert plain._epsilon is not None
         assert plain._epsilon["c"]["abs"] is None
         plain.run(con, "duckdb")
         assert plain.routes["duckdb"].evidence == "tested"
