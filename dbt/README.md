@@ -153,12 +153,15 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 
 - Generic data tests only. Singular tests and unit tests (`given`/`expect`)
   are listed as not checked.
-- A model is refused where sverify cannot read its SQL (`WITH RECURSIVE`,
-  `md5`, so `dbt_utils.generate_surrogate_key`), with the construct named,
-  and where it reads a table that is no `ref` or `source`.
-- Sverify tracks strings by their exact conditions. An `accepted_values`
-  test on a column derived from a string constant or filtered from a wider
-  set stays unproved ([API notes](API-NOTES.md)).
+- A model is refused where sverify cannot read its SQL (`WITH RECURSIVE`),
+  with the construct named, and where it reads a table that is no `ref` or
+  `source`.
+- Sverify tracks a column's strings while they are few (up to 64), from
+  constants, `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and
+  `UNION ALL`, which proves `accepted_values` there
+  ([#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708));
+  what is inside a string (`LIKE`, lengths) is not tracked
+  ([the guide](../docs/guide.md#contracts)).
 - Python models, and models whose inputs have no column types, are refused.
 - An incremental model is checked as its full refresh, as `dbt compile`
   renders it.

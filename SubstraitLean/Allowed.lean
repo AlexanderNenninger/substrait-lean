@@ -19,8 +19,8 @@ The reference leaves these choices to the engine:
 * the order in which an aggregate takes its rows: `FIRST`/`LAST`, `collect`
   and `string_agg` take them in their sort order with ties broken any way,
   and without a sort in any order;
-* the value of a statistical aggregate, within its generic properties
-  (`StatProps`, `SubstraitLean/StatProps.lean`).
+* none of an aggregate's value since D25 and D30: a double `SUM`, `AVG` and
+  statistical aggregate are their exact values rounded once.
 
 A double `SUM` or `AVG` is no choice (D25): it is the exact sum, or mean,
 rounded once (`floatSumCR`, `SubstraitLean/FloatExact.lean`), whatever the
@@ -47,14 +47,12 @@ namespace Substrait
 /-- What an aggregate of the values `vs`, taken in this order, may give. -/
 def AggFn.Allowed (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
-  | .var _ _ | .cov _ | .corr => StatProps f vs v
   -- A double between the two neighbours (#53).
   | .quantile true num scale => if vs = [] then v = .null else contAllowed num scale (sortVals vs) v
   | _ => v = f.apply vs
 
 theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.apply vs) := by
   cases f
-  case var | cov | corr => simp only [Allowed]; exact StatProps.apply _ vs
   case quantile cont num scale =>
     cases cont
     · rfl

@@ -274,7 +274,8 @@ def Profile.reference.tools : List ToolRow := [
   { option := "list_null_order", tool := .choose },
   -- D25: one value, the exact sum rounded once.
   { option := "sum_order", tool := .choose },
-  { option := "stat_algo", tool := .leaveOpen, q := some { floats := .within "plan" } },
+  -- D30: one value, the exact moments rounded once.
+  { option := "stat_algo", tool := .choose },
   { option := "stat_degenerate", tool := .choose },
   { option := "avg_int_result", tool := .choose },
   { option := "quantile_interp", tool := .leaveOpen, q := some { floats := .within "plan" } },

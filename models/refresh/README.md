@@ -4,8 +4,11 @@
 when the processes that refresh it crash, restart, race each other and lose
 acknowledgements. It is step 1 of [#933](https://github.com/AlexanderNenninger/substrait-lean/issues/933):
 TLC checks it exhaustively at small scopes, and finds the interleavings the
-chaos suite (`python/tests/chaos/`) can only sample. Step 2 states the same
-transition system in Lean.
+chaos suite (`python/tests/chaos/`) can only sample. Step 2,
+[`SubstraitLean/Refresh.lean`](../../SubstraitLean/Refresh.lean), states the
+fixed protocol for a durable source as a transition system and proves
+`NoCorruption` and `RecordDescribesTable` for every scope
+(`Refresh.no_corruption`, `Refresh.record_describes_table`).
 
 ## What it models
 
@@ -66,36 +69,40 @@ model reaches the states the properties are about.
 
 ## Findings
 
-All `today-*` configs run today's protocol (every `Fix*` switch off). Each
-finding below is the shortest trace TLC found; `trace.py` prints it.
+The `today-*` configs model the protocol of sverify 0.7.0, before the fixes
+(every `Fix*` switch off); their names date from then. Each finding below is
+the shortest trace TLC found there; `trace.py` prints it. All five are fixed
+since: #963 by #980, #964 by #982, #965 and #889 by #986, #966 by #987. The
+fixed protocol, the one sverify runs, is the model with every `Fix*` switch
+on.
 
-Four ways today's protocol puts the sink in a state it does not record, and
-the verdict on #889. The traces are in `traces/`; each line is one step,
+Four ways the protocol before the fixes put the sink in a state it did not
+record, and the verdict on #889. The traces are in `traces/`; each line is one step,
 `P1(c2)` the rows of plan 1 on source content 2, `corrupt` a change applied
 to another state.
 
 1. A change lands on a commit the writer did not compute it from (#963).
-   `Sink._commit` writes the change since `_written` whenever the record has
-   the same plan and a lower epoch, without checking the record is the one
+   `Sink._commit` wrote the change since `_written` whenever the record had
+   the same plan and a lower epoch, without checking the record was the one
    it wrote. One writer is enough: a restart resumes, the crashed process's
    write lands late, and the restart's change lands on it
    (`today-zombie-resume`); two live writers do the same
    (`today-two-writers`). Reproduced on Delta tables: the sink keeps a row
    the source deleted.
-2. The conditional commit compares the value of the app's epoch (#964).
-   A deploy replaces the table at the same epoch, and a write prepared
-   against the old plan's commit passes the check (`today-aba`). A foreign
-   commit between the read and the commit passes it too.
-3. Versions of a source that cannot restore collide across processes
-   (#965). Two processes starting from the same record number different
-   contents with the same version; the sink skips one as committed, then
-   writes a change on the other (`today-collision`), or stays behind the
+2. The conditional commit compared the value of the app's epoch (#964).
+   A deploy replaced the table at the same epoch, and a write prepared
+   against the old plan's commit passed the check (`today-aba`). A foreign
+   commit between the read and the commit passed it too.
+3. Versions of a source that cannot restore collided across processes
+   (#965). Two processes starting from the same record numbered different
+   contents with the same version; the sink skipped one as committed, then
+   wrote a change on the other (`today-collision`), or stayed behind the
    source for good (`today-collision-stale`).
-4. Rows another application changes are written over or kept (#966):
-   `stored()` notices them, the write path does not (`today-foreign`,
+4. Rows another application changed were written over or kept (#966):
+   `stored()` noticed them, the write path did not (`today-foreign`,
    `today-foreign-stale`).
-5. #889 is allowed by safety and breaks the documented promise: a new
-   process rewrites in full a state it could resume from
+5. #889 was allowed by safety and broke the documented promise: a new
+   process rewrote in full a state it could resume from
    (`today-889-needless`), with the source unchanged too
    (`today-889-unchanged`). With a durable source neither happens
    (`today-durable-889` passes).
@@ -107,17 +114,18 @@ meanwhile.
 
 ## The fixes
 
-Each `Fix*` constant switches on one change; the `fixed-*` configs turn on
-all of them and every property holds there.
+Each `Fix*` constant switches on one change, the one sverify made for its
+finding; the `fixed-*` configs turn on all of them and every property holds
+there.
 
 - `FixLast`: `Sink._commit` writes the change since `_written` only when the
   sink's record is the one this process wrote, skipped to or resumed from
   (its contract); otherwise it replaces the table.
 - `FixCas`: the commit is conditional on the table version `contract()` read
   (Delta: commit from that `DeltaTable` with no retries, so any commit in
-  between fails it; Iceberg: assert the snapshot id it read). Today it is
-  conditional on the value of the app's epoch, which another commit can
-  repeat.
+  between fails it; Iceberg: assert the snapshot id it read). Before the
+  fix it was conditional on the value of the app's epoch, which another
+  commit can repeat.
 - `FixDigest`: a source that cannot restore records a digest of its content
   in the contract; an equal or higher recorded version with another digest is
   another state, so the process numbers its version above it and replaces;

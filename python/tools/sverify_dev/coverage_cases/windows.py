@@ -119,7 +119,7 @@ CASES: list[Case] = [
         V,
         lambda: t.mutate(s=(t.qty * 2).sum().over(group_by="name")),
     ),
-    # `varOf` over a frame (#54): the reference's own two passes.
+    # `varOf` over a frame (#54, D30).
     case(
         "windows",
         "stddev over group",

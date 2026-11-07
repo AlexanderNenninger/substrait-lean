@@ -39,6 +39,7 @@ and that the input rows meet the contract's preconditions.
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Expr.robust_of_depends`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | Sources within a tolerance give a result within the plan's fold of it (`Rel.tol`), node after node in a pipeline; tolerances add along a chain in one cell (`M∞`) and summed over the rows (`M₁`) | `Rel.plan_near`, `Rel.pipeline_near`, `Relation.NearT.add`, `Relation.NearL1.add` | `Lipschitz.lean` |
+| A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides | `floatSumCR_near`, `floatAvgCR_near`, `Measure.fsum_near`, `Measure.avg_near` | `Lipschitz.lean` |
 | A result one profile allows, another allows too, option by option | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `Rel.weighted_eval` | `Weighted.lean` |
@@ -58,6 +59,7 @@ and that the input rows meet the contract's preconditions.
 | Rewrites from contract facts and keys keep the result | `Rel.optimize_sound` | `Semantic.lean` |
 | A double `SUM` or `AVG` is within the reported `epsilon` | `StdModel.epsilon_sum_cr`, `StdModel.epsilon_avg_cr` (against the reference's correctly rounded value, D25), `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
 | Sharded double sums are near the sequential sum | `StdModel.sharded_near`, `StdModel.sharded_avg_near` | `float-bounds/FloatBounds/Shard.lean` |
+| A sink's refreshes, with crashes, late writes of crashed processes, lost acknowledgements, racing writers, other applications' commits and deploys, never apply a change to a table it was not computed from, and the sink's record names its table. They assume only that the state is reachable (`Reachable`), for a durable source and writers deciding as `Refresh.next` (`tests/test_refresh_next.py`) | `Refresh.no_corruption`, `Refresh.record_describes_table` | `Refresh.lean` |
 
 `Examples.lean` prints the axioms of the main theorems with
 `#print axioms`, so a build shows what each rests on.
@@ -110,6 +112,7 @@ generators, then the trusted reading and writing.
 | `FloatFormat.lean` | Binary floating-point formats as integer codes in the SQL order |
 | `Float.lean` | Doubles and timestamps as integer codes; the trusted facts of rounded arithmetic |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
+| `FloatMoments.lean` | Exact dyadic moments (`n Σx² − (Σx)²` and the co-moment) and correctly rounded square roots of rationals, for #918 |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
@@ -152,6 +155,7 @@ generators, then the trusted reading and writing.
 | `TouchedGroups.lean` | Recomputing only the groups a batch touches |
 | `TouchedFrames.lean` | Recomputing only the window rows near a batch's changes |
 | `Retention.lean` | Bounded state for time buckets under a lateness bound |
+| `Refresh.lean` | The refresh protocol of a stored node, for a durable source, as a transition system; its safety from `Reachable` alone (#933) |
 
 ### Contracts, errors and keys
 

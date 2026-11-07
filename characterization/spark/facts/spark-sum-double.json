@@ -71,7 +71,7 @@
     "`SUM(DOUBLE)` adds with a plain `Add` and no overflow check; partial sums merge plainly. The order of the additions depends on the partitioning.",
     "The probes show the order at work: 1e16, 1, -1e16, 1 summed in input order on one partition is 0.0; after a shuffle into one partition 1.0, into three partitions 2.0. A `FLOAT` column sums in `DOUBLE` (`sum` returns `DOUBLE`). No values, or NULLs only, give NULL."
   ],
-  "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
+  "reference": "`AggFn.fsum` is `floatSumCR` (D25): the exact sum of the doubles, rounded once to nearest with ties to even; a NaN, or `+∞` with `-∞`, gives NaN, and one kind of infinity gives it. NULL without values. An engine's own order of additions is within the plan's bound (`sum_order`, `StdModel.epsilon_sum_cr`).",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [

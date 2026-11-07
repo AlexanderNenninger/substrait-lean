@@ -45,11 +45,10 @@ to the engine:
   `ORDER BY` or a window's order are broken;
 * the row `FIRST`, `LAST`, `collect` and `STRING_AGG` take first where their
   order ties (any row without an order, as in Ibis's `distinct(on=)`);
-* the order and grouping in which a double `SUM` or `AVG` adds its values
-  (`FloatSums`), each result within the error bound of
-  [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85);
 * a statistical aggregate's value (`VARIANCE`, `STDDEV`, `COVAR_*`, `CORR`),
-  within its generic properties (`StatProps`, with #85).
+  within its generic properties (`StatProps`, with #85) before D30; since
+  D30 the reference's is the exact moments rounded once, and the generic
+  properties are an engine's.
 
 A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
@@ -78,8 +77,8 @@ which the translation refuses. The shims are proved against the reference in
 Lean, and that each engine matches its profile is tested; both are in
 [engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice).
 
-For now the reference is demonstrated on DuckDB only. New functions run on
-DuckDB, and the other engines refuse them until their lowerings land
+New functions run on DuckDB first, and the other engines refuse them until
+their lowerings land
 ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 
 ## Principles
@@ -220,10 +219,7 @@ zero. Casts are in [Casts](#casts).
 
 DuckDB computes some of these differently (result types, `×` past 18 digits,
 `AVG` as a `DOUBLE`); its translation compensates, see
-[engine-profiles.md](engine-profiles.md#decimals-27). One reporting problem is
-open: `verify` prints a decimal's bound in unscaled units and calls it "an
-integer" ([#250](https://github.com/AlexanderNenninger/substrait-lean/issues/250)).
-The values are right; the rendering is not.
+[engine-profiles.md](engine-profiles.md#decimals-27).
 
 ### NULL
 
@@ -289,7 +285,6 @@ Design notes: [nested-values.md](nested-values.md).
 | Cast | Reference | Status |
 |---|---|---|
 | Out of range (`BIGINT` from a wider value, `i8`…`i32` from a larger integer, a double that is NaN, infinite or out of range) | An error: `FAILURE_BEHAVIOR_THROW_EXCEPTION`. | ✓ (`badCast`) |
-| `RETURN_NULL` (`TRY_CAST`) | NULL instead of an error. | **Not honoured**: `Parse.lean` ignores `failureBehavior` and treats every cast as raising. That is conservative: `verify` reports an error that can't happen, never misses one. [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
 | Double or decimal to integer | Truncates toward zero. Monotone, so a double's bounds bound the integer: a computed double within its error bound `[x − ε, x + ε]` ([float-bounds.md](float-bounds.md#in-contracts)) casts to `[trunc(x − ε), trunc(x + ε)]`. DuckDB's own cast rounds a double half to even and a decimal half away from zero (`CAST(2.5::DOUBLE AS INTEGER)` is 2, `CAST(2.5 AS INTEGER)` is 3, [duckdb-R9](../characterization/duckdb/facts/duckdb-R9.json)); sverify's SQL truncates a double first, `CAST(trunc(x) AS BIGINT)`. | ✓ (decided on #209) |
 | `TRY_CAST` (`failureBehavior: RETURN_NULL`) | NULL where the cast would raise, and then no error: a double to an integer (NaN, `±∞`, outside 64 bits), an integer to a narrower one, and a string (below). `TRY_CAST` to a DECIMAL and of a DECIMAL to an integer are refused. | ✓ on DuckDB (#58); other engines refuse it until #271 |
 | A string to a BIGINT, DOUBLE, BOOLEAN, DATE or TIMESTAMP | DuckDB's rules ([`duckdb-cast-varchar`](../characterization/duckdb/facts/duckdb-cast-varchar.json)): spaces around dropped; numbers with a sign, fraction and exponent, a BIGINT rounding the exact decimal half away from zero, a DOUBLE correctly rounded; `true`/`t`/`yes`/`y`/`1` and `false`/`f`/`no`/`n`/`0` in any case; dates and timestamps in ISO form. `CAST` raises on a string DuckDB rejects, and is not NULL for a string; `TRY_CAST` is NULL there. A narrower integer is the BIGINT cast down. Black boxes ([Black boxes](#black-boxes)); a string to a DECIMAL is refused (#27). | ✓ on DuckDB ([#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806)); other engines refuse it until #271 |
@@ -309,15 +304,15 @@ Design notes: [nested-values.md](nested-values.md).
 | Topic | Reference | Status |
 |---|---|---|
 | `avg` of integers | Follows the plan's declared output type: `fp64` is the mean as a double, `i64` is Substrait's integer `avg`, truncated toward zero (`AggFn.iavg`). The integer one lies between the smallest and largest value ([#237](https://github.com/AlexanderNenninger/substrait-lean/issues/237)). Any other output type is refused. | ✓ (#209) |
-| `sum` of integers | Returns `i64`; exact, checked at the end ([Errors](#errors)). | ✓ unbounded in `Rel.eval`; check: #255 |
+| `sum` of integers | Returns `i64`; exact, checked at the end ([Errors](#errors)). | ✓ unbounded in `Rel.eval`, checked at `i64` ([#255](https://github.com/AlexanderNenninger/substrait-lean/pull/255)) |
 
 ### Of doubles
 
 | Topic | Reference | Status |
 |---|---|---|
 | `SUM` / `AVG` | The exact sum of the values as dyadic rationals, rounded once to the nearest double, ties to even; `AVG` the exact sum divided by the count, rounded once (`floatSumCR`, `floatAvgCR`, [D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)). A NaN, or `+∞` with `-∞`, gives NaN; one kind of infinity gives it; a sum past the largest double is `±∞`. The value does not depend on the order of the rows (`floatSumCR_perm`), and the mean of three `0.1` is `0.1`. Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by half an ulp (`floatSumCR_mem`, `floatAvgCR_mem`, proved without axioms). An engine adds in its own order, within the plan's bound of this value (`epsilon_sum_cr` in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `reproducible=` accepts a tolerance on doubles, and `tolerance=True` reports a proved bound on the difference (`floatSplit_sum`); engines that don't fix the order are refused unless `deterministic=True` justifies it. | ✓ order; error bounds ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
-| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates) (#54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); over a window, exact on DuckDB (see [Windows](#windows)); for two-pass and for DuckDB's Welford and Chan, the result is within a proved bound that scales with the spread of the values ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
-| `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there, and so does the SQL lift with `semantics="duckdb"`, `duckdb-corr`). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
+| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. The exact moments rounded once (D30); each engine's own algorithm is within the plan's bound of it ([Statistical aggregates](#statistical-aggregates), #54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); over a window on DuckDB, tested ([Windows](#windows)); for two-pass and for DuckDB's Welford and Chan, the result is within a proved bound that scales with the spread of the values ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
+| `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). The exact co-moments rounded once (D30); each engine's own algorithm is within the plan's bound of it ([Statistical aggregates](#statistical-aggregates)): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there, and so does the SQL lift with `semantics="duckdb"`, `duckdb-corr`). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
 | `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB ([#371](https://github.com/AlexanderNenninger/substrait-lean/issues/371)) and Polars, whose `max` skips NaN, by the shim `max_nan_greatest` ([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)); DataFusion (whose grouped min/max of doubles is not IEEE) refuses them until #271 |
 
 ### Statistical aggregates
@@ -328,9 +323,13 @@ with Chan's merge, Polars 2.1 a two-pass per block of 128 values when
 ungrouped and Welford when grouped (`characterization/*/facts/`, ids
 `duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std`,
 `polars-cov`, `polars-corr`, `spark-var-stddev`, `spark-covar`, `spark-corr`).
-The reference picks none. It allows any result with the generic properties
-that every reasonable algorithm keeps (`StatProps` in
-`SubstraitLean/StatProps.lean`, the set `AggFn.Allowed` uses). For `n ≤ 2³²`
+The reference picks none. Since [D30](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)
+its value is the exact moments rounded once (`varOf`, `covOf`, `corrOf`): one
+value, whatever the order of the rows. Before D30 it allowed any result with
+the generic properties below; they are now what an engine's algorithm may
+give (`StatProps` in `SubstraitLean/StatProps.lean`, `StatAlgo` in
+`AllowedP.lean`), and each engine is within the plan's bound of the
+reference. For `n ≤ 2³²`
 finite values at most `2³⁹⁸`, with `u = 2⁻⁵³`, `tiny = 2⁻¹⁰²²`, the exact
 co-moments `C = Σxy − Σx · Σy / n`, `S_xx` and `S_yy`, and
 `Q' = Σ (|xᵢ| + tiny)²` of each side:
@@ -347,14 +346,14 @@ co-moments `C = Σxy − Σx · Σy / n`, `S_xx` and `S_yy`, and
 - `|CORR| ≤ 1 + 3E/L + 8u`, `E = 447 n u R + 11883 n² u² (Q'_x + Q'_y) + 2379 n² u · tiny`
   (`corrErr`), where `R` is at least `√(Q' S)` of each side, `√(Q'_x S_yy)`,
   `√(Q'_y S_xx)` and `√(S_xx S_yy)`, when the co-moments of both sides are at
-  least `L ≥ 8E`. Without such a lower bound `CORR` can be any double, and no
-  engine clamps it to `[−1, 1]`.
+  least `L ≥ 8E`. Without such a lower bound `CORR` can be any double; the
+  writers clamp each engine's to `[−1, 1]` (D30).
 
 The bounds scale with the spread of the values: for values near `10⁶` that
 vary by about `1`, the variance of `10⁶` of them is within about `2 · 10⁻²`.
 `StatProps` states each square root by a rational witness above it, so the
 core needs no square roots. The bounds are proved for the two-pass algorithm
-(the reference's own) and for DuckDB's Welford update with Chan's merge in any
+and for DuckDB's Welford update with Chan's merge in any
 tree ([`float-bounds.md`](float-bounds.md)), and a property test checks
 DuckDB's results against them (`tests/test_float_bounds.py`). The textbook
 formula `Σx² − (Σx)²/n` cancels and is outside them. Outside the finite range
@@ -398,7 +397,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Aggregates | NULLs are skipped. `COUNT` of no rows is 0, a [black box](#black-boxes) its row's `empty`; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
 | `FIRST` / `LAST` (#55) | The first or last non-NULL value in the aggregate's own `ORDER BY`, NULL without one. Rows tied in the order go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. Without an `ORDER BY` every row ties (any row's value, as in Ibis's `distinct(on=)`), and an engine may take each measure's value from a different row. | ✓ on DuckDB; other engines refuse it until #271 |
 | `FIRST` / `LAST` / `list` in SQL (#810) | DuckDB's `first(x ORDER BY …)`, `last(x …)` and `list(x …)` (`array_agg`) keep NULLs: the lift aggregates `[x]`, never NULL, and takes `first([x])[1]` or `flatten(array_agg([x]))`. `bool_and` and `bool_or` are `MIN` and `MAX` of booleans. | ✓ on DuckDB; other engines refuse it until #271 |
-| `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Without an `ORDER BY` every row ties, and the strings may come in any order. It is determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. A contract sees some string or NULL, and until conditions are proved over every order (D1 in [core-semantics.md](core-semantics.md)) a postcondition over a plan with ties stays unproved. | ✓ on DuckDB; other engines refuse it until #271 |
+| `STRING_AGG` (#55) | The non-NULL strings in the aggregate's own `ORDER BY`, joined by a constant separator; NULL without one. Without an `ORDER BY` every row ties, and the strings may come in any order. It is determined as `FIRST` is: ties go in list order, so a report is `deterministic` only when the group's and the order's columns contain a key. A contract sees some string or NULL, and a postcondition is proved for every order the ties allow ([Ties](#relations)). | ✓ on DuckDB; other engines refuse it until #271 |
 
 ## Windows
 
@@ -407,7 +406,7 @@ The rules for decimals are in [Decimals](#decimals).
 | `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out ([DF-11](../upstream/bugs/DF-11.json)) |
 | `FIRST_VALUE(x IGNORE NULLS)`, `LAST_VALUE(…)` | The frame's first (last) non-NULL `x` in the window's order, NULL without one: the measure `FIRST` (`LAST`) over the frame, whose rows come in that order (`Parse.parseWindow`). Last observation carried forward is `LAST_VALUE(x IGNORE NULLS)` over `ROWS UNBOUNDED PRECEDING`. | ✓ on DuckDB; other engines refuse it until #271 (#811) |
 | `RANGE` frames with an `INTERVAL` | A constant interval of days or less, over one timestamp (in microseconds) or date (whole days) sort key; months and years have no fixed length and are refused. | ✓ (#811) |
-| `VARIANCE` / `STDDEV` over a frame | The reference's own two passes over the frame's doubles (`varOf`): their mean as a sum from `0.0` in frame order over the count, then the squared deviations added in the same order, over `n - 1` or `n`, at least `0`, and the square root for `STDDEV`. NULL, NaN and an infinity as for the aggregate. | ✓ on DuckDB, which computes these passes over the frame's list ([`window_float_var`](../python/src/sverify/sql/duckdb.py)); other engines refuse it until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271); `COVAR_*` and `CORR` over a frame are refused |
+| `VARIANCE` / `STDDEV` over a frame | `varOf` of the frame's doubles: the exact moments rounded once (D30). NULL, NaN and an infinity as for the aggregate. | ✓ on DuckDB, its own `VAR_*` or `STDDEV_*` clamped at `0`, with no bound the plan states: a run is tested ([#1032](https://github.com/AlexanderNenninger/substrait-lean/issues/1032)); other engines refuse it until #271. `SUM` and `AVG` of doubles over a frame are the engine's own, within the bound of the input's row cap; `COVAR_*` and `CORR` over a frame are refused |
 
 ## Relations
 
@@ -417,7 +416,7 @@ The rules for decimals are in [Decimals](#decimals).
 | Operators | `read`, `values`, `filter`, `project`, `emit`, `cross`, inner and left `join`, `semi` and `anti`, `fetch`, `orderBy`, `distinct`, `aggregate` (one grouping set), `window`, `unnest`, `UNION ALL`. | ✓ |
 | Set operations | `UNION ALL` is bag union and `UNION DISTINCT` is `distinct` of it. The SQL lift writes `INTERSECT` and `EXCEPT` as the left rows with (without) an equal right row, NULLs equal, by a semi (anti) join, and `DISTINCT`; with `ALL` it numbers each side's equal rows (`ROW_NUMBER() OVER (PARTITION BY` every column`)`) and joins on the number too, so `m` and `n` copies leave `min(m, n)` and `max(m − n, 0)`. The window has no order, but the rows it ties are equal, so `INTERSECT ALL` and `EXCEPT ALL` are deterministic without keys (`Rel.window_allColumns`). Substrait's `SET_OP_INTERSECTION_*`/`SET_OP_MINUS_*` are not read yet. | ✓ (#344) |
 | Ties | Any order: rows that tie in a sort or a window's order, the rows a `fetch` takes and the rows `FIRST`, `STRING_AGG` and `MODE` take where their order ties (`Rel.OrderAllowed`). Postconditions and keys are proved for every order (`contract_sound_all`, `Rel.keys_sound_all`). `Rel.eval` sorts stably and takes `fetch` rows in list order, the deterministic profile's order ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)). A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys, and `str(report)` names each place where they are not; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `deterministic=True` is justified by it. | ✓ |
-| Sort keys | Every key states where NULLs go. The parser reads only `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}` and **refuses** any other direction (unspecified, clustered), so there is no default to choose. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`; the model's `SortKey` has a default of NULLs last only for hand-built values) |
+| Sort keys | A key states where NULLs go with `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}`. A sort relation's key may also leave it open: an `UNSPECIFIED` or missing direction puts NULLs last ([D8](core-semantics.md#d8-the-references-null-order)), and `CLUSTERED` keeps equal keys adjacent with the groups in any order ([D6](core-semantics.md#d6-sort-keys-without-a-null-order)). A window's or a measure's key must state its direction. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`) |
 
 ## Black boxes
 
@@ -450,6 +449,160 @@ the writers in `python/src/sverify/black_box.py`.
 
 | Statistical aggregates | `product`, `kahan_sum` (also `fsum`, `sumkahan`), `favg`, `sem`, `mad`, `kurtosis`, `kurtosis_pop` and `skewness` of doubles, integers converted as DuckDB converts them (#326). NULL without values. `product`, `kahan_sum` and `favg` are not NULL over values; `sem` and `mad` are not NULL and at least `+0.0`. `kurtosis`, `kurtosis_pop` and `skewness` are NULL for few or equal values and raise on an infinity, NaN, or a value whose fourth (third) power overflows (`duckdb-moments`). `mad` of a DECIMAL or a temporal type is refused. `histogram` (a MAP) and `weighted_avg` (two arguments) are refused (`duckdb-statistical-aggregates`). Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them until #271 |
 
+## The Ibis frontend
+
+What an Ibis expression means to `verify`.
+
+`sverify.verify(expr)` compiles an Ibis expression with the vendored producer
+(`sverify.ibis_substrait`), not with Ibis's SQL for some backend. A proof is
+about the plan that producer writes, under `Rel.eval`. So the meaning of an
+Ibis expression is the producer's, and it is the same whichever Ibis backend
+the expression came from.
+
+Where Ibis backends disagree (see
+`catalogue/backend_semantics.py`), this table says which meaning
+`verify` takes. `python/tests/test_ibis_semantics.py` runs each row through the
+producer and checks Lean's evaluation against it.
+
+| operation | meaning in `verify` | DataFusion | DuckDB | Polars |
+|---|---|---|---|---|
+| `a % b` (integers) | truncating: `-7 % 2 = -1` | same | same | floor (`+1`) |
+| `a // b` (integers) | floor, exact in 64 bits: `-7 // 2 = -4` | same | same | same |
+| `a % 0`, `a // 0` | error (division by zero) | error | conversion error | NULL |
+| `s.length()` | code points: `'é'` is 1, `'🎉'` is 1 | same | same | bytes |
+| `s.find(t)` | 0-based, −1 if absent, NULL for a NULL string | same | same | −1 for NULL |
+| `s.substr(i, n)` | 0-based start | same | same | same |
+| `s.like(p)` | `\` escapes the next character | same | no escape | no LIKE |
+| `x.nunique()` | NULL is not a value | same | same | counts NULL |
+| `v.round()` | half away from zero: `2.5 → 3` | same | same | half to even |
+| `v.cast("int64")` (double) | truncates; NaN, ±inf and out-of-range values are an error | same (error) | rounds half to even | truncates |
+| `v == 0.0` with `v = -0.0` | true: one zero (#89) | false (total order) | true | true |
+| `x == ibis.null()` | `x IS NULL` (TRUE for NULL rows) | same | same | same |
+| `ibis.row_number()` | 0-based | same | same | same |
+| `order_by(...)` | NULLs last in both directions | same | same | same |
+| window with `order_by`, no frame | the whole partition | same | same | same |
+| 64-bit overflow of `+ - *` | an error at the declared width (#202); DataFusion wraps around, which an error allows | wraps | error | wraps |
+| `v.max()` of doubles | NaN, the greatest double (#371, #697) | NaN | NaN | skips NaN |
+| `ts.day_of_week.index()` | Monday = 0 | same | same | same |
+| `s.upper()`, `s.lower()`, `re_search` | Rust's case mapping and `regex` classes; SQL engines raise on non-ASCII text (#70) | same | utf8proc, RE2 | same |
+
+"Same" means the backend's Ibis result agrees with `verify`'s meaning on the
+notebook's edge rows. A **refused** operation is outside what `verify` can
+give a backend-independent meaning today.
+
+Which Ibis backends implement this semantics fully: none of them on every
+row. Ibis-on-DataFusion is closest (it differs on `-0.0 == 0.0` and on
+`max` of NaN). To run a verified expression with exactly this meaning, run
+the plan: `sverify.engines.run(con, plan, engine)` on DuckDB, Polars or
+Spark ([the engines](stability.md#engines)), whose translations raise where
+they would differ.
+
+### Any row's value
+
+`first()` and `last()` without `order_by`, and so `distinct(on=…)`, which
+Ibis writes as `FIRST` (or `LAST`) of each other column, take any row's
+value (#55). `verify` proves what holds for every row an engine may take,
+and reports the result as not `deterministic` unless the grouping (`on`)
+columns form a key
+([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)). Each column is chosen on its own: `FIRST` skips NULLs column by column,
+so `distinct(on="name")` may keep `a` from one row and `b` from another, and
+a fact about every input row, such as `a <= b`, need not hold of the result.
+`keep=None` keeps the groups of one row, but the report still calls it
+not `deterministic`. The plan runs on DuckDB for now (#271).
+
+### Parameters
+
+An `ibis.param` has no value until the expression runs, so `verify` takes
+one, as Ibis's `execute(params=...)` does: `sv.verify(expr, params={p: 5})`
+replaces each parameter with a literal of its type before compiling (#58).
+The report is then about the expression with those values, and says so
+(`Report.notes`): a proof for `p = 5` says nothing about `p = 0`. A
+parameter left unbound is refused. Proving a contract for every value of a
+parameter, as an unknown value of its type, is planned (#354).
+
+## How the model holds a plan
+
+Choices of the Lean model that shape how a plan is represented and
+evaluated. Where an entry names DataFusion, it records how that experimental
+engine differs ([the engines](stability.md#engines)).
+
+* Positional schemas. Substrait field references are ordinals, so a
+  schema is an arity, with a kind per column that the kind checker keeps
+  (`Rel.kinds_sound` in `Kinds.lean`).
+* Project appends, Emit narrows. This matches Substrait's `ProjectRel` +
+  `RelCommon.emit`. Here `Emit` is its own node, and no rel carries an emit field.
+* Bags as lists. `Rel.eval` returns a `List`, and plan equivalence is `List.Perm`.
+  Several rewrites are stronger than that and hold as exact list equality.
+* Semi joins and `DISTINCT` are their own operators. `Rel.semi` keeps the left
+  rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
+  the first occurrence of every row (NULLs equal, doubles by their codes: one
+  zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
+  `DISTINCT` as an aggregate with one empty grouping, which its own consumer
+  rejects; the parser reads it as "all columns".
+* Aggregates have one grouping set. `Rel.aggregate` outputs one row per
+  distinct grouping value (NULLs group together; doubles by their codes, so
+  -0.0 and 0.0 are one group), or exactly one row without
+  grouping expressions, even on an empty input. Measures skip NULLs; on no
+  values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
+  wraps around; the reference raises outside 64 bits, checked while the job runs), double `SUM`/`AVG` are the correctly
+  rounded exact sum and mean ([Of doubles](#of-doubles), D25), and `AVG` of integers is the `AVG` of their
+  conversion to double. `MIN`/`MAX` of doubles compare by the
+  codes, as DuckDB does; DataFusion's grouped version turns a group of +∞ into
+  the largest finite double and skips NaN next to other values, so it is refused
+  there. Contracts see `MIN`, `MAX`, an integer `AVG` and a decimal `AVG` within
+  the values' bounds, measures over a group of a column that is never NULL as
+  never NULL, and `MIN ≤ MAX` (#372). An `AVG` of doubles rounds, so it is some
+  double.
+  The grouping columns are a key of the result.
+* Ill-typed calls evaluate to `null`. This keeps `eval` total. `Rel.WF` rules out
+  out-of-range field references.
+* Some operations are rewrites in the parser. `IN` lists become `OR`s of
+  equalities; `COALESCE`, `NULLIF`, `GREATEST`, `LEAST` and `ABS` become
+  conditionals; `RIGHT JOIN` becomes a `LEFT JOIN` with its sides swapped;
+  `FULL OUTER JOIN` becomes the left join plus the anti join of the right side,
+  padded with NULLs; `x IN (subquery)` in a filter becomes a semi join on `=`;
+  `UNION` is `DISTINCT` of `UNION ALL`; `IS NOT DISTINCT FROM` becomes a
+  conditional. The rewrites are trusted code, checked against DuckDB by
+  `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
+  DataFusion; here it is reported as an overflow.)
+* Overflow is an error at the declared width. `Rel.eval` computes exact
+  integers, and [Safety.lean](../SubstraitLean/Safety.lean) reports every operation whose
+  result may not fit its declared width (64 bits, or narrower integers). Where DataFusion fails instead (division, `POWER`, casts), the
+  value in the model is `NULL`.
+* Strings are Unicode scalar values. `substring`, `strpos`, `LIKE`, `btrim`, `||`,
+  `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
+  computed exactly, checked against DuckDB (and Rust's string functions, as
+  DataFusion computes them) by `python/tests/test_text.py`; a
+  `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
+  `ILIKE`, regular expressions, `md5` and `sha256` are black boxes (`opaque`): no proof
+  depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
+  regular expressions with RE2's leftmost-first matching ([Regex.lean](../SubstraitLean/Regex.lean))
+  where RE2 and Rust agree, checked against DuckDB by `python/tests/test_regex.py`.
+  `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error
+  (for `regexp_match`) or refused (for `regexp_extract` and `regexp_replace`) unless
+  `Text.simpleRegex` accepts it, a conservative subset of Rust's and RE2's syntax that is
+  tested to compile in both.
+* Elementary functions follow Substrait, with errors outside their domains.
+  `sqrt`, `exp`, `ln`, `log10`, `log2`, `logb`, the trigonometric functions and
+  `atan2` are computed with C's libm ([Numeric.lean](../SubstraitLean/Numeric.lean)), and
+  contracts treat each result as "some double". Outside a function's domain (`sqrt` of a
+  negative, the logarithm of zero or a negative, `asin` and `acos` outside `[-1, 1]`,
+  `atan2(0, 0)`, `logb` to a base that is not positive or is 1) the result is an error,
+  Substrait's `on_domain_error` = ERROR when a plan omits the option; NaN is in every
+  domain. Bitwise operations are exact in 64-bit two's complement, and a shift count
+  outside 0–63, which Substrait leaves open, is an error too. Polars and the SQL of
+  DuckDB raise where Lean reports a domain error; DataFusion returns NaN, ±∞ or a
+  wrapped shift there, which an error allows. Spark runs `sqrt` and the bitwise
+  operations (its other functions are Java's `StrictMath`); Snowflake runs `&`, `|` and
+  `^` only (its shifts are not 64-bit, and its libm is not documented). Checked by
+  `python/tests/test_math.py`.
+* Timestamps are microseconds (UTC). `date_part` and `date_trunc` are computed
+  exactly, checked against DuckDB and DataFusion by `python/tests/test_time.py`, including at
+  the ends of the ranges where DataFusion stops being exact; dates are in [Temporal](#temporal).
+* Integer `//` from Ibis is exact. Ibis compiles it through doubles
+  (`CAST(FLOOR(CAST(a AS DOUBLE) / b) AS BIGINT)`), which is wrong beyond 2⁵³;
+  `sverify` compiles it to integer division instead.
+
 ## Trusted assumptions
 
 What a proof does not cover. A theorem about `Rel.eval` holds for the model;
@@ -474,4 +627,5 @@ these links connect it to a real run.
 | Engine tiers | [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211) |
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
 | Float aggregates as correctly rounded exact sums, two NULL equalities, the size hypothesis, lexical lambdas | [core-semantics.md](core-semantics.md#decisions): D25 to D28, [#922](https://github.com/AlexanderNenninger/substrait-lean/issues/922) |
+| Statistical aggregates as correctly rounded exact moments | [core-semantics.md](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments): D30, [#918](https://github.com/AlexanderNenninger/substrait-lean/issues/918) |
 | The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md), [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444) |

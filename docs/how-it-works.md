@@ -245,7 +245,7 @@ Ibis expressions become Substrait directly, without SQL:
 `sverify/ibis_substrait` is [ibis-substrait](https://github.com/ibis-project/ibis-substrait)
 (Apache 2.0, last released for Ibis 9), vendored and ported to Ibis 12. It
 writes the functions and encodings the Lean parser reads, and each operation
-means what [`docs/ibis-semantics.md`](ibis-semantics.md) says, with Ibis's
+means what [the Ibis frontend](reference-semantics.md#the-ibis-frontend) says, with Ibis's
 type promotions written as explicit casts. That makes plans typed: `qty >
 amount` compares as doubles, where DataFusion's producer (from its unanalysed
 plan) once left an integer next to a double's code (#16). Upstream's mistakes are fixed
@@ -298,95 +298,13 @@ and timestamps at precision 0. It checks the argument kinds a signature names.
 
 ### Engines
 
-Plans come from the Ibis producer or sverify's SQL lift, and they can run on
-DuckDB (the default, below), [Polars](https://pola.rs) or DataFusion. You pick
+Plans come from the Ibis producer or sverify's SQL lift, and run on DuckDB
+(the default), [Polars](https://pola.rs) or Spark
+([the engines](stability.md#engines)); DataFusion is experimental. You pick
 one with `engine="polars"` on `node.refresh`, `sv.connect` or
-`sverify.engines.run(con, plan, "polars")`. The tables stay in `con` and are handed to
-the engine as Arrow. Engines are there for differential testing,
-with the Lean semantics as the spec.
-
-Polars runs Lean's own serialisation of the checked plan: the plan as
-`substrait-check --write` writes it back out from the parsed `Rel`
-(`sverify.engines.written_plan`), and the delta plans of `--delta`, which use the same
-writer. `sverify/polars_engine.py` translates only that small, canonical form
-to a `LazyFrame` and raises `UnsupportedError` on anything else. It does not go
-through Ibis's Polars backend, which would compile a different plan. The
-translator pins the semantics and takes no Polars defaults:
-
-* Filters and join conditions keep a row only when it is TRUE. `and`/`or` are
-  written out as Kleene `and3`/`or3`. Equi-join keys never match on NULL.
-  Semi and anti joins keep the left rows with (without) a TRUE match, so an
-  anti join keeps a row whose key is NULL. Lean writes an outer join as a
-  left join plus the unmatched right rows (an anti join), padded with NULLs.
-* Rows come out in `Rel.eval`'s order. Joins are left-major, with a left
-  join's padded row in its place, and windows emit their sorted order. Sorts
-  are stable, so ties keep their input order, and `DISTINCT` keeps the first
-  of each set of equal rows in place. So `FetchRel` takes the same rows as
-  Lean, and the tests compare Polars with Lean row for row.
-* Doubles compare, join, partition and sort with one zero and one NaN
-  (`-inf < … < 0.0 < … < inf < NaN`), like the float codes. Sorts place NULLs
-  as each key says. `DISTINCT` compares rows as `Value`s: NULLs are equal,
-  and so are -0.0 and 0.0, and all NaNs.
-* Aggregates (`aggregateEval`): one row per group, in order of first
-  occurrence (or exactly one without `GROUP BY`), grouping as `DISTINCT`
-  compares. Each measure skips NULLs and the rows its `FILTER` drops;
-  `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
-  and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
-  and `AVG` of doubles are the exact sum and mean rounded once
-  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
-  whatever the order of the rows.
-* Strings are sequences of Unicode scalar values: `character_length`,
-  `strpos` and `substring` count characters, and `substring` with
-  a start below 1 keeps only the positions that exist. `LIKE` escapes with a
-  backslash, and a trailing one stands for itself. `UPPER`, `LOWER` and
-  regular expressions are black boxes in Lean; Polars computes them with the
-  Rust code DataFusion uses.
-* `date_part` and `date_trunc` follow `SubstraitLean/Time.lean`: parts
-  within a day are integer arithmetic on the microseconds, the calendar comes
-  from chrono (as in DataFusion), and `date_part` is NULL outside the years
-  chrono represents.
-* Integers are unbounded in Lean. Polars computes on 128 bits, and a result
-  outside 64 bits raises `IntegerOverflow`, where DataFusion wraps silently
-  (`2^62 + 2^62` gives `-2^63`). Integer division and remainder truncate
-  toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
-* Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
-  zero, `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions
-  that do not compile and `date_trunc` to a week or longer outside ±2⁶³ ns. Each expression
-  carries a per-row flag for each one, masked by `CASE` as `Expr.issues`
-  masks it. The operator raises the matching error if a flag is set on a row
-  it evaluates. Polars runs filters where the plan puts them, so a filter
-  guards the projections above it. DataFusion merges filters, which is what
-  `Rel.loose` models.
-* Doubles divide in numpy: Polars divides a column by a constant by
-  multiplying with its reciprocal, which rounds differently.
-
-`python/tests/test_polars.py` runs every golden fixture (among them sorts,
-`DISTINCT`, semi, anti and outer joins, and the string and time functions),
-the window and rewrite queries of the other suites, and every delta plan of
-the example pipelines on both engines. It checks Polars against DataFusion as bags and
-against Lean's `Rel.eval` in order. It also has targeted tests for NULL join
-keys, three-valued filters, NULL and NaN order in windows, overflow, and each
-runtime error and its guards. The
-incremental-view tests run on both engines.
-
-`python/tests/test_backends.py` runs every Ibis operation the coverage
-harness verifies on random tables, on Polars and DuckDB against DuckDB running
-Ibis's own SQL, and generates its Snowflake SQL and runs its Spark SQL on a local Spark session; `test_text.py` and `test_time.py` run their edge
-cases on all three engines.
-
-Known gaps: the writer gives virtual tables placeholder `i64` column types and
-writes `FetchRel`'s deprecated `offset`/`count`. DataFusion rejects both, so
-written plans with string `VALUES` or a fetch run only on Polars. Doubles in a
-virtual table come out as their integer codes. `lt` on strings or booleans is
-undefined in the model (unlike in SQL), so the translator refuses it.
-
-### DuckDB, through generated SQL
-
-`engine="duckdb"` runs plans on [DuckDB](https://duckdb.org) as SQL that
-`sverify.sql.to_sql(plan, DUCKDB)` generates from them. DuckDB's Substrait
-extension is not used. Like Polars, DuckDB runs Lean's written plans over the
-tables of `con`, which are copied into a fresh in-process database for each
-run. Contracts take `engine=` for their runtime checks on data too:
+`sverify.engines.run(con, plan, "polars")`. The tables stay in `con` and are
+handed to the engine as Arrow. Contracts take `engine=` for their runtime
+checks on data too:
 
 ```python
 view = IncrementalView(con, query, "v", engine="duckdb")
@@ -395,135 +313,8 @@ view = IncrementalView(con, query, "v", engine="duckdb")
 def passthrough(orders): ...
 ```
 
-The SQL generator (`python/src/sverify/sql/`) reads Substrait JSON as
-`Parse.lean` does. It accepts exactly the plans `substrait-check` accepts and
-raises `UnsupportedError` on everything else. It then writes SQL whose result is
-`Rel.eval`. The query spells out every semantic choice and leaves none to
-the engine:
-
-* subqueries name their columns `c0, c1, …`;
-* integers are `BIGINT`, and overflow raises (DataFusion wraps around);
-* division and remainder truncate; where DataFusion fails at run time
-  (division by zero, `MIN / -1`, bad `POWER` or `CAST(double AS BIGINT)`),
-  Lean's value is NULL and the SQL raises;
-* doubles have one zero and one NaN (`-inf < … < 0.0 < … < inf < NaN`) in
-  comparisons, joins, partitions and sorts, and −0.0 is made 0.0 wherever it
-  could arise;
-* every `ORDER BY` key says `NULLS FIRST`/`LAST`;
-* filters keep only TRUE rows; semi and anti joins are `[NOT] EXISTS` over
-  the rows where the condition is TRUE;
-* `DISTINCT` groups by the same keys as a window partition, so equal means
-  equal as `Value`s;
-* aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
-  counts the first row of each value, integer `SUM` raises outside 64 bits,
-  and a `SUM` or `AVG` of doubles is the engine's own, within the plan's
-  bound of the reference's correctly rounded sum
-  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
-* strings: lengths and positions count characters, a negative `substring`
-  start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
-  (either way the start is normalized before it reaches the engine), and
-  `LIKE` names its escape character;
-* `date_part` and `date_trunc` use the engine's calendar functions where they
-  agree with `SubstraitLean/Time.lean` (ISO weeks, `dow` from Sunday,
-  milliseconds within the minute), and the SQL raises where DataFusion's
-  calendar truncation fails;
-* below a `FETCH`, a window or a sort, an ordinal column carries Lean's list
-  order, so `LIMIT` and ties in sorts and windows pick Lean's rows, and a
-  sorted result comes out in Lean's order.
-
-Engine differences go through the hooks of a `Dialect`
-(`sverify/sql/core/_base.py`). DuckDB's is `sverify/sql/duckdb.py`.
-
-`python/tests/test_sql.py` checks the generator. Every golden fixture and every
-delta plan of the incremental fixtures and example pipelines runs on DataFusion
-and on DuckDB with random tables. The results must agree with each other and
-with Lean's `Rel.eval` (row for row, in Lean's order, when `FETCH` or a window
-makes order matter). The file also has targeted tests for engine traps: NULL
-join keys, three-valued logic, NULL ordering in windows, refused integer
-division, overflow, and NaN and signed zeros. It keeps snapshots of the
-generated SQL in `python/tests/sql_snapshots/`. The incremental, window,
-rewrite and ASOF differential tests run on DuckDB too.
-
-#### Snowflake
-
-Snowflake support is aspirational: everything below has been checked on an
-emulator; no real account was involved ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)).
-
-`to_sql(plan, SNOWFLAKE)` (from `sverify.sql.snowflake`) writes checked plans
-and Lean delta plans as Snowflake SQL. The SQL is written to match Lean where
-Snowflake's documented behaviour differs:
-
-* integers are `NUMBER(38,0)` and are checked against the 64-bit range;
-  division and remainder truncate (through `MOD`, as `/` rounds to six
-  decimals), and `CAST(double AS BIGINT)` truncates and raises out of range;
-* timestamps are `TIMESTAMP_NTZ(6)`; weeks, days of the week and truncation
-  to a week use the ISO functions, independent of the session's `WEEK_START`;
-* backslashes and control characters in strings are escaped;
-* every identifier is quoted, so create tables and columns with quoted
-  lower-case names.
-
-Where Snowflake can't match, the plan is refused (`UnsupportedError`) or the query
-raises when it would answer differently:
-
-* FETCH over a named table is refused: Snowflake tables have no row order.
-  So is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
-  the additions.
-  Windows and sorts are refused too, unless you pass `deterministic=True` to
-  promise there are no ties on their keys (a contract report's
-  `deterministic` says so for windows).
-* Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
-  interval type.
-
-Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
-collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
-fixture and delta plan, parses it with sqlglot's Snowflake parser, and runs it
-on [fakesnow](https://github.com/tekumara/fakesnow) against Lean's `Rel.eval`,
-along with sorts, `DISTINCT`, aggregates, semi, anti and outer joins and
-string functions.
-fakesnow emulates Snowflake on DuckDB, so this checks the SQL and says nothing
-about Snowflake's behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
-`SNOWFLAKE_USER`, a credential (`SNOWFLAKE_PASSWORD`,
-`SNOWFLAKE_AUTHENTICATOR` or `SNOWFLAKE_PRIVATE_KEY_FILE`) and
-`SNOWFLAKE_WAREHOUSE`/`DATABASE`/`SCHEMA`.
-
-#### Spark
-
-`to_sql(plan, SPARK)` (from `sverify.sql.spark`) writes checked plans and
-Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. With the
-`spark` extra, `sverify.engines.run(con, plan, "spark")` runs a plan over a
-connection's tables on a local session (or on the session you pass as the
-engine). The session needs the
-settings of `SPARK_CONF`: ANSI mode
-(`spark.sql.ansi.enabled`), without which an overflow wraps around and a bad
-cast gives NULL, plus a pinned time zone, NTZ timestamps, case-sensitive
-names and backslash escapes in string literals. The SQL matches Lean where
-Spark differs:
-
-* integers are `BIGINT`; division is `div` (`/` gives a double) and
-  remainder `%`, both truncating; a `SUM` adds `DECIMAL(38,0)` values, since
-  Spark raises when a partial sum overflows even if the total fits;
-* doubles divided by zero raise, as the reference does (`on_division_by_zero`
-  = ERROR); a plan asking for IEEE gets a `CASE` for ±inf or NaN;
-  `CAST(double AS BIGINT)` is range-checked first (Spark saturates at 2⁶³);
-  `FLOOR` and `CEIL` (which return `BIGINT`) keep NaN, ±inf and large values;
-* timestamps are `TIMESTAMP_NTZ` and intervals `INTERVAL DAY TO SECOND`;
-  `date_trunc` returns a time-zone timestamp, so truncation is computed on
-  `TIMESTAMP_NTZ` and `DATE` values;
-* backslashes and control characters in strings are escaped, and every
-  identifier is quoted with backticks.
-
-Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
-table without `deterministic=True` (tables have no row order), and so `SUM` or
-`AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
-`Math.pow` (within 1 ulp of C's).
-
-String columns must use the default `UTF8_BINARY` collation (code point
-order). `python/tests/test_sql_spark.py` snapshots the SQL, parses it with
-sqlglot's Spark parser, and runs the Snowflake suite's queries, the hooks
-and `date_part`/`date_trunc` at the calendar's edges on a local Spark session
-against `Rel.eval`; `test_backends.py` runs every coverage case there. The
-session needs a JVM (Java 17 or 21: `JAVA_HOME` or `java` on `PATH`), or the
-Spark tests are skipped (`poe test-spark` runs them).
+Each engine's translation, what it pins, how it is tested and its known gaps
+are in [engine-profiles.md](engine-profiles.md#the-translations-today).
 
 Trusted components (not covered by the proofs): the JSON parser and
 writer, the `sverify` glue (change tables, consolidation, merge), the Polars
@@ -763,8 +554,11 @@ checked at their declared width (#202, #419).
 
 Table updates are Z-sets: rows with signed weights, where a deletion has weight `-1` and an
 update is a delete plus an insert. This follows DBSP (Budiu et al., VLDB 2023).
-It covers every operator except left, semi and anti joins, `DISTINCT`, aggregates,
-fetch and windows (`Rel.Incremental`):
+The linear fragment, `Rel.Incremental`, covers every operator except left,
+semi and anti joins, `DISTINCT`, aggregates, fetch and windows; semi and anti
+joins, `DISTINCT` and `COUNT`, `SUM`, `AVG`, `MIN` and `MAX` per group have
+delta rules of their own ([section 6 of the optimizations note](optimizations.md#6-incremental-maintenance);
+what refresh maintains is in [the guide](guide.md#nodes-composing-storing-refreshing)):
 
 * `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit, sort and union
   are linear (a sort only orders the bag), and cross and inner join use the bilinear rule
@@ -814,124 +608,17 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and the trusted facts below. The bounds of `SUM` and `AVG` of doubles need none since D25: they are theorems about the correctly rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`), and the bound of a sharded `SUM` too (`floatSplit_sum`); a sharded `AVG` divides natively and rests on `div_scaled_err` in `Float.lean`. `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. The bounds of one double `+`, `-`, `*`, `/` and `exp` (#582) rest on five: `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled` in `Float.lean` and `exp_fin` in `Safety.lean`; their signs (#441) on three: `add_nonneg`, `mul_nonneg`, `div_nonneg` in `Float.lean`. [`float-bounds/`](float-bounds.md) proves them for IEEE rounding with Mathlib, kept out of the core build (`div_scaled_err` is `core_div`'s statement).
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and the trusted facts below. The bounds of `SUM` and `AVG` of doubles need none since D25: they are theorems about the correctly rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`), and the bound of a sharded `SUM` too (`floatSplit_sum`); a sharded `AVG` divides natively and rests on `div_scaled_err` in `Float.lean`. The statistical aggregates need none since D30: they are the exact moments rounded once (`varOf_props`, `covOf_props`, `corrOf_props` are retired). The bounds of one double `+`, `-`, `*`, `/` and `exp` (#582) rest on five: `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled` in `Float.lean` and `exp_fin` in `Safety.lean`; their signs (#441) on three: `add_nonneg`, `mul_nonneg`, `div_nonneg` in `Float.lean`. [`float-bounds/`](float-bounds.md) proves them for IEEE rounding with Mathlib, kept out of the core build (`div_scaled_err` is `core_div`'s statement).
 
 ## Modelling choices
 
-* Positional schemas. Substrait field references are ordinals, so a
-  schema is just an arity. Types beyond "nullable value" are not tracked yet.
-* Project appends, Emit narrows. This matches Substrait's `ProjectRel` +
-  `RelCommon.emit`. Here `Emit` is its own node, and no rel carries an emit field.
-* Bags as lists. `Rel.eval` returns a `List`, and plan equivalence is `List.Perm`.
-  Several rewrites are stronger than that and hold as exact list equality.
-* Windows sort stably. `Rel.eval` sorts a window's input with a stable merge
-  sort, so ties keep input order. The checker only claims results for windows
-  without ties (see `window_tiebreak`).
-* Fetch is order-dependent. Without a `SortRel`, real engines may return any
-  rows. The semantics fixes list order, so `fetch` theorems describe one valid behavior.
-  `SortRel` is a stable sort here, while engines may order ties either way, so after
-  `ORDER BY … LIMIT` the checker's claims hold for every row the engine could keep.
-* Semi joins and `DISTINCT` are their own operators. `Rel.semi` keeps the left
-  rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
-  the first occurrence of every row (NULLs equal, doubles by their codes: one
-  zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
-  `DISTINCT` as an aggregate with one empty grouping, which its own consumer
-  rejects; the parser reads it as "all columns".
-* Aggregates have one grouping set. `Rel.aggregate` outputs one row per
-  distinct grouping value (NULLs group together; doubles by their codes, so
-  -0.0 and 0.0 are one group), or exactly one row without
-  grouping expressions, even on an empty input. Measures skip NULLs; on no
-  values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
-  wraps around; the reference raises outside 64 bits, checked while the job runs), double `SUM`/`AVG` add with native floats
-  (DataFusion promises no order), and `AVG` of integers is the `AVG` of their
-  conversion to double. `MIN`/`MAX` of doubles compare by the
-  codes, as DuckDB does; DataFusion's grouped version turns a group of +∞ into
-  the largest finite double and skips NaN next to other values, so it is refused
-  there. Contracts see `MIN`, `MAX`, an integer `AVG` and a decimal `AVG` within
-  the values' bounds, measures over a group of a column that is never NULL as
-  never NULL, and `MIN ≤ MAX` (#372). An `AVG` of doubles rounds, so it is some
-  double.
-  The grouping columns are a key of the result.
-* Ill-typed calls evaluate to `null`. This keeps `eval` total. `Rel.WF` rules out
-  out-of-range field references.
-* Some operations are rewrites in the parser. `IN` lists become `OR`s of
-  equalities; `COALESCE`, `NULLIF`, `GREATEST`, `LEAST` and `ABS` become
-  conditionals; `RIGHT JOIN` becomes a `LEFT JOIN` with its sides swapped;
-  `FULL OUTER JOIN` becomes the left join plus the anti join of the right side,
-  padded with NULLs; `x IN (subquery)` in a filter becomes a semi join on `=`;
-  `UNION` is `DISTINCT` of `UNION ALL`; `IS NOT DISTINCT FROM` becomes a
-  conditional. The rewrites are trusted code, checked against DuckDB by
-  `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
-  DataFusion; here it is reported as an overflow.)
-* Overflow is an error at the declared width. `Rel.eval` computes exact
-  integers, and [Safety.lean](../SubstraitLean/Safety.lean) reports every operation whose
-  result may not fit its declared width (64 bits, or narrower integers). Where DataFusion fails instead (division, `POWER`, casts), the
-  value in the model is `NULL`.
-* Strings are Unicode scalar values. `substring`, `strpos`, `LIKE`, `btrim`, `||`,
-  `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
-  computed exactly, checked against DuckDB (and Rust's string functions, as
-  DataFusion computes them) by `python/tests/test_text.py`; a
-  `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
-  `ILIKE`, regular expressions, `md5` and `sha256` are black boxes (`opaque`): no proof
-  depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
-  regular expressions with RE2's leftmost-first matching ([Regex.lean](../SubstraitLean/Regex.lean))
-  where RE2 and Rust agree, checked against DuckDB by `python/tests/test_regex.py`.
-  `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error
-  (for `regexp_match`) or refused (for `regexp_extract` and `regexp_replace`) unless
-  `Text.simpleRegex` accepts it, a conservative subset of Rust's and RE2's syntax that is
-  tested to compile in both.
-* Elementary functions follow Substrait, with errors outside their domains.
-  `sqrt`, `exp`, `ln`, `log10`, `log2`, `logb`, the trigonometric functions and
-  `atan2` are computed with C's libm ([Numeric.lean](../SubstraitLean/Numeric.lean)), and
-  contracts treat each result as "some double". Outside a function's domain (`sqrt` of a
-  negative, the logarithm of zero or a negative, `asin` and `acos` outside `[-1, 1]`,
-  `atan2(0, 0)`, `logb` to a base that is not positive or is 1) the result is an error,
-  Substrait's `on_domain_error` = ERROR when a plan omits the option; NaN is in every
-  domain. Bitwise operations are exact in 64-bit two's complement, and a shift count
-  outside 0–63, which Substrait leaves open, is an error too. Polars and the SQL of
-  DuckDB raise where Lean reports a domain error; DataFusion returns NaN, ±∞ or a
-  wrapped shift there, which an error allows. Spark runs `sqrt` and the bitwise
-  operations (its other functions are Java's `StrictMath`); Snowflake runs `&`, `|` and
-  `^` only (its shifts are not 64-bit, and its libm is not documented). Checked by
-  `python/tests/test_math.py`.
-* Timestamps are microseconds (UTC). `date_part` and `date_trunc` are computed
-  exactly, checked against DuckDB and DataFusion by `python/tests/test_time.py`, including at
-  the ends of the ranges where DataFusion stops being exact. Dates (`DATE`) are not
-  supported by them yet.
-* Integer `//` from Ibis is exact. Ibis compiles it through doubles
-  (`CAST(FLOOR(CAST(a AS DOUBLE) / b) AS BIGINT)`), which is wrong beyond 2⁵³;
-  `sverify` compiles it to integer division instead.
+How the Lean model represents and evaluates a plan (positional schemas,
+bags as lists, the parser's rewrites, overflow, strings, elementary
+functions and time) is in
+[reference-semantics.md](reference-semantics.md#how-the-model-holds-a-plan).
 
 ## Prior work to build on
 
-The full credits and a comparison with related tools are in [prior-work.md](prior-work.md).
-
-We found no formal semantics for Substrait. The closest work formalizes SQL or relational algebra:
-
-Coq (most mature)
-* SQLCert / SQL_Coq (Benzaken, Contejean): a mechanized semantics for
-  realistic SQL with nulls, aggregates and correlated subqueries, an extended bag
-  algebra, and proofs of common optimizer rewrites.
-  [HAL 01487062](https://hal.archives-ouvertes.fr/hal-01487062),
-  [HAL 01955433](https://hal.archives-ouvertes.fr/hal-01955433)
-* HoTTSQL (Chu, Weitz, Cheung, Suciu; PLDI 2017): denotes queries as
-  K-relations using univalence. It proves many rewrite rules, and the Cosette prover grew out of it.
-  [arXiv 1607.04822](https://arxiv.org/abs/1607.04822),
-  [PLDI page](https://pldi17.sigplan.org/event/pldi-2017-papers-hottsql-proving-query-rewrites-with-univalent-sql-semantics)
-* A Formalization of SQL with Nulls (Ricciotti, Cheney; JAR 2022): covers
-  three-valued logic, set and bag operations, lateral joins and nested subqueries.
-  [arXiv 2003.11331](https://arxiv.org/abs/2003.11331),
-  [PMC9637088](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9637088/)
-* Q\*cert (Auerbach et al., SIGMOD 2017): a verified query compiler
-  built around the nested relational algebra (NRA<sup>e</sup>). It's the closest
-  analogue to "verified IR for queries".
-
-Lean 4
-* RelationalAlgebra (Rickerd): relational algebra ≡ first-order logic, built on Mathlib.
-  [Reservoir](https://reservoir.lean-lang.org/@Rickerd1234/RelationalAlgebra)
-* provenance (Senellart): semantics for ProvSQL with semiring provenance,
-  a natural route to K-relation semantics in Lean.
-  [Reservoir](https://reservoir.lean-lang.org/@PierreSenellart/provenance)
-* Emergence AI's [Lean SQL equivalence write-up](https://www.emergence.ai/blog/formal-verification-of-sql-queries-in-lean-for-enhanced-accuracy)
-  and the typed-queries chapter of
-  [*Functional Programming in Lean*](https://lean-lang.org/functional_programming_in_lean/Programming-with-Dependent-Types/Worked-Example___-Typed-Queries/).
+[prior-work.md](prior-work.md) credits the work sverify builds on, the formal
+semantics of SQL in Coq and Lean among it, and compares sverify with related
+tools.

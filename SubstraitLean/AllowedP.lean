@@ -63,11 +63,13 @@ def AvgOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "EXACT" then c = floatAvgCR vs
   else ∃ s, SumOrder b vs s ∧ c = FloatCode.lift₂ (· / ·) s (FloatCode.ofInt vs.length)
 
-/-- What a statistical aggregate gives under a `stat_algo` behaviour. An
-engine's own algorithm (`WELFORD_CHAN`) is not modelled here: it meets the
-generic properties (`StatProps`), which is all this allows of it. -/
+/-- What a statistical aggregate gives under a `stat_algo` behaviour: the
+exact moments rounded once for `EXACT`, the reference's (D30). An engine's
+own algorithm (`WELFORD_CHAN`) is not modelled here: it meets the generic
+properties (`StatProps`), which is all this allows of it. -/
 def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
+  if b = "EXACT" then v = f.apply vs
+  else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
 
 /-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour: a double
 between the neighbours, which DuckDB's linear interpolation is (clamped). -/
@@ -341,9 +343,9 @@ theorem reference_allows_sum :
     Profile.reference.table.allows "agg.fsum" "sum_order" [] = ["EXACT"] := by
   decide +kernel
 theorem reference_allows_var :
-    Profile.reference.table.allows "agg.var" "stat_algo" [] = ["GENERIC"] := by decide +kernel
+    Profile.reference.table.allows "agg.var" "stat_algo" [] = ["EXACT"] := by decide +kernel
 theorem reference_allows_stat :
-    Profile.reference.table.allows "agg.stat" "stat_algo" [] = ["GENERIC"] := by decide +kernel
+    Profile.reference.table.allows "agg.stat" "stat_algo" [] = ["EXACT"] := by decide +kernel
 theorem reference_allows_quant :
     Profile.reference.table.allows "agg.quant" "quantile_interp" [] = ["BETWEEN"] := by decide +kernel
 theorem reference_allows_clustered :

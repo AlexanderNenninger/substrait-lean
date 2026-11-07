@@ -106,7 +106,7 @@ def options : List OptionSpec := [
     core := ["ANY", "SEQUENTIAL", "PAIRWISE", "COMPENSATED", "SCALED_CONSTANT", "EXACT"],
     extra := [("SEQUENTIAL", "polars-sum-float"), ("PAIRWISE", "polars-sum-float"),
       ("COMPENSATED", "duckdb-kahan-sum"), ("SCALED_CONSTANT", "duckdb-sum-double")] },
-  -- `EXACT`: the correctly rounded formula over the exact moments (D25, #918).
+  -- `EXACT`: the correctly rounded formula over the exact moments, the reference's (D30).
   { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN", "EXACT"],
     extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
   { id := "stat_degenerate", substrait := none, core := ["NULL", "NAN", "ERROR"],
@@ -494,7 +494,8 @@ def Profile.reference.table : ProfileTable where
     (some "agg.order", "list_null_order", .oneOf ["GREATEST"]),
     -- D25: the exact sum rounded once; engines add in their own order.
     (none, "sum_order", .oneOf ["EXACT"]),
-    (none, "stat_algo", .oneOf ["GENERIC"]),
+    -- D30: the exact moments rounded once; engines keep their own algorithms.
+    (none, "stat_algo", .oneOf ["EXACT"]),
     (none, "stat_degenerate", .oneOf ["NULL"]),
     (none, "avg_int_result", .oneOf ["DECLARED_TYPE"]),
     (none, "quantile_interp", .oneOf ["BETWEEN"]),

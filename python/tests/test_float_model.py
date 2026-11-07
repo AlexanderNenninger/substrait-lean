@@ -148,8 +148,10 @@ def test_an_observation_reprs_as_its_call() -> None:
 
 
 def test_a_window_over_a_key_has_a_class() -> None:
-    """`api-critique/tasks/t7_engines.py`: a LAG over a unique key runs on
-    both engines with route `translated`; its class is one of the four."""
+    """`api-critique/tasks/t7_engines.py`
+    (https://github.com/AlexanderNenninger/substrait-lean/blob/f89f83d2b3fc71848f9d5de8547475b99523b9b5/api-critique/tasks/t7_engines.py):
+    a LAG over a unique key runs on both engines with route `translated`; its
+    class is one of the four."""
     c = sv.connect()
     c.put(
         "events",
@@ -176,3 +178,16 @@ def test_a_window_over_a_key_has_a_class() -> None:
         # evidence is that of the engine's row for their NULL placement.
         assert route.cls == "exact"
         assert route.evidence == ("tested" if engine == "duckdb" else "proved")
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_window_sum_of_doubles_is_within_the_plans_bound(con, engine) -> None:
+    """A window `SUM` of doubles is the engine's own, within the bound of the
+    input's row cap, as a grouped one is (#1032): not exact (Polars shims its
+    double sums)."""
+    r = con.table("readings")
+    report = sv.verify(r.mutate(s=r.x.sum().over(group_by=r.k)), requires=REQ)
+    assert report.proved and report.route(engine).cls == (
+        "observed" if engine == "duckdb" else "shim"
+    )
+    assert report.run(con, engine).num_rows == 3

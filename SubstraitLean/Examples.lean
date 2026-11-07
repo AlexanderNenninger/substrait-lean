@@ -1,4 +1,5 @@
 import SubstraitLean.Kinds
+import SubstraitLean.Refresh
 import SubstraitLean.Rewrites
 import SubstraitLean.Incremental
 import SubstraitLean.Weighted
@@ -30,6 +31,7 @@ import SubstraitLean.Obligations
 import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
 import SubstraitLean.FloatExact
+import SubstraitLean.FloatMoments
 
 /-!
 # Examples
@@ -182,6 +184,8 @@ end Substrait.Examples
 #print axioms Substrait.floatAvgCR_mem
 #print axioms Substrait.floatSumCR_sign
 #print axioms Substrait.floatSumCR_perm
+#print axioms Substrait.FloatCode.sqrtMag_near
+#print axioms Substrait.comomentNum_nonneg
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
@@ -218,7 +222,9 @@ end Substrait.Examples
 #print axioms Substrait.Measure.abs_sound
 #print axioms Substrait.Rel.capReads_eval
 #print axioms Substrait.Rel.maxRows_sound
-#print axioms Substrait.StatProps.apply
+#print axioms Substrait.varOf_perm
+#print axioms Substrait.corrOf_perm
+#print axioms Substrait.Stat.clamp_near
 #print axioms Substrait.Rel.capJoins_eval
 #print axioms Substrait.Rel.issuesCapped_sound
 #print axioms Substrait.FloatCode.ofInt_mono
@@ -321,3 +327,5 @@ end Substrait.Examples
 #print axioms Substrait.Rel.floatOpenSafe_aggregate
 #print axioms Substrait.Rel.floatOpenSafe_of_closed
 #print axioms Substrait.contract_sound_allowed_closed
+#print axioms Substrait.Refresh.no_corruption
+#print axioms Substrait.Refresh.record_describes_table

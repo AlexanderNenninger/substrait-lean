@@ -118,6 +118,40 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
     else none
   return (unscale t, rel)
 
+/-- The bound of a `VAR_*` or `STDDEV_*` over at most `rows` doubles in
+`[-B, B]` (D30): an engine's algorithm is within `StatProps`' `varTol` of
+the exact `V = S / d` (`core_var_chan` in `float-bounds`), the reference's
+value within `u · V` of it, so the two are within the sum. With
+`Q' ≤ n (B + tiny)²`, `√(Q' S) ≤ n (B + tiny) B` and `V ≤ n B² / d`. A
+deviation adds `sdNear`'s terms. The composition is not mechanised, so the
+bound is not marked proved. `COVAR_*` and `CORR` take pairs, whose bounds
+the abstract interpreter does not give per side: none yet. -/
+def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float := do
+  let .var sample sqrt := m.fn | none
+  let a := m.arg.absD env []
+  guard a.intsOnly
+  let b ← a.int
+  let lo ← b.lo
+  let hi ← b.hi
+  let n ← rows
+  guard (n ≤ 2 ^ 32)
+  let x := max (FloatCode.toFloat lo).abs (FloatCode.toFloat hi).abs
+  guard (!x.isNaN && !x.isInf && x ≤ Float.scaleB 1.0 398)
+  let u := Float.scaleB 1.0 (-53)
+  let tiny := Float.scaleB 1.0 (-1022)
+  let nf := Float.ofNat n
+  let d := Float.ofNat (if sample then max 1 (n - 1) else max 1 n)
+  let q := nf * (x + tiny) * (x + tiny)
+  let r := nf * (x + tiny) * x
+  let varTol := (160.0 * nf * u * r + 3970.0 * nf * nf * u * u * q + 800.0 * nf * nf * u * tiny) / d
+  let v := nf * x * x / d
+  let tv := (varTol + u * v) * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074)
+  if sqrt then
+    let st := tv.sqrt
+    return (st + u * (v.sqrt + st) + u * tiny + u * v.sqrt) * (1.0 + Float.scaleB 1.0 (-40)) +
+      Float.scaleB 1.0 (-1074)
+  else return tv
+
 /-! ## Per engine: the error carried through arithmetic
 
 `epsilon` below is the summation order's share, the same for every engine.
@@ -431,6 +465,10 @@ def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : Str
             ea == 0.0 && pa && pf && ordersProved)
         | .count => return (0.0, pf)
         | .min | .max => return (ea, pa && pf)
+        -- D30: an engine's statistic is within the plan's bound of the
+        -- reference's exact moments rounded once.
+        | .var _ _ => if ea == 0.0 && pf then return (← statEps env m r.maxRows, false) else none
+        | .cov _ | .corr => none
         | _ => if ea == 0.0 then some (0.0, false) else none
   | _ => none
 
@@ -605,6 +643,27 @@ def boundJson (e : Float) (rel : Option (Float × Bool)) (p : Bool) : Json :=
     [("proved", Json.mkObj ([("abs", toJson p)] ++
       match rel with | some (_, pr) => [("rel", toJson (p && pr))] | none => []))])
 
+/-- Whether a measure is a statistical aggregate (D30): its engine's value is
+within the plan's bound of the reference's, not equal to it. -/
+def isStat (m : Measure) : Bool :=
+  match m.fn with
+  | .var _ _ | .cov _ | .corr => true
+  | _ => false
+
+/-- The output columns that read a statistical aggregate, above the
+aggregate: `some (some m)` for the measure `m`'s own column, `some none` for
+a column computed from one (no bound carries over), `none` for the rest. -/
+def statCols : Rel → Option (List (Option (Option Measure)))
+  | .aggregate _ gs ms =>
+    some (gs.map (fun _ => none) ++ ms.map fun m => if isStat m then some (some m) else none)
+  | .filter r _ | .orderBy r _ => statCols r
+  | .project r es => (statCols r).map fun cs => cs ++ es.map fun e =>
+      match e with
+      | .field i => cs.getD i none
+      | _ => if (reads e).any (fun i => (cs.getD i none).isSome) then some none else none
+  | .emit r m => (statCols r).map fun cs => m.map (cs.getD · none)
+  | _ => none
+
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,
 `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}`.
@@ -672,7 +731,18 @@ def epsilon (input : Json) : Except String Json := do
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
-  return Json.mkObj (cols ++ winCols.filter fun (n, _) => !cols.any (·.1 == n))
+  -- D30: a statistic's column is within `statEps` of the reference's on an
+  -- engine, not proved; one computed from a statistic has no bound.
+  let stats : List (String × Option Measure) := match statCols plan.root with
+    | some cs => (names.zip cs).filterMap fun (name, (c : Option (Option Measure))) =>
+        c.map fun m => (name, m)
+    | none => []
+  let statJson := stats.map fun (name, (m? : Option Measure)) =>
+    (name, match m?.bind (statEps env · r.maxRows) with
+    | some e => Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson false)])]
+    | none => Json.mkObj [("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])])
+  let known := cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n)
+  return Json.mkObj (known ++ winCols.filter fun (n, _) => !known.any (·.1 == n))
 
 /-! ## The dependency report of a contract
 

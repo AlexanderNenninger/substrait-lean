@@ -5531,12 +5531,19 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     simp only [AggFn.apply]
     cases m.inputs grp with
     | nil => rfl
-    | cons v vs => simp only [covOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+    | cons v vs =>
+      simp only [covOf]
+      split
+      · rfl
+      · split <;> exact ⟨_, rfl, Bound.mem_top _⟩
   case corr =>
     cases m.inputs grp with
     | nil => rfl
     | cons v vs =>
-      simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+      simp only [AggFn.apply, corrOf]
+      split
+      · rfl
+      · split <;> exact ⟨_, rfl, Bound.mem_top _⟩
   case bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case fsum =>
@@ -5623,7 +5630,17 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       simp only [AggFn.apply, varOf]
       split
       · rfl
-      · exact ⟨_, rfl, fun l hl => by cases hl; omega, fun h hh => by cases hh⟩
+      · -- D30: NaN, a rounded square root, or a rounded non-negative quotient.
+        split
+        · have := Substrait.nan_eq
+          exact ⟨_, rfl, fun l hl => by cases hl; omega, fun h hh => by cases hh⟩
+        · split
+          · exact ⟨_, rfl, fun l hl => by cases hl; exact FloatCode.posCode_nonneg _,
+              fun h hh => by cases hh⟩
+          · have h0 := FloatCode.ofExactDiv_nonneg ((intsOf (v :: vs)).length *
+                (if sample = true then (intsOf (v :: vs)).length - 1 else (intsOf (v :: vs)).length) *
+                  2 ^ 1074) (comomentNum_nonneg (intsOf (v :: vs)))
+            exact ⟨_, rfl, fun l hl => by cases hl; exact h0, fun h hh => by cases hh⟩
   case min | max =>
     split
     · -- A group with a value: one of the values.

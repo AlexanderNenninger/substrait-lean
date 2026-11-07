@@ -283,7 +283,11 @@ theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = fal
 aggregates, and a `SUM` or `AVG` of doubles, which is the exact sum rounded
 once (D25, `floatSumCR_perm`). The doubles' sums do not combine in two phases:
 their partial results are rounded. -/
-def AggFn.orderFree (f : AggFn) : Bool := f.decomposable || f == .fsum || f == .avg
+def AggFn.orderFree (f : AggFn) : Bool :=
+  f.decomposable || f == .fsum || f == .avg ||
+    match f with
+    | .var _ _ | .cov _ | .corr => true
+    | _ => false
 
 theorem AggFn.orderFree_of_decomposable {f : AggFn} (h : f.decomposable = true) :
     f.orderFree = true := by
@@ -336,16 +340,14 @@ theorem AggFn.apply_perm_of_orderFree {f : AggFn} (hf : f.orderFree = true) {vs 
     (h : vs.Perm ws) : f.apply vs = f.apply ws := by
   by_cases hd : f.decomposable = true
   · exact apply_perm hd h
-  · have hf' : f = .fsum ∨ f = .avg := by cases f <;> simp_all [orderFree, decomposable]
-    cases vs with
+  · cases vs with
     | nil => rw [← h.nil_eq]
     | cons v vs =>
       cases ws with
       | nil => exact absurd h.eq_nil (by simp)
       | cons w ws =>
-        rcases hf' with rfl | rfl
-        · simp only [apply, floatSumCR_perm h]
-        · simp only [apply, floatAvgCR_perm h]
+        cases f <;> simp_all [orderFree, decomposable, apply, floatSumCR_perm h,
+          floatAvgCR_perm h, varOf_perm _ _ h, covOf_perm _ h, corrOf_perm h]
 
 theorem AggFn.apply_sum_cons (v : Value) (vs : List Value) :
     AggFn.sum.apply (v :: vs) = .int (intSum (v :: vs)) := rfl

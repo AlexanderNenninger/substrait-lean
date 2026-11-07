@@ -17,6 +17,7 @@ from pathlib import Path
 
 import duckdb
 import ibis
+import pyarrow as pa
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -404,3 +405,55 @@ def test_window_sums_have_the_aggregate_bound() -> None:
     assert derived._epsilon is not None and derived._epsilon["d"] == {"abs": None}
     uncapped = sv.verify(t.mutate(s=t.x.sum().over(w)), requires={"t": [_.x.between(-1, 1)]})
     assert uncapped._epsilon == {"s": {"abs": None}}
+
+
+def test_statistics_are_tested_or_refused_never_proved() -> None:
+    """D30: an engine's `VAR` is within `statEps` of the reference, a bound
+    not mechanised, so its route is `tested`; a `COVAR` or `CORR` column has
+    no bound yet, so a stated tolerance is refused and the route is never
+    `proved`."""
+    con = sv.connect()
+    con.put(
+        "t", pa.table({"k": [1, 1, 2, 2], "x": [1.0, 2.0, 3.0, 5.0], "y": [2.0, 1.0, 0.5, 4.0]})
+    )
+    t = con.table("t")
+    req = {"t": [_.x.between(-1e3, 1e3), _.y.between(-1e3, 1e3), sv.max_rows(1000)]}
+    tol = [sv.equivalent(floats=sv.within(abs=1e-3))]
+    var = sv.verify(t.group_by("k").aggregate(v=t.x.var()), requires=req, ensures=tol)
+    assert var._epsilon is not None
+    assert var._epsilon["v"]["proved"] == {"abs": False}
+    var.run(con, "duckdb")
+    assert var.routes["duckdb"].evidence == "tested"
+    for agg in (dict(c=t.x.cov(t.y)), dict(c=t.x.corr(t.y))):
+        plain = sv.verify(t.group_by("k").aggregate(**agg), requires=req)
+        assert plain._epsilon is not None
+        assert plain._epsilon["c"]["abs"] is None
+        plain.run(con, "duckdb")
+        assert plain.routes["duckdb"].evidence == "tested"
+        tight = sv.verify(t.group_by("k").aggregate(**agg), requires=req, ensures=tol)
+        assert not tight.proved
+        assert "c has no bound" in str(tight)
+
+
+def test_a_tolerance_on_a_column_without_a_bound_is_refused() -> None:
+    """A double `SUM` without a row cap has no bound (`"abs": null`), nor has a
+    value computed from one: a stated tolerance on it is not met, and its
+    route is `tested`, never `proved`."""
+    con = sv.connect()
+    con.put("t", pa.table({"k": [1, 1, 2, 2], "x": [1.0, 2.0, 3.0, 5.0]}))
+    t = con.table("t")
+    tol = [sv.equivalent(floats=sv.within(abs=1e-3))]
+    capped = {"t": [_.x.between(-1e3, 1e3), sv.max_rows(1000)]}
+    cases = [
+        (t.group_by("k").aggregate(s=t.x.sum()), {"t": [_.x.between(-1e3, 1e3)]}, "s"),
+        (t.group_by("k").aggregate(s=t.x.sum()).mutate(s2=_.s * 2.0), capped, "s2"),
+    ]
+    for expr, req, col in cases:
+        plain = sv.verify(expr, requires=req)
+        assert plain._epsilon is not None
+        assert plain._epsilon[col]["abs"] is None
+        plain.run(con, "duckdb")
+        assert plain.routes["duckdb"].evidence == "tested"
+        tight = sv.verify(expr, requires=req, ensures=tol)
+        assert not tight.proved
+        assert f"{col} has no bound" in str(tight)
