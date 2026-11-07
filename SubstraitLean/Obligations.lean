@@ -34,7 +34,7 @@ Checks, by `decide` and at elaboration:
 * every row is consistent: where `E` does not give the reference's value by
   default at an option where the reference picks one, the row names a shim,
   an observation or a refusal;
-* every shim has a cost class (`shimCosts`), and every shim and every
+* every shim has a cost class (`EngineProfile.shims`), and every shim and every
   observation row has evidence: a theorem, or facts and tests;
 * every theorem a row names exists (a `run_cmd` over the table).
 
@@ -67,58 +67,6 @@ inductive Case
   rules it out. -/
   | inconsistent
   deriving Repr, DecidableEq
-
-/-- What a shim costs at run time. -/
-inductive ShimCost
-  /-- A written argument or keyword (`NULLS LAST`, `nulls_last=True`): free. -/
-  | argument
-  /-- An extra expression per row or group (a `CASE`, a cast). -/
-  | expression
-  /-- An extra sort. -/
-  | sort
-  deriving Repr, DecidableEq
-
-def ShimCost.name : ShimCost → String
-  | .argument => "argument" | .expression => "expression" | .sort => "sort"
-
-/-- Each engine's shims, by the name its observation rows give them, with
-their cost. Polars's are `python/src/sverify/_polars_shims.py`'s `SHIMS`
-(named as their lemmas `Polars.<name>`), which
-`tests/test_realizability.py` checks against these. -/
-def shimCosts : List (String × String × ShimCost) := [
-  ("duckdb", "MIN % -1 written out", .expression),
-  ("duckdb", "Dialect.canon", .expression),
-  ("duckdb", "ORDER BY the keys", .sort),
-  ("polars", "null_order", .argument),
-  ("polars", "round_half_away", .argument),
-  ("polars", "int_div_trunc", .expression),
-  ("polars", "int_mod_trunc", .expression),
-  ("polars", "sum_empty_null", .expression),
-  ("polars", "avg_int_declared", .expression),
-  ("polars", "one_zero", .expression),
-  ("polars", "strpos_chars", .expression),
-  ("polars", "substring_wrap", .expression),
-  ("polars", "column_divisor", .expression),
-  ("polars", "decimal_round_half_away", .expression),
-  ("polars", "decimal_div_half_away", .expression),
-  ("polars", "max_nan_greatest", .expression),
-  ("polars", "sort on the keys", .sort),
-  ("spark", "int_sum_decimal", .expression),
-  ("spark", "int_avg_decimal", .expression),
-  ("spark", "Dialect.canon", .expression),
-  ("spark", "null_order", .argument),
-  ("spark", "sort on the keys", .sort),
-  ("spark", "decimal_negate_sub", .expression)]
-
-def shimCost? (engine name : String) : Option ShimCost :=
-  (shimCosts.find? fun (e, n, _) => e == engine && n == name).map (·.2.2)
-
-/-- The theorem each engine's translation as a whole rests on. -/
-def translationTheorem : String → String
-  | "duckdb" => "Rel.duckdb_refines"
-  | "polars" => "Rel.polars_sound"
-  | "spark" => "Rel.spark_sound"
-  | _ => ""
 
 /-! ## The rows -/
 
@@ -237,33 +185,29 @@ def shimTotal (os : List Obligation) : Nat := (shimNames os).length
 
 /-! ## Checks -/
 
-/-- Every row is consistent: no engine differs silently from the reference. -/
-theorem obligations_consistent :
-    engineTables.all fun (t, obs) => (obligations t obs).all (·.case != .inconsistent) := by
+/-- Every row of `e` is consistent: no engine differs silently from the reference. -/
+def EngineProfile.consistent (e : EngineProfile) : Bool :=
+  (obligations e.table e.obs).all (·.case != .inconsistent)
+
+/-- Every shim of `e` has a cost class and evidence: a theorem, or facts and
+tests; every row an observation row decides has evidence; and every shim cost
+belongs to a shim the rows name. -/
+def EngineProfile.evidenced (e : EngineProfile) : Bool :=
+  let os := obligations e.table e.obs
+  (os.all fun r => match r.case with
+    | .shim s => (e.shimCost? s).isSome && r.evidence != .none && r.evidence != .tested []
+    | .uncharacterized => true
+    | _ => r.evidence != .none) &&
+  e.shims.all fun (n, _) => (shimNames os).contains n
+
+theorem obligations_consistent : builtinEngines.all (·.consistent) := by
   decide +kernel
 
-/-- Every shim has a cost class and evidence: a theorem, or facts and tests. -/
-theorem obligations_shims_evidenced :
-    engineTables.all fun (t, obs) => (obligations t obs).all fun r =>
-      match r.case with
-      | .shim s => (shimCost? t.name s).isSome && r.evidence != .none &&
-          r.evidence != .tested []
-      | _ => true := by
+theorem obligations_evidenced : builtinEngines.all (·.evidenced) := by
   decide +kernel
 
-/-- Every row an observation row decides (`native`, up to `q`, `approx`, a
-precondition) has evidence too. -/
-theorem obligations_evidenced :
-    engineTables.all fun (t, obs) => (obligations t obs).all fun r =>
-      match r.case with
-      | .uncharacterized => true
-      | _ => r.evidence != .none := by
-  decide +kernel
-
-/-- Every shim cost belongs to a shim some table names. -/
-theorem shimCosts_used :
-    shimCosts.all fun (e, n, _) =>
-      engineTables.any fun (t, obs) => t.name == e && (shimNames (obligations t obs)).contains n := by
+/-- This repository's tables refine the core (`Profile.duckdb_le_core`, …). -/
+theorem builtinEngines_leCore : builtinEngines.all (·.leCore) := by
   decide +kernel
 
 /-! ## Raise sets under a lowering -/
@@ -411,29 +355,48 @@ theorem Rel.duckdb_refines {cat : Catalog} (r : Rel) :
 
 /-! ## Every theorem a row names exists -/
 
-open Lean Elab Command in
-run_cmd do
+open Lean Elab Command Meta in
+unsafe def evalEnginesUnsafe (e : Lean.Expr) : TermElabM (List EngineProfile) :=
+  evalExpr (List EngineProfile) (mkApp (mkConst ``List [.zero]) (mkConst ``EngineProfile)) e
+
+open Lean Elab Command Meta in
+@[implemented_by evalEnginesUnsafe]
+opaque evalEngines (e : Lean.Expr) : TermElabM (List EngineProfile)
+
+open Lean Elab Command Meta in
+/-- `#check_engine_profiles es`: fail the build unless every engine of `es`
+names a translation theorem and row theorems that exist (in `Substrait` or
+at the root, or `float-bounds`'s, `floatBoundsTheorems`), and its rows are
+well-formed (`EngineProfile.rowsWf`), within the core (`leCore`),
+consistent and evidenced. For this repository's engines the last four are
+also theorems, by `decide`; a profile from outside states its own. -/
+elab "#check_engine_profiles " t:term : command => do
+  let es ← liftTermElabM do
+    let e ← Term.elabTermEnsuringType t
+      (mkApp (mkConst ``List [.zero]) (mkConst ``EngineProfile))
+    Term.synthesizeSyntheticMVarsNoPostponing
+    evalEngines (← instantiateMVars e)
   let env ← getEnv
   let known (thm : String) : Bool :=
     env.contains (`Substrait ++ thm.toName) || env.contains thm.toName ||
       floatBoundsTheorems.contains thm
-  for (t, obs) in engineTables do
-    unless known (translationTheorem t.name) do
-      throwError "{t.name}: no translation theorem {translationTheorem t.name}"
-    for r in obligations t obs do
+  for e in es do
+    unless known e.translationTheorem do
+      throwError "{e.name}: no translation theorem {e.translationTheorem}"
+    for r in obligations e.table e.obs do
       if let .proved thm _ := r.evidence then
         unless known thm do
-          throwError "obligations {t.name} at {r.option}: no theorem {thm}"
+          throwError "obligations {e.name} at {r.option}: no theorem {thm}"
+    for (_, o, r) in e.obs do
+      if let .proved thm _ := r.evidence then
+        unless known thm do
+          throwError "{e.name}'s rows at {o}: no theorem {thm}"
+    unless e.rowsWf do throwError "{e.name}: rows not well-formed"
+    unless e.leCore do throwError "{e.name}: choices not within the core's"
+    unless e.consistent do throwError "{e.name}: a row differs from the reference with no shim"
+    unless e.evidenced do throwError "{e.name}: a shim or row without evidence or cost"
 
-/-! Every theorem the Polars rows name (`Profile.polars.obs`) is one. -/
-open Lean Elab Command in
-run_cmd do
-  for (_, o, r) in Substrait.Profile.polars.obs do
-    if let .proved thm _ := (r : Substrait.ObsRow).evidence then
-      let n := thm.toName
-      unless (← getEnv).contains (`Substrait ++ n) || (← getEnv).contains n ||
-          Substrait.floatBoundsTheorems.contains thm do
-        throwError "Profile.polars.obs at {o}: no theorem {thm}"
+#check_engine_profiles builtinEngines
 
 /-! ## For Python -/
 
@@ -449,7 +412,7 @@ def Case.json : Case → List (String × Json)
   | .inconsistent => [("case", toJson "inconsistent")]
 
 open Lean (Json toJson) in
-def Obligation.json (engine : String) (r : Obligation) : Json :=
+def Obligation.json (e : EngineProfile) (r : Obligation) : Json :=
   Json.mkObj <| [
     ("group", toJson r.group), ("option", toJson r.option),
     ("tool", toJson (match r.tool with
@@ -457,7 +420,7 @@ def Obligation.json (engine : String) (r : Obligation) : Json :=
     ("reference", toJson r.reference), ("engine", toJson r.engine),
     ("stated_missing", toJson r.statedMissing)] ++ r.case.json ++
     (match r.case with
-      | .shim s => [("cost", toJson ((shimCost? engine s).map ShimCost.name))]
+      | .shim s => [("cost", toJson ((e.shimCost? s).map ShimCost.name))]
       | _ => []) ++
     (match r.evidence with
       | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
@@ -469,16 +432,16 @@ open Lean (Json toJson) in
 /-- `substrait-check --realizability`: per engine, its version, the theorem
 its translation rests on, its shims with their costs, the functions it
 refuses, and `obligations reference E`'s rows. -/
-def realizabilityJson : Json :=
-  Json.mkObj <| engineTables.map fun (t, obs) =>
-    let os := obligations t obs
-    (t.name, Json.mkObj [
-      ("version", toJson t.version),
-      ("theorem", toJson (translationTheorem t.name)),
+def realizabilityJson (es : List EngineProfile) : Json :=
+  Json.mkObj <| es.map fun e =>
+    let os := obligations e.table e.obs
+    (e.name, Json.mkObj [
+      ("version", toJson e.table.version),
+      ("theorem", toJson e.translationTheorem),
       ("shims", Json.arr <| ((shimNames os).map fun s => Json.mkObj [
-        ("name", toJson s), ("cost", toJson ((shimCost? t.name s).map ShimCost.name))]).toArray),
-      ("refused_functions", Json.arr <| (t.missing.map fun (f, ids) =>
+        ("name", toJson s), ("cost", toJson ((e.shimCost? s).map ShimCost.name))]).toArray),
+      ("refused_functions", Json.arr <| (e.table.missing.map fun (f, ids) =>
         Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray),
-      ("rows", Json.arr <| (os.map (·.json t.name)).toArray)])
+      ("rows", Json.arr <| (os.map (·.json e)).toArray)])
 
 end Substrait
