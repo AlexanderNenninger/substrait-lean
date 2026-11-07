@@ -12,12 +12,29 @@ are considered equal as bags when they are permutations of each other
 
 namespace Substrait
 
+/-- A value, tagged by its kind (#923): a function applied to a value of
+the wrong kind is a non-matching pattern. Doubles are their codes
+(`SubstraitLean/Float.lean`), dates days since 1970-01-01, timestamps
+(`ts`, with or without a time zone) and times of day (`tod`) microseconds,
+decimals their unscaled integer at their scale. A struct is its fields in
+order. -/
 inductive Value where
   | null
   | bool (b : Bool)
   | int (i : Int)
+  /-- A double, as its code (`FloatCode`). -/
+  | float (c : Int)
+  /-- A `DATE`: days since 1970-01-01. -/
+  | date (days : Int)
+  /-- A `TIMESTAMP`: microseconds since 1970-01-01. -/
+  | ts (micros : Int)
+  /-- A `TIME`: microseconds since midnight. -/
+  | tod (micros : Int)
+  /-- A `DECIMAL` of scale `scale`: `unscaled / 10 ^ scale`. -/
+  | dec (scale : Nat) (unscaled : Int)
   | str (s : String)
   | list (vs : List Value)
+  | struct (vs : List Value)
   deriving Repr, Inhabited
 
 mutual
@@ -25,15 +42,44 @@ def Value.decEq : (a b : Value) → Decidable (a = b)
   | .null, .null => isTrue rfl
   | .bool a, .bool b => if h : a = b then isTrue (h ▸ rfl) else isFalse (by simp [h])
   | .int a, .int b => if h : a = b then isTrue (h ▸ rfl) else isFalse (by simp [h])
+  | .float a, .float b => if h : a = b then isTrue (h ▸ rfl) else isFalse (by simp [h])
+  | .date a, .date b => if h : a = b then isTrue (h ▸ rfl) else isFalse (by simp [h])
+  | .ts a, .ts b => if h : a = b then isTrue (h ▸ rfl) else isFalse (by simp [h])
+  | .tod a, .tod b => if h : a = b then isTrue (h ▸ rfl) else isFalse (by simp [h])
+  | .dec s a, .dec t b =>
+    if h : s = t ∧ a = b then isTrue (by obtain ⟨rfl, rfl⟩ := h; rfl)
+    else isFalse (by simp only [Value.dec.injEq]; exact h)
   | .str a, .str b => if h : a = b then isTrue (h ▸ rfl) else isFalse (by simp [h])
   | .list as, .list bs => match Value.decEqList as bs with
     | isTrue h => isTrue (h ▸ rfl)
     | isFalse h => isFalse (by simp [h])
-  | .null, .bool _ | .null, .int _ | .null, .str _ | .null, .list _
-  | .bool _, .null | .bool _, .int _ | .bool _, .str _ | .bool _, .list _
-  | .int _, .null | .int _, .bool _ | .int _, .str _ | .int _, .list _
-  | .str _, .null | .str _, .bool _ | .str _, .int _ | .str _, .list _
-  | .list _, .null | .list _, .bool _ | .list _, .int _ | .list _, .str _ =>
+  | .struct as, .struct bs => match Value.decEqList as bs with
+    | isTrue h => isTrue (h ▸ rfl)
+    | isFalse h => isFalse (by simp [h])
+  | .null, .bool _ | .null, .int _ | .null, .float _ | .null, .date _ | .null, .ts _
+  | .null, .tod _ | .null, .dec _ _ | .null, .str _ | .null, .list _ | .null, .struct _
+  | .bool _, .null | .bool _, .int _ | .bool _, .float _ | .bool _, .date _ | .bool _, .ts _
+  | .bool _, .tod _ | .bool _, .dec _ _ | .bool _, .str _ | .bool _, .list _
+  | .bool _, .struct _ | .int _, .null | .int _, .bool _ | .int _, .float _ | .int _, .date _
+  | .int _, .ts _ | .int _, .tod _ | .int _, .dec _ _ | .int _, .str _ | .int _, .list _
+  | .int _, .struct _ | .float _, .null | .float _, .bool _ | .float _, .int _
+  | .float _, .date _ | .float _, .ts _ | .float _, .tod _ | .float _, .dec _ _
+  | .float _, .str _ | .float _, .list _ | .float _, .struct _ | .date _, .null
+  | .date _, .bool _ | .date _, .int _ | .date _, .float _ | .date _, .ts _ | .date _, .tod _
+  | .date _, .dec _ _ | .date _, .str _ | .date _, .list _ | .date _, .struct _ | .ts _, .null
+  | .ts _, .bool _ | .ts _, .int _ | .ts _, .float _ | .ts _, .date _ | .ts _, .tod _
+  | .ts _, .dec _ _ | .ts _, .str _ | .ts _, .list _ | .ts _, .struct _ | .tod _, .null
+  | .tod _, .bool _ | .tod _, .int _ | .tod _, .float _ | .tod _, .date _ | .tod _, .ts _
+  | .tod _, .dec _ _ | .tod _, .str _ | .tod _, .list _ | .tod _, .struct _ | .dec _ _, .null
+  | .dec _ _, .bool _ | .dec _ _, .int _ | .dec _ _, .float _ | .dec _ _, .date _
+  | .dec _ _, .ts _ | .dec _ _, .tod _ | .dec _ _, .str _ | .dec _ _, .list _
+  | .dec _ _, .struct _ | .str _, .null | .str _, .bool _ | .str _, .int _ | .str _, .float _
+  | .str _, .date _ | .str _, .ts _ | .str _, .tod _ | .str _, .dec _ _ | .str _, .list _
+  | .str _, .struct _ | .list _, .null | .list _, .bool _ | .list _, .int _ | .list _, .float _
+  | .list _, .date _ | .list _, .ts _ | .list _, .tod _ | .list _, .dec _ _ | .list _, .str _
+  | .list _, .struct _ | .struct _, .null | .struct _, .bool _ | .struct _, .int _
+  | .struct _, .float _ | .struct _, .date _ | .struct _, .ts _ | .struct _, .tod _
+  | .struct _, .dec _ _ | .struct _, .str _ | .struct _, .list _ =>
     isFalse (by simp)
 
 def Value.decEqList : (as bs : List Value) → Decidable (as = bs)

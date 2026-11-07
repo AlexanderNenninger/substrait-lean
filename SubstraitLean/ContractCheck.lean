@@ -101,17 +101,6 @@ def _root_.Substrait.Bound.render (b : Bound) : String :=
   | some l, none => s!"an integer ≥ {l}"
   | none, some h => s!"an integer ≤ {h}"
 
-/-- `i · 10⁻ˢ` in decimal digits (`decimalString 2 (-5)` is `-0.05`). -/
-def _root_.decimalString (s : Nat) (i : Int) : String :=
-  if s = 0 then toString i else
-    let digits := (toString i.natAbs).toList
-    let digits := List.replicate (s + 1 - digits.length) '0' ++ digits
-    let k := digits.length - s
-    (if i < 0 then "-" else "") ++ String.ofList (digits.take k) ++ "." ++ String.ofList (digits.drop k)
-
-#guard decimalString 2 (-5) == "-0.05" && decimalString 2 1234 == "12.34" && decimalString 0 7 == "7"
-#guard decimalString 3 1000 == "1.000" && decimalString 1 0 == "0.0"
-
 /-- A decimal's bound (`Bound.render`) in its digits at scale `s`, as the
 column's type says (#250): `DECIMAL(38, 4) ≥ 45.0000`, not its unscaled
 `450000`. -/

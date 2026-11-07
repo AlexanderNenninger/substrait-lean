@@ -127,14 +127,22 @@ def Measure.inputs (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : Lis
   let vs := ((m.kept rows I).map fun row => m.arg.eval row I).filter (· != .null)
   if m.distinct then dedup vs else vs
 
+/-- The sum of the integers among `vs`, and of the unscaled values of its
+decimals (a column has one scale). -/
 def intSum : List Value → Int
   | [] => 0
-  | .int i :: vs => i + intSum vs
+  | .int i :: vs | .dec _ i :: vs => i + intSum vs
   | _ :: vs => intSum vs
+
+/-- `SUM` of integers, or of decimals at their scale. -/
+def sumOf (vs : List Value) : Value :=
+  match vs with
+  | .dec s _ :: _ => .dec s (intSum vs)
+  | _ => .int (intSum vs)
 
 def floatSum (vs : List Value) : Int :=
   vs.foldl (fun acc v => match v with
-    | .int c => FloatCode.lift₂ (· + ·) acc c
+    | .float c => FloatCode.lift₂ (· + ·) acc c
     | _ => acc) (FloatCode.ofInt 0)
 
 /-- The integers among `vs`. -/
@@ -158,7 +166,7 @@ def bitFold (op : BitOp) (vs : List Value) : Int :=
 in list order from `+0.0`. -/
 def sqDevSum (m : Int) (vs : List Value) : Int :=
   vs.foldl (fun acc v => match v with
-    | .int c =>
+    | .float c =>
       let d := FloatCode.lift₂ (· - ·) c m
       FloatCode.lift₂ (· + ·) acc (FloatCode.lift₂ (· * ·) d d)
     | _ => acc) (FloatCode.ofInt 0)
@@ -172,11 +180,11 @@ def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
     let m := FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length)
     let v := FloatCode.lift₂ (· / ·) (sqDevSum m vs)
       (FloatCode.ofInt (if sample then vs.length - 1 else vs.length))
-    .int (max 0 (if sqrt then FloatCode.ofFloat (FloatCode.toFloat v).sqrt else v))
+    .float (max 0 (if sqrt then FloatCode.ofFloat (FloatCode.toFloat v).sqrt else v))
 
 /-- The pairs of doubles among `vs` (`BinFn.pair`'s lists). -/
 def pairsOf (vs : List Value) : List (Int × Int) :=
-  vs.filterMap fun | .list [.int a, .int b] => some (a, b) | _ => none
+  vs.filterMap fun | .list [.float a, .float b] => some (a, b) | _ => none
 
 /-- The products of the deviations of the pairs from the means `mx`, `my`,
 added in list order from `+0.0`. -/
@@ -187,14 +195,14 @@ def coDevSum (mx my : Int) (ps : List (Int × Int)) : Int :=
 
 /-- The mean of the doubles `cs`, as `avg` computes it. -/
 def meanOf (cs : List Int) : Int :=
-  FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)
+  FloatCode.lift₂ (· / ·) (floatSum (cs.map .float)) (FloatCode.ofInt cs.length)
 
 /-- `COVAR_SAMP` / `COVAR_POP` of the pairs among `vs`. -/
 def covOf (sample : Bool) (vs : List Value) : Value :=
   let ps := pairsOf vs
   if ps.isEmpty || (sample && ps.length == 1) then .null else
     let s := coDevSum (meanOf (ps.map (·.1))) (meanOf (ps.map (·.2))) ps
-    .int (FloatCode.lift₂ (· / ·) s (FloatCode.ofInt (if sample then ps.length - 1 else ps.length)))
+    .float (FloatCode.lift₂ (· / ·) s (FloatCode.ofInt (if sample then ps.length - 1 else ps.length)))
 
 /-- `CORR` of the pairs among `vs`: NULL for fewer than two, or for a side
 whose values are all equal; else the co-deviation sum by the square root of
@@ -209,7 +217,7 @@ def corrOf (vs : List Value) : Value :=
     let syy := coDevSum my my (ys.zip ys)
     let r := FloatCode.lift₂ (· / ·) (coDevSum mx my ps)
       (FloatCode.ofFloat (FloatCode.toFloat (FloatCode.lift₂ (· * ·) sxx syy)).sqrt)
-    .int r
+    .float r
 
 /-! ## Trusted: error bounds of `SUM` and `AVG` of doubles (#85)
 
@@ -230,25 +238,25 @@ axiom floatSum_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN
     (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
     (hb : ∀ c ∈ cs, lo ≤ FloatCode.scaled c ∧ FloatCode.scaled c ≤ hi) :
     min lo (N * lo) - FloatCode.sumTolScaled N (max lo.natAbs hi.natAbs)
-        ≤ FloatCode.scaled (floatSum (cs.map .int)) ∧
-      FloatCode.scaled (floatSum (cs.map .int))
+        ≤ FloatCode.scaled (floatSum (cs.map .float)) ∧
+      FloatCode.scaled (floatSum (cs.map .float))
         ≤ max hi (N * hi) + FloatCode.sumTolScaled N (max lo.natAbs hi.natAbs)
 
 axiom floatAvg_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
     (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
     (hb : ∀ c ∈ cs, lo ≤ FloatCode.scaled c ∧ FloatCode.scaled c ≤ hi) :
     lo - FloatCode.avgTolScaled N (max lo.natAbs hi.natAbs)
-        ≤ FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .int))
+        ≤ FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .float))
           (FloatCode.ofInt cs.length)) ∧
-      FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .int))
+      FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .float))
           (FloatCode.ofInt cs.length))
         ≤ hi + FloatCode.avgTolScaled N (max lo.natAbs hi.natAbs)
 
 axiom floatSum_sign {cs : List Int} (hne : cs ≠ []) :
-    ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSum (cs.map .int) ∧
-        0 ≤ FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)) ∧
-      ((∀ c ∈ cs, c ≤ 0) → floatSum (cs.map .int) ≤ 0 ∧
-        FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length) ≤ 0)
+    ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSum (cs.map .float) ∧
+        0 ≤ FloatCode.lift₂ (· / ·) (floatSum (cs.map .float)) (FloatCode.ofInt cs.length)) ∧
+      ((∀ c ∈ cs, c ≤ 0) → floatSum (cs.map .float) ≤ 0 ∧
+        FloatCode.lift₂ (· / ·) (floatSum (cs.map .float)) (FloatCode.ofInt cs.length) ≤ 0)
 
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
@@ -261,10 +269,10 @@ def sortVals (vs : List Value) : List Value := vs.mergeSort fun a b => a.le b
 for `q = num / 10 ^ scale`: `⌈n·q⌉ − 1`, and the first for `n·q ≤ 1`. -/
 def discIndex (n num scale : Nat) : Nat := (n * num + 10 ^ scale - 1) / 10 ^ scale - 1
 
-/-- The code at position `i` of `s`, if it is an integer or a double. -/
+/-- The code at position `i` of `s`, if it is a double. -/
 def intAt (s : List Value) (i : Nat) : Option Int :=
   match s[i]? with
-  | some (.int c) => some c
+  | some (.float c) => some c
   | _ => none
 
 /-- `QUANTILE_CONT`'s neighbours among the doubles `s` in order, for
@@ -295,14 +303,14 @@ def interpolate (l h w : Int) : Int :=
 /-- `QUANTILE_CONT` of the doubles `s` in order. -/
 def contValue (num scale : Nat) (s : List Value) : Value :=
   match contNeighbours num scale s with
-  | some (l, h, w) => if l == h then .int l else .int (interpolate l h w)
+  | some (l, h, w) => if l == h then .float l else .float (interpolate l h w)
   | none => .null
 
 /-- What `QUANTILE_CONT` of the doubles `s` in order may give: NULL without
 neighbours, else a double between them. -/
 def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
   match contNeighbours num scale s with
-  | some (l, h, _) => ∃ c, v = .int c ∧ (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h))
+  | some (l, h, _) => ∃ c, v = .float c ∧ (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h))
   | none => v = .null
 
 /-- The most frequent of `vs`, the first of those that tie. -/
@@ -313,9 +321,9 @@ def AggFn.apply : AggFn → List Value → Value
   | .count, vs => .int vs.length
   | .bbox n, vs => BlackBox.callAgg n vs
   | _, [] => .null
-  | .sum, vs => .int (intSum vs)
-  | .fsum, vs => .int (floatSum vs)
-  | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
+  | .sum, vs => sumOf vs
+  | .fsum, vs => .float (floatSum vs)
+  | .avg, vs => .float (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
   | .iavg, vs => .int (clampInts vs ((intSum vs).tdiv vs.length))
   | .bit op, vs => .int (bitFold op vs)
   | .var sample sqrt, vs => varOf sample sqrt vs
@@ -412,14 +420,14 @@ theorem AggFn.apply_minmax {f : AggFn} (hf : f = .min ∨ f = .max) {vs : List V
     first | (simp [apply]; done) | (simp only [apply]; exact .inr (pickFold_mem _ _ _))
 
 theorem intAt_mem {s : List Value} {i : Nat} {c : Int} (h : intAt s i = some c) :
-    .int c ∈ s := by
+    .float c ∈ s := by
   unfold intAt at h
   split at h
   · rename_i c' heq; cases h; exact List.mem_of_getElem? heq
   · cases h
 
 theorem contNeighbours_mem {num scale : Nat} {s : List Value} {l h w : Int}
-    (hn : contNeighbours num scale s = some (l, h, w)) : .int l ∈ s ∧ .int h ∈ s := by
+    (hn : contNeighbours num scale s = some (l, h, w)) : .float l ∈ s ∧ .float h ∈ s := by
   unfold contNeighbours at hn
   cases h1 : intAt s ((s.length - 1) * num / 10 ^ scale) with
   | none => simp [h1] at hn
@@ -453,7 +461,7 @@ theorem contValue_allowed (num scale : Nat) (s : List Value) :
 /-- `QUANTILE_CONT` gives NULL or a double between two of the values. -/
 theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
     (AggFn.quantile true num scale).apply vs = .null ∨ ∃ c l h,
-      (AggFn.quantile true num scale).apply vs = .int c ∧ .int l ∈ vs ∧ .int h ∈ vs ∧
+      (AggFn.quantile true num scale).apply vs = .float c ∧ .float l ∈ vs ∧ .float h ∈ vs ∧
         (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h)) := by
   cases vs with
   | nil => exact .inl rfl
@@ -461,7 +469,7 @@ theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
     have hp := List.mergeSort_perm (v :: vs) (fun a b => a.le b)
     have ha := contValue_allowed num scale (sortVals (v :: vs))
     show contValue num scale (sortVals (v :: vs)) = .null ∨ ∃ c l h,
-      contValue num scale (sortVals (v :: vs)) = .int c ∧ _
+      contValue num scale (sortVals (v :: vs)) = .float c ∧ _
     unfold contAllowed at ha
     cases hn : contNeighbours num scale (sortVals (v :: vs)) with
     | none => rw [hn] at ha; exact .inl ha

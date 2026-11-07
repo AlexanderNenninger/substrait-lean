@@ -304,14 +304,15 @@ def strCap : Nat := 64
 
 def AVal.Mem (a : AVal) : Value → Prop
   | .null => a.null = true
-  | .int i => ∃ b, a.int = some b ∧ b.Mem i
+  -- Every numeric kind by its integer (#923; #925 tells the kinds apart).
+  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i => ∃ b, a.int = some b ∧ b.Mem i
   | .bool true => a.tt = true
   | .bool false => a.ff = true
   | .str s => (a.str && a.strs.all (·.contains s)) = true
   -- The abstraction does not look into lists: a list is a member where the
   -- booleans and strings are. Functions of one type give NULL on the others,
   -- so each abstraction covers a list as it covers a value of another type.
-  | .list _ => a.tt = true ∧ a.ff = true ∧ a.str = true
+  | .list _ | .struct _ => a.tt = true ∧ a.ff = true ∧ a.str = true
 
 /-- Every integer `a` describes is in `[lo, hi]`. -/
 def AVal.within (lo hi : Int) (a : AVal) : Bool := a.int.all (·.within lo hi)
@@ -327,11 +328,11 @@ def AVal.bot : AVal := ⟨false, none, false, false, false, none⟩
 
 def AVal.ofValue : Value → AVal
   | .null => ⟨true, none, false, false, false, none⟩
-  | .int i => ⟨false, some (.exact i), false, false, false, none⟩
+  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i => ⟨false, some (.exact i), false, false, false, none⟩
   | .bool true => ⟨false, none, true, false, false, none⟩
   | .bool false => ⟨false, none, false, true, false, none⟩
   | .str s => ⟨false, none, false, false, true, some [s]⟩
-  | .list _ => ⟨false, none, true, true, true, none⟩
+  | .list _ | .struct _ => ⟨false, none, true, true, true, none⟩
 
 def joinInt : Option Bound → Option Bound → Option Bound
   | some x, some y => some (x.join y)
@@ -361,14 +362,14 @@ def AVal.certainlyTrue (a : AVal) : Bool := !a.null && a.int.isNone && !a.ff && 
 
 theorem AVal.mem_top : ∀ v, AVal.top.Mem v
   | .null | .bool true | .bool false | .str _ => rfl
-  | .list _ => by simp [AVal.Mem, AVal.top]
-  | .int i => ⟨_, rfl, Bound.mem_top i⟩
+  | .list _ | .struct _ => by simp [AVal.Mem, AVal.top]
+  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_top i⟩
 
 theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
   | .null | .bool true | .bool false => rfl
   | .str s => by simp [AVal.Mem, AVal.ofValue]
-  | .list _ => by simp [AVal.Mem, AVal.ofValue]
-  | .int i => ⟨_, rfl, Bound.mem_exact i⟩
+  | .list _ | .struct _ => by simp [AVal.Mem, AVal.ofValue]
+  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_exact i⟩
 
 theorem joinStrs_left {a b : AVal} {s : String} (ha : a.str = true)
     (hs : a.strs.all (·.contains s) = true) : (joinStrs a b).all (·.contains s) = true := by
@@ -388,10 +389,11 @@ theorem AVal.mem_join_left {a b : AVal} : ∀ {v}, a.Mem v → (a.join b).Mem v
       exact ⟨.inl h.1, joinStrs_left h.1 h.2⟩
   | .null, h | .bool true, h | .bool false, h => by
       simp_all [AVal.Mem, AVal.join]
-  | .list _, h => by
+  | .list _, h | .struct _, h => by
       simp only [AVal.Mem, AVal.join] at *
       exact ⟨by simp [h.1], by simp [h.2.1], by simp [h.2.2]⟩
-  | .int i, ⟨x, hx, hm⟩ => by
+  | .int i, ⟨x, hx, hm⟩ | .float i, ⟨x, hx, hm⟩ | .date i, ⟨x, hx, hm⟩ | .ts i, ⟨x, hx, hm⟩
+  | .tod i, ⟨x, hx, hm⟩ | .dec _ i, ⟨x, hx, hm⟩ => by
       simp only [AVal.Mem, AVal.join, hx]
       cases b.int <;> simp [joinInt, hm, Bound.mem_join_left hm]
 
@@ -401,10 +403,11 @@ theorem AVal.mem_join_right {a b : AVal} : ∀ {v}, b.Mem v → (a.join b).Mem v
       exact ⟨.inr h.1, joinStrs_right h.1 h.2⟩
   | .null, h | .bool true, h | .bool false, h => by
       simp_all [AVal.Mem, AVal.join]
-  | .list _, h => by
+  | .list _, h | .struct _, h => by
       simp only [AVal.Mem, AVal.join] at *
       exact ⟨by simp [h.1], by simp [h.2.1], by simp [h.2.2]⟩
-  | .int i, ⟨y, hy, hm⟩ => by
+  | .int i, ⟨y, hy, hm⟩ | .float i, ⟨y, hy, hm⟩ | .date i, ⟨y, hy, hm⟩ | .ts i, ⟨y, hy, hm⟩
+  | .tod i, ⟨y, hy, hm⟩ | .dec _ i, ⟨y, hy, hm⟩ => by
       simp only [AVal.Mem, AVal.join, hy]
       cases ha : a.int <;> simp [joinInt, hm, Bound.mem_join_right hm]
 

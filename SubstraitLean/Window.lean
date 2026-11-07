@@ -172,7 +172,7 @@ def samePart (part : List Nat) (x y : Row) : Bool :=
 def peer (sort : List SortKey) (x y : Row) : Bool := sortLe sort y x && sortLe sort x y
 
 /-- The double `a / b` of two integers. -/
-def floatRatio (a b : Nat) : Value := .int (FloatCode.lift₂ (· / ·) (FloatCode.ofInt a) (FloatCode.ofInt b))
+def floatRatio (a b : Nat) : Value := .float (FloatCode.lift₂ (· / ·) (FloatCode.ofInt a) (FloatCode.ofInt b))
 
 /-- The SQL standard's `NTILE(k)` of the `i`-th (from 0) of `n` rows: `k`
 buckets of `n / k` rows, the first `n % k` of them one row larger; with fewer
