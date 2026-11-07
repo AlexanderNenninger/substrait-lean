@@ -600,3 +600,89 @@ def test_storage_keeps_secrets_out_of_repr_and_renews_them(tmp_path):
 def test_a_storage_with_a_function_pickles_without_its_results():
     s = Storage(dict)
     assert pickle.loads(pickle.dumps(s)).options() == {}
+
+
+# -- a source that cannot restore, across processes (#889, #965) ------------
+
+
+def frame(rows: list[dict]) -> pa.Table:
+    return pa.Table.from_pylist(
+        rows, schema=pa.schema([("id", pa.int64()), ("ts", pa.int64()), ("amount", pa.int64())])
+    )
+
+
+def frame_job(tmp_path, table: dict):
+    """What one process builds: a `from_frame` source read from `table["t"]`."""
+    src = from_frame(lambda: table["t"], name="payments")
+    return big(src).write(DeltaSink(str(tmp_path / "big")))
+
+
+def sink_ids(tmp_path) -> list[int]:
+    return sorted(r["id"] for r in DeltaTable(str(tmp_path / "big")).to_pyarrow_table().to_pylist())
+
+
+def test_a_new_process_resumes_an_unchanged_from_frame_source(tmp_path):
+    """#889: three refreshes, each in a new process, of an unchanged
+    `from_frame` source: the first writes, the others resume and write
+    nothing."""
+    table = {"t": frame(entries())}
+    first = frame_job(tmp_path, table).refresh()["big"]
+    assert first.write is not None and first.write.mode == "created"
+    for _run in range(2):
+        again = frame_job(tmp_path, table).refresh()["big"]
+        assert again.started.startswith("resumed from")
+        assert again.write is not None and again.write.mode == "skipped"
+    assert DeltaTable(str(tmp_path / "big")).transaction_version("sverify:big") == 1
+    # A new process whose read differs numbers its version above the record.
+    table["t"] = frame([*entries(), {"id": 3, "ts": 30, "amount": 50}])
+    w = frame_job(tmp_path, table).refresh()["big"].write
+    assert w is not None and w.contract.sources == {"payments": 2}
+    assert sink_ids(tmp_path) == [1, 3]
+
+
+def test_two_processes_numbering_other_contents_alike(tmp_path, monkeypatch):
+    """#965 (the TLA+ model's `today-collision`): P and Q start from the
+    sink's record of payments@v1 and both number their first read v2, with
+    other contents. Q, past `_continue_versions` when P commits, must not
+    take P's commit at v2 for its own state."""
+    table = {"t": frame(entries())}
+    frame_job(tmp_path, table).refresh()
+    with_3 = frame([*entries(), {"id": 3, "ts": 30, "amount": 50}])
+    with_4 = frame([*entries(), {"id": 4, "ts": 40, "amount": 60}])
+    table["t"] = with_4
+    q = frame_job(tmp_path, table)
+    original = DeltaSink._stored
+
+    def p_commits(self):
+        out = original(self)
+        if self is q.sink:
+            monkeypatch.setattr(DeltaSink, "_stored", original)
+            table["t"] = with_3
+            frame_job(tmp_path, table).refresh()
+            assert sink_ids(tmp_path) == [1, 3]
+            table["t"] = with_4
+        return out
+
+    monkeypatch.setattr(DeltaSink, "_stored", p_commits)
+    w = q.refresh()["big"].write
+    assert w is not None and w.mode != "skipped" and w.contract.sources == {"payments": 3}
+    assert sink_ids(tmp_path) == [1, 4]
+    # Q writes on from its own state.
+    table["t"] = frame(
+        [*entries(), {"id": 4, "ts": 40, "amount": 60}, {"id": 5, "ts": 50, "amount": 70}]
+    )
+    q.refresh()
+    assert sink_ids(tmp_path) == [1, 4, 5]
+
+
+def test_a_new_process_resumes_a_static_source_from_its_sink(tmp_path):
+    """The digests of the view's static tables are compared table by table:
+    the pipeline does not hold the view while it is being built."""
+
+    def job():
+        return big(payments_source()).write(DeltaSink(str(tmp_path / "big")))
+
+    job().refresh()
+    again = job().refresh()["big"]
+    assert again.started.startswith("resumed from")
+    assert again.write is not None and again.write.mode == "skipped"

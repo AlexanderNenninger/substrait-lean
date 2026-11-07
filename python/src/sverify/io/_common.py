@@ -345,7 +345,10 @@ class Contract:
     """Constraint name -> SQL."""
     unique: list[list[str]]
     digests: dict[str, str] = field(default_factory=dict)
-    """Content digest of each static table (`StaticSource`) the node read."""
+    """Content digest of each static table (`StaticSource`) the node read,
+    and of each source that cannot restore (`Source` without `restore`), at
+    its version in `sources`: their versions do not tell contents apart
+    across processes (#889, #965)."""
     cursors: dict[str, Any] = field(default_factory=dict)
     """The cursor of each source the node read whose cursors last across
     processes (`sverify.io.Source.restore`), at its version in `sources`, as
