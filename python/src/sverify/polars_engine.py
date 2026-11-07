@@ -1873,11 +1873,10 @@ def _int_output(f: dict) -> bool:
     return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
 
 
-def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
+def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
     """`Measure.eval` on the values a measure aggregates (NULLs dropped), with
     Polars's profile's choices: doubles added in turn (`SEQUENTIAL`), the
-    variance by Polars. A double sum of `+∞` and `-∞` raises (#257), except in
-    a window, where the reference still gives NaN."""
+    variance by Polars. A double sum of `+∞` and `-∞` raises (#257)."""
     if distinct:
         seen: set = set()
         vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
@@ -1913,12 +1912,14 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         s = pl.Series(vs, dtype=pl.Float64)
         ddof = 1 if fn.endswith("_samp") else 0
         r = float(s.std(ddof=ddof) if fn.startswith("std") else s.var(ddof=ddof))  # pyrefly: ignore
+        # D30's clamp shim: at least 0, NaN kept (`Stat.clamp_near`, `FloatMoments.lean`).
+        r = r if math.isnan(r) else max(0.0, r)
         if math.isinf(r):
             # Finite values whose variance overflows (`Measure.makesInf`, #575).
             raise InfiniteResult(f"{fn} overflows to infinity")
         return r + 0.0
     if fn in ("fsum", "avg"):
-        if not window and math.inf in vs and -math.inf in vs:
+        if math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")
         acc = 0.0
         # In list order (`sum_order = SEQUENTIAL`), within the plan's bound of
@@ -2081,11 +2082,14 @@ class Measure:
             )
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
             # `AggFn.var` (#54) with Polars's algorithm (`stat_algo =
-            # WELFORD_CHAN`, polars-var-std-streaming); a sample of one is NULL
+            # WELFORD_CHAN`, polars-var-std-streaming), within the plan's bound
+            # of the exact moments rounded once (D30); a sample of one is NULL
             # in both. An infinity makes
             # a deviation NaN (#257); finite values may overflow (#575).
             ddof = 1 if self.fn.endswith("_samp") else 0
             agg = v.std(ddof=ddof) if self.fn.startswith("std") else v.var(ddof=ddof)
+            # D30's clamp shim: at least 0, NaN kept (`Stat.clamp_near`, `FloatMoments.lean`).
+            agg = pl.when(agg.is_nan()).then(agg).otherwise(agg.clip(lower_bound=0.0))
             bad, inf = f"{name}_bad", f"{name}_inf"
             return NativeAgg(
                 {name: canon(agg), bad: v.is_infinite().any(),
@@ -2255,7 +2259,7 @@ def python_windows(
                             if v is not None and abs(v) >= 10**f.dtype.precision:  # pyrefly: ignore
                                 raise SumOverflow(f"SUM leaves {f.dtype}")
                         elif f.fn == "agg":
-                            v = _aggregate(f.agg, False, [x for x in vals if x is not None], True)
+                            v = _aggregate(f.agg, False, [x for x in vals if x is not None])
                         elif f.fn == "first_value":
                             v = vals[0] if vals else None
                         elif f.fn == "last_value":

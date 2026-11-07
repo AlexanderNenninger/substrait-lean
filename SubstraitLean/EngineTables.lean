@@ -176,7 +176,9 @@ def Profile.duckdb.obs : ObsTable := [
   -- `float-bounds` proves `VAR_*`, `COVAR_*` and DuckDB's `CORR` formula within
   -- `StatProps` (`core_var_chan`, `core_cov_chan`, `core_corr_chan`; `STDDEV_*`
   -- by `core_stddev` of the variance), for IEEE rounding (`Mono`, `Grid`).
-  (none, "stat_algo", ({ ObsRow.native ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
+  -- D30: the reference's statistics are the exact moments rounded once, so
+  -- DuckDB's are within the plan's bound of them (`Epsilon.statEps`).
+  (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
@@ -268,7 +270,7 @@ def Profile.polars.obs : ObsTable := [
     rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
-  (none, "stat_algo", { ObsRow.native ["polars-var-std", "polars-cov", "polars-corr"] with
+  (none, "stat_algo", { ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr"] with
     rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
@@ -427,7 +429,7 @@ def Profile.spark.obs : ObsTable := [
   (none, "case_sensitivity", .native ["spark-match-functions"]),
   (none, "string_positions", .native ["spark-strpos", "spark-substring"]),
   (none, "null_join_keys", .native ["spark-null-keys"]),
-  (none, "stat_algo", ({ ObsRow.native ["spark-var-stddev", "spark-covar", "spark-corr"] with
+  (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", .native ["spark-quantile"]),
   (none, "decimal_rescale", .native ["spark-decimal-arith"]),

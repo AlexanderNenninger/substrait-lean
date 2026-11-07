@@ -1,6 +1,6 @@
 import SubstraitLean.Order
 import SubstraitLean.Dedup
-import SubstraitLean.FloatExact
+import SubstraitLean.FloatMoments
 
 /-!
 # Aggregation
@@ -155,62 +155,81 @@ def bitFold (op : BitOp) (vs : List Value) : Int :=
     | .int b => (op.apply acc b).getD acc
     | _ => acc) (if op == .and then -1 else 0)
 
-/-- The squares of the deviations of the doubles among `vs` from `m`, added
-in list order from `+0.0`. -/
-def sqDevSum (m : Int) (vs : List Value) : Int :=
-  vs.foldl (fun acc v => match v with
-    | .int c =>
-      let d := FloatCode.lift₂ (· - ·) c m
-      FloatCode.lift₂ (· + ·) acc (FloatCode.lift₂ (· * ·) d d)
-    | _ => acc) (FloatCode.ofInt 0)
+/-- The codes of the pairs `ps`, flattened: what `nonFinite` reads. -/
+def pairCodes (ps : List (Int × Int)) : List Value := ps.flatMap fun p => [.int p.1, .int p.2]
 
-/-- `AggFn.var` of the doubles `vs` (at least one): the mean, then the
-squares of the deviations, with native doubles, and never below `0`. Only
-NULL and the sign are exact; engines may differ in the last bits (#54, until
-#85 bounds the error). -/
+/-- `AggFn.var` of the doubles `vs` (at least one), D30: the exact moments
+rounded once. `S = Σx² − (Σx)²/n` is exact (`comomentNum = n · S`), the
+variance is `S / d` rounded to the nearest double (`d = n − 1` for a sample,
+`n` for the population), and the deviation its correctly rounded square
+root (`sqrtMag`). NULL for a sample of one; a NaN or an infinity among the
+values gives NaN, as IEEE's deviations `∞ − ∞` do (the checker raises on an
+infinity, #257). -/
 def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
   if sample && vs.length == 1 then .null else
-    let m := FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length)
-    let v := FloatCode.lift₂ (· / ·) (sqDevSum m vs)
-      (FloatCode.ofInt (if sample then vs.length - 1 else vs.length))
-    .int (max 0 (if sqrt then FloatCode.ofFloat (FloatCode.toFloat v).sqrt else v))
+    match nonFinite vs with
+    | some _ => .int FloatCode.nan
+    | none =>
+      let cs := intsOf vs
+      let d := if sample then cs.length - 1 else cs.length
+      let N := comomentNum cs
+      if sqrt then .int (FloatCode.posCode (FloatCode.sqrtMag N.toNat (cs.length * d)))
+      else .int (FloatCode.ofExactDiv N (cs.length * d * 2 ^ 1074))
 
 /-- The pairs of doubles among `vs` (`BinFn.pair`'s lists). -/
 def pairsOf (vs : List Value) : List (Int × Int) :=
   vs.filterMap fun | .list [.int a, .int b] => some (a, b) | _ => none
 
-/-- The products of the deviations of the pairs from the means `mx`, `my`,
-added in list order from `+0.0`. -/
-def coDevSum (mx my : Int) (ps : List (Int × Int)) : Int :=
-  ps.foldl (fun acc (a, b) => FloatCode.lift₂ (· + ·) acc
-    (FloatCode.lift₂ (· * ·) (FloatCode.lift₂ (· - ·) a mx) (FloatCode.lift₂ (· - ·) b my)))
-    (FloatCode.ofInt 0)
-
-/-- The mean of the doubles `cs`, as `avg` computes it. -/
-def meanOf (cs : List Int) : Int :=
-  FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)
-
-/-- `COVAR_SAMP` / `COVAR_POP` of the pairs among `vs`. -/
+/-- `COVAR_SAMP` / `COVAR_POP` of the pairs among `vs`, D30: the exact
+co-moment `C = Σxy − Σx·Σy/n` over `d`, rounded once; NULL without pairs
+or for a sample of one; NaN for a NaN or an infinity. -/
 def covOf (sample : Bool) (vs : List Value) : Value :=
   let ps := pairsOf vs
   if ps.isEmpty || (sample && ps.length == 1) then .null else
-    let s := coDevSum (meanOf (ps.map (·.1))) (meanOf (ps.map (·.2))) ps
-    .int (FloatCode.lift₂ (· / ·) s (FloatCode.ofInt (if sample then ps.length - 1 else ps.length)))
+    match nonFinite (pairCodes ps) with
+    | some _ => .int FloatCode.nan
+    | none =>
+      let d := if sample then ps.length - 1 else ps.length
+      .int (FloatCode.ofExactDiv (coComomentNum ps) (ps.length * d * 2 ^ 1074))
 
-/-- `CORR` of the pairs among `vs`: NULL for fewer than two, or for a side
-whose values are all equal; else the co-deviation sum by the square root of
-the product of the two sides' squared-deviation sums. -/
+/-- `CORR` of the pairs among `vs`, D30: `C / √(Sxx · Syy)` rounded once,
+with `C`'s sign: its magnitude is `√(C² / (Sxx · Syy))` rounded to the grid
+(`sqrtMag`, which compares squares, no square root computed), at most `1`
+(Cauchy–Schwarz; the `min` states it). NULL for fewer than two pairs or a
+side whose values are all equal (its co-moment is `0`, as `corrOf` gave
+before D30); NaN for a NaN or an infinity. -/
 def corrOf (vs : List Value) : Value :=
   let ps := pairsOf vs
-  let xs := ps.map (·.1)
-  let ys := ps.map (·.2)
-  if ps.length < 2 || xs.all (· == xs.headD 0) || ys.all (· == ys.headD 0) then .null else
-    let (mx, my) := (meanOf xs, meanOf ys)
-    let sxx := coDevSum mx mx (xs.zip xs)
-    let syy := coDevSum my my (ys.zip ys)
-    let r := FloatCode.lift₂ (· / ·) (coDevSum mx my ps)
-      (FloatCode.ofFloat (FloatCode.toFloat (FloatCode.lift₂ (· * ·) sxx syy)).sqrt)
-    .int r
+  let nx := comomentNum (ps.map (·.1))
+  let ny := comomentNum (ps.map (·.2))
+  if ps.length < 2 || nx == 0 || ny == 0 then .null else
+    match nonFinite (pairCodes ps) with
+    | some _ => .int FloatCode.nan
+    | none =>
+      let c := coComomentNum ps
+      let m := min (FloatCode.sqrtMag (c.natAbs * c.natAbs * 2 ^ 2148) (nx * ny).toNat) (2 ^ 1074)
+      .int (if c < 0 then -FloatCode.posCode m else FloatCode.posCode m)
+
+theorem pairsOf_perm {vs ws : List Value} (h : vs.Perm ws) : (pairsOf vs).Perm (pairsOf ws) :=
+  h.filterMap _
+
+/-- D30: a variance is a function of the multiset of values. -/
+theorem varOf_perm (sample sqrt : Bool) {vs ws : List Value} (h : vs.Perm ws) :
+    varOf sample sqrt vs = varOf sample sqrt ws := by
+  have hi : (intsOf vs).Perm (intsOf ws) := h.filterMap _
+  simp only [varOf, h.length_eq, nonFinite_perm h, comomentNum_perm hi, hi.length_eq]
+
+theorem covOf_perm (sample : Bool) {vs ws : List Value} (h : vs.Perm ws) :
+    covOf sample vs = covOf sample ws := by
+  have hp := pairsOf_perm h
+  have hc : (pairCodes (pairsOf vs)).Perm (pairCodes (pairsOf ws)) := hp.flatMap_right _
+  simp only [covOf, hp.length_eq, hp.isEmpty_eq, nonFinite_perm hc, coComomentNum_perm hp]
+
+theorem corrOf_perm {vs ws : List Value} (h : vs.Perm ws) : corrOf vs = corrOf ws := by
+  have hp := pairsOf_perm h
+  have hc : (pairCodes (pairsOf vs)).Perm (pairCodes (pairsOf ws)) := hp.flatMap_right _
+  simp only [corrOf, hp.length_eq, nonFinite_perm hc, coComomentNum_perm hp,
+    comomentNum_perm (hp.map _)]
 
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=

@@ -181,7 +181,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 <!-- slt:start -->
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
 |---|---:|---:|---:|---|---:|---:|---:|---|
-| [aggregate](aggregate.json) | 846 | 7 | 13 | engine 1, lean 12 | 1344 | 878 | 14 | lift 1301, checker 42 |
+| [aggregate](aggregate.json) | 845 | 7 | 14 | engine 1, lean 13 | 1344 | 878 | 14 | lift 1301, checker 42 |
 | [alter](alter.json) | 129 | 29 | 0 |  | 39 | 129 | 1 | lift 37, tables 2 |
 | [attach](attach.json) | 7 | 0 | 0 |  | 150 | 90 | 15 | lift 98, tables 52 |
 | [binder](binder.json) | 63 | 1 | 0 |  | 143 | 103 | 3 | lift 134, checker 9 |
