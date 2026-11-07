@@ -119,6 +119,7 @@ generators, then the trusted reading and writing.
 | `Expr.lean` | Scalar expressions and their evaluation, with three-valued logic, over Lean's functions (`Impl.lean`) or an engine's (`Impl`) |
 | `Order.lean` | The orders on values and rows that sorts, windows and `MIN`/`MAX` use |
 | `Dedup.lean` | `dedup`, the first occurrence of each element, and its lemmas |
+| `Forall2.lean` | `Forall2`, lists related element by element |
 | `Reflect.lean` | Boolean checks the tables are proved with, by reflection |
 
 ### Relations and their evaluation
@@ -128,6 +129,7 @@ generators, then the trusted reading and writing.
 | `Window.lean` | Window functions over partitions, orders and frames |
 | `Aggregate.lean` | `GROUP BY` and the measures; the trusted bounds of double sums |
 | `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval`, one evaluator for the reference and an engine's functions |
+| `OrderAllowed.lean` | `Rel.OrderAllowed`, the results of every order the reference leaves open, and `Rel.eval` as one of them |
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |

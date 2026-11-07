@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import SubstraitLean.OrderAllowed
 
 /-!
 # Pre- and postconditions: a verified abstract interpreter

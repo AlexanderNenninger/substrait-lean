@@ -88,10 +88,6 @@ def Measure.Allowed (m : Measure) (rows : Relation) (v : Value) : Prop :=
   ∃ s, s.Perm rows ∧ (m.fn.sorts = true → s.Pairwise (sortLe m.sort · · = true)) ∧
     m.fn.Allowed (m.inputs s) v
 
-theorem Measure.eval_sorts {m : Measure} (h : m.fn.sorts = true) (rows : Relation) :
-    m.eval rows = m.fn.apply (m.inputs (rows.mergeSort (sortLe m.sort))) := by
-  cases hf : m.fn <;> simp [Measure.eval, hf, AggFn.sorts] at h ⊢
-
 theorem Measure.eval_allowed (m : Measure) (rows : Relation) : m.Allowed rows (m.eval rows) := by
   by_cases hs : m.fn.sorts = true
   · refine ⟨rows.mergeSort (sortLe m.sort), List.mergeSort_perm _ _, fun _ =>
