@@ -55,8 +55,9 @@ documentation they rest on:
 * **Modulus of doubles**: `MOD` computes `a - b * TRUNC(a / b)` in doubles,
   which differs from C's `fmod` for large quotients, so it is refused.
 * **Aggregates**: `VAR_*` and `STDDEV_*` of doubles use a formula that
-  cancels catastrophically, so they are refused; sums of doubles are refused
-  as their order is not given.
+  cancels catastrophically on values far from their mean, so the writer
+  shifts each value by its group's mean first (#1023); a `DISTINCT` one has
+  no such shift yet and is refused.
 * **Identifiers** fold to upper case unless quoted; every one is quoted.
 
 The Snowflake behaviour behind these was probed on Snowflake 10.40.102 and is
@@ -298,12 +299,16 @@ class SnowflakeDialect(Dialect):
             "recorded privately)"
         )
 
-    def float_var(self, fn: str, v: str) -> str:
-        raise Unsupported(
-            "Snowflake's VAR_SAMP, VAR_POP and STDDEV of doubles cancel catastrophically "
-            "(0 for 1e9 + {4, 7, 13, 16}, whose sample variance is 30), outside the "
-            "reference's bounds (Snowflake behaviour recorded privately)"
-        )
+    def stat_input(self, x: str, partition: Sequence[str]) -> str | None:
+        # Snowflake's VAR_* and STDDEV_* of doubles cancel catastrophically on
+        # values far from their mean (Snowflake behaviour recorded privately).
+        # On values shifted by their group's mean its formula is the
+        # corrected two-pass algorithm of Chan, Golub and LeVeque (#1023);
+        # the shift keeps the reference's value (`momentNum_shift`).
+        # An average over the whole partition needs no ORDER BY (`over` asks
+        # for one, for the ranking functions).
+        part = f"PARTITION BY {', '.join(partition)}" if partition else ""
+        return f"({x} - AVG({x}) OVER ({part}))"
 
     # Strings
 
