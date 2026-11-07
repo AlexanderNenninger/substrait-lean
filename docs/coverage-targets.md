@@ -21,7 +21,8 @@ uv run python -m sverify_dev.coverage --targets
 ```
 
 prints the share of the in-for-1.0 constructs that sverify covers, by area,
-with the issue of each one left. On 2026-11-05 it was 27 of 60 (45 %).
+with the issue of each one left. On 2026-11-05 it was 27 of 60 (45 %);
+the tables below give 43 of 60 (72 %) on 2026-11-07.
 
 A construct is covered when its probe verifies: a DuckDB SQL query that the
 lift reads and the checker accepts, and, where the Ibis API has the same
@@ -90,7 +91,7 @@ is what the probe gives.
 
 ### Relations
 
-6 of 13 in for 1.0 covered.
+9 of 13 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
@@ -182,7 +183,7 @@ is what the probe gives.
 
 ### Nested
 
-1 of 2 in for 1.0 covered.
+2 of 2 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
@@ -195,7 +196,7 @@ is what the probe gives.
 
 ### Aggregates
 
-5 of 9 in for 1.0 covered.
+8 of 9 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
@@ -214,7 +215,7 @@ is what the probe gives.
 
 ### Windows
 
-5 of 9 in for 1.0 covered.
+7 of 9 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|

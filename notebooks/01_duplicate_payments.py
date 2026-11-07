@@ -58,9 +58,8 @@ def _(mo):
        the input and what the refund queue may rely on;
     3. have the checker prove the contract before any data runs;
     4. run the checked plan on DuckDB and Polars, and see the
-       SQL a warehouse would run (the Snowflake and Spark dialects are a
-       preview: they run on an emulator and a local session, and work on
-       them waits on [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271));
+       SQL a warehouse would run ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) says what each
+       engine runs and which SQL sverify writes);
     5. maintain the result from the change feed when new transactions arrive
        and old ones are reversed, next to the usual "process the new rows"
        job;
@@ -382,12 +381,10 @@ def _(mo):
     production. The node's plan is the one Lean checked. Sverify runs it on
     each engine through its own translation, which keeps Lean's semantics
     (NULL keys never match, integers don't wrap around, ties break one way)
-    or refuses the plan. DuckDB is the reference engine (Tier 1), and Polars
-    is characterized fact by fact with proved shims; CI tests the others
-    against the Lean model, and their known deviations are documented. With
-    `route="auto"`, `refresh` also says how the proof reaches DuckDB or
-    Polars ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles); see the
-    [engine tiers](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md)).
+    or refuses the plan. Lean's model is the reference, and
+    [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists which engines run plans, each with a proved
+    profile. With `route="auto"`, `refresh` also says how the proof reaches
+    the engine ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)).
     A node refreshed with `engine=` has the same rows on each:
     """)
     return
@@ -409,9 +406,10 @@ def _(ENGINES, duplicate_payments, dups, transactions):
 def _(mo):
     mo.md(r"""
     For a warehouse, sverify writes the plan as SQL. The SQL is long because
-    it spells out every choice an engine would otherwise make. The Snowflake
-    and Spark dialects are a preview, checked on an emulator and a local
-    session:
+    it spells out every choice an engine would otherwise make. The Spark
+    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your account;
+    Snowflake's profile comes before 1.0
+    ([#851](https://github.com/AlexanderNenninger/substrait-lean/issues/851)):
     """)
     return
 

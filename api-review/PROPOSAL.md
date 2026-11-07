@@ -1,5 +1,7 @@
 # API review before 1.0
 
+The review is complete: #795 proposed it, and #790, #797, #798, #799, #800, #801 and #802 carried it out ([CHANGELOG.md](../CHANGELOG.md)).
+
 The 1.x stability promise ([#737](https://github.com/AlexanderNenninger/substrait-lean/issues/737),
 [`docs/stability.md`](../docs/stability.md)) starts at 1.0: from then on the
 formats only gain optional keys, and every Python break needs a release of
@@ -26,7 +28,7 @@ It changes no code. The surface was listed by introspection
 (`inspect.signature` over every name in `__all__` of `sverify`,
 `sverify.errors`, `sverify.io`, `sverify.engines` and `sverify.testing`), and
 section N reruns six of the first critique's tasks
-([`api-critique/`](../api-critique/REPORT.md), #686) against main.
+([`api-critique/`](https://github.com/AlexanderNenninger/substrait-lean/blob/f89f83d2b3fc71848f9d5de8547475b99523b9b5/api-critique/REPORT.md), #686) against main.
 
 Each item gives:
 
