@@ -204,11 +204,12 @@ def test_contract_epsilon_per_double_aggregate(monkeypatch):
     )
     eps = json.loads(seen["out"])["epsilon"]
     assert set(eps) == {"total", "mean"}
-    # About twice γ(n)·n·B: 2 · 10⁶ · 2⁻⁵³ · 10⁶ · 10⁶.
-    assert 200 < eps["total"]["abs"] < 250
-    assert 2e-4 < eps["mean"]["abs"] < 2.5e-4
+    # About γ(n)·n·B, the engine's order, plus u·n·B, the reference's one
+    # rounding (D25): 10⁶ · 2⁻⁵³ · 10⁶ · 10⁶.
+    assert 100 < eps["total"]["abs"] < 125
+    assert 1e-4 < eps["mean"]["abs"] < 1.25e-4
     assert "rel" not in eps["total"]  # ±10⁶ can cancel
-    # float-bounds proves both for every engine's order (`StdModel.epsilon_sum`).
+    # float-bounds proves both for every engine's order (`StdModel.epsilon_sum_cr`).
     assert eps["total"]["proved"] == {"abs": True}
     assert eps["mean"]["proved"] == {"abs": True}
     # Values of one sign: a relative bound too, proved for the sum; the mean's
@@ -368,7 +369,7 @@ def test_epsilon_per_engine(monkeypatch):
     eps = json.loads(seen["out"])["epsilon_by_engine"]
     for engine in ("duckdb", "polars"):
         s, h = eps[engine]["s"]["abs"], eps[engine]["h"]["abs"]
-        assert 200 < s < 250 and s / 2 < h < s / 2 + 1e-3, (engine, s, h)
+        assert 100 < s < 125 and s / 2 < h < s / 2 + 1e-3, (engine, s, h)
         assert eps[engine]["s"]["proved"] == {"abs": True}
         assert eps[engine]["h"]["proved"] == {"abs": True}
     # An elementary function is the platform's `libm`: bounded where probed, not proved.

@@ -210,11 +210,13 @@ proof is cruder than Knuth's `(2u + O(n u²)) Σ |xᵢ|`: each step after the
 second adds at most `2u |x| + 3u · tiny + 14 u² A` to the error of `s − c`,
 and the first two steps are exact or nearly so, which keeps `n = 3` within
 `γ 3`. So two results of any of these orders are within twice the core's
-tolerance of each other:
+tolerance of each other, and one of them is within the tolerance plus `u` of
+the reference's correctly rounded sum (D25), which `"epsilon"` reports:
 
 | Theorem | `"epsilon"` |
 |---|---|
-| `epsilon_sum`, `epsilon_avg` | `"abs"`: `2 · sumTolScaled N Bs`, `2 · avgTolScaled N Bs`, scaled by `2¹⁰⁷⁴` |
+| `epsilon_sum`, `epsilon_avg` | two engine orders: `2 · sumTolScaled N Bs`, `2 · avgTolScaled N Bs`, scaled by `2¹⁰⁷⁴` |
+| `epsilon_sum_cr`, `epsilon_avg_cr` | `"abs"`, an engine order against the reference (D25): `sumTolScaled N Bs + u · N · Bs`, `avgTolScaled N Bs + u · Bs` |
 | `epsilon_sum_rel` | `"rel"` of a `SUM` of values of one sign: `2γ/(1 − γ)`, `γ = γ n` |
 | `epsilon_avg_rel` | `"rel"` of an `AVG` of values of one sign whose mean is at least `2⁻¹⁰²²` in magnitude: `γ = γ (n + 2)` |
 

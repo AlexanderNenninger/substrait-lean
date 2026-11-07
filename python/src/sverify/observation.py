@@ -360,7 +360,10 @@ def from_json(q: Mapping[str, Any] | None) -> Observation:
     absent component is exact, rows and elements included."""
     q = dict(q or {})
     floats = q.pop("floats", "exact")
-    if isinstance(floats, Mapping):
+    if isinstance(floats, Mapping) and floats.get("bound") == "plan":
+        # Within the plan's bound (`ObsRow.approxWithin "plan"`).
+        floats = "plan"
+    elif isinstance(floats, Mapping):
         floats = Within(floats.get("abs"), floats.get("rel"), floats.get("ulps"))
     known = {name for name, _ in _COMPONENTS}
     unknown = set(q) - known

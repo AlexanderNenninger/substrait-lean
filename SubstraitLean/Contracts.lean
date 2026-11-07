@@ -4808,13 +4808,12 @@ theorem Rel.capReads_eval {caps : String → Option Nat} {cat : Catalog}
       capReads_arity caps cat b]
 
 /-- The mean of the doubles `cs`, as `AggFn.avg` computes it. -/
-def avgCode (cs : List Int) : Int :=
-  FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)
+def avgCode (cs : List Int) : Int := floatAvgCR (cs.map .int)
 
 /-- The codes a `SUM` (`avg = false`) or an `AVG` of doubles in `b` lies in:
-signs are exact (`floatSum_sign`), and with at most `rows` values, finite
+signs are exact (`floatSumCR_sign`), and with at most `rows` values, finite
 bounds and at most `2³²` rows, the result is within the proved tolerance of
-the exact one (`floatSum_mem`, `floatAvg_mem`). -/
+the exact one (`floatSumCR_mem`, `floatAvgCR_mem`). -/
 def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
   let signed : Bound :=
     ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
@@ -4837,12 +4836,12 @@ def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
 
 theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
     (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
-    (floatBound avg b rows).Mem (if avg then avgCode cs else floatSum (cs.map .int)) := by
+    (floatBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .int)) := by
   obtain ⟨blo, bhi⟩ := b
-  have hsign := floatSum_sign hne
+  have hsign := floatSumCR_sign hne
   have hsigned : (Bound.mk (blo.bind fun l => if 0 ≤ l then some 0 else none)
       (bhi.bind fun h => if h ≤ 0 then some 0 else none)).Mem
-      (if avg then avgCode cs else floatSum (cs.map .int)) := by
+      (if avg then avgCode cs else floatSumCR (cs.map .int)) := by
     constructor
     · intro l hl
       simp only [Option.bind_eq_some_iff] at hl
@@ -4878,12 +4877,12 @@ theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List
     obtain ⟨h32, hlo, hhi⟩ := hok
     cases avg
     · simp only [Bool.false_eq_true, ↓reduceIte] at hsigned ⊢
-      obtain ⟨l, u⟩ := floatSum_mem hne hlen h32 hlo hhi hsc
+      obtain ⟨l, u⟩ := floatSumCR_mem hne hlen h32 hlo hhi hsc
       refine Bound.mem_meet hsigned ⟨?_, ?_⟩
       · intro x hx; cases hx; exact FloatCode.codeLo_le l
       · intro x hx; cases hx; exact FloatCode.le_codeHi u
     · simp only [↓reduceIte] at hsigned ⊢
-      obtain ⟨l, u⟩ := floatAvg_mem hne hlen h32 hlo hhi hsc
+      obtain ⟨l, u⟩ := floatAvgCR_mem hne hlen h32 hlo hhi hsc
       refine Bound.mem_meet hsigned ⟨?_, ?_⟩
       · intro x hx; cases hx; exact FloatCode.codeLo_le l
       · intro x hx; cases hx; exact FloatCode.le_codeHi u
@@ -5497,7 +5496,8 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := false) hne' hb hlen
-        have e : floatSum (v :: vs) = floatSum ((intsOf (v :: vs)).map .int) := congrArg floatSum hcs
+        have e : floatSumCR (v :: vs) = floatSumCR ((intsOf (v :: vs)).map .int) :=
+          congrArg floatSumCR hcs
         rw [e]; simpa using key
       · exact Bound.mem_top _
   case avg =>
@@ -5526,8 +5526,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := true) hne' hb hlen
-        have e := congrArg (fun l => FloatCode.lift₂ (· / ·) (floatSum l) (FloatCode.ofInt l.length)) hcs
-        simp only [List.length_map] at e
+        have e := congrArg floatAvgCR hcs
         rw [e]; simpa [avgCode] using key
       · exact Bound.mem_top _
   case iavg =>

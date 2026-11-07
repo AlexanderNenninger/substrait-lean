@@ -332,7 +332,9 @@ translator pins the semantics and takes no Polars defaults:
   compares. Each measure skips NULLs and the rows its `FILTER` drops;
   `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
   and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
-  and `AVG` of doubles add one by one in Lean's list order.
+  and `AVG` of doubles are the exact sum and mean rounded once
+  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
+  whatever the order of the rows.
 * Strings are sequences of Unicode scalar values: `character_length`,
   `strpos` and `substring` count characters, and `substring` with
   a start below 1 keeps only the positions that exist. `LIKE` escapes with a

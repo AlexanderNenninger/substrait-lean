@@ -43,9 +43,12 @@ double `SUM`s and `AVG`s then round as the split makes them, and
 
 Each split double measure `j` adds `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` to the
 partial rows at those columns (`floatBoundParts`); from them, per group, the
-output columns `{"bounded": j}` are within `shardTolScaled` (`"sum"`) or
-`shardAvgTolScaled` (`"avg"`) of Lean's value (`floatSplit_sum`,
-`floatSplit_avg`). `{"key": i}` copies grouping key `i`, `{"exact": true}`
+output columns `{"bounded": j}` are within `shardTolCR` (`"sum"`) or
+`shardAvgTolCR` (`"avg"`) of Lean's value when Lean computes the split
+(`floatSplit_sum`, `floatSplit_avg`, D25), and within `shardTolScaled` or
+`shardAvgTolScaled` when an engine adds the shards in its own order
+(`float-bounds/FloatBounds/Shard.lean`, whose `γ n` term covers the
+reference's one rounding); `sverify.partition` reports the larger. `{"key": i}` copies grouping key `i`, `{"exact": true}`
 is Lean's value, and `{"unbounded": true}` is computed from a split double
 by an expression the bound does not carry over to. With
 `filters_read_doubles`, a filter above the aggregate (`HAVING`) reads a split
