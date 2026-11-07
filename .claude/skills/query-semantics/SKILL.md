@@ -1,6 +1,6 @@
 ---
 name: query-semantics
-description: Answer what sverify and each engine make of an example SQL query or Ibis expression, profile by profile - the strict reference that plans are verified under, the DuckDB and Polars engine profiles, and Substrait's own - with the route and class by which a verified plan reaches each engine, the characterization facts and upstream ledger entries behind them, and a probe that runs it. Use when asked "what does engine X do with this query", "does sverify verify/accept this", "do the engines agree on …", "is this query portable", "why is it refused on Polars", or to probe or compare a query across engines.
+description: Answer what sverify and each engine make of an example SQL query or Ibis expression, profile by profile - the strict reference that plans are verified under, the DuckDB, Polars and Spark engine profiles, and Substrait's own - with the route and class by which a verified plan reaches each engine, the characterization facts and upstream ledger entries behind them, and a probe that runs it. Use when asked "what does engine X do with this query", "does sverify verify/accept this", "do the engines agree on …", "is this query portable", "why is it refused on Polars", or to probe or compare a query across engines.
 ---
 
 Answer from the repository's static sources first:
@@ -13,12 +13,11 @@ Both live in `.claude/skills/query-semantics/`. The terms (reference, profile, o
 
 Answer per profile, never just "Lean vs engine":
 
-- Profiles. The reference (`semantics="reference"`, strict: raises where engines disagree) is what plans are verified under by default. `semantics="duckdb"` verifies DuckDB's SQL as DuckDB computes it, `semantics="polars"` an Ibis expression as Polars computes it, `semantics="spark"` one as Spark 4.3.0 computes it under ANSI mode (#739; the reference's values, ±inf without a precondition, run natively on Spark), and `semantics="substrait"` (#600) under Substrait's own loose semantics. Say which of these verify the query.
-- Preconditions. Name what `sv.verify` inferred (`requires … (inferred)`, `assumes: … stays finite`). `Report.run` checks them on the data before a routed run, and by default once #606 lands (#604).
-- Routes (`sverify.routes.choose`, D13). Per engine with a profile (DuckDB, Polars): `native` (verified under the engine's profile), `reference` (verified under the reference, through its translation), `transfer` (another profile whose choices contain the engine's on every option the proof depends on), `recheck`, or refused with the reason.
-- Class (#568, D15). `refines`, `refines_up_to` an observation `q`, `approx` (within ε), `shim`, `refused`: the worst over the options the proof depends on. An option the engine realizes only up to `q` needs a postcondition whose observation `q` refines (`sv.equivalent(...)`, D11, D18), or the row's shim; say which. What a rerun must reproduce is a second observation (D20, #613).
+- Profiles. The reference (`semantics="reference"`, strict: raises where engines disagree) is what plans are verified under by default. `semantics="duckdb"` verifies DuckDB's SQL as DuckDB computes it, `semantics="polars"` an Ibis expression as Polars computes it, `semantics="spark"` one as Spark 4.3.0 computes it under ANSI mode (`SubstraitLean/SparkProfile.lean`, `Rel.spark_sound`; the reference's values, ±inf without a precondition, run natively on Spark), and `semantics="substrait"` under Substrait's own loose semantics. Say which of these verify the query.
+- Preconditions. Name what `sv.verify` inferred (`requires … (inferred)`, `assumes: … stays finite`). `Report.run` checks them on the data before a routed run.
+- Route and class (`sverify.routes.choose`, D13, D15), per engine with a profile (DuckDB, Polars, Spark): route `native`, `translated`, `transfer` or `recheck`, or refused with the reason; class `exact`, `observed`, `shim` or `refused`, the worst over the options the proof depends on. The tables are in [docs/guide.md](../../../docs/guide.md#routes-classes-and-profiles). An `observed` option needs a postcondition whose observation it refines (`sv.equivalent(...)`, D11, D18), or the row's shim; say which. What a rerun must reproduce is a second observation (D20, #613).
 - Facts. Cite the engine facts the class rests on, with evidence level and status, and any ledger entry.
-- Engines outside the profiles (DataFusion, Spark, Snowflake; paused until #271) run the writer's shims, tested only. Mark their results as such.
+- Engines without a profile run the writer's shims, tested only; mark their results as such. DataFusion has none and is experimental; Snowflake's is planned (#851). Engines list: [docs/stability.md](../../../docs/stability.md#engines).
 
 ## Prerequisites
 
@@ -53,7 +52,7 @@ It prints:
 
 | section | source | answers |
 |---|---|---|
-| profiles | `sv.verify(semantics=…)`, `routes.choose` | verified under which profile, preconditions inferred, issues, route and class to DuckDB and Polars |
+| profiles | `sv.verify(semantics=…)`, `routes.choose` | verified under which profile, preconditions inferred, issues, route and class per engine |
 | options | `substrait-check --functions`, the plan's `depends` | the (group, option) pairs the query meets |
 | choices | `substrait-check --options` | each profile's row: allowed behaviours, default, class, `q`, shim, rerun, facts |
 | facts | `characterization/<engine>/facts/*.json` | the facts for those options (by `rows` where a fact has them, else `options`) and functions, with evidence (`docs` < `source` < `engine_test` < `probe` < `fuzz` < `proof`) and status |
@@ -62,8 +61,6 @@ It prints:
 | prose (`--prose`) | `catalogue/pitfalls.toml`, `features.toml`, `backend_semantics.py`, engine module docstrings, `status.json` | older notes, from before the facts; the facts win where they disagree |
 
 Then read the cited facts and lines before answering: the lookup finds candidates. A fact's `description`, `reference` and `provenance` say what the engine does, what the reference does, and how that is known. `python -m sverify_dev.facts --coverage <engine>` (from `python/`) lists the checklist items and choice-table rows that have no fact yet.
-
-Where something is still in review, the scripts say so and degrade: no engine choices table before #587 (routes then carry no class), no `Profile.substrait` before #600, no settings check before #598.
 
 ## Step 2: probe (only if the static sources don't settle it)
 
@@ -85,13 +82,13 @@ uv run python ../.claude/skills/query-semantics/probe.py --catalogue win-top-n-p
 Inputs: `--table NAME COLS ROWS` (repeatable; `ROWS` a Python list of tuples, timestamps and dates as ISO strings, doubles as `"nan"`, `"inf"`, `"-inf"`), `--sql`, `--ibis` (an expression, or statements that assign `q`), `--catalogue ID`, `--requires`/`--ensures` as in the lookup, `--spark`.
 
 Output:
-1. Environment: package versions, each profile's fact versions against the installed engine (D14), the DuckDB settings the facts depend on (#598's table once it lands), and how Polars runs.
+1. Environment: package versions, each profile's fact versions against the installed engine (D14), the DuckDB settings the facts depend on (#598), and how Polars runs.
 2. Frontends: the lift's and the Ibis producer's plans, the checker's verdict under the reference, the `Rel`, and `Rel.eval` on the rows.
 3. Profiles: as in the lookup.
-4. Engines on the written plan: DuckDB and Polars, each `= Rel.eval`, `DIFFERS`, `raises` or `refused`, with the route and class under it; DataFusion (and Spark with `--spark`) marked outside the profiles; Snowflake as SQL text only.
+4. Engines on the written plan: DuckDB and Polars, each `= Rel.eval`, `DIFFERS`, `raises` or `refused`, with the route and class under it; DataFusion (and Spark with `--spark`, which the probe runs without a route) marked outside the profiles; Snowflake as SQL text only.
 5. Native: the SQL as written on DuckDB, Polars SQL and DataFusion (and Spark), and the Ibis expression on Ibis's backends. No route applies; this is what the engine itself does.
 
-Polars runs on its streaming engine, as sverify does (#605; the probe patches it in until then), with sverify's flags for plans and Polars's defaults for native queries. Rows compare as bags, or in order where a sort reaches the result; doubles to 6 decimals, times as µs, dates as days.
+Polars runs on its streaming engine, as sverify does (#605), with sverify's flags for plans and Polars's defaults for native queries. Rows compare as bags, or in order where a sort reaches the result; doubles to 6 decimals, times as µs, dates as days.
 
 ## Gotchas
 

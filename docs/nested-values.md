@@ -2,7 +2,7 @@
 
 Issue #59 (first step of #94). Lists and structs in the Lean model, `collect`
 (Ibis `ArrayCollect`, Polars `implode`) and `unnest` (Ibis `TableUnnest`,
-Polars `explode`). Maps, JSON and lambdas are follow-ups (see the end).
+Polars `explode`). Maps and JSON are out of scope ([Follow-ups](#follow-ups)).
 
 ## Values
 
@@ -30,9 +30,11 @@ inductive Value where
   `NULLS FIRST/LAST` before comparing values, and `MIN`/`MAX` skip them.
   `Value.le` stays a total order (`Value.le_trans`, `Value.le_total`,
   `Value.le_antisymm`, by mutual recursion over values and lists).
-* **Comparison operators** `<`, `<=` on lists are refused: DataFusion says
-  `[1, NULL] < [1, 2]` and `[NULL] < [1]` are TRUE, DuckDB FALSE, so they need
-  the engine profiles of #23. `MIN`/`MAX` of lists are refused too.
+* **Comparison operators** `<`, `<=` on lists are three-valued, and
+  `MIN`/`MAX` of lists order them as `ORDER BY` does
+  ([reference-semantics.md](reference-semantics.md#nested-lists-and-structs), #207).
+  Engines disagree here: DataFusion says `[1, NULL] < [1, 2]` and
+  `[NULL] < [1]` are TRUE, DuckDB FALSE.
 
 ## Abstract values
 
@@ -72,8 +74,10 @@ no fact about element order is proved, and the differential tests compare
 unordered collects as multisets. The report calls the result not
 `deterministic` and names the aggregate in `tie_places`.
 
-The parser accepts `array_agg` only with the filter `x IS NOT NULL` (Ibis's
-form), since the model skips NULLs as for every other measure. `collect` is
+Ibis writes `array_agg` with the filter `x IS NOT NULL`, and the model's
+measure skips NULLs as every other measure does. DuckDB's `list(x)`, which
+keeps NULLs, the SQL lift reads as `flatten(array_agg([x]))`
+([reference-semantics.md](reference-semantics.md#nulls-and-order), #810). `collect` is
 not decomposable, so it is neither sharded nor maintained incrementally.
 
 ## Unnest
@@ -204,15 +208,12 @@ A table's `NamedStruct` names its struct columns' fields too, depth first. The
 plan's root keeps one name per output column, since sverify reads them as
 the columns.
 
-## Follow-ups (#94)
+## Follow-ups
 
-Done: struct field access, list elements and `cardinality`; lambdas with
-`any_match`, `all_match`, `transform` and `filter` (see above), on Polars,
-reading the row and outer parameters in the model (D28). Still to do:
-
-* lambdas that read the row on Polars, and Ibis's `contains` of a column;
-* struct construction;
-* structs and lambdas in the SQL dialects (lists run on DuckDB);
-* slicing, and `list.sum`/`min`/`max`/`sort`/`unique`.
-
-Maps and JSON stay out of #94.
+Struct field access, list elements and `cardinality`, and lambdas with
+`any_match`, `all_match`, `transform` and `filter` on Polars, reading the row
+and outer parameters in the model (D28), are done (#94). What is still open
+is tracked in [#1019](https://github.com/AlexanderNenninger/substrait-lean/issues/1019)
+and, for DuckDB's lambdas and list functions,
+[#348](https://github.com/AlexanderNenninger/substrait-lean/issues/348); maps
+and JSON stay out of #94.

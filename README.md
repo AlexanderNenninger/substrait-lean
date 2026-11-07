@@ -19,19 +19,12 @@ Sverify is purely observational. It's a tool to explore and compare database sem
 
 Sverify checks every plan against a reference semantics written in Lean, and
 describes each engine by how it differs from that reference. Four principles
-decide what the reference does ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185),
-[reference-semantics.md](docs/reference-semantics.md#principles)):
-
-1. The reference follows Substrait. A function means what its extension YAML
-   says, options included. Where the reference departs from Substrait, it says
-   so and gives the reason.
-2. Where Substrait is silent, the reference takes the least surprising choice
-   and writes down why. An option a plan omits means an error.
-3. Every engine can follow it with reasonable effort. Types keep their declared
-   widths, and each choice has a reasonable shim or translation on DuckDB,
-   Polars, DataFusion, Spark and Snowflake.
-4. Optimizations stay provable. An error means "may raise", so filter
-   pushdown, reordering, sharding and incremental maintenance stay correct.
+decide what the reference does: it follows Substrait, takes the least
+surprising choice where Substrait is silent, can be followed by every engine
+with reasonable effort, and keeps optimizations provable. They are stated,
+with what each means in practice, in
+[reference-semantics.md](docs/reference-semantics.md#principles)
+([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)).
 
 Engine quirks belong in the engine profiles ([engine-profiles.md](docs/engine-profiles.md)).
 Changing the reference is a breaking change.
@@ -92,12 +85,23 @@ SQL string ─► SQLGlot lift ────────────────�
   [docs/nested-values.md](docs/nested-values.md) and
   [docs/float-bounds.md](docs/float-bounds.md) cover the Ibis side, the engines,
   proved optimizations, nested values and doubles.
-* [python/README.md](python/README.md): install, quick example, API overview and
-  the engine tiers (DuckDB is Tier 1).
+* [python/README.md](python/README.md): install, quick example and API overview.
 * [docs/prior-work.md](docs/prior-work.md): the work sverify builds on, with
   citations, and related tools.
 * [docs/stability.md](docs/stability.md): what stays stable in 1.x: the formats
-  a running pipeline reads, the contracts proved, and the Python API.
+  a running pipeline reads, the contracts proved, the Python API, and
+  [which engines](docs/stability.md#engines) sverify supports.
+* [docs/core-semantics.md](docs/core-semantics.md): the loose core, the
+  profiles as constraints on it, the translations between them, and the
+  decisions D1 onwards; [docs/realizability.md](docs/realizability.md): the
+  class of every option on each engine, generated.
+* [docs/proofs.md](docs/proofs.md): each guarantee with its theorem, what is
+  trusted, and one line per Lean module.
+* [docs/coverage-targets.md](docs/coverage-targets.md): the coverage list for
+  1.0 and where each target stands.
+* [characterization/README.md](characterization/README.md): how engine facts
+  are judged; [models/refresh/](models/refresh/README.md): the refresh
+  protocol, model-checked in TLA+.
 * [docs/layers.md](docs/layers.md): the order in which the Python modules
   import each other, and the readings the frontends share.
 
@@ -293,37 +297,13 @@ uv run --project python python my_pipeline.py
 * Why DataFusion 51? Ibis 12's DataFusion backend fails to connect with
   DataFusion 52 and later (a changed user-defined-function API).
 
-## Possible next steps
+## Open work
 
-The open work is tracked on GitHub:
-
-* [#29, the roadmap](https://github.com/AlexanderNenninger/substrait-lean/issues/29):
-  closing the gaps between the model and the engines, engine profiles, and the
-  optimizations of [docs/optimizations.md](docs/optimizations.md).
-* [#60, Ibis API coverage](https://github.com/AlexanderNenninger/substrait-lean/issues/60):
-  the operations the coverage table above marks ✗, ranked by how many queries
-  of the [catalogue](catalogue/FINDINGS.md) they block.
-* [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85): proved
-  error bounds, so that sharded `SUM` and `AVG` of doubles can be allowed.
-* [#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63): testing
-  the Snowflake SQL on a real account; today it only runs on an emulator.
-
-Longer-term directions:
-
-1. Non-linear incremental operators. Aggregates and windows recompute only
-   the groups and partitions a batch touches; SUM and COUNT per group are
-   linear over Z-sets and could be maintained from the changes alone, as
-   could `DISTINCT`, semi and left joins.
-2. Completeness. Contracts say what every output row satisfies; the
-   converse ("no window is lost") is a Lean theorem per plan today
-   (`IoT.window_complete`); the checker doesn't report it yet.
-3. Translation validation. Given a plan and its optimized form, have Lean
-   check that they are equivalent. A decision procedure for the conjunctive
-   fragment would mirror Cosette and HoTTSQL.
-4. Real types. A typing judgement over Substrait types (decimals, dates,
-   nullability), with `eval` proven to respect it.
-5. Mathlib `Multiset` or K-relations. Move bag equivalence to quotients, or
-   generalize to semiring-annotated relations as HoTTSQL and provenance do.
+The [roadmap to 1.0](https://github.com/AlexanderNenninger/substrait-lean/issues/757)
+holds the plan, milestone by milestone, and the
+[core design dossier](https://github.com/AlexanderNenninger/substrait-lean/issues/936)
+the design work on the Lean core. What is wanted after 1.0 is in the
+[After 1.0 milestone](https://github.com/AlexanderNenninger/substrait-lean/milestone/9).
 
 ## License
 

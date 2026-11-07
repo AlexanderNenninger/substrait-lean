@@ -377,8 +377,9 @@ cases on all three engines.
 Known gaps: the writer gives virtual tables placeholder `i64` column types and
 writes `FetchRel`'s deprecated `offset`/`count`. DataFusion rejects both, so
 written plans with string `VALUES` or a fetch run only on Polars. Doubles in a
-virtual table come out as their integer codes. `lt` on strings or booleans is
-undefined in the model (unlike in SQL), so the translator refuses it.
+virtual table come out as their integer codes. The translator refuses `lt`
+on strings and booleans; the model compares strings by code point
+([reference semantics](reference-semantics.md#strings)).
 
 ### DuckDB, through generated SQL
 
@@ -760,8 +761,11 @@ checked at their declared width (#202, #419).
 
 Table updates are Z-sets: rows with signed weights, where a deletion has weight `-1` and an
 update is a delete plus an insert. This follows DBSP (Budiu et al., VLDB 2023).
-It covers every operator except left, semi and anti joins, `DISTINCT`, aggregates,
-fetch and windows (`Rel.Incremental`):
+The linear fragment, `Rel.Incremental`, covers every operator except left,
+semi and anti joins, `DISTINCT`, aggregates, fetch and windows; semi and anti
+joins, `DISTINCT` and `COUNT`, `SUM`, `AVG`, `MIN` and `MAX` per group have
+delta rules of their own ([section 6 of the optimizations note](optimizations.md#6-incremental-maintenance);
+what refresh maintains is in [the guide](guide.md#nodes-composing-storing-refreshing)):
 
 * `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit, sort and union
   are linear (a sort only orders the bag), and cross and inner join use the bilinear rule
