@@ -320,7 +320,7 @@ def momentNum (vs : List Int) : Int :=
   vs.length * (vs.map fun v => v * v).foldr (· + ·) 0 - vs.foldr (· + ·) 0 * vs.foldr (· + ·) 0
 
 theorem comomentNum_eq (cs : List Int) : comomentNum cs = momentNum (cs.map scaled) := by
-  simp only [comomentNum, momentNum, sqSumOf, sumOf, List.length_map, List.map_map,
+  simp only [comomentNum, momentNum, sqSumOf, scaledSum, List.length_map, List.map_map,
     Function.comp_def]
 
 theorem shift_sum (c : Int) : ∀ vs : List Int,
