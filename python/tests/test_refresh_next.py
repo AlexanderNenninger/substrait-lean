@@ -95,16 +95,7 @@ CASES = [
     ("the record is this state", lambda c1: at(c1, 2), True, "skip"),
     ("the record is the writer's own", lambda c1: c1, True, "merge"),
     ("the record is another, older state", lambda c1: at(c1, 0), True, "replace"),
-    pytest.param(
-        "the record is ahead of the writer",
-        lambda c1: at(c1, 3),
-        True,
-        "skip",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="#1025: other_tables reads a lower version as another table and replaces",
-        ),
-    ),
+    ("the record is ahead of the writer", lambda c1: at(c1, 3), True, "skip"),
 ]
 
 
