@@ -175,6 +175,9 @@ end Substrait.Examples
 #print axioms Substrait.emit_project_identity
 #print axioms Substrait.Rel.incremental_sound
 #print axioms Substrait.Rel.zeval_lift
+#print axioms Substrait.Rel.incrementalK_sound
+#print axioms Substrait.Rel.evalK_lift
+#print axioms Substrait.Rel.evalK_mapW
 #print axioms Substrait.Rel.weighted_eval
 #print axioms Substrait.Rel.zeval_terms
 #print axioms Substrait.contract_sound
