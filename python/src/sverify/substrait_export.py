@@ -38,10 +38,11 @@ from datetime import timedelta
 from importlib import resources
 from typing import TYPE_CHECKING, Any, Literal
 
+from sverify import _meta
 from sverify._unsupported import SverifyError
 
 if TYPE_CHECKING:
-    from sverify.contracts import Report
+    from sverify.report import Report
 
 #: The Substrait version the export writes, the one `Profile.substrait` reads.
 SUBSTRAIT_VERSION = (0, 106, 0)
@@ -1009,7 +1010,7 @@ def _dependencies(plan_json: str) -> list[Json]:
 def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
     """Pin every option the proof depends on, and account for the rest."""
     from sverify import _substrait_shims, routes
-    from sverify.contracts import INFINITE
+    from sverify.report import INFINITE
 
     assert report.internal_plan is not None
     calls = typer.calls
@@ -1289,9 +1290,7 @@ def _version() -> str:
 
 
 def _sverify_version() -> str:
-    import sverify
-
-    return sverify.__version__
+    return _meta.VERSION
 
 
 def _table_condition_json(c: Any) -> Json:
@@ -1309,7 +1308,7 @@ def _table_condition_json(c: Any) -> Json:
 
 
 def _table_condition(j: Mapping[str, Any]) -> Any:
-    from sverify import contracts
+    from sverify import conditions
 
     allowed = {"Unique", "References", "ArrivesWithin", "MaxRows", "RowsPer"}
     cls = j.get("class")
@@ -1323,7 +1322,7 @@ def _table_condition(j: Mapping[str, Any]) -> Any:
             fields[k] = tuple(fields[k])
     if "n" in fields:
         fields["n"] = int(fields["n"])
-    return getattr(contracts, cls)(**fields)
+    return getattr(conditions, cls)(**fields)
 
 
 def _condition(plan: Json, name: str | None = None) -> Json:
@@ -1423,7 +1422,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     for table, conds in report._conditions.items():
         inferred = {str(x) for x in report._inferred.get(table, [])}
         for cond in conds:
-            from sverify.contracts import TableCondition, label
+            from sverify.conditions import TableCondition, label
 
             entry = condition_cls(
                 table=table,
@@ -1438,14 +1437,14 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
                 entry.plan.CopyFrom(_plan_message(_condition(next(requires_plans))))
             c.requires.append(entry)
     for i in report.assumed:
-        from sverify.contracts import _assumption
+        from sverify.report import _assumption
 
         c.requires.append(condition_cls(text=_assumption(i), kind="assumed", inferred=True))
     ens_plans = iter(report._contract.get("ensures", []))
     posts = report._postconditions or []
     if len(posts) != len(report.ensures):
         raise ExportError("this report keeps no postconditions to export (re-run sv.verify)")
-    from sverify.contracts import TableCondition
+    from sverify.conditions import TableCondition
 
     for cond, checked in zip(posts, report.ensures, strict=True):
         entry = condition_cls(text=checked.label, proved=checked.proved)
@@ -1629,9 +1628,10 @@ def _floats_component(components: Mapping[str, Any]) -> Any:
 
 def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     """`from_substrait`, under its internal name."""
-    from sverify.contracts import CheckedCondition, Issue, Report, tie_places
+    from sverify.conditions import CheckedCondition
     from sverify.engine import run_checker
     from sverify.observation import Observation
+    from sverify.report import Issue, Report, tie_places
 
     imp = read(data)
     m = imp.manifest

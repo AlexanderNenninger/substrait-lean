@@ -655,15 +655,27 @@ def BinFn.apply : BinFn → Value → Value → Value
 #guard BinFn.apply (.listFn .position) (.list [.int 1, .null]) .null == .int 2
 #guard BinFn.apply (.listFn .position) (.list [.int 1]) (.int 2) == .null
 
+/-- An implementation of the scalar functions: Lean's own (`Impl.lean`, the
+reference) or an engine's, without run-time checks (`SubstraitLean/Guards.lean`,
+`SubstraitLean/AllowedP.lean`). -/
+structure Impl where
+  un : UnFn → Value → Value
+  bin : BinFn → Value → Value → Value
+
+/-- Lean's own functions: the reference semantics. -/
+abbrev Impl.lean : Impl := ⟨UnFn.apply, BinFn.apply⟩
+
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules
-them out for well-formed plans. -/
-def Expr.eval (row : Row) : Expr → Value
-  | .lit v => v
-  | .field i => row.getD i .null
-  | .un f a => f.apply (a.eval row)
-  | .bin f a b => f.apply (a.eval row) (b.eval row)
-  | .ifThen c t e => if (c.eval row).isTrue then t.eval row else e.eval row
-  | .hof f l b => f.apply (l.eval row) fun x => b.eval (x :: row)
+them out for well-formed plans. The functions come from `I`, Lean's own by
+default: `e.eval row` is the reference, `e.eval row I` an
+engine's, one definition for both. -/
+def Expr.eval (row : Row) : Expr → (I : Impl := Impl.lean) → Value
+  | .lit v, _ => v
+  | .field i, _ => row.getD i .null
+  | .un f a, I => I.un f (a.eval row I)
+  | .bin f a b, I => I.bin f (a.eval row I) (b.eval row I)
+  | .ifThen c t e, I => if (c.eval row I).isTrue then t.eval row I else e.eval row I
+  | .hof f l b, I => f.apply (l.eval row I) fun x => b.eval (x :: row) I
 
 /-- All field references in the expression are `< n`. A lambda's body reads
 one more field, its parameter, in front of the row (D28). -/
@@ -737,8 +749,9 @@ theorem getD_map_shift (cols : List Expr) (i : Nat) :
 
 /-- A shifted expression on a row with a column inserted at its position
 reads what the expression reads without it. -/
-theorem Expr.eval_shift_insert (w : Value) :
-    ∀ (e : Expr) (xa rest : Row), (e.shift xa.length).eval (xa ++ w :: rest) = e.eval (xa ++ rest)
+theorem Expr.eval_shift_insert {I : Impl} (w : Value) :
+    ∀ (e : Expr) (xa rest : Row),
+      (e.shift xa.length).eval (xa ++ w :: rest) I = e.eval (xa ++ rest) I
   | .lit _, _, _ => rfl
   | .field i, xa, rest => getD_shift_insert w i xa rest
   | .un f a, xa, rest => by simp only [shift, eval, Expr.eval_shift_insert w a]
@@ -750,7 +763,7 @@ theorem Expr.eval_shift_insert (w : Value) :
   | .hof f l b, xa, rest => by
     simp only [shift, eval, Expr.eval_shift_insert w l]
     congr 1; funext x
-    have := Expr.eval_shift_insert w b (x :: xa) rest
+    have := Expr.eval_shift_insert (I := I) w b (x :: xa) rest
     simpa using this
 
 /-- A shifted expression reads one column more. -/
@@ -763,8 +776,8 @@ theorem Expr.refsLt_shift {m : Nat} : ∀ {e : Expr} (k : Nat), e.refsLt m → (
   | .hof _ l b, k, h => ⟨Expr.refsLt_shift k h.1, Expr.refsLt_shift (k + 1) h.2⟩
 
 /-- `shift 0` reads a row with one more value in front. -/
-theorem Expr.eval_shift_cons (w : Value) (e : Expr) (row : Row) :
-    (e.shift 0).eval (w :: row) = e.eval row :=
+theorem Expr.eval_shift_cons {I : Impl} (w : Value) (e : Expr) (row : Row) :
+    (e.shift 0).eval (w :: row) I = e.eval row I :=
   Expr.eval_shift_insert w e [] row
 
 theorem Value.pick_mem {better : Value → Value → Bool} (v w : Value) :

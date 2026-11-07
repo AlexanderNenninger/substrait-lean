@@ -24,6 +24,7 @@ from typing import Any, Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from sverify._pipe import Pipeable
 from sverify._weighted import ChangeLog, split, weighted
 from sverify.engine import plain_schema
 from sverify.incremental import (
@@ -35,7 +36,6 @@ from sverify.incremental import (
 from sverify.io._common import UNRECORDED, cursor_value
 from sverify.io._credentials import declared
 from sverify.io._secrets import Secret
-from sverify.steps import Pipeable
 
 Kind = Literal["append", "snapshot", "changes"]
 

@@ -876,7 +876,7 @@ def read(
         raise ValueError(
             f"ODCS apiVersion {api!r}: sverify reads {', '.join(_READS)}; it writes {ODCS_VERSION}"
         )
-    from sverify.contracts import key
+    from sverify.conditions import key
 
     out = OdcsContract(doc)
     for obj in doc.get("schema") or []:

@@ -115,8 +115,9 @@ def crossRows (xs ys : Relation) : Relation :=
 
 /-- Left outer join, one left row at a time: matching rows, or the left row
 padded with nulls when nothing matches. -/
-def leftJoinRow (on : Expr) (rightArity : Nat) (ys : Relation) (x : Row) : Relation :=
-  let ms := (ys.map (x ++ ·)).filter fun row => (on.eval row).isTrue
+def leftJoinRow (on : Expr) (rightArity : Nat) (ys : Relation) (x : Row)
+    (I : Impl := Impl.lean) : Relation :=
+  let ms := (ys.map (x ++ ·)).filter fun row => (on.eval row I).isTrue
   if ms.isEmpty then [x ++ List.replicate rightArity .null] else ms
 
 /-- `UNNEST` on one row: a row per element of the list in column `c`, with
@@ -138,37 +139,41 @@ theorem mem_unnestRow {c : Nat} {x row : Row} :
   · simp
 
 /-- Does some row of `ys` satisfy `on` next to `x`? -/
-def hasMatch (on : Expr) (ys : Relation) (x : Row) : Bool :=
-  ys.any fun y => (on.eval (x ++ y)).isTrue
+def hasMatch (on : Expr) (ys : Relation) (x : Row) (I : Impl := Impl.lean) : Bool :=
+  ys.any fun y => (on.eval (x ++ y) I).isTrue
 
 /-- Denotational semantics. `FetchRel` takes rows in list order and
 `SortRel` sorts stably: the order of the deterministic profile (D24). The
 reference leaves both open, and `Rel.OrderAllowed` (`SubstraitLean/Ties.lean`)
 holds the results of every order, with the contract theorems over all of
-them (`contract_sound_all`). -/
-def Rel.eval (cat : Catalog) : Rel → Relation
-  | .read t => (cat t).rows
-  | .values _ rows => rows
-  | .filter r c => (r.eval cat).filter fun row => (c.eval row).isTrue
-  | .project r es => (r.eval cat).map fun row => row ++ es.map (·.eval row)
-  | .emit r m => (r.eval cat).map fun row => m.map (row.getD · .null)
-  | .cross a b => crossRows (a.eval cat) (b.eval cat)
-  | .join a b .inner on =>
-      (crossRows (a.eval cat) (b.eval cat)).filter fun row => (on.eval row).isTrue
-  | .join a b .left on =>
-      (a.eval cat).flatMap (leftJoinRow on (b.arity cat) (b.eval cat))
-  | .fetch r off cnt =>
-      let rest := (r.eval cat).drop off
+them (`contract_sound_all`).
+
+The scalar functions come from `I`, Lean's own by default: `r.eval cat` is
+the reference, and `r.eval cat I` runs the plan with an
+engine's functions (`SubstraitLean/Guards.lean`). Windows keep Lean's. -/
+def Rel.eval (cat : Catalog) : Rel → (I : Impl := Impl.lean) → Relation
+  | .read t, _ => (cat t).rows
+  | .values _ rows, _ => rows
+  | .filter r c, I => (r.eval cat I).filter fun row => (c.eval row I).isTrue
+  | .project r es, I => (r.eval cat I).map fun row => row ++ es.map (·.eval row I)
+  | .emit r m, I => (r.eval cat I).map fun row => m.map (row.getD · .null)
+  | .cross a b, I => crossRows (a.eval cat I) (b.eval cat I)
+  | .join a b .inner on, I =>
+      (crossRows (a.eval cat I) (b.eval cat I)).filter fun row => (on.eval row I).isTrue
+  | .join a b .left on, I =>
+      (a.eval cat I).flatMap fun x => leftJoinRow on (b.arity cat) (b.eval cat I) x I
+  | .fetch r off cnt, I =>
+      let rest := (r.eval cat I).drop off
       match cnt with
       | none => rest
       | some n => rest.take n
-  | .unionAll a b => a.eval cat ++ b.eval cat
-  | .window r part sort fns => windowEval part sort fns (r.eval cat)
-  | .semi a b anti on => (a.eval cat).filter fun x => hasMatch on (b.eval cat) x != anti
-  | .orderBy r keys => (r.eval cat).mergeSort (sortLe keys)
-  | .distinct r => dedup (r.eval cat)
-  | .aggregate r gs ms => aggregateEval gs ms (r.eval cat)
-  | .unnest r c => (r.eval cat).flatMap (unnestRow c)
+  | .unionAll a b, I => a.eval cat I ++ b.eval cat I
+  | .window r part sort fns, I => windowEval part sort fns (r.eval cat I)
+  | .semi a b anti on, I => (a.eval cat I).filter fun x => hasMatch on (b.eval cat I) x I != anti
+  | .orderBy r keys, I => (r.eval cat I).mergeSort (sortLe keys)
+  | .distinct r, I => dedup (r.eval cat I)
+  | .aggregate r gs ms, I => aggregateEval gs ms (r.eval cat I) I
+  | .unnest r c, I => (r.eval cat I).flatMap (unnestRow c)
 
 /-- Bag equivalence of plans: same rows with the same multiplicities, on
 every catalog. -/

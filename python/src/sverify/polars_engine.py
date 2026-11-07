@@ -67,7 +67,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from sverify import _plan_read, _support
+from sverify import _decimals, _plan_read, _support
 from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify._support import DUCKDB_ONLY
@@ -1177,7 +1177,7 @@ class Exprs:
         match name, args, tys:
             case (("add" | "subtract"), [a, b], [(p1, s1), (p2, s2)]):
                 sc = scale(max(s1, s2))
-                p = dp if dp is not None else min(DEC_DIGITS, max(p1 - s1, p2 - s2) + sc + 1)
+                p = dp if dp is not None else _decimals.add((p1, s1), (p2, s2))[0]
                 x, y = (v.expr.cast(pl.Decimal(DEC_DIGITS, 0)) if v.dtype == pl.Null else v.expr
                         for v in (a, b))  # fmt: skip
                 # Exact at the larger scale (polars-decimal-arith).
@@ -1189,7 +1189,7 @@ class Exprs:
                     raise Unsupported(
                         "a DECIMAL product with more than 38 decimal places is not supported"
                     )
-                p = dp if dp is not None else min(DEC_DIGITS, p1 + p2 + 1)
+                p = dp if dp is not None else _decimals.mul((p1, s1), (p2, s2))[0]
                 return decimal_mul(a, b, p, sc)
             case (("negate" | "subtract"), [a], _):
                 return Val(-a.expr, a.dtype, a.issues)
@@ -1963,8 +1963,8 @@ class Measure:
             return pl.Float64
         if self.fn in ("dsum", "davg"):
             p, s = self.arg.dtype.precision, self.arg.dtype.scale  # pyrefly: ignore
-            more = 10 if self.fn == "dsum" else 4
-            return pl.Decimal(min(DEC_DIGITS, p + more), s if self.fn == "dsum" else s + 4)
+            rule = _decimals.sum_of if self.fn == "dsum" else _decimals.avg_of
+            return pl.Decimal(*rule((p, s)))
         if self.fn in ("fsum", "avg", "fmin", "fmax"):
             return pl.Float64
         return materialize(self.arg.dtype)
@@ -2024,7 +2024,7 @@ class Measure:
             # those of `SUM`'s type (`Measure.sumDigits`, #316), for `AVG` too.
             out = self.dtype
             p, s = self.arg.dtype.precision, self.arg.dtype.scale  # pyrefly: ignore
-            digits = min(DEC_DIGITS, p + 10)
+            digits = _decimals.sum_of((p, s))[0]
             total, n = f"{name}_sum", f"{name}_n"
             aggs = {total: shims.sum_empty_null(v.sum(), v), n: v.count().cast(pl.Int64)}
             u = pl.col(total).to_physical()
@@ -2551,7 +2551,7 @@ class Translator:
                 # A decimal `SUM` has ten more digits (#27); Lean writes a
                 # windowed `AVG` as `sverify_decimal_div` of `SUM` and `COUNT`.
                 if name == "sum":
-                    dsum = pl.Decimal(min(DEC_DIGITS, t.precision + 10), t.scale)  # pyrefly: ignore
+                    dsum = pl.Decimal(*_decimals.sum_of((t.precision, t.scale)))  # pyrefly: ignore
                     return WindowSpec("agg", dsum, agg="dsum", col=idx, frame=frame)
                 if name not in ("count", "min", "max"):
                     raise Unsupported(f"{name} of a DECIMAL over a window is not supported")

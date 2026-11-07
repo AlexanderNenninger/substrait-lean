@@ -7,7 +7,6 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 
 from __future__ import annotations
 
-import base64
 import copy
 import json
 import math
@@ -15,8 +14,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
-from decimal import Decimal
+from datetime import datetime, timedelta
 from typing import Any, Literal, Self
 
 import duckdb
@@ -25,10 +23,11 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify import _deprecated
+from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
+from sverify._pipe import Pipeable
 from sverify._unsupported import SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
-from sverify.steps import Pipeable
 
 
 @dataclass(frozen=True)
@@ -500,71 +499,6 @@ def view_contract_record(view: IncrementalView) -> Contract:
         cursors=_cursors(view, versions),
         table_ids=_table_ids(view, versions),
     )
-
-
-UNRECORDED = object()
-"""A cursor that is not recorded: the source's cursors do not last, or
-this one has no JSON form."""
-
-_TAG = "$cursor"
-
-
-def cursor_json(value: Any) -> Any:
-    """`value` as JSON, for a contract: JSON's own values as they are, and
-    datetimes, dates, times, decimals, bytes and tuples (and dicts with a
-    key `"$cursor"`) as `{"$cursor": <type>, "value": ...}`. `UNRECORDED`
-    if some part has no JSON form (a NaN, an object)."""
-    if value is None or isinstance(value, bool | int | str):
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else UNRECORDED
-    tagged: tuple[str, Any] | None = None
-    if isinstance(value, datetime):
-        tagged = ("datetime", value.isoformat())
-    elif isinstance(value, date):
-        tagged = ("date", value.isoformat())
-    elif isinstance(value, time):
-        tagged = ("time", value.isoformat())
-    elif isinstance(value, Decimal):
-        tagged = ("decimal", str(value))
-    elif isinstance(value, bytes):
-        tagged = ("bytes", base64.b64encode(value).decode())
-    if tagged is not None:
-        return {_TAG: tagged[0], "value": tagged[1]}
-    if isinstance(value, list | tuple):
-        items = [cursor_json(v) for v in value]
-        if any(v is UNRECORDED for v in items):
-            return UNRECORDED
-        return items if isinstance(value, list) else {_TAG: "tuple", "value": items}
-    if isinstance(value, dict) and all(isinstance(k, str) for k in value):
-        out = {k: cursor_json(v) for k, v in value.items()}
-        if any(v is UNRECORDED for v in out.values()):
-            return UNRECORDED
-        return {_TAG: "dict", "value": out} if _TAG in out else out
-    return UNRECORDED
-
-
-def cursor_value(data: Any) -> Any:
-    """The cursor `cursor_json` encoded as `data`."""
-    if isinstance(data, list):
-        return [cursor_value(v) for v in data]
-    if not isinstance(data, dict):
-        return data
-    if _TAG not in data:
-        return {k: cursor_value(v) for k, v in data.items()}
-    kind, value = data[_TAG], data["value"]
-    if kind == "dict":
-        return {k: cursor_value(v) for k, v in value.items()}
-    if kind == "tuple":
-        return tuple(cursor_value(v) for v in value)
-    decode = {
-        "datetime": datetime.fromisoformat,
-        "date": date.fromisoformat,
-        "time": time.fromisoformat,
-        "decimal": Decimal,
-        "bytes": base64.b64decode,
-    }
-    return decode[kind](value)
 
 
 def _cursors(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, Any]:

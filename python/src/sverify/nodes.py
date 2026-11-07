@@ -43,7 +43,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify import _quarantine, _stages
+from sverify import _hooks, _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -1351,9 +1351,7 @@ class Group:
         # OpenLineage run events (#792): off unless `lineage` is given.
         runs = None
         if lineage is not None and lineage is not False:
-            from sverify.openlineage import runs as lineage_runs
-
-            runs = lineage_runs(lineage, order)
+            runs = _hooks.lineage().runs(lineage, order)
         try:
             chosen = _routes(order, engine, route, reproducible, unverified)
             if (planned := PLANNED.get()) is not None:
@@ -1698,3 +1696,12 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
                 )
     expr = transform._build(lifted_args, lifted_kwargs, node=True)
     return _Derived(transform, expr, inputs)
+
+
+_hooks.register_nodes(
+    _hooks.NodeHooks(
+        is_node=lambda v: isinstance(v, Node) or is_source(v),
+        source_node=_source_node,
+        derive=derive,
+    )
+)

@@ -161,51 +161,47 @@ theorem Impl.AgreeOn.sub {cs ds : List Ctor} {I J : Impl} (h : Impl.AgreeOn ds I
   ⟨fun f hf => h.1 f (hs _ hf), fun f hf => h.2 f (hs _ hf)⟩
 
 theorem Expr.evalI_congr {I J : Impl} : ∀ {e : Expr}, Impl.AgreeOn e.ctors I J →
-    ∀ row, e.evalI I row = e.evalI J row
+    ∀ row, e.eval row I = e.eval row J
   | .lit _, _, _ | .field _, _, _ => rfl
   | .un f a, h, row => by
-    simp only [Expr.evalI]
+    simp only [Expr.eval]
     rw [Expr.evalI_congr (h.sub fun c hc => List.mem_cons_of_mem _ hc) row]
     exact h.1 f (List.mem_cons_self ..) _
   | .bin f a b, h, row => by
-    simp only [Expr.evalI]
+    simp only [Expr.eval]
     rw [Expr.evalI_congr (h.sub fun c hc => List.mem_cons_of_mem _ (List.mem_append_left _ hc)) row,
       Expr.evalI_congr (h.sub fun c hc => List.mem_cons_of_mem _ (List.mem_append_right _ hc)) row]
     exact h.2 f (List.mem_cons_self ..) _ _
   | .ifThen c t e, h, row => by
-    simp only [Expr.evalI]
+    simp only [Expr.eval]
     rw [Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) row,
       Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) row,
       Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) row]
   | .hof f l b, h, row => by
-    simp only [Expr.evalI]
+    simp only [Expr.eval]
     rw [Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) row]
     congr 1; funext x
     exact Expr.evalI_congr (h.sub fun _ hc => by simp [Expr.ctors, hc]) (x :: row)
 
 theorem evalI_congr_list {I J : Impl} {es : List Expr}
     (h : Impl.AgreeOn (es.flatMap Expr.ctors) I J) (row : Row) :
-    es.map (·.evalI I row) = es.map (·.evalI J row) :=
+    es.map (·.eval row I) = es.map (·.eval row J) :=
   List.map_congr_left fun e he =>
     Expr.evalI_congr (h.sub fun _ hc => List.mem_flatMap.mpr ⟨e, he, hc⟩) row
 
-theorem Measure.inputsI_congr {I J : Impl} {m : Measure} (h : Impl.AgreeOn m.ctors I J) :
-    m.inputsI I = m.inputsI J := by
+theorem Measure.inputsI_congr {I J : Impl} {m : Measure} (h : Impl.AgreeOn m.ctors I J)
+    (rows : Relation) : m.inputs rows I = m.inputs rows J := by
   have ha := Expr.evalI_congr (h.sub fun _ hc => List.mem_append_left _ hc)
-  have hk : m.keptI I = m.keptI J := by
-    funext rows
-    unfold Measure.keptI
+  have hk : m.kept rows I = m.kept rows J := by
+    unfold Measure.kept
     cases hf : m.filter with
     | none => rfl
     | some c =>
       have hc := Expr.evalI_congr (e := c) (h.sub fun _ hc =>
         List.mem_append_right _ (by simp [hf, hc]))
       simp only [hc]
-  funext rows
-  unfold Measure.inputsI
-  rw [hk]
-  have : m.arg.evalI I = m.arg.evalI J := funext ha
-  rw [this]
+  unfold Measure.inputs
+  simp only [hk, ha]
 
 theorem Measure.allowedP_congr {t : ProfileTable} {I J : Impl} {m : Measure}
     (h : Impl.AgreeOn m.ctors I J) : m.AllowedP t I = m.AllowedP t J := by
@@ -225,13 +221,13 @@ theorem forall₂_congr_mem {α β : Type} {R S : α → β → Prop} {l : List 
 theorem aggAllowedP_congr {t : ProfileTable} {I J : Impl} {gs : List Expr} {ms : List Measure}
     (hg : Impl.AgreeOn (gs.flatMap Expr.ctors) I J) (hm : Impl.AgreeOn (ms.flatMap Measure.ctors) I J)
     (rows out : Relation) : aggAllowedP t I gs ms rows out ↔ aggAllowedP t J gs ms rows out := by
-  have hk : groupKeyI I gs = groupKeyI J gs := funext fun row => evalI_congr_list hg row
-  have hr : groupRowsI I gs = groupRowsI J gs := by
-    funext rows k; simp only [groupRowsI, hk]
+  have hk : ∀ row, groupKey gs row I = groupKey gs row J := fun row => evalI_congr_list hg row
+  have hr : ∀ rows k, groupRows gs rows k I = groupRows gs rows k J := by
+    intro rows k; simp only [groupRows, hk]
   have hms : ∀ m ∈ ms, m.AllowedP t I = m.AllowedP t J := fun m hmem =>
     Measure.allowedP_congr (hm.sub fun _ hc => List.mem_flatMap.mpr ⟨m, hmem, hc⟩)
   unfold aggAllowedP
-  rw [hk, hr]
+  simp only [hk, hr]
   split
   · exact exists_congr fun vs => and_congr_right fun _ =>
       forall₂_congr_mem fun m hmem v => by rw [hms m hmem]
@@ -265,15 +261,15 @@ theorem Rel.allowedI_congr {t : ProfileTable} {I J : Impl} {cat : Catalog} :
       Rel.allowedI_congr (t := t) (cat := cat) (r := b) (h.sub fun _ hc => by simp [Rel.ctors, hc])]
   | .join a b .left on, h, _ => by
     have ho := Expr.evalI_congr (e := on) (h.sub fun _ hc => List.mem_append_right _ hc)
-    have hl : leftJoinRowI I on = leftJoinRowI J on := by
-      funext n ys x; simp only [leftJoinRowI, ho]
+    have hl : ∀ n ys x, leftJoinRow on n ys x I = leftJoinRow on n ys x J := by
+      intro n ys x; simp only [leftJoinRow, ho]
     simp only [Rel.AllowedI, hl,
       Rel.allowedI_congr (t := t) (cat := cat) (r := a) (h.sub fun _ hc => by simp [Rel.ctors, hc]),
       Rel.allowedI_congr (t := t) (cat := cat) (r := b) (h.sub fun _ hc => by simp [Rel.ctors, hc])]
   | .semi a b _ on, h, _ => by
     have ho := Expr.evalI_congr (e := on) (h.sub fun _ hc => List.mem_append_right _ hc)
-    have hm : hasMatchI I on = hasMatchI J on := by
-      funext ys x; simp only [hasMatchI, ho]
+    have hm : ∀ ys x, hasMatch on ys x I = hasMatch on ys x J := by
+      intro ys x; simp only [hasMatch, ho]
     simp only [Rel.AllowedI, hm,
       Rel.allowedI_congr (t := t) (cat := cat) (r := a) (h.sub fun _ hc => by simp [Rel.ctors, hc]),
       Rel.allowedI_congr (t := t) (cat := cat) (r := b) (h.sub fun _ hc => by simp [Rel.ctors, hc])]

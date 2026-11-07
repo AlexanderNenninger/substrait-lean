@@ -18,6 +18,7 @@ from sverify.plan_json import (
     EPOCH,
     Json,
     Unsupported,
+    between,
     call,
     cast_json,
     if_then,
@@ -281,7 +282,7 @@ def _time_truncate(x: Exprs, op: Any) -> Json:
 def _between_time(x: Exprs, op: Any) -> Json:
     t = cast_json(x(op.arg), dt.time)
     lo, hi = x(op.lower_bound, dt.time), x(op.upper_bound, dt.time)
-    return call("and", [call("gte", [t, lo]), call("lte", [t, hi])])
+    return between(t, lo, hi)
 
 
 register(

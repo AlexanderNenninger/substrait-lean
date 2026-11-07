@@ -112,8 +112,7 @@ class Ranged:
 def plan(name: str, query: ir.Table | str) -> Touched | str:
     """How to maintain the view `name` of `query` by touched groups, or why
     it cannot be."""
-    from sverify.engine import plan_json, written_plan
-    from sverify.incremental import NotIncrementalError, delta_plans
+    from sverify.engine import NotIncrementalError, delta_plans, plan_json, written_plan
 
     if isinstance(query, str):
         return SQL
