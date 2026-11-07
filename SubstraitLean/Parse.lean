@@ -46,9 +46,17 @@ where `reprStr` took half of a small plan's check (#825). -/
 def valueKey : Value → String
   | .null => "n"
   | .bool b => if b then "t" else "f"
-  | .int i => s!"i{if i < 0 then "-" else ""}{natKey i.natAbs};"
+  | .int i => s!"i{intKey i}"
+  | .float i => s!"d{intKey i}"
+  | .date i => s!"D{intKey i}"
+  | .ts i => s!"T{intKey i}"
+  | .tod i => s!"o{intKey i}"
+  | .dec sc i => s!"m{sc}:{intKey i}"
   | .str s => s!"s{s.length}:{s}"
   | .list vs => s!"l{vs.length}:" ++ String.join (vs.attach.map fun ⟨v, _⟩ => valueKey v)
+  | .struct vs => s!"r{vs.length}:" ++ String.join (vs.attach.map fun ⟨v, _⟩ => valueKey v)
+where
+  intKey (i : Int) : String := s!"{if i < 0 then "-" else ""}{natKey i.natAbs};"
 
 /-- The entry of a virtual table in `Tables`; no table name starts with `$`
 in a plan the parser reads. -/
@@ -196,11 +204,17 @@ def argSig : String → ArgSig
 
 def litKind : Value → Kind
   | .int _ => .int
+  | .float _ => .float
+  | .date _ => .date
+  | .ts _ => .time
+  | .tod _ => .tod
+  | .dec s _ => .dec 38 s
   | .str _ => .str
   | .bool _ => .bool
   | .null => .other
   | .list [] => .list .other
   | .list (v :: _) => .list (litKind v)
+  | .struct vs => .struct (vs.attach.map fun ⟨v, _⟩ => litKind v)
 
 /-- A black box's type as a kind (#325). -/
 def bbKind : BlackBox.Ty → Kind
@@ -373,6 +387,8 @@ inductive Const where
   /-- A timestamp, in microseconds since 1970-01-01. Dates and timestamps keep
   their kinds so that a cast between them converts the unit (#206). -/
   | ts (us : Int)
+  /-- A time of day, in microseconds since midnight. -/
+  | tod (us : Int)
   | str (s : String)
   | bool (b : Bool)
   | null
@@ -589,10 +605,10 @@ def castConst (ty : Json) (c : Const) : J Const := do
     | _ => throw "casts to strings are not supported"
   | .tod =>
     match c with
-    | .int us =>
-      if 0 ≤ us ∧ us < Time.usPerDay then return .int us
+    | .int us | .tod us =>
+      if 0 ≤ us ∧ us < Time.usPerDay then return .tod us
       else throw "a time of day outside 00:00 to 24:00"
-    | .ts us => return .int (Time.timeOfDay us)
+    | .ts us => return .tod (Time.timeOfDay us)
     | _ => throw "cannot cast this value to a time of day"
   -- To a smaller scale rounds half away from zero (#27).
   | .dec p s =>
@@ -714,6 +730,7 @@ def parseConstLiteral (j : Json) : J Const := do
   | ("intervalDayToSecond", d) => return .int (← intervalMicros d)
   | ("date", d) => return .date (← getInt d)
   | ("timestamp", us) => return .ts (← getInt us)
+  | ("time", us) => return .tod (← getInt us)
   | ("intervalCompound", c) =>
     if let some ym := field? c "intervalYearToMonth" then
       if (← yearMonths ym) != 0 then
@@ -727,8 +744,8 @@ def parseConstLiteral (j : Json) : J Const := do
   | ("precisionTime", t) =>
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
-    if p ≤ 6 then return .int (v * 10 ^ (6 - p))
-    else if v % 10 ^ (p - 6) == 0 then return .int (v / 10 ^ (p - 6))
+    if p ≤ 6 then return .tod (v * 10 ^ (6 - p))
+    else if v % 10 ^ (p - 6) == 0 then return .tod (v / 10 ^ (p - 6))
     else throw "times finer than microseconds are not supported"
   -- Precision `p` counts units of 10⁻ᵖ s (a `TIMESTAMP '…'` literal may be at 0).
   | ("precisionTimestamp", t) =>
@@ -806,8 +823,11 @@ partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) 
 
 def constExpr : Const → J Expr
   | .int i => pure (.lit (.int i))
-  | .flt f => pure (.lit (.int (FloatCode.ofFloat f)))
-  | .code c | .date c | .ts c => pure (.lit (.int c))
+  | .flt f => pure (.lit (.float (FloatCode.ofFloat f)))
+  | .code c => pure (.lit (.float c))
+  | .date c => pure (.lit (.date c))
+  | .ts c => pure (.lit (.ts c))
+  | .tod c => pure (.lit (.tod c))
   | .str s => pure (.lit (.str s))
   | .bool b => pure (.lit (.bool b))
   | .null => pure (.lit .null)
@@ -1260,7 +1280,8 @@ def _root_.Substrait.Expr.floorModOf (a b : Expr) : Expr :=
 
 A NaN dividend stays NaN (`on_domain_error` = `NAN`). `NULL` stays `NULL`. -/
 def divByZero (mode : String) (float : Bool) (div : Expr → Expr → Expr) (a b : Expr) : Expr :=
-  let lit (i : Int) : Expr := .lit (.int i)
+  -- Constants of the operands' kind: a double's code, or an integer (#923).
+  let lit (i : Int) : Expr := .lit (if float then .float i else .int i)
   let nan := lit FloatCode.nan
   let byZero : Expr := match mode with
     | "IEEE" => .ifThen (.bin .eq a nan) nan
@@ -1317,13 +1338,13 @@ def mkCoreCall? : String → List Expr → Option (J Expr)
   | "lte", [a, b] => some <| pure (.un .not (.bin .lt b a))
   | "gte", [a, b] => some <| pure (.un .not (.bin .lt a b))
   -- There is one NaN, equal to itself.
-  | "is_nan", [a] | "isnan", [a] => some <| pure (.bin .eq a (.lit (.int FloatCode.nan)))
+  | "is_nan", [a] | "isnan", [a] => some <| pure (.bin .eq a (.lit (.float FloatCode.nan)))
   -- `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
   -- zero: the writer's `canonical`, read back as it was.
-  | "nanvl", [a, .lit (.int c)] => some <|
+  | "nanvl", [a, .lit (.float c)] => some <|
     if c != FloatCode.nan then throw "nanvl is only supported with NaN as its fallback"
     else match a with
-      | .bin .fadd x (.lit (.int 0)) => pure x
+      | .bin .fadd x (.lit (.float 0)) => pure x
       | _ => pure a
   -- `and` / `or` are variadic in Substrait.
   | "and", a :: as => some <| pure (as.foldl (.bin .and) a)
@@ -1485,9 +1506,9 @@ def mkFloatCall : String → List Expr → J Expr
   | "modulus", [a, b] => pure (.bin .fmod a b)
   -- Code negation would make NaN the smallest code; SQL's one NaN stays NaN.
   | "subtract", [a] | "negate", [a] =>
-    pure (.ifThen (.bin .eq a (.lit (.int FloatCode.nan))) a (.un .fneg a))
+    pure (.ifThen (.bin .eq a (.lit (.float FloatCode.nan))) a (.un .fneg a))
   -- `ABS` negates the codes below zero (negatives and `-∞`).
-  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .fneg a) a)
+  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.float 0))) (.un .fneg a) a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
   -- `SubstraitLean/Numeric.lean`.
@@ -1536,7 +1557,10 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
     if let .dec _ s' := typeKind outTy then
       if s' != s then
         throw s!"{name}: a DECIMAL result of scale {s'} where the exact one has {s} is not supported"
-  let zero : Expr := .lit (.int 0)
+  -- `0` of `e`'s kind: comparisons need one kind on both sides (#923).
+  let zeroFor (e : Expr) : Expr := match e.kind cols with
+    | .dec _ s => .lit (.dec s 0)
+    | _ => .lit (.int 0)
   let oneScale := (tys.map (·.2)).eraseDups.length ≤ 1
   match name, args, tys with
   | "add", [a, b], [(p₁, s₁), (p₂, s₂)] | "subtract", [a, b], [(p₁, s₁), (p₂, s₂)] =>
@@ -1560,13 +1584,19 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
       else throw "sverify_decimal_div to a smaller scale is not supported"
     | _ => throw "sverify_decimal_div needs a DECIMAL output type"
   | "negate", [a], [(p, s)] | "subtract", [a], [(p, s)] =>
-    return some (.un (.decimal p s) (.bin .dsub zero a))
+    return some (.un (.decimal p s) (.bin .dsub (zeroFor a) a))
   | "abs", [a], [(p, s)] =>
-    return some (.un (.decimal p s) (.ifThen (.bin .lt a zero) (.bin .dsub zero a) a))
+    return some (.un (.decimal p s) (.ifThen (.bin .lt a (zeroFor a)) (.bin .dsub (zeroFor a) a) a))
   | _, [a, b], [(_, s₁), (_, s₂)] =>
     if comparisonFns.contains name then
+      -- Both sides as decimals of the larger scale: values of one kind
+      -- compare (`Value.numPair`, #923). A side that is already a decimal
+      -- of that scale stays as it is, so contracts read its bounds.
       let s := max s₁ s₂
-      return some (← mkCall name [upscale (s - s₁) a, upscale (s - s₂) b])
+      let side (k : Nat) (e : Expr) : Expr := match e.kind cols with
+        | .dec _ s' => if k = 0 ∧ s' = s then e else .un (.dkind 38 s) (upscale k e)
+        | _ => .un (.dkind 38 s) (upscale k e)
+      return some (← mkCall name [side (s - s₁) a, side (s - s₂) b])
     if decimalPassThrough.contains name && oneScale then return none
     throw s!"{name} of DECIMAL is not supported yet (#27)"
   | _, _, _ =>
@@ -1656,11 +1686,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
       return .lit (.list vs)
     if (field? l "emptyList").isSome then return .lit (.list [])
-    -- A struct is the list of its fields.
+    -- A struct is its fields, in order (#923).
     if let some sj := field? l "struct" then
       let vs ← (← arrD sj "fields").mapM fun e => do
         return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
-      return .lit (.list vs)
+      return .lit (.struct vs)
   if let some c ← constOf? fns j then return ← constExpr c
   if (field? j "literal").isSome then
     throw "month and year intervals are only supported added to a date or timestamp"
@@ -1851,13 +1881,15 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let keepInt (k : Nat) : Bool := baseName name == "round" && k == 1
     let args ← ((argJs.zip parsed).zipIdx).mapM fun ((j, e), k) => do
       if (hasFloat || floatCall) && !keepInt k then
-        if let some (.int i) ← constOf? fns j then return Expr.lit (.int (FloatCode.ofInt i))
+        if let some (.int i) ← constOf? fns j then return Expr.lit (.float (FloatCode.ofInt i))
       return e
     -- DataFusion's simplifier makes `power(x, 0)` a constant 1, even for a
     -- NULL `x`.
     if baseName name == "power" then
       if let [_, Expr.lit (.int 0)] := args then
-        return .lit (.int (if floatCall then FloatCode.ofFloat 1.0 else 1))
+        return .lit (if floatCall then .float (FloatCode.ofFloat 1.0) else .int 1)
+      if let [_, Expr.lit (.float 0)] := args then
+        return .lit (if floatCall then .float (FloatCode.ofFloat 1.0) else .int 1)
     -- Arithmetic on `FLOAT`s rounds to 32 bits, which is not modelled
     -- (#208); on their conversion to `DOUBLE` it is exact.
     if floatCall && ((outTy.getObjVal? "fp32").toOption.isSome ||
@@ -2012,7 +2044,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let v ← parseExpr fns cols bits (← field l "value")
     let opts ← (← arrD l "options").mapM fun o => do
       if v.kind cols == .float then
-        if let some (.int i) ← constOf? fns o then return Expr.lit (.int (FloatCode.ofInt i))
+        if let some (.int i) ← constOf? fns o then return Expr.lit (.float (FloatCode.ofInt i))
       parseExpr fns cols bits o
     match opts.map (.bin .eq v) with
     | [] => return .lit (.bool false)
@@ -2317,7 +2349,7 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
     let dflt ← match args[2]? with
       | none => pure Value.null
       | some j => match ← constOf? fns j with
-        | some (.int i) => pure (.int (if cols.getD c .other == .float then FloatCode.ofInt i else i))
+        | some (.int i) => pure (if cols.getD c .other == .float then .float (FloatCode.ofInt i) else .int i)
         | some k => match ← constExpr k with
           | .lit v => pure v
           | _ => throw s!"{name} defaults must be constants"

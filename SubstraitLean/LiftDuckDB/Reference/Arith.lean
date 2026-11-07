@@ -18,6 +18,7 @@ open Substrait
 local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftReference.divInt_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.bigint x →
     Substrait.DuckType.Has Substrait.DuckType.bigint y →
@@ -39,6 +40,7 @@ abbrev Substrait.liftReference.divInt : Substrait.LiftEntry Substrait.Semantics.
   ((Lean.Json.parse (Substrait.liftReference.divInt).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftReference.divInt).tmpl
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftReference.divDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →
@@ -57,6 +59,7 @@ abbrev Substrait.liftReference.divDouble : Substrait.LiftEntry Substrait.Semanti
   ((Lean.Json.parse (Substrait.liftReference.divDouble).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftReference.divDouble).tmpl
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftReference.modDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →
@@ -75,6 +78,7 @@ abbrev Substrait.liftReference.modDouble : Substrait.LiftEntry Substrait.Semanti
   ((Lean.Json.parse (Substrait.liftReference.modDouble).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftReference.modDouble).tmpl
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftReference.power_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →

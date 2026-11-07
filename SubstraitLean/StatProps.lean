@@ -98,11 +98,11 @@ def sdNear (σ V τ : Rat) : Prop :=
   (σ ≤ u * tiny ∨ (σ - u * tiny) ^ 2 ≤ (1 + u) ^ 2 * (V + τ)) ∧
     (1 - u) ^ 2 * (V - τ) ≤ (σ + u * tiny) ^ 2
 
-/-- Every value a double (an integer code). -/
-def allInts (vs : List Value) : Prop := ∀ w ∈ vs, ∃ i, w = .int i
+/-- Every value a double. -/
+def allInts (vs : List Value) : Prop := ∀ w ∈ vs, ∃ i, w = .float i
 
 instance (vs : List Value) : Decidable (allInts vs) :=
-  if h : vs.all (fun | .int _ => true | _ => false) then
+  if h : vs.all (fun | .float _ => true | _ => false) then
     isTrue fun w hw => by
       have := List.all_eq_true.mp h w hw
       cases w <;> simp_all
@@ -154,15 +154,15 @@ open Stat
 /-- `VAR_*` / `STDDEV_*` of `vs` may give `v`. -/
 def varStat (sample sqrt : Bool) (vs : List Value) (v : Value) : Prop :=
   if vs = [] ∨ (sample = true ∧ vs.length = 1) then v = .null
-  else if allInts vs ∧ fits (intsOf vs) = true then
-    ∃ c, v = .int c ∧ varProps sample sqrt (intsOf vs) c
+  else if allInts vs ∧ fits (floatsOf vs) = true then
+    ∃ c, v = .float c ∧ varProps sample sqrt (floatsOf vs) c
   else v = (AggFn.var sample sqrt).apply vs
 
 /-- `COVAR_*` of `vs` may give `v`. -/
 def covStat (sample : Bool) (vs : List Value) (v : Value) : Prop :=
   if (pairsOf vs).isEmpty = true ∨ (sample = true ∧ (pairsOf vs).length = 1) then v = .null
   else if fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true then
-    ∃ c, v = .int c ∧ covProps sample (pairsOf vs) c
+    ∃ c, v = .float c ∧ covProps sample (pairsOf vs) c
   else v = (AggFn.cov sample).apply vs
 
 /-- `CORR` of `vs` may give `v`. -/
@@ -172,7 +172,7 @@ def corrStat (vs : List Value) (v : Value) : Prop :=
       ((pairsOf vs).map (·.2)).all (· == ((pairsOf vs).map (·.2)).headD 0) = true then
     v = .null
   else if fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true then
-    ∃ c, v = .int c ∧ corrProps (pairsOf vs) c
+    ∃ c, v = .float c ∧ corrProps (pairsOf vs) c
   else v = AggFn.corr.apply vs
 
 /-- The values a statistical aggregate `f` of `vs` may give: `NULL` where the

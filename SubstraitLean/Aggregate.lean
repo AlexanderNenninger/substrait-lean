@@ -128,18 +128,144 @@ def Measure.inputs (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : Lis
   let vs := ((m.kept rows I).map fun row => m.arg.eval row I).filter (· != .null)
   if m.distinct then dedup vs else vs
 
+/-- The sum of the integers among `vs`, and of the unscaled values of its
+decimals (a column has one scale). -/
 def intSum : List Value → Int
   | [] => 0
-  | .int i :: vs => i + intSum vs
+  | .int i :: vs | .dec _ i :: vs => i + intSum vs
   | _ :: vs => intSum vs
+
+/-- Is the value a decimal? -/
+def Value.isDec : Value → Bool
+  | .dec _ _ => true
+  | _ => false
+
+/-- Is the value a decimal of scale `s`? -/
+def Value.isDecOf (s : Nat) : Value → Bool
+  | .dec t _ => t == s
+  | _ => false
+
+/-- Is `vs` a non-empty list of decimals of scale `s`? -/
+def allDecOf (s : Nat) (vs : List Value) : Bool := !vs.isEmpty && vs.all (Value.isDecOf s)
+
+/-- `SUM` of integers, or of decimals of one scale at that scale. A mix of
+decimals with other values or other scales has no type; it adds the
+unscaled integers, whatever the order of the values (#923). -/
+def sumOf (vs : List Value) : Value :=
+  match vs with
+  | .dec s _ :: _ => if vs.all (Value.isDecOf s) then .dec s (intSum vs) else .int (intSum vs)
+  | _ => .int (intSum vs)
+
+theorem intSum_perm {l l' : List Value} (h : l.Perm l') : intSum l = intSum l' := by
+  induction h with
+  | nil => rfl
+  | cons x _ ih => cases x <;> simp [intSum, ih]
+  | swap x y l => cases x <;> cases y <;> simp [intSum] <;> omega
+  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+
+/-- A `SUM`'s two outcomes: a decimal when all values are decimals of one
+scale, an integer otherwise. -/
+theorem sumOf_cases (vs : List Value) :
+    (∃ s, allDecOf s vs = true ∧ sumOf vs = .dec s (intSum vs)) ∨
+    ((∀ s, allDecOf s vs = false) ∧ sumOf vs = .int (intSum vs)) := by
+  match vs with
+  | [] => exact .inr ⟨fun _ => rfl, rfl⟩
+  | .dec s x :: ws =>
+    by_cases hall : (Value.dec s x :: ws).all (Value.isDecOf s) = true
+    · exact .inl ⟨s, by simp only [allDecOf, hall]; rfl, by simp only [sumOf, hall, ite_true]⟩
+    · refine .inr ⟨fun t => ?_, by simp [sumOf, hall]⟩
+      by_cases hts : t = s
+      · subst hts; simpa [allDecOf] using hall
+      · simp [allDecOf, Value.isDecOf, Ne.symm hts]
+  | .null :: ws | .bool _ :: ws | .int _ :: ws | .float _ :: ws | .date _ :: ws | .ts _ :: ws
+  | .tod _ :: ws | .str _ :: ws | .list _ :: ws | .struct _ :: ws =>
+    exact .inr ⟨fun t => by simp [allDecOf, Value.isDecOf], rfl⟩
+
+theorem allDecOf_perm {vs ws : List Value} (h : vs.Perm ws) (s : Nat) :
+    allDecOf s vs = allDecOf s ws := by
+  have hall : vs.all (Value.isDecOf s) = ws.all (Value.isDecOf s) := by
+    apply Bool.eq_iff_iff.mpr
+    simp only [List.all_eq_true]
+    exact ⟨fun h' x hx => h' x (h.mem_iff.mpr hx), fun h' x hx => h' x (h.mem_iff.mp hx)⟩
+  have hl := h.length_eq
+  have he : vs.isEmpty = ws.isEmpty := by
+    cases vs <;> cases ws <;> simp_all
+  simp only [allDecOf, hall, he]
+
+/-- Two lists of decimals of scales `s` and `t` with a value in common: `s = t`. -/
+theorem allDecOf_scale {vs : List Value} {s t : Nat} (hs : allDecOf s vs = true)
+    (ht : allDecOf t vs = true) : s = t := by
+  simp only [allDecOf, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at hs ht
+  obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil vs hs.1
+  have a := List.all_eq_true.mp hs.2 w hw
+  have b := List.all_eq_true.mp ht.2 w hw
+  cases w <;> simp_all [Value.isDecOf]
+
+/-- Two lists with the same unscaled sum and the same scales have one `SUM`. -/
+theorem sumOf_eq_of {vs ws : List Value} (hi : intSum vs = intSum ws)
+    (hd : ∀ s, allDecOf s vs = allDecOf s ws) : sumOf vs = sumOf ws := by
+  rcases sumOf_cases vs with ⟨s, h1, e1⟩ | ⟨h1, e1⟩ <;>
+    rcases sumOf_cases ws with ⟨t, g1, f1⟩ | ⟨g1, f1⟩ <;> rw [e1, f1, hi]
+  · have hs : allDecOf s ws = true := by rw [← hd s]; exact h1
+    rw [allDecOf_scale hs g1]
+  · rw [hd s, g1] at h1; cases h1
+  · rw [← hd t, h1] at g1; cases g1
+
+@[simp] theorem sumOf_ne_null (vs : List Value) : sumOf vs ≠ .null := by
+  rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] <;> simp
+
+theorem sumOf_unscaled_eq (vs : List Value) : (sumOf vs).unscaled? = some (intSum vs) := by
+  rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] <;> rfl
+
+/-- A non-empty list's `SUM` is a decimal of scale `s` when all its values are. -/
+theorem isDecOf_sumOf {vs : List Value} (hne : vs ≠ []) (s : Nat) :
+    (sumOf vs).isDecOf s = vs.all (Value.isDecOf s) := by
+  have ha : allDecOf s vs = vs.all (Value.isDecOf s) := by
+    simp [allDecOf, List.isEmpty_eq_false_iff.mpr hne]
+  rcases sumOf_cases vs with ⟨t, h1, e⟩ | ⟨h1, e⟩ <;> rw [e]
+  · by_cases hts : t = s
+    · subst hts; rw [← ha, h1]; simp [Value.isDecOf]
+    · have : allDecOf s vs = false := by
+        cases h : allDecOf s vs
+        · rfl
+        · exact absurd (allDecOf_scale h1 h) hts
+      rw [← ha, this]; simp [Value.isDecOf, hts]
+  · rw [← ha, h1]; rfl
+
+/-- `SUM` does not depend on the order of its values. -/
+theorem sumOf_perm {vs ws : List Value} (h : vs.Perm ws) : sumOf vs = sumOf ws := by
+  have hsum := intSum_perm h
+  rcases sumOf_cases vs with ⟨s, h1, e1⟩ | ⟨h1, e1⟩ <;>
+    rcases sumOf_cases ws with ⟨t, g1, f1⟩ | ⟨g1, f1⟩ <;> rw [e1, f1, hsum]
+  · have hs : allDecOf s ws = true := by rw [← allDecOf_perm h s]; exact h1
+    rw [allDecOf_scale hs g1]
+  · rw [allDecOf_perm h s, g1] at h1; cases h1
+  · rw [← allDecOf_perm h t, h1] at g1; cases g1
 
 def floatSum (vs : List Value) : Int :=
   vs.foldl (fun acc v => match v with
-    | .int c => FloatCode.lift₂ (· + ·) acc c
+    | .float c => FloatCode.lift₂ (· + ·) acc c
     | _ => acc) (FloatCode.ofInt 0)
 
 /-- The integers among `vs`. -/
 def intsOf (vs : List Value) : List Int := vs.filterMap fun | .int c => some c | _ => none
+
+/-- The doubles among `vs`. -/
+def floatsOf (vs : List Value) : List Int := vs.filterMap fun | .float c => some c | _ => none
+
+theorem mem_floatsOf {vs : List Value} {c : Int} : c ∈ floatsOf vs ↔ .float c ∈ vs := by
+  simp only [floatsOf, List.mem_filterMap]
+  constructor
+  · rintro ⟨v, hv, h⟩; cases v <;> simp_all
+  · intro h; exact ⟨_, h, rfl⟩
+
+theorem floats_map_floatsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .float i) →
+    vs = (floatsOf vs).map .float
+  | [], _ => rfl
+  | v :: vs, h => by
+    obtain ⟨i, rfl⟩ := h v (by simp)
+    simp only [floatsOf, List.filterMap_cons, List.map_cons]
+    exact congrArg _ (floats_map_floatsOf fun w hw => h w (by simp [hw]))
 
 /-- `c` kept between the smallest and largest integer among `vs`, or `c`
 without integers. -/
@@ -156,7 +282,7 @@ def bitFold (op : BitOp) (vs : List Value) : Int :=
     | _ => acc) (if op == .and then -1 else 0)
 
 /-- The codes of the pairs `ps`, flattened: what `nonFinite` reads. -/
-def pairCodes (ps : List (Int × Int)) : List Value := ps.flatMap fun p => [.int p.1, .int p.2]
+def pairCodes (ps : List (Int × Int)) : List Value := ps.flatMap fun p => [.float p.1, .float p.2]
 
 /-- `AggFn.var` of the doubles `vs` (at least one), D30: the exact moments
 rounded once. `S = Σx² − (Σx)²/n` is exact (`comomentNum = n · S`), the
@@ -168,17 +294,17 @@ infinity, #257). -/
 def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
   if sample && vs.length == 1 then .null else
     match nonFinite vs with
-    | some _ => .int FloatCode.nan
+    | some _ => .float FloatCode.nan
     | none =>
-      let cs := intsOf vs
+      let cs := floatsOf vs
       let d := if sample then cs.length - 1 else cs.length
       let N := comomentNum cs
-      if sqrt then .int (FloatCode.posCode (FloatCode.sqrtMag N.toNat (cs.length * d)))
-      else .int (FloatCode.ofExactDiv N (cs.length * d * 2 ^ 1074))
+      if sqrt then .float (FloatCode.posCode (FloatCode.sqrtMag N.toNat (cs.length * d)))
+      else .float (FloatCode.ofExactDiv N (cs.length * d * 2 ^ 1074))
 
 /-- The pairs of doubles among `vs` (`BinFn.pair`'s lists). -/
 def pairsOf (vs : List Value) : List (Int × Int) :=
-  vs.filterMap fun | .list [.int a, .int b] => some (a, b) | _ => none
+  vs.filterMap fun | .list [.float a, .float b] => some (a, b) | _ => none
 
 /-- `COVAR_SAMP` / `COVAR_POP` of the pairs among `vs`, D30: the exact
 co-moment `C = Σxy − Σx·Σy/n` over `d`, rounded once; NULL without pairs
@@ -187,10 +313,10 @@ def covOf (sample : Bool) (vs : List Value) : Value :=
   let ps := pairsOf vs
   if ps.isEmpty || (sample && ps.length == 1) then .null else
     match nonFinite (pairCodes ps) with
-    | some _ => .int FloatCode.nan
+    | some _ => .float FloatCode.nan
     | none =>
       let d := if sample then ps.length - 1 else ps.length
-      .int (FloatCode.ofExactDiv (coComomentNum ps) (ps.length * d * 2 ^ 1074))
+      .float (FloatCode.ofExactDiv (coComomentNum ps) (ps.length * d * 2 ^ 1074))
 
 /-- `CORR` of the pairs among `vs`, D30: `C / √(Sxx · Syy)` rounded once,
 with `C`'s sign: its magnitude is `√(C² / (Sxx · Syy))` rounded to the grid
@@ -204,11 +330,11 @@ def corrOf (vs : List Value) : Value :=
   let ny := comomentNum (ps.map (·.2))
   if ps.length < 2 || nx == 0 || ny == 0 then .null else
     match nonFinite (pairCodes ps) with
-    | some _ => .int FloatCode.nan
+    | some _ => .float FloatCode.nan
     | none =>
       let c := coComomentNum ps
       let m := min (FloatCode.sqrtMag (c.natAbs * c.natAbs * 2 ^ 2148) (nx * ny).toNat) (2 ^ 1074)
-      .int (if c < 0 then -FloatCode.posCode m else FloatCode.posCode m)
+      .float (if c < 0 then -FloatCode.posCode m else FloatCode.posCode m)
 
 theorem pairsOf_perm {vs ws : List Value} (h : vs.Perm ws) : (pairsOf vs).Perm (pairsOf ws) :=
   h.filterMap _
@@ -216,7 +342,7 @@ theorem pairsOf_perm {vs ws : List Value} (h : vs.Perm ws) : (pairsOf vs).Perm (
 /-- D30: a variance is a function of the multiset of values. -/
 theorem varOf_perm (sample sqrt : Bool) {vs ws : List Value} (h : vs.Perm ws) :
     varOf sample sqrt vs = varOf sample sqrt ws := by
-  have hi : (intsOf vs).Perm (intsOf ws) := h.filterMap _
+  have hi : (floatsOf vs).Perm (floatsOf ws) := h.filterMap _
   simp only [varOf, h.length_eq, nonFinite_perm h, comomentNum_perm hi, hi.length_eq]
 
 theorem covOf_perm (sample : Bool) {vs ws : List Value} (h : vs.Perm ws) :
@@ -242,10 +368,10 @@ def sortVals (vs : List Value) : List Value := vs.mergeSort fun a b => a.le b
 for `q = num / 10 ^ scale`: `⌈n·q⌉ − 1`, and the first for `n·q ≤ 1`. -/
 def discIndex (n num scale : Nat) : Nat := (n * num + 10 ^ scale - 1) / 10 ^ scale - 1
 
-/-- The code at position `i` of `s`, if it is an integer or a double. -/
+/-- The code at position `i` of `s`, if it is a double. -/
 def intAt (s : List Value) (i : Nat) : Option Int :=
   match s[i]? with
-  | some (.int c) => some c
+  | some (.float c) => some c
   | _ => none
 
 /-- `QUANTILE_CONT`'s neighbours among the doubles `s` in order, for
@@ -276,14 +402,14 @@ def interpolate (l h w : Int) : Int :=
 /-- `QUANTILE_CONT` of the doubles `s` in order. -/
 def contValue (num scale : Nat) (s : List Value) : Value :=
   match contNeighbours num scale s with
-  | some (l, h, w) => if l == h then .int l else .int (interpolate l h w)
+  | some (l, h, w) => if l == h then .float l else .float (interpolate l h w)
   | none => .null
 
 /-- What `QUANTILE_CONT` of the doubles `s` in order may give: NULL without
 neighbours, else a double between them. -/
 def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
   match contNeighbours num scale s with
-  | some (l, h, _) => ∃ c, v = .int c ∧ (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h))
+  | some (l, h, _) => ∃ c, v = .float c ∧ (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h))
   | none => v = .null
 
 /-- The most frequent of `vs`, the first of those that tie. -/
@@ -294,10 +420,10 @@ def AggFn.apply : AggFn → List Value → Value
   | .count, vs => .int vs.length
   | .bbox n, vs => BlackBox.callAgg n vs
   | _, [] => .null
-  | .sum, vs => .int (intSum vs)
+  | .sum, vs => sumOf vs
   -- D25: the exact sum, and the exact mean, rounded once (`FloatExact.lean`).
-  | .fsum, vs => .int (floatSumCR vs)
-  | .avg, vs => .int (floatAvgCR vs)
+  | .fsum, vs => .float (floatSumCR vs)
+  | .avg, vs => .float (floatAvgCR vs)
   | .iavg, vs => .int (clampInts vs ((intSum vs).tdiv vs.length))
   | .bit op, vs => .int (bitFold op vs)
   | .var sample sqrt, vs => varOf sample sqrt vs
@@ -394,14 +520,14 @@ theorem AggFn.apply_minmax {f : AggFn} (hf : f = .min ∨ f = .max) {vs : List V
     first | (simp [apply]; done) | (simp only [apply]; exact .inr (pickFold_mem _ _ _))
 
 theorem intAt_mem {s : List Value} {i : Nat} {c : Int} (h : intAt s i = some c) :
-    .int c ∈ s := by
+    .float c ∈ s := by
   unfold intAt at h
   split at h
   · rename_i c' heq; cases h; exact List.mem_of_getElem? heq
   · cases h
 
 theorem contNeighbours_mem {num scale : Nat} {s : List Value} {l h w : Int}
-    (hn : contNeighbours num scale s = some (l, h, w)) : .int l ∈ s ∧ .int h ∈ s := by
+    (hn : contNeighbours num scale s = some (l, h, w)) : .float l ∈ s ∧ .float h ∈ s := by
   unfold contNeighbours at hn
   cases h1 : intAt s ((s.length - 1) * num / 10 ^ scale) with
   | none => simp [h1] at hn
@@ -435,7 +561,7 @@ theorem contValue_allowed (num scale : Nat) (s : List Value) :
 /-- `QUANTILE_CONT` gives NULL or a double between two of the values. -/
 theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
     (AggFn.quantile true num scale).apply vs = .null ∨ ∃ c l h,
-      (AggFn.quantile true num scale).apply vs = .int c ∧ .int l ∈ vs ∧ .int h ∈ vs ∧
+      (AggFn.quantile true num scale).apply vs = .float c ∧ .float l ∈ vs ∧ .float h ∈ vs ∧
         (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h)) := by
   cases vs with
   | nil => exact .inl rfl
@@ -443,7 +569,7 @@ theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
     have hp := List.mergeSort_perm (v :: vs) (fun a b => a.le b)
     have ha := contValue_allowed num scale (sortVals (v :: vs))
     show contValue num scale (sortVals (v :: vs)) = .null ∨ ∃ c l h,
-      contValue num scale (sortVals (v :: vs)) = .int c ∧ _
+      contValue num scale (sortVals (v :: vs)) = .float c ∧ _
     unfold contAllowed at ha
     cases hn : contNeighbours num scale (sortVals (v :: vs)) with
     | none => rw [hn] at ha; exact .inl ha

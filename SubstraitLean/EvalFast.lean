@@ -38,8 +38,14 @@ def Value.hashV : Value → UInt64
   | .null => 11
   | .bool b => mixHash 13 (hash b)
   | .int i => mixHash 17 (hash i)
+  | .float c => mixHash 31 (hash c)
+  | .date d => mixHash 37 (hash d)
+  | .ts t => mixHash 41 (hash t)
+  | .tod t => mixHash 43 (hash t)
+  | .dec s i => mixHash 47 (mixHash (hash s) (hash i))
   | .str s => mixHash 19 (hash s)
   | .list vs => mixHash 23 (Value.hashList vs)
+  | .struct vs => mixHash 53 (Value.hashList vs)
 
 def Value.hashList : List Value → UInt64
   | [] => 29
@@ -257,12 +263,14 @@ def equiKeys (la : Nat) : Expr → List EqKey
 
 theorem isTrue_eq {a b : Value} (h : (BinFn.apply .eq a b).isTrue = true) : a = b ∧ a ≠ .null := by
   cases a <;> cases b <;> simp_all [BinFn.apply]
+  all_goals (rename_i s _ t _; by_cases hs : s = t <;> simp_all)
 
 theorem eval_notDistinct {row : Row} {a b : Expr}
     (h : ((Expr.ifThen (.un .isNull a) (.un .isNull b)
       (.ifThen (.un .isNull b) (.lit (.bool false)) (.bin .eq a b))).eval row).isTrue = true) :
     a.eval row = b.eval row := by
   cases ha : a.eval row <;> cases hb : b.eval row <;> simp_all [Expr.eval, UnFn.apply, BinFn.apply]
+  all_goals (rename_i s _ t _; by_cases hs : s = t <;> simp_all)
 
 theorem eqKey_sound {x y : Row} {a b : Expr} {l r : Expr} (hk : eqKey x.length a b = some (l, r)) :
     l.eval x = a.eval (x ++ y) ∧ r.eval y = b.eval (x ++ y) := by

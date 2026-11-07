@@ -192,7 +192,7 @@ open FloatCode
 /-! ### Exact moments -/
 
 /-- `Σx` of the codes `cs`, in units of `2⁻¹⁰⁷⁴` (`exactSum`'s). -/
-def sumOf (cs : List Int) : Int := (cs.map scaled).foldr (· + ·) 0
+def scaledSum (cs : List Int) : Int := (cs.map scaled).foldr (· + ·) 0
 
 /-- `Σx²` of the codes `cs`, in units of `2⁻²¹⁴⁸`. -/
 def sqSumOf (cs : List Int) : Int := (cs.map fun c => scaled c * scaled c).foldr (· + ·) 0
@@ -203,13 +203,13 @@ def prodSumOf (ps : List (Int × Int)) : Int :=
 
 /-- `n · Σx² − (Σx)²`: `n²` times the population variance's numerator, in
 units of `2⁻²¹⁴⁸`; exact. -/
-def comomentNum (cs : List Int) : Int := cs.length * sqSumOf cs - sumOf cs * sumOf cs
+def comomentNum (cs : List Int) : Int := cs.length * sqSumOf cs - scaledSum cs * scaledSum cs
 
 /-- `n · Σxy − Σx · Σy` of the pairs. -/
 def coComomentNum (ps : List (Int × Int)) : Int :=
-  ps.length * prodSumOf ps - sumOf (ps.map (·.1)) * sumOf (ps.map (·.2))
+  ps.length * prodSumOf ps - scaledSum (ps.map (·.1)) * scaledSum (ps.map (·.2))
 
-theorem sumOf_cons (c : Int) (cs : List Int) : sumOf (c :: cs) = scaled c + sumOf cs := rfl
+theorem scaledSum_cons (c : Int) (cs : List Int) : scaledSum (c :: cs) = scaled c + scaledSum cs := rfl
 
 theorem sqSumOf_cons (c : Int) (cs : List Int) :
     sqSumOf (c :: cs) = scaled c * scaled c + sqSumOf cs := rfl
@@ -234,12 +234,12 @@ theorem devSq_nonneg (c : Int) : ∀ cs : List Int, 0 ≤ devSq c cs
     omega
 
 theorem devSq_eq (c : Int) : ∀ cs : List Int,
-    devSq c cs = sqSumOf cs - 2 * scaled c * sumOf cs + cs.length * (scaled c * scaled c)
-  | [] => by simp [devSq, sqSumOf, sumOf]
+    devSq c cs = sqSumOf cs - 2 * scaled c * scaledSum cs + cs.length * (scaled c * scaled c)
+  | [] => by simp [devSq, sqSumOf, scaledSum]
   | x :: cs => by
     have ih := devSq_eq c cs
     simp only [devSq, List.map_cons, List.foldr_cons] at ih ⊢
-    rw [ih, sqSumOf_cons, sumOf_cons, List.length_cons]
+    rw [ih, sqSumOf_cons, scaledSum_cons, List.length_cons]
     push_cast
     grind
 
@@ -248,24 +248,24 @@ numerator. -/
 theorem comomentNum_cons (c : Int) (cs : List Int) :
     comomentNum (c :: cs) = comomentNum cs + devSq c cs := by
   rw [devSq_eq]
-  simp only [comomentNum, sqSumOf_cons, sumOf_cons, List.length_cons]
+  simp only [comomentNum, sqSumOf_cons, scaledSum_cons, List.length_cons]
   push_cast
   grind
 
 /-- **A variance's numerator is not negative.** -/
 theorem comomentNum_nonneg : ∀ cs : List Int, 0 ≤ comomentNum cs
-  | [] => by simp [comomentNum, sqSumOf, sumOf]
+  | [] => by simp [comomentNum, sqSumOf, scaledSum]
   | c :: cs => by
     rw [comomentNum_cons]
     have := comomentNum_nonneg cs
     have := devSq_nonneg c cs
     omega
 
-theorem sumOf_perm {cs ds : List Int} (h : cs.Perm ds) : sumOf cs = sumOf ds := by
+theorem scaledSum_perm {cs ds : List Int} (h : cs.Perm ds) : scaledSum cs = scaledSum ds := by
   induction h with
   | nil => rfl
-  | cons x _ ih => simp only [sumOf_cons, ih]
-  | swap x y l => simp only [sumOf_cons]; omega
+  | cons x _ ih => simp only [scaledSum_cons, ih]
+  | swap x y l => simp only [scaledSum_cons]; omega
   | trans _ _ ih1 ih2 => exact ih1.trans ih2
 
 theorem sqSumOf_perm {cs ds : List Int} (h : cs.Perm ds) : sqSumOf cs = sqSumOf ds := by
@@ -284,11 +284,11 @@ theorem prodSumOf_perm {ps qs : List (Int × Int)} (h : ps.Perm qs) : prodSumOf 
 
 /-- **The moments are functions of the multiset.** -/
 theorem comomentNum_perm {cs ds : List Int} (h : cs.Perm ds) : comomentNum cs = comomentNum ds := by
-  simp only [comomentNum, sumOf_perm h, sqSumOf_perm h, h.length_eq]
+  simp only [comomentNum, scaledSum_perm h, sqSumOf_perm h, h.length_eq]
 
 theorem coComomentNum_perm {ps qs : List (Int × Int)} (h : ps.Perm qs) :
     coComomentNum ps = coComomentNum qs := by
-  simp only [coComomentNum, prodSumOf_perm h, sumOf_perm (h.map _), h.length_eq]
+  simp only [coComomentNum, prodSumOf_perm h, scaledSum_perm (h.map _), h.length_eq]
 
 /-- The variance's numerator of a pair list's first side is the co-moment
 of the pairs `(x, x)`. -/
@@ -320,7 +320,7 @@ def momentNum (vs : List Int) : Int :=
   vs.length * (vs.map fun v => v * v).foldr (· + ·) 0 - vs.foldr (· + ·) 0 * vs.foldr (· + ·) 0
 
 theorem comomentNum_eq (cs : List Int) : comomentNum cs = momentNum (cs.map scaled) := by
-  simp only [comomentNum, momentNum, sqSumOf, sumOf, List.length_map, List.map_map,
+  simp only [comomentNum, momentNum, sqSumOf, scaledSum, List.length_map, List.map_map,
     Function.comp_def]
 
 theorem shift_sum (c : Int) : ∀ vs : List Int,
