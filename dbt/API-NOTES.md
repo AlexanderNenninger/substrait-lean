@@ -30,6 +30,12 @@ Closed in substrait-lean#685:
 | 19 | `CheckedCondition.condition`: the condition as given in `ensures` |
 | 22 | The checker's pipes close when it stops |
 
+Closed since:
+
+| Note | Issue | Addition |
+|---|---|---|
+| 17 | [substrait-lean#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708) | A finite value set per string column in the range analysis, up to 64 strings |
+
 Filed (larger than substrait-lean#685; the checklist is [substrait-lean#692](https://github.com/AlexanderNenninger/substrait-lean/issues/692)):
 
 | Note | Issue | Wanted |
@@ -42,7 +48,6 @@ Filed (larger than substrait-lean#685; the checklist is [substrait-lean#692](htt
 | 12 | [substrait-lean#705](https://github.com/AlexanderNenninger/substrait-lean/issues/705) | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
 | 14 | [substrait-lean#706](https://github.com/AlexanderNenninger/substrait-lean/issues/706) | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
 | 15 | [substrait-lean#707](https://github.com/AlexanderNenninger/substrait-lean/issues/707) | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
-| 17 | [substrait-lean#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708) | A finite value set per string column in the range analysis (Lean) |
 | 18 | [substrait-lean#441](https://github.com/AlexanderNenninger/substrait-lean/issues/441) | Exact signs through double products, quotients and sums of non-negatives (Lean's float bounds) |
 | 20 | [substrait-lean#709](https://github.com/AlexanderNenninger/substrait-lean/issues/709) | `sverify.sql_schema(query, tables, semantics="reference") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
 | 21 | [substrait-lean#710](https://github.com/AlexanderNenninger/substrait-lean/issues/710) | `Report.engine_version`, and a warning from `run` when the installed engine is another |

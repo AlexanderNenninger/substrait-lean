@@ -15,10 +15,14 @@ description: >
 A contracted transform (`@sv.transform`) called on a source builds a node;
 transforms called on nodes compose. `node.write(sink)` stores a node, and
 `node.refresh()` brings its whole lineage up to date, upstream first. Nodes
-in the incremental fragment (filters, projections, inner and cross joins,
-`UNION ALL`) are updated by delta plans proved equal to a full recompute;
-aggregates and windows recompute only the groups and partitions a batch
-touches; others (left joins, `DISTINCT`, `LIMIT`) are recomputed and diffed.
+in the incremental fragment (filters, projections, inner, cross, semi and
+anti joins, `UNION ALL`, `DISTINCT`, `COUNT`, exact `SUM`/`AVG` and
+`MIN`/`MAX` per group) are updated by delta plans proved equal to a full
+recompute; other aggregates recompute only the groups a batch touches,
+windows on one `PARTITION BY` the touched partitions (inputs without ties),
+and bounded `RANGE` frames the touched frames; others (left joins, `LIMIT`)
+are recomputed and diffed. `node.status()` says which
+([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
 Needs the `delta` or `iceberg` extra.
 
 A node whose contract is not proved refuses the refresh
@@ -104,8 +108,8 @@ assert stored.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
   the next refresh retries.
 * `audit=True` also compares the batch with the new snapshot and every node
   with a recompute before committing (`sverify.errors.AuditError`).
-* `refresh(engine="polars")` (or `"datafusion"`, `"spark"`, a Spark session)
-  picks the engine at refresh time.
+* `refresh(engine="polars")` (or `"spark"`, a Spark session) picks the
+  engine at refresh time; `"datafusion"` also runs, experimental.
 * `refresh().summary()` gives one line per node for the log of a job that
   refreshes often; `str(refresh)` is the full report.
 * Where the change feed is gone (CDF off, files vacuumed), the changed files

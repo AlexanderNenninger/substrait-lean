@@ -53,6 +53,17 @@ def test_links_between_pages_resolve(pages):
             assert f"{{#{anchor}}}" in names[page], (name, page, anchor)
 
 
+def test_links_between_sections_resolve(pages):
+    """A link from one page to another the site has names a page that is there:
+    `name.md` in its own section, `../section/name.md` in another."""
+    have = {f"{Path(k).parent}/{_page(Path(k).name)}" for k in pages}
+    for key, text in pages.items():
+        section = str(Path(key).parent)
+        for target in re.findall(r"\]\((\.\./[a-z-]+/[a-z-]+\.md|[a-z-]+\.md)(?:#[^)]*)?\)", text):
+            page = target[3:] if target.startswith("../") else f"{section}/{target}"
+            assert page in have, (key, target)
+
+
 def test_no_relative_links_to_the_repository(pages):
     """Links to other files of the repository point at GitHub: the site has
     only these pages."""
@@ -60,7 +71,38 @@ def test_no_relative_links_to_the_repository(pages):
         for target in re.findall(r"\]\(([^)\s]+)\)", text):
             if re.match(r"^[a-z]+:|^#|^<", target):
                 continue
-            assert re.match(r"^[a-z-]+\.md(#|$)", target), (name, target)
+            assert re.match(r"^(\.\./[a-z-]+/)?[a-z-]+\.md(#|$)", target), (name, target)
+
+
+def test_the_docs_pages_are_on_the_site(pages):
+    """Each page of `DOC_SECTIONS` is rendered with GitHub's anchors, so the
+    links of `docs/` (`core-semantics.md#d13-choosing-the-route`) land."""
+    module = sys.modules["docs_pages"]
+    for section, entries in module.DOC_SECTIONS.items():
+        for n, (path, title, _) in enumerate(entries, start=1):
+            page = pages[f"{section}/{n:02d}-{Path(path).stem}.md"]
+            assert page.startswith(f'---\ntitle: "{title}"'), path
+            assert "from: markdown+gfm_auto_identifiers" in page, path
+
+
+def test_the_map_lists_every_page_once():
+    """`docs/README.md` maps every page of `docs/` and every notebook to its
+    kind, once (#751)."""
+    text = (ROOT / "docs" / "README.md").read_text()
+    targets = re.findall(r"\]\(([^)#\s]+)", text)
+    pages = sorted(ROOT.glob("docs/*.md")) + sorted(ROOT.glob("notebooks/0*.py"))
+    for page in pages:
+        if page.name == "README.md":
+            continue
+        rel = page.relative_to(ROOT / "docs") if page.parent.name == "docs" else None
+        link = rel.as_posix() if rel else f"../{page.relative_to(ROOT).as_posix()}"
+        rows = [
+            line for line in text.splitlines() if line.startswith("| [") and f"]({link})" in line
+        ]
+        assert len(rows) == 1, (link, len(rows))
+    for target in targets:
+        if not re.match(r"^[a-z]+:", target):
+            assert (ROOT / "docs" / target).resolve().exists(), target
 
 
 def test_the_examples_page_is_docs_examples(pages):

@@ -125,7 +125,7 @@ internet, and GitHub stores no MinIO key.
 4. MinIO: a user or policy per stage limited to its prefix.
 
 Vault works the same way as OpenBao (same API), and so does a cloud secret
-manager with OIDC login. From the release after 0.7, a pipeline can also
+manager with OIDC login. From sverify 0.8, a pipeline can also
 read OpenBao itself: `[tool.sverify.secrets.bao]` in `pyproject.toml` with
 `address`, `auth = "jwt"` and `role` logs in with the job's OIDC token
 (audience `openbao`), and `Secret("bao:kv/pipelines/production#access_key")`
@@ -147,7 +147,7 @@ The pipeline names the token and never holds its value: it reads it inside
 the source's function with `Secret("env:EXAMPLE_API_TOKEN").value()` and
 declares it with `credentials="env:EXAMPLE_API_TOKEN"`
 ([#775](https://github.com/AlexanderNenninger/substrait-lean/issues/775),
-`sverify.io.Secret`, in the release after 0.7). Sverify's reports, contract
+`sverify.io.Secret`, from sverify 0.8). Sverify's reports, contract
 records, exports and logs then show the name. A token in OpenBao, AWS
 Secrets Manager, Google Secret Manager or Azure Key Vault is named the same
 way (`bao:kv/pipelines/production#token`, `aws-sm:...`), and the job's OIDC

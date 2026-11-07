@@ -147,8 +147,9 @@ reference:
 
   - title: Command line
     desc: >
-      The `sverify` command (`sverify.cli`): `check`, `suggest`, `refresh`
-      and `explain` a pipeline's file from a shell, a CI job or an agent.
+      The `sverify` command (`sverify.cli`): `check` (with `--diff` and
+      `--fix`) and `refresh` a pipeline's file, `explain` a finding's code,
+      and `contract export`, from a shell, a CI job or an agent.
     contents:
       - cli.main
       - cli.discover
@@ -231,14 +232,20 @@ skill:
       file: src/sverify/skills/sverify-engines/SKILL.md
 
 # Pages beyond the API reference, written before each build by
-# `scripts/docs_pages.py` (`poe docs` runs it) into `examples/` and `ledgers/`,
-# which git ignores: the usage examples (`docs/examples.md`), and the ledgers,
-# rendered from their JSON (`upstream/bugs/`, `characterization/<engine>/facts/`,
+# `scripts/docs_pages.py` (`poe docs` runs it) into directories git ignores:
+# the usage examples (`docs/examples.md`); the reference pages (what a plan
+# means, what 1.x keeps, what 1.0 covers) and the design pages of `docs/`,
+# by the kinds `docs/README.md` maps; and the ledgers, rendered from their
+# JSON (`upstream/bugs/`, `characterization/<engine>/facts/`,
 # `characterization/areas.json`, `docs/realizability.md`). Quarto's search
 # indexes every entry by its heading.
 sections:
   - title: Examples
     dir: examples
+  - title: Semantics
+    dir: semantics
+  - title: Design
+    dir: design
   - title: Ledgers
     dir: ledgers
 

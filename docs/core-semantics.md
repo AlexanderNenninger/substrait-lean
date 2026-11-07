@@ -1173,7 +1173,7 @@ Each step is a PR or a short stack, and each ends in a theorem.
 | 3b | `obligations reference E` for each engine `E`, the shim table it reads, and the realizability table as its `reference` rows, with the CI check. | For DuckDB, `(duckdb, T_duckdb r) ⊑ (reference, r)`: `Rel.duckdb_shim_allowed` read as refinement, raise sets included (`Rel.duckdb_refines`, `Lowering.lowerRel_raises`). | [realizability.md](realizability.md) |
 | 3c | The option dependency report: for a plan verified under the reference, the weakest set of the reference's constraints it still verifies under, and from it the shims each engine's translation needs. The option-wise transfer check: a proof under a profile `P` holds under `Profile.E` when, for every option in that set, `E`'s choices are within `P`'s. | For each plan, `verify` under the profile that keeps only that set of the reference's choices; the translation shims only those options, and an option in the set that the YAML does not define is an ST entry. The transfer check follows from `Rel.AllowedP_mono` per option, by lookup in the choices tables. | Designed: #577 |
 | 4 | Substrait's function test cases in CI against `Profile.substrait`; disagreements recorded in `upstream/`. | Tested: `Rel.eval` under `Profile.substrait` gives each case's result or the plan is refused. | [Substrait's test cases](#substraits-test-cases): 631 agree, 625 refused, 61 disagree (test cases at fault: ST-13, ST-14, ST-15) |
-| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. || Done for DuckDB and Polars: `tests/test_profiles_e2e.py` runs rows A1 to H1 on both, and F2 runs a plan checked under DuckDB's profile on Polars by the transfer check. Four rows wait: A4 (#575, finite double products from inferred bounds), C2 (no frontend writes an `UNSPECIFIED` sort direction), D1 (conditions proved over every open pick) and F1 (a contract checked under Polars's own choices). |
+| 5 | One query checked under the reference, translated to DuckDB and, once #271 has one, a second engine; and a plan checked under DuckDB's profile run on the second engine by the transfer check, or checked again there. | Soundness of the second engine's translation from `obligations reference E`; the query's proof reused by composition; the transfer check's verdict for the DuckDB-checked plan. | Done for DuckDB and Polars: `tests/test_profiles_e2e.py` runs rows A1 to H1 on both, and F2 runs a plan checked under DuckDB's profile on Polars by the transfer check. Four rows wait: A4 (#575, finite double products from inferred bounds), C2 (no frontend writes an `UNSPECIFIED` sort direction), D1 (conditions proved over every open pick) and F1 (a contract checked under Polars's own choices). |
 
 Step 1b can run alongside 1a. Steps 2 and 3a both need 1c and touch
 different tables. The Lean side of step 0 and 1a can merge into one PR if
@@ -1439,6 +1439,11 @@ profile, then translated from the reference (`translated`), then by the option-w
 names the route taken. `semantics=` and an explicit route override the
 choice. The default keeps a plan that verifies somewhere running without the
 user knowing the profiles; the override keeps the choice inspectable.
+
+Amended (2026-11-07): a fourth route, `recheck`, added in
+[#586](https://github.com/AlexanderNenninger/substrait-lean/pull/586), comes
+after the transfer check: the checker proves the contract again under the
+engine's profile (`python/src/sverify/routes.py`).
 
 ### D14. Engine versions
 

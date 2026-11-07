@@ -711,6 +711,19 @@ def _plan_bound(
     unproved = False
     for col, eps in epsilon.items():
         bounds = _bounds(eps)
+        if _unbounded(eps):
+            # No bound on the column (a double `SUM` without a row cap, a value
+            # computed from one, a window aggregate of doubles): nothing proves
+            # it, and a stated tolerance is not met. `why` names what lifts it.
+            unproved = True
+            if isinstance(stated, Within):
+                why = f" ({eps['why']})" if eps.get("why") else ""
+                problems.append(
+                    f"{col} has no bound on its distance to the reference{why}, and the "
+                    f'postcondition asks {stated}: state sv.equivalent(floats="plan") '
+                    "or drop the tolerance"
+                )
+            continue
         if not any(v for v, _ in bounds.values()):
             continue
         if held and col in held:

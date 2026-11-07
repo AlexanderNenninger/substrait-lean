@@ -148,8 +148,10 @@ def test_an_observation_reprs_as_its_call() -> None:
 
 
 def test_a_window_over_a_key_has_a_class() -> None:
-    """`api-critique/tasks/t7_engines.py`: a LAG over a unique key runs on
-    both engines with route `translated`; its class is one of the four."""
+    """`api-critique/tasks/t7_engines.py`
+    (https://github.com/AlexanderNenninger/substrait-lean/blob/f89f83d2b3fc71848f9d5de8547475b99523b9b5/api-critique/tasks/t7_engines.py):
+    a LAG over a unique key runs on both engines with route `translated`; its
+    class is one of the four."""
     c = sv.connect()
     c.put(
         "events",
@@ -173,3 +175,22 @@ def test_a_window_over_a_key_has_a_class() -> None:
         assert route.kind == "translated"
         assert route.cls in routes.CLASSES
         assert route.cls == "exact" and route.evidence == "tested"
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_window_sum_of_doubles_runs_tested_with_no_bound(con, engine) -> None:
+    """The plan's bound leaves out window functions (#1032). A window `SUM`
+    of doubles still runs, but nothing claims it exact or proved: its column
+    has no bound, its route is observed on tested evidence, and a stated
+    tolerance on it is refused, naming the issue that lifts it."""
+    r = con.table("readings")
+    expr = r.mutate(s=r.x.sum().over(group_by=r.k))
+    report = sv.verify(expr, requires=REQ)
+    assert report.proved
+    assert report._epsilon is not None and report._epsilon["s"]["abs"] is None
+    assert "#1032" in report._epsilon["s"]["why"]
+    assert report.run(con, engine).num_rows == 3
+    route = report.routes[engine]
+    assert route.cls == "observed" and route.evidence == "tested"
+    tight = sv.verify(expr, requires=REQ, ensures=[sv.equivalent(floats=sv.within(abs=1e-3))])
+    assert not tight.proved and "s has no bound" in str(tight) and "#1032" in str(tight)

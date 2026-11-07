@@ -28,14 +28,23 @@ Sverify's replay and its differential oracle follow the idea of checking an engi
 
 ### SQL semantics and query equivalence
 
-- S. Chu, K. Weitz, A. Cheung, D. Suciu, "HoTTSQL: Proving Query Rewrites with Univalent SQL Semantics", PLDI 2017, and the Cosette prover. [Cosette](https://github.com/uwdb/Cosette)
-- V. Benzaken, É. Contejean, "A Coq Mechanised Formal Semantics for Realistic SQL Queries", CPP 2019.
-- W. Ricciotti, J. Cheney, "A Formalization of SQL with Nulls", JAR 2022. [arXiv 2003.11331](https://arxiv.org/abs/2003.11331)
-- J. Auerbach, M. Hirzel, L. Mandel, A. Shinnar, J. Siméon, "Q*cert: A Platform for Implementing and Verifying Query Compilers", SIGMOD 2017. [querycert.github.io](https://querycert.github.io)
+Sverify found no formal semantics of Substrait; the closest work formalizes
+SQL or relational algebra, most of it in Coq.
+
+- S. Chu, K. Weitz, A. Cheung, D. Suciu, "HoTTSQL: Proving Query Rewrites with Univalent SQL Semantics", PLDI 2017, and the Cosette prover: queries denoted as K-relations using univalence. [arXiv 1607.04822](https://arxiv.org/abs/1607.04822), [PLDI page](https://pldi17.sigplan.org/event/pldi-2017-papers-hottsql-proving-query-rewrites-with-univalent-sql-semantics), [Cosette](https://github.com/uwdb/Cosette)
+- V. Benzaken, É. Contejean, "A Coq Mechanised Formal Semantics for Realistic SQL Queries", CPP 2019 (SQLCert): realistic SQL with nulls, aggregates and correlated subqueries, an extended bag algebra, and proofs of common optimizer rewrites. [HAL 01487062](https://hal.archives-ouvertes.fr/hal-01487062), [HAL 01955433](https://hal.archives-ouvertes.fr/hal-01955433)
+- W. Ricciotti, J. Cheney, "A Formalization of SQL with Nulls", JAR 2022: three-valued logic, set and bag operations, lateral joins and nested subqueries. [arXiv 2003.11331](https://arxiv.org/abs/2003.11331), [PMC9637088](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9637088/)
+- J. Auerbach, M. Hirzel, L. Mandel, A. Shinnar, J. Siméon, "Q*cert: A Platform for Implementing and Verifying Query Compilers", SIGMOD 2017: a verified query compiler built around the nested relational algebra (NRA<sup>e</sup>), the closest analogue to a verified IR for queries. [querycert.github.io](https://querycert.github.io)
 - Q. Zhou, J. Arulraj, S. Navathe, W. Harris, J. Wu, "SPES: A Symbolic Approach to Proving Query Equivalence Under Bag Semantics". [arXiv 2004.00481](https://arxiv.org/abs/2004.00481)
 - H. Ding et al., "Proving Query Equivalence Using Linear Integer Arithmetic" (SQLSolver), SIGMOD 2024. [SQLSolver](https://github.com/SJTU-IPADS/SQLSolver)
 - Y. He, P. Zhao, X. Wang, Y. Wang, "VeriEQL: Bounded Equivalence Verification for Complex SQL Queries with Integrity Constraints", OOPSLA 2024. [VeriEQL](https://github.com/michaelmior/VeriEQL)
 - S. Wang, S. Pan, A. Cheung, "QED: A Powerful Query Equivalence Decider for SQL", PVLDB 17(11), 2024. [qed-solver](https://github.com/qed-solver)
+
+### In Lean 4
+
+- RelationalAlgebra (Rickerd): relational algebra ≡ first-order logic, built on Mathlib. [Reservoir](https://reservoir.lean-lang.org/@Rickerd1234/RelationalAlgebra)
+- provenance (Senellart): semantics for ProvSQL with semiring provenance, a route to K-relation semantics in Lean. [Reservoir](https://reservoir.lean-lang.org/@PierreSenellart/provenance)
+- Emergence AI's [Lean SQL equivalence write-up](https://www.emergence.ai/blog/formal-verification-of-sql-queries-in-lean-for-enhanced-accuracy), and the typed-queries chapter of [*Functional Programming in Lean*](https://lean-lang.org/functional_programming_in_lean/Programming-with-Dependent-Types/Worked-Example___-Typed-Queries/).
 
 ### Incremental view maintenance and streaming
 
