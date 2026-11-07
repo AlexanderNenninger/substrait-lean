@@ -16,7 +16,6 @@ from typing import Any, Literal
 from sverify import _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY
-from sverify._unsupported import WINDOW_FLOAT_AGG
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -4197,8 +4196,18 @@ class _Writer:
                 if not isinstance(a, Dec):
                     raise Unsupported("dsum of a non-decimal")
                 return d.decimal_window_sum(v, w, dsum_kind(a))
-            case "var_samp" | "var_pop" | "std_samp" | "std_pop" | "fsum" | "avg":
-                raise Unsupported(WINDOW_FLOAT_AGG)
+            case "var_samp" | "var_pop" | "std_samp" | "std_pop":
+                return self.window_var(m.fn, v, w)
+            case "fsum" | "avg":
+                # The engine's own `SUM` (D25). A window's column has no
+                # bound yet, so a run is tested (#1032).
+                total = f"SUM({v}) {w}"
+                if m.fn == "avg":
+                    total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
+                total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
+                # Finite values whose sum overflows (#575), kept without guards.
+                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
+                return self.agg_finite(total, f"NOT {d.float_eq(top, d.float_lit(math.inf))}")
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
         f = "MIN" if m.fn == "min" else "MAX"
@@ -4209,6 +4218,25 @@ class _Writer:
         if expr_kind(m.arg, ks) == "float":
             return d.float_extreme(f, v, w)
         return f"{f}({v}) {w}"
+
+    def window_var(self, fn: str, v: str, w: str) -> str:
+        """`varOf` over the frame `w` (D30): the engine's own `VAR_*` or
+        `STDDEV_*`, clamped (`Stat.clamp_near`). The plan states no bound for
+        it, so a run is tested (#1032). NULL for no values or a sample of one,
+        NaN for a NaN, and raising for an infinity as the aggregate does."""
+        d = self.d
+        sample = fn.endswith("_samp")
+        name = ("STDDEV_" if fn.startswith("std") else "VAR_") + ("SAMP" if sample else "POP")
+        body = d.canon(d.clamp_stat(fn, f"{name}({v}) {w}"))
+        none = f"COUNT({v}) {w} <= {d.int_lit(1 if sample else 0)}"
+        value = self.agg_finite(d.case_when(none, d.null("float"), body))
+        if not d.guards:
+            return value
+        # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
+        # creates (#257); NaN sorts above `+∞`, so leave it out.
+        top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
+        bad = d.float_eq(top, d.float_lit(math.inf))
+        return d.case_when(bad, d.raise_("domain error", f"MIN({v}) {w}", "float"), value)
 
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,

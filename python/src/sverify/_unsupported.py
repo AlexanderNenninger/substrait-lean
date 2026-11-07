@@ -13,13 +13,6 @@ from typing import ClassVar
 ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
 #: The end of a refusal of what only DuckDB runs.
 DUCKDB_ONLY = f"DuckDB runs it ({ISSUE_271})"
-#: The refusal of a window `SUM`, `AVG`, `VARIANCE` or `STDDEV` of doubles:
-#: the plan's bound leaves out window functions, so the result would pass as
-#: exact where the engine's value differs from the reference's.
-WINDOW_FLOAT_AGG = (
-    "a window SUM, AVG, VARIANCE or STDDEV of doubles has no bound yet "
-    "(see #1032, https://github.com/AlexanderNenninger/substrait-lean/issues/1032)"
-)
 
 
 class SverifyError(Exception):

@@ -73,7 +73,6 @@ from sverify import _decimals, _plan_read, _support
 from sverify import _polars_shims as shims
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify._support import DUCKDB_ONLY
-from sverify._unsupported import WINDOW_FLOAT_AGG
 from sverify._unsupported import Unsupported as _Unsupported
 
 try:
@@ -2569,8 +2568,6 @@ class Translator:
             if name in ("min", "max") and t == pl.Float64 and not itof:
                 # By the codes' order: NaN the greatest double, one zero.
                 fn = "f" + name
-            if fn in ("fsum", "avg"):
-                raise Unsupported(WINDOW_FLOAT_AGG)
             out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
                    "fmin": pl.Float64, "fmax": pl.Float64, "iavg": pl.Int64,
                    "bit_and": pl.Int64, "bit_or": pl.Int64, "bit_xor": pl.Int64}  # fmt: skip
