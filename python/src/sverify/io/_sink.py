@@ -326,6 +326,12 @@ class Sink:
         if view.stored is not None and view.stored[0] == self.location:
             self._written = view.serial
 
+    def _foreign(self) -> bool:
+        """Whether another writer changed rows after the commit `contract()`
+        read last (#966): then the sink does not hold the state its record
+        names. False by default: the sink is trusted as its only writer."""
+        return False
+
     def _stored(self) -> Stored | None:
         """The state a restarted job resumes from: none by default."""
         return None
@@ -374,11 +380,14 @@ class Sink:
             # The last write raised after its commit landed: the sink holds
             # that state, as a restarted job finds it. Write on from there.
             self._written, self._last = pending
-        if done is not None and (done.plan != contract.plan or other_tables(done, contract)):
-            # Another plan's rows, or rows computed from other tables (a
-            # source dropped and created again, #516): neither skip this
-            # epoch, which says nothing about these inputs, nor write a
-            # change on top of them; replace them.
+        if done is not None and (
+            done.plan != contract.plan or other_tables(done, contract) or self._foreign()
+        ):
+            # Another plan's rows, rows computed from other tables (a
+            # source dropped and created again, #516), or rows another
+            # writer changed since (#966): neither skip this epoch, which
+            # says nothing about these rows, nor write a change on top of
+            # them; replace them.
             self._written = None
         elif done is not None and done.epoch >= contract.epoch:
             check_same_state(self.location, done, contract)
@@ -469,6 +478,9 @@ class _TableSink[T](Sink, ABC):
         self._read: int | None | object = _UNREAD
         """The epoch of this sink's `app_id` that `committed` read last: a
         write commits only on top of it (#517, #534)."""
+        self._read_kept = True
+        """Whether every commit after the app's last one, when `contract()`
+        read it, kept its rows (`last_record(...).kept`)."""
 
     # -- what a table format implements --------------------------------------
 
@@ -483,6 +495,13 @@ class _TableSink[T](Sink, ABC):
     @abstractmethod
     def _contract_of(self, table: T) -> Contract | None:
         """The contract `table` records, or None."""
+
+    def _head_of(self, table: T) -> tuple[int | None, Contract | None, bool]:
+        """The epoch of the app's last commit in `table` (or None), the
+        contract `table` records, and whether every commit after the app's
+        last one keeps its rows. Default: `_epoch_of`, `_contract_of`, kept."""
+        done = self._epoch_of(table)
+        return done, None if done is None else self._contract_of(table), True
 
     @abstractmethod
     def _create(self, change: SinkChange) -> T:
@@ -524,12 +543,14 @@ class _TableSink[T](Sink, ABC):
         if version is not None:
             return self.source().contract(version)  # type: ignore[union-attr]
         table = self._open()
-        done = None if table is None else self._epoch_of(table)
-        self._read = done
-        if table is None or done is None:
+        done, contract, kept = (None, None, True) if table is None else self._head_of(table)
+        self._read, self._read_kept = done, kept
+        if done is None or contract is None:
             return None
-        contract = self._contract_of(table)
-        return None if contract is None else replace(contract, epoch=done)
+        return replace(contract, epoch=done)
+
+    def _foreign(self) -> bool:
+        return not self._read_kept
 
     def write(self, change: SinkChange) -> SinkWrite:
         """Create the table, overwrite it, or write the change, in a commit
