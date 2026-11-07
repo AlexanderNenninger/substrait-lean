@@ -109,6 +109,12 @@ spare capacity. This applies to the laptop as much as to `homelab`.
   If the 1-minute load average is above 6, or free memory is below 30 %,
   don't start the task. Wait and check again, or run only the tests your
   change touches.
+- **Long checker runs never run on the laptop.** A `substrait-check` that works
+  through many plans (`snowflake_plan_fuzz compare`, replays, fuzzing) can
+  grow past the laptop's memory in seconds, while the load average stays low.
+  On 2026-11-07 one reached 23 GB and hung the laptop twice (#1074). Run
+  these on homelab under `homelab_qa.sh`'s memory cap, or locally only
+  under a hard cap (`ulimit -v`) on a small slice.
 - **homelab**: see below.
 
 Run one expensive task at a time per agent, never several in parallel.
