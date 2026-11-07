@@ -73,23 +73,27 @@ theorem TotalPre.flip {α : Type} {le : α → α → Bool} (h : TotalPre le) :
 /-! ## Ordering values -/
 
 def Value.tag : Value → Nat
-  | .bool _ => 0 | .int _ => 1 | .str _ => 2 | .list _ => 3 | .null => 4
-/-- `Value.le` on values that are not both lists. -/
+  | .bool _ => 0 | .int _ => 1 | .float _ => 2 | .date _ => 3 | .ts _ => 4 | .tod _ => 5
+  | .dec _ _ => 6 | .str _ => 7 | .list _ => 8 | .struct _ => 9 | .null => 10
+/-- `Value.le` on values that are not both lists or both structs. -/
 def Value.leScalar : Value → Value → Bool
   | .bool a, .bool b => !a || b
-  | .int a, .int b => decide (a ≤ b)
+  | .int a, .int b | .float a, .float b | .date a, .date b | .ts a, .ts b
+  | .tod a, .tod b => decide (a ≤ b)
+  -- One column has one scale; across scales, the scale first.
+  | .dec s a, .dec t b => decide (s < t) || (decide (s = t) && decide (a ≤ b))
   | .str a, .str b => decide (a ≤ b)
   | a, b => decide (a.tag ≤ b.tag)
 mutual
-/-- A total order on values: each type's own order (`false < true`, integers
-and the float codes numerically, strings by code point, which is UTF-8 byte
-order, lists lexicographically with a prefix first), types ordered booleans
-< integers < strings < lists < NULL. Within a column only one type and NULL
-occur; NULL's place only matters inside lists (`ORDER BY` places top-level
-NULLs itself, and `MIN`/`MAX` skip them), where engines sort NULL elements
-last. -/
+/-- A total order on values: each kind's own order (`false < true`, integers,
+the float codes, dates and times numerically, decimals of one scale
+numerically, strings by code point, which is UTF-8 byte order, lists and
+structs lexicographically with a prefix first), kinds ordered as `Value.tag`
+numbers them, NULL last. Within a column only one kind and NULL occur;
+NULL's place only matters inside lists (`ORDER BY` places top-level NULLs
+itself, and `MIN`/`MAX` skip them), where engines sort NULL elements last. -/
 def Value.le : Value → Value → Bool
-  | .list as, .list bs => Value.leList as bs
+  | .list as, .list bs | .struct as, .struct bs => Value.leList as bs
   | a, b => Value.leScalar a b
   termination_by a b => sizeOf a + sizeOf b
 /-- Lexicographic order on lists of values: the first element where they
@@ -101,7 +105,7 @@ def Value.leList : List Value → List Value → Bool
   termination_by as bs => sizeOf as + sizeOf bs
 end
 theorem Value.le_def (a b : Value) : a.le b = (match a, b with
-    | .list as, .list bs => Value.leList as bs
+    | .list as, .list bs | .struct as, .struct bs => Value.leList as bs
     | a, b => Value.leScalar a b) := by
   cases a <;> cases b <;> rw [Value.le] <;> simp
 
@@ -120,9 +124,18 @@ theorem Value.le_antisymm : ∀ {a b : Value}, a.le b = true → b.le a = true �
   | .list as, .list bs, hab, hba => by
     simp only [Value.le_def] at hab hba
     rw [Value.leList_antisymm hab hba]
-  | .null, b, hab, hba | .bool _, b, hab, hba | .int _, b, hab, hba | .str _, b, hab, hba
-  | .list _, .null, hab, hba | .list _, .bool _, hab, hba | .list _, .int _, hab, hba
-  | .list _, .str _, hab, hba => by
+  | .struct as, .struct bs, hab, hba => by
+    simp only [Value.le_def] at hab hba
+    rw [Value.leList_antisymm hab hba]
+  | .null, b, hab, hba | .bool _, b, hab, hba | .int _, b, hab, hba | .float _, b, hab, hba
+  | .date _, b, hab, hba | .ts _, b, hab, hba | .tod _, b, hab, hba | .dec _ _, b, hab, hba
+  | .str _, b, hab, hba | .list _, .null, hab, hba | .list _, .bool _, hab, hba
+  | .list _, .int _, hab, hba | .list _, .float _, hab, hba | .list _, .date _, hab, hba
+  | .list _, .ts _, hab, hba | .list _, .tod _, hab, hba | .list _, .dec _ _, hab, hba
+  | .list _, .str _, hab, hba | .list _, .struct _, hab, hba | .struct _, .null, hab, hba
+  | .struct _, .bool _, hab, hba | .struct _, .int _, hab, hba | .struct _, .float _, hab, hba
+  | .struct _, .date _, hab, hba | .struct _, .ts _, hab, hba | .struct _, .tod _, hab, hba
+  | .struct _, .dec _ _, hab, hba | .struct _, .str _, hab, hba | .struct _, .list _, hab, hba => by
     try cases b
     all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
     all_goals first
@@ -147,9 +160,14 @@ end
 
 mutual
 theorem Value.le_total : ∀ a b : Value, a.le b = true ∨ b.le a = true
-  | .list as, .list bs => by simp only [Value.le_def]; exact Value.leList_total as bs
-  | .null, b | .bool _, b | .int _, b | .str _, b
-  | .list _, .null | .list _, .bool _ | .list _, .int _ | .list _, .str _ => by
+  | .list as, .list bs | .struct as, .struct bs => by
+    simp only [Value.le_def]; exact Value.leList_total as bs
+  | .null, b | .bool _, b | .int _, b | .float _, b | .date _, b | .ts _, b | .tod _, b
+  | .dec _ _, b | .str _, b | .list _, .null | .list _, .bool _ | .list _, .int _
+  | .list _, .float _ | .list _, .date _ | .list _, .ts _ | .list _, .tod _ | .list _, .dec _ _
+  | .list _, .str _ | .list _, .struct _ | .struct _, .null | .struct _, .bool _
+  | .struct _, .int _ | .struct _, .float _ | .struct _, .date _ | .struct _, .ts _
+  | .struct _, .tod _ | .struct _, .dec _ _ | .struct _, .str _ | .struct _, .list _ => by
     try cases b
     all_goals simp [Value.le_def, Value.leScalar, Value.tag]
     all_goals first
@@ -172,14 +190,31 @@ end
 
 mutual
 theorem Value.le_trans : ∀ a b c : Value, a.le b = true → b.le c = true → a.le c = true
-  | .list as, .list bs, .list cs, hab, hbc => by
+  | .list as, .list bs, .list cs, hab, hbc | .struct as, .struct bs, .struct cs, hab, hbc => by
     simp only [Value.le_def] at *
     exact Value.leList_trans as bs cs hab hbc
   | .null, b, c, hab, hbc | .bool _, b, c, hab, hbc | .int _, b, c, hab, hbc
-  | .str _, b, c, hab, hbc | .list _, .null, c, hab, hbc | .list _, .bool _, c, hab, hbc
-  | .list _, .int _, c, hab, hbc | .list _, .str _, c, hab, hbc
-  | .list _, .list _, .null, hab, hbc | .list _, .list _, .bool _, hab, hbc
-  | .list _, .list _, .int _, hab, hbc | .list _, .list _, .str _, hab, hbc => by
+  | .float _, b, c, hab, hbc | .date _, b, c, hab, hbc | .ts _, b, c, hab, hbc
+  | .tod _, b, c, hab, hbc | .dec _ _, b, c, hab, hbc | .str _, b, c, hab, hbc
+  | .list _, .null, c, hab, hbc | .list _, .bool _, c, hab, hbc | .list _, .int _, c, hab, hbc
+  | .list _, .float _, c, hab, hbc | .list _, .date _, c, hab, hbc | .list _, .ts _, c, hab, hbc
+  | .list _, .tod _, c, hab, hbc | .list _, .dec _ _, c, hab, hbc | .list _, .str _, c, hab, hbc
+  | .list _, .struct _, c, hab, hbc | .struct _, .null, c, hab, hbc
+  | .struct _, .bool _, c, hab, hbc | .struct _, .int _, c, hab, hbc
+  | .struct _, .float _, c, hab, hbc | .struct _, .date _, c, hab, hbc
+  | .struct _, .ts _, c, hab, hbc | .struct _, .tod _, c, hab, hbc
+  | .struct _, .dec _ _, c, hab, hbc | .struct _, .str _, c, hab, hbc
+  | .struct _, .list _, c, hab, hbc | .list _, .list _, .null, hab, hbc
+  | .list _, .list _, .bool _, hab, hbc | .list _, .list _, .int _, hab, hbc
+  | .list _, .list _, .float _, hab, hbc | .list _, .list _, .date _, hab, hbc
+  | .list _, .list _, .ts _, hab, hbc | .list _, .list _, .tod _, hab, hbc
+  | .list _, .list _, .dec _ _, hab, hbc | .list _, .list _, .str _, hab, hbc
+  | .list _, .list _, .struct _, hab, hbc | .struct _, .struct _, .null, hab, hbc
+  | .struct _, .struct _, .bool _, hab, hbc | .struct _, .struct _, .int _, hab, hbc
+  | .struct _, .struct _, .float _, hab, hbc | .struct _, .struct _, .date _, hab, hbc
+  | .struct _, .struct _, .ts _, hab, hbc | .struct _, .struct _, .tod _, hab, hbc
+  | .struct _, .struct _, .dec _ _, hab, hbc | .struct _, .struct _, .str _, hab, hbc
+  | .struct _, .struct _, .list _, hab, hbc => by
     try cases b
     all_goals try cases c
     all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
@@ -318,6 +353,22 @@ def SortAllowed (keys : List SortKey) (out : Relation) : Prop :=
 theorem SortAllowed.of_sorted {keys : List SortKey} {out : Relation}
     (h : out.Pairwise (sortLe keys · · = true)) : SortAllowed keys out :=
   ⟨Value.le, Value.le_validCmp, by rw [sortLeWith_le]; exact h⟩
+
+/-- Two numbers of one kind order by their integers (a decimal's scale is
+part of its kind). -/
+theorem Value.le_val (k : NumKind) {x y : Int} : (k.val x).le (k.val y) = true ↔ x ≤ y := by
+  cases k <;> simp [NumKind.val, Value.le_def, Value.leScalar]
+
+theorem SortKey.le_val {k : SortKey} {x y : Row} {nk : NumKind} {u v : Int} (h : k.le y x = true)
+    (hy : y.getD k.col .null = nk.val u) (hx : x.getD k.col .null = nk.val v) :
+    if k.desc then v ≤ u else u ≤ v := by
+  simp only [SortKey.le, lexLe, hy, hx, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
+  have hr : k.nullRank (nk.val u) = k.nullRank (nk.val v) := by
+    cases nk <;> simp [SortKey.nullRank, NumKind.val]
+  rcases h with ⟨_, h | h⟩
+  · simp [hr, natLe] at h
+  · unfold SortKey.valLe at h
+    cases hd : k.desc <;> simp_all [Value.le_val]
 
 /-- Rows in sort order, by the first key: for non-NULL integers (and
 timestamps, and float codes), ascending keys give `y ≤ x`. -/

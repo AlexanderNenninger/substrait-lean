@@ -26,10 +26,12 @@ and sort columns, so each input row has one output row (`windowEval_eq_map`).
 namespace Substrait
 namespace TouchedFrames
 
-/-- `v` lies `start` to `stop` after `u` (integers), or is `u` (anything else). -/
-def spanVal (start stop : Int) : Value → Value → Bool
-  | .int u, .int v => decide (u + start ≤ v ∧ v ≤ u + stop)
-  | a, b => decide (a = b)
+/-- `v` lies `start` to `stop` after `u` (numbers of one kind), or is `u`
+(anything else). -/
+def spanVal (start stop : Int) (a b : Value) : Bool :=
+  match a.numPair b with
+  | some (u, v) => decide (u + start ≤ v ∧ v ≤ u + stop)
+  | none => decide (a = b)
 
 /-- `y`'s value of the key `k` lies in `x`'s span `[start, stop]`. -/
 def inSpan (k : SortKey) (start stop : Int) (x y : Row) : Bool :=
@@ -72,15 +74,17 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
     fun h => by
       rw [sortLe_single] at h
       simpa [natLe] using lexLe_left h
-  have hix : ∀ u v, x.getD k.col .null = .int u → y.getD k.col .null = .int v →
-      sortLe [k] x y = true → u ≤ v := fun u v hu hv h => by
+  have hix : ∀ p q, (x.getD k.col .null).numPair (y.getD k.col .null) = some (p, q) →
+      sortLe [k] x y = true → p ≤ q := fun p q hpq h => by
     rw [sortLe_single] at h
-    simpa [hk] using SortKey.le_int h hu hv
-  have hiy : ∀ u v, x.getD k.col .null = .int u → y.getD k.col .null = .int v →
-      sortLe [k] y x = true → v ≤ u := fun u v hu hv h => by
+    obtain ⟨nk, hu, hv⟩ := Value.numPair_some hpq
+    simpa [hk] using SortKey.le_val h hu hv
+  have hiy : ∀ p q, (x.getD k.col .null).numPair (y.getD k.col .null) = some (p, q) →
+      sortLe [k] y x = true → q ≤ p := fun p q hpq h => by
     rw [sortLe_single] at h
-    simpa [hk] using SortKey.le_int h hv hu
-  unfold inSpan
+    obtain ⟨nk, hu, hv⟩ := Value.numPair_some hpq
+    simpa [hk] using SortKey.le_val h hv hu
+  unfold inSpan spanVal
   unfold rangeFrom at hl
   unfold rangeTo at hh
   generalize hu : x.getD k.col .null = u at *
@@ -88,10 +92,26 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
   by_cases ha : a = 0 <;> by_cases hb : b = 0 <;> simp only [ha, hb, ↓reduceIte] at hl hh
   · have := hxy hl hh
     subst this
-    cases u <;> simp [spanVal] <;> omega
+    cases hp : u.numPair u with
+    | none => simp
+    | some p =>
+      obtain ⟨p1, p2⟩ := p
+      have := Value.numPair_self hp
+      simp only [decide_eq_true_eq]; omega
   all_goals
-    cases u <;> cases v <;> simp_all [spanVal, SortKey.nullRank] <;>
-      (try (cases hn : k.firstNulls <;> simp_all)) <;> omega
+    cases hp : u.numPair v with
+    | some p =>
+      obtain ⟨p1, p2⟩ := p
+      simp only [hp, hk, Bool.false_eq_true, ↓reduceIte, decide_eq_true_eq] at hl hh ⊢
+      first
+        | omega
+        | (have := hix p1 p2 hp hl; omega)
+        | (have := hiy p1 p2 hp hh; omega)
+        | (have := hix p1 p2 hp hl; have := hiy p1 p2 hp hh; omega)
+    | none =>
+      simp only [hp] at hl hh ⊢
+      cases u <;> cases v <;> simp_all [SortKey.nullRank] <;>
+        (try (cases hn : k.firstNulls <;> simp_all)) <;> omega
 
 /-- An aggregate (or `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE`) over a RANGE
 frame of the key `k` whose bounds lie in `[start, stop]`. -/

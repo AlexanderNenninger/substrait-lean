@@ -82,7 +82,7 @@ error_on_division_by_zero=on	BinFn.fmul	hand-written schema: CASE WHEN ((#0 = 0 
 error_on_division_by_zero=on	BinFn.fdiv	hand-written schema: CASE WHEN (#0 IS NOT NULL AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN ((#0 = 'inf' OR #0 = '-inf') AND (#1 = 'inf' OR #1 = '-inf')) THEN error('domain error', #1) ELSE fdiv(#0, #1) END END
 error_on_division_by_zero=on	BinFn.fmod	hand-written schema: CASE WHEN (#0 IS NOT NULL AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN ((#0 = 'inf' OR #0 = '-inf') AND NOT (#1 = 'nan')) THEN error('domain error', #1) ELSE fmod(#0, #1) END END
 error_on_division_by_zero=on	BinFn.idiv	CASE WHEN (#0 IS NOT NULL AND #0 IS NULL) THEN error('division by zero', #1) ELSE idiv(#0, #1) END
-error_on_division_by_zero=on	BinFn.imod	hand-written schema: CASE WHEN (#0 IS NOT NULL AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN (#1 = -1 AND #0 IS NOT NULL) THEN 0 ELSE imod(#0, #1) END END
+error_on_division_by_zero=on	BinFn.imod	hand-written schema: CASE WHEN ((#0 IS NOT NULL OR #0 IS NOT NULL) AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN (#1 = -1 AND #0 IS NOT NULL) THEN 0 ELSE imod(#0, #1) END END
 error_on_division_by_zero=on	BinFn.ipow	native
 error_on_division_by_zero=on	BinFn.fpow	hand-written schema: CASE WHEN ((('-inf' < #0 AND #0 < 0) AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1))) OR (#0 = '-inf' AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1)))) THEN error('domain error', #1) ELSE fpow(#0, #1) END
 error_on_division_by_zero=on	BinFn.concat	native

@@ -10,36 +10,29 @@ kinds and refuses a plan whose functions do not fit their arguments
 `Rel.kinds_sound` proves that a well-kinded plan evaluates to values of the
 inferred kinds.
 
-Values are untyped across the integer-represented kinds (doubles, dates,
-timestamps, times of day and decimals are all `Value.int`), so
-`Value.hasKind` reads a kind by its representation: any integer has every
-integer-represented kind. The checker is stricter than that, and its
-refusals are by kind; the theorem is about representations until `Value`
-has a constructor per kind (#923). NULL has every kind, and `Kind.other`
-(a column whose kind the plan does not say) has every value.
+Each kind has its constructor (#923), so `Value.hasKind` reads a value's kind
+from its constructor: NULL has every kind, and `Kind.other` (a column whose
+kind the plan does not say) has every value. A timestamp with a time zone is
+a `ts` as one without is.
 
-Integer literals have no kind of their own (a double literal is its code,
-a date literal its days): `KT.num` is such a literal, accepted wherever an
-integer-represented kind is.
+Integer literals carry `KT.num`, accepted wherever a numeric kind is: the
+function then gives NULL for a value of the wrong kind, which has every
+kind, so the theorem does not need the arguments' kinds to be exact.
 -/
 
 namespace Substrait
 
-/-- The kinds held as `Value.int`. -/
-def Kind.isIntRep : Kind → Bool
-  | .int | .float | .time | .date | .tod | .timeTz | .dec _ _ => true
-  | _ => false
-
 mutual
-/-- Does `v` have kind `k`, by its representation? NULL has every kind. -/
+/-- Does `v` have kind `k`? NULL has every kind; a decimal's scale is part
+of its kind. -/
 def Value.hasKind : Kind → Value → Bool
   | _, .null => true
   | .other, _ => true
-  | .bool, .bool _ => true
-  | .str, .str _ => true
+  | .bool, .bool _ | .str, .str _ | .int, .int _ | .float, .float _ | .date, .date _
+  | .time, .ts _ | .timeTz, .ts _ | .tod, .tod _ => true
+  | .dec _ s, .dec t _ => decide (s = t)
   | .list k, .list vs => Value.allHaveKind k vs
-  | .struct ks, .list vs => Value.fieldsHaveKinds ks vs
-  | k, .int _ => k.isIntRep
+  | .struct ks, .struct vs => Value.fieldsHaveKinds ks vs
   | _, _ => false
 
 def Value.allHaveKind (k : Kind) : List Value → Bool
@@ -78,13 +71,6 @@ theorem Value.fieldsHaveKinds_getD :
     | succ i => simpa using Value.fieldsHaveKinds_getD h.2 i
   | [], _ :: _, h, _ | _ :: _, [], h, _ => by simp [Value.fieldsHaveKinds] at h
 
-/-- An integer has every integer-represented kind. -/
-theorem Value.hasKind_of_int {k : Kind} (hk : k.isIntRep = true) :
-    ∀ {v : Value}, v.hasKind .int = true → v.hasKind k = true
-  | .null, _ => by simp
-  | .int _, _ => by cases k <;> simp_all [Value.hasKind, Kind.isIntRep]
-  | .bool _, h | .str _, h | .list _, h => by simp [Value.hasKind] at h
-
 /-! ## Kinds of expressions -/
 
 /-- An expression's kind: a `Kind`, or `num`, an integer literal of no
@@ -105,8 +91,8 @@ def KT.has (t : KT) (v : Value) : Bool := v.hasKind t.toKind
 /-- Two branches' kind: their own if equal, else unknown. -/
 def KT.join (a b : KT) : KT := if a = b then a else .kind .other
 
-/-- Is `t` accepted where `p` describes the integer-represented kinds
-taken? A literal integer and an unknown kind are. -/
+/-- Is `t` accepted where `p` describes the numeric kinds taken? A literal
+integer and an unknown kind are. -/
 def KT.okI (p : Kind → Bool) : KT → Bool
   | .num | .kind .other => true
   | .kind k => p k
@@ -146,42 +132,32 @@ def Kind.isTime : Kind → Bool
   | .time | .timeTz => true
   | _ => false
 
-def Kind.isDec : Kind → Bool
-  | .dec _ _ => true
-  | _ => false
-
-/-- Integer-represented kinds that integer arithmetic (`+`, `-`, `×`,
-negation, wrapping) applies to: everything but doubles. -/
+/-- The integer arithmetic `wrap` and `fit` apply to: everything numeric but
+doubles. -/
 def Kind.isExactNum : Kind → Bool
   | .int | .time | .date | .tod | .timeTz | .dec _ _ => true
   | _ => false
-
-/-- `t`, unless it is unknown: an integer-represented result of an argument
-of unknown kind. -/
-def KT.orNum : KT → KT
-  | .kind .other => .num
-  | t => t
 
 /-- What `f` gives for an argument of kind `t`, if it takes it. -/
 def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
   let need (c : Bool) (out : KT) : Option KT := if c then some out else none
   match f with
   | .not => need (t.okK .bool) (.kind .bool)
-  | .isNull | .isNum => some (.kind .bool)
-  | .neg => need (t.okI Kind.isExactNum) t.orNum
+  | .isNull | .isNum _ => some (.kind .bool)
+  | .neg => need (t.okI Kind.isInt) (.kind .int)
   | .itof => need (t.okI Kind.isInt) (.kind .float)
   | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ =>
     need (t.okI Kind.isFloat) (.kind .float)
   | .ftoi | .ftoiOrNull => need (t.okI Kind.isFloat) (.kind .int)
   | .narrow _ | .narrowOrNull _ => need (t.okI Kind.isInt) (.kind .int)
   | .wrap _ | .fit _ _ => need (t.okI Kind.isExactNum) t
-  | .widen => need (t.okI Kind.isFloat) (if t = .num then .kind .float else t)
+  | .widen => need (t.okI Kind.isFloat) t
   | .itos => need (t.okI Kind.isInt) (.kind .str)
   | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 => need (t.okK .str) (.kind .str)
   | .length | .ascii | .regexMatch _ => need (t.okK .str) (.kind .int)
   | .datePart _ => need (t.okI Kind.isTimeOrTod) (.kind .int)
-  | .dateTrunc _ => need (t.okI Kind.isTimeOrTod) t.orNum
+  | .dateTrunc _ => need (t.okI Kind.isTimeOrTod) t
   | .toDate => need (t.okI Kind.isTime) (.kind .date)
   | .dayPart _ => need (t.okI Kind.isDate) (.kind .int)
   | .dayTrunc _ | .addMonths _ false => need (t.okI Kind.isDate) (.kind .date)
@@ -192,8 +168,7 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
   | .dateTime => need (t.okI Kind.isDate) (.kind .time)
   | .epochUs => need (t.okI Kind.isTime) (.kind .int)
   | .strftime _ => need (t.okI Kind.isTime) (.kind .str)
-  | .decimal p s | .dkind p s =>
-    need (t.okI Kind.isIntOrDec) (if t = .kind .other then t else .kind (.dec p s))
+  | .decimal p s | .dkind p s => need (t.okI Kind.isIntOrDec) (.kind (.dec p s))
   | .dround _ | .dtrunc _ => need (t.okI Kind.isIntOrDec) (.kind .int)
   | .ftod _ => need (t.okI Kind.isFloat) (.kind .int)
   | .dtof _ => need (t.okI Kind.isIntOrDec) (.kind .float)
@@ -214,28 +189,72 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
     | .kind (.list .other) | .kind .other => some (.kind (.list .other))
     | _ => none
 
-/-- Integer arithmetic's result: the kind that is not a plain integer (a
-timestamp plus microseconds is a timestamp). -/
-def KT.arith (a b : KT) : KT :=
-  match a, b with
-  | .kind .other, _ | _, .kind .other => .num
-  | .num, b => b
-  | .kind .int, b => b
-  | a, _ => a
+/-- `+`'s result kind: an interval (an integer) moves a timestamp, a date or
+a time of day. -/
+def Kind.addK : Kind → Kind → Option Kind
+  | .other, _ | _, .other => some .other
+  | .int, .int => some .int
+  | .time, .int | .int, .time => some .time
+  | .timeTz, .int | .int, .timeTz => some .timeTz
+  | .tod, .int | .int, .tod => some .tod
+  | .date, .int | .int, .date => some .date
+  | _, _ => none
+
+/-- `-`'s result kind: as `+`, and two timestamps, dates or times of day
+differ by an integer. -/
+def Kind.subK : Kind → Kind → Option Kind
+  | .other, _ | _, .other => some .other
+  | .int, .int => some .int
+  | .time, .int => some .time
+  | .timeTz, .int => some .timeTz
+  | .tod, .int => some .tod
+  | .date, .int => some .date
+  | .time, .time | .time, .timeTz | .timeTz, .time | .timeTz, .timeTz
+  | .tod, .tod | .date, .date => some .int
+  | _, _ => none
+
+/-- `×`'s and `%`'s result kinds: integers, and a time of day modulo a day. -/
+def Kind.mulK : Kind → Kind → Option Kind
+  | .other, _ | _, .other => some .other
+  | .int, .int => some .int
+  | _, _ => none
+
+def Kind.modK : Kind → Kind → Option Kind
+  | .other, _ | _, .other => some .other
+  | .int, .int => some .int
+  | .tod, .int => some .tod
+  | _, _ => none
+
+/-- Can values of kinds `a` and `b` be compared (`Value.numPair`)? One kind,
+decimals of one scale; an unknown kind may be anything (#923). The parser
+brings decimal comparisons to one scale (`UnFn.dkind`), so a plan that
+compares two scales without it is refused here, not NULL at run time. -/
+def Kind.comparable : Kind → Kind → Bool
+  | .other, _ | _, .other => true
+  | .dec _ s, .dec _ t => s == t
+  | .time, .timeTz | .timeTz, .time => true
+  | .list a, .list b => Kind.comparable a b
+  | .struct as, .struct bs => as.length == bs.length && compList as bs
+  | a, b => a == b
+where
+  compList : List Kind → List Kind → Bool
+    | a :: as, b :: bs => Kind.comparable a b && compList as bs
+    | _, _ => true
 
 /-- What `f` gives for arguments of kinds `a` and `b`, if it takes them. -/
 def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   let need (c : Bool) (out : KT) : Option KT := if c then some out else none
   let num (p : Kind → Bool) := a.okI p && b.okI p
   match f with
-  | .add | .sub | .mul => need (num Kind.isExactNum) (a.arith b)
-  | .eq | .lt => some (.kind .bool)
+  | .add => (Kind.addK a.toKind b.toKind).map .kind
+  | .sub => (Kind.subK a.toKind b.toKind).map .kind
+  | .mul => (Kind.mulK a.toKind b.toKind).map .kind
+  | .imod => (Kind.modK a.toKind b.toKind).map .kind
+  | .eq | .lt => need (Kind.comparable a.toKind b.toKind) (.kind .bool)
   | .and | .or => need (a.okK .bool && b.okK .bool) (.kind .bool)
   | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
     need (num Kind.isFloat) (.kind .float)
-  -- A time of day modulo a day (`Parse`'s wrap around midnight) keeps its kind.
-  | .idiv | .imod => need (num Kind.isExactNum) (a.arith b)
-  | .ipow | .bit _ => need (num Kind.isInt) (.kind .int)
+  | .idiv | .ipow | .bit _ => need (num Kind.isInt) (.kind .int)
   | .concat | .trim _ _ => need (a.okK .str && b.okK .str) (.kind .str)
   | .strpos | .levenshtein => need (a.okK .str && b.okK .str) (.kind .int)
   | .startsWith | .endsWith | .like | .ilike => need (a.okK .str && b.okK .str) (.kind .bool)
@@ -243,19 +262,24 @@ def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   | .dateAdd => need (a.okI Kind.isDate && b.okI Kind.isInt) (.kind .date)
   | .dateDiff => need (num Kind.isDate) (.kind .int)
   | .dadd | .dsub | .dmul | .ddiv => need (num Kind.isIntOrDec) (.kind .int)
-  | .pair => some (.kind (.struct [a.toKind, b.toKind]))
+  | .pair => some (.kind (.list .other))
   | .greatest | .least => some (a.join b)
   | .bbox2 _ => some (.kind .other)
   | .listFn .contains => need a.okList (.kind .bool)
   | .listFn .position => need a.okList (.kind .int)
   | .listFn .prepend | .listFn .concat => some (.kind (.list .other))
 
-/-- The kind of a literal: integers have none of their own. -/
+/-- The kind of a literal: an integer has none of its own (`KT.num`). -/
 def Value.kt : Value → KT
   | .int _ => .num
+  | .float _ => .kind .float
+  | .date _ => .kind .date
+  | .ts _ => .kind .time
+  | .tod _ => .kind .tod
+  | .dec s _ => .kind (.dec 38 s)
   | .bool _ => .kind .bool
   | .str _ => .kind .str
-  | .null | .list _ => .kind .other
+  | .null | .list _ | .struct _ => .kind .other
 
 /-- The element kind of a list's kind. -/
 def KT.elem? : KT → Option Kind
@@ -301,55 +325,43 @@ theorem KT.has_join_right {a b : KT} {v : Value} (h : b.has v = true) : (a.join 
   · rename_i hab; subst hab; exact h
   · simp [KT.has, KT.toKind]
 
-/-- A value of an accepted integer-represented kind is an integer or NULL. -/
-theorem KT.okI_int {p : Kind → Bool} (hp : ∀ k, p k = true → k.isIntRep = true) {t : KT} {v : Value}
-    (ht : t.okI p = true) (hv : t.has v = true) (hk : t ≠ .kind .other) : v.hasKind .int = true := by
-  match t, v with
-  | _, .null => simp
-  | .num, .int _ => rfl
-  | .kind k, .int _ => rfl
-  | .num, .bool _ | .num, .str _ | .num, .list _ => simp [KT.has, KT.toKind, Value.hasKind] at hv
-  | .kind k, .bool _ | .kind k, .str _ | .kind k, .list _ =>
-    cases k <;> simp_all [KT.okI, KT.has, KT.toKind, Value.hasKind, Kind.isIntRep] <;>
-      (have := hp _ ht; simp at this)
-
-/-- The integer-represented results, by the function alone. -/
-theorem KT.has_intRep {t : KT} (ht : t.toKind.isIntRep = true) {v : Value}
-    (hv : v.hasKind .int = true) : t.has v = true :=
-  Value.hasKind_of_int ht hv
-
-/-- What `UnFn.apply` gives, by the function alone: an integer, a boolean or
-a string (or NULL), for those that give one. -/
+/-- What `UnFn.apply` gives, by the function alone, for those whose result
+has one kind; `other` for the rest. -/
 def UnFn.out : UnFn → Kind
-  | .not | .isNull | .isNum => .bool
+  | .not | .isNull | .isNum _ => .bool
   | .itos | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 | .strftime _ => .str
-  | .wrap _ | .widen | .decimal _ _ | .dkind _ _ | .fit _ _ | .structField _ | .listElement _
-  | .raise _ | .bbox _ | .flatten => .other
-  | _ => .int
+  | .neg | .ftoi | .ftoiOrNull | .narrow _ | .narrowOrNull _ | .length | .ascii | .regexMatch _
+  | .datePart _ | .dayPart _ | .epochUs | .dround _ | .dtrunc _ | .ftod _ | .cardinality => .int
+  | .itof | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ | .dtof _ => .float
+  | .toDate | .dayTrunc _ | .addMonths _ false => .date
+  | .addMonths _ true | .bucket _ _ | .asTime | .dateTime => .time
+  | .timeOfDay => .tod
+  | .decimal p s | .dkind p s => .dec p s
+  | .wrap _ | .widen | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _ | .flatten
+  | .raise _ | .bbox _ => .other
 
 theorem UnFn.apply_out (f : UnFn) (v : Value) : (f.apply v).hasKind f.out = true := by
   cases f
-  case addMonths m t => cases t <;> cases v <;> simp [UnFn.apply, UnFn.out, Value.hasKind, Kind.isIntRep]
-  all_goals cases v <;> simp only [UnFn.apply, UnFn.out] <;>
-    (try split) <;> (try split) <;> (try simp [Value.hasKind, Kind.isIntRep])
+  case addMonths m t => cases t <;> cases v <;> simp [UnFn.apply, UnFn.out, Value.hasKind]
+  all_goals cases v <;> simp only [UnFn.apply, UnFn.out, Value.unscaled?] <;>
+    (try split) <;> (try split) <;> (try simp [Value.hasKind])
 
-/-- An accepted integer-represented kind has every integer. -/
-theorem KT.okI_has_int {p : Kind → Bool} (hp : ∀ k, p k = true → k.isIntRep = true) {t : KT}
-    (ht : t.okI p = true) (i : Int) : t.has (.int i) = true := by
+/-- A kind that has one value of a constructor has all its values. -/
+theorem KT.has_int {t : KT} {i : Int} (h : t.has (.int i) = true) (j : Int) : t.has (.int j) = true := by
   match t with
   | .num => rfl
-  | .kind k =>
-    simp only [KT.okI] at ht
-    cases k <;> first | rfl | (have := hp _ ht; simp_all [Kind.isIntRep])
+  | .kind k => cases k <;> simp_all [KT.has, KT.toKind, Value.hasKind]
 
-theorem KT.orNum_intRep {p : Kind → Bool} (hp : ∀ k, p k = true → k.isIntRep = true) {t : KT}
-    (ht : t.okI p = true) : t.orNum.toKind.isIntRep = true := by
+theorem KT.has_ts {t : KT} {i : Int} (h : t.has (.ts i) = true) (j : Int) : t.has (.ts j) = true := by
   match t with
-  | .num => rfl
-  | .kind k =>
-    simp only [KT.okI] at ht
-    cases k <;> first | rfl | (have := hp _ ht; simp_all [Kind.isIntRep])
+  | .num => simp [KT.has, KT.toKind, Value.hasKind] at h
+  | .kind k => cases k <;> simp_all [KT.has, KT.toKind, Value.hasKind]
+
+theorem KT.has_tod {t : KT} {i : Int} (h : t.has (.tod i) = true) (j : Int) : t.has (.tod j) = true := by
+  match t with
+  | .num => simp [KT.has, KT.toKind, Value.hasKind] at h
+  | .kind k => cases k <;> simp_all [KT.has, KT.toKind, Value.hasKind]
 
 theorem Value.getD_hasKind {k : Kind} {vs : List Value} (h : ∀ v ∈ vs, v.hasKind k = true)
     (n : Nat) : (vs.getD n .null).hasKind k = true := by
@@ -370,52 +382,41 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
   cases f
   case addMonths m b =>
     cases b <;> simp only [UnFn.kindOf, UnFn.out, Option.ite_none_right_eq_some,
-      Option.some.injEq] at h hout <;> (obtain ⟨_, rfl⟩ := h; exact Value.hasKind_of_int rfl hout)
+      Option.some.injEq] at h hout <;> (obtain ⟨_, rfl⟩ := h; exact hout)
   all_goals simp only [UnFn.kindOf, UnFn.out, Option.ite_none_right_eq_some, Option.some.injEq] at h hout
   all_goals first
-    | (obtain ⟨_, rfl⟩ := h; first | exact hout | exact Value.hasKind_of_int rfl hout)
-    | (obtain ⟨ht, rfl⟩ := h
-       exact Value.hasKind_of_int (KT.orNum_intRep (by intro k hk; cases k <;>
-         simp_all [Kind.isExactNum, Kind.isIntRep, Kind.isTimeOrTod]) ht) hout)
-    | (subst h; first | exact hout | simp [KT.has, KT.toKind])
+    | (obtain ⟨_, rfl⟩ := h; exact hout)
+    | (subst h; first | exact hout | (simp [KT.has, KT.toKind]; done))
     | skip
-  case wrap => obtain ⟨_, rfl⟩ := h; exact hv
+  case wrap | widen => obtain ⟨_, rfl⟩ := h; exact hv
   case fit =>
-    obtain ⟨ht, rfl⟩ := h
-    cases v <;> simp only [UnFn.apply] <;> first | exact hv |
-      exact KT.okI_has_int (fun k hk => by cases k <;> simp_all [Kind.isExactNum, Kind.isIntRep]) ht _
-  case widen =>
     obtain ⟨_, rfl⟩ := h
-    split
-    · rename_i hn; subst hn; exact Value.hasKind_of_int rfl hv
-    · exact hv
-  case decimal p s | dkind p s =>
-    obtain ⟨ht, rfl⟩ := h
-    split
-    · exact hv
-    · rename_i hn
-      exact Value.hasKind_of_int rfl (KT.okI_int (fun k hk => by
-        cases k <;> simp_all [Kind.isIntOrDec, Kind.isIntRep]) ht hv hn)
+    cases v <;> simp only [UnFn.apply] <;> first | exact hv | exact KT.has_int hv _
+  case dateTrunc =>
+    obtain ⟨_, rfl⟩ := h
+    cases v <;> simp only [UnFn.apply] <;>
+      first | exact KT.has_ts hv _ | exact KT.has_tod hv _ | simp [KT.has]
   case structField i =>
     split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h
-    · rename_i ks
-      match v, hv with
+    · match v, hv with
+      | .struct vs, hv => exact Value.fieldsHaveKinds_getD hv i
       | .null, _ => simp [UnFn.apply, KT.has]
-      | .list vs, hv => exact Value.fieldsHaveKinds_getD hv i
-      | .int _, hv | .bool _, hv | .str _, hv => simp [KT.has, KT.toKind, Value.hasKind, Kind.isIntRep] at hv
+      | .int _, hv | .float _, hv | .date _, hv | .ts _, hv | .tod _, hv | .dec _ _, hv
+      | .bool _, hv | .str _, hv | .list _, hv =>
+        simp [KT.has, KT.toKind, Value.hasKind] at hv
     · simp [KT.has, KT.toKind]
   case listElement off =>
     split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h
-    · rename_i k
-      match v, hv with
-      | .null, _ => simp [UnFn.apply, KT.has]
+    · match v, hv with
       | .list vs, hv => exact Value.listElement_hasKind (Value.hasKind_list.mp hv) off
-      | .int _, hv | .bool _, hv | .str _, hv => simp [KT.has, KT.toKind, Value.hasKind, Kind.isIntRep] at hv
+      | .null, _ => simp [UnFn.apply, KT.has]
+      | .int _, hv | .float _, hv | .date _, hv | .ts _, hv | .tod _, hv | .dec _ _, hv
+      | .bool _, hv | .str _, hv | .struct _, hv =>
+        simp [KT.has, KT.toKind, Value.hasKind] at hv
     · simp [KT.has, KT.toKind]
   case flatten =>
     split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h
-    · rename_i k
-      match v, hv with
+    · match v, hv with
       | .list vs, hv =>
         simp only [UnFn.apply, Value.flatten, KT.has, KT.toKind]
         refine Value.hasKind_list.mpr fun w hw => ?_
@@ -424,21 +425,25 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
         match u, this, hw with
         | .list ws, hws, hw => exact Value.hasKind_list.mp hws w hw
       | .null, _ => simp [UnFn.apply, Value.flatten, KT.has]
-      | .int _, hv | .bool _, hv | .str _, hv => simp [KT.has, KT.toKind, Value.hasKind, Kind.isIntRep] at hv
+      | .int _, hv | .float _, hv | .date _, hv | .ts _, hv | .tod _, hv | .dec _ _, hv
+      | .bool _, hv | .str _, hv | .struct _, hv =>
+        simp [KT.has, KT.toKind, Value.hasKind] at hv
     all_goals
       cases v <;> simp [UnFn.apply, Value.flatten, KT.has, KT.toKind, Value.hasKind_list]
   case cardinality =>
-    split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
-      exact Value.hasKind_of_int rfl hout
+    split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h <;> exact hout
 
-/-- What `BinFn.apply` gives, by the function alone, for those that give an
-integer, a boolean or a string (or NULL). -/
+/-- What `BinFn.apply` gives, by the function alone, for those whose result
+has one kind; `other` for the rest. -/
 def BinFn.out : BinFn → Kind
-  | .eq | .lt | .and | .or | .startsWith | .endsWith | .like | .ilike => .bool
+  | .eq | .lt | .and | .or | .startsWith | .endsWith | .like | .ilike | .listFn .contains => .bool
   | .concat | .substr _ _ | .trim _ _ | .strRepeat => .str
-  | .pair | .greatest | .least | .bbox2 _ | .listFn .prepend | .listFn .concat => .other
-  | .listFn .contains => .bool
-  | _ => .int
+  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb => .float
+  | .strpos | .levenshtein | .idiv | .ipow | .bit _ | .dateDiff | .dadd | .dsub | .dmul | .ddiv
+  | .listFn .position => .int
+  | .dateAdd => .date
+  | .add | .sub | .mul | .imod | .pair | .greatest | .least | .bbox2 _ | .listFn .prepend
+  | .listFn .concat => .other
 
 theorem and3_hasKind (a b : Value) : (and3 a b).hasKind .bool = true := by
   unfold and3; split <;> rfl
@@ -446,6 +451,7 @@ theorem and3_hasKind (a b : Value) : (and3 a b).hasKind .bool = true := by
 theorem or3_hasKind (a b : Value) : (or3 a b).hasKind .bool = true := by
   unfold or3; split <;> rfl
 
+set_option maxHeartbeats 1000000 in
 theorem BinFn.apply_out (f : BinFn) (a b : Value) : (f.apply a b).hasKind f.out = true := by
   cases f
   case and => exact and3_hasKind a b
@@ -455,44 +461,64 @@ theorem BinFn.apply_out (f : BinFn) (a b : Value) : (f.apply a b).hasKind f.out 
     · unfold Value.listContains; split <;> (try split) <;> rfl
     · unfold Value.listPosition; split <;> (try split) <;> rfl
   case lt =>
-    cases a <;> cases b <;> simp only [BinFn.apply, BinFn.out] <;> (try simp [Value.hasKind]) <;>
+    cases a <;> cases b <;> simp only [BinFn.apply, BinFn.out, Value.numPair] <;>
+      (try split) <;> (try simp [Value.hasKind]) <;>
       (generalize Value.listLt3 _ _ = r; rcases r with _ | _ | _ <;> rfl)
-  all_goals cases a <;> cases b <;> simp only [BinFn.apply, BinFn.out] <;>
-    (try split) <;> (try split) <;> (try simp [Value.hasKind, Kind.isIntRep])
+  case eq =>
+    cases a <;> cases b <;> simp only [BinFn.apply, BinFn.out, Value.numPair] <;>
+      (try split) <;> simp [Value.hasKind]
+  all_goals simp only [BinFn.out]
+  all_goals first
+    | exact Value.hasKind_other _
+    | (cases a <;> cases b <;> simp only [BinFn.apply, Value.unscaled?] <;>
+        (try split) <;> (try split) <;> rfl)
 
-theorem KT.arith_intRep {a b : KT} (ha : a.okI Kind.isExactNum = true)
-    (hb : b.okI Kind.isExactNum = true) : (a.arith b).toKind.isIntRep = true := by
-  have ex : ∀ k, Kind.isExactNum k = true → k.isIntRep = true := fun k hk => by
-    cases k <;> simp_all [Kind.isExactNum, Kind.isIntRep]
-  match a, b with
-  | .num, .num => rfl
-  | .num, .kind k => cases k <;> first | rfl | exact ex _ hb
-  | .kind ka, .num => cases ka <;> first | rfl | exact ex _ ha
-  | .kind ka, .kind kb =>
-    cases ka <;> cases kb <;> first | rfl | exact ex _ ha | exact ex _ hb |
-      simp_all [KT.okI, Kind.isExactNum]
+/-- A value of a scalar integer kind, from its integer. -/
+def Kind.mk : Kind → Int → Value
+  | .int, i => .int i
+  | .date, i => .date i
+  | .tod, i => .tod i
+  | .time, i | .timeTz, i => .ts i
+  | _, _ => .null
+
+/-- A value of a scalar integer kind is NULL or that kind's constructor. -/
+theorem Value.inv_scalar {k : Kind} (hk : k = .int ∨ k = .date ∨ k = .tod ∨ k = .time ∨ k = .timeTz)
+    {a : Value} (h : a.hasKind k = true) : a = .null ∨ ∃ i, a = k.mk i := by
+  rcases hk with rfl | rfl | rfl | rfl | rfl <;> cases a <;> simp_all [Value.hasKind, Kind.mk]
+
+/-- The arithmetic tables are sound: two values of the arguments' kinds give
+a value of the result's. -/
+theorem BinFn.arith_sound {f : BinFn} {K : Kind → Kind → Option Kind}
+    (hf : (f = .add ∧ K = Kind.addK) ∨ (f = .sub ∧ K = Kind.subK) ∨ (f = .mul ∧ K = Kind.mulK) ∨
+      (f = .imod ∧ K = Kind.modK))
+    {ka kb k : Kind} (h : K ka kb = some k) {a b : Value} (ha : a.hasKind ka = true)
+    (hb : b.hasKind kb = true) : (f.apply a b).hasKind k = true := by
+  rcases hf with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;>
+  · first
+      | (unfold Kind.addK at h)
+      | (unfold Kind.subK at h)
+      | (unfold Kind.mulK at h)
+      | (unfold Kind.modK at h)
+    split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> subst h
+    all_goals first
+      | exact Value.hasKind_other _
+      | skip
+    all_goals
+      rcases Value.inv_scalar (by simp) ha with rfl | ⟨x, rfl⟩ <;>
+      rcases Value.inv_scalar (by simp) hb with rfl | ⟨y, rfl⟩ <;>
+      simp [BinFn.apply, Value.hasKind, Kind.mk] <;> split <;> simp [Value.hasKind]
 
 theorem BinFn.kindOf_sound {f : BinFn} {ta tb t' : KT} {a b : Value} (h : f.kindOf ta tb = some t')
     (ha : ta.has a = true) (hb : tb.has b = true) : t'.has (f.apply a b) = true := by
   have hout := f.apply_out a b
-  cases f <;> simp only [BinFn.kindOf, BinFn.out, Option.ite_none_right_eq_some, Option.some.injEq,
-    Bool.and_eq_true] at h hout
-  all_goals first
-    | (obtain ⟨_, rfl⟩ := h; first | exact hout | exact Value.hasKind_of_int rfl hout)
-    | (obtain ⟨⟨h1, h2⟩, rfl⟩ := h; exact Value.hasKind_of_int (KT.arith_intRep h1 h2) hout)
-    | (subst h; first | exact hout | simp [KT.has, KT.toKind])
-    | skip
-  case pair =>
-    subst_vars
-    show (BinFn.apply .pair a b).hasKind (.struct [ta.toKind, tb.toKind]) = true
-    have e : ∀ x y : Value, (Value.list [x, y]).hasKind (.struct [ta.toKind, tb.toKind]) =
-        (x.hasKind ta.toKind && (y.hasKind tb.toKind && true)) := fun _ _ => rfl
-    have ha' : a.hasKind ta.toKind = true := ha
-    have hb' : b.hasKind tb.toKind = true := hb
-    cases a <;> cases b <;> simp only [BinFn.apply] <;>
-      first | exact Value.hasKind_null _ | (rw [e, ha', hb']; rfl)
+  cases f
+  case add | sub | mul | imod =>
+    simp only [BinFn.kindOf, Option.map_eq_some_iff] at h
+    obtain ⟨k, hk, rfl⟩ := h
+    exact BinFn.arith_sound (by simp) hk ha hb
   case listFn op =>
-    cases op <;> simp only [Option.some.injEq, Option.ite_none_right_eq_some] at h hout
+    cases op <;> simp only [BinFn.kindOf, BinFn.out, Option.some.injEq,
+      Option.ite_none_right_eq_some] at h hout
     · subst h
       show (BinFn.apply _ a b).hasKind (.list .other) = true
       simp only [BinFn.apply, ListOp.apply]
@@ -502,7 +528,17 @@ theorem BinFn.kindOf_sound {f : BinFn} {ta tb t' : KT} {a b : Value} (h : f.kind
       simp only [BinFn.apply, ListOp.apply]
       cases a <;> cases b <;> simp [Value.listConcat, Value.hasKind_list]
     · obtain ⟨_, rfl⟩ := h; exact hout
-    · obtain ⟨_, rfl⟩ := h; exact Value.hasKind_of_int rfl hout
+    · obtain ⟨_, rfl⟩ := h; exact hout
+  all_goals simp only [BinFn.kindOf, BinFn.out, Option.ite_none_right_eq_some, Option.some.injEq,
+    Bool.and_eq_true] at h hout
+  all_goals first
+    | (obtain ⟨_, rfl⟩ := h; exact hout)
+    | (subst h; first | exact hout | (simp [KT.has, KT.toKind]; done))
+    | skip
+  case pair =>
+    subst h
+    show (BinFn.apply .pair a b).hasKind (.list .other) = true
+    cases a <;> cases b <;> simp [BinFn.apply, Value.hasKind_list]
   case greatest | least =>
     subst_vars
     simp only [BinFn.apply]
@@ -512,8 +548,8 @@ theorem BinFn.kindOf_sound {f : BinFn} {ta tb t' : KT} {a b : Value} (h : f.kind
 
 /-! ### Soundness of expressions -/
 
-theorem Value.has_kt : ∀ v : Value, v.kt.has v = true
-  | .null | .bool _ | .str _ | .int _ | .list _ => rfl
+theorem Value.has_kt (v : Value) : v.kt.has v = true := by
+  cases v <;> simp [Value.kt, KT.has, KT.toKind, Value.hasKind]
 
 theorem Row.HasKinds.cons {ks : List Kind} {row : Row} {k : Kind} {x : Value}
     (h : Row.HasKinds ks row) (hx : x.hasKind k = true) : Row.HasKinds (k :: ks) (x :: row)
@@ -603,10 +639,11 @@ theorem Expr.kindT_sound : ∀ {e : Expr} {env : List Kind} {row : Row} {t : KT}
 
 /-! ## Kinds of relations -/
 
-/-- The kind of a measure's result, where the function alone says it. -/
+/-- The kind of a measure's result, where the function alone says it (`SUM`
+is an integer or a decimal at its argument's scale, so it says nothing). -/
 def Measure.kindOut (m : Measure) : Kind :=
   match m.fn with
-  | .count | .sum | .iavg | .bit _ => .int
+  | .count | .iavg | .bit _ => .int
   | .fsum | .avg => .float
   | .concat _ => .str
   | _ => .other
@@ -619,7 +656,7 @@ theorem Measure.eval_kindOut (m : Measure) (rows : Relation) :
   all_goals first
     | exact Value.hasKind_other _
     | (generalize Measure.inputs _ _ = vs
-       cases vs <;> simp [AggFn.apply, Value.hasKind, Kind.isIntRep])
+       cases vs <;> simp [AggFn.apply, Value.hasKind])
 
 /-- Are a measure's argument and filter well-kinded? -/
 def Measure.wk (env : List Kind) (m : Measure) : Bool :=
