@@ -55,7 +55,7 @@ open Lean (Json)
 
 /-- A function's name in the export: the model's, with its parameters. -/
 def unName : UnFn → String
-  | .isNum => "isNum" | .isNull => "isNull" | .not => "not" | .ffloor => "ffloor"
+  | .isNum _ => "isNum" | .isNull => "isNull" | .not => "not" | .ffloor => "ffloor"
   | .raise _ => "raise" | .fmath f => s!"fmath:{f.name}"
   | .fit m w => s!"fit:{m.name}:{w.bits}"
   | f => reprStr f
@@ -67,23 +67,24 @@ def binName : BinFn → String
   | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
   | f => reprStr f
 
-/-- A literal; `float` says an integer is a double's code (`SubstraitLean/Float.lean`). -/
-def litJson (float : Bool) : Value → Json
+/-- A literal: a double by its code (`SubstraitLean/Float.lean`). -/
+def litJson : Value → Json
   | .null => Json.mkObj [("null", true)]
   | .bool b => Json.mkObj [("bool", b)]
-  | .int i => Json.mkObj [(if float then "code" else "int", toString i)]
+  | .int i => Json.mkObj [("int", toString i)]
+  | .float c => Json.mkObj [("code", toString c)]
   | v => Json.mkObj [("unsupported", reprStr v)]
 
 /-- A template as JSON: fields, literals, calls and `CASE`s. -/
-def exprJson (float : Bool) : Expr → Json
+def exprJson : Expr → Json
   | .field i => Json.mkObj [("field", i)]
-  | .lit v => litJson float v
-  | .un f a => Json.mkObj ([("fn", Json.str (unName f)), ("args", Json.arr #[exprJson float a])] ++
+  | .lit v => litJson v
+  | .un f a => Json.mkObj ([("fn", Json.str (unName f)), ("args", Json.arr #[exprJson a])] ++
       match f with | .raise m => [("message", Json.str m)] | _ => [])
   | .bin f a b => Json.mkObj [("fn", Json.str (binName f)),
-      ("args", Json.arr #[exprJson float a, exprJson float b])]
-  | .ifThen c t e => Json.mkObj [("if", exprJson float c), ("then", exprJson float t),
-      ("else", exprJson float e)]
+      ("args", Json.arr #[exprJson a, exprJson b])]
+  | .ifThen c t e => Json.mkObj [("if", exprJson c), ("then", exprJson t),
+      ("else", exprJson e)]
   | .hof .. => Json.mkObj [("unsupported", "a higher-order function")]
 
 /-- The constructs whose entries may differ from the native call. -/
@@ -95,10 +96,6 @@ def binFns : List BinFn :=
   [.fadd, .fsub, .fmul, .fdiv, .fmod, .fpow, .fatan2, .idiv, .imod] ++
     [BitOp.and, .or, .xor, .shl, .shr].map .bit
 
-def floatUn : UnFn → Bool | .fmath _ => true | _ => false
-def floatBin : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 => true
-  | _ => false
 
 /-- The entries of a table that are not the native call. -/
 def tableJson {p : Profile} (L : Lowering p) : Json :=
@@ -106,12 +103,12 @@ def tableJson {p : Profile} (L : Lowering p) : Json :=
     let native := Expr.un f (.field 0)
     if e.tmpl == native then none
     else some (Json.mkObj [("fn", Json.str (unName f)), ("arity", (1 : Nat)),
-      ("template", exprJson (floatUn f) e.tmpl)])
+      ("template", exprJson e.tmpl)])
   let bin := binFns.filterMap fun f => (L.bin f).bind fun e =>
     let native := Expr.bin f (.field 0) (.field 1)
     if e.tmpl == native then none
     else some (Json.mkObj [("fn", Json.str (binName f)), ("arity", (2 : Nat)),
-      ("template", exprJson (floatBin f) e.tmpl)])
+      ("template", exprJson e.tmpl)])
   Json.arr (un ++ bin).toArray
 
 end LoweringExport
