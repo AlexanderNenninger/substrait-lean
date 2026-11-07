@@ -346,6 +346,10 @@ def AVal.Mem (a : AVal) : Value → Prop
   -- so each abstraction covers a list as it covers a value of another type.
   | .list _ | .struct _ => a.tt = true ∧ a.ff = true ∧ a.str = true
 
+theorem AVal.memInt_intro {a : AVal} {b : Bound} {i : Int} (hb : a.int = some b)
+    (hk : a.nk = some .int) (hi : b.Mem i) : a.Mem (.int i) :=
+  ⟨b, hb, hi, by simp [hk]⟩
+
 theorem AVal.mem_val {a : AVal} {k : NumKind} {i : Int} : a.Mem (k.val i) ↔ a.MemNum k i := by
   cases k <;> rfl
 
@@ -5614,7 +5618,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
       · rename_i hc
         obtain ⟨rfl, hnb⟩ := hc
         have ha := Expr.absD_sound h hfs hks a
-        rcases AVal.mem_cases ha with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
+        rcases AVal.mem_cases ha with ⟨_, hn⟩ | ⟨_, _, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
         · simp [AVal.nonBool, hn] at hnb
         · simp [AVal.nonBool, hb] at hnb
         · rw [hv]
@@ -5628,15 +5632,16 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rw [hv]
           apply AVal.mem_join_right
           rw [ite_eq_left hf]
-          rcases AVal.mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ | ⟨_, hv', hs⟩ | ⟨_, hv', hs⟩ <;>
-            rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem]
+          rcases AVal.mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ | ⟨_, hv', hs⟩ | ⟨_, hv' | hv', hs⟩ <;>
+            rw [hv'] <;> (try cases ‹NumKind›) <;>
+            simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem, NumKind.val, AVal.MemNum]
         · simp [AVal.nonBool, hs] at hnb
         · simp [AVal.nonBool, hs] at hnb
       split
       · rename_i _ hc
         obtain ⟨rfl, hni, hns⟩ := hc
         have ha := Expr.absD_sound h hfs hks a
-        rcases AVal.mem_cases ha with ⟨hv, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩ |
+        rcases AVal.mem_cases ha with ⟨hv, hn⟩ | ⟨_, _, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩ |
             ⟨_, _, hs⟩
         · have hnt : (a.eval row).isTrue = false := by simp [hv, Value.isTrue]
           have hq := Expr.absD_sound (useFacts_sound hfs (Expr.refineNeg_sound env a h hnt).prune) hfs
@@ -5644,9 +5649,10 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rw [hv]
           apply AVal.mem_join_right
           rw [ite_eq_left hn]
-          rcases AVal.mem_cases hq with ⟨hv', hn'⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
-              ⟨_, hv', hs⟩ | ⟨_, hv', hs⟩ <;>
-            rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orNull, AVal.Mem]
+          rcases AVal.mem_cases hq with ⟨hv', hn'⟩ | ⟨_, _, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
+              ⟨_, hv', hs⟩ | ⟨_, hv' | hv', hs⟩ <;>
+            rw [hv'] <;> (try cases ‹NumKind›) <;>
+            simp_all [BinFn.apply, or3, AVal.orNull, AVal.Mem, NumKind.val, AVal.MemNum]
         · simp [hb] at hni
         · rw [hv]
           apply AVal.mem_join_left
@@ -5660,9 +5666,10 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           apply AVal.mem_join_left
           apply AVal.mem_join_right
           rw [ite_eq_left hf]
-          rcases AVal.mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
-              ⟨_, hv', hs⟩ | ⟨_, hv', hs⟩ <;>
-            rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem]
+          rcases AVal.mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
+              ⟨_, hv', hs⟩ | ⟨_, hv' | hv', hs⟩ <;>
+            rw [hv'] <;> (try cases ‹NumKind›) <;>
+            simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem, NumKind.val, AVal.MemNum]
         · simp [hs] at hns
         · simp [hs] at hns
       · exact sharpen_sound f a b hfs (Expr.absD_sound h hfs hks a) (Expr.absD_sound h hfs hks b)
@@ -5740,8 +5747,26 @@ def sumCap (b : Bound) (n : Nat) : Bound :=
 /-- Admits integers and NULL only: no booleans, strings or lists. -/
 def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 
+/-- Every value but NULL is a number of kind `k`. -/
+def AVal.kindOnly (k : NumKind) (a : AVal) : Bool := a.intsOnly && a.nk == some k
+
+/-- Every value but NULL is an integer, or a decimal of one scale: `intSum`
+adds them all. -/
+def AVal.unscaledOnly (a : AVal) : Bool :=
+  a.intsOnly && match a.nk with
+    | some .int | some (.dec _) => true
+    | _ => false
+
+/-- The kind of a `SUM` of `a`'s values (`sumOf`): an integer of integers, a
+decimal of decimals of one scale. -/
+def sumKind (a : AVal) : Option NumKind :=
+  match a.nk with
+  | some .int => some .int
+  | some (.dec s) => if a.intsOnly then some (.dec s) else none
+  | _ => none
+
 /-- Some double, or NULL. -/
-def AVal.double : AVal := ⟨true, some Bound.top, false, false, false, none, none⟩
+def AVal.double : AVal := ⟨true, some Bound.top, false, false, false, none, some .float⟩
 
 /-! ### Row counts and float error bounds (#85) -/
 
@@ -5891,7 +5916,7 @@ theorem Rel.capReads_eval {caps : String → Option Nat} {cat : Catalog}
 
 /-- The mean of the doubles `cs`, as `AggFn.avg` computes it. -/
 def avgCode (cs : List Int) : Int :=
-  FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)
+  FloatCode.lift₂ (· / ·) (floatSum (cs.map .float)) (FloatCode.ofInt cs.length)
 
 /-- The codes a `SUM` (`avg = false`) or an `AVG` of doubles in `b` lies in:
 signs are exact (`floatSum_sign`), and with at most `rows` values, finite
@@ -5919,12 +5944,12 @@ def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
 
 theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
     (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
-    (floatBound avg b rows).Mem (if avg then avgCode cs else floatSum (cs.map .int)) := by
+    (floatBound avg b rows).Mem (if avg then avgCode cs else floatSum (cs.map .float)) := by
   obtain ⟨blo, bhi⟩ := b
   have hsign := floatSum_sign hne
   have hsigned : (Bound.mk (blo.bind fun l => if 0 ≤ l then some 0 else none)
       (bhi.bind fun h => if h ≤ 0 then some 0 else none)).Mem
-      (if avg then avgCode cs else floatSum (cs.map .int)) := by
+      (if avg then avgCode cs else floatSum (cs.map .float)) := by
     constructor
     · intro l hl
       simp only [Option.bind_eq_some_iff] at hl
@@ -5982,31 +6007,32 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   -- without a filter has a value: `COUNT(*)` per group is at least 1.
   let valued := grouped && m.filter.isNone && !a.null
   match m.fn with
-  | .count => ⟨false, some (Bound.ge (if valued then 1 else 0)), false, false, false, none, none⟩
+  | .count => ⟨false, some (Bound.ge (if valued then 1 else 0)), false, false, false, none, some .int⟩
   -- A sum is over at least one input (none: NULL), so with integer inputs
   -- it is at least the smallest one, if that is not negative.
   -- With at most `rows` rows, at most `rows` times the largest value (#470).
   | .sum => ⟨!valued, some (match a.int with
-      | some b => (if a.intsOnly then sumBoundPos b else sumBound b).meet
+      | some b => (if a.unscaledOnly then sumBoundPos b else sumBound b).meet
           (match rows with
             | some n => sumCap b n
             | none => Bound.top)
-      | none => Bound.top), false, false, false, none, none⟩
+      | none => Bound.top), false, false, false, none, sumKind a⟩
   -- Doubles round: within the proved error bound of the exact sum or mean
   -- when the values are finite and there are at most `rows` of them (#85).
   | .fsum => ⟨!valued,
-      some (if a.intsOnly then floatBound false (a.int.getD Bound.top) rows else Bound.top),
-      false, false, false, none, none⟩
+      some (if a.kindOnly .float then floatBound false (a.int.getD Bound.top) rows else Bound.top),
+      false, false, false, none, some .float⟩
   | .avg => ⟨!valued,
-      some (if a.intsOnly then floatBound true (a.int.getD Bound.top) rows else Bound.top),
-      false, false, false, none, none⟩
+      some (if a.kindOnly .float then floatBound true (a.int.getD Bound.top) rows else Bound.top),
+      false, false, false, none, some .float⟩
   -- Between the smallest and the largest value (`AggFn.iavg`, #237).
   | .iavg =>
-    ⟨!valued, some (if a.intsOnly then a.int.getD Bound.top else Bound.top), false, false, false, none, none⟩
+    ⟨!valued, some (if a.kindOnly .int then a.int.getD Bound.top else Bound.top), false, false, false,
+      none, some .int⟩
   | .cov _ | .corr => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
-  | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false, none, none⟩
-  | .bit _ => ⟨true, some Bound.top, false, false, false, none, none⟩
+  | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false, none, some .float⟩
+  | .bit _ => ⟨true, some Bound.top, false, false, false, none, some .int⟩
   | .min | .max => if valued then a else a.nullable
   -- One of the values, in the measure's order (#55).
   | .pick _ => a.nullable
@@ -6015,7 +6041,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   -- One of the values (#53).
   | .quantile false _ _ | .mode => a.nullable
   -- A double between two of the values: within the argument's interval.
-  | .quantile true _ _ => ⟨true, a.int, false, false, false, none, none⟩
+  | .quantile true _ _ => ⟨true, a.int, false, false, false, none, some .float⟩
   | .collect => AVal.top
   -- A black box's laws over values; its `empty` value without (#325).
   | .bbox n => BlackBox.aggAbs n valued
@@ -6029,8 +6055,8 @@ described like one over a group (`Measure.abs`); `FIRST_VALUE` and friends
 may be anything. -/
 def WinFn.abs (sz : Bool) (env : List AVal) : WinFn → AVal
   | .rowNumber | .rank _ | .denseRank _ | .ntile _ =>
-    ⟨false, some ⟨some 1, if sz then some Text.rowCap else none⟩, false, false, false, none, none⟩
-  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false, none, none⟩
+    ⟨false, some ⟨some 1, if sz then some Text.rowCap else none⟩, false, false, false, none, some .int⟩
+  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false, none, some .float⟩
   -- An aggregate over a frame, rows of the input: a sum of non-negative
   -- integers is not negative, `MIN` and `MAX` are among the inputs (#229).
   | .agg m _ _ => m.abs env []
@@ -6046,7 +6072,7 @@ def ratioFacts (g : Nat) (env : List AVal) (fs : List Fact) (ms : List Measure) 
     | some mi, some mj =>
       let a := mi.arg.absD env fs
       if mi.fn = .sum ∧ mj.fn = .count ∧ mj.arg = mi.arg ∧ mj.filter = mi.filter ∧
-          mj.distinct = mi.distinct ∧ a.intsOnly = true then
+          mj.distinct = mi.distinct ∧ a.unscaledOnly = true then
         match a.int with
         | some b => [.ratio (g + i) (g + j) b]
         | none => []
@@ -6315,23 +6341,35 @@ theorem EnvMem.nulls (env : List AVal) (m : Nat) :
   simp only [List.getElem?_map, List.getD_eq_getElem?_getD, List.getElem?_replicate]
   cases env[j]? <;> split <;> simp [AVal.top, AVal.nullable, AVal.Mem]
 
-theorem intSum_nonneg : ∀ {vs : List Value}, (∀ i, .int i ∈ vs → 0 ≤ i) → 0 ≤ intSum vs
-  | [], _ => by simp [intSum]
-  | .int i :: vs, h => by
-    have := intSum_nonneg (vs := vs) fun j hj => h j (List.mem_cons_of_mem _ hj)
-    have := h i (by simp); simp only [intSum]; omega
-  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h | .list _ :: vs, h => by
-    simp only [intSum]; exact intSum_nonneg fun j hj => h j (List.mem_cons_of_mem _ hj)
+theorem intSum_cons (v : Value) (vs : List Value) :
+    intSum (v :: vs) = v.unscaled?.getD 0 + intSum vs := by
+  cases v <;> simp [intSum]
 
-theorem intSum_nonpos : ∀ {vs : List Value}, (∀ i, .int i ∈ vs → i ≤ 0) → intSum vs ≤ 0
-  | [], _ => by simp [intSum]
-  | .int i :: vs, h => by
-    have := intSum_nonpos (vs := vs) fun j hj => h j (List.mem_cons_of_mem _ hj)
-    have := h i (by simp); simp only [intSum]; omega
-  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h | .list _ :: vs, h => by
-    simp only [intSum]; exact intSum_nonpos fun j hj => h j (List.mem_cons_of_mem _ hj)
+theorem sumOf_unscaled (vs : List Value) : (sumOf vs).unscaled? = some (intSum vs) := by
+  unfold sumOf; split <;> rfl
 
-theorem sumBound_sound {b : Bound} {vs : List Value} (h : ∀ i, .int i ∈ vs → b.Mem i) :
+theorem intSum_nonneg : ∀ {vs : List Value}, (∀ v ∈ vs, ∀ i, v.unscaled? = some i → 0 ≤ i) →
+    0 ≤ intSum vs
+  | [], _ => by simp [intSum]
+  | v :: vs, h => by
+    have := intSum_nonneg (vs := vs) fun w hw => h w (List.mem_cons_of_mem _ hw)
+    rw [intSum_cons]
+    cases hv : v.unscaled? with
+    | none => simp; omega
+    | some i => have := h v (by simp) i hv; simp; omega
+
+theorem intSum_nonpos : ∀ {vs : List Value}, (∀ v ∈ vs, ∀ i, v.unscaled? = some i → i ≤ 0) →
+    intSum vs ≤ 0
+  | [], _ => by simp [intSum]
+  | v :: vs, h => by
+    have := intSum_nonpos (vs := vs) fun w hw => h w (List.mem_cons_of_mem _ hw)
+    rw [intSum_cons]
+    cases hv : v.unscaled? with
+    | none => simp; omega
+    | some i => have := h v (by simp) i hv; simp; omega
+
+theorem sumBound_sound {b : Bound} {vs : List Value}
+    (h : ∀ v ∈ vs, ∀ i, v.unscaled? = some i → b.Mem i) :
     (sumBound b).Mem (intSum vs) := by
   constructor
   · intro l hl
@@ -6340,7 +6378,7 @@ theorem sumBound_sound {b : Bound} {vs : List Value} (h : ∀ i, .int i ∈ vs �
     | some l₀ =>
       simp only [sumBound, hb, Option.bind_some] at hl
       split at hl
-      · cases hl; exact intSum_nonneg fun i hi => by have := (h i hi).1 l₀ hb; omega
+      · cases hl; exact intSum_nonneg fun v hv i hi => by have := (h v hv i hi).1 l₀ hb; omega
       · cases hl
   · intro u hu
     cases hb : b.hi with
@@ -6348,15 +6386,16 @@ theorem sumBound_sound {b : Bound} {vs : List Value} (h : ∀ i, .int i ∈ vs �
     | some h₀ =>
       simp only [sumBound, hb, Option.bind_some] at hu
       split at hu
-      · cases hu; exact intSum_nonpos fun i hi => by have := (h i hi).2 h₀ hb; omega
+      · cases hu; exact intSum_nonpos fun v hv i hi => by have := (h v hv i hi).2 h₀ hb; omega
       · cases hu
 
 theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
-    (h : ∀ w ∈ v :: vs, ∃ i, w = .int i ∧ b.Mem i) : (sumBoundPos b).Mem (intSum (v :: vs)) := by
-  obtain ⟨i, rfl, hi⟩ := h v (by simp)
-  have hrest : ∀ j, .int j ∈ vs → b.Mem j := fun j hj => by
-    obtain ⟨j', hj', hm⟩ := h (.int j) (by simp [hj]); cases hj'; exact hm
-  simp only [intSum]
+    (h : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i) :
+    (sumBoundPos b).Mem (intSum (v :: vs)) := by
+  obtain ⟨i, hv, hi⟩ := h v (by simp)
+  have hrest : ∀ w ∈ vs, ∀ j, w.unscaled? = some j → b.Mem j := fun w hw j hj => by
+    obtain ⟨j', hj', hm⟩ := h w (by simp [hw]); rw [hj] at hj'; cases hj'; exact hm
+  rw [intSum_cons, hv, Option.getD_some]
   constructor
   · intro l hl
     cases hb : b.lo with
@@ -6366,7 +6405,8 @@ theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
       split at hl
       · simp only [Option.some.injEq] at hl; subst hl
         have := hi.1 l₀ hb
-        have := intSum_nonneg (vs := vs) fun j hj => by have := (hrest j hj).1 l₀ hb; omega
+        have := intSum_nonneg (vs := vs) fun w hw j hj => by
+          have := (hrest w hw j hj).1 l₀ hb; omega
         omega
       · cases hl
   · intro u hu
@@ -6377,13 +6417,14 @@ theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
       split at hu
       · simp only [Option.some.injEq] at hu; subst hu
         have := hi.2 h₀ hb
-        have := intSum_nonpos (vs := vs) fun j hj => by have := (hrest j hj).2 h₀ hb; omega
+        have := intSum_nonpos (vs := vs) fun w hw j hj => by
+          have := (hrest w hw j hj).2 h₀ hb; omega
         omega
       · cases hu
 
 theorem sumCap_sound {b : Bound} :
-    ∀ {vs : List Value} {n : Nat}, (∀ i, .int i ∈ vs → b.Mem i) → vs.length ≤ n →
-      (sumCap b n).Mem (intSum vs)
+    ∀ {vs : List Value} {n : Nat}, (∀ v ∈ vs, ∀ i, v.unscaled? = some i → b.Mem i) →
+      vs.length ≤ n → (sumCap b n).Mem (intSum vs)
   | [], _, _, _ => by
     constructor
     · intro l hl; simp only [sumCap, Option.map_eq_some_iff] at hl
@@ -6391,7 +6432,8 @@ theorem sumCap_sound {b : Bound} :
     · intro u hu; simp only [sumCap, Option.map_eq_some_iff] at hu
       obtain ⟨_, _, rfl⟩ := hu; simp [intSum]; omega
   | v :: vs, n, h, hlen => by
-    have hrest : ∀ i, .int i ∈ vs → b.Mem i := fun i hi => h i (List.mem_cons_of_mem _ hi)
+    have hrest : ∀ w ∈ vs, ∀ i, w.unscaled? = some i → b.Mem i :=
+      fun w hw => h w (List.mem_cons_of_mem _ hw)
     obtain ⟨n', rfl⟩ : ∃ n', n = n' + 1 := ⟨n - 1, by simp at hlen; omega⟩
     have hlen' : vs.length ≤ n' := by simp at hlen; omega
     have hlen'' : vs.length ≤ n' + 1 := by omega
@@ -6409,11 +6451,10 @@ theorem sumCap_sound {b : Bound} :
       have hs1 : 0 ≤ l₀ → 0 ≤ (n' : Int) * l₀ := fun h0 => Int.mul_nonneg (by omega) h0
       have hs2 : l₀ ≤ 0 → (n' : Int) * l₀ ≤ 0 := fun h0 =>
         Int.mul_nonpos_of_nonneg_of_nonpos (by omega) h0
-      cases v with
-      | int i =>
-        have := (h i (by simp)).1 l₀ hb
-        simp only [intSum]; omega
-      | _ => simp only [intSum]; omega
+      rw [intSum_cons]
+      cases hv : v.unscaled? with
+      | some i => have := (h v (by simp) i hv).1 l₀ hb; simp only [Option.getD_some]; omega
+      | none => simp only [Option.getD_none]; omega
     · intro u hu
       simp only [sumCap, Option.map_eq_some_iff] at hu
       obtain ⟨h₀, hb, rfl⟩ := hu
@@ -6424,21 +6465,82 @@ theorem sumCap_sound {b : Bound} :
       have hs1 : 0 ≤ h₀ → 0 ≤ (n' : Int) * h₀ := fun h0 => Int.mul_nonneg (by omega) h0
       have hs2 : h₀ ≤ 0 → (n' : Int) * h₀ ≤ 0 := fun h0 =>
         Int.mul_nonpos_of_nonneg_of_nonpos (by omega) h0
-      cases v with
-      | int i =>
-        have := (h i (by simp)).2 h₀ hb
-        simp only [intSum]; omega
-      | _ => simp only [intSum]; omega
+      rw [intSum_cons]
+      cases hv : v.unscaled? with
+      | some i => have := (h v (by simp) i hv).2 h₀ hb; simp only [Option.getD_some]; omega
+      | none => simp only [Option.getD_none]; omega
 
-theorem AVal.intsOnly_mem {a : AVal} (ho : a.intsOnly = true) {v : Value} (hm : a.Mem v)
-    (hn : v ≠ .null) : ∃ i b, v = .int i ∧ a.int = some b ∧ b.Mem i := by
-  simp only [AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at ho
-  obtain ⟨⟨htt, hff⟩, hstr⟩ := ho
-  match v, hm with
-  | .null, _ => exact absurd rfl hn
-  | .int i, ⟨b, hb, hi⟩ => exact ⟨i, b, rfl, hb, hi⟩
-  | .bool true, hm | .bool false, hm | .str _, hm => simp_all [AVal.Mem]
-  | .list _, hm => simp_all [AVal.Mem]
+/-- An integer or a decimal `a` holds is in `a`'s interval. -/
+theorem AVal.mem_unscaled {a : AVal} {v : Value} {i : Int} {b : Bound} (hm : a.Mem v)
+    (ha : a.int = some b) (hv : v.unscaled? = some i) : b.Mem i := by
+  cases v <;> simp only [Value.unscaled?, Option.some.injEq, reduceCtorEq] at hv <;> subst hv <;>
+    obtain ⟨b', hb', hm', -⟩ := hm <;> rw [ha] at hb' <;> cases hb' <;> exact hm'
+
+theorem AVal.kindOnly_mem {a : AVal} {k : NumKind} (ho : a.kindOnly k = true) {v : Value}
+    (hm : a.Mem v) (hn : v ≠ .null) : ∃ i b, v = k.val i ∧ a.int = some b ∧ b.Mem i := by
+  simp only [AVal.kindOnly, AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at ho
+  obtain ⟨⟨⟨htt, hff⟩, hstr⟩, hk⟩ := ho
+  rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k', i, b, rfl, hb, hi, hk'⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ |
+      ⟨_, rfl, h, _⟩ | ⟨_, _, h, _, _⟩
+  · exact absurd rfl hn
+  · rw [hk] at hk'; simp only [Option.all_some, beq_iff_eq] at hk'; subst hk'
+    exact ⟨i, b, rfl, hb, hi⟩
+  all_goals simp_all
+
+theorem AVal.unscaledOnly_mem {a : AVal} (ho : a.unscaledOnly = true) {v : Value} (hm : a.Mem v)
+    (hn : v ≠ .null) : ∃ i b, v.unscaled? = some i ∧ a.int = some b ∧ b.Mem i := by
+  simp only [AVal.unscaledOnly, AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at ho
+  obtain ⟨⟨⟨htt, hff⟩, hstr⟩, hk⟩ := ho
+  rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k, i, b, rfl, hb, hi, hk'⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ |
+      ⟨_, rfl, h, _⟩ | ⟨_, _, h, _, _⟩
+  · exact absurd rfl hn
+  · refine ⟨i, b, ?_, hb, hi⟩
+    cases hnk : a.nk with
+    | none => simp [hnk] at hk
+    | some k' =>
+      rw [hnk] at hk hk'
+      simp only [Option.all_some, beq_iff_eq] at hk'
+      subst hk'
+      cases k' <;> simp_all [NumKind.val]
+  all_goals simp_all
+
+/-- A `SUM` is an integer, or a decimal of its inputs' scale (`sumOf`). -/
+theorem sumOf_mem {a : AVal} {v : Value} {vs : List Value} {n : Bool} {B : Bound}
+    (hm : a.Mem v) (hn : v ≠ .null) (hB : B.Mem (intSum (v :: vs))) :
+    (AVal.mk n (some B) false false false none (sumKind a)).Mem (sumOf (v :: vs)) := by
+  rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k, i, b, rfl, -, -, hk⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ |
+      ⟨_, rfl, hs, _⟩ | ⟨_, rfl | rfl, ht, hf, hs⟩
+  · exact absurd rfl hn
+  · cases hnk : a.nk with
+    | none => cases k <;> simp_all [sumKind, sumOf, NumKind.val, AVal.Mem, AVal.MemNum]
+    | some k' =>
+      simp only [hnk, Option.all_some, beq_iff_eq] at hk
+      subst hk
+      cases k' <;> simp only [sumKind, hnk, sumOf, NumKind.val] at hB ⊢ <;> (try split) <;>
+        simp_all [AVal.Mem, AVal.MemNum]
+  all_goals
+    cases hnk : a.nk with
+    | none => simp_all [sumKind, sumOf, AVal.Mem, AVal.MemNum]
+    | some k' =>
+      cases k' <;> simp only [sumKind, hnk, sumOf] <;> (try split) <;>
+        simp_all [AVal.Mem, AVal.MemNum, AVal.intsOnly]
+
+/-- The doubles among `vs`. -/
+def floatsOf (vs : List Value) : List Int := vs.filterMap fun | .float c => some c | _ => none
+
+theorem mem_floatsOf {vs : List Value} {c : Int} : c ∈ floatsOf vs ↔ .float c ∈ vs := by
+  simp only [floatsOf, List.mem_filterMap]
+  constructor
+  · rintro ⟨v, hv, h⟩; cases v <;> simp_all
+  · intro h; exact ⟨_, h, rfl⟩
+
+theorem floats_map_floatsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .float i) →
+    vs = (floatsOf vs).map .float
+  | [], _ => rfl
+  | v :: vs, h => by
+    obtain ⟨i, rfl⟩ := h v (by simp)
+    simp only [floatsOf, List.filterMap_cons, List.map_cons]
+    exact congrArg _ (floats_map_floatsOf fun w hw => h w (by simp [hw]))
 
 theorem Bound.mem_between {b : Bound} {l h r : Int} (hl : b.Mem l) (hh : b.Mem h) (hlr : l ≤ r)
     (hrh : r ≤ h) : b.Mem r :=
@@ -6486,7 +6588,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   case concat sep =>
     cases m.inputs (List.mergeSort grp (sortLe m.sort)) <;> simp [AggFn.apply, AVal.Mem]
   case count =>
-    refine ⟨_, rfl, fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩
+    refine ⟨_, rfl, ⟨fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩, rfl⟩
     simp only [Bound.ge, Option.some.injEq] at hl
     subst hl
     split
@@ -6507,102 +6609,96 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       exact Measure.inputs_ne_nil hall (hne hg) hfi hn hvs
     | cons v vs =>
       simp only [AggFn.apply]
-      refine ⟨_, rfl, ?_⟩
+      have hv0 : v ∈ m.inputs grp := hvs ▸ List.mem_cons_self ..
+      refine sumOf_mem (hin v hv0) (inputs_ne_null hv0) ?_
       cases ha : (m.arg.absD env fs).int with
       | none => exact Bound.mem_top _
       | some b =>
+        have hun : ∀ w ∈ v :: vs, ∀ i, w.unscaled? = some i → b.Mem i := fun w hw i hi =>
+          AVal.mem_unscaled (hin w (hvs ▸ hw)) ha hi
         simp only
         refine Bound.mem_meet ?_ ?cap
         case cap =>
           cases rows with
           | none => exact Bound.mem_top _
           | some n =>
-            refine sumCap_sound (fun i hi => ?_) ?_
-            · obtain ⟨b', hb', hm⟩ := hin (.int i) (hvs ▸ hi)
-              rw [ha] at hb'; cases hb'; exact hm
-            · rw [← hvs]
-              exact Nat.le_trans (Measure.inputs_length_le m grp) (hrows n rfl)
+            refine sumCap_sound hun ?_
+            rw [← hvs]
+            exact Nat.le_trans (Measure.inputs_length_le m grp) (hrows n rfl)
         split
-        · -- Every input is an integer in `b`.
+        · -- Every input is an integer or a decimal in `b`.
           rename_i honly
-          simp only [AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at honly
           refine sumBoundPos_sound fun w hw => ?_
-          have hm := hin w (hvs ▸ hw)
-          have hnn : w ≠ .null := by
-            have : w ∈ m.inputs grp := hvs ▸ hw
-            simp only [Measure.inputs] at this
-            split at this <;> simp_all [mem_dedup]
-          rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨i, b', rfl, hb', hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ |
-              ⟨_, rfl, hs⟩ | ⟨_, rfl, ht, _, _⟩
-          · exact absurd rfl hnn
-          · rw [ha] at hb'; cases hb'; exact ⟨i, rfl, hi⟩
-          all_goals simp_all
-        · refine sumBound_sound fun i hi => ?_
-          have := hin (.int i) (hvs ▸ hi)
-          obtain ⟨b', hb', hm⟩ := this
-          rw [ha] at hb'; cases hb'; exact hm
+          obtain ⟨i, b', hi, hb', hm⟩ :=
+            AVal.unscaledOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
+          rw [ha] at hb'; cases hb'; exact ⟨i, hi, hm⟩
+        · exact sumBound_sound hun
   case cov sample =>
     simp only [AggFn.apply]
     cases m.inputs grp with
     | nil => rfl
-    | cons v vs => simp only [covOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+    | cons v vs => simp only [covOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _, rfl⟩
   case corr =>
     cases m.inputs grp with
     | nil => rfl
     | cons v vs =>
-      simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+      simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _, rfl⟩
   case bit =>
-    cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+    cases m.inputs grp <;> simp only [AggFn.apply] <;>
+      first | rfl | exact ⟨_, rfl, Bound.mem_top _, rfl⟩
   case fsum =>
     cases hvs : m.inputs grp with
     | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
     | cons v vs =>
-      refine ⟨_, rfl, ?_⟩
+      refine ⟨_, rfl, ?_, rfl⟩
       split
       · rename_i honly
-        have hint : ∀ w ∈ v :: vs, ∃ i b, w = .int i ∧ (m.arg.absD env fs).int = some b ∧ b.Mem i :=
-          fun w hw => AVal.intsOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
-        have hcs : v :: vs = (intsOf (v :: vs)).map .int := ints_map_intsOf fun w hw => by
+        have hint : ∀ w ∈ v :: vs, ∃ i b, w = .float i ∧ (m.arg.absD env fs).int = some b ∧
+            b.Mem i :=
+          fun w hw => AVal.kindOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
+        have hcs : v :: vs = (floatsOf (v :: vs)).map .float := floats_map_floatsOf fun w hw => by
           obtain ⟨i, _, rfl, _⟩ := hint w hw; exact ⟨i, rfl⟩
-        have hne' : intsOf (v :: vs) ≠ [] := by
+        have hne' : floatsOf (v :: vs) ≠ [] := by
           intro h; rw [h] at hcs; simp at hcs
-        have hb : ∀ c ∈ intsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
+        have hb : ∀ c ∈ floatsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
           intro c hc
-          obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_intsOf.1 hc)
+          obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_floatsOf.1 hc)
           cases he; rw [hb]; exact hm
-        have hlen : ∀ n, rows = some n → (intsOf (v :: vs)).length ≤ n := by
+        have hlen : ∀ n, rows = some n → (floatsOf (v :: vs)).length ≤ n := by
           intro n hn
           have := hrows n hn
-          have h1 : (intsOf (v :: vs)).length = (v :: vs).length := by
+          have h1 : (floatsOf (v :: vs)).length = (v :: vs).length := by
             conv => rhs; rw [hcs]
             simp
           have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := false) hne' hb hlen
-        have e : floatSum (v :: vs) = floatSum ((intsOf (v :: vs)).map .int) := congrArg floatSum hcs
+        have e : floatSum (v :: vs) = floatSum ((floatsOf (v :: vs)).map .float) :=
+          congrArg floatSum hcs
         rw [e]; simpa using key
       · exact Bound.mem_top _
   case avg =>
     cases hvs : m.inputs grp with
     | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
     | cons v vs =>
-      refine ⟨_, rfl, ?_⟩
+      refine ⟨_, rfl, ?_, rfl⟩
       split
       · rename_i honly
-        have hint : ∀ w ∈ v :: vs, ∃ i b, w = .int i ∧ (m.arg.absD env fs).int = some b ∧ b.Mem i :=
-          fun w hw => AVal.intsOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
-        have hcs : v :: vs = (intsOf (v :: vs)).map .int := ints_map_intsOf fun w hw => by
+        have hint : ∀ w ∈ v :: vs, ∃ i b, w = .float i ∧ (m.arg.absD env fs).int = some b ∧
+            b.Mem i :=
+          fun w hw => AVal.kindOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
+        have hcs : v :: vs = (floatsOf (v :: vs)).map .float := floats_map_floatsOf fun w hw => by
           obtain ⟨i, _, rfl, _⟩ := hint w hw; exact ⟨i, rfl⟩
-        have hne' : intsOf (v :: vs) ≠ [] := by
+        have hne' : floatsOf (v :: vs) ≠ [] := by
           intro h; rw [h] at hcs; simp at hcs
-        have hb : ∀ c ∈ intsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
+        have hb : ∀ c ∈ floatsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
           intro c hc
-          obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_intsOf.1 hc)
+          obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_floatsOf.1 hc)
           cases he; rw [hb]; exact hm
-        have hlen : ∀ n, rows = some n → (intsOf (v :: vs)).length ≤ n := by
+        have hlen : ∀ n, rows = some n → (floatsOf (v :: vs)).length ≤ n := by
           intro n hn
           have := hrows n hn
-          have h1 : (intsOf (v :: vs)).length = (v :: vs).length := by
+          have h1 : (floatsOf (v :: vs)).length = (v :: vs).length := by
             conv => rhs; rw [hcs]
             simp
           have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
@@ -6620,7 +6716,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       · rename_i honly
         -- Every value is an integer in the argument's interval `b`.
         have hint : ∀ w ∈ v :: vs, ∃ i b, w = .int i ∧ (m.arg.absD env fs).int = some b ∧ b.Mem i :=
-          fun w hw => AVal.intsOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
+          fun w hw => AVal.kindOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
         obtain ⟨i₀, b, rfl, hb, -⟩ := hint v (List.mem_cons_self ..)
         obtain ⟨r, hr, ⟨l, hl, hlr⟩, ⟨h, hh, hrh⟩⟩ := AggFn.apply_iavg_between
           (vs := .int i₀ :: vs) (List.ne_nil_of_mem (mem_intsOf.2 (List.mem_cons_self ..)))
@@ -6628,8 +6724,9 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
         have memb : ∀ c ∈ intsOf (.int i₀ :: vs), b.Mem c := fun c hc => by
           obtain ⟨_, b', he, hb', hm⟩ := hint _ (mem_intsOf.1 hc)
           cases he; rw [hb] at hb'; cases hb'; exact hm
-        refine ⟨b, by simp [hb], Bound.mem_between (memb l hl) (memb h hh) hlr hrh⟩
-      · exact ⟨_, rfl, Bound.mem_top _⟩
+        refine ⟨b, by simp [hb], Bound.mem_between (memb l hl) (memb h hh) hlr hrh, rfl⟩
+      · obtain ⟨r, hr, -⟩ : ∃ r, AggFn.iavg.apply (v :: vs) = .int r ∧ True := ⟨_, rfl, trivial⟩
+        rw [hr]; exact ⟨_, rfl, Bound.mem_top _, rfl⟩
   case var sample sqrt =>
     cases m.inputs grp with
     | nil => rfl
@@ -6637,7 +6734,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       simp only [AggFn.apply, varOf]
       split
       · rfl
-      · exact ⟨_, rfl, fun l hl => by cases hl; omega, fun h hh => by cases hh⟩
+      · exact ⟨_, rfl, ⟨fun l hl => by cases hl; omega, fun h hh => by cases hh⟩, rfl⟩
   case min | max =>
     split
     · -- A group with a value: one of the values.
@@ -6679,24 +6776,24 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     · rcases AggFn.apply_cont num scale (m.inputs grp) with h | ⟨c, l, h, hc, hl, hh, hb⟩
       · rw [h]; rfl
       · rw [hc]
-        obtain ⟨b, hb1, hlb⟩ := hin _ hl
-        obtain ⟨b', hb2, hhb⟩ := hin _ hh
+        obtain ⟨b, hb1, hlb, -⟩ := hin _ hl
+        obtain ⟨b', hb2, hhb, -⟩ := hin _ hh
         rw [hb1] at hb2; cases hb2
-        refine ⟨b, hb1, ?_⟩
+        refine ⟨b, hb1, ?_, rfl⟩
         rcases hb with rfl | rfl | ⟨h1, h2⟩
         · exact hlb
         · exact hhb
         · exact Bound.mem_between hlb hhb h1 h2
 
 theorem intSum_bounds {b : Bound} :
-    ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .int i ∧ b.Mem i) →
+    ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w.unscaled? = some i ∧ b.Mem i) →
       (∀ l, b.lo = some l → vs.length * l ≤ intSum vs) ∧
         (∀ h, b.hi = some h → intSum vs ≤ vs.length * h)
   | [], _ => by simp [intSum]
   | w :: ws, hall => by
-    obtain ⟨i, rfl, hi⟩ := hall w (List.mem_cons_self ..)
+    obtain ⟨i, hw, hi⟩ := hall w (List.mem_cons_self ..)
     have ih := intSum_bounds (vs := ws) fun w hw => hall w (List.mem_cons_of_mem _ hw)
-    simp only [intSum, List.length_cons]
+    rw [intSum_cons, hw, Option.getD_some, List.length_cons]
     constructor
     · intro l hl
       have := hi.1 l hl; have := ih.1 l hl
@@ -6735,14 +6832,16 @@ theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List
         | nil => rw [hvs] at hx; simp [AggFn.apply] at hx
         | cons v vs =>
           rw [hvs] at hx hn
-          simp only [AggFn.apply, Value.int.injEq] at hx hn
+          simp only [AggFn.apply] at hx hn
+          rw [sumOf_unscaled] at hx
+          simp only [Value.unscaled?, Option.some.injEq] at hx hn
           subst hx hn
-          have hint : ∀ w ∈ v :: vs, ∃ i, w = .int i ∧ b.Mem i := by
+          have hint : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i := by
             intro w hw
             have hw' : w ∈ mi.inputs grp := hvs ▸ hw
             obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hw'
             have hm := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) mi.arg
-            obtain ⟨i, b', he, hb', hi⟩ := AVal.intsOnly_mem honly hm hnn
+            obtain ⟨i, b', he, hb', hi⟩ := AVal.unscaledOnly_mem honly hm hnn
             rw [hb] at hb'; cases hb'
             exact ⟨i, he, hi⟩
           obtain ⟨hlo, hhi⟩ := intSum_bounds hint
@@ -6766,20 +6865,20 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
     (hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem env y) {sz : Bool}
     (hn : sz = true → b.length + 1 + a.length < 2 ^ 62) :
     ∀ f : WinFn, (f.abs sz env).Mem (f.value part b a x)
-  | .rowNumber => ⟨_, rfl, by
+  | .rowNumber => AVal.memInt_intro rfl rfl <| by
       have := List.length_filter_le (samePart part x) b
       simp only [Bound.Mem, Text.rowCap, Option.some.injEq]
       exact ⟨fun l hl => by subst hl; omega, fun u hu => by
         cases sz <;> simp at hu
-        subst hu; have := hn rfl; omega⟩⟩
-  | .rank _ => ⟨_, rfl, by
+        subst hu; have := hn rfl; omega⟩
+  | .rank _ => AVal.memInt_intro rfl rfl <| by
       have h1 := List.length_filter_le (samePart part x) b
       have h2 := List.length_filter_le (fun y => !peer ‹List SortKey› x y) (b.filter (samePart part x))
       simp only [Bound.Mem, Text.rowCap, Option.some.injEq]
       exact ⟨fun l hl => by subst hl; omega, fun u hu => by
         cases sz <;> simp at hu
-        subst hu; have := hn rfl; omega⟩⟩
-  | .denseRank sort => ⟨_, rfl, by
+        subst hu; have := hn rfl; omega⟩
+  | .denseRank sort => AVal.memInt_intro rfl rfl <| by
       have h1 := List.length_filter_le (samePart part x) b
       have h2 := List.length_filter_le (fun y => !peer sort x y) (b.filter (samePart part x))
       have h3 := dedup_length_le (((b.filter (samePart part x)).filter fun y => !peer sort x y).map
@@ -6788,8 +6887,8 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
       simp only [Bound.Mem, Text.rowCap, Option.some.injEq]
       exact ⟨fun l hl => by subst hl; omega, fun u hu => by
         cases sz <;> simp at hu
-        subst hu; have := hn rfl; omega⟩⟩
-  | .ntile k => ⟨_, rfl, by
+        subst hu; have := hn rfl; omega⟩
+  | .ntile k => AVal.memInt_intro rfl rfl <| by
       simp only [Bound.Mem, Option.some.injEq, Text.rowCap]
       have h1 := List.length_filter_le (samePart part x) b
       have h2 := List.length_filter_le (samePart part x) a
@@ -6800,11 +6899,11 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
       refine ⟨fun l hl => ?_, fun u hu => ?_⟩
       · subst hl; omega
       · cases sz <;> simp at hu
-        subst hu; have := hn rfl; omega⟩
+        subst hu; have := hn rfl; omega
   | .percentRank _ => by
       simp only [WinFn.abs, WinFn.value, WinFn.valueIn, floatRatio]
-      split <;> exact ⟨_, rfl, Bound.mem_top _⟩
-  | .cumeDist _ => ⟨_, rfl, Bound.mem_top _⟩
+      split <;> exact ⟨_, rfl, Bound.mem_top _, rfl⟩
+  | .cumeDist _ => ⟨_, rfl, Bound.mem_top _, rfl⟩
   | .agg m sort fr => by
       simp only [WinFn.abs, WinFn.value, WinFn.valueIn]
       refine Measure.abs_sound (fun y hy => ⟨?_, by simp [FactsHold]⟩) m
