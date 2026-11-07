@@ -18,6 +18,7 @@ open Substrait
 local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftDuckDB.divInt_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.bigint x →
     Substrait.DuckType.Has Substrait.DuckType.bigint y →
@@ -96,6 +97,7 @@ abbrev Substrait.liftDuckDB.divInt : Substrait.LiftEntry Substrait.Semantics.duc
   ((Lean.Json.parse (Substrait.liftDuckDB.divInt).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.divInt).tmpl
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftDuckDB.divDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →
@@ -184,6 +186,7 @@ abbrev Substrait.liftDuckDB.divDouble : Substrait.LiftEntry Substrait.Semantics.
   ((Lean.Json.parse (Substrait.liftDuckDB.divDouble).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.divDouble).tmpl
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftDuckDB.modDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →
@@ -236,6 +239,7 @@ abbrev Substrait.liftDuckDB.modDouble : Substrait.LiftEntry Substrait.Semantics.
   ((Lean.Json.parse (Substrait.liftDuckDB.modDouble).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.modDouble).tmpl
 
+set_option maxHeartbeats 400000 in
 theorem Substrait.liftDuckDB.power_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →

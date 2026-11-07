@@ -569,6 +569,8 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
       type := entryTy, value := entry }
     if let some out := sink then
       out.modify (·.push (areaOf k.ctor,
+        -- The check elaborates the statement too: twice the search's budget.
+        "set_option maxHeartbeats 400000 in\n" ++
         s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_tac{n}\n\n" ++
         s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource entryTy} :=\n" ++
         s!"  ⟨{repr j.compress}, {← LoweringSearch.ppSource tmpl},\n" ++
