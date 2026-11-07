@@ -884,6 +884,12 @@ class Dialect:
         """`days` days, as a RANGE offset over a DATE."""
         return f"INTERVAL '{days}' DAY"
 
+    def window_float_sum(self, v: str, over: str) -> str:
+        """`floatSumCR` of the frame's doubles (D25): the engine's own `SUM`,
+        within the plan's bound where its window algorithm sums the frame's
+        own values (`window_sum_algo`, #1032)."""
+        return f"SUM({v}) {over}"
+
     def window_int_sum(self, v: str, over: str) -> str:
         """`SUM` of BIGINTs over a frame; must raise where it leaves 64 bits."""
         raise Unsupported(f"{self.name}: window sums are not implemented")
@@ -4225,9 +4231,10 @@ class _Writer:
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 return self.window_var(m.fn, v, w)
             case "fsum" | "avg":
-                # The engine's own `SUM` (D25). A window's column has no
-                # bound yet, so a run is tested (#1032).
-                total = f"SUM({v}) {w}"
+                # The engine's own `SUM` (D25): within the plan's bound of
+                # `floatSumCR` for the input's row cap, each frame being some
+                # of its rows (`Epsilon.winSrcs`, #1032).
+                total = d.window_float_sum(v, w)
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
                 total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)

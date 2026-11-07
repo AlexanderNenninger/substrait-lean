@@ -414,6 +414,41 @@ theorem StdModel.TreeSum.grid_error (hg : M.Grid) {xs : List ℝ} {s : ℝ} (h :
   unfold Rnd.Near at this
   rwa [hm] at this
 
+/-- **A tree sum keeps the sign** (#1045): every `SUM` order the engines'
+`sum_order` rows name but Kahan's (`SEQUENTIAL`, `ANY`, `PAIRWISE`,
+`SCALED_CONSTANT`) gives a result `≥ 0` of values `≥ 0`, and `≤ 0` of values
+`≤ 0`, since rounding is monotone with `fl 0 = 0`. So a postcondition that
+reads only a column's sign holds on such an engine's value as on the
+reference's (`floatSumCR_sign`). -/
+theorem StdModel.TreeSum.sign {xs : List ℝ} {s : ℝ} (h : M.TreeSum xs s) :
+    ((∀ x ∈ xs, 0 ≤ x) → 0 ≤ s) ∧ ((∀ x ∈ xs, x ≤ 0) → s ≤ 0) := by
+  induction h with
+  | seq hp =>
+    exact ⟨fun hx => M.sumFrom_nonneg le_rfl fun y hy => hx y (hp.subset hy),
+      fun hx => M.sumFrom_nonpos le_rfl fun y hy => hx y (hp.subset hy)⟩
+  | split hp _ _ iha ihb =>
+    refine ⟨fun hx => M.nonneg _ (add_nonneg (iha.1 fun y hy => hx y ?_)
+        (ihb.1 fun y hy => hx y ?_)), fun hx => M.nonpos _ (add_nonpos
+        (iha.2 fun y hy => hx y ?_) (ihb.2 fun y hy => hx y ?_))⟩ <;>
+      exact hp.symm.subset (by simp [hy])
+  | const k x =>
+    refine ⟨fun hx => ?_, fun hx => ?_⟩
+    · rcases Nat.eq_zero_or_pos k with rfl | hk
+      · simp [M.zero]
+      · exact M.nonneg _ (mul_nonneg (Nat.cast_nonneg k)
+          (hx x (List.mem_replicate.mpr ⟨by omega, rfl⟩)))
+    · rcases Nat.eq_zero_or_pos k with rfl | hk
+      · simp [M.zero]
+      · exact M.nonpos _ (mul_nonpos_of_nonneg_of_nonpos (Nat.cast_nonneg k)
+          (hx x (List.mem_replicate.mpr ⟨by omega, rfl⟩)))
+
+/-- **An average of a tree sum keeps the sign**: `fl(s / n)` with `s` a tree
+sum (`TreeSum.sign`) and `n > 0`. -/
+theorem StdModel.TreeSum.avg_sign {xs : List ℝ} {s : ℝ} (h : M.TreeSum xs s) (n : ℕ) :
+    ((∀ x ∈ xs, 0 ≤ x) → 0 ≤ M.fl (s / n)) ∧ ((∀ x ∈ xs, x ≤ 0) → M.fl (s / n) ≤ 0) :=
+  ⟨fun hx => M.nonneg _ (div_nonneg ((h.sign M).1 hx) (Nat.cast_nonneg n)),
+    fun hx => M.nonpos _ (div_nonpos_of_nonpos_of_nonneg ((h.sign M).2 hx) (Nat.cast_nonneg n))⟩
+
 end FloatBounds
 
 end

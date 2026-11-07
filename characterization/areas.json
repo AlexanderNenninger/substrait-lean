@@ -101,6 +101,7 @@
       "id": "windows",
       "items": [
         {"id": "ntile_spread", "kind": "option", "question": "How `NTILE` spreads the remainder."},
+        {"id": "window_sum_algo", "kind": "option", "question": "How a windowed double `SUM`, `AVG` sums its frame: anew, a tree, a running sum, or adding and subtracting as the frame slides."},
         {"id": "default_window_frame", "kind": "extra", "question": "The frame when none is given, with and without an order; rank functions over ties and NULLs."}
       ]
     },

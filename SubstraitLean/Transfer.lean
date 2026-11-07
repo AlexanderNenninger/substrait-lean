@@ -72,8 +72,14 @@ def joinReads : List Read := keyReads ++ [("rel.join", "null_join_keys", [])]
 
 /-- A window function's options: its aggregate's, as a grouped aggregate meets them. -/
 def WinFn.reads : WinFn → List Read
-  | .agg m _ _ => m.reads
+  | .agg m _ _ => m.reads ++
+    if m.fn = .fsum ∨ m.fn = .avg then [("win.agg", "window_sum_algo", [])] else []
   | _ => []
+
+/-- A window's own options: its functions', its sort keys' and, where it
+partitions, the keys' comparison. -/
+def windowReads (part : List Nat) (sort : List SortKey) (fns : List WinFn) : List Read :=
+  fns.flatMap WinFn.reads ++ sortReads sort ++ if part.isEmpty then [] else keyReads
 
 /-- The calls of a plan's expressions. -/
 def Rel.ctors : Rel → List Ctor
@@ -91,7 +97,7 @@ def Rel.reads : Rel → List Read
   | .filter r c => r.reads ++ c.reads
   | .project r es => r.reads ++ es.flatMap Expr.reads
   | .emit r _ | .fetch r _ _ | .unnest r _ => r.reads
-  | .window r _ _ fns => r.reads ++ fns.flatMap WinFn.reads
+  | .window r part sort fns => r.reads ++ windowReads part sort fns
   | .distinct r => r.reads ++ keyReads
   | .orderBy r keys => r.reads ++ sortReads keys
   | .cross a b | .unionAll a b => a.reads ++ b.reads
@@ -441,6 +447,30 @@ theorem aggAllowedP.monoOn {I : Impl} {gs : List Expr} {ms : List Measure}
   · exact Forall2.imp fun _ _ ⟨vs, hrow, hv⟩ =>
       ⟨vs, hrow, Forall2.imp_mem (fun m hmem v => hm m hmem _ v) hv⟩
 
+theorem WinFn.AllowedP.monoOn {f : WinFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {pb : List Row} {x : Row}
+    {pa : List Row} {v : Value} : f.AllowedP t pb x pa v → f.AllowedP u pb x pa v := by
+  cases f with
+  | agg m sort fr =>
+    simp only [WinFn.AllowedP]
+    split
+    · refine Or.imp (Measure.AllowedP.monoOn fun p hp => h p ?_) fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
+      · exact List.mem_append_left _ hp
+      · have hp : ("win.agg", "window_sum_algo", ([] : List String)) ∈ (WinFn.agg m sort fr).reads := by
+          simp only [WinFn.reads, List.mem_append]
+          exact .inr (by simp only [hf, ↓reduceIte]; exact List.mem_singleton_self _)
+        exact ProfileTable.LeAt.mem (h _ hp) (by simp [aggInterpreted]) hb
+    · exact id
+  | _ => simp only [WinFn.AllowedP]; exact id
+
+theorem windowRowsP.monoOn {part : List Nat} {fns : List WinFn}
+    (h : ∀ p ∈ fns.flatMap WinFn.reads, t.LeAt u p) :
+    ∀ {before s : List Row} {out : Relation},
+      windowRowsP t part fns before s out → windowRowsP u part fns before s out
+  | _, [], _, ho => ho
+  | _, _ :: _, _, ⟨vs, rest, he, hv, hr⟩ =>
+    ⟨vs, rest, he, Forall2.imp_mem (fun f hf _ => WinFn.AllowedP.monoOn fun p hp =>
+      h p (List.mem_flatMap.mpr ⟨f, hf, hp⟩)) hv, windowRowsP.monoOn h hr⟩
+
 theorem SortedP.monoOn {keys : List SortKey} (h : ∀ p ∈ sortReads keys, t.LeAt u p)
     {out : Relation} : SortedP t keys out → SortedP u keys out := fun ⟨cmp, hc, nfs, hn, hcl, hs⟩ =>
   ⟨cmp, hc, nfs,
@@ -463,8 +493,10 @@ theorem Rel.AllowedI.monoOn {I : Impl} {cat : Catalog} :
   | .emit r _, h, _, ⟨i, hi, ho⟩ | .fetch r _ _, h, _, ⟨i, hi, ho⟩
   | .unnest r _, h, _, ⟨i, hi, ho⟩ =>
     ⟨i, Rel.AllowedI.monoOn (r := r) (fun p hp => h p (by simp only [Rel.reads]; exact hp)) hi, ho⟩
-  | .window r _ _ _, h, _, ⟨i, hi, ho⟩ =>
-    ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, ho⟩
+  | .window r _ _ _, h, _, ⟨i, hi, s, hs, hsort, o, hp, ho⟩ =>
+    ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, s, hs, hsort, o, hp,
+      windowRowsP.monoOn (fun p hp => h p (List.mem_append_right _
+        (List.mem_append_left _ (List.mem_append_left _ hp)))) ho⟩
   | .orderBy r _, h, _, ⟨i, hi, hp, hs⟩ =>
     ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, hp,
       SortedP.monoOn (fun p hp => h p (List.mem_append_right _ hp)) hs⟩

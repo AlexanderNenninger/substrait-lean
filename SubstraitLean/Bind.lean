@@ -929,14 +929,10 @@ theorem Rel.evalI_bindArgs {I : Impl} {cat : Catalog} (hcat : cat.WF) :
     cases ty <;> simp only [bindArgs, eval, evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2.1,
       arity_bindArgs]
 
-/-- `Rel.eval cat Impl.lean` is `Rel.eval cat`, the reference's functions: one definition
-(kept for one release). -/
-theorem Rel.evalI_lean (cat : Catalog) (r : Rel) : r.eval cat Impl.lean = r.eval cat := rfl
-
 /-- **The pass computes the same rows** in the reference. -/
 theorem Rel.eval_bindArgs {cat : Catalog} (hcat : cat.WF) {r : Rel} (hwf : r.WF cat) :
-    (r.bindArgs cat).eval cat = r.eval cat := by
-  rw [← Rel.evalI_lean, ← Rel.evalI_lean, evalI_bindArgs hcat hwf]
+    (r.bindArgs cat).eval cat = r.eval cat :=
+  evalI_bindArgs hcat hwf
 
 /-- **The pass raises exactly where the plan raises**, under any profile. -/
 theorem Rel.raises_bindArgs {p : Profile} {cat : Catalog} (hcat : cat.WF) :

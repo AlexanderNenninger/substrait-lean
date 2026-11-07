@@ -210,6 +210,7 @@ generators, then the trusted reading and writing.
 | `Transfer.lean` | The options a plan meets, and transfer between profiles |
 | `Obligations.lean` | The realizability table: how each engine discharges each option |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
+| `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |
 
 ### Lowering and lift
 

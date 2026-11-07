@@ -654,6 +654,7 @@ is a choice that accepts every value the plan states.
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
 | `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT`, `EXACT` | `EXACT` | choose |
 | `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `EXACT` | choose |
+| `window_sum_algo` | all others | `RECOMPUTE`, `TREE`, `RUNNING_ADD`, `SLIDING` | `RECOMPUTE` | choose |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
 | `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |
@@ -1745,6 +1746,12 @@ RDBMSs", ICDE 2018, [arXiv:1802.09883](https://arxiv.org/abs/1802.09883)) make `
 superaccumulator ([arXiv:1505.05571](https://arxiv.org/abs/1505.05571))
 computes the correctly rounded sum at less than twice the cost of a naive
 one.
+
+Note ([#1032](https://github.com/AlexanderNenninger/substrait-lean/issues/1032)):
+window aggregates of doubles take the same per-measure profile choice as
+grouped aggregates; the reference is unchanged. An engine's window sum is
+within the plan's bound where its window algorithm sums the frame's own
+values (`window_sum_algo`: each frame anew, a tree, or a running sum).
 
 ### D30. Statistical aggregates are correctly rounded exact moments
 

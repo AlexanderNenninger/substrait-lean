@@ -276,6 +276,8 @@ def Profile.reference.tools : List ToolRow := [
   { option := "sum_order", tool := .choose },
   -- D30: one value, the exact moments rounded once.
   { option := "stat_algo", tool := .choose },
+  -- #1032: the frame's values summed anew, as `WinFn.valueIn` does.
+  { option := "window_sum_algo", tool := .choose },
   { option := "stat_degenerate", tool := .choose },
   { option := "avg_int_result", tool := .choose },
   { option := "quantile_interp", tool := .leaveOpen, q := some { floats := .within "plan" } },
