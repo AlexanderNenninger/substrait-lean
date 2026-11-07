@@ -6011,12 +6011,13 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   -- A sum is over at least one input (none: NULL), so with integer inputs
   -- it is at least the smallest one, if that is not negative.
   -- With at most `rows` rows, at most `rows` times the largest value (#470).
-  | .sum => ⟨!valued, some (match a.int with
+  | .sum => ⟨!valued || (sumKind a).isNone, some (match a.int with
       | some b => (if a.unscaledOnly then sumBoundPos b else sumBound b).meet
           (match rows with
             | some n => sumCap b n
             | none => Bound.top)
       | none => Bound.top), false, false, false, none, sumKind a⟩
+  -- A `SUM` of a mix of decimals and other values is NULL (`sumOf`).
   -- Doubles round: within the proved error bound of the exact sum or mean
   -- when the values are finite and there are at most `rows` of them (#85).
   | .fsum => ⟨!valued,
@@ -6345,8 +6346,10 @@ theorem intSum_cons (v : Value) (vs : List Value) :
     intSum (v :: vs) = v.unscaled?.getD 0 + intSum vs := by
   cases v <;> simp [intSum]
 
-theorem sumOf_unscaled (vs : List Value) : (sumOf vs).unscaled? = some (intSum vs) := by
-  unfold sumOf; split <;> rfl
+theorem sumOf_unscaled {vs : List Value} {x : Int} (h : (sumOf vs).unscaled? = some x) :
+    x = intSum vs := by
+  rcases sumOf_cases vs with ⟨_, e⟩ | ⟨_, _, _, e⟩ | ⟨_, _, e⟩ <;> rw [e] at h <;>
+    simp_all [Value.unscaled?]
 
 theorem intSum_nonneg : ∀ {vs : List Value}, (∀ v ∈ vs, ∀ i, v.unscaled? = some i → 0 ≤ i) →
     0 ≤ intSum vs
@@ -6504,26 +6507,59 @@ theorem AVal.unscaledOnly_mem {a : AVal} (ho : a.unscaledOnly = true) {v : Value
       cases k' <;> simp_all [NumKind.val]
   all_goals simp_all
 
-/-- A `SUM` is an integer, or a decimal of its inputs' scale (`sumOf`). -/
-theorem sumOf_mem {a : AVal} {v : Value} {vs : List Value} {n : Bool} {B : Bound}
-    (hm : a.Mem v) (hn : v ≠ .null) (hB : B.Mem (intSum (v :: vs))) :
-    (AVal.mk n (some B) false false false none (sumKind a)).Mem (sumOf (v :: vs)) := by
-  rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k, i, b, rfl, -, -, hk⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ |
-      ⟨_, rfl, hs, _⟩ | ⟨_, rfl | rfl, ht, hf, hs⟩
-  · exact absurd rfl hn
-  · cases hnk : a.nk with
-    | none => cases k <;> simp_all [sumKind, sumOf, NumKind.val, AVal.Mem, AVal.MemNum]
-    | some k' =>
-      simp only [hnk, Option.all_some, beq_iff_eq] at hk
-      subst hk
-      cases k' <;> simp only [sumKind, hnk, sumOf, NumKind.val] at hB ⊢ <;> (try split) <;>
-        simp_all [AVal.Mem, AVal.MemNum]
-  all_goals
-    cases hnk : a.nk with
-    | none => simp_all [sumKind, sumOf, AVal.Mem, AVal.MemNum]
-    | some k' =>
-      cases k' <;> simp only [sumKind, hnk, sumOf] <;> (try split) <;>
-        simp_all [AVal.Mem, AVal.MemNum, AVal.intsOnly]
+theorem AVal.dec_kind {a : AVal} {k : NumKind} {s : Nat} {x : Int} (hk : a.nk = some k)
+    (hm : a.Mem (.dec s x)) : k = .dec s := by
+  obtain ⟨_, _, _, h⟩ := hm
+  rw [hk] at h; simpa using h
+
+/-- A `SUM` is an integer, or a decimal of its inputs' scale (`sumOf`); it
+is NULL only for a mix, which `sumKind` rules out when it names a kind. -/
+theorem sumOf_mem {a : AVal} {vs : List Value} {n : Bool} {B : Bound} (hne : vs ≠ [])
+    (hall : ∀ w ∈ vs, a.Mem w ∧ w ≠ .null) (hB : B.Mem (intSum vs)) :
+    (AVal.mk (n || (sumKind a).isNone) (some B) false false false none (sumKind a)).Mem
+      (sumOf vs) := by
+  have hnone : sumKind a = none → (AVal.mk (n || (sumKind a).isNone) (some B) false false false
+      none (sumKind a)).Mem (sumOf vs) := fun hs => by
+    rw [hs]
+    rcases sumOf_cases vs with ⟨_, e⟩ | ⟨_, _, _, e⟩ | ⟨_, _, e⟩ <;> rw [e]
+    · exact ⟨_, rfl, hB, rfl⟩
+    · exact ⟨_, rfl, hB, rfl⟩
+    · simp [AVal.Mem]
+  cases hnk : a.nk with
+  | none => exact hnone (by simp [sumKind, hnk])
+  | some k =>
+    cases k with
+    | int =>
+      have hs : sumKind a = some .int := by simp [sumKind, hnk]
+      rw [hs]
+      have hnd : vs.any Value.isDec = false := by
+        rw [List.any_eq_false]; intro w hw hd
+        cases w <;> simp [Value.isDec] at hd
+        have := AVal.dec_kind hnk (hall _ hw).1; cases this
+      rcases sumOf_cases vs with ⟨_, e⟩ | ⟨s, h0, h1, e⟩ | ⟨h1, _, e⟩
+      · rw [e]; exact ⟨_, rfl, hB, rfl⟩
+      · rw [anyDec_of_allDec h0 h1] at hnd; cases hnd
+      · rw [h1] at hnd; cases hnd
+    | dec t =>
+      by_cases hio : a.intsOnly = true
+      · have hs : sumKind a = some (.dec t) := by simp [sumKind, hnk, hio]
+        rw [hs]
+        have hko : a.kindOnly (.dec t) = true := by simp [AVal.kindOnly, hio, hnk]
+        have hallt : vs.all (Value.isDecOf t) = true := List.all_eq_true.mpr fun w hw => by
+          obtain ⟨i, b, rfl, -⟩ := AVal.kindOnly_mem hko (hall w hw).1 (hall w hw).2
+          simp [NumKind.val, Value.isDecOf]
+        rcases sumOf_cases vs with ⟨h1, e⟩ | ⟨s, h0, h1, e⟩ | ⟨_, h2, e⟩
+        · rw [anyDec_of_allDec hne hallt] at h1; cases h1
+        · rw [e]
+          obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil vs h0
+          have p := List.all_eq_true.mp h1 w hw
+          have q := List.all_eq_true.mp hallt w hw
+          have hst : s = t := by cases w <;> simp_all [Value.isDecOf]
+          subst hst
+          exact ⟨_, rfl, hB, by simp⟩
+        · rw [h2 t] at hallt; cases hallt
+      · exact hnone (by simp [sumKind, hnk, hio])
+    | _ => exact hnone (by simp [sumKind, hnk])
 
 /-- The doubles among `vs`. -/
 def floatsOf (vs : List Value) : List Int := vs.filterMap fun | .float c => some c | _ => none
@@ -6603,14 +6639,11 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   case sum =>
     cases hvs : m.inputs grp with
     | nil =>
-      simp only [AggFn.apply, AVal.Mem]
-      cases hg : grouped <;> cases hfi : m.filter <;> cases hn : (m.arg.absD env fs).null <;>
-        simp
-      exact Measure.inputs_ne_nil hall (hne hg) hfi hn hvs
+      simp only [AggFn.apply, AVal.Mem, Bool.or_eq_true]
+      exact .inl (novalue hvs)
     | cons v vs =>
       simp only [AggFn.apply]
-      have hv0 : v ∈ m.inputs grp := hvs ▸ List.mem_cons_self ..
-      refine sumOf_mem (hin v hv0) (inputs_ne_null hv0) ?_
+      refine sumOf_mem (by simp) (fun w hw => ⟨hin w (hvs ▸ hw), inputs_ne_null (hvs ▸ hw)⟩) ?_
       cases ha : (m.arg.absD env fs).int with
       | none => exact Bound.mem_top _
       | some b =>
@@ -6833,9 +6866,9 @@ theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List
         | cons v vs =>
           rw [hvs] at hx hn
           simp only [AggFn.apply] at hx hn
-          rw [sumOf_unscaled] at hx
-          simp only [Value.unscaled?, Option.some.injEq] at hx hn
-          subst hx hn
+          have hx' := sumOf_unscaled hx
+          simp only [Value.unscaled?, Option.some.injEq] at hn
+          subst hx' hn
           have hint : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i := by
             intro w hw
             have hw' : w ∈ mi.inputs grp := hvs ▸ hw

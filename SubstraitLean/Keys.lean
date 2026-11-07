@@ -243,18 +243,26 @@ theorem KeyOn.eqVariants {e : Expr} {k k' : List Nat} {rows : Relation} (hk : Ke
         exact hdet.1 he
       · simp at hp
 
-def AVal.intOnly (a : AVal) : Bool := !a.null && !a.tt && !a.ff && !a.str
+/-- Every value is a (non-NULL) integer. -/
+def AVal.intOnly (a : AVal) : Bool := !a.null && !a.tt && !a.ff && !a.str && a.nk == some .int
 
 theorem AVal.intOnly_mem {a : AVal} {v : Value} (h : a.intOnly = true) (hm : a.Mem v) :
     ∃ y, v = .int y := by
-  simp only [AVal.intOnly, Bool.and_eq_true, Bool.not_eq_true'] at h
-  rcases AVal.mem_cases hm with ⟨_, hn⟩ | ⟨i, _, rfl, _, _⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
+  simp only [AVal.intOnly, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at h
+  rcases AVal.mem_cases hm with ⟨_, hn⟩ | ⟨k, i, _, rfl, _, _, hk⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
+      ⟨_, _, hs⟩ | ⟨_, _, hs⟩
   · simp_all
-  · exact ⟨i, rfl⟩
+  · rw [h.2] at hk; simp only [Option.all_some, beq_iff_eq] at hk; subst hk; exact ⟨i, rfl⟩
   · simp_all
   · simp_all
   · simp_all
   · simp_all
+
+theorem Expr.linTerm_int {e : Expr} {j : Nat} {c y : Int} {row : Row}
+    (h : e.linTerm = some (j, c)) (hy : row.getD j .null = .int y) : e.eval row = .int (y + c) := by
+  rw [List.getD_eq_getElem?_getD] at hy
+  rcases Expr.linTerm_spec h with ⟨rfl, rfl⟩ | rfl | rfl | rfl <;>
+    simp_all [Expr.eval, BinFn.apply, List.getD_eq_getElem?_getD] <;> omega
 
 /-- Computed columns `$i + c` of a non-NULL integer column `i`: injective in
 `i`, so they can stand in for it in a key (`ROW_NUMBER() - 1`, say). -/
@@ -382,10 +390,10 @@ theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (
   cases v with
   | null => simp_all [AVal.Mem]
   | bool x => cases x <;> simp_all [AVal.Mem]
-  | list _ => simp_all [AVal.Mem]
-  | int i =>
-      obtain ⟨x, hx, hxi⟩ := ha
-      obtain ⟨y, hy, hyi⟩ := hb
+  | list _ | struct _ => simp_all [AVal.Mem]
+  | int i | float i | date i | ts i | tod i | dec _ i =>
+      obtain ⟨x, hx, hxi, -⟩ := ha
+      obtain ⟨y, hy, hyi, -⟩ := hb
       rw [hx, hy] at hi
       exact Bound.disjoint_ne hi hxi hyi rfl
   | str s =>
@@ -997,13 +1005,6 @@ def WinFn.orderFree : WinFn → Bool
       fr.lo = .unboundedPreceding ∧ fr.hi = .unboundedFollowing)
   | _ => false
 
-private theorem intSum_perm_bag {l l' : List Value} (h : l.Perm l') : intSum l = intSum l' := by
-  induction h with
-  | nil => rfl
-  | cons x _ ih => cases x <;> simp [intSum, ih]
-  | swap x y l => cases x <;> cases y <;> simp [intSum] <;> omega
-  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
-
 private theorem Measure.inputs_perm_bag {m : Measure} (hd : m.distinct = false) {rows rows' : Relation}
     (h : rows.Perm rows') : (m.inputs rows).Perm (m.inputs rows') := by
   have hk : (m.kept rows).Perm (m.kept rows') := by
@@ -1029,7 +1030,7 @@ private theorem Measure.eval_perm_bag {m : Measure} (hf : m.fn = .count ∨ m.fn
       rw [hi] at hp
       cases hi' : m.inputs rows' with
       | nil => rw [hi'] at hp; exact absurd hp.length_eq (by simp)
-      | cons w ws => rw [hi'] at hp; simp only [AggFn.apply, intSum_perm_bag hp]
+      | cons w ws => rw [hi'] at hp; simp only [AggFn.apply, sumOf_perm hp]
 
 /-- The frame of the whole partition. -/
 theorem Frame.rows_all {fr : Frame} (hlo : fr.lo = .unboundedPreceding)
