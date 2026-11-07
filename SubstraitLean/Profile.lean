@@ -117,7 +117,26 @@ def Expr.evalP (p : Profile) (row : Row) : Expr → Outcome
     p.bin f x y
   | .ifThen c t e => do
     if (← c.evalP p row).isTrue then t.evalP p row else e.evalP p row
-  | .hof f l b => do f.applyP (← l.evalP p row) fun x => b.evalP p [x]
+  | .hof f l b => do f.applyP (← l.evalP p row) fun x => b.evalP p (x :: row)
+
+theorem Expr.evalP_shift_insert {p : Profile} (w : Value) :
+    ∀ (e : Expr) (xa rest : Row), (e.shift xa.length).evalP p (xa ++ w :: rest) = e.evalP p (xa ++ rest)
+  | .lit _, _, _ => rfl
+  | .field i, xa, rest => congrArg Except.ok (getD_shift_insert w i xa rest)
+  | .un f a, xa, rest => by simp only [shift, evalP, Expr.evalP_shift_insert w a]
+  | .bin f a b, xa, rest => by
+    simp only [shift, evalP, Expr.evalP_shift_insert w a, Expr.evalP_shift_insert w b]
+  | .ifThen c t e, xa, rest => by
+    simp only [shift, evalP, Expr.evalP_shift_insert w c, Expr.evalP_shift_insert w t,
+      Expr.evalP_shift_insert w e]
+  | .hof f l b, xa, rest => by
+    simp only [shift, evalP, Expr.evalP_shift_insert w l]
+    congr 1; funext v; congr 1; funext x
+    simpa using Expr.evalP_shift_insert w b (x :: xa) rest
+
+theorem Expr.evalP_shift_cons {p : Profile} (w : Value) (e : Expr) (row : Row) :
+    (e.shift 0).evalP p (w :: row) = e.evalP p row :=
+  Expr.evalP_shift_insert w e [] row
 
 /-! ## The reference is a profile -/
 
@@ -224,10 +243,10 @@ theorem Expr.evalP_reference : ∀ (e : Expr) (row : Row),
     | some k => rfl
     | none =>
       simp only [Option.none_or, bind, Except.bind, HoFn.applyP, eval]
-      have hb : ∀ x, b.evalP Profile.reference [x] = b.refOutcome [x] :=
-        fun x => Expr.evalP_reference b [x]
+      have hb : ∀ x, b.evalP Profile.reference (x :: row) = b.refOutcome (x :: row) :=
+        fun x => Expr.evalP_reference b (x :: row)
       simp only [hb, Expr.refOutcome_err]
-      cases h : (l.eval row).elems.findSome? fun x => firstError (b.issues [x]) with
+      cases h : (l.eval row).elems.findSome? fun x => firstError (b.issues (x :: row)) with
       | some k => rfl
       | none =>
         simp only [List.findSome?_eq_none_iff] at h
@@ -584,7 +603,7 @@ theorem Expr.evalI_of_evalP {p : Profile} :
         simp only [Expr.eval, evalI_of_evalP hl]
         refine HoFn.apply_congr f _ fun x hx => ?_
         have := (List.findSome?_eq_none_iff.mp hn) x hx
-        cases hb : b.evalP p [x] with
+        cases hb : b.evalP p (x :: row) with
         | error k => simp [hb, Outcome.err?] at this
         | ok y => rw [evalI_of_evalP hb]; rfl
 

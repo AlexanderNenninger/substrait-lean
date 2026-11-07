@@ -2927,14 +2927,14 @@ through unchanged (`Fact.holds`), and it narrows a column once the other
 disjuncts are ruled out on a path (`Expr.refineOr`). -/
 
 /-- Does `p` hold for every column the expression reads? A lambda's body
-reads its parameter, not the row. -/
+reads its parameter as field 0 and the row from field 1 (D28). -/
 def Expr.allFields (p : Nat → Bool) : Expr → Bool
   | .lit _ => true
   | .field i => p i
   | .un _ a => a.allFields p
   | .bin _ a b => a.allFields p && b.allFields p
   | .ifThen c t e => c.allFields p && t.allFields p && e.allFields p
-  | .hof _ l _ => l.allFields p
+  | .hof _ l b => l.allFields p && b.allFields (liftPred p)
 
 /-- Read column `g i` wherever the expression reads column `i`. -/
 def Expr.mapFields (g : Nat → Nat) : Expr → Expr
@@ -2943,7 +2943,7 @@ def Expr.mapFields (g : Nat → Nat) : Expr → Expr
   | .un f a => .un f (a.mapFields g)
   | .bin f a b => .bin f (a.mapFields g) (b.mapFields g)
   | .ifThen c t e => .ifThen (c.mapFields g) (t.mapFields g) (e.mapFields g)
-  | .hof f l b => .hof f (l.mapFields g) b
+  | .hof f l b => .hof f (l.mapFields g) (b.mapFields (liftIdx g))
 
 theorem Expr.allFields_true : ∀ e : Expr, e.allFields (fun _ => true) = true
   | .lit _ | .field _ => rfl
@@ -2951,7 +2951,7 @@ theorem Expr.allFields_true : ∀ e : Expr, e.allFields (fun _ => true) = true
   | .bin _ a b => by simp [allFields, Expr.allFields_true a, Expr.allFields_true b]
   | .ifThen c t e => by
       simp [allFields, Expr.allFields_true c, Expr.allFields_true t, Expr.allFields_true e]
-  | .hof _ l _ => Expr.allFields_true l
+  | .hof _ l b => by simp [allFields, Expr.allFields_true l, Expr.allFields_true b]
 
 theorem Expr.allFields_and {p q : Nat → Bool} :
     ∀ {e : Expr}, e.allFields p = true → e.allFields q = true → e.allFields (fun i => p i && q i) = true
@@ -2965,7 +2965,10 @@ theorem Expr.allFields_and {p q : Nat → Bool} :
       simp only [allFields, Bool.and_eq_true] at hp hq ⊢
       exact ⟨⟨Expr.allFields_and hp.1.1 hq.1.1, Expr.allFields_and hp.1.2 hq.1.2⟩,
         Expr.allFields_and hp.2 hq.2⟩
-  | .hof _ l _, hp, hq => Expr.allFields_and (e := l) hp hq
+  | .hof _ l b, hp, hq => by
+      simp only [allFields, Bool.and_eq_true] at hp hq ⊢
+      refine ⟨Expr.allFields_and hp.1 hq.1, ?_⟩
+      rw [liftPred_and]; exact Expr.allFields_and hp.2 hq.2
 
 theorem Expr.mapFields_id : ∀ e : Expr, e.mapFields id = e
   | .lit _ | .field _ => rfl
@@ -2973,7 +2976,7 @@ theorem Expr.mapFields_id : ∀ e : Expr, e.mapFields id = e
   | .bin f a b => by simp [mapFields, Expr.mapFields_id a, Expr.mapFields_id b]
   | .ifThen c t e => by
       simp [mapFields, Expr.mapFields_id c, Expr.mapFields_id t, Expr.mapFields_id e]
-  | .hof f l b => by simp [mapFields, Expr.mapFields_id l]
+  | .hof f l b => by simp [mapFields, Expr.mapFields_id l, Expr.mapFields_id b]
 
 /-- Moving the columns an expression reads, with their values, keeps its
 value. -/
@@ -2990,7 +2993,11 @@ theorem Expr.eval_mapFields {p : Nat → Bool} {g : Nat → Nat} {row row' : Row
       simp only [allFields, Bool.and_eq_true] at h
       simp only [mapFields, eval, Expr.eval_mapFields hg h.1.1, Expr.eval_mapFields hg h.1.2,
         Expr.eval_mapFields hg h.2]
-  | .hof f l b, h => by simp only [mapFields, eval, Expr.eval_mapFields hg (e := l) h]
+  | .hof f l b, h => by
+      simp only [allFields, Bool.and_eq_true] at h
+      simp only [mapFields, eval, Expr.eval_mapFields hg h.1]
+      congr 1; funext x
+      exact Expr.eval_mapFields (liftIdx_getD x hg) h.2
 
 /-- The same expression on a row that agrees on the columns it reads. -/
 theorem Expr.eval_congr {p : Nat → Bool} {row row' : Row}
@@ -5897,7 +5904,7 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .un f a => .un f (a.subst cols)
   | .bin f a b => .bin f (a.subst cols) (b.subst cols)
   | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
-  | .hof f l b => .hof f (l.subst cols) b
+  | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
 
 theorem getD_map_eval (cols : List Expr) (row : Row) (i : Nat) :
     (cols.map (·.eval row)).getD i .null = (cols.getD i (.lit .null)).eval row := by
@@ -5913,7 +5920,11 @@ theorem Expr.eval_subst (cols : List Expr) (row : Row) :
   | .ifThen c t e => by
       simp [subst, eval, Expr.eval_subst cols row c, Expr.eval_subst cols row t,
         Expr.eval_subst cols row e]
-  | .hof f l b => by simp [subst, eval, Expr.eval_subst cols row l]
+  | .hof f l b => by
+      simp only [subst, eval, Expr.eval_subst cols row l]
+      congr 1; funext x
+      rw [Expr.eval_subst _ (x :: row) b]
+      simp [eval, List.map_map, Function.comp_def, Expr.eval_shift_cons]
 
 /-- A plan that only computes columns of one table (`Read` under projects and
 emits) as expressions over that table's columns. Preconditions are given as

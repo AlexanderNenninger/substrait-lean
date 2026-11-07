@@ -275,7 +275,7 @@ The values are right; the rendering is not.
 |---|---|---|
 | Representation | A struct is the list of its fields, in order. Equality is structural. | ✓ |
 | Order of lists | Lexicographic, element by element; a proper prefix sorts first. `lt`, `gt`, `lte` and `gte` are three-valued: a NULL element that decides the result makes it NULL (`[1, NULL] < [2]` is TRUE, `[1, NULL] < [1, 3]` is NULL). In `ORDER BY` and `MIN`/`MAX`, NULL elements sort after every other value. | ✓ (#207) |
-| Lambdas | `any_match`, `all_match`, `transform` and `filter` take closed lambdas only. `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ (#94) |
+| Lambdas | `any_match`, `all_match`, `transform` and `filter` take a lambda that reads its parameter and the enclosing row ([D28](core-semantics.md#d28-lambdas-have-lexical-scope)). `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ (#94) |
 | `UNNEST` | One row per element, none for an empty list or NULL (sverify's own extension). | ✓ |
 | `list_prepend`, `[a, b]` | `list_prepend(x, l)` is `x` before `l`'s elements, NULL elements kept; a NULL `l` is empty (`BinFn.listPrepend`). A list of computed elements `[a, b]` is `list_prepend(a, list_prepend(b, []))` at the elements' common type. | ✓ on DuckDB; other engines refuse it until #271 (#812) |
 | `list_concat` | The elements of both lists; a NULL list is empty, so two NULLs give `[]` (DuckDB 2.0, `BinFn.listConcat`). | ✓ on DuckDB; other engines refuse it until #271 (#812) |

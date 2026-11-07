@@ -52,13 +52,17 @@ def BinFn.render : BinFn → String
 
 def HoFn.name (f : HoFn) : String := Functions.prettyOf (.hof f)
 
-def Expr.render : Expr → String
+/-- An expression under `d` lambdas: their parameters are `x0` (the
+outermost) to `x{d-1}`, and the row's column `i` is `$i` (D28). -/
+def Expr.renderAt (d : Nat) : Expr → String
   | .lit v => v.render
-  | .field i => s!"${i}"
-  | .un f a => s!"{f.render}({a.render})"
-  | .bin f a b => s!"({a.render} {f.render} {b.render})"
-  | .ifThen c t e => s!"IF {c.render} THEN {t.render} ELSE {e.render}"
-  | .hof f l b => s!"{f.name}({l.render}, $0 -> {b.render})"
+  | .field i => if i < d then s!"x{d - 1 - i}" else s!"${i - d}"
+  | .un f a => s!"{f.render}({a.renderAt d})"
+  | .bin f a b => s!"({a.renderAt d} {f.render} {b.renderAt d})"
+  | .ifThen c t e => s!"IF {c.renderAt d} THEN {t.renderAt d} ELSE {e.renderAt d}"
+  | .hof f l b => s!"{f.name}({l.renderAt d}, x{d} -> {b.renderAt (d + 1)})"
+
+def Expr.render (e : Expr) : String := e.renderAt 0
 
 def AggFn.name : AggFn → String
   | .bit op => s!"BIT_{op.name.toUpper}"
