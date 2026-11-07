@@ -1840,7 +1840,7 @@ theorem Rel.Small.loose {cat : Catalog} : ∀ {r : Rel}, r.Small cat → r.loose
 theorem condIssue_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {a b : Rel} {on : Expr} {p : Issue × Expr} {x y : Row} (ha : a.WF cat) (hb : b.WF cat)
     (hsa : a.Small cat) (hsb : b.Small cat) (hx : x ∈ a.loose.eval cat) (hy : y ∈ b.loose.eval cat) (hp : p ∈ on.issues (x ++ y)) :
     p ∈ on.mayIssues ((Rel.cross a.loose b.loose).aeval cat A F T true)
@@ -1858,7 +1858,7 @@ without errors and without wrapping around. -/
 theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat) :
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat) :
     ∀ {u : Bool} {r : Rel}, r.WF cat → r.Small cat → ∀ p, r.HasIssue cat u p →
       p ∈ r.mayIssues cat A F T u
   | _, .read _, _, _, _, h | _, .values _ _, _, _, _, h => h.elim
@@ -2003,7 +2003,7 @@ at all. -/
 theorem Rel.noIssue_of_sumsFit {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat)
     (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true) (hfit : r.SumsFit cat) :
     ∀ p, ¬r.HasIssue cat false p := fun p hp =>
@@ -2021,7 +2021,7 @@ the preconditions and the assumptions runs into no issue at all. -/
 theorem Rel.noIssue_of_assumedHold {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat)
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) (hok : r.AssumedHold cat) :
     ∀ p, ¬r.HasIssue cat false p := fun p hp => by

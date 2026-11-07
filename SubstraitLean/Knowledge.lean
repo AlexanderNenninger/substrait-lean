@@ -73,10 +73,7 @@ theorem Sound.facts (h : K.Sound cat) : ∀ t, ∀ row ∈ (cat t).rows, FactsHo
 theorem Sound.keys (h : K.Sound cat) : ∀ t, ∀ k ∈ K.keys t, KeyOn k (cat t).rows :=
   fun t => (h t).2.2.1
 
-theorem Sound.windows (hcat : cat.WF) (h : K.Sound cat) : (K.windows cat).Sound cat :=
-  Rel.keyedWindows_sound hcat h.cols h.facts h.keys
-
-theorem Sound.windowsAll (hcat : cat.WF) (h : K.Sound cat) : (K.windows cat).SoundAll cat :=
+theorem Sound.windows (hcat : cat.WF) (h : K.Sound cat) : (K.windows cat).SoundAll cat :=
   Rel.keyedWindows_soundAll hcat h.cols h.facts h.keys
 
 /-- The knowledge `substrait-check --contract` starts from: each table's
@@ -108,8 +105,8 @@ def Rel.analyse (cat : Catalog) (K : KnowledgeEnv) (sz : Bool := false) (r : Rel
 theorem Rel.analyse_sound_all {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     (hK : K.Sound cat) {r : Rel} (hwf : r.WF cat) {out : Relation}
     (ho : r.OrderAllowed cat out) : (r.analyse cat K).Mem out :=
-  ⟨Rel.aeval_sound_all hcat hK.cols hK.facts (hK.windowsAll hcat) hwf ho,
-    Rel.facts_sound_all hcat hK.facts (hK.windowsAll hcat) hwf ho,
+  ⟨Rel.aeval_sound_all hcat hK.cols hK.facts (hK.windows hcat) hwf ho,
+    Rel.facts_sound_all hcat hK.facts (hK.windows hcat) hwf ho,
     fun k hk => Rel.keys_sound_all hcat hK.cols hK.facts hK.keys hwf k hk ho,
     fun _ hn => Rel.maxRows_sound_all hn ho⟩
 

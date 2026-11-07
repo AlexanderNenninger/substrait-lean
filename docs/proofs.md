@@ -17,9 +17,9 @@ and that the input rows meet the contract's preconditions.
 | Guarantee | Theorem | Module |
 |---|---|---|
 | A proved postcondition is TRUE on every output row | `contract_sound` | `Contracts.lean` |
-| … in every row order the reference allows | `contract_sound_all` | `Ties.lean` |
-| A derived key holds on the output | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean`, `Ties.lean` |
-| A window's result does not depend on how its ties are broken | `Rel.window_deterministic`, `Rel.keyedWindows_sound` | `Keys.lean` |
+| … in every row order the reference allows | `contract_sound_all` | `Contracts.lean` |
+| A derived key holds on the output | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean` |
+| A window's result does not depend on how its ties are broken | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `Rel.mayIssues_sound` | `Safety.lean` |
 | Row caps rule out `SUM` overflow | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | The checker decides well-formedness | `Rel.checkWF_iff` | `Check.lean` |
@@ -122,6 +122,7 @@ generators, then the trusted reading and writing.
 | `Expr.lean` | Scalar expressions and their evaluation, with three-valued logic, over Lean's functions (`Impl.lean`) or an engine's (`Impl`) |
 | `Order.lean` | The orders on values and rows that sorts, windows and `MIN`/`MAX` use |
 | `Dedup.lean` | `dedup`, the first occurrence of each element, and its lemmas |
+| `Forall2.lean` | `Forall2`, lists related element by element |
 | `Reflect.lean` | Boolean checks the tables are proved with, by reflection |
 
 ### Relations and their evaluation
@@ -131,6 +132,7 @@ generators, then the trusted reading and writing.
 | `Window.lean` | Window functions over partitions, orders and frames |
 | `Aggregate.lean` | `GROUP BY` and the measures; the trusted bounds of double sums |
 | `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval`, one evaluator for the reference and an engine's functions |
+| `OrderAllowed.lean` | `Rel.OrderAllowed`, the results of every order the reference leaves open, and `Rel.eval` as one of them |
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |
@@ -179,7 +181,7 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
-| `Ties.lean` | Every row order the reference allows, and the checkers' soundness under all of them |
+| `Ties.lean` | Every row order the reference allows is one `Rel.Allowed` allows, and row caps keep them |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
