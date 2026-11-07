@@ -1,7 +1,8 @@
 name: Generated files
 
 # The tables generated from the sources: README.md's coverage table,
-# and catalogue/INDEX.md and catalogue/FINDINGS.md's stats tables. Feature branches
+# catalogue/INDEX.md and catalogue/FINDINGS.md's stats tables, and
+# docs/realizability.md. Feature branches
 # leave them alone, so two PRs never conflict over them; after every push to
 # main this job regenerates them and pushes the result straight to main.
 #
@@ -38,6 +39,7 @@ jobs:
         run: |
           uv run --locked python -m sverify_dev.catalogue --write-tables
           uv run --locked python -m sverify_dev.coverage --write-readme
+          uv run --locked python -m sverify_dev.realizability --write
       - name: Push to main if anything changed
         run: |
           git status --short

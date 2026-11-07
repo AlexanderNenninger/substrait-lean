@@ -163,6 +163,10 @@ coordinator session that assigns work and merges PRs through batches.
   ready, when you're blocked, or when a planned step turns out wrong.
 - **Shell loops that wait on another process** match by PID. A `pgrep -f`
   pattern also matches the shell running it, and waits forever.
+- **After resolving a merge conflict,** run the tests of every file you
+  resolved, not only your own change's. A resolution can drop the other
+  side's code silently (#1066 lost a flag that way), and a Hypothesis case
+  it breaks is saved and then fails on every branch.
 
 ## Lean proofs
 
@@ -228,7 +232,8 @@ conflicts with other PRs:
 - `README.md`'s coverage table (`<!-- coverage:start -->` … `<!-- coverage:end -->`),
   from `sverify_dev.coverage --write-readme`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
-  `sverify_dev.catalogue --write-tables`.
+  `sverify_dev.catalogue --write-tables`;
+- `docs/realizability.md`, from `sverify_dev.realizability --write`.
 
 Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
 DuckDB lowering, for DuckDB's default settings only) and

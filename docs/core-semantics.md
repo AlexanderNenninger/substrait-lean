@@ -463,9 +463,9 @@ is measured.
 The table is [realizability.md](realizability.md): `obligations reference E`
 for DuckDB and Polars (`SubstraitLean/Obligations.lean`), printed by
 `substrait-check --realizability` and rendered by
-`python -m sverify_dev.realizability --write`. The file is committed with
-the change that alters it, and `tests/test_realizability.py` fails until it
-is current. Lean checks that no row differs from the reference without a
+`python -m sverify_dev.realizability --write`. The `Generated files`
+workflow rewrites it on `main` after every merge, so feature branches leave
+it alone. Lean checks that no row differs from the reference without a
 shim, an observation or a precondition (`obligations_consistent`), that
 every shim has a cost class and evidence (`obligations_shims_evidenced`),
 and that every theorem a row names exists. Each row is computed from the
