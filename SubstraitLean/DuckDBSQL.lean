@@ -252,9 +252,9 @@ doubles; NaN's is the largest, and its sign is `0`). -/
 def duckSign (x : Int) : Int := if x < 0 then -1 else if 0 < x then 1 else 0
 
 /-- DuckDB's `+`, `-` or `*` of doubles: NaN for `∞ - ∞` and `0 · ∞`, else
-IEEE 754's (`BinFn.apply`). -/
-def duckArith (f : BinFn) (op : Float → Float → Float) (a b : Int) : Int :=
-  if nanCase f a b then FloatCode.nan else FloatCode.lift₂ op a b
+IEEE 754's, rounded once (D31, `duckdb-ieee-arith-*`). -/
+def duckArith (f : BinFn) (op : Int → Int → Int) (a b : Int) : Int :=
+  if nanCase f a b then FloatCode.nan else op a b
 
 /-- What the function gives for its arguments, under the semantics. `NULL`
 in, `NULL` out, but for `greatest` and `least`, which skip `NULL`s. -/
@@ -263,9 +263,9 @@ def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
     .ok (.float (duckDivide (FloatCode.ofInt a) (FloatCode.ofInt b)))
   | .duckdb, .divDouble, [.float a, .float b] => .ok (.float (duckDivide a b))
   | .duckdb, .modDouble, [.float a, .float b] => .ok (.float (duckMod a b))
-  | .duckdb, .addDouble, [.float a, .float b] => .ok (.float (duckArith .fadd (· + ·) a b))
-  | .duckdb, .subDouble, [.float a, .float b] => .ok (.float (duckArith .fsub (· - ·) a b))
-  | .duckdb, .mulDouble, [.float a, .float b] => .ok (.float (duckArith .fmul (· * ·) a b))
+  | .duckdb, .addDouble, [.float a, .float b] => .ok (.float (duckArith .fadd FloatCode.fadd a b))
+  | .duckdb, .subDouble, [.float a, .float b] => .ok (.float (duckArith .fsub FloatCode.fsub a b))
+  | .duckdb, .mulDouble, [.float a, .float b] => .ok (.float (duckArith .fmul FloatCode.fmul a b))
   | .duckdb, .elementary f, [.float a] => .ok (.float (duckElementary f a))
   | .duckdb, .power, [.float a, .float b] => .ok (.float (duckPower a b))
   | .reference, .divInt, [.int a, .int b] =>
