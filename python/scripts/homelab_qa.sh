@@ -12,7 +12,9 @@
 #
 # The environment can change the defaults:
 #
-#   PYTEST_XDIST_AUTO_NUM_WORKERS  pytest workers for `-n auto` (4)
+#   PYTEST_XDIST_AUTO_NUM_WORKERS  pytest workers for `-n auto` (2: each worker
+#                                  holds a Spark JVM and a Python process,
+#                                  about 3 GB, so 4 pass the 8G cap)
 #   HOMELAB_QA_MEMORY_MAX          memory cap of the tests (8G)
 #   HOMELAB_QA_BUILD_MEMORY_MAX    memory cap of the Lean build (HOMELAB_QA_MEMORY_MAX)
 #   HOMELAB_QA_NICE                niceness of the build and the tests (10)
@@ -48,7 +50,7 @@ shift
 tasks=("${@:-qa}")
 
 export PATH=$HOME/.elan/bin:$HOME/.local/bin:$PATH
-export PYTEST_XDIST_AUTO_NUM_WORKERS=${PYTEST_XDIST_AUTO_NUM_WORKERS:-4}
+export PYTEST_XDIST_AUTO_NUM_WORKERS=${PYTEST_XDIST_AUTO_NUM_WORKERS:-2}
 cache_root=${SUBSTRAIT_LEAN_CACHE:-$HOME/.cache/substrait-lean/lake}
 keep_toolchains=2
 memory_max=${HOMELAB_QA_MEMORY_MAX:-8G}
