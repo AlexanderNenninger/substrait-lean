@@ -62,5 +62,6 @@ description: Work on sverify's Lean model and proofs (SubstraitLean/): state and
 - The goldens pass (`tests/run.sh`), and the Python mirror still agrees
   (`substrait-check --functions` against `tests/test_functions.py`) when you
   touched function tables.
-- The PR's Optimization section measures build time, memory, proof size or
-  the checker's time, before and after.
+- The PR's Improvement section measures something before and after: build
+  time, memory, proof size, the checker's time, or hypotheses and axioms
+  removed (CLAUDE.md, "Every PR leaves its area faster or simpler").
