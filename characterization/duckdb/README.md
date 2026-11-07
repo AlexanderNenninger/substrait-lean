@@ -271,7 +271,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [optimizer](optimizer.json) | 585 | 41 | 9 | engine 1, lean 8 | 485 | 183 | 15 | lift 430, tables 43 |
 | [order](order.json) | 54 | 0 | 0 |  | 574 | 100 | 3 | lift 572, checker 2 |
 | [ordinality](ordinality.json) | 0 | 0 | 0 |  | 6 | 0 | 1 | lift 6 |
-| [overflow](overflow.json) | 68 | 0 | 58 | lean 58 | 16 | 10 | 0 | lift 13, checker 3 |
+| [overflow](overflow.json) | 67 | 0 | 59 | lean 59 | 16 | 10 | 0 | lift 13, checker 3 |
 | [parallelism](parallelism.json) | 829 | 0 | 0 |  | 18 | 1 | 6 | lift 16, checker 2 |
 | [parser](parser.json) | 205 | 2 | 4 | both 4 | 321 | 357 | 3 | lift 295, checker 26 |
 | [peg_parser](peg_parser.json) | 47 | 3 | 0 |  | 40 | 54 | 60 | lift 40 |

@@ -1,5 +1,6 @@
 import SubstraitLean.Ties
 import SubstraitLean.Robust
+import SubstraitLean.AllowedP
 
 /-!
 # Postconditions on every allowed result (#899)
@@ -7,9 +8,10 @@ import SubstraitLean.Robust
 `contract_sound_all` (`Ties.lean`) proves a postcondition on every result of
 every order the reference allows (`Rel.OrderAllowed`): rows in any order the
 plan leaves open, each double `SUM` and `AVG` with `Rel.eval`'s value.
-`Rel.Allowed` allows more: a double `SUM` or `AVG` added in any order and
-grouping (`FloatSums`). An engine's result is one of those, so a
-postcondition proved of `Rel.eval`'s sums must allow for the others.
+`Rel.Allowed` allows more where a measure's value is a choice of the
+reference: before D25 a double `SUM` or `AVG` added in any order and grouping
+(`FloatSums`), and still a statistical aggregate (`StatProps`). A
+postcondition proved of `Rel.eval`'s values must allow for the others.
 
 `contract_sound_allowed` does that. A postcondition narrowed by each
 column's tolerance (`Expr.narrow`, `Robust.lean`) and proved under
@@ -28,9 +30,13 @@ sufficient conditions are proved:
   measures are double `SUM`s and `AVG`s (`aggCtx`: equal up to the order of
   their additions).
 
-Once D25 (#916) takes `FloatSums` out of `Rel.Allowed`, every allowed
-result is one of an order, `Rel.FloatOpenSafe` holds for every plan by
-`Relation.Equiv.refl`, and `contract_sound_allowed` needs no side condition. -/
+D25 (#915) takes `FloatSums` out of `Rel.Allowed`: a double `SUM` or `AVG`
+is order-free (`AggFn.orderFree`), so `Measure.closedB` holds of it, and
+`Measure.Allowed.near_eval` by reflexivity. `Rel.FloatOpenSafe` is not yet
+true of every plan: `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` stay choices of
+the reference (`StatProps`) until their exact moments (#918), and
+`QUANTILE_CONT` (`contAllowed`) is a choice too. Once those go,
+`contract_sound_allowed` needs no side condition. -/
 
 namespace Substrait
 
@@ -167,50 +173,16 @@ theorem Measure.inputs_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
 /-- An open measure's allowed value is equal, up to the order of its
 additions, to `Measure.eval`'s, in its column `g + j`. -/
 theorem Measure.Allowed.near_eval {m : Measure} (ho : m.openB = true) {g j : Nat}
-    {ms : List Measure} (hj : ms[j]? = some m) {grp : Relation} {v : Value}
+    {ms : List Measure} (_hj : ms[j]? = some m) {grp : Relation} {v : Value}
     (h : m.Allowed grp v) : Value.Equiv Obs.plan (aggCtx g ms) (g + j) (m.eval grp) v := by
-  obtain ⟨s, hp, -, hv⟩ := h
-  have hin := (m.inputs_perm hp).symm
-  have hk : (aggCtx g ms).kind (g + j) = .double := by
-    simp [aggCtx, hj, ho]
-  have hns : m.fn.sorts = false := by
+  -- D25: a double `SUM` or `AVG` is order-free, so its allowed value is
+  -- `Measure.eval`'s.
+  have hof : m.orderFree = true := by
     simp only [Measure.openB, Bool.or_eq_true, beq_iff_eq] at ho
-    rcases ho with h | h <;> simp [h, AggFn.sorts]
-  rw [Measure.eval_eq hns]
-  simp only [Measure.openB, Bool.or_eq_true, beq_iff_eq] at ho
-  have hnear : ∀ a b, m.Open a b →
-      Value.Equiv Obs.plan (aggCtx g ms) (g + j) (.int a) (.int b) := fun a b hab => by
-    simp only [Value.Equiv]
-    unfold IntEquiv; rw [hk]
-    exact .inr ⟨m, a, b, by simpa using hj, rfl, rfl, hab⟩
-  rcases ho with hf | hf
-  · simp only [AggFn.Allowed, hf] at hv
-    rw [hf]
-    by_cases he : m.inputs s = []
-    · simp only [he, ite_true] at hv
-      have : m.inputs grp = [] := List.Perm.eq_nil (he ▸ hin)
-      rw [hv, this]; trivial
-    · simp only [he, ite_false] at hv
-      obtain ⟨c, hc, rfl⟩ := hv
-      have hne : m.inputs grp ≠ [] := fun h => he (List.Perm.eq_nil (h ▸ hin.symm))
-      obtain ⟨x, xs, hx⟩ := List.exists_cons_of_ne_nil hne
-      rw [hx]
-      exact hnear _ _ (by simp only [Measure.Open, hf]; exact ⟨_, .seq (hx ▸ hin), hc⟩)
-  · simp only [AggFn.Allowed, hf] at hv
-    rw [hf]
-    by_cases he : m.inputs s = []
-    · simp only [he, ite_true] at hv
-      have : m.inputs grp = [] := List.Perm.eq_nil (he ▸ hin)
-      rw [hv, this]; trivial
-    · simp only [he, ite_false] at hv
-      obtain ⟨c, hc, rfl⟩ := hv
-      have hne : m.inputs grp ≠ [] := fun h => he (List.Perm.eq_nil (h ▸ hin.symm))
-      obtain ⟨x, xs, hx⟩ := List.exists_cons_of_ne_nil hne
-      rw [hx]
-      refine hnear _ _ ?_
-      simp only [Measure.Open, hf]
-      refine ⟨m.inputs s, _, c, .seq (hx ▸ hin), hc, ?_, rfl⟩
-      rw [← hx, hin.length_eq]
+    simp only [Measure.orderFree, AggFn.orderFree]
+    rcases ho with h | h <;> simp [h]
+  rw [← Measure.allowed_eq hof h]
+  exact Value.Equiv.refl (aggCtx_reflAt g ms) _
 
 /-- The measures of a group: their allowed values are, column by column,
 equal up to `aggCtx` to the values of an order. -/
