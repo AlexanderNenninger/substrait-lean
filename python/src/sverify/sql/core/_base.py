@@ -883,8 +883,8 @@ class Dialect:
 
     def range_time_key(self, x: str) -> str | None:
         """The ORDER BY key of a RANGE frame with offsets over the timestamp
-        `x`, as microseconds, where the dialect's interval offsets cannot
-        hold every offset; None orders by `x` with `interval_lit` offsets."""
+        `x`, as microseconds, for a dialect that takes such an offset as a
+        number; None orders by `x` with `interval_lit` offsets."""
         return None
 
     def over_frame(self, partition: Sequence[str], order: Sequence[str], frame: str) -> str:

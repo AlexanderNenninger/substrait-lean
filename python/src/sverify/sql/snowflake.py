@@ -227,9 +227,8 @@ class SnowflakeDialect(Dialect):
         return f"({a} = {b})"
 
     def not_distinct(self, a: str, b: str) -> str:
-        # Equality with NULL equal to NULL, as the CASE gives it; the CASE
-        # inside a correlated EXISTS did not always run (Snowflake behaviour
-        # recorded privately).
+        # Equality with NULL equal to NULL, as the CASE gives it (Snowflake
+        # behaviour recorded privately).
         return f"EQUAL_NULL({a}, {b})"
 
     def float_lt(self, a: str, b: str) -> str:
