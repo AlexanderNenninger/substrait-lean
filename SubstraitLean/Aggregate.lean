@@ -244,7 +244,7 @@ theorem sumOf_perm {vs ws : List Value} (h : vs.Perm ws) : sumOf vs = sumOf ws :
 
 def floatSum (vs : List Value) : Int :=
   vs.foldl (fun acc v => match v with
-    | .float c => FloatCode.lift₂ (· + ·) acc c
+    | .float c => FloatCode.fadd acc c
     | _ => acc) (FloatCode.ofInt 0)
 
 /-- The integers among `vs`. -/
@@ -384,7 +384,7 @@ def contNeighbours (num scale : Nat) (s : List Value) : Option (Int × Int × In
   (intAt s (p / d)).bind fun l =>
     if p % d == 0 then some (l, l, 0) else
     (intAt s (p / d + 1)).map fun h =>
-      (l, h, FloatCode.lift₂ (· / ·) (FloatCode.ofInt (p % d)) (FloatCode.ofInt d))
+      (l, h, FloatCode.fdiv (FloatCode.ofInt (p % d)) (FloatCode.ofInt d))
 
 /-- `r` kept between `l` and `h`. -/
 def clampTo (l h r : Int) : Int := min (max r l) h
@@ -395,9 +395,9 @@ kept between `l` and `h`: rounding may leave them by an ulp. `−∞` with
 (`AggFn.makesNan`, #561), so no verified plan sees that value
 (`characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
 def interpolate (l h w : Int) : Int :=
-  clampTo l h (FloatCode.lift₂ (· + ·)
-    (FloatCode.lift₂ (· * ·) l (FloatCode.lift₂ (· - ·) (FloatCode.ofInt 1) w))
-    (FloatCode.lift₂ (· * ·) h w))
+  clampTo l h (FloatCode.fadd
+    (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
+    (FloatCode.fmul h w))
 
 /-- `QUANTILE_CONT` of the doubles `s` in order. -/
 def contValue (num scale : Nat) (s : List Value) : Value :=

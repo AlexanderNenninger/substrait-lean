@@ -118,6 +118,11 @@ spare capacity. This applies to the laptop as much as to `homelab`.
   a checker above 4 GB of RSS: macOS refuses `ulimit -v`.
 - **homelab**: see below.
 
+Editing `python/pyproject.toml` (or `uv.lock`) makes the next `uv run` rebuild
+the package, and its build hook runs a full `lake build`. After such an
+edit, run tools through `python/.venv/bin/` directly, or check capacity
+first as for any build.
+
 Run one expensive task at a time per agent, never several in parallel.
 `poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
 use `pytest -n auto`, which takes every core. On the laptop, run pytest
