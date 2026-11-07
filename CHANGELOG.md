@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.1 (2026-11-07)
+
+Two soundness fixes on 0.7.0. Every plan 0.7.0 ran still runs.
+
+### Fixes
+
+- A stated tolerance (`sv.equivalent(floats=sv.within(...))`) on a double
+  column whose bound the checker can't give, such as a `SUM` of doubles
+  without a row cap or a value computed from one, passed as met by every
+  engine, and the plan reported proved. It is now refused there with the
+  reason (`… has no bound on its distance to the reference …`), and a run on
+  such a column counts as tested ([#1029](https://github.com/AlexanderNenninger/substrait-lean/pull/1029)).
+- A window `SUM`, `AVG`, `VARIANCE` or `STDDEV` of doubles was classed
+  `exact`: the plan's bound left window functions out
+  ([#1032](https://github.com/AlexanderNenninger/substrait-lean/issues/1032)).
+  Such a plan still runs. `Report.epsilon` gives the column no bound
+  (`"abs": null`, naming #1032), its route is observed on tested evidence,
+  and a tolerance stated on the column is refused.
+
 ## 0.7.0 (2026-11-05)
 
 0.6.0 was tagged but never published: two tests the release ran against the
