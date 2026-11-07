@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.7.0"
+version = "0.7.1"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, Spark and Snowflake"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
