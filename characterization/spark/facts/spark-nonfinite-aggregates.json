@@ -59,7 +59,8 @@
     ]
   },
   "description": [
-    "`sum` and `avg` of inf and -inf are NaN; `variance` and `stddev` of a set with an infinity are NaN; `sum(1e308, 1e308)` and `avg` are +inf, while `variance(1e308, 1e308)` is 0.0. A NaN input makes `sum`, `avg`, `variance` NaN; `min` skips it (it sorts last) and `max` returns it. None of this raises under ANSI."
+    "`sum` and `avg` of inf and -inf are NaN; `variance` and `stddev` of a set with an infinity are NaN; `sum(1e308, 1e308)` and `avg` are +inf, while `variance(1e308, 1e308)` is 0.0. A NaN input makes `sum`, `avg`, `variance` NaN; `min` skips it (it sorts last) and `max` returns it. None of this raises under ANSI.",
+    "`COVAR_*` and `CORR` follow `variance`: a NaN or ±inf input makes them NaN, under ANSI too."
   ],
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`stat_degenerate`); a sum past the largest double raises (#575). ST-3 and ST-5 record that Substrait leaves both open. Spark needs guards.",
   "status": "open",
@@ -132,6 +133,25 @@
         "nonfinite[0]: 300 rows, `sum(x)`, `avg(x)`, `max(x)`, `min(x)`, `var_samp(x)`, 820 of 820 results as the fact says.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-07",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_statistics (statistics evidence session for #918 Part B and D30), pyspark 4.3.0 local[2], Java 21, macOS arm64, `spark.sql.ansi.enabled` true and false (same results)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_statistics.py"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST(1.0 AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST('NaN' AS DOUBLE), CAST(2.0 AS DOUBLE)), (CAST(2.0 AS DOUBLE), CAST(3.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_*, stddev_*, covar_*, corr: NaN"
+        },
+        {
+          "sql": "SELECT var_samp(x) AS var_samp, var_pop(x) AS var_pop, stddev_samp(x) AS stddev_samp, stddev_pop(x) AS stddev_pop, covar_samp(x, y) AS covar_samp, covar_pop(x, y) AS covar_pop, corr(x, y) AS corr FROM (VALUES (CAST('Infinity' AS DOUBLE), CAST(1.0 AS DOUBLE)), (CAST('Infinity' AS DOUBLE), CAST(2.0 AS DOUBLE))) AS t(x, y)",
+          "observed": "var_*, stddev_*, covar_*, corr: NaN"
+        }
+      ],
+      "notes": "x = 1, NaN, 2; 1, inf, 2; 1, -inf, 2; inf, inf."
     }
   ],
   "issues": [
