@@ -1803,16 +1803,14 @@ sides of a decimal comparison to their common scale (`UnFn.dkind`).
 
 `SUM` (`sumOf`) gives a decimal of scale `s` when all its values are
 decimals of scale `s`, and otherwise the integer sum of the integers and the
-decimals' unscaled values. The mixed case, decimals with other values or
-with other scales, is unreachable for a plan the kind checker accepts
-(`Rel.kinds_sound`, D28's checker). Its value is a don't-care, chosen to keep
-`SUM` independent of the order of its values (`sumOf_perm`) and of how a
-partition splits them (`sum_partials`) without a side condition. A NULL for
-a mix would break the second: a part that mixes kinds gives NULL, the
-combining `SUM` skips NULL parts, and the parts left would add up to a
-number where the whole gives NULL. The mixed case is outside every contract,
-no engine profile has to agree with it, and every top-level soundness
-theorem is stated for kind-checked plans.
+decimals' unscaled values, a mix of decimals with other values or with
+other scales included. This case is unreachable for a plan the kind checker accepts; it binds no engine, and no contract theorem is stated for unchecked plans.
+The checker is D28's (`Rel.kinds_sound`). The mixed value is a don't-care,
+chosen to keep `SUM` independent of the order of its values (`sumOf_perm`)
+and of how a partition splits them (`sum_partials`) without a side condition.
+A NULL for a mix would break the second: a part that mixes kinds gives NULL,
+the combining `SUM` skips NULL parts, and the parts left would add up to a
+number where the whole gives NULL.
 
 The abstract domain records the kind of a column's numbers (`AVal.nk`, with
 `none` as top). A value of kind `k` is in an abstract value only if its `nk`
