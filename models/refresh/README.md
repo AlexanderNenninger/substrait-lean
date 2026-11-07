@@ -4,8 +4,11 @@
 when the processes that refresh it crash, restart, race each other and lose
 acknowledgements. It is step 1 of [#933](https://github.com/AlexanderNenninger/substrait-lean/issues/933):
 TLC checks it exhaustively at small scopes, and finds the interleavings the
-chaos suite (`python/tests/chaos/`) can only sample. Step 2 states the same
-transition system in Lean.
+chaos suite (`python/tests/chaos/`) can only sample. Step 2,
+[`SubstraitLean/Refresh.lean`](../../SubstraitLean/Refresh.lean), states the
+fixed protocol for a durable source as a transition system and proves
+`NoCorruption` and `RecordDescribesTable` for every scope
+(`Refresh.no_corruption`, `Refresh.record_describes_table`).
 
 ## What it models
 
