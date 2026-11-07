@@ -183,13 +183,23 @@ theorem intSum_map_int : ∀ vs : List Int, intSum (vs.map .int) = vs.sum
 
 /-- **`Polars.sum_empty_null`**: the shimmed `SUM` is the reference's
 (`AggFn.sum`): NULL for no values. -/
+theorem sumOf_map_int (vs : List Int) : sumOf (vs.map .int) = .int (intSum (vs.map .int)) := by
+  rcases sumOf_cases (vs.map .int) with ⟨s, h1, _⟩ | ⟨_, e⟩
+  · exfalso
+    simp only [allDecOf, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff] at h1
+    obtain ⟨w, hw⟩ := List.exists_mem_of_ne_nil _ h1.1
+    have hd := List.all_eq_true.mp h1.2 w hw
+    obtain ⟨i, _, rfl⟩ := List.mem_map.mp hw
+    simp [Value.isDecOf] at hd
+  · exact e
+
 theorem sum_empty_null (vs : List Int) : sumEmptyNull vs = AggFn.sum.apply (vs.map .int) := by
   cases vs with
   | nil => rfl
   | cons v vs =>
-    simp only [sumEmptyNull, List.length_cons, Nat.add_one_ne_zero, ite_false, sum0,
-      AggFn.apply, List.map_cons]
-    rw [← List.map_cons, intSum_map_int]
+    simp only [sumEmptyNull, List.length_cons, Nat.add_one_ne_zero, ite_false, sum0]
+    show _ = sumOf ((v :: vs).map .int)
+    rw [sumOf_map_int, intSum_map_int]
 
 /-- `avg_int_declared`: the exact 128-bit sum truncated by the count
 (`int_div_trunc`), NULL for no values. Polars's own `mean` is a `Float64`
@@ -296,7 +306,7 @@ theorem canon_le_nan {c : Int} (h : DoubleCode c) : canon c ≤ nan :=
 
 /-- A double read with one zero (`one_zero`, up to the NaN's sign). -/
 def canonV : Value → Value
-  | .int c => .int (canon c)
+  | .float c => .float (canon c)
   | v => v
 
 /-- Polars's `min` of a group's doubles (polars-min-max-nan,
@@ -307,45 +317,45 @@ of zero. Trusted. -/
 def MinIgnoreNan (vs : List Int) (r : Value) : Prop :=
   match vs with
   | [] => r = .null
-  | _ :: _ => ∃ c ∈ vs, r = .int c ∧ ∀ x ∈ vs, canon x ≠ nan → canon c ≤ canon x
+  | _ :: _ => ∃ c ∈ vs, r = .float c ∧ ∀ x ∈ vs, canon x ≠ nan → canon c ≤ canon x
 
 /-- Polars's `max`: as `min`, at least each value that is not NaN. Trusted. -/
 def MaxIgnoreNan (vs : List Int) (r : Value) : Prop :=
   match vs with
   | [] => r = .null
-  | _ :: _ => ∃ c ∈ vs, r = .int c ∧ ∀ x ∈ vs, canon x ≠ nan → canon x ≤ canon c
+  | _ :: _ => ∃ c ∈ vs, r = .float c ∧ ∀ x ∈ vs, canon x ≠ nan → canon x ≤ canon c
 
 /-- `max_nan_greatest`: NaN where the group holds one, else Polars's `max`
 read with one zero. -/
 def maxNanGreatest (vs : List Int) (r : Value) : Value :=
-  if vs.any (fun x => decide (canon x = nan)) then .int nan else canonV r
+  if vs.any (fun x => decide (canon x = nan)) then .float nan else canonV r
 
 theorem map_canon_cons (v : Int) (vs : List Int) :
-    (Value.int (canon v) :: vs.map fun c => Value.int (canon c)) =
-      (v :: vs).map fun c => Value.int (canon c) := rfl
+    (Value.float (canon v) :: vs.map fun c => Value.float (canon c)) =
+      (v :: vs).map fun c => Value.float (canon c) := rfl
 
 /-- **`Polars.min_ignore_nan`**: Polars's `min`, read with one zero, is the
 reference's `MIN` (`AggFn.min`): NaN is the greatest double there, so a `min`
 that skips NaN agrees, and the zeros are one. -/
 theorem min_ignore_nan {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleCode x)
-    (h : MinIgnoreNan vs r) : canonV r = AggFn.min.apply (vs.map fun c => .int (canon c)) := by
+    (h : MinIgnoreNan vs r) : canonV r = AggFn.min.apply (vs.map fun c => .float (canon c)) := by
   cases vs with
   | nil => simp only [MinIgnoreNan] at h; subst h; rfl
   | cons v vs =>
     obtain ⟨c, hc, rfl, hle⟩ := h
     simp only [List.map_cons, AggFn.apply]
-    have hmem := pickFold_mem (fun a b => !a.le b) (.int (canon v)) (vs.map fun c => .int (canon c))
-    have hlo := pickFold_min_le (.int (canon v)) (vs.map fun c => .int (canon c))
-    generalize pickFold (fun a b => !a.le b) (.int (canon v)) (vs.map fun c => .int (canon c)) = m
+    have hmem := pickFold_mem (fun a b => !a.le b) (.float (canon v)) (vs.map fun c => .float (canon c))
+    have hlo := pickFold_min_le (.float (canon v)) (vs.map fun c => .float (canon c))
+    generalize pickFold (fun a b => !a.le b) (.float (canon v)) (vs.map fun c => .float (canon c)) = m
       at hmem hlo ⊢
     rw [map_canon_cons] at hmem hlo
     obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hmem
-    have h1 : canon y ≤ canon c := Value.le_int.mp (hlo _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
+    have h1 : canon y ≤ canon c := (Value.le_val .float).mp (hlo _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
     have h2 : canon c ≤ canon y := by
       by_cases hn : canon y = nan
       · rw [hn]; exact canon_le_nan (hv c hc)
       · exact hle y hy hn
-    show Value.int (canon c) = Value.int (canon y)
+    show Value.float (canon c) = Value.float (canon y)
     rw [Int.le_antisymm h2 h1]
 
 /-- **`Polars.max_nan_greatest`**: the shimmed `max` is the reference's `MAX`
@@ -353,15 +363,15 @@ theorem min_ignore_nan {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleCod
 else Polars's `max` with one zero. -/
 theorem max_nan_greatest {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleCode x)
     (h : MaxIgnoreNan vs r) :
-    maxNanGreatest vs r = AggFn.max.apply (vs.map fun c => .int (canon c)) := by
+    maxNanGreatest vs r = AggFn.max.apply (vs.map fun c => .float (canon c)) := by
   cases vs with
   | nil => simp only [MaxIgnoreNan] at h; subst h; rfl
   | cons v vs =>
     obtain ⟨c, hc, rfl, hge⟩ := h
     simp only [List.map_cons, AggFn.apply]
-    have hmem := pickFold_mem (fun a b => !b.le a) (.int (canon v)) (vs.map fun c => .int (canon c))
-    have hhi := pickFold_max_ge (.int (canon v)) (vs.map fun c => .int (canon c))
-    generalize pickFold (fun a b => !b.le a) (.int (canon v)) (vs.map fun c => .int (canon c)) = m
+    have hmem := pickFold_mem (fun a b => !b.le a) (.float (canon v)) (vs.map fun c => .float (canon c))
+    have hhi := pickFold_max_ge (.float (canon v)) (vs.map fun c => .float (canon c))
+    generalize pickFold (fun a b => !b.le a) (.float (canon v)) (vs.map fun c => .float (canon c)) = m
       at hmem hhi ⊢
     rw [map_canon_cons] at hmem hhi
     obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hmem
@@ -369,17 +379,17 @@ theorem max_nan_greatest {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleC
     split
     · rename_i hany
       obtain ⟨z, hz, hzn⟩ := List.any_eq_true.mp hany
-      have h1 : canon z ≤ canon y := Value.le_int.mp (hhi _ (List.mem_map.mpr ⟨z, hz, rfl⟩))
+      have h1 : canon z ≤ canon y := (Value.le_val .float).mp (hhi _ (List.mem_map.mpr ⟨z, hz, rfl⟩))
       have h2 := canon_le_nan (hv y hy)
       have hzn : canon z = nan := of_decide_eq_true hzn
-      show Value.int nan = Value.int (canon y)
+      show Value.float nan = Value.float (canon y)
       congr 1; omega
     · rename_i hnone
       have hy' : canon y ≠ nan := fun e =>
         hnone (List.any_eq_true.mpr ⟨y, hy, decide_eq_true e⟩)
-      have h1 : canon c ≤ canon y := Value.le_int.mp (hhi _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
+      have h1 : canon c ≤ canon y := (Value.le_val .float).mp (hhi _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
       have h2 := hge y hy hy'
-      show Value.int (canon c) = Value.int (canon y)
+      show Value.float (canon c) = Value.float (canon y)
       rw [Int.le_antisymm h1 h2]
 
 end MinMax
@@ -573,7 +583,8 @@ theorem intOverflows_eq (w : Int) : intOverflows w = !inI64 w := by
 theorem int_overflows (f : BinFn) (hf : f = .add ∨ f = .sub ∨ f = .mul) (a b : Int) :
     intOverflows (match f with | .add => a + b | .sub => a - b | _ => a * b) =
       (f.issue (.int a) (.int b)).isSome := by
-  rcases hf with rfl | rfl | rfl <;> simp only [BinFn.issue, wrapIf, intOverflows_eq] <;>
+  rcases hf with rfl | rfl | rfl <;>
+    simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf, intOverflows_eq] <;>
     split <;> simp_all
 
 /-- `div_overflows`: `MIN / -1`. -/
@@ -628,7 +639,7 @@ theorem sum_leaves_i64 (m : Measure) (hm : m.sumDigits = none) (vs : List Int) :
 
 /-- `sum_makes_nan`: a group holds both `+∞` and `-∞`. -/
 def sumMakesNan (vs : List Value) : Bool :=
-  vs.contains (.int FloatCode.posInf) && vs.contains (.int FloatCode.negInf)
+  vs.contains (.float FloatCode.posInf) && vs.contains (.float FloatCode.negInf)
 
 /-- **`Polars.sum_makes_nan`** (B1): the guard flags a group exactly where the
 reference's double `SUM` or `AVG` would make a NaN (`AggFn.makesNan`), which
@@ -649,7 +660,7 @@ raises a domain error: a finite negative base (`nanCase`) or `-∞`
 (`negInfPow`) to a finite non-integer power. Polars computes `x ** 0.5` as
 `sqrt(x)`, NaN for `-∞`, where IEEE's `pow` gives `+∞`. -/
 theorem fractional_power_of_negative {a : Int} (ha : FloatCode.negInf ≤ a) (b : Int) :
-    fractionalPowerOfNegative a b = (BinFn.fpow.issue (.int a) (.int b) == some .domain) := by
+    fractionalPowerOfNegative a b = (BinFn.fpow.issue (.float a) (.float b) == some .domain) := by
   simp only [fractionalPowerOfNegative, BinFn.issue, negInfPow, nanIssue, nanCase]
   by_cases h1 : a = FloatCode.negInf
   · subst h1
@@ -668,8 +679,8 @@ def makesInfinite (y : Int) (xs : List Int) : Bool := xs.all isFiniteCode && isI
 native ones (`lift₂`), so the guard flags a row exactly where the reference's
 overflow to `±∞` does (`BinFn.infIssue`). -/
 theorem makes_infinite (f : BinFn) (hf : f.makesInf = true) (a b : Int) :
-    makesInfinite (match (f.apply (.int a) (.int b)) with | .int r => r | _ => 0) [a, b] =
-      (f.infIssue (.int a) (.int b)).isSome := by
+    makesInfinite (match (f.apply (.float a) (.float b)) with | .float r => r | _ => 0) [a, b] =
+      (f.infIssue (.float a) (.float b)).isSome := by
   have hf' : f = .fadd ∨ f = .fsub ∨ f = .fmul ∨ f = .fdiv ∨ f = .fpow := by
     cases f <;> simp_all [BinFn.makesInf]
   rcases hf' with rfl | rfl | rfl | rfl | rfl <;>
@@ -712,8 +723,8 @@ def bin : BinFn → Value → Value → Value
   | .mul, .int a, .int b => .int (wrap64 (a * b))
   | .idiv, .int a, .int b => if b = 0 then .null else .int (intDivTrunc a b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (intModTrunc a b)
-  | f, .int a, .int b =>
-    if nanCase f a b then .int FloatCode.nan else f.apply (.int a) (.int b)
+  | f, .float a, .float b =>
+    if nanCase f a b then .float FloatCode.nan else f.apply (.float a) (.float b)
   | f, v, w => f.apply v w
 
 def written : Impl := ⟨UnFn.apply, bin⟩
@@ -723,38 +734,38 @@ the reference wherever the reference reports no issue. Its own values
 elsewhere (a wrapped integer, NULL for a zero divisor, NaN, `±∞`) are on the
 error side, where a verified plan does not go. -/
 theorem nanCase_issue {f : BinFn} {a b : Int} (hn : nanCase f a b = true) :
-    f.issue (.int a) (.int b) ≠ none := by
+    f.issue (.float a) (.float b) ≠ none := by
   cases f <;> simp only [nanCase, Bool.false_eq_true] at hn <;>
     simp only [BinFn.issue, nanIssue, nanCase] at * <;> (try split) <;> simp_all
 
 theorem written_faithful : written.Faithful := by
   refine ⟨fun _ _ _ => rfl, fun f v w h => ?_⟩
   show bin f v w = f.apply v w
-  cases v <;> cases w <;> (try (cases f <;> rfl))
-  rename_i a b
-  have hfloat : bin f (.int a) (.int b) =
-      (if nanCase f a b then .int FloatCode.nan else f.apply (.int a) (.int b)) ∨
-      f = .add ∨ f = .sub ∨ f = .mul ∨ f = .idiv ∨ f = .imod := by
-    cases f <;> simp [bin]
-  rcases hfloat with he | rfl | rfl | rfl | rfl | rfl
-  · rw [he]
+  unfold bin
+  split
+  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
+    split at h <;> simp_all [BinFn.apply, wrap64_of_inI64]
+  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
+    split at h <;> simp_all [BinFn.apply, wrap64_of_inI64]
+  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
+    split at h <;> simp_all [BinFn.apply, wrap64_of_inI64]
+  · rename_i a b
+    simp only [BinFn.apply]
+    split
+    · rfl
+    · rename_i hb; rw [int_div_trunc a hb]
+  · rename_i a b
+    simp only [BinFn.apply]
+    split
+    · rfl
+    · rename_i hb; rw [int_mod_trunc a hb]
+  · rename_i a b
     have : nanCase f a b = false := by
       cases hn : nanCase f a b
       · rfl
       · exact absurd h (nanCase_issue hn)
     simp [this]
-  all_goals simp only [BinFn.issue, wrapIf] at h
-  · simp only [bin, BinFn.apply]; split at h <;> simp_all [wrap64_of_inI64]
-  · simp only [bin, BinFn.apply]; split at h <;> simp_all [wrap64_of_inI64]
-  · simp only [bin, BinFn.apply]; split at h <;> simp_all [wrap64_of_inI64]
-  · simp only [bin, BinFn.apply]
-    split
-    · rfl
-    · rename_i hb; rw [int_div_trunc a hb]
-  · simp only [bin, BinFn.apply]
-    split
-    · rfl
-    · rename_i hb; rw [int_mod_trunc a hb]
+  · rfl
 
 end Substrait.Polars
 
