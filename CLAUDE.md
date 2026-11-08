@@ -182,6 +182,52 @@ coordinator session that assigns work and merges PRs through batches.
 
 ## Lean proofs
 
+### The design, in one picture
+
+`docs/core-semantics.md` ("Terminology") is the source; this is the summary
+every session should hold before it touches `SubstraitLean/`.
+
+- The core (`Rel.eval`, `Rel.Allowed`, the options) is an abstract machine.
+  It runs no plan. Every point where engines or Substrait differ is an open
+  option, so the core can simulate every supported behaviour by narrowing
+  its options. A profile is the core with its options narrowed.
+- The reference profile (`Profile.reference`) is one profile among the
+  others, separate from the core. Plans are verified under it. It is strict
+  where engines disagree (it raises), and where it picks a value it picks one
+  every engine gives natively or with a cheap shim. It belongs to no engine.
+- Each engine has a profile of its own (`Profile.duckdb`, Polars, Spark,
+  Snowflake), stating what that engine computes, from
+  `characterization/<engine>/facts/`. Engine profiles are siblings: none
+  refines another, and none refines the reference. A plan verified under
+  the reference reaches an engine through a translation (the lowering),
+  shimmed only on the reference's value choices, and the engine's profile
+  is what the lowered plan is evaluated under in `Engine.Sound`.
+- Substrait has a profile of the same kind (`Profile.substrait`): the
+  YAMLs' own looseness, a sibling of the reference, since the reference
+  overrides Substrait in places.
+
+What goes into the core. The core is the idealised setting and holds no
+engine-specific workaround: no shim, no engine's quirk, no version-specific
+behaviour, no branch on an engine's name. A behaviour enters the core only
+as an option, and only when a tier-1 engine (DuckDB, Polars, Spark) needs
+that option for its plans to be checkable, that is, when without it the
+core could not state what that engine computes. Then the option is added
+once, for every engine, with the reference's value for it recorded as a
+decision. Everything else lives in the profiles: a single engine's
+behaviour in its profile and facts, a translation in its lowering, a
+compensation in its shims. If a change to `Rel.eval` or `Rel.Allowed`
+mentions an engine, it is in the wrong place.
+
+Two consequences. An engine's profile is an engine fact, never a choice:
+defining one as `Profile.reference` (as `Profile.spark` is today) states a
+verification semantics, not what Spark computes, and a theorem over it says
+nothing about Spark (#271 replaces it). And a user-facing semantics
+(`semantics="duckdb"`) is a choice of profile to verify under, a different
+role from the engine profile the lowered plan runs under, even when the
+two profiles share a name.
+
+### The rules
+
 The `prove-lean` skill has the workflow. The rules:
 
 - No `native_decide`, no `sorry`, and `decide` only on small terms.
