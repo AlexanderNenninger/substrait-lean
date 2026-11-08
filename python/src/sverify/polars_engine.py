@@ -19,7 +19,7 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   place), unions concatenate and windows emit rows in their sort order.
   `FetchRel` then takes the same rows as Lean.
 * Doubles have one zero and one NaN, as the float codes of
-  `SubstraitLean/Float.lean` do: `-inf < … < 0.0 < … < inf < NaN`, `-0.0` is
+  `core/Sverify/Core/Float.lean` do: `-inf < … < 0.0 < … < inf < NaN`, `-0.0` is
   `0.0` and NaN equals itself. Comparisons, join keys, window partitions and
   sort keys use a key with that order (`_float_key`: the one zero and the
   one positive NaN, which Polars orders and compares that way), and doubles
@@ -46,11 +46,11 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
 * Sorts (`SortRel`, and the sort of a window) are stable and place NULLs as
   each key says; window partitions group NULLs together, as `samePart` does,
   and `DISTINCT` keeps the first of equal rows (`dedup`), NULLs equal.
-* Strings are sequences of Unicode scalar values (`SubstraitLean/Text.lean`):
+* Strings are sequences of Unicode scalar values (`core/Sverify/Core/Text.lean`):
   positions and lengths count characters, not bytes. `UPPER`, `LOWER` and
   regular expressions are black boxes in Lean; Polars computes them with the
   same Rust code DataFusion uses (`str::to_uppercase`, the `regex` crate).
-* `date_part` and `date_trunc` follow `SubstraitLean/Time.lean`: sub-day
+* `date_part` and `date_trunc` follow `core/Sverify/Core/Time.lean`: sub-day
   parts and truncations are integer arithmetic on the microseconds, calendar
   ones go through Polars' calendar, and the calendar functions raise outside
   the reference's timestamps, 0001-01-01 to 9999-12-31 (D32).
@@ -640,7 +640,7 @@ def is_true(e: pl.Expr) -> pl.Expr:
     return e.eq_missing(True)
 
 
-# --- Strings (`SubstraitLean/Text.lean`) ------------------------------------
+# --- Strings (`core/Sverify/Core/Text.lean`) ------------------------------------
 
 
 def _rows(fn, out: DType, *vals: Val) -> pl.Expr:
@@ -796,7 +796,7 @@ def regex_groups(p: str) -> int | None:
     return _plan_read.regex_groups(p, Unsupported)
 
 
-# --- Times (`SubstraitLean/Time.lean`) ---------------------------------------
+# --- Times (`core/Sverify/Core/Time.lean`) ---------------------------------------
 
 #: The reference's timestamps, 0001-01-01 00:00:00 to 9999-12-31
 #: 23:59:59.999999 (`Time.tsMin`, `Time.tsMax`, D32), in microseconds.
@@ -1698,7 +1698,7 @@ class Exprs:
         return Val(e, t, issues(*vals))
 
     def string(self, name: str, a: Val, b: Val) -> Val:
-        """The binary functions of `SubstraitLean/Text.lean`."""
+        """The binary functions of `core/Sverify/Core/Text.lean`."""
         if name == "substring":
             return self.substring(a, b, None)
         if name == "repeat":
@@ -2080,15 +2080,19 @@ class Measure:
             # a deviation NaN (#257); finite values may overflow (#575).
             ddof = 1 if self.fn.endswith("_samp") else 0
             agg = v.std(ddof=ddof) if self.fn.startswith("std") else v.var(ddof=ddof)
-            # D30's clamp shim: at least 0, NaN kept (`Stat.clamp_near`, `FloatMoments.lean`).
-            agg = pl.when(agg.is_nan()).then(agg).otherwise(agg.clip(lower_bound=0.0))
-            bad, inf = f"{name}_bad", f"{name}_inf"
+            # Aggregated once, and read: D30's clamp shim, at least 0 with NaN
+            # kept (`Stat.clamp_near`, `FloatMoments.lean`), and NaN for a
+            # group with a NaN (`nan_through`, polars-var-pop-one-nan).
+            bad, fin, nan = f"{name}_bad", f"{name}_fin", f"{name}_nan"
+            clamped = pl.when(r.is_nan()).then(r).otherwise(r.clip(lower_bound=0.0))
             return NativeAgg(
-                {name: canon(agg), bad: v.is_infinite().any(),
-                 inf: shims.agg_makes_infinite(agg, v)},
-                r,
+                {name: agg, bad: v.is_infinite().any(), fin: v.is_finite().all(),
+                 nan: v.is_nan().any()},
+                canon(shims.nan_through(clamped, pl.col(nan))),
                 ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
-                 (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
+                 # `agg_makes_infinite`, its two halves read after the aggregation.
+                 (pl.col(fin) & r.is_infinite(), InfiniteResult,
+                  f"{self.fn} overflows to infinity")),
             )  # fmt: skip
         return None
 

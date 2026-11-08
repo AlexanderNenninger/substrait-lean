@@ -18,9 +18,9 @@ Mathlib's prebuilt oleans; `poe prove-floats` does the same locally. It is
 not part of `poe qa`, because of the Mathlib download.
 
 The core used the bound formulas as trusted facts, next to its other trust in
-native `Float` (`SubstraitLean/Float.lean`), and cross-references them to the
+native `Float` (`core/Sverify/Core/Float.lean`), and cross-references them to the
 proofs here. Since D31 it proves the arithmetic ones itself
-(`SubstraitLean/FloatArith.lean`); `FloatCode.exp_fin` stays a trusted fact.
+(`core/Sverify/Core/FloatArith.lean`); `FloatCode.exp_fin` stays a trusted fact.
 
 ## The model of rounding
 
@@ -152,7 +152,7 @@ results from any co-moment within `E` of `C`:
 ## In contracts
 
 The contract checker uses `floatSumCR_mem`, `floatAvgCR_mem` and
-`floatSumCR_sign` (`SubstraitLean/FloatExact.lean`), theorems about the
+`floatSumCR_sign` (`core/Sverify/Core/FloatExact.lean`), theorems about the
 reference's correctly rounded sum (D25), with the tolerances
 `FloatCode.sumTolScaled` and `avgTolScaled` defined there as here. Before D25
 they were axioms about the sequential sum, proved here as `core_sum`,
@@ -213,7 +213,7 @@ order the engine profiles allow (`sum_order`):
 
 | Behaviour | Algorithm | Theorem |
 |---|---|---|
-| `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of rounded additions in any order (`FloatSums`, `SubstraitLean/AllowedP.lean`) | `Rnd.Tree.error`, `TreeSum.tree` ([`Tree.lean`](../float-bounds/FloatBounds/Tree.lean)) |
+| `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of rounded additions in any order (`FloatSums`, `core/Sverify/Core/AllowedP.lean`) | `Rnd.Tree.error`, `TreeSum.tree` ([`Tree.lean`](../float-bounds/FloatBounds/Tree.lean)) |
 | `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` ([duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json)) | `TreeSum.const` |
 | `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../characterization/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
 
@@ -254,7 +254,7 @@ Polars cite `StdModel.epsilon_sum` ([realizability](realizability.md)).
 Under [D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)
 the reference's `SUM` of doubles is the exact sum of the values rounded once,
 and its `AVG` the exact mean rounded once (`floatSumCR`, `floatAvgCR`,
-[`FloatExact.lean`](../SubstraitLean/FloatExact.lean)). The core computes
+[`FloatExact.lean`](../core/Sverify/Core/FloatExact.lean)). The core computes
 them on integers, since every finite double is a multiple of `2⁻¹⁰⁷⁴`, and
 proves without axioms that the result is the nearest double
 (`FloatCode.ofExactDiv_within`), within `u` of the exact value relatively

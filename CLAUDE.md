@@ -54,6 +54,13 @@ and with a tenth of the Hypothesis examples (the `dev` profile,
 (`homelab_qa.sh` runs `qa`). CI runs every test with the full counts, `core`
 in three shards.
 
+Before every push, run the cheap checks from `python/`: `poe fmt` (ruff's fixes
+and formatting, also of the notebooks), then `poe lint` and `poe typecheck`
+(pyrefly). They take seconds and catch what CI's `static` job would fail on.
+After an edit to `pyproject.toml` or `uv.lock`, call them as
+`.venv/bin/poe …`, since `uv run` would rebuild the package. A push that
+changes Lean also builds with `lake build --wfail` first.
+
 On pull requests CI runs what the change can affect; pushes to main, merge
 queue entries and retargets run everything. One job builds `substrait-check`
 and the others download it. The generated proofs are checked only when a

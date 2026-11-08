@@ -1,11 +1,11 @@
-import SubstraitLean.AllowedNear
+import Sverify.Core.AllowedNear
 import SubstraitLean.Partition
 import SubstraitLean.Guards
 
 /-!
 # What the analysis proves of the allowed results
 
-`Rel.Allowed` (`SubstraitLean/Allowed.lean`) is the reference's relation;
+`Rel.Allowed` (`core/Sverify/Core/Allowed.lean`) is the reference's relation;
 this module states what the analysis proves of it. For a plan without
 choices (`Rel.detPlan`, decided from the abstract values, facts and keys of
 `SubstraitLean/Contracts.lean`), every allowed result is `Rel.eval`'s up to
@@ -16,7 +16,7 @@ an allowed result (`Rel.guardFree_allowed`). A row cap keeps every order a
 plan allows (`Rel.orderAllowed_capReads`), for the checker's capped reads
 (`Rel.capReads`). A contract proved by the checker holds of every allowed
 result, up to its observation (`contract_sound_allowed`, over
-`SubstraitLean/AllowedNear.lean`'s closeness).
+`core/Sverify/Core/AllowedNear.lean`'s closeness).
 -/
 
 namespace Substrait

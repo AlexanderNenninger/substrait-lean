@@ -1,5 +1,5 @@
 """Coverage cases: elementary functions and bitwise operations
-(`SubstraitLean/Numeric.lean`)."""
+(`core/Sverify/Core/Numeric.lean`)."""
 
 from __future__ import annotations
 

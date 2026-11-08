@@ -1,7 +1,7 @@
 {
   "description": [
     "The characterization checklist: what a characterization of an engine records, area by area. Each item is an option of the loose core (docs/core-semantics.md, the option catalogue; kind `option`) or a point the options do not reach (kind `extra`). A fact names the items it settles in its `options` field, and `python -m sverify_dev.facts --coverage <engine>` lists, per item, the engine's facts that settle it, or `missing`.",
-    "Item ids are unique across areas, so each option sits in one area even where it applies to functions of several (`overflow` covers integer `sum` too). The option ids are Lean's options table (`options` in `SubstraitLean/Options.lean`, #444's step 1a), and `test_checklist_options_are_lean` (`python/tests/test_functions.py`) checks the two agree, apart from `fp32` (an item before #417 gives it options) and Lean's `distribution` (a function's parameter every profile reads)."
+    "Item ids are unique across areas, so each option sits in one area even where it applies to functions of several (`overflow` covers integer `sum` too). The option ids are Lean's options table (`options` in `core/Sverify/Core/Options.lean`, #444's step 1a), and `test_checklist_options_are_lean` (`python/tests/test_functions.py`) checks the two agree, apart from `fp32` (an item before #417 gives it options) and Lean's `distribution` (a function's parameter every profile reads)."
   ],
   "areas": [
     {

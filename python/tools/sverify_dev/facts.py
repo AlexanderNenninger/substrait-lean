@@ -11,7 +11,7 @@ evidence: links at a tag or commit, ledgers, probes, SQL repros).
 
 A fact's `options` names the items of the characterization checklist
 (`characterization/areas.json`) it settles, and its `rows` the rows of the
-engine choice tables it settles: a function group of `SubstraitLean/Functions.lean`
+engine choice tables it settles: a function group of `core/Sverify/Core/Functions.lean`
 (`groups`), one of the group's options and the types it was checked at. Its
 `evidence` is the strongest kind of check in its provenance: `docs` <
 `source` < `engine_test` < `probe` < `fuzz` < `proof`. The documents are the record; there
@@ -43,7 +43,7 @@ REPO = Path(__file__).resolve().parents[3]
 ROOT = REPO / "characterization"
 SCHEMA = ROOT / "fact.schema.json"
 AREAS = ROOT / "areas.json"
-FUNCTIONS = REPO / "SubstraitLean" / "Functions.lean"
+FUNCTIONS = REPO / "core" / "Sverify" / "Core" / "Functions.lean"
 
 #: The kinds of evidence, weakest first.
 EVIDENCE = ("docs", "source", "engine_test", "probe", "fuzz", "proof")

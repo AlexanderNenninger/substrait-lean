@@ -261,7 +261,7 @@ _NOT_IN_CLASS = set("[]\\-&~^")
 
 def simple_regex(p: str) -> bool:
     """`Text.simpleRegex`: is `p` in the subset of patterns that compile in
-    RE2 and Rust and that `SubstraitLean/Regex.lean` evaluates?"""
+    RE2 and Rust and that `core/Sverify/Core/Regex.lean` evaluates?"""
 
     def count(cs: str) -> tuple[int, str] | None:
         ds = cs[: len(cs) - len(cs.lstrip("0123456789"))]

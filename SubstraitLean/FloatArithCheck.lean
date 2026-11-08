@@ -1,4 +1,4 @@
-import SubstraitLean.FloatArith
+import Sverify.Core.FloatArith
 
 /-!
 # D31 against native doubles

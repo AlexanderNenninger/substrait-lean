@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import Sverify.Core.Rel
 import Std.Data.HashMap
 import Std.Data.HashSet
 
