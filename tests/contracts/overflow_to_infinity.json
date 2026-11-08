@@ -1,0 +1,129 @@
+{
+ "requires": [],
+ "ensures": [],
+ "transform": {
+  "extensions": [
+   {
+    "extensionFunction": {
+     "functionAnchor": 1,
+     "name": "multiply"
+    }
+   }
+  ],
+  "relations": [
+   {
+    "root": {
+     "input": {
+      "project": {
+       "common": {
+        "emit": {
+         "outputMapping": [
+          5
+         ]
+        }
+       },
+       "input": {
+        "read": {
+         "baseSchema": {
+          "names": [
+           "k",
+           "a",
+           "b",
+           "x",
+           "s"
+          ],
+          "struct": {
+           "types": [
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "fp64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "string": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            }
+           ],
+           "nullability": "NULLABILITY_REQUIRED"
+          }
+         },
+         "namedTable": {
+          "names": [
+           "t"
+          ]
+         }
+        }
+       },
+       "expressions": [
+        {
+         "scalarFunction": {
+          "functionReference": 1,
+          "arguments": [
+           {
+            "value": {
+             "selection": {
+              "directReference": {
+               "structField": {
+                "field": 3
+               }
+              },
+              "rootReference": {}
+             }
+            }
+           },
+           {
+            "value": {
+             "selection": {
+              "directReference": {
+               "structField": {
+                "field": 3
+               }
+              },
+              "rootReference": {}
+             }
+            }
+           }
+          ]
+         }
+        }
+       ]
+      }
+     },
+     "names": [
+      "y"
+     ]
+    }
+   }
+  ]
+ },
+ "keys": {},
+ "ensures_keys": [],
+ "references": {},
+ "max_rows": {},
+ "rows_per": {},
+ "observation": {
+  "coarsens": [
+   "rows",
+   "floats"
+  ],
+  "floats_plan": true,
+  "approx": [],
+  "sql": false
+ }
+}

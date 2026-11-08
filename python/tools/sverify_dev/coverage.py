@@ -62,6 +62,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from sverify import _engines
 from sverify.engine import run_checker, written_plan
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
@@ -97,8 +98,8 @@ __all__ = [
     "table",
 ]
 
-#: The engines the coverage table has a column for.
-ENGINES = ("polars", "duckdb", "snowflake", "spark")
+#: The engines the coverage table has a column for: those sverify supports.
+ENGINES = _engines.SUPPORTED
 
 #: The memtables of the cases, by name: engines that run Ibis's SQL need them
 #: as tables.
@@ -162,7 +163,6 @@ def results() -> list[Result]:
 
 SYMBOL = {"verified": "✓", "rejected": "✗", "upstream": "–"}
 START, END = "<!-- coverage:start -->", "<!-- coverage:end -->"
-NAMES = {"polars": "Polars", "duckdb": "DuckDB", "snowflake": "Snowflake", "spark": "Spark"}
 
 
 def table(rs: list[Result]) -> str:
@@ -197,7 +197,7 @@ def table(rs: list[Result]) -> str:
             + (" (with `deterministic=True` it runs)" if r.case.label in TIE_FREE else "")
             for r in out
         )
-        lines.append(f"| {NAMES[e]} | {len(verified) - len(out)} | {refused or '—'} |")
+        lines.append(f"| {_engines.title(e)} | {len(verified) - len(out)} | {refused or '—'} |")
     return "\n".join(lines)
 
 
