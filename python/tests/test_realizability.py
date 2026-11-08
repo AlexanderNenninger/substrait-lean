@@ -89,6 +89,27 @@ def test_every_unproved_row_names_a_fact(table):
 
 
 @needs_repo
+def test_every_tested_row_names_its_issue_and_version(table):
+    """A row that rests on no theorem names the issue tracking its proof
+    (#1131, `EngineProfile.tracked`) and the engine version its facts were
+    checked at, which is the profile's and each cited fact's (#1166)."""
+    for engine, e in table.items():
+        for r in e["rows"]:
+            if r["case"] == "uncharacterized" or r["evidence"] is None:
+                continue
+            if r["evidence"] != "proved":
+                assert isinstance(r["issue"], int), (engine, r["option"])
+                assert r["version"] == e["version"], (engine, r["option"])
+            for i in r["facts"]:
+                if "::" in i:
+                    continue
+                fact = ROOT / "characterization" / engine / "facts" / f"{i}.json"
+                if fact.exists():
+                    v = json.loads(fact.read_text())["engine_version"]
+                    assert v.removeprefix("py-") == e["version"], (engine, i, v)
+
+
+@needs_repo
 def test_every_row_names_real_facts(table):
     for engine, e in table.items():
         for r in e["rows"]:

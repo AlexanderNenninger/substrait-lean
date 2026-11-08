@@ -1,0 +1,35 @@
+{
+  "id": "spark-floor-remainder",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`(x % k + k) % k` is the floor remainder of BIGINTs",
+  "verdict": "native",
+  "area": "integers",
+  "constructs": [
+    "%"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      "true",
+      "false"
+    ]
+  },
+  "description": "`%` of BIGINTs truncates, so the writer's `date_bin` takes `((u - o) % k + k) % k` (sql/core/temporal.py): for o = 3 and k = 10, `u - that` gives −7, −7, 3, −7 for u = −1, −7, 7, 0, and −9223372036854775807 for u = MIN + 3, without overflow.",
+  "reference": "`Time.bucket k o u = floorTo k (u - o) + o`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "floor-remainder-bigint"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
+    }
+  ]
+}

@@ -38,7 +38,8 @@
   },
   "description": [
     "A double or decimal cast to an integer truncates toward zero (1.9 → 1, -2.5 → -2), in both modes. Under ANSI a value outside the target's range, NaN and ±inf raise `CAST_OVERFLOW`; `try_cast` gives NULL for them.",
-    "Without ANSI a double saturates at `INT` and `BIGINT` (`CAST(1e20 AS INT)` is 2147483647, -inf gives `MIN`) and gives 0 for NaN; `TINYINT` and `SMALLINT` go through `INT` and then wrap (`CAST(130.0 AS TINYINT)` is -126, `CAST(3e9 AS TINYINT)` -1). A decimal or `BIGINT` cast to a narrower integer wraps (`CAST(300 AS TINYINT)` is 44)."
+    "Without ANSI a double saturates at `INT` and `BIGINT` (`CAST(1e20 AS INT)` is 2147483647, -inf gives `MIN`) and gives 0 for NaN; `TINYINT` and `SMALLINT` go through `INT` and then wrap (`CAST(130.0 AS TINYINT)` is -126, `CAST(3e9 AS TINYINT)` -1). A decimal or `BIGINT` cast to a narrower integer wraps (`CAST(300 AS TINYINT)` is 44).",
+    "Under ANSI the double 2⁶³ (`9.223372036854775807E18D`) casts to 9223372036854775807 rather than raising, and −2⁶³ to `MIN`: the range test admits 2⁶³ itself. `SparkDialect.float_to_int` checks −2⁶³ ≤ x < 2⁶³ before the cast, so the reference's raise at 2⁶³ stays."
   ],
   "reference": "`float_to_int: TRUNCATE` (#209); `cast_failure` as the cast states, `THROW_EXCEPTION` for `UNSPECIFIED` (ST-6). Spark under ANSI is native; `try_cast` is `RETURN_NULL`.",
   "status": "no-finding",
@@ -127,6 +128,18 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "double-to-bigint-edge"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
     }
   ],
   "issues": [

@@ -159,16 +159,36 @@ inductive Cls
   | refused
   deriving Repr, DecidableEq
 
-/-- What a row rests on. -/
+/-- What a row rests on. A row that is not a theorem names the issue that
+tracks its proof (#1131, #1166); `EngineProfile.tracked` requires it of every
+engine's rows, and the engine's version is its table's (`ProfileTable.version`),
+which each fact's `engine_version` matches (`tests/test_realizability.py`). -/
 inductive Evidence
   /-- A Lean theorem, by name, with the facts its trusted model rests on. -/
   | proved (thm : String) (facts : List String := [])
-  /-- A test, a probe or an engine fact, by id. -/
-  | tested (ids : List String)
-  /-- An engine fact whose evidence is a probe of the engine run for it, by id. -/
-  | probed (ids : List String)
+  /-- A test, a probe or an engine fact, by id, and the issue tracking its proof. -/
+  | tested (ids : List String) (issue : Option Nat := Option.none)
+  /-- An engine fact whose evidence is a probe of the engine run for it, by id,
+  and the issue tracking its proof. -/
+  | probed (ids : List String) (issue : Option Nat := Option.none)
   | none
   deriving Repr, DecidableEq
+
+/-- Does the evidence name the issue tracking its proof, where it is no proof? -/
+def Evidence.tracked : Evidence → Bool
+  | .tested _ i | .probed _ i => i.isSome
+  | _ => true
+
+/-- The issue tracking the evidence's proof, if it names one. -/
+def Evidence.issue? : Evidence → Option Nat
+  | .tested _ i | .probed _ i => i
+  | _ => Option.none
+
+/-- The evidence with `n` as the issue tracking its proof, where it is no proof. -/
+def Evidence.tracking (n : Nat) : Evidence → Evidence
+  | .tested ids _ => .tested ids (some n)
+  | .probed ids _ => .probed ids (some n)
+  | e => e
 
 /-- A profile's observation column at a group and option (D15). -/
 structure ObsRow where
@@ -376,8 +396,8 @@ def ObsRow.json (r : ObsRow) : Json :=
     ("q", r.q.json), ("shim", toJson r.shim),
     ("evidence", match r.evidence with
       | .proved t ids => Json.mkObj [("proved", toJson t), ("facts", toJson ids)]
-      | .tested ids => Json.mkObj [("tested", toJson ids)]
-      | .probed ids => Json.mkObj [("probe", toJson ids)]
+      | .tested ids i => Json.mkObj [("tested", toJson ids), ("issue", toJson i)]
+      | .probed ids i => Json.mkObj [("probe", toJson ids), ("issue", toJson i)]
       | .none => Json.null)]
 
 open Lean (Json toJson) in

@@ -2,6 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.Observations
 import SubstraitLean.AllowedP
 import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.SubstraitProfile
 
 /-!
@@ -77,7 +78,12 @@ def ObsRow.approxWithin (b : String) (ids : List String) : ObsRow :=
 /-- The row, proved by the theorem `thm` (`SubstraitLean/PolarsShims.lean`),
 whose trusted model rests on the row's facts. -/
 def ObsRow.proved (r : ObsRow) (thm : String) : ObsRow :=
-  { r with evidence := .proved thm (match r.evidence with | .tested ids | .probed ids => ids | _ => []) }
+  { r with evidence := .proved thm (match r.evidence with | .tested ids _ | .probed ids _ => ids | _ => []) }
+
+/-- The row, its evidence and its reruns' not proved, with the issue `n` that
+tracks their proof (#1131): `EngineProfile.tracked` requires one. -/
+def ObsRow.tracking (r : ObsRow) (n : Nat) : ObsRow :=
+  { r with evidence := r.evidence.tracking n, rerunEvidence := r.rerunEvidence.tracking n }
 
 /-! ## DuckDB -/
 
@@ -128,24 +134,24 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     uncharacterized prototypeSlice
 
 def Profile.duckdb.obs : ObsTable := [
-  (none, "overflow", .native ["duckdb-R1", "duckdb-R15-int-arith"]),
+  (none, "overflow", (ObsRow.native ["duckdb-R1", "duckdb-R15-int-arith"]).tracking 241),
   -- `SUM(BIGINT)` is a `HUGEINT`; the written plan casts it back, which raises
   -- where the reference does: a type, not a value, so no shim.
-  (some "agg.isum", "overflow", .native ["duckdb-R6"]),
-  (none, "on_division_by_zero", .native ["duckdb-R2"]),
-  (some "fp.div", "on_division_by_zero", .native ["duckdb-R5"]),
-  (none, "on_domain_error", .native ["duckdb-R15-double-arith"]),
-  (none, "division_type", .native ["duckdb-R3"]),
-  (none, "min_mod_neg_one", .shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]),
-  (none, "rounding", .native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]),
-  (none, "nan_creation", .native ["duckdb-R15-double-arith"]),
+  (some "agg.isum", "overflow", (ObsRow.native ["duckdb-R6"]).tracking 241),
+  (none, "on_division_by_zero", (ObsRow.native ["duckdb-R2"]).tracking 241),
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["duckdb-R5"]).tracking 241),
+  (none, "on_domain_error", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 241),
+  (none, "division_type", (ObsRow.native ["duckdb-R3"]).tracking 241),
+  (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
+  (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 241),
+  (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 241),
   -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
   -- after `Dialect.canon`.
-  (none, "zero_sign", { ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
-    shim := some "Dialect.canon" }),
-  (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
-  (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
-  (none, "nan_equality", .native ["duckdb-nan-equality"]),
+  (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
+    shim := some "Dialect.canon" }).tracking 241),
+  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["duckdb-signbit"]).tracking 241),
+  (none, "nan_order", (ObsRow.native ["duckdb-arg-min-nulls"]).tracking 241),
+  (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).tracking 241),
   -- Partials merged in finishing order are trees the reference allows, but a
   -- constant vector's `fl(k · x)` is not known to be one (#633): within #85's
   -- bound of the reference's correctly rounded sum (`StdModel.epsilon_sum_cr`).
@@ -158,28 +164,28 @@ def Profile.duckdb.obs : ObsTable := [
     rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
-  (none, "avg_int_result", .native ["duckdb-R6"]),
-  (none, "empty_group_aggregates", .native ["duckdb-sum-double", "duckdb-avg-int"]),
-  (none, "null_order", .native ["duckdb-F2"]),
+  (none, "avg_int_result", (ObsRow.native ["duckdb-R6"]).tracking 241),
+  (none, "empty_group_aggregates", (ObsRow.native ["duckdb-sum-double", "duckdb-avg-int"]).tracking 241),
+  (none, "null_order", (ObsRow.native ["duckdb-F2"]).tracking 241),
   -- The written `ORDER BY` is the model's sort, which `SortAllowed` allows for
   -- a clustered key (`Rel.duckdb_refines`; `test_realizability.py` runs it).
   (none, "clustered", (ObsRow.shimmed "ORDER BY the keys" []).proved "Rel.duckdb_refines"),
   -- Ties come in the order threads read the rows.
   -- `ORDER BY`, `row_number`, `ntile`, `lag` and `list` without a total order:
   -- ties, and a list's elements, come in a different order run to run.
-  (none, "tie_order", { ObsRow.native ["duckdb-sort-ties", "duckdb-mode-ties"] with
+  (none, "tie_order", ({ ObsRow.native ["duckdb-sort-ties", "duckdb-mode-ties"] with
     rerun := some { rows := .tiesPermuted, elements := .multiset },
-    rerunEvidence := .probed ["duckdb-sort-ties", "duckdb-mode-ties", "duckdb-exec-row-order"] }),
-  (none, "tie_pick", { ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
+    rerunEvidence := .probed ["duckdb-sort-ties", "duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 900),
+  (none, "tie_pick", ({ ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
     rerun := some { rows := .tiesPermuted },
-    rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }),
-  (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
-  (none, "float_overflow", .native ["duckdb-R15-double-arith"]),
-  (none, "negative_start", .native ["duckdb-R13"]),
-  (none, "case_sensitivity", .native ["duckdb-string-match-case"]),
-  (none, "string_positions", .native ["duckdb-string-match-case", "duckdb-R13"]),
-  (none, "null_join_keys", .native ["duckdb-null-keys"]),
-  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]),
+    rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 900),
+  (some "fp.round", "rounding", (ObsRow.native ["duckdb-R15-round"]).tracking 241),
+  (none, "float_overflow", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 241),
+  (none, "negative_start", (ObsRow.native ["duckdb-R13"]).tracking 241),
+  (none, "case_sensitivity", (ObsRow.native ["duckdb-string-match-case"]).tracking 241),
+  (none, "string_positions", (ObsRow.native ["duckdb-string-match-case", "duckdb-R13"]).tracking 241),
+  (none, "null_join_keys", (ObsRow.native ["duckdb-null-keys"]).tracking 241),
+  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]).tracking 900),
   -- Welford with Chan's merge meets the generic properties the reference allows:
   -- `float-bounds` proves `VAR_*`, `COVAR_*` and DuckDB's `CORR` formula within
   -- `StatProps` (`core_var_chan`, `core_cov_chan`, `core_corr_chan`; `STDDEV_*`
@@ -197,7 +203,7 @@ def Profile.duckdb.obs : ObsTable := [
     rerun := some { floats := .within "plan" },
     note := "Welford with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); DuckDB's VAR_POP and STDDEV_POP of one value are 0 even for NaN (DD-3), so the written plan returns NaN where a value is NaN (nan_through), which meets StatProps everywhere without an infinity (Stat.nanGuard_varStat); an infinity raises first (#257)." }).proved
     "Stat.nanGuard_varStat"),
-  (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
+  (none, "quantile_interp", (ObsRow.native ["duckdb-quantile-cont-interpolation"]).tracking 900)]
 
 /-! ## Polars -/
 
@@ -269,14 +275,14 @@ def Profile.polars.obs : ObsTable := [
   (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Polars.int_div_trunc"),
   (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
   (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
-  (none, "rounding", .native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]),
+  (none, "rounding", (ObsRow.native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]).tracking 271),
   (none, "nan_creation", (ObsRow.native ["polars-double-arith"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
     with shim := some "one_zero" }).proved "Shim.one_zero"),
-  (none, "nan_kind", .upTo { zeros := .canon } ["polars-nan-sign"]),
-  (none, "nan_order", .native ["polars-nan-order"]),
-  (none, "nan_equality", .native ["polars-nan-equality"]),
+  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
+  (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
+  (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 271),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound, which `float-bounds` proves for
   -- both (`StdModel.epsilon_sum_cr`, `Rnd.kahan_near`).
@@ -289,12 +295,12 @@ def Profile.polars.obs : ObsTable := [
     rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
-  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["polars-window-agg"]),
+  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["polars-window-agg"]).tracking 900),
   -- Schubert and Gertz's merge: no theorem yet, a fuzzed bound of
   -- `1.03 · n·u·√(Q'S)` on the co-moment (polars-var-bound, #918).
-  (none, "stat_algo", { ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
-    rerun := some { floats := .within "plan" } }),
-  (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
+  (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
+    rerun := some { floats := .within "plan" } }).tracking 918),
+  (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with engine := some "in-memory" }).tracking 900),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
   (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
@@ -312,30 +318,30 @@ def Profile.polars.obs : ObsTable := [
   -- key, a written argument. `Shim.null_order`: with it, Polars orders as
   -- `sortLe`.
   (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Shim.null_order"),
-  (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
+  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["polars-clustered"]).tracking 271),
   -- A streaming sort of a large input does not keep ties in input order.
   (none, "tie_order", ({ ObsRow.native ["polars-sort-stability", "polars-first-last"] with
     rerun := some { rows := .tiesPermuted } }).proved "Polars.tie_order"),
   -- `first` and `last` follow input order on streaming, run after run.
-  (none, "tie_pick", { ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }),
+  (none, "tie_pick", ({ ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }).tracking 271),
   (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
-  (some "fp.div", "rounding", { ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
+  (some "fp.div", "rounding", ({ ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
     precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
-    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound still uses u per division; a per-engine bound (2u for Polars) is a follow-up." }),
-  (some "fp.mod", "division_type", { ObsRow.shimmed "column_divisor"
+    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound still uses u per division; a per-engine bound (2u for Polars) is a follow-up." }).tracking 271),
+  (some "fp.mod", "division_type", ({ ObsRow.shimmed "column_divisor"
       ["polars-double-modulus", "polars-scalar-divisor"] with
-    note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0): the translation broadcasts the divisor to a column, where Polars divides as IEEE does." }),
+    note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0): the translation broadcasts the divisor to a column, where Polars divides as IEEE does." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
-  (none, "negative_start", .native ["polars-substring"]),
-  (none, "case_sensitivity", .native ["polars-match-functions"]),
+  (none, "negative_start", (ObsRow.native ["polars-substring"]).tracking 271),
+  (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).tracking 271),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
   (some "str.match", "string_positions", (ObsRow.shimmed "strpos_chars" ["polars-strpos"]).proved "Polars.strpos_chars"),
-  (none, "null_join_keys", .native ["polars-null-keys"]),
+  (none, "null_join_keys", (ObsRow.native ["polars-null-keys"]).tracking 271),
   -- Past 38 digits, where the reference raises past the result's precision,
   -- which the translation checks (`fit_decimal`).
-  (some "dec.arith", "overflow", .native ["polars-decimal-arith"]),
+  (some "dec.arith", "overflow", (ObsRow.native ["polars-decimal-arith"]).tracking 271),
   -- A product's scale is the sum of the operands' there, computed on the
   -- unscaled values; a cast to a smaller scale rounds half away from zero.
   (none, "decimal_rescale", (ObsRow.shimmed "decimal_round_half_away"
@@ -410,24 +416,24 @@ def Profile.spark.obs : ObsTable := [
     "Shim.sum_empty_null"),
   (some "int.div", "overflow", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
   (none, "on_division_by_zero", (ObsRow.native ["spark-int-divide", "spark-int-modulus"]).proved "Rel.spark_sound"),
-  (some "fp.div", "on_division_by_zero", .native ["spark-double-divide"]),
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["spark-double-divide"]).tracking 271),
   (none, "on_domain_error", (ObsRow.native ["spark-math-domain"]).proved "Rel.spark_sound"),
-  (none, "division_type", .native ["spark-int-modulus"]),
-  (some "int.div", "division_type", .native ["spark-int-divide"]),
-  (some "int.mod", "division_type", .native ["spark-int-modulus"]),
-  (none, "min_mod_neg_one", .native ["spark-int-modulus"]),
-  (none, "rounding", .native ["spark-double-arith"]),
-  (some "fp.round", "rounding", { ObsRow.native ["spark-round"] with
-    note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }),
+  (none, "division_type", (ObsRow.native ["spark-int-modulus"]).tracking 271),
+  (some "int.div", "division_type", (ObsRow.native ["spark-int-divide"]).tracking 271),
+  (some "int.mod", "division_type", (ObsRow.native ["spark-int-modulus"]).tracking 271),
+  (none, "min_mod_neg_one", (ObsRow.native ["spark-int-modulus"]).tracking 271),
+  (none, "rounding", (ObsRow.native ["spark-double-arith"]).tracking 271),
+  (some "fp.round", "rounding", ({ ObsRow.native ["spark-round"] with
+    note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }).tracking 271),
   (none, "nan_creation", (ObsRow.native ["spark-double-arith", "spark-nonfinite-aggregates"]).proved "Rel.spark_sound"),
   (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Shim.makes_infinite"),
   -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"] with
     shim := some "Dialect.canon" }).proved "Shim.one_zero"),
-  (none, "nan_kind", .upTo { zeros := .canon } ["spark-nan-sign"]),
-  (none, "nan_order", .native ["spark-nan-order"]),
-  (none, "nan_equality", .native ["spark-nan-equality"]),
+  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
+  (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 271),
+  (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),
   -- Partial sums merged in the order the tasks finish: trees the reference
   -- allows, within #85's bound, varying run to run with the partitioning.
   (none, "sum_order", ({ ObsRow.approxWithin "plan" ["spark-sum-double", "spark-avg-double"] with
@@ -436,29 +442,29 @@ def Profile.spark.obs : ObsTable := [
       ["spark-sum-double", "spark-avg-double", "spark-exec-parallel"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
   (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Shim.avg_trunc"),
-  (none, "empty_group_aggregates", .native ["spark-sum-int", "spark-sum-double"]),
+  (none, "empty_group_aggregates", (ObsRow.native ["spark-sum-int", "spark-sum-double"]).tracking 271),
   -- Unstated, Spark puts NULLs first in an ascending key; the writer states
   -- each key's placement (`Shim.null_order`).
   (none, "null_order", (ObsRow.shimmed "null_order" ["spark-null-order"]).proved "Shim.null_order"),
-  (none, "clustered", .shimmed "sort on the keys" ["spark-clustered"]),
+  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["spark-clustered"]).tracking 271),
   -- After a shuffle, ties come in the order the partitions' rows arrive.
-  (none, "tie_order", { ObsRow.native ["spark-sort-stability", "spark-window-values", "spark-rank"] with
+  (none, "tie_order", ({ ObsRow.native ["spark-sort-stability", "spark-window-values", "spark-rank"] with
     rerun := some { rows := .tiesPermuted, elements := .multiset },
-    rerunEvidence := .probed ["spark-sort-stability", "spark-exec-parallel"] }),
-  (none, "tie_pick", { ObsRow.native ["spark-first-last"] with
+    rerunEvidence := .probed ["spark-sort-stability", "spark-exec-parallel"] }).tracking 900),
+  (none, "tie_pick", ({ ObsRow.native ["spark-first-last"] with
     rerun := some { rows := .tiesPermuted },
-    rerunEvidence := .probed ["spark-first-last", "spark-exec-parallel"] }),
+    rerunEvidence := .probed ["spark-first-last", "spark-exec-parallel"] }).tracking 900),
   -- Only starts from 1 reach Spark's `substring`, whose start 0 reads as 1
   -- (`Dialect.substring` of the writer).
-  (none, "negative_start", .native ["spark-substring"]),
-  (none, "case_sensitivity", .native ["spark-match-functions"]),
-  (none, "string_positions", .native ["spark-strpos", "spark-substring"]),
-  (none, "null_join_keys", .native ["spark-null-keys"]),
-  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["spark-window-agg"]),
+  (none, "negative_start", (ObsRow.native ["spark-substring"]).tracking 271),
+  (none, "case_sensitivity", (ObsRow.native ["spark-match-functions"]).tracking 271),
+  (none, "string_positions", (ObsRow.native ["spark-strpos", "spark-substring"]).tracking 271),
+  (none, "null_join_keys", (ObsRow.native ["spark-null-keys"]).tracking 271),
+  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 900),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
-  (none, "quantile_interp", .native ["spark-quantile"]),
-  (none, "decimal_rescale", .native ["spark-decimal-arith"]),
+  (none, "quantile_interp", (ObsRow.native ["spark-quantile"]).tracking 900),
+  (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
   -- where its type keeps the scale, and a type past 38 digits at a scale
   -- above 6, which Spark would round, is refused.
@@ -477,13 +483,18 @@ def rerunExact : List String :=
    "string_positions", "avg_int_result", "empty_group_aggregates", "null_order",
    "null_join_keys", "quantile_interp", "decimal_rescale"]
 
+/-- The issue that tracks the proof that reruns give what a row says (D20):
+the Engine object's (#900). -/
+def rerunIssue : Nat := 900
+
 /-- Each row with what reruns give: exact where `rerunExact` says so, with the
 row's facts as evidence; a variation keeps its own. -/
 def withReruns (obs : ObsTable) : ObsTable :=
   obs.map fun (g, o, r) =>
-    -- A row's correctness theorem is no evidence for its reruns: keep its facts.
+    -- A row's correctness theorem is no evidence for its reruns: keep its
+    -- facts, tested, and the issue that tracks the proof of reruns (#900).
     let ev := match r.evidence with
-      | .tested ids | .proved _ ids => Evidence.tested ids | e => e
+      | .proved _ ids => Evidence.tested ids (some rerunIssue) | e => e
     match r.rerun with
     | some _ => (g, o, if r.rerunEvidence == .none then { r with rerunEvidence := ev } else r)
     | none =>
@@ -664,16 +675,21 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
             [("rerun", q.sparseJson), ("deterministic", toJson (q == Obs.exact))] ++
             match r.rerunEvidence with
             | .proved thm _ => [("rerun_evidence", toJson "proved"), ("rerun_theorem", toJson thm)]
-            | .tested ids => [("rerun_evidence", toJson "tested"), ("rerun_facts", toJson ids)]
-            | .probed ids => [("rerun_evidence", toJson "probe"), ("rerun_facts", toJson ids)]
+            | .tested ids i => [("rerun_evidence", toJson "tested"), ("rerun_facts", toJson ids),
+                ("rerun_issue", toJson i)]
+            | .probed ids i => [("rerun_evidence", toJson "probe"), ("rerun_facts", toJson ids),
+                ("rerun_issue", toJson i)]
             | .none => []) ++
         (match r.engine with | some e => [("engine", toJson e)] | none => []) ++
         (if r.precondition == "" then [] else [("precondition", toJson r.precondition)]) ++
         (if r.note == "" then [] else [("note", toJson r.note)]) ++
         (match r.evidence with
-          | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
-          | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
-          | .probed ids => [("evidence", toJson "probe"), ("facts", toJson ids)]
+          | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids),
+              ("version", toJson t.version)]
+          | .tested ids i => [("evidence", toJson "tested"), ("facts", toJson ids),
+              ("issue", toJson i), ("version", toJson t.version)]
+          | .probed ids i => [("evidence", toJson "probe"), ("facts", toJson ids),
+              ("issue", toJson i), ("version", toJson t.version)]
           | .none => [("facts", toJson ([] : List String))])
     let toolFields : List (String × Json) := if !reference then [] else
       match Profile.reference.tools.find? (·.option == o) with
