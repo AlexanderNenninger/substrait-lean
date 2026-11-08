@@ -3,7 +3,8 @@
   "project": "ibis",
   "version": "12.0.0",
   "status": "confirmed",
-  "status_note": "Reproduces on 12.0.0 and Ibis main (f73d329, 2026-11-02). A NULL `x` at the extreme key is Ibis's chosen meaning ([#10227](https://github.com/ibis-project/ibis/pull/10227), [#10193](https://github.com/ibis-project/ibis/issues/10193)); the difference left is a group whose keys are all NULL: DuckDB gives an `x` of a NULL-key row, Ibis's Postgres SQL filters `key IS NOT NULL` and gives NULL.",
+  "status_note": "Reproduces on 12.0.0 and Ibis main (f73d329), for a group whose keys are all NULL: DuckDB's `FIRST(x ORDER BY k)` gives the `x` of a NULL-key row, Ibis's Postgres SQL gives NULL. A NULL `x` at the extreme key is Ibis's chosen meaning ([#10227](https://github.com/ibis-project/ibis/pull/10227), [#10193](https://github.com/ibis-project/ibis/issues/10193)), so only the all-NULL-key group goes in the report.",
+  "title": "DuckDB: `argmin` and `argmax` of a group whose keys are all NULL return a value",
   "summary": "Ibis's DuckDB SQL for `argmin`/`argmax` is `FIRST(x ORDER BY key)`. A NULL `x` at the extreme key is intended (since ibis#10227). In a group whose keys are all NULL, it returns the `x` of a NULL-key row, where Ibis's Postgres SQL filters `key IS NOT NULL` and returns NULL.",
   "repro": "For `t = ibis.memtable({\"x\": [1, None], \"k\": [1, 2]})`, `t.x.argmax(t.k)` on the DuckDB backend gives NULL (`FIRST(\"x\" ORDER BY \"k\" DESC)`), while DuckDB's `max_by(x, k)` and `arg_max(x, k)` give 1. For `x = [5]` and `k = [NULL]`, `argmin` gives 5 and `arg_min` NULL.",
   "handling": "sverify's producer gives `argmin`/`argmax` DuckDB's `arg_min`/`arg_max` meaning, the rows where neither side is NULL (`aggregates.arg_min_max`, `duckdb-arg-min-nulls`). The coverage case \"argmin, argmax\" is compared with Lean and the other engines rather than with Ibis's DuckDB SQL (`NO_DUCKDB_SQL` in `coverage_cases/aggregation.py`), and the catalogue's `iot-downsample` differs from Ibis's DuckDB SQL on synthetic data with NULL readings.",
@@ -35,6 +36,15 @@
         "duckdb": "2.0.0"
       },
       "note": "also duckdb 1.5.6"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "ibis main": "6d40f963",
+        "duckdb": "2.0.0"
+      },
+      "note": "triage: repro run on 12.0.0; ibis-project/ibis searched"
     }
   ]
 }

@@ -117,12 +117,12 @@ def signKept : List String := ["EXACT", "ANY", "PAIRWISE", "SEQUENTIAL", "SCALED
 
 /-- The engines whose sums keep the sign by the theorem: an engine-robust
 postcondition is proved there, and tested on the others. -/
-def signKeptOn : List String :=
-  Epsilon.epsEngines.filterMap fun (e, t) =>
-    if (t.allows "agg.fsum" "sum_order" []).all (signKept.contains ·) then some e else none
+def signKeptOn (es : List EngineProfile) : List String :=
+  es.filterMap fun e =>
+    if (e.table.allows "agg.fsum" "sum_order" []).all (signKept.contains ·) then some e.name else none
 
 -- Polars's in-memory `sum` is Kahan's (polars-sum-float).
-#guard signKeptOn == ["duckdb", "spark"]
+#guard signKeptOn builtinEngines == ["duckdb", "spark"]
 
 /-- The postconditions of an `ensures` plan as expressions over the output
 of `tr`, the transformation it selects from. -/
@@ -140,7 +140,7 @@ its `"abs"`, and a sum's, average's or variance's kept to its sign (not a
 covariance's). Columns without a finite bound keep their abstract value: a
 postcondition reads only their sign (`floatBound`'s `signed` part, which
 `TreeSum.sign` keeps on every engine). -/
-def robust (input : Json) : Except String Json := do
+def robust (es : List EngineProfile) (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.arr #[]
   let plan ← parseJsonPlan tj
   let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
@@ -164,7 +164,7 @@ def robust (input : Json) : Except String Json := do
   let env := tr.aeval cat A F T
   let names := if plan.names.length == env.length then plan.names
     else (List.range env.length).map (s!"#{·}")
-  let eps ← Epsilon.epsilon input
+  let eps ← Epsilon.epsilon es input
   -- A covariance has no sign of its own.
   let covs : List String := match Epsilon.statCols plan.root with
     | some cs => (names.zip cs).filterMap fun
@@ -185,6 +185,6 @@ def robust (input : Json) : Except String Json := do
     | some ps => ps.map fun p => (p.absD E []).certainlyTrue
     | none => List.replicate k false
   return toJson (out.map fun b => Json.mkObj [("robust", toJson b),
-    ("proved_on", toJson (if b then signKeptOn else []))])
+    ("proved_on", toJson (if b then signKeptOn es else []))])
 
 end Substrait.EngineRobust

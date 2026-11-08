@@ -3,8 +3,8 @@
   "project": "polars",
   "kind": "bug",
   "version": "2.1.0",
-  "status": "filed",
-  "status_note": "filed [pola-rs/polars#30594](https://github.com/pola-rs/polars/issues/30594), open. Reproduces on Polars 2.1.0, the latest release, in-memory and streaming (two rows suffice); the scalar kernels are unchanged on main (35a2cb73, 2026-11-04), read in the source. Known in part: the reciprocal's ulp errors in `/` and `//` were closed as intended ([pola-rs/polars#23741](https://github.com/pola-rs/polars/issues/23741), [#14596](https://github.com/pola-rs/polars/issues/14596)); [#30398](https://github.com/pola-rs/polars/issues/30398) (open) covers the inexact float `%`. Not reported: a subnormal divisor's reciprocal overflowing to inf, and `49.0 % 49.0` = 49.0.",
+  "status": "not a bug",
+  "status_note": "not a bug upstream: filed [pola-rs/polars#30594](https://github.com/pola-rs/polars/issues/30594), closed as not planned on 2026-11-05 (\"Like the linked issues, not a bug\"). Polars computes a scalar divisor's reciprocal on purpose; sverify records it in the facts below. The docs that promise IEEE division are PL-8.",
   "upstream": [
     "https://github.com/pola-rs/polars/issues/30594",
     "https://github.com/pola-rs/polars/issues/23741",
@@ -62,6 +62,13 @@
         "polars": "2.1.0"
       },
       "note": "the report's example with POLARS_VERBOSE=1 and pl.show_versions() on macOS arm64, Python 3.13.14, before filing"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: issue state read"
     }
   ]
 }

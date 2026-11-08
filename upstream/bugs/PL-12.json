@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "2.1.0",
   "status": "confirmed",
-  "status_note": "A bug in the documentation. Reproduces on Polars 2.1.0 (Python, macOS arm64), both engines; the sentence is unchanged on main (35a2cb73, 2026-11-04). No matching issue found on pola-rs/polars (2026-11-04).",
+  "status_note": "A bug in the documentation. Reproduces on Polars 2.1.0 (an out-of-range `list.get` raises `ComputeError`); the sentence was unchanged on main on 2026-11-04. No upstream issue found.",
+  "title": "Docs: `list.get` says an out-of-bounds index gives None, and by default it raises",
   "summary": [
     "The documentation of `list.get` (https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.list.get.html, py-polars/src/polars/expr/list.py#L603-L624 at py-2.1.0) says \"So index `0` would return the first item of every sublist and index `-1` would return the last item of every sublist if an index is out of bounds, it will return a `None`.\" The same sentence is in `Series.list.get` (series/list.py#L434), `Expr.arr.get` (expr/array.py#L822) and `Series.arr.get` (series/array.py#L613).",
     "The same docstring's `null_on_oob` says \"False -> raise an error\", and its default is `False`: an out-of-range index raises `ComputeError: get index is out of bounds` (crates/polars-ops/src/chunked_array/list/namespace.rs#L320-L338, whose Rust doc comment at L320-L323 has the same stale sentence). The `arr` variants were not probed; their signature has the same default (expr/array.py#L816)."
@@ -28,6 +29,13 @@
         "polars": "2.1.0"
       },
       "note": "Repro on both engines (POLARS_IDEAL_MORSEL_SIZE=64). Main at 35a2cb73: expr/list.py#L616 still says \"it will return a `None`\". Duplicate search for \"list.get out of bounds docs None\" and \"list.get null_on_oob docstring\": no matching issue."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: repro run on 2.1.0; pola-rs/polars searched"
     }
   ]
 }

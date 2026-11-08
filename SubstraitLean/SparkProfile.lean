@@ -7,7 +7,7 @@ import SubstraitLean.SparkShims
 `verify(semantics="spark")` is checked under: what Spark 4.3.0 computes under
 `sverify.sql.spark.SPARK_CONF` (ANSI mode on), as its facts record it
 (`characterization/spark/facts/`), on the options where sverify models
-Spark's own choice, and the reference elsewhere (D21, `docs/core-semantics.md`,
+Spark's own choice, and the reference elsewhere (D21, `docs/engine-profiles.md`,
 "Spark as a profile"):
 
 * `±∞`: a double that overflows is `±∞` (spark-double-arith), with no

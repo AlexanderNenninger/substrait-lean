@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "2.1.0",
   "status": "confirmed",
-  "status_note": "Reproduces on Polars 2.1.0, the latest release, with a lazy `collect()` on both engines with CSE on; without CSE, and eagerly, the query succeeds. `csee.rs` is unchanged on main (35a2cb73, 2026-11-04), read in the source. No matching issue found (related: [pola-rs/polars#30252](https://github.com/pola-rs/polars/issues/30252), closed; [#20305](https://github.com/pola-rs/polars/issues/20305), open).",
+  "status_note": "Reproduces on Polars 2.1.0, the latest release, on both engines with CSE on; `csee.rs` was unchanged on main on 2026-11-04 (35a2cb73). No upstream issue found (searched again 2026-11-07).",
+  "title": "CSE hoists a strict cast that two `when/then` branches share onto every row",
   "summary": "Common-subexpression elimination hoists a fallible expression that two `when/then` branches share (a strict cast) into a `WITH_COLUMNS` evaluated on every row, so the cast raises on the rows the branches' conditions exclude. Without CSE, `when/then` masks the branch and the query succeeds; an eager `DataFrame.select` (no CSE) succeeds too. The same query raises or not depending on an optimization.",
   "repro": "import polars as pl\nlf = pl.LazyFrame({\"x\": [\"1\", \"a\"]})\nq = lf.select(\n    pl.when(pl.col(\"x\") == \"1\").then(pl.col(\"x\").cast(pl.Int64) + 1).alias(\"a\"),\n    pl.when(pl.col(\"x\") == \"1\").then(pl.col(\"x\").cast(pl.Int64) + 2).alias(\"b\"),\n)\nq.collect()  # InvalidOperationError: conversion from `str` to `i64` failed in column 'x' for 1 out of 2 values: [\"a\"]\nq.collect(engine=\"streaming\")  # the same error\nq.collect(optimizations=pl.QueryOptFlags(comm_subexpr_elim=False)).rows()  # [(2, 3), (None, None)]\nprint(q.explain())\n# SELECT [when(col(\"__POLARS_CSER_…3\")).then(col(\"__POLARS_CSER_…4\") + 1)…]\n#   WITH_COLUMNS: [(col(\"x\") == \"1\").alias(\"__POLARS_CSER_…3\"), col(\"x\").strict_cast(Int64).alias(\"__POLARS_CSER_…4\")]",
   "handling": "sverify doesn't work around it yet. Its Polars route collects lazily with CSE on, so a plan Lean proves error-free (a CASE guarding a cast, used in two columns) can raise. The workaround is to collect with `optimizations=pl.QueryOptFlags(comm_subexpr_elim=False)`, or to keep fallible expressions out of CSE (Polars could treat strict casts as it does in predicate pushdown's fallible list).",
@@ -37,6 +38,13 @@
         "polars main": "35a2cb73fdf81d89b2117bec152c3530eb3e4146"
       },
       "note": "repros/PL-6.py on 2.1.0 (macOS arm64), both engines, CSE on and off, plus eager; main source only: crates/polars-plan/src/plans/optimizer/cse/csee.rs."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: repro run on 2.1.0; pola-rs/polars searched"
     }
   ]
 }

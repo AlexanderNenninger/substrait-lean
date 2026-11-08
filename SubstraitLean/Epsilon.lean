@@ -248,37 +248,28 @@ def fits (x : Float) : Bool := x ≤ 1.0e308
 `TreeSum` and Kahan's sum (`StdModel.Summed`). -/
 def provedOrders : List String := ["SEQUENTIAL", "ANY", "PAIRWISE", "SCALED_CONSTANT", "COMPENSATED"]
 
-/-- The engines `epsilon_by_engine` reports on, with their tables. -/
-def epsEngines : List (String × ProfileTable) :=
-  [("duckdb", Profile.duckdb.table {}), ("polars", Profile.polars.table),
-   ("spark", Profile.spark.table)]
-
-/-- Does every engine's `sum_order` give one of the proved orders? -/
-def ordersProved : Bool :=
-  epsEngines.all fun (_, t) => (t.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
+/-- Does every engine of `es` sum doubles in one of the proved orders? -/
+def ordersProved (es : List EngineProfile) : Bool :=
+  es.all fun e => (e.table.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
 
 /-- The `stat_algo` behaviours `core_var_chan` and `core_cov_chan` cover:
 the reference's own, and Welford's update with Chan's merge. -/
 def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN"]
-
-/-- Each engine's observations table, beside its choices (`epsEngines`). -/
-def epsObs : List (String × ObsTable) :=
-  [("duckdb", Profile.duckdb.obs), ("polars", Profile.polars.obs), ("spark", Profile.spark.obs)]
 
 /-- The engines whose statistics a theorem bounds: the `stat_algo` choices
 are ones the theorems cover, and the engine's `stat_algo` row is proved
 (`core_var_chan`) on facts about its algorithm. An engine whose algorithm no
 fact settles, or whose row is only tested, is not among them: its
 statistics' columns are tested (`Report.epsilon[col].proved_on`). -/
-def statsProvedOn : List String :=
-  epsEngines.filterMap fun (e, t) =>
-    let algos := (t.allows "agg.var" "stat_algo" []) ++ (t.allows "agg.stat" "stat_algo" [])
-    let proved := ((epsObs.lookup e).getD []).any fun (g, o, r) =>
+def statsProvedOn (es : List EngineProfile) : List String :=
+  es.filterMap fun e =>
+    let algos := (e.table.allows "agg.var" "stat_algo" []) ++ (e.table.allows "agg.stat" "stat_algo" [])
+    let proved := e.obs.any fun (g, o, r) =>
       g.isNone && o == "stat_algo" && match r.evidence with | .proved _ _ => true | _ => false
-    if algos.all (provedStatAlgos.contains ·) && proved then some e else none
+    if algos.all (provedStatAlgos.contains ·) && proved then some e.name else none
 
 -- DuckDB's and Spark's rows are proved; Polars's algorithm is not (float-bounds.md).
-#guard statsProvedOn == ["duckdb", "spark"]
+#guard statsProvedOn builtinEngines == ["duckdb", "spark"]
 
 /-- Why a `CORR` column has no bound, and what lifts it. -/
 def corrWhy : String :=
@@ -481,42 +472,42 @@ def keepIf (ok : Bool) (cs : List (Option (Float × Bool))) : List (Option (Floa
 
 /-- Each column's error on `engine`, and whether it is proved, for plans of
 projections, filters, sorts and one aggregate over reads. -/
-def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (T : WindowKeys) : Rel → Option (List (Option (Float × Bool)))
   | .read t => some ((List.range (cat t).arity).map fun _ => some (0.0, true))
   | .values n _ => some ((List.range n).map fun _ => some (0.0, true))
-  | .filter r c => (colEps engine cat A F T r).map fun cs =>
+  | .filter r c => (colEps es engine cat A F T r).map fun cs =>
       keepIf (exactP (exprEps engine (r.aeval cat A F T) cs c)) cs
-  | .orderBy r keys => (colEps engine cat A F T r).map fun cs =>
+  | .orderBy r keys => (colEps es engine cat A F T r).map fun cs =>
       keepIf (keys.all fun k => exactP (cs.getD k.col none)) cs
-  | .distinct r => (colEps engine cat A F T r).map fun cs => keepIf (cs.all exactP) cs
-  | .fetch r _ _ => colEps engine cat A F T r
-  | .emit r m => (colEps engine cat A F T r).map fun cs => m.map (cs.getD · none)
+  | .distinct r => (colEps es engine cat A F T r).map fun cs => keepIf (cs.all exactP) cs
+  | .fetch r _ _ => colEps es engine cat A F T r
+  | .emit r m => (colEps es engine cat A F T r).map fun cs => m.map (cs.getD · none)
   | .cross a b => do
-    return (← colEps engine cat A F T a) ++ (← colEps engine cat A F T b)
+    return (← colEps es engine cat A F T a) ++ (← colEps es engine cat A F T b)
   | .join a b _ on => do
-    let cs := (← colEps engine cat A F T a) ++ (← colEps engine cat A F T b)
+    let cs := (← colEps es engine cat A F T a) ++ (← colEps es engine cat A F T b)
     let env := a.aeval cat A F T ++ b.aeval cat A F T
     return keepIf (exactP (exprEps engine env cs on)) cs
   | .semi a b _ on => do
-    let ca ← colEps engine cat A F T a
-    let cs := ca ++ (← colEps engine cat A F T b)
+    let ca ← colEps es engine cat A F T a
+    let cs := ca ++ (← colEps es engine cat A F T b)
     let env := a.aeval cat A F T ++ b.aeval cat A F T
     return keepIf (exactP (exprEps engine env cs on)) ca
   | .unionAll a b => do
-    let ca ← colEps engine cat A F T a
-    let cb ← colEps engine cat A F T b
+    let ca ← colEps es engine cat A F T a
+    let cb ← colEps es engine cat A F T b
     return (ca.zip cb).map fun
       | (some (x, p), some (y, q)) => some (max x y, p && q)
       | _ => none
-  | .window r part sort fns => (colEps engine cat A F T r).map fun cs =>
+  | .window r part sort fns => (colEps es engine cat A F T r).map fun cs =>
       -- The window functions' values are not bounded here; the input's are kept.
       keepIf ((part.all fun i => exactP (cs.getD i none)) &&
           sort.all fun k => exactP (cs.getD k.col none)) cs ++
         fns.map fun _ => none
-  | .project r es => (colEps engine cat A F T r).map fun cs =>
-      cs ++ es.map (exprEps engine (r.aeval cat A F T) cs)
-  | .aggregate r gs ms => (colEps engine cat A F T r).map fun cs =>
+  | .project r xs => (colEps es engine cat A F T r).map fun cs =>
+      cs ++ xs.map (exprEps engine (r.aeval cat A F T) cs)
+  | .aggregate r gs ms => (colEps es engine cat A F T r).map fun cs =>
       let env := r.aeval cat A F T
       let keys := gs.all fun g => exactP (exprEps engine env cs g)
       keepIf keys <| gs.map (fun _ => some (0.0, true)) ++ ms.map fun m => do
@@ -528,7 +519,7 @@ def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : Str
           let n ← r.maxRows
           -- The order's bound is proved for the same doubles on both sides.
           return (order + (if m.fn = .avg then ea else Float.ofNat n * ea),
-            ea == 0.0 && pa && pf && ordersProved)
+            ea == 0.0 && pa && pf && ordersProved es)
         | .count => return (0.0, pf)
         | .min | .max => return (ea, pa && pf)
         -- D30: an engine's statistic is within the plan's bound of the
@@ -542,26 +533,26 @@ def colEps (engine : String) (cat : Catalog) (A : String → List AVal) (F : Str
 of the plan read values that are the same on `engine` as on the reference,
 or a comparison whose outcome is (`rule_threshold`)? Then the engine keeps
 the same rows and groups, and the columns' bounds compare like with like. -/
-def rowsExact (engine : String) (cat : Catalog) (A : String → List AVal)
+def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : String → List AVal)
     (F : String → List Fact) (T : WindowKeys) : Rel → Bool
   | .read _ | .values _ _ => true
-  | .filter r c => rowsExact engine cat A F T r &&
-      (colEps engine cat A F T r).any fun cs => exactP (exprEps engine (r.aeval cat A F T) cs c)
-  | .orderBy r keys => rowsExact engine cat A F T r &&
-      (colEps engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
-  | .distinct r => rowsExact engine cat A F T r &&
-      (colEps engine cat A F T r).any fun cs => cs.all exactP
+  | .filter r c => rowsExact es engine cat A F T r &&
+      (colEps es engine cat A F T r).any fun cs => exactP (exprEps engine (r.aeval cat A F T) cs c)
+  | .orderBy r keys => rowsExact es engine cat A F T r &&
+      (colEps es engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
+  | .distinct r => rowsExact es engine cat A F T r &&
+      (colEps es engine cat A F T r).any fun cs => cs.all exactP
   | .fetch r _ _ | .emit r _ | .project r _ | .window r _ _ _ | .unnest r _ =>
-    rowsExact engine cat A F T r
-  | .cross a b | .unionAll a b => rowsExact engine cat A F T a && rowsExact engine cat A F T b
+    rowsExact es engine cat A F T r
+  | .cross a b | .unionAll a b => rowsExact es engine cat A F T a && rowsExact es engine cat A F T b
   | .join a b _ on | .semi a b _ on =>
-    rowsExact engine cat A F T a && rowsExact engine cat A F T b &&
-      match colEps engine cat A F T a, colEps engine cat A F T b with
+    rowsExact es engine cat A F T a && rowsExact es engine cat A F T b &&
+      match colEps es engine cat A F T a, colEps es engine cat A F T b with
       | some ca, some cb =>
         exactP (exprEps engine (a.aeval cat A F T ++ b.aeval cat A F T) (ca ++ cb) on)
       | _, _ => false
-  | .aggregate r gs ms => rowsExact engine cat A F T r &&
-      (colEps engine cat A F T r).any fun cs =>
+  | .aggregate r gs ms => rowsExact es engine cat A F T r &&
+      (colEps es engine cat A F T r).any fun cs =>
         let env := r.aeval cat A F T
         gs.all (fun g => exactP (exprEps engine env cs g)) &&
           ms.all fun m => m.filter.all fun c => exactP (exprEps engine env cs c)
@@ -580,7 +571,7 @@ allows, `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}` (`null`
 not bounded). `rel` is `abs` over the least magnitude the reference's value
 may have, where its range leaves out zero: a difference of nearly equal
 values loses it, as cancellation loses relative accuracy. -/
-def epsilonByEngine (input : Json) (engines : List String) : Except String Json := do
+def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
   let plan ← parseJsonPlan tj
   let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
@@ -610,8 +601,8 @@ def epsilonByEngine (input : Json) (engines : List String) : Except String Json 
     let (l, h) := (FloatCode.scaled (← b.lo), FloatCode.scaled (← b.hi))
     if 0 < l then some (unscaleDown l.natAbs)
     else if h < 0 then some (unscaleDown h.natAbs) else none
-  return Json.mkObj <| engines.map fun engine =>
-    let cols := colEps engine cat A F T root
+  return Json.mkObj <| (es.map (·.name)).map fun engine =>
+    let cols := colEps es engine cat A F T root
     (engine, Json.mkObj <| ((names.zip kinds).zipIdx.filter (·.1.2 == .float)).map
       fun ((name, _), i) => match cols.bind (·.getD i none) with
         | some (e, p) =>
@@ -629,7 +620,7 @@ def epsilonByEngine (input : Json) (engines : List String) : Except String Json 
 /-- `"rows_exact"` of a `--contract` request: per engine, whether the plan
 keeps the same rows and groups under each column's `ε` (`rowsExact`). Where
 it may not, a route needs a shim or a precondition on the threshold. -/
-def rowsExactByEngine (input : Json) (engines : List String) : Except String Json := do
+def rowsExactByEngine (es : List EngineProfile) (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
   let plan ← parseJsonPlan tj
   let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
@@ -648,7 +639,7 @@ def rowsExactByEngine (input : Json) (engines : List String) : Except String Jso
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
   let T := Rel.keyedWindows cat A F (fun _ => [])
-  return Json.mkObj <| engines.map fun e => (e, toJson (rowsExact e cat A F T root))
+  return Json.mkObj <| es.map fun e => (e.name, toJson (rowsExact es e.name cat A F T root))
 
 /-- Where an output column comes from, as far as window aggregates of doubles
 go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that
@@ -664,13 +655,13 @@ aggregate's bound holds of the frame (`window_sum_algo`, #1032). -/
 def windowSumAlgos : List String := ["RECOMPUTE", "TREE", "RUNNING_ADD"]
 
 /-- Does every engine sum a window's frame by one of `windowSumAlgos`? -/
-def windowSumsBounded : Bool :=
-  epsEngines.all fun (_, t) =>
-    (t.allows "win.agg" "window_sum_algo" []).all (windowSumAlgos.contains ·)
+def windowSumsBounded (es : List EngineProfile) : Bool :=
+  es.all fun e =>
+    (e.table.allows "win.agg" "window_sum_algo" []).all (windowSumAlgos.contains ·)
 
 -- DuckDB, Polars and Spark each sum a window's own values (duckdb-window-sum-order,
 -- polars-window-agg, spark-window-agg).
-#guard windowSumsBounded
+#guard windowSumsBounded builtinEngines
 
 /-- Why a window statistic of doubles, or a value computed from a window
 aggregate of doubles, has no bound, and what lifts it. -/
@@ -687,11 +678,11 @@ def WinSrc.window : WinSrc → Bool
 `AVG` is within `measureEps` of the reference's, a statistical aggregate or
 `QUANTILE_CONT` of doubles has no bound here, and a function that copies or
 aggregates such a column has none either. -/
-def winFnSrc (r : Rel) (part : List Nat) (srcs : List WinSrc) : WinFn → WinSrc
+def winFnSrc (es : List EngineProfile) (r : Rel) (part : List Nat) (srcs : List WinSrc) : WinFn → WinSrc
   | .agg m sort _ =>
     if (ShardCheck.reads m.arg).any (fun i => (srcs.getD i .other).window) then .unbounded derivedWhy
     else match m.fn with
-      | .fsum | .avg => if windowSumsBounded then .bounded r m part sort else .unbounded slidingWhy
+      | .fsum | .avg => if windowSumsBounded es then .bounded r m part sort else .unbounded slidingWhy
       | .var _ _ | .cov _ | .corr | .quantile true _ _ => .unbounded windowStatWhy
       | _ => .other
   | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
@@ -699,18 +690,18 @@ def winFnSrc (r : Rel) (part : List Nat) (srcs : List WinSrc) : WinFn → WinSrc
   | _ => .other
 
 /-- Each output column's `WinSrc`. -/
-def winSrcs (cat : Catalog) : Rel → List WinSrc
+def winSrcs (es : List EngineProfile) (cat : Catalog) : Rel → List WinSrc
   | .read t => List.replicate (cat t).arity .other
   | .values n _ => List.replicate n .other
-  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r | .unnest r _ => winSrcs cat r
-  | .emit r m => let s := winSrcs cat r; m.map (s.getD · .other)
-  | .project r es => let s := winSrcs cat r; s ++ es.map (reading s)
-  | .window r part _ fns => let s := winSrcs cat r; s ++ fns.map (winFnSrc r part s)
-  | .cross a b | .join a b _ _ => winSrcs cat a ++ winSrcs cat b
-  | .semi a _ _ _ => winSrcs cat a
-  | .unionAll a b => (winSrcs cat a).zipWith (fun x y =>
-      if x.window || y.window then .unbounded derivedWhy else .other) (winSrcs cat b)
-  | .aggregate r gs ms => let s := winSrcs cat r
+  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r | .unnest r _ => winSrcs es cat r
+  | .emit r m => let s := winSrcs es cat r; m.map (s.getD · .other)
+  | .project r xs => let s := winSrcs es cat r; s ++ xs.map (reading s)
+  | .window r part _ fns => let s := winSrcs es cat r; s ++ fns.map (winFnSrc es r part s)
+  | .cross a b | .join a b _ _ => winSrcs es cat a ++ winSrcs es cat b
+  | .semi a _ _ _ => winSrcs es cat a
+  | .unionAll a b => (winSrcs es cat a).zipWith (fun x y =>
+      if x.window || y.window then .unbounded derivedWhy else .other) (winSrcs es cat b)
+  | .aggregate r gs ms => let s := winSrcs es cat r
     -- An aggregate of, or grouped by, such a column has no bound here.
     let any (e : Expr) : WinSrc :=
       if (ShardCheck.reads e).any (fun i => (s.getD i .other).window) then .unbounded derivedWhy
@@ -766,7 +757,7 @@ it, and a tolerance that either bound meets is met.
 reads, on every engine, the same values in the same rows and groups as the
 reference (`colEps`), in a plan without single-precision columns, where
 every engine's `sum_order` is a proved order (`ordersProved`). -/
-def epsilon (input : Json) : Except String Json := do
+def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
   let plan ← parseJsonPlan tj
   let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
@@ -785,7 +776,7 @@ def epsilon (input : Json) : Except String Json := do
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
   let T := Rel.keyedWindows cat A F (fun _ => [])
-  let wins := winSrcs cat root
+  let wins := winSrcs es cat root
   let winNames := if plan.names.length == wins.length then plan.names
     else (List.range wins.length).map (s!"#{·}")
   -- A window's double `SUM` or `AVG`: each frame is some of the input's rows,
@@ -793,8 +784,8 @@ def epsilon (input : Json) : Except String Json := do
   let winCols := (winNames.zip wins).filterMap fun (name, w) => match w with
     | .bounded r m part sort =>
       let reads := m.arg :: part.map .field ++ sort.map (.field ·.col) ++ m.filter.toList
-      let p := !hasFp32 tj && ordersProved && epsEngines.all fun (engine, _) =>
-        match colEps engine cat A F T r with
+      let p := !hasFp32 tj && ordersProved es && (es.map (·.name)).all fun engine =>
+        match colEps es engine cat A F T r with
         | some cs => reads.all fun e => exactP (exprEps engine (r.aeval cat A F T) cs e)
         | none => false
       some (name, match measureEps (r.aeval cat A F T) m r.maxRows with
@@ -806,8 +797,8 @@ def epsilon (input : Json) : Except String Json := do
   let some (srcs, _) := colSrcs plan.root | return Json.mkObj winCols
   let env := r.aeval cat A F T
   -- The measure's values, rows and groups are the same on every engine.
-  let same (m : Measure) : Bool := !hasFp32 tj && ordersProved &&
-    epsEngines.all fun (engine, _) => match colEps engine cat A F T r with
+  let same (m : Measure) : Bool := !hasFp32 tj && ordersProved es &&
+    (es.map (·.name)).all fun engine => match colEps es engine cat A F T r with
       | some cs => (m.arg :: gs ++ m.filter.toList).all fun e => exactP (exprEps engine env cs e)
       | none => false
   let doubles := (doubleIdx ms).filterMap (ms[·]?)
@@ -833,9 +824,9 @@ def epsilon (input : Json) : Except String Json := do
     | some e =>
       -- Proved on the engines of `statsProvedOn`, tested on the others.
       let p := m?.any fun m => statProvedFn m && same m
-      let on := if p then statsProvedOn else []
+      let on := if p then statsProvedOn es else []
       Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson (p && on.length ==
-        epsEngines.length))]), ("proved_on", toJson on)]
+        es.length))]), ("proved_on", toJson on)]
     | none => Json.mkObj ([("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])] ++
         if m?.any (·.fn == .corr) then [("why", toJson corrWhy)] else []))
   let known := cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n)

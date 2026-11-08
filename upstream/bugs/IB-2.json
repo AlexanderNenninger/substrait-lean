@@ -3,7 +3,8 @@
   "project": "ibis",
   "version": "12.0.0",
   "status": "confirmed",
-  "status_note": "Reproduces on 12.0.0 with DuckDB 2.0.0 and 1.5.6, and on Ibis main (f73d329, 2026-11-02).",
+  "status_note": "Reproduces on 12.0.0 with DuckDB 2.0.0; on Ibis main (6d40f963) the DuckDB compiler still has no `visit_TimeTruncate`. No upstream issue found.",
+  "title": "DuckDB: `time.truncate()` compiles to `DATE_TRUNC` of a `TIME`, which fails to bind",
   "summary": "Ibis's DuckDB SQL for `TimeTruncate` is `DATE_TRUNC('HOUR', t)` of a TIME, which DuckDB has no overload for, so `t.time().truncate(\"h\")` fails to bind on DuckDB.",
   "repro": "`ibis.to_sql(t.select(x=t.ts.time().truncate(\"h\")), dialect=\"duckdb\")` gives `DATE_TRUNC('HOUR', CAST(\"t0\".\"ts\" AS TIME))`; DuckDB 2.0.0 raises `Binder Error: No function matches the given name and argument types 'date_trunc(STRING_LITERAL, TIME)'`.",
   "handling": "sverify's DuckDB SQL truncates a time of day on 1970-01-01 and casts back to TIME (`DuckDBDialect.time_trunc`). The coverage case \"time truncate\" is compared with Lean and the other engines rather than with Ibis's DuckDB SQL (`NO_DUCKDB_SQL` in `coverage_cases/temporal.py`).",
@@ -35,6 +36,15 @@
         "duckdb": "2.0.0"
       },
       "note": "also duckdb 1.5.6"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "ibis main": "6d40f963",
+        "duckdb": "2.0.0"
+      },
+      "note": "triage: repro run on 12.0.0; main read; ibis-project/ibis searched"
     }
   ]
 }

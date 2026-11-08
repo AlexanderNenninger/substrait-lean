@@ -3,7 +3,9 @@ import SubstraitLean.Contracts
 /-!
 # Runtime errors
 
-DataFusion fails at run time on integer division or remainder by zero, on
+The reference raises where an engine may fail at run time, and an error
+allows any engine's answer. The list comes from DataFusion (checked against
+DataFusion 51), which fails on integer division or remainder by zero, on
 `MIN / -1`, on integer powers with a negative exponent or a result outside
 64 bits, on `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, on
 an invalid regular expression, on `repeat` writing more than `2³¹ - 1`
@@ -14,36 +16,50 @@ through nanoseconds and gives garbage outside them (1677 to 2262), which is
 reported as an error too. Integer `+`, `-`, `*` and negation do not fail in
 DataFusion: they wrap around silently; so does `date_trunc` to a day or less
 below `-2⁶³`. The reference raises there (#202: `overflow` omitted means
-ERROR, at the declared width), and an error allows DataFusion's answer. All
-of these are `Issue`s and errors, an integer `SUM` that leaves 64 bits too
-(`Issue.sumWraps`, which the job also checks while it runs). So are arguments
+ERROR, at the declared width). All of these are `Issue`s and errors, an
+integer `SUM` that leaves 64 bits too (`Issue.sumWraps`, which the job also
+checks while it runs). So are arguments
 outside a function's domain (`sqrt` of a negative, a shift by 64, …,
-`SubstraitLean/Numeric.lean`), where the reference raises and DataFusion
-gives an IEEE value or a wrapped shift instead: an error allows that.
+`SubstraitLean/Numeric.lean`), where the reference raises and an engine may
+give an IEEE value or a wrapped shift instead: an error allows that.
 
-**When does DataFusion evaluate an expression?** (Checked against DataFusion
-51; this is the trusted part of the model.)
+## Where an engine evaluates an expression
+
+Which expressions an engine evaluates on which rows is the trusted part of
+this model (`docs/proofs.md`, "What is trusted"). `Rel.HasIssue` assumes:
 
 * `CASE` evaluates a branch only on rows that take it, so
   `CASE WHEN b <> 0 THEN a / b END` and `a / NULLIF(b, 0)` are safe.
 * `AND` and `OR` evaluate both sides: `b <> 0 AND a / b > 1` fails on `b = 0`.
-* Not every `CASE` is lazy, though. `COALESCE` evaluates all its arguments,
-  and the simplifier rewrites a `CASE` with a boolean value into `AND`/`OR`,
-  so `CASE WHEN b <> 0 THEN a / b > 1 ELSE false END` fails on `b = 0`. The
-  parser makes those eager (`Parse.eagerly`); `Expr.ifThen` itself is lazy.
-* `ABS` fails on the smallest integer (the parser writes `-a` as `a / -1`),
-  and the simplifier makes `POWER(x, 0)` the constant 1, so it never fails.
-* The optimizer merges filters and pushes them down through projections and
+* `COALESCE` evaluates all its arguments, and a `CASE` with a boolean value
+  counts as `AND`/`OR`, so `CASE WHEN b <> 0 THEN a / b > 1 ELSE false END`
+  fails on `b = 0`. The parser makes those eager (`Parse.eagerly`);
+  `Expr.ifThen` itself is lazy. Polars evaluates `coalesce`, `&` and `|` on
+  every row (`polars-exec-when-eager`); DataFusion's simplifier rewrites a
+  boolean `CASE` into `AND`/`OR`.
+* On DataFusion, `ABS` fails on the smallest integer (the parser writes `-a`
+  as `a / -1`), and the simplifier makes `POWER(x, 0)` the constant 1, so it
+  never fails.
+* Optimizers merge filters and push them down through projections and
   joins, so a filter condition may be evaluated on rows that a filter below it
   would remove: `t.filter(b != 0).filter(a / b > 1)` fails on `b = 0`.
   `Rel.loose` is the input with those filters removed (and inner joins
   widened to cross joins); filter and join conditions are evaluated on it.
+  DuckDB pushes filters into join inputs (`duckdb-exec-filter-pushdown`; the
+  case of an empty other input lies outside `Rel.loose` and is open there);
+  sverify runs Polars with predicate pushdown off
+  (`polars-exec-predicate-pushdown`).
 * A projection is evaluated on the rows that reach it. Under a filter or a
   join condition, though, its expressions may be inlined into that condition,
   so there they count as evaluated on the loose rows too.
+* A constant subexpression that raises counts in every `CASE` branch, also on
+  an empty table (D21, `Rel.constIssues`), which covers DuckDB folding a
+  raising `WHEN` while planning (`upstream/bugs/DD-7.json`).
 
-`Rel.HasIssue` states this; `Rel.mayIssues` over-approximates it with the
-abstract evaluation of `SubstraitLean/Contracts.lean`, and
+The engines' behaviour is recorded as facts in
+`characterization/<engine>/facts/`. `Rel.HasIssue` states this model;
+`Rel.mayIssues` over-approximates it with the abstract evaluation of
+`SubstraitLean/Contracts.lean`, and
 `Rel.mayIssues_sound` proves that every issue that can happen is reported.
 -/
 

@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "2.1.0",
   "status": "confirmed",
-  "status_note": "Reproduces on Polars 2.1.0, the latest release, with `engine=\"streaming\"`; the in-memory engine gives a result. The streaming reductions' `is_primitive_numeric` checks are unchanged on main (35a2cb73, 2026-11-04), read in the source; the one later change to `cov.rs`, [pola-rs/polars#30370](https://github.com/pola-rs/polars/pull/30370), does not touch them. No matching issue found.",
+  "status_note": "Reproduces on Polars 2.1.0, the latest release, with `engine=\"streaming\"`; the dtype checks were unchanged on main on 2026-11-04 (35a2cb73), read in the source. No upstream issue found (searched again 2026-11-07).",
+  "title": "Streaming `cov` and `corr` of `Decimal` columns raise; the in-memory engine computes them",
   "summary": "`pl.cov` and `pl.corr` of `Decimal` columns raise `InvalidOperationError` on the streaming engine and succeed on the in-memory engine. The streaming reductions (`new_cov_reduction`, `new_pearson_corr_reduction`) require a primitive numeric type, which a decimal is not, while the in-memory path casts decimals to `Float64`. The planner types the result as `Float64` for any numeric input, so the plan resolves and the query fails only at execution.",
   "repro": "import polars as pl\nfrom decimal import Decimal as D\nlf = pl.LazyFrame(\n    {\"a\": [D(\"1.10\"), D(\"2.20\"), D(\"3.35\")], \"b\": [D(\"1.00\"), D(\"2.00\"), D(\"4.00\")]},\n    schema={\"a\": pl.Decimal(10, 2), \"b\": pl.Decimal(10, 2)},\n)\nlf.select(pl.cov(\"a\", \"b\")).collect(engine=\"in-memory\").item()  # 1.6916666666666667\nlf.select(pl.corr(\"a\", \"b\")).collect(engine=\"in-memory\").item()  # 0.9843241382880894\nlf.select(pl.cov(\"a\", \"b\")).collect(engine=\"streaming\")\n# InvalidOperationError: `cov` operation not supported for dtype `decimal[10,2]`\nlf.select(pl.corr(\"a\", \"b\")).collect(engine=\"streaming\")\n# InvalidOperationError: `corr` operation not supported for dtype `decimal[10,2]`",
   "handling": "sverify doesn't work around it yet. The workaround is to cast both inputs to `Float64` before `cov` or `corr`, which is what the in-memory engine does and gives the same result.",
@@ -32,6 +33,13 @@
         "polars main": "35a2cb73fdf81d89b2117bec152c3530eb3e4146"
       },
       "note": "repros/PL-5.py on 2.1.0 (macOS arm64), both engines; main source only: crates/polars-expr/src/reduce/cov.rs, reduce/convert.rs."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: repro run on 2.1.0; pola-rs/polars searched"
     }
   ]
 }

@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "2.1.0",
   "status": "confirmed",
-  "status_note": "A bug in the documentation, or in `round`: the docs and the kernel disagree. Reproduces on Polars 2.1.0 (Python, macOS arm64), both engines; the docstring is unchanged on main (35a2cb73, 2026-11-04). No matching issue found on pola-rs/polars (2026-11-04); #12812 (closed) was about `round` in `f32`.",
+  "status_note": "A bug in the documentation, or in `round`: the docs and the kernel disagree. Reproduces on Polars 2.1.0 (2.675 rounds to 2.68 in both `half_` modes); the docstring was unchanged on main on 2026-11-04. No upstream issue found.",
+  "title": "Docs: `round`'s `half_` modes do not round to the nearest value (2.675 gives 2.68)",
   "upstream": [
     "https://github.com/pola-rs/polars/issues/12812"
   ],
@@ -33,6 +34,13 @@
         "polars": "2.1.0"
       },
       "note": "Probe on both engines (POLARS_IDEAL_MORSEL_SIZE=64): `round(2)` of [2.675, 1835.665, 0.285, 1.005] is [2.68, 1835.66, 0.28, 1.0], with `half_away_from_zero` [2.68, 1835.67, 0.28, 1.0]. Main at 35a2cb73: the wording is at expr.py#L2016-L2017. Duplicate search for \"round nearest docs 2.675\", \"round half_to_even 2.675\" and \"round decimals incorrect\": no matching issue."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: repro run on 2.1.0; pola-rs/polars searched"
     }
   ]
 }

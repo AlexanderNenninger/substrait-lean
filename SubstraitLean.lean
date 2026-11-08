@@ -1,6 +1,8 @@
 import SubstraitLean.FloatFormat
 import SubstraitLean.Value
 import SubstraitLean.FloatExact
+import SubstraitLean.FloatArith
+import SubstraitLean.FloatArithCheck
 import SubstraitLean.FloatMoments
 import SubstraitLean.BlackBox
 import SubstraitLean.Rounding

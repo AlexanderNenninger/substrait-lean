@@ -314,7 +314,7 @@ cases are stated, not left to native floats, so that proofs can see them. -/
 def duckDivide (x y : Int) : Int :=
   if y = 0 then ieeeDivZero x
   else if isInfCode x && isInfCode y then FloatCode.nan
-  else FloatCode.lift₂ (· / ·) x y
+  else FloatCode.fdiv x y
 
 /-- DuckDB's `%` of doubles: NaN by zero (R4) and for an infinite dividend,
 else C's `fmod`. -/

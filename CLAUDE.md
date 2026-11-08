@@ -118,6 +118,11 @@ spare capacity. This applies to the laptop as much as to `homelab`.
   a checker above 4 GB of RSS: macOS refuses `ulimit -v`.
 - **homelab**: see below.
 
+Editing `python/pyproject.toml` (or `uv.lock`) makes the next `uv run` rebuild
+the package, and its build hook runs a full `lake build`. After such an
+edit, run tools through `python/.venv/bin/` directly, or check capacity
+first as for any build.
+
 Run one expensive task at a time per agent, never several in parallel.
 `poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
 use `pytest -n auto`, which takes every core. On the laptop, run pytest
@@ -240,7 +245,9 @@ conflicts with other PRs:
   from `sverify_dev.coverage --write-readme`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`;
-- `docs/realizability.md`, from `sverify_dev.realizability --write`.
+- `docs/realizability.md`, from `sverify_dev.realizability --write`;
+- `upstream/REPORT.md`, the upstream bugs to report and the count of each
+  class, from `sverify_dev.bugs --write`.
 
 Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
 DuckDB lowering, for DuckDB's default settings only) and
