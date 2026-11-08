@@ -9,7 +9,8 @@
 - `print(report)` shows an `evidence:` line per engine before any run, so a
   plan that rests on tested facts on an engine says so before it runs there.
 - Evidence is `proved` only where every choice the class rests on is proved in
-  Lean; a probe or a row without evidence counts as `tested`. Before, a plan
+  Lean; a probe, a row without evidence or an option without a row counts as
+  `tested` (the catalogue's `control-max-exact` on Polars is now tested). Before, a plan
   whose rows were all probes read as proved.
 - The engine versions come from the checker's profiles alone; the copy in
   `sverify.routes.PROFILES` is gone.
