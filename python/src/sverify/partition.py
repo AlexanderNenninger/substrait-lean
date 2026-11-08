@@ -232,7 +232,7 @@ def _ceil_div(a: int, b: int) -> int:
 
 
 def shard_tol_scaled(n: int, m: int, k: int, a: int) -> int:
-    """`FloatCode.shardTolScaled` (`SubstraitLean/Float.lean`): the bound of a
+    """`FloatCode.shardTolScaled` (`core/Sverify/Core/Float.lean`): the bound of a
     split double `SUM`, scaled by `2¹⁰⁷⁴` and rounded up, for `n` values in
     `k` shards of at most `m`, the shards' `SUM(|x|)`s adding up to `a`
     (scaled)."""

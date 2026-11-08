@@ -251,7 +251,7 @@ theorem StdModel.epsilon_avg {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : p
 /-! ## Against the reference's correctly rounded sum (D25)
 
 The reference's `SUM` of doubles is the exact sum of the values rounded once
-(`floatSumCR`, `SubstraitLean/FloatExact.lean`), and its `AVG` the exact mean
+(`floatSumCR`, `core/Sverify/Core/FloatExact.lean`), and its `AVG` the exact mean
 rounded once (`floatAvgCR`). The core proves, on integers, that this value is
 within `u` of the exact one relatively (`FloatCode.ofExact_rel`); here that is
 the hypothesis `hr`. An engine's result is then within its order's bound of

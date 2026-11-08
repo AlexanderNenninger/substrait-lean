@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -387,7 +388,7 @@ class Dialect:
         """C's `pow`: IEEE results, no errors."""
         return f"POWER({a}, {b})"
 
-    # Elementary functions (`SubstraitLean/Numeric.lean`), as C's `libm`
+    # Elementary functions (`core/Sverify/Core/Numeric.lean`), as C's `libm`
     # computes them, and bitwise operations are the function table's (`fn`).
     # The writer guards their domains, so they only see arguments inside them.
 
@@ -541,7 +542,7 @@ class Dialect:
         the end of that month (`kind` is `date` or `time`)."""
         raise Unsupported(f"{self.name}: adding months is not implemented")
 
-    # Strings: sequences of Unicode scalar values (`SubstraitLean/Text.lean`).
+    # Strings: sequences of Unicode scalar values (`core/Sverify/Core/Text.lean`).
     # Lengths and positions count characters, and string order (which only
     # sorts use) is by code point, i.e. byte order: no collation.
 
@@ -907,6 +908,21 @@ class Dialect:
         """`SUM` of BIGINTs over a frame; must raise where it leaves 64 bits."""
         raise Unsupported(f"{self.name}: window sums are not implemented")
 
+    def var_nan(self, v: str, over: str, body: str) -> str:
+        """A variance's `body` (over the window `over`, or the group with
+        `""`) where a value of `v` may be NaN: `nan_through`, unless the
+        engine's profile states its `agg.var` `stat_algo` row without that
+        shim, its own `VAR_*` giving NaN there (spark-var-pop-one-nan). A
+        dialect without a profile keeps the guard."""
+        return body if var_guard_free(self.name) else self.nan_through(v, over, body)
+
+    def nan_through(self, v: str, over: str, body: str) -> str:
+        """`body`, or NaN where a value of `v` is NaN, as in `varOf`: the
+        NaN guard of DD-3 (`Stat.nanGuard_varStat`)."""
+        one = self.case_when(self.is_nan(v), self.int_lit(1), self.null("int"))
+        nans = f"COUNT({one}) {over}".rstrip()
+        return self.case_when(f"{nans} > {self.int_lit(0)}", self.float_lit(math.nan), body)
+
     def clamp_stat(self, fn: str, x: str) -> str:
         """The clamp shims of D30: a variance or deviation at least `0`, a
         correlation in `[-1, 1]`, NaN kept. The exact value lies in the
@@ -1055,7 +1071,7 @@ class Bin:
     `substr` whose negative start does not wrap from the end."""
 
 
-#: `FMath.name`: elementary functions of a double (`SubstraitLean/Numeric.lean`).
+#: `FMath.name`: elementary functions of a double (`core/Sverify/Core/Numeric.lean`).
 FMATH = tuple(f.name for f in _functions.FUNCTIONS if f.op == "fmath")
 #: `BitOp.name`: bitwise operations of integers.
 BITWISE = tuple(f.name for f in _functions.FUNCTIONS if f.op == "bit")
@@ -1258,7 +1274,7 @@ class Distinct:
 
 @dataclass(frozen=True)
 class Measure:
-    """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
+    """`fn` of `arg` over the rows `filter` keeps (`core/Sverify/Core/Aggregate.lean`)."""
 
     fn: Literal[
         "count",
@@ -2328,13 +2344,16 @@ class _Parser:
                     ]
                     mode = _div_by_zero_mode(v)
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
-                        op = "fdiv" if name == "divide" else "fmod"
-                        return _div_by_zero(mode, True, op, *parsed)
+                        op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
+                        return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
-                if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
-                    op = "idiv" if name == "divide" else "imod"
-                    return _div_by_zero(mode, False, op, *parsed)
+                if name in ("divide", "modulus") and len(parsed) == 2:
+                    # `division_type` = `FLOOR` (Polars's `//` and `%`), in the
+                    # reference's truncating operations (`Parse.divisionTypeMode`).
+                    floor = _option(v, "division_type", "TRUNCATE") == "FLOOR"
+                    div = _int_div(name == "divide", floor)
+                    return _div_by_zero(mode, False, div, *parsed)
                 out_e = _call(name, parsed)
                 # `overflow` = SILENT or SATURATE (`UnFn.fit`, #241): the exact
                 # result, wrapped around or clamped at the width. The width is
@@ -3385,7 +3404,7 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("imod", a, b)
         case "power", [a, b]:
             return Bin("ipow", a, b)
-        # Bitwise operations (`SubstraitLean/Numeric.lean`); `NOT x` is `x XOR -1`.
+        # Bitwise operations (`core/Sverify/Core/Numeric.lean`); `NOT x` is `x XOR -1`.
         case "bitwise_not", [a]:
             return Bin("bit", a, Lit(-1, "int"), param="bitwise_xor")
         case "shift_left", [a, b]:
@@ -3439,13 +3458,67 @@ def _div_by_zero_mode(f: dict) -> str:
     return _option(f, "on_division_by_zero", "ERROR")
 
 
+@functools.cache
+def var_guard_free(engine: str) -> bool:
+    """Does `engine`'s profile state its `agg.var` `stat_algo` row without the
+    NaN guard (`Stat.nanGuard_varStat`, DD-3)? Lean's table decides; no row
+    keeps the guard."""
+    from sverify._checker import observations
+
+    rows = [r for r in observations().get(engine, []) if r.get("group") == "agg.var"]
+    row = next((r["row"] for r in rows if r.get("option") == "stat_algo"), None)
+    return row is not None and row.get("shim") is None
+
+
+def _floor_div(a: Expr, b: Expr) -> Expr:
+    """`Expr.floorDivOf`: `a // b` with `division_type` = `FLOOR`. With the
+    signs apart `(a + 1) / b - 1` or `(a - 1) / b - 1`, so that no step
+    overflows; otherwise the truncated quotient. Trusted to mirror the Lean
+    term (`Polars.floorDivT`) and tested against floor division
+    (`test_written_floor_runs_on_duckdb`); #1202 generates it from Lean."""
+    zero, one = Lit(0, "int"), Lit(1, "int")
+    q = Bin("idiv", a, b)
+
+    def apart(x: Expr) -> Expr:
+        return Bin("add", Bin("idiv", x, b), Lit(-1, "int"))
+
+    return If(Bin("lt", a, zero), If(Bin("lt", zero, b), apart(Bin("add", a, one)), q),
+              If(Bin("lt", b, zero), If(Bin("lt", zero, a), apart(Bin("sub", a, one)), q),
+                 q))  # fmt: skip
+
+
+def _floor_mod(a: Expr, b: Expr) -> Expr:
+    """`Expr.floorModOf`: `a % b` with `division_type` = `FLOOR`, the sign of
+    `b`. With the signs apart `(b - 1) - (-1 - a) % b` or
+    `(a - 1) % b + (b + 1)`; otherwise the truncated remainder. Trusted to
+    mirror `Polars.floorModT` and tested, as `_floor_div` (#1202)."""
+    zero, one = Lit(0, "int"), Lit(1, "int")
+    r = Bin("imod", a, b)
+    neg = Bin("sub", Bin("sub", b, one), Bin("imod", Bin("sub", Lit(-1, "int"), a), b))
+    pos = Bin("add", Bin("imod", Bin("sub", a, one), b), Bin("add", b, one))
+    return If(Bin("lt", a, zero), If(Bin("lt", zero, b), neg, r),
+              If(Bin("lt", b, zero), If(Bin("lt", zero, a), pos, r), r))  # fmt: skip
+
+
+def _int_div(quotient: bool, floor: bool) -> Callable[[Expr, Expr], Expr]:
+    """Integer `divide` (`quotient`) or `modulus`, truncating or `FLOOR`."""
+    if floor:
+        return _floor_div if quotient else _floor_mod
+    op: Literal["idiv", "imod"] = "idiv" if quotient else "imod"
+    return lambda a, b: Bin(op, a, b)
+
+
 def _div_by_zero(
-    mode: str, double: bool, op: Literal["fdiv", "fmod", "idiv", "imod"], a: Expr, b: Expr
+    mode: str, double: bool, div: Callable[[Expr, Expr], Expr], a: Expr, b: Expr
 ) -> Expr:
-    """`Parse.divByZero`: `a / b` under `on_division_by_zero` = `mode`, a `CASE`
-    on the divisor around the division that raises on zero. `IEEE` and `LIMIT`
-    are only for dividing doubles (`Parse.optionAccepts`)."""
-    if mode not in ("IEEE", "LIMIT", "NULL") or (op != "fdiv" and mode != "NULL"):
+    """`Parse.divByZero`: `div a b` under `on_division_by_zero` = `mode`; other
+    than `ERROR`, a `CASE` on the divisor around the division. `IEEE` and
+    `LIMIT` are only for dividing doubles (`Parse.optionAccepts`)."""
+    q = div(a, b)
+    if mode == "ERROR":
+        return q
+    fdiv = isinstance(q, Bin) and q.op == "fdiv"
+    if mode not in ("IEEE", "LIMIT", "NULL") or (not fdiv and mode != "NULL"):
         raise Unsupported(f"on_division_by_zero = {mode} is not supported")
     lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
     nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
@@ -3459,7 +3532,7 @@ def _div_by_zero(
     else:
         by_zero = If(is_nan, nan, null) if double else null
     zero = lit(0.0) if double else lit(0)
-    return If(Un("not", Bin("eq", b, zero)), Bin(op, a, b),
+    return If(Un("not", Bin("eq", b, zero)), q,
               If(Un("is_null", b), null, If(Un("is_null", a), null, by_zero)))  # fmt: skip
 
 
@@ -4037,7 +4110,7 @@ class _Writer:
                     )
                 body = d.canon(d.clamp_stat(m.fn, d.float_var(m.fn, shifted or v)))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
-                value = d.case_when(none, d.null("float"), self.nan_through(v, "", body))
+                value = d.case_when(none, d.null("float"), d.var_nan(v, "", body))
                 # Finite values whose variance overflows (#575), kept without
                 # guards; an infinity raises below.
                 value = self.agg_finite(value)
@@ -4297,7 +4370,7 @@ class _Writer:
         name = ("STDDEV_" if fn.startswith("std") else "VAR_") + ("SAMP" if sample else "POP")
         body = d.canon(d.clamp_stat(fn, f"{name}({v}) {w}"))
         none = f"COUNT({v}) {w} <= {d.int_lit(1 if sample else 0)}"
-        value = self.agg_finite(d.case_when(none, d.null("float"), self.nan_through(v, w, body)))
+        value = self.agg_finite(d.case_when(none, d.null("float"), d.var_nan(v, w, body)))
         if not d.guards:
             return value
         # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
@@ -4742,14 +4815,6 @@ class _Writer:
                 f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
             )
         return d.bool_lit(False)
-
-    def nan_through(self, v: str, over: str, body: str) -> str:
-        """A variance's `body`, or NaN where a value of `v` (over the window
-        `over`, or the group with `""`) is NaN, as in `varOf`: DuckDB's
-        `VAR_POP` of one NaN is 0.0 (upstream/bugs/DD-3.json)."""
-        d = self.d
-        nans = f"COUNT({d.case_when(d.is_nan(v), d.int_lit(1), d.null('int'))}) {over}".rstrip()
-        return d.case_when(f"{nans} > {d.int_lit(0)}", d.float_lit(math.nan), body)
 
     def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
         """An aggregate's `value`, raising where it is `±∞` though its values

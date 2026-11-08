@@ -1,6 +1,7 @@
 # A map of the proofs
 
 Sverify's guarantees are theorems of the Lean project in
+[`core/`](../core) (the reference's semantics),
 [`SubstraitLean/`](../SubstraitLean) and
 [`float-bounds/`](../float-bounds). This page names the theorems each
 guarantee rests on, what each of them assumes, and the one job of every
@@ -261,7 +262,12 @@ One line per module, by layer: values and expressions first, then
 relations, then the checkers on them, then the tables, profiles and
 generators, then the trusted reading and writing.
 
-### Values and scalar functions
+### The core: `core/Sverify/Core/`
+
+The reference's semantics, in the Lake package `sverify-core` (#1189). It
+imports nothing but Lean: `lake build` in `core/` builds it alone, and CI
+runs that build as the guard. The modules below it import the core as
+`Sverify.Core.*`.
 
 | Module | Job |
 |---|---|
@@ -271,7 +277,6 @@ generators, then the trusted reading and writing.
 | `FloatMoments.lean` | Exact dyadic moments (`n Σx² − (Σx)²` and the co-moment) and correctly rounded square roots of rationals, for #918 |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `FloatArith.lean` | `+ − × ÷` of doubles as the exact result rounded once (D31), IEEE 754's signed zeros and NaN, and their bounds (`add_scaled` …) |
-| `FloatArithCheck.lean` | D31's operations against native doubles, bit for bit, on edge values, ties and every exponent |
 | `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
 | `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
@@ -286,19 +291,39 @@ generators, then the trusted reading and writing.
 | `Dedup.lean` | `dedup`, the first occurrence of each element, and its lemmas |
 | `Forall2.lean` | `Forall2`, lists related element by element |
 | `Reflect.lean` | Boolean checks the tables are proved with, by reflection |
+| `Window.lean` | Window functions over partitions, orders and frames |
+| `Aggregate.lean` | `GROUP BY` and the measures; the trusted bounds of double sums |
+| `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval`, one evaluator for the reference and an engine's functions |
+| `OrderAllowed.lean` | `Rel.OrderAllowed`, the results of every order the reference leaves open, and `Rel.eval` as one of them |
+| `Kinds.lean` | `Rel.inferKinds`, the kind checker, and its soundness |
+| `Issue.lean` | The issue model: what goes wrong when a function runs on a row (`Issue`, `Expr.issues`) |
+| `Decomposable.lean` | Aggregates that combine from parts or ignore the order of their rows; `Measure.eval_perm` |
+| `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
+| `Ties.lean` | Every row order the reference allows is one `Rel.Allowed` allows |
+| `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps; the written variance's NaN guard keeps them (`Stat.nanGuard_varStat`, DD-3) |
+| `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
+| `Options.lean` | The option catalogue and each profile's choices |
+| `Scopes.lean` | Each option's scope, where its behaviours may differ from the reference (D34) |
+| `AllowedP.lean` | `Rel.AllowedP`, the results a profile's table allows |
+| `Observations.lean` | Observations and classes against the reference |
+| `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
+| `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
+| `AllowedNear.lean` | Allowed results close to an order's: every order of a double `SUM` or `AVG` among them |
+| `Profile.lean` | Engine profiles as outcomes per function; the reference is one |
+
+### Values and scalar functions
+
+| Module | Job |
+|---|---|
+| `FloatArithCheck.lean` | D31's operations against native doubles, bit for bit, on edge values, ties and every exponent |
 
 ### Relations and their evaluation
 
 | Module | Job |
 |---|---|
-| `Window.lean` | Window functions over partitions, orders and frames |
-| `Aggregate.lean` | `GROUP BY` and the measures; the trusted bounds of double sums |
-| `Rel.lean` | The relational operators, arity, well-formedness and `Rel.eval`, one evaluator for the reference and an engine's functions |
-| `OrderAllowed.lean` | `Rel.OrderAllowed`, the results of every order the reference leaves open, and `Rel.eval` as one of them |
 | `EvalFast.lean` | A faster evaluator with hash joins, proved equal to `Rel.eval` |
 | `Rewrites.lean` | Plan rewrites that keep a plan's meaning |
 | `Check.lean` | `checkWF`, the executable well-formedness check |
-| `Kinds.lean` | `Rel.inferKinds`, the kind checker, and its soundness |
 
 ### Incremental maintenance
 
@@ -331,7 +356,6 @@ generators, then the trusted reading and writing.
 | `Contracts/Facts.lean` | Relational facts through a plan; `Rel.facts_sound` |
 | `Contracts/Plan.lean` | Abstract plan evaluation: `Rel.maxRows`, `Rel.aeval` and its one pass, `Rel.lane` |
 | `Contracts/Sound.lean` | `Rel.aeval_sound`, `contract_sound` |
-| `Issue.lean` | The issue model: what goes wrong when a function runs on a row (`Issue`, `Expr.issues`) |
 | `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound` |
 | `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
 | `Rows.lean` | Row caps that rule out `SUM` overflow |
@@ -346,7 +370,6 @@ generators, then the trusted reading and writing.
 
 | Module | Job |
 |---|---|
-| `Decomposable.lean` | Aggregates that combine from parts or ignore the order of their rows; `Measure.eval_perm` |
 | `Partition.lean` | Sharded evaluation and two-phase aggregates |
 | `Pruning.lean` | Skipping files and partitions by their statistics |
 | `TableFormat.lean` | Change feeds and file statistics of Delta and Iceberg |
@@ -355,21 +378,10 @@ generators, then the trusted reading and writing.
 
 | Module | Job |
 |---|---|
-| `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
-| `Ties.lean` | Every row order the reference allows is one `Rel.Allowed` allows |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
-| `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps; the written variance's NaN guard keeps them (`Stat.nanGuard_varStat`, DD-3) |
-| `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
-| `Options.lean` | The option catalogue and each profile's choices |
-| `Scopes.lean` | Each option's scope, where its behaviours may differ from the reference (D34) |
-| `AllowedP.lean` | `Rel.AllowedP`, the results a profile's table allows |
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
-| `Observations.lean` | Observations and classes against the reference |
-| `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
-| `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
-| `AllowedNear.lean` | Allowed results close to an order's: every order of a double `SUM` or `AVG` among them |
 | `AllowedAnalysis.lean` | What the analysis proves of the allowed results: plans without choices, row caps, postconditions on every allowed result |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
@@ -381,7 +393,6 @@ generators, then the trusted reading and writing.
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
 | `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
-| `Profile.lean` | Engine profiles as outcomes per function; the reference is one |
 | `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`) |
 | `DuckDBProfile.lean` | `Profile.duckdb` under DuckDB's settings, as the SQL printer writes it, and `Rel.duckdb_sound` |
 | `Guards.lean` | Guard elimination for the SQL writers |

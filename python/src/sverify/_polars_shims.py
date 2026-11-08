@@ -35,7 +35,7 @@ class Shim:
     name: str
     """The Python function and the Lean lemma (`Polars.<name>`)."""
     option: str
-    """The option it discharges (`SubstraitLean/Options.lean`)."""
+    """The option it discharges (`core/Sverify/Core/Options.lean`)."""
     reference: str
     """The reference's choice."""
     polars: str
@@ -345,6 +345,16 @@ def min_ignore_nan(minimum: pl.Expr) -> pl.Expr:
     (polars-min-max-zero), so the result is read with one zero
     (`Polars.min_ignore_nan`)."""
     return one_zero(minimum)
+
+
+def nan_through(var: pl.Expr, has_nan: pl.Expr) -> pl.Expr:
+    """A variance or deviation from Polars's `var`/`std` and whether the
+    group holds a NaN: NaN if it does, as `varOf` gives, wherever `var` is not
+    NULL (no values, or a sample of one). Polars's streaming `group_by` over a
+    one-row frame gives 0.0 for a NaN (polars-var-pop-one-nan); the guard is
+    `Stat.nanGuard`, sound by `Stat.nanGuard_varStat`, as DuckDB's SQL
+    (`Dialect.nan_through`)."""
+    return pl.when(has_nan & var.is_not_null()).then(pl.lit(float("nan"))).otherwise(var)
 
 
 def max_nan_greatest(maximum: pl.Expr, has_nan: pl.Expr) -> pl.Expr:

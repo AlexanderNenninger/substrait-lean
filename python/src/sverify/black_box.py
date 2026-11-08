@@ -2,7 +2,7 @@
 
 Internal: not part of sverify's public API.
 
-The table is `SubstraitLean/BlackBox.lean`'s; this module mirrors it for the
+The table is `core/Sverify/Core/BlackBox.lean`'s; this module mirrors it for the
 lift (`sverify.sql_lift.blackbox`) and the SQL writers
 (`sverify.sql.core.black_box`), and adds what Lean does not need: the SQL
 DuckDB computes each function with. `tests/test_black_box.py` checks that the
@@ -35,7 +35,7 @@ Ty = Literal[
 CODE_ONE = 2 * 2**1074 + 1
 
 #: A law of the result: `("non_null",)`, `("at_least", k)` or `("at_most", k)`.
-#: Bounds of a double are on its code (`SubstraitLean/Float.lean`): `0` is
+#: Bounds of a double are on its code (`core/Sverify/Core/Float.lean`): `0` is
 #: `+0.0`.
 Law = tuple[str] | tuple[str, int]
 
@@ -61,7 +61,7 @@ class BlackBox:
     """An aggregate's result without values (NULLs are skipped)."""
 
 
-#: The table, in `SubstraitLean/BlackBox.lean`'s order (scalars, then
+#: The table, in `core/Sverify/Core/BlackBox.lean`'s order (scalars, then
 #: aggregates): each row's anchor is 700 plus its index.
 TABLE: tuple[BlackBox, ...] = (
     BlackBox("base64", "scalar", ("str",), "str", "base64(encode({0}))", laws=(("non_null",),)),

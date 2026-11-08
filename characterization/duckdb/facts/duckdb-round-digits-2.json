@@ -25,7 +25,7 @@
     ]
   },
   "description": "DuckDB rounds to `d` digits: `round(x · 10^d) / 10^d` for `d ≥ 0` and `round(x / 10^-d) · 10^-d` below zero, and gives `x` itself where that is not finite (`round(1.5e308, -308)` is `1.5e308`). Below zero, when `10^-d` is infinite, every finite `x` gives 0 (`round(1.5e308, -309)` is 0). DuckDB 1.4.1 gave 0 wherever a negative `d` left no finite result, which `duckdb-R15-round-digits` recorded.",
-  "reference": "`FloatCode.roundTo` (`SubstraitLean/Float.lean`) follows DuckDB 2.0's formula, and the Polars and SQL writers write it.",
+  "reference": "`FloatCode.roundTo` (`core/Sverify/Core/Float.lean`) follows DuckDB 2.0's formula, and the Polars and SQL writers write it.",
   "status": "no-finding",
   "evidence": "probe",
   "supersedes": [

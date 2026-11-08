@@ -1,5 +1,5 @@
 """Deprecated aliases of attributes that became internal or were renamed
-before 1.0 (the 1.0 API review, `api-review/PROPOSAL.md`): each reads and
+before 1.0 (the 1.0 API review, #795): each reads and
 writes the new attribute with a `DeprecationWarning`, for one release."""
 
 from __future__ import annotations

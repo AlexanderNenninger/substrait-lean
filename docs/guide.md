@@ -965,8 +965,8 @@ An `sv.sql` expression inside an Ibis transformation keeps its own. The report
 says which semantics it used (`Report.semantics`, a `semantics:` line).
 `semantics="polars"` reads an Ibis transformation as Polars computes it:
 integer `//` and `%` floor, so `-7 % 2` is `1`, and the plan states
-`division_type: FLOOR` on each, which Polars runs natively and the other
-engines refuse; a zero divisor and integer overflow still raise, so `verify`
+`division_type: FLOOR` on each, which Polars runs natively and the SQL
+writer computes from truncating operations; a zero divisor and integer overflow still raise, so `verify`
 infers the same preconditions as under the reference
 ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
@@ -1847,7 +1847,7 @@ tolerance. The checker names the components each condition's value depends
 on, from the columns it reads, and a condition that depends on none the
 observation ignores holds on every result equal to a proved one up to the
 observation (`Expr.robust_of_depends`,
-[Robust.lean](../SubstraitLean/Robust.lean)). A comparison with a constant
+[Robust.lean](../core/Sverify/Core/Robust.lean)). A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
 every such result (`Expr.narrow_sound`). A postcondition is proved on every
 result the reference allows (`contract_sound_allowed`), and

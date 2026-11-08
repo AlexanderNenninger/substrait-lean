@@ -1,6 +1,6 @@
 import SubstraitLean.MarginCheck
 import SubstraitLean.SumBound
-import SubstraitLean.FloatArith
+import Sverify.Core.FloatArith
 import SubstraitLean.Partition
 
 /-!

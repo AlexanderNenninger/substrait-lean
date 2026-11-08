@@ -45,7 +45,7 @@ def _truncate(x: Exprs, op: Any) -> Json:
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 
-# Dates, timestamps and intervals (`SubstraitLean/Time.lean`): an interval is
+# Dates, timestamps and intervals (`core/Sverify/Core/Time.lean`): an interval is
 # months plus microseconds, and Lean reads month intervals only as constants
 # added to a date or timestamp; days added to a date may be a column's count.
 

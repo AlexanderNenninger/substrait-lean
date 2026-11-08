@@ -22,7 +22,7 @@
     "The docs are silent on the type of the literal `-0.0`, a DECIMAL that loses the sign: a docs gap. No upstream test pins `signbit(-0.0)` of the literal; it may change between versions."
   ],
   "reference": [
-    "The model's double codes have one zero and one NaN (`SubstraitLean/Float.lean`), so they do not determine `signbit` there. `signbit` is a black box (#328) whose only law is `nonNull`; Lean's evaluator gives `c < 0` for every other code and refuses to print rows at zero and NaN."
+    "The model's double codes have one zero and one NaN (`core/Sverify/Core/Float.lean`), so they do not determine `signbit` there. `signbit` is a black box (#328) whose only law is `nonNull`; Lean's evaluator gives `c < 0` for every other code and refuses to print rows at zero and NaN."
   ],
   "status": "decided",
   "evidence": "probe",
