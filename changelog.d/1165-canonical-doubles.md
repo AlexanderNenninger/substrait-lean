@@ -7,5 +7,6 @@
   doubles (ST-4).
 - `Connection.put` stores a table as given, without copying it. Only the
   DataFusion session converts its doubles and strings.
-- DataFusion is a tier-3 engine: a double computed inside a plan follows its
-  `total_cmp` order (`docs/how-it-works.md`).
+- DataFusion is a tier-3 engine: it refuses plans with a double operation
+  that can give `-0.0` or a negative NaN, which it orders apart
+  (`upstream/bugs/DF-13.json`). Its other refusals cite their DataFusion bug.

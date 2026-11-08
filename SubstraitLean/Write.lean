@@ -826,6 +826,23 @@ def _root_.Substrait.Rel.slidingFrames : Rel → Bool
       | .agg m _ fr => [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding
       | _ => false
 
+/-- Does the expression have a double operation that IEEE arithmetic lets
+give `-0.0` or a negative NaN? DataFusion orders those apart from `0.0` and
+NaN (`f64::total_cmp`, upstream/bugs/DF-13.json), so it gets no plans with
+these. -/
+def _root_.Substrait.Expr.signedDoubles : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with
+      | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ => true
+      | _ => false) || a.signedDoubles
+  | .bin f a b =>
+    (match f with
+      | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb => true
+      | _ => false) || a.signedDoubles || b.signedDoubles
+  | .ifThen c t e => c.signedDoubles || t.signedDoubles || e.signedDoubles
+  | .hof _ l b => l.signedDoubles || b.signedDoubles
+
 /-- Does the expression wrap around or clamp (`overflow` = `SILENT` or
 `SATURATE`, `UnFn.fit`, #241)? -/
 def _root_.Substrait.Expr.fits : Expr → Bool
@@ -958,6 +975,8 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
   let arg := measureArg cols m
   let decimal := obj [("decimal", obj [("precision", toJson 38), ("scale", toJson 0),
     ("nullability", "NULLABILITY_NULLABLE")])]
+  -- DataFusion's integer `SUM` wraps (upstream/bugs/DF-14.json): it sums a
+  -- `DECIMAL(38,0)`, which fails instead.
   let arg := if df && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
     else arg
   let measure := obj [
@@ -1132,6 +1151,8 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
     -- (NULL and FALSE both do not match), and not an `=`.
     let n := a.arity cat
     let cs := conjunctsOf on
+    -- DataFusion's consumer takes a conjunct over one input for a join key
+    -- (upstream/bugs/DF-19.json): such conjuncts become filters or a `CASE`.
     let left := if df && ty matches .inner then cs.filter (readsOnly (· < n)) else []
     let right := if df then cs.filter (readsOnly (n ≤ ·)) else []
     let rest := (cs.filter fun c => !left.contains c && !right.contains c).map fun c =>

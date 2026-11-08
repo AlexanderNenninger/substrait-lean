@@ -224,13 +224,16 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
       return 1
   if df then
     if plan.root.floatExtremes plan.tables then
-      IO.eprintln "error: MIN and MAX of doubles are not yet supported on DataFusion; see #271"
+      IO.eprintln "error: MIN and MAX of doubles are not supported on DataFusion (upstream/bugs/DF-15.json)"
       return 1
     if plan.root.slidingFrames then
-      IO.eprintln "error: SUM of doubles, AVG and MIN over a sliding frame are not supported on DataFusion; use a frame from UNBOUNDED PRECEDING"
+      IO.eprintln "error: SUM of doubles, AVG and MIN over a sliding frame are not supported on DataFusion (upstream/bugs/DF-16.json); use a frame from UNBOUNDED PRECEDING"
+      return 1
+    if plan.root.anyExpr Expr.signedDoubles then
+      IO.eprintln "error: DataFusion orders the -0.0 and NaN a double operation can give apart from 0.0 and NaN (upstream/bugs/DF-13.json)"
       return 1
     if plan.root.anyExpr Expr.nestedAccess then
-      IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94)"
+      IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94, upstream/bugs/DF-20.json)"
       return 1
     if let some (code, msg) := checkPlan plan then
       IO.eprintln msg; return code

@@ -220,8 +220,8 @@ def test_datafusion_wraps_where_the_model_raises(con, sql, table, wrapped):
         ("SELECT s, s < 'b' AS lt, s >= 'B' AS ge, s > 'é' AS gt FROM str", "str"),
         # FALSE < TRUE.
         ("SELECT b, b < TRUE AS lt, b >= FALSE AS ge, b > b AS gt FROM bools", "bools"),
-        # D10: one zero and one NaN in a table. A double computed in the plan
-        # follows DataFusion's `total_cmp` (`docs/how-it-works.md`, "Doubles").
+        # D10: one zero and one NaN in a table. A plan that negates a double
+        # is refused (upstream/bugs/DF-13.json).
         ("SELECT v, v = v AS eq FROM f ORDER BY v", "f"),
     ],
 )

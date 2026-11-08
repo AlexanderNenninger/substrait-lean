@@ -231,11 +231,11 @@ engine is made to agree:
   queries on a connection run on DuckDB, so they agree too.
 * DataFusion orders doubles by `f64::total_cmp` (−0.0 < 0.0, a negative NaN
   first), so the tables it reads and its results are canonicalized
-  (`sverify.engine.canonical`). DataFusion is a tier-3 engine: a double
-  that an operation inside a plan makes −0.0 or a negative NaN, and that the
-  same plan then compares, groups or sorts, follows DataFusion's order. So
-  does SQL run on DataFusion directly (a query on a
-  `datafusion.SessionContext`).
+  (`sverify.engine.canonical`). DataFusion is a tier-3 engine: it refuses
+  a plan with a double operation that IEEE arithmetic lets give −0.0 or a
+  negative NaN (`Expr.signedDoubles`,
+  [DF-13](../upstream/bugs/DF-13.json)). SQL run on DataFusion directly (a
+  query on a `datafusion.SessionContext`) follows DataFusion's order.
 * `Report.to_substrait` writes each double operation `x` for other consumers
   as `if is_nan(x + 0.0) then NaN else x + 0.0` (ST-4), which gives every NaN
   the same sign and payload.
