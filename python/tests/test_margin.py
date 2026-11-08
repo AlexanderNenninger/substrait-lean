@@ -131,3 +131,33 @@ def test_a_group_with_no_values_is_not_flagged():
     r = sv.verify(HAVING, requires={"orders": [_.amount.isnull() | (_.amount >= 0)]})
     assert r.run(c, "duckdb").to_pylist() == [{"customer_id": 2, "total": 5000.0}]
     assert "n ≥ 1" in " ".join(r._margin_checks[0]["conditions"])
+
+
+AVG_HAVING = ORDERS.group_by("customer_id").aggregate(m=_.amount.mean()).filter(_.m >= 50)
+
+
+def _flagged_avg(groups: list[list[float]], t: float) -> int:
+    """The `AVG` check in Python's doubles (`check_sound_avg`)."""
+    tiny = 2.0**-1022
+    out = 0
+    for xs in groups:
+        n = len(xs)
+        v, a = sum(xs) / n, sum(abs(x) for x in xs)
+        c = (8.0 * n + 32.0) * 2.0**-53
+        if not abs(v - t) > c * ((a + n * tiny) / n) or n > 2**32:
+            out += 1
+    return out
+
+
+def test_an_avg_threshold_has_a_check():
+    r = sv.verify(AVG_HAVING, requires={"orders": [_.amount.between(0, 100)]}, on_inferred="warn")
+    assert len(r._margin_checks) == 1
+    assert r._rows_exact is not None and all(r._rows_exact.values())
+    assert r.epsilon["m"]["theorem"] == "FloatBounds.StdModel.epsilon_group_avg"
+    groups = [[40.0, 60.0], [50.0, 50.0, 50.0], [10.0, 99.0], [49.0]]
+    ids = [g for g, xs in enumerate(groups) for _x in xs]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        got = r.run(_con(ids, [x for xs in groups for x in xs]), "duckdb").to_pylist()
+    assert r.margin_flags["duckdb"] == _flagged_avg(groups, 50.0) == 2
+    assert sorted(row["customer_id"] for row in got) == [0, 1, 2]

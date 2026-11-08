@@ -575,12 +575,15 @@ def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
 /-- What `"epsilon"` says of a double `SUM` of exact values with no row cap,
 grouped by exact keys, on engines whose orders `StdModel.Summed` covers
 (#929): each group's sum is within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the
-reference's, from its own `n ≤ 2³²` values (`StdModel.epsilon_group`). No
+reference's, from its own `n ≤ 2³²` values (`StdModel.epsilon_group`); an
+`AVG` within `(γₙ + 4u)` of that over `n` (`StdModel.epsilon_group_avg`). No
 number bounds every group, so a stated tolerance is not met by it; the plan's
 bound is. -/
-def perGroupJson : Json := Json.mkObj [("abs", Json.null),
-  ("per_group", toJson "(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²), n ≤ 2³² the group's values"),
-  ("theorem", toJson "FloatBounds.StdModel.epsilon_group"),
+def perGroupJson (avg : Bool) : Json := Json.mkObj [("abs", Json.null),
+  ("per_group", toJson (if avg then "(γₙ + 4u) · Σ(|xᵢ| + 2⁻¹⁰²²) / n, n ≤ 2³² the group's values"
+    else "(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²), n ≤ 2³² the group's values")),
+  ("theorem", toJson (if avg then "FloatBounds.StdModel.epsilon_group_avg"
+    else "FloatBounds.StdModel.epsilon_group")),
   ("proved", Json.mkObj [("abs", toJson false), ("per_group", toJson true)])]
 
 /-- A computed bound as JSON, with the factor that covers its evaluation in
@@ -901,8 +904,12 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
         | some ((e, rel), p) => boundJson e rel p
         | none =>
           -- No row cap: each group's sum still has a bound from its own values.
-          if doubles[j]?.any fun m => m.fn == .fsum && !m.distinct && m.filter.isNone && same m
-          then perGroupJson else Json.mkObj [("abs", Json.null)])
+          match doubles[j]? with
+          | some m =>
+            if (m.fn == .fsum || m.fn == .avg) && !m.distinct && m.filter.isNone && same m then
+              perGroupJson (m.fn == .avg)
+            else Json.mkObj [("abs", Json.null)]
+          | none => Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
   -- D30: a statistic's column is within `statEps` of the reference's on an

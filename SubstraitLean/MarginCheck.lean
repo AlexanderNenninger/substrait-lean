@@ -8,7 +8,7 @@ import SubstraitLean.Rel
 A filter `SUM(x) > t` over an aggregate keeps a group on an engine as on the
 reference when the engine's sum is far enough from `t`, which the data
 decides, not the plan. `Rel.marginCheck` writes the check as a plan of its
-own: the filter's input aggregate with each group's `SUM(x)`, `COUNT(x)` and
+own: the filter's input aggregate with each group's `SUM(x)` (or `AVG(x)`), `COUNT(x)` and
 `SUM(ABS(x))`, the groups that fail
 
   `|fl(v − t)| > fl(cₙ · fl(A + n · tiny))`, `cₙ = (8n + 16) · 2⁻⁵³`,
@@ -50,12 +50,15 @@ def Expr.thresholdOf : Expr → Option (Nat × Expr)
 have more than `2³²` values: columns `s`, `s + 1` and `s + 2` hold `SUM(x)`,
 `COUNT(x)` and `SUM(ABS(x))`. A group with no values (`n = 0`, its sum NULL)
 is not flagged: the filter drops it everywhere. -/
-def marginFlag (s : Nat) (t : Expr) : Expr :=
+def marginFlag (s : Nat) (t : Expr) (avg : Bool := false) : Expr :=
   let d := Expr.bin .fsub (.field s) t
   let n := Expr.un .itof (.field (s + 1))
-  let c := Expr.bin .fmul (.bin .fadd (.bin .fmul (Expr.dlit 8.0) n) (Expr.dlit 16.0))
+  -- `SUM`: `cₙ · (A + n · tiny)`, `cₙ = (8n + 16) · 2⁻⁵³` (`StdModel.check_sound`);
+  -- `AVG`: `cₙ · (A + n · tiny) / n`, `cₙ = (8n + 32) · 2⁻⁵³` (`check_sound_avg`).
+  let c := Expr.bin .fmul (.bin .fadd (.bin .fmul (Expr.dlit 8.0) n) (Expr.dlit (if avg then 32.0 else 16.0)))
     (Expr.dlit (Float.scaleB 1.0 (-53)))
-  let m := Expr.bin .fmul c (.bin .fadd (.field (s + 2)) (.bin .fmul n (Expr.dlit (Float.scaleB 1.0 (-1022)))))
+  let p := Expr.bin .fadd (.field (s + 2)) (.bin .fmul n (Expr.dlit (Float.scaleB 1.0 (-1022))))
+  let m := Expr.bin .fmul c (if avg then .bin .fdiv p n else p)
   let pass := Expr.bin .or (.bin .lt m d) (.bin .lt m (.un .fneg d))
   let some := Expr.un .not (.bin .lt (.field (s + 1)) (.lit (.int 1)))
   .bin .or (.bin .and some (.un .not pass)) (.bin .lt (.lit (.int (2 ^ 32))) (.field (s + 1)))
@@ -69,13 +72,14 @@ def Rel.marginCheck : Rel → Option Rel
     let (j, t) ← c.thresholdOf
     guard (gs.length ≤ j)
     let m ← ms[j - gs.length]?
-    guard (m.fn == .fsum && !m.distinct && m.filter.isNone)
+    guard ((m.fn == .fsum || m.fn == .avg) && !m.distinct && m.filter.isNone)
     let i ← match m.arg with
       | .field i => some i
       | _ => none
     let inner := Rel.aggregate r gs
       [m, { fn := .count, arg := .field i }, { fn := .fsum, arg := (Expr.field i).fabs }]
-    some (.aggregate (.filter inner (marginFlag gs.length t)) [] [{ fn := .count, arg := .lit (.int 1) }])
+    some (.aggregate (.filter inner (marginFlag gs.length t (m.fn == .avg))) []
+      [{ fn := .count, arg := .lit (.int 1) }])
   | _ => none
 
 /-- What the margin check decides, for the report (#929): the conditions of
@@ -103,6 +107,9 @@ def Rel.marginChecks : Rel → List Rel
 private def having (c : Expr) : Rel :=
   .filter (.aggregate (.read "orders") [.field 0] [{ fn := .fsum, arg := .field 1 }]) c
 
+-- An `AVG` threshold has one too.
+#guard (Rel.filter (.aggregate (.read "orders") [.field 0] [{ fn := .avg, arg := .field 1 }])
+  (.bin .lt (Expr.dlit 50.0) (.field 1))).marginCheck.isSome
 -- `SUM(amount) > 1000`, `>=` and `=` have a check; a threshold on the key,
 -- a `COUNT`, or a column on both sides has none.
 #guard (having (.bin .lt (.un .itof (.lit (.int 1000))) (.field 1))).marginCheck.isSome
