@@ -60,8 +60,8 @@ judges DuckDB's own sqllogictests and the fuzzer's findings against
 Substrait's definitions and options, not against ISO SQL or DuckDB
 ([how facts are judged](../characterization/README.md)). Polars and Spark
 followed, each with its profile and shims in Lean
-([Polars as a profile](core-semantics.md#polars-as-a-profile),
-[Spark as a profile](core-semantics.md#spark-as-a-profile)). That a profile
+([Polars as a profile](#polars-as-a-profile),
+[Spark as a profile](#spark-as-a-profile)). That a profile
 matches its engine is tested against the engine and trusted.
 
 ## Engines
@@ -211,6 +211,221 @@ Trusted: that `Profile.duckdb` matches DuckDB (probed on edge cases,
 `tests/test_probe.py`),
 and that the SQL printer prints the shimmed plan faithfully (`isNum` as `IS
 NOT NULL` included).
+
+## Polars and Spark as profiles
+
+Each profile refines the loose core of [core-semantics.md](core-semantics.md), option by option.
+
+### The Polars example
+
+Polars 2.1.0's characterization ([characterization/polars/README.md](../characterization/polars/README.md),
+with strings, dates and casts in
+[#570](https://github.com/AlexanderNenninger/substrait-lean/pull/570) and the
+remaining items in
+[#573](https://github.com/AlexanderNenninger/substrait-lean/pull/573)) lists
+where Polars differs from the reference. Sorted by the three kinds:
+
+Error side, no shim for a verified plan (15). The reference raises on each,
+so a verified plan never reaches Polars's behaviour:
+
+- integer `overflow` of `+ - ×`, negate and `**` (wraps,
+  [int-arith](../characterization/polars/facts/polars-int-arith.json)),
+  `abs(MIN)` ([int-abs](../characterization/polars/facts/polars-int-abs.json)),
+  `MIN / -1` and `sum` of `i32`, `i64`
+  ([int-divide](../characterization/polars/facts/polars-int-divide.json),
+  [sum-int](../characterization/polars/facts/polars-sum-int.json));
+- integer division and modulus by zero (`NULL`, int-divide,
+  [int-modulus](../characterization/polars/facts/polars-int-modulus.json));
+- doubles: `nan_creation`
+  ([double-arith](../characterization/polars/facts/polars-double-arith.json)),
+  division by zero
+  ([double-divide](../characterization/polars/facts/polars-double-divide.json)),
+  `x % 0`
+  ([double-modulus](../characterization/polars/facts/polars-double-modulus.json)),
+  `on_domain_error`, `on_log_zero`
+  ([math-domain](../characterization/polars/facts/polars-math-domain.json)),
+  `atan2(0, 0)` ([atan2](../characterization/polars/facts/polars-atan2.json)),
+  `±∞` in `sum`, `avg`, `variance`, `std_dev`
+  ([nonfinite-aggregates](../characterization/polars/facts/polars-nonfinite-aggregates.json));
+- `date_range`, past 9999 and PL-2's panic (#570's date-range), and
+  `substring_range` (#573's substring-range).
+
+Value side, shimmed (30). Seven of these are a written argument with no run-time
+cost: `round(mode='half_away_from_zero')`, `nulls_last`, `nan_max`,
+`strip_chars(' ')`, `explode`'s and the set operations' NULL arguments, and
+the quantile's `method`. The others are shims with a cost:
+
+- truncating division and modulus of negative integers (`//` floors,
+  int-divide, int-modulus), and the sign of a double modulus (double-modulus);
+- an empty `SUM` (0, [sum-float](../characterization/polars/facts/polars-sum-float.json)),
+  `avg` of integers ([avg-int](../characterization/polars/facts/polars-avg-int.json)),
+  `CORR` of one pair ([corr](../characterization/polars/facts/polars-corr.json)),
+  `mode`'s list ([mode](../characterization/polars/facts/polars-mode.json)),
+  the rank of NULL ([rank](../characterization/polars/facts/polars-rank.json));
+- `zero_sign` and `nan_kind` (`canon`, or `refines up to canon` in #568's
+  terms), and `round` to negative digits
+  ([round-digits](../characterization/polars/facts/polars-round-digits.json));
+- decimal result types and `decimal_rescale`
+  ([decimal-arith](../characterization/polars/facts/polars-decimal-arith.json),
+  [decimal-casts](../characterization/polars/facts/polars-decimal-casts.json)),
+  the `i64` against `fp64` comparison, `sum`'s widening of `i8`, `i16`, and
+  the implicit casts and literal types of #573;
+- 0-based positions of `substring`, `strpos` and `list_extract`,
+  `strpos`'s NULL, a regex's NULL without a match, `reverse` by graphemes
+  (#570), and `list_null_order` (#573).
+
+Open, native or `approx`: `tie_pick` and `tie_order` (Polars picks
+deterministically, which the reference allows), `sum_order` and `stat_algo`
+(`approx[D, ε]` within #85's bounds), and `log10`, `log2` an ulp off
+([log-base](../characterization/polars/facts/polars-log-base.json)).
+
+Refused: the shifts, `ntile`, `percent_rank`, `cume_dist` and seven string
+functions have no Polars expression, and `<`, `min`, `max` of lists raise in
+Polars where the reference does not, a raise the reference's raise set does
+not cover.
+
+So 15 of Polars's differences cost a verified plan nothing, 7 cost a
+written argument, and the 23 run-time shims left each implement a value the
+reference chose.
+
+For the prototype slice, `SubstraitLean/PolarsShims.lean` proves them, each
+shim of `python/src/sverify/_polars_shims.py` once, as `Polars.<name>`,
+against a model of Polars's own functions taken from its facts (the trusted
+part, as `Profile.duckdb` is for DuckDB):
+
+- the value shims: `int_div_trunc` and `int_mod_trunc` give `Int.tdiv` and
+  `Int.tmod`, `sum_empty_null` NULL for no values, `avg_int_declared` the
+  reference's truncated mean (which its clamp leaves), `round_half_away`
+  `roundMag`, `one_zero` `canon` on the codes of #444 step 1b, `strpos_chars`
+  and `substring_wrap` `Text.strpos` and `Text.substrWrap`, `null_order` the
+  key order `sortLe`, and `tie_order` `List.mergeSort` (any stable sort of a
+  total preorder is it);
+- the guards, each flagging exactly the rows or groups where the reference's
+  issue is (`int_overflows`, `div_overflows`, `zero_divisor`, A3's
+  `sum_leaves_i64`, B1's `sum_makes_nan`, A4's `makes_infinite` and
+  `agg_makes_infinite`), so a guard refuses exactly the batches the
+  precondition rules out. On Polars a double `SUM` is summed in Polars's own
+  order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
+  overflows, which differ from the sequential sum's only at the edge;
+- the error side: `Polars.written_faithful` (Polars, with the value shims,
+  agrees with the reference wherever the reference reports no issue) and
+  `Rel.polars_sound` (a plan `verify` proves free of issues, up to the
+  assumed ones whose guards stay, runs on Polars as `Rel.eval`).
+
+The Polars rows of `--options` name these theorems as their evidence. The
+`clustered` row stays tested, and so do the rows outside the slice.
+
+### Polars as a profile
+
+`Profile.polars` ([PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean))
+is the profile `verify(semantics="polars")` checks under, and the one
+`--contract` takes with `"profile": "polars"`. It is an evaluable `Profile`,
+as `Profile.duckdb` is, and it takes Polars's choice option by option (D21):
+
+| Option | `Profile.polars` | Polars 2.1.0 | Why |
+|---|---|---|---|
+| `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../characterization/polars/facts/polars-int-divide.json), [int-modulus](../characterization/polars/facts/polars-int-modulus.json)) | Polars's own value, so the native route needs no shim |
+| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/polars/facts/polars-double-arith.json)) | as under DuckDB's profile |
+| `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a verified plan never wraps |
+| `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
+| `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
+| every other option | the reference's | the table above | the translation keeps its written arguments and shims there |
+
+A plan states the choice: under `semantics="polars"` the Ibis producer
+writes integer `//` and `%` as `divide` and `modulus` with
+`division_type: FLOOR`, the parser reads them as `Expr.floorDivOf` and
+`Expr.floorModOf`, templates in the reference's truncating operations that
+cannot overflow on 64-bit operands, and `Write` writes them back as the
+calls. So the checker needs no profile of its own: it checks the plan the
+parser reads, and the report says `"profile": "polars"`. What is proved:
+
+- `Profile.polars_idiv`, `Profile.polars_imod`: on 64-bit integers the
+  templates are Polars's `//` and `%` (`Polars.floorDiv`, `Polars.floorMod`,
+  the trusted model of `PolarsShims.lean`); `Profile.polars_zero_divisor`:
+  a zero divisor raises.
+- `Polars.elaborate_eq`: evaluating an expression under `Profile.polars` is
+  evaluating its elaboration, each `//` and `%` replaced by its template,
+  under the reference. A contract proved of the parsed plan holds of the
+  plan under `Profile.polars`.
+- `Rel.allowed_polars_core`: `Allowed_polars ⊆ Allowed_core`, from the
+  choices table.
+
+On the routes: a plan verified under `Profile.polars` runs on Polars by
+`native`, where `polars_engine` runs Polars's `//` and `%` for the stated
+calls and the translation's shims elsewhere. DuckDB, DataFusion and Spark
+refuse a stated `FLOOR` before they run (`sverify._support`), and the
+transfer check fails on `division_type`. The re-check route targets the
+profile too: `--contract` with `"profile": "polars"` proves the reference
+plan again, its unstated `//` and `%` being the reference's `TRUNCATE`,
+which the translation shims. Tested, and trusted: that Polars computes
+`Polars.floorDiv` and `Polars.floorMod` (`tests/test_polars_profile.py` runs
+it against Python's floor division on random 64-bit values), and that the
+translation writes the stated calls as Polars's operators.
+
+### Spark as a profile
+
+`Profile.spark` ([SparkProfile.lean](../SubstraitLean/SparkProfile.lean)) is
+the profile `verify(semantics="spark")` checks under, and the one
+`--contract` takes with `"profile": "spark"` (#739). Its choices table,
+`Profile.spark.table` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)),
+records Spark 4.3.0 under `SPARK_CONF` (ANSI mode on, `TIMESTAMP_NTZ`, UTC)
+from its [facts](../characterization/spark/facts/). Option by option (D21):
+
+| Option | `Profile.spark` | Spark 4.3.0, ANSI | Why |
+|---|---|---|---|
+| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/spark/facts/spark-double-arith.json)) | as under DuckDB's and Polars's profiles |
+| `overflow`, `on_division_by_zero` | `ERROR` | `ERROR` ([int-arith](../characterization/spark/facts/spark-int-arith.json), [int-divide](../characterization/spark/facts/spark-int-divide.json)) | native: ANSI raises where the reference raises |
+| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../characterization/spark/facts/spark-math-domain.json)) | tightened, as the reference; a verified plan never reaches them |
+| `avg_int_result` | the reference's | `FP64` ([avg-int](../characterization/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
+| `null_order` | the reference's | first for an ascending key ([null-order](../characterization/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
+| every other option | the reference's | the table | native, or the writer's shims |
+
+Spark's profile states no choice of its own in a plan, so `Profile.spark`
+evaluates as the reference (`Profile.spark_eval`), and the report of a
+`"profile": "spark"` request is the reference's, marked `"spark"`. What it
+adds is the route: a plan verified under it runs on Spark by `native`, and
+on DuckDB by `transfer` where DuckDB's choices are within Spark's at every
+option the proof depends on. What is proved
+([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
+
+- `Spark.int_sum_decimal`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
+  on Spark raises as soon as a partial sum leaves 64 bits, which depends on
+  the order of the rows ([sum-int](../characterization/spark/facts/spark-sum-int.json));
+  the writer sums exact `DECIMAL(38,0)` values, and no partial sum of fewer
+  than 10¹⁸ 64-bit values leaves 38 digits, in any order.
+- `Spark.int_avg_decimal`, `Spark.null_order`, `Spark.one_zero`: the other
+  shims give the reference's value.
+- `Spark.written_faithful` and `Rel.spark_sound`: Spark under ANSI, as the
+  writer writes it, gives `Rel.eval`'s rows for a plan whose only issues are
+  assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the
+  error side (NaN, a `date_add` wrapped past 2³¹ days, SP-2) are where the
+  reference raises.
+- `Spark.decimal_negate_sub`: Spark's `-x` and `abs` round a decimal past 34
+  significant digits ([SP-1](../upstream/bugs/SP-1.json)); the writer
+  negates as `0 - x` there, exact where its type keeps the scale (up to 37
+  digits, or 38 at scale 6 or less), and refuses a `DECIMAL(38, s)` with
+  `s > 6`.
+- `Rel.allowed_spark_core`: `Allowed_spark ⊆ Allowed_core`.
+
+Decimals (#27) run on Spark at the reference's types, which are Spark's own
+up to 38 digits. Past them Spark cuts the scale to no less than 6
+([decimal-arith](../characterization/spark/facts/spark-decimal-arith.json)),
+so a sum or product whose type would pass 38 digits at a scale above 6 is
+refused. A double becomes a decimal as `round(x · 10ˢ)` in doubles, through
+`BIGINT`, since Spark's own cast reads the double's shortest text
+(`CAST(0.145 AS DECIMAL(10,2))` is 0.15 there, 0.14 in the reference), so a
+target past 18 digits is refused. Division by an integer, which an `AVG`
+of decimals is, is refused: Spark's decimal quotient rounds at a scale of
+its own first.
+
+A run on Spark reads the session's settings (`sverify._engine_settings`):
+ANSI mode, `timestampType`, the session time zone, `caseSensitive` and
+`escapedStringLiterals` refuse every run when they differ from `SPARK_CONF`;
+`legacy.statisticalAggregate`, `decimalOperations.allowPrecisionLoss` and
+`legacy.percentileDiscCalculation` refuse the plans whose options they
+change. A run on another Spark version warns, and on another major version is
+refused (D14). Tested, and trusted: that Spark computes as the model says
+(`tests/test_spark_profile.py`, `tests/test_sql_spark.py`).
 
 ## Engine profiles from outside
 

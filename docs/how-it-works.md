@@ -99,7 +99,8 @@ hand-written.
 ## How incremental views work
 
 `python/` holds `sverify`, which maintains query results incrementally on
-DuckDB (by default), Polars or DataFusion, using delta plans from Lean. A
+DuckDB (by default), Polars or the optional DataFusion, using delta plans
+from Lean. A
 node's `refresh` runs an incremental view (`sverify.incremental`, internal):
 
 ```python
@@ -316,22 +317,10 @@ def passthrough(orders): ...
 Each engine's translation, what it pins, how it is tested and its known gaps
 are in [engine-profiles.md](engine-profiles.md#the-translations-today).
 
-Trusted components (not covered by the proofs): the JSON parser and
-writer, the `sverify` glue (change tables, consolidation, merge), the Polars
-translator, the SQL generator, and each engine's execution (DataFusion's
-Substrait consumer, Polars, DuckDB's and Spark's SQL). These are covered by golden tests,
-round trips and the differential tests instead.
-
-The size hypothesis (trusted, stated in the theorems that use it): every
-string has fewer than 2³² characters (#336), every relation a window reads fewer
-than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³, as
-`COUNT(*)` is a 64-bit integer (#437). No machine's memory holds more, and it is what bounds lengths,
-positions and ranks: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`,
-`levenshtein` and `ascii` there (a cap the hypothesis never reaches), and
-`Rel.Small` is a hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound`
-and `Rel.duckdb_sound`. So `ROW_NUMBER() - 1` and Ibis's `find` (`strpos - 1`)
-are proved not to overflow without a precondition, while `amount * 2` needs
-one, which sverify infers (#244).
+The parser and writer, the glue, the translators, each engine's execution
+and the size hypothesis are trusted, and covered by golden tests, round trips
+and the differential tests: [proofs.md, What is trusted](proofs.md#what-is-trusted)
+lists each.
 
 ## How the results are checked
 
@@ -348,30 +337,12 @@ one, which sverify infers (#244).
 
 ### Proven theorems
 
-* `Rel.eval_arity`: a well-formed plan on a well-formed catalog only produces
-  rows of its declared arity.
-* `filter_filter`: `Filter(Filter(r,p),q) = Filter(r, p AND q)`, which also holds under three-valued logic.
-* `filter_true`, `fetch_zero_none`: identity eliminations.
-* `filter_unionAll`: filter distributes over `UNION ALL`.
-* `unionAll_comm`: `UNION ALL` commutes up to bag equivalence (`≈ᵣ`).
-* `join_inner_eq_filter_cross`: an inner join is a filtered cross product.
-* `filter_project_pushdown`: a filter that only reads input columns can be moved below a `ProjectRel`.
-* `filter_cross_pushdown_left`: a filter that only reads left columns can be pushed into the left side of a `CrossRel`.
-* `emit_project_identity`: emitting only the input columns of a `ProjectRel` removes the projection.
-* `Rel.eval_sharded`, `twoPhase_correct`, `Rel.shardSplit_sound`: a plan linear in the sharded
-  tables is the union of its results on the shards (with split keys, also aggregates grouped by
-  the key, `DISTINCT` over it, co-partitioned joins and tie-free windows partitioned by it), and
-  decomposable aggregates combine in two phases
-  ([docs/optimizations.md](optimizations.md)).
-* `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
-  runs correctly without per-row checks.
-* `contract_sound_allowed`: a postcondition narrowed by its columns' tolerances and proved on
-  every order holds on every result the reference allows, for a plan that reads no open
-  measure to choose its rows (`Rel.FloatOpenSafe`;
-  [AllowedNear.lean](../SubstraitLean/AllowedNear.lean)). `contract_sound_allowed_closed` takes
-  the decidable `Rel.closedB` in its place: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or
-  `QUANTILE_CONT`, whose values are still choices of the reference (a double `SUM` or `AVG` is
-  one value since D25). The report marks such a postcondition `allowed`.
+[proofs.md](proofs.md#the-guarantees-and-their-theorems) names every
+guarantee with its theorem, its layer and its module, from the algebraic
+rewrites (`filter_filter`, `Rewrites.lean`) to sharding (`Rel.eval_sharded`),
+guard elimination (`Rel.guardFree_sound`) and postconditions on every
+allowed result (`contract_sound_allowed`). The sections below explain the
+main ones.
 
 ### Contracts
 
@@ -526,10 +497,10 @@ group (checked at run time: the job raises if it does not …)` (or
   wrong bound only makes that proof fail; on the data they are checked like
   any precondition.
 * `Rel.mayIssues_sound`: every issue that can happen on any input is reported. Guards
-  are understood where DataFusion respects them: in a `CASE` branch (and so
+  are understood where every engine respects them: in a `CASE` branch (and so
   `NULLIF(b, 0)`), or in a filter below a *projection*. They are not respected in the
-  same `AND`, nor in an earlier *filter*: DataFusion merges filters, so
-  `t.filter(n != 0).filter(q % n > 1)` can fail.
+  same `AND`, nor in an earlier *filter*: an engine may merge filters (`Rel.loose`;
+  DataFusion does), so `t.filter(n != 0).filter(q % n > 1)` can fail.
 * `FloatCode.floor_mono`, `round_mono`, `toInt?_mono`, `toInt?_of_range`
   ([Rounding.lean](../SubstraitLean/Rounding.lean)): `FLOOR`, `CEIL`, `ROUND` and the cast
   to `BIGINT` are exact on double codes and monotone, so `amount ∈ [0, 100]` proves
@@ -543,10 +514,11 @@ group (checked at run time: the job raises if it does not …)` (or
   `ts.truncate("M") >= 2024-01-01`. The other parts have proved ranges (`day` in
   `[1, 31]`, …); `date_part` is `NULL` outside the years ±262142.
 
-Trusted: *when* DataFusion evaluates an expression (`Rel.HasIssue`: `CASE` is lazy,
+Trusted: *when* an engine evaluates an expression (`Rel.HasIssue`: `CASE` is lazy,
 `AND`/`OR` are not, filter and join conditions may run before the filters below
-them). `python/tests/test_numeric.py` runs the plans on DataFusion and DuckDB on
-random data and checks they only fail where an error was reported. `BIGINT` and timestamp columns are taken to
+them; [What is trusted](proofs.md#what-is-trusted)). `python/tests/test_numeric.py`
+runs the plans on DuckDB and on the optional DataFusion on random data and checks
+they only fail where an error was reported. `BIGINT` and timestamp columns are taken to
 hold 64-bit values (from the schema); arithmetic on narrower integers is
 checked at their declared width (#202, #419).
 

@@ -38,7 +38,7 @@ Ibis expression ─► vendored Ibis producer ─┐
                                            ├─► Substrait plan ─► substrait-check (Lean) ─► checked plan, contract
 SQL string ─► SQLGlot lift ────────────────┘                                              report, delta plans
                                                                                            │
-                              DuckDB · Polars · DataFusion · Spark · Snowflake SQL ◄───────┘
+                   DuckDB · Polars · Spark · Snowflake SQL · DataFusion (optional) ◄───────┘
 ```
 
 * Lean (`SubstraitLean/`, `Main.lean`) defines what a plan means
@@ -118,7 +118,7 @@ names the theorems each guarantee rests on. The rest of the repository:
 
 | File | Contents |
 |---|---|
-| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
+| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars and Spark runners, the Snowflake SQL and the optional DataFusion runner ([the engines](docs/stability.md#engines)); differential tests |
 | `notebooks/` | The tour: three workflows and two guides (marimo) |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
@@ -257,7 +257,7 @@ environment works too: `uv run --project python marimo edit notebooks`.
 | 2 | [Sensor alerts](notebooks/02_sensor_alerts.py) | workflow: Iceberg source and sink, `LAG` and ties, NaN, Snowflake and Spark |
 | 3 | [An orders mart](notebooks/03_orders_mart.py) | workflow: a point-in-time join to a type-2 dimension, dbt tests as a contract, SQL |
 | 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, keys and relations, runtime errors, windows and ASOF joins, composing contracts |
-| 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, DataFusion, Spark and Snowflake SQL, doubles, time and text |
+| 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, Spark and Snowflake SQL, doubles, time and text |
 
 [catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a sixth marimo app outside the tour: one
 expression asked of every engine. Under-the-hood detail is in
@@ -296,8 +296,9 @@ uv run --project python python my_pipeline.py
 * `no configuration file …lakefile`: run `lake` from the project root, where `lakefile.lean` is.
 * `… does not exist` for a notebook or `--project` path: those paths are relative to the
   project root, and `python/` is not the root.
-* Why DataFusion 51? Ibis 12's DataFusion backend fails to connect with
-  DataFusion 52 and later (a changed user-defined-function API).
+* Why DataFusion 51, for the optional DataFusion engine? Ibis 12's DataFusion
+  backend fails to connect with DataFusion 52 and later (a changed
+  user-defined-function API).
 
 ## Open work
 
