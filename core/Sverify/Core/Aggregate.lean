@@ -32,6 +32,7 @@ and the others are NULL. Checked against DataFusion 51:
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Measures -/
 
@@ -136,6 +137,7 @@ def intSum : List Value → Int
   | .int i :: vs | .dec _ i :: vs => i + intSum vs
   | _ :: vs => intSum vs
 
+omit [Boxes.Ambient] in
 theorem intSum_cons (v : Value) (vs : List Value) :
     intSum (v :: vs) = v.unscaled?.getD 0 + intSum vs := by
   cases v <;> simp [intSum]
@@ -161,6 +163,7 @@ def sumOf (vs : List Value) : Value :=
   | .dec s _ :: _ => if vs.all (Value.isDecOf s) then .dec s (intSum vs) else .int (intSum vs)
   | _ => .int (intSum vs)
 
+omit [Boxes.Ambient] in
 theorem intSum_perm {l l' : List Value} (h : l.Perm l') : intSum l = intSum l' := by
   induction h with
   | nil => rfl
@@ -168,6 +171,7 @@ theorem intSum_perm {l l' : List Value} (h : l.Perm l') : intSum l = intSum l' :
   | swap x y l => cases x <;> cases y <;> simp [intSum] <;> omega
   | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
 
+omit [Boxes.Ambient] in
 /-- A `SUM`'s two outcomes: a decimal when all values are decimals of one
 scale, an integer otherwise. -/
 theorem sumOf_cases (vs : List Value) :
@@ -186,6 +190,7 @@ theorem sumOf_cases (vs : List Value) :
   | .tod _ :: ws | .str _ :: ws | .list _ :: ws | .struct _ :: ws =>
     exact .inr ⟨fun t => by simp [allDecOf, Value.isDecOf], rfl⟩
 
+omit [Boxes.Ambient] in
 theorem allDecOf_perm {vs ws : List Value} (h : vs.Perm ws) (s : Nat) :
     allDecOf s vs = allDecOf s ws := by
   have hall : vs.all (Value.isDecOf s) = ws.all (Value.isDecOf s) := by
@@ -197,6 +202,7 @@ theorem allDecOf_perm {vs ws : List Value} (h : vs.Perm ws) (s : Nat) :
     cases vs <;> cases ws <;> simp_all
   simp only [allDecOf, hall, he]
 
+omit [Boxes.Ambient] in
 /-- Two lists of decimals of scales `s` and `t` with a value in common: `s = t`. -/
 theorem allDecOf_scale {vs : List Value} {s t : Nat} (hs : allDecOf s vs = true)
     (ht : allDecOf t vs = true) : s = t := by
@@ -206,6 +212,7 @@ theorem allDecOf_scale {vs : List Value} {s t : Nat} (hs : allDecOf s vs = true)
   have b := List.all_eq_true.mp ht.2 w hw
   cases w <;> simp_all [Value.isDecOf]
 
+omit [Boxes.Ambient] in
 /-- Two lists with the same unscaled sum and the same scales have one `SUM`. -/
 theorem sumOf_eq_of {vs ws : List Value} (hi : intSum vs = intSum ws)
     (hd : ∀ s, allDecOf s vs = allDecOf s ws) : sumOf vs = sumOf ws := by
@@ -216,12 +223,15 @@ theorem sumOf_eq_of {vs ws : List Value} (hi : intSum vs = intSum ws)
   · rw [hd s, g1] at h1; cases h1
   · rw [← hd t, h1] at g1; cases g1
 
+omit [Boxes.Ambient] in
 @[simp] theorem sumOf_ne_null (vs : List Value) : sumOf vs ≠ .null := by
   rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] <;> simp
 
+omit [Boxes.Ambient] in
 theorem sumOf_unscaled_eq (vs : List Value) : (sumOf vs).unscaled? = some (intSum vs) := by
   rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] <;> rfl
 
+omit [Boxes.Ambient] in
 /-- A non-empty list's `SUM` is a decimal of scale `s` when all its values are. -/
 theorem isDecOf_sumOf {vs : List Value} (hne : vs ≠ []) (s : Nat) :
     (sumOf vs).isDecOf s = vs.all (Value.isDecOf s) := by
@@ -237,6 +247,7 @@ theorem isDecOf_sumOf {vs : List Value} (hne : vs ≠ []) (s : Nat) :
       rw [← ha, this]; simp [Value.isDecOf, hts]
   · rw [← ha, h1]; rfl
 
+omit [Boxes.Ambient] in
 /-- `SUM` does not depend on the order of its values. -/
 theorem sumOf_perm {vs ws : List Value} (h : vs.Perm ws) : sumOf vs = sumOf ws := by
   have hsum := intSum_perm h
@@ -258,12 +269,14 @@ def intsOf (vs : List Value) : List Int := vs.filterMap fun | .int c => some c |
 /-- The doubles among `vs`. -/
 def floatsOf (vs : List Value) : List Int := vs.filterMap fun | .float c => some c | _ => none
 
+omit [Boxes.Ambient] in
 theorem mem_floatsOf {vs : List Value} {c : Int} : c ∈ floatsOf vs ↔ .float c ∈ vs := by
   simp only [floatsOf, List.mem_filterMap]
   constructor
   · rintro ⟨v, hv, h⟩; cases v <;> simp_all
   · intro h; exact ⟨_, h, rfl⟩
 
+omit [Boxes.Ambient] in
 theorem floats_map_floatsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .float i) →
     vs = (floatsOf vs).map .float
   | [], _ => rfl
@@ -341,21 +354,25 @@ def corrOf (vs : List Value) : Value :=
       let m := min (FloatCode.sqrtMag (c.natAbs * c.natAbs * 2 ^ 2148) (nx * ny).toNat) (2 ^ 1074)
       .float (if c < 0 then -FloatCode.posCode m else FloatCode.posCode m)
 
+omit [Boxes.Ambient] in
 theorem pairsOf_perm {vs ws : List Value} (h : vs.Perm ws) : (pairsOf vs).Perm (pairsOf ws) :=
   h.filterMap _
 
+omit [Boxes.Ambient] in
 /-- D30: a variance is a function of the multiset of values. -/
 theorem varOf_perm (sample sqrt : Bool) {vs ws : List Value} (h : vs.Perm ws) :
     varOf sample sqrt vs = varOf sample sqrt ws := by
   have hi : (floatsOf vs).Perm (floatsOf ws) := h.filterMap _
   simp only [varOf, h.length_eq, nonFinite_perm h, comomentNum_perm hi, hi.length_eq]
 
+omit [Boxes.Ambient] in
 theorem covOf_perm (sample : Bool) {vs ws : List Value} (h : vs.Perm ws) :
     covOf sample vs = covOf sample ws := by
   have hp := pairsOf_perm h
   have hc : (pairCodes (pairsOf vs)).Perm (pairCodes (pairsOf ws)) := hp.flatMap_right _
   simp only [covOf, hp.length_eq, hp.isEmpty_eq, nonFinite_perm hc, coComomentNum_perm hp]
 
+omit [Boxes.Ambient] in
 theorem corrOf_perm {vs ws : List Value} (h : vs.Perm ws) : corrOf vs = corrOf ws := by
   have hp := pairsOf_perm h
   have hc : (pairCodes (pairsOf vs)).Perm (pairCodes (pairsOf ws)) := hp.flatMap_right _
@@ -423,7 +440,7 @@ def modeOf (v : Value) (vs : List Value) : Value :=
 
 def AggFn.apply : AggFn → List Value → Value
   | .count, vs => .int vs.length
-  | .bbox n, vs => BlackBox.callAgg n vs
+  | .bbox n, vs => BlackBox.callAgg Boxes.Ambient.boxes n vs
   | _, [] => .null
   | .sum, vs => sumOf vs
   -- D25: the exact sum, and the exact mean, rounded once (`FloatExact.lean`).
@@ -485,6 +502,7 @@ def aggGroups (gs : List Expr) (rows : Relation) : List Relation :=
 
 /-! ## Lemmas -/
 
+omit [Boxes.Ambient] in
 theorem pickFold_mem (pick : Value → Value → Bool) :
     ∀ (v : Value) (vs : List Value), pickFold pick v vs ∈ v :: vs
   | v, [] => by simp [pickFold]
@@ -524,6 +542,7 @@ theorem AggFn.apply_minmax {f : AggFn} (hf : f = .min ∨ f = .max) {vs : List V
   rcases hf with rfl | rfl <;> cases vs <;>
     first | (simp [apply]; done) | (simp only [apply]; exact .inr (pickFold_mem _ _ _))
 
+omit [Boxes.Ambient] in
 theorem intAt_mem {s : List Value} {i : Nat} {c : Int} (h : intAt s i = some c) :
     .float c ∈ s := by
   unfold intAt at h
@@ -531,6 +550,7 @@ theorem intAt_mem {s : List Value} {i : Nat} {c : Int} (h : intAt s i = some c) 
   · rename_i c' heq; cases h; exact List.mem_of_getElem? heq
   · cases h
 
+omit [Boxes.Ambient] in
 theorem contNeighbours_mem {num scale : Nat} {s : List Value} {l h w : Int}
     (hn : contNeighbours num scale s = some (l, h, w)) : .float l ∈ s ∧ .float h ∈ s := by
   unfold contNeighbours at hn
@@ -547,10 +567,12 @@ theorem contNeighbours_mem {num scale : Nat} {s : List Value} {l h w : Int}
         obtain ⟨rfl, rfl, -⟩ := hn
         exact ⟨intAt_mem h1, intAt_mem h2⟩
 
+omit [Boxes.Ambient] in
 theorem interpolate_between (l h w : Int) :
     interpolate l h w = h ∨ (l ≤ interpolate l h w ∧ interpolate l h w ≤ h) := by
   unfold interpolate clampTo; omega
 
+omit [Boxes.Ambient] in
 theorem contValue_allowed (num scale : Nat) (s : List Value) :
     contAllowed num scale s (contValue num scale s) := by
   unfold contAllowed contValue
@@ -612,6 +634,7 @@ theorem AggFn.apply_mode (vs : List Value) : AggFn.mode.apply vs = .null ∨ Agg
     · rw [h]; exact List.mem_cons_self ..
     · exact mem_dedup.mp h
 
+omit [Boxes.Ambient] in
 theorem foldl_min_le : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, xs.foldl min x ≤ y
   | x, [], y, hy => by simp at hy; subst hy; exact Int.le_refl _
   | x, z :: zs, y, hy => by
@@ -623,6 +646,7 @@ theorem foldl_min_le : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, xs.fold
     · exact Int.le_trans (ih _ (List.mem_cons_self ..)) (Int.min_le_right _ _)
     · exact ih y (by simp [hy])
 
+omit [Boxes.Ambient] in
 theorem foldl_max_ge : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, y ≤ xs.foldl max x
   | x, [], y, hy => by simp at hy; subst hy; exact Int.le_refl _
   | x, z :: zs, y, hy => by
@@ -634,6 +658,7 @@ theorem foldl_max_ge : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, y ≤ x
     · exact Int.le_trans (Int.le_max_right _ _) (ih _ (List.mem_cons_self ..))
     · exact ih y (by simp [hy])
 
+omit [Boxes.Ambient] in
 theorem foldl_min_mem : ∀ (x : Int) (xs : List Int), xs.foldl min x ∈ x :: xs
   | x, [] => by simp
   | x, z :: zs => by
@@ -646,6 +671,7 @@ theorem foldl_min_mem : ∀ (x : Int) (xs : List Int), xs.foldl min x ∈ x :: x
       · exact .inr (.inl (Int.min_eq_right hxz))
     · exact .inr (.inr h)
 
+omit [Boxes.Ambient] in
 theorem foldl_max_mem : ∀ (x : Int) (xs : List Int), xs.foldl max x ∈ x :: xs
   | x, [] => by simp
   | x, z :: zs => by
@@ -658,12 +684,14 @@ theorem foldl_max_mem : ∀ (x : Int) (xs : List Int), xs.foldl max x ∈ x :: x
       · exact .inl (Int.max_eq_left hxz)
     · exact .inr (.inr h)
 
+omit [Boxes.Ambient] in
 theorem mem_intsOf {vs : List Value} {c : Int} : c ∈ intsOf vs ↔ .int c ∈ vs := by
   simp only [intsOf, List.mem_filterMap]
   constructor
   · rintro ⟨v, hv, h⟩; cases v <;> simp_all
   · intro h; exact ⟨_, h, rfl⟩
 
+omit [Boxes.Ambient] in
 /-- A clamped value lies between two of the integers. -/
 theorem clampInts_between {vs : List Value} (hne : intsOf vs ≠ []) (c : Int) :
     (∃ l ∈ intsOf vs, l ≤ clampInts vs c) ∧ (∃ h ∈ intsOf vs, clampInts vs c ≤ h) := by
@@ -685,9 +713,11 @@ theorem AggFn.apply_iavg_between {vs : List Value} (hne : intsOf vs ≠ []) :
   | nil => simp [intsOf] at hne
   | cons v vs => exact ⟨_, rfl, clampInts_between hne _⟩
 
+omit [Boxes.Ambient] in
 theorem Value.le_refl (a : Value) : a.le a = true := by
   rcases Value.le_total a a with h | h <;> exact h
 
+omit [Boxes.Ambient] in
 theorem pickFold_min_le : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
     (pickFold (fun a b => !a.le b) v vs).le x = true
   | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
@@ -707,6 +737,7 @@ theorem pickFold_min_le : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
     · exact Value.le_trans _ _ _ hm hacc.2
     · exact ih x (by simp [hx])
 
+omit [Boxes.Ambient] in
 theorem pickFold_max_ge : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
     x.le (pickFold (fun a b => !b.le a) v vs) = true
   | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
@@ -744,6 +775,7 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     simp only [apply] at h; subst h
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
+omit [Boxes.Ambient] in
 theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y := by
   rw [Value.le_def]; simp [Value.leScalar]
 
@@ -805,6 +837,7 @@ theorem mem_aggregateEval_len {gs : List Expr} {ms : List Measure} {rows : Relat
       List.length_filter_le _ _⟩
     exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
 
+omit [Boxes.Ambient] in
 theorem ints_map_intsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .int i) →
     vs = (intsOf vs).map .int
   | [], _ => rfl

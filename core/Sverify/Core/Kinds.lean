@@ -21,6 +21,7 @@ kind, so the theorem does not need the arguments' kinds to be exact.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 mutual
 /-- Does `v` have kind `k`? NULL has every kind; a decimal's scale is part
@@ -45,21 +46,26 @@ def Value.fieldsHaveKinds : List Kind → List Value → Bool
   | _, _ => false
 end
 
+omit [Boxes.Ambient] in
 @[simp] theorem Value.hasKind_null (k : Kind) : Value.null.hasKind k = true := by
   cases k <;> rfl
 
+omit [Boxes.Ambient] in
 @[simp] theorem Value.hasKind_other (v : Value) : v.hasKind .other = true := by
   cases v <;> rfl
 
+omit [Boxes.Ambient] in
 theorem Value.allHaveKind_iff {k : Kind} :
     ∀ {vs : List Value}, Value.allHaveKind k vs = true ↔ ∀ v ∈ vs, v.hasKind k = true
   | [] => by simp [Value.allHaveKind]
   | v :: vs => by simp [Value.allHaveKind, Value.allHaveKind_iff (vs := vs)]
 
+omit [Boxes.Ambient] in
 theorem Value.hasKind_list {k : Kind} {vs : List Value} :
     (Value.list vs).hasKind (.list k) = true ↔ ∀ v ∈ vs, v.hasKind k = true := by
   rw [← Value.allHaveKind_iff]; rfl
 
+omit [Boxes.Ambient] in
 theorem Value.fieldsHaveKinds_getD :
     ∀ {ks : List Kind} {vs : List Value}, Value.fieldsHaveKinds ks vs = true →
       ∀ i, (vs.getD i .null).hasKind (ks.getD i .other) = true
@@ -315,11 +321,13 @@ def Row.HasKinds (ks : List Kind) (row : Row) : Prop :=
 
 /-! ### Soundness of the function table -/
 
+omit [Boxes.Ambient] in
 theorem KT.has_join_left {a b : KT} {v : Value} (h : a.has v = true) : (a.join b).has v = true := by
   unfold KT.join; split
   · exact h
   · simp [KT.has, KT.toKind]
 
+omit [Boxes.Ambient] in
 theorem KT.has_join_right {a b : KT} {v : Value} (h : b.has v = true) : (a.join b).has v = true := by
   unfold KT.join; split
   · rename_i hab; subst hab; exact h
@@ -347,22 +355,26 @@ theorem UnFn.apply_out (f : UnFn) (v : Value) : (f.apply v).hasKind f.out = true
   all_goals cases v <;> simp only [UnFn.apply, UnFn.out, Value.unscaled?] <;>
     (try split) <;> (try split) <;> (try simp [Value.hasKind])
 
+omit [Boxes.Ambient] in
 /-- A kind that has one value of a constructor has all its values. -/
 theorem KT.has_int {t : KT} {i : Int} (h : t.has (.int i) = true) (j : Int) : t.has (.int j) = true := by
   match t with
   | .num => rfl
   | .kind k => cases k <;> simp_all [KT.has, KT.toKind, Value.hasKind]
 
+omit [Boxes.Ambient] in
 theorem KT.has_ts {t : KT} {i : Int} (h : t.has (.ts i) = true) (j : Int) : t.has (.ts j) = true := by
   match t with
   | .num => simp [KT.has, KT.toKind, Value.hasKind] at h
   | .kind k => cases k <;> simp_all [KT.has, KT.toKind, Value.hasKind]
 
+omit [Boxes.Ambient] in
 theorem KT.has_tod {t : KT} {i : Int} (h : t.has (.tod i) = true) (j : Int) : t.has (.tod j) = true := by
   match t with
   | .num => simp [KT.has, KT.toKind, Value.hasKind] at h
   | .kind k => cases k <;> simp_all [KT.has, KT.toKind, Value.hasKind]
 
+omit [Boxes.Ambient] in
 theorem Value.getD_hasKind {k : Kind} {vs : List Value} (h : ∀ v ∈ vs, v.hasKind k = true)
     (n : Nat) : (vs.getD n .null).hasKind k = true := by
   rw [List.getD_eq_getElem?_getD]
@@ -370,6 +382,7 @@ theorem Value.getD_hasKind {k : Kind} {vs : List Value} (h : ∀ v ∈ vs, v.has
   | none => simp
   | some w => exact h w (List.mem_of_getElem? hg)
 
+omit [Boxes.Ambient] in
 theorem Value.listElement_hasKind {k : Kind} {vs : List Value} (h : ∀ v ∈ vs, v.hasKind k = true)
     (off : Int) : (Value.listElement off vs).hasKind k = true := by
   unfold Value.listElement
@@ -445,9 +458,11 @@ def BinFn.out : BinFn → Kind
   | .add | .sub | .mul | .imod | .pair | .greatest | .least | .bbox2 _ | .listFn .prepend
   | .listFn .concat => .other
 
+omit [Boxes.Ambient] in
 theorem and3_hasKind (a b : Value) : (and3 a b).hasKind .bool = true := by
   unfold and3; split <;> rfl
 
+omit [Boxes.Ambient] in
 theorem or3_hasKind (a b : Value) : (or3 a b).hasKind .bool = true := by
   unfold or3; split <;> rfl
 
@@ -481,6 +496,7 @@ def Kind.mk : Kind → Int → Value
   | .time, i | .timeTz, i => .ts i
   | _, _ => .null
 
+omit [Boxes.Ambient] in
 /-- A value of a scalar integer kind is NULL or that kind's constructor. -/
 theorem Value.inv_scalar {k : Kind} (hk : k = .int ∨ k = .date ∨ k = .tod ∨ k = .time ∨ k = .timeTz)
     {a : Value} (h : a.hasKind k = true) : a = .null ∨ ∃ i, a = k.mk i := by
@@ -548,14 +564,17 @@ theorem BinFn.kindOf_sound {f : BinFn} {ta tb t' : KT} {a b : Value} (h : f.kind
 
 /-! ### Soundness of expressions -/
 
+omit [Boxes.Ambient] in
 theorem Value.has_kt (v : Value) : v.kt.has v = true := by
   cases v <;> simp [Value.kt, KT.has, KT.toKind, Value.hasKind]
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.cons {ks : List Kind} {row : Row} {k : Kind} {x : Value}
     (h : Row.HasKinds ks row) (hx : x.hasKind k = true) : Row.HasKinds (k :: ks) (x :: row)
   | 0 => hx
   | i + 1 => by simpa using h i
 
+omit [Boxes.Ambient] in
 theorem HoFn.match_hasKind (f : HoFn) (hf : f = .anyMatch ∨ f = .allMatch) (v : Value)
     (p : Value → Value) : (f.apply v p).hasKind .bool = true := by
   rcases hf with rfl | rfl <;> cases v <;> simp only [HoFn.apply] <;> (try rfl)
@@ -742,6 +761,7 @@ private def ktk : String → List Kind := fun _ => [.float, .time, .list .int]
 
 /-! ### Soundness -/
 
+omit [Boxes.Ambient] in
 theorem Expr.kindsT_length {env : List Kind} :
     ∀ {es : List Expr} {ts : List KT}, Expr.kindsT env es = some ts → ts.length = es.length
   | [], ts, h => by simp only [kindsT, Option.some.injEq] at h; subst h; rfl
@@ -761,6 +781,7 @@ theorem Expr.kindsT_sound {env : List Kind} {row : Row} (hr : Row.HasKinds env r
     | zero => exact Expr.kindT_sound hr ht
     | succ i => simpa using Expr.kindsT_sound hr h' i
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.append {ka kb : List Kind} {x y : Row} (hx : Row.HasKinds ka x)
     (hy : Row.HasKinds kb y) (hl : ka.length = x.length) : Row.HasKinds (ka ++ kb) (x ++ y) := by
   intro i
@@ -771,16 +792,19 @@ theorem Row.HasKinds.append {ka kb : List Kind} {x y : Row} (hx : Row.HasKinds k
   · rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega), hl]
     simpa [List.getD_eq_getElem?_getD] using hy (i - x.length)
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.nulls (ks : List Kind) (n : Nat) : Row.HasKinds ks (List.replicate n .null) := by
   intro i
   simp only [List.getD_eq_getElem?_getD, List.getElem?_replicate]
   split <;> simp
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.other (n : Nat) (row : Row) : Row.HasKinds (List.replicate n .other) row := by
   intro i
   simp only [List.getD_eq_getElem?_getD, List.getElem?_replicate]
   split <;> simp
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.fit {ks : List Kind} {row : Row} (h : Row.HasKinds ks row) (n : Nat) :
     Row.HasKinds (fitKinds n ks) row := by
   intro i
@@ -789,6 +813,7 @@ theorem Row.HasKinds.fit {ks : List Kind} {row : Row} (h : Row.HasKinds ks row) 
   · rw [List.getElem?_range hi]; simpa [List.getD_eq_getElem?_getD] using h i
   · rw [List.getElem?_eq_none (by simpa using hi)]; simp
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.emit {ks : List Kind} {row : Row} (h : Row.HasKinds ks row) (m : List Nat) :
     Row.HasKinds (m.map (ks.getD · .other)) (m.map (row.getD · .null)) := by
   intro i
@@ -797,6 +822,7 @@ theorem Row.HasKinds.emit {ks : List Kind} {row : Row} (h : Row.HasKinds ks row)
   | none => simp
   | some j => simpa [List.getD_eq_getElem?_getD] using h j
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.zipJoin {ka kb : List Kind} {row : Row} :
     (Row.HasKinds ka row ∨ Row.HasKinds kb row) → Row.HasKinds (List.zipWith Kind.join ka kb) row := by
   intro h i
@@ -812,6 +838,7 @@ theorem Row.HasKinds.zipJoin {ka kb : List Kind} {row : Row} :
     · have := h i; rw [List.getD_eq_getElem?_getD, hb, Option.getD_some] at this; exact this
   · simp
 
+omit [Boxes.Ambient] in
 theorem Row.HasKinds.set {ks : List Kind} {row : Row} (h : Row.HasKinds ks row) (c : Nat) (v : Value)
     (k : Kind) (hv : v.hasKind k = true) : Row.HasKinds (ks.set c k) (row.set c v) := by
   intro i
@@ -827,6 +854,7 @@ theorem Row.HasKinds.set {ks : List Kind} {row : Row} (h : Row.HasKinds ks row) 
       simp [hc]
   · simpa [hi, List.getD_eq_getElem?_getD] using h i
 
+omit [Boxes.Ambient] in
 theorem Rel.inferKinds_length {cat : Catalog} {tk : String → List Kind} :
     ∀ {r : Rel} {ks : List Kind}, r.WF cat → r.inferKinds cat tk = some ks → ks.length = r.arity cat
   | .read t, ks, _, h => by

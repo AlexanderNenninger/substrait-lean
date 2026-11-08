@@ -25,6 +25,7 @@ is the one for a tolerance of `t` codes; the one for `|x - y| ≤ ε` over the
 reals is proved in `float-bounds` (#899). -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## The columns an expression reads -/
 
@@ -83,6 +84,7 @@ def ObsCtx.exactCol (ctx : ObsCtx) (q : Obs) (col : Nat) : Bool := (ctx.colIgnor
 section
 variable {q : Obs} {ctx : ObsCtx} {col : Nat}
 
+omit [Boxes.Ambient] in
 theorem ObsCtx.exactCol_parts (h : ctx.exactCol q col = true) :
     q.elements = .sequence ∧ (∀ a b, IntEquiv q ctx col a b → a = b) ∧
       (∀ a b, StrEquiv q ctx col a b → a = b) := by
@@ -104,6 +106,9 @@ theorem ObsCtx.exactCol_parts (h : ctx.exactCol q col = true) :
         · simp [hs] at h
       · simp only [hk, ite_false, StrEquivAt] at e; exact e
   · simp [he] at h
+
+section
+omit [Boxes.Ambient]
 
 mutual
 theorem Value.Equiv.eq_of_exactCol (h : ctx.exactCol q col = true) :
@@ -136,6 +141,8 @@ end
 
 end
 
+end
+
 /-! ## Robust conditions -/
 
 /-- **`e` is robust under `q`**: TRUE on a row stays TRUE on any row equal to
@@ -143,6 +150,7 @@ it up to `q`. -/
 def Expr.Robust (q : Obs) (ctx : ObsCtx) (e : Expr) : Prop :=
   ∀ r r', Row.Equiv q ctx r r' → (e.eval r).isTrue = true → (e.eval r').isTrue = true
 
+omit [Boxes.Ambient] in
 /-- Columns equal up to `q`, by position. -/
 theorem Row.Equiv.getD {q : Obs} {ctx : ObsCtx} {r r' : Row} (h : Row.Equiv q ctx r r') (i : Nat) :
     Value.Equiv q ctx i (r.getD i .null) (r'.getD i .null) := by
@@ -196,6 +204,7 @@ def Expr.cmp? : Expr → Option (Cmp × Nat × Int)
   | .un .not (.bin .lt (.field i) (.lit (.int c))) => some (.ge, i, c)
   | _ => none
 
+omit [Boxes.Ambient] in
 theorem Expr.cmp?_spec {e : Expr} {k : Cmp} {i : Nat} {c : Int} (h : e.cmp? = some (k, i, c)) :
     e = k.expr i c := by
   unfold Expr.cmp? at h
@@ -222,6 +231,7 @@ def Shift.Sound (q : Obs) (ctx : ObsCtx) (col : Nat) (s : Shift) : Prop :=
 /-- A tolerance of `t` codes: the constant moves by `t`. -/
 def Shift.codes (t : Nat) : Shift := ⟨fun c => c - t, fun c => c + t⟩
 
+omit [Boxes.Ambient] in
 theorem Shift.codes_sound {q : Obs} {ctx : ObsCtx} {col t : Nat}
     (h : ∀ a b, IntEquiv q ctx col a b → (a - b).natAbs ≤ t) : (Shift.codes t).Sound q ctx col := by
   intro k a b c e hk
@@ -334,9 +344,11 @@ theorem Expr.narrow_sound (hsh : ∀ i s, sh i = some s → s.Sound q ctx i) :
   | .ifThen _ _ _, hb, _, _, hr, ht | .hof _ _ _, hb, _, _, hr, ht =>
     Expr.narrowCmp_sound hsh hb hr ht
 
+omit [Boxes.Ambient] in
 theorem Expr.narrowCmp_none (e : Expr) : e.narrowCmp (fun _ => none) = e := by
   unfold Expr.narrowCmp; split <;> rfl
 
+omit [Boxes.Ambient] in
 theorem Expr.narrow_none : ∀ e : Expr, e.narrow (fun _ => none) = e
   | .bin f a b => by
     unfold Expr.narrow
@@ -405,6 +417,7 @@ def Obs.coarsens (q : Obs) : String → Bool
 /-- The components the values `e` reads depend on. -/
 def Expr.depends (ctx : ObsCtx) (e : Expr) : List String := e.cols.flatMap ctx.colDepends
 
+omit [Boxes.Ambient] in
 theorem ObsCtx.colIgnores_eq (ctx : ObsCtx) (q : Obs) (col : Nat) :
     ctx.colIgnores q col = (ctx.colDepends col).filter q.coarsens := by
   unfold ObsCtx.colIgnores ObsCtx.colDepends
@@ -412,6 +425,7 @@ theorem ObsCtx.colIgnores_eq (ctx : ObsCtx) (q : Obs) (col : Nat) :
     simp only [List.filter_cons, List.filter_nil, Obs.coarsens, bne_iff_ne, ne_eq] <;>
     by_cases q.elements = .sequence <;> simp_all <;> split <;> simp_all <;> split <;> simp_all
 
+omit [Boxes.Ambient] in
 theorem Expr.ignores_eq_filter (q : Obs) (ctx : ObsCtx) (e : Expr) :
     e.ignores q ctx = (e.depends ctx).filter q.coarsens := by
   simp only [Expr.ignores, Expr.depends, List.filter_flatMap]

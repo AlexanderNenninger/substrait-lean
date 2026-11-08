@@ -32,6 +32,7 @@ Two Substrait-specific details are kept on purpose:
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 structure Table where
   arity : Nat
@@ -128,6 +129,7 @@ def unnestRow (c : Nat) (x : Row) : Relation :=
   | .list vs => vs.map (x.set c ·)
   | _ => []
 
+omit [Boxes.Ambient] in
 theorem mem_unnestRow {c : Nat} {x row : Row} :
     row ∈ unnestRow c x → ∃ vs v, x.getD c .null = .list vs ∧ v ∈ vs ∧ row = x.set c v := by
   unfold unnestRow
@@ -205,6 +207,7 @@ theorem WindowKeys.none_sound (cat : Catalog) : WindowKeys.none.Sound cat :=
 
 /-! ## Type soundness -/
 
+omit [Boxes.Ambient] in
 theorem mem_crossRows {xs ys : Relation} {row : Row} :
     row ∈ crossRows xs ys ↔ ∃ x ∈ xs, ∃ y ∈ ys, row = x ++ y := by
   simp [crossRows, eq_comm]
@@ -277,6 +280,7 @@ theorem Rel.eval_arity {cat : Catalog} (hcat : cat.WF) :
       obtain ⟨_, _, _, _, rfl⟩ := mem_unnestRow h
       simp [arity, eval_arity hcat hwf.1 x hx]
 
+omit [Boxes.Ambient] in
 theorem flatMap_congr {α β : Type} {l : List α} {f g : α → List β}
     (h : ∀ a ∈ l, f a = g a) : l.flatMap f = l.flatMap g := by
   induction l with

@@ -177,6 +177,19 @@ structure Boxes where
 
 instance : Inhabited Boxes := ⟨{}⟩
 
+/-- **The black-box catalogue in scope** (#1189). The core's evaluator, its
+allowed results and its theorems take it as an instance argument, so they
+are parametric in the catalogue: the core and engines-common declare no
+instance. An engine package declares its catalogue as a `scoped instance` in
+its namespace (DuckDB's: `open scoped Substrait.DuckDB`), and only a file
+that opens that namespace states theorems about it. -/
+class Boxes.Ambient where
+  boxes : Boxes
+
+/-- No black boxes: for the core's own `#guard`s, which run without an
+engine package. A definition, not an instance (`letI := Boxes.Ambient.none`). -/
+@[reducible] def Boxes.Ambient.none : Boxes.Ambient := ⟨{}⟩
+
 namespace Boxes
 open BlackBox
 

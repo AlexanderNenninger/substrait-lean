@@ -11,6 +11,7 @@ and the analysis that over-approximates the issues of a plan
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 open FloatCode (minI64 maxI64 castLo castHi)
 
@@ -125,7 +126,7 @@ def rangeIssue (lo hi x y : Int) : Option Issue :=
 
 def UnFn.issue : UnFn → Value → Option Issue
   -- A black box that may raise, where it does (#325).
-  | .bbox n, v => if BlackBox.raisesOn n [v] then some .domain else none
+  | .bbox n, v => if BlackBox.raisesOn Boxes.Ambient.boxes n [v] then some .domain else none
   | .neg, .int i => wrapIf (-i)
   | .ftoi, .float c => match FloatCode.toInt? c with
     | some x => if inI64 x then none else some .badCast
@@ -188,7 +189,7 @@ def negInfPow (a b : Int) : Bool :=
     FloatCode.floor b != b
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
-  | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
+  | .bbox2 n, v, w => if BlackBox.raisesOn Boxes.Ambient.boxes n [v, w] then some .domain else none
   -- Integers, and timestamps, times of day and dates moved by an interval.
   | .add, v, w => wrapNum (BinFn.add.apply v w)
   | .sub, v, w => wrapNum (BinFn.sub.apply v w)
@@ -265,9 +266,9 @@ def Expr.issues (row : Row) : Expr → List (Issue × Expr)
 
 -- `AND` and `OR` evaluate both operands (D19, #604): `x <> 0 AND 10 / x > 1`
 -- divides by zero on `x = 0`; guarding the division with a `CASE` does not.
-#guard (Expr.issues [.int 0] (.bin .and (.un .not (.bin .eq (.field 0) (.lit (.int 0))))
+#guard letI := Boxes.Ambient.none; (Expr.issues [.int 0] (.bin .and (.un .not (.bin .eq (.field 0) (.lit (.int 0))))
   (.bin .lt (.lit (.int 1)) (.bin .idiv (.lit (.int 10)) (.field 0))))).length == 1
-#guard (Expr.issues [.int 0] (.bin .lt (.lit (.int 1))
+#guard letI := Boxes.Ambient.none; (Expr.issues [.int 0] (.bin .lt (.lit (.int 1))
   (.ifThen (.un .not (.bin .eq (.field 0) (.lit (.int 0)))) (.bin .idiv (.lit (.int 10)) (.field 0))
     (.lit .null)))).isEmpty
 

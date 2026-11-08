@@ -52,6 +52,7 @@ two-pass results meet these properties (`varOf_props`, `covOf_props`,
 -/
 
 namespace Substrait.Stat
+variable [Boxes.Ambient]
 
 /-- The unit roundoff, `2⁻⁵³`. -/
 def u : Rat := 1 / 2 ^ 53
@@ -151,6 +152,7 @@ end Stat
 
 open Stat
 
+variable [Boxes.Ambient]
 /-- `VAR_*` / `STDDEV_*` of `vs` may give `v`. -/
 def varStat (sample sqrt : Bool) (vs : List Value) (v : Value) : Prop :=
   if vs = [] ∨ (sample = true ∧ vs.length = 1) then v = .null
@@ -205,6 +207,7 @@ def nanGuard (sample : Bool) (vs : List Value) (body : Value) : Value :=
   else if anyCode (fun c => decide (FloatCode.nan ≤ c)) vs then .float FloatCode.nan
   else body
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- A NaN's code is past `fits`'s range. -/
 private theorem not_fits_of_nan {vs : List Value} {c : Int} (hc : .float c ∈ vs)

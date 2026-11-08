@@ -143,7 +143,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .decimal p _, aa, _ => if aa.within (1 - 10 ^ p) (10 ^ p - 1) then [] else [.overflow]
   | .ftod s, aa, _ => if aa.decFits s then [] else [.badCast]
   | .raise _, _, _ => [.raised]
-  | .bbox n, _, _ => if BlackBox.mayRaise n then [.domain] else []
+  | .bbox n, _, _ => if BlackBox.mayRaise Boxes.Ambient.boxes n then [.domain] else []
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -306,7 +306,7 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .fatan2, aa, ab, _, _, _ => if BinFn.domainSafe .fatan2 aa.int ab.int then [] else [.domain]
   | .flogb, aa, ab, _, _, _ => if BinFn.domainSafe .flogb aa.int ab.int then [] else [.domain]
   | .bit op, aa, ab, _, _, _ => if BinFn.domainSafe (.bit op) aa.int ab.int then [] else [.domain]
-  | .bbox2 n, _, _, _, _, _ => if BlackBox.mayRaise n then [.domain] else []
+  | .bbox2 n, _, _, _, _, _ => if BlackBox.mayRaise Boxes.Ambient.boxes n then [.domain] else []
   | _, _, _, _, _, _ => []
 
 /-- Is `x`'s value never the zero of kind `k` (the integer 0, the double
@@ -1293,7 +1293,7 @@ def AggFn.makesNan : AggFn → List Value → Bool
     vs.contains (.float FloatCode.posInf) && vs.contains (.float FloatCode.negInf) &&
       quantileOpposite num scale vs
   -- A black box that raises on these values (#326).
-  | .bbox n, vs => BlackBox.aggRaisesOn n vs
+  | .bbox n, vs => BlackBox.aggRaisesOn Boxes.Ambient.boxes n vs
   | _, _ => false
 
 /-- May `makesNan` hold of values that `a` describes? -/
@@ -1303,7 +1303,7 @@ def AggFn.mayNan : AggFn → AVal → Bool
   | .quantile true _ _, a => a.has FloatCode.posInf && a.has FloatCode.negInf
   -- A pair's sides are what may be infinite (`Measure.mayNan`).
   | .cov _, _ | .corr, _ => true
-  | .bbox n, _ => BlackBox.aggMayRaise n
+  | .bbox n, _ => BlackBox.aggMayRaise Boxes.Ambient.boxes n
   | _, _ => false
 
 theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
