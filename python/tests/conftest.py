@@ -228,4 +228,3 @@ def _polars_plans_stream(monkeypatch: pytest.MonkeyPatch) -> None:
         return collect(lf)
 
     monkeypatch.setattr(polars_engine, "collect", checked)
-
