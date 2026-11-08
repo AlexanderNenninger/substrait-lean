@@ -325,15 +325,6 @@ def valuesLit (ty : Json) (v : Value) : Json :=
   -- A literal, which a virtual table's fields must be.
   | _, _ => obj [("literal", writeLitBody (.ofKind (Parse.typeKind ty)) v)]
 
-/-- A double the model has one zero and one NaN for, as IEEE engines compute
-it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.
-Engines that compare by `f64::total_cmp` (DataFusion) need it after an
-operation that can give `-0.0` or a negative NaN; the parser reads
-`nanvl(x, NaN)` back as `x`. -/
-def canonical (x : Json) : Json :=
-  let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
-  call (fn "nanvl") [call (fn "add") [x, lit (Json.num 0)], lit "NaN"]
-
 /-- `CAST(j AS INT<n>)` that raises where the value does not fit. -/
 def checkedNarrow (n : Nat) (j : Json) : Json :=
   let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
@@ -549,7 +540,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
   | .un .toDate a => obj [("cast", obj [("type", obj [("date", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .time a)])]
-  | .un .fneg a => canonical (call (fn "negate") [writeExpr cols .float a])
+  | .un .fneg a => call (fn "negate") [writeExpr cols .float a]
   | .un .ftoi a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.narrow n) a =>
@@ -582,11 +573,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>
-    canonical (call (fn "round") [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]])
-  | .un .ffloor a => canonical (call (fn "floor") [writeExpr cols .float a])
-  | .un .fceil a => canonical (call (fn "ceil") [writeExpr cols .float a])
-  | .un .fround a => canonical (call (fn "round") [writeExpr cols .float a])
-  | .un (.fmath f) a => canonical (call (UnFn.anchor (.fmath f)) [writeExpr cols .float a])
+    call (fn "round") [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]]
+  | .un .ffloor a => call (fn "floor") [writeExpr cols .float a]
+  | .un .fceil a => call (fn "ceil") [writeExpr cols .float a]
+  | .un .fround a => call (fn "round") [writeExpr cols .float a]
+  | .un (.fmath f) a => call (UnFn.anchor (.fmath f)) [writeExpr cols .float a]
   | .un .neg a => call (fn "negate") [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
     call (fn "array_length") [call (fn "regexp_match") [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
@@ -643,10 +634,8 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     let ka := if isConst a then wkind cols b else wkind cols a
     let kb := if isConst b then wkind cols a else wkind cols b
     match f with
-    -- A sum or difference of canonical doubles is `-0.0` never, NaN only
-    -- as `inf - inf`, which IEEE engines may make negative.
     | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
-      canonical (call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b])
+      call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b]
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.
       let (ka, kb) := sumKinds (f matches .sub) cols ctx a b
@@ -704,7 +693,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- double (`Parse.mkFloatCall`): written as those calls, so that they read
   -- back as they were.
   | .ifThen (.bin .eq a (.lit (.float k))) t (.un .fneg e) =>
-    if k == FloatCode.nan && t == a && e == a then canonical (call (fn "negate") [writeExpr cols .float a])
+    if k == FloatCode.nan && t == a && e == a then call (fn "negate") [writeExpr cols .float a]
     else obj [("ifThen", obj [
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .eq a (.lit (.float k)))),
         ("then", writeExpr cols ctx t)]]),
@@ -835,6 +824,23 @@ def _root_.Substrait.Rel.slidingFrames : Rel → Bool
     r.slidingFrames || fns.any fun
       | .agg m _ fr => [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding
       | _ => false
+
+/-- Does the expression have a double operation that IEEE arithmetic lets
+give `-0.0` or a negative NaN? DataFusion orders those apart from `0.0` and
+NaN (`f64::total_cmp`, upstream/bugs/DF-13.json), so it gets no plans with
+these. -/
+def _root_.Substrait.Expr.signedDoubles : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with
+      | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ => true
+      | _ => false) || a.signedDoubles
+  | .bin f a b =>
+    (match f with
+      | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb => true
+      | _ => false) || a.signedDoubles || b.signedDoubles
+  | .ifThen c t e => c.signedDoubles || t.signedDoubles || e.signedDoubles
+  | .hof _ l b => l.signedDoubles || b.signedDoubles
 
 /-- Does the expression wrap around or clamp (`overflow` = `SILENT` or
 `SATURATE`, `UnFn.fit`, #241)? -/
@@ -968,6 +974,8 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
   let arg := measureArg cols m
   let decimal := obj [("decimal", obj [("precision", toJson 38), ("scale", toJson 0),
     ("nullability", "NULLABILITY_NULLABLE")])]
+  -- DataFusion's integer `SUM` wraps (upstream/bugs/DF-14.json): it sums a
+  -- `DECIMAL(38,0)`, which fails instead.
   let arg := if df && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
     else arg
   let measure := obj [
@@ -1142,6 +1150,8 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
     -- (NULL and FALSE both do not match), and not an `=`.
     let n := a.arity cat
     let cs := conjunctsOf on
+    -- DataFusion's consumer takes a conjunct over one input for a join key
+    -- (upstream/bugs/DF-19.json): such conjuncts become filters or a `CASE`.
     let left := if df && ty matches .inner then cs.filter (readsOnly (· < n)) else []
     let right := if df then cs.filter (readsOnly (n ≤ ·)) else []
     let rest := (cs.filter fun c => !left.contains c && !right.contains c).map fun c =>

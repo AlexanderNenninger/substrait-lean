@@ -240,7 +240,7 @@ def test_min_and_max_of_doubles_are_refused_on_datafusion():
     # DataFusion's grouped MIN of a group of +∞ is the largest finite double.
     expected = datafusion_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)])
     assert expected == [(1, 1.7976931348623157e308)]
-    with pytest.raises(ValueError, match="MIN and MAX of doubles are not yet supported"):
+    with pytest.raises(ValueError, match="MIN and MAX of doubles are not supported on DataFusion"):
         engine_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)], "datafusion")
 
 

@@ -99,7 +99,7 @@ class Merger:
         b = self.schema.empty_table() if b is None else b
         plan = self.plan()
         if plan is not None:
-            tables = {_A: _canonical(a), _B: _canonical(b)}
+            tables = {_A: a, _B: b}
             try:
                 if keep:
                     return duckdb_engine.run(plan, tables, keep=True)
@@ -110,14 +110,6 @@ class Merger:
                 return out.rename_columns(self.schema.names).cast(self.schema)
         merged = consolidated(arrow_of(a).cast(self.schema), arrow_of(b).cast(self.schema))
         return DuckDBStore().keep_table(merged) if keep else merged
-
-
-def _canonical(z: State) -> State:
-    """Arrow tables as a connection holds them (`sverify.engine.canonical`):
-    the plan was checked over such tables."""
-    from sverify.engine import canonical, plain_schema
-
-    return z if isinstance(z, Resident) else canonical(z.cast(plain_schema(z.schema)))
 
 
 class Store:
