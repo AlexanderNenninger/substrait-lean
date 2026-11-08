@@ -1737,10 +1737,18 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
             lo = None if lo is not None and lo <= -(2**60) else lo
             hi = None if hi is not None and hi >= 2**60 else hi
         if span is not None:
-            # So do bounds past what a Python date or datetime holds, the years
-            # 1 to 9999: a DATE cast from a TIMESTAMP reaches far beyond (#435).
-            lo = None if lo is not None and lo < span[0] else lo
-            hi = None if hi is not None and hi > span[1] else hi
+            # So do bounds at or past what a Python date or datetime holds, the
+            # years 1 to 9999: they are the reference's own (D32), which a DATE
+            # or TIMESTAMP has by its type (a DATE cast from a TIMESTAMP is
+            # computed and may reach beyond, #435).
+            lo = None if lo is not None and lo <= span[0] else lo
+            hi = None if hi is not None and hi >= span[1] else hi
+        if dtype.is_interval():
+            # And an interval as long as two of the reference's timestamps
+            # apart, or longer.
+            widest = (datetime.max - datetime.min) // _MICROSECOND
+            lo = None if lo is not None and lo <= -widest else lo
+            hi = None if hi is not None and hi >= widest else hi
         if lo is None and hi is None:
             parts.append(f"any {noun.split(' ', 1)[1]}")
         elif lo is not None and hi is not None and lo == hi:

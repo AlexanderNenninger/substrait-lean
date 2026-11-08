@@ -30,7 +30,9 @@ def _needed(report):
 ITEMS = ibis.table(
     {"sku": "int64", "price": "int64", "cost": "int64", "qty": "int64"}, name="items"
 )
-CLICKS = ibis.table({"user_id": "int64", "ts": "timestamp", "page": "string"}, name="clicks")
+CLICKS = ibis.table(
+    {"user_id": "int64", "ts": "timestamp", "page": "string", "seq": "int64"}, name="clicks"
+)
 PAYMENTS = ibis.table(
     {"txn_id": "int64", "card": "string", "amount": "int64", "ts": "timestamp"}, name="payments"
 )
@@ -50,8 +52,10 @@ def margins(items: ibis.Table) -> ibis.Table:
 
 
 def sessionize(t: ibis.Table) -> ibis.Table:
-    prev = t.ts.lag().over(ibis.window(group_by=t.user_id, order_by=t.ts))
-    return t.mutate(gap=t.ts - prev)
+    # A BIGINT step: a timestamp lies in 0001 to 9999 by its type (D32), so
+    # `ts - lag(ts)` cannot overflow, and `seq - lag(seq)` can.
+    prev = t.seq.lag().over(ibis.window(group_by=t.user_id, order_by=t.ts))
+    return t.mutate(gap=t.seq - prev)
 
 
 def double_charges(p: ibis.Table) -> ibis.Table:
@@ -77,7 +81,7 @@ def test_a_floor_division_is_one_issue_as_written() -> None:
 
 def test_a_window_value_is_named_not_numbered() -> None:
     report = sv.verify(sessionize(CLICKS), on_inferred="off")
-    assert [str(i) for i in report.errors] == ["overflow: ts - lag(ts)"]
+    assert [str(i) for i in report.errors] == ["overflow: seq - lag(seq)"]
     assert "$" not in str(report)
 
 
@@ -111,12 +115,11 @@ def test_a_decimal_cast_reads_as_the_cast() -> None:
 
 
 def test_an_interval_reads_as_written() -> None:
-    report = sv.verify(
-        double_charges(PAYMENTS),
-        requires={"payments": [_.ts.notnull(), _.txn_id.notnull()]},
-        ensures=[_.first_ts < _.dup_ts],
-    )
-    assert "inferred from `ts + ibis.interval(minutes=5)`" in str(report)
+    # A computed timestamp may leave 0001 to 9999 (D32), which its truncation
+    # needs a bound for.
+    later = PAYMENTS.ts + ibis.interval(minutes=5)
+    report = sv.verify(PAYMENTS.select(m=later.truncate("M")))
+    assert "inferred from `DATE_TRUNC_month((ts + ibis.interval(minutes=5)))`" in str(report)
     assert "300000000" not in str(report)
 
 
@@ -353,7 +356,7 @@ def test_the_window_hint_bounds_the_column_it_reads() -> None:
     report = sv.verify(sessionize(CLICKS), on_inferred="off")
     (issue,) = report.errors
     assert issue.hint is not None
-    assert issue.hint.startswith("bound the columns it reads: state `(_.ts >= datetime(1900")
+    assert issue.hint.startswith("bound the columns it reads: state `(_.seq >= ")
     assert "window function" not in issue.hint
 
 

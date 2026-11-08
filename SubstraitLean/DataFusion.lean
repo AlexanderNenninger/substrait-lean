@@ -73,6 +73,22 @@ def signedDoubles : Expr → Bool
   | .ifThen c t e => signedDoubles c || signedDoubles t || signedDoubles e
   | .hof _ l b => signedDoubles l || signedDoubles b
 
+/-- Does the expression truncate to a week or longer, truncate a date, or bin
+timestamps? DataFusion computes those in nanoseconds, which fail (or, on 51,
+give a wrong date) outside ±2⁶³ ns (DF-17), where the reference's timestamps
+reach 0001 to 9999 (D32). Expires when DF-17 is fixed upstream (not filed
+yet). -/
+def nanoCalendar : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with
+      | .dateTrunc u => u.calendar
+      | .dayTrunc _ | .bucket _ _ => true
+      | _ => false) || nanoCalendar a
+  | .bin _ a b => nanoCalendar a || nanoCalendar b
+  | .ifThen c t e => nanoCalendar c || nanoCalendar t || nanoCalendar e
+  | .hof _ l b => nanoCalendar l || nanoCalendar b
+
 /-- Does the expression wrap around or clamp (`overflow` = `SILENT` or
 `SATURATE`, `UnFn.fit`)? Expires with #241, the shim that writes them. -/
 def fits : Expr → Bool
@@ -208,6 +224,9 @@ def refusal (plan : Parse.Plan) : Option String :=
   else if r.anyExpr signedDoubles then
     some ("DataFusion orders the -0.0 and NaN a double operation can give apart from 0.0 " ++
       "and NaN (upstream/bugs/DF-13.json)")
+  else if r.anyExpr nanoCalendar then
+    some ("DataFusion truncates to a week or longer, truncates dates and bins timestamps in " ++
+      "nanoseconds, outside the reference's timestamps (upstream/bugs/DF-17.json)")
   else if r.anyExpr nestedAccess then
     some ("DataFusion does not run struct fields, list elements or cardinality as the " ++
       "reference does (#94, upstream/bugs/DF-20.json)")
