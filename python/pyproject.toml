@@ -61,6 +61,15 @@ sverify = "sverify.cli:main"
 [project.entry-points.pytest11]
 sverify = "sverify.pytest_plugin"
 
+# sverify's own engines, registered as a package from outside registers one
+# (`sverify.profiles`, #1189); each moves to its engine's package with step 5.
+[project.entry-points."sverify.profiles"]
+duckdb = "sverify._builtin.duckdb:PLUGIN"
+polars = "sverify._builtin.polars:PLUGIN"
+spark = "sverify._builtin.spark:PLUGIN"
+datafusion = "sverify._builtin.datafusion:PLUGIN"
+snowflake = "sverify._builtin.snowflake:PLUGIN"
+
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
 Documentation = "https://alexandernenninger.github.io/substrait-lean/"

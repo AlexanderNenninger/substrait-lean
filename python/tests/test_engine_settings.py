@@ -6,13 +6,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 
 import pyarrow as pa
 import pytest
 from ibis import _
 
 import sverify as sv
-from sverify import _duckdb, _engine_settings, routes
+from sverify import _duckdb, _engine_settings, profiles, routes
 from sverify.errors import EngineSettingsError, EngineSettingsWarning
 
 
@@ -177,7 +178,8 @@ def test_polars_streaming_variables_are_not_refused(con, monkeypatch) -> None:
 
 def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
     extra = _engine_settings.Setting("threads", (4,), "warn", (), "nothing sverify relies on")
-    monkeypatch.setitem(_engine_settings.SETTINGS, "duckdb", (extra,))
+    duckdb = replace(profiles.plugins()["duckdb"], settings=(extra,))
+    monkeypatch.setattr(profiles, "find", lambda e: duckdb if e == "duckdb" else None)
     with pytest.warns(EngineSettingsWarning, match="threads is 8"):
         assert routes.check_settings("duckdb", {"threads": 8})
     assert routes.check_settings("duckdb", {"threads": 4}) == []
