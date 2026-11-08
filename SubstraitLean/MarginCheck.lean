@@ -1,6 +1,6 @@
-import SubstraitLean.Robust
-import SubstraitLean.Float
-import SubstraitLean.Rel
+import Sverify.Core.Robust
+import Sverify.Core.Float
+import Sverify.Core.Rel
 
 /-!
 # The margin check of a threshold on a double `SUM` (#929)

@@ -1,5 +1,5 @@
 import SubstraitLean.Weighted
-import SubstraitLean.Decomposable
+import Sverify.Core.Decomposable
 import SubstraitLean.Safety
 import SubstraitLean.Keys
 

@@ -1,5 +1,5 @@
 import SubstraitLean.Partition
-import SubstraitLean.Time
+import Sverify.Core.Time
 
 /-!
 # Retention: bounded state for time buckets (#294)

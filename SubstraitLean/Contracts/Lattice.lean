@@ -1,4 +1,4 @@
-import SubstraitLean.OrderAllowed
+import Sverify.Core.OrderAllowed
 
 /-!
 # Contracts: Lattice

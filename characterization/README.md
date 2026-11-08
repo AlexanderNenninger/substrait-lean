@@ -3,7 +3,7 @@
 What each engine does at each of the core's options
 ([core-semantics.md](../docs/core-semantics.md)), recorded as facts and
 judged against sverify's reference. The engines' profiles
-(`SubstraitLean/Profile.lean`, `PolarsProfile.lean`, `SparkProfile.lean`) and
+(`core/Sverify/Core/Profile.lean`, `PolarsProfile.lean`, `SparkProfile.lean`) and
 their rows of the realizability table are built from these facts. Snowflake
 behaviour is recorded privately.
 

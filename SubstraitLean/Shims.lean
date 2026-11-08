@@ -1,5 +1,5 @@
-import SubstraitLean.Profile
-import SubstraitLean.Order
+import Sverify.Core.Profile
+import Sverify.Core.Order
 
 /-!
 # Shims the engines share (#1166)

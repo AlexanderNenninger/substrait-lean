@@ -297,7 +297,7 @@ def sqrt_up(q: Fraction) -> Fraction:
 def test_duckdb_var_covar_and_corr_have_the_generic_properties(
     ps: list[tuple[float, float]], scale: float, shift: float
 ) -> None:
-    """`StatProps` (`SubstraitLean/StatProps.lean`): `VAR_POP` within `varTol`,
+    """`StatProps` (`core/Sverify/Core/StatProps.lean`): `VAR_POP` within `varTol`,
     `COVAR_POP` within `covTol`, `|CORR| ≤ 1 + 3E/L + 8u` (`corrErr`) when both
     co-moments are at least `L ≥ 8E`, with the square roots by rational
     witnesses above them. The bounds scale with the spread, so a shift of

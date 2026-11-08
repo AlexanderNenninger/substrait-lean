@@ -2,7 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.EngineTables
 import SubstraitLean.PolarsShims
 import SubstraitLean.SparkShims
-import SubstraitLean.Allowed
+import Sverify.Core.Allowed
 import SubstraitLean.LoweringDuckDB
 
 /-!

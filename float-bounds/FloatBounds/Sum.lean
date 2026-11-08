@@ -6,7 +6,7 @@ public import FloatBounds.Model
 # Rounded sums and means (#85, stages 3 and 4)
 
 `StdModel.sum` adds a list in list order from `0`, rounding each addition,
-as `floatSum` in `SubstraitLean/Aggregate.lean` does with native doubles.
+as `floatSum` in `core/Sverify/Core/Aggregate.lean` does with native doubles.
 
 * `sum_error`: the rounded sum of `n` values is within `γ n · mag xs` of the
   exact sum (Higham, (4.4)), where `mag xs = Σ (|xᵢ| + tiny)`. The `tiny`

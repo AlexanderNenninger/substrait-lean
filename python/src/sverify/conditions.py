@@ -822,13 +822,13 @@ class CheckedCondition:
     allowed: bool = field(default=False, repr=False, compare=False)
     """Proved on every result the reference allows, not only on the orders
     `proved` covers (`contract_sound_allowed`, or `contract_sound_allowed_closed`
-    for a plan without open measures, `SubstraitLean/AllowedNear.lean`): the
+    for a plan without open measures, `core/Sverify/Core/AllowedNear.lean`): the
     plan has no open measure the condition reads (since D25 a double `SUM` or
     `AVG` is not one; a statistical aggregate still is)."""
     depends: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     """The components of an observation the condition's value depends on,
     as the checker computes them from the columns it reads (`Expr.depends`,
-    `SubstraitLean/Robust.lean`): an observation that coarsens none of them
+    `core/Sverify/Core/Robust.lean`): an observation that coarsens none of them
     keeps the condition TRUE (`Expr.robust_of_depends`). None where the
     checker does not know them."""
     approx: bool = False

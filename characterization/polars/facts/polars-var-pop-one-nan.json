@@ -33,7 +33,7 @@
     "On the streaming engine, a `group_by(...).agg(var(ddof=0))` whose input is a one-row frame with NaN gives 0.0, with or without `maintain_order`; `+inf` gives 0.0 too. The in-memory engine gives NaN for both. It is DuckDB's DD-3 on a narrower path: a variance of one value finalized as 0 without looking at the value.",
     "sverify's Polars path aggregates `var`/`std` with its flags and the group keys' `first()`, which does not take that path: the written plan gave NaN before any guard. Since the result depends on which path Polars picks, the run returns NaN where a value is NaN (`_polars_shims.nan_through`, the guard `Stat.nanGuard_varStat` proves), as DuckDB's SQL does (`Dialect.nan_through`, DD-3). An infinity raises before the variance (`DomainError`)."
   ],
-  "reference": "`varOf` (`SubstraitLean/Aggregate.lean`, D30): NaN for a NaN among the values. Polars agrees except on this path; Profile.polars's `agg.var` `stat_algo` row names the shim `nan_through`.",
+  "reference": "`varOf` (`core/Sverify/Core/Aggregate.lean`, D30): NaN for a NaN among the values. Polars agrees except on this path; Profile.polars's `agg.var` `stat_algo` row names the shim `nan_through`.",
   "status": "shimmed",
   "evidence": "probe",
   "provenance": [
