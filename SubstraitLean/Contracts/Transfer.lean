@@ -42,7 +42,7 @@ def monoAbs (kin kout : NumKind) (g : Int → Int) (a : AVal) : AVal :=
 
 /-- `-x` of doubles: the negated interval, or any double where NaN may be in it,
 since `-NaN` is the NaN (D31). -/
-def fnegBound (b : Bound) : Bound := if b.hi.all (· < FloatCode.nan) then b.neg else Bound.top
+def fnegBound (b : Bound) : Bound := if b.hi.any (· < FloatCode.nan) then b.neg else Bound.top
 
 /-- A conversion's interval to finite doubles: between the conversions of the
 ends, or of `-∞` and `+∞`'s neighbours. -/
@@ -1070,7 +1070,8 @@ macro "hf_tac" : tactic => `(tactic| first
   | rfl
   | (simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
       NumKind.val, Value.unscaled?, intsOnly, floatsOnly, addNK, subNK, decNK, dateAddNK,
-      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp, NumKind.norm]
+      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp, NumKind.norm,
+      FloatCode.fadd_canon, FloatCode.fsub_canon, FloatCode.fmul_canon, FloatCode.fdiv_canon_left]
      try (repeat' split) <;> first | rfl | simp_all))
 
 end Substrait

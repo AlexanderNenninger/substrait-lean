@@ -562,6 +562,12 @@ def NumKind.norm : NumKind → Int → Int
 /-- `norm` of a double, for `rw`: `simp` would unfold `canon`'s constants. -/
 theorem NumKind.norm_float (i : Int) : NumKind.float.norm i = FloatCode.canon i := rfl
 
+@[simp] theorem NumKind.norm_int (i : Int) : NumKind.int.norm i = i := rfl
+@[simp] theorem NumKind.norm_date (i : Int) : NumKind.date.norm i = i := rfl
+@[simp] theorem NumKind.norm_ts (i : Int) : NumKind.ts.norm i = i := rfl
+@[simp] theorem NumKind.norm_tod (i : Int) : NumKind.tod.norm i = i := rfl
+@[simp] theorem NumKind.norm_dec (s : Nat) (i : Int) : (NumKind.dec s).norm i = i := rfl
+
 /-- A value with its doubles canonical, in lists and structs too: `-0.0` is
 `+0.0` and the negative NaN the NaN (`zero_sign` = `ONE_ZERO`, `nan_kind` =
 `ONE_NAN`, D31). Comparisons read values through it. -/
@@ -705,7 +711,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fadd, .float a, .float b => .float (FloatCode.fadd a b)
   | .fsub, .float a, .float b => .float (FloatCode.fsub a b)
   | .fmul, .float a, .float b => .float (FloatCode.fmul a b)
-  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a b)
+  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a (FloatCode.canon b))
   | .fmod, .float a, .float b => .float (FloatCode.fmod (FloatCode.canon a) (FloatCode.canon b))
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)

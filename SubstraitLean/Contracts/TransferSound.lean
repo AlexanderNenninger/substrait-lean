@@ -357,7 +357,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
             obtain ⟨_, bh⟩ := b
             cases bh with
             | none => simp at hb
-            | some u => simp at hb; exact Int.lt_of_le_of_lt (hi.2 u rfl) hb
+            | some u => simp only [Option.any_some, decide_eq_true_eq] at hb; exact Int.lt_of_le_of_lt (hi.2 u rfl) hb
           have := fp64.negZero_eq; have := fp64.negNan_eq; have := fp64.nan_eq
           have hn : FloatCode.canon (FloatCode.neg i) = FloatCode.neg i := fp64.canon_eq_self (by
             show -i ≠ fp64.negZero ∧ -i ≠ fp64.negNan
@@ -415,9 +415,9 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
       (fun v => by cases v <;> hf_tac) h hc
   case fmath f =>
     refine mapAbs_sound (g := f.apply) (fun v => by cases v <;> hf_tac)
-      (fun _ _ _ _ _ => Bound.mem_top _) (fun b i hi hn => ?_) h (fun _ _ _ _ hr => ?_)
-    swap
-    · simp only [FMath.apply] at hr; split at hr <;> cases hr
+      (fun _ _ _ _ _ => Bound.mem_top _) (fun b i hi hn => ?_) h (fun _ _ _ _ hr => ?hc)
+    case hc =>
+      simp only [FMath.apply] at hr; split at hr <;> cases hr
       rw [NumKind.norm_float]; exact FloatCode.canon_ofFloat _
     simp only [Bool.not_eq_true']
     cases hs : f.safeB (some b)
@@ -649,7 +649,11 @@ theorem powAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (powAbs a b).Mem (BinFn.apply .ipow v w) := by
   refine mapAbs₂_sound (g := fun i j =>
       if j < 0 ∨ (64 < j ∧ 1 < i.natAbs) then none else some (i ^ j.toNat))
-    (fun v w => by cases v <;> cases w <;> hf_tac) (fun _ y i j r _ hj hr => ?_)
+    (fun v w => by
+      cases v <;> cases w <;> first
+        | rfl
+        | (simp only [BinFn.apply, Value.mapP₂, Value.numOf?, intsOnly, NumKind.norm_int]
+           split <;> (rename_i h; simp only [h, ↓reduceIte, NumKind.val]))) (fun _ y i j r _ hj hr => ?_)
     (fun _ y i j _ hj hr => ?_) ha hb
   · split at hr
     · cases hr
@@ -760,8 +764,9 @@ theorem pickAbs_int_right {both : Bound → Bound → Bound} {a b : AVal} {y : B
     ∃ c, (pickAbs both a b).int = some c ∧ c.Mem r := by
   simp only [pickAbs, hn, hy, ↓reduceIte]; exact joinInt_mem_right (joinInt_mem_left ⟨y, rfl, hr⟩)
 
-theorem Value.ltB_vals (k : NumKind) (i j : Int) : Value.ltB (k.val i) (k.val j) = decide (i < j) := by
-  cases k <;> simp [Value.ltB, NumKind.val, Value.numPair]
+theorem Value.ltB_vals (k : NumKind) (i j : Int) :
+    Value.ltB (k.val i) (k.val j) = decide (k.norm i < k.norm j) := by
+  cases k <;> first | rfl | simp [Value.ltB, NumKind.val, Value.numPair] <;> rfl
 
 theorem Value.ltB_diff (k k' : NumKind) (i j : Int) (hk : k ≠ k') :
     Value.ltB (k.val i) (k'.val j) = false := by
@@ -793,8 +798,8 @@ theorem AVal.nonInt_of_other {a : AVal} {w : Value} (h : a.Mem w) (hw : w.numOf?
     simp_all [AVal.Mem, AVal.nonInt, AVal.nested, Value.numOf?]
 
 theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Value → Bool}
-    (hboth : ∀ {x y : Bound} {i j : Int} (k : NumKind), x.Mem i → y.Mem j →
-      (both x y).Mem (if better (k.val i) (k.val j) then j else i))
+    (hboth : ∀ {x y : Bound} {i j : Int} (k : NumKind), x.Mem (k.norm i) → y.Mem (k.norm j) →
+      (both x y).Mem (k.norm (if better (k.val i) (k.val j) then j else i)))
     (hdiff : ∀ (k k' : NumKind) (i j : Int), k ≠ k' → better (k.val i) (k'.val j) = false)
     (hmix : ∀ (k : NumKind) i w, w.numOf? = none → better (k.val i) w = false)
     (hmix' : ∀ v (k : NumKind) j, v.numOf? = none → better v (k.val j) = false)
@@ -814,10 +819,10 @@ theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Val
       by_cases hkk : k = k'
       · subst hkk
         have hpair : (if sameNk a b then both x y else x.join y).Mem
-            (if better (k.val i) (k.val j) then j else i) := by
+            (k.norm (if better (k.val i) (k.val j) then j else i)) := by
           split
           · exact hboth k hi hj
-          · split
+          · rw [apply_ite k.norm]; split
             · exact Bound.mem_join_right hj
             · exact Bound.mem_join_left hi
         obtain ⟨c, hc, hcm⟩ := pickAbs_int_pair (both := both) hx hy hpair
@@ -828,7 +833,7 @@ theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Val
       · rw [hdiff k k' i j hkk]
         simp only [Bool.false_eq_true, ↓reduceIte]
         have hs := sameNk_false hk hk' hkk
-        obtain ⟨c, hc, hcm⟩ := pickAbs_int_pair (both := both) (r := i) hx hy
+        obtain ⟨c, hc, hcm⟩ := pickAbs_int_pair (both := both) (r := k.norm i) hx hy
           (by simp only [hs, Bool.false_eq_true, ↓reduceIte]; exact Bound.mem_join_left hi)
         rw [AVal.mem_val]
         exact ⟨c, hc, hcm, joinNk_all_left hx hk⟩
@@ -1090,13 +1095,14 @@ theorem fdivBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
   · exact hm
 
 theorem BinFn.eq_vals (k k' : NumKind) (i j : Int) :
-    BinFn.apply .eq (k.val i) (k'.val j) = if k = k' then .bool (i == j) else .null := by
-  cases k <;> cases k' <;> simp [BinFn.apply, NumKind.val, Value.numPair]
+    BinFn.apply .eq (k.val i) (k'.val j) = if k = k' then .bool (k.norm i == k'.norm j) else .null := by
+  cases k <;> cases k' <;> first | rfl | simp [BinFn.apply, NumKind.val, Value.numPair]
   all_goals (split <;> simp_all)
 
 theorem BinFn.lt_vals (k k' : NumKind) (i j : Int) :
-    BinFn.apply .lt (k.val i) (k'.val j) = if k = k' then .bool (decide (i < j)) else .null := by
-  cases k <;> cases k' <;> simp [BinFn.apply, NumKind.val, Value.numPair]
+    BinFn.apply .lt (k.val i) (k'.val j) =
+      if k = k' then .bool (decide (k.norm i < k'.norm j)) else .null := by
+  cases k <;> cases k' <;> first | rfl | simp [BinFn.apply, NumKind.val, Value.numPair]
   all_goals (split <;> simp_all)
 
 theorem BinFn.cmp_num_other {f : BinFn} (hf : f = .eq ∨ f = .lt) (k : NumKind) (i : Int)
@@ -1125,9 +1131,9 @@ theorem eqAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
       rw [BinFn.eq_vals]
       split
       · rename_i hkk; subst hkk
-        by_cases hij : i = j
-        · subst hij; simp [BinFn.abs, AVal.Mem, intEq_of hx hy hi hj]
-        · have : (i == j) = false := by simpa using hij
+        by_cases hij : k.norm i = k.norm j
+        · rw [hij] at hi ⊢; simp [BinFn.abs, AVal.Mem, intEq_of hx hy hi hj]
+        · have : (k.norm i == k.norm j) = false := by simpa using hij
           rw [this]; simp [BinFn.abs, AVal.Mem, intNe_of hx hy hi hj hij]
       · rename_i hkk
         show (BinFn.abs .eq a b).null = true
@@ -1176,7 +1182,7 @@ theorem ltAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
       rw [BinFn.lt_vals]
       simp only [BinFn.abs, hx, hy]
       split
-      · cases hlt : decide (i < j)
+      · cases hlt : decide (k.norm i < k'.norm j)
         · show (canGe x y || _) = true
           simp only [decide_eq_false_iff_not] at hlt
           simp [canGe_of_le hi hj (by omega)]
@@ -1290,10 +1296,12 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case pair => exact AVal.mem_top _
   case listFn => exact AVal.mem_top _
   case greatest =>
-    exact pickAbs_sound (fun k hx hy => by rw [Value.ltB_vals]; simpa using Bound.mem_greatest hx hy)
+    exact pickAbs_sound (fun k hx hy => by
+        rw [Value.ltB_vals, apply_ite k.norm]; simpa using Bound.mem_greatest hx hy)
       Value.ltB_diff (fun k _ w hw => Value.ltB_mix k hw) (fun v k _ hv => Value.ltB_mix' k hv) ha hb
   case least =>
-    exact pickAbs_sound (fun k hx hy => by rw [Value.ltB_vals]; simpa using Bound.mem_least hx hy)
+    exact pickAbs_sound (fun k hx hy => by
+        rw [Value.ltB_vals, apply_ite k.norm]; simpa using Bound.mem_least hx hy)
       (fun k k' i j hk => Value.ltB_diff k' k j i (Ne.symm hk))
       (fun k _ w hw => Value.ltB_mix' k hw) (fun v k _ hv => Value.ltB_mix k hv) ha hb
   case add => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> hf_tac) ha hb

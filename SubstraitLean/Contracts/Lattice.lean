@@ -819,7 +819,7 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
     (hn : ∀ b i, b.Mem i → g i = none → extra (some b) = true)
     {a : AVal} {v : Value} (h : a.Mem v)
     (hc : ∀ k i r, ok k = true → g (k.norm i) = some r → (kout k).norm r = r := by
-      intro k _ _ _ _; cases k <;> rfl) :
+      intro k _ _ hk _; cases k <;> first | rfl | exact absurd hk (by decide)) :
     (mapAbs ok kout bf extra a).Mem (f.apply v) := by
   rw [hf]
   mem_cases h with i b hb' hi
