@@ -1,0 +1,87 @@
+{
+  "id": "polars-rolling-sum-float",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`rolling_sum`, `rolling_mean` and their `_by` forms of doubles: a sliding sum with Kahan compensation, no sum of the window",
+  "verdict": "adds the entering values and subtracts the leaving ones on one running state, each side Kahan-compensated; not a sum of the window's values in any order",
+  "area": "windows",
+  "options": [
+    "window_sum_algo"
+  ],
+  "constructs": [
+    "rolling_sum",
+    "rolling_mean",
+    "rolling_sum_by",
+    "rolling_mean_by"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`rolling_sum` and `rolling_mean` (no weights) run `SumWindow` (`MeanWindow` wraps one with an `f64` state and divides by the window's length). Moving to the next window, `update` subtracts the values that left and adds the ones that entered; it starts over only when the windows do not overlap. Finite values go through `add_finite_kahan` and `sub_finite_kahan`, each with its own compensation (`err_add`, `err_sub`); NaN and ±∞ are counted apart, and the window is NaN, `+∞` or `-∞` by those counts.",
+    "`rolling_sum_by` and `rolling_mean_by` (windows by a key's values) run the same `SumWindow` and `MeanWindow` through `rolling_agg_by`, with windows of varying length.",
+    "On the streaming engine, a fixed-length rolling function is a `RollingFixedWindowNode`, which applies the same kernel to overlapping batches of rows and keeps each row's output from the batch where its window is whole, so the running state also starts over at each batch.",
+    "The result is no sum of the window's values in any order: over `[5.692038748222123e31, -2550690257394217.0, -5.326737114388029, -4.561150809059341]` with a window of 2, the last window gives -10.061150809059342, where its two values sum to -9.88788792344737; no ordering of two values is off by 0.17. Its error depends on every value the state has seen since it last started over, not on the window's own values.",
+    "sverify's translation does not use these functions for doubles (polars-window-agg)."
+  ],
+  "reference": "A window `SUM` of doubles is a sum of the frame's own values in an order `sum_order` allows (`WinFn.AllowedP`); a sliding sum (`window_sum_algo = SLIDING`) may give any value.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "source-reading",
+      "checked_by": "session vigilant-brattain-703421 (native windows, #1266)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/rolling/sum.rs#L52-L66",
+          "note": "`add_finite_kahan`, `sub_finite_kahan`: one compensation per direction on one sum"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/rolling/sum.rs#L68-L110",
+          "note": "`add`/`sub`: non-finite values counted apart; `get_sum` by the counts"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/rolling/sum.rs#L130-L150",
+          "note": "`update`: subtract the rows leaving, add the rows entering; reset only when the windows do not overlap"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/rolling/mean.rs#L6-L57",
+          "note": "`MeanWindow`: a `SumWindow<T, f64>`, divided by the window's length"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/rolling/no_nulls/sum.rs#L5-L35",
+          "note": "`rolling_sum` without weights: `SumWindow`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-time/src/chunkedarray/rolling_window/dispatch.rs#L228-L290",
+          "note": "`rolling_mean_by`, `rolling_sum_by`: `MeanWindow`, `SumWindow` through `rolling_agg_by`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/shared.rs#L149-L180",
+          "note": "`rolling_apply_agg_window`: one window state, `update(start, end)` per row"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/rolling_fixed_window.rs#L48-L140",
+          "note": "`RollingFixedWindowNode`: the kernel on overlapping batches"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "session vigilant-brattain-703421 (native windows, #1266)",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/probe_window_sums.py",
+          "note": "`rolling_sum` of `[1e16, 1, 1, 1, 1]`, window 2: 1e16, 1e16, 2.0, 2.0, 2.0 (the compensation recovers this one)"
+        }
+      ],
+      "notes": "`pl.Series([5.692038748222123e31, -2550690257394217.0, -5.326737114388029, -4.561150809059341]).rolling_sum(window_size=2, min_samples=1)` gave `[5.692038748222123e31, 5.692038748222123e31, -2550690257394222.5, -10.061150809059342]`; DuckDB and sverify's translation give -9.88788792344737 for the last window. Found by a random search over 20 000 six-value inputs. `rolling_sum` of `[1e16] + [1.0] * 1000 + [-1e16]` over the whole length gave 1000.0. Polars 2.1.0 (Python), macOS arm64."
+    }
+  ]
+}

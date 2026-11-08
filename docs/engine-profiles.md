@@ -497,6 +497,7 @@ Every field but `engine` is optional:
 | `modules` | the modules a run on it needs |
 | `read_settings` | reads the named settings in a session, or in the one the next run uses |
 | `dialect` | the `sverify.sql.Dialect` that `to_sql` writes |
+| `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
 
 Entries for one engine are merged field by field, so one package can add a
 profile to an engine whose dialect another ships: Snowflake's dialect is

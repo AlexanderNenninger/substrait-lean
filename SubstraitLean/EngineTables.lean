@@ -258,8 +258,18 @@ def Profile.polars.table : ProfileTable where
     -- target): pairwise, Kahan over groups.
     -- `COMPENSATED`: in memory, Kahan's sum over groups (polars-sum-float, #633).
     (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY", "COMPENSATED"]),
-    -- The translation sums each frame anew, in frame order (polars-window-agg).
-    (none, "window_sum_algo", .oneOf ["RECOMPUTE"]),
+    -- What Polars computes for the operations the lowering emits
+    -- (polars-window-agg): a frame from UNBOUNDED PRECEDING reads
+    -- `cum_sum().over(partition)` at its last row, a sequential `+=` from 0.0
+    -- with no compensation (polars-cum-sum-float), so `RUNNING_ADD`; any
+    -- other frame adds blocks of 2ᵏ rows with explicit IEEE `+`, each a
+    -- balanced tree (polars-fp-ieee), so `TREE`. Not Polars's `sum`
+    -- aggregate (Kahan in memory) and not `rolling_sum`, a sliding Kahan sum
+    -- (polars-rolling-sum-float). A row is scoped by function group, not by
+    -- frame kind, so both values stand for every frame: sound, as both sum
+    -- the frame's own values. Evidence: the differential test
+    -- (`test_polars_windows.py`); the lowering lemma under #271 later.
+    (none, "window_sum_algo", .oneOf ["RUNNING_ADD", "TREE"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     -- Streaming falls back to the in-memory engine; the translation asks for
     -- `linear` (polars-quantile).
@@ -314,7 +324,8 @@ def Profile.polars.obs : ObsTable := [
     ["polars-fp-ieee", "polars-sum-float-streaming", "polars-mean-float-streaming",
       "polars-sum-float", "polars-mean-float"]
     "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, in-memory group sums Kahan's (polars-sum-float), and mean divides the f64 sum once: StdModel.Summed (a tree or Kahan's sum) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
-  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["polars-window-agg"]).tracking 900),
+  (none, "window_sum_algo", (ObsRow.approxWithin "plan"
+    ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 900),
   -- Schubert and Gertz's merge: no theorem yet, a fuzzed bound of
   -- `1.03 · n·u·√(Q'S)` on the co-moment (polars-var-bound, #918).
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
