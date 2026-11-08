@@ -56,9 +56,9 @@ contract's preconditions.
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Equiv` | `Expr.robust_of_depends`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | Sources within a tolerance give a result within the plan's fold of it (`Rel.tol`), node after node in a pipeline; tolerances add along a chain in one cell (`M∞`) and summed over the rows (`M₁`) | `Near` | `Rel.plan_near`, `Rel.pipeline_near`, `Relation.NearT.add`, `Relation.NearL1.add` | `Lipschitz.lean` |
 | Sources within an `M₁` budget give a result within the plan's `M₁` fold (`Rel.tol1`): a union adds budgets, a cross counts each side's once per row of the other | `Near` | `Rel.plan_nearL1`, `PairsWithin.cross` | `LipschitzL1.lean` |
-| A `SUM` or `AVG` of a tolerated column is within the fold's bound, from the column's range and the input's rows in the sources' knowledge, and a `MIN` or `MAX` within its argument's; the engine's columns of reference codes are tracked | `Near` | `Measure.tolOut_cell`, `Measure.minMaxOut_cell`, `aggregateEval_near`, `Rel.refOn`, `Rel.rowsK_sound` | `Lipschitz.lean` |
-| `x ± y`, `x · y`, `x / c`, and `x / y` with `y`'s range clear of zero, of tolerated doubles (D31) are within the fold's bounds, from the operands' ranges in the sources' knowledge | `Near` | `Expr.arithTol_sound`, `Expr.tolA_sound`, `fadd_near`, `fmul_near`, `fdiv_lit_near`, `fdiv_near`, `round_pair₂` | `Lipschitz.lean` |
-| A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides | `Near` | `floatSumCR_near`, `floatAvgCR_near`, `Measure.fsum_near`, `Measure.avg_near` | `FloatNear.lean`, `Lipschitz.lean` |
+| A `SUM` or `AVG` of a tolerated column is within the fold's bound, from the column's range and the input's rows in the sources' knowledge, and a `MIN` or `MAX` within its argument's; the engine's columns of reference codes are tracked | `Near` | `Measure.tolOut_cell`, `Measure.minMaxOut_cell`, `aggregateEval_near`, `Rel.refOn`, `Rel.rowsK_sound` | `Lipschitz/Measures.lean`, `Lipschitz/Arith.lean` |
+| `x ± y`, `x · y`, `x / c`, and `x / y` with `y`'s range clear of zero, of tolerated doubles (D31) are within the fold's bounds, from the operands' ranges in the sources' knowledge | `Near` | `Expr.arithTol_sound`, `Expr.tolA_sound`, `fadd_near`, `fmul_near`, `fdiv_lit_near`, `fdiv_near`, `round_pair₂` | `Lipschitz/Arith.lean` |
+| A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides | `Near` | `floatSumCR_near`, `floatAvgCR_near`, `Measure.fsum_near`, `Measure.avg_near` | `FloatNear.lean`, `Lipschitz/Basic.lean` |
 | A result one profile allows, another allows too, option by option | `AllowedP` | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A delta plan computes the change of the view | `zeval` | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `zeval`, `eval` | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
@@ -288,6 +288,9 @@ generators, then the trusted reading and writing.
 | `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
+| `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
+| `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
+| `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
 | `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
 | `Guards.lean` | Guard elimination for the SQL writers |
