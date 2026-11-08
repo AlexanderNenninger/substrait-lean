@@ -13,6 +13,7 @@ import SubstraitLean.Knowledge
 import SubstraitLean.Implied
 import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
+import SubstraitLean.AllowedAnalysis
 
 /-!
 # Checking a contract
