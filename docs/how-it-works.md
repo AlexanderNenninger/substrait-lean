@@ -236,7 +236,7 @@ engine is made to agree:
   0.0, a negative NaN first), so the tables it reads and its results are canonicalized
   (`sverify.engine.canonical`). DataFusion is a tier-3 engine: it refuses
   a plan with a double operation that IEEE arithmetic lets give −0.0 or a
-  negative NaN (`Expr.signedDoubles`,
+  negative NaN (`DataFusion.signedDoubles`,
   [DF-13](../upstream/bugs/DF-13.json)). SQL run on DataFusion directly (a
   query on a `datafusion.SessionContext`) follows DataFusion's order.
 * `Report.to_substrait` writes each double operation `x` for other consumers
@@ -477,8 +477,9 @@ group (checked at run time: the job raises if it does not …)` (or
 * Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
   `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, a regular expression
-  that may not compile, and `date_trunc` to a week, month, quarter or year outside
-  ±2⁶³ nanoseconds (DataFusion panics or returns garbage there).
+  that may not compile, and calendar functions (`date_part`, `date_trunc` to a week or
+  longer, `date_bin`, `strftime`, adding months) outside the reference's timestamps,
+  0001-01-01 to 9999-12-31 (D32).
 * `+`, `-`, `*` and negation leaving their declared width (64 bits, or narrower
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error

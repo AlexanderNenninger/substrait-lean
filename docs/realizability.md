@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 3 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 4 | 8 | 0 | 15 | 7 |
-| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 3 | 3 | 0 | 14 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 4 | 4 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 5 | 8 | 0 | 15 | 7 |
+| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 4 | 3 | 0 | 14 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 5 | 12 | 16 | 2 | 0 | 0 | 15 |
-| Polars | 28 | 1 | 14 | 0 | 0 | 0 | 15 |
-| spark | 16 | 9 | 12 | 0 | 0 | 0 | 14 |
+| DuckDB | 6 | 12 | 16 | 2 | 0 | 0 | 15 |
+| Polars | 29 | 1 | 14 | 0 | 0 | 0 | 15 |
+| spark | 17 | 9 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
@@ -99,6 +99,7 @@ Rows per evidence level:
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [duckdb-float-ieee](../characterization/duckdb/facts/duckdb-float-ieee.json), [duckdb-ieee-arith-macos-arm64](../characterization/duckdb/facts/duckdb-ieee-arith-macos-arm64.json), [duckdb-ieee-arith-linux-x86-64](../characterization/duckdb/facts/duckdb-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [duckdb-R15-round](../characterization/duckdb/facts/duckdb-R15-round.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [duckdb-float-ieee](../characterization/duckdb/facts/duckdb-float-ieee.json), [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
@@ -160,6 +161,7 @@ Rows per evidence level:
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [polars-fp-ieee](../characterization/polars/facts/polars-fp-ieee.json), [polars-ieee-arith-macos-arm64](../characterization/polars/facts/polars-ieee-arith-macos-arm64.json), [polars-ieee-arith-linux-x86-64](../characterization/polars/facts/polars-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../characterization/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../characterization/polars/facts/polars-scalar-divisor.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../characterization/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../characterization/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../characterization/polars/facts/polars-mean-float-streaming.json), [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
@@ -233,6 +235,7 @@ Refused on Polars, with no expression there:
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../characterization/spark/facts/spark-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | fuzz | tested: [spark-double-arith](../characterization/spark/facts/spark-double-arith.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | fuzz | tested: [spark-round](../characterization/spark/facts/spark-round.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [spark-double-arith](../characterization/spark/facts/spark-double-arith.json), [spark-sum-double](../characterization/spark/facts/spark-sum-double.json), [spark-avg-double](../characterization/spark/facts/spark-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN`, `NULL` | precondition: every argument is in its function's domain | proof | proved `Rel.spark_sound`; [spark-math-domain](../characterization/spark/facts/spark-math-domain.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-math-domain](../characterization/spark/facts/spark-math-domain.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-math-domain](../characterization/spark/facts/spark-math-domain.json) |

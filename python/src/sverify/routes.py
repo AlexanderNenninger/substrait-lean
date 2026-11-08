@@ -812,6 +812,7 @@ def realization(
             problems.append(f"{p.get('code')} on {engine}")
     seen: list[Observation] = []
     proved: list[bool] = []
+    told: set[str] = set()
     for r in verdict.get("observed", ()):
         where, cited, shim = _where(r["group"], r["option"]), _cited(r.get("facts")), r.get("shim")
         obs = r["observation"]
@@ -825,7 +826,12 @@ def realization(
         if isinstance(gives.floats, Within):
             proved.append(not untested and _all_proved(epsilon))
         missed = q.coarser_than(_resolve(observed, epsilon))
-        if (missed or bounded) and shim:
+        # A shim makes the components the row's observation leaves open
+        # exact (`missed`), never its bound on doubles: no row's shim lifts
+        # the plan's bound (DuckDB's VAR row's `nan_through` handles NaN only),
+        # so a bound the postcondition's tolerance does not meet refuses the
+        # plan, shim or not.
+        if missed and shim:
             worst = max(worst, "shim", key=CLASSES.index)
             shims.append(f"{where}: {shim}")
         elif missed:
@@ -834,7 +840,11 @@ def realization(
                 f"the postcondition observes its {', '.join(missed)} ({observed}); state "
                 f"{', '.join(missed)} in sv.equivalent(...) or shim it{cited}"
             )
-        problems += [f"{where}: {p}{cited}" for p in bounded if not shim]
+        # A SUM's `sum_order` and `rounding` rows rest on the same bound: say
+        # each problem once, at the first row that meets it.
+        new = [p for p in bounded if p not in told]
+        told.update(new)
+        problems += [f"{where}: {p}{cited}" for p in new]
     gives = None
     if worst == "observed" and seen:
         gives = seen[0]

@@ -334,17 +334,17 @@ theorem Bound.mem_clamp {lo hi i : Int} {b : Bound} (h : b.Mem i) (hl : lo ≤ i
     | some x => have := h.2 x rfl; simp only [Option.getD_some]; omega
 
 /-- `date_part`: a fixed range, or for the year, the years of the ends of the
-timestamps `chrono` represents. -/
+reference's timestamps (D32). -/
 def partBound (p : Time.DatePart) (b : Bound) : Bound :=
   match p.range with
   | some (lo, hi) => ⟨some lo, some hi⟩
-  | none => (b.clamp Time.partMin Time.partMax).mapMono (Time.partOf .year)
+  | none => (b.clamp Time.tsMin Time.tsMax).mapMono (Time.partOf .year)
 
-/-- `date_part` of a timestamp or a time of day: NULL outside the timestamps
-`chrono` represents. -/
+/-- `date_part` of a timestamp or a time of day: NULL outside the reference's
+timestamps (D32), where it raises. -/
 def datePartAbs (p : Time.DatePart) (a : AVal) : AVal :=
   mapAbs tsOrTod (fun _ => .int) (partBound p)
-    (fun ob => !ob.all (·.within Time.partMin Time.partMax)) a
+    (fun ob => !ob.all (·.within Time.tsMin Time.tsMax)) a
 
 /-! ## Domains
 
@@ -610,7 +610,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .toDate, a => monoAbs .ts .date Time.days a
   | .dayPart p, a => mapAbs NumKind.date.is (fun _ => .int)
       (fun b => partBound p (b.mapMono (· * Time.usPerDay)))
-      (fun ob => !ob.all fun b => (b.mapMono (· * Time.usPerDay)).within Time.partMin Time.partMax) a
+      (fun ob => !ob.all fun b => (b.mapMono (· * Time.usPerDay)).within Time.tsMin Time.tsMax) a
   | .dayTrunc u, a => monoAbs .date .date (Time.truncDay u) a
   | .addMonths m false, a => monoAbs .date .date (Time.addMonths m) a
   | .addMonths _ true, a => mapAbs NumKind.ts.is (fun _ => .ts) (fun _ => Bound.top) (fun _ => false) a

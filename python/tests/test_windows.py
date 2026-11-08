@@ -178,7 +178,10 @@ def test_strict_order_under_a_key():
     gaps(readings)
     report = gaps.report
     assert report is not None and report.proved, str(report)
-    assert report.facts["gap"] == "an interval ≥ 0:00:00.000001 or NULL"
+    assert (
+        report.facts["gap"]
+        == "an interval in [0:00:00.000001, 2932896 days, 23:59:59.999999] or NULL"
+    )
 
 
 @pytest.mark.slow

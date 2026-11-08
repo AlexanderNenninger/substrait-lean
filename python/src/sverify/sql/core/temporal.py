@@ -11,17 +11,12 @@ from collections.abc import Callable
 from datetime import date, timedelta
 
 from sverify.sql.core._base import (
-    CHRONO_DAY_MAX,
-    CHRONO_DAY_MIN,
     DAY_MAX,
     DAY_MIN,
-    NS_DAY_MAX,
-    NS_DAY_MIN,
-    NS_MAX,
-    NS_MIN,
     OUTSIDE_DATES,
-    PART_MAX,
-    PART_MIN,
+    OUTSIDE_TS,
+    TS_MAX,
+    TS_MIN,
     Bin,
     Expr,
     FixedKind,
@@ -105,13 +100,14 @@ def expr(
         case Un(op="date_part", arg=a, param=part) if kind(a) == "tod":
             return d.time_part(part, self.operand(a, "tod", ref, cols, "date_part"))
         case Un(op="date_part", arg=a, param=part):
-            return d.date_part(part, self.operand(a, "time", ref, cols, "date_part"))
+            x = self.operand(a, "time", ref, cols, "date_part")
+            return self.ts_only(x, d.date_part(part, x), f"date_part {part!r}", "int")
         case Un(op="time_of_day", arg=a):
             x = self.operand(a, "time", ref, cols, "CAST to TIME")
-            return self.chrono_only(x, d.time_of_day(x), "CAST to TIME", "tod")
+            return self.ts_only(x, d.time_of_day(x), "CAST to TIME", "tod")
         case Un(op="bucket", arg=a, digits=k, origin=origin):
-            # `Time.bucket`, in integer microseconds; DataFusion's nanoseconds
-            # wrap outside ±2⁶³, where it is an error here.
+            # `Time.bucket`, in integer microseconds, raising outside the
+            # reference's timestamps (D32).
             x = self.operand(a, "time", ref, cols, "date_bin")
             us = d.time_micros(x)
             rel = f"({us} - {d.int_lit(origin)})"
@@ -120,8 +116,8 @@ def expr(
             r = d.as_time(f"({us} - {floor})")
             if not d.guards:
                 return r
-            lo, hi = d.int_lit(NS_MIN), d.int_lit(NS_MAX)
-            fail = d.raise_("date_bin outside ±2^63 ns", x, "time")
+            lo, hi = d.int_lit(TS_MIN), d.int_lit(TS_MAX)
+            fail = d.raise_(f"date_bin {OUTSIDE_TS}", x, "time")
             ru = d.time_micros(r)
             bad = f"({us} NOT BETWEEN {lo} AND {hi} OR {ru} NOT BETWEEN {lo} AND {hi})"
             return d.case_when(bad, fail, r)
@@ -144,23 +140,26 @@ def expr(
             return d.epoch_us(self.operand(a, "time", ref, cols, "epoch_us"))
         case Un(op="strftime", arg=a, param=fmt):
             x = self.operand(a, "time", ref, cols, "strftime")
-            return self.chrono_only(x, self.strftime(x, fmt), "strftime", "str")
+            return self.ts_only(x, self.strftime(x, fmt), "strftime", "str")
         case Un(op="date_trunc", arg=a, param=unit):
             return self.date_trunc(unit, self.operand(a, "time", ref, cols, "date_trunc"))
         case Un(op="to_date", arg=a):
             return d.to_date(self.operand(a, "time", ref, cols, "CAST to DATE"))
         case Un(op="day_part", arg=a, param=part):
             x = self.operand(a, "date", ref, cols, "date_part")
-            lo, hi = d.int_lit(CHRONO_DAY_MIN), d.int_lit(CHRONO_DAY_MAX)
-            inside = f"{d.date_days(x)} BETWEEN {lo} AND {hi}"
-            return f"(CASE WHEN {inside} THEN {d.day_part(part, x)} END)"
+            if not d.guards:
+                return d.day_part(part, x)
+            lo, hi = d.int_lit(DAY_MIN), d.int_lit(DAY_MAX)
+            bad = f"({d.date_days(x)} NOT BETWEEN {lo} AND {hi})"
+            fail = d.raise_(f"date_part {part!r} {OUTSIDE_DATES}", x, "int")
+            return d.case_when(bad, fail, d.day_part(part, f"(CASE WHEN NOT {bad} THEN {x} END)"))
         case Un(op="day_trunc", arg=a, param=unit):
             x = self.operand(a, "date", ref, cols, "date_trunc")
             return self.date_range(
                 x,
                 lambda y: d.to_date(d.date_trunc(unit, d.date_to_time(y))),
-                NS_DAY_MIN,
-                NS_DAY_MAX,
+                DAY_MIN,
+                DAY_MAX,
                 f"date_trunc to a {unit}",
             )
         case Un(op="add_months", arg=a, digits=months, param=k):
@@ -176,9 +175,9 @@ def expr(
                 )  # fmt: skip
             if not d.guards:
                 return d.add_months(x, months, kind)
-            lo, hi = d.int_lit(PART_MIN), d.int_lit(PART_MAX)
+            lo, hi = d.int_lit(TS_MIN), d.int_lit(TS_MAX)
             us = d.time_micros(x)
-            fail = d.raise_("adding months outside the years chrono represents", x, "time")
+            fail = d.raise_(f"adding months {OUTSIDE_TS}", x, "time")
             safe = d.add_months(
                 f"(CASE WHEN {us} BETWEEN {lo} AND {hi} THEN {x} END)", months, kind
             )

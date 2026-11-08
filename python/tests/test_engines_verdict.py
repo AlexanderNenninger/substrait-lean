@@ -32,15 +32,16 @@ CASES = {
     "double division": (T.select(r=T.x / (T.b + 0.5)), BOUNDED),
 }
 
-#: Each case's class per engine: exact, observed, after a shim, or refused
-#: by #568's threshold rule.
+#: Each case's class per engine: exact, observed, after a shim, or refused.
+#: A threshold filter on a double sum runs with its margin check (#929), a
+#: precondition on the data, in place of #568's refusal.
 EXPECTED = {
     "projection": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
     "int division": {"duckdb": "exact", "polars": "shim", "spark": "exact"},
     "int sum": {"duckdb": "exact", "polars": "exact", "spark": "shim"},
     "double sum": {"duckdb": "observed", "polars": "observed", "spark": "observed"},
     "double mean": {"duckdb": "observed", "polars": "observed", "spark": "observed"},
-    "filter on a double sum": {"duckdb": "refused", "polars": "refused", "spark": "refused"},
+    "filter on a double sum": {"duckdb": "observed", "polars": "observed", "spark": "observed"},
     "sort, nulls stated": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
     "sort, nulls unstated": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
     "string length": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
