@@ -18,3 +18,8 @@ __marimo__/
 /python/semantics/
 /python/design/
 /python/ledgers/
+
+# Coverage data (`poe test-cov`, #750).
+.coverage
+.coverage.*
+coverage.json

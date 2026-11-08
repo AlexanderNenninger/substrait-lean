@@ -1,19 +1,22 @@
-"""ASOF joins, built from operators Lean verifies.
+"""ASOF joins, built from a join, a window and a filter.
 
 Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 `sverify.engines` and `sverify.errors`; it may change in any release.
 
 Ibis's `asof_join` compiles to DuckDB's syntax. `asof_join` here is a range
-join plus `ROW_NUMBER`, which every engine runs and Lean checks like any
-other plan:
+join plus `ROW_NUMBER`, which every engine runs and the checker checks like
+any other plan:
 
 1. join each left row with the right rows of the same `by` values whose `on`
    is at or before the left row's, at most `tolerance` earlier;
 2. rank them per left row, latest first, and keep the first.
 
-Lean then proves what an ASOF join promises: one output row per left row
-(`unique(*by, on)`, from `ROW_NUMBER` keys and the join's key analysis),
-`on_right <= on` and `on - on_right <= tolerance`. The ranking is only
+No theorem is about ASOF joins: the plan is proved as any plan is. What an
+ASOF join promises, stated in `ensures`, is proved for each plan by the
+theorems every contract rests on (`docs/proofs.md`): one output row per left
+row (`unique(*by, on)`, from `ROW_NUMBER` keys and the join's key analysis,
+`Rel.keys_sound`), `on_right <= on` and `on - on_right <= tolerance`
+(`contract_sound`); `tests/test_asof.py` proves the three. The ranking is only
 determined when no two right rows tie: without a key on `(*by, on)` on the
 right side these guarantees still hold for every pick of the tied rows
 (D24), and the report is not `deterministic`.

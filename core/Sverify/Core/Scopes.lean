@@ -138,7 +138,8 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "stat_algo" => true
   | "window_sum_algo" => true
   | "stat_degenerate" => true
-  | "avg_int_result" => true
+  -- An `AVG` with an integer result (`AggFn.iavg`): a `SUM` never meets it.
+  | "avg_int_result" => c == .agg .iavg
   | "quantile_interp" => true
   | "tie_pick" => true
   | "tie_order" => true
@@ -155,6 +156,23 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "null_join_keys" => true
   | "string_positions" => true
   | _ => true
+
+/-- Can option `o` apply to a call of `c` at all? A call reads only its
+group's options that apply to it (`ctorReads`). -/
+def optionApplies (o : String) (c : Ctor) : Bool :=
+  match o with
+  | "avg_int_result" => c == .agg .iavg
+  | "empty_group_aggregates" => match c with | .agg _ => true | _ => false
+  | _ => true
+
+/-- An option applies wherever a call may be in its scope. -/
+theorem optionApplies_of_scope {o : String} {c : Ctor} {args : List Value}
+    (h : optionScope o c args = true) : optionApplies o c = true := by
+  unfold optionApplies
+  split
+  · simpa [optionScope] using h
+  · cases c <;> simp_all [optionScope]
+  · rfl
 
 /-- The options whose scope is stated above, in the catalogue's order. -/
 def scopedOptions : List String :=

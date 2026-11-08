@@ -66,16 +66,22 @@ WINDOW_SUPPORT: dict[str, frozenset[str]] = {
     "std_dev": _DUCKDB,
 }
 
-#: Why an engine refuses a function, where the reason is not #271.
+#: Why an engine refuses a function, where the reason is not #271, and what
+#: tracks it.
 _REASONS = {
-    ("ntile", "datafusion"): "DataFusion's NTILE does not deal out buckets as SQL does",
+    ("ntile", "datafusion"): (
+        "DataFusion's NTILE does not deal out buckets as SQL does",
+        "upstream/bugs/DF-11.json",
+    ),
     ("sverify_raise", "spark"): (
         "Spark's SQL of the date guards exhausts its JVM's heap (a date from columns is "
-        "38 KB of nested CASEs)"
+        "38 KB of nested CASEs)",
+        ISSUE_271,
     ),
     ("sverify_raise", "snowflake"): (
         "Snowflake's SQL of the date guards grows past what it runs: a date from columns "
-        "writes 208 MB of nested CASEs"
+        "writes 208 MB of nested CASEs",
+        ISSUE_271,
     ),
 }
 
@@ -147,23 +153,15 @@ def refusal(name: str, engine: str, window: bool = False) -> str:
     """Why `engine` refuses the function `name` (over a window, `window`)."""
     if name in black_box.NAMES:
         return black_box.refusal(name, engine)
+    over = window and name in WINDOW_SUPPORT and supported(name, engine)
+    label = _LABELS.get(f"{name} OVER" if over else name, name)
+    runs = sorted((WINDOW_SUPPORT if over else SUPPORT).get(name, NAMED))
+    exit_ = f"run it with engine={runs[0]!r}"
     if reason := _REASONS.get((name, engine.lower())):
-        return reason
-    if window and name in WINDOW_SUPPORT and supported(name, engine):
-        label = _LABELS.get(f"{name} OVER", name)
-        runs = sorted(WINDOW_SUPPORT[name])
-        where = " and ".join(runs)
-        return (
-            f"{label} runs on {where} only: run it with engine={runs[0]!r} "
-            f"({engine} does not run it yet; {ISSUE_271})"
-        )
-    label = _LABELS.get(name, name)
-    runs = sorted(SUPPORT.get(name, NAMED))
+        why, issue = reason
+        return f"{label}: {why}; {exit_} ({issue})"
     where = " and ".join(runs)
-    return (
-        f"{label} runs on {where} only: run it with engine={runs[0]!r} "
-        f"({engine} does not run it yet; {ISSUE_271})"
-    )
+    return f"{label} runs on {where} only: {exit_} ({engine} does not run it yet; {ISSUE_271})"
 
 
 #: The nodes that call a function by its anchor.
