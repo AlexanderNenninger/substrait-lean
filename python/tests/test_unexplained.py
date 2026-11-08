@@ -6,19 +6,26 @@ issue, a fact or an upstream bug, through `sverify_dev.slt.KNOWN`. Spark's fuzz
 ledger (`characterization/spark/fuzz.json`) keeps no finding, and each target
 names the fact whose deviation it measures."""
 
+import functools
 import json
 import re
 
 import pytest
 
 from _repo import needs_repo
-from sverify_dev import bugs, facts, slt, spark_fuzz
+from sverify_dev import slt, spark_fuzz
 
 pytestmark = [needs_repo, pytest.mark.backend("duckdb")]
 
-#: The facts and upstream bugs, by id, through their checkers' loaders.
-FACT_IDS = {f["id"] for f in facts.load().values()}
-BUG_IDS = {p.stem for p in bugs.load()}
+
+@functools.cache
+def _ids() -> frozenset[str]:
+    """The facts and upstream bugs, by id, through their checkers' loaders
+    (imported here: they need `jsonschema`, which a test outside the
+    repository, skipped by `needs_repo`, does not have)."""
+    from sverify_dev import bugs, facts
+
+    return frozenset({f["id"] for f in facts.load().values()} | {p.stem for p in bugs.load()})
 
 
 def _disagreements() -> list[dict]:
@@ -31,7 +38,7 @@ def _disagreements() -> list[dict]:
 
 
 def _exists(by: str) -> bool:
-    return re.fullmatch(r"#\d+", by) is not None or by in BUG_IDS or by in FACT_IDS
+    return re.fullmatch(r"#\d+", by) is not None or by in _ids()
 
 
 def test_every_duckdb_disagreement_is_explained():
