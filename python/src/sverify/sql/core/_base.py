@@ -3540,12 +3540,20 @@ def numbers_copies(w: Window) -> bool:
     )
 
 
+#: The measures whose value does not depend on the order of their rows (the
+#: reference's double `SUM` and `AVG` are correctly rounded, `floatSumCR_perm`).
+_ORDER_FREE_FNS = frozenset({"count", "sum", "fsum", "avg", "iavg", "min", "max"})
+
+
 def order_matters(r: Rel) -> bool:
     """Does the result's row order matter (a FETCH, a window or a sort anywhere
     the order reaches the result)?"""
     match r:
         case Window(input=i) if numbers_copies(r):
             return order_matters(i)
+        case Aggregate(groups=(), measures=ms) if all(m.fn in _ORDER_FREE_FNS for m in ms):
+            # One row whatever the input's order, as a margin check's count (#929).
+            return False
         case Fetch() | Window() | OrderBy():
             return True
         case Read() | Values():

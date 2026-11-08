@@ -62,7 +62,7 @@ def test_the_checker_writes_the_check_and_the_rows_are_exact_given_it(having):
     assert r._margin_checks[0]["column"] == "total"
     assert r._rows_exact is not None and all(r._rows_exact.values())
     # No row cap: the SUM's bound is per group, from its own values.
-    assert r.epsilon["total"]["theorem"] == "FloatBounds.StdModel.epsilon_group"
+    assert (r._epsilon or {})["total"]["theorem"] == "FloatBounds.StdModel.epsilon_group"
     # Without the check the threshold rule refuses the plan, as before (#568).
     off = sv.verify(HAVING, requires=REQUIRES, on_inferred="off")
     assert off._margin_checks == []
@@ -153,7 +153,7 @@ def test_an_avg_threshold_has_a_check():
     r = sv.verify(AVG_HAVING, requires={"orders": [_.amount.between(0, 100)]}, on_inferred="warn")
     assert len(r._margin_checks) == 1
     assert r._rows_exact is not None and all(r._rows_exact.values())
-    assert r.epsilon["m"]["theorem"] == "FloatBounds.StdModel.epsilon_group_avg"
+    assert (r._epsilon or {})["m"]["theorem"] == "FloatBounds.StdModel.epsilon_group_avg"
     groups = [[40.0, 60.0], [50.0, 50.0, 50.0], [10.0, 99.0], [49.0]]
     ids = [g for g, xs in enumerate(groups) for _x in xs]
     with warnings.catch_warnings():
@@ -161,3 +161,27 @@ def test_an_avg_threshold_has_a_check():
         got = r.run(_con(ids, [x for xs in groups for x in xs]), "duckdb").to_pylist()
     assert r.margin_flags["duckdb"] == _flagged_avg(groups, 50.0) == 2
     assert sorted(row["customer_id"] for row in got) == [0, 1, 2]
+
+
+READINGS = ibis.table({"sensor_id": "int64", "value": "float64"}, name="readings")
+ABOVE_AVG = READINGS.mutate(m=_.value.mean().over(group_by="sensor_id")).filter(_.value > _.m)
+
+
+@pytest.mark.parametrize("engine", ["duckdb", pytest.param("polars", marks=pytest.mark.slow)])
+def test_a_row_against_its_partitions_mean(engine):
+    """`x > AVG(x) OVER (PARTITION BY k)`: per row, the partition's mean
+    against the row's value, with the partition's bound."""
+    r = sv.verify(ABOVE_AVG, requires={"readings": [_.value.between(0, 100)]})
+    assert r._margin_checks and r._rows_exact is not None and all(r._rows_exact.values())
+    far = sv.connect()
+    far.put("readings", pa.table({"sensor_id": [1, 1, 2, 2], "value": [10.0, 30.0, 5.0, 7.0]}))
+    got = sorted(r.run(far, engine).to_pylist(), key=lambda row: row["sensor_id"])
+    assert got == [
+        {"sensor_id": 1, "value": 30.0, "m": 20.0},
+        {"sensor_id": 2, "value": 7.0, "m": 6.0},
+    ]
+    # 20 is its partition's mean exactly: the engine's mean may fall either side.
+    near = sv.connect()
+    near.put("readings", pa.table({"sensor_id": [1, 1, 1], "value": [10.0, 20.0, 30.0]}))
+    with pytest.raises(PreconditionError, match=r"1 row\(s\) have m within its bound"):
+        r.run(near, engine)

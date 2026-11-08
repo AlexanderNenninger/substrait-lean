@@ -473,11 +473,24 @@ differ between engines. -/
 def keepIf (ok : Bool) (cs : List (Option (Float × Bool))) : List (Option (Float × Bool)) :=
   if ok then cs else cs.map (·.map fun (e, _) => (e, false))
 
+/-- The window algorithms that sum the frame's own values, so that the
+aggregate's bound holds of the frame (`window_sum_algo`, #1032). -/
+def windowSumAlgos : List String := ["RECOMPUTE", "TREE", "RUNNING_ADD"]
+
+/-- Does every engine sum a window's frame by one of `windowSumAlgos`? -/
+def windowSumsBounded (es : List EngineProfile) : Bool :=
+  es.all fun e =>
+    (e.table.allows "win.agg" "window_sum_algo" []).all (windowSumAlgos.contains ·)
+
 /-- A threshold filter the margin check decides on `engine` (#929): one the
 check covers (`Rel.marginCheck`), on an engine whose sums are in the orders
 `StdModel.margin_check` covers. The check runs on the data before the plan. -/
-def marginCovered (es : List EngineProfile) (engine : String) (r : Rel) (c : Expr) : Bool :=
-  (Rel.filter r c).marginCheck.isSome && ordersProved (es.filter (·.name == engine))
+def marginCovered (es : List EngineProfile) (engine : String) (cat : Catalog) (env : List AVal)
+    (cs : List (Option (Float × Bool))) (r : Rel) (c : Expr) : Bool :=
+  let on := es.filter (·.name == engine)
+  match (Rel.filter r c).marginSite cat with
+  | some s => ordersProved on && (!s.win || windowSumsBounded on) && exactP (exprEps engine env cs s.thr)
+  | none => false
 
 /-- Each column's error on `engine`, and whether it is proved, for plans of
 projections, filters, sorts and one aggregate over reads. A threshold filter
@@ -487,7 +500,8 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
   | .read t => some ((List.range (cat t).arity).map fun _ => some (0.0, true))
   | .values n _ => some ((List.range n).map fun _ => some (0.0, true))
   | .filter r c => (colEps es engine cat A F T r).map fun cs =>
-      keepIf (exactP (exprEps engine (r.aeval cat A F T) cs c) || marginCovered es engine r c) cs
+      keepIf (exactP (exprEps engine (r.aeval cat A F T) cs c) ||
+        marginCovered es engine cat (r.aeval cat A F T) cs r c) cs
   | .orderBy r keys => (colEps es engine cat A F T r).map fun cs =>
       keepIf (keys.all fun k => exactP (cs.getD k.col none)) cs
   | .distinct r => (colEps es engine cat A F T r).map fun cs => keepIf (cs.all exactP) cs
@@ -547,8 +561,9 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
     (F : String → List Fact) (T : WindowKeys) : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r c => rowsExact es engine cat A F T r &&
-      (marginCovered es engine r c ||
-        (colEps es engine cat A F T r).any fun cs => exactP (exprEps engine (r.aeval cat A F T) cs c))
+      (colEps es engine cat A F T r).any fun cs =>
+        exactP (exprEps engine (r.aeval cat A F T) cs c) ||
+          marginCovered es engine cat (r.aeval cat A F T) cs r c
   | .orderBy r keys => rowsExact es engine cat A F T r &&
       (colEps es engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
   | .distinct r => rowsExact es engine cat A F T r &&
@@ -690,48 +705,54 @@ def marginChecksJson (es : List EngineProfile) (input : Json) : Except String Js
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   -- The filters no static bound decides on some engine, judged on the plan
   -- with its reads capped (`Rel.capReads`); the check reads the data as it is.
-  let rec sites : Rel → List (Rel × Rel)
+  let rec sites : Rel → List (Rel × MarginSite)
     | r@(.filter i c) =>
       let ic := i.capReads caps
       let static := es.all fun e => (colEps es e.name cat A F T ic).any fun cs =>
         exactP (exprEps e.name (ic.aeval cat A F T) cs c)
-      (if static then [] else r.marginCheck.toList.map (r, ·)) ++ sites i
+      (if static then [] else (r.marginSite cat).toList.map (r, ·)) ++ sites i
     | .project i _ | .emit i _ | .fetch i _ _ | .window i .. | .orderBy i _ | .distinct i
     | .aggregate i _ _ | .unnest i _ => sites i
     | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => sites a ++ sites b
     | .read _ | .values _ _ => []
   let schemaOf := Write.planSchemas plan
-  return Json.arr <| (sites plan.root).toArray.map fun (site, chk) =>
-    -- The threshold, and the column's name where the filter is the plan's output.
-    let (j, t) := match site with
-      | .filter _ c => (c.thresholdOf.getD (0, .lit .null))
-      | _ => (0, .lit .null)
+  return Json.arr <| (sites plan.root).toArray.map fun (node, site) =>
+    let chk := site.check
+    let j := site.col
+    let t := site.thr
+    -- The threshold, and the columns' names where the filter is the plan's output.
+    let root := node == plan.root
     let tf : Option Float := match t.eval [] with
       | .float code => some (FloatCode.toFloat code)
       | _ => none
-    let col := if site == plan.root then plan.names.getD j "the SUM" else "the SUM"
-    let atT := match tf with
-      | some f => " " ++ fmtDouble f
-      | none => ""
+    let col := if root then plan.names.getD j "the SUM" else "the SUM"
+    let atT := match tf, t with
+      | some f, _ => " " ++ fmtDouble f
+      | none, .field k => if root then " " ++ plan.names.getD k "" else ""
+      | _, _ => ""
+    let what := if site.win then "row(s)" else "group(s)"
     -- Per engine whose sums `StdModel.margin_check` covers: the facts behind
     -- its order, and the message of a run whose check flags `{k}` groups.
-    let engines := (es.filter fun e => ordersProved [e]).map fun e =>
+    let engines := (es.filter fun e => ordersProved [e] && (!site.win || windowSumsBounded [e])).map fun e =>
       let facts := e.obs.factsAt none "sum_order"
       let factsTxt := if facts.isEmpty then "its sum_order row" else ", ".intercalate facts
       (e.name, Json.mkObj [("facts", toJson facts), ("message", toJson (
-        "{k} group(s) have " ++ col ++ " within its bound of the threshold" ++ atT ++
-        " (the bound per group from its count and Σ|x|), or more than 2³² values: " ++ e.name ++
+        "{k} " ++ what ++ " have " ++ col ++ " within its bound of the threshold" ++ atT ++
+        (if site.win then " (the bound per partition" else " (the bound per group") ++
+        " from its count and Σ|x|), or more than 2³² values: " ++ e.name ++
         "'s SUM adds in an order of its own (" ++ factsTxt ++ "), so " ++ e.name ++
         " may keep other groups than the reference there. A group with no values has a NULL " ++
         "sum, which the filter drops on every engine. Widen the threshold's margin, sum in " ++
         "DECIMAL, or verify with on_inferred=\"warn\" to keep them, the contract holding up " ++
         "to the bound"))])
     Json.mkObj [("plan", Write.writePlan schemaOf plan.catalog chk ["flagged"]),
-      ("column", if site == plan.root then toJson (plan.names.getD j "") else Json.null),
+      ("column", if root then toJson (plan.names.getD j "") else Json.null),
       ("threshold", match tf with | some f => toJson f | none => Json.null),
       ("label", toJson (col ++ " is farther than its bound from the threshold" ++ atT ++
-        " in every group with a value, so the engine keeps the reference's groups (the " ++
-        "bound per group from its count and Σ|x|)")),
+        (if site.win then " in every row, so the engine keeps the reference's rows (the bound " ++
+          "per partition from its count and Σ|x|)"
+        else " in every group with a value, so the engine keeps the reference's groups (the " ++
+          "bound per group from its count and Σ|x|)"))),
       ("conditions", toJson marginConditions),
       ("engines", Json.mkObj engines)]
 
@@ -743,15 +764,6 @@ inductive WinSrc where
   | bounded (r : Rel) (m : Measure) (part : List Nat) (sort : List SortKey)
   /-- No bound, with what lifts it. -/
   | unbounded (why : String)
-
-/-- The window algorithms that sum the frame's own values, so that the
-aggregate's bound holds of the frame (`window_sum_algo`, #1032). -/
-def windowSumAlgos : List String := ["RECOMPUTE", "TREE", "RUNNING_ADD"]
-
-/-- Does every engine sum a window's frame by one of `windowSumAlgos`? -/
-def windowSumsBounded (es : List EngineProfile) : Bool :=
-  es.all fun e =>
-    (e.table.allows "win.agg" "window_sum_algo" []).all (windowSumAlgos.contains ·)
 
 -- DuckDB, Polars and Spark each sum a window's own values (duckdb-window-sum-order,
 -- polars-window-agg, spark-window-agg).
