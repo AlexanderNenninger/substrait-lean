@@ -309,6 +309,11 @@ within `(γₙ + 4u) · Σ(|xᵢ| + tiny) / n` of the reference's
 (`StdModel.epsilon_group_avg`), and the check is
 `|fl(v − t)| > fl(cₙ · fl(fl(A + n · tiny) / n))`, `cₙ = (8n + 32) · 2⁻⁵³`
 (`StdModel.check_sound_avg`, `StdModel.margin_check_avg`).
+A row's value against its partition's window `SUM` or `AVG` over the whole
+partition (`x > AVG(x) OVER (PARTITION BY k)`) has the same check per row,
+the bound from the partition's count and `Σ|x|`, the threshold the row's own
+value. The check plan computes `v − t` and the margin once each in a
+projection, so that an engine's SQL does not repeat a window's aggregate.
 The checker writes the check as a plan of its own (`Rel.marginCheck`,
 `"margin_checks"` of `--contract`), and the threshold filter it covers keeps
 the reference's rows given it. `Report.run` runs it on the engine before the

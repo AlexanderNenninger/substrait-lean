@@ -159,7 +159,7 @@ def test_an_avg_threshold_has_a_check():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         got = r.run(_con(ids, [x for xs in groups for x in xs]), "duckdb").to_pylist()
-    assert r.margin_flags["duckdb"] == _flagged_avg(groups, 50.0) == 2
+    assert r._margin_flags["duckdb"] == _flagged_avg(groups, 50.0) == 2
     assert sorted(row["customer_id"] for row in got) == [0, 1, 2]
 
 
