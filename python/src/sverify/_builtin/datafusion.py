@@ -26,6 +26,7 @@ def _version() -> str | None:
 
 PLUGIN = ProfilePlugin(
     "datafusion",
+    title="DataFusion",
     translation="sverify's SQL writer, with shims where DataFusion differs from the "
     "reference, tested against the reference",
     runner=_run,

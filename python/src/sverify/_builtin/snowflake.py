@@ -16,4 +16,4 @@ def _dialect() -> Any:
     return SNOWFLAKE
 
 
-PLUGIN = ProfilePlugin("snowflake", dialect=_dialect)
+PLUGIN = ProfilePlugin("snowflake", dialect=_dialect, title="Snowflake")
