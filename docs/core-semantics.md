@@ -1950,36 +1950,3 @@ Consequences:
 Why: the old ranges were DataFusion's, and DataFusion is a tier-3 engine
 (2026-11-08). The SQL standard's timestamps are the reference's dates', which
 every 1.0 engine represents.
-
-### D39. The reference's error and cast model, justified by the 1.0 engines' behaviour
-
-Decided 2026-11-08 (#1166, theme 2).
-
-The reference's runtime errors (`SubstraitLean/Safety.lean`) and its casts
-and narrow-width arithmetic (`UnFn.narrow`, `UnFn.wrap`) were justified by
-what DataFusion does. They are the reference's own choices, and their
-justification is the 1.0 engines' behaviour, recorded as facts. Nothing the
-reference computes changes.
-
-- An issue is a result that leaves its type, or an argument that leaves a
-  function's domain. The reference raises there, and an error allows any
-  engine's answer, whether the engine raises, wraps or gives NULL.
-- `Rel.loose`: the reference does not fix where a filter runs, so a filter
-  or join condition counts as evaluated on the rows an earlier filter would
-  remove, and below an `UNNEST` on rows whose lists are empty.
-- `Kind.timeTz` is refused because calendar arithmetic on an instant depends
-  on a time zone the plan does not state.
-
-| choice | DuckDB 2.0.0 | Polars 2.1.0 | Spark 4.3.0 (ANSI, UTC) | reference |
-|---|---|---|---|---|
-| `CAST(2⁴⁰ AS INT)` (`UnFn.narrow`) | raises ([duckdb-int-narrow](../characterization/duckdb/facts/duckdb-int-narrow.json)) | raises with `strict` ([polars-cast-int](../characterization/polars/facts/polars-cast-int.json)) | raises ([spark-cast-int-narrow](../characterization/spark/facts/spark-cast-int-narrow.json)) | raises (`badCast`) |
-| `INT` or `TINYINT` `+` past its width (`UnFn.wrap`) | raises ([duckdb-int-narrow](../characterization/duckdb/facts/duckdb-int-narrow.json)) | wraps ([polars-int-arith](../characterization/polars/facts/polars-int-arith.json)) | raises ([spark-int-arith](../characterization/spark/facts/spark-int-arith.json)) | raises (`wraps`, #202) |
-| `repeat(s, n)` for `n ≤ 0` (`UnFn.strRepeat`) | `''` ([duckdb-repeat-nonpositive](../characterization/duckdb/facts/duckdb-repeat-nonpositive.json)) | no `str.repeat` | `''` ([spark-repeat-nonpositive](../characterization/spark/facts/spark-repeat-nonpositive.json)) | `''` |
-| zoned timestamp `+ 1 day` across a DST change (`Kind.timeTz`) | by session zone ([duckdb-timestamptz-session-zone](../characterization/duckdb/facts/duckdb-timestamptz-session-zone.json)) | by the column's zone ([polars-datetime-zone](../characterization/polars/facts/polars-datetime-zone.json)) | by session zone ([spark-timestamp-session-zone](../characterization/spark/facts/spark-timestamp-session-zone.json)) | refused |
-
-Open: `Text.repeatMax` (`repeat` raises past 2³¹ − 1 bytes) keeps its value;
-its reason waits for a probe on homelab, since `repeat` past 2³¹ bytes
-allocates gigabytes.
-
-Why: DataFusion is a tier-3 engine (2026-11-08), so it cannot be the reason
-for a reference choice.
