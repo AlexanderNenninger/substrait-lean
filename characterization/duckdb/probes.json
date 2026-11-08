@@ -7435,6 +7435,16 @@
    "observed": "'nan', 'nan', 'DOUBLE'"
   },
   {
+   "construct": "sum-avg-infinities",
+   "area": "aggregates",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END",
+    "CREATE TABLE t AS SELECT * FROM (VALUES (1, 'both', 'inf'::DOUBLE), (2, 'both', '-inf'::DOUBLE), (3, 'both', 1.0), (4, 'pos', 'inf'::DOUBLE), (5, 'pos', 1.0), (6, 'neg', '-inf'::DOUBLE), (7, 'neg', 1.0), (8, 'finite', 1.0), (9, 'finite', 2.0)) v(i, g, x)"
+   ],
+   "sql": "SELECT 'all' AS k, nan_text(sum(x)), nan_text(avg(x)), nan_text(fsum(x)), nan_text(favg(x)) FROM t UNION ALL SELECT g, nan_text(sum(x)), nan_text(avg(x)), nan_text(fsum(x)), nan_text(favg(x)) FROM t GROUP BY g UNION ALL SELECT 'w' || i, nan_text(sum(x) OVER w), nan_text(avg(x) OVER w), nan_text(fsum(x) OVER w), nan_text(favg(x) OVER w) FROM t WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY k",
+   "observed": "'all', 'nan', 'nan', 'nan', 'nan'; 'both', 'nan', 'nan', 'nan', 'nan'; 'finite', '3.0', '1.5', '3.0', '1.5'; 'neg', '-inf', '-inf', 'nan', 'nan'; 'pos', 'inf', 'inf', 'nan', 'nan'; 'w1', 'inf', 'inf', 'inf', 'nan'; 'w2', 'nan', 'nan', 'nan', 'nan'; 'w3', '-inf', '-inf', 'nan', 'nan'; 'w4', 'inf', 'inf', 'inf', 'nan'; 'w5', 'inf', 'inf', 'nan', 'nan'; 'w6', '-inf', '-inf', '-inf', 'nan'; 'w7', '-inf', '-inf', 'nan', 'nan'; 'w8', '2.0', '1.0', '2.0', '1.0'; 'w9', '3.0', '1.5', '3.0', '1.5'"
+  },
+  {
    "construct": "sum-empty",
    "area": "aggregates",
    "setup": [],

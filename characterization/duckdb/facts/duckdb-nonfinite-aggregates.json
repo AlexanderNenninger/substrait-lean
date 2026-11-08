@@ -24,6 +24,13 @@
       "types": [
         "fp64"
       ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ]
     }
   ],
   "constructs": [
@@ -33,16 +40,21 @@
     "sum",
     "fsum",
     "favg",
-    "avg"
+    "avg",
+    "sum OVER",
+    "avg OVER",
+    "fsum OVER",
+    "favg OVER"
   ],
   "settings": {},
   "description": [
     "Any ±inf input makes `var_*`, `stddev_*` and `corr` NaN: the update computes `inf - inf`. `fsum` and `favg` of `[inf, 1]` are NaN, while `sum` and `avg` are `inf`.",
     "One value: `var_samp` is NULL, `var_pop` 0, `corr(x, x)` NaN.",
     "The docs are silent on NaN and infinity in every aggregate: a docs gap. No upstream test pins `fsum` and `favg` of `[inf, 1]`; it may change between versions.",
-    "`COVAR_*` follow the same rule: a NaN or ±inf on either side, or two equal infinities, make every moment NaN, without an error."
+    "`COVAR_*` follow the same rule: a NaN or ±inf on either side, or two equal infinities, make every moment NaN, without an error.",
+    "`nan_creation` of `sum` and `avg` of doubles (#341): `+inf` with `-inf` gives NaN, ungrouped, grouped and over a framed window; one kind of infinity with finite values gives that infinity; no error. A framed window sums each frame anew: a frame holding `-inf` and 1 after a frame that held `inf` and `-inf` is `-inf`, so no frame's NaN reaches the next. `fsum` and `favg` give NaN once a finite value follows an infinity, so their result depends on the order (`fsum` of 1, `inf` is `inf`, of `inf`, 1 NaN), and `favg` of one `inf` alone is NaN where `fsum` of it is `inf` (Kahan's error term `inf - inf`)."
   ],
-  "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85.",
+  "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85. `nan_creation` is `ERROR` in the reference: a double `SUM` or `AVG` (grouped or over a window frame) of `+∞` and `-∞` is a domain error (D37, #257); `Profile.duckdb` has `NAN`, and #341 states DuckDB's NaN in the DuckDB lift.",
   "status": "open",
   "evidence": "probe",
   "provenance": [
@@ -136,6 +148,42 @@
         }
       ],
       "notes": "x = 1, NaN, 2 (and 1, inf, 2; 1, -inf, 2; inf, inf) with y = 1, 2, 3."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe --observations (session for #341's first step), duckdb 2.0.0, Python, macOS arm64",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "sum-avg-infinities"
+        },
+        {
+          "sql": "SELECT sum(x), avg(x), fsum(x), favg(x) FROM t  -- x = inf, -inf, 1, inf, 1, -inf, 1, 1, 2",
+          "observed": "nan, nan, nan, nan"
+        },
+        {
+          "sql": "SELECT g, sum(x), avg(x), fsum(x), favg(x) FROM t GROUP BY g  -- both: inf, -inf, 1; pos: inf, 1; neg: -inf, 1; finite: 1, 2",
+          "observed": "both: nan, nan, nan, nan; pos: inf, inf, nan, nan; neg: -inf, -inf, nan, nan; finite: 3.0, 1.5, 3.0, 1.5"
+        },
+        {
+          "sql": "SELECT i, sum(x) OVER w, avg(x) OVER w, fsum(x) OVER w, favg(x) OVER w FROM t WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)",
+          "observed": "1 {inf}: inf, inf, inf, nan; 2 {inf, -inf}: nan, nan, nan, nan; 3 {-inf, 1}: -inf, -inf, nan, nan; 4 {1, inf}: inf, inf, inf, nan; 5 {inf, 1}: inf, inf, nan, nan; 6 {1, -inf}: -inf, -inf, -inf, nan; 7 {-inf, 1}: -inf, -inf, nan, nan; 8 {1, 1}: 2.0, 1.0, 2.0, 1.0; 9 {1, 2}: 3.0, 1.5, 3.0, 1.5"
+        }
+      ],
+      "notes": "Every query on a fresh connection under `TimeZone = 'UTC'`, at the default threads; the NaN does not depend on the order of the additions. `fsum` of {1, inf} (row 4) is `inf` and of {inf, 1} (row 5) NaN: Kahan's compensation meets `inf - inf` only when a finite value follows the infinity."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "engine-test",
+      "checked_by": "session for #341's first step",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_aggregate.test#L21-L34",
+          "note": "FLOAT and DOUBLE, ungrouped: sum of the positive infinities → inf, of the negative ones → -inf, of inf, inf, -inf, nan, nan, -inf → nan"
+        }
+      ],
+      "notes": "Read at tag v2.0.0; the test was not run. It sums `+inf` and `-inf` only together with NaN inputs, so `inf + -inf` alone rests on the probe above."
     }
   ],
   "issues": [
