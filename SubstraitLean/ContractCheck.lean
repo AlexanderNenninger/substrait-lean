@@ -198,6 +198,15 @@ structure Report where
   keeps it TRUE (`Expr.robust_of_depends`). `none` where the plan is not a
   selection of conditions from the transformation. -/
   depends : List (Option (List String)) := []
+  /-- For each postcondition, the components the request's observation
+  ignores that its value depends on (#1071): `depends` filtered by the
+  components the observation coarsens, but for `"zeros"`, which no
+  comparison of reference codes sees (`Expr.robust_of_depends_canon`), and
+  for `"floats"` under the plan's bound or an `approx` condition, with
+  `"picks"` and `"elements"` for the open aggregate columns it reads
+  (`Rel.openCol`). `none` where `depends` is, or without an observation in
+  the request. -/
+  ignores : List (Option (List String)) := []
   /-- For each postcondition: proved on every result the reference allows,
   every order and grouping of a double `SUM` or `AVG` among them
   (`contract_sound_allowed`, `postAllowed`), beside `proved`'s every order. -/
@@ -319,13 +328,16 @@ def Report.json (r : Report) : Json :=
         List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).zip
         (r.tiesOnly ++ List.replicate r.ensures.length false)).zip
         (r.depends ++ List.replicate r.ensures.length none)).zip
-        (r.allowed ++ List.replicate r.ensures.length false)).map
-          fun (((((n, ok, v), b), t), d), al) =>
+        ((r.allowed ++ List.replicate r.ensures.length false).zip
+          (r.ignores ++ List.replicate r.ensures.length none))).map
+          fun (((((n, ok, v), b), t), d), al, ig) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
         ("value", Lean.toJson v), ("suggest", if ok then .null else b.json),
         ("ties", Lean.toJson t), ("depends", match d with
           | some l => Lean.toJson l
-          | none => .null), ("allowed", Lean.toJson (ok && al))]).toArray),
+          | none => .null), ("allowed", Lean.toJson (ok && al)), ("ignores", match ig with
+          | some l => Lean.toJson l
+          | none => .null)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
@@ -501,6 +513,80 @@ def postDepends (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) :
       es.map fun e => some (e.depends ctx).eraseDups
   | none => List.replicate n none
 
+/-- Where the reference leaves column `j` of `r` open (D1): `"picks"` for
+`FIRST`, `LAST` or `ARBITRARY` without an order, `"elements"` for `collect`
+or `STRING_AGG` without one, traced through projections, emits, filters and
+sorts to its aggregate. -/
+def _root_.Substrait.Rel.openCol (cat : Catalog) : Rel → Nat → Option String
+  | .aggregate _ gs ms, j =>
+    if j < gs.length then none else
+    match ms[j - gs.length]? with
+    | some m =>
+      if !m.sort.isEmpty then none else
+      match m.fn with
+      | .pick _ => some "picks"
+      | .collect | .concat _ => some "elements"
+      | _ => none
+    | none => none
+  | .project r es, j =>
+    if j < r.arity cat then r.openCol cat j else
+    match es[j - r.arity cat]? with
+    | some (.field i) => r.openCol cat i
+    | _ => none
+  | .emit r m, j => match m[j]? with
+    | some i => r.openCol cat i
+    | none => none
+  | .filter r _, j | .orderBy r _, j | .fetch r _ _, j | .distinct r, j => r.openCol cat j
+  | _, _ => none
+
+/-- The columns `e` reads other than through a function that ignores the
+order of a list's elements (`cardinality`, `list_contains`, `any_match`,
+`all_match`). -/
+def _root_.Substrait.Expr.bareCols (guarded : Bool) : Expr → List Nat
+  | .lit _ => []
+  | .field i => if guarded then [] else [i]
+  | .un f a => a.bareCols (guarded || f == .cardinality)
+  | .bin f a b =>
+    let g := guarded || f == .listFn .contains
+    a.bareCols g ++ b.bareCols g
+  | .ifThen c t e => c.bareCols guarded ++ t.bareCols guarded ++ e.bareCols guarded
+  | .hof f l b =>
+    let g := guarded || f == .anyMatch || f == .allMatch
+    l.bareCols g ++ (b.bareCols g).filterMap fun i => if i = 0 then none else some (i - 1)
+
+/-- For each postcondition column, its open components (`Rel.openCol` of
+the columns it reads, `"elements"` only where it reads the list bare) and
+the observation's ignored components it depends on, but for `"zeros"`
+(`Expr.robust_of_depends_canon`), `"elements"` and `"floats"` under the
+plan's bound or an `approx` condition (`floatsOk`). -/
+def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens : List String)
+    (floatsOk : Bool) : List (Option (List String × List String)) :=
+  match postExprs cat tables r with
+  | some (es, ks) =>
+    if es.length != n then List.replicate n none else
+      let ctx : ObsCtx := { kind := fun i => colKindOf (ks.getD i .other) }
+      let t := match r with
+        | .emit (.project t _) _ | .project t _ => t
+        | _ => r
+      es.map fun e =>
+        let bare := e.bareCols false
+        let opened := (e.cols.filterMap fun c => match t.openCol cat c with
+          | some "elements" => if bare.contains c then some "elements" else none
+          | o => o).eraseDups
+        let base := (e.depends ctx).eraseDups.filter fun c =>
+          c != "zeros" && c != "elements" && coarsens.contains c && !(c == "floats" && floatsOk)
+        some (opened, base)
+  | none => List.replicate n none
+
+/-- A postcondition's ignored components: its open ones first (none where
+`noOpen`: windows order totally, or the transformation is SQL), then the
+observation's. -/
+def combineIgnores (noOpen : Bool) (pre : List (Option (List String × List String))) :
+    List (Option (List String)) :=
+  pre.map fun o => o.map fun p =>
+    let op : List String := if noOpen then [] else p.1
+    op ++ p.2.filter fun c => !op.contains c
+
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
 `T.select(…)` from every order to every allowed result: `T` is closed
 (`Rel.closedB`, `contract_sound_allowed_closed`: no `VAR_*`, `STDDEV_*`,
@@ -586,6 +672,19 @@ def check (input : Json) : Except String Report := do
   let mut tiesOnly : List Bool := []
   let mut depends : List (Option (List String)) := []
   let mut allowed : List Bool := []
+  -- The request's observation (#1071): the components it coarsens, whether
+  -- doubles compare under the plan's bound, which postconditions are
+  -- `approx`, and whether the transformation is SQL (whose open columns the
+  -- report leaves to Python for now).
+  let obsJ := (input.getObjVal? "observation").toOption
+  let coarsens : List String :=
+    ((obsJ.bind (·.getObjValAs? (Array String) "coarsens" |>.toOption)).getD #[]).toList
+  let floatsPlan := (obsJ.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false
+  let approxs : List Bool :=
+    ((obsJ.bind (·.getObjValAs? (Array Bool) "approx" |>.toOption)).getD #[]).toList
+  let sqlT := (obsJ.bind (·.getObjValAs? Bool "sql" |>.toOption)).getD false
+  let mut ignoresPre : List (Option (List String × List String)) := []
+  let mut qi := 0
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
     if !(q.root.capReads caps).checkWF cat then throw "a postcondition plan is not well-formed"
@@ -597,6 +696,9 @@ def check (input : Json) : Except String Report := do
     results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
     depends := depends ++ postDepends cat tables q.root env.length
     allowed := allowed ++ postAllowed cat q.root env.length
+    ignoresPre := ignoresPre ++ postIgnores cat tables q.root env.length coarsens
+      (floatsPlan || approxs.getD qi false)
+    qi := qi + 1
     -- Suggestions only for what is unproved: the report drops the others.
     suggestions := suggestions ++ (List.range env.length).map fun i =>
       if (env.getD i AVal.top).certainlyTrue then ({ why := none } : Infer.Bounds) else
@@ -678,6 +780,7 @@ def check (input : Json) : Except String Report := do
         let (q, log) := p.root.optimize cat A F inputKeys R
         (Write.writePlan (Write.planSchemas p) cat q p.names, log)
     | none => (.null, [])
+  let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre
   return {
     implied
     optimized
@@ -686,6 +789,7 @@ def check (input : Json) : Except String Report := do
     suggestions
     tiesOnly
     depends
+    ignores
     allowed
     facts
     keys
