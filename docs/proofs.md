@@ -52,7 +52,7 @@ contract's preconditions.
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
 | An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean` |
-| A verified contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `EngineSound.lean` |
+| A proved contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `EngineSound.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `AllowedAnalysis.lean`, `Semantic.lean` |
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean`, `AllowedAnalysis.lean` |
@@ -158,7 +158,8 @@ other pages link here.
   ([duckdb-exec-filter-pushdown](../characterization/duckdb/facts/duckdb-exec-filter-pushdown.json),
   [DD-7](../upstream/bugs/DD-7.json); `Safety.lean`'s header).
 - Doubles. Lean's `Float` is an opaque `extern` to C `double`, trusted to be
-  IEEE binary64 for arithmetic. The conversions between integers, decimals
+  IEEE binary64 where the model still calls it: `pow`, `log` and the other
+  libm functions. The conversions between integers, decimals
   and doubles are computed exactly (`Conversions.lean`), behind `opaque`
   constants with their proved properties, and `#guard`s compare them with the
   native ones; an integer or decimal that IEEE would round to `±∞` (from
@@ -194,7 +195,7 @@ other pages link here.
 - The table formats' change feeds (`ChangeFeed`, `TableFormat.lean`), a
   hypothesis of `Rel.cdf_sound` wherever Sverify reads a Delta change data
   feed; it is proved when the change is computed from two snapshots.
-- An engine's run of a verified plan. `Engine.contract_sound` proves the
+- An engine's run of a proved plan. `Engine.contract_sound` proves the
   contract on the rows the engine's model computes for the translated plan
   (`r'.eval cat E.impl`), unless it raises. The chain from there to the engine's actual
   result, in order:
@@ -241,8 +242,13 @@ other pages link here.
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
   plan Lean writes back, and the laws on random data). The evaluators behind
   black boxes and regular expressions (`implemented_by` in `BlackBox.lean`,
-  `Regex.lean`, `Digest.lean`, `VarcharCasts.lean`) are read by no proof;
-  the proofs use only each black box's declared laws.
+  `Regex.lean` and `Digest.lean`, and `Text.lean`'s eight: `upper`, `lower`,
+  `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256`) are
+  read by no proof;
+  the proofs use only each black box's declared laws. The search evaluators
+  (`implemented_by` in `LoweringSearch.lean`, `LiftSearch.lean` and
+  `Obligations.lean`) read profiles, functions and hints while a generator
+  or a table check elaborates; no theorem reads them.
 
 ## The modules
 

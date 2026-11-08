@@ -52,11 +52,11 @@ Sverify is purely observational. It's a tool to explore and compare database sem
 Sverify checks every plan against a reference semantics, written in Lean,
 whose four principles and choices are in
 [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md#principles).
-The reference raises where engines disagree on an answer, so a verified plan
+The reference raises where engines disagree on an answer, so a proved plan
 runs alike on each: an operation on finite doubles that overflows to `±∞`,
 `power(-inf, 0.5)`, a `MEDIAN` between `-inf` and `+inf`, a constant
 subexpression that raises. `AND` and `OR` evaluate both operands, as DuckDB
-and Polars do. A plan verified under the reference creates no NaN and no
+and Polars do. A plan proved under the reference creates no NaN and no
 `±∞` its inputs did not hold. `semantics="duckdb"`, `"polars"` and
 `"spark"` check a plan under what that engine does, and
 `semantics="substrait"` under Substrait's extension YAMLs, open wherever
@@ -308,7 +308,7 @@ to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Uns
 * `sverify.testing` has `assert_contract`, `assert_engines_agree` and the
   Hypothesis strategy `cases` for pytest, with the plugin's `sv_engine` and
   `sv_source` fixtures.
-* `report.run(con, engine, route="auto")` runs a verified plan on an
+* `report.run(con, engine, route="auto")` runs a proved plan on an
   engine by a route (`report.routes` records it, with its class), and
   `refresh(engine=..., route="auto")` does the same for each node.
   `sv.equivalent(...)` in `ensures` names the observation, and
@@ -317,7 +317,7 @@ to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Uns
   (`run_sharded` runs a plan per shard and combines the results, with a
   proof that the result is the same); `sverify.errors` the exceptions.
 
-Not supported yet: correlated scalar subqueries, unbound parameters
+Refused for now: correlated scalar subqueries, unbound parameters
 (`sv.verify(expr, params={p: 10})` checks an `ibis.param` with its value),
 `sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
