@@ -40,16 +40,16 @@ the tables only. The shim count per engine is D9's measure of few shims.
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 4 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 5 | 8 | 0 | 15 | 7 |
-| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 4 | 3 | 0 | 14 | 0 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 15 | 13 | 1 | 5 | 8 | 0 | 15 | 7 |
+| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 5 | 3 | 0 | 14 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 6 | 12 | 16 | 2 | 0 | 0 | 15 |
-| Polars | 29 | 1 | 14 | 0 | 0 | 0 | 15 |
-| spark | 17 | 9 | 12 | 0 | 0 | 0 | 14 |
+| Polars | 29 | 2 | 14 | 0 | 0 | 0 | 15 |
+| spark | 18 | 9 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
@@ -67,6 +67,7 @@ Rows per evidence level:
 | Polars | `round_half_away` | argument | fp.round: `rounding` |
 | Polars | `one_zero` | expression | `zero_sign`, agg.order: `zero_sign`, fp.arith: `zero_sign` |
 | Polars | `max_nan_greatest` | expression | agg.order: `nan_order` |
+| Polars | `nan_through` | expression | agg.var: `stat_algo` |
 | Polars | `avg_int_declared` | expression | `avg_int_result` |
 | Polars | `null_order` | argument | `null_order` |
 | Polars | `sort on the keys` | sort | `clustered` |
@@ -140,7 +141,7 @@ Rows per evidence level:
 
 ## Polars 2.1.0
 
-14 shims (2 argument, 11 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
+15 shims (2 argument, 12 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
 
 | Group | Option | Reference's tool | Reference | Polars | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -185,6 +186,7 @@ Rows per evidence level:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | fuzz | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json), [polars-var-bound](../characterization/polars/facts/polars-var-bound.json) |
+| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | fuzz | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-var-std-streaming](../characterization/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../characterization/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../characterization/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../characterization/polars/facts/polars-window-agg.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../characterization/polars/facts/polars-avg-int.json) |
@@ -256,6 +258,7 @@ Refused on Polars, with no expression there:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `ANY` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [spark-sum-double](../characterization/spark/facts/spark-sum-double.json), [spark-avg-double](../characterization/spark/facts/spark-avg-double.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [spark-var-stddev](../characterization/spark/facts/spark-var-stddev.json), [spark-covar](../characterization/spark/facts/spark-covar.json), [spark-corr](../characterization/spark/facts/spark-corr.json) |
+| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [spark-var-stddev](../characterization/spark/facts/spark-var-stddev.json), [spark-var-pop-one-nan](../characterization/spark/facts/spark-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE`, `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [spark-window-agg](../characterization/spark/facts/spark-window-agg.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `int_avg_decimal` (expression) | proof | proved `Shim.avg_trunc`; [spark-avg-int](../characterization/spark/facts/spark-avg-int.json) |

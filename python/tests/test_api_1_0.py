@@ -1,4 +1,4 @@
-"""The API review's sweep before 1.0 (`api-review/PROPOSAL.md`, items 7, 8,
+"""The API review's sweep before 1.0 (#795, items 7, 8,
 9 and 14): the 0.6 aliases removed (`test_api_06.py`), the engine lists of
 1.x, the exception names, `SverifyWarning`, `SverifyError.code`, and the
 environment variables. Each renamed released name warns for one release."""
