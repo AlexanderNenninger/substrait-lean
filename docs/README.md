@@ -33,6 +33,7 @@ and every notebook once.
 | [notebooks/03_orders_mart.py](../notebooks/03_orders_mart.py) | An orders mart: a point-in-time join, dbt's tests as a contract |
 | [notebooks/04_contracts.py](../notebooks/04_contracts.py) | Contracts in depth: keys, relations, runtime errors, composition |
 | [notebooks/05_pipelines_and_engines.py](../notebooks/05_pipelines_and_engines.py) | Pipelines and engines: delta rules, quarantine, routes, doubles |
+| [notebooks/06_running_in_production.py](../notebooks/06_running_in_production.py) | Running it in production: the command in CI, tests, credentials, lineage, late rows |
 
 The notebooks run on molab from the `published` branch (CLAUDE.md,
 "Notebooks on molab").

@@ -213,18 +213,22 @@ def _expr_semantics(transform: Transform) -> Semantics:
     return "duckdb" if sems == {"duckdb"} else "reference"
 
 
-def _profile_requests() -> frozenset[str]:
-    """`_PROFILE_REQUESTS`, with the installed profiles from outside sverify
-    (`sverify.profiles`)."""
+def _outside_profiles() -> frozenset[str]:
+    """The installed profiles from outside sverify (`sverify.profiles`): the
+    plugins that carry their profile's versions. sverify's own profiles are
+    the checker's."""
     from sverify import profiles
 
-    return _PROFILE_REQUESTS | frozenset(profiles.plugins())
+    return frozenset(e for e, p in profiles.plugins().items() if p.versions)
+
+
+def _profile_requests() -> frozenset[str]:
+    """`_PROFILE_REQUESTS`, with the installed profiles from outside sverify."""
+    return _PROFILE_REQUESTS | _outside_profiles()
 
 
 def _checked_semantics(semantics: str) -> Semantics:
-    from sverify import profiles
-
-    if semantics in profiles.plugins():
+    if semantics in _outside_profiles():
         return semantics  # type: ignore[return-value]
     if semantics not in get_args(Semantics):
         named = ", ".join(map(repr, get_args(Semantics)))

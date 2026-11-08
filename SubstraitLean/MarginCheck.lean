@@ -24,16 +24,19 @@ filter keeps the reference's groups.
 
 The check runs on the same engine and the same inputs as the sink, before
 it (`Report.run`). Its constants are an integer times a power of two, exact
-in doubles; `|·|` is written with `fneg`, also exact. Which plan computes the
-check is trusted, as the `epsilon` formulas are (`Epsilon.lean`): the
-theorem is about the doubles, and `tests/test_margin.py` runs the check
-against Python's arithmetic.
+in doubles, given as codes (`marginEight`, `marginC0`, `marginUlp`,
+`marginTiny`) that `MarginSound` reads; `|·|` is written with `fneg`, also
+exact. `MarginSound` proves the check in the core's doubles: a group's row
+the check does not flag passes it (`margin_row`), and a group that passes it
+has every sum `Rel.AllowedP` allows on the reference's side of `t`
+(`margin_sum`, `margin_avg`). `tests/test_margin.py` runs the check against
+Python's arithmetic.
 -/
 
 namespace Substrait
 
-/-- `|e|` of a double, exact. -/
-def Expr.fabs (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float (FloatCode.ofFloat 0.0)))) (.un .fneg e) e
+/-- `|e|` of a double, exact (`0.0`'s code is `0`). -/
+def Expr.fabs (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float 0))) (.un .fneg e) e
 
 /-- A double literal. -/
 def Expr.dlit (f : Float) : Expr := .lit (.float (FloatCode.ofFloat f))
@@ -46,6 +49,42 @@ def Expr.thresholdOf : Expr → Option (Nat × Expr)
   | .un .not c => c.thresholdOf
   | _ => none
 
+/-- The constant `c₀` of the check's `cₙ = (8n + c₀) · 2⁻⁵³`: `16` for a
+`SUM`, `32` for an `AVG`. -/
+def marginConst (avg : Bool) : Nat := if avg then 32 else 16
+
+/-- The check's constants as codes, read by the check and by its proof
+(`MarginSound`): `8`, `c₀`, `2⁻⁵³` and `2⁻¹⁰²²`. -/
+def marginEight : Int := FloatCode.posCode (8 * 2 ^ 1074)
+def marginC0 (avg : Bool) : Int := FloatCode.posCode (marginConst avg * 2 ^ 1074)
+def marginUlp : Int := FloatCode.posCode (2 ^ 1021)
+def marginTiny : Int := FloatCode.posCode (2 ^ 52)
+
+#guard marginEight == FloatCode.ofFloat 8.0 && marginC0 false == FloatCode.ofFloat 16.0 &&
+  marginC0 true == FloatCode.ofFloat 32.0 && marginUlp == FloatCode.ofFloat (Float.scaleB 1.0 (-53)) &&
+  marginTiny == FloatCode.ofFloat (Float.scaleB 1.0 (-1022)) && FloatCode.ofFloat 0.0 == 0
+
+/-- The check's `v − t`, of the sum or mean in column `s`. -/
+def marginDiff (s : Nat) (t : Expr) : Expr := .bin .fsub (.field s) t
+
+/-- The check's margin `fl(cₙ · fl(A + n · 2⁻¹⁰²²))` (divided by `n` first for
+an `AVG`), from `COUNT(x)` in column `s + 1` and `SUM(ABS(x))` in `s + 2`;
+`MarginSound.marginCode` is its value. -/
+def marginExpr (s : Nat) (avg : Bool) : Expr :=
+  let n := Expr.un .itof (.field (s + 1))
+  let c := Expr.bin .fmul (.bin .fadd (.bin .fmul (.lit (.float marginEight)) n)
+    (.lit (.float (marginC0 avg)))) (.lit (.float marginUlp))
+  let p := Expr.bin .fadd (.field (s + 2)) (.bin .fmul n (.lit (.float marginTiny)))
+  .bin .fmul c (if avg then .bin .fdiv p n else p)
+
+/-- The check's flag over a row whose `v − t` is at `k` and margin at `k + 1`:
+a group with values that fails the margin, or has more than `2³²` values. -/
+def marginFlag (k s : Nat) : Expr :=
+  let pass := Expr.bin .or (.bin .lt (.field (k + 1)) (.field k))
+    (.bin .lt (.field (k + 1)) (.un .fneg (.field k)))
+  let some := Expr.un .not (.bin .lt (.field (s + 1)) (.lit (.int 1)))
+  .bin .or (.bin .and some (.un .not pass)) (.bin .lt (.lit (.int (2 ^ 32))) (.field (s + 1)))
+
 /-- The check over `inner`, whose columns `s`, `s + 1`, `s + 2` hold the sum
 or mean, `COUNT(x)` and `SUM(ABS(x))`, and whose arity is `k`: the difference
 `v − t` and the margin are projected once, at `k` and `k + 1`, so that an
@@ -54,18 +93,8 @@ the groups (or rows) with a value whose sum or mean is within the margin of
 `t`, or that have more than `2³²` values, are counted. A group with no values
 (`n = 0`, its sum NULL) is not flagged: the filter drops it everywhere. -/
 def marginCount (inner : Rel) (k s : Nat) (t : Expr) (avg : Bool) : Rel :=
-  let n := Expr.un .itof (.field (s + 1))
-  let c := Expr.bin .fmul (.bin .fadd (.bin .fmul (Expr.dlit 8.0) n) (Expr.dlit (if avg then 32.0 else 16.0)))
-    (Expr.dlit (Float.scaleB 1.0 (-53)))
-  let p := Expr.bin .fadd (.field (s + 2)) (.bin .fmul n (Expr.dlit (Float.scaleB 1.0 (-1022))))
-  let m := Expr.bin .fmul c (if avg then .bin .fdiv p n else p)
-  let d := Expr.bin .fsub (.field s) t
-  let pass := Expr.bin .or (.bin .lt (.field (k + 1)) (.field k))
-    (.bin .lt (.field (k + 1)) (.un .fneg (.field k)))
-  let some := Expr.un .not (.bin .lt (.field (s + 1)) (.lit (.int 1)))
-  let flag := Expr.bin .or (.bin .and some (.un .not pass))
-    (.bin .lt (.lit (.int (2 ^ 32))) (.field (s + 1)))
-  .aggregate (.filter (.project inner [d, m]) flag) [] [{ fn := .count, arg := .lit (.int 1) }]
+  .aggregate (.filter (.project inner [marginDiff s t, marginExpr s avg]) (marginFlag k s)) []
+    [{ fn := .count, arg := .lit (.int 1) }]
 
 /-- A threshold filter the margin check covers (#929): the check, the
 filter input's column of the double aggregate (`col`), the threshold in the
@@ -152,7 +181,7 @@ def Rel.marginCheck (cat : Catalog) (r : Rel) : Option Rel := (r.marginSite cat)
 /-- What the margin check decides, for the report (#929): the conditions of
 `StdModel.margin_check` it checks on each group. -/
 def marginConditions : List String :=
-  ["|SUM(x) − t| > (8n + 16) · 2⁻⁵³ · (SUM(|x|) + n · 2⁻¹⁰²²), computed in doubles",
+  [s!"|SUM(x) − t| > (8n + {marginConst false}) · 2⁻⁵³ · (SUM(|x|) + n · 2⁻¹⁰²²), computed in doubles",
    "n ≤ 2³² values", "n ≥ 1, or the group's sum is NULL and the filter drops it everywhere"]
 
 /-- A double as a report prints it: an integer without its `.0`. -/

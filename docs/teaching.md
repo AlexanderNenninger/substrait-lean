@@ -46,38 +46,38 @@ Lean file; [proofs.md](proofs.md) lists each guarantee with its theorem.
 |---|---|---|---|---|
 | Routes and classes: `route="auto"` | A proof made under one semantics says nothing about an engine with another unless something carries it over; a route is that carrier, and its class tells you what you can rely on. | `report.run(con, engine, route="auto")`, `report.routes[engine]`: "exact", "observed", "shim" or "refused", with the evidence; `RouteError` names the options that differ. An explicit `route=` refusal names no exit: [#1046] | [05](../notebooks/05_pipelines_and_engines.py), "Routes: how a proof reaches an engine" | `Lowering.lowerRel_sound` ([Lowering.lean](../SubstraitLean/Lowering.lean)), `Rel.duckdb_refines` ([Obligations.lean](../SubstraitLean/Obligations.lean)), `Rel.polars_sound` ([PolarsShims.lean](../SubstraitLean/PolarsShims.lean)), `Rel.spark_sound` ([SparkShims.lean](../SubstraitLean/SparkShims.lean)), `Rel.AllowedP_transfer` ([Transfer.lean](../SubstraitLean/Transfer.lean)); no row per class: [#1046] |
 | Profiles: `semantics=` | Your engine rounds, divides and orders by its own rules; a profile states those rules, and Sverify can prove a plan under the engine's own profile or under its strict reference. | `sv.verify(..., semantics="duckdb" \| "polars" \| "spark" \| "substrait")`; the report's `semantics:` line | Examples 7 to 9; no notebook: [#1046] | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)), `Rel.allowed_substrait_core` ([SubstraitProfile.lean](../SubstraitLean/SubstraitProfile.lean)) |
-| Engines: DuckDB, Polars, Spark, Snowflake | One plan, proved once, runs where your data lives; [stability.md, Engines](stability.md#engines) says which engines and how. | `refresh(engine=...)`, `report.run(con, engine)`; a function only DuckDB runs is refused with "run it with engine='duckdb' (see #271)". Several engine refusals name no exit: [#1047] | [01](../notebooks/01_duplicate_payments.py), "3. One plan, every engine"; [05](../notebooks/05_pipelines_and_engines.py), "Choosing the engine for a node". Spark runs in no notebook: [#1047] | As for routes; Snowflake's profile is [#851], from Snowflake behaviour recorded privately |
-| SQL for an engine: `to_sql` | Your warehouse runs SQL, and a hand translation loses the proof; Sverify writes the proved plan as DuckDB, Spark or Snowflake SQL. | `report.to_sql(dialect)`; `UnsupportedError` for a window with open ties, naming `deterministic=`; some writer refusals name no exit: [#1047] | [02](../notebooks/02_sensor_alerts.py), "5. Every engine, and the warehouses"; [05](../notebooks/05_pipelines_and_engines.py), "SQL for DuckDB, Snowflake and Spark" | `Lowering.lowerRel_sound` for DuckDB; `Rel.spark_sound` for Spark; Snowflake waits on [#851] |
+| Engines: DuckDB, Polars, Spark, Snowflake | One plan, proved once, runs where your data lives; [stability.md, Engines](stability.md#engines) says which engines and how. | `refresh(engine=...)`, `report.run(con, engine)`; a function only DuckDB runs is refused with "run it with engine='duckdb' (see #271)". Each engine refusal names `engine="duckdb"` or a rewrite | [01](../notebooks/01_duplicate_payments.py), "3. One plan, every engine"; [05](../notebooks/05_pipelines_and_engines.py), "Choosing the engine for a node". Spark runs in no notebook: [#1047] | As for routes; Snowflake's profile is [#851], from Snowflake behaviour recorded privately |
+| SQL for an engine: `to_sql` | Your warehouse runs SQL, and a hand translation loses the proof; Sverify writes the proved plan as DuckDB, Spark or Snowflake SQL. | `report.to_sql(dialect)`; `UnsupportedError` for a window with open ties, naming `deterministic=`; the other writer refusals name `engine="duckdb"` | [02](../notebooks/02_sensor_alerts.py), "5. Every engine, and the warehouses"; [05](../notebooks/05_pipelines_and_engines.py), "SQL for DuckDB, Snowflake and Spark" | `Lowering.lowerRel_sound` for DuckDB; `Rel.spark_sound` for Spark; Snowflake waits on [#851] |
 | Engine settings and versions | An engine upgraded or reconfigured behind your back can change what a proof assumed; Sverify checks the engine's version and settings before it runs. | `EngineVersionError`, "install a N.x release"; `EngineSettingsError`, "restore it with `SET ...`" | No notebook: [#1056] | The engine facts the profile rests on ([characterization/README.md](../characterization/README.md)) |
-| SQL in sverify: `sv.sql`, `verify` of a SQL string | Half your rules are SQL already; Sverify reads DuckDB SQL into the same plan an Ibis expression gives and proves it the same way. | `sv.verify("SELECT ...", tables=...)`, `.pipe(sv.sql(query))`; `UnsupportedError` for what the lift does not read yet, often with no exit: [#1049] | [03](../notebooks/03_orders_mart.py), "The same model in SQL". `sv.sql` in no notebook: [#1049] | The `agree` field of each `LiftEntry` ([LiftSearch.lean](../SubstraitLean/LiftSearch.lean)); no row in proofs.md: [#1049] |
-| Typed values and kinds | A decimal added to a double, or a scale that silently drops a cent, is a wrong answer that looks right; Sverify checks each expression's kind and refuses a mix it cannot type. Changes with [#1039] | A Lean refusal reaches you as a plain `ValueError`, "substrait-check --contract failed: ..."; unsigned integers and zoned timestamps are refused without an exit: [#1050] | No notebook: [#1050] | `Rel.kinds_sound`, `Expr.kindT_sound` ([Kinds.lean](../core/Sverify/Core/Kinds.lean)) |
+| SQL in sverify: `sv.sql`, `verify` of a SQL string | Half your rules are SQL already; Sverify reads DuckDB SQL into the same plan an Ibis expression gives and proves it the same way. | `sv.verify("SELECT ...", tables=...)`, `.pipe(sv.sql(query))`; `UnsupportedError` for what the lift does not read yet, naming the rewrite or the issue that adds it | [03](../notebooks/03_orders_mart.py), "The same model in SQL". `sv.sql` in no notebook: [#1049] | The `agree` field of each `LiftEntry` ([LiftSearch.lean](../SubstraitLean/LiftSearch.lean)); no row in proofs.md: [#1049] |
+| Typed values and kinds | A decimal added to a double, or a scale that silently drops a cent, is a wrong answer that looks right; Sverify checks each expression's kind and refuses a mix it cannot type. Changes with [#1039] | A Lean refusal reaches you as an `UnsupportedError`, "substrait-check --contract refuses the plan: ...", naming the open coverage issues; unsigned integers and zoned timestamps name a cast and [#350], [#323] | No notebook: [#1050] | `Rel.kinds_sound`, `Expr.kindT_sound` ([Kinds.lean](../core/Sverify/Core/Kinds.lean)) |
 | Timestamps and intervals | A month bucket of a timestamp near the year 1 or 9999 overflows; Sverify bounds the timestamps a truncation needs and reads intervals in the units it models. | The report's `needs:` for a timestamp bound; "interval of days or months is not modelled yet (#342); write it in hours or seconds" | [05](../notebooks/05_pipelines_and_engines.py), "Timestamps and intervals" | `Rel.mayIssues_sound` ([Safety.lean](../SubstraitLean/Safety.lean)) |
-| `sv.asof_join` | A trade matched to a quote from after it is a look-ahead bug; `sv.asof_join` matches each row with the latest earlier row of another table, and Sverify checks the join's tolerance. | `sv.asof_join(left, right, on=, by=, tolerance=, how=)`; "only ASOF [LEFT] JOIN", "needs an ON condition" | [04](../notebooks/04_contracts.py), "ASOF joins" | No theorem: [#1052] |
+| `sv.asof_join` | A trade matched to a quote from after it is a look-ahead bug; `sv.asof_join` matches each row with the latest earlier row of another table, and Sverify checks the join's tolerance. | `sv.asof_join(left, right, on=, by=, tolerance=, how=)`; "only ASOF [LEFT] JOIN", "needs an ON condition" | [04](../notebooks/04_contracts.py), "ASOF joins" | None of its own: a range join and a ranking window, proved as any plan by `contract_sound_all` and `Rel.keys_sound_all` ([proofs.md](proofs.md)) |
 | `sv.connect` | You want to try a contract on a few rows before wiring a pipeline; `sv.connect` holds named in-memory tables for Ibis expressions. | `con = sv.connect(); con.create(...)` or `con.put(...)` | [04](../notebooks/04_contracts.py), "Contracts on real data" | It holds data and makes no claim |
 
 ## Pipelines
 
 | Feature | Sentence | First contact | Notebook | Theorem |
 |---|---|---|---|---|
-| Nodes and refresh: `.pipe`, `.write`, `refresh`, `group`, `status` | Recomputing the whole table every hour costs money, and a hand-written incremental job drifts; Sverify keeps each node up to date from its sources' changes and proves the result equals a recomputation. | `node.refresh()` prints what changed per source; `node.status()` says what is maintained and what is recomputed; `NotIncrementalError` and the incremental limits name no exit: [#1051] | [01](../notebooks/01_duplicate_payments.py), "4. New transactions"; [05](../notebooks/05_pipelines_and_engines.py), "Keeping a join up to date" and "Pipelines" | `Rel.delta_correct`, `Rel.incremental_sound` ([Incremental.lean](../SubstraitLean/Incremental.lean)), `Refresh.no_corruption` ([Refresh.lean](../SubstraitLean/Refresh.lean)); the TLA+ model ([models/refresh](../models/refresh/README.md)) has no row: [#1051] |
+| Nodes and refresh: `.pipe`, `.write`, `refresh`, `group`, `status` | Recomputing the whole table every hour costs money, and a hand-written incremental job drifts; Sverify keeps each node up to date from its sources' changes and proves the result equals a recomputation. | `node.refresh()` prints what changed per source; `node.status()` says what is maintained and what is recomputed; `NotIncrementalError` names the pipeline node that recomputes the view; the incremental limits name theirs | [01](../notebooks/01_duplicate_payments.py), "4. New transactions"; [05](../notebooks/05_pipelines_and_engines.py), "Keeping a join up to date" and "Pipelines" | `Rel.delta_correct`, `Rel.incremental_sound` ([Incremental.lean](../SubstraitLean/Incremental.lean)), `Refresh.no_corruption` ([Refresh.lean](../SubstraitLean/Refresh.lean)); the TLA+ model ([models/refresh](../models/refresh/README.md)) has no row: [#1051] |
 | `sverify.io.Changes`, `StaticSource` | You want to test a pipeline's refresh without a lake; a `StaticSource` is an in-memory table with versions, and `Changes` is a batch of inserts and deletes for it. | `StaticSource(...)`, `source.apply(Changes(...))`; deleting a row that is not there raises `ValueError` | [05](../notebooks/05_pipelines_and_engines.py), "Keeping a join up to date" | `Rel.delta_correct` ([Incremental.lean](../SubstraitLean/Incremental.lean)) |
 | Sources and sinks: Delta, Iceberg, Flight, your own | The contract a job proved is lost the moment its result lands in a table; a sink stores the result exactly once per state with its contract, and the next job reads both. | `.write(DeltaSink(...))`, `DeltaSource(...).contract()`; "has constraints the view does not guarantee" names no exit: [#1048] | [01](../notebooks/01_duplicate_payments.py), "5. The sink carries the contract"; [02](../notebooks/02_sensor_alerts.py), "6. New readings"; [05](../notebooks/05_pipelines_and_engines.py), "Your own source and sink" | `Rel.cdf_sound` ([TableFormat.lean](../SubstraitLean/TableFormat.lean)), `Refresh.no_corruption` ([Refresh.lean](../SubstraitLean/Refresh.lean)) |
 | A sink's float default: `reproducible=` | A rerun that writes different last digits rewrites every downstream table; a sink's `reproducible=` says how close two writes must be, `floats="plan"` by default. | `DeltaSink(..., reproducible=sv.equivalent(...))`; `RouteError` names the observation that would do | Example 6; no notebook: [#1048] | `Rel.plan_near` ([Lipschitz.lean](../SubstraitLean/Lipschitz.lean)); no row: [#1048] |
 | Quarantine and hold: `on_violation` | One bad row should not stop the whole refresh or slip into the result; Sverify sets the rows that break a precondition aside and refreshes the rest. | `on_violation="quarantine"` or `"hold"`; the refresh prints "N row(s) quarantined" with the condition each broke | [05](../notebooks/05_pipelines_and_engines.py), "When the data breaks the contract" | `Catalog.kept_sound` ([Quarantine.lean](../SubstraitLean/Quarantine.lean)) |
-| Time buckets: `sv.arrives_within` | State that grows with every hour of history eventually takes the job down; a lateness bound lets Sverify retire old buckets and prove the result stays the same. | `sv.arrives_within(...)` in `requires`; the refresh's "retention ... N bucket(s) open" line | No notebook: [#1056] | `retention_sound`, `expiry_sound` ([Retention.lean](../SubstraitLean/Retention.lean)) |
-| Credentials: `Secret`, `Resolver` | A key pasted into a pipeline file leaks with the repository; Sverify names each credential by where it lives and reads it when a table opens. | `Secret("env:NAME")`; `node.credentials()` lists them per table | No notebook: [#1056] | It reads secrets and makes no claim |
-| OpenLineage | Your catalog wants to know which job wrote which table under which contract; Sverify emits a run per node on each refresh, with the contract in its `sverify_contract` facet. | The guide's [OpenLineage](guide.md#openlineage) section | No notebook: [#1056] | It reports and makes no claim |
-| Sharding: `run_sharded` | A plan too large for one machine runs in pieces, and pieces of a double sum round differently; Sverify proves which plans split exactly and bounds the ones that do not. | `NotShardable` names its exit, `float_order="any"`, which `run_sharded` deprecates: [#1054] | No notebook: [#1054] | `StdModel.sharded_near` ([float-bounds Shard.lean](../float-bounds/FloatBounds/Shard.lean)), `Rel.optimize_sound` ([Semantic.lean](../SubstraitLean/Semantic.lean)) |
+| Time buckets: `sv.arrives_within` | State that grows with every hour of history eventually takes the job down; a lateness bound lets Sverify retire old buckets and prove the result stays the same. | `sv.arrives_within(...)` in `requires`; the refresh's "retention ... N bucket(s) open" line | [06](../notebooks/06_running_in_production.py), "5. Late rows and bounded state" | `retention_sound`, `expiry_sound` ([Retention.lean](../SubstraitLean/Retention.lean)) |
+| Credentials: `Secret`, `Resolver` | A key pasted into a pipeline file leaks with the repository; Sverify names each credential by where it lives and reads it when a table opens. | `Secret("env:NAME")`; `node.credentials()` lists them per table | [06](../notebooks/06_running_in_production.py), "3. Credentials by name" | It reads secrets and makes no claim |
+| OpenLineage | Your catalog wants to know which job wrote which table under which contract; Sverify emits a run per node on each refresh, with the contract in its `sverify_contract` facet. | The guide's [OpenLineage](guide.md#openlineage) section | [06](../notebooks/06_running_in_production.py), "4. Tell the next team what it gets" | It reports and makes no claim |
+| Sharding: `run_sharded` | A plan too large for one machine runs in pieces, and pieces of a double sum round differently; Sverify proves which plans split exactly and bounds the ones that do not. | `NotShardable` names `run_sharded(reproducible=sv.equivalent(floats="plan"))` for a `SUM` or `AVG` of doubles | No notebook: [#1054] | `StdModel.sharded_near` ([float-bounds Shard.lean](../float-bounds/FloatBounds/Shard.lean)), `Rel.optimize_sound` ([Semantic.lean](../SubstraitLean/Semantic.lean)) |
 
 ## Contracts for others and tools
 
 | Feature | Sentence | First contact | Notebook | Theorem |
 |---|---|---|---|---|
-| Substrait export: `to_substrait`, `from_substrait`, `substrait_contract` | Another team's engine should run your plan with the same guarantees; Sverify writes the proved plan as Substrait with the conditions its proof needs. | `report.to_substrait(format=...)`; `ExportError` with `shims="annotate"` as its exit, and some kinds with no exit: [#1053] | Example 10; no notebook: [#1053] | The writer is trusted and checked by a round trip; `declared_rows` ([Write.lean](../SubstraitLean/Write.lean)) covers declarations only: [#1053] |
+| Substrait export: `to_substrait`, `from_substrait`, `substrait_contract` | Another team's engine should run your plan with the same guarantees; Sverify writes the proved plan as Substrait with the conditions its proof needs. | `report.to_substrait(format=...)`; `ExportError` with `shims="annotate"` or `report.to_sql(dialect)` as its exit | Example 10; no notebook: [#1053] | The writer is trusted and checked by a round trip; `declared_rows` ([Write.lean](../SubstraitLean/Write.lean)) covers declarations only: [#1053] |
 | ODCS contracts | A data contract in a standard format lets another team build on your table; Sverify writes the proved contract as ODCS. | The guide's [ODCS contracts](guide.md#odcs-contracts) section | No notebook: [#1053] | No theorem: [#1053] |
-| The `sverify` command | You want the proof in CI and on the pull request, without a notebook; `sverify check` proves every transform and node in a file and prints the contract in plain words. | `sverify check file.py --diff` and `--fix`; each finding carries a code that `sverify explain` describes; "time budget exceeded" does not name `SVERIFY_TIMEOUT`: [#1056] | No notebook: [#1056] | `contract_sound` ([Contracts.lean](../SubstraitLean/Contracts.lean)) for what it reports |
-| The pytest plugin | A contract belongs in the test suite you already run; the plugin's `assert_contract(node)` asserts a node's contract is proved and, with rows, checks it on them. | The guide's [Testing with pytest](guide.md#testing-with-pytest) section | No notebook: [#1056] | `contract_sound` ([Contracts.lean](../SubstraitLean/Contracts.lean)) |
-| sverify-dbt | A dbt test that always holds still costs a query on every build; Sverify-dbt proves a project's tests from the tests upstream and lists those `dbt build` can skip. | `sverify-dbt check`, `suggest`, `--selectors`; the report's `needs` lists the source test to add; several model refusals name no exit: [#1055] | No notebook: [#1055]. [03](../notebooks/03_orders_mart.py) proves dbt-style tests with sverify itself | `contract_sound`, `Rel.keys_sound` under `semantics="duckdb"`; not named in [dbt/README.md](../dbt/README.md): [#1055] |
+| The `sverify` command | You want the proof in CI and on the pull request, without a notebook; `sverify check` proves every transform and node in a file and prints the contract in plain words. | `sverify check file.py --diff` and `--fix`; each finding carries a code that `sverify explain` describes; "time budget exceeded" does not name `SVERIFY_TIMEOUT`: [#1056] | [06](../notebooks/06_running_in_production.py), "1. Check the file before it merges" | `contract_sound` ([Contracts.lean](../SubstraitLean/Contracts.lean)) for what it reports |
+| The pytest plugin | A contract belongs in the test suite you already run; the plugin's `assert_contract(node)` asserts a node's contract is proved and, with rows, checks it on them. | The guide's [Testing with pytest](guide.md#testing-with-pytest) section | [06](../notebooks/06_running_in_production.py), "2. A test for CI" | `contract_sound` ([Contracts.lean](../SubstraitLean/Contracts.lean)) |
+| sverify-dbt | A dbt test that always holds still costs a query on every build; Sverify-dbt proves a project's tests from the tests upstream and lists those `dbt build` can skip. | `sverify-dbt check`, `suggest`, `--selectors`; the report's `needs` lists the source test to add; each model refusal names what dbt still runs or the rewrite | No notebook: [#1055]. [03](../notebooks/03_orders_mart.py) proves dbt-style tests with sverify itself | `contract_sound`, `Rel.keys_sound` under `semantics="duckdb"`; not named in [dbt/README.md](../dbt/README.md): [#1055] |
 
 ## Refusals and their exits
 
@@ -111,57 +111,57 @@ on 2026-11-07.
 | `EngineSettingsError` | Engine settings | `SET ...` as named |
 | `RouteError`, "N node(s) of the streaming plan run on the in-memory engine" | Polars | `streaming=` other than `"require"` |
 | "X runs on duckdb only (see #271)" | Engines | `engine="duckdb"`; lifted by [#271] |
-| Spark and Snowflake date guards; DataFusion's NTILE | Engines | None: [#1047] |
+| Spark and Snowflake date guards; DataFusion's NTILE | Engines | `engine="duckdb"`; lifted by [#271] and DF-11 |
 | "run on polars only; E truncates" | Profiles | `semantics="reference"` |
 | A DuckDB-only construct on another writer (TRY_CAST, lists, black boxes, ...) | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
-| "{dialect}: integer division is not implemented" and other writer hooks | SQL for an engine | None: [#1047] |
-| "overflow = X is not supported on E yet" | SQL for an engine | None named; lifted by [#241]: [#1047] |
+| "the E writer does not write integer division yet" and other writer hooks | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
+| "the E writer does not write overflow = X yet" | SQL for an engine | `engine="duckdb"`; lifted by [#241] |
 | "tables have no row order" on Spark | SQL for an engine | `deterministic=True` |
-| "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | None: [#1047] |
-| Spark's LN, POWER, ATAN2 | Engines | None: [#1047] |
+| "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
+| Spark's LN, POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |
-| Spark decimal negation, division, double to DECIMAL | Engines | None: [#1047], lifted by [#27] |
-| Snowflake's libm, MOD, VAR, decimals, intervals | Engines | None; Snowflake behaviour recorded privately: [#1047], lifted by [#851] |
+| Spark decimal negation, division, double to DECIMAL | Engines | A cast to fewer digits (to DOUBLE for an AVG), or `engine="duckdb"`; lifted by [#27] |
+| Snowflake's libm, MOD, VAR, decimals, intervals | Engines | `engine="duckdb"`; Snowflake behaviour recorded privately; lifted by [#852] |
 | "Snowflake SQL is written only for plans verified under the reference" | SQL for an engine | `semantics="reference"` |
-| DataFusion's AVG of integers, substring | Engines | None: [#1047] |
-| Polars decimals, categorical strings, type mismatches, refused functions | Engines | None: [#1047] |
-| "unsigned integers are not supported", zoned timestamps | Typed values | None: [#1050], lifted by [#350] and [#323] |
+| DataFusion's AVG of integers, substring | Engines | `engine="duckdb"` (DF-24, DF-23) |
+| Polars decimals, categorical strings, type mismatches, refused functions | Engines | `engine="duckdb"`, which every Polars refusal names |
+| "unsigned integers are not supported yet", zoned timestamps | Typed values | A cast to a signed integer or to UTC; lifted by [#350] and [#323] |
 | float32, "use float64"; nanosecond times, "cast them to microseconds" | Typed values | As named |
-| "substrait-check --contract failed: ..." | Typed values, frontends | Lean's message, often none: [#1050] |
-| "the checker refuses the SQL: ..." | SQL in sverify | Lean's message |
-| "cannot parse the SQL as DuckDB's", "only SELECT queries are" | SQL in sverify | None: [#1049] |
+| `UnsupportedError`, "substrait-check --contract refuses the plan: ..." | Typed values, frontends | Lean's message, then a rewrite or the open coverage issues |
+| "cannot parse the SQL as DuckDB's", "only SELECT queries are" | SQL in sverify | Check that DuckDB runs it, or write the step in Ibis; write it as a SELECT |
 | An alias clash (SG-1), `~` (SG-10), `t.*` with USING (SG-5) | SQL in sverify | Rename, `regexp_matches`, list the columns |
-| Underscores in numbers (SG-4), `ago` (SG-8), EXPORT_STATE (SG-9), NULL order | SQL in sverify | None: [#1049] |
-| WITH RECURSIVE, DISTINCT ON, named windows, correlated subqueries, JOIN USING, UNPIVOT | SQL in sverify | None: [#1049] |
+| Underscores in numbers (SG-4), `ago` (SG-8), EXPORT_STATE (SG-9), NULL order | SQL in sverify | The rewrite named (no underscore, a negative interval, no EXPORT_STATE), or SQLGlot's pinned release |
+| WITH RECURSIVE, DISTINCT ON, QUALIFY, named windows, LATERAL, PIVOT, correlated subqueries, JOIN USING | SQL in sverify | The rewrite named (ROW_NUMBER in a subquery, OVER (…), a join, ON); [#320], [#319], [#813] |
 | A CAST that rounds in DuckDB, `mode()` ties, `median` of DECIMAL | SQL in sverify | `semantics="reference"` or `round()`, an order, a cast to DOUBLE |
-| An aggregate of a DATE at midnight | SQL in sverify | None named; lifted by [#240]: [#1049] |
+| An aggregate of a DATE at midnight | SQL in sverify | CAST it to DATE first |
 | "interval of days or months is not modelled yet" | Timestamps | Write it in hours or seconds; lifted by [#342] |
 | `ibis.now()`, random, row ids, hashes, `approx_*` | Contracts | Pass the value in |
 | An unbound Ibis parameter | Contracts | `params={param: value}` ([#354]) |
-| Other Ibis operations: translate, array_value, lambdas, typeof | SQL in sverify | None: [#1049], lifted by [#60] and [#327] |
+| Other Ibis operations: translate, array_value, lambdas, typeof | SQL in sverify | [#60] and [#327] as named; typeof of a column, or the type's name as a constant |
 | ASOF joins other than ASOF [LEFT] JOIN, or without ON | `asof_join` | Rewrite as named |
-| `NotIncrementalError` | Refresh | None: [#1051] |
-| "conditions on derived inputs were not proved", foreign keys in views, checked preconditions on views | Refresh | None: [#1051] |
+| `NotIncrementalError` | Refresh | A node in a `Pipeline` (`.pipe`), which recomputes and diffs it |
+| "conditions on derived inputs were not proved", foreign keys in views, checked preconditions on views | Refresh | The `ensures` of the transform that builds the view; foreign keys [#869]; derived inputs: [#1051] |
 | "batches are not checked against rows_per yet" | Refresh | None named; lifted by [#219] |
 | `SchemaError` | Refresh | Build the pipeline again |
-| `AuditError` | Refresh | None: [#1051] |
+| `AuditError` | Refresh | Check the source's change feed or batches, then report it (the issue tracker's new-issue link) |
 | A fused `on_unproved="check"` node; `refresh()` under `sverify check` | Refresh | `.write(sink)` first; `if __name__ == "__main__":` |
 | A view over tables without a source; a changed static table; a newer contract format | Sources and sinks | `StaticSource(...)`, a new version, upgrade sverify |
 | A Delta table with constraints the view does not guarantee | Sources and sinks | None: [#1048] |
 | `ExportError`, "refused for Substrait" | Export | `shims="annotate"` |
-| `ExportError`, a relation kind or a function outside Substrait's YAMLs | Export | A gap id only: [#1053] |
-| `NotShardable` for a SUM or AVG of doubles | Sharding | `float_order="any"`, deprecated: [#1054] |
+| `ExportError`, a relation kind or a function outside Substrait's YAMLs | Export | `report.to_sql(dialect)`, and the gap id |
+| `NotShardable` for a SUM or AVG of doubles | Sharding | `reproducible=sv.equivalent(floats="plan")` |
 | sverify-dbt: not a DuckDB project; no manifest | sverify-dbt | [#271]; `dbt compile` |
-| sverify-dbt: an unmapped test, a foreign key of a result, a Python model, a table that is no ref or source, unplannable SQL | sverify-dbt | None: [#1055] |
+| sverify-dbt: an unmapped test, a foreign key of a result, a Python model, a table that is no ref or source, unplannable SQL | sverify-dbt | dbt still runs the test; `dbt_utils.expression_is_true`; `{{ ref() }}` or `{{ source() }}`; a DuckDB project ([#271]) |
 | `sverify check`: "time budget exceeded" | The `sverify` command | None; `SVERIFY_TIMEOUT` is not named: [#1056] |
 
 [#27]: https://github.com/AlexanderNenninger/substrait-lean/issues/27
 [#60]: https://github.com/AlexanderNenninger/substrait-lean/issues/60
 [#85]: https://github.com/AlexanderNenninger/substrait-lean/issues/85
 [#219]: https://github.com/AlexanderNenninger/substrait-lean/issues/219
-[#240]: https://github.com/AlexanderNenninger/substrait-lean/issues/240
 [#241]: https://github.com/AlexanderNenninger/substrait-lean/issues/241
 [#271]: https://github.com/AlexanderNenninger/substrait-lean/issues/271
+[#319]: https://github.com/AlexanderNenninger/substrait-lean/issues/319
+[#320]: https://github.com/AlexanderNenninger/substrait-lean/issues/320
 [#323]: https://github.com/AlexanderNenninger/substrait-lean/issues/323
 [#327]: https://github.com/AlexanderNenninger/substrait-lean/issues/327
 [#342]: https://github.com/AlexanderNenninger/substrait-lean/issues/342
@@ -169,7 +169,10 @@ on 2026-11-07.
 [#354]: https://github.com/AlexanderNenninger/substrait-lean/issues/354
 [#444]: https://github.com/AlexanderNenninger/substrait-lean/issues/444
 [#575]: https://github.com/AlexanderNenninger/substrait-lean/issues/575
+[#813]: https://github.com/AlexanderNenninger/substrait-lean/issues/813
 [#851]: https://github.com/AlexanderNenninger/substrait-lean/issues/851
+[#852]: https://github.com/AlexanderNenninger/substrait-lean/issues/852
+[#869]: https://github.com/AlexanderNenninger/substrait-lean/issues/869
 [#1031]: https://github.com/AlexanderNenninger/substrait-lean/issues/1031
 [#1032]: https://github.com/AlexanderNenninger/substrait-lean/issues/1032
 [#1039]: https://github.com/AlexanderNenninger/substrait-lean/pull/1039
@@ -181,7 +184,6 @@ on 2026-11-07.
 [#1049]: https://github.com/AlexanderNenninger/substrait-lean/issues/1049
 [#1050]: https://github.com/AlexanderNenninger/substrait-lean/issues/1050
 [#1051]: https://github.com/AlexanderNenninger/substrait-lean/issues/1051
-[#1052]: https://github.com/AlexanderNenninger/substrait-lean/issues/1052
 [#1053]: https://github.com/AlexanderNenninger/substrait-lean/issues/1053
 [#1054]: https://github.com/AlexanderNenninger/substrait-lean/issues/1054
 [#1055]: https://github.com/AlexanderNenninger/substrait-lean/issues/1055

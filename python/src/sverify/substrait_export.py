@@ -86,9 +86,14 @@ ALIASES: Mapping[str, str] = {
 }
 
 
+#: The exit of an export refusal that no option lifts: the proved plan as an
+#: engine's SQL.
+_TO_SQL = "report.to_sql(dialect) writes the proved plan for an engine instead"
+
+
 class ExportError(SverifyError, ValueError):
     """The plan has no conforming Substrait form that keeps its proof: the
-    message names the reason, and the spec gap where there is one."""
+    message names the reason, the spec gap where there is one, and the exit."""
 
     code = "export_refused"
 
@@ -502,7 +507,7 @@ def resolve(name: str, kinds: Sequence[str], args: Sequence[Ty | str]) -> Resolv
         raise ExportError(
             f"{name} is not a function of Substrait's YAMLs"
             + (f" ({gap})" if gap else "")
-            + ": a conforming consumer would not know it"
+            + f": a conforming consumer would not know it; {_TO_SQL}"
         )
     for impl in impls:
         decls = impl["args"]
@@ -677,7 +682,7 @@ class _Typer:
             return outs[0]
         raise ExportError(
             f"the plan has a {kind} relation, which to_substrait does not write for "
-            "other consumers yet"
+            f"other consumers yet; {_TO_SQL}"
         )
 
     def _exprs(self, b: Json, cols: list[Ty]) -> list[Ty]:
@@ -707,7 +712,7 @@ class _Typer:
         if "selection" in e:
             sel = e["selection"]
             if "rootReference" not in sel and "expression" not in sel:
-                raise ExportError("to_substrait does not write outer references yet")
+                raise ExportError(f"to_substrait does not write outer references yet; {_TO_SQL}")
             t: Ty = (
                 self.expr(sel["expression"], cols)
                 if "expression" in sel
@@ -780,7 +785,8 @@ class _Typer:
                     "struct", tuple(self.expr(v, cols) for v in n["struct"].get("fields", []))
                 )
         raise ExportError(
-            f"to_substrait does not write {sorted(e)[0]} expressions for other consumers yet"
+            f"to_substrait does not write {sorted(e)[0]} expressions for other consumers yet; "
+            + _TO_SQL
         )
 
     def _peek(self, e: Json, cols: list[Ty]) -> Ty:
@@ -830,7 +836,7 @@ class _Typer:
         if base in FUNCTION_GAPS:
             raise ExportError(
                 f"{base} maps non-ASCII text by a rule Substrait leaves open "
-                f"({FUNCTION_GAPS[base]}, upstream/bugs/{FUNCTION_GAPS[base]}.json)"
+                f"({FUNCTION_GAPS[base]}, upstream/bugs/{FUNCTION_GAPS[base]}.json); {_TO_SQL}"
             )
         args: list[Ty | str] = []
         for a in f.get("arguments", []):

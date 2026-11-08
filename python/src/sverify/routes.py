@@ -5,7 +5,7 @@ A plan runs on the engine `E` by one of four routes, tried in this order:
 
 1. `"native"`: it was verified under `Profile.E` (`verify(semantics=E)`).
 2. `"translated"`: it was verified under the reference, and runs through
-   the translation from the reference to `E` (`_engines.TRANSLATIONS`).
+   the translation from the reference to `E` (`_engines.translations()`).
 3. `"transfer"`: it was verified under another profile `P`, and at every
    option the plan reads, `E`'s choices are within `P`'s: the proof holds
    under `Profile.E` as it is. The checker decides it (`transferB`, proved
@@ -323,24 +323,13 @@ def installed_version(engine: str) -> str | None:
     or is not installed."""
     from sverify import profiles as plugged
 
-    if (p := plugged.plugins().get(engine)) is not None:
-        return p.installed_version() if p.installed_version else None
+    p = plugged.find(engine)
+    if p is None or p.installed_version is None:
+        return None
     try:
-        if engine == "duckdb":
-            import duckdb
-
-            return duckdb.__version__
-        if engine == "polars":
-            import polars
-
-            return polars.__version__
-        if engine == "spark":
-            import pyspark
-
-            return pyspark.__version__
+        return p.installed_version()
     except ImportError:
         return None
-    return None
 
 
 def probed_version(engine: str) -> str | None:
@@ -493,7 +482,8 @@ def profiles() -> dict[str, EngineProfile]:
 
     out: dict[str, EngineProfile] = {}
     for e, p in plugged.plugins().items():
-        out[e] = EngineProfile(e, p.versions)
+        if p.versions:  # a profile from outside; sverify's own are the checker's
+            out[e] = EngineProfile(e, p.versions)
     for name, p in (_options_json().get("profiles") or {}).items():
         if isinstance(p, dict) and p.get("engine"):
             out[name] = EngineProfile(p["engine"], tuple(p.get("versions") or ()))
@@ -1117,9 +1107,19 @@ TIES = (
 
 
 def engine_name(engine: Any) -> str:
-    """An engine's name: a string as given, lower case; any other object
-    (a Spark session) is Spark."""
-    return engine.lower() if isinstance(engine, str) else "spark"
+    """An engine's name: a string as given, lower case; a session, the
+    engine's that recognises it (`ProfilePlugin.session`: a Spark session).
+
+    Raises:
+        ValueError: No installed engine recognises the session.
+    """
+    if isinstance(engine, str):
+        return engine.lower()
+    from sverify import profiles as plugged
+
+    if (p := plugged.find(engine)) is None:
+        raise ValueError(f"no installed engine takes {type(engine).__name__} as a session")
+    return p.engine
 
 
 def reproducibility(
@@ -1312,8 +1312,8 @@ def choose(
     depends = report._depends
     from sverify import _engine_settings
 
-    # A Spark session of the caller's: its own settings.
-    values = None if isinstance(engine, str) else _engine_settings.spark_values(engine)
+    # A session of the caller's (Spark's): its own settings.
+    values = None if isinstance(engine, str) else _engine_settings.current(e, engine)
     notes += check_settings(e, values, depends=depends)
     source = report.semantics
     det = report.deterministic
