@@ -627,4 +627,5 @@ states each, with its status.
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
 | Float aggregates as correctly rounded exact sums, two NULL equalities, the size hypothesis, lexical lambdas | [core-semantics.md](core-semantics.md#decisions): D25 to D28, [#922](https://github.com/AlexanderNenninger/substrait-lean/issues/922) |
 | Statistical aggregates as correctly rounded exact moments | [core-semantics.md](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments): D30, [#918](https://github.com/AlexanderNenninger/substrait-lean/issues/918) |
+| Options differ from the reference only on their scopes | [core-semantics.md](core-semantics.md#d34-an-option-differs-from-the-reference-only-on-its-scope): D34 |
 | The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md), [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444) |

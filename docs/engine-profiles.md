@@ -164,7 +164,10 @@ reference profile, and DuckDB is the default oracle.
   `Rel.eval`'s or raises, on every catalog, and
   `Lowering.lowerRelWith_mayIssues_sound` takes the issues to drop from
   `Rel.mayIssues`, as `Rel.guardFree_sound` does. The kept guards need no new
-  proof: the template with all its guards has the reference's outcome. The
+  proof: the template with all its guards has the reference's outcome. DuckDB's
+  generated guards are proved exact (`duckdbOn.guardsFor_none`, in
+  `SubstraitLean/LoweringDuckDB/On/Guards.lean`), so its SQL without guards
+  (`to_sql(guards=False)`) is `Rel.duckdb_guardFree_sound`. The
   search is the same for every engine; an engine's hand-written schemas are an
   argument of `generate_lowering` (DuckDB's in
   `SubstraitLean/LoweringDuckDB/Schemas.lean`). Equality saturation (lean-egg) was
