@@ -46,19 +46,25 @@ def Expr.thresholdOf : Expr → Option (Nat × Expr)
   | .un .not c => c.thresholdOf
   | _ => none
 
-/-- The groups with a value whose sum is within the margin of `t`, or that
-have more than `2³²` values: columns `s`, `s + 1` and `s + 2` hold `SUM(x)`,
-`COUNT(x)` and `SUM(ABS(x))`. A group with no values (`n = 0`, its sum NULL)
-is not flagged: the filter drops it everywhere. -/
-def marginFlag (s : Nat) (t : Expr) : Expr :=
-  let d := Expr.bin .fsub (.field s) t
+/-- The check over `inner`, whose columns `s`, `s + 1`, `s + 2` hold the sum,
+`COUNT(x)` and `SUM(ABS(x))`, and whose arity is `k`: the difference `v − t`
+and the margin are projected once, at `k` and `k + 1`, so that an engine
+computes each once, then the groups with a value whose sum is within the
+margin of `t`, or that have more than `2³²` values, are counted. A group with
+no values (`n = 0`, its sum NULL) is not flagged: the filter drops it
+everywhere. -/
+def marginCount (inner : Rel) (k s : Nat) (t : Expr) : Rel :=
   let n := Expr.un .itof (.field (s + 1))
   let c := Expr.bin .fmul (.bin .fadd (.bin .fmul (Expr.dlit 8.0) n) (Expr.dlit 16.0))
     (Expr.dlit (Float.scaleB 1.0 (-53)))
   let m := Expr.bin .fmul c (.bin .fadd (.field (s + 2)) (.bin .fmul n (Expr.dlit (Float.scaleB 1.0 (-1022)))))
-  let pass := Expr.bin .or (.bin .lt m d) (.bin .lt m (.un .fneg d))
+  let d := Expr.bin .fsub (.field s) t
+  let pass := Expr.bin .or (.bin .lt (.field (k + 1)) (.field k))
+    (.bin .lt (.field (k + 1)) (.un .fneg (.field k)))
   let some := Expr.un .not (.bin .lt (.field (s + 1)) (.lit (.int 1)))
-  .bin .or (.bin .and some (.un .not pass)) (.bin .lt (.lit (.int (2 ^ 32))) (.field (s + 1)))
+  let flag := Expr.bin .or (.bin .and some (.un .not pass))
+    (.bin .lt (.lit (.int (2 ^ 32))) (.field (s + 1)))
+  .aggregate (.filter (.project inner [d, m]) flag) [] [{ fn := .count, arg := .lit (.int 1) }]
 
 /-- **The margin check of a threshold filter** over an aggregate: the count
 of the groups that fail it, a plan of one row and one column. `none` where
@@ -75,7 +81,7 @@ def Rel.marginCheck : Rel → Option Rel
       | _ => none
     let inner := Rel.aggregate r gs
       [m, { fn := .count, arg := .field i }, { fn := .fsum, arg := (Expr.field i).fabs }]
-    some (.aggregate (.filter inner (marginFlag gs.length t)) [] [{ fn := .count, arg := .lit (.int 1) }])
+    some (marginCount inner (gs.length + 3) gs.length t)
   | _ => none
 
 /-- What the margin check decides, for the report (#929): the conditions of
