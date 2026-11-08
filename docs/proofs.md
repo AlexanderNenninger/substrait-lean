@@ -26,6 +26,7 @@ contract's preconditions.
 |---|---|---|---|
 | A proved postcondition is TRUE on every output row | `eval` | `contract_sound` | `Contracts/Sound.lean` |
 | … in every row order the reference allows | `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
+| What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
 | The same on one hypothesis, the analysis's (`Knowledge`) | `eval`, `OrderAllowed` | `Knowledge.contract_sound`, `Knowledge.contract_sound_all`, `Knowledge.duckdb_sound` | `Knowledge.lean` |
 | The analysis is sound: what it knows of a relation holds of its rows | `eval`, `OrderAllowed` | `Rel.analyse_sound`, `Rel.analyse_sound_all` | `Knowledge.lean` |
 | The abstract evaluation bounds every column of every row | `eval`, `OrderAllowed` | `Rel.aeval_sound`, `Rel.aeval_sound_all` | `Contracts/Sound.lean` |
@@ -141,7 +142,15 @@ other pages link here.
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
-  they call the checkers and print JSON. On the Python side, the glue of
+  they call the checkers and print JSON. `ContractCheck.check_proved_sound`
+  (#1088) takes a postcondition `check` reports proved to
+  `contract_sound_all` on the data, for any data with the request's tables
+  that meets its schemas, preconditions, keys and row caps; what it leaves
+  trusted is the step before and after: `parse` (JSON to plans, and
+  `schemaEnv`, the declared types as abstract values), `Report.json`, the
+  `--serve` loop and `runOn` that call `check` and print its report, and
+  `underProfile`, which labels the reference's report with the profile a
+  request names for an engine marked `asReference` (until #271). On the Python side, the glue of
   incremental views (change tables, consolidation, merge).
 - The exact state of a maintained `SUM` or `AVG` of doubles
   (`python/src/sverify/_exact_sum.py`, #918). Lean proves that the state, an
@@ -363,6 +372,7 @@ runs that build as the guard. The modules below it import the core as
 | `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
 | `Rows.lean` | Row caps that rule out `SUM` overflow |
 | `Keys.lean` | Derived keys and window tie-breaking |
+| `AnalysisCongr.lean` | The analyses read only the catalog's arities: `Rel.facts_congr`, `Rel.aeval_congr`, `Rel.keys_congr`, `Rel.keyedWindows_congr`, for `check_proved_sound` |
 | `Semantic.lean` | Rewrites justified by contract facts and keys |
 | `Compose.lean` | Composing contracts across a pipeline |
 | `Quarantine.lean` | The rows `on_violation="quarantine"` keeps |
@@ -439,7 +449,7 @@ runs that build as the guard. The modules below it import the core as
 |---|---|
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `Pretty.lean` | Rendering of values, expressions and plans |
-| `ContractCheck.lean` | `--contract`: proving postconditions and keys from preconditions |
+| `ContractCheck.lean` | `--contract`: proving postconditions and keys from preconditions; `parse` reads the request (trusted), `Request.check` analyses it, and `check_proved_sound` takes its verdict to `contract_sound_all` |
 | `ShardCheck.lean` | `--shard`: per-shard and combining plans |
 | `Examples.lean` | Concrete plans checked with `#guard`, and `#print axioms` |
 | `Main.lean` | The `substrait-check` CLI: `checkerMain` over `builtinEngines` |
