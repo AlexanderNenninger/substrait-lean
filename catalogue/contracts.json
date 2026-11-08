@@ -1,0 +1,1393 @@
+{
+  "above-group-avg": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "window",
+    "proved": true
+  },
+  "avg-exact": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "observation",
+    "proved": true
+  },
+  "avg-le-max": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "compare",
+    "proved": false,
+    "unproved": [
+      "(_.m <= _.mx)"
+    ]
+  },
+  "avg-nullable": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m.isnull() | _.m.between(0, 500)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m.isnull() | _.m.between(0, 500)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m.isnull() | _.m.between(0, 500)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.m.isnull() | _.m.between(0, 500)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "bound",
+    "proved": false,
+    "unproved": [
+      "(_.m.isnull() | _.m.between(0, 500))"
+    ]
+  },
+  "avg-range": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "bound",
+    "proved": false,
+    "unproved": [
+      "_.m.between(0, 100)"
+    ]
+  },
+  "avg-range-approx": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.m.between(0, 100), rel=1e-06) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.m.between(0, 100), rel=1e-06) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.m.between(0, 100), rel=1e-06) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.m.between(0, 100), rel=1e-06) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "bound",
+    "proved": false,
+    "unproved": [
+      "approx(_.m.between(0, 100), rel=1e-06)"
+    ]
+  },
+  "avg-within-abs-cap": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "tolerance bound not proved"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "tolerance bound not proved"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "tolerance bound not proved"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "observation",
+    "proved": true
+  },
+  "control-count": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "translation tested (no row for the options)"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "translation tested (no row for the options)"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "control",
+    "proved": true
+  },
+  "control-decimal-sum": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.isum's overflow"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "class": "shim",
+        "outcome": "proved"
+      }
+    },
+    "pattern": "control",
+    "proved": true
+  },
+  "control-int-having": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.isum's overflow"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "class": "shim",
+        "outcome": "proved"
+      }
+    },
+    "pattern": "control",
+    "proved": true
+  },
+  "control-int-sum": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.isum's overflow"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "class": "shim",
+        "outcome": "proved"
+      }
+    },
+    "pattern": "control",
+    "proved": true
+  },
+  "control-max-double": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.order's nan_order",
+          "row tested: agg.order's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.order's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "control",
+    "proved": true
+  },
+  "control-max-exact": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.order's nan_order",
+          "row tested: agg.order's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "polars": {
+        "class": "shim",
+        "outcome": "proved"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.order's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "control",
+    "proved": true
+  },
+  "control-max-having": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.order's nan_order",
+          "row tested: agg.order's zero_sign",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.order's nan_order",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "control",
+    "proved": true
+  },
+  "corr-range-approx": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "bound",
+    "proved": false,
+    "unproved": [
+      "approx(_.r.between(-1, 1), rel=1e-06)"
+    ]
+  },
+  "filter-rows-then-sum": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "having",
+    "proved": false,
+    "unproved": [
+      "(_.total > 100)"
+    ]
+  },
+  "group-by-rounded-avg": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: cast out of range: BIGINT(FLOOR($1)) (see report.errors); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: cast out of range: BIGINT(FLOOR($1)) (see report.errors); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: cast out of range: BIGINT(FLOOR($1)) (see report.errors); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: cast out of range: BIGINT(FLOOR($1)) (see report.errors); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "may_fail": [
+      "cast out of range: BIGINT(FLOOR($1))"
+    ],
+    "pattern": "expression",
+    "proved": false
+  },
+  "having-avg": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "having",
+    "proved": true
+  },
+  "having-count-with-sum": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "having",
+    "proved": true
+  },
+  "having-stddev": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "having",
+    "proved": true
+  },
+  "having-sum": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "having",
+    "proved": true
+  },
+  "having-sum-approx": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "having",
+    "proved": true
+  },
+  "having-sum-bound": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "having",
+    "proved": true
+  },
+  "median-range": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.quant's nan_order",
+          "row tested: agg.quant's quantile_interp"
+        ],
+        "class": "exact",
+        "outcome": "tested"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (spark does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "min-le-avg": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "compare",
+    "proved": false,
+    "unproved": [
+      "(_.mn <= _.m)"
+    ]
+  },
+  "moving-avg": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.ma.isnull() | _.ma.between(0, 100)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.ma.isnull() | _.ma.between(0, 100)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.ma.isnull() | _.ma.between(0, 100)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.ma.isnull() | _.ma.between(0, 100)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "window",
+    "proved": false,
+    "unproved": [
+      "(_.ma.isnull() | _.ma.between(0, 100))"
+    ]
+  },
+  "order-by-sum-sequence": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "top_n",
+    "proved": true
+  },
+  "rank-by-sum": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "row tested: int.arith's overflow",
+          "row tested: rel.sort's null_order"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "top_n",
+    "proved": true
+  },
+  "revenue-nonneg": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "row tested: fp.arith's float_overflow",
+          "row tested: fp.arith's nan_creation",
+          "row tested: fp.arith's rounding",
+          "row tested: fp.arith's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.fsum's rounding",
+          "row tested: fp.arith's rounding"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "row tested: fp.arith's rounding"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "running-sum": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's empty_group_aggregates",
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "row tested: rel.sort's null_order",
+          "row tested: win.agg's window_sum_algo"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.fsum's rounding",
+          "row tested: win.agg's window_sum_algo"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's empty_group_aggregates",
+          "row tested: agg.fsum's rounding",
+          "row tested: win.agg's window_sum_algo"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "window",
+    "proved": true
+  },
+  "stddev-nonneg": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.var's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.var's rounding",
+          "row tested: agg.var's stat_algo"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.var's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "stddev-unique-key": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.var's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.var's rounding",
+          "row tested: agg.var's stat_algo"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.var's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "key",
+    "proved": true
+  },
+  "stddev-upper-approx": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "bound",
+    "proved": false,
+    "unproved": [
+      "approx((_.sd <= 100), rel=1e-06)"
+    ]
+  },
+  "sum-cap": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total <= 1000000)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total <= 1000000)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total <= 1000000)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total <= 1000000)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "bound",
+    "proved": false,
+    "unproved": [
+      "(_.total.isnull() | (_.total <= 1000000))"
+    ]
+  },
+  "sum-cap-approx": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "sum-exact": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "observation",
+    "proved": true
+  },
+  "sum-ge-max": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "compare",
+    "proved": false,
+    "unproved": [
+      "(_.total.isnull() | (_.total >= _.top))"
+    ]
+  },
+  "sum-nonneg": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "sum-plan": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "observation",
+    "proved": true
+  },
+  "sum-unique-key": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "key",
+    "proved": true
+  },
+  "sum-within-and-bound": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "observation",
+    "proved": false
+  },
+  "sum-within-rel": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "observation",
+    "proved": false
+  },
+  "sum-within-rel-cap": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "observation",
+    "proved": true
+  },
+  "tier-by-avg": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "expression",
+    "proved": true
+  },
+  "top-1-avg": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: ensures _.m.between(0, 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "top_n",
+    "proved": false,
+    "unproved": [
+      "_.m.between(0, 100)"
+    ]
+  },
+  "top-n-sum": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+      }
+    },
+    "pattern": "top_n",
+    "proved": true
+  },
+  "var-nonneg": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "row tested: agg.var's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.var's rounding",
+          "row tested: agg.var's stat_algo"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+      },
+      "spark": {
+        "causes": [
+          "row tested: agg.var's rounding"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "var-within-rel-cap": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-covar, duckdb-corr) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-covar, duckdb-corr) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-covar, duckdb-corr) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-covar, duckdb-corr) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+      }
+    },
+    "pattern": "observation",
+    "proved": false
+  },
+  "zscore-outliers": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: division by zero: (value - avg(value)) / std_dev(value); may fail: domain error: (value - avg(value)) / std_dev(value) (see report.errors); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: division by zero: (value - avg(value)) / std_dev(value); may fail: domain error: (value - avg(value)) / std_dev(value) (see report.errors); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: division by zero: (value - avg(value)) / std_dev(value); may fail: domain error: (value - avg(value)) / std_dev(value) (see report.errors); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: may fail: division by zero: (value - avg(value)) / std_dev(value); may fail: domain error: (value - avg(value)) / std_dev(value) (see report.errors); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "may_fail": [
+      "division by zero: (value - avg(value)) / std_dev(value)",
+      "domain error: (value - avg(value)) / std_dev(value)"
+    ],
+    "pattern": "window",
+    "proved": false
+  }
+}
