@@ -1667,80 +1667,11 @@ grouped aggregates; the reference is unchanged. An engine's window sum is
 within the plan's bound where its window algorithm sums the frame's own
 values (`window_sum_algo`: each frame anew, a tree, or a running sum).
 
-### D30. Statistical aggregates are correctly rounded exact moments
-
-Decided 2026-11-07 (#918).
-
-In the reference, `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP`, `STDDEV_POP`,
-`COVAR_SAMP`, `COVAR_POP` and `CORR` of doubles are rounded once from the
-exact moments of the values: the count `n`, and `Σx`, `Σx²` and `Σxy` as
-exact dyadic rationals, since every finite double is a multiple of
-2⁻¹⁰⁷⁴ (`FloatMoments.lean`). The co-moments `S = Σx² − (Σx)²/n` and
-`C = Σxy − Σx·Σy/n` are exact. The variance is `S/d` rounded to the nearest
-double, ties to even, with `d = n − 1` for a sample and `n` for the
-population; the covariance is `C/d` rounded once. `STDDEV` and `CORR` are
-rounded by comparing squares against the midpoint, with no square root
-computed: `√(S/d)` and `|C|/√(Sxx·Syy)` against each candidate's midpoint
-`m` by `m² · d < S` and `m² · Sxx · Syy < C²`, with `C`'s sign
-(`sqrtMag`). Each is one value, a function of the multiset of values
-(`varOf_perm`, `covOf_perm`, `corrOf_perm`), whatever the engine's
-algorithm.
-
-NULL as before D30: no values, a sample of one, and for `CORR` fewer than two
-pairs or a side whose values are all equal, which is `Sxx = 0` or `Syy = 0`
-(`stat_degenerate` `NULL`; `corrOf` gave NULL there before D30 too). NaN and
-infinities as `varOf` had them: a NaN among the values gives NaN, and an
-infinity gives NaN in `Rel.eval` and raises in a plan the checker accepts,
-since its deviation `∞ − ∞` would create a NaN (#257). A finite result past
-the largest double raises (#575).
-
-Engines keep their own algorithms: Welford's update with Chan's merge in
-DuckDB, Spark and grouped Polars, a blockwise two-pass in ungrouped Polars.
-Each is within the plan's bound of the reference's value: the algorithm's
-distance from the exact moments (`StatProps`, proved for Welford and Chan as
-`StdModel.core_var_chan`, `core_cov_chan`, `core_corr_chan` in
-`float-bounds/`), plus half an ulp of the reference's rounding. Their
-`stat_algo` rows are `approxWithin "plan"`, as `sum_order`'s are, and
-`StatAlgo` keeps `StatProps` as what `GENERIC` and `WELFORD_CHAN` allow. The
-writers clamp an engine's variance and deviation at `0` and its correlation
-to `[-1, 1]`, NaN kept (`Dialect.clamp_stat`, Polars likewise): the exact
-value lies in the interval, so clamping never moves the engine's value
-further from it (`Stat.clamp_near`), and `var ≥ 0` and `|corr| ≤ 1`
-hold of every engine's result. The bounds differ in kind: `VAR_*` and
-`STDDEV_*` are relative to the spread, the deviation's half the variance's;
-`CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
-`√(Sxx · Syy)`, or relative only under a sign-definite precondition.
-`Report.epsilon` reports `VAR_*` and `STDDEV_*` columns (`Epsilon.statEps`);
-`COVAR_*` and `CORR` columns have no bound there yet. Snowflake keeps
-refusing these aggregates (Snowflake behaviour recorded privately).
-
-Consequences:
-
-- `stat_algo` is no longer a choice of the reference; it stays a choice of
-  the engines, and the reference's row is `EXACT`.
-- The statistical aggregates are order-free (`AggFn.orderFree`), so
-  `Measure.closedB`, `Rel.closedB` and `Rel.detPlan` hold of plans with them,
-  and `contract_sound_all` and `contract_sound_allowed_closed` cover them.
-  `QUANTILE_CONT` stays the only open measure.
-- `varOf_props`, `covOf_props` and `corrOf_props` are retired, and
-  `Rel.eval_allowed` rests on Lean's standard axioms alone.
-- A postcondition at a rounding boundary can move by an ulp, which
-  `sv.approx` absorbs.
-
-Why: before D30 the reference stated generic properties for these
-aggregates and let engine profiles refine them, so a plan reading one left
-the engine a choice of value. `Rel.FloatOpenSafe`, `contract_sound_allowed`'s
-side condition, failed for any such plan: `SELECT VAR_POP(x)` allowed many
-values while an order fixed one. Exact moments give one value with no
-algorithm imposed on engines, as D25 did for sums, retire three axioms, and
-are the state an exact incremental `VAR` needs (#918 Part B). The cost:
-engines go from refining exactly to within a plan's bound.
-
 ### D26. Two equalities for NULL
 
 In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition)
 `NULL = NULL` is unknown, so a NULL never matches, never equals and never
-compares: three-valued logic, `and3`/`or3`/`not3` and `BinFn.apply .eq` in
+compares: three-valued logic, `and3`/`or3`, `UnFn.apply .not` and `BinFn.apply .eq` in
 `SubstraitLean/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
 `EXCEPT`, `INTERSECT`, a window's `PARTITION BY` and `IS NOT DISTINCT FROM`,
 all NULLs are one value: syntactic equality, `Value.decEq` in
@@ -1822,9 +1753,80 @@ kinds from the kind checker may refine `nk` on checked plans later.
 
 Why: the kinds were in the parser and the kind checker (#924) only; with them
 in the values, a well-kinded plan's values have their kinds by evaluation, and
-the trusted float axioms (`floatSum_mem`/`floatAvg_mem`/`floatSum_sign`,
-`floatSum_twoPhase` and `floatAvg_twoPhase`) state their premises about
-doubles.
+the float facts state their premises about doubles. Those were the trusted
+axioms `floatSum_mem`, `floatAvg_mem`, `floatSum_sign`, `floatSum_twoPhase`
+and `floatAvg_twoPhase`; D25 retired them for theorems about the correctly
+rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`,
+`twoPhaseSum_near`, `twoPhaseAvg_near`).
+
+### D30. Statistical aggregates are correctly rounded exact moments
+
+Decided 2026-11-07 (#918).
+
+In the reference, `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP`, `STDDEV_POP`,
+`COVAR_SAMP`, `COVAR_POP` and `CORR` of doubles are rounded once from the
+exact moments of the values: the count `n`, and `Σx`, `Σx²` and `Σxy` as
+exact dyadic rationals, since every finite double is a multiple of
+2⁻¹⁰⁷⁴ (`FloatMoments.lean`). The co-moments `S = Σx² − (Σx)²/n` and
+`C = Σxy − Σx·Σy/n` are exact. The variance is `S/d` rounded to the nearest
+double, ties to even, with `d = n − 1` for a sample and `n` for the
+population; the covariance is `C/d` rounded once. `STDDEV` and `CORR` are
+rounded by comparing squares against the midpoint, with no square root
+computed: `√(S/d)` and `|C|/√(Sxx·Syy)` against each candidate's midpoint
+`m` by `m² · d < S` and `m² · Sxx · Syy < C²`, with `C`'s sign
+(`sqrtMag`). Each is one value, a function of the multiset of values
+(`varOf_perm`, `covOf_perm`, `corrOf_perm`), whatever the engine's
+algorithm.
+
+NULL as before D30: no values, a sample of one, and for `CORR` fewer than two
+pairs or a side whose values are all equal, which is `Sxx = 0` or `Syy = 0`
+(`stat_degenerate` `NULL`; `corrOf` gave NULL there before D30 too). NaN and
+infinities as `varOf` had them: a NaN among the values gives NaN, and an
+infinity gives NaN in `Rel.eval` and raises in a plan the checker accepts,
+since its deviation `∞ − ∞` would create a NaN (#257). A finite result past
+the largest double raises (#575).
+
+Engines keep their own algorithms: Welford's update with Chan's merge in
+DuckDB, Spark and grouped Polars, a blockwise two-pass in ungrouped Polars.
+Each is within the plan's bound of the reference's value: the algorithm's
+distance from the exact moments (`StatProps`, proved for Welford and Chan as
+`StdModel.core_var_chan`, `core_cov_chan`, `core_corr_chan` in
+`float-bounds/`), plus half an ulp of the reference's rounding. Their
+`stat_algo` rows are `approxWithin "plan"`, as `sum_order`'s are, and
+`StatAlgo` keeps `StatProps` as what `GENERIC` and `WELFORD_CHAN` allow. The
+writers clamp an engine's variance and deviation at `0` and its correlation
+to `[-1, 1]`, NaN kept (`Dialect.clamp_stat`, Polars likewise): the exact
+value lies in the interval, so clamping never moves the engine's value
+further from it (`Stat.clamp_near`), and `var ≥ 0` and `|corr| ≤ 1`
+hold of every engine's result. The bounds differ in kind: `VAR_*` and
+`STDDEV_*` are relative to the spread, the deviation's half the variance's;
+`CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
+`√(Sxx · Syy)`, or relative only under a sign-definite precondition.
+`Report.epsilon` reports `VAR_*` and `STDDEV_*` columns (`Epsilon.statEps`);
+`COVAR_*` and `CORR` columns have no bound there yet. Snowflake keeps
+refusing these aggregates (Snowflake behaviour recorded privately).
+
+Consequences:
+
+- `stat_algo` is no longer a choice of the reference; it stays a choice of
+  the engines, and the reference's row is `EXACT`.
+- The statistical aggregates are order-free (`AggFn.orderFree`), so
+  `Measure.closedB`, `Rel.closedB` and `Rel.detPlan` hold of plans with them,
+  and `contract_sound_all` and `contract_sound_allowed_closed` cover them.
+  `QUANTILE_CONT` stays the only open measure.
+- `varOf_props`, `covOf_props` and `corrOf_props` are retired, and
+  `Rel.eval_allowed` rests on Lean's standard axioms alone.
+- A postcondition at a rounding boundary can move by an ulp, which
+  `sv.approx` absorbs.
+
+Why: before D30 the reference stated generic properties for these
+aggregates and let engine profiles refine them, so a plan reading one left
+the engine a choice of value. `Rel.FloatOpenSafe`, `contract_sound_allowed`'s
+side condition, failed for any such plan: `SELECT VAR_POP(x)` allowed many
+values while an order fixed one. Exact moments give one value with no
+algorithm imposed on engines, as D25 did for sums, retire three axioms, and
+are the state an exact incremental `VAR` needs (#918 Part B). The cost:
+engines go from refining exactly to within a plan's bound.
 
 ### D31. Double arithmetic is exact, rounded once
 
@@ -1879,3 +1881,59 @@ or `x · y` was provable, and the checker trusted eight axioms for them. The
 exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
+
+### D32. Doubles have one zero and one NaN
+
+Decided on [#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), merged 2026-10-31, and on #209.
+
+The reference profile reads doubles with one zero and one NaN:
+`zero_sign` `ONE_ZERO`, `nan_kind` `ONE_NAN`, `nan_equality` `NAN_IS_NAN`
+and `nan_order` `GREATEST`, above `+∞`. `-0.0` is `0.0` everywhere, so
+`1.0 / -0.0 = inf` where the plan asks for IEEE division, and `GROUP BY`,
+`DISTINCT`, joins, partitions and sorts see one zero and one NaN. The core
+keeps both zeros and the signed NaNs ([The value domain](#the-value-domain));
+the reference applies `FloatFormat.canon` to every input and output, as the
+writers do (`Dialect.canon`). Substrait's YAMLs leave the grouping and
+order of `-0.0` unspecified and compare NaN by IEEE's rules, so this is an
+override ([Overrides](reference-semantics.md#overrides)).
+
+Why: SQL users expect `-0.0 >= 0` and a NaN equal to itself, and DuckDB,
+Polars and Spark compare NaN so (`nan_equality` `NAN_IS_NAN` in their
+tables); IEEE's NaN, unequal to itself,
+would split `GROUP BY` and `DISTINCT` and drop rows from joins.
+
+### D33. No operation creates a NaN
+
+Decided on #185 ("no newly created NaNs") and [#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257), closed
+2026-11-02.
+
+A NaN from the data passes through. An operation on non-NaN inputs whose
+IEEE result is NaN raises: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`,
+`inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a
+fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and
+`-∞` (`nan_creation` raises; `Issue.domain`, `nanCase` in `Safety.lean`). A
+plan that states `on_division_by_zero: IEEE` gets NaN at `0.0 / 0.0`.
+
+Why: with no NaN in the inputs (`~_.v.isnan()` in `requires`), there is
+none in the outputs. Engines give NaN, NULL or an error there, and a plan
+verified to never raise reaches none of them, so no engine needs a shim
+([D21](#d21-tighten-the-reference-where-it-stays-practical)).
+
+### D34. No operation on finite doubles overflows to infinity
+
+Decided on [#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575), closed 2026-11-04.
+
+A `±∞` from the data passes through. An operation on finite doubles whose
+IEEE result is `±∞` raises: `+`, `-`, `*`, `/` and `power` that overflow
+(`1e308 * 10`, `power(10, 400)`, `power(0, -1)`), `exp` past `709.78`, and a
+`SUM`, `AVG`, variance, covariance or correlation of finite values that
+overflows (`Issue.infinite` in `Safety.lean`). `verify` rules the error out
+by an inferred precondition: proved from the bounds where they do it,
+otherwise listed in `Report.assumed` and checked on the data. `Rel.eval`
+keeps the IEEE value on the rows the precondition excludes, so the lift of
+DuckDB's SQL with `semantics="duckdb"` states DuckDB's result exactly.
+
+Why: with no NaN and no `±∞` in the inputs, there is none in the outputs,
+and every floating result has a usable bound. Substrait's YAMLs leave the
+overflow unspecified ([ST-9](../upstream/bugs/ST-9.json)), and the
+precondition rarely bites real queries (D21).

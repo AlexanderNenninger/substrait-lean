@@ -639,8 +639,11 @@ Where Snowflake can't match, the plan is refused (`UnsupportedError`) or the que
 raises when it would answer differently:
 
 * FETCH over a named table is refused: Snowflake tables have no row order.
-  So is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
-  the additions.
+  A `SUM` or `AVG` of doubles runs natively, within the plan's bound of the
+  reference's correctly rounded sum
+  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
+  over a moving window frame the writer adds the frame's values anew
+  (`window_float_sum`).
   Windows and sorts are refused too, unless you pass `deterministic=True` to
   promise there are no ties on their keys (a contract report's
   `deterministic` says so for windows).

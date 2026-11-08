@@ -137,7 +137,8 @@ other pages link here.
   ([duckdb-exec-filter-pushdown](../characterization/duckdb/facts/duckdb-exec-filter-pushdown.json),
   [DD-7](../upstream/bugs/DD-7.json); `Safety.lean`'s header).
 - Doubles. Lean's `Float` is an opaque `extern` to C `double`, trusted to be
-  IEEE binary64 for arithmetic. The conversions between integers, decimals
+  IEEE binary64 where the model still calls it: `pow`, `log` and the other
+  libm functions. The conversions between integers, decimals
   and doubles are computed exactly (`Conversions.lean`), behind `opaque`
   constants with their proved properties, and `#guard`s compare them with the
   native ones; an integer or decimal that IEEE would round to `±∞` (from
@@ -202,8 +203,13 @@ other pages link here.
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
   plan Lean writes back, and the laws on random data). The evaluators behind
   black boxes and regular expressions (`implemented_by` in `BlackBox.lean`,
-  `Regex.lean`, `Digest.lean`, `VarcharCasts.lean`) are read by no proof;
-  the proofs use only each black box's declared laws.
+  `Regex.lean` and `Digest.lean`, and `Text.lean`'s eight: `upper`, `lower`,
+  `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256`) are
+  read by no proof;
+  the proofs use only each black box's declared laws. The search evaluators
+  (`implemented_by` in `LoweringSearch.lean`, `LiftSearch.lean` and
+  `Obligations.lean`) read profiles, functions and hints while a generator
+  or a table check elaborates; no theorem reads them.
 
 ## The modules
 
