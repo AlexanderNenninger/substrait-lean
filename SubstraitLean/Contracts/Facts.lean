@@ -1217,9 +1217,6 @@ def termDiff (fs : List Fact) (a b : Expr) : Option Bound :=
   | some (i, c₁), some (j, c₂) => (Fact.diffOf fs i j).map (·.add (.exact (c₁ - c₂)))
   | _, _ => none
 
-/-- No booleans or strings: only integers or NULL. -/
-def AVal.intOrNull (a : AVal) : Bool := !a.tt && !a.ff && !a.str
-
 /-- The difference, from the facts, within what interval arithmetic gives
 (which keeps the bound that shows it fits its width, #202). -/
 def subSharpen : Option Bound → AVal → AVal
@@ -1265,15 +1262,15 @@ def sharpen (fs : List Fact) (f : BinFn) (a b : Expr) (aa ab base : AVal) : AVal
   -- A fact bounds the difference of two numbers of one kind only.
   | .sub => if sameNk aa ab then subSharpen (termDiff fs a b) base else base
   -- Facts are about integers; strings compare by themselves.
-  | .lt => if aa.intOrNull then ltSharpen (termDiff fs a b) base else base
+  | .lt => if aa.intsOnly then ltSharpen (termDiff fs a b) base else base
   | .eq =>
       match termDiff fs a b with
-      | some d => if aa.intOrNull then eqSharpen d base else base
+      | some d => if aa.intsOnly then eqSharpen d base else base
       | none => neSharpen fs a b base
   | _ => base
 
 /-- `FALSE OR v`: `v` if it is a boolean, else NULL. -/
-def AVal.orFalse (a : AVal) : AVal := ⟨a.null || a.int.isSome || a.str, none, a.tt, a.ff, false, none, none⟩
+def AVal.orFalse (a : AVal) : AVal := { null := a.nonBool, tt := a.tt, ff := a.ff }
 
 /-- `p OR q` for a boolean `p`: TRUE where `p` is, else `q` on rows where
 `NOT p` holds (`bq` is `q` under that refinement). This proves guarded
@@ -1317,7 +1314,7 @@ theorem EnvMem.prune {env : List AVal} {row : Row} (h : EnvMem env row) :
   cases hi : env[i]? <;> simp_all [List.getD_eq_getElem?_getD]
 
 /-- `NULL OR v`: TRUE where `v` is, else NULL. -/
-def AVal.orNull (a : AVal) : AVal := ⟨a.null || a.ff || a.int.isSome || a.str, none, a.tt, false, false, none, none⟩
+def AVal.orNull (a : AVal) : AVal := { null := a.nonBool || a.ff, tt := a.tt }
 
 /-- `p OR q` for a `p` that is a boolean or NULL: as `orSplit`, and where `p`
 is NULL, TRUE only where `q` is (`bq` is `q` where `p` is not TRUE). This
@@ -1333,7 +1330,8 @@ def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr
       if f = .or ∧ (a.absD env fs ks).nonBool = false then
         orSplit (a.absD env fs ks)
           (b.absD (useFacts fs ((Expr.un .not a).refine env)) fs (a.cstrs false ++ ks))
-      else if f = .or ∧ (a.absD env fs ks).int.isNone = true ∧ (a.absD env fs ks).str = false then
+      else if f = .or ∧ (a.absD env fs ks).int.isNone = true ∧ (a.absD env fs ks).str = false ∧
+          (a.absD env fs ks).nested = false then
         orSplitNull (a.absD env fs ks)
           (b.absD (useFacts fs ((a.refineNeg env).map AVal.prune)) fs (a.cstrs false ++ ks))
       else sharpen fs f a b (a.absD env fs ks) (b.absD env fs ks)
@@ -1344,7 +1342,11 @@ def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr
       (if ac.tt then t.absD (useFacts fs (c.refine env)) fs (c.cstrs true ++ ks) else AVal.bot).join
         (if ac.nonBool || ac.ff then e.absD (useFacts fs (c.refineNeg env)) fs (c.cstrs false ++ ks)
          else AVal.bot)
-  | .hof f l b => narrowAll ks (.hof f l b) f.abs
+  -- The body over an element of the list, without the row's facts and
+  -- assumptions, which name the row's columns (#925).
+  | .hof f l b => narrowAll ks (.hof f l b) <|
+      let al := l.absD env fs ks
+      f.abs al (b.absD (al.elemsOf :: env) [] [])
 
 theorem Bound.mem_exact_iff {k i : Int} : (Bound.exact k).Mem i ↔ i = k := by
   simp only [Bound.Mem, Bound.exact, Option.some.injEq]
@@ -1470,13 +1472,13 @@ theorem subSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa ab base :
 
 /-- A value of an abstraction with no booleans or strings that is not a
 number is NULL. -/
-theorem AVal.null_of_intOrNull {aa : AVal} {v : Value} (hint : aa.intOrNull = true) (h : aa.Mem v)
+theorem AVal.null_of_intsOnly {aa : AVal} {v : Value} (hint : aa.intsOnly = true) (h : aa.Mem v)
     (hv : v.numOf? = none) : v = .null := by
-  simp only [AVal.intOrNull, Bool.and_eq_true, Bool.not_eq_true'] at hint
+  simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_false_iff] at hint
   cases v <;> (try rename_i bb; cases bb) <;> simp_all [AVal.Mem, Value.numOf?]
 
 theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVal}
-    (hfs : FactsHold fs row) (hint : aa.intOrNull = true) (haa : aa.Mem (a.eval row))
+    (hfs : FactsHold fs row) (hint : aa.intsOnly = true) (haa : aa.Mem (a.eval row))
     (hbase : base.Mem (BinFn.apply .lt (a.eval row) (b.eval row))) :
     (ltSharpen (termDiff fs a b) base).Mem (BinFn.apply .lt (a.eval row) (b.eval row)) := by
   cases hd : termDiff fs a b with
@@ -1497,16 +1499,16 @@ theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
           rw [ite_eq_left_of_eq_true _ _ (eq_self k)] at hbase
           have hm := termDiff_sound hd hfs hu hw
           by_cases hlt : u < w
-          · simp only [hlt, decide_true, AVal.Mem] at hbase ⊢
+          · simp only [hlt, decide_true, AVal.Mem, AVal.MemR, Bool.cond_true] at hbase ⊢
             simp [hbase, canLt_of_lt hm (Bound.mem_exact 0) (by omega)]
-          · simp only [hlt, decide_false, AVal.Mem] at hbase ⊢
+          · simp only [hlt, decide_false, AVal.Mem, AVal.MemR, Bool.cond_false] at hbase ⊢
             simp [hbase, canGe_of_le hm (Bound.mem_exact 0) (by omega)]
         · rename_i hkk; rw [ite_eq_right_of_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
       | none =>
         rw [Value.numOf?_some hva, BinFn.cmp_num_other (.inr rfl) k u hvb] at hbase ⊢; exact hbase
     | none =>
       -- Not a number: NULL, whose comparison is NULL.
-      rw [AVal.null_of_intOrNull hint haa hva] at hbase ⊢
+      rw [AVal.null_of_intsOnly hint haa hva] at hbase ⊢
       have : BinFn.apply .lt .null (b.eval row) = .null := by
         cases b.eval row <;> simp [BinFn.apply, Value.numPair]
       rw [this] at hbase ⊢; exact hbase
@@ -1520,7 +1522,7 @@ theorem BinFn.ddiv_int_or_null (v w : Value) :
   simp only [BinFn.apply]; split <;> (try split) <;> simp
 
 theorem eqSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVal} {d : Bound}
-    (hfs : FactsHold fs row) (hd : termDiff fs a b = some d) (hint : aa.intOrNull = true)
+    (hfs : FactsHold fs row) (hd : termDiff fs a b = some d) (hint : aa.intsOnly = true)
     (haa : aa.Mem (a.eval row)) (hbase : base.Mem (BinFn.apply .eq (a.eval row) (b.eval row))) :
     (eqSharpen d base).Mem (BinFn.apply .eq (a.eval row) (b.eval row)) := by
   simp only [eqSharpen]
@@ -1539,17 +1541,17 @@ theorem eqSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
         have hm := termDiff_sound hd hfs hu hw
         by_cases huw : u = w
         · subst huw
-          simp only [beq_self_eq_true, AVal.Mem] at hbase ⊢
+          simp only [beq_self_eq_true, AVal.Mem, AVal.MemR, Bool.cond_true] at hbase ⊢
           simp [hbase, canEq, canGe_of_le hm (Bound.mem_exact 0) (by omega),
             canGe_of_le (Bound.mem_exact 0) hm (by omega)]
         · have hne : (u == w) = false := by simpa using huw
-          simp only [hne, AVal.Mem] at hbase ⊢
+          simp only [hne, AVal.Mem, AVal.MemR, Bool.cond_false] at hbase ⊢
           simp [hbase, canNe_of_ne hm (Bound.mem_exact 0) (by omega)]
       · rename_i hkk; rw [ite_eq_right_of_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
     | none =>
       rw [Value.numOf?_some hva, BinFn.cmp_num_other (.inl rfl) k u hvb] at hbase ⊢; exact hbase
   | none =>
-    rw [AVal.null_of_intOrNull hint haa hva] at hbase ⊢
+    rw [AVal.null_of_intsOnly hint haa hva] at hbase ⊢
     have : BinFn.apply .eq .null (b.eval row) = .null := by
       cases b.eval row <;> simp [BinFn.apply, Value.numPair]
     rw [this] at hbase ⊢; exact hbase
@@ -1710,12 +1712,13 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rw [ite_eq_left hf]
           rcases AVal.mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ | ⟨_, hv', hs⟩ | ⟨_, hv' | hv', hs⟩ <;>
             rw [hv'] <;> (try cases ‹NumKind›) <;>
-            simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem, NumKind.val, AVal.MemNum]
+            simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem, NumKind.val, AVal.MemNum, AVal.nonBool,
+              AVal.nested]
         · simp [AVal.nonBool, hs] at hnb
         · simp [AVal.nonBool, hs] at hnb
       split
       · rename_i _ hc
-        obtain ⟨rfl, hni, hns⟩ := hc
+        obtain ⟨rfl, hni, hns, hnn⟩ := hc
         have ha := Expr.absD_sound h hfs hks a
         rcases AVal.mem_cases ha with ⟨hv, hn⟩ | ⟨_, _, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩ |
             ⟨_, _, hs⟩
@@ -1728,7 +1731,8 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rcases AVal.mem_cases hq with ⟨hv', hn'⟩ | ⟨_, _, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
               ⟨_, hv', hs⟩ | ⟨_, hv' | hv', hs⟩ <;>
             rw [hv'] <;> (try cases ‹NumKind›) <;>
-            simp_all [BinFn.apply, or3, AVal.orNull, AVal.Mem, NumKind.val, AVal.MemNum]
+            simp_all [BinFn.apply, or3, AVal.orNull, AVal.Mem, NumKind.val, AVal.MemNum, AVal.nonBool,
+              AVal.nested]
         · simp [hb] at hni
         · rw [hv]
           apply AVal.mem_join_left
@@ -1745,9 +1749,10 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rcases AVal.mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
               ⟨_, hv', hs⟩ | ⟨_, hv' | hv', hs⟩ <;>
             rw [hv'] <;> (try cases ‹NumKind›) <;>
-            simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem, NumKind.val, AVal.MemNum]
+            simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem, NumKind.val, AVal.MemNum, AVal.nonBool,
+              AVal.nested]
         · simp [hs] at hns
-        · simp [hs] at hns
+        · simp [hs] at hnn
       · exact sharpen_sound f a b hfs (Expr.absD_sound h hfs hks a) (Expr.absD_sound h hfs hks b)
           (BinFn.abs_sound f (Expr.absD_sound h hfs hks a) (Expr.absD_sound h hfs hks b))
   | .ifThen c t e => by
@@ -1778,7 +1783,9 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
         have hf : (c.eval row).isTrue = false := by simpa using hct
         exact Expr.absD_sound (useFacts_sound hfs (Expr.refineNeg_sound env c h hf)) hfs
           (KsHold.cons_cstrs hf hks) e
-  | .hof f _ _ => narrowAll_sound hks (HoFn.abs_sound f _ _)
+  | .hof f l b => narrowAll_sound hks
+      (HoFn.abs_sound f (Expr.absD_sound h hfs hks l) fun _ hx =>
+        Expr.absD_sound (h.cons hx) (by simp [FactsHold]) (by simp [KsHold]) b)
 
 /-- `absD`, and TRUE for a condition the facts carry whole (#597): an
 `ensures` that restates a `requires` the plan keeps. -/

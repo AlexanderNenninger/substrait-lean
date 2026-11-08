@@ -50,7 +50,7 @@ bound (no NULL, no booleans, no strings). -/
 def envBounds (E : List AVal) : List (Nat × NumKind × Bound) :=
   (List.range E.length).filterMap fun j =>
     let a := E.getD j AVal.top
-    if a.null = false ∧ a.tt = false ∧ a.ff = false ∧ a.str = false then
+    if a.null = false ∧ a.intsOnly = true then
       match a.int, a.nk with
       | some b, some k => some (j, k, b)
       | _, _ => none
@@ -122,7 +122,9 @@ theorem envCond_of_mem {E : List AVal} {row : Row} (h : EnvMem E row) :
   simp only [List.getD_eq_getElem?_getD] at hj'
   split at hj'
   · rename_i hc
-    obtain ⟨hn, htt, hff, hs⟩ := hc
+    obtain ⟨hn, hio⟩ := hc
+    simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+      Bool.or_eq_false_iff] at hio
     split at hj'
     · rename_i b' k₀ hi hk
       simp only [Option.some.injEq, Prod.mk.injEq] at hj'
@@ -131,12 +133,12 @@ theorem envCond_of_mem {E : List AVal} {row : Row} (h : EnvMem E row) :
       have hm := h' j'
       have hv' : row.getD j' .null = row[j']?.getD .null := List.getD_eq_getElem?_getD ..
       rcases AVal.mem_cases hm with ⟨hv, hn'⟩ | ⟨k', i, b'', hv, hb'', hmem, hk'⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
-          ⟨_, _, hs', _⟩ | ⟨_, _, ht, _⟩
+          ⟨_, _, hs', _⟩ | ⟨_, _, ht⟩
       · simp_all
       · rw [hi] at hb''; cases hb''
         rw [hk] at hk'; simp only [Option.all_some, beq_iff_eq] at hk'; subst hk'
         exact boundConds_isTrue (hv'.trans hv) hmem e he
-      all_goals simp_all
+      all_goals simp_all [AVal.nested]
     · cases hj'
   · cases hj'
 
@@ -182,12 +184,17 @@ def geTransfer (env : List AVal) (i j : Nat) (strict : Bool) : List AVal :=
   let ij : Option Bound := match aj.int, ai.int with
     | some bj, some bi => some (bj.meet ⟨none, bi.hi.map (· - d)⟩)
     | _, _ => none
+  -- Two lists (structs) compare, a list with a struct does not.
   let ai' : AVal :=
-    ⟨ai.null, ii, ai.tt && (aj.tt || aj.ff), ai.ff && (aj.tt || aj.ff), ai.str && aj.str, ai.strs,
-      ai.nk.orElse fun _ => aj.nk⟩
+    { ai with
+      int := ii, tt := ai.tt && (aj.tt || aj.ff), ff := ai.ff && (aj.tt || aj.ff),
+      str := ai.str && aj.str, nk := ai.nk.orElse (fun _ => aj.nk), list := ai.list && aj.list,
+      struct := ai.struct && aj.struct }
   let aj' : AVal :=
-    ⟨aj.null, ij, aj.tt && (ai.tt || ai.ff), aj.ff && (ai.tt || ai.ff), aj.str && ai.str, aj.strs,
-      aj.nk.orElse fun _ => ai.nk⟩
+    { aj with
+      int := ij, tt := aj.tt && (ai.tt || ai.ff), ff := aj.ff && (ai.tt || ai.ff),
+      str := aj.str && ai.str, nk := aj.nk.orElse (fun _ => ai.nk), list := aj.list && ai.list,
+      struct := aj.struct && ai.struct }
   refineCol (refineCol env i fun _ => ai') j fun _ => aj'
 
 def cmpAtom (env : List AVal) : Expr → List AVal
@@ -272,9 +279,11 @@ theorem AVal.mem_transfer {a b a' : AVal} {u v : Value} (hu : a.Mem u) (hv : b.M
     (hk : u.kind = v.kind) (hn : a'.null = a.null) (htt : a'.tt = (a.tt && (b.tt || b.ff)))
     (hff : a'.ff = (a.ff && (b.tt || b.ff))) (hs : a'.str = (a.str && b.str))
     (hss : a'.strs = a.strs) (hnk : a'.nk = a.nk.orElse fun _ => b.nk)
+    (hl : a'.list = (a.list && b.list)) (hel : a'.elems = a.elems) (hc : a'.card = a.card)
+    (hst : a'.struct = (a.struct && b.struct)) (hfs : a'.fields = a.fields)
     (hi : ∀ (k : NumKind) n, u = k.val n → ∃ c, a'.int = some c ∧ c.Mem n) : a'.Mem u := by
   rcases AVal.mem_cases hu with ⟨rfl, h⟩ | ⟨k, n, _, rfl, _, _, hk'⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ |
-      ⟨_, rfl, h1, h2⟩ | ⟨_, rfl | rfl, h1, h2, h3⟩
+      ⟨_, rfl, h1, h2⟩ | ⟨vs, rfl | rfl, -⟩
   · simpa [AVal.Mem, hn] using h
   · obtain ⟨c, hc, hm⟩ := hi k n rfl
     refine AVal.mem_val.mpr ⟨c, hc, hm, ?_⟩
@@ -286,6 +295,14 @@ theorem AVal.mem_transfer {a b a' : AVal} {u v : Value} (hu : a.Mem u) (hv : b.M
       obtain ⟨m, rfl⟩ := Value.kind_val_eq hk
       obtain ⟨_, _, _, hb⟩ := AVal.mem_val.mp hv
       simpa using hb
+  rotate_left 3
+  -- A list (a struct) against a list (a struct): its length and elements kept.
+  · cases v <;> simp [Value.kind] at hk <;> (try omega)
+    obtain ⟨h1, h2, h3⟩ := hu
+    exact ⟨by simp [hl, h1, hv.1], hc ▸ h2, hel ▸ h3⟩
+  · cases v <;> simp [Value.kind] at hk <;> (try omega)
+    obtain ⟨h1, h2⟩ := hu
+    exact ⟨by simp [hst, h1, hv.1], hfs ▸ h2⟩
   all_goals
     cases v <;> simp [Value.kind] at hk <;> try omega
     all_goals simp_all [AVal.Mem]
@@ -383,7 +400,7 @@ theorem geTransfer_sound {env : List AVal} {row : Row} {i j : Nat} {strict : Boo
     EnvMem (geTransfer env i j strict) row := by
   unfold geTransfer
   refine refineCol_sound (refineCol_sound h ?_) ?_
-  · refine AVal.mem_transfer (h i) (h j) hk rfl rfl rfl rfl rfl rfl fun k a ha => ?_
+  · refine AVal.mem_transfer (h i) (h j) hk rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl fun k a ha => ?_
     obtain ⟨b, hb, hba⟩ := hi k a ha
     have hmi := h i; have hmj := h j
     rw [ha, AVal.mem_val] at hmi; rw [hb, AVal.mem_val] at hmj
@@ -399,7 +416,7 @@ theorem geTransfer_sound {env : List AVal} {row : Row} {i j : Nat} {strict : Boo
         subst hl
         have := hmj.1 l' hjl
         cases strict <;> simp at hba ⊢ <;> omega
-  · refine AVal.mem_transfer (h j) (h i) hk.symm rfl rfl rfl rfl rfl rfl fun k b hb => ?_
+  · refine AVal.mem_transfer (h j) (h i) hk.symm rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl fun k b hb => ?_
     obtain ⟨a, ha, hba⟩ := hj k b hb
     have hmi := h i; have hmj := h j
     rw [ha, AVal.mem_val] at hmi; rw [hb, AVal.mem_val] at hmj
