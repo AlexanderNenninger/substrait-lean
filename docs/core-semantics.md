@@ -1891,6 +1891,59 @@ exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
 
+### D34. An option differs from the reference only on its scope
+
+Decided 2026-11-08, by the maintainer after the theory review.
+
+Each option differs from the reference only on its scope, a predicate on the
+call's arguments and reference result stated beside the option. Engine rows
+are statements about the scope; agreement outside it is the function's base
+row. A plan depends on an option only where a call may be in its scope.
+
+In the model, `optionScope` (`SubstraitLean/Scopes.lean`) states each
+option's scope, one row per option of the catalogue in its order, and
+`Rel.AllowedP` reads it: a call (`CallExtra`) or an aggregate (`AggExtra`)
+takes another value than the reference's only where its table allows one of
+its group's options a behaviour the reference does not and the call is in
+that option's scope. A scope may be wider than where the behaviours differ,
+never narrower; one not pinned down yet is every call.
+
+| Option | Scope |
+|---|---|
+| `overflow` | the exact result is outside the type's range (an integer `SUM` outside 64 bits) |
+| `on_division_by_zero` | the divisor is zero |
+| `division_type` | the operands have opposite signs and the remainder is not zero |
+| `min_mod_neg_one` | `MIN % -1` |
+| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` of `+∞` and `−∞` |
+| `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
+| `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
+| `nan_equality`, `nan_order` | an argument is NaN, or holds one |
+| `nan_kind` | an argument or the reference result is NaN |
+| `on_domain_error`, `on_log_zero`, `substring_range`, `cast_failure`, `date_range` | the reference reports the issue at the call (a domain error, a failed cast, a date out of range) |
+| `negative_start` | a negative start |
+| `null_handling` | an argument is NULL |
+| `empty_group_aggregates` | an aggregate of no values |
+| the others (`rounding`, `sum_order`, `stat_algo`, `tie_*`, `shift_range`, …) | every call |
+
+`sum_order`'s true scope is a sum that is not exact; it is every call until
+the analyses can tell. An engine's own order of additions, overflow to `±∞`
+on the way included, is `sum_order`'s (`FloatSums`), so `agg.fsum`'s
+`nan_creation` and `float_overflow` are about the correctly rounded sum.
+
+Consequences:
+
+- `Rel.AllowedP` only narrows. `Rel.allowedP_reference`, `Rel.AllowedP_mono`
+  and `Rel.AllowedP_transfer` keep their statements.
+- The engines' functions show each of their deviations in an option's scope
+  (`Profile.duckdb_withinOk`, `Polars.written_within`). DuckDB's
+  `fmod(x, 0)` is NaN under `nan_creation`, since its table gives `fp.mod`
+  no other `on_division_by_zero`; Polars's NaN for `power` is a domain
+  error's (`on_domain_error`), since `power` has no `nan_creation`.
+- A plan's option dependency report keeps an option only where a call may be
+  in its scope, from the arguments' abstract values (`Expr.eval_dead`,
+  `Rel.AllowedP_transfer_live`, a follow-up), and reports the function's
+  base row's evidence where every option is dead.
+
 ### D36. Doubles have one zero and one NaN
 
 Decided on [#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), merged 2026-10-31, and on #209.

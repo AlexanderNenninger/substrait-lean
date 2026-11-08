@@ -293,6 +293,18 @@ do not meet (`rule_threshold`): a filter, `CASE` condition, grouping key or
 sort key on it keeps the same rows on both sides. Where they meet, the rows
 may differ, and no column's bound below or after it is marked proved.
 
+A comparison whose ranges meet can still be decided on the data (#929).
+[`Margin.lean`](../float-bounds/FloatBounds/Margin.lean) bounds a group's
+sum against the reference's from its own row count `n` and `Σ |xᵢ|`, in any
+order an engine adds: `(γₙ + u) · Σ(|xᵢ| + tiny)` (`StdModel.epsilon_group`).
+The engine computes a check per group from its `SUM(ABS(x))` `A`:
+`|fl(v − t)| > fl(cₙ · fl(A + n · tiny))`, `cₙ = (8n + 16) · 2⁻⁵³`, exact in
+doubles but for its two roundings. A group that passes is farther than twice
+the bound from `t` (`StdModel.check_sound`), so every evaluation of its sum,
+the check's and the filter's, lies on the reference's side of `t`
+(`margin_sound`, `StdModel.margin_check`). The factor 2 covers an engine
+that computes the sum twice, in two orders.
+
 Each column whose range leaves out zero also has a relative bound, `ε`
 over the least magnitude of the reference's value. A difference of nearly
 equal values has a range that reaches zero, so it gets none: cancellation

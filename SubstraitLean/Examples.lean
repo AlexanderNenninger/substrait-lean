@@ -9,6 +9,7 @@ import SubstraitLean.Retention
 import SubstraitLean.TouchedGroups
 import SubstraitLean.TouchedFrames
 import SubstraitLean.IncrementalAgg
+import SubstraitLean.IncrementalFloat
 import SubstraitLean.IncrementalMinMax
 import SubstraitLean.IncrementalSemi
 import SubstraitLean.Safety
@@ -295,6 +296,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.duckdb_sound
 #print axioms Substrait.Rel.duckdb_shim_sound
 #print axioms Substrait.Lowering.lowerRel_sound
+#print axioms Substrait.Lowering.lowerRelWith_sound
+#print axioms Substrait.Rel.duckdb_guardFree_sound
 #print axioms Substrait.Lowering.lower_correct
 #print axioms Substrait.Lowering.duckdb_exact
 #print axioms Substrait.liftDuckDB.total
@@ -315,6 +318,8 @@ end Substrait.Examples
 #print axioms Substrait.LinearAgg.aggregate_maintained
 #print axioms Substrait.LinearAgg.distinct_state
 #print axioms Substrait.LinearAgg.distinct_maintained
+#print axioms Substrait.LinearAgg.floatState_sound
+#print axioms Substrait.LinearAgg.fsum_no_drift
 #print axioms Substrait.ExtremeAgg.done_merge
 #print axioms Substrait.ExtremeAgg.extreme_maintained
 #print axioms Substrait.ExtremeAgg.map_maintained
