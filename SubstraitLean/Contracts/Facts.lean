@@ -754,8 +754,10 @@ theorem linFacts_sound {n : Nat} {row row' : Row}
               intro k x y hx hy
               rw [hcol] at hx
               obtain ⟨y', hy', hxy⟩ := Expr.linTerm_of_num hl hx
+              have hn := (Expr.linTerm_norm hl hy' (by rw [hx]; exact NumKind.val_ne_null _ _)).1
               rw [hpre j hjn, hy'] at hy
               obtain ⟨_, hy⟩ := NumKind.val_inj₂ hy; subst hy
+              rw [hxy, hn]
               simp only [Bound.Mem, Bound.exact, Option.some.injEq]
               constructor <;> intro _ h <;> subst h <;> omega
             · intro g hg; simp at hg
@@ -773,7 +775,7 @@ theorem FactsHold.shift_nulls {n : Nat} {fs : List Fact} {row : Row}
   | holds _ => simp [Fact.intsOnly] at hio
   | diff i j b =>
     intro k x y hx _; rw [hnull i] at hx; exact absurd hx.symm (NumKind.val_ne_null k x)
-  | ne i k c => intro hx; rw [hnull i] at hx; exact NumKind.val_ne_null k c hx.symm
+  | ne i k c => intro x hx; rw [hnull i] at hx; exact absurd hx.symm (NumKind.val_ne_null k x)
   | ratio i j _ => intro x y hx _; rw [hnull i] at hx; cases hx
 
 theorem positions_getD {m : List Nat} {row : Row} {i p : Nat} (hp : p ∈ positions m i) :
@@ -1394,7 +1396,7 @@ theorem canNe_of_ne {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) (h :
 
 theorem Fact.diffBound_sound {f : Fact} {row : Row} {i j : Nat} {d : Bound} {k : NumKind} {x y : Int}
     (hg : f.diffBound i j = some d) (hh : f.Holds row)
-    (hx : row.getD i .null = k.val x) (hy : row.getD j .null = k.val y) : d.Mem (x - y) := by
+    (hx : row.getD i .null = k.val x) (hy : row.getD j .null = k.val y) : d.Mem (k.norm x - k.norm y) := by
   cases f with
   | ne _ _ _ | ratio _ _ _ | holds _ => simp [Fact.diffBound] at hg
   | diff i' j' b =>
@@ -1418,8 +1420,9 @@ theorem foldl_meet_mem {z : Int} : ∀ {bs : List Bound} {b : Bound}, b.Mem z �
 
 theorem Fact.diffOf_sound {fs : List Fact} {row : Row} {i j : Nat} {d : Bound} {k : NumKind} {x y : Int}
     (hd : Fact.diffOf fs i j = some d) (hfs : FactsHold fs row)
-    (hx : row.getD i .null = k.val x) (hy : row.getD j .null = k.val y) : d.Mem (x - y) := by
-  have hall : ∀ b ∈ fs.filterMap (Fact.diffBound i j), b.Mem (x - y) := by
+    (hx : row.getD i .null = k.val x) (hy : row.getD j .null = k.val y) :
+    d.Mem (k.norm x - k.norm y) := by
+  have hall : ∀ b ∈ fs.filterMap (Fact.diffBound i j), b.Mem (k.norm x - k.norm y) := by
     intro b hb
     obtain ⟨f, hf, hg⟩ := List.mem_filterMap.mp hb
     exact Fact.diffBound_sound hg (hfs f hf) hx hy
@@ -1433,15 +1436,17 @@ theorem Fact.diffOf_sound {fs : List Fact} {row : Row} {i j : Nat} {d : Bound} {
 
 theorem termDiff_sound {fs : List Fact} {row : Row} {a b : Expr} {d : Bound} {k : NumKind} {u w : Int}
     (hd : termDiff fs a b = some d) (hfs : FactsHold fs row)
-    (hu : a.eval row = k.val u) (hw : b.eval row = k.val w) : d.Mem (u - w) := by
+    (hu : a.eval row = k.val u) (hw : b.eval row = k.val w) : d.Mem (k.norm u - k.norm w) := by
   unfold termDiff at hd
   split at hd
   · rename_i i c₁ j c₂ h₁ h₂
     obtain ⟨d₀, hd₀, rfl⟩ := Option.map_eq_some_iff.mp hd
     obtain ⟨x, hx, rfl⟩ := Expr.linTerm_of_num h₁ hu
     obtain ⟨y, hy, rfl⟩ := Expr.linTerm_of_num h₂ hw
+    rw [(Expr.linTerm_norm h₁ hx (by rw [hu]; exact NumKind.val_ne_null _ _)).1,
+      (Expr.linTerm_norm h₂ hy (by rw [hw]; exact NumKind.val_ne_null _ _)).1]
     have := Bound.mem_add (Fact.diffOf_sound hd₀ hfs hx hy) (Bound.mem_exact (c₁ - c₂))
-    have heq : x + c₁ - (y + c₂) = x - y + (c₁ - c₂) := by omega
+    have heq : k.norm x + c₁ - (k.norm y + c₂) = k.norm x - k.norm y + (c₁ - c₂) := by omega
     rw [heq]; exact this
   · cases hd
 
@@ -1519,7 +1524,7 @@ theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
         · rename_i hkk; subst hkk
           rw [ite_eq_left_of_eq_true _ _ (eq_self k)] at hbase
           have hm := termDiff_sound hd hfs hu hw
-          by_cases hlt : u < w
+          by_cases hlt : k.norm u < k.norm w
           · simp only [hlt, decide_true, AVal.Mem, AVal.MemR, Bool.cond_true] at hbase ⊢
             simp [hbase, canLt_of_lt hm (Bound.mem_exact 0) (by omega)]
           · simp only [hlt, decide_false, AVal.Mem, AVal.MemR, Bool.cond_false] at hbase ⊢
@@ -1560,14 +1565,14 @@ theorem eqSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
       · rename_i hkk; subst hkk
         rw [ite_eq_left_of_eq_true _ _ (eq_self k)] at hbase
         have hm := termDiff_sound hd hfs hu hw
-        by_cases huw : u = w
-        · subst huw
+        by_cases huw : k.norm u = k.norm w
+        · rw [huw] at hbase ⊢; rw [huw] at hm
           simp only [beq_self_eq_true, AVal.Mem, AVal.MemR, Bool.cond_true] at hbase ⊢
           simp [hbase, canEq, canGe_of_le hm (Bound.mem_exact 0) (by omega),
             canGe_of_le (Bound.mem_exact 0) hm (by omega)]
-        · have hne : (u == w) = false := by simpa using huw
+        · have hne : (k.norm u == k.norm w) = false := by simpa using huw
           simp only [hne, AVal.Mem, AVal.MemR, Bool.cond_false] at hbase ⊢
-          simp [hbase, canNe_of_ne hm (Bound.mem_exact 0) (by omega)]
+          simp [hbase, huw, canNe_of_ne hm (Bound.mem_exact 0) (by omega)]
       · rename_i hkk; rw [ite_eq_right_of_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
     | none =>
       rw [Value.numOf?_some hva, BinFn.cmp_num_other (.inl rfl) k u hvb] at hbase ⊢; exact hbase
@@ -1597,9 +1602,11 @@ theorem neSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
           cases r
           · simpa [AVal.Mem] using hbase
           · exfalso
-            have hx := eq_num (v := a.eval row) (by rw [hv]; rfl)
-            obtain ⟨y, hy, rfl⟩ := Expr.linTerm_of_num hl hx
-            exact hh (by rw [hy]; congr 1; omega)
+            obtain ⟨x', hx', hnk⟩ := eq_num (v := a.eval row) (by rw [hv]; rfl)
+            obtain ⟨y, hy, hyx⟩ := Expr.linTerm_of_num hl hx'
+            have hn := Expr.linTerm_norm hl hy (by rw [hx']; exact NumKind.val_ne_null _ _)
+            subst hyx
+            exact hh y hy (by rw [hn.2]; rw [hn.1] at hnk; omega)
         | null => exact hbase
         | _ =>
           exfalso
