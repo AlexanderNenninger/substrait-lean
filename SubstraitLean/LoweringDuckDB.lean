@@ -87,15 +87,11 @@ def exprJson : Expr → Json
       ("else", exprJson e)]
   | .hof .. => Json.mkObj [("unsupported", "a higher-order function")]
 
-/-- The constructs whose entries may differ from the native call. -/
-def unFns : List UnFn :=
-  FMath.all.map .fmath ++
-    [OverflowMode.silent, .saturate].flatMap fun m => [IntWidth.i8, .i16, .i32, .i64].map (.fit m)
-
-def binFns : List BinFn :=
-  [.fadd, .fsub, .fmul, .fdiv, .fmod, .fpow, .fatan2, .idiv, .imod] ++
-    [BitOp.and, .or, .xor, .shl, .shr].map .bit
-
+/-- The constructs a table's export looks at: every function with finite
+parameters, from the types themselves (`finite_values%`). A function with an
+infinite parameter (a message, a decimal scale) is native in every table. -/
+def unFns : List UnFn := finite_values% UnFn
+def binFns : List BinFn := finite_values% BinFn
 
 /-- The entries of a table that are not the native call. -/
 def tableJson {p : Profile} (L : Lowering p) : Json :=
