@@ -1761,7 +1761,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake has no interval type, so an interval result column is refused"
+   "snowflake": "refused: Snowflake has no interval type, so an interval result column is refused: run it with engine='duckdb' (see #852)"
   }
  },
  "win-keyset-pagination": {
