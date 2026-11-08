@@ -23,7 +23,7 @@ and the others are NULL. Checked against DataFusion 51:
   here they add in list order with native floats. `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.
 * `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`). Only
-  `--write-datafusion` refuses them on doubles (`Rel.floatExtremes`):
+  `--write-datafusion` refuses them on doubles (`DataFusion.floatExtremes`):
   DataFusion's grouped `MIN` of a group of +∞ is the largest finite double,
   and it skips NaN next to other values.
 * Grouping compares values exactly; doubles have one zero and one NaN

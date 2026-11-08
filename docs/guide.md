@@ -543,9 +543,11 @@ build on it like on any other precondition of a source.
   inferred bounds added, so a wrong bound makes the proof fail
   ([SubstraitLean/Infer.lean](../SubstraitLean/Infer.lean)).
 * Bounds are rounded inward to round numbers (`3 * 10**18`, `2**62`) and
-  timestamps to whole years (`ts.truncate("M")` needs
-  `_.ts >= datetime(1678, 1, 1)` and `_.ts < datetime(2262, 1, 1)`, the
-  range of nanosecond timestamps).
+  timestamps to whole years (`(ts + ibis.interval(days=1)).truncate("M")`
+  needs `_.ts < datetime(9999, 1, 1)`). A DATE or TIMESTAMP column lies in
+  0001-01-01 to 9999-12-31 by its type, and reading one outside fails
+  ([D32](core-semantics.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)),
+  so a column read needs no bound.
 * Other runtime errors get preconditions the same way:
 
   | Operation | Inferred precondition |
@@ -558,7 +560,7 @@ build on it like on any other precondition of a source.
   | `a.cast("int32")` | `(_.a >= -2**31)`, `(_.a < 2**31)` |
   | `ibis.literal("ab").repeat(n)` | `(_.n < 2**30)` |
   | `big * 2` of a `DECIMAL(38, 2)` | `(_.big >= -4 * 10**35)`, `(_.big < 5 * 10**35)` |
-  | `d + ibis.interval(days=10)` | `(_.d >= date(1, 1, 1))`, `(_.d < date(9999, 1, 1))` |
+  | `d + ibis.interval(days=10)` | `(_.d < date(9999, 1, 1))` |
 
   [test_infer_errors.py](../python/tests/test_infer_errors.py) has these
   cases.
@@ -582,7 +584,6 @@ per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")])
     cpu=samples.cpu.sum()
 )
 print(sv.verify(per_minute))
-# needs: (_.ts >= datetime(1, 1, 1)) on samples, inferred from `ts.truncate('minute')` ...
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```

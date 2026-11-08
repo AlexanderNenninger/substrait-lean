@@ -82,10 +82,16 @@ def typeEnvD : Nat → Json → AVal
       else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
       else if kind == "date" then some .date
       else none
-    -- `BIGINT` and timestamps (microseconds) are 64-bit: what makes `a / 2` safe.
-    let i64 := ["i64", "precisionTimestamp", "timestamp"]
-    if i64.contains kind then
+    -- `BIGINT` is 64-bit: what makes `a / 2` safe. A DATE or TIMESTAMP of the
+    -- reference lies in 0001-01-01 … 9999-12-31 by its type (D32,
+    -- `Value.InCalendar`): what makes `date_part` of a column read safe. The
+    -- source read checks it (`sverify.engine.Connection.put`).
+    if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
+    else if ["precisionTimestamp", "timestamp"].contains kind then
+      { null := nullable, int := some ⟨some Time.tsMin, some Time.tsMax⟩, nk := nk }
+    else if kind == "date" then
+      { null := nullable, int := some ⟨some Time.dayMin, some Time.dayMax⟩, nk := nk }
     else if ints.contains kind then { null := nullable, int := some Bound.top, nk := nk }
     else if ["string", "varchar", "fixedChar"].contains kind then
       { null := nullable, str := true }

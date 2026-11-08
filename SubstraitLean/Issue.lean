@@ -117,7 +117,7 @@ def wrapNum (v : Value) : Option Issue :=
 def domainIssue (r : Option Int) : Option Issue := if r.isSome then none else some .domain
 
 /-- `overflow` unless the argument `x` and the result `y` are in `[lo, hi]`:
-the dates and timestamps `chrono` represents, or DataFusion's nanoseconds. -/
+the reference's dates or timestamps (#251, D32). -/
 def rangeIssue (lo hi x y : Int) : Option Issue :=
   if between lo hi x && between lo hi y then none else some .overflow
 
@@ -136,17 +136,18 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
   | .dateTrunc u, .ts ts | .dateTrunc u, .tod ts =>
     if u.calendar then
-      if ts ≤ Time.nsMax ∧ Time.nsMin ≤ Time.trunc u ts then none else some .overflow
+      if ts ≤ Time.tsMax ∧ Time.tsMin ≤ Time.trunc u ts then none else some .overflow
     else wrapIf (Time.trunc u ts)
-  | .dayTrunc u, .date d => rangeIssue Time.nsDayMin Time.nsDayMax d (Time.truncDay u d)
+  | .dayTrunc u, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.truncDay u d)
   | .addMonths m false, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.addMonths m d)
   -- The reference's dates (#807); DuckDB raises past its timestamps' years.
   | .dateTime, .date d => rangeIssue Time.dayMin Time.dayMax d d
-  | .addMonths m true, .ts ts => rangeIssue Time.partMin Time.partMax ts (Time.addMonthsUs m ts)
-  -- chrono's calendar, which fails outside its years.
-  | .timeOfDay, .ts ts | .timeOfDay, .tod ts | .strftime _, .ts ts => rangeIssue Time.partMin Time.partMax ts ts
-  -- DataFusion bins in nanoseconds, which wrap around outside ±2⁶³.
-  | .bucket k o, .ts ts => rangeIssue Time.nsMin Time.nsMax ts (Time.bucket k o ts)
+  -- The calendar on the reference's timestamps (D32).
+  | .addMonths m true, .ts ts => rangeIssue Time.tsMin Time.tsMax ts (Time.addMonthsUs m ts)
+  | .timeOfDay, .ts ts | .timeOfDay, .tod ts | .strftime _, .ts ts | .datePart _, .ts ts =>
+    rangeIssue Time.tsMin Time.tsMax ts ts
+  | .dayPart _, .date d => rangeIssue Time.dayMin Time.dayMax d d
+  | .bucket k o, .ts ts => rangeIssue Time.tsMin Time.tsMax ts (Time.bucket k o ts)
   | .fmath f, .float c => domainIssue (f.apply c)
   | .decimal p _, v => match v.unscaled? with
     | some i => if fitsDigits p i then none else some .overflow

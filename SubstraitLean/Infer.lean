@@ -232,16 +232,20 @@ def atIssue (env : List AVal) (fs : List Fact) : Issue × Expr → Except String
   | (.wraps, .un (.wrap n) a) => need env fs (-(2 ^ (n - 1))) (2 ^ (n - 1) - 1) a
   | (.wraps, .un (.dateTrunc u) a) => need env fs (minI64 + span u) maxI64 a
   | (.wraps, e) => need env fs minI64 maxI64 e
-  | (.overflow, .un (.dateTrunc u) a) => need env fs (Time.nsMin + span u) Time.nsMax a
-  | (.overflow, .un (.dayTrunc u) a) =>
-    need env fs (Time.nsDayMin + spanDays u) Time.nsDayMax a
+  -- 0001-01-01 is a Monday and starts every month, quarter and year, so the
+  -- truncation of an operand in the reference's range is in it (D32).
+  | (.overflow, .un (.dateTrunc _) a) => need env fs Time.tsMin Time.tsMax a
+  | (.overflow, .un (.dayTrunc _) a) =>
+    need env fs Time.dayMin Time.dayMax a
   | (.overflow, .un (.addMonths m false) a) =>
     need env fs Time.dayMin Time.dayMax (.un (.addMonths m false) a)
   | (.overflow, .un (.addMonths m true) a) =>
-    need env fs Time.partMin Time.partMax (.un (.addMonths m true) a)
-  | (.overflow, .un .timeOfDay a) | (.overflow, .un (.strftime _) a) =>
-    need env fs Time.partMin Time.partMax a
-  | (.overflow, .un (.bucket k _) a) => need env fs (Time.nsMin + k) Time.nsMax a
+    need env fs Time.tsMin Time.tsMax (.un (.addMonths m true) a)
+  | (.overflow, .un .timeOfDay a) | (.overflow, .un (.strftime _) a)
+  | (.overflow, .un (.datePart _) a) =>
+    need env fs Time.tsMin Time.tsMax a
+  | (.overflow, .un (.dayPart _) a) => need env fs Time.dayMin Time.dayMax a
+  | (.overflow, .un (.bucket k _) a) => need env fs (Time.tsMin + k) Time.tsMax a
   | (.overflow, .bin .dateAdd a b) => do
     -- Both the date and the result are in range.
     let x ← need env fs Time.dayMin Time.dayMax a

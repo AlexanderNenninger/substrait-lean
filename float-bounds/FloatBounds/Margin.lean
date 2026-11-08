@@ -177,6 +177,195 @@ theorem StdModel.check_sound {v t A m : ℝ} {n : ℕ} (hn1 : 1 ≤ n) (hn : (n 
     linarith
   exact lt_of_mul_lt_mul_right this (by linarith)
 
+/-! ## `AVG` -/
+
+/-- **A group's mean, any order, against the reference's** (D25): the
+engine's `fl(s / n)` is within `(γₙ + 4u) · mag xs / n` of a value within
+`u` of the exact mean, relatively. -/
+theorem StdModel.epsilon_group_avg {xs : List ℝ} {s r : ℝ} (h : M.Summed xs s)
+    (hfix : ∀ x ∈ xs, M.fl x = x) (hne : xs ≠ []) (hn : (xs.length : ℝ) ≤ 2 ^ 32)
+    (hov : 2 * mag xs ≤ maxFinite)
+    (hr : |r - xs.sum / xs.length| ≤ u * |xs.sum / xs.length|) :
+    |M.fl (s / xs.length) - r| ≤ (gamma xs.length + 4 * u) * mag xs / xs.length := by
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
+  have a := StdModel.Summed.near M h hfix hn hov
+  have b : |xs.sum| ≤ mag xs := (Rnd.abs_sum_le_absSum xs).trans (absSum_le_mag xs)
+  have hl : (0 : ℝ) < xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have hl1 : (1 : ℝ) ≤ xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have h2n := nu_lt hn
+  have hg : gamma xs.length ≤ 2 * (xs.length * u) := by
+    have : (xs.length : ℝ) * u ≤ 1 / 2 := by push_cast at h2n; linarith
+    have := gamma_le_two this; linarith
+  have hg0 := gamma_nonneg (n := xs.length) (by push_cast at h2n; nlinarith)
+  have hg1 : gamma xs.length ≤ 1 := by
+    have : (xs.length : ℝ) * u ≤ 1 / 2 := by push_cast at h2n; linarith
+    linarith
+  set n : ℝ := (xs.length : ℝ) with hn'
+  set mg := mag xs with hmg
+  have hm0 : 0 ≤ mg := mag_nonneg xs
+  -- `mag ≥ n · tiny`, so `tiny ≤ mag / n`.
+  have hmt : n * tiny ≤ mg := by
+    rw [hmg, mag_eq]; have : 0 ≤ (xs.map abs).sum := List.sum_nonneg (by simp); linarith
+  have hs : |s| ≤ 2 * mg := by
+    have := abs_sub_abs_le_abs_sub s xs.sum
+    have : gamma xs.length * mg ≤ mg := by nlinarith
+    linarith
+  have hsn : |s / n| ≤ maxFinite := by
+    rw [abs_div, abs_of_pos hl, div_le_iff₀ hl]; nlinarith
+  have e := M.err (s / n) hsn
+  have hd : |s / n - xs.sum / n| ≤ gamma xs.length * mg / n := by
+    rw [← sub_div, abs_div, abs_of_pos hl]; exact div_le_div_of_nonneg_right a hl.le
+  have hr' : u * |xs.sum / n| ≤ u * mg / n := by
+    rw [abs_div, abs_of_pos hl, mul_div_assoc]
+    exact mul_le_mul_of_nonneg_left (div_le_div_of_nonneg_right b hl.le) hu.le
+  have hsn2 : |s / n| ≤ 2 * mg / n := by
+    rw [abs_div, abs_of_pos hl]; exact div_le_div_of_nonneg_right hs hl.le
+  have htn : tiny ≤ mg / n := by rw [le_div_iff₀ hl]; linarith
+  have k : u * (|s / n| + tiny) ≤ 3 * u * mg / n := by
+    have : |s / n| + tiny ≤ 3 * mg / n := by
+      have : 2 * mg / n + mg / n = 3 * mg / n := by ring
+      linarith
+    calc u * (|s / n| + tiny) ≤ u * (3 * mg / n) := mul_le_mul_of_nonneg_left this hu.le
+      _ = 3 * u * mg / n := by ring
+  calc |M.fl (s / n) - r|
+      = |(M.fl (s / n) - s / n) + (s / n - xs.sum / n) - (r - xs.sum / n)| := by ring_nf
+    _ ≤ |M.fl (s / n) - s / n| + |s / n - xs.sum / n| + |r - xs.sum / n| := by
+        have := abs_sub (M.fl (s / n) - s / n + (s / n - xs.sum / n)) (r - xs.sum / n)
+        have := abs_add_le (M.fl (s / n) - s / n) (s / n - xs.sum / n)
+        linarith
+    _ ≤ 3 * u * mg / n + gamma xs.length * mg / n + u * mg / n := by linarith
+    _ = (gamma xs.length + 4 * u) * mg / n := by ring
+
+/-- **The check for an `AVG`, computed in doubles, is sound**: a group whose
+engine mean `v` passes `|fl(v − t)| > fl(cₙ · fl(fl(A + n · tiny) / n))`,
+`cₙ = (8n + 32) · 2⁻⁵³`, is farther than `2E` from `t`, for
+`E = (γₙ + 4u) · m / n` and any `m ≥ n · tiny` with `m (1 − γₙ) ≤ A + n · tiny`. -/
+theorem StdModel.check_sound_avg {v t A m : ℝ} {n : ℕ} (hn1 : 1 ≤ n) (hn : (n : ℝ) ≤ 2 ^ 32)
+    (hm : m * (1 - gamma n) ≤ A + n * tiny) (hmt : n * tiny ≤ m)
+    (hov1 : |v - t| ≤ maxFinite) (hov2 : A + n * tiny ≤ maxFinite)
+    (hov4 : M.fl (A + n * tiny) / n ≤ maxFinite)
+    (hov3 : (8 * n + 32) * u * M.fl (M.fl (A + n * tiny) / n) ≤ maxFinite)
+    (hpass : M.fl ((8 * n + 32) * u * M.fl (M.fl (A + n * tiny) / n)) < |M.fl (v - t)|) :
+    2 * ((gamma n + 4 * u) * m / n) < |v - t| := by
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
+  have h2n := nu_lt hn
+  have hg : gamma n ≤ 2 * (n * u) := by
+    have : (n : ℝ) * u ≤ 1 / 2 := by push_cast at h2n; linarith
+    have := gamma_le_two this; linarith
+  have hg0 := gamma_nonneg (n := n) (by push_cast at h2n; nlinarith)
+  have hn1' : (1 : ℝ) ≤ n := by exact_mod_cast hn1
+  have hl : (0 : ℝ) < n := by linarith
+  have hw : (n : ℝ) * u ≤ 1 / 2 ^ 21 := by
+    have := mul_le_mul hn hu' hu.le (by norm_num); linarith [show (2 : ℝ) ^ 32 * (1 / 2 ^ 53) = 1 / 2 ^ 21 by norm_num]
+  have hu1 : u ≤ 1 / 2 ^ 53 := hu'
+  have hm0 : 0 ≤ m := le_trans (by positivity) hmt
+  have h12 : (1 : ℝ) / 2 ≤ 1 - gamma n := by linarith
+  set P := A + n * tiny with hP
+  set X := |v - t| with hX
+  -- `P ≥ m / 2 ≥ n tiny / 2`, so `P / n ≥ tiny / 2`.
+  have hPm : m ≤ 2 * P := by have := mul_le_mul_of_nonneg_left h12 hm0; linarith
+  have hP0 : 0 ≤ P := by linarith
+  set Pn := P / n with hPn
+  have hPnt : tiny ≤ 2 * Pn := by
+    have : tiny ≤ 2 * P / n := by rw [le_div_iff₀ hl]; linarith
+    rw [hPn]; linarith [show 2 * P / n = 2 * (P / n) by ring]
+  have hPn0 : 0 ≤ Pn := by positivity
+  -- `fl P ≥ P (1 − u) − u tiny`.
+  have e1 := M.err P (by rw [abs_of_nonneg hP0]; exact hov2)
+  rw [abs_of_nonneg hP0] at e1
+  have f1 : P * (1 - u) - u * tiny ≤ M.fl P := by linarith [(abs_le.1 e1).1]
+  have f1' : 0 ≤ M.fl P := M.nonneg _ hP0
+  -- `Q = fl P / n ≥ Pn (1 − u) − u tiny`.
+  set Q := M.fl P / n with hQ
+  have hQ0 : 0 ≤ Q := by positivity
+  have fq : Pn * (1 - u) - u * tiny ≤ Q := by
+    have : (P * (1 - u) - u * tiny) / n ≤ Q := div_le_div_of_nonneg_right f1 hl.le
+    have h2 : u * tiny / n ≤ u * tiny := div_le_self (by positivity) hn1'
+    have h3 : (P * (1 - u) - u * tiny) / n = Pn * (1 - u) - u * tiny / n := by rw [hPn]; ring
+    linarith
+  have e2 := M.err Q (by rw [abs_of_nonneg hQ0]; exact hov4)
+  rw [abs_of_nonneg hQ0] at e2
+  have f2 : Q * (1 - u) - u * tiny ≤ M.fl Q := by linarith [(abs_le.1 e2).1]
+  have f2' : 0 ≤ M.fl Q := M.nonneg _ hQ0
+  -- `fl Q ≥ Pn (1 − 2u) − 2u tiny`.
+  have fq2 : Pn * (1 - 2 * u) - 2 * (u * tiny) ≤ M.fl Q := by
+    have : (Pn * (1 - u) - u * tiny) * (1 - u) ≤ Q * (1 - u) :=
+      mul_le_mul_of_nonneg_right fq (by linarith)
+    have : 0 ≤ Pn * (u * u) := by positivity
+    have : 0 ≤ u * tiny * u := by positivity
+    nlinarith
+  set c : ℝ := (8 * n + 32) * u with hc
+  have hc0 : 0 ≤ c := by positivity
+  have hc1 : c ≤ 1 / 2 ^ 17 := by rw [hc]; linarith
+  clear_value P Pn Q c
+  set z := c * M.fl Q with hzdef
+  have hz : 0 ≤ z := mul_nonneg hc0 f2'
+  have e3 := M.err z (by rw [abs_of_nonneg hz]; exact hov3)
+  rw [abs_of_nonneg hz] at e3
+  have f3 : z * (1 - u) - u * tiny ≤ M.fl z := by linarith [(abs_le.1 e3).1]
+  have e4 := M.err (v - t) hov1
+  have f4 : |M.fl (v - t)| ≤ X * (1 + u) + u * tiny := by
+    have := abs_sub_abs_le_abs_sub (M.fl (v - t)) (v - t); rw [← hX] at e4; linarith
+  have k1 : z * (1 - u) < X * (1 + u) + 2 * (u * tiny) := by linarith
+  have k2 : c * (Pn * (1 - 2 * u) - 2 * (u * tiny)) ≤ z := mul_le_mul_of_nonneg_left fq2 hc0
+  -- `m / n ≤ Pn + 4nu Pn`, and `2(γ + 4u) m / n ≤ (8n + 16) u Pn`.
+  have hgm : gamma n * m ≤ 2 * (n * u) * (2 * P) := mul_le_mul hg hPm hm0 (by positivity)
+  have hm3 : m ≤ P + 4 * (n * u) * P := by linarith
+  have hmn : m / n ≤ Pn + 4 * (n * u) * Pn := by
+    rw [hPn, div_le_iff₀ hl]
+    have : (P / n + 4 * (n * u) * (P / n)) * n = P + 4 * (n * u) * P := by field_simp
+    linarith
+  have hE : 2 * ((gamma n + 4 * u) * m / n) ≤ (8 * n + 16) * u * Pn := by
+    have e : (gamma n + 4 * u) * m / n = (gamma n + 4 * u) * (m / n) := by ring
+    have hmn0 : 0 ≤ m / n := by positivity
+    have a : (gamma n + 4 * u) * (m / n) ≤ (2 * (n * u) + 4 * u) * (Pn + 4 * (n * u) * Pn) :=
+      mul_le_mul (by linarith) hmn hmn0 (by positivity)
+    have b : (2 * (n * u) + 4 * u) * (4 * (n * u) * Pn) ≤ (2 * (n * u) + 4 * u) * Pn := by
+      apply mul_le_mul_of_nonneg_left _ (by positivity)
+      have : 4 * (n * u) ≤ 1 := by linarith
+      have := mul_le_mul_of_nonneg_right this hPn0
+      linarith
+    rw [e]; linarith
+  -- The slack, as for `SUM`, with `16 u Pn` to spare.
+  have hs : (8 * n + 16) * u * Pn * (1 + u) + 2 * (u * tiny) ≤
+      c * (Pn * (1 - 2 * u) - 2 * (u * tiny)) * (1 - u) := by
+    have q1 : c * (Pn * (1 - 2 * u) - 2 * (u * tiny)) * (1 - u) =
+        (8 * n + 32) * u * Pn -
+          (8 * n + 32) * u * (3 * u * Pn - 2 * u * u * Pn + 2 * (u * tiny) - 2 * (u * tiny) * u) := by
+      rw [hc]; ring
+    have q2 : (8 * n + 32) * u * (3 * u * Pn - 2 * u * u * Pn + 2 * (u * tiny) - 2 * (u * tiny) * u) ≤
+        (8 * n + 32) * u * (3 * u * Pn + 2 * (u * tiny)) := by
+      apply mul_le_mul_of_nonneg_left _ (by positivity)
+      have := mul_nonneg (mul_nonneg hu.le hu.le) hPn0
+      have := mul_nonneg (mul_nonneg hu.le ht.le) hu.le
+      linarith
+    have q3 : (8 * n + 32) * u * (3 * u * Pn + 2 * (u * tiny)) ≤
+        (1 / 2 ^ 17) * (3 * u * Pn + 2 * (u * tiny)) :=
+      mul_le_mul_of_nonneg_right (by rw [← hc]; exact hc1) (by positivity)
+    have q4 : (8 * n + 16) * u * Pn * (1 + u) = (8 * n + 16) * u * Pn + (8 * n + 16) * u * (u * Pn) := by
+      ring
+    have q5 : (8 * n + 16) * u * (u * Pn) ≤ (1 / 2 ^ 17) * (u * Pn) :=
+      mul_le_mul_of_nonneg_right (by linarith) (by positivity)
+    have q6 : u * tiny ≤ u * (2 * Pn) := mul_le_mul_of_nonneg_left hPnt hu.le
+    have q7 : (8 * n + 32) * u * Pn = (8 * n + 16) * u * Pn + 16 * (u * Pn) := by ring
+    have : 0 ≤ u * Pn := by positivity
+    calc (8 * n + 16) * u * Pn * (1 + u) + 2 * (u * tiny)
+        = (8 * n + 16) * u * Pn + (8 * n + 16) * u * (u * Pn) + 2 * (u * tiny) := by rw [q4]
+      _ ≤ (8 * n + 16) * u * Pn + (1 / 2 ^ 17) * (u * Pn) + 4 * (u * Pn) := by linarith
+      _ ≤ (8 * n + 32) * u * Pn - (1 / 2 ^ 17) * (3 * u * Pn + 2 * (u * tiny)) := by
+        rw [q7]; linarith
+      _ ≤ (8 * n + 32) * u * Pn -
+          (8 * n + 32) * u * (3 * u * Pn - 2 * u * u * Pn + 2 * (u * tiny) - 2 * (u * tiny) * u) := by
+        linarith
+      _ = c * (Pn * (1 - 2 * u) - 2 * (u * tiny)) * (1 - u) := q1.symm
+  have : 2 * ((gamma n + 4 * u) * m / n) * (1 + u) < X * (1 + u) := by
+    have k3 : c * (Pn * (1 - 2 * u) - 2 * (u * tiny)) * (1 - u) ≤ z * (1 - u) :=
+      mul_le_mul_of_nonneg_right k2 (by linarith)
+    have k4 : 2 * ((gamma n + 4 * u) * m / n) * (1 + u) ≤ (8 * n + 16) * u * Pn * (1 + u) :=
+      mul_le_mul_of_nonneg_right hE (by linarith)
+    linarith
+  exact lt_of_mul_lt_mul_right this (by linarith)
+
 /-- **The margin decides the comparison** (#929): two evaluations `v₁`, `v₂`
 of the sum, each within `E` of the reference's `r`, and `v₁` farther than `2E`
 from `t`: `v₂` and `r` fall on the same side of `t`. -/
@@ -218,5 +407,30 @@ theorem StdModel.margin_check {xs : List ℝ} {s₁ s₂ A r t : ℝ} (h₁ : M.
     (StdModel.epsilon_group M h₂ hfix hn hov hr)
     (StdModel.check_sound M hn1 hn (StdModel.mag_le_absSummed M hA hfixA hn hov) hmt hov1 hov2
       hov3 hpass)
+
+/-- **The margin check of an `AVG`, end to end** (#929): an engine's mean of a
+group `fl(s₁ / n)`, with its `SUM(ABS(x))` `A`, passes the `AVG` check; then
+another of its means `fl(s₂ / n)`, in any order, lies on the reference's side
+of `t`, for every comparison. -/
+theorem StdModel.margin_check_avg {xs : List ℝ} {s₁ s₂ A r t : ℝ} (h₁ : M.Summed xs s₁)
+    (h₂ : M.Summed xs s₂) (hA : M.Summed (xs.map abs) A) (hfix : ∀ x ∈ xs, M.fl x = x)
+    (hfixA : ∀ x ∈ xs, M.fl |x| = |x|) (hn1 : 1 ≤ xs.length) (hn : (xs.length : ℝ) ≤ 2 ^ 32)
+    (hov : 2 * mag xs ≤ maxFinite)
+    (hr : |r - xs.sum / xs.length| ≤ u * |xs.sum / xs.length|)
+    (hov1 : |M.fl (s₁ / xs.length) - t| ≤ maxFinite) (hov2 : A + xs.length * tiny ≤ maxFinite)
+    (hov4 : M.fl (A + xs.length * tiny) / xs.length ≤ maxFinite)
+    (hov3 : (8 * xs.length + 32) * u * M.fl (M.fl (A + xs.length * tiny) / xs.length) ≤ maxFinite)
+    (hpass : M.fl ((8 * xs.length + 32) * u * M.fl (M.fl (A + xs.length * tiny) / xs.length)) <
+      |M.fl (M.fl (s₁ / xs.length) - t)|) :
+    (t < M.fl (s₂ / xs.length) ↔ t < r) ∧ (t ≤ M.fl (s₂ / xs.length) ↔ t ≤ r) ∧
+      (M.fl (s₂ / xs.length) < t ↔ r < t) ∧ (M.fl (s₂ / xs.length) ≤ t ↔ r ≤ t) ∧
+      (M.fl (s₂ / xs.length) = t ↔ r = t) := by
+  have hne : xs ≠ [] := List.ne_nil_of_length_pos hn1
+  have hmt : (xs.length : ℝ) * tiny ≤ mag xs := by
+    rw [mag_eq]; have : 0 ≤ (xs.map abs).sum := List.sum_nonneg (by simp); linarith
+  have e := StdModel.check_sound_avg M hn1 hn (StdModel.mag_le_absSummed M hA hfixA hn hov) hmt
+    hov1 hov2 hov4 hov3 hpass
+  exact margin_sound (StdModel.epsilon_group_avg M h₁ hfix hne hn hov hr)
+    (StdModel.epsilon_group_avg M h₂ hfix hne hn hov hr) (by rw [mul_div_assoc] at e ⊢; linarith)
 
 end FloatBounds
