@@ -767,6 +767,14 @@ def Lowering.lowerRelWith {p : Profile} (L : Lowering p) (keep : String → Bool
 /-- A plan lowered with the table: every expression lowered. -/
 def Lowering.lowerRel {p : Profile} (L : Lowering p) (r : Rel) : Rel := r.mapExprs L.lowerE
 
+/-- With every guard kept, `lowerWith` is `lower` and `lowerRelWith` is `lowerRel`. -/
+theorem Lowering.lowerWith_all {p : Profile} (L : Lowering p) : L.lowerWith (fun _ => true) = L.lower :=
+  rfl
+
+theorem Lowering.lowerRelWith_all {p : Profile} (L : Lowering p) :
+    L.lowerRelWith (fun _ => true) = L.lowerRel :=
+  rfl
+
 /-- **A lowered plan runs correctly on the engine, or raises.** Unless one of
 its expressions raises on a row the engine evaluates it on, the engine's
 functions give `Rel.eval`'s rows, on every catalog. Trusted: that `p` is the
