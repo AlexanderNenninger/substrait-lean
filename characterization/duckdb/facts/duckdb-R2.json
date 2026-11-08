@@ -26,7 +26,7 @@
   ],
   "reference": [
     "Substrait and the reference: `divide` on integers truncates toward zero; with `on_division_by_zero` omitted, a zero divisor raises.",
-    "Lean: no finding. `verify` reports `division by zero` as an error, so on those rows the plan may raise, which is the reference. `Rel.eval`'s NULL there ([`Expr.lean:195`](../../SubstraitLean/Expr.lean#L195)) is not an answer anyone sees. It is the reference value for `NULL`, should a plan ask for it."
+    "Lean: no finding. `verify` reports `division by zero` as an error, so on those rows the plan may raise, which is the reference. `Rel.eval`'s NULL there ([`Expr.lean:195`](../../core/Sverify/Core/Expr.lean#L195)) is not an answer anyone sees. It is the reference value for `NULL`, should a plan ask for it."
   ],
   "status": "no-finding",
   "ledger_entries": 23,

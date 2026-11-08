@@ -1,4 +1,4 @@
-import SubstraitLean.Profile
+import Sverify.Core.Profile
 import SubstraitLean.Guards
 
 /-!

@@ -43,7 +43,7 @@
     "Signed zeros and NaN agree with IEEE 754 on two columns; a NaN's sign is not compared (D31 leaves it open; polars-exec-platform records it per platform). Division by zero is left out: it is `on_division_by_zero` (the engine's `fp.div` facts).",
     "No upstream test pins the platform's rounding; the probe is rerun per platform and engine version."
   ],
-  "reference": "D31: `add`, `subtract`, `multiply` and `divide` of doubles are the exact result rounded once to binary64, to nearest, ties to even (`FloatCode.fadd` … in `SubstraitLean/FloatArith.lean`). The engine is native for D31 on this platform.",
+  "reference": "D31: `add`, `subtract`, `multiply` and `divide` of doubles are the exact result rounded once to binary64, to nearest, ties to even (`FloatCode.fadd` … in `core/Sverify/Core/FloatArith.lean`). The engine is native for D31 on this platform.",
   "status": "no-finding",
   "evidence": "probe",
   "provenance": [

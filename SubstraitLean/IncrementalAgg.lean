@@ -1,6 +1,6 @@
 import SubstraitLean.TouchedGroups
 import SubstraitLean.TableFormat
-import SubstraitLean.Kinds
+import Sverify.Core.Kinds
 
 /-!
 # Delta rules for `COUNT`, `SUM` and `DISTINCT` (#248, stage 1)

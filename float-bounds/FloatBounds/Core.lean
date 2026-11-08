@@ -7,7 +7,7 @@ public import FloatBounds.Moments
 
 The contract checker in `SubstraitLean` has no Mathlib and no real numbers.
 It works with *scaled* values: a double `x` is `x · 2¹⁰⁷⁴`, an integer, the
-magnitude part of `FloatCode`. `SubstraitLean/Float.lean` states two trusted
+magnitude part of `FloatCode`. `core/Sverify/Core/Float.lean` states two trusted
 facts in that form (`FloatCode.fsum_mem`, `FloatCode.avg_mem`), with the
 tolerances `sumTolScaled` and `avgTolScaled` below, defined the same way
 there. This file proves them for the standard model, over the reals:
@@ -23,7 +23,7 @@ be within `2u` of the codes' values, relatively (`Decoded`): a code with
 more than 53 significant bits is truncated.
 
 What remains trusted is `NativeLink` (`FloatBounds/Link.lean`, IEEE rounding
-of Lean's `Float`) and the code conversions of `SubstraitLean/Float.lean`.
+of Lean's `Float`) and the code conversions of `core/Sverify/Core/Float.lean`.
 -/
 
 @[expose] public section

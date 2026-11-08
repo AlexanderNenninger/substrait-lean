@@ -37,7 +37,7 @@
     "`QUANTILE` is `QUANTILE_DISC`. `MEDIAN` of a value that is not a number is `QUANTILE_DISC(x, 0.5)` (of two strings, the first). A fraction outside [-1, 1] is a binder error; a negative one counts from the largest value (the sort is descending). A list of fractions gives a list."
   ],
   "reference": [
-    "`AggFn.quantile false num scale` (`SubstraitLean/Aggregate.lean`, #53): for the exact decimal `q = num / 10^scale` in [0, 1], the value at position `⌈n·q⌉` (at least the first) of the non-NULL values in `ORDER BY` order (`sortVals`, `discIndex`); NULL without values. The frontends write the fraction as a DECIMAL literal, so DuckDB's is the reference's.",
+    "`AggFn.quantile false num scale` (`core/Sverify/Core/Aggregate.lean`, #53): for the exact decimal `q = num / 10^scale` in [0, 1], the value at position `⌈n·q⌉` (at least the first) of the non-NULL values in `ORDER BY` order (`sortVals`, `discIndex`); NULL without values. The frontends write the fraction as a DECIMAL literal, so DuckDB's is the reference's.",
     "Negative fractions, DOUBLE fractions and lists of fractions are refused by the parser and the frontends."
   ],
   "status": "no-finding",

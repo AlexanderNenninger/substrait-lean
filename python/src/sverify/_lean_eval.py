@@ -72,7 +72,7 @@ def literal(v: object) -> dict:
 
 def typed_code(t: dict, v: int) -> dict:
     """An integer given as a column's code: a timestamp's or a time's
-    microseconds, a date's days, a double's code (`SubstraitLean/Float.lean`),
+    microseconds, a date's days, a double's code (`core/Sverify/Core/Float.lean`),
     a decimal's unscaled integer; an integer elsewhere. The model's values
     have their kinds, so a code alone is an integer (#923)."""
     if "precisionTimestamp" in t or "timestamp" in t or "precisionTimestampTz" in t:
@@ -156,7 +156,7 @@ def _checked(plan_json: str, flags: tuple[str, ...] = ()) -> str:
 def lean_rows(plan_json: str) -> list[tuple]:
     """The rows `Rel.eval` gives for a plan with only virtual tables, in
     Lean's order. Doubles, timestamps and dates come back as their integer
-    codes (`SubstraitLean/Float.lean`); doubles are refused."""
+    codes (`core/Sverify/Core/Float.lean`); doubles are refused."""
     out = _checked(plan_json)
     return parse_rows(out)
 

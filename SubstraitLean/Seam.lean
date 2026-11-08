@@ -1,4 +1,4 @@
-import SubstraitLean.Ties
+import Sverify.Core.Ties
 import SubstraitLean.AllowedAnalysis
 
 /-!

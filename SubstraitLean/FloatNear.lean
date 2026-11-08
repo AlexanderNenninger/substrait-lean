@@ -1,5 +1,5 @@
-import SubstraitLean.FloatExact
-import SubstraitLean.Forall2
+import Sverify.Core.FloatExact
+import Sverify.Core.Forall2
 
 /-!
 # Double sums near each other (#929 step 3b)

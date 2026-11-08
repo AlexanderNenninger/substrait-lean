@@ -1,0 +1,407 @@
+import Sverify.Core.Expr
+
+/-!
+# Orders on values and rows
+
+The total preorders `ORDER BY`, window functions and `MIN`/`MAX` use:
+`Value.le` on values, `SortKey.le` and `sortLe` on rows.
+-/
+
+namespace Substrait
+
+/-! ## Total preorders -/
+
+/-- `le` is a total preorder: transitive and total. -/
+structure TotalPre {α : Type} (le : α → α → Bool) : Prop where
+  trans : ∀ a b c, le a b = true → le b c = true → le a c = true
+  total : ∀ a b, (le a b || le b a) = true
+
+theorem TotalPre.refl {α : Type} {le : α → α → Bool} (h : TotalPre le) (a : α) : le a a = true := by
+  have := h.total a a; simpa using this
+
+/-- Lexicographic combination: by `le₁`, ties broken by `le₂`. -/
+def lexLe {α : Type} (le₁ le₂ : α → α → Bool) (a b : α) : Bool :=
+  le₁ a b && (!le₁ b a || le₂ a b)
+
+theorem TotalPre.lex {α : Type} {le₁ le₂ : α → α → Bool} (h₁ : TotalPre le₁) (h₂ : TotalPre le₂) :
+    TotalPre (lexLe le₁ le₂) where
+  trans a b c hab hbc := by
+    simp only [lexLe, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at *
+    refine ⟨h₁.trans a b c hab.1 hbc.1, ?_⟩
+    rcases hab with ⟨hab, hba | hab₂⟩ <;> rcases hbc with ⟨hbc, hcb | hbc₂⟩
+    · left; cases hca : le₁ c a
+      · rfl
+      · exact absurd (h₁.trans b c a hbc hca) (by simp [hba])
+    · left; cases hca : le₁ c a
+      · rfl
+      · exact absurd (h₁.trans b c a hbc hca) (by simp [hba])
+    · left; cases hca : le₁ c a
+      · rfl
+      · exact absurd (h₁.trans c a b hca hab) (by simp [hcb])
+    · cases hca : le₁ c a
+      · left; rfl
+      · right; exact h₂.trans a b c hab₂ hbc₂
+  total a b := by
+    simp only [lexLe]
+    have t₁ := h₁.total a b
+    have t₂ := h₂.total a b
+    cases hab : le₁ a b <;> cases hba : le₁ b a <;> simp_all
+
+theorem lexLe_left {α : Type} {le₁ le₂ : α → α → Bool} {a b : α} (h : lexLe le₁ le₂ a b = true) :
+    le₁ a b = true := by
+  simp only [lexLe, Bool.and_eq_true] at h; exact h.1
+
+/-- Mutual `lexLe` means mutual `le₁` and mutual `le₂`. -/
+theorem lexLe_antisymm {α : Type} {le₁ le₂ : α → α → Bool} {a b : α}
+    (hab : lexLe le₁ le₂ a b = true) (hba : lexLe le₁ le₂ b a = true) :
+    le₁ a b = true ∧ le₁ b a = true ∧ le₂ a b = true ∧ le₂ b a = true := by
+  simp only [lexLe, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hab hba
+  rcases hab with ⟨h₁, h₂ | h₂⟩
+  · simp [hba.1] at h₂
+  · rcases hba with ⟨h₃, h₄ | h₄⟩
+    · simp [h₁] at h₄
+    · exact ⟨h₁, h₃, h₂, h₄⟩
+
+theorem TotalPre.comap {α β : Type} {le : α → α → Bool} (h : TotalPre le) (f : β → α) :
+    TotalPre (fun a b => le (f a) (f b)) :=
+  ⟨fun a b c => h.trans (f a) (f b) (f c), fun a b => h.total (f a) (f b)⟩
+
+theorem TotalPre.flip {α : Type} {le : α → α → Bool} (h : TotalPre le) :
+    TotalPre (fun a b => le b a) :=
+  ⟨fun a b c hab hbc => h.trans c b a hbc hab, fun a b => h.total b a⟩
+
+/-! ## Ordering values -/
+
+def Value.tag : Value → Nat
+  | .bool _ => 0 | .int _ => 1 | .float _ => 2 | .date _ => 3 | .ts _ => 4 | .tod _ => 5
+  | .dec _ _ => 6 | .str _ => 7 | .list _ => 8 | .struct _ => 9 | .null => 10
+/-- `Value.le` on values that are not both lists or both structs. -/
+def Value.leScalar : Value → Value → Bool
+  | .bool a, .bool b => !a || b
+  | .int a, .int b | .float a, .float b | .date a, .date b | .ts a, .ts b
+  | .tod a, .tod b => decide (a ≤ b)
+  -- One column has one scale; across scales, the scale first.
+  | .dec s a, .dec t b => decide (s < t) || (decide (s = t) && decide (a ≤ b))
+  | .str a, .str b => decide (a ≤ b)
+  | a, b => decide (a.tag ≤ b.tag)
+mutual
+/-- A total order on values: each kind's own order (`false < true`, integers,
+the float codes, dates and times numerically, decimals of one scale
+numerically, strings by code point, which is UTF-8 byte order, lists and
+structs lexicographically with a prefix first), kinds ordered as `Value.tag`
+numbers them, NULL last. Within a column only one kind and NULL occur;
+NULL's place only matters inside lists (`ORDER BY` places top-level NULLs
+itself, and `MIN`/`MAX` skip them), where engines sort NULL elements last. -/
+def Value.le : Value → Value → Bool
+  | .list as, .list bs | .struct as, .struct bs => Value.leList as bs
+  | a, b => Value.leScalar a b
+  termination_by a b => sizeOf a + sizeOf b
+/-- Lexicographic order on lists of values: the first element where they
+differ decides, and a prefix comes first. -/
+def Value.leList : List Value → List Value → Bool
+  | [], _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => Value.le a b && (!Value.le b a || Value.leList as bs)
+  termination_by as bs => sizeOf as + sizeOf bs
+end
+theorem Value.le_def (a b : Value) : a.le b = (match a, b with
+    | .list as, .list bs | .struct as, .struct bs => Value.leList as bs
+    | a, b => Value.leScalar a b) := by
+  cases a <;> cases b <;> rw [Value.le] <;> simp
+
+theorem Value.leList_nil (bs : List Value) : Value.leList [] bs = true := by
+  cases bs <;> rw [Value.leList]
+
+theorem Value.leList_cons_nil (a : Value) (as : List Value) : Value.leList (a :: as) [] = false := by
+  rw [Value.leList]
+
+theorem Value.leList_cons (a b : Value) (as bs : List Value) :
+    Value.leList (a :: as) (b :: bs) = (a.le b && (!b.le a || Value.leList as bs)) := by
+  rw [Value.leList]
+
+mutual
+theorem Value.le_antisymm : ∀ {a b : Value}, a.le b = true → b.le a = true → a = b
+  | .list as, .list bs, hab, hba => by
+    simp only [Value.le_def] at hab hba
+    rw [Value.leList_antisymm hab hba]
+  | .struct as, .struct bs, hab, hba => by
+    simp only [Value.le_def] at hab hba
+    rw [Value.leList_antisymm hab hba]
+  | .null, b, hab, hba | .bool _, b, hab, hba | .int _, b, hab, hba | .float _, b, hab, hba
+  | .date _, b, hab, hba | .ts _, b, hab, hba | .tod _, b, hab, hba | .dec _ _, b, hab, hba
+  | .str _, b, hab, hba | .list _, .null, hab, hba | .list _, .bool _, hab, hba
+  | .list _, .int _, hab, hba | .list _, .float _, hab, hba | .list _, .date _, hab, hba
+  | .list _, .ts _, hab, hba | .list _, .tod _, hab, hba | .list _, .dec _ _, hab, hba
+  | .list _, .str _, hab, hba | .list _, .struct _, hab, hba | .struct _, .null, hab, hba
+  | .struct _, .bool _, hab, hba | .struct _, .int _, hab, hba | .struct _, .float _, hab, hba
+  | .struct _, .date _, hab, hba | .struct _, .ts _, hab, hba | .struct _, .tod _, hab, hba
+  | .struct _, .dec _ _, hab, hba | .struct _, .str _, hab, hba | .struct _, .list _, hab, hba => by
+    try cases b
+    all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
+    all_goals first
+      | omega
+      | exact String.le_antisymm hab hba
+      | (rename_i x y; cases x <;> cases y <;> simp_all)
+  termination_by a b => sizeOf a + sizeOf b
+
+theorem Value.leList_antisymm : ∀ {as bs : List Value},
+    Value.leList as bs = true → Value.leList bs as = true → as = bs
+  | [], [], _, _ => rfl
+  | [], _ :: _, _, h | _ :: _, [], h, _ => by simp [Value.leList_cons_nil] at h
+  | a :: as, b :: bs, hab, hba => by
+    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hab hba
+    have hb := Value.le_antisymm hab.1 hba.1
+    subst hb
+    have h₁ : Value.leList as bs = true := hab.2.resolve_left (by simp [hba.1])
+    have h₂ : Value.leList bs as = true := hba.2.resolve_left (by simp [hab.1])
+    rw [Value.leList_antisymm h₁ h₂]
+  termination_by as bs => sizeOf as + sizeOf bs
+end
+
+mutual
+theorem Value.le_total : ∀ a b : Value, a.le b = true ∨ b.le a = true
+  | .list as, .list bs | .struct as, .struct bs => by
+    simp only [Value.le_def]; exact Value.leList_total as bs
+  | .null, b | .bool _, b | .int _, b | .float _, b | .date _, b | .ts _, b | .tod _, b
+  | .dec _ _, b | .str _, b | .list _, .null | .list _, .bool _ | .list _, .int _
+  | .list _, .float _ | .list _, .date _ | .list _, .ts _ | .list _, .tod _ | .list _, .dec _ _
+  | .list _, .str _ | .list _, .struct _ | .struct _, .null | .struct _, .bool _
+  | .struct _, .int _ | .struct _, .float _ | .struct _, .date _ | .struct _, .ts _
+  | .struct _, .tod _ | .struct _, .dec _ _ | .struct _, .str _ | .struct _, .list _ => by
+    try cases b
+    all_goals simp [Value.le_def, Value.leScalar, Value.tag]
+    all_goals first
+      | omega
+      | exact String.le_total _ _
+      | (rename_i x y; cases x <;> cases y <;> simp)
+  termination_by a b => sizeOf a + sizeOf b
+
+theorem Value.leList_total : ∀ as bs : List Value,
+    Value.leList as bs = true ∨ Value.leList bs as = true
+  | [], _ => Or.inl (Value.leList_nil _)
+  | _ :: _, [] => Or.inr (Value.leList_nil _)
+  | a :: as, b :: bs => by
+    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true']
+    have := Value.leList_total as bs
+    rcases Value.le_total a b with h | h <;> by_cases h' : (b.le a = true) <;>
+      by_cases h'' : (a.le b = true) <;> simp_all
+  termination_by as bs => sizeOf as + sizeOf bs
+end
+
+mutual
+theorem Value.le_trans : ∀ a b c : Value, a.le b = true → b.le c = true → a.le c = true
+  | .list as, .list bs, .list cs, hab, hbc | .struct as, .struct bs, .struct cs, hab, hbc => by
+    simp only [Value.le_def] at *
+    exact Value.leList_trans as bs cs hab hbc
+  | .null, b, c, hab, hbc | .bool _, b, c, hab, hbc | .int _, b, c, hab, hbc
+  | .float _, b, c, hab, hbc | .date _, b, c, hab, hbc | .ts _, b, c, hab, hbc
+  | .tod _, b, c, hab, hbc | .dec _ _, b, c, hab, hbc | .str _, b, c, hab, hbc
+  | .list _, .null, c, hab, hbc | .list _, .bool _, c, hab, hbc | .list _, .int _, c, hab, hbc
+  | .list _, .float _, c, hab, hbc | .list _, .date _, c, hab, hbc | .list _, .ts _, c, hab, hbc
+  | .list _, .tod _, c, hab, hbc | .list _, .dec _ _, c, hab, hbc | .list _, .str _, c, hab, hbc
+  | .list _, .struct _, c, hab, hbc | .struct _, .null, c, hab, hbc
+  | .struct _, .bool _, c, hab, hbc | .struct _, .int _, c, hab, hbc
+  | .struct _, .float _, c, hab, hbc | .struct _, .date _, c, hab, hbc
+  | .struct _, .ts _, c, hab, hbc | .struct _, .tod _, c, hab, hbc
+  | .struct _, .dec _ _, c, hab, hbc | .struct _, .str _, c, hab, hbc
+  | .struct _, .list _, c, hab, hbc | .list _, .list _, .null, hab, hbc
+  | .list _, .list _, .bool _, hab, hbc | .list _, .list _, .int _, hab, hbc
+  | .list _, .list _, .float _, hab, hbc | .list _, .list _, .date _, hab, hbc
+  | .list _, .list _, .ts _, hab, hbc | .list _, .list _, .tod _, hab, hbc
+  | .list _, .list _, .dec _ _, hab, hbc | .list _, .list _, .str _, hab, hbc
+  | .list _, .list _, .struct _, hab, hbc | .struct _, .struct _, .null, hab, hbc
+  | .struct _, .struct _, .bool _, hab, hbc | .struct _, .struct _, .int _, hab, hbc
+  | .struct _, .struct _, .float _, hab, hbc | .struct _, .struct _, .date _, hab, hbc
+  | .struct _, .struct _, .ts _, hab, hbc | .struct _, .struct _, .tod _, hab, hbc
+  | .struct _, .struct _, .dec _ _, hab, hbc | .struct _, .struct _, .str _, hab, hbc
+  | .struct _, .struct _, .list _, hab, hbc => by
+    try cases b
+    all_goals try cases c
+    all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
+    all_goals first
+      | omega
+      | exact String.le_trans hab hbc
+      | (rename_i x y z; cases x <;> cases y <;> cases z <;> simp_all)
+  termination_by a b c => sizeOf a + sizeOf b + sizeOf c
+
+theorem Value.leList_trans : ∀ as bs cs : List Value,
+    Value.leList as bs = true → Value.leList bs cs = true → Value.leList as cs = true
+  | [], _, _, _, _ => Value.leList_nil _
+  | _ :: _, [], _, h, _ | _ :: _, _ :: _, [], _, h => by simp [Value.leList_cons_nil] at h
+  | a :: as, b :: bs, c :: cs, hab, hbc => by
+    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at *
+    have hac := Value.le_trans a b c hab.1 hbc.1
+    refine ⟨hac, ?_⟩
+    by_cases hca : c.le a = true
+    · right
+      have hba := Value.le_trans b c a hbc.1 hca
+      have hcb := Value.le_trans c a b hca hab.1
+      exact Value.leList_trans as bs cs (hab.2.resolve_left (by simp [hba]))
+        (hbc.2.resolve_left (by simp [hcb]))
+    · left; simpa using hca
+  termination_by as bs cs => sizeOf as + sizeOf bs + sizeOf cs
+end
+
+theorem Value.le_totalPre : TotalPre Value.le where
+  trans := Value.le_trans
+  total a b := by rcases Value.le_total a b with h | h <;> simp [h]
+
+/-- One `ORDER BY` key: a column, ascending or descending, NULLs first or last. -/
+structure SortKey where
+  col : Nat
+  desc : Bool := false
+  nullsFirst : Bool := false
+  /-- The plan left the NULL placement open (`SORT_DIRECTION_UNSPECIFIED`,
+  D6): each profile picks one (`null_order`), the reference NULLs last (D8),
+  whatever `nullsFirst` says. -/
+  nullsOpen : Bool := false
+  /-- `SORT_DIRECTION_CLUSTERED`: rows with equal keys adjacent, the groups in
+  any order. `Rel.eval` sorts them in the key's direction, one such order. -/
+  clustered : Bool := false
+  deriving Repr, BEq, DecidableEq
+
+/-- NULLs first: as the key states, last where it leaves it open. -/
+def SortKey.firstNulls (k : SortKey) : Bool := k.nullsFirst && !k.nullsOpen
+
+/-- Where NULLs go: before (`0`) or after (`1`) the other values. -/
+def SortKey.nullRank (k : SortKey) : Value → Nat
+  | .null => if k.firstNulls then 0 else 1
+  | _ => if k.firstNulls then 1 else 0
+
+def SortKey.valLe (k : SortKey) (a b : Value) : Bool :=
+  if k.desc then b.le a else a.le b
+
+def natLe (a b : Nat) : Bool := decide (a ≤ b)
+
+theorem natLe_totalPre : TotalPre natLe :=
+  ⟨fun a b c => by simp only [natLe, decide_eq_true_eq]; omega,
+   fun a b => by simp only [natLe, Bool.or_eq_true, decide_eq_true_eq]; omega⟩
+
+/-- Order rows by one key. -/
+def SortKey.le (k : SortKey) : Row → Row → Bool :=
+  lexLe (fun x y => natLe (k.nullRank (x.getD k.col .null)) (k.nullRank (y.getD k.col .null)))
+    (fun x y => k.valLe (x.getD k.col .null) (y.getD k.col .null))
+
+theorem SortKey.valLe_totalPre (k : SortKey) : TotalPre k.valLe := by
+  unfold SortKey.valLe
+  cases k.desc
+  · exact Value.le_totalPre
+  · exact Value.le_totalPre.flip
+
+theorem SortKey.le_totalPre (k : SortKey) : TotalPre k.le :=
+  (natLe_totalPre.comap _).lex (k.valLe_totalPre.comap fun x : Row => x.getD k.col .null)
+
+/-- Order rows by a list of keys, lexicographically. -/
+def sortLe : List SortKey → Row → Row → Bool
+  | [] => fun _ _ => true
+  | k :: ks => lexLe k.le (sortLe ks)
+
+theorem sortLe_totalPre : ∀ ks, TotalPre (sortLe ks)
+  | [] => ⟨fun _ _ _ _ _ => rfl, fun _ _ => rfl⟩
+  | k :: ks => k.le_totalPre.lex (sortLe_totalPre ks)
+
+/-! ## Orders a profile allows
+
+A profile picks the NULL placement of an open key (`nf`), and the order of a
+clustered key's groups: any total order of the values (`ValidCmp`), which
+`Rel.eval` takes to be `Value.le`. -/
+
+/-- NULLs before (`0`) or after (`1`) the other values, when `nf` puts them first. -/
+def nullRankOf (nf : Bool) : Value → Nat
+  | .null => if nf then 0 else 1
+  | _ => if nf then 1 else 0
+
+theorem nullRankOf_firstNulls (k : SortKey) : nullRankOf k.firstNulls = k.nullRank := by
+  funext v; cases v <;> rfl
+
+/-- A key's order on values, a clustered key's groups ordered by `cmp`. -/
+def SortKey.valWith (k : SortKey) (cmp : Value → Value → Bool) (a b : Value) : Bool :=
+  if k.clustered then (if k.desc then cmp b a else cmp a b) else k.valLe a b
+
+theorem SortKey.valWith_le (k : SortKey) : k.valWith Value.le = k.valLe := by
+  funext a b; unfold valWith valLe; cases k.clustered <;> cases k.desc <;> rfl
+
+/-- Order rows by one key, NULLs first when `nf`. -/
+def SortKey.leWith (cmp : Value → Value → Bool) (nf : Bool) (k : SortKey) : Row → Row → Bool :=
+  lexLe (fun x y => natLe (nullRankOf nf (x.getD k.col .null)) (nullRankOf nf (y.getD k.col .null)))
+    (fun x y => k.valWith cmp (x.getD k.col .null) (y.getD k.col .null))
+
+/-- Order rows by keys with their NULL placements, lexicographically. -/
+def sortLeWith (cmp : Value → Value → Bool) : List (SortKey × Bool) → Row → Row → Bool
+  | [] => fun _ _ => true
+  | (k, nf) :: ks => lexLe (k.leWith cmp nf) (sortLeWith cmp ks)
+
+theorem sortLeWith_le : ∀ ks : List SortKey,
+    sortLeWith Value.le (ks.map fun k => (k, k.firstNulls)) = sortLe ks
+  | [] => rfl
+  | k :: ks => by
+    simp only [List.map_cons, sortLeWith, sortLe, sortLeWith_le ks, SortKey.leWith, SortKey.le,
+      nullRankOf_firstNulls, SortKey.valWith_le]
+
+/-- An order a clustered key's groups may take: total, and telling every
+two values apart. -/
+def ValidCmp (cmp : Value → Value → Bool) : Prop :=
+  TotalPre cmp ∧ ∀ a b, cmp a b = true → cmp b a = true → a = b
+
+theorem Value.le_validCmp : ValidCmp Value.le := ⟨Value.le_totalPre, fun _ _ => Value.le_antisymm⟩
+
+/-- The orders the reference allows for `keys`: each key's NULL placement as
+it states (last where open), each clustered key's groups in any order. -/
+def SortAllowed (keys : List SortKey) (out : Relation) : Prop :=
+  ∃ cmp, ValidCmp cmp ∧ out.Pairwise (sortLeWith cmp (keys.map fun k => (k, k.firstNulls)) · · = true)
+
+theorem SortAllowed.of_sorted {keys : List SortKey} {out : Relation}
+    (h : out.Pairwise (sortLe keys · · = true)) : SortAllowed keys out :=
+  ⟨Value.le, Value.le_validCmp, by rw [sortLeWith_le]; exact h⟩
+
+/-- Two numbers of one kind order by their integers (a decimal's scale is
+part of its kind). -/
+theorem Value.le_val (k : NumKind) {x y : Int} : (k.val x).le (k.val y) = true ↔ x ≤ y := by
+  cases k <;> simp [NumKind.val, Value.le_def, Value.leScalar]
+
+theorem SortKey.le_val {k : SortKey} {x y : Row} {nk : NumKind} {u v : Int} (h : k.le y x = true)
+    (hy : y.getD k.col .null = nk.val u) (hx : x.getD k.col .null = nk.val v) :
+    if k.desc then v ≤ u else u ≤ v := by
+  simp only [SortKey.le, lexLe, hy, hx, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
+  have hr : k.nullRank (nk.val u) = k.nullRank (nk.val v) := by
+    cases nk <;> simp [SortKey.nullRank, NumKind.val]
+  rcases h with ⟨_, h | h⟩
+  · simp [hr, natLe] at h
+  · unfold SortKey.valLe at h
+    cases hd : k.desc <;> simp_all [Value.le_val]
+
+/-- Rows in sort order, by the first key: for non-NULL integers (and
+timestamps, and float codes), ascending keys give `y ≤ x`. -/
+theorem SortKey.le_int {k : SortKey} {x y : Row} {u v : Int} (h : k.le y x = true)
+    (hy : y.getD k.col .null = .int u) (hx : x.getD k.col .null = .int v) :
+    if k.desc then v ≤ u else u ≤ v := by
+  simp only [SortKey.le, lexLe, hy, hx, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
+  have hr : k.nullRank (.int u) = k.nullRank (.int v) := by simp [SortKey.nullRank]
+  rcases h with ⟨_, h | h⟩
+  · simp [hr, natLe] at h
+  · unfold SortKey.valLe at h
+    cases hd : k.desc <;> simp_all [Value.le_def, Value.leScalar]
+
+/-- Rows that sort both ways on a key agree on its column. -/
+theorem SortKey.le_antisymm {k : SortKey} {x y : Row} (hxy : k.le x y = true) (hyx : k.le y x = true) :
+    x.getD k.col .null = y.getD k.col .null := by
+  obtain ⟨h₁, h₂, h₃, h₄⟩ := lexLe_antisymm hxy hyx
+  simp only [natLe, decide_eq_true_eq] at h₁ h₂
+  have hrank : k.nullRank (x.getD k.col .null) = k.nullRank (y.getD k.col .null) := by omega
+  generalize x.getD k.col .null = a at *
+  generalize y.getD k.col .null = b at *
+  unfold SortKey.valLe at h₃ h₄
+  cases hd : k.desc
+  · simp only [hd] at h₃ h₄; exact Value.le_antisymm h₃ h₄
+  · simp only [hd, ↓reduceIte] at h₃ h₄; exact Value.le_antisymm h₄ h₃
+
+theorem sortLe_antisymm : ∀ {ks : List SortKey} {x y : Row},
+    sortLe ks x y = true → sortLe ks y x = true →
+      ks.map (x.getD ·.col .null) = ks.map (y.getD ·.col .null)
+  | [], _, _, _, _ => rfl
+  | k :: ks, _, _, hxy, hyx => by
+      obtain ⟨h₁, h₂, h₃, h₄⟩ := lexLe_antisymm hxy hyx
+      simp only [List.map_cons, List.cons.injEq]
+      exact ⟨SortKey.le_antisymm h₁ h₂, sortLe_antisymm h₃ h₄⟩
+
+end Substrait

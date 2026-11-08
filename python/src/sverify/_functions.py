@@ -5,7 +5,7 @@ the SQL lift and the Ibis producer make of it (#544, wave 3).
 The rows follow `docs/core-semantics.md`: a function's options are its
 group's (`GROUPS`), each option is a row of `OPTIONS`, and each profile
 chooses among an option's behaviours (`CHOICES`). Lean's tables are the
-source (D1, `SubstraitLean/Functions.lean`); `tests/test_functions.py`
+source (D1, `core/Sverify/Core/Functions.lean`); `tests/test_functions.py`
 checks the names, anchors, groups, options and the reference's choices
 against them (`substrait-check --functions` and `--options`, #444).
 
@@ -249,7 +249,7 @@ def _str(name: str, anchor: int, group: str, args: int, result: ResultKind, op: 
 
 #: The rows, in `Functions.lean`'s order within each area.
 FUNCTIONS: tuple[Fn, ...] = (
-    # Elementary functions of doubles (`FMath`, `SubstraitLean/Numeric.lean`).
+    # Elementary functions of doubles (`FMath`, `core/Sverify/Core/Numeric.lean`).
     _fp("sqrt", 100, "fp.elem", "Sqrt", "Sqrt"),
     _fp("exp", 101, "fp.elem", "Exp", "Exp"),
     _fp("ln", 102, "fp.log", "Ln", "Ln"),
@@ -276,7 +276,7 @@ FUNCTIONS: tuple[Fn, ...] = (
          "shiftleft({0}, CAST({1} AS INT))", ""),
     _bit("bitwise_shift_right", 117, "BitwiseRightShift", "({0} >> {1})",
          "shiftright({0}, CAST({1} AS INT))", ""),
-    # Strings (`SubstraitLean/Text.lean`): characters are Unicode scalar values.
+    # Strings (`core/Sverify/Core/Text.lean`): characters are Unicode scalar values.
     # Upper and lower case are a black box, Rust's `str::to_uppercase`;
     # engines map case with their own tables (`'ß'`).
     _str("upper", 20, "str.case", 1, "str", expr=True, ascii="UPPER", sql={"": "UPPER({0})"},

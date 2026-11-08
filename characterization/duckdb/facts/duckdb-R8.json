@@ -20,7 +20,7 @@
   "description": "Native. `CAST` raises (`Conversion Error`); `RETURN_NULL` is `TRY_CAST`, also native.",
   "reference": [
     "Substrait and the reference: the plan's cast says `failureBehavior: THROW_EXCEPTION`, so the cast raises.",
-    "Lean: no finding. `verify` reports `cast out of range` as an error, and the checker refuses a constant one (`CAST(200 AS TINYINT)`). `Rel.eval`'s NULL there ([`Expr.lean:133`](../../SubstraitLean/Expr.lean#L133)) is the value for `RETURN_NULL`. A cast to `BIGINT` is not checked, which matters only for values that are already outside `i64` (duckdb-R6)."
+    "Lean: no finding. `verify` reports `cast out of range` as an error, and the checker refuses a constant one (`CAST(200 AS TINYINT)`). `Rel.eval`'s NULL there ([`Expr.lean:133`](../../core/Sverify/Core/Expr.lean#L133)) is the value for `RETURN_NULL`. A cast to `BIGINT` is not checked, which matters only for values that are already outside `i64` (duckdb-R6)."
   ],
   "status": "no-finding",
   "ledger_entries": 10,
