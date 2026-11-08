@@ -1,4 +1,4 @@
-import SubstraitLean.Allowed
+import Sverify.Core.Allowed
 
 /-!
 # Every order the reference allows (#679, D24)

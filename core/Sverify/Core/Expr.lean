@@ -739,7 +739,7 @@ def BinFn.apply : BinFn → Value → Value → Value
 
 /-- An implementation of the scalar functions: Lean's own (`Impl.lean`, the
 reference) or an engine's, without run-time checks (`SubstraitLean/Guards.lean`,
-`SubstraitLean/AllowedP.lean`). -/
+`core/Sverify/Core/AllowedP.lean`). -/
 structure Impl where
   un : UnFn → Value → Value
   bin : BinFn → Value → Value → Value

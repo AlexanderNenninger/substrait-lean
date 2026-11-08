@@ -1,4 +1,4 @@
-import SubstraitLean.Issue
+import Sverify.Core.Issue
 import Sverify.Core.Options
 
 /-!
@@ -9,7 +9,7 @@ call's arguments and the reference's result, stated here beside the option,
 one row per option of `options` in its order. A profile that allows an
 option a behaviour the reference does not may give another value than the
 reference's at a call only where the call is in that option's scope
-(`CallExtra`, `AggExtra` in `SubstraitLean/AllowedP.lean`); everywhere else
+(`CallExtra`, `AggExtra` in `core/Sverify/Core/AllowedP.lean`); everywhere else
 the call is the reference's. A plan depends on an option only where a call
 may be in its scope.
 

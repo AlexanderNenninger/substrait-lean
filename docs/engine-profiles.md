@@ -86,7 +86,7 @@ reference profile, and DuckDB is the default oracle.
 
 ## Profiles and shims in Lean (#185, first slice)
 
-`SubstraitLean/Profile.lean` states the scalar part:
+`core/Sverify/Core/Profile.lean` states the scalar part:
 
 * An engine evaluation gives an **`Outcome`**, a value or an error.
 * A **`Profile`** gives each function's outcome; `Expr.evalP` evaluates under

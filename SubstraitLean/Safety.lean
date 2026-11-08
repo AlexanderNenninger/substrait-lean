@@ -1,4 +1,4 @@
-import SubstraitLean.Issue
+import Sverify.Core.Issue
 import SubstraitLean.Contracts
 
 /-!

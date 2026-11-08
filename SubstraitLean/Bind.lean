@@ -1,7 +1,7 @@
 import SubstraitLean.Lowering
 import SubstraitLean.Partition
 import SubstraitLean.Parse
-import SubstraitLean.AllowedP
+import Sverify.Core.AllowedP
 
 /-!
 # Binding shared arguments to columns (#821)

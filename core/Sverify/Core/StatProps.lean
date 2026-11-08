@@ -9,7 +9,7 @@ Polars use Welford's update with Chan's merge, ungrouped Polars a blockwise
 two-pass). Before D30 the reference allowed any value with the generic
 properties every reasonable algorithm keeps; since D30 it is the exact moments
 rounded once, and these properties (`StatProps`) are what an engine's
-algorithm may give (`SubstraitLean/AllowedP.lean`). An engine profile may
+algorithm may give (`core/Sverify/Core/AllowedP.lean`). An engine profile may
 name a stricter algorithm (`Profile.statAlgo`); without one, these hold.
 
 For `n ≤ 2³²` finite values at most `2³⁹⁸` in magnitude, with `u = 2⁻⁵³`,
@@ -46,7 +46,7 @@ the reference's own value is the one allowed.
 Since D30 the reference's own value is one value, the exact moments rounded
 once (`varOf`, `covOf`, `corrOf` in `Aggregate.lean`), and `StatProps` is what
 an engine's algorithm may give (`StatAlgo "GENERIC"` and `"WELFORD_CHAN"`,
-`SubstraitLean/AllowedP.lean`). The three axioms that made Lean's native
+`core/Sverify/Core/AllowedP.lean`). The three axioms that made Lean's native
 two-pass results meet these properties (`varOf_props`, `covOf_props`,
 `corrOf_props`) are retired with it.
 -/

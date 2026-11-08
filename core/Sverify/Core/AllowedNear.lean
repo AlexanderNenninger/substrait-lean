@@ -1,6 +1,6 @@
-import SubstraitLean.Ties
-import SubstraitLean.Robust
-import SubstraitLean.AllowedP
+import Sverify.Core.Ties
+import Sverify.Core.Robust
+import Sverify.Core.AllowedP
 
 /-!
 # Postconditions on every allowed result (#899)

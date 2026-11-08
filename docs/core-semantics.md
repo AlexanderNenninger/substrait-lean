@@ -179,7 +179,7 @@ elimination (#83) drops the guards the inferred bounds rule out.
 
 ## The shape
 
-The reference is already a relation: `Rel.Allowed` (`SubstraitLean/Allowed.lean`,
+The reference is already a relation: `Rel.Allowed` (`core/Sverify/Core/Allowed.lean`,
 [#427](https://github.com/AlexanderNenninger/substrait-lean/pull/427)) allows a
 set of results per input, and `Rel.eval` computes one of them
 (`Rel.eval_allowed`). The core generalises it in one direction: every place
@@ -820,7 +820,7 @@ pairs.
 Refinement up to an observation `o` asks the first only up to `o`: every
 result `Q` allows for `t` is, up to `o`, one `P` allows for `r`
 (`Rel.RefinesUpTo`, `Rel.RefinesPUpTo`, with `Relation.Equiv o` from
-[ObsEquiv.lean](../SubstraitLean/ObsEquiv.lean)). `o = Obs.exact` is the
+[ObsEquiv.lean](../core/Sverify/Core/ObsEquiv.lean)). `o = Obs.exact` is the
 relation above (`Rel.Refines`); `o = {rows := .multiset}` forgets the order
 of rows (`Rel.RefinesBag`, `Rel.RefinesP`), which is all an unsorted plan
 gives against an `ORDER BY`.
@@ -835,7 +835,7 @@ The relation covers every move sverify makes:
 
 | Move | As refinement | Today |
 |---|---|---|
-| A rewrite within a profile | `(P, t) ⊑ (P, r)` up to `o` | `Rel.RefinesUpTo` ([Allowed.lean](../SubstraitLean/Allowed.lean)); `optimize` up to the order of rows, for plans without choices (`Rel.optimize_refines`, `Rel.refines_of_same`, `Rel.refines_of_perm`) |
+| A rewrite within a profile | `(P, t) ⊑ (P, r)` up to `o` | `Rel.RefinesUpTo` ([Allowed.lean](../core/Sverify/Core/Allowed.lean)); `optimize` up to the order of rows, for plans without choices (`Rel.optimize_refines`, `Rel.refines_of_same`, `Rel.refines_of_perm`) |
 | A narrower profile, the same plan | `(P, r) ⊑ (core, r)` when `P`'s choices are within the core's | step 1c's `Rel.AllowedP_mono` |
 | Lowering to an engine | `(E, T_E r) ⊑ (reference, r)`: exactly for DuckDB's lowering, up to an engine row's `q` where the row is `refinesUpTo q` | `Rel.duckdb_refines` (from `Rel.duckdb_shim_allowed` and `Lowering.lowerRel_raises`), `Lowering.lower_correct`, `Rel.guardFree_allowed` |
 | Lifting from a source language | `(X, s) ⊑ (P, L s)`: whatever `X` does with `s` is allowed for the lifted plan under `P` | the SQLGlot lift, trusted and tested; `LiftDuckDB`'s entries proved per rule (#242) |
@@ -1400,7 +1400,7 @@ An observation `q'` refines `q` when `q'` observes everything `q` observes:
 the finer guarantee refines the coarser one, as `Allowed_P' ⊆ Allowed_P`
 does for profiles. The identity is the finest observation, a constant the
 coarsest. In Lean, equality up to `q` is `Relation.Equiv q`
-(`SubstraitLean/ObsEquiv.lean`), and `Relation.Equiv_mono` proves that
+(`core/Sverify/Core/ObsEquiv.lean`), and `Relation.Equiv_mono` proves that
 `Obs.le q' q` gives it: equality up to `q'` implies equality up to `q`. Five
 consequences:
 
@@ -1576,7 +1576,7 @@ The reference leaves `tie_order` and `tie_pick` open. Rows that tie in an
 first rows of any order the plan allows, and `FIRST`, `LAST`,
 `ARG_MIN`/`ARG_MAX`, `STRING_AGG`, `collect` and `MODE` take the rows that
 tie in their own order in any order. `Rel.OrderAllowed`
-(`SubstraitLean/OrderAllowed.lean`) holds the results of every such order, and a
+(`core/Sverify/Core/OrderAllowed.lean`) holds the results of every such order, and a
 contract holds on all of them: `contract_sound_all` for postconditions,
 `Rel.keys_sound_all` for keys. An engine's own pick is one of these orders,
 so it runs natively.
@@ -1978,7 +1978,7 @@ call's arguments and reference result stated beside the option. Engine rows
 are statements about the scope; agreement outside it is the function's base
 row. A plan depends on an option only where a call may be in its scope.
 
-In the model, `optionScope` (`SubstraitLean/Scopes.lean`) states each
+In the model, `optionScope` (`core/Sverify/Core/Scopes.lean`) states each
 option's scope, one row per option of the catalogue in its order, and
 `Rel.AllowedP` reads it: a call (`CallExtra`) or an aggregate (`AggExtra`)
 takes another value than the reference's only where its table allows one of

@@ -1,4 +1,4 @@
-import SubstraitLean.Kinds
+import Sverify.Core.Kinds
 import SubstraitLean.Refresh
 import SubstraitLean.Rewrites
 import SubstraitLean.Incremental
@@ -21,16 +21,16 @@ import SubstraitLean.TableFormat
 import SubstraitLean.Pruning
 import SubstraitLean.Implied
 import SubstraitLean.Partition
-import SubstraitLean.Allowed
-import SubstraitLean.Ties
+import Sverify.Core.Allowed
+import Sverify.Core.Ties
 import SubstraitLean.Knowledge
 import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
 import SubstraitLean.Obligations
-import SubstraitLean.Robust
-import SubstraitLean.AllowedNear
+import Sverify.Core.Robust
+import Sverify.Core.AllowedNear
 import SubstraitLean.AllowedAnalysis
 import SubstraitLean.EngineSound
 import Sverify.Core.FloatExact

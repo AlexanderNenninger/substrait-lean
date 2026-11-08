@@ -1,6 +1,6 @@
 import SubstraitLean.Compose
-import SubstraitLean.Ties
-import SubstraitLean.Robust
+import Sverify.Core.Ties
+import Sverify.Core.Robust
 import SubstraitLean.FloatNear
 import SubstraitLean.Knowledge
 

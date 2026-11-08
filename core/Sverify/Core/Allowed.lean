@@ -1,7 +1,7 @@
-import SubstraitLean.Decomposable
-import SubstraitLean.OrderAllowed
+import Sverify.Core.Decomposable
+import Sverify.Core.OrderAllowed
 import Sverify.Core.StatProps
-import SubstraitLean.ObsEquiv
+import Sverify.Core.ObsEquiv
 
 /-!
 # What the reference allows
@@ -25,7 +25,7 @@ The reference leaves these choices to the engine:
 A double `SUM` or `AVG` is no choice (D25): it is the exact sum, or mean,
 rounded once (`floatSumCR`, `core/Sverify/Core/FloatExact.lean`), whatever the
 order of the rows. An engine's order of additions is a behaviour of its
-profile (`SumOrder`, `SubstraitLean/AllowedP.lean`), within #85's bound of it
+profile (`SumOrder`, `core/Sverify/Core/AllowedP.lean`), within #85's bound of it
 (`epsilon_sum_cr` in `float-bounds/`).
 
 For a plan without these choices (`Rel.detPlan`, `SubstraitLean/AllowedAnalysis.lean`),

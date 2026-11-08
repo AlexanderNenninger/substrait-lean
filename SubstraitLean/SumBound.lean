@@ -1,4 +1,4 @@
-import SubstraitLean.AllowedP
+import Sverify.Core.AllowedP
 import Sverify.Core.FloatArith
 
 /-!

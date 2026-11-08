@@ -2,7 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.Keys
 import Sverify.Core.Functions
 import Sverify.Core.Options
-import SubstraitLean.Kinds
+import Sverify.Core.Kinds
 
 /-!
 # Parsing Substrait JSON plans

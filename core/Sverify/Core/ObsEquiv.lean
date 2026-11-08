@@ -1,5 +1,5 @@
 import Sverify.Core.Forall2
-import SubstraitLean.Observations
+import Sverify.Core.Observations
 import Sverify.Core.Order
 
 /-!

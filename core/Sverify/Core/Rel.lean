@@ -144,7 +144,7 @@ def hasMatch (on : Expr) (ys : Relation) (x : Row) (I : Impl := Impl.lean) : Boo
 
 /-- Denotational semantics. `FetchRel` takes rows in list order and
 `SortRel` sorts stably: the order of the deterministic profile (D24). The
-reference leaves both open, and `Rel.OrderAllowed` (`SubstraitLean/Ties.lean`)
+reference leaves both open, and `Rel.OrderAllowed` (`core/Sverify/Core/Ties.lean`)
 holds the results of every order, with the contract theorems over all of
 them (`contract_sound_all`).
 

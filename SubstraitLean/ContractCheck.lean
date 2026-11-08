@@ -11,8 +11,8 @@ import SubstraitLean.Infer
 import SubstraitLean.Rows
 import SubstraitLean.Knowledge
 import SubstraitLean.Implied
-import SubstraitLean.Robust
-import SubstraitLean.AllowedNear
+import Sverify.Core.Robust
+import Sverify.Core.AllowedNear
 import SubstraitLean.AllowedAnalysis
 
 /-!

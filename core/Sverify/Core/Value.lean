@@ -171,7 +171,7 @@ theorem Value.num?_null : Value.null.num? = none := rfl
 
 Doubles, timestamps and dates all become integers in the model (see
 `core/Sverify/Core/Float.lean`); the parser and the writer track which is which,
-and `Rel.inferKinds` (`SubstraitLean/Kinds.lean`) checks it. -/
+and `Rel.inferKinds` (`core/Sverify/Core/Kinds.lean`) checks it. -/
 
 inductive Kind where
   /-- `tod`: a time of day (`TIME`), in microseconds since midnight. -/

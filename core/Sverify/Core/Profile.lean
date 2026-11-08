@@ -1,4 +1,4 @@
-import SubstraitLean.Issue
+import Sverify.Core.Issue
 
 /-!
 # Engine profiles and proven shims (#185)

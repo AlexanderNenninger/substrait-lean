@@ -1,6 +1,6 @@
-import SubstraitLean.Allowed
+import Sverify.Core.Allowed
 import Sverify.Core.Options
-import SubstraitLean.Scopes
+import Sverify.Core.Scopes
 
 /-!
 # What a profile allows (#444, step 1c)

@@ -2039,7 +2039,7 @@ stores and the other engines read through Arrow as before.
 
 `docs/reference-semantics.md` now defines correctness through the set of
 results the reference allows for each input (`Rel.Allowed`,
-`SubstraitLean/Allowed.lean`). The set holds more than one result where the
+`core/Sverify/Core/Allowed.lean`). The set holds more than one result where the
 reference leaves a choice to the engine: the order of rows and of ties,
 `FIRST`/`LAST` and `distinct(on=)` without an order, the order in which a double
 `SUM` or `AVG` adds (#85), and the statistical aggregates. `Rel.eval` is one
@@ -2178,7 +2178,7 @@ TPC-H q11, q14 and q20 state row caps from the specification's largest scale fac
 
 ### The SQL written for DuckDB is proved to return the reference's rows or raise
 
-`Rel.duckdb_shim_sound` (`SubstraitLean/Profile.lean`) proves that DuckDB,
+`Rel.duckdb_shim_sound` (`core/Sverify/Core/Profile.lean`) proves that DuckDB,
 running the SQL sverify writes, returns `Rel.eval`'s rows or raises, for any
 plan, with no contract needed (#185). Engine profiles state what DuckDB
 computes for each function, and where it differs from the reference the

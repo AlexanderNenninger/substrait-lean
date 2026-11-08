@@ -1,4 +1,4 @@
-import SubstraitLean.ObsEquiv
+import Sverify.Core.ObsEquiv
 
 /-!
 # Robust postconditions (#898)
