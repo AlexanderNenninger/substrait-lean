@@ -33,7 +33,7 @@ import math
 import struct
 import unicodedata
 import warnings
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -480,20 +480,19 @@ def dependencies(
     columns: Mapping[str, Any],
     read: Sequence[str] | None,
     open_columns: Mapping[str, str] | None = None,
-    order_free: Collection[str] = (),
-    depends: Sequence[str] | None = None,
 ) -> list[str]:
-    """The components `observation` ignores that `cond`, a condition of
-    `ensures`, depends on (D12). Empty when the condition cannot tell
-    results equal up to `observation` apart.
+    """The components `observation` ignores that `cond`, a table condition
+    (`unique`, `references`, `max_rows`, `rows_per`), depends on (D12). The
+    checker reports them for every other condition (`ContractCheck`'s
+    `Report.ignores`, #1071); a table condition is no expression it
+    evaluates. Empty when the condition cannot tell results equal up to
+    `observation` apart.
 
-    Conditions on each row (Ibis and SQL conditions) and the table
-    conditions (`unique`, `references`, `max_rows`, `rows_per`) ignore the
-    order of the rows. A condition depends on the values of the columns it
-    reads, unless the observation keeps them: doubles with a tolerance
-    (only `approx` conditions allow for one), timestamps truncated, strings
-    normalised, decimals without their scale. Zeros and NaNs made one
-    change no comparison of the reference's, which has one of each.
+    A table condition ignores the order of the rows and depends on the
+    values of the columns it reads, unless the observation keeps them:
+    doubles with a tolerance, timestamps truncated, strings normalised,
+    decimals without their scale. Zeros and NaNs made one change no
+    comparison of reference codes (`Expr.robust_of_depends_canon`).
 
     Args:
         observation: The postcondition's observation.
@@ -504,30 +503,16 @@ def dependencies(
         open_columns: Output columns whose value the reference leaves open
             (D1): `"picks"` for `first` or `last` without an order (which
             row's value), `"elements"` for a `collect` without one (the
-            order of the elements). A condition that reads one depends on
-            that choice, unless it reads a list only through functions that
-            ignore its order (`order_free`).
-        order_free: The columns `cond` reads only through such functions
-            (`length`, `contains`, `min`, `max`, `sum`, `sort`, …).
-        depends: The components the condition's value depends on, from the
-            checker (`CheckedCondition.depends`, `Expr.depends`), which
-            proves that an observation coarsening none of them keeps the
-            condition (`Expr.robust_of_depends`). None: derived here from
-            the types of the columns it reads.
+            order of the elements).
     """
     names = list(columns) if read is None else [n for n in read if n in columns]
     out: list[str] = []
     for n in names:
         why_open = (open_columns or {}).get(n)
-        if why_open == "elements" and n in order_free:
-            continue
         if why_open is not None and why_open not in out:
             out.append(why_open)
     ignored = set(observation.ignored()) - {"rows", "zeros", "errors", "elements"}
-    comps = (
-        [_component(columns[n]) for n in names] if depends is None else list(dict.fromkeys(depends))
-    )
-    for comp in comps:
+    for comp in (_component(columns[n]) for n in names):
         if comp is None or comp not in ignored or comp in out:
             continue
         if comp == "floats" and (isinstance(cond, Tolerant) or observation.floats == "plan"):

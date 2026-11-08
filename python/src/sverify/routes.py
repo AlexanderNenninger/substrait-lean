@@ -1089,6 +1089,19 @@ def _robust_tested(report: Report, engine: str) -> bool:
     )
 
 
+def _allowed_tested(report: Report) -> bool:
+    """Is a postcondition proved on every order of the reference but not on
+    every result it allows (`CheckedCondition.allowed`, `postAllowed`): one
+    that reads an open measure (`VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`,
+    `QUANTILE_CONT`, a double `SUM` or `AVG` in another order)? Under the
+    plan's bound a run holds the columns it reads (`observed`); under another
+    observation the engine's value is only tested (#1071). The checker
+    reports `allowed` for the postconditions it reports `ignores` for."""
+    if report.observation.floats == "plan":
+        return False
+    return any(c.proved and not c.allowed and c.checker_ignores is not None for c in report.ensures)
+
+
 # -- the re-check -------------------------------------------------------------
 
 
@@ -1501,7 +1514,9 @@ def choose(
             tuple(notes),
             (),
             got.cls,
-            "tested" if got.evidence == "proved" and _robust_tested(report, e) else got.evidence,
+            "tested"
+            if got.evidence == "proved" and (_robust_tested(report, e) or _allowed_tested(report))
+            else got.evidence,
             got.shims,
             reproducible,
             rerun_evidence,

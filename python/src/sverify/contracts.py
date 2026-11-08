@@ -984,9 +984,13 @@ def _observed(
 ) -> Report:
     """`report` with the observation, and each postcondition marked with the
     components it depends on that the observation ignores, or that the plan
-    leaves open (`opened`, D1, D12). A proved condition holds for every
-    choice the plan leaves open, so only an unproved one is marked with
-    those."""
+    leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`,
+    #1071) for every postcondition it reports them for. A table condition
+    (`unique`, `references`, `max_rows`, `rows_per`), which the checker does
+    not evaluate as an expression, depends on the values of the columns it
+    reads (`observation.dependencies`), and on the open choices of the plan
+    (`opened`) where it is unproved: a proved condition holds for every
+    choice the plan leaves open."""
     checked = [
         replace(
             c,
@@ -995,34 +999,17 @@ def _observed(
             nullable=None
             if r is None or any(c not in report.facts for c in r)
             else tuple(c for c in r if "NULL" in report.facts[c]),
-            ignores=tuple(
+            ignores=c.checker_ignores
+            if c.checker_ignores is not None
+            else tuple(
                 _observation.dependencies(
-                    observed,
-                    cond,
-                    report.output,
-                    _reads(cond, report.output),
-                    {} if c.proved else opened,
-                    _order_free(cond, report.output, opened),
-                    c.depends,
+                    observed, cond, report.output, r, {} if c.proved else opened
                 )
             ),
         )
         for cond, c in zip(ensures, report.ensures, strict=True)
     ]
-    if _CROSS_CHECK_IGNORES:
-        for c in checked:
-            if c.checker_ignores is not None and set(c.checker_ignores) != set(c.ignores):
-                raise AssertionError(
-                    f"ensures {c.label}: the checker reports it ignores "
-                    f"{list(c.checker_ignores)}, Python derives {list(c.ignores)} (#1071)"
-                )
     return replace(report, ensures=checked, observation=observed)
-
-
-#: Compare the checker's ignored components with Python's on every check
-#: (#1071): the test suite turns it on (`tests/conftest.py`), before Python's
-#: derivation goes.
-_CROSS_CHECK_IGNORES: bool = False
 
 
 def _open_columns(expr: ir.Table) -> dict[str, str]:
@@ -1044,51 +1031,6 @@ def _open_columns(expr: ir.Table) -> dict[str, str]:
                 out[name] = "elements"
     names = set(expr.columns)
     return {n: why for n, why in out.items() if n in names}
-
-
-#: Functions of a list that ignore the order of its elements.
-_ORDER_FREE = (
-    ops.ArrayLength,
-    ops.ArrayContains,
-    ops.ArrayMin,
-    ops.ArrayMax,
-    ops.ArraySum,
-    ops.ArrayMean,
-    ops.ArraySort,
-    ops.ArrayDistinct,
-    ops.ArrayAll,
-    ops.ArrayAny,
-)
-
-
-def _order_free(cond: Condition, columns: Mapping[str, Any], opened: Mapping[str, str]) -> set[str]:
-    """The open list columns `cond` reads only through functions that ignore
-    the order of the elements."""
-    lists = {n for n, why in opened.items() if why == "elements"}
-    if not lists or isinstance(cond, str | TableCondition) or not columns:
-        return set()
-    if isinstance(cond, Approx):
-        return _order_free(cond.cond, columns, opened)
-    try:
-        expr = resolve(cond, ibis.table(ibis.schema(dict(columns)), name="t"))
-    except Exception:  # noqa: BLE001 - an unreadable condition reads every column
-        return set()
-    bare: set[str] = set()
-
-    def walk(node: Any, guarded: bool) -> None:
-        if isinstance(node, ops.Field):
-            if not guarded:
-                bare.add(node.name)
-            return
-        if isinstance(node, Node):
-            inner = guarded or isinstance(node, _ORDER_FREE)
-            for arg in node.__args__:
-                for child in arg if isinstance(arg, tuple) else (arg,):
-                    walk(child, inner)
-
-    walk(expr.op(), False)
-    read = set(_reads(cond, columns) or ())
-    return {n for n in lists & read if n not in bare}
 
 
 def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:

@@ -203,9 +203,10 @@ structure Report where
   components the observation coarsens, but for `"zeros"`, which no
   comparison of reference codes sees (`Expr.robust_of_depends_canon`), and
   for `"floats"` under the plan's bound or an `approx` condition, with
-  `"picks"` and `"elements"` for the open aggregate columns it reads
-  (`Rel.openCol`). `none` where `depends` is, or without an observation in
-  the request. -/
+  `"picks"` and `"elements"` for the open aggregate columns an unproved one
+  reads (`Rel.openCol`; a proved one holds for every choice they leave,
+  `contract_sound_all`). `none` where `depends` is, or without an
+  observation in the request. -/
   ignores : List (Option (List String)) := []
   /-- For each postcondition: proved on every result the reference allows,
   every order and grouping of a double `SUM` or `AVG` among them
@@ -696,8 +697,11 @@ def check (input : Json) : Except String Report := do
     results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
     depends := depends ++ postDepends cat tables q.root env.length
     allowed := allowed ++ postAllowed cat q.root env.length
-    ignoresPre := ignoresPre ++ postIgnores cat tables q.root env.length coarsens
-      (floatsPlan || approxs.getD qi false)
+    -- A proved column holds for every choice the plan leaves open (every
+    -- order, `contract_sound_all`), so only an unproved one names them.
+    ignoresPre := ignoresPre ++ ((postIgnores cat tables q.root env.length coarsens
+      (floatsPlan || approxs.getD qi false)).zip env).map fun (o, a) =>
+        if a.certainlyTrue then o.map fun p => ([], p.2) else o
     qi := qi + 1
     -- Suggestions only for what is unproved: the report drops the others.
     suggestions := suggestions ++ (List.range env.length).map fun i =>
