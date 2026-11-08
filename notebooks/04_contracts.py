@@ -947,7 +947,57 @@ def _(mo):
     On bound tables only the base tables are checked: `paid`'s preconditions
     on `orders`. The intermediate result is never inspected, because
     `doubled_paid`'s preconditions were proved.
+
+    ### Handing the contract to another team
+
+    The billing team may run its steps on an engine sverify doesn't drive.
+    `to_substrait()` writes the proved plan as Substrait, which any
+    conforming consumer runs, with the contract inside it: the
+    preconditions the consumer must meet, the postconditions it may rely
+    on, and a manifest of how the proof reaches Substrait. We'll export
+    `paid` and read it back, which proves its contract again:
     """)
+    return
+
+
+@app.cell
+def _(paid, sv):
+    exported = paid.to_substrait()
+    _manifest = paid.report.substrait_contract()["manifest"]
+    _back = sv.Report.from_substrait(exported)
+    assert _back.proved
+    {
+        "class": _manifest["class"],
+        "evidence": _manifest["evidence"],
+        "proved again": [c.label for c in _back.ensures],
+    }
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The class `exact` says a consumer that follows Substrait's spec gives
+    the reference's rows. Where the spec leaves a choice open that the proof
+    needs, the export says so and refuses: Substrait doesn't say how
+    `upper` treats non-ASCII text (ST-10 on the
+    [upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)),
+    and the refusal names the way out:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    @sv.transform()
+    def shouty(orders):
+        return orders.select(orders.id, name=orders.customer.upper())
+
+    shouty(ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders"))
+    try:
+        shouty.to_substrait()
+    except sv.errors.ExportError as _e:
+        print(f"ExportError: {_e}")
     return
 
 

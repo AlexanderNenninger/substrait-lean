@@ -43,6 +43,7 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     _run_checker,
     checker_env,
     checker_path,
+    checker_refusal,
     run_checker,
 )
 from sverify._scan import Native, Resident, Scan
@@ -552,11 +553,12 @@ def stale_checker(path: Path | None = None) -> str | None:
 
 def checker_failed(mode: str, err: str) -> Exception:
     """The error for a checker request that failed: `CheckerVersionError`
-    where the checker is a stale build (`stale_checker`), else a
-    `ValueError` with the checker's message."""
+    where the checker is a stale build (`stale_checker`), else an
+    `UnsupportedError` (a `ValueError`) with the checker's message and its
+    exit."""
     if (why := stale_checker()) is not None:
         return CheckerVersionError(f"{why}. The checker said: {err.strip()}")
-    return ValueError(f"substrait-check {mode} failed: {err.strip()}")
+    return checker_refusal(mode, err)
 
 
 def read_tables(plan: dict) -> list[str]:
@@ -594,15 +596,14 @@ def written_plan(plan_json: str) -> str:
         The plan in Lean's written form, as protobuf JSON.
 
     Raises:
-        ValueError: The checker rejects the plan (an operator, function or
-            type outside the Lean model, or an ill-formed plan).
+        UnsupportedError: The checker rejects the plan (an operator, function
+            or type outside the Lean model, or an ill-formed plan).
     """
 
     def check(*flags: str) -> str:
         code, out, err = run_checker(flags, plan_json)
         if code != 0:
-            msg = (err or out).strip().splitlines()[-1:]
-            raise ValueError(f"substrait-check {' '.join(flags)} rejects the plan: {msg}")
+            raise checker_failed(" ".join(flags) or "--check", err or out)
         return out
 
     check()

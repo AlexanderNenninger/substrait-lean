@@ -733,7 +733,7 @@
  "dbt-org-hierarchy": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "WITH RECURSIVE is not supported",
+  "detail": "WITH RECURSIVE is not supported yet (#320)",
   "native": "runs"
  },
  "dbt-generate-date-spine": {
