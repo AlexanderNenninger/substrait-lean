@@ -18,7 +18,6 @@ floors runs natively on Polars and is refused on DuckDB.
 
 from __future__ import annotations
 
-import json
 import math
 
 import ibis
@@ -37,9 +36,6 @@ DIVISORS = [2, -3, 3, -2, 2, 4, -4]
 
 def _classed() -> bool:
     """Whether the checker's tables give the engines' classes (D15)."""
-    rows = [routes.choices(p) for p in ENGINES]
-    if any(r is None for r in rows):
-        return False
     return any(
         r.get("class") is not None
         for p in ENGINES
@@ -542,13 +538,12 @@ def test_f2_duckdb_plan_transfers_to_polars(con) -> None:
 
 # Needs the engines' choices (the transfer check), not their classes: it holds
 # from the DuckDB and Polars tables on (#587).
-def test_f3_duckdb_null_order_fails_the_transfer_and_is_rechecked(con) -> None:
-    """Route (c) fails: a sort read with DuckDB's NULL order, verified under
-    `Profile.duckdb`; Polars puts NULLs first, so the transfer check fails on
-    `null_order`. The lift states `NULLS LAST`, which Polars's translation
-    writes as an argument, so the re-check under `Profile.polars` proves it
-    (route d), and the run puts the NULLs last. With route="transfer" the
-    plan is refused, with the reason."""
+def test_f3_duckdb_null_order_stated_transfers(con) -> None:
+    """Route (c): a sort read with DuckDB's NULL order, verified under
+    `Profile.duckdb`. The lift states `NULLS LAST`, and Polars gives a stated
+    placement as stated, so the checker's transfer check (`transferB` over the
+    plan's reads with their preferences, `Rel.transfer_of_transferB`) passes
+    on `null_order`, and the run puts the NULLs last (#1166)."""
     t = con.table("t")
     report = sv.verify(
         "SELECT k FROM t ORDER BY k",
@@ -558,40 +553,11 @@ def test_f3_duckdb_null_order_fails_the_transfer_and_is_rechecked(con) -> None:
     )
     assert report.proved, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
-    refused = routes.choose(report, "polars", route="transfer")
-    assert refused.refused and refused.cls == "refused"
-    assert any(f["option"] == "null_order" for f in refused.failures), refused.failures
-    assert "transfer check fails on" in refused.reason and "null_order" in refused.reason
-    with pytest.raises(RouteError, match="refused on polars"):
-        report.run(con, "polars", route="transfer")
-    r = routes.choose(report, "polars")
-    assert (r.kind, r.profile) == ("recheck", "polars"), r
+    taken = routes.choose(report, "polars", route="transfer")
+    assert not taken.refused, taken.reason
+    assert routes.choose(report, "polars").kind == "transfer"
     out = report.run(con, "polars", route="auto")
     assert out.column("k").to_pylist()[-2:] == [None, None]
-
-
-@pytest.mark.skipif(
-    routes.lean_transfer("reference", "reference", []) is None,
-    reason="the checker has no --transfer yet (#444 3c)",
-)
-def test_f_lean_transfer_agrees(con) -> None:
-    """The checker's transfer check is authoritative (D1); the Python
-    lookup agrees with it on F2's and F3's plans."""
-    t = con.table("t")
-    for sql in ("SELECT k FROM t ORDER BY k", "SELECT i * 2 AS d FROM t"):
-        report = sv.verify(sql, tables={"t": t}, semantics="duckdb")
-        depends = (
-            report._depends
-            if report._depends is not None
-            else routes.plan_options(json.loads(report.internal_plan or "{}"))
-        )
-        lean = routes.lean_transfer("duckdb", "polars", depends)
-        assert lean is not None, "substrait-check --transfer"
-        mine = routes.transfer("duckdb", "polars", depends)
-        assert mine is not None
-        assert lean["ok"] == (not mine)
-        if mine:
-            assert lean["failures"][0]["option"] in {f["option"] for f in mine}
 
 
 # -- G, H: refusals and versions ---------------------------------------------

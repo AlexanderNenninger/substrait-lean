@@ -34,6 +34,7 @@ from sverify.engine import (
     connection_of,
     plan_json,
     read_tables,
+    run_guard_free,
     run_plan,
     written_plan,
 )
@@ -517,6 +518,14 @@ class Report:
     same rows and groups under the columns' `ε` (#568's threshold rule): a
     comparison on a double whose threshold lies within `ε` of its range may
     flip. None where the checker does not say."""
+    _engines: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
+    """Per engine, the checker's verdict on the plan's translation from the
+    reference (`SubstraitLean/Realize.lean`, #1166): its class and evidence
+    over the options the proof depends on, the theorems and facts, the shims,
+    the options realized only up to an observation, what refuses it, and the
+    transfer check from each other profile. None from a checker without it."""
+    _sorted: bool | None = field(default=None, repr=False, compare=False)
+    """Whether the plan's result comes out of a sort, as the checker reads it."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
@@ -880,7 +889,12 @@ class Report:
                 True. False skips the check, for a caller that has made it
                 already: the report's guarantee then holds only on data that
                 meets them, and a batch that does not may raise on the
-                engine.
+                engine. With the check, a guard-free plan on the reference's
+                route runs without the per-row checks the checker discharged
+                on data that meets them, on an engine whose writer a theorem
+                covers without them (`guard_free`; Polars, `Rel.polars_sound`);
+                the checks of the assumed `SUM`s and `±∞` stay. Without it,
+                and on the other engines, every check stays.
             streaming: On Polars, `"require"` refuses a plan any of whose
                 nodes runs on the in-memory engine
                 (`polars_engine.fallback_nodes`); `"allow"` (the default)
@@ -954,15 +968,33 @@ class Report:
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
         finite = self.semantics == "reference" or kind == "translated"
-        out = run_plan(
-            con,
-            written_plan(self.internal_plan),
-            engine,
-            finite=finite,
-            # A proved report's `deterministic` justifies Spark's windows
-            # without a row-order tiebreak (`to_sql`'s `deterministic`).
-            tie_free=self.deterministic and kind != "unverified",
-        )
+        # The checks the checker discharged (#1166): where the preconditions
+        # were checked on these tables and the plan runs by the reference's
+        # translation, a guard-free plan runs without its per-row checks on an
+        # engine whose writer a theorem covers without them, as the checker
+        # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
+        name = chosen.engine if chosen is not None else ""
+        theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
+        if (
+            check_requires
+            and kind == "translated"
+            and self.semantics == "reference"
+            and self._guard_free
+            and theorem is not None
+        ):
+            out = run_guard_free(
+                con, written_plan(self.internal_plan), name, theorem, finite=finite
+            )
+        else:
+            out = run_plan(
+                con,
+                written_plan(self.internal_plan),
+                engine,
+                finite=finite,
+                # A proved report's `deterministic` justifies Spark's windows
+                # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                tie_free=self.deterministic and kind != "unverified",
+            )
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
@@ -1098,14 +1130,7 @@ class Report:
         for e, got in _routes.evidence_on(self).items():
             if e in self.routes or got.problems or got.evidence is None:
                 continue
-            text = _routes.evidence_text(
-                got.evidence,
-                got.facts,
-                got.theorems,
-                got.version or _routes.probed_version(e),
-                got.issues,
-            )
-            lines.append(f"evidence: {e} {got.cls}, {text}")
+            lines.append(f"evidence: {e} {got.cls}, {_routes.evidence_text(got, e)}")
         return lines
 
     def _observes_lines(self) -> list[str]:
@@ -1529,6 +1554,8 @@ _REPORT_INTERNAL = [
     "rows_exact",
     "margin_checks",
     "margin_flags",
+    "engines",
+    "sorted",
     "conditions",
     "dialect",
     "on_inferred",
