@@ -262,7 +262,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; DuckDB runs it (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; run it with engine='duckdb' (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "fin-log-returns": {
@@ -576,7 +576,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; DuckDB runs it (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; run it with engine='duckdb' (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "iot-event-correlation": {
@@ -733,7 +733,7 @@
  "dbt-org-hierarchy": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "WITH RECURSIVE is not supported",
+  "detail": "WITH RECURSIVE is not supported yet (#320)",
   "native": "runs"
  },
  "dbt-generate-date-spine": {
@@ -1761,7 +1761,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake has no interval type, so an interval result column is refused"
+   "snowflake": "refused: Snowflake has no interval type, so an interval result column is refused: run it with engine='duckdb' (see #852)"
   }
  },
  "win-keyset-pagination": {

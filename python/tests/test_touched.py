@@ -301,7 +301,7 @@ def test_windows_with_different_partitions_are_recomputed():
     assert "do not share one PARTITION BY" in str(node.status())
 
 
-# -- #742 on deletes: LEFT JOIN, windows, double SUM and AVG (#248) -------------
+# -- #742 on deletes: LEFT JOIN, windows, AVG of integers, double SUM and AVG (#248)
 
 DOUBLES = pa.schema([("host", pa.string()), ("minute", pa.int64()), ("cpu", pa.float64())])
 HOSTS = pa.schema([("host", pa.string()), ("team", pa.string())])
@@ -320,43 +320,49 @@ def _running(samples):
 
 
 @sv.transform(requires={"samples": [ibis._.cpu.between(0, 100)]})
+def _integer_avg(samples):
+    return samples.group_by("host").aggregate(mean=samples.cpu.mean())
+
+
+@sv.transform(requires={"samples": [ibis._.cpu.between(0, 100)]})
 def _double_sums(samples):
     return samples.group_by("host").aggregate(total=samples.cpu.sum(), mean=samples.cpu.mean())
 
 
 @pytest.mark.parametrize(
-    ("step", "schema", "strategy", "why"),
+    ("step", "schema", "strategy", "how", "why"),
     [
         (
             _left_join,
             SCHEMA,
+            "recompute and diff",
             "recomputed and diffed",
             "recomputed (not incrementally maintainable (left join",
         ),
         (
             _running,
             SCHEMA,
+            "touched groups",
             "1 touched group(s) recomputed",
             "no delta rules: not incrementally maintainable (left join, fetch or window)",
         ),
-        pytest.param(
-            _double_sums,
-            DOUBLES,
+        (
+            _integer_avg,
+            SCHEMA,
+            "touched groups",
             "1 touched group(s) recomputed",
-            "total is a SUM of float64",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="the status names the checker's generic delta-rule refusal (left join, "
-                "fetch or window), not the aggregate's: _linear's reason is dropped",
-            ),
+            "no delta rules: mean is a AVG of int64",
         ),
+        # D25 keeps the exact sum (#1159): maintained, nothing to explain.
+        (_double_sums, DOUBLES, "delta rules", None, None),
     ],
-    ids=["left_join", "window", "double_sum_avg"],
+    ids=["left_join", "window", "integer_avg", "double_sum_avg"],
 )
-def test_a_batch_that_deletes_rows_says_why_the_node_recomputes(step, schema, strategy, why):
-    """#742's rule where a batch deletes rows (#248): the node is recomputed
-    (in full or by the groups the batch touches), its status says why, the
-    refresh report says how, and the state equals a full recompute."""
+def test_a_batch_that_deletes_rows_says_why_the_node_recomputes(step, schema, strategy, how, why):
+    """#742's rule where a batch deletes rows (#248): a node is maintained by
+    delta rules, or it is recomputed (in full or by the groups the batch
+    touches), its status says why and the refresh report says how. Either
+    way the state equals a full recompute."""
 
     def table(data):
         return pa.table(
@@ -369,8 +375,12 @@ def test_a_batch_that_deletes_rows_says_why_the_node_recomputes(step, schema, st
     inputs = (src, hosts) if step is _left_join else (src,)
     node = src.pipe(step, hosts=hosts) if step is _left_join else src.pipe(step)
     node.refresh()
+    assert view(node).strategy == strategy
     src.apply(Changes(deletes=table([("a", 2, cpu)])))
     out = node.refresh(audit=True)[node.name]
-    assert strategy in out.summary()
     assert rows(node) == recomputed(node, *inputs)
-    assert why in str(node.status())
+    if why is None:
+        assert "recomputed" not in out.summary() and "recomputed" not in str(node.status())
+    else:
+        assert how in out.summary()
+        assert why in str(node.status())

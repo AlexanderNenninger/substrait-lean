@@ -33,7 +33,7 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
-from sverify import _duckdb, _stages
+from sverify import _duckdb, _engines, _stages
 from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
     _CHECKER,
     _REBUILD,
@@ -43,6 +43,7 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     _run_checker,
     checker_env,
     checker_path,
+    checker_refusal,
     run_checker,
 )
 from sverify._scan import Native, Resident, Scan
@@ -54,11 +55,11 @@ Engine = Literal["duckdb", "polars", "spark"]
 Polars; `sverify.engines.run` and `Node.refresh` also run them on Spark.
 `"datafusion"` is accepted where a `Connection` runs plans: an optional
 engine, outside the 1.x promise (`docs/stability.md`)."""
-ENGINES: tuple[Engine, ...] = ("duckdb", "polars")
+ENGINES: tuple[Engine, ...] = _engines.LOCAL  # type: ignore[assignment] - names of `Engine`
 """The engines a `Connection` runs plans on: `"duckdb"` (the default) and
 `"polars"`. Loop over it to run a plan on each, as the tests do.
 `sverify.engines.run` also takes `"spark"` or a Spark session."""
-_LOCAL_ENGINES = (*ENGINES, "datafusion")
+_LOCAL_ENGINES = _engines.ACCEPTED
 """The engines a `Connection` accepts: `ENGINES` and DataFusion, an optional
 engine."""
 
@@ -170,9 +171,12 @@ class Connection:
     """
 
     def __init__(self, engine: Engine = "duckdb"):
-        if engine not in _LOCAL_ENGINES:
+        from sverify import profiles
+
+        plugin = profiles.find(engine)
+        if plugin is None or not plugin.local:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
-        self.engine: Engine = engine
+        self.engine: Engine = plugin.engine  # type: ignore[assignment] - an installed engine's name
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
         self._arrow: MutableMapping[str, pa.Table] = _Arrow(self)
@@ -552,11 +556,12 @@ def stale_checker(path: Path | None = None) -> str | None:
 
 def checker_failed(mode: str, err: str) -> Exception:
     """The error for a checker request that failed: `CheckerVersionError`
-    where the checker is a stale build (`stale_checker`), else a
-    `ValueError` with the checker's message."""
+    where the checker is a stale build (`stale_checker`), else an
+    `UnsupportedError` (a `ValueError`) with the checker's message and its
+    exit."""
     if (why := stale_checker()) is not None:
         return CheckerVersionError(f"{why}. The checker said: {err.strip()}")
-    return ValueError(f"substrait-check {mode} failed: {err.strip()}")
+    return checker_refusal(mode, err)
 
 
 def read_tables(plan: dict) -> list[str]:
@@ -594,15 +599,14 @@ def written_plan(plan_json: str) -> str:
         The plan in Lean's written form, as protobuf JSON.
 
     Raises:
-        ValueError: The checker rejects the plan (an operator, function or
-            type outside the Lean model, or an ill-formed plan).
+        UnsupportedError: The checker rejects the plan (an operator, function
+            or type outside the Lean model, or an ill-formed plan).
     """
 
     def check(*flags: str) -> str:
         code, out, err = run_checker(flags, plan_json)
         if code != 0:
-            msg = (err or out).strip().splitlines()[-1:]
-            raise ValueError(f"substrait-check {' '.join(flags)} rejects the plan: {msg}")
+            raise checker_failed(" ".join(flags) or "--check", err or out)
         return out
 
     check()
@@ -709,45 +713,16 @@ def run_plan(
             assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
         ```
     """
+    from sverify import profiles
+
     engine = engine or con.engine
-    if engine == "spark" or not isinstance(engine, str):
-        # Spark: the local session, or the session given as the engine.
-        from sverify import spark_engine
-
-        plan = json.loads(plan_json)
-        # Spark's temporary views take plain names, not the delta plans' `t$delta`.
-        names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
-        _rename_tables(plan, names)
-        tables = {alias: con._arrow[t] for t, alias in names.items()}
-        return spark_engine.run(
-            plan,
-            tables,
-            None if engine == "spark" else engine,
-            deterministic=tie_free,
-            finite=finite,
-        )
-    if engine == "datafusion":
-        from sverify.datafusion_engine import datafusion_plan
-
-        return run_substrait_json(con, datafusion_plan(plan_json))
-    read = read_tables(json.loads(plan_json))
-    if engine == "duckdb":
-        from sverify import duckdb_engine
-
-        # DuckDB reads `Scan` and `Resident` tables where they are.
-        tables = {t: con.get(t) for t in read}
-        if keep:
-            return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
-        return duckdb_engine.run(plan_json, tables, finite=finite)
-    tables = {t: con._arrow[t] for t in read}
-    if engine == "polars":
-        from sverify import polars_engine
-
-        guards = polars_engine.ALL_GUARDS - (
-            frozenset() if finite else {polars_engine.InfiniteResult.issue}
-        )
-        return polars_engine.run(plan_json, tables, guards=guards)
-    raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+    plugin = profiles.find(engine)
+    if plugin is None or plugin.runner is None:
+        raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+    # A session of the caller's (Spark's) runs the plan there; a name, on the
+    # engine's own.
+    session = None if isinstance(engine, str) else engine
+    return plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
 
 
 def _polars_guard_free(con: Connection, plan_json: str, finite: bool) -> pa.Table:
