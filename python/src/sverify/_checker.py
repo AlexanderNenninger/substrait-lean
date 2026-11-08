@@ -11,6 +11,7 @@ from __future__ import annotations
 import atexit
 import ctypes
 import functools
+import json
 import math
 import os
 import subprocess
@@ -287,6 +288,25 @@ def run_checker(flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
 # Timestamps are microseconds, dates days.
 MAX_MAG = (2**53 - 1) * 2**2045
 INF_MAG, NAN_MAG = MAX_MAG + 1, MAX_MAG + 2
+
+
+@functools.cache
+def observations() -> dict[str, list[dict]]:
+    """Each engine profile's observation rows (`--options`, "observations"):
+    `{"group", "option", "row": {"shim", "evidence", ...}}`. Empty when no
+    checker answers, so callers fall back to the core's choice."""
+    try:
+        out = subprocess.run(
+            [str(checker_path()), "--options"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        ).stdout
+        found = json.loads(out).get("observations")
+    except (OSError, subprocess.SubprocessError, ValueError, SverifyError):
+        found = None
+    return found if isinstance(found, dict) else {}
 
 
 def decode_double(code: int) -> float:
