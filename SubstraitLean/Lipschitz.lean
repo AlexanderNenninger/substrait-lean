@@ -48,9 +48,9 @@ pipeline rule:
 The tolerance is in codes (`Tol`): a finite double's code is twice its
 magnitude in units of `2⁻¹⁰⁷⁴`, plus one, with its sign (`FloatFormat`), so
 codes measure absolute distance and a Lipschitz constant on codes is one on
-values. The arithmetic rows (`x ± y`, `x · y`, `c · x`, `x / c`, exact since
-D31) are `Expr.arithTol`, in a projection through `Expr.tolA`; `x / y` of two
-columns follows (#929). The `M₁` fold is `LipschitzL1.lean`, where
+values. The arithmetic rows (`x ± y`, `x · y`, `c · x`, `x / c`, and `x / y`
+with `y`'s range clear of zero, `ClearOfZero`; exact since D31) are
+`Expr.arithTol`, in a projection through `Expr.tolA`. The `M₁` fold is `LipschitzL1.lean`, where
 arithmetic stays exact or refused for now.
 
 A tolerance leaves its other columns exact, and compares them exactly:
@@ -752,6 +752,25 @@ theorem fdiv_isRef (a b : Int) : IsRef (fdiv a b) := by
         exact isRef_canon_of (by simp))
     | exact isRef_canon_of (.inr (.inr (.inr (.inr (.inr ⟨_, _, rfl⟩)))))
 
+/-- D31's operations give a double only on two doubles. Reduced by `cases`
+on the constructors, which `simp [BinFn.apply]` over every pair took 1.4 s
+to do. -/
+theorem fadd_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fadd va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fadd_isRef _ _) | cases h
+
+theorem fsub_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fsub va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fsub_isRef _ _) | cases h
+
+theorem fmul_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fmul va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fmul_isRef _ _) | cases h
+
+theorem fdiv_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fdiv va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fdiv_isRef _ _) | cases h
+
 theorem Expr.refCol_sound {mask : Nat → Bool} {e : Expr} (he : e.refCol mask = true) {row : Row}
     (h : ∀ j c, mask j = true → row.getD j .null = .float c → IsRef c) {c : Int}
     (hc : e.eval row = .float c) : IsRef c := by
@@ -760,13 +779,10 @@ theorem Expr.refCol_sound {mask : Nat → Bool} {e : Expr} (he : e.refCol mask =
   | bin f a b =>
     simp only [Expr.eval] at hc
     cases f <;> simp only [Expr.refCol, reduceCtorEq] at he
-    all_goals
-      cases ha : a.eval row <;> cases hb : b.eval row <;> rw [ha, hb] at hc <;>
-        simp only [BinFn.apply, reduceCtorEq, Value.float.injEq] at hc
-    · rw [← hc]; exact fadd_isRef _ _
-    · rw [← hc]; exact fsub_isRef _ _
-    · rw [← hc]; exact fmul_isRef _ _
-    · rw [← hc]; exact fdiv_isRef _ _
+    · exact fadd_apply_float hc
+    · exact fsub_apply_float hc
+    · exact fmul_apply_float hc
+    · exact fdiv_apply_float hc
   | _ => simp [Expr.refCol] at he
 
 theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) : IsRef c := by
@@ -1546,6 +1562,186 @@ theorem fdiv_lit_near {e Mx : Nat} {a b c : Int} (fa : IsFin a) (fb : IsFin b) (
       (unitK * (e + 1) + n - 1) / n := Nat.div_le_div_right (by omega)
   omega
 
+/-- Every code within `e` of `[lo, hi]` has one sign and magnitude at least
+`m > 0`: a divisor's range clear of zero (#929 row 5). -/
+def ClearOfZero (lo hi : Int) (e m : Nat) : Prop :=
+  0 < m ∧ ((m : Int) ≤ scaled (lo - e) ∨ scaled (hi + e) ≤ -(m : Int))
+
+/-- `m`, when the range is clear of zero. -/
+def clearOfZero? (lo hi : Int) (e : Nat) : Option Nat :=
+  if 0 < scaled (lo - e) then some (scaled (lo - e)).toNat
+  else if scaled (hi + e) < 0 then some (-scaled (hi + e)).toNat
+  else none
+
+theorem clearOfZero?_sound {lo hi : Int} {e m : Nat} (h : clearOfZero? lo hi e = some m) :
+    ClearOfZero lo hi e m := by
+  unfold clearOfZero? at h
+  split at h
+  · simp only [Option.some.injEq] at h; subst h; refine ⟨by omega, .inl (by omega)⟩
+  split at h
+  · simp only [Option.some.injEq] at h; subst h; refine ⟨by omega, .inr (by omega)⟩
+  · cases h
+
+/-- Two codes in a range clear of zero: the same sign, magnitudes at least `m`. -/
+theorem ClearOfZero.pair {lo hi : Int} {e m : Nat} (hz : ClearOfZero lo hi e m) {a b : Int}
+    (ha₁ : lo - e ≤ a) (ha₂ : a ≤ hi + e) (hb₁ : lo - e ≤ b) (hb₂ : b ≤ hi + e) :
+    (0 < scaled a ∧ 0 < scaled b ∨ scaled a < 0 ∧ scaled b < 0) ∧
+      m ≤ (scaled a).natAbs ∧ m ≤ (scaled b).natAbs := by
+  obtain ⟨hm, h | h⟩ := hz
+  · have := scaled_mono ha₁; have := scaled_mono hb₁; omega
+  · have := scaled_mono ha₂; have := scaled_mono hb₂; omega
+
+/-- **Two roundings by different divisors**: `ofExactDiv N₁ n₁` and
+`ofExactDiv N₂ n₂` within the distance of `N₁ / n₁` and `N₂ / n₂`, both
+ulps and the codes' slack. `round_pair` is the case `n₁ = n₂`. -/
+theorem round_pair₂ {N₁ N₂ : Int} {n₁ n₂ : Nat} (h₁ : 0 < n₁) (h₂ : 0 < n₂)
+    (f₁ : IsFin (ofExactDiv N₁ n₁)) (f₂ : IsFin (ofExactDiv N₂ n₂)) :
+    (ofExactDiv N₁ n₁ - ofExactDiv N₂ n₂).natAbs ≤
+      4 + ulpDiv N₁ n₁ + ulpDiv N₂ n₂ +
+        (2 * ((n₂ : Int) * N₁ - (n₁ : Int) * N₂).natAbs + n₁ * n₂ - 1) / (n₁ * n₂) := by
+  have w₁ := ofExactDiv_within h₁ f₁
+  have w₂ := ofExactDiv_within h₂ f₂
+  have c₁ := code_sub_scaled (ofExactDiv N₁ n₁)
+  have c₂ := code_sub_scaled (ofExactDiv N₂ n₂)
+  generalize ofExactDiv N₁ n₁ = r₁ at *
+  generalize ofExactDiv N₂ n₂ = r₂ at *
+  generalize ulpDiv N₁ n₁ = u₁ at *
+  generalize ulpDiv N₂ n₂ = u₂ at *
+  generalize scaled r₁ = s₁ at *
+  generalize scaled r₂ = s₂ at *
+  have key : (n₂ : Int) * ((n₁ : Int) * s₁ - N₁) - (n₁ : Int) * ((n₂ : Int) * s₂ - N₂) +
+      ((n₂ : Int) * N₁ - (n₁ : Int) * N₂) = ((n₁ * n₂ : Nat) : Int) * (s₁ - s₂) := by
+    simp only [Int.mul_sub, Int.natCast_mul, Int.mul_assoc, Int.mul_left_comm (n₂ : Int) (n₁ : Int)]
+    omega
+  have t := Int.natAbs_add_le ((n₂ : Int) * ((n₁ : Int) * s₁ - N₁) - (n₁ : Int) * ((n₂ : Int) * s₂ - N₂))
+    ((n₂ : Int) * N₁ - (n₁ : Int) * N₂)
+  have t' := Int.natAbs_sub_le ((n₂ : Int) * ((n₁ : Int) * s₁ - N₁)) ((n₁ : Int) * ((n₂ : Int) * s₂ - N₂))
+  rw [key, Int.natAbs_mul, Int.natAbs_natCast] at t
+  rw [Int.natAbs_mul, Int.natAbs_mul, Int.natAbs_natCast, Int.natAbs_natCast] at t'
+  generalize ((n₁ : Int) * s₁ - N₁).natAbs = E₁ at *
+  generalize ((n₂ : Int) * s₂ - N₂).natAbs = E₂ at *
+  generalize ((n₂ : Int) * N₁ - (n₁ : Int) * N₂).natAbs = D at *
+  have k₁ := Nat.mul_le_mul_left n₂ w₁
+  have k₂ := Nat.mul_le_mul_left n₁ w₂
+  have hP : 0 < n₁ * n₂ := Nat.mul_pos h₁ h₂
+  -- `2 · n₁n₂ · |s₁ - s₂| ≤ n₁n₂ (u₁ + u₂) + 2 D`.
+  have e₁ : n₂ * (n₁ * u₁) = (n₁ * n₂) * u₁ := by rw [Nat.mul_left_comm, Nat.mul_assoc]
+  have e₂ : n₁ * (n₂ * u₂) = (n₁ * n₂) * u₂ := by rw [Nat.mul_assoc]
+  have e₃ : n₂ * (2 * E₁) = 2 * (n₂ * E₁) := Nat.mul_left_comm _ _ _
+  have e₄ : n₁ * (2 * E₂) = 2 * (n₁ * E₂) := Nat.mul_left_comm _ _ _
+  rw [e₁, e₃] at k₁; rw [e₂, e₄] at k₂
+  generalize n₁ * n₂ = P at *
+  have hA : (2 * (s₁ - s₂).natAbs - (u₁ + u₂)) * P ≤ 2 * D + P - 1 := by
+    rw [Nat.sub_mul, Nat.add_mul, Nat.mul_assoc, Nat.mul_comm (s₁ - s₂).natAbs P,
+      Nat.mul_comm u₁ P, Nat.mul_comm u₂ P]
+    generalize P * (s₁ - s₂).natAbs = X at *
+    generalize n₂ * E₁ = Y₁ at *
+    generalize n₁ * E₂ = Y₂ at *
+    omega
+  have := (Nat.le_div_iff_mul_le hP).2 hA
+  have e : r₁ - r₂ = (r₁ - 2 * s₁) + 2 * (s₁ - s₂) + (2 * s₂ - r₂) := by omega
+  have hc₂ : (2 * s₂ - r₂).natAbs = (r₂ - 2 * s₂).natAbs := by rw [← Int.natAbs_neg, Int.neg_sub]
+  have t2 := natAbs_add3_le (r₁ - 2 * s₁) (2 * (s₁ - s₂)) (2 * s₂ - r₂)
+  rw [← e, Int.natAbs_mul, hc₂] at t2
+  have : (2 : Int).natAbs = 2 := rfl
+  rw [this] at t2
+  omega
+
+/-- `⌈X / P⌉ ≤ c` when `X ≤ P c`. -/
+theorem ceilDiv_le_of {X P c : Nat} (hP : 0 < P) (h : X ≤ P * c) : (X + P - 1) / P ≤ c := by
+  have : (X + P - 1) / P < c + 1 := by
+    rw [Nat.div_lt_iff_lt_mul hP, Nat.succ_mul, Nat.mul_comm c P]; omega
+  omega
+
+set_option exponentiation.threshold 3200 in
+/-- **`x / y`** with `y`'s range clear of zero (`ClearOfZero`): the exact
+quotients' distance over `n₁ n₂ ≥ m²`, then both roundings. `Mx`, `My` are the
+reference ranges' magnitudes, `Mx + ex` the engine's `x`'s. -/
+theorem fdiv_near {ex ey Mx My m : Nat} {lo hi a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin a₁) (f₂ : IsFin a₂)
+    (g₁ : IsFin b₁) (g₂ : IsFin b₂) (h₁ : (a₁ - b₁).natAbs ≤ ex) (h₂ : (a₂ - b₂).natAbs ≤ ey)
+    (ma₁ : (scaled a₁).natAbs ≤ Mx + ex) (mb₁ : (scaled b₁).natAbs ≤ Mx) (mb₂ : (scaled b₂).natAbs ≤ My)
+    (hz : ClearOfZero lo hi ey m) (ha₂ : lo - ey ≤ a₂ ∧ a₂ ≤ hi + ey) (hb₂ : lo ≤ b₂ ∧ b₂ ≤ hi)
+    (hbig : ((Mx + ex) * unitK + m - 1) / m ≤ 2 ^ 2097) :
+    (fdiv a₁ a₂ - fdiv b₁ b₂).natAbs ≤
+      4 + 2 * ulpDiv ((((Mx + ex) * unitK + m - 1) / m : Nat) : Int) 1 +
+        (unitK * (My * (ex + 1) + Mx * (ey + 1)) + m * m - 1) / (m * m) := by
+  obtain ⟨hsign, hma, hmb⟩ := hz.pair (a := a₂) (b := b₂) ha₂.1 ha₂.2 (by have := hb₂.1; omega)
+    (by have := hb₂.2; omega)
+  have hm : 0 < m := hz.1
+  have ha0 : scaled a₂ ≠ 0 := by omega
+  have hb0 : scaled b₂ ≠ 0 := by omega
+  rw [fdiv_fin f₁ f₂ ha0, fdiv_fin g₁ g₂ hb0]
+  generalize hB : ((Mx + ex) * unitK + m - 1) / m = B at *
+  have hK : 0 < unitK := Nat.two_pow_pos _
+  -- Numerators and divisors.
+  have hnum : ∀ {x y : Int} {M : Nat}, (scaled x).natAbs ≤ M → M ≤ Mx + ex → m ≤ (scaled y).natAbs →
+      ((if scaled y < 0 then -scaled x else scaled x) * (unitK : Int)).natAbs ≤ (scaled y).natAbs * B := by
+    intro x y M hx hM hy
+    rw [Int.natAbs_mul, Int.natAbs_natCast]
+    have : (if scaled y < 0 then -scaled x else scaled x).natAbs = (scaled x).natAbs := by
+      split <;> simp [Int.natAbs_neg]
+    rw [this, ← hB]
+    refine Nat.le_trans (Nat.mul_le_mul_right _ (Nat.le_trans hx hM)) ?_
+    exact Nat.le_trans (le_mul_ceilDiv hm) (Nat.mul_le_mul_right _ hy)
+  have hfin : ∀ {x y : Int} {M : Nat}, (scaled x).natAbs ≤ M → M ≤ Mx + ex → m ≤ (scaled y).natAbs →
+      IsFin (ofExactDiv ((if scaled y < 0 then -scaled x else scaled x) * (unitK : Int)) (scaled y).natAbs) :=
+    fun hx hM hy => ofExactDiv_fin (by omega) (Nat.le_trans (hnum hx hM hy) (Nat.mul_le_mul_left _ hbig))
+  have r := round_pair₂ (by omega) (by omega) (hfin ma₁ (Nat.le_refl _) hma) (hfin mb₁ (by omega) hmb)
+  have u₁ := ulpDiv_le_of_mean (hnum ma₁ (Nat.le_refl _) hma)
+  have u₂ := ulpDiv_le_of_mean (hnum mb₁ (by omega) hmb)
+  -- The cross term: `|n₂ N₁ - n₁ N₂| = K |sa₁ sb₂ - sb₁ sa₂|`.
+  have hcross : (((scaled b₂).natAbs : Int) * ((if scaled a₂ < 0 then -scaled a₁ else scaled a₁) * (unitK : Int)) -
+      ((scaled a₂).natAbs : Int) * ((if scaled b₂ < 0 then -scaled b₁ else scaled b₁) * (unitK : Int))).natAbs =
+      unitK * (scaled a₁ * scaled b₂ - scaled b₁ * scaled a₂).natAbs := by
+    rcases hsign with ⟨pa, pb⟩ | ⟨na, nb⟩
+    · rw [Int.natAbs_of_nonneg (by omega : (0 : Int) ≤ scaled b₂),
+        Int.natAbs_of_nonneg (by omega : (0 : Int) ≤ scaled a₂)]
+      have q₁ : ¬ scaled a₂ < 0 := by omega
+      have q₂ : ¬ scaled b₂ < 0 := by omega
+      simp only [q₁, q₂, ite_false]
+      rw [show scaled b₂ * (scaled a₁ * (unitK : Int)) - scaled a₂ * (scaled b₁ * (unitK : Int)) =
+          (unitK : Int) * (scaled a₁ * scaled b₂ - scaled b₁ * scaled a₂) by
+        simp only [Int.mul_sub, Int.mul_assoc, Int.mul_comm, Int.mul_left_comm]]
+      rw [Int.natAbs_mul, Int.natAbs_natCast]
+    · rw [Int.ofNat_natAbs_of_nonpos (by omega : scaled b₂ ≤ 0),
+        Int.ofNat_natAbs_of_nonpos (by omega : scaled a₂ ≤ 0)]
+      simp only [na, nb, ite_true]
+      rw [show -scaled b₂ * (-scaled a₁ * (unitK : Int)) - -scaled a₂ * (-scaled b₁ * (unitK : Int)) =
+          (unitK : Int) * (scaled a₁ * scaled b₂ - scaled b₁ * scaled a₂) by
+        simp only [Int.mul_sub, Int.neg_mul, Int.mul_neg, Int.neg_neg, Int.mul_assoc, Int.mul_comm,
+          Int.mul_left_comm]]
+      rw [Int.natAbs_mul, Int.natAbs_natCast]
+  rw [hcross] at r
+  -- `2 |sa₁ sb₂ - sb₁ sa₂| ≤ My (ex + 1) + Mx (ey + 1)`.
+  have hD : 2 * (scaled a₁ * scaled b₂ - scaled b₁ * scaled a₂).natAbs ≤ My * (ex + 1) + Mx * (ey + 1) := by
+    have e : scaled a₁ * scaled b₂ - scaled b₁ * scaled a₂ =
+        scaled b₂ * (scaled a₁ - scaled b₁) - scaled b₁ * (scaled a₂ - scaled b₂) := by
+      rw [Int.mul_sub, Int.mul_sub, Int.mul_comm (scaled b₂) (scaled a₁),
+        Int.mul_comm (scaled b₂) (scaled b₁)]; omega
+    rw [e]
+    have t := Int.natAbs_sub_le (scaled b₂ * (scaled a₁ - scaled b₁)) (scaled b₁ * (scaled a₂ - scaled b₂))
+    rw [Int.natAbs_mul, Int.natAbs_mul] at t
+    have s₁ := scaled_sub_le a₁ b₁
+    have s₂ := scaled_sub_le a₂ b₂
+    have k₁ : (scaled b₂).natAbs * (2 * (scaled a₁ - scaled b₁).natAbs) ≤ My * (ex + 1) :=
+      Nat.mul_le_mul mb₂ (by omega)
+    have k₂ : (scaled b₁).natAbs * (2 * (scaled a₂ - scaled b₂).natAbs) ≤ Mx * (ey + 1) :=
+      Nat.mul_le_mul mb₁ (by omega)
+    rw [Nat.mul_left_comm] at k₁ k₂
+    omega
+  -- The divisors' product is at least `m²`.
+  have hP : m * m ≤ (scaled a₂).natAbs * (scaled b₂).natAbs := Nat.mul_le_mul hma hmb
+  have hq : (2 * (unitK * (scaled a₁ * scaled b₂ - scaled b₁ * scaled a₂).natAbs) +
+      (scaled a₂).natAbs * (scaled b₂).natAbs - 1) / ((scaled a₂).natAbs * (scaled b₂).natAbs) ≤
+      (unitK * (My * (ex + 1) + Mx * (ey + 1)) + m * m - 1) / (m * m) := by
+    apply ceilDiv_le_of (Nat.mul_pos (by omega) (by omega))
+    have hc := le_mul_ceilDiv (a := unitK * (My * (ex + 1) + Mx * (ey + 1))) (Nat.mul_pos hm hm)
+    have h2 : 2 * (unitK * (scaled a₁ * scaled b₂ - scaled b₁ * scaled a₂).natAbs) ≤
+        unitK * (My * (ex + 1) + Mx * (ey + 1)) := by
+      rw [Nat.mul_left_comm]; exact Nat.mul_le_mul_left _ hD
+    exact Nat.le_trans h2 (Nat.le_trans hc (Nat.mul_le_mul_right _ hP))
+  omega
+
 set_option exponentiation.threshold 3200 in
 /-- **The arithmetic rows' bounds**: `x ± y`, `x · y` (`c · x` with a literal
 operand) and `x / c`, of operands `Expr.atom?` takes. `M` is an operand's
@@ -1571,7 +1767,15 @@ def Expr.arithTol (t : Tol) (mask : Nat → Bool) (env : List AVal) : Expr → O
           if scaled c ≠ 0 ∧ (Mx * unitK + n - 1) / n ≤ 2 ^ 2097 then
             some (4 + 2 * ulpDiv (((Mx * unitK + n - 1) / n : Nat) : Int) 1 + (unitK * (ex + 1) + n - 1) / n)
           else none
-        | _ => none
+        | _ =>
+          -- `x / y` of a divisor clear of zero (#929 row 5).
+          match clearOfZero? ly hy ey with
+          | some m =>
+            if (Mx * unitK + m - 1) / m ≤ 2 ^ 2097 then
+              some (4 + 2 * ulpDiv (((Mx * unitK + m - 1) / m : Nat) : Int) 1 +
+                (unitK * (magOf ly hy * (ex + 1) + magOf lx hx * (ey + 1)) + m * m - 1) / (m * m))
+            else none
+          | none => none
       | _ => none
     | _, _ => none
   | _ => none
@@ -1657,8 +1861,20 @@ theorem Expr.arithTol_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e
             exact ⟨_, _, rfl, rfl, fdiv_lit_near fa₁ fb₁ fa₂ hc.1 d₁ ma₁ (by omega) hc.2,
               fdiv_isRef _ _, fdiv_isRef _ _⟩
           · cases h
-        | _ => simp at h
-      | _ => simp at h
+        | _ => simp [Expr.atom?] at hay
+      | _ =>
+        all_goals
+          simp only at h
+          cases hcz : clearOfZero? ly hy' ey with
+          | none => simp [hcz] at h
+          | some m =>
+            simp only [hcz] at h
+            split at h
+            · rename_i hbig
+              simp only [Option.some.injEq] at h; subst h
+              exact ⟨_, _, rfl, rfl, fdiv_near fa₁ fa₂ fb₁ fb₂ d₁ d₂ ma₁ mb₁ mb₂ (clearOfZero?_sound hcz)
+                ⟨by omega, by omega⟩ ⟨l₂, u₂⟩ hbig, fdiv_isRef _ _, fdiv_isRef _ _⟩
+            · cases h
   | _ => simp [Expr.arithTol] at h
 
 /-- **An expression's tolerance**: `Expr.tol?`'s, or an arithmetic row's. -/
@@ -2530,6 +2746,18 @@ private def exSum (r : Rel) : Option (List Bool) :=
 #guard exSum (.aggregate (.project (.read "t") [.bin .fmul (.lit (.float (FloatCode.ofFloat 2.0))) (.field 2)]) []
   [{ fn := .fsum, arg := .field 3 }]) == some [true, false, false, false]
 #guard exSum (.project (.read "t") [.bin .fmul (.field 0) (.field 2)]) == none
+
+/-- As `exK`, with the first column a double in `[1, 100]`, clear of zero. -/
+private def exK2 : KnowledgeEnv := fun _ =>
+  ⟨[AVal.num false ⟨some (FloatCode.ofFloat 1.0), some (FloatCode.ofFloat 100.0)⟩ .float, AVal.top,
+    AVal.num false ⟨some (FloatCode.ofFloat (-1.0e6)), some (FloatCode.ofFloat 1.0e6)⟩ .float],
+    [], [], some 1000⟩
+private def exSum2 (r : Rel) : Option (List Bool) :=
+  (r.tol exCat exK2 exT).map fun t => (List.range 4).map fun c => (t c).isSome
+
+-- `x / y` with `y`'s range clear of zero is tolerated; a divisor whose range holds zero is refused.
+#guard exSum2 (.project (.read "t") [.bin .fdiv (.field 2) (.field 0)]) == some [false, false, true, true]
+#guard exSum2 (.project (.read "t") [.bin .fdiv (.field 0) (.field 2)]) == none
 
 private def tie : Tol := fun c => if c = 0 then some 2 else none
 
