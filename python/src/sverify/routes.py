@@ -895,6 +895,7 @@ def realization(
     problems: list[str] = []
     seen: list[Observation] = []
     proved: list[bool] = []
+    told: set[str] = set()
     for d in depends:
         g, o = d.get("group"), d["option"]
         r = row(engine, g, o)
@@ -928,7 +929,11 @@ def realization(
                     f"the postcondition observes its {', '.join(missed)} ({observed}); state "
                     f"{', '.join(missed)} in sv.equivalent(...) or shim it{facts}"
                 )
-            problems += [f"{_where(g, o)}: {p}{facts}" for p in bounded if not r.get("shim")]
+            # A SUM's `sum_order` and `rounding` rows rest on the same bound:
+            # say each problem once, at the first row that meets it.
+            new = [p for p in bounded if not r.get("shim") and p not in told]
+            told.update(new)
+            problems += [f"{_where(g, o)}: {p}{facts}" for p in new]
         if cls == "shim" and r.get("shim"):
             shims.append(f"{_where(g, o)}: {r['shim']}")
         classes.append(cls)
