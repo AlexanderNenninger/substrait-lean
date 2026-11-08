@@ -676,6 +676,21 @@ OBSERVATIONS: list[Observation] = [
     _o("sum-infinities", "aggregates",
        "SELECT nan_text(sum(d)), nan_text(sum(f)), typeof(sum(f)) FROM (VALUES ('inf'::DOUBLE,"
        " 'inf'::FLOAT), ('-inf'::DOUBLE, '-inf'::FLOAT)) t(d, f)", *_NAN_TEXT),
+    # `sum`, `avg`, `fsum` and `favg` over ±inf: ungrouped, grouped and over a
+    # framed window, whose frames 2-3 and 5-6 hold one infinity after a frame
+    # with the other (#341).
+    _o("sum-avg-infinities", "aggregates",
+       "SELECT 'all' AS k, nan_text(sum(x)), nan_text(avg(x)), nan_text(fsum(x)),"
+       " nan_text(favg(x)) FROM t UNION ALL SELECT g, nan_text(sum(x)), nan_text(avg(x)),"
+       " nan_text(fsum(x)), nan_text(favg(x)) FROM t GROUP BY g UNION ALL SELECT 'w' || i,"
+       " nan_text(sum(x) OVER w), nan_text(avg(x) OVER w), nan_text(fsum(x) OVER w),"
+       " nan_text(favg(x) OVER w) FROM t"
+       " WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY k",
+       *_NAN_TEXT,
+       "CREATE TABLE t AS SELECT * FROM (VALUES (1, 'both', 'inf'::DOUBLE),"
+       " (2, 'both', '-inf'::DOUBLE), (3, 'both', 1.0), (4, 'pos', 'inf'::DOUBLE),"
+       " (5, 'pos', 1.0), (6, 'neg', '-inf'::DOUBLE), (7, 'neg', 1.0), (8, 'finite', 1.0),"
+       " (9, 'finite', 2.0)) v(i, g, x)"),
     _o("sum-empty", "aggregates",
        "SELECT sum(d), avg(d), sum(f), avg(f), sum(i), avg(i), (SELECT sum(d) FROM"
        " (VALUES (NULL::DOUBLE)) n(d)) FROM (SELECT 1.0::DOUBLE AS d, 1.0::FLOAT AS f,"
