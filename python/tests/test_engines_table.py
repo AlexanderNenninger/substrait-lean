@@ -62,15 +62,22 @@ def test_sverify_registers_its_engines_in_its_metadata() -> None:
 
 def test_without_the_entry_points_sverify_names_no_engine() -> None:
     """With no entry points, no engine is left: no path but the plugins'
-    reaches one."""
+    reaches one. sverify says so, naming the fix, since an editable install
+    from before the entry points existed lands here."""
     code = textwrap.dedent(
         """
         import importlib.metadata as m
         import warnings
 
         m.entry_points = lambda **kw: []
-        import pyarrow as pa
         import sverify as sv
+        from sverify import profiles
+
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("always")
+            profiles.plugins()
+        assert [str(w.message) for w in seen] == [profiles.MISSING_BUILTINS], seen
+        assert "run `uv sync` in python/" in profiles.MISSING_BUILTINS
         from sverify import routes
         from sverify.engines import ENGINES
         from sverify.sql import dialect_of

@@ -78,6 +78,13 @@ class Setting:
 #: The entry-point group a package registers its profile under.
 GROUP = "sverify.profiles"
 
+#: The warning when sverify's own engines are not in its metadata: an
+#: editable install from before they were plugins, or a borrowed venv.
+MISSING_BUILTINS = (
+    "sverify's engine entry points are not installed, so it names no engine; "
+    "run `uv sync` in python/ (or reinstall sverify)"
+)
+
 
 @dataclass(frozen=True)
 class ProfilePlugin:
@@ -163,7 +170,10 @@ def plugins() -> dict[str, ProfilePlugin]:
     point that fails to load, or loads no `ProfilePlugin`, warns and is
     skipped; entries of one engine are merged."""
     found: dict[str, list[ProfilePlugin]] = {}
-    for ep in entry_points(group=GROUP):
+    eps = list(entry_points(group=GROUP))
+    if not any(getattr(ep, "value", "").startswith("sverify._builtin.") for ep in eps):
+        warnings.warn(MISSING_BUILTINS, ProfilePluginWarning, stacklevel=2)
+    for ep in eps:
         try:
             plugin = ep.load()
         except Exception as err:  # a broken plugin must not break sverify
