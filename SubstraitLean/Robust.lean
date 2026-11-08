@@ -425,6 +425,75 @@ theorem Expr.robust_of_depends {q : Obs} {ctx : ObsCtx} {e : Expr}
   rw [Expr.ignores_eq_filter, List.filter_eq_nil_iff]
   simpa [List.all_eq_true] using h
 
+/-! ## Rows of reference codes: one zero (#1071)
+
+The reference has one zero and one NaN (`zero_sign` `ONE_ZERO`), and Sverify
+reads every engine value canonical. On rows whose double columns hold
+reference codes (`Row.DoubleCodes`), an observation that makes zeros one
+(`zeros := .canon`) tells no two of them apart: `canon` fixes every
+reference code. So a condition is robust under it whenever the observation
+coarsens no other component the condition depends on
+(`Expr.robust_of_depends_canon`): the checker drops `"zeros"` from what a
+postcondition ignores. -/
+
+/-- Every double column of `r` holds NULL or a reference code. It follows
+from `Relation.RefCodes` and the plan's column kinds. -/
+def Row.DoubleCodes (ctx : ObsCtx) (r : Row) : Prop :=
+  ∀ j, ctx.kind j = .double → r.getD j .null = .null ∨ ∃ c, r.getD j .null = .float c ∧ fp64.IsRef c
+
+/-- **One zero on reference codes**: a condition whose components the
+observation does not coarsen, but for zeros, is robust on rows of
+reference codes. -/
+theorem Expr.robust_of_depends_canon {q : Obs} {ctx : ObsCtx} {e : Expr}
+    (h : (e.depends ctx).all (fun c => c == "zeros" || !q.coarsens c) = true) {r r' : Row}
+    (hr : Row.DoubleCodes ctx r) (hr' : Row.DoubleCodes ctx r') (he : Row.Equiv q ctx r r')
+    (ht : (e.eval r).isTrue = true) : (e.eval r').isTrue = true := by
+  have hcol : ∀ i ∈ e.cols, r.getD i .null = r'.getD i .null := by
+    intro i hi
+    have hd : ∀ c ∈ ctx.colDepends i, c = "zeros" ∨ q.coarsens c = false := by
+      intro c hc
+      have := List.all_eq_true.1 h c (List.mem_flatMap.2 ⟨i, hi, hc⟩)
+      simpa using this
+    have hv := he.getD i
+    have hel : q.elements = .sequence := by
+      have := hd "elements" (by simp [ObsCtx.colDepends])
+      simpa [Obs.coarsens] using this
+    cases hk : ctx.kind i with
+    | double =>
+      have hf : q.floats = .exact := by
+        have := hd "floats" (by simp [ObsCtx.colDepends, hk])
+        simpa [Obs.coarsens] using this
+      rcases hr i hk with h₁ | ⟨a, h₁, ra⟩ <;> rcases hr' i hk with h₂ | ⟨b, h₂, rb⟩ <;>
+        rw [h₁, h₂] at hv ⊢
+      · exact hv.elim
+      · exact hv.elim
+      · change IntEquiv q ctx i a b at hv
+        simp only [IntEquiv, hk, hf] at hv
+        unfold Obs.zeroNorm at hv
+        cases hz : q.zeros <;> simp only [hz] at hv
+        · rw [hv]
+        · rw [fp64.canon_of_isRef ra, fp64.canon_of_isRef rb] at hv; rw [hv]
+    | other =>
+      have hx : ctx.exactCol q i = true := by
+        simp [ObsCtx.exactCol, ObsCtx.colIgnores, hel, hk]
+      exact Value.Equiv.eq_of_exactCol hx _ _ hv
+    | timestamp =>
+      have := hd "timestamps" (by simp [ObsCtx.colDepends, hk])
+      have hx : ctx.exactCol q i = true := by
+        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens]
+      exact Value.Equiv.eq_of_exactCol hx _ _ hv
+    | string =>
+      have := hd "strings" (by simp [ObsCtx.colDepends, hk])
+      have hx : ctx.exactCol q i = true := by
+        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens]
+      exact Value.Equiv.eq_of_exactCol hx _ _ hv
+    | decimal =>
+      have := hd "decimals" (by simp [ObsCtx.colDepends, hk])
+      have hx : ctx.exactCol q i = true := by
+        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens]
+      exact Value.Equiv.eq_of_exactCol hx _ _ hv
+  rw [← Expr.eval_congr_cols e hcol]; exact ht
+
 /-! ## Examples -/
 
 /-- `x ≤ 100` on a double column within 3 codes, narrowed to `x ≤ 97`. -/

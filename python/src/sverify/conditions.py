@@ -810,6 +810,11 @@ class CheckedCondition:
     the condition reads widened by its bound (`Report.epsilon`) and, for a
     sum, an average or a variance, kept to its sign
     (`EngineRobust.robust`, #1045). Such a condition needs no `sv.approx`."""
+    checker_ignores: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
+    """What the checker reports the condition ignores (#1071), the same
+    components as `ignores`, decided in Lean: None where the checker does not
+    report them (a table condition, or a plan shape `Expr.depends` does not
+    read)."""
     robust_on: tuple[str, ...] = field(default=(), repr=False, compare=False)
     """The engines where `robust` is a theorem: their sums keep the sign
     (`FloatBounds.StdModel.TreeSum.sign`). On the others it rests on the
