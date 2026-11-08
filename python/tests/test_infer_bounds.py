@@ -63,20 +63,17 @@ def inferred(report) -> list[str]:
         (T.select(x=T.amount.abs()), [], ["(_.amount >= -9 * 10**18)"]),
         # Narrower integers at their width.
         (T.select(x=T.q * 2), [], ["(_.q >= -2**30)", "(_.q < 2**30)"]),
-        # Timestamp truncation (#379): to whole years.
+        # Truncation of a computed timestamp or date (#379), to whole years. A
+        # column read lies in 0001 to 9999 by its type and needs none (D32).
         (
-            T.select(x=T.ts.truncate("M")),
+            T.select(x=(T.ts + ibis.interval(days=1)).truncate("M")),
             [],
-            [
-                "(_.ts >= datetime(1, 1, 1))",
-                "(_.ts <= datetime(9999, 12, 31, 23, 59, 59, 999999))",
-            ],
+            ["(_.ts < datetime(9999, 1, 1))"],
         ),
-        (T.select(x=T.ts.truncate("m")), [], ["(_.ts >= datetime(1, 1, 1))"]),
         (
-            T.select(x=T.d.truncate("Y")),
+            T.select(x=(T.d + ibis.interval(days=1)).truncate("Y")),
             [],
-            ["(_.d >= date(1, 1, 1))", "(_.d <= date(9999, 12, 31))"],
+            ["(_.d < date(9999, 1, 1))"],
         ),
         # Through a filter and a projection, to the base column.
         (
@@ -327,17 +324,15 @@ def test_strict_requires_explicit_bounds():
     assert stated.report is not None and stated.report.proved
 
 
-def test_datetime_bound_is_checked_on_data():
+def test_a_timestamp_column_needs_no_bound():
     @transform(ensures=[_.m.notnull()], requires={"ev": [_.ts.notnull()]})
     def per_month(ev):
         return ev.select(m=ev.ts.truncate("M"))
 
     ok = StaticSource(pa.table({"ts": [datetime(2024, 5, 3)]}), name="ev")
     node = ok.pipe(per_month)
-    assert inferred(per_month.report) == [
-        "(_.ts >= datetime(1, 1, 1))",
-        "(_.ts <= datetime(9999, 12, 31, 23, 59, 59, 999999))",
-    ]
+    # A column read is in 0001 to 9999 by its type (D32): nothing to infer.
+    assert inferred(per_month.report) == []
     node.refresh()
     assert node.to_arrow().to_pylist() == [{"m": datetime(2024, 5, 1)}]
     # 2300 was outside DataFusion's nanoseconds; it is a timestamp of the

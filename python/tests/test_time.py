@@ -42,6 +42,7 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
+from sverify.errors import UnsupportedError
 from sverify.ibis_substrait import Unsupported, to_substrait, to_substrait_json
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 
@@ -133,7 +134,13 @@ edges = st.sampled_from(
         1700000000123456,
     ]
 )
-anywhere = st.one_of(edges, st.integers(MIN, MAX), st.integers(-400 * 365 * DAY, 400 * 365 * DAY))
+#: Timestamps a source can hold: the reference's 0001 to 9999 (D32); a read of
+#: one outside fails (`test_timestamps_outside_the_range_fail_the_read`).
+anywhere = st.one_of(
+    edges.filter(lambda v: TS_MIN <= v <= TS_MAX),
+    st.integers(TS_MIN, TS_MAX),
+    st.integers(-400 * 365 * DAY, 400 * 365 * DAY),
+)
 
 
 @settings(max_examples=40, deadline=None)
@@ -211,19 +218,51 @@ def test_d32_probe_points():
     assert last[0] == TS_MAX + 1 - 5 * days and last[4:] == (9999, 4, 12, 52, 31, 5, 365)
 
 
-@pytest.mark.parametrize("unit", ["week", "month", "quarter", "year"])
 @pytest.mark.parametrize("ts", [TS_MAX + 1, TS_MIN - 1, MIN])
-def test_calendar_truncation_outside_the_timestamps_fails(unit, ts):
-    """`Issue.overflow`: outside the reference's timestamps (D32), the engines
-    raise."""
-    sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
-    with pytest.raises(polars_engine.Overflow):
-        engines(sql, [ts])
+def test_timestamps_outside_the_range_fail_the_read(ts):
+    """A TIMESTAMP of the reference lies in 0001 to 9999 by its type (D32):
+    a source value outside it fails the read, naming the column."""
     con = connect()
-    put_table(con, "r", pa.table({"ts": pa.array([ts], pa.timestamp("us"))}))
-    if ts >= DUCKDB_MIN:
-        with pytest.raises(duckdb.Error, match="date_trunc"):
-            run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "duckdb")
+    with pytest.raises(
+        UnsupportedError, match=r"ts holds timestamps outside 0001–9999 \(1, e\.g\. "
+    ):
+        put_table(con, "r", pa.table({"ts": pa.array([ts, 0], pa.timestamp("us"))}))
+    with pytest.raises(UnsupportedError, match=r"d holds dates outside 0001–9999 \(2, e\.g\. "):
+        put_table(
+            con,
+            "r",
+            pa.table({"d": pa.array([DAY_MAX + 1, DAY_MIN - 1, 0], pa.int32()).cast(pa.date32())}),
+        )
+
+
+def test_a_scan_outside_the_range_fails_the_read(tmp_path):
+    """A table read where it lies (`Scan`): its Parquet statistics discharge
+    the range where they cover it, and one range predicate decides it
+    otherwise (D32)."""
+    import pyarrow.parquet as pq
+
+    from sverify._scan import Scan
+
+    ok, bad = tmp_path / "ok.parquet", tmp_path / "bad.parquet"
+    schema = pa.schema([("d", pa.date32())])
+    pq.write_table(pa.table({"d": pa.array([0, DAY_MAX], pa.int32()).cast(pa.date32())}), ok)
+    pq.write_table(pa.table({"d": pa.array([0, DAY_MAX + 1], pa.int32()).cast(pa.date32())}), bad)
+    con = connect()
+    con.put("ok", Scan(files=(str(ok),), schema=schema))
+    assert con.rows("ok") == [(date(1970, 1, 1),), (date(9999, 12, 31),)]
+    with pytest.raises(
+        UnsupportedError, match=r"d holds dates outside 0001–9999 \(1, e\.g\. 10000-01-01\)"
+    ):
+        con.put("bad", Scan(files=(str(bad),), schema=schema))
+    assert "bad" not in con._tables
+
+
+def test_calendar_truncation_of_a_computed_timestamp_outside_the_range_fails():
+    """`Issue.overflow`: a computed timestamp past 9999-12-31 raises when it
+    is truncated (D32); a column read is in range by its type."""
+    sql = "SELECT date_trunc('month', ts + INTERVAL 2 DAY) AS x FROM r"
+    with pytest.raises(polars_engine.Overflow):
+        engines(sql, [TS_MAX - DAY])
 
 
 T = ibis.table({"ts": "timestamp", "n": "int64"}, name="t")
@@ -241,11 +280,19 @@ SINCE_2000 = T.ts.between(datetime(2000, 1, 1), datetime(2100, 1, 1))
 @pytest.mark.parametrize(
     ("label", "expr", "errs", "warns"),
     [
-        ("year, unbounded", T.select(y=T.ts.year()), ["overflow"], []),
+        # A column read lies in 0001 to 9999 by its type (D32).
+        ("year, column read", T.select(y=T.ts.year()), [], []),
         ("year, bounded", T.filter(SINCE_2000).select(y=T.ts.year()), [], []),
-        ("hour, unbounded", T.select(h=T.ts.truncate("h")), ["overflow"], []),
+        ("hour, column read", T.select(h=T.ts.truncate("h")), [], []),
         ("hour, bounded", T.filter(SINCE_2000).select(h=T.ts.truncate("h")), [], []),
-        ("month, unbounded", T.select(m=T.ts.truncate("M")), ["overflow"], []),
+        ("month, column read", T.select(m=T.ts.truncate("M")), [], []),
+        # A computed timestamp may leave it, so truncating it may raise.
+        (
+            "month, computed",
+            T.select(m=(T.ts + ibis.interval(days=1)).truncate("M")),
+            ["overflow"],
+            [],
+        ),
         ("month, bounded", T.filter(SINCE_2000).select(m=T.ts.truncate("M")), [], []),
         ("week, bounded", T.filter(SINCE_2000).select(w=T.ts.truncate("W")), [], []),
     ],
@@ -265,9 +312,13 @@ def test_years_and_truncations_grow_with_the_timestamp():
     assert report.facts["y"] == "the integer 2024"
 
 
-def test_parts_outside_the_range_are_not_proved_not_null():
-    report = sv.verify(T.select(y=T.ts.year()), ensures=[_.y.notnull()])
-    assert not report.proved
+def test_parts_of_a_column_read_are_not_null():
+    """A timestamp column lies in 0001 to 9999 by its type, where `date_part`
+    is total (D32), so a part of a non-NULL column is not NULL."""
+    report = sv.verify(
+        T.select(y=T.ts.year()), requires={"t": [_.ts.notnull()]}, ensures=[_.y.notnull()]
+    )
+    assert report.proved, str(report)
 
 
 #: Pipelines over `t(ts)`, on timestamps including the extremes.
@@ -409,9 +460,6 @@ def test_date_trunc_of_dates(values):
         (R_DATES.d + ibis.interval(days=1), DAY_MAX),
         (R_DATES.d - ibis.interval(days=1), DAY_MIN),
         (R_DATES.d + ibis.interval(months=1), DAY_MAX - 10),
-        (R_DATES.d + ibis.interval(days=1), DAY_MAX + 5),
-        (R_DATES.d.truncate("M"), DAY_MAX + 1),
-        (R_DATES.d.truncate("D"), DAY_MIN - 1),
     ],
 )
 def test_dates_outside_the_range_fail(x, d):
@@ -609,10 +657,14 @@ def test_time_arithmetic_outside_the_model_is_refused():
     assert code != 0 and "months" in out + err
 
 
-@pytest.mark.parametrize("t", [R_TS.ts.time(), R_TS.ts.strftime("%Y")])
+EARLIER = R_TS.ts - ibis.interval(days=1)
+
+
+@pytest.mark.parametrize("t", [EARLIER.time(), EARLIER.strftime("%Y")])
 def test_times_outside_the_range_fail(t):
+    """A computed timestamp before 0001-01-01 raises in a calendar function."""
     con = connect()
-    put_table(con, "r", pa.table({"ts": pa.array([TS_MIN - 1], pa.timestamp("us"))}))
+    put_table(con, "r", pa.table({"ts": pa.array([TS_MIN], pa.timestamp("us"))}))
     expr = R_TS.select(t=t)
     report = sv.verify(expr, on_inferred="off")
     assert "overflow" in [i.kind for i in report.errors]

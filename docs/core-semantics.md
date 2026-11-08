@@ -1904,6 +1904,18 @@ the range. They no longer depend on DataFusion's ±2⁶³ nanoseconds (1677 to
 truncation of a timestamp in range leaves it. A `date_bin` origin outside
 the range is refused when the plan is checked, never at run time.
 
+A DATE or TIMESTAMP value of the reference lies in 0001–9999 by its type. A
+source value outside it fails the read, named; a computed date outside it
+raises (#251). Calendar functions are total on the reference's values
+(`Value.InCalendar`, `UnFn.datePart_issue_of_inCalendar`): a column read
+needs no guard and no inferred precondition, and only a computed argument
+can leave the range. The read checks each DATE and TIMESTAMP column once,
+from the Parquet files' min/max statistics where they cover it (Delta and
+Iceberg write them), else with one range predicate over the read, and fails
+with "<column> holds dates outside 0001–9999 (<count>, e.g. <value>); the
+reference's calendar covers 0001–9999. Filter them, or read the column as
+text." (`sverify.engine.Connection.put`).
+
 Outside the range the engines disagree: DuckDB and Polars give
 `date_part('year')` 0 and 10000, but `strftime` of year 10000 is
 `+10000-01-01` on Polars and Spark, and the reference has no year 0. So the
@@ -1931,18 +1943,21 @@ In the model: `Time.tsMin` and `Time.tsMax` replace `nsMin`, `nsMax`,
 `nsDayMin`, `nsDayMax`, `partMin`, `partMax`, `chronoDayMin` and
 `chronoDayMax`. `Time.datePart` is `NULL` outside the range, where
 `UnFn.issue` now raises (`datePart`, `dayPart`); `UnFn.mayIssue` reports it
-unless the operand's bounds are inside the range, so a timestamp with a range
-fact, or a date with one, discharges the guard. `UnFn.mayIssue_sound` covers
+unless the operand's bounds are inside the range. A column's type gives
+those bounds (`ContractCheck.typeEnv`: a DATE in `dayMin` … `dayMax`, a
+TIMESTAMP in `tsMin` … `tsMax`), so a column read discharges it. `UnFn.mayIssue_sound` covers
 the new rows with the existing `rangeIssue_sound`. `Infer.atIssue` infers the
 range as a precondition.
 
 Consequences:
 
-- A `date_part` gets a per-row guard where its operand has no range fact:
-  on the catalogue, guards in the DuckDB SQL go from 445 to 480, all 35 of
-  them `date_part`'s; calendar truncations and `date_bin` keep their 5. The
-  checker's discharged issues reach the Polars writer (#1174) and DuckDB's
-  (#1169).
+- A `date_part` raises only on a computed argument: on the catalogue's 136
+  queries the checker reports one such `date_part` issue, and TPC-H Q09's
+  `EXTRACT(YEAR FROM o_orderdate)` stays proved. The SQL writers still emit
+  the guard on every `date_part` (35 on the catalogue's DuckDB SQL, 480
+  guards in all, from 445) until the checker's discharged issues reach the
+  Polars writer (#1174) and DuckDB's (#1169), which drop those on column
+  reads.
 - Truncation and parts of timestamps from 1677 back to 0001 and from 2262 to
   9999 run on every 1.0 engine, where they raised before.
 - `strftime`'s `%Y` is always four digits.

@@ -7,8 +7,11 @@ calendar). The reference's timestamps are those of its dates, 0001-01-01
 calendar functions are defined on all of them, checked against DuckDB, Polars
 and Spark at the probe points below and by `python/tests/test_time.py`:
 
-* `date_part` gives the part; outside the reference's timestamps it raises
-  (`Issue.overflow` in `Safety.lean`), and its value there is `NULL`.
+* `date_part` gives the part. A DATE or TIMESTAMP of the reference lies in
+  0001 to 9999 by its type (`Value.InCalendar`; the source read checks it),
+  where `date_part` is total (`datePart_isSome`); a computed timestamp
+  outside it raises (`Issue.overflow` in `Safety.lean`), and the value
+  there is `NULL`.
 * `date_trunc` to a day or less rounds down (below `-2⁶³` µs it wraps). To a
   week (from Monday), month, quarter or year it raises outside the
   reference's timestamps; 0001-01-01 is a Monday, so the truncation of a
@@ -232,6 +235,11 @@ where it raises (`Safety.lean`). -/
 def datePart (p : DatePart) (ts : Int) : Option Int :=
   if tsMin ≤ ts ∧ ts ≤ tsMax then some (partOf p ts) else none
 
+/-- `date_part` is total on the reference's timestamps (D32). -/
+theorem datePart_isSome (p : DatePart) {ts : Int} (h₁ : tsMin ≤ ts) (h₂ : ts ≤ tsMax) :
+    (datePart p ts).isSome := by
+  simp [datePart, h₁, h₂]
+
 /-- The range of each part but the year. -/
 def DatePart.range : DatePart → Option (Int × Int)
   | .year => none
@@ -342,6 +350,13 @@ def dayMax : Int := 2932896
 /-- `date_part(p, d)` of a date: the part of its midnight (`NULL` outside
 the reference's dates, where it raises, as for timestamps). -/
 def datePartDay (p : DatePart) (d : Int) : Option Int := datePart p (d * usPerDay)
+
+/-- `date_part` of a date is total on the reference's dates (D32). -/
+theorem datePartDay_isSome (p : DatePart) {d : Int} (h₁ : dayMin ≤ d) (h₂ : d ≤ dayMax) :
+    (datePartDay p d).isSome := by
+  apply datePart_isSome p
+  · simp only [tsMin, dayMin, usPerDay] at *; omega
+  · simp only [tsMax, dayMax, usPerDay] at *; omega
 
 /-- `date_trunc(u, d)` of a date, as a date. -/
 def truncDay (u : TimeUnit) (d : Int) : Int := days (trunc u (d * usPerDay))

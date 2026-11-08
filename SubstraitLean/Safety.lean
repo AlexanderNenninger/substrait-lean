@@ -335,6 +335,26 @@ theorem AVal.memNum_of_unscaled {a : AVal} {v : Value} {i : Int} (hm : a.Mem v)
   cases v <;> simp only [Value.unscaled?, Option.some.injEq, reduceCtorEq] at hv <;> subst hv <;>
     exact ⟨_, hm⟩
 
+/-- A value of the reference's calendar types lies in 0001-01-01 …
+9999-12-31 (D32): a DATE in `Time.dayMin` … `Time.dayMax`, a TIMESTAMP in
+`Time.tsMin` … `Time.tsMax`. A column read has it by its type
+(`ContractCheck.typeEnv`), and the source read checks it; a computed date
+outside it raises (#251). -/
+def _root_.Substrait.Value.InCalendar : Value → Prop
+  | .date d => Time.dayMin ≤ d ∧ d ≤ Time.dayMax
+  | .ts t => Time.tsMin ≤ t ∧ t ≤ Time.tsMax
+  | _ => True
+
+/-- `date_part` raises nothing on the reference's values: calendar functions
+are total on them (D32). -/
+theorem UnFn.datePart_issue_of_inCalendar (p : Time.DatePart) {v : Value}
+    (h : v.InCalendar) : (UnFn.datePart p).issue v = none := by
+  cases v <;> simp_all [Value.InCalendar, UnFn.issue, rangeIssue, between]
+
+theorem UnFn.dayPart_issue_of_inCalendar (p : Time.DatePart) {v : Value}
+    (h : v.InCalendar) : (UnFn.dayPart p).issue v = none := by
+  cases v <;> simp_all [Value.InCalendar, UnFn.issue, rangeIssue, between]
+
 theorem rangeIssue_sound {lo hi x y : Int} {aa ar : AVal} {k : Issue} {kx ky : NumKind}
     (ha : aa.MemNum kx x) (hr : ar.MemNum ky y) (hk : rangeIssue lo hi x y = some k) : k ∈ rangeMay lo hi aa ar := by
   simp only [rangeIssue] at hk

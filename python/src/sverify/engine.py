@@ -279,8 +279,14 @@ class Connection:
             # A scan whose files were removed is held, but cannot be read.
             if table.readable():
                 self._views[name] = table.attach(self._ibis.con, name)
+                try:
+                    _check_calendar_view(self._ibis.con, name, table)
+                except BaseException:
+                    self.drop(name)
+                    raise
             return
         _check_times(table.schema)
+        _check_calendar(table)
         self._tables[name] = table
         self._ibis.con.register(name, table)
         if self._datafusion is not None:
@@ -757,6 +763,114 @@ def put_table(con: Connection, name: str, table: pa.Table | Native) -> None:
     """Register (or replace) an in-memory table, or one DuckDB reads where
     it is (`Scan`, `Resident`)."""
     con.put(name, table)
+
+
+#: The reference's dates and timestamps (D32), 0001-01-01 to 9999-12-31:
+#: days and microseconds since 1970-01-01 (`Time.dayMin` … `Time.tsMax`).
+_DAY_MIN, _DAY_MAX = -719162, 2932896
+_TS_MIN, _TS_MAX = -62135596800000000, 253402300799999999
+_PER_UNIT = {"s": 1_000_000, "ms": 1000, "us": 1}
+
+
+def _calendar_range(t: pa.DataType) -> tuple[pa.DataType, int, int, str] | None:
+    """For a DATE or TIMESTAMP column: its physical integer type and the
+    reference's range in its unit (D32), and what its values are called.
+    None for other types, and for nanosecond timestamps, which reach only
+    1677 to 2262."""
+    if pa.types.is_date32(t):
+        return pa.int32(), _DAY_MIN, _DAY_MAX, "dates"
+    if pa.types.is_date64(t):
+        ms = 86_400_000
+        return pa.int64(), _DAY_MIN * ms, (_DAY_MAX + 1) * ms - 1, "dates"
+    if pa.types.is_timestamp(t) and t.unit in _PER_UNIT:
+        k = _PER_UNIT[t.unit]
+        return pa.int64(), -(-_TS_MIN // k), _TS_MAX // k, "timestamps"
+    return None
+
+
+def _calendar_error(column: str, what: str, count: int, example: str) -> Exception:
+    from sverify.plan_json import Unsupported
+
+    return Unsupported(
+        f"{column} holds {what} outside 0001–9999 ({count}, e.g. {example}); the reference's "
+        "calendar covers 0001–9999. Filter them, or read the column as text."
+    )
+
+
+def _check_calendar(table: pa.Table) -> None:
+    """Refuse a DATE or TIMESTAMP column with a value outside the reference's
+    0001-01-01 to 9999-12-31 (D32): the checker takes a column read to lie in
+    it by its type (`ContractCheck.typeEnv`), so the read checks it, once per
+    column, naming the column, the count and one value."""
+    for f in table.schema:
+        r = _calendar_range(f.type)
+        if r is None:
+            continue
+        phys, lo, hi, what = r
+        x = table.column(f.name).cast(phys)
+        mm = pc.call_function("min_max", [x]).as_py()
+        if mm["min"] is None or (lo <= mm["min"] and mm["max"] <= hi):
+            continue
+        bad = pc.call_function(
+            "or", [pc.call_function("less", [x, lo]), pc.call_function("greater", [x, hi])]
+        )
+        count = pc.call_function("sum", [bad]).as_py()
+        example = table.column(f.name).filter(bad).cast(pa.string())[0].as_py()
+        raise _calendar_error(f.name, what, count, example)
+
+
+def _parquet_in_calendar(files: tuple[str, ...], columns: list[str]) -> bool:
+    """Whether the Parquet files' min/max statistics put every value of
+    `columns` in the reference's calendar. Python's dates and datetimes span
+    exactly 0001 to 9999, so a statistic that reads as one is in range; one
+    that is missing, or does not read as one, sends the read to the rows."""
+    import datetime as dt
+
+    import pyarrow.parquet as pq
+
+    try:
+        for path in files:
+            meta = pq.ParquetFile(path).metadata
+            names = [meta.schema.column(i).name for i in range(meta.num_columns)]
+            for g in range(meta.num_row_groups):
+                group = meta.row_group(g)
+                for c in columns:
+                    if c not in names:
+                        return False
+                    stats = group.column(names.index(c)).statistics
+                    if stats is None or not stats.has_min_max:
+                        return False
+                    if not all(isinstance(v, dt.date) for v in (stats.min, stats.max)):
+                        return False
+    except Exception:  # noqa: BLE001 - statistics that do not read: check the rows
+        return False
+    return True
+
+
+def _check_calendar_view(db: Any, name: str, table: Native) -> None:
+    """`_check_calendar` for a table DuckDB reads where it is: discharged by
+    the files' Parquet statistics where they cover every column (Delta and
+    Iceberg write them), else one range predicate per column over the view."""
+    from sverify._scan import _q
+
+    columns = [(f.name, r) for f in table.schema if (r := _calendar_range(f.type)) is not None]
+    if not columns:
+        return
+    if isinstance(table, Scan) and _parquet_in_calendar(table.files, [c for c, _ in columns]):
+        return
+    for column, (_, _, _, what) in columns:
+        if what == "dates":
+            lo, hi = "DATE '0001-01-01'", "DATE '9999-12-31'"
+        else:
+            lo, hi = "TIMESTAMP '0001-01-01 00:00:00'", "TIMESTAMP '9999-12-31 23:59:59.999999'"
+        q = _q(column)
+        bad = f"{q} < {lo} OR {q} > {hi}"
+        count, example = db.execute(
+            f"SELECT count(*), CAST(min({q}) FILTER (WHERE {bad}) AS VARCHAR) "
+            f"FROM {_q(name)} WHERE {bad}"
+        ).fetchall()[0]
+        if count:
+            raise _calendar_error(column, what, count, example)
 
 
 def _check_times(schema: pa.Schema) -> None:
