@@ -107,6 +107,10 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             v = Decimal(text)
         except ArithmeticError as e:
             raise Unsupported(f"CAST of {text!r} to {t} is not supported") from e
+        # Python reads digit separators and exponents DuckDB raises on
+        # (`'_12.12'`, `'1e-9999999999'`).
+        if "_" in text or (v.is_finite() and v != 0 and v.adjusted() < -38):
+            raise Unsupported(f"CAST of {text!r} to {t} is not supported")
         if v.is_finite():
             # DuckDB rounds the digits past the scale half away from zero.
             with localcontext() as ctx:

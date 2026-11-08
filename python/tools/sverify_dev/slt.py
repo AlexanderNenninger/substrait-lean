@@ -25,7 +25,8 @@ and classifies the query:
   `Rel.eval` gives rows and its verifier says the plan may raise (an
   overflow, a division by zero, a cast of a bad string), the query is
   `disagree` on Lean's side, with the warning as its `reason`: the plan is
-  not proved, and sverify does not run it;
+  not proved, and sverify does not run it. Where the test expects an error,
+  the warning is the reference raising, and Lean's side agrees;
 * `refused`: sverify does not plan the query (the lift or the checker
   refuses it);
 * `skipped`: the test needs something the replay does not have (an
@@ -60,7 +61,7 @@ import threading
 import time
 import tomllib
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from multiprocessing import connection as mp_connection
 from multiprocessing.connection import Connection
@@ -512,6 +513,10 @@ _FRONTEND = tuple(
 #: DuckDB's 128-bit integer types, whose Arrow export can wrap (DD-5, #618).
 _HUGE = re.compile(r"\bU?HUGEINT\b", re.I)
 
+#: Lean's panics for rows it does not compute (`core/Sverify/Core/BlackBox.lean`,
+#: `Text.lean`).
+_NOT_EVALUATED = re.compile(r"not evaluated in Lean|is a black box Lean does not evaluate")
+
 _PROBE = re.compile(r"^\s*(\(\s*)*(SELECT|WITH|VALUES|FROM|TABLE)\b", re.I)
 
 
@@ -619,17 +624,22 @@ class Replay:
         return bool(self.db.sql(sql).fetchall()[0][0])
 
     def check_types(self, name: str) -> None:
-        """Refuse a table holding a `TIMETZ` with an offset but 0, which
-        Arrow drops, or whose `HUGEINT` or `UHUGEINT` values Arrow cannot
-        hold (#618). DuckDB exports both as `decimal128(38, 0)` without a
-        range check (DD-5): a value of 10^38 or more is an invalid decimal,
-        and a `UHUGEINT` of 2^127 or more arrives negative (the maximum as
-        -1). Smaller values export exactly. A 128-bit integer inside a list
-        or struct is refused whatever its value."""
+        """Refuse a table holding a `UUID`, which Arrow exports as text, a
+        `TIMETZ` with an offset but 0, which Arrow drops, or whose `HUGEINT`
+        or `UHUGEINT` values Arrow cannot hold (#618). DuckDB exports both
+        as `decimal128(38, 0)` without a range check (DD-5): a value of 10^38
+        or more is an invalid decimal, and a `UHUGEINT` of 2^127 or more
+        arrives negative (the maximum as -1). Smaller values export exactly.
+        A 128-bit integer inside a list or struct is refused whatever its
+        value."""
         rel = self.db.sql(f'SELECT * FROM "{name}" LIMIT 0')
         limit = 10**38
         for col, t in zip(rel.columns, rel.types, strict=True):
             kind = str(t).upper()
+            if re.search(r"\bUUID\b", kind):
+                # Arrow exports a UUID as text: the lift would compare it with
+                # a string as text, where DuckDB casts the string to a UUID.
+                raise ValueError(f"column {col} of {name} is {t}, which Arrow exports as text")
             if "TIME WITH TIME ZONE" in kind and self._offsets(name, col):
                 # Arrow exports a TIMETZ as a TIME without its offset: the
                 # lift would order and compare wall clocks, which are the
@@ -855,22 +865,26 @@ class Replay:
             lean_rows = self.fmt.rows(_as_table(values, schema))
             res.lean = _show(lean_rows)
         except subprocess.CalledProcessError as e:
-            lean_err = "error: " + _clip(((e.stderr or "") + (e.output or "")).strip()[-200:], 200)
+            text = ((e.stderr or "") + (e.output or "")).strip()
+            if _NOT_EVALUATED.search(text):
+                # A black box or non-ASCII text (`Main.check`): Lean knows no
+                # rows to compare. Matched before the message is clipped.
+                res.cls, res.reason = "refused", "checker: rows not evaluated (a black box)"
+                return res
+            lean_err = "error: " + _clip(text[-200:], 200)
         except Exception as e:  # noqa: BLE001 - recorded
             lean_err = _error(e)
         if lean_err is not None:
             res.lean = lean_err
-            if "not evaluated" in lean_err:
-                # A black box (`Main.check`): Lean knows no rows to compare.
-                res.cls, res.reason = "refused", "checker: rows not evaluated (a black box)"
-                return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
         if not lean_ok and (found := issues()):
             # Not an agreement (`Rel.eval` gives rows), but the verifier warns.
             # A row that raises is NULL in `Rel.eval`, and the error is
             # `verify`'s: `sin('inf'::DOUBLE)` raises in the reference where
-            # DuckDB gives NaN (`duckdb-R15-math-domain`, #617).
+            # DuckDB gives NaN (`duckdb-R15-math-domain`, #617). Where the test
+            # expects an error, the warning is the reference raising with it.
             res.reason = "verify: " + _clip("; ".join(found), 200)
+            lean_ok = outcome(None, res.reason, ordered)
 
         # DuckDB on the plan Lean writes.
         from sverify import polars_engine
@@ -889,8 +903,12 @@ class Replay:
         except refusals as e:
             res.engine, engine_ok = f"refused: {_clip(str(e), 200)}", None
         except Exception as e:  # noqa: BLE001
-            res.engine = _error(e)
-            engine_ok = outcome(None, res.engine, ordered)
+            if isinstance(e, ValueError) and "rejects the plan" in str(e):
+                # The writer refusing the plan (`--write`) is a refusal too.
+                res.engine, engine_ok = f"refused: {_clip(str(e), 200)}", None
+            else:
+                res.engine = _error(e)
+                engine_ok = outcome(None, res.engine, ordered)
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
@@ -1135,6 +1153,59 @@ def _replay_one(args: tuple[str, str]) -> tuple[str, list[dict], str | None]:
 # --- ledger --------------------------------------------------------------------------
 
 CLASSES = ("agree", "disagree", "refused", "skipped")
+
+
+@dataclass(frozen=True)
+class Known:
+    """What explains the `disagree` entries of some test files: an open issue
+    (`#909`), a fact (`duckdb-R6`, in `characterization/duckdb/facts/`) or an
+    upstream bug (`DD-6`, in `upstream/bugs/`)."""
+
+    by: str
+    files: tuple[str, ...]
+    sql: str = ""
+    """A regular expression the entry's SQL matches (searched, any case)."""
+
+    def matches(self, r: Mapping[str, Any]) -> bool:
+        return r["file"] in self.files and re.search(self.sql, r["sql"], re.I) is not None
+
+
+#: The recorded disagreements by what explains them (#747). `tests/test_slt.py`
+#: fails on a `disagree` entry of a ledger that none matches, and on an entry
+#: here that no ledger needs.
+KNOWN: tuple[Known, ...] = (
+    # DuckDB widens an integer SUM to HUGEINT; the reference raises past i64.
+    Known("duckdb-R6", ("aggregate/aggregates/test_sum.test", "sql_export/aggregate_results.test")),
+    # `AND` runs in order in DuckDB's filter; in the reference both operands
+    # run, and the written plan's cast raises.
+    Known("duckdb-exec-short-circuit", ("cast/signed_cast_repro.test",)),
+    # A double that overflows is ±inf in DuckDB; the reference raises.
+    Known(
+        "duckdb-double-overflow",
+        ("aggregate/aggregates/test_stddev.test", "overflow/test_numeric_overflow.test"),
+    ),
+    # The written plan does not raise on a length past 32 bits.
+    Known("duckdb-substring-range", ("function/string/test_substring.test",), r"4294967296"),
+    # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.
+    Known("duckdb-R15-math-domain", ("types/float/nan_functions.test",), r"\b(a?sin|a?cos|tan)\("),
+    # SUM of +inf and -inf: NaN in DuckDB, a domain error in the written plan.
+    Known("#341", ("types/float/nan_aggregate.test",), r"\bsum\("),
+    # list_sum past 64 bits, list elements, list comparison with NULLs.
+    Known(
+        "#909",
+        (
+            "function/list/aggregates/bigints_sum_avg.test",
+            "function/list/aggregates/sum.test",
+            "types/nested/list/test_list_extract.test",
+            "types/nested/list/list_comparison_stale_positions.test",
+        ),
+    ),
+)
+
+
+def explained_by(r: Mapping[str, Any]) -> str | None:
+    """The issue, fact or upstream bug that explains a `disagree` entry."""
+    return next((k.by for k in KNOWN if k.matches(r)), None)
 
 
 #: The fields a ledger keeps of a refused or skipped query: what and why.

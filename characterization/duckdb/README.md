@@ -57,10 +57,10 @@ refused.
 In the earliest draft these were M1–M7: M1 is R1 and R6, M2 is R2, R3 and
 R5, M3 is R8, M4 is R4, M5 is R7, M6 is R10 and M7 is R11.
 
-The counts come from matching the ledgers' `disagree` entries (their SQL,
-and their expected and actual results) against each finding. One entry can
-show two findings, and about 40 of the 424 disagreements are not assigned
-yet (intervals of months, the `UUID` type).
+Each `disagree` entry of the ledgers names what explains it: an open issue,
+a fact or an upstream bug, matched by its test file and SQL in
+`sverify_dev.slt.KNOWN`. `tests/test_unexplained.py` fails on an entry that
+names none, and on a `KNOWN` row no entry needs (#747): none is unexplained.
 
 ## The DuckDB diff, as a table
 

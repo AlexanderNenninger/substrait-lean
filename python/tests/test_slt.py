@@ -394,6 +394,25 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
     assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
 
 
+def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
+    """Where the test expects an error and `verify` reports it, the reference
+    raises with DuckDB: Lean's side agrees (#747)."""
+    path = tmp_path / "mod.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement error
+            select mod(42, 0)
+            ----
+            Division by zero
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/mod.test")
+    assert r.cls == "agree", r
+    assert (r.reason or "").startswith("verify: division by zero"), r.reason
+
+
 def test_a_time_of_24_00_is_refused(tmp_path):
     """Python's `datetime.time`, through which the rows reach Lean, has no
     `24:00:00`: it became midnight (#619)."""
