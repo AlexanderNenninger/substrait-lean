@@ -321,6 +321,10 @@ end Substrait.Examples
 #print axioms Substrait.LinearAgg.distinct_maintained
 #print axioms Substrait.LinearAgg.floatState_sound
 #print axioms Substrait.LinearAgg.fsum_no_drift
+#print axioms Substrait.LinearAgg.no_drift
+#print axioms Substrait.LinearAgg.varState_sound
+#print axioms Substrait.LinearAgg.covState_sound
+#print axioms Substrait.LinearAgg.corrState_sound
 #print axioms Substrait.ExtremeAgg.done_merge
 #print axioms Substrait.ExtremeAgg.extreme_maintained
 #print axioms Substrait.ExtremeAgg.map_maintained

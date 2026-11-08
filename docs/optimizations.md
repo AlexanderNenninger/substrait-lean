@@ -497,8 +497,16 @@ plan, and `sverify._exact_sum` adds the values up and rounds, since splitting
 a double into mantissa and exponent and rounding a 2,100-bit integer have no
 Substrait or Ibis form ([what is trusted](proofs.md#what-is-trusted)). The
 state is rebuilt from the inputs when a job starts: about 2 s for 10⁷ rows.
-A `SUM` or `AVG` of `FLOAT` (single precision), or of doubles beside a `MIN`
-or `MAX`, recomputes the touched groups.
+
+`VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` of doubles keep their exact moments
+the same way: the count, `Σx`, `Σx²`, and for pairs `Σy`, `Σxy`, `Σy²`, with
+the counts of NaN and infinities, from which the view's value is D30's, the
+exact moments rounded once (`varState_sound`, `covState_sound`,
+`corrState_sound`, and `LinearAgg.no_drift` for every batch sequence).
+
+A `SUM` or `AVG` of `FLOAT` (single precision), a variance of anything but
+`DOUBLE`, or any of these beside a `MIN` or `MAX` recomputes the touched
+groups.
 
 With retention (`arrives_within`), the state drops the groups of the
 retired buckets with the view's rows, and the contributions to final
