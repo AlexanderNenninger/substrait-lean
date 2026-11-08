@@ -1,0 +1,51 @@
+{
+  "id": "polars-var-bound",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`var` is within about 1.03 · n·u·√(Q'S) of the exact moments, by fuzz",
+  "verdict": "the co-moment error stays under 1.03 · n·u·√(Q'S) over 3,000 fuzzed columns; varTol's leading constant is 160",
+  "area": "aggregates",
+  "options": [
+    "stat_algo"
+  ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "stat_algo",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "var"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "Polars's `var` merges two-pass blocks of up to 128 values (ungrouped) or Welford states (grouped) by Schubert and Gertz's update (polars-var-std-streaming). Its error has the shape of the leading term of `Stat.varTol`: the computed co-moment `v · d` is within `c · n · u · √(Q' S)` of the exact `S = Σx² − (Σx)²/n`, with `Q' = Σ (|x| + 2⁻¹⁰²²)²` and `u = 2⁻⁵³`.",
+    "Fuzzed on the streaming engine, `var(ddof=0)` and `var(ddof=1)`, ungrouped and grouped by one constant key: 8 seeds of 300 columns each (6,033,974 values), sizes 2 to 20,000, shifts 0 to 1e12, spreads 1e-8 to 1e3. The largest `c` was 1.031 ungrouped (seed 2) and 0.588 grouped (seed 918, second run); every other seed stayed under 0.59. Both paths vary run to run with the streaming merge order (polars-var-std-streaming): seed 2 gave 1.031 and 0.756 ungrouped in two runs, seed 918 0.588 and 0.460 ungrouped, 0.429 and 0.588 grouped.",
+    "This is a tested bound, not a proof: no Lean theorem covers Schubert and Gertz's merge yet. Its `(mb − m)` term cancels, so a proof needs `tInv_merge` generalised over the merge's correction term (#918)."
+  ],
+  "reference": "D30: the reference's `VAR_*` is `S / d` rounded once (`varOf`). Polars's `stat_algo` row is `approxWithin \"plan\"`, tested; `StatProps`' `varTol` (leading constant 160) is what a proof would have to meet, and the fuzz stays two orders of magnitude inside it.",
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "fuzz",
+      "checked_by": "stats-918 session (#918), started by session local_974f7865; polars 2.1.0, Python 3.12, macOS arm64",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/polars_var_fuzz.py",
+          "note": "`python -m sverify_dev.polars_var_fuzz 918 1 2 3 4 5 6 7`: ungrouped 0.588, 0.429, 1.031, 0.467, 0.560, 0.477, 0.570, 0.541; grouped 0.429, 0.429, 0.468, 0.510, 0.560, 0.450, 0.570, 0.465. A second run of seeds 918 and 2: ungrouped 0.460, 0.756; grouped 0.588, 0.429"
+        }
+      ],
+      "notes": "Exact moments with Python's `fractions`; seeds 918 and 2 run twice."
+    }
+  ],
+  "issues": [
+    918
+  ]
+}

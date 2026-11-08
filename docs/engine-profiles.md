@@ -126,7 +126,7 @@ reference profile, and DuckDB is the default oracle.
   which the search finds among `CASE` chains over constants the reference
   gives. `SILENT`'s wrap-around, `((x + 2^(w-1)) % 2^w + 2^w) % 2^w -
   2^(w-1)` in 128-bit arithmetic, is beyond the search: it is a hand-written
-  schema (`LoweringSearch.schema?`), still proved for each width by the
+  schema (`LoweringSearch.duckdbSchemas`), still proved for each width by the
   kernel and marked as such in the coverage report. So are the guards for
   DuckDB's IEEE operations (#242), which copy the reference's error
   conditions atom for atom: `nanCase` for `+ - * / % ^` of doubles (with the
@@ -156,7 +156,18 @@ reference profile, and DuckDB is the default oracle.
   lowering with any such table is correct: **`Lowering.lower_correct`** (the
   lowered expression, under the engine's profile, has the reference's
   outcome, the same value or an error), and `Lowering.lowerRel_sound` for
-  plans, by `Rel.evalI_mapExprs`. Equality saturation (lean-egg) was
+  plans, by `Rel.evalI_mapExprs`. A template's guards are its outer chain of
+  `CASE WHEN c THEN error(m)`, `m` the reference issue's name. A writer may drop
+  the guards of issues a plan never meets (`Lowering.lowerWith`): where each
+  dropped guard always evaluates and fires only at its own issue
+  (`Lowering.GuardsFor`), `Lowering.lowerRelWith_sound` proves the run is
+  `Rel.eval`'s or raises, on every catalog, and
+  `Lowering.lowerRelWith_mayIssues_sound` takes the issues to drop from
+  `Rel.mayIssues`, as `Rel.guardFree_sound` does. The kept guards need no new
+  proof: the template with all its guards has the reference's outcome. The
+  search is the same for every engine; an engine's hand-written schemas are an
+  argument of `generate_lowering` (DuckDB's in
+  `SubstraitLean/LoweringDuckDB/Schemas.lean`). Equality saturation (lean-egg) was
   considered and not used: it proves equalities rather than finding terms,
   it is deprecated, and it needs Lean 4.30 and Rust.
 

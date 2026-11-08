@@ -61,15 +61,25 @@ theorem EnvMem.replicate (n : Nat) (row : Row) : EnvMem (List.replicate n AVal.t
   simp only [getD_top_eq, List.getElem?_replicate]
   split <;> simp [AVal.mem_top]
 
-
-/-- A column replaced by any value, its description by `AVal.top`. -/
-theorem EnvMem.set_top {env : List AVal} {row : Row} (h : EnvMem env row) (c : Nat) (v : Value) :
-    EnvMem (env.set c AVal.top) (row.set c v) := by
+/-- An element of a list in column `c` in its place, as `UNNEST` gives it (#925). -/
+theorem EnvMem.set_elem {env : List AVal} {row : Row} (h : EnvMem env row) {c : Nat}
+    {vs : List Value} {v : Value} (hc : row.getD c .null = .list vs) (hv : v ∈ vs) :
+    EnvMem (env.set c (env.getD c AVal.top).elemsOf) (row.set c v) := by
   intro j
   by_cases hj : c = j
   · subst hj
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_set_self']
-    cases env[c]? <;> simp [AVal.mem_top]
+    have hm := h c
+    rw [hc] at hm
+    have he := (AVal.mem_list.mp hm).2.2 v hv
+    have hlt : c < row.length := by
+      rcases Nat.lt_or_ge c row.length with hl | hl
+      · exact hl
+      · rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hl] at hc; cases hc
+    simp only [List.getD_eq_getElem?_getD, List.getElem?_set_self hlt, Option.getD_some]
+    by_cases he' : c < env.length
+    · simpa [List.getElem?_set_self he', List.getD_eq_getElem?_getD] using he
+    · simp only [List.getElem?_set, show ¬c < env.length from he', ↓reduceIte]
+      exact AVal.mem_top _
   · have := h j
     simpa [List.getD_eq_getElem?_getD, List.getElem?_set_ne hj] using this
 
@@ -230,9 +240,9 @@ theorem AVal.mem_unscaled {a : AVal} {v : Value} {i : Int} {b : Bound} (hm : a.M
 theorem AVal.kindOnly_mem {a : AVal} {k : NumKind} (ho : a.kindOnly k = true) {v : Value}
     (hm : a.Mem v) (hn : v ≠ .null) : ∃ i b, v = k.val i ∧ a.int = some b ∧ b.Mem i := by
   simp only [AVal.kindOnly, AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at ho
-  obtain ⟨⟨⟨htt, hff⟩, hstr⟩, hk⟩ := ho
+  obtain ⟨⟨⟨⟨htt, hff⟩, hstr⟩, hnest⟩, hk⟩ := ho
   rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k', i, b, rfl, hb, hi, hk'⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ |
-      ⟨_, rfl, h, _⟩ | ⟨_, _, h, _, _⟩
+      ⟨_, rfl, h, _⟩ | ⟨_, _, h⟩
   · exact absurd rfl hn
   · rw [hk] at hk'; simp only [Option.all_some, beq_iff_eq] at hk'; subst hk'
     exact ⟨i, b, rfl, hb, hi⟩
@@ -241,9 +251,9 @@ theorem AVal.kindOnly_mem {a : AVal} {k : NumKind} (ho : a.kindOnly k = true) {v
 theorem AVal.unscaledOnly_mem {a : AVal} (ho : a.unscaledOnly = true) {v : Value} (hm : a.Mem v)
     (hn : v ≠ .null) : ∃ i b, v.unscaled? = some i ∧ a.int = some b ∧ b.Mem i := by
   simp only [AVal.unscaledOnly, AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at ho
-  obtain ⟨⟨⟨htt, hff⟩, hstr⟩, hk⟩ := ho
+  obtain ⟨⟨⟨⟨htt, hff⟩, hstr⟩, hnest⟩, hk⟩ := ho
   rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k, i, b, rfl, hb, hi, hk'⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ |
-      ⟨_, rfl, h, _⟩ | ⟨_, _, h, _, _⟩
+      ⟨_, rfl, h, _⟩ | ⟨_, _, h⟩
   · exact absurd rfl hn
   · refine ⟨i, b, ?_, hb, hi⟩
     cases hnk : a.nk with
@@ -263,9 +273,9 @@ theorem AVal.dec_kind {a : AVal} {k : NumKind} {s : Nat} {x : Int} (hk : a.nk = 
 /-- A `SUM` is an integer, or a decimal of its inputs' scale (`sumOf`). -/
 theorem sumOf_mem {a : AVal} {vs : List Value} {n : Bool} {B : Bound} (hne : vs ≠ [])
     (hall : ∀ w ∈ vs, a.Mem w ∧ w ≠ .null) (hB : B.Mem (intSum vs)) :
-    (AVal.mk n (some B) false false false none (sumKind a)).Mem (sumOf vs) := by
+    (({ null := n, int := some B, nk := sumKind a } : AVal)).Mem (sumOf vs) := by
   have hnone : sumKind a = none →
-      (AVal.mk n (some B) false false false none (sumKind a)).Mem (sumOf vs) := fun hs => by
+      (({ null := n, int := some B, nk := sumKind a } : AVal)).Mem (sumOf vs) := fun hs => by
     rw [hs]
     rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] <;> exact ⟨_, rfl, hB, rfl⟩
   cases hnk : a.nk with
@@ -342,7 +352,27 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     · exact absurd hvs (valued_ne_nil hv)
   unfold Measure.abs Measure.eval
   cases hf : m.fn <;> dsimp only
-  case collect => exact AVal.mem_top _
+  case collect =>
+    have hc : ∀ vs : List Value, AggFn.collect.apply vs = if vs = [] then .null else .list vs := by
+      intro vs; cases vs <;> rfl
+    rw [hc]
+    split
+    · rfl
+    · rename_i hvs
+      refine ⟨rfl, ⟨fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩, ?_⟩
+      · simp only [Bound.ge, Option.some.injEq] at hl; subst hl
+        generalize m.inputs _ = vs at hvs
+        cases vs with
+        | nil => exact absurd rfl hvs
+        | cons => simp only [List.length_cons]; omega
+      · show AVal.MemAll _ _
+        rw [AVal.memAll_iff]
+        intro v hv
+        obtain ⟨hn, y, hy, rfl⟩ := Measure.mem_inputs hv
+        have := Expr.absD_sound (hall y (List.mem_mergeSort.mp hy)).1
+          (hall y (List.mem_mergeSort.mp hy)).2 (ks := []) (by simp [KsHold]) m.arg
+        generalize m.arg.eval y = w at this hn
+        cases w <;> simp_all [AVal.Mem, AVal.MemNum]
   case bbox n => exact BlackBox.aggAbs_mem valued_ne_nil
   case concat sep =>
     cases m.inputs (List.mergeSort grp (sortLe m.sort)) <;> simp [AggFn.apply, AVal.Mem]
@@ -362,7 +392,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   case sum =>
     cases hvs : m.inputs grp with
     | nil =>
-      simp only [AggFn.apply, AVal.Mem]
+      simp only [AggFn.apply, AVal.Mem, AVal.MemR]
       exact novalue hvs
     | cons v vs =>
       simp only [AggFn.apply]
@@ -411,7 +441,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       first | rfl | exact ⟨_, rfl, Bound.mem_top _, rfl⟩
   case fsum =>
     cases hvs : m.inputs grp with
-    | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
+    | nil => simp only [AggFn.apply, AVal.Mem, AVal.MemR]; exact novalue hvs
     | cons v vs =>
       refine ⟨_, rfl, ?_, rfl⟩
       split
@@ -442,7 +472,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       · exact Bound.mem_top _
   case avg =>
     cases hvs : m.inputs grp with
-    | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
+    | nil => simp only [AggFn.apply, AVal.Mem, AVal.MemR]; exact novalue hvs
     | cons v vs =>
       refine ⟨_, rfl, ?_, rfl⟩
       split
@@ -472,7 +502,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       · exact Bound.mem_top _
   case iavg =>
     cases hvs : m.inputs grp with
-    | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
+    | nil => simp only [AggFn.apply, AVal.Mem, AVal.MemR]; exact novalue hvs
     | cons v vs =>
       split
       · rename_i honly
@@ -793,8 +823,8 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
   | .unnest r c, hwf, hs, row, h => by
       simp only [eval, List.mem_flatMap] at h
       obtain ⟨x, hx, h⟩ := h
-      obtain ⟨_, v, _, _, rfl⟩ := mem_unnestRow h
-      exact (aeval_sound hcat hA hF hT hwf.1 hs x hx).set_top c v
+      obtain ⟨_, v, hc, hv, rfl⟩ := mem_unnestRow h
+      exact (aeval_sound hcat hA hF hT hwf.1 hs x hx).set_elem hc hv
   | .aggregate r gs ms, hwf, hs, row, h => by
       obtain ⟨k, grp, rfl, hgrp, hk, hne, hglen⟩ := mem_aggregateEval_len h
       have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T sz) y ∧ FactsHold (r.facts cat F T) y :=
@@ -967,8 +997,8 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
       aeval_sound_all hcat hA hF hT (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
   | .unnest r c, hwf, _, ⟨i, hi, h⟩, row, hr => by
       obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
-      obtain ⟨_, v, _, _, rfl⟩ := mem_unnestRow h
-      exact (aeval_sound_all hcat hA hF hT hwf.1 hi x hx).set_top c v
+      obtain ⟨_, v, hc, hv, rfl⟩ := mem_unnestRow h
+      exact (aeval_sound_all hcat hA hF hT hwf.1 hi x hx).set_elem hc hv
   | .aggregate r gs ms, hwf, _, ⟨i, hi, o, h, ho⟩, row, hr => by
       obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, hne, hglen⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
       have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T) y ∧ FactsHold (r.facts cat F T) y :=

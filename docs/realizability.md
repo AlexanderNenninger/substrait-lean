@@ -48,7 +48,7 @@ Rows per evidence level:
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 4 | 12 | 17 | 2 | 0 | 0 | 15 |
-| Polars | 28 | 0 | 15 | 0 | 0 | 0 | 15 |
+| Polars | 28 | 1 | 14 | 0 | 0 | 0 | 15 |
 | spark | 16 | 9 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
@@ -182,7 +182,7 @@ Rows per evidence level:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
-| every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | probe | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json) |
+| every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | fuzz | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json), [polars-var-bound](../characterization/polars/facts/polars-var-bound.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../characterization/polars/facts/polars-window-agg.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../characterization/polars/facts/polars-avg-int.json) |

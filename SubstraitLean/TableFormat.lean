@@ -259,8 +259,8 @@ structure ColStats where
 /-- What the statistics say about a value of the column: NULL unless the
 NULL count is 0, and a number between the bounds unless every row is NULL. -/
 def ColStats.aval (s : ColStats) : AVal :=
-  ⟨s.nulls != some 0, if s.rows.isSome && s.nulls == s.rows then none else some ⟨s.lo, s.hi⟩,
-   false, false, false, none, none⟩
+  { null := s.nulls != some 0,
+    int := if s.rows.isSome && s.nulls == s.rows then none else some ⟨s.lo, s.hi⟩ }
 
 /-- **Trusted:** the statistics describe column `c` of the file's rows. (A
 format that truncates maxima, like Delta for timestamps, is correct only
@@ -311,14 +311,16 @@ NULLs whose files all have both bounds is a non-NULL number between the
 least minimum and the greatest maximum. -/
 theorem stats_bounds {a : AVal} {lo hi : Int} {v : Value}
     (hnull : a.null = false) (hint : a.int = some ⟨some lo, some hi⟩)
-    (hb : a.tt = false ∧ a.ff = false ∧ a.str = false) (hm : a.Mem v) :
+    (hb : a.intsOnly = true) (hm : a.Mem v) :
     ∃ (k : NumKind) (i : Int), v = k.val i ∧ lo ≤ i ∧ i ≤ hi := by
+  simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+    Bool.or_eq_false_iff] at hb
   rcases AVal.mem_cases hm with ⟨_, hn⟩ | ⟨k, i, b, rfl, hb', hmem, -⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
-      ⟨_, _, hs, _⟩ | ⟨_, _, ht, _⟩
+      ⟨_, _, hs, _⟩ | ⟨_, _, ht⟩
   · simp_all
   · rw [hint] at hb'; cases hb'
     exact ⟨k, i, rfl, hmem.1 lo rfl, hmem.2 hi rfl⟩
-  all_goals simp_all
+  all_goals simp_all [AVal.nested]
 
 /-- The fact `sverify.io` states from a table's bound in general: a value is
 NULL (only if some file has NULLs) or a number within the bound `b`, each side
@@ -327,24 +329,28 @@ maximum where NaN may occur). With NULLs this is the fact
 `c IS NULL OR (c >= lo AND c <= hi)`, which the checker reads as one column
 description (`Expr.refine` of `IS NULL` and of `OR`). -/
 theorem stats_fact {a : AVal} {b : Bound} {v : Value}
-    (hint : a.int = some b) (hb : a.tt = false ∧ a.ff = false ∧ a.str = false) (hm : a.Mem v) :
+    (hint : a.int = some b) (hb : a.intsOnly = true) (hm : a.Mem v) :
     (v = .null ∧ a.null = true) ∨ ∃ (k : NumKind) (i : Int), v = k.val i ∧ b.Mem i := by
+  simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+    Bool.or_eq_false_iff] at hb
   rcases AVal.mem_cases hm with ⟨rfl, hn⟩ | ⟨k, i, b', rfl, hb', hmem, -⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
-      ⟨_, _, hs, _⟩ | ⟨_, _, ht, _⟩
+      ⟨_, _, hs, _⟩ | ⟨_, _, ht⟩
   · exact .inl ⟨rfl, hn⟩
   · rw [hint] at hb'; cases hb'
     exact .inr ⟨k, i, rfl, hmem⟩
-  all_goals simp_all
+  all_goals simp_all [AVal.nested]
 
 /-- A column whose files are all entirely NULL (NULL count = row count) is
 NULL: the fact `c IS NULL`. -/
 theorem stats_all_null {a : AVal} {v : Value}
-    (hint : a.int = none) (hb : a.tt = false ∧ a.ff = false ∧ a.str = false) (hm : a.Mem v) :
+    (hint : a.int = none) (hb : a.intsOnly = true) (hm : a.Mem v) :
     v = .null := by
+  simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+    Bool.or_eq_false_iff] at hb
   rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨_, _, _, _, h, _⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
-      ⟨_, _, hs, _⟩ | ⟨_, _, ht, _⟩
+      ⟨_, _, hs, _⟩ | ⟨_, _, ht⟩
   · rfl
-  all_goals simp_all
+  all_goals simp_all [AVal.nested]
 
 /-! ## Pruning files -/
 
@@ -372,11 +378,11 @@ theorem prune_sound (e : Expr) :
 
 -- The join of known bounds is the least minimum and the greatest maximum.
 #guard tableStats [([], ⟨some 3, some 9, some 0, none⟩), ([], ⟨some 1, some 5, some 0, none⟩)] ==
-    ⟨false, some ⟨some 1, some 9⟩, false, false, false, none, none⟩
+    { int := some ⟨some 1, some 9⟩ }
 -- A file of NULLs adds NULL and no bound; a file without a maximum loses it.
 #guard tableStats [([], ⟨some 3, some 9, some 0, none⟩), ([], ⟨none, none, some 4, some 4⟩)] ==
-    ⟨true, some ⟨some 3, some 9⟩, false, false, false, none, none⟩
+    { null := true, int := some ⟨some 3, some 9⟩ }
 #guard tableStats [([], ⟨some 3, some 9, some 1, some 5⟩), ([], ⟨some 1, none, some 0, none⟩)] ==
-    ⟨true, some ⟨some 1, none⟩, false, false, false, none, none⟩
+    { null := true, int := some ⟨some 1, none⟩ }
 
 end Substrait
