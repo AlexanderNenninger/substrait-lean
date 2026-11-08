@@ -1,4 +1,5 @@
 import SubstraitLean.Epsilon
+import SubstraitLean.PolarsShims
 
 /-!
 # How each engine realizes a plan (#1166, theme 3)
@@ -24,8 +25,12 @@ engine's observation row there (`ObsTable.row?`, D15):
   may keep other rows (#568's threshold rule): where `Epsilon.rowsExact` does
   not show it keeps the same rows, the plan is refused there.
 
-Where no option has a row, the translation's tests stand for the plan: `exact`,
-`tested`. `"transfer"` gives, per other profile a plan may be verified under,
+Where an option has no row, the translation's tests stand for it: the class
+does not change, and the evidence is `tested`. `"class_basis"` and
+`"sorted_basis"` are `"computed"`: no theorem connects the class to the
+engine's refinement yet (#900). `"guard_free_theorem"` names the theorem by
+which the engine's translation runs a `guard_free` plan without its other
+guards (`guardFreeTheorems`), or is null where it keeps every guard. `"transfer"` gives, per other profile a plan may be verified under,
 the options where the engine allows a behaviour that profile does not
 (`transferB`, which `Rel.transfer_of_transferB` proves sound). `"sorted"`
 says whether the plan's result comes out of a sort.
@@ -70,7 +75,7 @@ def rowClass (E : EngineProfile) (d : Dep) (r : ObsRow) : RouteClass :=
     | .refines, none => .exact
 
 def _root_.Substrait.Evidence.facts : Evidence → List String
-  | .proved _ ids | .tested ids | .probed ids => ids
+  | .proved _ ids | .tested ids .. | .probed ids .. => ids
   | .none => []
 
 def _root_.Substrait.Evidence.theorem? : Evidence → Option String
@@ -92,10 +97,19 @@ where
     !rowsExact && rows.any fun (d, r) =>
       rowClass E d r == .observed && r.q.floats != .exact
 
-/-- Every row's evidence is a proof; none without rows (the translation's
-tests stand for the plan then). -/
-def planProved (rows : List (Dep × ObsRow)) : Bool :=
-  !rows.isEmpty && rows.all fun (_, r) => r.evidence.theorem?.isSome
+/-- Every dependency has a row and every row's evidence is a proof. A
+dependency without a row rests on the translation's tests, and so does a
+plan without dependencies. -/
+def planProved (ds : List Dep) (rows : List (Dep × ObsRow)) : Bool :=
+  !rows.isEmpty && rows.length == ds.length && rows.all fun (_, r) => r.evidence.theorem?.isSome
+
+/-- The theorem by which each engine's translation runs a plan whose report
+is `guard_free` without its other guards, keeping the assumed issues'. An
+engine not listed keeps every guard. -/
+def guardFreeTheorems : List (String × String) := [("polars", "Rel.polars_sound")]
+
+/-- The names in `guardFreeTheorems` are theorems. -/
+example := @Rel.polars_sound
 
 def where_ (d : Dep) : List (String × Json) := [("group", toJson d.group), ("option", toJson d.option)]
 
@@ -135,9 +149,16 @@ def engineJson (es : List EngineProfile) (E : EngineProfile) (ds : List Dep) (re
     then [Json.mkObj [("code", toJson "threshold")]] else []
   Json.mkObj [
     ("class", toJson cls.name),
-    ("evidence", toJson (if planProved rows then "proved" else "tested")),
+    -- The class is computed from the rows; no theorem connects it to the
+    -- engine's refinement yet (#900).
+    ("class_basis", toJson "computed"),
+    ("evidence", toJson (if planProved ds rows then "proved" else "tested")),
     ("rows", toJson rows.length),
+    ("without_row", Json.arr ((ds.filter fun d => !(rows.any (·.1.option == d.option &&
+      ·.1.group == d.group))).map fun d => Json.mkObj (where_ d)).toArray),
     ("theorems", toJson theorems), ("facts", toJson facts),
+    ("issues", toJson (rows.filterMap fun (_, r) => r.evidence.issue?).eraseDups),
+    ("guard_free_theorem", toJson (guardFreeTheorems.lookup E.name)),
     ("version", toJson E.table.version),
     ("shims", Json.arr shims.toArray), ("observed", Json.arr observed.toArray),
     ("problems", Json.arr (refused ++ threshold).toArray),
@@ -162,8 +183,9 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json) :
   let plan ← ContractCheck.parseJsonPlan tj
   let all := plan.root.reads
   let ds := deps reads
-  let exact (e : String) : Bool := (rowsExact.getObjValAs? Bool e).toOption.getD true
+  -- Without the threshold analysis's answer, the rows may differ.
+  let exact (e : String) : Bool := (rowsExact.getObjValAs? Bool e).toOption.getD false
   return [("engines", Json.mkObj (es.map fun E => (E.name, engineJson es E ds all (exact E.name)))),
-    ("sorted", toJson (sortedRoot plan.root))]
+    ("sorted", toJson (sortedRoot plan.root)), ("sorted_basis", toJson "computed")]
 
 end Substrait.Realize
