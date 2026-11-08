@@ -1916,12 +1916,12 @@ would split `GROUP BY` and `DISTINCT` and drop rows from joins.
 Decided on #185 ("no newly created NaNs") and [#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257), closed
 2026-11-02.
 
-A NaN from the data passes through. An operation on non-NaN inputs whose
-IEEE result is NaN raises: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`,
-`inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a
-fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and
-`-∞` (`nan_creation` raises; `Issue.domain`, `nanCase` in `Safety.lean`). A
-plan that states `on_division_by_zero: IEEE` gets NaN at `0.0 / 0.0`.
+No operation creates a NaN. An operation on non-NaN inputs whose IEEE
+result is NaN is an issue (`Issue.domain`, `nan_creation = ERROR`), which
+`verify` rules out or checks on the data; on the rows a precondition
+excludes, `Rel.eval` keeps IEEE's value (NaN), as it keeps ±∞ under #575.
+Under a verification profile that sets `nan_creation = NAN`, no issue fires
+and the value is NaN.
 
 Why: with no NaN in the inputs (`~_.v.isnan()` in `requires`), there is
 none in the outputs. Engines give NaN, NULL or an error there, and a plan
