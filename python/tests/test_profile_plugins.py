@@ -1,13 +1,14 @@
 """Engine profiles from outside sverify (`sverify.profiles`): a package
 registers a `ProfilePlugin` under the entry-point group `sverify.profiles`,
-and the routes, the settings check, the version check and `semantics=` take
-it in. The Lean side, a checker over `builtinEngines ++ [a profile]`, is
+beside sverify's own engines, and the routes, the settings check, the version
+check and `semantics=` take it in. The Lean side, a checker over `builtinEngines ++ [a profile]`, is
 `SubstraitCheckExamples/DummyEngine.lean`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from importlib.metadata import entry_points
 from pathlib import Path
 
 import pyarrow as pa
@@ -47,6 +48,7 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """The dummy profile installed, beside a broken entry point and one that
     loads something else."""
     found = [
+        *entry_points(group=profiles.GROUP),
         _EntryPoint("dummy", DUMMY),
         _EntryPoint("broken", ImportError("no module named dummy_broken")),
         _EntryPoint("other", object()),
@@ -64,7 +66,7 @@ def test_no_profile_from_outside_by_default() -> None:
 def test_a_profile_from_outside_is_loaded(installed: None) -> None:
     with pytest.warns(profiles.ProfilePluginWarning) as warned:
         found = profiles.plugins.__wrapped__()
-    assert list(found) == ["dummy"]
+    assert set(found) == {"dummy", "duckdb", "polars", "spark", "datafusion", "snowflake"}
     assert {str(w.message).split("'")[1] for w in warned} == {"broken", "other"}
 
 
