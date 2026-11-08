@@ -104,8 +104,11 @@ other pages link here.
   (`Rel.sumRows`, [#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)).
   No machine's memory holds more. The theorems that need it take
   `Rel.Small` (`Rel.mayIssues_sound`, `Rel.guardFree_sound`,
-  `Rel.duckdb_sound`), so `ROW_NUMBER() - 1` and Ibis's `find`
-  (`strpos - 1`) are proved not to overflow without a precondition, while
+  `Rel.duckdb_sound`, `Rel.polars_sound`, `Rel.spark_sound`, and the engine
+  side conditions built on them, `Engine.PolarsData` in
+  `SubstraitLean/EngineSound.lean`); nothing checks it on the data, so
+  it is assumed of every run (#1166). With it, `ROW_NUMBER() - 1` and Ibis's
+  `find` (`strpos - 1`) are proved not to overflow without a precondition, while
   `amount * 2` needs one, which sverify infers (#244). It overrides Substrait
   ([D27](core-semantics.md#d27-the-size-hypothesis-is-the-only-size-assumption)).
 - The frontends produce the plan the user meant: the Ibis producer
@@ -335,6 +338,7 @@ generators, then the trusted reading and writing.
 | `Obligations.lean` | The realizability table: how each engine discharges each option |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
 | `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |
+| `Realize.lean` | Each engine's verdict on a plan for `--contract` (`"engines"`): its class over the options the proof depends on, the evidence and its theorems and facts, the shims, the transfer check per profile (`transferB`), and #568's threshold rule (#1166) |
 
 ### Lowering and lift
 

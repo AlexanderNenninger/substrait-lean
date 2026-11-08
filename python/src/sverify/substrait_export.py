@@ -1709,6 +1709,8 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         internal_plan=json.dumps(imp.plan),
         _depends=out.get("depends"),
         _epsilon=out.get("epsilon"),
+        _engines=out.get("engines"),
+        _sorted=out.get("sorted"),
         _contract=request,
         _transfer=(out.get("transfer") or {}).get("failures") if profile == "substrait" else None,
         observation=observation,

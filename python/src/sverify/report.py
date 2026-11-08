@@ -481,6 +481,14 @@ class Report:
     same rows and groups under the columns' `ε` (#568's threshold rule): a
     comparison on a double whose threshold lies within `ε` of its range may
     flip. None where the checker does not say."""
+    _engines: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
+    """Per engine, the checker's verdict on the plan's translation from the
+    reference (`SubstraitLean/Realize.lean`, #1166): its class and evidence
+    over the options the proof depends on, the theorems and facts, the shims,
+    the options realized only up to an observation, what refuses it, and the
+    transfer check from each other profile. None from a checker without it."""
+    _sorted: bool | None = field(default=None, repr=False, compare=False)
+    """Whether the plan's result comes out of a sort, as the checker reads it."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
@@ -1012,6 +1020,26 @@ class Report:
             return None
         return "; ".join(f"on {e}: {'; '.join(ps)}" for e, ps in self._floats_on.items())
 
+    def _evidence_lines(self) -> list[str]:
+        """An `evidence:` line per engine a run has not taken the plan to
+        yet: its class there, and whether a theorem proves it or a test of
+        the engine's facts stands for it (`routes.evidence_on`)."""
+        from sverify import routes as _routes
+
+        lines = []
+        for e, got in _routes.evidence_on(self).items():
+            if e in self.routes or got.problems or got.evidence is None:
+                continue
+            text = _routes.evidence_text(
+                got.evidence,
+                got.facts,
+                got.theorems,
+                got.version or _routes.probed_version(e),
+                got.issues,
+            )
+            lines.append(f"evidence: {e} {got.cls}, {text}")
+        return lines
+
     def _observes_lines(self) -> list[str]:
         """The `observes:` line: the observation, the plan's bound beside a
         stated tolerance, and which engines' doubles meet it."""
@@ -1342,6 +1370,7 @@ class Report:
         lines.append(f"semantics: {self.semantics}")
         lines += [f"  {_transfer_failure(f)}" for f in self._transfer or ()]
         lines += self._observes_lines()
+        lines += self._evidence_lines()
         lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
         if self.facts or self.rows is not None:
             lines.append("known about the output:")
@@ -1429,6 +1458,8 @@ _REPORT_INTERNAL = [
     "transfer",
     "epsilon",
     "rows_exact",
+    "engines",
+    "sorted",
     "conditions",
     "dialect",
     "on_inferred",

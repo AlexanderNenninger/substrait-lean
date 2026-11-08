@@ -195,7 +195,7 @@ belongs to a shim the rows name. -/
 def EngineProfile.evidenced (e : EngineProfile) : Bool :=
   let os := obligations e.table e.obs
   (os.all fun r => match r.case with
-    | .shim s => (e.shimCost? s).isSome && r.evidence != .none && r.evidence != .tested []
+    | .shim s => (e.shimCost? s).isSome && r.evidence != .none && r.evidence != .tested [] none
     | .uncharacterized => true
     | _ => r.evidence != .none) &&
   e.shims.all fun (n, _) => (shimNames os).contains n
@@ -204,6 +204,14 @@ theorem obligations_consistent : builtinEngines.all (·.consistent) := by
   decide +kernel
 
 theorem obligations_evidenced : builtinEngines.all (·.evidenced) := by
+  decide +kernel
+
+/-- Every row of `e` that rests on no theorem, and every rerun claim, names
+the issue tracking its proof (#1131). -/
+def EngineProfile.tracked (e : EngineProfile) : Bool :=
+  e.obs.all fun (_, _, r) => r.evidence.tracked && r.rerunEvidence.tracked
+
+theorem obligations_tracked : builtinEngines.all (·.tracked) := by
   decide +kernel
 
 /-- This repository's tables refine the core (`Profile.duckdb_le_core`, …). -/
@@ -395,6 +403,7 @@ elab "#check_engine_profiles " t:term : command => do
     unless e.leCore do throwError "{e.name}: choices not within the core's"
     unless e.consistent do throwError "{e.name}: a row differs from the reference with no shim"
     unless e.evidenced do throwError "{e.name}: a shim or row without evidence or cost"
+    unless e.tracked do throwError "{e.name}: a tested or probed row names no issue tracking its proof"
 
 #check_engine_profiles builtinEngines
 
@@ -424,8 +433,10 @@ def Obligation.json (e : EngineProfile) (r : Obligation) : Json :=
       | _ => []) ++
     (match r.evidence with
       | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
-      | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
-      | .probed ids => [("evidence", toJson "probe"), ("facts", toJson ids)]
+      | .tested ids i => [("evidence", toJson "tested"), ("facts", toJson ids), ("issue", toJson i),
+          ("version", toJson e.table.version)]
+      | .probed ids i => [("evidence", toJson "probe"), ("facts", toJson ids), ("issue", toJson i),
+          ("version", toJson e.table.version)]
       | .none => [("evidence", Json.null), ("facts", toJson ([] : List String))])
 
 open Lean (Json toJson) in
