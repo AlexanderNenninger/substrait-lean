@@ -157,6 +157,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     TIES_HINT,
     TRUNC_HINT,
     Condition,
+    InferredWarning,
     Issue,
     Needed,
     OnInferred,
@@ -891,6 +892,11 @@ def infer_bounds(
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
+    if on_inferred == "off" and out._margin_checks:
+        # Nothing is checked on the data: a threshold filter on a double sum
+        # may keep other groups than the reference's (#568).
+        out._margin_checks = []
+        out._rows_exact = dict.fromkeys(out._rows_exact or {}, False)
     if not out.deterministic and not isinstance(transform, str):
         out.ties = _confirmed_ties(transform, requires, out, tables, params, inputs, semantics)
     if on_inferred == "warn" and out._inferred:
@@ -911,18 +917,6 @@ def infer_bounds(
 
 
 OnUnproved = Literal["error", "check", "warn"]
-
-
-class InferredWarning(SverifyWarning):
-    """A precondition sverify inferred is assumed (`on_inferred="warn"`).
-
-    Attributes:
-        report: The `Report` whose `inferred` preconditions are assumed.
-    """
-
-    def __init__(self, message: str, report: Report | None = None):
-        super().__init__(message)
-        self.report = report
 
 
 class UnprovedWarning(SverifyWarning):
@@ -1648,6 +1642,7 @@ def _verify_once(
         _depends=out.get("depends"),
         _epsilon=out.get("epsilon"),
         _rows_exact=out.get("rows_exact"),
+        _margin_checks=list(out.get("margin_checks") or []),
         _engines=out.get("engines"),
         _sorted=out.get("sorted"),
         _contract=contract,
