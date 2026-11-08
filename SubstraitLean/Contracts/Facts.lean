@@ -33,9 +33,10 @@ inductive Fact where
   deriving Repr, DecidableEq
 
 def Fact.Holds (row : Row) : Fact → Prop
+  -- Numbers by their canonical codes (`NumKind.norm`): `-0.0` is `0.0` (D31).
   | .diff i j b => ∀ (k : NumKind) x y, row.getD i .null = k.val x → row.getD j .null = k.val y →
-      b.Mem (x - y)
-  | .ne i k c => row.getD i .null ≠ k.val c
+      b.Mem (k.norm x - k.norm y)
+  | .ne i k c => ∀ x, row.getD i .null = k.val x → k.norm x ≠ k.norm c
   | .ratio s c b => ∀ x n, (row.getD s .null).unscaled? = some x →
       (row.getD c .null).unscaled? = some n →
       0 < n ∧ (∀ l, b.lo = some l → n * l ≤ x) ∧ (∀ h, b.hi = some h → x ≤ n * h)
@@ -104,6 +105,18 @@ theorem Expr.linTerm_num {e : Expr} {j : Nat} {c y : Int} {k : NumKind} {row : R
   rcases Expr.linTerm_spec h with ⟨rfl, rfl⟩ | rfl | rfl | rfl <;>
     cases k <;> simp_all [eval, BinFn.apply, NumKind.val, List.getD_eq_getElem?_getD] <;> omega
 
+/-- A column plus a constant moves the canonical code by the constant: the
+constant is 0 for a double (`+` of a double and an integer is NULL). -/
+theorem Expr.linTerm_norm {e : Expr} {j : Nat} {c y : Int} {k : NumKind} {row : Row}
+    (h : e.linTerm = some (j, c)) (hy : row.getD j .null = k.val y) (hne : e.eval row ≠ .null) :
+    k.norm (y + c) = k.norm y + c ∧ ∀ d, k.norm (d - c) = k.norm d - c := by
+  rw [List.getD_eq_getElem?_getD] at hy
+  rcases Expr.linTerm_spec h with ⟨rfl, rfl⟩ | rfl | rfl | rfl
+  · exact ⟨by simp, fun d => by simp⟩
+  all_goals
+    cases k <;> simp_all [eval, BinFn.apply, NumKind.val, List.getD_eq_getElem?_getD, NumKind.norm_int,
+      NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
+
 theorem Expr.linTerm_of_num {e : Expr} {j : Nat} {c v : Int} {k : NumKind} {row : Row}
     (h : e.linTerm = some (j, c)) (hv : e.eval row = k.val v) :
     ∃ y, row.getD j .null = k.val y ∧ v = y + c := by
@@ -151,8 +164,9 @@ def orGapFacts : Expr → Expr → List Fact
   | .bin .lt t (.lit wa), .bin .lt (.lit wb) t' =>
     match wa.numOf?, wb.numOf? with
     | some (k, a), some (k', b) =>
-      if t == t' && k == k' && a ≤ b then
-        (if a ≤ 0 && 0 ≤ b then neFact t k 0 else []) ++ neFact t k a else []
+      -- By canonical codes, as `<` compares (D31).
+      if t == t' && k == k' && k.norm a ≤ k.norm b then
+        (if k.norm a ≤ 0 && 0 ≤ k.norm b then neFact t k 0 else []) ++ neFact t k a else []
     | _, _ => []
   | _, _ => []
 
@@ -186,16 +200,18 @@ def Expr.factsCore : Expr → List Fact
   | _ => []
 termination_by e => sizeOf e
 
-theorem neFact_sound {t : Expr} {k : NumKind} {c : Int} {row : Row} (hne : t.eval row ≠ k.val c)
+theorem neFact_sound {t : Expr} {k : NumKind} {c : Int} {row : Row}
+    (hne : ∀ u, t.eval row = k.val u → k.norm u ≠ k.norm c)
     (hnn : t.eval row ≠ .null) : FactsHold (neFact t k c) row := by
   unfold neFact
   split
   · rename_i j c' hl
     intro f hf
     simp only [List.mem_singleton] at hf; subst hf
-    intro hj
-    apply hne
-    rw [Expr.linTerm_num hl hj hnn]; congr 1; omega
+    intro x hj
+    have hv := hne _ (Expr.linTerm_num hl hj hnn)
+    obtain ⟨h1, h2⟩ := Expr.linTerm_norm hl hj hnn
+    rw [h1] at hv; rw [h2]; omega
   · intro f hf; simp at hf
 
 /-- `NOT (t = w)` TRUE: `t` is a number of `w`'s kind other than `w`. -/
@@ -207,8 +223,8 @@ theorem neFactOf_sound {t : Expr} {w : Value} {row : Row}
   · rename_i k c hw
     rw [Value.numOf?_some hw] at ht
     obtain ⟨x, hx⟩ := not_eq_num ht
-    refine neFact_sound (fun h => ?_) (by rw [hx]; exact NumKind.val_ne_null k x)
-    rw [h, BinFn.eq_vals] at ht; simp [UnFn.apply] at ht
+    refine neFact_sound (fun u h hu => ?_) (by rw [hx]; exact NumKind.val_ne_null k x)
+    rw [h, BinFn.eq_vals] at ht; simp [UnFn.apply, hu] at ht
   · intro f hf; simp at hf
 
 theorem BinFn.eq_symm (v w : Value) : BinFn.apply .eq v w = BinFn.apply .eq w v := by
@@ -234,7 +250,7 @@ theorem not_isTrue_any {v : Value} (h : (UnFn.apply .not v).isTrue = true) :
 
 theorem diffFact_sound {t₁ t₂ : Expr} {mk : Int → Int → Bound} {row : Row} {P : Int → Int → Prop}
     (hn₁ : t₁.eval row ≠ .null) (hn₂ : t₂.eval row ≠ .null)
-    (hP : ∀ (k : NumKind) u w, t₁.eval row = k.val u → t₂.eval row = k.val w → P u w)
+    (hP : ∀ (k : NumKind) u w, t₁.eval row = k.val u → t₂.eval row = k.val w → P (k.norm u) (k.norm w))
     (hmk : ∀ c₁ c₂ x y, P (x + c₁) (y + c₂) → (mk c₁ c₂).Mem (x - y)) :
     FactsHold (diffFact t₁ t₂ mk) row := by
   unfold diffFact
@@ -243,7 +259,9 @@ theorem diffFact_sound {t₁ t₂ : Expr} {mk : Int → Int → Bound} {row : Ro
     intro f hf
     simp only [List.mem_singleton] at hf; subst hf
     intro k x y hx hy
-    exact hmk c₁ c₂ x y (hP k _ _ (Expr.linTerm_num h₁ hx hn₁) (Expr.linTerm_num h₂ hy hn₂))
+    have := hP k _ _ (Expr.linTerm_num h₁ hx hn₁) (Expr.linTerm_num h₂ hy hn₂)
+    rw [(Expr.linTerm_norm h₁ hx hn₁).1, (Expr.linTerm_norm h₂ hy hn₂).1] at this
+    exact hmk c₁ c₂ _ _ this
   · intro f hf; simp at hf
 
 theorem not_and3_notnull_true {x w : Value} (hx : x ≠ .null)
@@ -268,7 +286,7 @@ theorem Fact.holds_of_null {f : Fact} {row : Row} {i : Nat} (hm : f.mentions i =
     · rw [hn] at hy; exact absurd hy.symm (NumKind.val_ne_null k y)
   | ne a k c =>
     simp only [Fact.mentions, beq_iff_eq] at hm
-    subst hm; intro h; rw [hn] at h; exact NumKind.val_ne_null k c h.symm
+    subst hm; intro x h; rw [hn] at h; exact absurd h.symm (NumKind.val_ne_null k x)
   | ratio a b _ =>
     simp only [Fact.mentions, Bool.or_eq_true, beq_iff_eq] at hm
     intro x y hx hy
@@ -309,7 +327,7 @@ theorem orGapFacts_sound {p q : Expr} {row : Row}
         rw [Value.numOf?_some hwa] at hpq
         rw [Value.numOf?_some hwb] at hpq
         -- `t` is a number of kind `k` below `a` or above `b`.
-        have hnum : ∃ u, t.eval row = k.val u ∧ (u < a ∨ b < u) := by
+        have hnum : ∃ u, t.eval row = k.val u ∧ (k.norm u < k.norm a ∨ k.norm b < k.norm u) := by
           rcases hpq with h | h
           · obtain ⟨x, hx, hlt⟩ := lt_num_right (by simpa [Expr.eval] using h)
             exact ⟨x, hx, .inl hlt⟩
@@ -322,10 +340,11 @@ theorem orGapFacts_sound {p q : Expr} {row : Row}
         · split at hf
           · rename_i h0
             simp only [Bool.and_eq_true, decide_eq_true_eq] at h0
-            refine neFact_sound (fun hv => ?_) hnn f hf
-            rw [hu] at hv; obtain ⟨_, rfl⟩ := NumKind.val_inj₂ hv; omega
+            refine neFact_sound (fun u' hv => ?_) hnn f hf
+            rw [hu] at hv; obtain ⟨_, rfl⟩ := NumKind.val_inj₂ hv
+            rw [NumKind.norm_zero]; omega
           · simp at hf
-        · refine neFact_sound (fun hv => ?_) hnn f hf
+        · refine neFact_sound (fun u' hv => ?_) hnn f hf
           rw [hu] at hv; obtain ⟨_, rfl⟩ := NumKind.val_inj₂ hv; omega
       · simp at hf
     · simp at hf
@@ -343,10 +362,12 @@ theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = 
     simpa [eval, BinFn.eq_symm w] using ht
   case case4 t₁ t₂ =>
     have hsame := eq_true_same (by simpa [eval] using ht)
-    refine diffFact_sound (P := fun u w => u = w) hsame.2 (hsame.1 ▸ hsame.2)
+    have hn₂ : t₂.eval row ≠ .null := fun e => hsame.2 (Value.canonV_eq_null.mp
+      (hsame.1.trans (by rw [e]; simp [Value.canonV])))
+    refine diffFact_sound (P := fun u w => u = w) hsame.2 hn₂
       (fun k u w hu hw => ?_) (fun c₁ c₂ x y h => ?_)
     · have := hsame.1
-      rw [hu, hw] at this; exact (NumKind.val_inj₂ this).2
+      rw [hu, hw, Value.canonV_val, Value.canonV_val] at this; exact (NumKind.val_inj₂ this).2
     · simp only [Bound.Mem, Bound.exact, Option.some.injEq]
       constructor <;> intro _ h' <;> subst h' <;> omega
   case case5 t₁ t₂ =>
@@ -593,8 +614,8 @@ theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
   | .ne i k c, h, g, hg => by
       simp only [Fact.rename, List.mem_map] at hg
       obtain ⟨p, hp, rfl⟩ := hg
-      intro hx
-      exact h (hσ i p hp ▸ hx)
+      intro x hx
+      exact h x (hσ i p hp ▸ hx)
   | .ratio i j _, h, g, hg => by
       simp only [Fact.rename, List.mem_flatMap, List.mem_map] at hg
       obtain ⟨p, hp, q, hq, rfl⟩ := hg
@@ -627,7 +648,7 @@ theorem Fact.holds_prefix {n : Nat} {row row' : Row}
       exact h k x y (hpre i hr.1 ▸ hx) (hpre j hr.2 ▸ hy)
   | .ne i k c, hr, h => by
       simp only [Fact.inRange, decide_eq_true_eq] at hr
-      intro hx; exact h (hpre i hr ▸ hx)
+      intro x hx; exact h x (hpre i hr ▸ hx)
   | .ratio i j _, hr, h => by
       simp only [Fact.inRange, Bool.and_eq_true, decide_eq_true_eq] at hr
       intro x y hx hy
@@ -653,7 +674,7 @@ theorem FactsHold.shift {n : Nat} {fs : List Fact} {row row' : Row} (h : FactsHo
   have := h f hf
   cases f with
   | diff i j b => intro k x y hx hy; exact this k x y (hsh i ▸ hx) (hsh j ▸ hy)
-  | ne i k c => intro hx; exact this (hsh i ▸ hx)
+  | ne i k c => intro x hx; exact this x (hsh i ▸ hx)
   | ratio i j _ => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
   | holds e =>
       simp only [Fact.shift, Fact.Holds] at this ⊢
@@ -680,7 +701,7 @@ theorem Fact.rename_holds_inRange {σ : Nat → List Nat} {row row' : Row} {n : 
       simp only [Fact.inRange, decide_eq_true_eq] at hr
       simp only [Fact.rename, List.mem_map] at hg
       obtain ⟨p, hp, rfl⟩ := hg
-      intro hx; exact h (hσ i hr p hp ▸ hx)
+      intro x hx; exact h x (hσ i hr p hp ▸ hx)
   | .ratio i j _, hr, h, g, hg => by
       simp only [Fact.inRange, Bool.and_eq_true, decide_eq_true_eq] at hr
       simp only [Fact.rename, List.mem_flatMap, List.mem_map] at hg

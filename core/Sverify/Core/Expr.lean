@@ -563,6 +563,10 @@ def NumKind.norm : NumKind → Int → Int
 /-- `norm` of a double, for `rw`: `simp` would unfold `canon`'s constants. -/
 theorem NumKind.norm_float (i : Int) : NumKind.float.norm i = FloatCode.canon i := rfl
 
+theorem NumKind.norm_zero : ∀ k : NumKind, k.norm 0 = 0
+  | .float => FloatCode.canon_zero
+  | .int | .date | .ts | .tod | .dec _ => rfl
+
 @[simp] theorem NumKind.norm_int (i : Int) : NumKind.int.norm i = i := rfl
 @[simp] theorem NumKind.norm_date (i : Int) : NumKind.date.norm i = i := rfl
 @[simp] theorem NumKind.norm_ts (i : Int) : NumKind.ts.norm i = i := rfl
