@@ -481,17 +481,25 @@ theorem Rel.eval_okImpl {p : Profile} {cat : Catalog} {r : Rel} (h : ¬r.Raises 
 
 /-! ## The Engine object -/
 
-/-- **An engine**: its profile, option table and observation rows, its
-translation (`none` where it refuses the plan), the functions its run
-computes, and the proof that the table allows them. -/
+/-- **An engine**: what it computes (`profile`, from its facts, raising where
+it raises), its option table and observation rows, its translation (`none`
+where it refuses the plan), and the proof that where a call does not raise
+the table allows its value. The functions a run computes, `E.impl`, are the
+profile's (`Profile.okImpl`). The semantics a user verifies a plan under
+(`Profile.polars`, `Profile.spark`, D21) is a choice of the user's and not
+part of the engine. -/
 structure Engine where
   name : String
   profile : Profile
   table : ProfileTable
   obs : ObsTable
   lower : Rel → Option Rel
-  impl : Impl
-  within : impl.Within table
+  withinOk : profile.WithinOk table
+
+/-- The functions `E`'s run computes: its profile's, where a call does not raise. -/
+def Engine.impl (E : Engine) : Impl := E.profile.okImpl
+
+theorem Engine.within (E : Engine) : E.impl.Within E.table := Profile.okImpl_within E.withinOk
 
 /-- What `E` may return for `r`: the table's choices, with `E`'s functions. -/
 def Rel.AllowedE (E : Engine) (cat : Catalog) (r : Rel) (out : Relation) : Prop :=
@@ -501,6 +509,36 @@ theorem Rel.AllowedE.allowedP {E : Engine} {cat : Catalog} {r : Rel} {out : Rela
     (h : r.AllowedE E cat out) : r.AllowedP E.table cat out :=
   ⟨E.impl, E.within, h⟩
 
+/-- The profile whose calls never raise and give `I`'s values. -/
+def Profile.ofImpl (I : Impl) : Profile where
+  un f v := .ok (I.un f v)
+  bin f v w := .ok (I.bin f v w)
+
+theorem Profile.okImpl_ofImpl (I : Impl) : (Profile.ofImpl I).okImpl = I := rfl
+
+theorem Profile.ofImpl_withinOk {I : Impl} {t : ProfileTable} (h : I.Within t) :
+    (Profile.ofImpl I).WithinOk t :=
+  ⟨fun f v w hw => by cases hw; exact h.1 f v, fun f v w x hx => by cases hx; exact h.2 f v w⟩
+
+theorem Profile.reference_withinOk (t : ProfileTable) : Profile.reference.WithinOk t :=
+  ⟨fun _ _ _ h => .inl (raiseIf_ok h), fun _ _ _ _ h => .inl (raiseIf_ok h)⟩
+
+/-- The reference's functions where they do not raise, and theirs where they do:
+Lean's own. -/
+theorem Profile.reference_okImpl : Profile.reference.okImpl = Impl.lean := by
+  have hu : ∀ f v, (match Profile.reference.un f v with | .ok w => w | .error _ => f.apply v) =
+      UnFn.apply f v := fun f v => by
+    cases h : Profile.reference.un f v with
+    | ok w => exact raiseIf_ok h
+    | error _ => rfl
+  have hb : ∀ f v w, (match Profile.reference.bin f v w with | .ok x => x | .error _ => f.apply v w) =
+      BinFn.apply f v w := fun f v w => by
+    cases h : Profile.reference.bin f v w with
+    | ok x => exact raiseIf_ok h
+    | error _ => rfl
+  simp only [Profile.okImpl, Impl.lean]
+  congr 1 <;> funext <;> simp only [hu, hb]
+
 /-- The reference. -/
 def Engine.reference : Engine where
   name := "reference"
@@ -508,8 +546,7 @@ def Engine.reference : Engine where
   table := Profile.reference.table
   obs := Profile.reference.obs
   lower := some
-  impl := Impl.lean
-  within := Impl.lean_within _
+  withinOk := Profile.reference_withinOk _
 
 /-- DuckDB with IEEE operations (`ieee_floating_point_ops`, the default),
 through its lowering (`Lowering.duckdb`, written for the default settings). -/
@@ -519,29 +556,27 @@ def Engine.duckdb (s : DuckDBSettings) (hs : s.ieeeOps = true) : Engine where
   table := Profile.duckdb.table s
   obs := Profile.duckdb.obs
   lower r := some (Lowering.duckdb.lowerRel r)
-  impl := (Profile.duckdb s).okImpl
-  within := Profile.okImpl_within (Profile.duckdb_withinOk hs)
+  withinOk := Profile.duckdb_withinOk hs
 
-/-- Polars, as the translation writes the plan (`Polars.written`). -/
+/-- Polars, as the translation writes the plan (`Polars.written`), until its
+run profile and lowering are generated (#271 2b). -/
 def Engine.polars : Engine where
   name := "polars"
-  profile := Profile.polars
+  profile := Profile.ofImpl Polars.written
   table := Profile.polars.table
   obs := Profile.polars.obs
   lower := some
-  impl := Polars.written
-  within := Polars.written_within
+  withinOk := Profile.ofImpl_withinOk Polars.written_within
 
 /-- Spark under ANSI: the reference's functions (`Profile.spark`), its own
 choices. -/
 def Engine.spark : Engine where
   name := "spark"
-  profile := Profile.spark
+  profile := Profile.ofImpl Impl.lean
   table := Profile.spark.table
   obs := Profile.spark.obs
   lower := some
-  impl := Impl.lean
-  within := Impl.lean_within _
+  withinOk := Profile.ofImpl_withinOk (Impl.lean_within _)
 
 /-! ## The rows a plan relies on -/
 

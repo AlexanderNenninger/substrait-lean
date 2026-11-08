@@ -46,7 +46,9 @@ def Engine.Sound (E : Engine) (side : Catalog → Rel → Prop) : Prop :=
     r.Allowed cat (r'.eval cat E.impl)
 
 theorem Engine.reference_sound : Engine.reference.Sound fun _ _ => True := by
-  intro cat r r' hl _ _; cases hl; exact r.eval_allowed cat
+  intro cat r r' hl _ _; cases hl
+  show r.Allowed cat (r.eval cat Profile.reference.okImpl)
+  rw [Profile.reference_okImpl]; exact r.eval_allowed cat
 
 theorem Engine.spark_sound : Engine.spark.Sound fun _ _ => True := by
   intro cat r r' hl _ _; cases hl; exact r.eval_allowed cat
