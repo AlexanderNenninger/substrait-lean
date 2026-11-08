@@ -921,7 +921,12 @@ def realization(
             if isinstance(gives.floats, Within):
                 proved.append(not untested and _all_proved(epsilon))
             missed = q.coarser_than(_resolve(observed, epsilon))
-            if (missed or bounded) and r.get("shim"):
+            # A shim makes the components the row's observation leaves open
+            # exact (`missed`), never its bound on doubles: no row's shim
+            # lifts the plan's bound (DuckDB's VAR row's `nan_through` handles
+            # NaN only), so a bound the postcondition's tolerance does not
+            # meet refuses the plan, shim or not.
+            if missed and r.get("shim"):
                 cls = "shim"
             elif missed:
                 problems.append(
@@ -931,7 +936,7 @@ def realization(
                 )
             # A SUM's `sum_order` and `rounding` rows rest on the same bound:
             # say each problem once, at the first row that meets it.
-            new = [p for p in bounded if not r.get("shim") and p not in told]
+            new = [p for p in bounded if p not in told]
             told.update(new)
             problems += [f"{_where(g, o)}: {p}{facts}" for p in new]
         if cls == "shim" and r.get("shim"):

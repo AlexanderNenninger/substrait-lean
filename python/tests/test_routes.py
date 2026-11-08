@@ -310,6 +310,26 @@ def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
     assert route(sv.within(rel=1e-9), nested).evidence == "proved"
 
 
+def test_a_shim_does_not_lift_the_plans_bound(monkeypatch, con) -> None:
+    """A row with a shim and a per-plan bound (DuckDB's VAR row, whose
+    `nan_through` handles NaN only) still refuses a tolerance its bound does
+    not meet: the census's `var-within-rel-cap`, `within(rel=1e-9)` against
+    abs = 1.78e-7."""
+    t = con.table("t")
+    row = _row("stat_algo", "approx", q={"floats": {"bound": "plan"}}, shim="nan_through")
+    _classed_tables(monkeypatch, [row])
+
+    def route(tolerance):
+        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
+        report._depends = [{"group": None, "option": "stat_algo"}]
+        report._epsilon = {"v": {"abs": 1.77815e-07, "proved": True}}
+        return routes.choose(report, "polars")
+
+    r = route(sv.within(rel=1e-9))
+    assert r.refused and "v is within abs=1.77815e-07" in r.reason
+    assert route(sv.within(abs=1e-6)).cls == "observed"
+
+
 def test_rows_that_may_flip_under_the_bound_are_refused(monkeypatch, con) -> None:
     """#568's threshold rule: where a filter, key or sort on a double may
     keep other rows on the engine than on the reference (`rows_exact`), a
