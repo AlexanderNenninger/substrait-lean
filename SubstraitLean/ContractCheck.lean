@@ -225,7 +225,10 @@ def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
     ("why", match b.why with | some w => Lean.toJson w | none => .null)]
 
 structure Report where
-  ensures : List (String × Bool × String)
+  /-- For each postcondition plan, in the request's order, each column's
+  name, whether the analysis proves it TRUE, and its abstract value
+  (`Request.ensureResults`, `check_proved_sound`). -/
+  ensures : List (List (String × Bool × String))
   /-- For each postcondition, the base-table ranges that would make it hold
   (`Infer.suggest`): untrusted, and only suggested. -/
   suggestions : List Infer.Bounds := []
@@ -364,13 +367,14 @@ partial def _root_.Substrait.Rel.allExprs : Rel → List Expr
   | .aggregate r gs ms => gs ++ ms.flatMap Measure.exprs ++ r.allExprs
 
 def Report.json (r : Report) : Json :=
+  let ensures := r.ensures.flatten
   Json.mkObj [
-    ("ensures", Json.arr (((((r.ensures.zip (r.suggestions ++
-        List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).zip
-        (r.tiesOnly ++ List.replicate r.ensures.length false)).zip
-        (r.depends ++ List.replicate r.ensures.length none)).zip
-        ((r.allowed ++ List.replicate r.ensures.length false).zip
-          (r.ignores ++ List.replicate r.ensures.length none))).map
+    ("ensures", Json.arr (((((ensures.zip (r.suggestions ++
+        List.replicate ensures.length ({ why := none } : Infer.Bounds))).zip
+        (r.tiesOnly ++ List.replicate ensures.length false)).zip
+        (r.depends ++ List.replicate ensures.length none)).zip
+        ((r.allowed ++ List.replicate ensures.length false).zip
+          (r.ignores ++ List.replicate ensures.length none))).map
           fun (((((n, ok, v), b), t), d), al, ig) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
         ("value", Lean.toJson v), ("suggest", if ok then .null else b.json),
@@ -411,7 +415,7 @@ def Report.json (r : Report) : Json :=
     ("rewrites", Lean.toJson r.rewrites)]
 
 def Report.allProved (r : Report) : Bool :=
-  r.ensures.all (·.2.1) && r.keys.all (·.2) && !r.issues.any (·.1.isError)
+  r.ensures.flatten.all (·.2.1) && r.keys.all (·.2) && !r.issues.any (·.1.isError)
 
 def natLists (j : Json) : List (List Nat) :=
   ((j.getArr?).toOption.getD #[]).toList.map fun k =>
@@ -661,7 +665,26 @@ def issuesUnderAndOr (transform : Option Plan) (issues : List (Issue × Expr)) :
     issues.filterMap fun (_, e) => if all.any (e.underAndOr ·) then some e else none
   | none => []
 
-def check (input : Json) : Except String Report := do
+/-- A `--contract` request as `parse` reads it: the plans, the tables they
+read, and each table's preconditions. Everything `Request.check` analyses
+is a function of it (`check_proved_sound` reads it). -/
+structure Request where
+  input : Json
+  ensures : List Plan
+  requires : List Plan
+  transform : Option Plan
+  tables : Tables
+  /-- Each precondition plan's table and conditions, last first. -/
+  pre : List (String × List Expr)
+
+/-- The tables' arities, without rows: the analyses read only the arities. -/
+def tablesCatalog (tables : Tables) : Catalog := fun t => match tables.lookup t with
+  | some (n, _) => ⟨n, []⟩
+  | none => ⟨0, []⟩
+
+/-- Read a request: its plans, their tables (one schema per table), and the
+preconditions, each plan a selection of conditions from one table. -/
+def parse (input : Json) : Except String Request := do
   let ensures ← ((input.getObjValAs? (Array Json) "ensures").toOption.getD #[]).toList.mapM
     parseJsonPlan
   let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
@@ -674,41 +697,76 @@ def check (input : Json) : Except String Report := do
   for (t, n, _) in tables do
     if tables.any fun (t', n', _) => t' == t && n' != n then
       throw s!"table {t} has different schemas in different plans"
-  let cat : Catalog := fun t => match tables.lookup t with
-    | some (n, _) => ⟨n, []⟩
-    | none => ⟨0, []⟩
-  let schemas : String → List AVal := fun t => match tables.lookup t with
-    | some (_, s) => schemaEnv s
-    | none => []
   let mut pre : List (String × List Expr) := []
   for p in requires do
-    let some (t, cs) := p.root.colExprs cat
+    let some (t, cs) := p.root.colExprs (tablesCatalog tables)
       | throw "a precondition plan must only select from one table"
     pre := (t, cs) :: pre
-  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  -- Each table's description and facts, computed once: `A` and `F` are
-  -- called at every read of every pass (#825).
-  let names := tables.map (·.1) |>.eraseDups
-  let keysJson := (input.getObjVal? "keys").toOption
-  let keysOf (t : String) : List (List Nat) :=
-    natLists (keysJson.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
-  -- One description of the inputs (`KnowledgeEnv.ofSpec`, sound by
-  -- `KnowledgeEnv.ofSpec_sound`), computed once per table: the analyses
-  -- read it at every read of every pass (#825). The window keys follow
-  -- from it (`KnowledgeEnv.Sound.windows`).
+  return { input, ensures, requires, transform, tables, pre }
+
+namespace Request
+
+variable (R : Request)
+
+def cat : Catalog := tablesCatalog R.tables
+
+/-- Each table's declared schema, as abstract values. -/
+def schemas (t : String) : List AVal := match R.tables.lookup t with
+  | some (_, s) => schemaEnv s
+  | none => []
+
+def preOf (t : String) : List Expr := (R.pre.filter (·.1 == t)).flatMap (·.2)
+
+def keysOf (t : String) : List (List Nat) :=
+  natLists (((R.input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption)).getD
+    (.arr #[]))
+
+def caps : String → Option Nat := rowCaps ((R.input.getObjVal? "max_rows").toOption.getD (.obj {}))
+
+/-- The description of the inputs the analyses start from
+(`KnowledgeEnv.ofSpec`, sound by `KnowledgeEnv.ofSpec_sound`), computed once
+per table: the analyses read it at every read of every pass (#825). -/
+def kenv : KnowledgeEnv :=
   let know (t : String) : Knowledge :=
-    ⟨tableEnv (schemas t) (preOf t), (preOf t).flatMap Expr.factsOf, keysOf t, none⟩
-  let knows := names.map fun t => (t, know t)
-  let kenv : KnowledgeEnv := fun t => (knows.lookup t).getD (know t)
+    ⟨tableEnv (R.schemas t) (R.preOf t), (R.preOf t).flatMap Expr.factsOf, R.keysOf t, none⟩
+  let knows := (R.tables.map (·.1) |>.eraseDups).map fun t => (t, know t)
+  fun t => (knows.lookup t).getD (know t)
+
+/-- A postcondition plan's abstract values, the rows it reads capped. -/
+def ensureEnv (q : Plan) : List AVal :=
+  (q.root.capReads R.caps).aeval R.cat R.kenv.cols R.kenv.facts (R.kenv.windows R.cat)
+
+/-- A postcondition plan's columns, each with whether the analysis proves it
+TRUE and its abstract value: proved for every order of the ties
+(`contract_sound_all`, with `Rel.orderAllowed_capReads` and
+`Rel.keyedWindows_soundAll`, D24). -/
+def ensureResults (q : Plan) : List (String × Bool × String) :=
+  resultsOf q (R.ensureEnv q)
+where
+  resultsOf (q : Plan) (env : List AVal) : List (String × Bool × String) :=
+    let names := if q.names.length == env.length then q.names
+      else (List.range env.length).map (s!"#{·}")
+    names.zip (env.map fun a => (a.certainlyTrue, a.render))
+
+end Request
+
+/-- The analyses of a parsed request, given each postcondition's abstract
+values (`ensureEnv`), but for the postconditions' verdicts (`Request.check`). -/
+def Request.analyses (R : Request) (envs : List (List AVal)) : Except String Report := do
+  let input := R.input
+  let ensures := R.ensures
+  let transform := R.transform
+  let tables := R.tables
+  let cat := R.cat
+  let kenv := R.kenv
   let A := kenv.cols
   let F := kenv.facts
   let inputKeys := kenv.keys
   let T := kenv.windows cat
   let implied : List (String × List (List (Nat × Bound))) :=
     ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
-  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  let caps := R.caps
   let perKey := rowsPer ((input.getObjVal? "rows_per").toOption.getD (.obj {}))
-  let mut results : List (String × Bool × String) := []
   let mut suggestions : List Infer.Bounds := []
   let mut tiesOnly : List Bool := []
   let mut depends : List (Option (List String)) := []
@@ -726,15 +784,7 @@ def check (input : Json) : Except String Report := do
   let sqlT := (obsJ.bind (·.getObjValAs? Bool "sql" |>.toOption)).getD false
   let mut ignoresPre : List (Option (List String × List String)) := []
   let mut qi := 0
-  for q in ensures do
-    -- `contract_sound` needs the postcondition plan to be well-formed.
-    if !(q.root.capReads caps).checkWF cat then throw "a postcondition plan is not well-formed"
-    let env := (q.root.capReads caps).aeval cat A F T
-    let names := if q.names.length == env.length then q.names
-      else (List.range env.length).map (s!"#{·}")
-    -- Proved for every order of the ties (`contract_sound_all`, with
-    -- `Rel.orderAllowed_capReads` and `Rel.keyedWindows_soundAll`, D24).
-    results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
+  for (q, env) in ensures.zip envs do
     depends := depends ++ postDepends cat tables q.root env.length
     allowed := allowed ++ postAllowed cat q.root env.length
     -- A proved column holds for every choice the plan leaves open (every
@@ -829,7 +879,7 @@ def check (input : Json) : Except String Report := do
     implied
     optimized
     rewrites
-    ensures := results
+    ensures := []
     suggestions
     tiesOnly
     depends
@@ -854,5 +904,64 @@ def check (input : Json) : Except String Report := do
     constant
     underAndOr := issuesUnderAndOr transform issues
     unchecked }
+
+/-- The report of a parsed request. Each postcondition is analysed once
+(`ensureEnv`); its verdicts are read from that analysis (`ensureResults`,
+`check_ensures`), and so are the other analyses of the postconditions. -/
+def Request.check (R : Request) : Except String Report :=
+  -- `contract_sound` needs the postcondition plans to be well-formed (`check_wf`).
+  if !R.ensures.all fun q => (q.root.capReads R.caps).checkWF R.cat then
+    throw "a postcondition plan is not well-formed"
+  else
+    let envs := R.ensures.map R.ensureEnv
+    match R.analyses envs with
+    | .error e => .error e
+    | .ok rep =>
+      let ensures := (R.ensures.zip envs).map fun (q, env) => Request.ensureResults.resultsOf q env
+      .ok { rep with ensures }
+
+/-- Check a `--contract` request. -/
+def check (input : Json) : Except String Report := do
+  (← parse input).check
+
+theorem Request.zip_results (R : Request) : ∀ qs : List Plan,
+    ((qs.zip (qs.map R.ensureEnv)).map fun (q, env) => Request.ensureResults.resultsOf q env) =
+      qs.map R.ensureResults
+  | [] => rfl
+  | q :: qs => by
+    simp only [List.map_cons, List.zip_cons_cons, R.zip_results qs]
+    rfl
+
+theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
+    (R.ensures.all fun q => (q.root.capReads R.caps).checkWF R.cat) = true ∧
+      rep.ensures = R.ensures.map R.ensureResults := by
+  unfold Request.check at hc
+  split at hc
+  · cases hc
+  · rename_i hwf
+    refine ⟨by simpa using hwf, ?_⟩
+    simp only at hc
+    split at hc
+    · cases hc
+    · cases hc
+      exact R.zip_results R.ensures
+
+theorem check_parse {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) : R.check = .ok rep := by
+  simpa [check, hR, bind, Except.bind] using hc
+
+/-- The verdicts `check` reports are those of `ensureResults` on the parsed
+postconditions, one list per postcondition plan. -/
+theorem check_ensures {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.ensures = R.ensures.map R.ensureResults :=
+  (Request.check_ok (check_parse hR hc)).2
+
+/-- The postcondition plans `check` analysed are well-formed. -/
+theorem check_wf {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    ∀ q ∈ R.ensures, (q.root.capReads R.caps).checkWF R.cat = true := by
+  have h := (Request.check_ok (check_parse hR hc)).1
+  simpa only [List.all_eq_true] using h
 
 end Substrait.ContractCheck
