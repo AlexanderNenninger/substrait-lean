@@ -752,6 +752,25 @@ theorem fdiv_isRef (a b : Int) : IsRef (fdiv a b) := by
         exact isRef_canon_of (by simp))
     | exact isRef_canon_of (.inr (.inr (.inr (.inr (.inr ⟨_, _, rfl⟩)))))
 
+/-- D31's operations give a double only on two doubles. Reduced by `cases`
+on the constructors, which `simp [BinFn.apply]` over every pair took 1.4 s
+to do. -/
+theorem fadd_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fadd va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fadd_isRef _ _) | cases h
+
+theorem fsub_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fsub va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fsub_isRef _ _) | cases h
+
+theorem fmul_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fmul va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fmul_isRef _ _) | cases h
+
+theorem fdiv_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fdiv va vb = .float c) :
+    IsRef c := by
+  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fdiv_isRef _ _) | cases h
+
 theorem Expr.refCol_sound {mask : Nat → Bool} {e : Expr} (he : e.refCol mask = true) {row : Row}
     (h : ∀ j c, mask j = true → row.getD j .null = .float c → IsRef c) {c : Int}
     (hc : e.eval row = .float c) : IsRef c := by
@@ -760,13 +779,10 @@ theorem Expr.refCol_sound {mask : Nat → Bool} {e : Expr} (he : e.refCol mask =
   | bin f a b =>
     simp only [Expr.eval] at hc
     cases f <;> simp only [Expr.refCol, reduceCtorEq] at he
-    all_goals
-      cases ha : a.eval row <;> cases hb : b.eval row <;> rw [ha, hb] at hc <;>
-        simp only [BinFn.apply, reduceCtorEq, Value.float.injEq] at hc
-    · rw [← hc]; exact fadd_isRef _ _
-    · rw [← hc]; exact fsub_isRef _ _
-    · rw [← hc]; exact fmul_isRef _ _
-    · rw [← hc]; exact fdiv_isRef _ _
+    · exact fadd_apply_float hc
+    · exact fsub_apply_float hc
+    · exact fmul_apply_float hc
+    · exact fdiv_apply_float hc
   | _ => simp [Expr.refCol] at he
 
 theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) : IsRef c := by
