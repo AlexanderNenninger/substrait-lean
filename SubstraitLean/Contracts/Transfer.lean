@@ -40,6 +40,10 @@ date's truncation, ...). -/
 def monoAbs (kin kout : NumKind) (g : Int → Int) (a : AVal) : AVal :=
   mapAbs kin.is (fun _ => kout) (·.mapMono g) (fun _ => false) a
 
+/-- `-x` of doubles: the negated interval, or any double where NaN may be in it,
+since `-NaN` is the NaN (D31). -/
+def fnegBound (b : Bound) : Bound := if b.hi.all (· < FloatCode.nan) then b.neg else Bound.top
+
 /-- A conversion's interval to finite doubles: between the conversions of the
 ends, or of `-∞` and `+∞`'s neighbours. -/
 def convBound (c : FloatCode.FiniteMonoConv) (b : Bound) : Bound :=
@@ -575,7 +579,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .isNull, a => { tt := a.null, ff := a.int.isSome || a.tt || a.ff || a.str || a.nested }
   | .neg, a => mapAbs NumKind.int.is (fun _ => .int) Bound.neg (fun _ => false) a
   -- Double negation is code negation too (zero is `0`).
-  | .fneg, a => mapAbs NumKind.float.is (fun _ => .float) Bound.neg (fun _ => false) a
+  | .fneg, a => mapAbs NumKind.float.is (fun _ => .float) fnegBound (fun _ => false) a
   -- Float results: some double (any code), or NULL.
   | .itof, a => convAbs NumKind.int.is FloatCode.intConv a
   | .froundTo _, a => mapAbs NumKind.float.is (fun _ => .float) (fun _ => Bound.top) (fun _ => false) a

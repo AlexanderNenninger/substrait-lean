@@ -14,10 +14,14 @@ namespace Substrait
 
 theorem monoAbs_sound {kin kout : NumKind} {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y)
     {f : UnFn} (hf : ∀ v, f.apply v = Value.mapP kin.is (fun _ => kout) (some ∘ g) v)
-    {a : AVal} {v : Value} (h : a.Mem v) : (monoAbs kin kout g a).Mem (f.apply v) :=
+    {a : AVal} {v : Value} (h : a.Mem v)
+    (hc : ∀ i, kout.norm (g (kin.norm i)) = g (kin.norm i) := by intro; rfl) :
+    (monoAbs kin kout g a).Mem (f.apply v) :=
   mapAbs_sound hf (fun _ _ r hi hr => by
     simp only [Function.comp, Option.some.injEq] at hr; subst hr; exact Bound.mem_mapMono hg hi)
-    (fun _ _ _ hr => by simp at hr) h
+    (fun _ _ _ hr => by simp at hr) h (fun k i r hk hr => by
+      simp only [NumKind.is, beq_iff_eq] at hk; subst hk
+      simp only [Function.comp, Option.some.injEq] at hr; subst hr; exact hc i)
 
 theorem ftoiBound_mem {b : Bound} {i r : Int} (hi : b.Mem i) (hr : FloatCode.toInt? i = some r) :
     (ftoiBound b).Mem r := by
@@ -168,7 +172,9 @@ theorem convAbs_sound {ok : NumKind → Bool} (c : FloatCode.FiniteMonoConv) {f 
     (h : a.Mem v) : (convAbs ok c a).Mem (f.apply v) :=
   mapAbs_sound hf (fun _ _ _ hi hr => by
     simp only [Function.comp, Option.some.injEq] at hr; subst hr; exact convBound_mem c hi)
-    (fun _ _ _ hr => by simp at hr) h
+    (fun _ _ _ hr => by simp at hr) h (fun _ _ _ _ hr => by
+      simp only [Function.comp, Option.some.injEq] at hr; subst hr
+      exact FloatCode.canon_of_bounds (c.bounds _))
 
 /-- `CAST(x AS INT)` of `n` bits: the integer, or NULL where it does not fit. -/
 theorem narrowAbs_sound {n : Nat} {f : UnFn}
@@ -187,9 +193,13 @@ theorem narrowAbs_sound {n : Nat} {f : UnFn}
 
 /-- A function whose result is any number of its kind (or NULL). -/
 theorem topAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Int} {f : UnFn}
-    (hf : ∀ v, f.apply v = Value.mapP ok kout (some ∘ g) v) {a : AVal} {v : Value} (h : a.Mem v) :
+    (hf : ∀ v, f.apply v = Value.mapP ok kout (some ∘ g) v) {a : AVal} {v : Value} (h : a.Mem v)
+    (hc : ∀ k i, ok k = true → (kout k).norm (g (k.norm i)) = g (k.norm i) := by
+      intro k _ _; cases k <;> rfl) :
     (mapAbs ok kout (fun _ => Bound.top) (fun _ => false) a).Mem (f.apply v) :=
   mapAbs_sound hf (fun _ _ _ _ _ => Bound.mem_top _) (fun _ _ _ hr => by simp at hr) h
+    (fun k i r hk hr => by
+      simp only [Function.comp, Option.some.injEq] at hr; subst hr; exact hc k i hk)
 
 /-! ### Lists and structs (#925) -/
 
@@ -277,7 +287,7 @@ theorem AVal.cardAbs_sound {a : AVal} {v : Value} (h : a.Mem v) :
   cases v
   case list vs =>
     obtain ⟨_, hc, _⟩ := AVal.mem_list.mp h
-    exact ⟨_, rfl, Bound.mem_meet hc ⟨fun l hl => by simp [Bound.ge] at hl; omega,
+    exact ⟨_, rfl, Bound.mem_meet hc ⟨fun l hl => by simp [Bound.ge] at hl; simp only [NumKind.norm]; omega,
       fun u hu => by simp [Bound.ge] at hu⟩, rfl⟩
   all_goals exact AVal.nonList_of_mem h (by simp)
 
@@ -307,18 +317,24 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case bbox n =>
     refine BlackBox.scalarAbs_mem fun hs => ?_
     cases v <;> simp_all [AVal.Mem]
-  case ffloor => exact monoAbs_sound FloatCode.floor_mono (fun v => by cases v <;> hf_tac) h
-  case fceil => exact monoAbs_sound FloatCode.ceil_mono (fun v => by cases v <;> hf_tac) h
-  case fround => exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> hf_tac) h
+  case ffloor =>
+    exact monoAbs_sound FloatCode.floor_mono (fun v => by cases v <;> hf_tac) h
+      (fun _ => FloatCode.canon_floor (FloatCode.canon_idem _))
+  case fceil =>
+    exact monoAbs_sound FloatCode.ceil_mono (fun v => by cases v <;> hf_tac) h
+      (fun _ => FloatCode.canon_ceil (FloatCode.canon_idem _))
+  case fround =>
+    exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> hf_tac) h
+      (fun _ => FloatCode.canon_round (FloatCode.canon_idem _))
   case ftoi => exact ftoiAbs_sound h
   case narrow n | narrowOrNull n => exact narrowAbs_sound (fun v => by cases v <;> hf_tac) h
   case ftoiOrNull =>
     exact mapAbs_sound (g := fun c => (FloatCode.toInt? c).bind fun i =>
         if fitsBits 64 i then some i else none)
       (fun v => by
-        cases v <;> simp only [UnFn.apply, Value.mapP, Value.numOf?] <;> try rfl
+        cases v <;> simp only [UnFn.apply, Value.mapP, Value.numOf?, NumKind.norm] <;> try rfl
         rename_i c
-        cases FloatCode.toInt? c <;> simp only [Option.bind] <;> split <;> rfl)
+        cases FloatCode.toInt? (FloatCode.canon c) <;> simp only [Option.bind] <;> split <;> rfl)
       (fun _ i r hi hr => by
         cases hc : FloatCode.toInt? i with
         | none => simp [hc] at hr
@@ -332,9 +348,25 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     exact mapAbs_sound (g := fun i => some (-i)) (fun v => by cases v <;> hf_tac)
       (fun _ _ _ hi hr => by cases hr; exact Bound.mem_neg hi) (fun _ _ _ hr => by cases hr) h
   case fneg =>
-    exact mapAbs_sound (g := fun i => some (FloatCode.neg i)) (fun v => by cases v <;> hf_tac)
-      (fun _ _ _ hi hr => by cases hr; simpa [FloatCode.neg] using Bound.mem_neg hi)
+    exact mapAbs_sound (g := fun i => some (FloatCode.canon (FloatCode.neg i)))
+      (fun v => by cases v <;> hf_tac)
+      (fun b i _ hi hr => by
+        cases hr; unfold fnegBound; split
+        · rename_i hb
+          have hlt : i < FloatCode.nan := by
+            obtain ⟨_, bh⟩ := b
+            cases bh with
+            | none => simp at hb
+            | some u => simp at hb; exact Int.lt_of_le_of_lt (hi.2 u rfl) hb
+          have := fp64.negZero_eq; have := fp64.negNan_eq; have := fp64.nan_eq
+          have hn : FloatCode.canon (FloatCode.neg i) = FloatCode.neg i := fp64.canon_eq_self (by
+            show -i ≠ fp64.negZero ∧ -i ≠ fp64.negNan
+            simp only [FloatCode.nan] at hlt; constructor <;> omega)
+          rw [hn]
+          simpa [FloatCode.neg] using Bound.mem_neg hi
+        · exact Bound.mem_top _)
       (fun _ _ _ hr => by cases hr) h
+      (fun _ _ _ _ hr => by cases hr; exact FloatCode.canon_idem _)
   case wrap => simpa [UnFn.abs, UnFn.apply] using h
   case widen => simpa [UnFn.abs, UnFn.apply] using h
   case decimal p s | dkind p s =>
@@ -372,10 +404,21 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
             rw [hq] at hn; cases hn
       | none, _, _ | some _, none, _ => rfl
   case itof => exact convAbs_sound _ (fun v => by cases v <;> hf_tac) h
-  case froundTo d => exact topAbs_sound (g := FloatCode.roundTo d) (fun v => by cases v <;> hf_tac) h
+  case froundTo d =>
+    have hc : ∀ k i, NumKind.float.is k = true →
+        NumKind.float.norm (FloatCode.roundTo d (k.norm i)) = FloatCode.roundTo d (k.norm i) := by
+      intro k i hk
+      simp only [NumKind.is, beq_iff_eq] at hk; subst hk
+      rw [NumKind.norm_float, NumKind.norm_float]
+      exact FloatCode.canon_roundTo d (FloatCode.canon_idem i)
+    exact topAbs_sound (ok := NumKind.float.is) (kout := fun _ => .float) (g := FloatCode.roundTo d)
+      (fun v => by cases v <;> hf_tac) h hc
   case fmath f =>
     refine mapAbs_sound (g := f.apply) (fun v => by cases v <;> hf_tac)
-      (fun _ _ _ _ _ => Bound.mem_top _) (fun b i hi hn => ?_) h
+      (fun _ _ _ _ _ => Bound.mem_top _) (fun b i hi hn => ?_) h (fun _ _ _ _ hr => ?_)
+    swap
+    · simp only [FMath.apply] at hr; split at hr <;> cases hr
+      rw [NumKind.norm_float]; exact FloatCode.canon_ofFloat _
     simp only [Bool.not_eq_true']
     cases hs : f.safeB (some b)
     · rfl
@@ -452,10 +495,24 @@ theorem arith_sound {tbl : NumKind → NumKind → Option NumKind} {op : Bound �
     {f : Int → Int → Int}
     (hop : ∀ {x y : Bound} {i j : Int}, x.Mem i → y.Mem j → (op x y).Mem (f i j))
     {g : BinFn} (hg : ∀ v w, g.apply v w = Value.mapP₂ tbl (fun i j => some (f i j)) v w)
-    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w)
+    (hc : ∀ k k' ko i j, tbl k k' = some ko →
+      ko.norm (f (k.norm i) (k'.norm j)) = f (k.norm i) (k'.norm j) := by
+      intro k k' ko _ _ h; cases ko <;> first | rfl | (cases k <;> cases k' <;> cases h)) :
     (arith tbl op a b).Mem (g.apply v w) :=
   mapAbs₂_sound hg (fun _ _ _ _ _ hi hj hr => by cases hr; exact hop hi hj)
     (fun _ _ _ _ _ _ hr => by cases hr) ha hb
+    (fun k k' ko i j _ htb hr => by cases hr; exact hc k k' ko i j htb)
+
+/-- The functions of two doubles give canonical codes (D31). -/
+theorem floatsOnly_out {f : Int → Int → Int}
+    (h : ∀ a b, FloatCode.canon (f (FloatCode.canon a) (FloatCode.canon b)) =
+      f (FloatCode.canon a) (FloatCode.canon b)) :
+    ∀ k k' ko i j, floatsOnly k k' = some ko →
+      ko.norm (f (k.norm i) (k'.norm j)) = f (k.norm i) (k'.norm j) := by
+  intro k k' ko i j hk
+  cases k <;> cases k' <;> simp [floatsOnly] at hk
+  subst hk; rw [NumKind.norm_float, NumKind.norm_float, NumKind.norm_float]; exact h i j
 
 theorem canGe_of_le {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) (h : j ≤ i) :
     canGe x y = true := by
@@ -566,9 +623,15 @@ theorem divAbs_sound {tbl : NumKind → NumKind → Option NumKind} {bound : Bou
     (hbound : ∀ {x y : Bound} {i j : Int}, x.Mem i → y.Mem j → j ≠ 0 → (bound x y).Mem (op i j))
     (hg : ∀ v w, g.apply v w =
       Value.mapP₂ tbl (fun i j => if j = 0 then none else some (op i j)) v w)
-    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w)
+    (hc : ∀ k k' ko i j, tbl k k' = some ko →
+      ko.norm (op (k.norm i) (k'.norm j)) = op (k.norm i) (k'.norm j) := by
+      intro k k' ko _ _ h; cases ko <;> first | rfl | (cases k <;> cases k' <;> cases h)) :
     (divAbs tbl bound a b).Mem (g.apply v w) :=
-  mapAbs₂_sound hg
+  mapAbs₂_sound (hc := fun k k' ko i j r htb hr => by
+      split at hr
+      · cases hr
+      · cases hr; exact hc k k' ko i j htb) hg
     (fun _ _ _ j _ hi hj hr => by
       by_cases hj0 : j = 0
       · simp [hj0] at hr
@@ -1257,26 +1320,44 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     exact arith_sound (f := FloatCode.fadd)
       (fun hx hy => faddBoundS_mem false hx hy (fun _ => rfl) (fun h => by cases h))
       (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+      (floatsOnly_out fun _ _ => FloatCode.canon_idem _)
   case fsub =>
     exact arith_sound (f := FloatCode.fsub)
       (fun hx hy => faddBoundS_mem true hx hy (fun h => by cases h) (fun _ => rfl))
       (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
-  case fmul => exact arith_sound fmulBoundS_mem (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
-  case fdiv => exact arith_sound fdivBoundS_mem (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
-  case fmod => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
-  case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+      (floatsOnly_out fun _ _ => FloatCode.canon_idem _)
+  case fmul =>
+    exact arith_sound fmulBoundS_mem (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+      (floatsOnly_out fun _ _ => FloatCode.canon_idem _)
+  case fdiv =>
+    exact arith_sound fdivBoundS_mem (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+      (floatsOnly_out fun _ _ => FloatCode.canon_idem _)
+  case fmod =>
+    exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+      (floatsOnly_out fun _ _ => FloatCode.canon_fmod (FloatCode.canon_idem _) _)
+  case fpow =>
+    exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+      (floatsOnly_out fun _ _ => FloatCode.canon_ofFloat _)
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
   case ipow => exact powAbs_sound ha hb
   case fatan2 =>
     refine mapAbs₂_sound (g := atan2?) (fun v w => by cases v <;> cases w <;> hf_tac)
       (fun _ _ _ _ _ _ _ _ => Bound.mem_top _) (fun x y i j hi hj hr => ?_) ha hb
+      (fun k k' ko _ _ _ htb hr => by
+        cases k <;> cases k' <;> simp [floatsOnly] at htb; subst htb
+        simp only [atan2?] at hr; split at hr <;> cases hr
+        rw [NumKind.norm_float]; exact FloatCode.canon_ofFloat _)
     cases hs : BinFn.domainSafe .fatan2 (some x) (some y)
     · rfl
     · have := BinFn.domainSafe_atan2 hs hi hj; rw [hr] at this; cases this
   case flogb =>
     refine mapAbs₂_sound (g := logb?) (fun v w => by cases v <;> cases w <;> hf_tac)
       (fun _ _ _ _ _ _ _ _ => Bound.mem_top _) (fun x y i j hi hj hr => ?_) ha hb
+      (fun k k' ko _ _ _ htb hr => by
+        cases k <;> cases k' <;> simp [floatsOnly] at htb; subst htb
+        simp only [logb?] at hr; split at hr <;> cases hr
+        rw [NumKind.norm_float]; exact FloatCode.canon_ofFloat _)
     cases hs : BinFn.domainSafe .flogb (some x) (some y)
     · rfl
     · have := BinFn.domainSafe_logb hs hi hj; rw [hr] at this; cases this

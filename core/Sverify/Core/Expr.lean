@@ -559,6 +559,9 @@ def NumKind.norm : NumKind → Int → Int
   | .float, i => FloatCode.canon i
   | _, i => i
 
+/-- `norm` of a double, for `rw`: `simp` would unfold `canon`'s constants. -/
+theorem NumKind.norm_float (i : Int) : NumKind.float.norm i = FloatCode.canon i := rfl
+
 /-- A value with its doubles canonical, in lists and structs too: `-0.0` is
 `+0.0` and the negative NaN the NaN (`zero_sign` = `ONE_ZERO`, `nan_kind` =
 `ONE_NAN`, D31). Comparisons read values through it. -/

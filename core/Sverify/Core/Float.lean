@@ -666,6 +666,24 @@ theorem roundTo_canon (d : Int) {c : Int} (h : IsRef c) : roundTo d (canon c) = 
     | exact canon_zero.symm
     | exact (canon_ofFloat _).symm
 
+/-- Rounding a canonical code keeps it canonical (D31). -/
+theorem canon_roundTo (d : Int) {c : Int} (h : canon c = c) : canon (roundTo d c) = roundTo d c := by
+  unfold roundTo; dsimp only
+  split <;> (try split) <;> (try split) <;> (try split) <;>
+    first
+    | exact h
+    | exact canon_zero
+    | exact canon_ofFloat _
+
+/-- `fmod` of a canonical dividend is canonical (D31). -/
+theorem canon_fmod {a : Int} (h : canon a = a) (b : Int) : canon (fmod a b) = fmod a b := by
+  unfold fmod; dsimp only
+  split
+  · exact canon_of_isRef isRef_nan
+  · split
+    · exact h
+    · exact fp64.canon_ofMag _ _
+
 theorem finite_canon {c : Int} (h : IsRef c) : finite (canon c) = canon (finite c) := by
   rw [canon_of_isRef h, canon_finite]
 

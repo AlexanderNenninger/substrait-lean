@@ -817,9 +817,10 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
     (hf : ∀ v, f.apply v = Value.mapP ok kout g v)
     (hb : ∀ b i r, b.Mem i → g i = some r → (bf b).Mem r)
     (hn : ∀ b i, b.Mem i → g i = none → extra (some b) = true)
+    {a : AVal} {v : Value} (h : a.Mem v)
     (hc : ∀ k i r, ok k = true → g (k.norm i) = some r → (kout k).norm r = r := by
-      intro k _ _ _ _; cases k <;> rfl)
-    {a : AVal} {v : Value} (h : a.Mem v) : (mapAbs ok kout bf extra a).Mem (f.apply v) := by
+      intro k _ _ _ _; cases k <;> rfl) :
+    (mapAbs ok kout bf extra a).Mem (f.apply v) := by
   rw [hf]
   mem_cases h with i b hb' hi
   · simp [Value.mapP, Value.numOf?, mapAbs, AVal.Mem, AVal.nonNumP, AVal.nonInt, hn]
@@ -869,9 +870,10 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
     (hf : ∀ v w, f.apply v w = Value.mapP₂ tbl g v w)
     (hb : ∀ x y i j r, x.Mem i → y.Mem j → g i j = some r → (bf x y).Mem r)
     (hn : ∀ x y i j, x.Mem i → y.Mem j → g i j = none → extra (some x) (some y) = true)
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb' : b.Mem w)
     (hc : ∀ k k' ko i j r, tbl k k' = some ko → g (k.norm i) (k'.norm j) = some r → ko.norm r = r := by
-      intro _ _ ko _ _ _ _ _; cases ko <;> rfl)
-    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb' : b.Mem w) :
+      intro k k' ko _ _ _ h _
+      cases ko <;> first | rfl | (cases k <;> cases k' <;> cases h)) :
     (mapAbs₂ tbl bf extra a b).Mem (f.apply v w) := by
   rw [hf]
   mem_cases₂ ha hb'
