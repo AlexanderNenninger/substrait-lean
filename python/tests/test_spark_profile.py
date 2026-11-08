@@ -89,8 +89,11 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
 def test_semantics_spark_runs_natively_on_spark(report: sv.Report) -> None:
     route = routes.choose(report, "spark")
     assert (route.kind, route.cls) == ("native", "exact"), route
-    # The proof holds under DuckDB's choices too, option by option.
-    assert routes.choose(report, "duckdb").kind == "transfer"
+    # The checker's transfer check reads every option of the integer SUM's
+    # group, `avg_int_result` among them, where DuckDB's choice differs: the
+    # transfer is refused, naming it (#1166; reads per function would lift it).
+    route = routes.choose(report, "duckdb", "transfer")
+    assert route.refused and "avg_int_result" in route.reason
 
 
 def test_the_reference_reaches_spark_with_its_shims() -> None:

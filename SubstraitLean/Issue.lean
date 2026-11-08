@@ -17,9 +17,10 @@ open FloatCode (minI64 maxI64 castLo castHi)
 inductive Issue where
   /-- Integer division or remainder by zero, or a double divided by zero. -/
   | divByZero
-  /-- A result outside 64 bits where DataFusion fails (`MIN / -1`, `POWER`),
-  a `repeat` beyond `Text.repeatMax` bytes, or a decimal of more digits than
-  its precision (`UnFn.decimal`). -/
+  /-- A result that leaves its type: outside 64 bits (`MIN / -1`, `POWER`), a
+  `repeat` beyond `Text.repeatMax` bytes, a decimal of more digits than its
+  precision (`UnFn.decimal`), or a calendar value outside `Time.lean`'s
+  ranges. -/
   | overflow
   /-- `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value. -/
   | badCast
@@ -29,8 +30,9 @@ inductive Issue where
   | badRegex
   /-- `+`, `-`, `*` or negation whose result does not fit its declared width:
   64 bits, or narrower integers (`UnFn.wrap`). With `overflow` omitted or
-  `ERROR`, the reference raises (#202); DataFusion wraps around instead,
-  which an error allows (a refinement). -/
+  `ERROR`, the reference raises (#202), as DuckDB and Spark do
+  (duckdb-int-narrow, spark-int-arith); Polars wraps around instead
+  (polars-int-arith), which an error allows (a refinement). -/
   | wraps
   /-- A `SUM` leaving its type (`Measure.sumOk`): 64 bits for integers, the
   result's precision for decimals (#316). The reference raises, and so does
@@ -47,8 +49,8 @@ inductive Issue where
   is 1, a shift count outside `0`–`63`, a `substring` offset outside
   `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336,
   where DuckDB raises too). The reference raises (Substrait's
-  `on_domain_error` = ERROR); DataFusion gives NaN, ±∞ or a wrapped shift
-  instead, which an error allows (a refinement, epic #185). -/
+  `on_domain_error` = ERROR); an engine that gives NaN, ±∞ or a wrapped
+  shift instead refines it (epic #185). -/
   | domain
   /-- Raised by a shim's guard (`UnFn.raise`, #185), where an engine would
   answer while the reference raises. Plans `verify` checks have none. -/

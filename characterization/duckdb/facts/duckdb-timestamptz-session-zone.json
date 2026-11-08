@@ -1,0 +1,37 @@
+{
+  "id": "duckdb-timestamptz-session-zone",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`TIMESTAMPTZ + INTERVAL` follows the session time zone",
+  "verdict": "the same instant plus a day is 10:00 or 11:00 UTC across a DST change, by `TimeZone`",
+  "area": "temporal",
+  "constructs": [
+    "TIMESTAMPTZ + INTERVAL"
+  ],
+  "settings": {
+    "TimeZone": "Europe/Berlin, then UTC"
+  },
+  "description": [
+    "Adding `INTERVAL 1 DAY` to `TIMESTAMPTZ '2024-03-30 12:00:00+01'` gives 2024-03-31 12:00 CEST (10:00 UTC) under `TimeZone = 'Europe/Berlin'` and 2024-03-31 11:00 UTC under `TimeZone = 'UTC'`: calendar arithmetic on an instant depends on a zone the plan does not state."
+  ],
+  "reference": "`Kind.timeTz` is refused: the reference's calendar arithmetic on instants would need a time zone the plan does not carry.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#1166 restatement probe (session youthful-margulis), duckdb 2.0.0, macOS arm64",
+      "evidence": [
+        {
+          "sql": "set TimeZone='Europe/Berlin'; select TIMESTAMPTZ '2024-03-30 12:00:00+01' + INTERVAL 1 DAY",
+          "observed": "2024-03-31 12:00:00+02:00"
+        },
+        {
+          "sql": "set TimeZone='UTC'; select TIMESTAMPTZ '2024-03-30 12:00:00+01' + INTERVAL 1 DAY",
+          "observed": "2024-03-31 11:00:00+00:00"
+        }
+      ]
+    }
+  ]
+}
