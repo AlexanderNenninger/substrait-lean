@@ -25,7 +25,24 @@ from pathlib import Path
 
 from sverify import _proof_cache, _stages
 from sverify._meta import PROTOCOL
-from sverify._unsupported import SverifyError
+from sverify._unsupported import SverifyError, UnsupportedError
+
+#: Where the constructs Lean's model does not cover yet are tracked: the exit
+#: of a checker refusal that names none of its own.
+COVERAGE_ISSUES = (
+    "https://github.com/AlexanderNenninger/substrait-lean/issues?q=is%3Aopen+label%3Acoverage"
+)
+
+
+def checker_refusal(mode: str, err: str) -> UnsupportedError:
+    """A plan the checker refuses (`mode`, its message `err`), with its exit
+    (`sverify.engine.checker_failed` adds the stale-build check)."""
+    msg = err.strip().removeprefix("error: ") or "(no message)"
+    return UnsupportedError(
+        f"substrait-check {mode} refuses the plan: {msg}. Lean's model does not cover it "
+        f"yet: rewrite the step, or find its issue among the open coverage issues "
+        f"({COVERAGE_ISSUES})"
+    )
 
 
 class CheckerVersionError(SverifyError, RuntimeError):
