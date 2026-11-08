@@ -867,7 +867,16 @@ def infer_bounds(
     depends on what it ignores says so (`CheckedCondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
-        transform, requires, ensures, tables, counterexamples, params, infer, inputs, semantics
+        transform,
+        requires,
+        ensures,
+        tables,
+        counterexamples,
+        params,
+        infer,
+        inputs,
+        semantics,
+        observed or _observation.PLAN_BOUND,
     )
     conditions = {t: list(cs) for t, cs in requires.items()}
     _merge(conditions, report._inferred)
@@ -1000,7 +1009,20 @@ def _observed(
         )
         for cond, c in zip(ensures, report.ensures, strict=True)
     ]
+    if _CROSS_CHECK_IGNORES:
+        for c in checked:
+            if c.checker_ignores is not None and set(c.checker_ignores) != set(c.ignores):
+                raise AssertionError(
+                    f"ensures {c.label}: the checker reports it ignores "
+                    f"{list(c.checker_ignores)}, Python derives {list(c.ignores)} (#1071)"
+                )
     return replace(report, ensures=checked, observation=observed)
+
+
+#: Compare the checker's ignored components with Python's on every check
+#: (#1071): the test suite turns it on (`tests/conftest.py`), before Python's
+#: derivation goes.
+_CROSS_CHECK_IGNORES: bool = False
 
 
 def _open_columns(expr: ir.Table) -> dict[str, str]:
@@ -1107,9 +1129,12 @@ def _infer_bounds(
     infer: bool,
     inputs: Collection[str] | None,
     semantics: Semantics,
+    observed: _observation.Observation | None = None,
 ) -> Report:
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
-        return _verify_once(transform, reqs, ensures, tables, n, params, inputs, semantics)
+        return _verify_once(
+            transform, reqs, ensures, tables, n, params, inputs, semantics, observed
+        )
 
     def finish(report: Report, schemas: Mapping[str, Any], widened) -> Report:
         """The reasons and hints each confirmed by a proof (#688)."""
@@ -1410,6 +1435,7 @@ def _verify_once(
     bound: list[str],
     inputs: Collection[str] | None,
     semantics: Semantics = "reference",
+    observed: _observation.Observation | None = None,
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
@@ -1521,6 +1547,15 @@ def _verify_once(
         "rows_per": per_key,
     }
 
+    if observed is not None:
+        # What the checker needs to report each postcondition's ignored
+        # components itself (#1071, `Report.ignores` in ContractCheck.lean).
+        contract["observation"] = {
+            "coarsens": [c for c in observed.ignored()],
+            "floats_plan": observed.floats == "plan",
+            "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
+            "sql": isinstance(transform, str),
+        }
     if semantics in _profile_requests():
         contract["profile"] = semantics
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
@@ -1603,6 +1638,7 @@ def _verify_once(
                     allowed=bool(e.get("allowed")),
                     robust=holds_on_engines,
                     robust_on=proved_on,
+                    checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
                 )
             )
         checked[-1].condition = c
