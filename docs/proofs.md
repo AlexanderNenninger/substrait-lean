@@ -50,6 +50,7 @@ contract's preconditions.
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
 | An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean` |
+| A verified contract holds on each engine's run (#900): where the translated plan does not raise, the rows DuckDB (default settings), Polars, Spark and the reference compute are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `EngineSound.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
@@ -171,6 +172,31 @@ other pages link here.
 - The table formats' change feeds (`ChangeFeed`, `TableFormat.lean`), a
   hypothesis of `Rel.cdf_sound` wherever Sverify reads a Delta change data
   feed; it is proved when the change is computed from two snapshots.
+- An engine's run of a verified plan. `Engine.contract_sound` proves the
+  contract on the rows the translated plan computes with the engine's
+  functions, unless it raises. The chain from there to the engine's actual
+  result, in order:
+  1. the Lean theorem, `Engine.contract_sound` with the engine's
+     `Engine.Sound` (`EngineSound.lean`); `Engine.polars_sound` also takes
+     `Engine.PolarsData`, preconditions on the catalog and the size
+     hypothesis;
+  2. the round trip: the SQL or Polars code written for the plan is
+     `E.lower` of it (#900, PR 3);
+  3. the runtime checks: the schema read against `E.table`, the session
+     pinned to the profile, the engine's version against the tested rows
+     ([#1130](https://github.com/AlexanderNenninger/substrait-lean/issues/1130));
+  4. the engine facts and replays behind each tested row of `Engine.Refines`,
+     and D16's claim (`Engine.Runs`): the engine's actual result is one its
+     table allows. `Engine.contract_sound_runs` carries the contract to that
+     result where `transferB T Profile.reference.table E.table` holds; it
+     fails at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on
+     every engine, `null_order` without a preference on Polars and Spark, and
+     integer overflow on Polars, which the tolerance form of #929 covers in
+     PR 3.
+
+  An engine that raises commits nothing: a runtime obligation of the sink,
+  beside D16. Raising only where the reference may is a separate claim
+  (`Rel.duckdb_refines`' second part), outside this chain.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
@@ -290,6 +316,7 @@ generators, then the trusted reading and writing.
 | `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
+| `EngineSound.lean` | What an engine's run is sound for (#900): `Engine.Sound` per engine, and `Engine.contract_sound`, a verified contract on the engine's run |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |

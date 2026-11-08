@@ -21,8 +21,9 @@ for a plan: the table's choices with `E.impl`'s functions, inside
   `Profile.okImpl p` is `p`'s value where the call does not raise and the
   reference's where it does: within `t` (`Profile.okImpl_within`), and the
   same as `p.impl` on every plan that does not raise (`Rel.eval_okImpl`).
-* `Engine.reference`, `Engine.duckdb` (IEEE operations, `ieee_floating_point_ops`
-  on, the default), `Engine.spark` take `impl := profile.okImpl`; `Engine.polars`
+* `Engine.reference` and `Engine.spark` take Lean's functions (`Profile.spark`
+  is the reference); `Engine.duckdb` (IEEE operations, `ieee_floating_point_ops`
+  on, the default) takes `impl := profile.okImpl`; `Engine.polars`
   takes the functions of the written plan (`Polars.written`).
 * `Engine.Refines E r tested`: every observation row the plan relies on is
   proved, or `tested` (the trusted layer's claim, D16): the per-plan
@@ -93,9 +94,9 @@ theorem raiseIf_ok {k : Option Issue} {v w : Value} (h : raiseIf k v = .ok w) : 
   · split at h <;> simp_all
   · simp_all
 
-/-- The reference raises or gives `apply`'s value. -/
-theorem Profile.reference_withinOk (t : ProfileTable) : Profile.reference.WithinOk t :=
-  ⟨fun _ _ _ h => .inl (raiseIf_ok h), fun _ _ _ _ h => .inl (raiseIf_ok h)⟩
+/-- Lean's functions are within every table. -/
+theorem Impl.lean_within (t : ProfileTable) : Impl.lean.Within t :=
+  ⟨fun _ _ => .inl rfl, fun _ _ _ => .inl rfl⟩
 
 /-- **DuckDB's functions are within its table**, with IEEE operations on:
 each function `duckBin` and `duckUn` change has a row of the table. With
@@ -386,8 +387,8 @@ def Engine.reference : Engine where
   table := Profile.reference.table
   obs := Profile.reference.obs
   lower := some
-  impl := Profile.reference.okImpl
-  within := Profile.okImpl_within (Profile.reference_withinOk _)
+  impl := Impl.lean
+  within := Impl.lean_within _
 
 /-- DuckDB with IEEE operations (`ieee_floating_point_ops`, the default),
 through its lowering (`Lowering.duckdb`, written for the default settings). -/
@@ -410,16 +411,16 @@ def Engine.polars : Engine where
   impl := Polars.written
   within := Polars.written_within
 
-/-- Spark under ANSI: the reference's functions where they do not raise
-(`Profile.spark`), its own choices. -/
+/-- Spark under ANSI: the reference's functions (`Profile.spark`), its own
+choices. -/
 def Engine.spark : Engine where
   name := "spark"
   profile := Profile.spark
   table := Profile.spark.table
   obs := Profile.spark.obs
   lower := some
-  impl := Profile.spark.okImpl
-  within := Profile.okImpl_within (Profile.reference_withinOk _)
+  impl := Impl.lean
+  within := Impl.lean_within _
 
 /-! ## The rows a plan relies on -/
 
