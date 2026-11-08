@@ -44,7 +44,7 @@ from sverify.sql import to_sql as plan_sql
 from sverify.sql.core import Aggregate, Fetch, Rel, order_matters
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.sql.spark import SPARK
-from sverify.testing import canonical, duckdb_ibis
+from sverify.testing import canonical, duckdb_ibis, inline_tables, lean_values
 from sverify_dev import coverage
 
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
@@ -187,9 +187,10 @@ def test_engines_agree(con, case, data):
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
     no_reference = case.label in coverage.NO_DUCKDB_SQL
     if (root is None or not order_dependent(root)) and not no_reference:
-        # As Ibis returns it: DuckDB's result of Ibis's own SQL, in the
-        # expression's types.
-        out = duckdb_ibis(con, expr)
+        # As Ibis returns it: DuckDB's result of Ibis's own SQL (or of the
+        # case's `DUCKDB_ORACLE`), in the expression's types.
+        oracle = coverage.DUCKDB_ORACLE.get(case.label, case.build)()
+        out = duckdb_ibis(con, oracle)
         expected = rows(out.cast(expr.schema().to_pyarrow()))
         if case.label in coverage.UNORDERED_LISTS:
             expected = bags(expected)
@@ -198,6 +199,32 @@ def test_engines_agree(con, case, data):
         duck = canonical(expected)
         for got in results.values():
             assert canonical(got) == duck
+
+
+def test_var_pop_of_one_nan(con):
+    """#758: a frame whose only value is NaN. The reference's variance is NaN
+    (`varOf`), and so is the plan's on DuckDB; DuckDB's own `VAR_POP`, which
+    Ibis's SQL calls, gives 0.0 (DD-3, duckdb-var-pop-one-value), so the case
+    takes `DUCKDB_ORACLE` as its oracle."""
+    (case,) = [c for c in VERIFIED if c.label == "rolling variance (rows)"]
+    schema = {name: s.to_pyarrow() for name, s in coverage.T.schema().items()}
+    t = {"id": [1, 2], "name": ["a", "b"], "amount": [None, math.nan], "qty": [1, 2],
+         "ts": STAMPS[:2], "flag": [None, None]}  # fmt: skip
+    put_table(con, "t", pa.table({k: pa.array(v, schema[k]) for k, v in t.items()}))
+    expr = case.build()
+    plan = to_substrait_json(expr)
+
+    def v(table: pa.Table) -> list:
+        return table.column("v").to_pylist()
+
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows(con.get("t"))})))
+    (none, nan) = [r[-1] for r in lean]
+    assert none is None and math.isnan(nan)
+    (none, nan) = v(run_plan(con, written_plan(plan), "duckdb"))
+    assert none is None and math.isnan(nan)
+    (none, nan) = v(duckdb_ibis(con, coverage.DUCKDB_ORACLE[case.label]()))
+    assert none is None and math.isnan(nan)
+    assert v(duckdb_ibis(con, expr)) == [None, 0.0]
 
 
 def approximately(rows: list[tuple]) -> list[tuple]:

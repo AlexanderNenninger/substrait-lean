@@ -3,7 +3,7 @@
     import sverify as sv
     from sverify.engines import run
 
-    node.refresh(engine="polars")     # or "duckdb", "datafusion", "spark"
+    node.refresh(engine="polars")     # or "duckdb", "spark"
     node.to_sql("snowflake")          # or "duckdb", "spark"; report.to_sql too
     con = sv.connect()
     con.create("orders", schema, rows)
@@ -33,7 +33,7 @@ internal plan, and may change in a minor release):
 * `to_sql` writes any plan in sverify's internal form as SQL.
 * `substrait_json` compiles DuckDB's SQL with sverify's lift; `written_plan`
   is a plan as the checker parsed and wrote it back, the form `run` and
-  `to_sql` take; `run_substrait_json` runs a Substrait plan on DataFusion (experimental);
+  `to_sql` take; `run_substrait_json` runs a Substrait plan on DataFusion (an optional engine);
   `delta_plans` are the weighted delta plans the checker derives for
   incremental maintenance.
 

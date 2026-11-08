@@ -22,7 +22,7 @@ that happened to be there.
 ```bash
 pip install sverify                       # core: DuckDB, contracts, views
 pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
-pip install 'sverify[datafusion]'         # DataFusion, experimental and outside `all`
+pip install 'sverify[datafusion]'         # DataFusion, an optional engine outside `all`
 ```
 
 DuckDB (the default), Polars (streaming) and Spark 4.x run plans, each with a

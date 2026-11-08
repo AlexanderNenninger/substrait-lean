@@ -58,7 +58,7 @@ Substrait by sverify's lift (`sverify.sql_lift`).
 
 Runtime checks run through Ibis, on the connection the tables are bound to
 (`sverify.connect()`), by default; naming an engine (`engine="duckdb"`,
-`"polars"` or `"datafusion"`, see `sverify.engines.run`) runs each
+or `"polars"`, see `sverify.engines.run`) runs each
 condition's plan, as Lean wrote it, there instead, so such conditions must be
 inside the Lean model. `unique` checks always run through Ibis.
 """
@@ -664,7 +664,7 @@ def verify(
     backend it came from; where
     Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
-    runs the verified plan with that meaning (or fails) on DataFusion, DuckDB and
+    runs the verified plan with that meaning (or fails) on DuckDB and
     Polars. A SQL string, and a SQL condition, is DuckDB's SQL, lifted by
     `sverify.sql_lift` with `semantics`: the reference semantics by default,
     or what DuckDB computes with `semantics="duckdb"` (#411). The report
@@ -3066,8 +3066,9 @@ def transform(
             inputs at call time. Default True. False with an
             `on_violation` other than `"error"` raises `ValueError`: that
             setting acts on those checks.
-        check_engine: Where checks on data run: `"duckdb"`, `"polars"` or
-            `"datafusion"` run each condition's plan as Lean wrote it; None
+        check_engine: Where checks on data run: `"duckdb"` or `"polars"` (or
+            the optional `"datafusion"`) run each condition's plan as Lean
+            wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
             `refresh(engine=)` says where a node's plan runs.
         semantics: What the contract's SQL conditions mean in its proofs,

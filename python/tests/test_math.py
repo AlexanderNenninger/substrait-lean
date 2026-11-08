@@ -11,9 +11,7 @@ bit.
 
 Outside a domain (`sqrt` of a negative, `ln 0`, `asin 2`, `atan2(0, 0)`, a
 shift by 64) the reference raises (Substrait's `on_domain_error` = ERROR):
-the checker reports a domain error, and Polars and DuckDB raise. DataFusion,
-running the plan, returns NaN, -inf or a wrapped shift there instead, which an
-error allows.
+the checker reports a domain error, and Polars and DuckDB raise.
 """
 
 import json
@@ -28,6 +26,7 @@ import sverify as sv
 from sverify import polars_engine
 from sverify.contracts import decode_double
 from sverify.engine import connect, run_plan, written_plan
+from sverify.engines import ENGINES
 from sverify.ibis_substrait import to_substrait, to_substrait_json
 from sverify.testing import duckdb_ibis, inline_tables, lean_values
 
@@ -157,9 +156,8 @@ def test_lean_agrees_with_duckdb_and_engines(con, label):
 
 
 def test_log10_and_log2_are_libm():
-    """Ibis writes `LOG(x)` and `LOG(2, x)` for DataFusion, which are
-    `ln x / ln b`, not libm's `log10` and `log2` (the last bit differs); Lean
-    and the engines compute `log10` and `log2`, as DataFusion's own do."""
+    """`ln x / ln b` is not libm's `log10` and `log2` (the last bit differs);
+    Lean and the engines compute `log10` and `log2`."""
     con = connect()
     ps = [*POSITIVE, 3.0, 5.5, 1e-5]
     rs = [(k, None, p, None, None, None, None, None) for k, p in enumerate(ps)]
@@ -174,7 +172,7 @@ def test_log10_and_log2_are_libm():
     for g, e in zip(table_rows(expr, lean, lean=True), want, strict=True):
         assert all(close(a, b) for a, b in zip(g, e, strict=True)), (g, e)
     written = written_plan(to_substrait_json(expr))
-    for engine in ("polars", "duckdb", "datafusion"):
+    for engine in ENGINES:
         ran = run_plan(con, written, engine)
         assert table_rows(expr, [tuple(r.values()) for r in ran.to_pylist()], False) == want
 
@@ -197,9 +195,7 @@ OUTSIDE = [
 
 @pytest.mark.parametrize(("label", "build", "row"), OUTSIDE, ids=[o[0] for o in OUTSIDE])
 def test_domain_errors_raise(label, build, row):
-    """The checker reports the domain error, the engines raise on the row,
-    and DataFusion (whose IEEE result or wrapped shift an error allows) runs
-    the plan."""
+    """The checker reports the domain error, and the engines raise on the row."""
     expr = build()
     assert [i.kind for i in sv.verify(expr, on_inferred="off").errors] == ["domain error"], label
     con = connect()
@@ -210,7 +206,6 @@ def test_domain_errors_raise(label, build, row):
         run_plan(con, written, "polars")
     with pytest.raises(duckdb.Error, match="sverify: domain error"):
         run_plan(con, written, "duckdb")
-    run_plan(con, written, "datafusion")
 
 
 @pytest.mark.parametrize(

@@ -150,17 +150,17 @@ def test_double_literal_arithmetic_proofs():
 
 
 def test_join_condition_over_one_side():
-    """#98: the DataFusion plan moves `t.i = t.j` out of the join's keys."""
+    """#98: the written plan moves `t.i = t.j` out of the join's keys."""
     sql = "SELECT COUNT(*) AS c0 FROM t JOIN u ON t.i = u.k AND t.i = t.j"
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(1, "x")]})
 
 
-def test_limit_on_datafusion():
-    """#109: Lean writes `FetchRel.countExpr`, which DataFusion reads."""
+def test_limit_on_the_engines():
+    """#109: Lean writes `FetchRel.countExpr`, which the engines read."""
     assert not finding("SELECT i AS c0 FROM t AS q ORDER BY c0 LIMIT 1", "engines", {"t": [T_ROW]})
 
 
-def test_full_join_on_datafusion():
+def test_full_join_on_the_engines():
     """#96: a FULL JOIN's NULL padding takes the other branch's types."""
     sql = "SELECT COUNT(i) AS c0 FROM (SELECT t.i, u.k FROM t FULL JOIN u ON t.i = u.k) AS q"
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(2, "x")]})

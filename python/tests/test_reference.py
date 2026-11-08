@@ -23,6 +23,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engine import substrait_json as lift_json
+from sverify.engines import ENGINES
 from sverify.errors import PreconditionError, RouteError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
@@ -89,7 +90,7 @@ def nan_equal(rows: list[tuple]) -> list[tuple]:
 NAN = float("nan")
 
 
-# R4 (#203): `modulus` of doubles is C's `fmod`, as DataFusion computes `%`
+# R4 (#203): `modulus` of doubles is C's `fmod`
 # (the integer one read the codes): the sign of the dividend; by zero, an error.
 @pytest.mark.parametrize(
     ("sql", "expected"),
@@ -128,8 +129,7 @@ def test_modulus_of_doubles_by_zero_is_an_error(sql, errors):
 
 
 # #256: the remainder of doubles is sverify's own `sverify_fmod`, as
-# Substrait's `modulus` has no double impl. Lean reads both and writes it;
-# DataFusion runs it as its own `%`.
+# Substrait's `modulus` has no double impl. Lean reads both and writes it.
 def declared(plan: str) -> set[str]:
     return {e["extensionFunction"]["name"] for e in json.loads(plan)["extensions"]}
 
@@ -139,7 +139,7 @@ def test_the_written_remainder_of_doubles_is_sverify_fmod(con):
     written = written_plan(substrait_json(con, sql))
     assert "sverify_fmod" in declared(written)
     assert lean_values(json.dumps(inline_tables(json.loads(written), ROWS))) == [(1.5,), (0.0,)]
-    for engine in ("duckdb", "polars", "datafusion"):
+    for engine in ENGINES:
         assert arrow_rows(run_plan(con, written, engine)) == [(1.5,), (0.0,)], engine
 
 
@@ -460,10 +460,9 @@ def test_lists_compare_lexicographically():
     assert lean_values(json.dumps(inline_tables(json.loads(plan), rows))) == expected
     written = written_plan(plan)
     assert arrow_rows(run_plan(con, written, "duckdb")) == expected
-    # Polars has no list order, and DataFusion's puts NULL first: both refuse.
-    for engine in ("polars", "datafusion"):
-        with pytest.raises(Exception, match="list_lt"):
-            run_plan(con, written, engine)
+    # Polars has no list order: it refuses.
+    with pytest.raises(Exception, match="list_lt"):
+        run_plan(con, written, "polars")
 
 
 def test_lists_of_lists_are_not_ordered():
@@ -497,14 +496,8 @@ def test_substring_negative_start(start, wrapped, left, option):
     rows = {"s": [("hello", start)]}
     assert lean_values(json.dumps(inline_tables(json.loads(plan), rows))) == expected
     written = written_plan(plan)
-    for engine in ("duckdb", "polars"):
+    for engine in ENGINES:
         assert arrow_rows(run_plan(con, written, engine)) == expected, engine
-    if option == "LEFT_OF_BEGINNING":
-        assert arrow_rows(run_plan(con, written, "datafusion")) == expected
-    else:
-        # DataFusion's own substring puts a negative start left of the beginning.
-        with pytest.raises(Exception, match="negative start"):
-            run_plan(con, written, "datafusion")
 
 
 def test_substring_negative_start_error_is_refused():
@@ -605,7 +598,7 @@ def f32():
 )
 def test_floats_read_compare_and_widen_exactly(f32, sql, expected):
     written = written_plan(substrait_json(f32, sql))
-    for engine in ("duckdb", "polars", "datafusion"):
+    for engine in ENGINES:
         got = arrow_rows(run_plan(f32, written, engine))
         assert [
             tuple(float(v) if isinstance(v, float) else v for v in r) for r in got

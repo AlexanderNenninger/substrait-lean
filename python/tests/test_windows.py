@@ -76,6 +76,7 @@ def test_lean_semantics_match_duckdb(sql, rows):
     assert duckdb_rows(json.dumps(plan)) == lean
 
 
+@pytest.mark.backend("datafusion")
 def test_written_window_plans_run_on_datafusion():
     con = connect()
     rows = [(1, 3, 10), (1, 1, 20), (2, 5, None), (1, 2, 30), (None, 4, 40)]

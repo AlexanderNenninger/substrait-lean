@@ -301,7 +301,7 @@ and timestamps at precision 0. It checks the argument kinds a signature names.
 
 Plans come from the Ibis producer or sverify's SQL lift, and run on DuckDB
 (the default), [Polars](https://pola.rs) or Spark
-([the engines](stability.md#engines)); DataFusion is experimental. You pick
+([the engines](stability.md#engines)); DataFusion is an optional engine. You pick
 one with `engine="polars"` on `node.refresh`, `sv.connect` or
 `sverify.engines.run(con, plan, "polars")`. The tables stay in `con` and are
 handed to the engine as Arrow. Contracts take `engine=` for their runtime
@@ -517,7 +517,7 @@ group (checked at run time: the job raises if it does not …)` (or
 Trusted: *when* an engine evaluates an expression (`Rel.HasIssue`: `CASE` is lazy,
 `AND`/`OR` are not, filter and join conditions may run before the filters below
 them; [What is trusted](proofs.md#what-is-trusted)). `python/tests/test_numeric.py`
-runs the plans on DuckDB and on the optional DataFusion on random data and checks
+runs the plans on DuckDB (and, in its weekly job, on the optional DataFusion) on random data and checks
 they only fail where an error was reported. `BIGINT` and timestamp columns are taken to
 hold 64-bit values (from the schema); arithmetic on narrower integers is
 checked at their declared width (#202, #419).

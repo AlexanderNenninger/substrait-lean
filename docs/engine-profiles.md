@@ -78,7 +78,8 @@ SQL strings go through SQLGlot and sverify's own lift (#231): DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`,
 #239), whose two profiles are generated Lean modules
 (`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). DataFusion's SQL planner
-is no longer a frontend (#211); DataFusion stays an execution backend.
+is no longer a frontend (#211); DataFusion stays an optional engine, never a
+reference or an oracle: Lean's model is the reference, DuckDB the default oracle.
 
 ## Profiles and shims in Lean (#185, first slice)
 
@@ -536,7 +537,7 @@ translator pins the semantics and takes no Polars defaults:
 `python/tests/test_polars.py` runs every golden fixture (among them sorts,
 `DISTINCT`, semi, anti and outer joins, and the string and time functions),
 the window and rewrite queries of the other suites, and every delta plan of
-the example pipelines on both engines. It checks Polars against DataFusion as bags and
+the example pipelines on both engines. It checks Polars against DuckDB as bags and
 against Lean's `Rel.eval` in order. It also has targeted tests for NULL join
 keys, three-valued filters, NULL and NaN order in windows, overflow, and each
 runtime error and its guards. The

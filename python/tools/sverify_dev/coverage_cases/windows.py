@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import ibis
 
 from sverify_dev.coverage_cases._common import (
@@ -12,6 +14,9 @@ from sverify_dev.coverage_cases._common import (
     case,
     t,
 )
+
+#: The frame of "rolling variance (rows)": the row and the two before it.
+ROWS_2 = ibis.window(order_by="ts", preceding=2, following=0)
 
 CASES: list[Case] = [
     case(
@@ -130,9 +135,7 @@ CASES: list[Case] = [
         "windows",
         "rolling variance (rows)",
         V,
-        lambda: t.mutate(
-            v=t.amount.var(how="pop").over(ibis.window(order_by="ts", preceding=2, following=0))
-        ),
+        lambda: t.mutate(v=t.amount.var(how="pop").over(ROWS_2)),
     ),
 ]
 
@@ -178,3 +181,17 @@ TIE_FREE = {
 # A plan's frame and Ibis's own SQL may sum in another order, so variances
 # agree to the last digit only up to rounding (#54).
 APPROXIMATE = {"stddev over group", "rolling variance (rows)"}
+
+
+def _rolling_variance_oracle() -> ibis.Table:
+    """DuckDB's `VAR_POP` of one value is 0 even for NaN (upstream/bugs/DD-3.json,
+    duckdb-var-pop-one-value); the reference and the plan give NaN for a frame
+    with a NaN. Ibis's SQL with that handling written out."""
+    nan = t.amount.isnan().cast("int64").sum().over(ROWS_2) > 0
+    var = t.amount.var(how="pop").over(ROWS_2)
+    return t.mutate(v=ibis.ifelse(nan, ibis.literal(math.nan), var))
+
+
+# Cases whose Ibis SQL meets a DuckDB bug that the plan's SQL handles: the
+# expression whose DuckDB SQL the tests take as the oracle instead.
+DUCKDB_ORACLE = {"rolling variance (rows)": _rolling_variance_oracle}
