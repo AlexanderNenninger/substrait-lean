@@ -3,7 +3,7 @@
 Ten short examples, each a step up from the one before: a contract proved
 and run, SQL, the preconditions Sverify infers, routes to Polars, tolerances
 for doubles, reproducible sinks, engine profiles, Substrait's own semantics,
-a plan checked under Polars's, and the export of a verified plan to any
+a plan checked under Polars's, and the export of a proved plan to any
 Substrait consumer. The inputs are a few rows in memory. Every block runs as written,
 in order: `python/tests/test_readme.py` runs them and checks each printed
 line against the comment under it.
@@ -356,9 +356,9 @@ overflow raise under `Profile.polars` as under the reference, so `verify`
 infers the same preconditions. [engine-profiles.md](engine-profiles.md#polars-as-a-profile)
 says which choices the profile takes from Polars.
 
-## 10. A verified plan for any Substrait consumer
+## 10. A proved plan for any Substrait consumer
 
-`report.to_substrait()` returns the plan the checker verified, written for
+`report.to_substrait()` returns the plan the checker proved, written for
 any conforming consumer of Substrait 0.106: each call names its YAML's URN,
 its compound name and its output type, and each option the proof depends on
 is pinned at the reference's behaviour. The contract travels with it, and

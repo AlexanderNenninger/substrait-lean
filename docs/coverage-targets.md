@@ -158,7 +158,7 @@ is what the probe gives.
 | split_part, string_split and concat_ws | in | covered | dbt.split_part; concat_ws surrogate keys; Eurostat | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
 | right, lpad and rpad | in | covered | dbt.right; Ibis right, lpad, rpad verify | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808) |
 | hash() | skipped | — | Ibis hash |  |
-| JSON | skipped | — | catalogue json (none verified); event payloads |  |
+| JSON | skipped | — | catalogue json (none proved); event payloads |  |
 | translate, URL parts, LIKE ESCAPE, GLOB | after 1.0 | — | Ibis translate, host; replay ~150 | [#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328) |
 
 ### Temporal
