@@ -297,6 +297,7 @@ def route_json(r: Route) -> Json:
             ("facts", list(r.facts)),
             ("theorems", list(r.theorems)),
             ("version", r.version),
+            ("issues", list(r.issues)),
         )
         if v
     }
@@ -341,6 +342,7 @@ def route(d: Mapping[str, Any]) -> Route:
         facts=tuple(d.get("facts", ())),
         theorems=tuple(d.get("theorems", ())),
         version=d.get("version"),
+        issues=tuple(d.get("issues", ())),
         shims=tuple(d.get("shims", ())),
         reproducible=eq("reproducible"),
         rerun_evidence=d.get("rerun_evidence"),

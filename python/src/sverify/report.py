@@ -1004,7 +1004,11 @@ class Report:
             if e in self.routes or got.problems or got.evidence is None:
                 continue
             text = _routes.evidence_text(
-                got.evidence, got.facts, got.theorems, _routes.probed_version(e)
+                got.evidence,
+                got.facts,
+                got.theorems,
+                got.version or _routes.probed_version(e),
+                got.issues,
             )
             lines.append(f"evidence: {e} {got.cls}, {text}")
         return lines

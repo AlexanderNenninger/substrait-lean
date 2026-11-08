@@ -243,6 +243,13 @@ def test_anything_but_proved_is_tested(monkeypatch, con) -> None:
     from sverify import report_json
 
     assert report_json.route(report_json.route_json(r)) == r
+    # A tested row names its engine version and its tracking issue (#1170).
+    tracked = {**_row("a", "refines", ev="tested"), "version": "2.1.1", "issue": 1166}
+    _classed_tables(monkeypatch, [tracked, _row("b", "refines")])
+    r = routes.choose(report, "polars")
+    assert (r.version, r.issues) == ("2.1.1", (1166,))
+    assert str(r).endswith("; evidence tested at 2.1.1 (facts polars-a, polars-b; #1166)")
+    assert report_json.route(report_json.route_json(r)) == r
 
 
 def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:

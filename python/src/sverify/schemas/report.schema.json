@@ -554,6 +554,13 @@
             "null"
           ]
         },
+        "issues": {
+          "description": "The issues that track the tested choices.",
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
         "reason": {
           "type": "string"
         },

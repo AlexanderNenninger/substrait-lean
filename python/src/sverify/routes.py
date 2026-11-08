@@ -323,6 +323,8 @@ class Route:
     """The Lean theorems that prove those choices, where they are proved."""
     version: str | None = None
     """The engine version the facts were probed at (D14)."""
+    issues: tuple[int, ...] = ()
+    """The issues that track the tested choices (`"issue"` of a tested row)."""
 
     @property
     def refused(self) -> bool:
@@ -344,7 +346,7 @@ class Route:
             out += f": {observed_text(self.observation)}"
         if self.evidence:
             out += "; evidence " + evidence_text(
-                self.evidence, self.facts, self.theorems, self.version
+                self.evidence, self.facts, self.theorems, self.version, self.issues
             )
         if self.cls and self.kind != "translated":
             # How the proof reaches the engine, where it is not the
@@ -391,17 +393,23 @@ def probed_version(engine: str) -> str | None:
 
 
 def evidence_text(
-    evidence: str, facts: Sequence[str], theorems: Sequence[str], version: str | None
+    evidence: str,
+    facts: Sequence[str],
+    theorems: Sequence[str],
+    version: str | None,
+    issues: Sequence[int] = (),
 ) -> str:
-    """The evidence of a class in words: the theorems for a proof, the
-    engine version and the facts for a test."""
+    """The evidence of a class in words: the theorems for a proof; the
+    engine version, the facts and the issues that track them for a test."""
     if evidence == "proved":
         return "proved" + (f" by {', '.join(theorems)}" if theorems else "")
     out = "tested"
     if version:
         out += f" at {version}"
-    if facts:
-        out += f" (facts {', '.join(facts)})"
+    cited = [f"facts {', '.join(facts)}"] if facts else []
+    cited += [f"#{i}" for i in issues]
+    if cited:
+        out += f" ({'; '.join(cited)})"
     return out
 
 
@@ -922,6 +930,8 @@ def realization(
     proved: list[bool] = []
     facts: list[str] = []
     theorems: list[str] = []
+    versions: list[str] = []
+    issues: list[int] = []
     for d in depends:
         g, o = d.get("group"), d["option"]
         r = row(engine, g, o)
@@ -933,6 +943,10 @@ def realization(
             # stated: the shim is for the reference's default (#444, 3b).
             cls = "exact"
         facts += r.get("facts") or ()
+        if r.get("version"):
+            versions.append(r["version"])
+        if r.get("issue") is not None:
+            issues.append(r["issue"])
         if r.get("theorem"):
             theorems.append(r["theorem"])
         cited = f" ({', '.join(r['facts'])})" if r.get("facts") else ""
@@ -991,6 +1005,8 @@ def realization(
         all(proved) if proved else None,
         tuple(dict.fromkeys(facts)),
         tuple(dict.fromkeys(theorems)),
+        versions[0] if versions else None,
+        tuple(dict.fromkeys(issues)),
     )
 
 
@@ -1007,6 +1023,10 @@ class Realized(NamedTuple):
     """The facts behind the rows of the options the plan depends on."""
     theorems: tuple[str, ...] = ()
     """The theorems that prove those rows (`"theorem"` of a proved row)."""
+    version: str | None = None
+    """The engine version the rows' facts were probed at (`"version"`)."""
+    issues: tuple[int, ...] = ()
+    """The issues that track the tested rows (`"issue"`)."""
 
 
 def _with_bound(
@@ -1591,7 +1611,8 @@ def choose(
             bound_proved=got.bound_proved,
             facts=got.facts,
             theorems=got.theorems,
-            version=probed_version(e),
+            version=got.version or probed_version(e),
+            issues=got.issues,
         )
 
     translated = translations()
