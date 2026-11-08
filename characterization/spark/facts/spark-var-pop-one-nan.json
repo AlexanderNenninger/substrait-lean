@@ -26,7 +26,7 @@
     "`CentralMomentAgg`'s update is Welford's: `delta = x - avg`, `newM2 = m2 + delta * (delta - delta / n)`, from `m2 = 0` and `avg = 0`. A first value of NaN makes `delta` NaN and so `m2` NaN, and `VariancePop` and `StddevPop` finalize to `If(n === 0.0, null, m2 / n)` and its square root: NaN. There is no special case for one value, so the population variance of one finite value is 0.0 (spark-var-stddev) and of one NaN NaN.",
     "The merge forces `delta` to 0 only where one side is empty (`isEmptyLeft || isEmptyRight`), so a partition holding the NaN keeps it through the merge. A NaN among other values is NaN (spark-nonfinite-aggregates). Spark needs no NaN guard on `VAR_*`/`STDDEV_*`: the written plan's own `var_pop` gives the reference's NaN."
   ],
-  "reference": "`varOf` (`SubstraitLean/Aggregate.lean`, D30): NaN for a NaN among the values. Spark agrees, so the SQL writer's NaN guard of DD-3 (`Dialect.var_nan`) is DuckDB's only.",
+  "reference": "`varOf` (`SubstraitLean/Aggregate.lean`, D30): NaN for a NaN among the values. Spark agrees: Profile.spark's `agg.var` `stat_algo` row cites this fact and names no shim, so the SQL writer leaves out DD-3's NaN guard on Spark (`Dialect.var_nan` reads the row).",
   "status": "no-finding",
   "evidence": "probe",
   "provenance": [

@@ -101,7 +101,7 @@ def test_shim_counts(table):
     """D9's measure: the shims per engine. A new one is a deliberate edit."""
     assert {k: len(e["shims"]) for k, e in table.items()} == {
         "duckdb": 4,
-        "polars": 14,
+        "polars": 15,
         "spark": 6,
     }
 
@@ -177,3 +177,21 @@ def test_evidence_levels(table):
     )
     # A fact is never `missing`, and only a Lean lemma is `proof`.
     assert realizability.fact_level("duckdb", "duckdb-R1") not in ("missing", "proof")
+
+
+def test_the_variance_guard_follows_the_profile(table):
+    """The SQL writer leaves out DD-3's NaN guard only where the engine's
+    profile states its `agg.var` `stat_algo` row without the shim: Spark's.
+    DuckDB's row names `nan_through`, and Snowflake has no profile here."""
+    from sverify.sql.core._base import var_guard_free
+
+    rows = {
+        e: next(
+            r for r in table[e]["rows"] if (r["group"], r["option"]) == ("agg.var", "stat_algo")
+        )
+        for e in ("duckdb", "spark")
+    }
+    assert rows["duckdb"]["shim"] == "nan_through" and rows["spark"].get("shim") is None
+    assert "spark-var-pop-one-nan" in rows["spark"]["facts"]
+    assert var_guard_free("spark")
+    assert not var_guard_free("duckdb") and not var_guard_free("snowflake")

@@ -24,6 +24,7 @@ from hypothesis import strategies as st
 
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
 from sverify.sql import Unsupported, to_sql
+from sverify.sql.duckdb import DUCKDB
 from sverify.sql.spark import SPARK
 from sverify.testing import canonical
 from test_sql_snowflake import (
@@ -219,11 +220,12 @@ def test_groups_have_one_zero_and_one_nan(spark):
 
 def test_variance_of_one_nan(spark):
     """Spark's `var_pop` and `stddev_pop` of one NaN are NaN
-    (spark-var-pop-one-nan), so its plan has no NaN guard: DD-3's is
-    DuckDB's (`DuckDBDialect.var_nan`)."""
+    (spark-var-pop-one-nan), and its profile's `agg.var` row names no shim,
+    so its plan has no NaN guard (`Dialect.var_nan`); DuckDB's keeps it."""
     from sverify import spark_engine
 
     assert SPARK.var_nan("x", "", "body") == "body"
+    assert DUCKDB.var_nan("x", "", "body") != "body"
     con = connect()
     t = pa.table({"g": pa.array([1, 2, 2], pa.int64()), "x": pa.array([math.nan, math.nan, 1.0])})
     put_table(con, "t", t)

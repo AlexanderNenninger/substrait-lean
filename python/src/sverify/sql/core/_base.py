@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -909,11 +910,11 @@ class Dialect:
 
     def var_nan(self, v: str, over: str, body: str) -> str:
         """A variance's `body` (over the window `over`, or the group with
-        `""`) where a value of `v` may be NaN. The engine's own `VAR_*` and
-        `STDDEV_*` give NaN there, as `varOf` does (spark-var-pop-one-nan), so
-        the body stays. An engine whose variance of one NaN is 0 returns
-        `nan_through` instead."""
-        return body
+        `""`) where a value of `v` may be NaN: `nan_through`, unless the
+        engine's profile states its `agg.var` `stat_algo` row without that
+        shim, its own `VAR_*` giving NaN there (spark-var-pop-one-nan). A
+        dialect without a profile keeps the guard."""
+        return body if var_guard_free(self.name) else self.nan_through(v, over, body)
 
     def nan_through(self, v: str, over: str, body: str) -> str:
         """`body`, or NaN where a value of `v` is NaN, as in `varOf`: the
@@ -3463,10 +3464,25 @@ def _div_by_zero_mode(f: dict) -> str:
     return _option(f, "on_division_by_zero", "ERROR")
 
 
+@functools.cache
+def var_guard_free(engine: str) -> bool:
+    """Does `engine`'s profile state its `agg.var` `stat_algo` row without the
+    NaN guard (`Stat.nanGuard_varStat`, DD-3)? Lean's table decides; no row
+    keeps the guard."""
+    from sverify._checker import observations
+
+    rows = [r for r in observations().get(engine, []) if r.get("group") == "agg.var"]
+    row = next((r["row"] for r in rows if r.get("option") == "stat_algo"), None)
+    return row is not None and row.get("shim") is None
+
+
 def _floor_div(a: Expr, b: Expr) -> Expr:
     """`Expr.floorDivOf`: `a // b` with `division_type` = `FLOOR`. With the
     signs apart `(a + 1) / b - 1` or `(a - 1) / b - 1`, so that no step
-    overflows; otherwise the truncated quotient."""
+    overflows; otherwise the truncated quotient. Trusted to mirror the Lean
+    term (`Polars.floorDivT`) and tested against floor division
+    (`test_written_floor_runs_on_duckdb`); generating it from Lean is the
+    planned replacement."""
     zero, one = Lit(0, "int"), Lit(1, "int")
     q = Bin("idiv", a, b)
 
