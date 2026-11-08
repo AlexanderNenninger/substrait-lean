@@ -339,17 +339,7 @@ def _double_sums(samples):
             "1 touched group(s) recomputed",
             "no delta rules: not incrementally maintainable (left join, fetch or window)",
         ),
-        pytest.param(
-            _double_sums,
-            DOUBLES,
-            "1 touched group(s) recomputed",
-            "total is a SUM of float64",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="the status names the checker's generic delta-rule refusal (left join, "
-                "fetch or window), not the aggregate's: _linear's reason is dropped",
-            ),
-        ),
+        (_double_sums, DOUBLES, "1 touched group(s) recomputed", "total is a SUM of float64"),
     ],
     ids=["left_join", "window", "double_sum_avg"],
 )
