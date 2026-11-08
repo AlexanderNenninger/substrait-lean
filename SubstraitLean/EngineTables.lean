@@ -294,6 +294,15 @@ def Profile.polars.obs : ObsTable := [
   -- `1.03 · n·u·√(Q'S)` on the co-moment (polars-var-bound, #918).
   (none, "stat_algo", { ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
     rerun := some { floats := .within "plan" } }),
+  -- A one-row frame's streaming `group_by` gives 0 for a NaN (polars-var-pop-one-nan),
+  -- where the reference gives NaN; the run returns NaN for a NaN among the values,
+  -- as DuckDB's SQL does (`Stat.nanGuard_varStat` proves the guard; the bound
+  -- around it is the row above's, fuzzed).
+  (some "agg.var", "stat_algo", { ObsRow.approxWithin "plan"
+      ["polars-var-std", "polars-var-std-streaming", "polars-var-bound", "polars-var-pop-one-nan"] with
+    shim := some "nan_through",
+    rerun := some { floats := .within "plan" },
+    note := "Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan); the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves), within the fuzzed bound of the row for every statistic (polars-var-bound)." }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
@@ -556,7 +565,8 @@ def builtinEngines : List EngineProfile := [
       ("one_zero", .expression), ("strpos_chars", .expression),
       ("substring_wrap", .expression), ("column_divisor", .expression),
       ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
-      ("max_nan_greatest", .expression), ("sort on the keys", .sort)] },
+      ("max_nan_greatest", .expression), ("nan_through", .expression),
+      ("sort on the keys", .sort)] },
   { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
     translationTheorem := "Rel.spark_sound", executes := "batch", asReference := true,
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),

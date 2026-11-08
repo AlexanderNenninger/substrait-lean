@@ -2089,15 +2089,19 @@ class Measure:
             # a deviation NaN (#257); finite values may overflow (#575).
             ddof = 1 if self.fn.endswith("_samp") else 0
             agg = v.std(ddof=ddof) if self.fn.startswith("std") else v.var(ddof=ddof)
-            # D30's clamp shim: at least 0, NaN kept (`Stat.clamp_near`, `FloatMoments.lean`).
-            agg = pl.when(agg.is_nan()).then(agg).otherwise(agg.clip(lower_bound=0.0))
-            bad, inf = f"{name}_bad", f"{name}_inf"
+            # Aggregated once, and read: D30's clamp shim, at least 0 with NaN
+            # kept (`Stat.clamp_near`, `FloatMoments.lean`), and NaN for a
+            # group with a NaN (`nan_through`, polars-var-pop-one-nan).
+            bad, fin, nan = f"{name}_bad", f"{name}_fin", f"{name}_nan"
+            clamped = pl.when(r.is_nan()).then(r).otherwise(r.clip(lower_bound=0.0))
             return NativeAgg(
-                {name: canon(agg), bad: v.is_infinite().any(),
-                 inf: shims.agg_makes_infinite(agg, v)},
-                r,
+                {name: agg, bad: v.is_infinite().any(), fin: v.is_finite().all(),
+                 nan: v.is_nan().any()},
+                canon(shims.nan_through(clamped, pl.col(nan))),
                 ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
-                 (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
+                 # `agg_makes_infinite`, its two halves read after the aggregation.
+                 (pl.col(fin) & r.is_infinite(), InfiniteResult,
+                  f"{self.fn} overflows to infinity")),
             )  # fmt: skip
         return None
 

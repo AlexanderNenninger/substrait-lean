@@ -31,10 +31,10 @@
   "description": [
     "Ungrouped, `var(ddof=0)` and `std(ddof=0)` of `[NaN]` and of `[NULL, NaN]` are NaN on both engines, as the reference. Grouped, a group whose only value is NaN is NaN when the frame has more rows: `[NaN, NULL]` in one group, or `[NaN]` beside a second group, and a frame filtered down to the one NaN row.",
     "On the streaming engine, a `group_by(...).agg(var(ddof=0))` whose input is a one-row frame with NaN gives 0.0, with or without `maintain_order`; `+inf` gives 0.0 too. The in-memory engine gives NaN for both. It is DuckDB's DD-3 on a narrower path: a variance of one value finalized as 0 without looking at the value.",
-    "sverify's Polars path raises on an infinity before the variance (`DomainError`), so only the NaN reaches the result: a grouped `VAR_POP` of a one-row table holding NaN returns 0.0 where the reference gives NaN. The SQL writer's NaN guard (`Dialect.var_nan`) is DuckDB's and does not run on Polars; a guard in `polars_engine`'s `NativeAgg` for `var_*`/`std_*` would cover it."
+    "sverify's Polars path aggregates `var`/`std` with its flags and the group keys' `first()`, which does not take that path: the written plan gave NaN before any guard. Since the result depends on which path Polars picks, the run returns NaN where a value is NaN (`_polars_shims.nan_through`, the guard `Stat.nanGuard_varStat` proves), as DuckDB's SQL does (`Dialect.nan_through`, DD-3). An infinity raises before the variance (`DomainError`)."
   ],
-  "reference": "`varOf` (`SubstraitLean/Aggregate.lean`, D30): NaN for a NaN among the values. Polars agrees except on this path.",
-  "status": "open",
+  "reference": "`varOf` (`SubstraitLean/Aggregate.lean`, D30): NaN for a NaN among the values. Polars agrees except on this path; Profile.polars's `agg.var` `stat_algo` row names the shim `nan_through`.",
+  "status": "shimmed",
   "evidence": "probe",
   "provenance": [
     {
@@ -72,6 +72,25 @@
         }
       ],
       "notes": "Not yet reported upstream, nor searched for in Polars's issues."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "engine-leaks session, polars 2.1.0, Python 3.12, macOS arm64",
+      "evidence": [
+        {
+          "sql": "SELECT g, var_pop(x) AS vp FROM t GROUP BY g, t = (1, NaN), through sverify's written plan on Polars, before the guard",
+          "observed": "(1, NaN): the plan's AGGREGATE also computes the group key's first() and the flags"
+        },
+        {
+          "sql": "pl.LazyFrame({'g': [1], 'x': [nan]}).group_by('g').agg(pl.col('x').var(ddof=0), pl.col('x').is_infinite().any()).collect(engine='streaming')",
+          "observed": "(1, 0.0, False)"
+        },
+        {
+          "file": "python/tests/test_polars.py",
+          "note": "test_variance_of_a_nan_through_the_written_plan"
+        }
+      ]
     }
   ],
   "issues": [

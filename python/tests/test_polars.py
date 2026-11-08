@@ -763,3 +763,23 @@ def test_aggregates_group_by_computed_keys():
     assert keys, lf.explain()
     assert all(k.startswith('col("__sv_g') for k in keys), keys
     assert rows_of(run_plan(con, plan, "polars")) == [(0, None, None)]
+
+
+@pytest.mark.parametrize(
+    "xs", [[math.nan], [None, math.nan], [math.nan, 1.0]], ids=["nan", "null-nan", "nan-one"]
+)
+def test_variance_of_a_nan_through_the_written_plan(xs):
+    """A group whose values hold a NaN: the population variance and deviation
+    are NaN, as `varOf` gives. Polars's streaming `group_by` over a one-row
+    frame gives 0.0 (polars-var-pop-one-nan); `_polars_shims.nan_through`
+    returns NaN, and a sample of one stays NULL."""
+    con = connect()
+    t = pa.table({"g": pa.array([1] * len(xs), pa.int64()), "x": pa.array(xs, pa.float64())})
+    put_table(con, "t", t)
+    sql = "SELECT g, var_pop(x) AS vp, stddev_pop(x) AS sp, var_samp(x) AS vs FROM t GROUP BY g"
+    plan = written_plan(substrait_json(con, sql))
+    ((g, vp, sp, vs),) = [tuple(r.values()) for r in run_plan(con, plan, "polars").to_pylist()]
+    assert g == 1 and math.isnan(vp) and math.isnan(sp)
+    assert (vs is None) == (len([x for x in xs if x is not None]) == 1)
+    ((_, lvp, lsp, lvs),) = lean_on(json.loads(plan), {"t": t})
+    assert math.isnan(lvp) and math.isnan(lsp) and (lvs is None) == (vs is None)

@@ -101,7 +101,7 @@ def test_shim_counts(table):
     """D9's measure: the shims per engine. A new one is a deliberate edit."""
     assert {k: len(e["shims"]) for k, e in table.items()} == {
         "duckdb": 4,
-        "polars": 14,
+        "polars": 15,
         "spark": 6,
     }
 
