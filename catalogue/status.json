@@ -1416,8 +1416,12 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": true,
-   "guard_free": true
+   "proved": false,
+   "guard_free": true,
+   "inferred": [
+    "orders: (_.o_orderdate >= date(1, 1, 1))",
+    "orders: (_.o_orderdate <= date(9999, 12, 31))"
+   ]
   },
   "verified_sql": {
    "duckdb": "yes"

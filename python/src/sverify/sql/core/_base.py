@@ -958,7 +958,8 @@ def _timestamp_text(micros: int) -> str:
         ts = datetime(1970, 1, 1) + timedelta(microseconds=micros)
     except OverflowError as e:
         raise Unsupported(f"timestamp {micros}µs is out of range") from e
-    return ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+    # `%Y` is not zero-padded on every platform (glibc writes year 1 as `1`).
+    return f"{ts.year:04d}-" + ts.strftime("%m-%d %H:%M:%S.%f")
 
 
 def _date_text(days: int) -> str:

@@ -55,7 +55,7 @@ def test_float_and_timestamp_contracts():
     )
     assert [c.proved for c in report.ensures] == [True] * 5 + [False]
     # `w0.ts + 60 s` needs the inferred bound below the end of the timestamps (#244).
-    assert report.facts["t0"] == "a timestamp ≤ 9998-12-31 23:59:59.999999"
+    assert report.facts["t0"] == "a timestamp ≤ 9999-12-31 23:59:59.999999"
 
 
 def test_float_ranges_are_exact_at_the_boundary():
