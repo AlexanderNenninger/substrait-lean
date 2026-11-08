@@ -86,7 +86,7 @@ theorem Expr.eval_normConst (row : Row) : ∀ e : Expr, e.normConst.eval row = e
 /-- A column known to be a non-NULL number of kind `k`, with its interval
 transformed. -/
 def AVal.nonNullNum (k : NumKind) (a : AVal) (f : Bound → Bound) : AVal :=
-  ⟨false, a.int.map f, false, false, false, none, some k⟩
+  { int := a.int.map f, nk := some k }
 
 /-- `a` without NULL: what an operand of a TRUE `<` can be. -/
 def AVal.nonNullOrd (a : AVal) : AVal := { a with null := false }
@@ -108,9 +108,10 @@ theorem meetStrs_mem {x y : Option (List String)} {s : String} (hx : x.all (·.c
 
 /-- What a value known to equal (SQL `=`, so non-NULL) a value in `b` can be. -/
 def AVal.meetEq (a b : AVal) : AVal :=
-  ⟨false, (match a.int, b.int with | some x, some y => some (x.meet y) | _, _ => none),
-   a.tt && b.tt, a.ff && b.ff, a.str && b.str, meetStrs a.strs b.strs,
-   a.nk.orElse fun _ => b.nk⟩
+  { int := (match a.int, b.int with | some x, some y => some (x.meet y) | _, _ => none),
+    tt := a.tt && b.tt, ff := a.ff && b.ff, str := a.str && b.str, strs := meetStrs a.strs b.strs,
+    nk := a.nk.orElse fun _ => b.nk, list := a.list && b.list, elems := a.elems,
+    card := a.card.meet b.card, struct := a.struct && b.struct, fields := a.fields }
 
 theorem AVal.meetEq_mem {a b : AVal} {v : Value} (ha : a.Mem v) (hb : b.Mem v) (hn : v ≠ .null) :
     (a.meetEq b).Mem v := by
@@ -121,18 +122,22 @@ theorem AVal.meetEq_mem {a b : AVal} {v : Value} (ha : a.Mem v) (hb : b.Mem v) (
     rw [AVal.mem_val]
     refine ⟨x.meet y, by simp [AVal.meetEq, hx, hy], Bound.mem_meet hxi hyi, ?_⟩
     cases ha : a.nk <;> simp_all [AVal.meetEq]
-  all_goals simp_all [AVal.Mem, AVal.meetEq]
-  all_goals exact meetStrs_mem h.2 hb.2
+  · simp_all [AVal.Mem, AVal.meetEq]
+  · simp_all [AVal.Mem, AVal.meetEq]
+  · simp_all [AVal.Mem, AVal.meetEq]
+    exact meetStrs_mem h.2 hb.2
+  · exact ⟨by simp [AVal.meetEq, ha.1, hb.1], Bound.mem_meet ha.2.1 hb.2.1, ha.2.2⟩
+  · exact ⟨by simp [AVal.meetEq, ha.1, hb.1], ha.2⟩
 
 /-- A value known to be the string `k` (#708). -/
 def AVal.strIs (k : String) (a : AVal) : AVal :=
-  ⟨false, none, false, false, a.str, meetStrs a.strs (some [k]), none⟩
+  { str := a.str, strs := meetStrs a.strs (some [k]) }
 
 /-- A value known not to be the string `k`. -/
 def AVal.strNot (k : String) (a : AVal) : AVal := { a with strs := a.strs.map (·.filter (· != k)) }
 
 theorem AVal.strIs_mem {a : AVal} {k : String} (h : a.Mem (.str k)) : (a.strIs k).Mem (.str k) := by
-  simp only [AVal.Mem, AVal.strIs, Bool.and_eq_true] at *
+  simp only [AVal.Mem, AVal.MemR, AVal.strIs, Bool.and_eq_true] at *
   exact ⟨h.1, meetStrs_mem h.2 (by simp)⟩
 
 theorem AVal.strNot_mem {a : AVal} {k : String} {v : Value} (h : a.Mem v)
@@ -153,6 +158,16 @@ def refineNum (env : List AVal) (i : Nat) (w : Value) (f : Int → Bound → Bou
   match w.numOf? with
   | some (k, c) => refineCol env i (·.nonNullNum k (f c))
   | none => env
+
+/-- A non-NULL list of `a`'s, its elements in `e` and its length in `card` (#925). -/
+def AVal.listIn (a : AVal) (e : Option AVal) (card : Bound) : AVal := { list := a.list, elems := e, card }
+
+/-- A column whose `cardinality` is compared with the integer `w`: a non-NULL
+list, its length narrowed by `f` of `w` (#925). -/
+def refineCard (env : List AVal) (i : Nat) (w : Value) (f : Int → Bound → Bound) : List AVal :=
+  match w with
+  | .int c => refineCol env i fun a => a.listIn a.elems (f c a.card)
+  | _ => env
 
 /-- What a row that makes `e` TRUE satisfies, for constants that are number
 literals (`Expr.refine` folds the others first). Recognizes conjunctions,
@@ -190,9 +205,21 @@ def Expr.refineL (env : List AVal) : Expr → List AVal
   -- `p OR q` (e.g. `x IN (1, 2)`): what `p` gives, or what `q` gives.
   | .bin .or p q => List.zipWith AVal.join (p.refineL env) (q.refineL env)
   -- `x IS NULL`: only NULL (so `x IS NULL OR x >= 0` keeps the bound).
-  | .un .isNull (.field i) => refineCol env i fun a => ⟨a.null, none, false, false, false, none, none⟩
+  | .un .isNull (.field i) => refineCol env i fun a => { null := a.null }
   -- `NOT (p OR q)`: neither is TRUE, so `x NOT IN ('a', 'b')` leaves the others.
   | .un .not (.bin .or p q) => (Expr.un .not q).refineL ((Expr.un .not p).refineL env)
+  -- A list's length compared with an integer (#925).
+  | .bin .lt (.un .cardinality (.field i)) (.lit w) => refineCard env i w fun c => (·.atMost (c - 1))
+  | .bin .lt (.lit w) (.un .cardinality (.field i)) => refineCard env i w fun c => (·.atLeast (c + 1))
+  | .un .not (.bin .lt (.un .cardinality (.field i)) (.lit w)) =>
+      refineCard env i w fun c => (·.atLeast c)
+  | .un .not (.bin .lt (.lit w) (.un .cardinality (.field i))) =>
+      refineCard env i w fun c => (·.atMost c)
+  -- `all_match(l, x -> b)` is TRUE: `l` is a list whose every element makes
+  -- `b` TRUE, so what `b` says of its parameter holds of the elements (#925).
+  | .hof .allMatch (.field i) b =>
+      let a := env.getD i AVal.top
+      refineCol env i fun _ => a.listIn (some ((b.refineL (a.elemsOf :: env)).getD 0 AVal.top)) a.card
   | _ => env
 termination_by e => sizeOf e
 
@@ -233,9 +260,13 @@ theorem refineNum_length (env : List AVal) (i : Nat) (w : Value) (f : Int → Bo
     (refineNum env i w f).length = env.length := by
   unfold refineNum; split <;> simp [refineCol_length]
 
+theorem refineCard_length (env : List AVal) (i : Nat) (w : Value) (f : Int → Bound → Bound) :
+    (refineCard env i w f).length = env.length := by
+  unfold refineCard; split <;> simp [refineCol_length]
+
 theorem Expr.refineL_length (env : List AVal) (e : Expr) :
     (e.refineL env).length = env.length := by
-  fun_induction Expr.refineL env e <;> simp_all [refineCol_length, refineNum_length]
+  fun_induction Expr.refineL env e <;> simp_all [refineCol_length, refineNum_length, refineCard_length]
 
 @[simp] theorem Value.isTrue_ofBool (b : Bool) : (Value.bool b).isTrue = b := by cases b <;> rfl
 
@@ -450,9 +481,46 @@ theorem not_or3_true {v w : Value} (h : (UnFn.apply .not (or3 v w)).isTrue = tru
   obtain ⟨rfl, rfl⟩ := or3_eq_false (not_isTrue_eq h)
   simp [UnFn.apply, Value.isTrue]
 
-theorem Expr.refineL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
-    (ht : (e.eval row).isTrue = true) : EnvMem (e.refineL env) row := by
-  fun_induction Expr.refineL env e
+theorem card_of_int {v : Value} {x : Int} (h : UnFn.apply .cardinality v = NumKind.int.val x) :
+    ∃ vs, v = .list vs ∧ x = vs.length := by
+  cases v <;> simp_all [UnFn.apply, NumKind.val]
+
+theorem refineCard_sound {env : List AVal} {row : Row} {i : Nat} {w : Value}
+    {f : Int → Bound → Bound} (h : EnvMem env row)
+    (hw : ∀ c, w = .int c → ∃ vs, row.getD i .null = .list vs ∧
+      ∀ b, b.Mem vs.length → (f c b).Mem vs.length) :
+    EnvMem (refineCard env i w f) row := by
+  unfold refineCard
+  split
+  · rename_i c
+    obtain ⟨vs, hv, hf⟩ := hw c rfl
+    refine refineCol_sound h ?_
+    have hm := h i
+    rw [hv] at hm ⊢
+    exact ⟨hm.1, hf _ hm.2.1, hm.2.2⟩
+  · exact h
+
+/-- `all_match` is TRUE only of a list whose every element makes the lambda TRUE. -/
+theorem allMatch_true {v : Value} {p : Value → Value}
+    (h : (HoFn.apply .allMatch v p).isTrue = true) :
+    ∃ vs, v = .list vs ∧ ∀ x ∈ vs, (p x).isTrue = true := by
+  cases v
+  case list vs =>
+    refine ⟨vs, rfl, ?_⟩
+    simp only [HoFn.apply] at h
+    induction vs with
+    | nil => simp
+    | cons y ys ih =>
+      simp only [List.foldr_cons, isTrue_and3, Bool.and_eq_true] at h
+      intro x hx
+      rcases List.mem_cons.mp hx with rfl | hx
+      · exact h.1
+      · exact ih h.2 x hx
+  all_goals simp [HoFn.apply, Value.isTrue] at h
+
+theorem Expr.refineL_sound' (env : List AVal) (e : Expr) : ∀ {row : Row}, EnvMem env row →
+    (e.eval row).isTrue = true → EnvMem (e.refineL env) row := by
+  fun_induction Expr.refineL env e <;> intro row h ht
   case case1 env p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at ht
     exact ihq (ihp h ht.1) ht.2
@@ -557,7 +625,47 @@ theorem Expr.refineL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem 
       simpa [eval, BinFn.apply] using ht
     obtain ⟨h₁, h₂⟩ := not_or3_true ht'
     exact ihq (ihp h (by simpa [eval] using h₁)) (by simpa [eval] using h₂)
-  case case20 => exact h
+  case case20 env i w =>
+    refine refineCard_sound h fun c hw => ?_
+    subst hw
+    obtain ⟨x, hx, hk⟩ := lt_num_right (k := .int) (by simpa [eval, List.getD_eq_getElem?_getD, NumKind.val] using ht)
+    obtain ⟨vs, hv, rfl⟩ := card_of_int hx
+    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atMost hb (by omega)⟩
+  case case21 env w i =>
+    refine refineCard_sound h fun c hw => ?_
+    subst hw
+    obtain ⟨x, hx, hk⟩ := lt_num_left (k := .int) (by simpa [eval, List.getD_eq_getElem?_getD, NumKind.val] using ht)
+    obtain ⟨vs, hv, rfl⟩ := card_of_int hx
+    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atLeast hb (by omega)⟩
+  case case22 env i w =>
+    refine refineCard_sound h fun c hw => ?_
+    subst hw
+    obtain ⟨x, hx, hk⟩ :=
+      not_lt_num_right (k := .int) (by simpa [eval, List.getD_eq_getElem?_getD, NumKind.val] using ht)
+    obtain ⟨vs, hv, rfl⟩ := card_of_int hx
+    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atLeast hb hk⟩
+  case case23 env w i =>
+    refine refineCard_sound h fun c hw => ?_
+    subst hw
+    obtain ⟨x, hx, hk⟩ :=
+      not_lt_num_left (k := .int) (by simpa [eval, List.getD_eq_getElem?_getD, NumKind.val] using ht)
+    obtain ⟨vs, hv, rfl⟩ := card_of_int hx
+    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atMost hb hk⟩
+  case case24 env i b a ih =>
+    obtain ⟨vs, hv, hall⟩ := allMatch_true (by simpa [eval, List.getD_eq_getElem?_getD] using ht)
+    rw [← List.getD_eq_getElem?_getD] at hv
+    refine refineCol_sound h ?_
+    have hm := h i
+    rw [hv] at hm ⊢
+    obtain ⟨hl, hc, he⟩ := AVal.mem_list.mp hm
+    refine ⟨hl, hc, ?_⟩
+    simp only [AVal.listIn, AVal.memAll_iff]
+    exact fun x hx => ih (h.cons (he x hx)) (hall x hx) 0
+  case case25 => exact h
+
+theorem Expr.refineL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = true) : EnvMem (e.refineL env) row :=
+  Expr.refineL_sound' env e h ht
 
 /-- What a row that makes `e` TRUE satisfies (`refineL`), with constant
 decimals folded first (`Expr.normConst`). -/
@@ -633,13 +741,13 @@ def Expr.cstr (pos : Bool) : Expr → Option (Expr × Cstr)
 /-- Narrow an abstract value by a constraint. A constraint that leaves other
 values open narrows only an abstraction whose numbers are all of its kind. -/
 def Cstr.apply : Cstr → AVal → AVal
-  | .null, a => ⟨a.null, none, false, false, false, none, none⟩
+  | .null, a => { null := a.null }
   | .notNull, a => { a with null := false }
-  | .numIn k b true, a => ⟨false, a.int.map (·.meet b), false, false, false, none, some k⟩
+  | .numIn k b true, a => { int := a.int.map (·.meet b), nk := some k }
   | .numIn k b false, a => if a.nk = some k then { a with int := a.int.map (·.meet b) } else a
   -- Intervals cannot exclude a single value.
   | .ne _ _, a => a
-  | .strIn l true, a => ⟨false, none, false, false, a.str, meetStrs a.strs (some l), none⟩
+  | .strIn l true, a => { str := a.str, strs := meetStrs a.strs (some l) }
   | .strIn l false, a => { a with strs := meetStrs a.strs (some l) }
   | .strNe k, a => a.strNot k
 

@@ -63,36 +63,47 @@ namespace Substrait.ContractCheck
 open Lean (Json)
 open Parse
 
+/-- What a column's declared type allows: a list's elements and a struct's
+fields by their types (#925), `depth` levels down. -/
+def typeEnvD : Nat → Json → AVal
+  | 0, _ => AVal.top
+  | depth + 1, ty =>
+    -- Numbers: integers, doubles (by their codes, `SubstraitLean/Float.lean`), timestamps and dates.
+    let ints := ["i8", "i16", "i32", "i64", "fp32", "fp64", "precisionTimestamp", "timestamp", "date"]
+    let kinds := ints ++ ["string", "varchar", "fixedChar", "bool", "decimal", "list", "struct"]
+    let kind := (kinds.find? fun k => (ty.getObjVal? k).toOption.isSome).getD ""
+    let body := ty.getObjValD kind
+    let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
+    -- The column's number kind (#923).
+    let nk : Option NumKind :=
+      if ["i8", "i16", "i32", "i64"].contains kind then some .int
+      else if ["fp32", "fp64"].contains kind then some .float
+      else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
+      else if kind == "date" then some .date
+      else none
+    -- `BIGINT` and timestamps (microseconds) are 64-bit: what makes `a / 2` safe.
+    let i64 := ["i64", "precisionTimestamp", "timestamp"]
+    if i64.contains kind then
+      { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
+    else if ints.contains kind then { null := nullable, int := some Bound.top, nk := nk }
+    else if ["string", "varchar", "fixedChar"].contains kind then
+      { null := nullable, str := true }
+    else if kind == "bool" then { null := nullable, tt := true, ff := true }
+    -- A decimal is its unscaled integer, of at most `p` digits (#27): what makes
+    -- `a + b` of two columns fit its precision.
+    else if kind == "decimal" then
+      let p := (body.getObjValAs? Nat "precision").toOption.getD 38
+      let sc := (body.getObjValAs? Nat "scale").toOption.getD 0
+      { null := nullable, int := some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, nk := some (.dec sc) }
+    else if kind == "list" then
+      { null := nullable, list := true, elems := some (typeEnvD depth (body.getObjValD "type")) }
+    else if kind == "struct" then
+      let tys := ((body.getObjValAs? (Array Json) "types").toOption.getD #[]).toList
+      { null := nullable, struct := true, fields := some (tys.map (typeEnvD depth)) }
+    else AVal.top
+
 /-- What a column's declared type allows. -/
-def typeEnv (ty : Json) : AVal :=
-  -- Numbers: integers, doubles (by their codes, `SubstraitLean/Float.lean`), timestamps and dates.
-  let ints := ["i8", "i16", "i32", "i64", "fp32", "fp64", "precisionTimestamp", "timestamp", "date"]
-  let kinds := ints ++ ["string", "varchar", "fixedChar", "bool", "decimal"]
-  let kind := (kinds.find? fun k => (ty.getObjVal? k).toOption.isSome).getD ""
-  let body := ty.getObjValD kind
-  let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
-  -- The column's number kind (#923).
-  let nk : Option NumKind :=
-    if ["i8", "i16", "i32", "i64"].contains kind then some .int
-    else if ["fp32", "fp64"].contains kind then some .float
-    else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
-    else if kind == "date" then some .date
-    else none
-  -- `BIGINT` and timestamps (microseconds) are 64-bit: what makes `a / 2` safe.
-  let i64 := ["i64", "precisionTimestamp", "timestamp"]
-  if i64.contains kind then
-    ⟨nullable, some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, false, false, false, none, nk⟩
-  else if ints.contains kind then ⟨nullable, some Bound.top, false, false, false, none, nk⟩
-  else if ["string", "varchar", "fixedChar"].contains kind then
-    ⟨nullable, none, false, false, true, none, none⟩
-  else if kind == "bool" then ⟨nullable, none, true, true, false, none, none⟩
-  -- A decimal is its unscaled integer, of at most `p` digits (#27): what makes
-  -- `a + b` of two columns fit its precision.
-  else if kind == "decimal" then
-    let p := (body.getObjValAs? Nat "precision").toOption.getD 38
-    let sc := (body.getObjValAs? Nat "scale").toOption.getD 0
-    ⟨nullable, some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, false, false, false, none, some (.dec sc)⟩
-  else AVal.top
+def typeEnv (ty : Json) : AVal := typeEnvD 8 ty
 
 def schemaEnv (schema : Json) : List AVal :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -135,17 +146,39 @@ def _root_.Substrait.AVal.renderStrs (a : AVal) : String :=
   | some l => s!"one of the strings {", ".intercalate (l.map sqlString)}"
   | none => "a string"
 
-def _root_.Substrait.AVal.render (a : AVal) (dec : Option (Nat × Nat) := none) : String :=
+/-- A list's length, in `b` (#925). -/
+def _root_.Substrait.Bound.renderLen (b : Bound) : Option String :=
+  match b.lo.filter (0 < ·), b.hi with
+  | none, none => none
+  | some l, some h => some (if l == h then s!"length {l}" else s!"length in [{l}, {h}]")
+  | some l, none => some s!"length ≥ {l}"
+  | none, some h => some s!"length ≤ {h}"
+
+/-- What `a` describes, `depth` levels into lists (#925). -/
+def _root_.Substrait.AVal.renderD : Nat → AVal → Option (Nat × Nat) → String
+  | depth, a, dec =>
   let bound (b : Bound) := match dec with
     | some (p, s) => b.renderDecimal p s
     | none => b.render
+  -- A list by its length and its elements: "a list (length ≤ 5; of a string)".
+  let list : String :=
+    let elems := match depth, a.elems with
+      | d + 1, some e => [s!"of {e.renderD d none}"]
+      | _, _ => []
+    match a.card.renderLen.toList ++ elems with
+    | [] => "a list"
+    | ps => s!"a list ({"; ".intercalate ps})"
   let parts := (if a.tt then ["TRUE"] else []) ++ (if a.ff then ["FALSE"] else []) ++
     (a.int.map fun b => [bound b]).getD [] ++ (if a.str then [a.renderStrs] else []) ++
+    (if a.list then [list] else []) ++ (if a.struct then ["a struct"] else []) ++
     (if a.null then ["NULL"] else [])
   match parts with
   | [] => "nothing (no rows)"
   | [p] => p
   | ps => ", ".intercalate ps.dropLast ++ " or " ++ ps.getLast!
+
+def _root_.Substrait.AVal.render (a : AVal) (dec : Option (Nat × Nat) := none) : String :=
+  a.renderD 2 dec
 
 /-- Machine-readable abstract value, so callers can display codes as doubles
 or timestamps. -/
