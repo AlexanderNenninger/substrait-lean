@@ -1587,12 +1587,9 @@ def _(mo):
     their guarantees in every state while only each batch is checked. You
     can refresh a node on DuckDB, Polars or Spark, hand a plan
     to Snowflake as SQL, and tell where an engine could depart from the
-    model. That is the end of the tour. The
-    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
-    covers every feature in more detail, and
-    [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md)
-    goes under the hood: the checker, the producers and engines, and what
-    is proved and what is trusted.
+    model. The last chapter, [Running it in production](?file=06_running_in_production.py),
+    covers the work around a proved pipeline: checking its file in CI,
+    testing it, its credentials, its lineage and a bound on its state.
     """)
     return
 
@@ -1600,7 +1597,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 4. [Contracts](?file=04_contracts.py)
+    ← 4. [Contracts](?file=04_contracts.py) · 6. [Running it in production](?file=06_running_in_production.py) →
     """)
     return
 
