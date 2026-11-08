@@ -209,7 +209,7 @@ The most common, and what sverify does about each:
 | Pitfall | What the engines do | sverify |
 |---|---|---|
 | Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Snowflake and Spark SQL is only written with a proved `deterministic=True` |
-| NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
+| NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the reference's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
 | Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
@@ -1731,7 +1731,8 @@ A proof is about the plan under one semantics, a profile: sverify's
 reference by default, `semantics="duckdb"` for what DuckDB does,
 `semantics="polars"` for what Polars does, or
 `semantics="substrait"` for Substrait's extension YAMLs, open wherever they
-say nothing. An engine computes its own semantics, so running a verified
+say nothing. Each profile refines one core that does a superset of
+operations ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)). An engine computes its own semantics, so running a verified
 plan raises a question: does the proof hold for what the engine computes?
 A route answers it. `report.run(con, engine, route="auto")` and
 `node.refresh(engine=..., route="auto")` pick one of four, and run the plan

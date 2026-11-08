@@ -9,6 +9,7 @@ import ibis
 import pyarrow as pa
 import pytest
 
+import sverify as sv
 from _engines import PROFILED, PROFILED_ORDERED
 from _pipelines import recomputed, rows
 from sverify import incremental
@@ -39,25 +40,32 @@ def view(node):
     return node._stage.view
 
 
-def random_batches(seed, steps=40):
-    rng = random.Random(seed)
-    hosts = ["a", "b", None]
-    live: list[tuple[str | None, int, int | None]] = [
-        (rng.choice(hosts), rng.randrange(10), rng.randrange(-50, 50)) for _ in range(30)
-    ]
+def stream(rng, start, row, steps, most):
+    """30 rows from `start`, then `steps` batches, each inserting fewer than
+    `most` rows from `row` and deleting up to two live rows."""
+    live = [start() for _ in range(30)]
     first = list(live)
     out = []
     for _ in range(steps):
-        ins = [
-            (rng.choice(hosts), rng.randrange(12), rng.choice([None, rng.randrange(-50, 50)]))
-            for _ in range(rng.randrange(4))
-        ]
+        ins = [row() for _ in range(rng.randrange(most))]
         dels = rng.sample(live, min(len(live), rng.randrange(3)))
         for d in dels:
             live.remove(d)
         live += ins
         out.append((ins, dels))
     return first, out
+
+
+def random_batches(seed, steps=40):
+    rng = random.Random(seed)
+    hosts = ["a", "b", None]
+    return stream(
+        rng,
+        lambda: (rng.choice(hosts), rng.randrange(10), rng.randrange(-50, 50)),
+        lambda: (rng.choice(hosts), rng.randrange(12), rng.choice([None, rng.randrange(-50, 50)])),
+        steps,
+        4,
+    )
 
 
 #: Spark loses a NULL-key group in seeds 1 and 2 (#1006).
@@ -253,19 +261,11 @@ def unique_stream(seed, steps=30):
     rng = random.Random(seed)
     minutes = iter(rng.sample(range(10_000), 400))
     hosts = ["a", "b", "c", None]
-    live = [(rng.choice(hosts), next(minutes), rng.randrange(100)) for _ in range(30)]
-    first = list(live)
-    out = []
-    for _ in range(steps):
-        ins = [
-            (rng.choice(hosts), next(minutes), rng.randrange(100)) for _ in range(rng.randrange(3))
-        ]
-        dels = rng.sample(live, min(len(live), rng.randrange(3)))
-        for d in dels:
-            live.remove(d)
-        live += ins
-        out.append((ins, dels))
-    return first, out
+
+    def row():
+        return (rng.choice(hosts), next(minutes), rng.randrange(100))
+
+    return stream(rng, row, row, steps, 3)
 
 
 @pytest.mark.parametrize("engine", PROFILED_ORDERED)
@@ -299,3 +299,78 @@ def test_windows_with_different_partitions_are_recomputed():
     node.refresh()
     assert view(node).strategy == "recompute and diff"
     assert "do not share one PARTITION BY" in str(node.status())
+
+
+# -- #742 on deletes: LEFT JOIN, windows, double SUM and AVG (#248) -------------
+
+DOUBLES = pa.schema([("host", pa.string()), ("minute", pa.int64()), ("cpu", pa.float64())])
+HOSTS = pa.schema([("host", pa.string()), ("team", pa.string())])
+
+
+def _left_join(samples, hosts):
+    return samples.left_join(hosts, samples.host == hosts.host).select(
+        samples.host, samples.minute, hosts.team
+    )
+
+
+def _running(samples):
+    return samples.select(
+        "host", "minute", total=samples.cpu.sum().over(group_by="host", order_by="minute")
+    )
+
+
+@sv.transform(requires={"samples": [ibis._.cpu.between(0, 100)]})
+def _double_sums(samples):
+    return samples.group_by("host").aggregate(total=samples.cpu.sum(), mean=samples.cpu.mean())
+
+
+@pytest.mark.parametrize(
+    ("step", "schema", "strategy", "why"),
+    [
+        (
+            _left_join,
+            SCHEMA,
+            "recomputed and diffed",
+            "recomputed (not incrementally maintainable (left join",
+        ),
+        (
+            _running,
+            SCHEMA,
+            "1 touched group(s) recomputed",
+            "no delta rules: not incrementally maintainable (left join, fetch or window)",
+        ),
+        pytest.param(
+            _double_sums,
+            DOUBLES,
+            "1 touched group(s) recomputed",
+            "total is a SUM of float64",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="the status names the checker's generic delta-rule refusal (left join, "
+                "fetch or window), not the aggregate's: _linear's reason is dropped",
+            ),
+        ),
+    ],
+    ids=["left_join", "window", "double_sum_avg"],
+)
+def test_a_batch_that_deletes_rows_says_why_the_node_recomputes(step, schema, strategy, why):
+    """#742's rule where a batch deletes rows (#248): the node is recomputed
+    (in full or by the groups the batch touches), its status says why, the
+    refresh report says how, and the state equals a full recompute."""
+
+    def table(data):
+        return pa.table(
+            {n: [r[i] for r in data] for i, n in enumerate(schema.names)}, schema=schema
+        )
+
+    cpu = 7.5 if schema is DOUBLES else 7
+    src = StaticSource(table([("a", 1, 5), ("a", 2, cpu), ("b", 1, 3)]), name="samples")
+    hosts = StaticSource(pa.table({"host": ["a"], "team": ["x"]}, schema=HOSTS), name="hosts")
+    inputs = (src, hosts) if step is _left_join else (src,)
+    node = src.pipe(step, hosts=hosts) if step is _left_join else src.pipe(step)
+    node.refresh()
+    src.apply(Changes(deletes=table([("a", 2, cpu)])))
+    out = node.refresh(audit=True)[node.name]
+    assert strategy in out.summary()
+    assert rows(node) == recomputed(node, *inputs)
+    assert why in str(node.status())

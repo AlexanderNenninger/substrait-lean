@@ -1,0 +1,466 @@
+# Contracts analysts write over aggregates of doubles, and a few controls
+# (#929, D25, D30). Each case is a query over one of `schemas.toml`'s datasets
+# with its `requires` and `ensures`, in the scope of `queries/*.toml`. Unlike
+# the queries, these are not collected from public sources: they are the
+# patterns a contract on a double SUM, AVG, VAR or STDDEV takes (a bound, a
+# HAVING threshold, a top-N, an exact or tolerant observation, a window), so
+# that `contracts.json` counts how each reaches the engines.
+#
+# `pattern` groups the cases in the census table. Regenerate the results with
+#
+#     uv run python -m sverify_dev.contract_census --write
+#
+# and review the diff of `contracts.json`; `tests/test_contract_census.py`
+# checks them.
+
+# -- a bound on the aggregate --------------------------------------------------
+
+[[case]]
+id = "sum-nonneg"
+pattern = "bound"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[_.total.isnull() | (_.total >= 0)]"
+
+[[case]]
+id = "avg-range"
+pattern = "bound"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(m=_.v3.mean())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.m.between(0, 100)]"
+
+[[case]]
+id = "avg-range-approx"
+pattern = "bound"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(m=_.v3.mean())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[sv.approx(_.m.between(0, 100))]"
+
+[[case]]
+id = "sum-cap-approx"
+pattern = "bound"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount.between(0, 1000), sv.max_rows(1000)]}"
+ensures = "[sv.approx(_.total <= 1_000_000)]"
+
+[[case]]
+id = "sum-cap"
+pattern = "bound"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount.between(0, 1000), sv.max_rows(1000)]}"
+ensures = "[_.total.isnull() | (_.total <= 1_000_000)]"
+
+[[case]]
+id = "revenue-nonneg"
+pattern = "bound"
+dataset = "app"
+ibis = '''
+q = order_items.group_by("order_id").aggregate(revenue=(_.price * _.qty.cast("float64")).sum())
+'''
+requires = "{'order_items': [_.price.between(0, 1e6), _.qty.between(0, 1000)]}"
+ensures = "[_.revenue.isnull() | (_.revenue >= 0)]"
+
+[[case]]
+id = "avg-nullable"
+pattern = "bound"
+dataset = "app"
+ibis = 'q = orders.group_by("status").aggregate(m=_.amount.mean())'
+requires = "{'orders': [_.amount.isnull() | _.amount.between(0, 500)]}"
+ensures = "[_.m.isnull() | _.m.between(0, 500)]"
+
+[[case]]
+id = "var-nonneg"
+pattern = "bound"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(v=_.v3.var())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.v.isnull() | (_.v >= 0)]"
+
+[[case]]
+id = "stddev-nonneg"
+pattern = "bound"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(sd=_.v3.std())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.sd.isnull() | (_.sd >= 0)]"
+
+[[case]]
+id = "stddev-upper-approx"
+pattern = "bound"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(sd=_.v3.std(how="pop"))'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[sv.approx(_.sd <= 100)]"
+
+[[case]]
+id = "corr-range-approx"
+pattern = "bound"
+dataset = "h2o"
+ibis = 'q = xj.group_by("id4").aggregate(r=_.v1.corr(_.id1.cast("float64"), how="pop"))'
+requires = "{'xj': [_.v1.between(0, 100), _.id1.between(0, 100)]}"
+ensures = "[sv.approx(_.r.between(-1, 1))]"
+
+[[case]]
+id = "median-range"
+pattern = "bound"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(med=_.v3.median())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.med.isnull() | _.med.between(0, 100)]"
+
+# -- two aggregates compared --------------------------------------------------
+
+[[case]]
+id = "avg-le-max"
+pattern = "compare"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(m=_.v3.mean(), mx=_.v3.max())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.m <= _.mx]"
+
+[[case]]
+id = "min-le-avg"
+pattern = "compare"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(m=_.v3.mean(), mn=_.v3.min())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.mn <= _.m]"
+
+[[case]]
+id = "sum-ge-max"
+pattern = "compare"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum(), top=_.amount.max())'
+requires = "{'orders': [_.amount.between(0, 1000)]}"
+ensures = "[_.total.isnull() | (_.total >= _.top)]"
+
+# -- a key over a double aggregate --------------------------------------------
+
+[[case]]
+id = "sum-unique-key"
+pattern = "key"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[sv.unique('customer_id')]"
+
+[[case]]
+id = "stddev-unique-key"
+pattern = "key"
+dataset = "h2o"
+ibis = 'q = x.group_by(["id4", "id5"]).aggregate(sd=_.v3.std())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[sv.unique('id4', 'id5')]"
+
+# -- a threshold on the aggregate in the plan (HAVING) -------------------------
+
+[[case]]
+id = "having-sum"
+pattern = "having"
+dataset = "app"
+ibis = '''
+q = orders.group_by("customer_id").aggregate(total=_.amount.sum()).filter(_.total > 1000)
+'''
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[sv.unique('customer_id')]"
+
+[[case]]
+id = "having-sum-bound"
+pattern = "having"
+dataset = "app"
+ibis = '''
+q = orders.group_by("customer_id").aggregate(total=_.amount.sum()).filter(_.total > 1000)
+'''
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[_.total > 1000]"
+
+[[case]]
+id = "having-sum-approx"
+pattern = "having"
+dataset = "app"
+ibis = '''
+q = orders.group_by("customer_id").aggregate(total=_.amount.sum()).filter(_.total > 1000)
+'''
+requires = "{'orders': [_.amount.between(0, 1000), sv.max_rows(1000)]}"
+ensures = "[sv.approx(_.total >= 1000)]"
+
+[[case]]
+id = "having-avg"
+pattern = "having"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(m=_.v3.mean()).filter(_.m >= 50)'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.m >= 50]"
+
+[[case]]
+id = "having-stddev"
+pattern = "having"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(sd=_.v3.std()).filter(_.sd > 10)'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[sv.unique('id1')]"
+
+[[case]]
+id = "having-count-with-sum"
+pattern = "having"
+dataset = "app"
+ibis = '''
+q = orders.group_by("customer_id").aggregate(n=_.count(), total=_.amount.sum()).filter(_.n >= 3)
+'''
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[_.n >= 3, _.total.isnull() | (_.total >= 0)]"
+
+[[case]]
+id = "filter-rows-then-sum"
+pattern = "having"
+dataset = "app"
+ibis = '''
+q = orders.filter(_.amount > 100).group_by("customer_id").aggregate(total=_.amount.sum())
+'''
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[_.total > 100]"
+
+# -- ORDER BY and top-N on the aggregate --------------------------------------
+
+[[case]]
+id = "top-n-sum"
+pattern = "top_n"
+dataset = "app"
+ibis = '''
+q = (
+    orders.group_by("customer_id").aggregate(total=_.amount.sum())
+    .order_by(ibis.desc("total")).limit(10)
+)
+'''
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[sv.unique('customer_id')]"
+
+[[case]]
+id = "top-1-avg"
+pattern = "top_n"
+dataset = "h2o"
+ibis = '''
+q = x.group_by("id1").aggregate(m=_.v3.mean()).order_by(ibis.desc("m")).limit(1)
+'''
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.m.between(0, 100)]"
+
+[[case]]
+id = "order-by-sum-sequence"
+pattern = "top_n"
+dataset = "app"
+ibis = '''
+q = orders.group_by("customer_id").aggregate(total=_.amount.sum()).order_by(ibis.desc("total"), "customer_id")
+'''
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[sv.equivalent(rows='sequence')]"
+
+[[case]]
+id = "rank-by-sum"
+pattern = "top_n"
+dataset = "app"
+ibis = '''
+s = orders.group_by("customer_id").aggregate(total=_.amount.sum())
+q = s.mutate(rk=ibis.rank().over(ibis.window(order_by=ibis.desc(s.total))))
+'''
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[_.rk >= 0]"
+
+# -- what the consumer observes ------------------------------------------------
+
+[[case]]
+id = "sum-exact"
+pattern = "observation"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[sv.equivalent(floats='exact')]"
+
+[[case]]
+id = "avg-exact"
+pattern = "observation"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(m=_.v3.mean())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[sv.equivalent(floats='exact')]"
+
+[[case]]
+id = "sum-plan"
+pattern = "observation"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[sv.equivalent(floats='plan')]"
+
+[[case]]
+id = "sum-within-rel"
+pattern = "observation"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[sv.equivalent(floats=sv.within(rel=1e-9))]"
+
+[[case]]
+id = "sum-within-rel-cap"
+pattern = "observation"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount.between(0, 1000), sv.max_rows(1000)]}"
+ensures = "[sv.equivalent(floats=sv.within(rel=1e-9))]"
+
+[[case]]
+id = "avg-within-abs-cap"
+pattern = "observation"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(m=_.v3.mean())'
+requires = "{'x': [_.v3.between(0, 100), sv.max_rows(1000)]}"
+ensures = "[sv.equivalent(floats=sv.within(abs=1e-6))]"
+
+[[case]]
+id = "var-within-rel-cap"
+pattern = "observation"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(v=_.v3.var())'
+requires = "{'x': [_.v3.between(0, 100), sv.max_rows(1000)]}"
+ensures = "[sv.equivalent(floats=sv.within(rel=1e-9))]"
+
+[[case]]
+id = "sum-within-and-bound"
+pattern = "observation"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(total=_.amount.sum())'
+requires = "{'orders': [_.amount.between(0, 1000), sv.max_rows(1000)]}"
+ensures = "[sv.equivalent(floats=sv.within(rel=1e-9)), _.total.isnull() | (_.total >= 0)]"
+
+# -- a threshold on the aggregate in an expression ----------------------------
+
+[[case]]
+id = "tier-by-avg"
+pattern = "expression"
+dataset = "h2o"
+ibis = '''
+q = x.group_by("id1").aggregate(m=_.v3.mean()).mutate(tier=ibis.ifelse(_.m >= 50, "high", "low"))
+'''
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.tier.isin(['high', 'low'])]"
+
+[[case]]
+id = "group-by-rounded-avg"
+pattern = "expression"
+dataset = "h2o"
+ibis = '''
+q = x.group_by("id1").aggregate(m=_.v3.mean()).group_by(b=_.m.floor()).aggregate(n=_.count())
+'''
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.n >= 1]"
+
+# -- windows -------------------------------------------------------------------
+
+[[case]]
+id = "running-sum"
+pattern = "window"
+dataset = "app"
+ibis = '''
+w = ibis.window(group_by="sensor_id", order_by="ts", preceding=None, following=0)
+q = readings.mutate(cum=_.value.sum().over(w))
+'''
+requires = "{'readings': [_.value >= 0]}"
+ensures = "[_.cum.isnull() | (_.cum >= 0)]"
+
+[[case]]
+id = "moving-avg"
+pattern = "window"
+dataset = "app"
+ibis = '''
+w = ibis.window(group_by="sensor_id", order_by="ts", preceding=2, following=0)
+q = readings.mutate(ma=_.value.mean().over(w))
+'''
+requires = "{'readings': [_.value.between(0, 100)]}"
+ensures = "[_.ma.isnull() | _.ma.between(0, 100)]"
+
+[[case]]
+id = "above-group-avg"
+pattern = "window"
+dataset = "app"
+ibis = '''
+q = readings.mutate(m=_.value.mean().over(group_by="sensor_id")).filter(_.value > _.m)
+'''
+requires = "{'readings': [_.value.between(0, 100)]}"
+ensures = "[_.value > _.m]"
+
+[[case]]
+id = "zscore-outliers"
+pattern = "window"
+dataset = "app"
+ibis = '''
+w = ibis.window(group_by="sensor_id")
+q = (
+    readings.mutate(z=(_.value - _.value.mean().over(w)) / _.value.std().over(w))
+    .filter(_.z.abs() > 3)
+)
+'''
+requires = "{'readings': [_.value.between(0, 100)]}"
+ensures = "[_.z.abs() > 3]"
+
+# -- controls: integers, decimals, MIN/MAX, COUNT --------------------------------
+
+[[case]]
+id = "control-int-sum"
+pattern = "control"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(v1=_.v1.sum())'
+requires = "{'x': [_.v1.between(1, 5)]}"
+ensures = "[_.v1 >= 1, sv.unique('id1')]"
+
+[[case]]
+id = "control-int-having"
+pattern = "control"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(v1=_.v1.sum()).filter(_.v1 > 10)'
+requires = "{'x': [_.v1.between(1, 5)]}"
+ensures = "[_.v1 > 10]"
+
+[[case]]
+id = "control-decimal-sum"
+pattern = "control"
+dataset = "tpch"
+ibis = 'q = lineitem.group_by("l_returnflag").aggregate(qty=_.l_quantity.sum())'
+requires = "{'lineitem': [_.l_quantity.between(1, 50)]}"
+ensures = "[_.qty >= 1]"
+
+[[case]]
+id = "control-max-double"
+pattern = "control"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(mx=_.v3.max())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.mx.between(0, 100)]"
+
+[[case]]
+id = "control-max-having"
+pattern = "control"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(mx=_.v3.max()).filter(_.mx > 50)'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[_.mx > 50]"
+
+[[case]]
+id = "control-max-exact"
+pattern = "control"
+dataset = "h2o"
+ibis = 'q = x.group_by("id1").aggregate(mx=_.v3.max())'
+requires = "{'x': [_.v3.between(0, 100)]}"
+ensures = "[sv.equivalent(floats='exact')]"
+
+[[case]]
+id = "control-count"
+pattern = "control"
+dataset = "app"
+ibis = 'q = orders.group_by("customer_id").aggregate(n=_.count()).filter(_.n >= 3)'
+requires = "{'orders': [_.amount >= 0]}"
+ensures = "[_.n >= 3]"
