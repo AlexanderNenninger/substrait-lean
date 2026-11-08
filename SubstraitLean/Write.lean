@@ -898,15 +898,9 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
         | _ => []
       | _ => [])))]
 
-/-- An `AggregateRel` measure over input columns of kinds `cols`. With
-`wideSums`, an integer `SUM` sums its argument as `DECIMAL(38,0)`, for an
-engine whose integer `SUM` wraps around (`aggregateJson` casts it back). -/
-def writeMeasure (wideSums : Bool) (cols : List WKind) (m : Measure) : Json :=
+/-- An `AggregateRel` measure over input columns of kinds `cols`. -/
+def writeMeasure (cols : List WKind) (m : Measure) : Json :=
   let arg := measureArg cols m
-  let decimal := obj [("decimal", obj [("precision", toJson 38), ("scale", toJson 0),
-    ("nullability", "NULLABILITY_NULLABLE")])]
-  let arg := if wideSums && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
-    else arg
   let measure := obj [
     ("functionReference", toJson (AggFn.anchor m.fn)),
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
@@ -934,28 +928,15 @@ def writeMeasure (wideSums : Bool) (cols : List WKind) (m : Measure) : Json :=
 
 /-- An `AggregateRel` of the written input `input`, whose columns have kinds
 `ks`. -/
-def aggregateJson (wideSums : Bool) (input : Json) (ks : List WKind) (gs : List Expr)
+def aggregateJson (input : Json) (ks : List WKind) (gs : List Expr)
     (ms : List Measure) (out : Option (List Nat)) : Json :=
   let agg := withCommon "aggregate" [
     ("input", input),
     ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (wkind ks g) g).toArray),
     ("groupings", if gs.isEmpty then Json.arr #[] else
       Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
-    ("measures", Json.arr (ms.map (writeMeasure wideSums ks)).toArray)]
-  -- The DECIMAL sums (`writeMeasure`), cast back to `i64` by a project.
-  let sums := (ms.zipIdx.filter fun (m, _) => wideSums && m.fn matches .sum).map (gs.length + ·.2)
-  if sums.isEmpty then agg out else
-    let n := gs.length + ms.length
-    let back := sums.map fun i => obj [("cast", obj [("type", i64Type),
-      ("input", writeExpr [] .other (.field i)),
-      ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
-    let cols := (List.range n).map fun j => match sums.idxOf? j with
-      | some k => n + k
-      | none => j
-    withCommon "project" [("input", agg none), ("expressions", Json.arr back.toArray)]
-      (some (match out with
-        | none => cols
-        | some o => o.map (cols.getD · 0)))
+    ("measures", Json.arr (ms.map (writeMeasure ks)).toArray)]
+  agg out
 
 /-- The decimal `AVG`s of `Parse.decimalAvgs` (#27): an emit `m` of the
 quotients `qs` over an aggregate with `g` groups whose last measures count the
@@ -991,33 +972,28 @@ def decimalAvgsOf (g : Nat) (ms : List Measure) (qs : List Expr) (m : List Nat) 
     | none => sm
   return (written, emit)
 
-/-- Write a relation; `emit` is an output mapping to put on its `RelCommon`.
-
-With `wideSums`, an integer `SUM` is summed as `DECIMAL(38,0)` and cast back,
-which fails outside 64 bits on an engine whose integer `SUM` wraps around
-(#24, `SubstraitLean/DataFusion.lean`). Such a plan does not parse back to
-the same `Rel`. -/
-def writeRel (schemas : Schemas) (cat : Catalog) (wideSums : Bool := false)
+/-- Write a relation; `emit` is an output mapping to put on its `RelCommon`. -/
+def writeRel (schemas : Schemas) (cat : Catalog)
     (hint : List WKind := []) : Rel → Option (List Nat) → Json
   -- Decimal `AVG`s, written back as `avg` measures (`decimalAvgsOf`).
   | .emit p@(.project (.aggregate r gs ms) qs) m, out =>
     match decimalAvgsOf gs.length ms qs m with
     | some (ms', m') =>
-      aggregateJson wideSums (writeRel schemas cat wideSums [] r none) (relKinds schemas cat r) gs ms'
+      aggregateJson (writeRel schemas cat [] r none) (relKinds schemas cat r) gs ms'
         (some (match out with
           | none => m'
           | some o => o.map (m'.getD · 0)))
     | none =>
       let h := (List.range (relKinds schemas cat p).length).map fun c =>
         ((m.idxOf? c).bind (hint[·]?)).getD .other
-      writeRel schemas cat wideSums h p (some (match out with
+      writeRel schemas cat h p (some (match out with
         | none => m
         | some o => o.map (m.getD · 0)))
   | .emit r m, out =>
     -- `hint` is for the emitted columns; `r`'s column `c` is emitted at `m.idxOf c`.
     let h := (List.range (relKinds schemas cat r).length).map fun c =>
       ((m.idxOf? c).bind (hint[·]?)).getD .other
-    writeRel schemas cat wideSums h r (some (match out with
+    writeRel schemas cat h r (some (match out with
       | none => m
       | some o => o.map (m.getD · 0)))
   | .read t, out => withCommon "read" [
@@ -1034,62 +1010,61 @@ def writeRel (schemas : Schemas) (cat : Catalog) (wideSums : Bool := false)
         obj [("fields", Json.arr (row.zipIdx.map fun (v, i) =>
           valuesLit (tys.getD i i64Type) v).toArray)]).toArray)])] out
   | .filter r c, out => withCommon "filter" [
-      ("input", writeRel schemas cat wideSums [] r none),
+      ("input", writeRel schemas cat [] r none),
       ("condition", writeExpr (relKinds schemas cat r) .bool c)] out
   | .project r es, out => withCommon "project" [
-      ("input", writeRel schemas cat wideSums [] r none),
+      ("input", writeRel schemas cat [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
         Json.arr ((es.zip (projKinds schemas ks es)).zipIdx.map fun ((e, k), i) =>
           writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
-      ("left", writeRel schemas cat wideSums [] a none), ("right", writeRel schemas cat wideSums [] b none)] out
+      ("left", writeRel schemas cat [] a none), ("right", writeRel schemas cat [] b none)] out
   | .join a b ty on, out =>
     withCommon "join" [
-      ("left", writeRel schemas cat wideSums [] a none), ("right", writeRel schemas cat wideSums [] b none),
+      ("left", writeRel schemas cat [] a none), ("right", writeRel schemas cat [] b none),
       ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", match ty with | .inner => "JOIN_TYPE_INNER" | .left => "JOIN_TYPE_LEFT")] out
   -- The current encoding, `offsetExpr`/`countExpr`: DataFusion's protobuf no
   -- longer has the deprecated `offset`/`count`.
   | .fetch r off cnt, out => withCommon "fetch" ([
-      ("input", writeRel schemas cat wideSums [] r none),
+      ("input", writeRel schemas cat [] r none),
       ("offsetExpr", obj [("literal", writeValue (.int off))])] ++
       (cnt.map fun c => [("countExpr", obj [("literal", writeValue (.int c))])]).getD []) out
   -- A branch's bare `NULL`s take the other branch's column kinds: a FULL
   -- JOIN's padding (#96).
   | .unionAll a b, out => withCommon "set" [
-      ("inputs", Json.arr #[writeRel schemas cat wideSums (relKinds schemas cat b) a none,
-        writeRel schemas cat wideSums (relKinds schemas cat a) b none]),
+      ("inputs", Json.arr #[writeRel schemas cat (relKinds schemas cat b) a none,
+        writeRel schemas cat (relKinds schemas cat a) b none]),
       ("op", "SET_OP_UNION_ALL")] out
   | .semi a b anti on, out => withCommon "join" [
-      ("left", writeRel schemas cat wideSums [] a none), ("right", writeRel schemas cat wideSums [] b none),
+      ("left", writeRel schemas cat [] a none), ("right", writeRel schemas cat [] b none),
       ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", if anti then "JOIN_TYPE_LEFT_ANTI" else "JOIN_TYPE_LEFT_SEMI")] out
   | .orderBy r keys, out => withCommon "sort" [
-      ("input", writeRel schemas cat wideSums [] r none),
+      ("input", writeRel schemas cat [] r none),
       ("sorts", Json.arr (keys.map (writeSortKey (relKinds schemas cat r))).toArray)] out
   -- Grouping by every column, with no measures.
   | .distinct r, out =>
       let ks := relKinds schemas cat r
       withCommon "aggregate" [
-        ("input", writeRel schemas cat wideSums [] r none),
+        ("input", writeRel schemas cat [] r none),
         ("groupingExpressions", Json.arr ((List.range ks.length).map fun i =>
           writeExpr ks .other (.field i)).toArray),
         ("groupings", Json.arr #[obj [("expressionReferences",
           Json.arr ((List.range ks.length).map toJson).toArray)]])] out
   | .aggregate r gs ms, out =>
-      aggregateJson wideSums (writeRel schemas cat wideSums [] r none) (relKinds schemas cat r) gs ms out
+      aggregateJson (writeRel schemas cat [] r none) (relKinds schemas cat r) gs ms out
   | .unnest r c, out => withCommon "extensionSingle" [
-      ("input", writeRel schemas cat wideSums [] r none),
+      ("input", writeRel schemas cat [] r none),
       ("detail", obj [("@type", "type.googleapis.com/sverify.Unnest"), ("column", toJson c)])] out
   | .window r part sort fns, out => withCommon "project" [
-      ("input", writeRel schemas cat wideSums [] r none),
+      ("input", writeRel schemas cat [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
         Json.arr (fns.map (writeWindow ks part sort)).toArray)] out
 
-def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List String)
-    (wideSums : Bool := false) : Json :=
+def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List String) : Json :=
   obj [
     -- The black boxes' URN (#325); the other functions are Substrait's own.
     ("extensionUrns", Json.arr #[obj [("extensionUrnAnchor", toJson 1),
@@ -1098,7 +1073,7 @@ def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List Str
       ("functionAnchor", toJson a), ("name", toJson n)] ++
       if blackBoxFns.contains (a, n) then [("extensionUrnReference", toJson 1)] else []))]).toArray),
     ("relations", Json.arr #[obj [("root", obj [
-      ("input", writeRel schemas cat wideSums [] root none), ("names", toJson names)])]])]
+      ("input", writeRel schemas cat [] root none), ("names", toJson names)])]])]
 
 /-- Schemas recorded by the parser, falling back to placeholders. -/
 def planSchemas (p : Parse.Plan) : Schemas := fun t n =>

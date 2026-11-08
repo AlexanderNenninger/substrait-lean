@@ -215,7 +215,7 @@ Polars also runs struct fields, list elements, `cardinality` and the
 higher-order functions (the body on `pl.element()` in `list.eval`; a body's
 errors are checked over every element). The SQL
 dialects refuse struct columns and struct fields. DataFusion 51
-gets no plan with them (`Expr.nestedAccess`): its consumer reads a
+gets no plan with them (`DataFusion.nestedAccess`): its consumer reads a
 reference into an expression's value as a reference into the row, which gives
 a wrong column, its `cardinality([])` is NULL, and it has no lambdas. The SQL
 dialects refuse lambdas too, DuckDB's included for now.

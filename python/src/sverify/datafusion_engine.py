@@ -37,7 +37,7 @@ def datafusion_plan(plan_json: str) -> str:
     plan = json.loads(out)
     _check_datafusion_plan(plan)
     # sverify's own remainder of doubles (#256) is DataFusion's `%` of doubles,
-    # C's `fmod` too.
+    # C's `fmod` too: a name, not a workaround, so it has no expiry.
     for e in plan.get("extensions", []):
         f = e.get("extensionFunction", {})
         if f.get("name", "").split(":")[0] == "sverify_fmod":
@@ -49,7 +49,8 @@ def datafusion_plan(plan_json: str) -> str:
 def _datafusion_variances(plan: dict) -> None:
     """Substrait's `variance` and `std_dev` say sample or population in an
     option; DataFusion has a function for each, and its consumer knows only
-    those (#54, upstream/bugs/DF-21.json)."""
+    those (#54, upstream/bugs/DF-21.json). Expires when DF-21 is fixed
+    upstream (not filed yet)."""
     exts = plan.get("extensions", [])
     names: dict[Any, str] = {
         a: base_name(n) for a, n in function_names(plan, sql.Unsupported).items()
@@ -92,7 +93,10 @@ def _check_datafusion_plan(plan: dict) -> None:
     a `substring` whose start may be negative (DataFusion puts it left of the
     beginning, the reference counts it from the end, `Text.substrWrap`) unless
     the plan asks for `LEFT_OF_BEGINNING`; and an `avg` with an integer result
-    (`AggFn.iavg`), which DataFusion computes as a double."""
+    (`AggFn.iavg`), which DataFusion computes as a double. These are
+    DataFusion's documented choices (DF-23, DF-24, DF-25, "not a bug"), as is
+    `round(x, d)`; each refusal expires with a shim from #271. `TRY_CAST`
+    expires with #58's DataFusion support."""
     _support.check(plan, "DataFusion", sql.Unsupported)
     names: dict[Any, str] = {
         a: base_name(n) for a, n in function_names(plan, sql.Unsupported).items()

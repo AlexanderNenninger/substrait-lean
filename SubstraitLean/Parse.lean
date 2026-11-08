@@ -2404,7 +2404,7 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- (`parseWindowProject`).
       let fr ← parseFrame cols sort w
       -- A sliding frame (one not from UNBOUNDED PRECEDING) is refused on
-      -- DataFusion only (`Rel.slidingFrames`).
+      -- DataFusion only (`DataFusion.slidingFrames`).
       -- `VARIANCE` and `STDDEV` over a frame are the reference's own two
       -- passes (`varOf`) over the frame's rows; writers compute them so.
       if m.fn matches .cov _ || m.fn matches .corr then
