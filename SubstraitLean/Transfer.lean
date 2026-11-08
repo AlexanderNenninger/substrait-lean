@@ -37,11 +37,17 @@ def Expr.ctors : Expr → List Ctor
 /-- A read of a profile's table: a group, an option and the plan's preferences. -/
 abbrev Read := String × String × List Behaviour
 
-/-- The options of a call's group, with the group. -/
+/-- The options of a call's group that apply to it (`optionApplies`), with
+the group: a `SUM` does not read `avg_int_result`. -/
 def ctorReads (c : Ctor) : List Read :=
   match rowOf c with
-  | some r => ((groups.lookup r.group).getD []).map (r.group, ·, [])
+  | some r => (((groups.lookup r.group).getD []).filter (optionApplies · c)).map (r.group, ·, [])
   | none => []
+
+-- A `SUM` of integers reads its group's `overflow` and
+-- `empty_group_aggregates`, and only an integer `AVG` reads `avg_int_result`.
+#guard (ctorReads (.agg .sum)).map (·.2.1) == ["overflow", "empty_group_aggregates"]
+#guard (ctorReads (.agg .iavg)).any (·.2.1 == "avg_int_result")
 
 def Expr.reads (e : Expr) : List Read := e.ctors.flatMap ctorReads
 
@@ -426,8 +432,9 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     all_goals exact hc
   · right
     have hp : (r.group, o, []) ∈ f.reads := by
-      simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map]
-      exact .inl ⟨o, ho, rfl⟩
+      simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map,
+        List.mem_filter]
+      exact .inl ⟨o, ⟨ho, optionApplies_of_scope hsc⟩, rfl⟩
     exact ⟨r, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩, hsc⟩
 
 theorem Measure.AllowedP.monoOn {I : Impl} {m : Measure} (h : ∀ p ∈ m.reads, t.LeAt u p)
@@ -534,7 +541,8 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
   have hx : ∀ c ∈ r.ctors, ∀ args, CallExtra t c args → CallExtra u c args :=
     fun c hc _ ⟨row, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hs⟩ =>
       ⟨row, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
-        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb,
+        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map, List.mem_filter]
+        exact ⟨o, ⟨ho, optionApplies_of_scope hs⟩, rfl⟩))) hi hb,
         hn⟩, hs⟩
   refine ⟨J, ⟨fun f v => ?_, fun f v w => ?_⟩, ?_⟩
   · by_cases hf : Ctor.un f ∈ r.ctors

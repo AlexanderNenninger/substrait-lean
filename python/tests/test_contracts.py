@@ -425,3 +425,20 @@ def test_sql_facts_describe_timestamps_and_dates():
         tables={"t": t.schema()},
     ).facts
     assert bounded["minute"] == "a timestamp ≥ 2026-01-01 00:00:00"
+
+
+def test_a_bound_on_abs_bounds_the_value():
+    # `abs(x) < c` bounds `x` between `-c` and `c`, so a window SUM or AVG of
+    # it raises no domain error, as under `x.between(-c, c)`.
+    t = ibis.table({"k": "int64", "ts": "int64", "x": "float64"}, name="t")
+    w = ibis.window(group_by="k", order_by="ts", preceding=1, following=0)
+    for cond, shown in [
+        (_.x.abs() < 1e300, "a double > -1e+300 and < 1e+300"),
+        (_.x.abs() <= 1e300, "a double ≥ -1e+300 and ≤ 1e+300"),
+    ]:
+        for agg in (t.x.sum(), t.x.mean()):
+            report = sv.verify(
+                t.mutate(s=agg.over(w)), requires={"t": [cond, _.x.notnull()]}, ensures=[]
+            )
+            assert not report.issues
+            assert report.facts["x"] == shown
