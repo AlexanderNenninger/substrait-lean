@@ -1,11 +1,13 @@
 # Reference semantics
 
 What sverify's plans mean. `Rel.eval` (`SubstraitLean/Rel.lean`) is the
-**reference semantics**, the strict profile plans are verified under:
+**reference semantics**, the strict profile plans are proved under:
 `verify` proves things about it, and every engine's row of the realizability
-table is its difference from it. The loose core it refines, the engine
-profiles and what a proof under the reference guarantees are in
-[core-semantics.md](core-semantics.md#terminology). This page collects the choices
+table is its difference from it. The reference is one profile of the core,
+which does a superset of operations; the other profiles and the engines are
+in [core, profiles and engines](core-semantics.md#core-profiles-and-engines),
+and what a proof under the reference guarantees in
+[core-semantics.md](core-semantics.md#what-a-proof-under-the-reference-guarantees). This page collects the choices
 the project owner decided, mostly in comments on epic
 [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185), and
 says for each row whether it holds on `main` or which issue or pull request
@@ -34,7 +36,7 @@ The reference is a relation: for each input it allows a set of results
 only where the reference may raise; resource errors, such as running out of
 memory, are excluded ([D16](core-semantics.md#d16-engine-correctness)). Lean
 proves partial correctness today, an allowed result or an error
-(`Rel.duckdb_shim_sound`); for a plan verified to never raise the two agree
+(`Rel.duckdb_shim_sound`); for a plan proved to never raise the two agree
 (`Rel.duckdb_sound`). `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
 witness (`Rel.eval_allowed`), and `verify` proves its theorems through it.
 
@@ -70,7 +72,7 @@ it does not yet flag the other choices.
 
 The reference is not a model of any engine, DuckDB included. It is stricter
 than every engine in most options: where engines disagree on an edge case it
-raises, so a verified plan never reaches that case. Each engine is
+raises, so a proved plan never reaches that case. Each engine is
 characterized as a **diff** against it (`characterization/<engine>/`): which
 behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
 which the translation refuses. The shims are proved against the reference in
@@ -98,8 +100,8 @@ Where the reference departs from Substrait, and why:
 
 | Override | What the reference does | Why |
 |---|---|---|
-| One zero | `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`, and `GROUP BY`, `DISTINCT` and joins see one zero. | DuckDB, Spark and Snowflake have one zero ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89)); IEEE's two zeros, which DataFusion keeps apart, surprise `-0.0 >= 0`. |
-| One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Spark and Snowflake treat NaN this way (#89); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
+| One zero | `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`, and `GROUP BY`, `DISTINCT` and joins see one zero. | SQL users expect `-0.0 >= 0` ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89)). DuckDB, Polars and Spark keep IEEE's two zeros in arithmetic (`zero_sign` `IEEE` in their tables; [duckdb-R14](../characterization/duckdb/facts/duckdb-R14.json), [spark-zero-sign](../characterization/spark/facts/spark-zero-sign.json)), and their writers read results with one zero (`canon`); DataFusion keeps them apart in its order ([D36](core-semantics.md#d36-doubles-have-one-zero-and-one-nan)). |
+| One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Polars and Spark compare, group and sort NaN this way (`nan_equality` `NAN_IS_NAN`, `nan_order` `GREATEST` in their tables; #89, D36); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
 | The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), every relation a window reads fewer than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³ rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, `COUNT(*)` is a 64-bit integer in the reference and in every engine, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER` and `SUM` ([#437](https://github.com/AlexanderNenninger/substrait-lean/issues/437)). |
 
 Engine quirks belong in profiles, never in the reference. While sverify is on
@@ -173,7 +175,7 @@ fires, `Rel.eval`'s value is not the answer.
 | `overflow: SILENT` / `SATURATE` | Wrap-around / clamp at the declared width, when the plan asks. | ✓ for integer `+ - *` and negation: `UnFn.fit` on the exact result ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241)). DuckDB runs them through the generated lowering (128-bit arithmetic); Polars, Spark, Snowflake and DataFusion refuse them for now. `sum`, `abs` and decimals accept only `ERROR`. |
 | `divide` | Truncates toward zero (`Int.tdiv`). | ✓ |
 | Division or `modulus` by zero | An error when `on_division_by_zero` is omitted or `ERROR`; `NULL` only when the plan asks. | ✓ (`Rel.eval` gives NULL there; `verify` reports the error, so that value is never an answer) |
-| `modulus` | `division_type` TRUNCATE: the remainder takes the dividend's sign (`Int.tmod`). | ✓ A plan may state `division_type: TRUNCATE`; the parser refuses `FLOOR`, which is not modelled yet. |
+| `modulus` | `division_type` TRUNCATE: the remainder takes the dividend's sign (`Int.tmod`). | ✓ A plan may state `division_type: TRUNCATE`. The parser reads `FLOOR` (`Expr.floorModOf`, Polars's `%`), which the reference profile refuses and `semantics="polars"` allows. |
 
 Decisions: #185 "Decided: what the reference does when a plan omits an
 option"; #202 "Decided (2026-11-01)"; #209 "Decided".
@@ -182,13 +184,13 @@ option"; #202 "Decided (2026-11-01)"; #209 "Decided".
 
 | Topic | Reference | Status |
 |---|---|---|
-| `fp64` | IEEE 754 binary64, computed with Lean's native `Float`. | ✓ |
+| `fp64` | IEEE 754 binary64. `+ − × ÷` are the exact result rounded once, to nearest, ties to even ([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once), `FloatArith.lean`); `pow`, `log` and the other libm functions use Lean's native `Float`. | ✓ |
 | `fp32` | IEEE binary32. | **Not yet.** `fp32` arithmetic is refused (fact [duckdb-R12](../characterization/duckdb/facts/duckdb-R12.json), #208); [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) models it. |
-| Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209) |
+| Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209; [D36](core-semantics.md#d36-doubles-have-one-zero-and-one-nan)) |
 | NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. A NaN's sign is no value of the reference: the sign of a NaN an operation creates depends on the platform, negative on Linux x86_64 and positive on macOS arm64, in DuckDB and Polars alike ([duckdb-exec-platform](../characterization/duckdb/facts/duckdb-exec-platform.json)). | ✓ |
-| **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs") |
+| **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs"; [D37](core-semantics.md#d37-no-operation-creates-a-nan)) |
 | `power(-inf, y)`, `y` finite and not an integer | A domain error, as for a finite negative base. IEEE 754 gives `+inf` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5` is a square root and gives NaN; raising keeps every engine within the reference with no shim, and a plan meets it only where `-inf` reaches a fractional power. `power(-inf, 2.0)` is `+inf` and `power(-inf, 3.0)` is `-inf`, as before. | ✓ (`negInfPow` in `Safety.lean`; DuckDB's value in `Profile.duckdb`, fact [duckdb-R15-power-neginf](../characterization/duckdb/facts/duckdb-R15-power-neginf.json)) |
-| No operation creates `±∞` | A `±∞` from the data passes through. An operation on finite doubles whose IEEE result is `±∞` raises: `+`, `-`, `*`, `/` and `power` that overflow (`1e308 * 10`, `power(10, 400)`, `power(0, -1)`), `exp` past `709.78`, and a `SUM`, `AVG`, variance, covariance or correlation of finite values that overflows. As for a `SUM` that leaves 64 bits, `verify` rules the error out by an inferred precondition: proved from the bounds where they do it, otherwise listed in `Report.assumed` ("stays finite where its inputs are") and checked on the data, where the SQL sverify writes raises `overflow to infinity`. With no NaN and no `±∞` in the inputs, there is none in the outputs. | ✓ ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)): `Issue.infinite` (`BinFn.infIssue`, `UnFn.infIssue`, `Measure.makesInf` in `Safety.lean`), on DuckDB and Polars. A `SUM` or `AVG` of values within `2⁴⁰⁰` over at most `2³²` rows (`max_rows`) is proved finite (#85's `floatBound`); a single operation's result has no bound in the checker, so its precondition is always checked on the data ([#582](https://github.com/AlexanderNenninger/substrait-lean/issues/582) proves it from bounds). `Rel.eval` keeps the IEEE value on the rows the precondition excludes, which is what DuckDB and Polars give without the check ([duckdb-double-overflow](../characterization/duckdb/facts/duckdb-double-overflow.json)), so the lift of DuckDB's SQL with `semantics="duckdb"` states it exactly. Substrait's YAMLs leave it unspecified ([ST-9](../upstream/bugs/ST-9.json)). |
+| No operation creates `±∞` | A `±∞` from the data passes through. An operation on finite doubles whose IEEE result is `±∞` raises: `+`, `-`, `*`, `/` and `power` that overflow (`1e308 * 10`, `power(10, 400)`, `power(0, -1)`), `exp` past `709.78`, and a `SUM`, `AVG`, variance, covariance or correlation of finite values that overflows. As for a `SUM` that leaves 64 bits, `verify` rules the error out by an inferred precondition: proved from the bounds where they do it, otherwise listed in `Report.assumed` ("stays finite where its inputs are") and checked on the data, where the SQL sverify writes raises `overflow to infinity`. With no NaN and no `±∞` in the inputs, there is none in the outputs. | ✓ ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)): `Issue.infinite` (`BinFn.infIssue`, `UnFn.infIssue`, `Measure.makesInf` in `Safety.lean`), on DuckDB and Polars. A `SUM` or `AVG` of values within `2⁴⁰⁰` over at most `2³²` rows (`max_rows`) is proved finite (#85's `floatBound`); a single operation's result has no bound in the checker, so its precondition is always checked on the data ([#582](https://github.com/AlexanderNenninger/substrait-lean/issues/582) proves it from bounds). `Rel.eval` keeps the IEEE value on the rows the precondition excludes, which is what DuckDB and Polars give without the check ([duckdb-double-overflow](../characterization/duckdb/facts/duckdb-double-overflow.json)), so the lift of DuckDB's SQL with `semantics="duckdb"` states it exactly. Substrait's YAMLs leave it unspecified ([ST-9](../upstream/bugs/ST-9.json)). [D38](core-semantics.md#d38-no-operation-on-finite-doubles-overflows-to-infinity) |
 | Division by zero | An error when `on_division_by_zero` is omitted or `ERROR`. `IEEE`, `LIMIT` and `NULL` when the plan asks. | ✓ (#204) |
 | Domain errors | `sqrt`, `log`, `asin`, `acos`, `logb`, `atan2(0, 0)` and shifts outside their domain raise (`on_domain_error`, `on_log_zero` = `ERROR`). | ✓ (#215) |
 | `round(x, d)` | Halves away from zero, as DuckDB 2.0 computes it ([`duckdb-round-digits-2`](../characterization/duckdb/facts/duckdb-round-digits-2.json)): with `m = 10^abs(d)`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m` for `d < 0`, `x` itself where that is not finite (`round(1.5e308, -308)` is `1.5e308`), and 0 for `d < 0` when `m` is infinite (`round(42, -1000)` is 0). `±∞` and NaN stay. DataFusion's `round(x · 10ᵈ) / 10ᵈ` differs, so DataFusion refuses it until #271. | ✓ (#335) |
@@ -246,7 +248,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `right`, `lpad`, `rpad` | Of a constant count, in characters. `right(s, n)` is the last `n` characters, or all but the first `-n` for a negative `n`. `lpad(s, n, p)` and `rpad(s, n, p)` are the first `n` characters of `s`, or `s` filled to `n` with the constant `p` repeated and cut, as DuckDB pads; `''` for `n ≤ 0`. An empty `p` is refused, as DuckDB raises where `s` is shorter. | ✓ (#808) |
 | `split_part`, `concat_ws` | `split_part(s, sep, n)` of a constant `n` is piece `n` of `string_split(s, sep)` (a black box): from 1, from the end for a negative `n`, `''` for `0` and past the pieces, NULL if `s` or `sep` is. `string_split(s, sep)[n]` is the list element. `concat_ws(sep, …)` joins the strings that are not NULL with `sep`: `''` if all are NULL, NULL if `sep` is. | ✓ (#808) |
 | `md5`, `sha256` | Lowercase hex of the UTF-8 bytes' digest; never NULL for a string. DuckDB's `hash()` is refused: it is the engine's own and changes between versions. | ✓ (#50) |
-| Not modelled | `translate` (it works on grapheme clusters). | refused |
+| Refused | `translate` (it works on grapheme clusters). | refused |
 
 ## Temporal
 
@@ -263,7 +265,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `epoch`, `extract(epoch …)` | The seconds since 1970-01-01, a DOUBLE: the microseconds as a double, divided by 10⁶, as DuckDB computes them. `epoch_us` is the microseconds. | ✓ on DuckDB (#809); other engines refuse it until #271 |
 | `make_date`, `last_day` | `make_date(y, m, d)`: the date by `days_from_civil`, NULL if an argument is; an error for a month or day outside the calendar, as in DuckDB, and for a year outside 1 to 9999, where DuckDB gives a date. `last_day(d)` is the last day of the month, a DATE. | ✓ (#809); `make_date` of columns on DuckDB only until #271 |
 | Names and ISO parts | `dayname` and `monthname` in English, `isodow` from Monday 1 to Sunday 7, `isoyear` the year of the week's Thursday. | ✓ (#809) |
-| Range | **Dates: the SQL standard's, 0001-01-01 to 9999-12-31** (`Time.dayMin`, `Time.dayMax`; decided on #251). Every engine represents them. Date arithmetic (adding days or months) whose operand or result leaves them is an error, reported by `verify` and raised by the engines as "outside the reference's dates". With constant operands (TPC-H Q6's `DATE '1994-01-01' + INTERVAL 1 YEAR`) this is decided when the plan is written, and the SQL has no guard. **Not yet the reference's own:** `date_part` is NULL outside chrono's years −262143 to 262142, and calendar truncations raise outside DataFusion's ±2⁶³ nanoseconds. | ✓ date arithmetic ([#251](https://github.com/AlexanderNenninger/substrait-lean/issues/251)); `date_part` and truncation ranges open |
+| Range | **Dates: the SQL standard's, 0001-01-01 to 9999-12-31** (`Time.dayMin`, `Time.dayMax`; decided on #251). Every engine represents them. Date arithmetic (adding days or months) whose operand or result leaves them is an error, reported by `verify` and raised by the engines as "outside the reference's dates". With constant operands (TPC-H Q6's `DATE '1994-01-01' + INTERVAL 1 YEAR`) this is decided when the plan is written, and the SQL has no guard. Timestamps are those of the dates, 0001-01-01 00:00:00 to 9999-12-31 23:59:59.999999 (`Time.tsMin`, `Time.tsMax`; [D32](core-semantics.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)): `date_part`, `strftime`, adding months, truncation to a week or longer and `date_bin` raise outside them, "outside the reference's timestamps". | ✓ date arithmetic ([#251](https://github.com/AlexanderNenninger/substrait-lean/issues/251)); calendar functions (D32) |
 
 ## Nested: lists and structs
 
@@ -436,7 +438,7 @@ the writers in `python/src/sverify/black_box.py`.
 | `base64` | `base64(encode(s))` (also `to_base64`): the UTF-8 bytes of a string in base64. Strict, and not NULL for a string. Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
 | `printf`, `format` | `printf(fmt, x)` (C's format strings) and `format(fmt, x)` (`{}` fields) of one integer, string or boolean ([#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328)). Strict; raise where a field does not fit the value or has none, which `verify` reports as a domain error; a string where they do not. A double or a date is refused: the model's value of either is an integer, which the function could not tell apart from one (`duckdb-printf`). More values are refused. Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them until #271 |
 | `octet_length`, `strlen` | `octet_length(encode(s))` and `strlen(s)`: the number of UTF-8 bytes of a string (#328). Strict, not NULL for a string, and at least 0. Lean evaluates them. | ✓ on DuckDB; other engines refuse them until #271 |
-| `signbit` | `signbit(x)` of a double: its sign bit (#328), TRUE for `-0.0` and a negative NaN. Strict, and not NULL for a double. The model's codes have one zero and one NaN, so Lean evaluates it everywhere else and refuses to print rows there (`duckdb-signbit`). | ✓ on DuckDB; other engines refuse it until #271 |
+| `signbit` | `signbit(x)` of a double: its sign bit (#328), TRUE for `-0.0` and a negative NaN. Strict, and not NULL for a double. The reference reads doubles with one zero and one NaN, so Lean evaluates it everywhere else and refuses to print rows there (`duckdb-signbit`). | ✓ on DuckDB; other engines refuse it until #271 |
 | `yearweek` | `yearweek(d)` of a date: its ISO year times 100 plus its ISO week, the week subtracted in the years up to 0 (#328, `duckdb-yearweek`). Strict, between -587764053 and 588158053, and NULL for an infinite date and before 5877641-01-04 BC, where DuckDB raises (as `date_part` is NULL outside chrono's dates). Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
 | `weekday` | `weekday(d)` is `dayofweek(d)`, `date_part('dow', d)`: modelled exactly, Sunday 0 (#328). | ✓ |
 | Vectors | `list_cosine_similarity`, `list_cosine_distance`, `list_distance`, `list_inner_product` (also `list_dot_product`), `list_negative_inner_product` and `array_cross_product` of two lists of doubles ([#327](https://github.com/AlexanderNenninger/substrait-lean/issues/327)). Strict; raise where a list holds a NULL or the two differ in length (the cross product: are not of length 3). The similarity is at least `-1.0` and the cosine distance at least `+0.0`: NULL for empty lists, NaN for a zero vector or one with NaN or an infinity, so neither has an upper bound. The distance is not NULL and at least `+0.0`; the inner products and the cross product are not NULL (`duckdb-list-vectors`). The model has no fixed-size ARRAY, so DuckDB's `array_cosine_similarity`, `array_distance`, `array_inner_product`, … are read as the functions of lists. Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them until #271 |
@@ -493,7 +495,7 @@ give a backend-independent meaning today.
 
 Which Ibis backends implement this semantics fully: none of them on every
 row. Ibis-on-DataFusion is closest (it differs on `-0.0 == 0.0` and on
-`max` of NaN). To run a verified expression with exactly this meaning, run
+`max` of NaN). To run a proved expression with exactly this meaning, run
 the plan: `sverify.engines.run(con, plan, engine)` on DuckDB, Polars or
 Spark ([the engines](stability.md#engines)), whose translations raise where
 they would differ.
@@ -536,8 +538,8 @@ engine differs ([the engines](stability.md#engines)).
   Several rewrites are stronger than that and hold as exact list equality.
 * Semi joins and `DISTINCT` are their own operators. `Rel.semi` keeps the left
   rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
-  the first occurrence of every row (NULLs equal, doubles by their codes: one
-  zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
+  the first occurrence of every row (NULLs equal, doubles by their codes as
+  the reference reads them: one zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
   `DISTINCT` as an aggregate with one empty grouping, which its own consumer
   rejects; the parser reads it as "all columns".
 * Aggregates have one grouping set. `Rel.aggregate` outputs one row per
@@ -610,7 +612,8 @@ A theorem about `Rel.eval` holds for the model; what links it to a real run
 is trusted: the size hypothesis (an override of Substrait,
 [Overrides](#overrides)), the frontends, black boxes as DuckDB's functions,
 the engines' match with their profiles, the printers and the parser, and
-native `Float`. [proofs.md, What is trusted](proofs.md#what-is-trusted)
+native `Float` for `pow`, `log` and the other libm functions (`+ − × ÷` are
+exact since D31). [proofs.md, What is trusted](proofs.md#what-is-trusted)
 states each, with its status.
 
 ## Where things are decided
@@ -624,4 +627,5 @@ states each, with its status.
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
 | Float aggregates as correctly rounded exact sums, two NULL equalities, the size hypothesis, lexical lambdas | [core-semantics.md](core-semantics.md#decisions): D25 to D28, [#922](https://github.com/AlexanderNenninger/substrait-lean/issues/922) |
 | Statistical aggregates as correctly rounded exact moments | [core-semantics.md](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments): D30, [#918](https://github.com/AlexanderNenninger/substrait-lean/issues/918) |
+| Options differ from the reference only on their scopes | [core-semantics.md](core-semantics.md#d34-an-option-differs-from-the-reference-only-on-its-scope): D34 |
 | The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md), [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444) |

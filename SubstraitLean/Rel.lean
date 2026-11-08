@@ -277,4 +277,11 @@ theorem Rel.eval_arity {cat : Catalog} (hcat : cat.WF) :
       obtain ⟨_, _, _, _, rfl⟩ := mem_unnestRow h
       simp [arity, eval_arity hcat hwf.1 x hx]
 
+theorem flatMap_congr {α β : Type} {l : List α} {f g : α → List β}
+    (h : ∀ a ∈ l, f a = g a) : l.flatMap f = l.flatMap g := by
+  induction l with
+  | nil => simp
+  | cons a l ih =>
+    simp only [List.flatMap_cons, h a (by simp), ih fun b hb => h b (by simp [hb])]
+
 end Substrait

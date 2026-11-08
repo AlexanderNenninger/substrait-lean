@@ -89,6 +89,27 @@ def test_every_unproved_row_names_a_fact(table):
 
 
 @needs_repo
+def test_every_tested_row_names_its_issue_and_version(table):
+    """A row that rests on no theorem names the issue tracking its proof
+    (#1131, `EngineProfile.tracked`) and the engine version its facts were
+    checked at, which is the profile's and each cited fact's (#1166)."""
+    for engine, e in table.items():
+        for r in e["rows"]:
+            if r["case"] == "uncharacterized" or r["evidence"] is None:
+                continue
+            if r["evidence"] != "proved":
+                assert isinstance(r["issue"], int), (engine, r["option"])
+                assert r["version"] == e["version"], (engine, r["option"])
+            for i in r["facts"]:
+                if "::" in i:
+                    continue
+                fact = ROOT / "characterization" / engine / "facts" / f"{i}.json"
+                if fact.exists():
+                    v = json.loads(fact.read_text())["engine_version"]
+                    assert v.removeprefix("py-") == e["version"], (engine, i, v)
+
+
+@needs_repo
 def test_every_row_names_real_facts(table):
     for engine, e in table.items():
         for r in e["rows"]:
@@ -107,14 +128,15 @@ def test_shim_counts(table):
 
 
 def test_polars_shims_match_the_python_table(table):
-    """Each shim of `_polars_shims.SHIMS` is proved as `Polars.<name>` by some
-    row, and each Polars shim the table proves by `Polars.<name>` is a row of
+    """Each shim of `_polars_shims.SHIMS` is proved as `Polars.<name>`, or as
+    `Shim.<name>` where another engine shares it (`Shims.lean`), by some row,
+    and each Polars shim the table proves by `Polars.<name>` is a row of
     `SHIMS` with the same cost."""
     rows = table["polars"]["rows"]
     theorems = {r.get("theorem") for r in rows}
     by_name = {s.name: s for s in SHIMS}
     for s in SHIMS:
-        assert f"Polars.{s.name}" in theorems, s.name
+        assert {f"Polars.{s.name}", f"Shim.{s.name}"} & theorems, s.name
     costs = {s["name"]: s["cost"] for s in table["polars"]["shims"]}
     for r in rows:
         if r["case"] == "shim" and r.get("theorem") == f"Polars.{r['shim']}":

@@ -454,13 +454,13 @@ class Dialect:
     def date_part(self, part: str, ts: str) -> str:
         """`Time.datePart` of a timestamp: the proleptic Gregorian calendar,
         `week` the ISO week, `dow` from Sunday = 0, `millisecond` and
-        `microsecond` within the minute; NULL outside the dates chrono
-        represents (the years -262143 to 262142)."""
+        `microsecond` within the minute. Outside the reference's timestamps
+        the writer raises first (D32), so any value does there."""
         raise Unsupported(f"{self.name}: date_part is not implemented")
 
     def day_part(self, part: str, d: str) -> str:
-        """`UnFn.dayPart`: the part of a DATE's midnight, for a date chrono
-        represents (the caller checks)."""
+        """`UnFn.dayPart`: the part of a DATE's midnight, for a date in the
+        reference's dates (the caller checks)."""
         return self.date_part(part, self.date_to_time(d))
 
     def date_trunc(self, unit: str, ts: str) -> str:
@@ -525,7 +525,7 @@ class Dialect:
         return f"({d} - DATE '1970-01-01')"
 
     def date_to_time(self, d: str) -> str:
-        """The midnight of a DATE, for one `chrono` represents."""
+        """The midnight of a DATE, for one in the reference's dates."""
         return self.cast(d, "time")
 
     def date_add_days(self, d: str, n: str) -> str:
@@ -958,7 +958,8 @@ def _timestamp_text(micros: int) -> str:
         ts = datetime(1970, 1, 1) + timedelta(microseconds=micros)
     except OverflowError as e:
         raise Unsupported(f"timestamp {micros}µs is out of range") from e
-    return ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+    # `%Y` is not zero-padded on every platform (glibc writes year 1 as `1`).
+    return f"{ts.year:04d}-" + ts.strftime("%m-%d %H:%M:%S.%f")
 
 
 def _date_text(days: int) -> str:
@@ -1714,8 +1715,8 @@ def _declared_double(fns: dict[int, str], j: Any) -> bool:
             return out == "float"
         name = fns.get(f.get("functionReference", 0))
         if name is None or _base_name(name) not in (
-            *_ARITHMETIC_FNS, "coalesce", "nullif", "greatest", "least", "nanvl", "round",
-            "floor", "ceil",
+            *_ARITHMETIC_FNS, "coalesce", "nullif", "greatest", "least", "round", "floor",
+            "ceil",
         ):  # fmt: skip
             return False
         args = f.get("arguments")
@@ -3357,13 +3358,6 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return a
         case (("is_nan" | "isnan"), [a]):
             return Bin("eq", a, Lit(math.nan, "float"))
-        # `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
-        # zero: Lean's `canonical`, read back as `Parse.mkCall` reads it.
-        case "nanvl", [a, Lit(value=float(v))] if math.isnan(v):
-            match a:
-                case Bin(op="fadd", left=x, right=Lit(value=0 | 0.0)):
-                    return x
-            return a
         case (("and" | "or"), [a, *rest]):
             for b in rest:
                 a = Bin(name, a, b)  # type: ignore[arg-type]
@@ -3540,12 +3534,20 @@ def numbers_copies(w: Window) -> bool:
     )
 
 
+#: The measures whose value does not depend on the order of their rows (the
+#: reference's double `SUM` and `AVG` are correctly rounded, `floatSumCR_perm`).
+_ORDER_FREE_FNS = frozenset({"count", "sum", "fsum", "avg", "iavg", "min", "max"})
+
+
 def order_matters(r: Rel) -> bool:
     """Does the result's row order matter (a FETCH, a window or a sort anywhere
     the order reaches the result)?"""
     match r:
         case Window(input=i) if numbers_copies(r):
             return order_matters(i)
+        case Aggregate(groups=(), measures=ms) if all(m.fn in _ORDER_FREE_FNS for m in ms):
+            # One row whatever the input's order, as a margin check's count (#929).
+            return False
         case Fetch() | Window() | OrderBy():
             return True
         case Read() | Values():
@@ -4619,41 +4621,36 @@ class _Writer:
         )
 
     def date_trunc(self, unit: str, ts: str) -> str:
-        """`Time.trunc`. To a week or longer, DataFusion computes in nanoseconds
-        and fails outside ±2⁶³ ns (`Issue.overflow`): so does the SQL. To a day
-        or less it wraps below -2⁶³ µs, which no engine's timestamps reach."""
+        """`Time.trunc`. To a week or longer it raises outside the reference's
+        timestamps (`Issue.overflow`, D32). To a day or less it wraps below
+        -2⁶³ µs, which no engine's timestamps reach."""
         d = self.d
         t = d.date_trunc(unit, ts)
         if unit not in ("week", "month", "quarter", "year") or not d.guards:
             return t
-        lo, hi = d.timestamp_lit(NS_MIN), d.timestamp_lit(NS_MAX)
-        fail = d.raise_(f"date_trunc to a {unit} outside ±2^63 ns", ts, "time")
+        lo, hi = d.timestamp_lit(TS_MIN), d.timestamp_lit(TS_MAX)
+        fail = d.raise_(f"date_trunc to a {unit} {OUTSIDE_TS}", ts, "time")
         return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
 
-    def chrono_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
-        """`r`, raising where the timestamp `ts` is outside the years chrono
-        represents (DataFusion fails there)."""
+    def ts_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
+        """`r`, raising where the timestamp `ts` is outside the reference's
+        timestamps (D32)."""
         d = self.d
         if not d.guards:
             return r
-        lo, hi = d.int_lit(PART_MIN), d.int_lit(PART_MAX)
-        fail = d.raise_(f"{what} outside the years chrono represents", ts, kind)
+        lo, hi = d.int_lit(TS_MIN), d.int_lit(TS_MAX)
+        fail = d.raise_(f"{what} {OUTSIDE_TS}", ts, kind)
         return d.case_when(f"({d.time_micros(ts)} NOT BETWEEN {lo} AND {hi})", fail, r)
 
     def strftime(self, ts: str, fmt: str) -> str:
-        """`Time.strftime`, from `date_part`s: `%Y` padded to four digits,
-        with a sign outside 0 to 9999, as chrono writes it."""
+        """`Time.strftime`, from `date_part`s: `%Y` padded to four digits (the
+        reference's years are 0001 to 9999, D32)."""
         d = self.d
 
         def part(p: str, width: int) -> str:
             return d.zero_pad(d.date_part(p, ts), width)
 
-        y = d.date_part("year", ts)
-        year = (
-            f"(CASE WHEN {y} BETWEEN 0 AND 9999 THEN {d.zero_pad(y, 4)} "
-            f"WHEN {y} > 9999 THEN {d.concat(d.str_lit('+'), d.int_to_str(y))} "
-            f"ELSE {d.concat(d.str_lit('-'), d.zero_pad(f'(- {y})', 4))} END)"
-        )
+        year = d.zero_pad(d.date_part("year", ts), 4)
         pieces = {
             "%Y": year, "%m": part("month", 2), "%d": part("day", 2), "%H": part("hour", 2),
             "%M": part("minute", 2), "%S": part("second", 2), "%j": part("doy", 3),
@@ -4666,19 +4663,14 @@ class _Writer:
 
     def date_range(self, x: str, f: Callable[[str], str], lo: int, hi: int, what: str) -> str:
         """`rangeIssue`: the DATE `f(x)`, raising unless `x` and it are within
-        `[lo, hi]` days (DataFusion fails, or gives garbage). `f` sees only
-        dates in range, so the engine's own range errors cannot come first."""
+        `[lo, hi]` days. `f` sees only dates in range, so the engine's own range
+        errors cannot come first."""
         d = self.d
         if not d.guards:
             return f(x)
         lo_, hi_ = d.int_lit(lo), d.int_lit(hi)
         r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {lo_} AND {hi_} THEN {x} END)")
-        where = (
-            OUTSIDE_DATES
-            if (lo, hi) == (DAY_MIN, DAY_MAX)
-            else "outside the dates DataFusion computes"
-        )
-        fail = d.raise_(f"{what} {where}", x, "date")
+        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date")
         # NULL (so not raising) where `x` or the result is NULL.
         bad = (
             f"({d.date_days(x)} NOT BETWEEN {lo_} AND {hi_} "
@@ -4835,19 +4827,14 @@ class _Writer:
         raise Unsupported(f"{ka} {sym} {kb} is not supported")
 
 
-#: DataFusion truncates to calendar units exactly from here to here
-#: (`Time.nsMin`, `Time.nsMax`, in microseconds).
-NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
 #: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`,
-#: `Time.dayMax`, #251); the days chrono represents (`Time.chronoDayMin`,
-#: `Time.chronoDayMax`), the timestamps (`Time.partMin`, `Time.partMax`), and
-#: the days within ±2⁶³ ns (`Time.nsDayMin`, `Time.nsDayMax`).
+#: `Time.dayMax`, #251), and its timestamps, their midnight to the last
+#: microsecond of 9999-12-31 (`Time.tsMin`, `Time.tsMax`, D32).
 DAY_MIN, DAY_MAX = -719162, 2932896
-#: What leaving the reference's dates is called in an error.
+TS_MIN, TS_MAX = -62135596800000000, 253402300799999999
+#: What leaving the reference's dates or timestamps is called in an error.
 OUTSIDE_DATES = "outside the reference's dates (0001-01-01 to 9999-12-31)"
-CHRONO_DAY_MIN, CHRONO_DAY_MAX = -96465292, 95026236
-PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
-NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
+OUTSIDE_TS = "outside the reference's timestamps (0001-01-01 to 9999-12-31)"
 
 
 def like_pattern(p: str) -> str:

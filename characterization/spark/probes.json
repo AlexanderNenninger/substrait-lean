@@ -2240,6 +2240,97 @@
     "ansi=true": "(abcd, 1)",
     "ansi=false": "(abcd, 1)"
    }
+  },
+  {
+   "construct": "is-null-kinds",
+   "sql": "SELECT b IS NULL, d IS NULL, s IS NULL FROM VALUES (CAST(NULL AS BIGINT), CAST(NULL AS DOUBLE), CAST(NULL AS STRING)), (0L, CAST('NaN' AS DOUBLE), ''), (-9223372036854775808L, -0.0D, 'ß') AS t(b, d, s)",
+   "observed": {
+    "ansi=true": "(True, True, True); (False, False, False); (False, False, False)",
+    "ansi=false": "(True, True, True); (False, False, False); (False, False, False)"
+   }
+  },
+  {
+   "construct": "bigint-to-double",
+   "sql": "SELECT CAST(x AS DOUBLE) FROM VALUES (9007199254740993L), (9007199254740995L), (-9223372036854775808L), (9223372036854775807L), (CAST(NULL AS BIGINT)) AS t(x)",
+   "observed": {
+    "ansi=true": "(9007199254740992.0); (9007199254740996.0); (-9.223372036854776e+18); (9.223372036854776e+18); (NULL)",
+    "ansi=false": "(9007199254740992.0); (9007199254740996.0); (-9.223372036854776e+18); (9.223372036854776e+18); (NULL)"
+   }
+  },
+  {
+   "construct": "timestamp-to-date",
+   "sql": "SELECT CAST(CAST(t AS DATE) AS STRING) FROM VALUES (TIMESTAMP_NTZ'1969-12-31 23:59:59.999999'), (TIMESTAMP_NTZ'0001-01-01 00:00:00'), (TIMESTAMP_NTZ'9999-12-31 23:59:59.999999') AS v(t)",
+   "observed": {
+    "ansi=true": "(1969-12-31); (0001-01-01); (9999-12-31)",
+    "ansi=false": "(1969-12-31); (0001-01-01); (9999-12-31)"
+   }
+  },
+  {
+   "construct": "micros-to-timestamp",
+   "sql": "SELECT CAST(CAST(timestamp_micros(u) AS TIMESTAMP_NTZ) AS STRING) FROM VALUES (-1L), (0L), (-62135596800000000L), (253402300799999999L) AS t(u)",
+   "observed": {
+    "ansi=true": "(1969-12-31 23:59:59.999999); (1970-01-01 00:00:00); (0001-01-01 00:00:00); (9999-12-31 23:59:59.999999)",
+    "ansi=false": "(1969-12-31 23:59:59.999999); (1970-01-01 00:00:00); (0001-01-01 00:00:00); (9999-12-31 23:59:59.999999)"
+   }
+  },
+  {
+   "construct": "timestamp-to-micros",
+   "sql": "SELECT unix_micros(CAST(t AS TIMESTAMP_LTZ)) FROM VALUES (TIMESTAMP_NTZ'1969-12-31 23:59:59.999999'), (TIMESTAMP_NTZ'0001-01-01 00:00:00'), (TIMESTAMP_NTZ'9999-12-31 23:59:59.999999') AS v(t)",
+   "observed": {
+    "ansi=true": "(-1); (-62135596800000000); (253402300799999999)",
+    "ansi=false": "(-1); (-62135596800000000); (253402300799999999)"
+   }
+  },
+  {
+   "construct": "unix-date-diff",
+   "sql": "SELECT CAST(unix_date(a) AS BIGINT) - CAST(unix_date(b) AS BIGINT) FROM VALUES (DATE'0001-01-01', DATE'9999-12-31'), (DATE'9999-12-31', DATE'0001-01-01'), (DATE'1969-12-31', DATE'1970-01-01') AS t(a, b)",
+   "observed": {
+    "ansi=true": "(-3652058); (3652058); (-1)",
+    "ansi=false": "(-3652058); (3652058); (-1)"
+   }
+  },
+  {
+   "construct": "floor-remainder-bigint",
+   "sql": "SELECT u - (((u - 3L) % 10L + 10L) % 10L) FROM VALUES (-1L), (-7L), (7L), (0L), (-9223372036854775805L) AS t(u)",
+   "note": "date_bin's floor, as sql/core/temporal.py writes it: `%` truncates, `+ k) % k` floors",
+   "observed": {
+    "ansi=true": "(-7); (-7); (3); (-7); (-9223372036854775807)",
+    "ansi=false": "(-7); (-7); (3); (-7); (-9223372036854775807)"
+   }
+  },
+  {
+   "construct": "decimal-to-double-text",
+   "sql": "SELECT CAST(CAST(CAST('0.1' AS DECIMAL(38,37)) AS STRING) AS DOUBLE), CAST(CAST(CAST('2.5' AS DECIMAL(10,1)) AS STRING) AS DOUBLE), CAST(CAST(CAST('-0.0' AS DECIMAL(5,1)) AS STRING) AS DOUBLE), CAST(CAST(CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0)) AS STRING) AS DOUBLE), CAST(CAST(CAST('0.30000000000000000444089209850062616169' AS DECIMAL(38,38)) AS STRING) AS DOUBLE)",
+   "observed": {
+    "ansi=true": "(0.1, 2.5, 0.0, 1e+38, 0.3)",
+    "ansi=false": "(0.1, 2.5, 0.0, 1e+38, 0.3)"
+   }
+  },
+  {
+   "construct": "double-to-decimal-round",
+   "sql": "SELECT CAST((CAST(CAST(ROUND(x * 100.0D) AS BIGINT) AS DECIMAL(10,0)) * 0.01) AS DECIMAL(10,2)) FROM VALUES (2.675D), (-2.675D), (0.125D), (1.005D) AS t(x)",
+   "note": "`decimal_cast` of a double at scale 2, as sql/spark.py writes it",
+   "observed": {
+    "ansi=true": "(2.68); (-2.68); (0.13); (1.00)",
+    "ansi=false": "(2.68); (-2.68); (0.13); (1.00)"
+   }
+  },
+  {
+   "construct": "repeat-bigint-count",
+   "sql": "SELECT REPEAT('', 2147483648L), REPEAT('a', CAST(0 AS BIGINT))",
+   "observed": {
+    "ansi=true": "error CAST_OVERFLOW: [CAST_OVERFLOW] The value 2147483648L of the type \"BIGINT\" cannot be cast to \"INT\" due to an overflow. Use `try_cast` to tolerate overflow and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(, )"
+   }
+  },
+  {
+   "construct": "double-to-bigint-edge",
+   "sql": "SELECT CAST(9.223372036854775807E18D AS BIGINT), CAST(-9.223372036854775808E18D AS BIGINT), CAST(9.2233720368547748E18D AS BIGINT)",
+   "note": "`float_to_int` checks -2^63 <= x < 2^63 before the cast",
+   "observed": {
+    "ansi=true": "(9223372036854775807, -9223372036854775808, 9223372036854774784)",
+    "ansi=false": "(9223372036854775807, -9223372036854775808, 9223372036854774784)"
+   }
   }
  ]
 }

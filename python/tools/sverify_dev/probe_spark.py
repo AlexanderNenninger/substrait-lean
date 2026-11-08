@@ -1220,6 +1220,53 @@ def _frontend_probes() -> list[Obs]:
     ]
 
 
+def _writer_probes() -> list[Obs]:
+    """The functions `sverify.sql.spark` writes that no other fact covers,
+    spelled as the writer spells them (#271: a run profile states only what a
+    fact says)."""
+    return [
+        Obs("is-null-kinds",
+            "SELECT b IS NULL, d IS NULL, s IS NULL FROM VALUES "
+            "(CAST(NULL AS BIGINT), CAST(NULL AS DOUBLE), CAST(NULL AS STRING)), "
+            "(0L, CAST('NaN' AS DOUBLE), ''), (-9223372036854775808L, -0.0D, 'ß') AS t(b, d, s)"),
+        Obs("bigint-to-double",
+            "SELECT CAST(x AS DOUBLE) FROM VALUES (9007199254740993L), (9007199254740995L), "
+            "(-9223372036854775808L), (9223372036854775807L), (CAST(NULL AS BIGINT)) AS t(x)"),
+        Obs("timestamp-to-date",
+            "SELECT CAST(CAST(t AS DATE) AS STRING) FROM VALUES (TIMESTAMP_NTZ'1969-12-31 23:59:59.999999'), "
+            "(TIMESTAMP_NTZ'0001-01-01 00:00:00'), (TIMESTAMP_NTZ'9999-12-31 23:59:59.999999') AS v(t)"),
+        Obs("micros-to-timestamp",
+            "SELECT CAST(CAST(timestamp_micros(u) AS TIMESTAMP_NTZ) AS STRING) FROM VALUES (-1L), (0L), "
+            "(-62135596800000000L), (253402300799999999L) AS t(u)"),
+        Obs("timestamp-to-micros",
+            "SELECT unix_micros(CAST(t AS TIMESTAMP_LTZ)) FROM VALUES (TIMESTAMP_NTZ'1969-12-31 23:59:59.999999'), "
+            "(TIMESTAMP_NTZ'0001-01-01 00:00:00'), (TIMESTAMP_NTZ'9999-12-31 23:59:59.999999') AS v(t)"),
+        Obs("unix-date-diff",
+            "SELECT CAST(unix_date(a) AS BIGINT) - CAST(unix_date(b) AS BIGINT) FROM VALUES "
+            "(DATE'0001-01-01', DATE'9999-12-31'), (DATE'9999-12-31', DATE'0001-01-01'), "
+            "(DATE'1969-12-31', DATE'1970-01-01') AS t(a, b)"),
+        Obs("floor-remainder-bigint",
+            "SELECT u - (((u - 3L) % 10L + 10L) % 10L) FROM VALUES (-1L), (-7L), (7L), (0L), "
+            "(-9223372036854775805L) AS t(u)",
+            note="date_bin's floor, as sql/core/temporal.py writes it: `%` truncates, `+ k) % k` floors"),
+        Obs("decimal-to-double-text",
+            "SELECT CAST(CAST(CAST('0.1' AS DECIMAL(38,37)) AS STRING) AS DOUBLE), "
+            "CAST(CAST(CAST('2.5' AS DECIMAL(10,1)) AS STRING) AS DOUBLE), "
+            "CAST(CAST(CAST('-0.0' AS DECIMAL(5,1)) AS STRING) AS DOUBLE), "
+            "CAST(CAST(CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0)) AS STRING) AS DOUBLE), "
+            "CAST(CAST(CAST('0.30000000000000000444089209850062616169' AS DECIMAL(38,38)) AS STRING) AS DOUBLE)"),
+        Obs("double-to-decimal-round",
+            "SELECT CAST((CAST(CAST(ROUND(x * 100.0D) AS BIGINT) AS DECIMAL(10,0)) * 0.01) AS DECIMAL(10,2)) "
+            "FROM VALUES (2.675D), (-2.675D), (0.125D), (1.005D) AS t(x)",
+            note="`decimal_cast` of a double at scale 2, as sql/spark.py writes it"),
+        Obs("repeat-bigint-count", "SELECT REPEAT('', 2147483648L), REPEAT('a', CAST(0 AS BIGINT))"),
+        Obs("double-to-bigint-edge",
+            "SELECT CAST(9.223372036854775807E18D AS BIGINT), CAST(-9.223372036854775808E18D AS BIGINT), "
+            "CAST(9.2233720368547748E18D AS BIGINT)",
+            note="`float_to_int` checks -2^63 <= x < 2^63 before the cast"),
+    ]  # fmt: skip
+
+
 def observations() -> list[Obs]:
     return [
         *_int_probes(),
@@ -1235,6 +1282,7 @@ def observations() -> list[Obs]:
         *_relation_probes(),
         *_execution_probes(),
         *_frontend_probes(),
+        *_writer_probes(),
     ]
 
 

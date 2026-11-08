@@ -1,6 +1,6 @@
 import SubstraitLean.Keys
 import SubstraitLean.Check
-import SubstraitLean.Allowed
+import SubstraitLean.AllowedAnalysis
 
 /-!
 # Semantic rewrites from contracts
@@ -1449,7 +1449,7 @@ theorem Rel.fkMatch_sound {a b : Rel} {on : Expr} (hm : Rel.fkMatch cat A F K R 
       have hmem := aeval_sound hcat hA hF hT (sz := false) ha nofun x hx i
       have hxn : x.getD i .null ≠ .null := fun h0 => by
         rw [h0] at hmem
-        simp only [AVal.Mem, List.getD_eq_getElem?_getD] at hmem hnn
+        simp only [AVal.Mem, AVal.MemR, List.getD_eq_getElem?_getD] at hmem hnn
         simp [hmem] at hnn
       obtain ⟨y, hy, hyx⟩ := origin_sound hcat ha ho x hx hxn
       obtain ⟨w, hw, hwy⟩ := hR t _ hfk y hy (by rw [hyx]; exact hxn)

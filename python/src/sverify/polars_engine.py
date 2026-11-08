@@ -52,8 +52,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   same Rust code DataFusion uses (`str::to_uppercase`, the `regex` crate).
 * `date_part` and `date_trunc` follow `SubstraitLean/Time.lean`: sub-day
   parts and truncations are integer arithmetic on the microseconds, calendar
-  ones go through Polars' (chrono's) calendar, and the `Issue`s of
-  `date_trunc` (outside ±2⁶³ ns, or wrapping) raise.
+  ones go through Polars' calendar, and the calendar functions raise outside
+  the reference's timestamps, 0001-01-01 to 9999-12-31 (D32).
 """
 
 from __future__ import annotations
@@ -798,10 +798,10 @@ def regex_groups(p: str) -> int | None:
 
 # --- Times (`SubstraitLean/Time.lean`) ---------------------------------------
 
-#: The timestamps `chrono` represents (`Time.partMin`, `Time.partMax`).
-PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
-#: Calendar truncation is exact from here to here (`Time.nsMin`, `Time.nsMax`).
-NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
+#: The reference's timestamps, 0001-01-01 00:00:00 to 9999-12-31
+#: 23:59:59.999999 (`Time.tsMin`, `Time.tsMax`, D32), in microseconds.
+TS_MIN, TS_MAX = -62135596800000000, 253402300799999999
+OUTSIDE_TS = "outside the reference's timestamps (0001-01-01 to 9999-12-31)"
 #: Sub-day parts as `(modulus, divisor)` of the microseconds (`Time.partOf`).
 CLOCK_PARTS = {
     "hour": (US_PER_DAY, 3_600_000_000),
@@ -822,8 +822,9 @@ CALENDAR_UNITS = {"month": "1mo", "quarter": "1q", "year": "1y"}
 
 
 def date_part(part: str, v: Val) -> Val:
-    """`Time.datePart`: NULL outside the dates chrono represents. A time of
-    day is a timestamp on 1970-01-01, for its clock parts."""
+    """`Time.datePart`, an error (`Overflow`) outside the reference's
+    timestamps (`UnFn.issue`). A time of day is a timestamp on 1970-01-01, for
+    its clock parts."""
     if v.dtype == pl.Time:
         if part not in CLOCK_PARTS:
             raise Unsupported(f"date_part {part!r} of a time of day")
@@ -844,14 +845,13 @@ def date_part(part: str, v: Val) -> Val:
         if part not in calendar:
             raise Unsupported(f"unsupported date part {part!r}")
         value = calendar[part]()
-    inside = (us >= PART_MIN) & (us <= PART_MAX)
-    return Val(pl.when(inside).then(value.cast(pl.Int64)), pl.Int64, v.issues)
+    return ts_only(v, value.cast(pl.Int64), pl.Int64, f"date_part {part!r}")
 
 
 def date_trunc(unit: str, v: Val) -> Val:
     """`Time.trunc` with the `Issue`s of `UnFn.issue`: to a week or longer,
-    outside ±2⁶³ ns an error (`Overflow`); to a day or less, a result below
-    64 bits wraps in DataFusion (`IntegerOverflow`)."""
+    outside the reference's timestamps an error (`Overflow`); to a day or less,
+    a result below 64 bits an error (`IntegerOverflow`)."""
     us = wide(v)
     if unit in CLOCK_UNITS:
         k = CLOCK_UNITS[unit]
@@ -861,25 +861,22 @@ def date_trunc(unit: str, v: Val) -> Val:
         days = us // US_PER_DAY
         t = (days - (days + 3) % 7) * US_PER_DAY
     elif unit in CALENDAR_UNITS:
-        # Polars computes in microseconds; only use it where DataFusion's
-        # nanoseconds are exact, which is where the result counts.
-        inside = us.is_null() | ((us >= NS_MIN) & (us <= NS_MAX))
+        # Polars's calendar on the timestamps the result counts for.
+        inside = us.is_null() | ((us >= TS_MIN) & (us <= TS_MAX))
         safe = pl.when(inside).then(v.expr).otherwise(pl.lit(0, US))
         t = wide(Val(safe.dt.truncate(CALENDAR_UNITS[unit]), US))
     else:
         raise Unsupported(f"unsupported date_trunc unit {unit!r}")
-    bad = (us > NS_MAX) | (us < NS_MIN) | (t < NS_MIN)
+    bad = (us > TS_MAX) | (us < TS_MIN) | (t < TS_MIN)
     value = pl.when(bad).then(None).otherwise(t).cast(pl.Int64).cast(US)
-    return Val(value, US, (*v.issues, issue(bad, Overflow, f"date_trunc to a {unit} overflows")))
+    return Val(value, US, (*v.issues, issue(bad, Overflow, f"date_trunc to a {unit} {OUTSIDE_TS}")))
 
 
-#: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
-#: within ±2⁶³ ns (`Time.nsDayMin`, `Time.nsDayMax`).
-#: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`, #251), and
-#: the days chrono represents (`Time.chronoDayMin`), where `date_part` works.
+#: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`, #251).
 DAY_MIN, DAY_MAX = -719162, 2932896
+#: The days Polars's calendar (chrono) computes, years -262143 to 262142:
+#: wider ones are NULL before a calendar call, which Polars would fail on.
 CHRONO_DAY_MIN, CHRONO_DAY_MAX = -96465292, 95026236
-NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
 
 
 def _days(v: Val) -> pl.Expr:
@@ -927,21 +924,19 @@ def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -
     x = _days(v)
     bad = (x < lo) | (x > hi) | (days < lo) | (days > hi)
     value = pl.when(bad).then(None).otherwise(days).cast(pl.Int32).cast(pl.Date)
-    where = (
-        "outside the reference's dates (0001-01-01 to 9999-12-31)"
-        if (lo, hi) == (DAY_MIN, DAY_MAX)
-        else "outside the dates DataFusion computes"
-    )
-    message = f"{what} {where}"
+    message = f"{what} outside the reference's dates (0001-01-01 to 9999-12-31)"
     return Val(value, pl.Date, (*issues(v, *vals), issue(bad, Overflow, message)))
 
 
 def day_part(part: str, v: Val) -> Val:
-    """`UnFn.dayPart`: the part of the date's midnight."""
+    """`UnFn.dayPart`: the part of the date's midnight, an error (`Overflow`)
+    outside the reference's dates."""
     x = _days(v)
-    inside = (x >= CHRONO_DAY_MIN) & (x <= CHRONO_DAY_MAX)
-    ts = (pl.when(inside).then(x) * US_PER_DAY).cast(US)
-    return date_part(part, Val(ts, US, v.issues))
+    bad = (x < DAY_MIN) | (x > DAY_MAX)
+    ts = (pl.when(bad).then(None).otherwise(x) * US_PER_DAY).cast(US)
+    part_of = date_part(part, Val(ts, US, ()))
+    message = f"date_part {part!r} outside the reference's dates (0001-01-01 to 9999-12-31)"
+    return Val(part_of.expr, part_of.dtype, (*v.issues, issue(bad, Overflow, message)))
 
 
 def add_months(m: int, v: Val) -> Val:
@@ -955,27 +950,27 @@ def add_months(m: int, v: Val) -> Val:
     shifted = add_months_days(m, us // US_PER_DAY)
     r = shifted * US_PER_DAY + us % US_PER_DAY
     lost = us.is_not_null() & shifted.is_null()
-    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX) | lost
+    bad = (us < TS_MIN) | (us > TS_MAX) | (r < TS_MIN) | (r > TS_MAX) | lost
     value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
-    message = "adding months outside the years chrono represents"
+    message = f"adding months {OUTSIDE_TS}"
     return Val(value, US, (*v.issues, issue(bad, Overflow, message)))
 
 
-def chrono_only(v: Val, value: pl.Expr, dtype: DType, what: str) -> Val:
+def ts_only(v: Val, value: pl.Expr, dtype: DType, what: str) -> Val:
     """`value`, an error (`Overflow`) where the timestamp `v` is outside the
-    years chrono represents."""
+    reference's timestamps (D32)."""
     us = wide(v)
-    bad = (us < PART_MIN) | (us > PART_MAX)
-    message = f"{what} outside the years chrono represents"
+    bad = (us < TS_MIN) | (us > TS_MAX)
+    message = f"{what} {OUTSIDE_TS}"
     safe = pl.when(bad).then(None).otherwise(value)
     return Val(safe, dtype, (*v.issues, issue(bad, Overflow, message)))
 
 
 def strftime(fmt: str, v: Val) -> Val:
-    """`Time.strftime`: chrono's formatting, as DataFusion's."""
-    inside = (wide(v) >= PART_MIN) & (wide(v) <= PART_MAX)
+    """`Time.strftime`: chrono's formatting, which Polars uses."""
+    inside = (wide(v) >= TS_MIN) & (wide(v) <= TS_MAX)
     safe = pl.when(inside).then(v.expr)
-    return chrono_only(v, safe.dt.strftime(fmt), pl.String, "strftime")
+    return ts_only(v, safe.dt.strftime(fmt), pl.String, "strftime")
 
 
 def ftoi(v: Val) -> Val:
@@ -1111,25 +1106,25 @@ class Exprs:
                     if name == "date_part":
                         return day_part(which.lower(), ts)
                     x = _days(ts)
-                    safe = pl.when((x >= NS_DAY_MIN) & (x <= NS_DAY_MAX)).then(x)
+                    safe = pl.when((x >= DAY_MIN) & (x <= DAY_MAX)).then(x)
                     t = trunc_days(which.lower(), safe)
-                    return date_range(ts, t, NS_DAY_MIN, NS_DAY_MAX, f"date_trunc to a {which}")
+                    return date_range(ts, t, DAY_MIN, DAY_MAX, f"date_trunc to a {which}")
                 return (date_part if name == "date_part" else date_trunc)(which.lower(), ts)
             if name == "add" and len(arg_js) == 2:
                 months = self.months(arg_js[1])
                 if months is not None:
                     return add_months(months, self(arg_js[0]))
             if name == "date_bin" and len(arg_js) == 3:
-                # `Time.bucket`; DataFusion's nanoseconds wrap outside ±2⁶³.
+                # `Time.bucket`, raising outside the reference's timestamps.
                 iv, ts = self(arg_js[0]), self(arg_js[1])
                 k, origin = self.constant(arg_js[0], "a bin"), self.constant(arg_js[2], "an origin")
                 if iv.dtype != INTERVAL or ts.dtype != US or not isinstance(origin, int) or k <= 0:
                     raise Unsupported(f"date_bin of {ts.dtype} by {k!r} from {origin!r}")
                 us = wide(ts)
                 r = us - (us - origin) % k
-                bad = (us < NS_MIN) | (us > NS_MAX) | (r < NS_MIN) | (r > NS_MAX)
+                bad = (us < TS_MIN) | (us > TS_MAX) | (r < TS_MIN) | (r > TS_MAX)
                 value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
-                found = issue(bad, Overflow, "date_bin outside ±2^63 ns")
+                found = issue(bad, Overflow, f"date_bin {OUTSIDE_TS}")
                 return Val(value, US, (*ts.issues, found))
             if name == "strftime" and len(arg_js) == 2:
                 ts, fmt = self(arg_js[0]), self.constant(arg_js[1], "a strftime format")
@@ -1289,7 +1284,7 @@ class Exprs:
         if "precisionTime" in target and v.dtype == US:
             # `UnFn.timeOfDay`; Polars' times are nanoseconds.
             tod = (wide(v) % US_PER_DAY * 1000).cast(pl.Int64).cast(pl.Time)
-            return chrono_only(v, tod, pl.Time, "CAST to TIME")
+            return ts_only(v, tod, pl.Time, "CAST to TIME")
         if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
             # `UnFn.asTime`: microseconds since 1970-01-01.
             return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)
@@ -1548,10 +1543,6 @@ class Exprs:
 
     def binary(self, name: str, a: Val, b: Val) -> Val:
         ta, tb = a.dtype, b.dtype
-        if name == "nanvl" and unify(ta, tb, name) == pl.Float64:
-            # The writer's `canonical`: NaN becomes the fallback.
-            x, y = a.expr, b.expr
-            return Val(pl.when(x.is_nan()).then(y).otherwise(x), pl.Float64, issues(a, b))
         if name in ("atan2", "logb"):
             if unify(ta, tb, name) not in (pl.Float64, pl.Null):
                 raise Unsupported(f"{name} of {ta} and {tb}")

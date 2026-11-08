@@ -1,5 +1,6 @@
 import SubstraitLean.Allowed
 import SubstraitLean.Options
+import SubstraitLean.Scopes
 
 /-!
 # What a profile allows (#444, step 1c)
@@ -9,9 +10,10 @@ relation with every choice point read from a profile's table `t`
 (`SubstraitLean/Options.lean`):
 
 * a call takes the reference's value, or, where `t` allows a behaviour of
-  one of its group's options that the reference does not, a value of that
-  behaviour (`Impl.Within`). The values of those behaviours are not modelled
-  yet, so such a call may take any value: an over-approximation that each
+  one of its group's options that the reference does not and the call is in
+  that option's scope (`optionScope`, D34), a value of that behaviour
+  (`Impl.Within`). The values of those behaviours are not modelled yet, so
+  such a call may take any value there: an over-approximation that each
   engine profile narrows as its behaviours get their semantics (step 3a);
 * `sum_order`, `stat_algo` and `quantile_interp` give the doubles a `SUM`,
   `AVG`, statistical aggregate or `QUANTILE_CONT` may return;
@@ -46,15 +48,40 @@ inductive FloatSums : List Value → Int → Prop
   | split {vs xs ys : List Value} {a b : Int} : vs.Perm (xs ++ ys) → FloatSums xs a →
       FloatSums ys b → FloatSums vs (FloatCode.fadd a b)
 
+/-- `Σ |xᵢ|` over the doubles among `vs`, in units of `2⁻¹⁰⁷⁴`. -/
+def scaledAbsSum : List Value → Nat
+  | [] => 0
+  | .float c :: vs => (FloatCode.scaled c).natAbs + scaledAbsSum vs
+  | _ :: vs => scaledAbsSum vs
+
+set_option exponentiation.threshold 2100 in
+/-- **The bound every engine summation order meets (D35).** On `n ≤ 2³²`
+finite doubles whose `2 · Σ(|xᵢ| + 2⁻¹⁰²²)` stays below the largest double,
+a sum `c` is finite and within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact sum,
+`u = 2⁻⁵³`, `γₙ = nu / (1 − nu)`: in units of `2⁻¹⁰⁷⁴` and multiplied out,
+an exact inequality on integers. `float-bounds` proves it of every order the
+engines' facts record (`StdModel.Summed.near`: trees, a sequential sum,
+Kahan's, a constant run's `fl(k · x)`); that the engines' algorithms meet it
+is trusted (docs/proofs.md, retired by #1196). -/
+def SumBound (vs : List Value) (c : Int) : Prop :=
+  (∀ x, Value.float x ∈ vs → FloatCode.IsFin x) → vs.length ≤ 2 ^ 32 →
+    2 * (scaledAbsSum vs + vs.length * 2 ^ 52) ≤ FloatCode.maxMag →
+    FloatCode.IsFin c ∧
+      (FloatCode.scaled c - exactSum vs).natAbs * (2 ^ 53 * (2 ^ 53 - vs.length)) ≤
+        (vs.length * 2 ^ 53 + (2 ^ 53 - vs.length)) * (scaledAbsSum vs + vs.length * 2 ^ 52)
+
 /-- The doubles a `SUM` of `vs` gives under a `sum_order` behaviour: the
-correctly rounded exact sum for `EXACT`, the reference's (D25). -/
+correctly rounded exact sum for `EXACT`, the reference's (D25); for every
+other behaviour a sum within `SumBound` (D35) and, where the behaviour has
+one, of its shape: a tree (`ANY`, `PAIRWISE`) or a sequential sum in some
+order (`SEQUENTIAL`). Kahan's compensated sum (`COMPENSATED`) and a constant
+run's product (`SCALED_CONSTANT`) are the bound alone. -/
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "EXACT" then c = floatSumCR vs
-  else if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
-  else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
-  -- Not modelled here (Kahan's compensated sum, a constant run's product):
-  -- any double. `float-bounds` bounds both (`StdModel.Summed`).
-  else True
+  else SumBound vs c ∧
+    if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
+    else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
+    else True
 
 /-- The doubles an `AVG` of `vs` gives under a `sum_order` behaviour: the
 exact mean rounded once for `EXACT`, else a sum `SumOrder` allows divided by
@@ -79,14 +106,14 @@ def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) 
 /-- The options `AggFn.AllowedP` interprets. -/
 def aggInterpreted : List String := ["sum_order", "stat_algo", "quantile_interp"]
 
-/-- Does `t` allow an aggregate a behaviour the reference does not, at an
-option `AggFn.AllowedP` does not interpret (`overflow`, `avg_int_result`,
-`empty_group_aggregates`, …)? Then it may give any value, as a call may
-(`CallExtra`). -/
-def AggExtra (t : ProfileTable) (f : AggFn) : Prop :=
+/-- Does `t` allow an aggregate of `vs` a behaviour the reference does not,
+at an option `AggFn.AllowedP` does not interpret (`overflow`, `avg_int_result`,
+`empty_group_aggregates`, …), with `vs` in that option's scope (D34)? Then it
+may give any value, as a call may (`CallExtra`). -/
+def AggExtra (t : ProfileTable) (f : AggFn) (vs : List Value) : Prop :=
   ∃ r, Functions.rowOf (.agg f) = some r ∧ ∃ os, Functions.groups.lookup r.group = some os ∧
-    ∃ o ∈ os, o ∉ aggInterpreted ∧ ∃ b ∈ t.allows r.group o [],
-      b ∉ Profile.reference.table.allows r.group o []
+    ∃ o ∈ os, o ∉ aggInterpreted ∧ (∃ b ∈ t.allows r.group o [],
+      b ∉ Profile.reference.table.allows r.group o []) ∧ optionScope o (.agg f) vs = true
 
 /-! ## Aggregates -/
 
@@ -106,7 +133,7 @@ def AggFn.AllowedChoice (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Va
 /-- `AggFn.Allowed` with the choices of `t`, or any value where `t` allows a
 behaviour this does not model (`AggExtra`). -/
 def AggFn.AllowedP (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  f.AllowedChoice t vs v ∨ AggExtra t f
+  f.AllowedChoice t vs v ∨ AggExtra t f vs
 
 /-- `Measure.Allowed` with the choices of `t` and the functions of `I`. -/
 def Measure.AllowedP (t : ProfileTable) (I : Impl) (m : Measure) (rows : Relation)
@@ -175,18 +202,19 @@ def SortedP (t : ProfileTable) (keys : List SortKey) (out : Relation) : Prop :=
 
 /-! ## Calls -/
 
-/-- Does `t` allow a call of `c` a behaviour the reference does not? Then the
-call may give another value than the reference's. -/
-def CallExtra (t : ProfileTable) (c : Functions.Ctor) : Prop :=
+/-- Does `t` allow a call of `c` on `args` a behaviour the reference does
+not, at an option whose scope the call is in (D34)? Then the call may give
+another value than the reference's. -/
+def CallExtra (t : ProfileTable) (c : Functions.Ctor) (args : List Value) : Prop :=
   ∃ r, Functions.rowOf c = some r ∧ ∃ os, Functions.groups.lookup r.group = some os ∧
-    ∃ o ∈ os, o ∉ aggInterpreted ∧ ∃ b ∈ t.allows r.group o [],
-      b ∉ Profile.reference.table.allows r.group o []
+    ∃ o ∈ os, o ∉ aggInterpreted ∧ (∃ b ∈ t.allows r.group o [],
+      b ∉ Profile.reference.table.allows r.group o []) ∧ optionScope o c args = true
 
 /-- The functions `I` are ones `t` allows: each call gives the reference's
-value, unless `t` allows it another behaviour. -/
+value, unless `t` allows it another behaviour in whose option's scope it is. -/
 def Impl.Within (t : ProfileTable) (I : Impl) : Prop :=
-  (∀ f v, I.un f v = f.apply v ∨ CallExtra t (.un f)) ∧
-    ∀ f v w, I.bin f v w = f.apply v w ∨ CallExtra t (.bin f)
+  (∀ f v, I.un f v = f.apply v ∨ CallExtra t (.un f) [v]) ∧
+    ∀ f v w, I.bin f v w = f.apply v w ∨ CallExtra t (.bin f) [v, w]
 
 /-! ## Plans -/
 
@@ -229,8 +257,9 @@ section Mono
 variable {t u : ProfileTable} (h : t.Le u)
 include h
 
-theorem AggExtra.mono {f : AggFn} : AggExtra t f → AggExtra u f :=
-  fun ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩ => ⟨r, hr, os, hos, o, ho, hi, b, h _ _ _ _ hb, hn⟩
+theorem AggExtra.mono {f : AggFn} {vs : List Value} : AggExtra t f vs → AggExtra u f vs :=
+  fun ⟨r, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hs⟩ =>
+    ⟨r, hr, os, hos, o, ho, hi, ⟨b, h _ _ _ _ hb, hn⟩, hs⟩
 
 theorem AggFn.AllowedChoice.mono {f : AggFn} {vs : List Value} {v : Value} :
     f.AllowedChoice t vs v → f.AllowedChoice u vs v := by
@@ -290,10 +319,11 @@ theorem SortedP.mono {keys : List SortKey} {out : Relation} :
     fun k hk hck => h _ _ _ _ (hcl k hk hck), hs⟩
 
 theorem Impl.Within.mono {I : Impl} : I.Within t → I.Within u := by
-  have hx : ∀ c, CallExtra t c → CallExtra u c := fun _ ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩ =>
-    ⟨r, hr, os, hos, o, ho, hi, b, h _ _ _ _ hb, hn⟩
-  exact fun ⟨hu, hb⟩ => ⟨fun f v => (hu f v).imp_right (hx _),
-    fun f v w => (hb f v w).imp_right (hx _)⟩
+  have hx : ∀ c args, CallExtra t c args → CallExtra u c args :=
+    fun _ _ ⟨r, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hs⟩ =>
+      ⟨r, hr, os, hos, o, ho, hi, ⟨b, h _ _ _ _ hb, hn⟩, hs⟩
+  exact fun ⟨hu, hb⟩ => ⟨fun f v => (hu f v).imp_right (hx _ _),
+    fun f v w => (hb f v w).imp_right (hx _ _)⟩
 
 theorem Rel.AllowedI.mono {I : Impl} {cat : Catalog} :
     ∀ {r : Rel} {out : Relation}, r.AllowedI t I cat out → r.AllowedI u I cat out
@@ -337,12 +367,13 @@ theorem reference_allows_window_sum :
 theorem reference_allows_clustered :
     Profile.reference.table.allows "rel.sort" "clustered" [] = ["ADJACENT"] := by decide +kernel
 
-theorem AggExtra.not_reference (f : AggFn) : ¬AggExtra Profile.reference.table f :=
-  fun ⟨_, _, _, _, _, _, _, _, hb, hn⟩ => hn hb
+theorem AggExtra.not_reference (f : AggFn) (vs : List Value) :
+    ¬AggExtra Profile.reference.table f vs :=
+  fun ⟨_, _, _, _, _, _, _, ⟨_, hb, hn⟩, _⟩ => hn hb
 
 theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
     f.AllowedP Profile.reference.table vs v ↔ f.Allowed vs v := by
-  rw [AggFn.AllowedP, or_iff_left (AggExtra.not_reference f)]
+  rw [AggFn.AllowedP, or_iff_left (AggExtra.not_reference f vs)]
   cases f
   case quantile cont num scale =>
     cases cont <;> simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_quant, QuantInterp]
@@ -468,16 +499,17 @@ theorem Rel.allowedI_reference (cat : Catalog) :
     simp only [Rel.AllowedI, Rel.Allowed, aggAllowedP_reference, Rel.allowedI_reference cat r]
   | .unnest r _, out => by simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r]
 
-theorem CallExtra.not_reference (c : Functions.Ctor) : ¬CallExtra Profile.reference.table c :=
-  fun ⟨_, _, _, _, _, _, _, _, hb, hn⟩ => hn hb
+theorem CallExtra.not_reference (c : Functions.Ctor) (args : List Value) :
+    ¬CallExtra Profile.reference.table c args :=
+  fun ⟨_, _, _, _, _, _, _, ⟨_, hb, hn⟩, _⟩ => hn hb
 
 theorem Impl.within_reference {I : Impl} : I.Within Profile.reference.table ↔ I = Impl.lean := by
   constructor
   · rintro ⟨hu, hb⟩
     have hu' : I.un = UnFn.apply := funext fun f => funext fun v =>
-      (hu f v).resolve_right (CallExtra.not_reference _)
+      (hu f v).resolve_right (CallExtra.not_reference _ _)
     have hb' : I.bin = BinFn.apply := funext fun f => funext fun v => funext fun w =>
-      (hb f v w).resolve_right (CallExtra.not_reference _)
+      (hb f v w).resolve_right (CallExtra.not_reference _ _)
     cases I; simp only at hu' hb'; subst hu' hb'; rfl
   · rintro rfl; exact ⟨fun _ _ => .inl rfl, fun _ _ _ => .inl rfl⟩
 

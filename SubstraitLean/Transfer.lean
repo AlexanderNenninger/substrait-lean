@@ -332,8 +332,8 @@ theorem SumOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = tru
   rcases h with rfl | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩ | ⟨h, -⟩
   · exact hs
   · simp only [SumOrder] at hs ⊢
-    obtain ⟨ws, hp, rfl⟩ := hs
-    exact .seq hp
+    obtain ⟨hb, ws, hp, rfl⟩ := hs
+    exact ⟨hb, .seq hp⟩
   · simpa [SumOrder] using hs
   all_goals simp at h
 
@@ -396,7 +396,7 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     fun hp hP ⟨b, hb, rest⟩ =>
       let ⟨b', hb', hle⟩ := h _ hp b hb
       ⟨b', hb', hP b b' hle rest⟩
-  rintro (hc | ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩)
+  rintro (hc | ⟨r, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hsc⟩)
   · left
     cases f
     case quantile cont num scale =>
@@ -428,7 +428,7 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     have hp : (r.group, o, []) ∈ f.reads := by
       simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map]
       exact .inl ⟨o, ho, rfl⟩
-    exact ⟨r, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩
+    exact ⟨r, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩, hsc⟩
 
 theorem Measure.AllowedP.monoOn {I : Impl} {m : Measure} (h : ∀ p ∈ m.reads, t.LeAt u p)
     {rows : Relation} {v : Value} : m.AllowedP t I rows v → m.AllowedP u I rows v :=
@@ -531,16 +531,17 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
   let J := Impl.restrict r.ctors I
   have hag : Impl.AgreeOn r.ctors I J :=
     ⟨fun f hf v => by simp [J, Impl.restrict, hf], fun f hf v w => by simp [J, Impl.restrict, hf]⟩
-  have hx : ∀ c ∈ r.ctors, CallExtra t c → CallExtra u c :=
-    fun c hc ⟨row, hr, os, hos, o, ho, hi, b, hb, hn⟩ =>
-      ⟨row, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
-        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb, hn⟩
+  have hx : ∀ c ∈ r.ctors, ∀ args, CallExtra t c args → CallExtra u c args :=
+    fun c hc _ ⟨row, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hs⟩ =>
+      ⟨row, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
+        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb,
+        hn⟩, hs⟩
   refine ⟨J, ⟨fun f v => ?_, fun f v w => ?_⟩, ?_⟩
   · by_cases hf : Ctor.un f ∈ r.ctors
-    · simp only [J, Impl.restrict, hf, ite_true]; exact (hun f v).imp_right (hx _ hf)
+    · simp only [J, Impl.restrict, hf, ite_true]; exact (hun f v).imp_right (hx _ hf _)
     · left; simp [J, Impl.restrict, hf]
   · by_cases hf : Ctor.bin f ∈ r.ctors
-    · simp only [J, Impl.restrict, hf, ite_true]; exact (hbin f v w).imp_right (hx _ hf)
+    · simp only [J, Impl.restrict, hf, ite_true]; exact (hbin f v w).imp_right (hx _ hf _)
     · left; simp [J, Impl.restrict, hf]
   · exact Rel.AllowedI.monoOn h ((Rel.allowedI_congr hag out).mp ho)
 
@@ -608,7 +609,7 @@ def Rel.dependenciesJson (es : List EngineProfile) (r : Rel) : Json :=
         match t.tool with | .raise => "raise" | .choose => "choose" | .leaveOpen => "leave_open"))] ++
       (reportProfiles es).map fun (t, obs) => (t.name, Json.mkObj [
         ("choice", choiceAt t p), ("allows", toJson (t.allows p.1 p.2.1 p.2.2)),
-        ("row", rowAt obs p)]))).toArray),
+        ("row", rowAt obs p), ("version", toJson t.version)]))).toArray),
     ("transfer", Json.mkObj ((reportProfiles es).map fun (t, _) => (t.name,
       Json.mkObj ((reportProfiles es).map fun (u, _) => (u.name, toJson (transferB r t u)))))),
     ("functions", toJson r.functions),
@@ -650,8 +651,8 @@ def ObsTable.factsAt (obs : ObsTable) (group : Option String) (option : String) 
     | none => (obs.find? fun (x : Option String × String × ObsRow) =>
         x.1.isNone && x.2.1 == option).map fun (x : Option String × String × ObsRow) => x.2.2
   match row with
-  | some { evidence := .tested ids, .. } | some { evidence := .proved _ ids, .. } => ids
-  | some { evidence := .probed ids, .. } => ids
+  | some { evidence := .tested ids _, .. } | some { evidence := .proved _ ids, .. } => ids
+  | some { evidence := .probed ids _, .. } => ids
   | _ => []
 
 open Lean (Json toJson) in
@@ -686,18 +687,32 @@ def transferJson (es : List EngineProfile) (input : Json) : Except String Json :
     failures := failures.push (Json.mkObj [("function", toJson f), ("facts", toJson ids)])
   return Json.mkObj [("ok", toJson failures.isEmpty), ("failures", Json.arr failures)]
 
+/-- One group and option a contract's transformation meets: the reference's
+behaviours its reads there use, and whether every read states its preference
+(a key's `NULLS FIRST`): an engine that gives a stated preference as stated
+needs no shim there. -/
+structure Dep where
+  group : String
+  option : String
+  behaviours : List Behaviour
+  stated : Bool
+
+/-- The dependencies of `reads`, one per group and option. -/
+def deps (reads : List Read) : List Dep :=
+  (reads.map fun (g, o, _) => (g, o)).eraseDups.map fun (g, o) =>
+    let here := reads.filter fun (g', o', _) => g' == g && o' == o
+    { group := g, option := o, stated := here.all fun (_, _, ps) => !ps.isEmpty
+      behaviours := (here.flatMap fun (_, _, ps) => Profile.reference.table.allows g o ps).eraseDups }
+
+open Lean (Json toJson) in
+def Dep.json (d : Dep) : Json :=
+  Json.mkObj [("group", toJson d.group), ("option", toJson d.option),
+    ("behaviours", toJson d.behaviours), ("stated", toJson d.stated)]
+
 open Lean (Json toJson) in
 /-- The dependency report of a contract's transformation: one row per group
-and option it meets, with the reference's behaviours there. -/
-def readsJson (reads : List Read) : Json :=
-  let keys := (reads.map fun (g, o, _) => (g, o)).eraseDups
-  Json.arr <| (keys.map fun (g, o) =>
-    let here := reads.filter fun (g', o', _) => g' == g && o' == o
-    let bs := here.flatMap fun (_, _, ps) => Profile.reference.table.allows g o ps
-    -- Whether every read states its preference (a key's `NULLS FIRST`): an
-    -- engine that gives a stated preference as stated needs no shim there.
-    Json.mkObj [("group", toJson g), ("option", toJson o), ("behaviours", toJson bs.eraseDups),
-      ("stated", toJson (here.all fun (_, _, ps) => !ps.isEmpty))]).toArray
+and option it meets, with the reference's behaviours there (`deps`). -/
+def readsJson (reads : List Read) : Json := Json.arr ((deps reads).map Dep.json).toArray
 
 /-- The dependency report of a contract's transformation, from `Rel.reads`. -/
 def Rel.dependsJson (r : Rel) : Lean.Json := readsJson r.reads

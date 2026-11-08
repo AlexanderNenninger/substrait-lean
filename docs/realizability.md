@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 3 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 4 | 8 | 0 | 15 | 7 |
-| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 3 | 3 | 0 | 14 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 4 | 4 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 5 | 8 | 0 | 15 | 7 |
+| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 4 | 3 | 0 | 14 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 4 | 12 | 17 | 2 | 0 | 0 | 15 |
-| Polars | 28 | 1 | 14 | 0 | 0 | 0 | 15 |
-| spark | 16 | 9 | 12 | 0 | 0 | 0 | 14 |
+| DuckDB | 6 | 12 | 16 | 2 | 0 | 0 | 15 |
+| Polars | 29 | 1 | 14 | 0 | 0 | 0 | 15 |
+| spark | 17 | 9 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
@@ -94,11 +94,12 @@ Rows per evidence level:
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | fuzz | tested: [duckdb-R3](../characterization/duckdb/facts/duckdb-R3.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../characterization/duckdb/facts/duckdb-R3.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../characterization/duckdb/facts/duckdb-R3.json) |
-| every | `min_mod_neg_one` | choose | `ZERO` | `ERROR` | shim `MIN % -1 written out` (expression) | probe | tested: [duckdb-R15-int-modulus](../characterization/duckdb/facts/duckdb-R15-int-modulus.json) |
+| every | `min_mod_neg_one` | choose | `ZERO` | `ERROR` | shim `MIN % -1 written out` (expression) | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-int-modulus](../characterization/duckdb/facts/duckdb-R15-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [duckdb-float-ieee](../characterization/duckdb/facts/duckdb-float-ieee.json), [duckdb-ieee-arith-macos-arm64](../characterization/duckdb/facts/duckdb-ieee-arith-macos-arm64.json), [duckdb-ieee-arith-linux-x86-64](../characterization/duckdb/facts/duckdb-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [duckdb-R15-round](../characterization/duckdb/facts/duckdb-R15-round.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [duckdb-float-ieee](../characterization/duckdb/facts/duckdb-float-ieee.json), [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
@@ -160,14 +161,15 @@ Rows per evidence level:
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [polars-fp-ieee](../characterization/polars/facts/polars-fp-ieee.json), [polars-ieee-arith-macos-arm64](../characterization/polars/facts/polars-ieee-arith-macos-arm64.json), [polars-ieee-arith-linux-x86-64](../characterization/polars/facts/polars-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../characterization/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../characterization/polars/facts/polars-scalar-divisor.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../characterization/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../characterization/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../characterization/polars/facts/polars-mean-float-streaming.json), [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.polars_sound`; [polars-double-arith](../characterization/polars/facts/polars-double-arith.json) |
-| every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Polars.one_zero`; [polars-zero-sign](../characterization/polars/facts/polars-zero-sign.json), [polars-zero-order](../characterization/polars/facts/polars-zero-order.json) |
-| agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Polars.one_zero`; [polars-zero-order](../characterization/polars/facts/polars-zero-order.json), [polars-min-max-zero](../characterization/polars/facts/polars-min-max-zero.json) |
-| fp.arith | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Polars.one_zero`; [polars-zero-sign](../characterization/polars/facts/polars-zero-sign.json), [polars-zero-add](../characterization/polars/facts/polars-zero-add.json) |
+| every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign](../characterization/polars/facts/polars-zero-sign.json), [polars-zero-order](../characterization/polars/facts/polars-zero-order.json) |
+| agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-order](../characterization/polars/facts/polars-zero-order.json), [polars-min-max-zero](../characterization/polars/facts/polars-min-max-zero.json) |
+| fp.arith | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign](../characterization/polars/facts/polars-zero-sign.json), [polars-zero-add](../characterization/polars/facts/polars-zero-add.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [polars-nan-equality](../characterization/polars/facts/polars-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [polars-nan-order](../characterization/polars/facts/polars-nan-order.json) |
 | agg.order | `nan_order` | choose | `GREATEST` | `IGNORED` | shim `max_nan_greatest` (expression) | proof | proved `Polars.max_nan_greatest`; [polars-min-max-nan](../characterization/polars/facts/polars-min-max-nan.json) |
@@ -189,14 +191,14 @@ Rows per evidence level:
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [polars-quantile](../characterization/polars/facts/polars-quantile.json) |
 | every | `tie_pick` | open | `ANY_ROW` | `FIRST_READ` | native | probe | tested: [polars-first-last](../characterization/polars/facts/polars-first-last.json) |
 | every | `tie_order` | open | `ANY` | `ANY` | native | proof | proved `Polars.tie_order`; [polars-sort-stability](../characterization/polars/facts/polars-sort-stability.json), [polars-first-last](../characterization/polars/facts/polars-first-last.json) |
-| every | `null_order` | choose | `NULLS_LAST` | `NULLS_FIRST` | shim `null_order` (argument) | proof | proved `Polars.null_order`; [polars-null-order](../characterization/polars/facts/polars-null-order.json) |
+| every | `null_order` | choose | `NULLS_LAST` | `NULLS_FIRST` | shim `null_order` (argument) | proof | proved `Shim.null_order`; [polars-null-order](../characterization/polars/facts/polars-null-order.json) |
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `sort on the keys` (sort) | probe | tested: [polars-clustered](../characterization/polars/facts/polars-clustered.json) |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
-| every | `empty_group_aggregates` | choose | `NULL` | `ZERO` | shim `sum_empty_null` (expression) | proof | proved `Polars.sum_empty_null`; [polars-sum-int](../characterization/polars/facts/polars-sum-int.json) |
-| every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Polars.makes_infinite`; [polars-double-arith](../characterization/polars/facts/polars-double-arith.json) |
+| every | `empty_group_aggregates` | choose | `NULL` | `ZERO` | shim `sum_empty_null` (expression) | proof | proved `Shim.sum_empty_null`; [polars-sum-int](../characterization/polars/facts/polars-sum-int.json) |
+| every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Shim.makes_infinite`; [polars-double-arith](../characterization/polars/facts/polars-double-arith.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [polars-null-keys](../characterization/polars/facts/polars-null-keys.json) |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | none | not characterized | missing |  |
 | str.sub | `string_positions` | choose | `ONE_BASED_CHARS` | `ZERO_BASED_CHARS` | shim `substring_wrap` (expression) | proof | proved `Polars.substring_wrap`; [polars-substring](../characterization/polars/facts/polars-substring.json) |
@@ -221,7 +223,7 @@ Refused on Polars, with no expression there:
 | every | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-arith](../characterization/spark/facts/spark-int-arith.json), [spark-int-abs](../characterization/spark/facts/spark-int-abs.json) |
 | int.arith | `overflow` | raise | `ERROR` | `ERROR` | native; stated `SILENT`, `SATURATE`: not native | proof | proved `Rel.spark_sound`; [spark-int-arith](../characterization/spark/facts/spark-int-arith.json), [spark-int-abs](../characterization/spark/facts/spark-int-abs.json) |
 | dec.arith | `overflow` | raise | `ERROR` | `ERROR` | shim `decimal_negate_sub` (expression) | proof | proved `Spark.decimal_negate_sub`; [spark-decimal-negate](../characterization/spark/facts/spark-decimal-negate.json), [spark-decimal-arith](../characterization/spark/facts/spark-decimal-arith.json) |
-| agg.isum | `overflow` | raise | `ERROR` | `ERROR` | shim `int_sum_decimal` (expression) | proof | proved `Spark.int_sum_decimal`; [spark-sum-int](../characterization/spark/facts/spark-sum-int.json), [spark-exec-parallel](../characterization/spark/facts/spark-exec-parallel.json) |
+| agg.isum | `overflow` | raise | `ERROR` | `ERROR` | shim `int_sum_decimal` (expression) | proof | proved `Shim.sum_empty_null`; [spark-sum-int](../characterization/spark/facts/spark-sum-int.json), [spark-exec-parallel](../characterization/spark/facts/spark-exec-parallel.json) |
 | int.div | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-divide](../characterization/spark/facts/spark-int-divide.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Rel.spark_sound`; [spark-int-divide](../characterization/spark/facts/spark-int-divide.json), [spark-int-modulus](../characterization/spark/facts/spark-int-modulus.json) |
 | fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | fuzz | tested: [spark-double-divide](../characterization/spark/facts/spark-double-divide.json) |
@@ -233,12 +235,13 @@ Refused on Polars, with no expression there:
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../characterization/spark/facts/spark-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | fuzz | tested: [spark-double-arith](../characterization/spark/facts/spark-double-arith.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | fuzz | tested: [spark-round](../characterization/spark/facts/spark-round.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [spark-double-arith](../characterization/spark/facts/spark-double-arith.json), [spark-sum-double](../characterization/spark/facts/spark-sum-double.json), [spark-avg-double](../characterization/spark/facts/spark-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN`, `NULL` | precondition: every argument is in its function's domain | proof | proved `Rel.spark_sound`; [spark-math-domain](../characterization/spark/facts/spark-math-domain.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-math-domain](../characterization/spark/facts/spark-math-domain.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-math-domain](../characterization/spark/facts/spark-math-domain.json) |
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.spark_sound`; [spark-double-arith](../characterization/spark/facts/spark-double-arith.json), [spark-nonfinite-aggregates](../characterization/spark/facts/spark-nonfinite-aggregates.json) |
-| every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `Dialect.canon` (expression) | proof | proved `Spark.one_zero`; [spark-zero-sign](../characterization/spark/facts/spark-zero-sign.json), [spark-zero-order](../characterization/spark/facts/spark-zero-order.json) |
+| every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `Dialect.canon` (expression) | proof | proved `Shim.one_zero`; [spark-zero-sign](../characterization/spark/facts/spark-zero-sign.json), [spark-zero-order](../characterization/spark/facts/spark-zero-order.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [spark-nan-equality](../characterization/spark/facts/spark-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [spark-nan-order](../characterization/spark/facts/spark-nan-order.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | fuzz | tested: [spark-nan-sign](../characterization/spark/facts/spark-nan-sign.json) |
@@ -255,17 +258,17 @@ Refused on Polars, with no expression there:
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [spark-var-stddev](../characterization/spark/facts/spark-var-stddev.json), [spark-covar](../characterization/spark/facts/spark-covar.json), [spark-corr](../characterization/spark/facts/spark-corr.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE`, `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [spark-window-agg](../characterization/spark/facts/spark-window-agg.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
-| every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `int_avg_decimal` (expression) | proof | proved `Spark.int_avg_decimal`; [spark-avg-int](../characterization/spark/facts/spark-avg-int.json) |
+| every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `int_avg_decimal` (expression) | proof | proved `Shim.avg_trunc`; [spark-avg-int](../characterization/spark/facts/spark-avg-int.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | fuzz | tested: [spark-quantile](../characterization/spark/facts/spark-quantile.json) |
 | every | `tie_pick` | open | `ANY_ROW` | `ANY_ROW` | native | probe | tested: [spark-first-last](../characterization/spark/facts/spark-first-last.json) |
 | every | `tie_order` | open | `ANY` | `ANY` | native | probe | tested: [spark-sort-stability](../characterization/spark/facts/spark-sort-stability.json), [spark-window-values](../characterization/spark/facts/spark-window-values.json), [spark-rank](../characterization/spark/facts/spark-rank.json) |
-| every | `null_order` | choose | `NULLS_LAST` | `NULLS_FIRST` | shim `null_order` (argument) | proof | proved `Spark.null_order`; [spark-null-order](../characterization/spark/facts/spark-null-order.json) |
+| every | `null_order` | choose | `NULLS_LAST` | `NULLS_FIRST` | shim `null_order` (argument) | proof | proved `Shim.null_order`; [spark-null-order](../characterization/spark/facts/spark-null-order.json) |
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `sort on the keys` (sort) | probe | tested: [spark-clustered](../characterization/spark/facts/spark-clustered.json) |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | fuzz | tested: [spark-sum-int](../characterization/spark/facts/spark-sum-int.json), [spark-sum-double](../characterization/spark/facts/spark-sum-double.json) |
-| every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Polars.makes_infinite`; [spark-double-arith](../characterization/spark/facts/spark-double-arith.json) |
+| every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Shim.makes_infinite`; [spark-double-arith](../characterization/spark/facts/spark-double-arith.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [spark-null-keys](../characterization/spark/facts/spark-null-keys.json) |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | fuzz | tested: [spark-strpos](../characterization/spark/facts/spark-strpos.json), [spark-substring](../characterization/spark/facts/spark-substring.json) |

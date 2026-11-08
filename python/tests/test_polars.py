@@ -721,9 +721,11 @@ def test_greatest_and_least_of_many_columns_run_in_one_pick():
 
 
 def test_a_window_sum_of_both_infinities_is_nan_as_in_the_reference():
-    """A window `SUM` or `AVG` whose frame holds `+inf` and `-inf` is NaN in the
-    reference (`Rel.window`'s rows are not checked as an aggregate's are), as
-    DuckDB gives it; Polars's translation gave a domain error (#1062)."""
+    """A window `SUM` or `AVG` whose frame holds `+inf` and `-inf` is NaN in
+    `Rel.eval`, as DuckDB gives it; Polars's translation gave a domain error
+    (#1062). The checker reports the domain issue for such a window, as for
+    a grouped aggregate (`Rel.HasIssue`'s window arm, D37), so the run here
+    passes `unverified=True`."""
     import math
 
     import ibis

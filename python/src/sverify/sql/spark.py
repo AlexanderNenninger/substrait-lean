@@ -32,8 +32,8 @@ result is the Lean value, checked on a local Spark session by
   instead and never touches the time zone. Intervals are `INTERVAL DAY TO
   SECOND`, microseconds like Lean. `extract(SECOND …)` is a decimal with the
   microseconds; `WEEK` is ISO, and `dayofweek` counts from Sunday = 1. Spark
-  reaches beyond the years chrono represents, so `date_part` is NULL
-  outside them, as in Lean.
+  holds timestamps beyond the reference's (years 0 and +10000), so the
+  writer raises outside 0001-01-01 to 9999-12-31 before `date_part` (D32).
 * **Strings**: string literals take backslash escapes (with
   `spark.sql.parser.escapedStringLiterals` off), so backslashes are
   doubled. Strings compare by UTF-8 bytes under the default collation
@@ -71,10 +71,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify.sql.core import I64_MAX, I64_MIN, Dec, Dialect, Kind, Unsupported, _timestamp_text
-
-#: The timestamps chrono represents (`Time.partMin`, `Time.partMax`): years
-#: -262143 to 262142.
-YEAR_MIN, YEAR_MAX = -262143, 262142
 
 #: Session settings the SQL relies on; `SparkSession.builder.config` each.
 SPARK_CONF: dict[str, str] = {
@@ -223,8 +219,7 @@ class SparkDialect(Dialect):
             "millisecond": f"CAST(FLOOR({sec} * 1000) AS BIGINT)",
             "microsecond": f"CAST({sec} * 1000000 AS BIGINT)",
         }.get(part, f"{part}({ts})")
-        inside = f"year({ts}) BETWEEN {YEAR_MIN} AND {YEAR_MAX}"
-        return f"(CASE WHEN {inside} THEN {self.cast(value, 'int')} END)"
+        return self.cast(value, "int")
 
     def date_trunc(self, unit: str, ts: str) -> str:
         # `date_trunc` returns TIMESTAMP_LTZ; these stay in NTZ and DATE.
@@ -357,7 +352,7 @@ class SparkDialect(Dialect):
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         # NaN is the greatest double, and -0.0 equals 0.0, keeping whichever
         # came first (spark-nan-order, spark-zero-order): the codes' order up
-        # to the zero, which `canon` makes the one zero (`Spark.one_zero`).
+        # to the zero, which `canon` makes the one zero (`Shim.one_zero`).
         return self.canon(f"{fn}({v}) {over}" if over else f"{fn}({v})")
 
     def like_pattern(self, p: str) -> str:

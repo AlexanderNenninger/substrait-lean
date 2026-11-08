@@ -4,7 +4,7 @@ Sverify's semantics share one loose core in Lean, and every semantics
 sverify knows is a refinement of it: Substrait's, the reference's and each
 engine's
 ([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444)).
-Plans are verified under the strict reference profile
+Plans are proved under the strict reference profile
 ([Terminology](#terminology)).
 This page began as the design pass of step 3 of epic
 [#544](https://github.com/AlexanderNenninger/substrait-lean/issues/544), and
@@ -21,6 +21,61 @@ The choices this page left open were decided in its review
 ([Decisions](#decisions)). Everything else follows decisions already made on
 #185, #202, #209, #257, #336, #427 and #444; [reference-semantics.md](reference-semantics.md)
 records them.
+
+## Core, profiles and engines
+
+Sverify has one core that does a superset of operations, and profiles refine
+it (the maintainer, 2026-11-08). This section is the one statement of that
+layering; the other pages link here.
+
+```text
+core       every value, every behaviour of every option
+   │       a profile picks a refinement: one choice per option
+   ▼
+profiles   reference · Substrait · DuckDB · Polars · Spark · Snowflake
+   │       an engine runs its profile; Engine.Refines, Engine.Sound per plan
+   ▼
+engines    DuckDB · Polars · Spark · Snowflake · DataFusion (optional)
+```
+
+- The core computes on the full value space. A double is an IEEE 754
+  binary64 code, `-0.0` and the negative NaN included
+  ([The value domain](#the-value-domain)); `+ − × ÷` are the exact result
+  rounded once ([D31](#d31-double-arithmetic-is-exact-rounded-once)), and so
+  are double sums and statistical moments
+  ([D25](#d25-float-aggregates-are-correctly-rounded-exact-sums),
+  [D30](#d30-statistical-aggregates-are-correctly-rounded-exact-moments)).
+  Every option holds all of its behaviours
+  ([The option catalogue](#the-option-catalogue)). One evaluator serves every
+  weight type, bags and Z-sets among them (`Rel.evalK`,
+  [#905](https://github.com/AlexanderNenninger/substrait-lean/issues/905)).
+- A profile is a refinement of the core: for each option it picks the
+  behaviours it allows, such as `zero_sign`, `nan_kind`, `nan_equality`,
+  `nan_order`, `stat_algo` and `sum_order` ([The options table](#the-options-table)).
+  `Rel.AllowedP_mono` proves that every result a profile allows the core
+  allows. The reference profile (`Profile.reference`) makes the usual SQL
+  choices: `ONE_ZERO`, `ONE_NAN`, `NAN_IS_NAN` and NaN `GREATEST`, and
+  raises on the edge cases where engines disagree. For each option it picks
+  a behaviour every 1.0 engine has natively or reaches with a cheap shim in
+  the writers, such as `Dialect.canon` for `ONE_ZERO` or a stated
+  `NULLS LAST` ([principle 3](reference-semantics.md#principles)). Substrait's profile
+  (`Profile.substrait`) is strict IEEE: two zeros, signed NaNs, and NaN
+  unequal to itself in comparisons. Each engine has a profile of its own, from its facts. The
+  profiles are siblings ([Terminology](#terminology)).
+- An engine runs its profile. A plan proved under the reference reaches
+  the engine through the engine's translation; per plan, `Engine.Refines`
+  names the observation rows the run relies on, and `Engine.Sound` proves
+  that the rows the engine's model computes are a result the reference
+  allows ([#1132](https://github.com/AlexanderNenninger/substrait-lean/pull/1132),
+  [#1134](https://github.com/AlexanderNenninger/substrait-lean/pull/1134),
+  [Which plans run on an engine](#which-plans-run-on-an-engine)). Where an
+  engine's choice of an open option differs from the reference's
+  (`sum_order`, `stat_algo`), its result is within the plan's tolerance of
+  one the reference allows (`Relation.Near`,
+  [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929)).
+  DataFusion is an optional engine, and no test takes it as a reference or
+  an oracle ([#1139](https://github.com/AlexanderNenninger/substrait-lean/pull/1139)).
+  DuckDB is the default oracle.
 
 ## Principles the code follows
 
@@ -73,7 +128,7 @@ Three kinds of semantics, each with one job.
   the core. A proof under it would hold under every profile, but few plans
   verify there: the core allows every engine's raises and NaNs at once.
 - The reference profile (`Profile.reference`, "the reference") is what plans
-  are verified under. It is strict, stricter than every engine in most
+  are proved under. It is strict, stricter than every engine in most
   options. Where engines disagree on an edge case (integer overflow, NaN
   creation, double overflow to `±∞` (#575), domain errors, division by zero,
   out-of-range casts and dates), it raises. Where it picks a value, it picks
@@ -83,11 +138,11 @@ Three kinds of semantics, each with one job.
   where that keeps the profile practical for users (the NULL order, rounding
   ties). Each such choice costs a shim on every engine that differs, so these
   choices are few and deliberate: the reference prefers raising, proved
-  absent for a verified plan, or a choice every engine gives natively.
+  absent for a proved plan, or a choice every engine gives natively.
 - Engine profiles say what each engine does, from
   `characterization/<engine>/facts/`, and refine the core. They are
   siblings: no engine profile refines another, or the reference. A plan
-  verified under the reference reaches an engine through a translation,
+  proved under the reference reaches an engine through a translation,
   shimmed only on the reference's value choices
   ([Which plans run on an engine](#which-plans-run-on-an-engine)).
   `Profile.substrait` (step 2) is a sibling of the same kind: the YAMLs'
@@ -97,24 +152,24 @@ Three kinds of semantics, each with one job.
 
 ### What strictness buys
 
-A plan verified under the reference never raises: its preconditions,
+A plan proved under the reference never raises: its preconditions,
 stated or inferred, are proved to exclude the reference's raise set, or
 checked on the data. The inputs where engines disagree on errors are in that
-raise set, so a verified plan never reaches them, and it creates no new NaN
-(`nan_creation` raises in the reference). In
-[#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)'s
-terms, each call of such a plan is `refines[D]` on every engine, with `D` the
+raise set, so a proved plan never reaches them, and it creates no new NaN
+(`nan_creation` raises in the reference). In the classes of
+[#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568),
+each call of such a plan is `exact` on every engine on the domain `D`, the
 reference's non-raising domain at that call, and the proof keeps the plan's
 inputs inside `D`.
 
-So the options split in three, and a verified plan needs a shim only for the
+So the options split in three, and a proved plan needs a shim only for the
 second:
 
-| Kind | Reference | Options | A verified plan on an engine |
+| Kind | Reference | Options | A proved plan on an engine |
 |---|---|---|---|
 | Error side | raises | `overflow` (`ERROR`), `on_division_by_zero`, `on_domain_error`, `on_log_zero`, `nan_creation`, double overflow to `±∞` (#575), `shift_range`, `substring_range`, `date_range`, `cast_failure` (`UNSPECIFIED`), `stat_degenerate` for `±∞` | no shim: the engine's behaviour there (a wrap, NULL, NaN, `±∞`, a panic) is never reached |
 | Value side | picks one value | `null_order`, `rounding` of `round`, `division_type`, floor or truncating division of negatives, `float_to_int`, `decimal_rescale`, `avg_int_result`, an empty `SUM`, string and list positions, `zero_sign`, `nan_kind`, `nan_order`, `list_null_order`, `stat_degenerate` for `CORR`, result types | native where the engine picks the same value; a shim otherwise |
-| Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `approx[D, ε]` (#568) otherwise |
+| Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `observed` within the plan's tolerance `ε` (#568, D22) otherwise |
 
 An option the plan states itself (`overflow: SILENT`) is a value choice too.
 A precondition only checked on the data, such as a `SUM`'s overflow bound
@@ -134,7 +189,7 @@ point, and a profile is the set of choices it allows at each point.
 - A choice point is an option: a name and a finite set of behaviours.
   Substrait's own options (`overflow`, `on_division_by_zero`, `rounding`, …)
   are options with the values of their YAML. The points Substrait leaves
-  unnamed (one zero, NaN's order, the order of a double `SUM`, the row
+  unnamed (the sign of zero, NaN's order, the order of a double `SUM`, the row
   `FIRST` takes) are options of sverify's own, with the behaviours the
   profiles have.
 - A profile gives, for each option, the subset of its behaviours it
@@ -172,7 +227,7 @@ raises only where the reference may raise; resource errors, such as running
 out of memory, are outside this ([D16](#d16-engine-correctness)). This is
 the raise-set half of [Soundness](#soundness). Today Lean proves partial
 correctness for every lowered plan, an allowed result or an error
-(`Rel.duckdb_shim_sound`). For a plan verified to never raise the two agree,
+(`Rel.duckdb_shim_sound`). For a plan proved to never raise the two agree,
 and the engine raises nowhere (`Rel.duckdb_sound`,
 [engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice)).
 
@@ -215,7 +270,7 @@ the first column are the names the tables below use.
 
 | Option | Core | Substrait | Reference | DuckDB |
 |---|---|---|---|---|
-| `rounding` (`+ - × /`, the elementary functions, `sum`, `avg`, `variance`, `std_dev`) | the five of the YAML | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN` (native `Float`) | `TIE_TO_EVEN` (native IEEE; no fact records it) |
+| `rounding` (`+ - × /`, the elementary functions, `sum`, `avg`, `variance`, `std_dev`) | the five of the YAML | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN`: the exact result rounded once for `+ - × /` (D31) and the aggregates (D25, D30), native `Float` for the elementary functions | `TIE_TO_EVEN` (native IEEE; no fact records it) |
 | `rounding` (`round`) | the ten of the YAML | ten modes | `TIE_AWAY_FROM_ZERO` (#335) | `TIE_AWAY_FROM_ZERO` ([R15-round](../characterization/duckdb/facts/duckdb-R15-round.json), [R15-round-digits](../characterization/duckdb/facts/duckdb-R15-round-digits.json)) |
 | `on_division_by_zero` (doubles) | `IEEE`, `LIMIT`, `NULL`, `ERROR` | the four | `ERROR`; the others when asked (#204) | `IEEE` under `ieee_floating_point_ops`, `ERROR` with it off ([R5](../characterization/duckdb/facts/duckdb-R5.json)) |
 | `on_domain_error` (`sqrt`, `asin`, `acos`, `atanh`, `acosh`, logs, `atan2`, `divide`) | `NAN`, `NULL`, `ERROR` | `NAN`, `ERROR` (logs and integer `divide` add `NULL`) | `ERROR` (#215) | `NAN` ([R15-math-domain](../characterization/duckdb/facts/duckdb-R15-math-domain.json)); `atan2(0, 0)` is `0` ([R15-atan2](../characterization/duckdb/facts/duckdb-R15-atan2.json)) |
@@ -297,7 +352,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | strings | `str.plain` | `character_length`, `reverse`, `ascii`, `repeat`, `btrim`, `ltrim`, `rtrim`, `levenshtein` | none (the size hypothesis bounds their results) |
 | strings | `str.opaque` | `regexp_match`, `regexp_extract`, `regexp_replace`, `ilike`, `md5`, `sha256` | none; `case_sensitivity` fixed by the function |
 | temporal | `time.arith` | date and timestamp `±` intervals, `date_diff`, `date_bin` | `date_range`, `time_interval_months` |
-| temporal | `time.part` | `date_part`, `date_trunc`, `strftime` | none (their range is open in the reference, [Temporal](reference-semantics.md#temporal)) |
+| temporal | `time.part` | `date_part`, `date_trunc`, `strftime` | none (their range is the reference's timestamps, D32) |
 | nested | `list.order` | `list_lt`, `ORDER BY`/`MIN`/`MAX` of lists | `list_null_order`, and the element's options |
 | nested | `list.plain` | `array_length`, `cardinality`, `any_match`, `all_match`, `transform`, `filter` | none |
 | aggregates | `agg.isum` | `sum`, `avg` of integers and decimals | `overflow`, `avg_int_result` |
@@ -486,7 +541,7 @@ and the reference's choices. Decided ([D1](#d1-where-the-tables-live)).
 
 For every option, the behaviour the reference chooses, and every engine:
 native, a shim with its cost (an extra `CASE`, a cast to `HUGEINT`, a second
-pass), or refused. An error-side option needs no shim for a plan verified
+pass), or refused. An error-side option needs no shim for a plan proved
 to never raise ([What strictness buys](#what-strictness-buys)), so its cell
 names the guard, used only where a precondition is checked on the data.
 Generated from `REALIZE` and the facts, published in
@@ -516,28 +571,30 @@ named apart (`SEQUENTIAL` is one order of `ANY`) are listed in
 Each row of the realizability table, for an engine, a function and its
 argument types, falls in one class against the reference
 ([#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)),
-best first:
+best first. #568 named them `refines[D]`, `refines[D]` up to an observation
+and `approx[D, ε]`; [D22](#d22-four-route-classes-and-tolerances-are-observations)
+renamed them `exact`, `observed` and `observed`:
 
-1. `refines[D]`: on every input in the domain `D`, every outcome the engine
-   gives is one the reference allows. For a verified plan, `D` is the
+1. `exact` on `D`: on every input in the domain `D`, every outcome the engine
+   gives is one the reference allows. For a proved plan, `D` is the
    reference's non-raising domain, so error-side differences cost nothing
    ([What strictness buys](#what-strictness-buys)).
-2. `refines[D]` up to an observation `q`: `q ∘ f_engine = q ∘ f_reference` on
-   `D`, with `q` a map that forgets the difference: the multiset of rows,
+2. `observed` up to an observation `o`: `o ∘ f_engine = o ∘ f_reference` on
+   `D`, with `o` a map that forgets the difference: the multiset of rows,
    permutations within ties, `canon` (one zero, one NaN), the error's kind,
    a decimal's value without its scale, the UTC instant, parsing back a
-   string, NFC. Equality up to `q` is transitive and composes. The contract
-   must not tell `q`-equal results apart, and each operation downstream
-   must keep `q`; where one does not, a shim makes the value canonical first
+   string, NFC. Equality up to `o` is transitive and composes. The contract
+   must not tell `o`-equal results apart, and each operation downstream
+   must keep `o`; where one does not, a shim makes the value canonical first
    ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632368108)).
-3. `approx[D, ε]`: on `D`, within `ε` of an outcome the reference allows.
+3. `observed` within a tolerance `ε`: on `D`, within `ε` of an outcome the reference allows.
    Floating point only; `ε` propagates through arithmetic, and a comparison
    whose threshold lies within `ε` of its argument's range drops the call
    site to a shim
    ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632287946)).
    Lean proves `ε` for a double `SUM` and `AVG` under every summation order
    the engines use, and its propagation through `+`, `−`, `×` and `/`;
-   elementary functions stay probed
+   elementary functions stay tested
    ([float-bounds.md](float-bounds.md#the-engines-orders-and-epsilon-444)).
 4. Each of the three after a shim: a written flag, a rewrite or a guard,
    mostly for the reference's value choices.
@@ -545,12 +602,12 @@ best first:
 
 A plan takes the worst class over its call sites.
 
-Each row also carries the engine's run-to-run variation next to its class
-`q`: the observation up to which two runs of the engine on the same input
-agree. The class answers correctness against the postcondition's `q_post`,
-the variation answers reproducibility against a consumer's `q_det`
+Each row also carries the engine's run-to-run variation next to its class:
+the observation up to which two runs of the engine on the same input
+agree. The class answers correctness against the postcondition's
+observation, the variation answers reproducibility against a consumer's
 ([D20](#d20-two-observations-per-output)). Polars's streaming float `SUM`,
-for example, is `approx[D, ε]` and also varies in its last bits between
+for example, is `observed` within `ε` and also varies in its last bits between
 runs.
 
 ### Where the evidence lives
@@ -570,8 +627,10 @@ runs.
 The core needs every value any profile gives, so each must be at least as
 fine as Substrait's. `Value` has a constructor per kind ([D29](#d29-a-value-has-its-kind)):
 `null | bool | int | float | date | ts | tod | dec | str | list | struct`.
-A double is a `float` code in SQL order with one zero and one NaN
-(`SubstraitLean/Float.lean`), a decimal its scale and unscaled integer.
+A double is a `float` code, `-0.0` and the negative NaN among them
+(`SubstraitLean/FloatFormat.lean`), which the reference profile reads with
+one zero and one NaN through `canon`; a decimal is its scale and unscaled
+integer.
 
 | Value | What the core needs | Blocks #444? |
 |---|---|---|
@@ -809,11 +868,11 @@ Profiles are siblings under the core, and sverify has no translations
 between them, so no shims for them either. A plan runs on the engine `E`
 in one of three ways:
 
-1. Verified under `Profile.E`: it runs natively.
-2. Verified under the reference: it runs through the translation from the
+1. Proved under `Profile.E`: it runs natively.
+2. Proved under the reference: it runs through the translation from the
    reference to `E`, whose realizability row is proved once per engine, so
    it costs a plan nothing.
-3. Verified under another profile `P`, with a proof that transfers to
+3. Proved under another profile `P`, with a proof that transfers to
    `Profile.E` by the option-wise check: for every option the proof depends
    on (the option dependency report, step 3c), `E`'s choices are within
    `P`'s. By monotonicity (`Rel.AllowedP_mono`, applied per option) the
@@ -848,12 +907,12 @@ group. For two profiles `P` and `Q`, a group and one of its options, with
 |---|---|---|
 | `q ⊆ p` | native: the call as it is | `overflow`, reference to DuckDB: both `ERROR` |
 | `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `zero_sign`, reference (`ONE_ZERO`) to DuckDB (`IEEE`): `Dialect.canon`; `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
-| `q ⊄ p` only on inputs a precondition excludes | a precondition: proved, or listed in `Report.assumed` and checked on the data | the reference's error-side options to any engine: `nan_creation` (raise) to DuckDB (`NAN`) is sound on the inputs a plan verified to never raise reaches; `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
+| `q ⊄ p` only on inputs a precondition excludes | a precondition: proved, or listed in `Report.assumed` and checked on the data | the reference's error-side options to any engine: `nan_creation` (raise) to DuckDB (`NAN`) is sound on the inputs a plan proved to never raise reaches; `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
 | none of these | refused | `ntile_spread` on DataFusion ([DF-11](../upstream/bugs/DF-11.json)); `FLOOR` modulus anywhere today |
 
 From the reference to an engine, the third case covers every error-side
 option ([What strictness buys](#what-strictness-buys)): the reference raises
-there, so its raise set is the precondition, and a plan verified to never
+there, so its raise set is the precondition, and a plan proved to never
 raise discharges it. The guard that raises (`UnFn.raise`) is needed only
 where the precondition is checked on the data. The second case is left for
 the value choices.
@@ -933,7 +992,7 @@ to check.
 
 ### What a proof under the reference guarantees
 
-A plan verified under the reference, `requires R ⇒ ensures E`, keeps `E` on
+A plan proved under the reference, `requires R ⇒ ensures E`, keeps `E` on
 every engine with a sound translation, along every chain of them, and for
 every choice the reference leaves open (ties, order-free `FIRST`, clustered
 groups). It does not carry to the core or to `Profile.substrait`, which
@@ -1072,7 +1131,7 @@ way [Necula00]; Alive2 does it per function, with bounded unrolling. CompCert
 mixes both: an unverified translator followed by a verified validator is a
 verified translator [Leroy09, Thm. 1], and register allocation is checked
 this way [Leroy09, §8.2.4]. sverify's lowering and lift searches are of this
-kind at the granularity of table entries: an unverified search proposes an
+kind at the granularity of table entries: an unproved search proposes an
 entry, Lean proves it at build time, and `Lowering.lower_correct` composes the
 entries. Single plans are checked only for translations sverify does not own (D7).
 
@@ -1256,7 +1315,7 @@ exact, or within a stated tolerance, absolute, relative or in ulps, which
 `verify` checks against `ε` on each engine; timestamps up to a precision;
 strings up to NFC. Verification then
 means that every engine result the route allows is equivalent, under the
-stated relation, to a result the reference allows. `approx` is "verified
+stated relation, to a result the reference allows. A tolerance means "proved
 within the stated tolerance", with #568's propagation of `ε` checking that
 the tolerance holds; it is no verdict of its own. The user states what they
 need, so the classes of [Classes of an engine's functions](#classes-of-an-engines-functions)
@@ -1319,11 +1378,11 @@ as running out of memory, are excluded. The guarantee of no error
 needs this stricter definition: under partial correctness, an engine could
 raise anywhere and still be correct. Partial correctness is what
 `Rel.duckdb_shim_sound` proves today for every lowered plan; for a plan
-verified to never raise the two agree (`Rel.duckdb_sound`).
+proved to never raise the two agree (`Rel.duckdb_sound`).
 
 Amended (2026-11-08): `Engine.contract_sound` (`SubstraitLean/EngineSound.lean`,
 [#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)) proves
-a verified contract on the rows each engine's model computes for the
+a proved contract on the rows each engine's model computes for the
 translated plan, unless it raises, through each engine's `Engine.Sound`. That the engine's actual
 result is one its table allows stays trusted, as `Engine.Runs`, resting on the
 tested rows `Engine.Refines` lists ([What is trusted](proofs.md#what-is-trusted)).
@@ -1572,7 +1631,10 @@ plan's bound, the distance of any order of additions from the exact sum
 (`StdModel.epsilon_sum` in [`float-bounds/`](float-bounds.md)) plus half an
 ulp of the final rounding (`epsilon_sum_cr`). Their `sum_order` rows stay
 `approxWithin "plan"`, so a double `SUM` or `AVG` on an engine is
-`observed (tolerance)`, as it was.
+`observed (tolerance)`, as it was. Their `agg.fsum` `rounding` rows are
+`approxWithin "plan"` too, proved by the same theorem (#929): its standard
+model holds of every rounding to nearest, whatever the tie rule, so the
+engine's rounded additions stay within the plan's bound.
 
 Three consequences:
 
@@ -1610,87 +1672,11 @@ grouped aggregates; the reference is unchanged. An engine's window sum is
 within the plan's bound where its window algorithm sums the frame's own
 values (`window_sum_algo`: each frame anew, a tree, or a running sum).
 
-### D30. Statistical aggregates are correctly rounded exact moments
-
-Decided 2026-11-07 (#918).
-
-In the reference, `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP`, `STDDEV_POP`,
-`COVAR_SAMP`, `COVAR_POP` and `CORR` of doubles are rounded once from the
-exact moments of the values: the count `n`, and `Σx`, `Σx²` and `Σxy` as
-exact dyadic rationals, since every finite double is a multiple of
-2⁻¹⁰⁷⁴ (`FloatMoments.lean`). The co-moments `S = Σx² − (Σx)²/n` and
-`C = Σxy − Σx·Σy/n` are exact. The variance is `S/d` rounded to the nearest
-double, ties to even, with `d = n − 1` for a sample and `n` for the
-population; the covariance is `C/d` rounded once. `STDDEV` and `CORR` are
-rounded by comparing squares against the midpoint, with no square root
-computed: `√(S/d)` and `|C|/√(Sxx·Syy)` against each candidate's midpoint
-`m` by `m² · d < S` and `m² · Sxx · Syy < C²`, with `C`'s sign
-(`sqrtMag`). Each is one value, a function of the multiset of values
-(`varOf_perm`, `covOf_perm`, `corrOf_perm`), whatever the engine's
-algorithm.
-
-NULL as before D30: no values, a sample of one, and for `CORR` fewer than two
-pairs or a side whose values are all equal, which is `Sxx = 0` or `Syy = 0`
-(`stat_degenerate` `NULL`; `corrOf` gave NULL there before D30 too). NaN and
-infinities as `varOf` had them: a NaN among the values gives NaN, and an
-infinity gives NaN in `Rel.eval` and raises in a plan the checker accepts,
-since its deviation `∞ − ∞` would create a NaN (#257). A finite result past
-the largest double raises (#575).
-
-Engines keep their own algorithms: Welford's update with Chan's merge in
-DuckDB, Spark and grouped Polars, a blockwise two-pass in ungrouped Polars.
-Each is within the plan's bound of the reference's value: the algorithm's
-distance from the exact moments (`StatProps`, proved for Welford and Chan as
-`StdModel.core_var_chan`, `core_cov_chan`, `core_corr_chan` in
-`float-bounds/`), plus half an ulp of the reference's rounding. Their
-`stat_algo` rows are `approxWithin "plan"`, as `sum_order`'s are, and
-`StatAlgo` keeps `StatProps` as what `GENERIC` and `WELFORD_CHAN` allow. The
-writers clamp an engine's variance and deviation at `0` and its correlation
-to `[-1, 1]`, NaN kept (`Dialect.clamp_stat`, Polars likewise): the exact
-value lies in the interval, so clamping never moves the engine's value
-further from it (`Stat.clamp_near`), and `var ≥ 0` and `|corr| ≤ 1`
-hold of every engine's result. The bounds differ in kind: `VAR_*` and
-`STDDEV_*` are relative to the spread, the deviation's half the variance's;
-`CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
-`√(Sxx · Syy)`, or relative only under a sign-definite precondition.
-`Report.epsilon` reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
-(`Epsilon.statEps`). `CORR` has no data-free bound (decided 2026-11-08,
-#918): its distance to the reference is bounded only under a lower bound on
-both sides' variances (`core_corr_chan`'s `L`), stated by the user and
-checked by the run as a precondition, never inferred. Without one, a `CORR`
-postcondition beyond `[-1, 1]` and the clamp is tested only, and the report
-names that precondition as the way to a bound (`Epsilon.corrWhy`). The
-contract language has no preconditions on aggregates yet, so the stated
-bound waits for them. Snowflake keeps
-refusing these aggregates (Snowflake behaviour recorded privately).
-
-Consequences:
-
-- `stat_algo` is no longer a choice of the reference; it stays a choice of
-  the engines, and the reference's row is `EXACT`.
-- The statistical aggregates are order-free (`AggFn.orderFree`), so
-  `Measure.closedB`, `Rel.closedB` and `Rel.detPlan` hold of plans with them,
-  and `contract_sound_all` and `contract_sound_allowed_closed` cover them.
-  `QUANTILE_CONT` stays the only open measure.
-- `varOf_props`, `covOf_props` and `corrOf_props` are retired, and
-  `Rel.eval_allowed` rests on Lean's standard axioms alone.
-- A postcondition at a rounding boundary can move by an ulp, which
-  `sv.approx` absorbs.
-
-Why: before D30 the reference stated generic properties for these
-aggregates and let engine profiles refine them, so a plan reading one left
-the engine a choice of value. `Rel.FloatOpenSafe`, `contract_sound_allowed`'s
-side condition, failed for any such plan: `SELECT VAR_POP(x)` allowed many
-values while an order fixed one. Exact moments give one value with no
-algorithm imposed on engines, as D25 did for sums, retire three axioms, and
-are the state an exact incremental `VAR` needs (#918 Part B). The cost:
-engines go from refining exactly to within a plan's bound.
-
 ### D26. Two equalities for NULL
 
 In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition)
 `NULL = NULL` is unknown, so a NULL never matches, never equals and never
-compares: three-valued logic, `and3`/`or3`/`not3` and `BinFn.apply .eq` in
+compares: three-valued logic, `and3`/`or3`, `UnFn.apply .not` and `BinFn.apply .eq` in
 `SubstraitLean/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
 `EXCEPT`, `INTERSECT`, a window's `PARTITION BY` and `IS NOT DISTINCT FROM`,
 all NULLs are one value: syntactic equality, `Value.decEq` in
@@ -1772,9 +1758,87 @@ kinds from the kind checker may refine `nk` on checked plans later.
 
 Why: the kinds were in the parser and the kind checker (#924) only; with them
 in the values, a well-kinded plan's values have their kinds by evaluation, and
-the trusted float axioms (`floatSum_mem`/`floatAvg_mem`/`floatSum_sign`,
-`floatSum_twoPhase` and `floatAvg_twoPhase`) state their premises about
-doubles.
+the float facts state their premises about doubles. Those were the trusted
+axioms `floatSum_mem`, `floatAvg_mem`, `floatSum_sign`, `floatSum_twoPhase`
+and `floatAvg_twoPhase`; D25 retired them for theorems about the correctly
+rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`,
+`twoPhaseSum_near`, `twoPhaseAvg_near`).
+
+### D30. Statistical aggregates are correctly rounded exact moments
+
+Decided 2026-11-07 (#918).
+
+In the reference, `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP`, `STDDEV_POP`,
+`COVAR_SAMP`, `COVAR_POP` and `CORR` of doubles are rounded once from the
+exact moments of the values: the count `n`, and `Σx`, `Σx²` and `Σxy` as
+exact dyadic rationals, since every finite double is a multiple of
+2⁻¹⁰⁷⁴ (`FloatMoments.lean`). The co-moments `S = Σx² − (Σx)²/n` and
+`C = Σxy − Σx·Σy/n` are exact. The variance is `S/d` rounded to the nearest
+double, ties to even, with `d = n − 1` for a sample and `n` for the
+population; the covariance is `C/d` rounded once. `STDDEV` and `CORR` are
+rounded by comparing squares against the midpoint, with no square root
+computed: `√(S/d)` and `|C|/√(Sxx·Syy)` against each candidate's midpoint
+`m` by `m² · d < S` and `m² · Sxx · Syy < C²`, with `C`'s sign
+(`sqrtMag`). Each is one value, a function of the multiset of values
+(`varOf_perm`, `covOf_perm`, `corrOf_perm`), whatever the engine's
+algorithm.
+
+NULL as before D30: no values, a sample of one, and for `CORR` fewer than two
+pairs or a side whose values are all equal, which is `Sxx = 0` or `Syy = 0`
+(`stat_degenerate` `NULL`; `corrOf` gave NULL there before D30 too). NaN and
+infinities as `varOf` had them: a NaN among the values gives NaN, and an
+infinity gives NaN in `Rel.eval` and raises in a plan the checker accepts,
+since its deviation `∞ − ∞` would create a NaN (#257). A finite result past
+the largest double raises (#575).
+
+Engines keep their own algorithms: Welford's update with Chan's merge in
+DuckDB, Spark and grouped Polars, a blockwise two-pass in ungrouped Polars.
+Each is within the plan's bound of the reference's value: the algorithm's
+distance from the exact moments (`StatProps`, proved for Welford and Chan as
+`StdModel.core_var_chan`, `core_cov_chan`, `core_corr_chan` in
+`float-bounds/`), plus half an ulp of the reference's rounding. Their
+`stat_algo` rows are `approxWithin "plan"`, as `sum_order`'s are, and
+`StatAlgo` keeps `StatProps` as what `GENERIC` and `WELFORD_CHAN` allow. The
+writers clamp an engine's variance and deviation at `0` and its correlation
+to `[-1, 1]`, NaN kept (`Dialect.clamp_stat`, Polars likewise): the exact
+value lies in the interval, so clamping never moves the engine's value
+further from it (`Stat.clamp_near`), and `var ≥ 0` and `|corr| ≤ 1`
+hold of every engine's result. The bounds differ in kind: `VAR_*` and
+`STDDEV_*` are relative to the spread, the deviation's half the variance's;
+`CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
+`√(Sxx · Syy)`, or relative only under a sign-definite precondition.
+`Report.epsilon` reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
+(`Epsilon.statEps`). `CORR` has no data-free bound (decided 2026-11-08,
+#918): its distance to the reference is bounded only under a lower bound on
+both sides' variances (`core_corr_chan`'s `L`), stated by the user and
+checked by the run as a precondition, never inferred. Without one, a `CORR`
+postcondition beyond `[-1, 1]` and the clamp is tested only, and the report
+names that precondition as the way to a bound (`Epsilon.corrWhy`). The
+contract language has no preconditions on aggregates yet, so the stated
+bound waits for them. Snowflake keeps
+refusing these aggregates (Snowflake behaviour recorded privately).
+
+Consequences:
+
+- `stat_algo` is no longer a choice of the reference; it stays a choice of
+  the engines, and the reference's row is `EXACT`.
+- The statistical aggregates are order-free (`AggFn.orderFree`), so
+  `Measure.closedB`, `Rel.closedB` and `Rel.detPlan` hold of plans with them,
+  and `contract_sound_all` and `contract_sound_allowed_closed` cover them.
+  `QUANTILE_CONT` stays the only open measure.
+- `varOf_props`, `covOf_props` and `corrOf_props` are retired, and
+  `Rel.eval_allowed` rests on Lean's standard axioms alone.
+- A postcondition at a rounding boundary can move by an ulp, which
+  `sv.approx` absorbs.
+
+Why: before D30 the reference stated generic properties for these
+aggregates and let engine profiles refine them, so a plan reading one left
+the engine a choice of value. `Rel.FloatOpenSafe`, `contract_sound_allowed`'s
+side condition, failed for any such plan: `SELECT VAR_POP(x)` allowed many
+values while an order fixed one. Exact moments give one value with no
+algorithm imposed on engines, as D25 did for sums, retire three axioms, and
+are the state an exact incremental `VAR` needs (#918 Part B). The cost:
+engines go from refining exactly to within a plan's bound.
 
 ### D31. Double arithmetic is exact, rounded once
 
@@ -1829,3 +1893,232 @@ or `x · y` was provable, and the checker trusted eight axioms for them. The
 exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
+
+### D32. Calendar functions work on the reference's timestamps, 0001 to 9999
+
+Decided 2026-11-08 (signed off by the maintainer, reviewed by the theory
+advisor).
+
+The reference's timestamps are those of its dates (#251): 0001-01-01
+00:00:00 to 9999-12-31 23:59:59.999999, `Time.tsMin` to `Time.tsMax` in
+microseconds since 1970. Every calendar function is defined on all of them,
+with the proleptic Gregorian calendar of `SubstraitLean/Time.lean`.
+`date_part`, `strftime`, `time_of_day`, adding months to a timestamp,
+truncation to a week, month, quarter or year, truncation of a date, and
+`date_bin` raise (`Issue.overflow`) where the operand or the result leaves
+the range. They no longer depend on DataFusion's ±2⁶³ nanoseconds (1677 to
+2262) or on chrono's ±262,142 years. 0001-01-01 is a Monday, so no
+truncation of a timestamp in range leaves it. A `date_bin` origin outside
+the range is refused when the plan is checked, never at run time.
+
+A DATE or TIMESTAMP value of the reference lies in 0001–9999 by its type. A
+source value outside it fails the read, named; a computed date outside it
+raises (#251). Calendar functions are total on the reference's values
+(`Value.InCalendar`, `UnFn.datePart_issue_of_inCalendar`): a column read
+needs no guard and no inferred precondition, and only a computed argument
+can leave the range. The read checks each DATE and TIMESTAMP column once,
+from the Parquet files' min/max statistics where they cover it (Delta and
+Iceberg write them), else with one range predicate over the read, and fails
+with "<column> holds dates outside 0001–9999 (<count>, e.g. <value>); the
+reference's calendar covers 0001–9999. Filter them, or read the column as
+text." (`sverify.engine.Connection.put`).
+
+Outside the range the engines disagree: DuckDB and Polars give
+`date_part('year')` 0 and 10000, but `strftime` of year 10000 is
+`+10000-01-01` on Polars and Spark, and the reference has no year 0. So the
+reference raises there, as it does for date arithmetic (#251), and picks no
+value.
+
+Each 1.0 engine reaches the reference natively inside the range and with
+one guard outside it:
+
+| engine | inside 0001 to 9999 | outside | type the writer pins |
+|---|---|---|---|
+| DuckDB | native ([duckdb-calendar-range](../characterization/duckdb/facts/duckdb-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP` (µs) |
+| Polars | native ([polars-calendar-range](../characterization/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
+| Spark | native ([spark-calendar-range](../characterization/spark/facts/spark-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP_NTZ`, session time zone UTC |
+| Snowflake | reachable by a shim, probe pending: parts in year 1 are right and sverify truncates weeks itself (private facts); month, quarter and year truncation at the ends is not recorded | computes (years 0 to 302024); the SQL guards | `TIMESTAMP_NTZ` |
+| DataFusion | refused: it truncates and bins in nanoseconds ([DF-17](../upstream/bugs/DF-17.json)) | — | — |
+
+The facts record the probe points: 0001-01-01, the leap days 0004-02-29,
+1600-02-29 and 2000-02-29, 1900-02-28 and 1900-03-01, both sides of the
+Gregorian switch (1582-10-04 and 1582-10-15) and 9999-12-31, each at
+23:59:59.999999. `Time.lean`'s `#guard`s and `test_time.py::test_d32_probe_points`
+check the same points.
+
+In the model: `Time.tsMin` and `Time.tsMax` replace `nsMin`, `nsMax`,
+`nsDayMin`, `nsDayMax`, `partMin`, `partMax`, `chronoDayMin` and
+`chronoDayMax`. `Time.datePart` is `NULL` outside the range, where
+`UnFn.issue` now raises (`datePart`, `dayPart`); `UnFn.mayIssue` reports it
+unless the operand's bounds are inside the range. A column's type gives
+those bounds (`ContractCheck.typeEnv`: a DATE in `dayMin` … `dayMax`, a
+TIMESTAMP in `tsMin` … `tsMax`), so a column read discharges it. `UnFn.mayIssue_sound` covers
+the new rows with the existing `rangeIssue_sound`. `Infer.atIssue` infers the
+range as a precondition.
+
+Consequences:
+
+- A `date_part` raises only on a computed argument: on the catalogue's 136
+  queries the checker reports one such `date_part` issue, and TPC-H Q09's
+  `EXTRACT(YEAR FROM o_orderdate)` stays proved. The SQL writers still emit
+  the guard on every `date_part` (35 on the catalogue's DuckDB SQL, 480
+  guards in all, from 445) until the checker's discharged issues reach the
+  Polars writer (#1174) and DuckDB's (#1169), which drop those on column
+  reads.
+- Truncation and parts of timestamps from 1677 back to 0001 and from 2262 to
+  9999 run on every 1.0 engine, where they raised before.
+- `strftime`'s `%Y` is always four digits.
+
+Why: the old ranges were DataFusion's, and DataFusion is a tier-3 engine
+(2026-11-08). The SQL standard's timestamps are the reference's dates', which
+every 1.0 engine represents.
+
+### D34. An option differs from the reference only on its scope
+
+Decided 2026-11-08, by the maintainer after the theory review.
+
+Each option differs from the reference only on its scope, a predicate on the
+call's arguments and reference result stated beside the option. Engine rows
+are statements about the scope; agreement outside it is the function's base
+row. A plan depends on an option only where a call may be in its scope.
+
+In the model, `optionScope` (`SubstraitLean/Scopes.lean`) states each
+option's scope, one row per option of the catalogue in its order, and
+`Rel.AllowedP` reads it: a call (`CallExtra`) or an aggregate (`AggExtra`)
+takes another value than the reference's only where its table allows one of
+its group's options a behaviour the reference does not and the call is in
+that option's scope. A scope may be wider than where the behaviours differ,
+never narrower; one not pinned down yet is every call.
+
+| Option | Scope |
+|---|---|
+| `overflow` | the exact result is outside the type's range (an integer `SUM` outside 64 bits) |
+| `on_division_by_zero` | the divisor is zero |
+| `division_type` | the operands have opposite signs and the remainder is not zero |
+| `min_mod_neg_one` | `MIN % -1` |
+| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` of `+∞` and `−∞` |
+| `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
+| `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
+| `nan_equality`, `nan_order` | an argument is NaN, or holds one |
+| `nan_kind` | an argument or the reference result is NaN |
+| `on_domain_error`, `on_log_zero`, `substring_range`, `cast_failure`, `date_range` | the reference reports the issue at the call (a domain error, a failed cast, a date out of range) |
+| `negative_start` | a negative start |
+| `null_handling` | an argument is NULL |
+| `empty_group_aggregates` | an aggregate of no values |
+| the others (`rounding`, `sum_order`, `stat_algo`, `tie_*`, `shift_range`, …) | every call |
+
+`sum_order`'s true scope is a sum that is not exact; it is every call until
+the analyses can tell. An engine's own order of additions, overflow to `±∞`
+on the way included, is `sum_order`'s (`FloatSums`), so `agg.fsum`'s
+`nan_creation` and `float_overflow` are about the correctly rounded sum.
+
+Consequences:
+
+- `Rel.AllowedP` only narrows. `Rel.allowedP_reference`, `Rel.AllowedP_mono`
+  and `Rel.AllowedP_transfer` keep their statements.
+- The engines' functions show each of their deviations in an option's scope
+  (`Profile.duckdb_withinOk`, `Polars.written_within`). DuckDB's
+  `fmod(x, 0)` is NaN under `nan_creation`, since its table gives `fp.mod`
+  no other `on_division_by_zero`; Polars's NaN for `power` is a domain
+  error's (`on_domain_error`), since `power` has no `nan_creation`.
+- A plan's option dependency report keeps an option only where a call may be
+  in its scope, from the arguments' abstract values (`Expr.eval_dead`,
+  `Rel.AllowedP_transfer_live`, a follow-up), and reports the function's
+  base row's evidence where every option is dead.
+
+### D35. Engine summation orders are bounded sets
+
+Decided 2026-11-08 (#929): approved by the theory advisor, to whom the
+maintainer delegated the sign-off.
+
+`SumOrder b vs c`, the doubles a double `SUM` gives under a `sum_order`
+behaviour, bounds every behaviour but `EXACT`. On `n ≤ 2³²` finite doubles
+whose `2 · Σ(|xᵢ| + 2⁻¹⁰²²)` stays below the largest double, the sum is finite
+and within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact sum, `u = 2⁻⁵³`,
+`γₙ = nu / (1 − nu)` (`SumBound`). Stated in units of `2⁻¹⁰⁷⁴` and multiplied
+out, it is an exact inequality on integers, so it needs no rounding of its
+own.
+
+- `ANY` and `PAIRWISE` keep their trees (`FloatSums`) and `SEQUENTIAL` its
+  permuted sequential sum, each with the bound.
+- `COMPENSATED` (Kahan's sum, Polars) and `SCALED_CONSTANT` (a constant run's
+  `fl(k · x)`, DuckDB) were any double. They are now the bound alone: no
+  theorem of the core reads their shape (`TreeSum.const` is float-bounds').
+- `AvgOrder` follows: a sum within the bound, divided by the count.
+- `EXACT`, the reference's order (D25), is unchanged.
+- Window sums take their frame's `SumOrder` (`WinFn.AllowedP`): `TREE` and
+  `RECOMPUTE` sum each frame's own values. `RUNNING_ADD` is a running state
+  over the partition's prefix that never removes a row (duckdb-window-sum-order,
+  spark-window-agg), so its value at a row is a sum of exactly the rows
+  before it, the frame of the growing windows it runs: the prefix bound is
+  the frame's, by those facts. A sliding sum (`SLIDING`) stays any value.
+
+What stays trusted: the engines' algorithms meet the bound. `StdModel`'s
+theorems in `float-bounds` justify it on the engines' facts
+(`StdModel.Summed.near`, `epsilon_sum_cr`, `Rnd.kahan_near`), as the
+`sum_order` rows' evidence. #1196, the bridge from float-bounds to the core,
+retires it.
+
+Why: `Rel.AllowedP` is the set the soundness theorems quantify over. A
+behaviour that allows any double made every contract on a double `SUM`
+unprovable at the plan level on DuckDB and Polars, although both algorithms
+are bounded. `SumOrder.bound` reads the bound as a range the abstract domain
+computes (finite, in `[sumLo, sumHi]`), which cuts `nan_creation`,
+`float_overflow` and the NaN cases of a comparison downstream (D34), and the
+margin check's theorem over its plan reads the same set.
+
+### D36. Doubles have one zero and one NaN
+
+Decided on [#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), merged 2026-10-31, and on #209.
+
+The reference profile reads doubles with one zero and one NaN:
+`zero_sign` `ONE_ZERO`, `nan_kind` `ONE_NAN`, `nan_equality` `NAN_IS_NAN`
+and `nan_order` `GREATEST`, above `+∞`. `-0.0` is `0.0` everywhere, so
+`1.0 / -0.0 = inf` where the plan asks for IEEE division, and `GROUP BY`,
+`DISTINCT`, joins, partitions and sorts see one zero and one NaN. The core
+keeps both zeros and the signed NaNs ([The value domain](#the-value-domain));
+the reference applies `FloatFormat.canon` to every input and output, as the
+writers do (`Dialect.canon`). Substrait's YAMLs leave the grouping and
+order of `-0.0` unspecified and compare NaN by IEEE's rules, so this is an
+override ([Overrides](reference-semantics.md#overrides)).
+
+Why: SQL users expect `-0.0 >= 0` and a NaN equal to itself, and DuckDB,
+Polars and Spark compare NaN so (`nan_equality` `NAN_IS_NAN` in their
+tables); IEEE's NaN, unequal to itself,
+would split `GROUP BY` and `DISTINCT` and drop rows from joins.
+
+### D37. No operation creates a NaN
+
+Decided on #185 ("no newly created NaNs") and [#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257), closed
+2026-11-02.
+
+No operation creates a NaN. An operation on non-NaN inputs whose IEEE
+result is NaN is an issue (`Issue.domain`, `nan_creation = ERROR`), which
+`verify` rules out or checks on the data; on the rows a precondition
+excludes, `Rel.eval` keeps IEEE's value (NaN), as it keeps ±∞ under #575.
+Under a verification profile that sets `nan_creation = NAN`, no issue fires
+and the value is NaN.
+
+Why: with no NaN in the inputs (`~_.v.isnan()` in `requires`), there is
+none in the outputs. Engines give NaN, NULL or an error there, and a plan
+proved to never raise reaches none of them, so no engine needs a shim
+([D21](#d21-tighten-the-reference-where-it-stays-practical)).
+
+### D38. No operation on finite doubles overflows to infinity
+
+Decided on [#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575), closed 2026-11-04.
+
+A `±∞` from the data passes through. An operation on finite doubles whose
+IEEE result is `±∞` raises: `+`, `-`, `*`, `/` and `power` that overflow
+(`1e308 * 10`, `power(10, 400)`, `power(0, -1)`), `exp` past `709.78`, and a
+`SUM`, `AVG`, variance, covariance or correlation of finite values that
+overflows (`Issue.infinite` in `Safety.lean`). `verify` rules the error out
+by an inferred precondition: proved from the bounds where they do it,
+otherwise listed in `Report.assumed` and checked on the data. `Rel.eval`
+keeps the IEEE value on the rows the precondition excludes, so the lift of
+DuckDB's SQL with `semantics="duckdb"` states DuckDB's result exactly.
+
+Why: with no NaN and no `±∞` in the inputs, there is none in the outputs,
+and every floating result has a usable bound. Substrait's YAMLs leave the
+overflow unspecified ([ST-9](../upstream/bugs/ST-9.json)), and the
+precondition rarely bites real queries (D21).

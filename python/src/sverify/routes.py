@@ -6,10 +6,10 @@ A plan runs on the engine `E` by one of four routes, tried in this order:
 1. `"native"`: it was verified under `Profile.E` (`verify(semantics=E)`).
 2. `"translated"`: it was verified under the reference, and runs through
    the translation from the reference to `E` (`TRANSLATIONS`).
-3. `"transfer"`: it was verified under another profile `P`, and for every
-   option the proof depends on (`Report.depends`), `E`'s choices are within
-   `P`'s: the proof holds under `Profile.E` as it is (`Rel.AllowedP_mono`,
-   option by option). A table lookup, `transfer`.
+3. `"transfer"`: it was verified under another profile `P`, and at every
+   option the plan reads, `E`'s choices are within `P`'s: the proof holds
+   under `Profile.E` as it is. The checker decides it (`transferB`, proved
+   sound by `Rel.transfer_of_transferB`) in its verdict on `E`.
 4. `"recheck"`: the checker proves the contract again under `Profile.E`.
 
 Otherwise the plan is refused on `E`, with the reason. A function `E` does
@@ -23,10 +23,12 @@ Each route carries the plan's class on `E` (#568): `exact` (every result
 `E` gives is one the reference allows), `observed` (equal to one up to an
 observation, `Route.observation`: rows as a multiset, a tolerance on
 doubles, …), `shim` or `refused`, the worst over the options the proof
-depends on, from the class, observation and shim columns of `E`'s choices
-(D15). An option `E` realizes only up to its observation needs a
-postcondition whose observation it refines (`sv.equivalent`, D18), or the
-row's shim; otherwise the plan is refused there.
+depends on. The checker gives it, with its evidence, in its verdict on `E`
+(`"engines"`, `SubstraitLean/Realize.lean`), from the class, observation and
+shim columns of `E`'s choices (D15). An option `E` realizes only up to its
+observation needs a postcondition whose observation it refines
+(`sv.equivalent`, D18), or the row's shim; otherwise the plan is refused
+there (`realization`).
 
 A routed run also reads the engine's settings (DuckDB's
 `current_setting`, Polars's engine affinity) and compares them with those
@@ -36,7 +38,7 @@ choice-table row the plan depends on reads refuses the run
 NULLS LAST); another warns (`EngineSettingsWarning`).
 
 Each engine profile records the engine versions its facts were probed at
-(`PROFILES`, D14). A run on another version warns
+(the checker's `--options`, "profiles", D14). A run on another version warns
 (`EngineVersionWarning`); a run on another major version is refused
 (`EngineVersionError`) until the probes are re-run.
 
@@ -58,7 +60,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
-from sverify import _plan_read
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.observation import Observation, Within, _deterministic_arg
 
@@ -73,30 +74,6 @@ Class = Literal["exact", "observed", "shim", "refused"]
 Evidence = Literal["proved", "tested"]
 #: The classes, best first (#568): a plan takes the worst of its options'.
 CLASSES: tuple[Class, ...] = ("exact", "observed", "shim", "refused")
-#: The checker's class names (`substrait-check --options`) as `Class`es:
-#: `refines_up_to` an observation and `approx` (a tolerance, which is an
-#: observation of doubles) are both `observed`.
-_CLASS_NAMES: Mapping[str, Class] = {
-    "refines": "exact",
-    "exact": "exact",
-    "refines_up_to": "observed",
-    "approx": "observed",
-    "observed": "observed",
-    "shim": "shim",
-    "refused": "refused",
-}
-
-
-def row_class(r: Mapping[str, Any]) -> Class | None:
-    """A choices row's class, by this module's names."""
-    c = r.get("class")
-    return None if c is None else _CLASS_NAMES[c]
-
-
-def row_observation(r: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    """A choices row's observation, as the checker writes it (`"observation"`,
-    or `"q"` from a checker before the rename)."""
-    return r.get("observation", r.get("q"))
 
 
 def row_rerun(r: Mapping[str, Any]) -> Mapping[str, Any] | None:
@@ -118,14 +95,6 @@ class EngineProfile:
     """The engine versions the profile's facts were probed at
     (`characterization/<engine>/facts/`)."""
 
-
-#: The engine profiles, where the checker reports none (`substrait-check
-#: --options`, "profiles"). The versions are the facts' `engine_version`.
-PROFILES: Mapping[str, EngineProfile] = {
-    "duckdb": EngineProfile("duckdb", ("2.0.0",)),
-    "polars": EngineProfile("polars", ("2.1.0",)),
-    "spark": EngineProfile("spark", ("4.3.0",)),
-}
 
 #: The translation from the reference to each engine, with what makes it
 #: sound.
@@ -295,7 +264,8 @@ class Route:
     `unverified=True`, which no proof reaches."""
     evidence: Evidence | None = None
     """`"proved"` where every option's class is proved in Lean, `"tested"`
-    where one rests on a test or a probe; None where the tables say nothing."""
+    where one rests on anything else: a test, a probe, a row without
+    evidence. None where no class applies (a refusal, an unverified run)."""
     shims: tuple[str, ...] = ()
     """The shims the translation writes for this plan, by option."""
     reproducible: Observation | None = None
@@ -323,6 +293,18 @@ class Route:
     labels per input table: an `sv.unique(...)` that determines a result
     with ties, an `sv.max_rows(n)` under which the plan's bound meets a
     tolerance (#655)."""
+    facts: tuple[str, ...] = ()
+    """The engine facts behind the choices the class rests on
+    (`characterization/<engine>/facts/`)."""
+    theorems: tuple[str, ...] = ()
+    """The Lean theorems that prove those choices, where they are proved."""
+    version: str | None = None
+    """The engine version the facts were probed at (D14)."""
+    issues: tuple[int, ...] = ()
+    """The issues that track the tested choices (`"issue"` of a tested row)."""
+    proved_facts: tuple[str, ...] = ()
+    """The facts the theorems rest on, where they prove the engine's model
+    (`Rel.polars_sound` of `Polars.written`): those facts say the engine is it."""
 
     @property
     def refused(self) -> bool:
@@ -343,7 +325,7 @@ class Route:
         if self.cls == "observed" and self.observation is not None:
             out += f": {observed_text(self.observation)}"
         if self.evidence:
-            out += f"; evidence {self.evidence}"
+            out += "; evidence " + evidence_text(self, self.engine)
         if self.cls and self.kind != "translated":
             # How the proof reaches the engine, where it is not the
             # translation from the reference.
@@ -379,6 +361,33 @@ def installed_version(engine: str) -> str | None:
     except ImportError:
         return None
     return None
+
+
+def probed_version(engine: str) -> str | None:
+    """The engine version `engine`'s facts were probed at (its profile's
+    first), None for an engine without a profile."""
+    prof = profiles().get(engine)
+    return prof.versions[0] if prof is not None and prof.versions else None
+
+
+def evidence_text(x: Route | Realized, engine: str) -> str:
+    """The evidence of a route's class (or a realization's) in words: the
+    theorems for a proof, and where they prove the engine's model, the facts
+    that say the engine is that model (#900); the engine version, the facts
+    and the issues that track them for a test."""
+    if x.evidence == "proved":
+        out = "proved" + (f" by {', '.join(x.theorems)}" if x.theorems else "")
+        if x.proved_facts:
+            out += f" on {engine}'s model (facts {', '.join(x.proved_facts)})"
+        return out
+    out = "tested"
+    if x.version:
+        out += f" at {x.version}"
+    cited = [f"facts {', '.join(x.facts)}"] if x.facts else []
+    cited += [f"#{i}" for i in x.issues]
+    if cited:
+        out += f" ({'; '.join(cited)})"
+    return out
 
 
 def _major(v: str) -> str:
@@ -497,136 +506,18 @@ def _functions_json() -> list[dict]:
 
 
 def profiles() -> dict[str, EngineProfile]:
-    """The engine profiles: the checker's (`--options`, "profiles") over
-    those of the installed profiles from outside sverify, over `PROFILES`."""
+    """The engine profiles: the checker's (`--options`, "profiles"), whose
+    versions are those its facts were probed at, over those of the installed
+    profiles from outside sverify."""
     from sverify import profiles as plugged
 
-    out = dict(PROFILES)
+    out: dict[str, EngineProfile] = {}
     for e, p in plugged.plugins().items():
         out[e] = EngineProfile(e, p.versions)
     for name, p in (_options_json().get("profiles") or {}).items():
         if isinstance(p, dict) and p.get("engine"):
             out[name] = EngineProfile(p["engine"], tuple(p.get("versions") or ()))
     return out
-
-
-Allowed = frozenset[str] | None
-"""The behaviours a profile allows at an option; None: every behaviour."""
-
-
-def _allowed(choice: Mapping[str, Any]) -> Allowed:
-    kind = choice.get("kind")
-    if kind == "any":
-        return None
-    if kind == "asked":
-        # A plan that states no preference gets the default; a stated one is
-        # the same in both profiles where both support it.
-        return frozenset(choice.get("default") or ())
-    return frozenset(choice.get("behaviours") or ())
-
-
-def choices(profile: str) -> dict[tuple[str | None, str], tuple[Allowed, tuple[str, ...]]] | None:
-    """A profile's choices by (group, option), each with the facts behind
-    it; None when the checker has no table for the profile."""
-    rows = (_options_json().get("choices") or {}).get(profile)
-    if rows is None:
-        return None
-    return {
-        (r.get("group"), r["option"]): (_allowed(r["choice"]), tuple(r.get("facts") or ()))
-        for r in rows
-    }
-
-
-def _lookup(
-    table: Mapping[tuple[str | None, str], tuple[Allowed, tuple[str, ...]]],
-    group: str | None,
-    option: str,
-) -> tuple[Allowed, tuple[str, ...]]:
-    """The choice at (group, option): the group's row wins over the row for
-    every group; without either, the core's, which allows everything."""
-    return table.get((group, option)) or table.get((None, option)) or (None, ())
-
-
-def _groups_of(name: str) -> set[str]:
-    """The groups a plan function belongs to, from Lean's function table:
-    the double's row for a signature over doubles, else the others."""
-    base = _plan_read.base_name(name)
-    sig = name.split(":", 1)[1] if ":" in name else ""
-    rows = [r for r in _functions_json() if r.get("name") == base]
-    fp = "fp" in sig
-    narrowed = [r for r in rows if (r.get("reads") == "float") == fp]
-    return {r["group"] for r in (narrowed or rows) if r.get("group")}
-
-
-#: The options of relations, by the relation that meets them.
-_RELATION_OPTIONS = {"sort": ("null_order",)}
-
-
-def plan_options(plan: Any) -> list[dict]:
-    """Every option a plan may depend on: those of the groups of the
-    functions it calls, and those of its relations. The conservative
-    dependency set where the checker reports none."""
-    groups_json = _options_json().get("groups") or {}
-    fns = _plan_read.function_names(plan)
-    out: list[dict] = []
-    seen: set[tuple[str | None, str]] = set()
-
-    def add(group: str | None, option: str) -> None:
-        if (group, option) not in seen:
-            seen.add((group, option))
-            out.append({"group": group, "option": option})
-
-    for name in fns.values():
-        for g in sorted(_groups_of(name)):
-            for o in groups_json.get(g, []):
-                add(g, o)
-
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            for rel, opts in _RELATION_OPTIONS.items():
-                if rel in node and isinstance(node[rel], dict):
-                    for o in opts:
-                        add(None, o)
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    walk(plan.get("relations", []) if isinstance(plan, dict) else plan)
-    return out
-
-
-def transfer(source: str, target: str, depends: Sequence[Mapping[str, Any]]) -> list[dict] | None:
-    """The option-wise transfer check: does a proof under `source` that
-    depends on `depends` hold under `target`?
-
-    Returns:
-        The options where `target`'s choices are not within `source`'s, as
-        `{"group", "option", "from", "to", "facts"}` (empty: the proof
-        transfers); None when the checker has no table for one of the
-        profiles.
-    """
-    p, e = choices(source), choices(target)
-    if p is None or e is None:
-        return None
-    failures = []
-    for d in depends:
-        g, o = d.get("group"), d["option"]
-        a_p, _ = _lookup(p, g, o)
-        a_e, facts = _lookup(e, g, o)
-        if a_p is None or (a_e is not None and a_e <= a_p):
-            continue
-        failures.append(
-            {
-                "group": g,
-                "option": o,
-                "from": sorted(a_p),
-                "to": None if a_e is None else sorted(a_e),
-                "facts": list(facts),
-            }
-        )
-    return failures
 
 
 def _failure_text(f: Mapping[str, Any], source: str, target: str) -> str:
@@ -639,8 +530,8 @@ def _failure_text(f: Mapping[str, Any], source: str, target: str) -> str:
 def lean_transfer(source: str, target: str, depends: Sequence[Mapping[str, Any]]) -> dict | None:
     """The checker's own transfer check (`substrait-check --transfer`), which
     is authoritative (D1): `{"ok": bool, "failures": [...]}`; None where the
-    checker has none. `transfer` is the same lookup, done here for speed; a
-    test keeps the two in agreement."""
+    checker has none. A route reads the same check from the checker's
+    verdict on the engine (`"transfer"`)."""
     import subprocess
 
     from sverify.engine import checker_path
@@ -833,18 +724,6 @@ def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
     return f"sv.within({kind}={smallest:g})"
 
 
-def _gives_as_stated(choice: Mapping[str, Any] | None, dep: Mapping[str, Any]) -> bool:
-    """Does an engine whose choice is `choice` give the behaviours the plan
-    states at `dep` as stated? Only where every read there states one
-    (`"stated"`), and the choice delivers the first preference it supports."""
-    bs = dep.get("behaviours") or []
-    if not dep.get("stated") or not bs or not choice:
-        return False
-    return choice.get("kind") in ("asked", "oneOf") and all(
-        b in (choice.get("behaviours") or []) for b in bs
-    )
-
-
 def _on_engine(eps: Mapping[str, Any], engine: str) -> Mapping[str, Any]:
     """A column's `ε` as `engine` meets it: where the checker names the engines
     on which its bound is proved (`"proved_on"`, a statistic's: the engines
@@ -856,107 +735,134 @@ def _on_engine(eps: Mapping[str, Any], engine: str) -> Mapping[str, Any]:
     return {**eps, "proved": proved}
 
 
+#: Why #568's threshold rule refuses a plan, as `realization` words it.
+_THRESHOLD = (
+    "a filter, grouping key or sort on a double may keep other rows on {engine} than "
+    "the reference: its threshold lies within the doubles' bound of their range; "
+    "state a precondition that keeps the values away from it, or compare exact columns"
+)
+
+
+def _cited(facts: Sequence[str] | None) -> str:
+    return f" ({', '.join(facts)})" if facts else ""
+
+
+def verdict(report: Report, engine: str) -> Mapping[str, Any] | None:
+    """The checker's verdict on the report's plan on `engine` (`"engines"`,
+    `SubstraitLean/Realize.lean`); None where it gives none."""
+    return (report._engines or {}).get(engine)
+
+
 def realization(
     engine: str,
-    depends: Sequence[Mapping[str, Any]],
+    verdict: Mapping[str, Any] | None,
     observed: Observation,
     epsilon: Mapping[str, Mapping[str, float]] | None = None,
     held: Mapping[str, str] | None = None,
-    rows_exact: bool | None = None,
 ) -> Realized:
-    """How `engine` realizes the reference's choices on the options a plan
-    depends on, from the class, observation and shim columns of its choices rows
-    (D15), with the observation the postcondition names (D18, check 1).
-
-    An option whose class is `"observed"` holds on the engine only up to
-    the row's observation: where that does not refine the
+    """How `engine` realizes the plan, from the checker's verdict (`verdict`,
+    `SubstraitLean/Realize.lean`): its class over the options the proof
+    depends on, the evidence, the shims and what refuses it (D15, #568's
+    threshold rule), with the observation the postcondition names (D18,
+    check 1) applied to the options the engine realizes only up to an
+    observation (`"observed"`): where that does not refine the
     postcondition's, the row's shim makes it canonical (class `shim`), or
     the plan is refused there.
 
-    Returns:
-        The worst class (`"exact"`, on tested evidence, where no row gives
-        one), the evidence, the
-        shims written, the problems that refuse the plan, and, for an
-        observed plan, the observation and whether its tolerance is proved.
-
     A row whose observation bounds the doubles per plan (`{"floats": {"bound":
     "plan"}}`, Polars's `sum_order`) is checked against `epsilon`, the
-    contract's per-column `ε`. Where the engine's doubles may differ and
-    `rows_exact` is False, a filter, key or sort on them may keep other rows
-    than the reference's (#568's threshold rule): the plan is refused there.
+    contract's per-column `ε`; a bound that meets the postcondition only
+    where Lean does not prove it makes the evidence tested.
+
+    Returns:
+        The class, the evidence, the shims written, the problems that refuse
+        the plan, and, for an observed plan, the observation and whether its
+        tolerance is proved; with the theorems, facts, version and issues the
+        evidence cites.
     """
     from sverify.observation import from_json
 
+    if verdict is None:
+        if engine not in (_options_json().get("profiles") or {}):
+            # An engine without a profile in the checker (DataFusion, an
+            # installed one): no option has a row, so the translation's tests
+            # stand for the plan (`TRANSLATIONS`).
+            return Realized("exact", "tested", (), [])
+        return Realized(
+            "refused",
+            None,
+            (),
+            [f"the checker gave no verdict on {engine} for this plan: verify it again"],
+        )
     if epsilon:
         epsilon = {c: _on_engine(e, engine) for c, e in epsilon.items()}
-    classes: list[Class] = []
-    evidence: list[str] = []
-    shims: list[str] = []
+    worst: Class = verdict["class"]
+    if worst not in CLASSES:
+        raise ValueError(f"the checker gave an unknown class {worst!r} on {engine}")
+    evidence: Evidence = "proved" if verdict.get("evidence") == "proved" else "tested"
+    shims = [f"{_where(x['group'], x['option'])}: {x['shim']}" for x in verdict.get("shims", ())]
     problems: list[str] = []
+    for p in verdict.get("problems", ()):
+        if p.get("code") == "option_refused":
+            where = _where(p.get("group"), p["option"])
+            problems.append(f"{where} is refused on {engine}{_cited(p.get('facts'))}")
+        elif p.get("code") == "threshold":
+            problems.append(_THRESHOLD.format(engine=engine))
+        else:
+            problems.append(f"{p.get('code')} on {engine}")
     seen: list[Observation] = []
     proved: list[bool] = []
-    for d in depends:
-        g, o = d.get("group"), d["option"]
-        r = row(engine, g, o)
-        cls = None if r is None else row_class(r)
-        if r is None or cls is None:
-            continue
-        if r.get("shim") and _gives_as_stated(r.get("choice"), d):
-            # The plan states the behaviour, and the engine gives it as
-            # stated: the shim is for the reference's default (#444, 3b).
-            cls = "exact"
-        facts = f" ({', '.join(r['facts'])})" if r.get("facts") else ""
-        obs = row_observation(r)
-        if cls == "refused":
-            problems.append(f"{_where(g, o)} is refused on {engine}{facts}")
-        elif cls == "observed" and obs is not None:
-            rest, bounded, untested = _plan_bound(obs, observed, epsilon, held=held)
-            if untested:
-                # The bound that meets the tolerance is not proved in Lean.
-                r = {**r, "evidence": "tested"}
-            q = from_json(rest)
-            gives = _with_bound(q, obs, epsilon)
-            seen.append(gives)
-            if isinstance(gives.floats, Within):
-                proved.append(not untested and _all_proved(epsilon))
-            missed = q.coarser_than(_resolve(observed, epsilon))
-            if (missed or bounded) and r.get("shim"):
-                cls = "shim"
-            elif missed:
-                problems.append(
-                    f"{_where(g, o)}: {engine} agrees with the reference only up to {q}, and "
-                    f"the postcondition observes its {', '.join(missed)} ({observed}); state "
-                    f"{', '.join(missed)} in sv.equivalent(...) or shim it{facts}"
-                )
-            problems += [f"{_where(g, o)}: {p}{facts}" for p in bounded if not r.get("shim")]
-        if cls == "shim" and r.get("shim"):
-            shims.append(f"{_where(g, o)}: {r['shim']}")
-        classes.append(cls)
-        if r.get("evidence"):
-            evidence.append(r["evidence"])
-    if rows_exact is False and any(x.floats != "exact" for x in seen):
-        problems.append(
-            f"a filter, grouping key or sort on a double may keep other rows on {engine} than "
-            "the reference: its threshold lies within the doubles' bound of their range; "
-            "state a precondition that keeps the values away from it, or compare exact columns"
-        )
-    ev: Evidence | None = None
-    if not classes:
-        # No option the proof depends on has a row in the engine's tables
-        # (a LAG over a key): the translation gives the reference's result,
-        # on the evidence of its tests (`TRANSLATIONS`).
-        return Realized("exact", "tested", (), problems)
-    worst = max(classes, key=CLASSES.index)
-    if evidence and len(evidence) == len(classes):
-        ev = "tested" if "tested" in evidence else "proved"
-    elif evidence:
-        ev = "tested"
+    told: set[str] = set()
+    for r in verdict.get("observed", ()):
+        where, cited, shim = _where(r["group"], r["option"]), _cited(r.get("facts")), r.get("shim")
+        obs = r["observation"]
+        rest, bounded, untested = _plan_bound(obs, observed, epsilon, held=held)
+        if untested:
+            # The bound that meets the tolerance is not proved in Lean.
+            evidence = "tested"
+        q = from_json(rest)
+        gives = _with_bound(q, obs, epsilon)
+        seen.append(gives)
+        if isinstance(gives.floats, Within):
+            proved.append(not untested and _all_proved(epsilon))
+        missed = q.coarser_than(_resolve(observed, epsilon))
+        # A shim makes the components the row's observation leaves open
+        # exact (`missed`), never its bound on doubles: no row's shim lifts
+        # the plan's bound (DuckDB's VAR row's `nan_through` handles NaN only),
+        # so a bound the postcondition's tolerance does not meet refuses the
+        # plan, shim or not.
+        if missed and shim:
+            worst = max(worst, "shim", key=CLASSES.index)
+            shims.append(f"{where}: {shim}")
+        elif missed:
+            problems.append(
+                f"{where}: {engine} agrees with the reference only up to {q}, and "
+                f"the postcondition observes its {', '.join(missed)} ({observed}); state "
+                f"{', '.join(missed)} in sv.equivalent(...) or shim it{cited}"
+            )
+        # A SUM's `sum_order` and `rounding` rows rest on the same bound: say
+        # each problem once, at the first row that meets it.
+        new = [p for p in bounded if p not in told]
+        told.update(new)
+        problems += [f"{where}: {p}{cited}" for p in new]
     gives = None
     if worst == "observed" and seen:
         gives = seen[0]
         for x in seen[1:]:
             gives = _coarsest(gives, x)
-    return Realized(worst, ev, tuple(shims), problems, gives, all(proved) if proved else None)
+    return Realized(
+        worst,
+        evidence,
+        tuple(shims),
+        problems,
+        gives,
+        all(proved) if proved else None,
+        tuple(verdict.get("facts", ())),
+        tuple(verdict.get("theorems", ())),
+        verdict.get("version") or probed_version(engine),
+        tuple(verdict.get("issues", ())),
+        tuple(verdict.get("proved_facts", ())),
+    )
 
 
 class Realized(NamedTuple):
@@ -968,6 +874,16 @@ class Realized(NamedTuple):
     problems: list[str]
     observation: Observation | None = None
     bound_proved: bool | None = None
+    facts: tuple[str, ...] = ()
+    """The facts behind the rows of the options the plan depends on."""
+    theorems: tuple[str, ...] = ()
+    """The theorems that prove those rows (`"theorem"` of a proved row)."""
+    version: str | None = None
+    """The engine version the rows' facts were probed at (`"version"`)."""
+    issues: tuple[int, ...] = ()
+    """The issues that track the tested rows (`"issue"`)."""
+    proved_facts: tuple[str, ...] = ()
+    """The facts the proved rows' theorems rest on (`"proved_facts"`)."""
 
 
 def _with_bound(
@@ -1018,18 +934,42 @@ def floats_on(report: Report) -> dict[str, list[str]]:
         return {}
     if not any(getattr(t, "is_floating", bool)() for t in report.output.values()):
         return {}
-    plan = json.loads(report.internal_plan) if report.internal_plan else {}
-    depends = report._depends if report._depends is not None else plan_options(plan)
     looser = replace(observation, floats="plan")
     out: dict[str, list[str]] = {}
     for e in translations():
-        if not (_options_json().get("choices") or {}).get(e):
+        if (v := verdict(report, e)) is None:
             continue
-        rows_exact = (report._rows_exact or {}).get(e)
-        asked = realization(e, depends, observation, report._epsilon, None, rows_exact)
-        base = realization(e, depends, looser, report._epsilon, None, rows_exact)
+        asked = realization(e, v, observation, report._epsilon)
+        base = realization(e, v, looser, report._epsilon)
         out[e] = [p for p in asked.problems if p not in base.problems]
     return out
+
+
+def evidence_on(report: Report) -> dict[str, Realized]:
+    """Per engine the reference translates to and has a choices table for,
+    how it realizes a verified plan (`realization`), with the evidence a
+    translated route would carry (`translated_evidence`): what a run
+    rests on, known before it. Empty for a plan that is not verified, or
+    verified under another profile."""
+    if report.semantics != "reference" or not verified(report):
+        return {}
+    seen, held = observed(report)
+    out: dict[str, Realized] = {}
+    for e in translations():
+        if (v := verdict(report, e)) is None:
+            continue
+        got = realization(e, v, seen, report._epsilon, held)
+        out[e] = got._replace(evidence=translated_evidence(report, e, got))
+    return out
+
+
+def translated_evidence(report: Report, engine: str, got: Realized) -> Evidence | None:
+    """The evidence of a translated route: `got`'s, and tested where a
+    postcondition holds on the engine only by its facts (`_robust_tested`)
+    or only on the reference's orders (`_allowed_tested`)."""
+    if got.evidence == "proved" and (_robust_tested(report, engine) or _allowed_tested(report)):
+        return "tested"
+    return got.evidence
 
 
 def _all_proved(epsilon: Mapping[str, Any] | None) -> bool:
@@ -1234,17 +1174,6 @@ def engine_name(engine: Any) -> str:
     return engine.lower() if isinstance(engine, str) else "spark"
 
 
-def _sorted_root(plan: Mapping[str, Any]) -> bool:
-    """Whether the plan's result comes out of a sort."""
-    for r in plan.get("relations", []):
-        rel = (r.get("root") or {}).get("input") or r.get("rel") or {}
-        while "project" in rel and "sort" not in rel:
-            rel = rel["project"].get("input") or {}
-        if "sort" in rel or "fetch" in rel and "sort" in (rel["fetch"].get("input") or {}):
-            return True
-    return False
-
-
 def reproducibility(
     report: Report,
     engine: str,
@@ -1281,11 +1210,13 @@ def reproducibility(
             + ", so no rerun is sure to reproduce it"
         )
     if depends is None:
-        depends = (
-            report._depends
-            if report._depends is not None
-            else plan_options(json.loads(report.internal_plan) if report.internal_plan else {})
+        depends = report._depends
+    if depends is None:
+        problems.append(
+            "the report has no dependency report from the checker to check a rerun against: "
+            "verify the plan again"
         )
+        depends = ()
     tested = False
     for d in depends:
         g, o = d.get("group"), d["option"]
@@ -1430,7 +1361,7 @@ def choose(
     if w := check_version(e, version):
         notes.append(w)
     plan = json.loads(report.internal_plan) if report.internal_plan else {}
-    depends = report._depends if report._depends is not None else plan_options(plan)
+    depends = report._depends
     from sverify import _engine_settings
 
     # A Spark session of the caller's: its own settings.
@@ -1470,7 +1401,7 @@ def choose(
             "ties stay open (D24): the engine picks their order, every proof holds for any "
             "pick, and a rerun may pick another"
         )
-    if report.observation.rows == "sequence" and not _sorted_root(plan):
+    if report.observation.rows == "sequence" and not report._sorted:
         return refuse(
             "the postcondition observes the rows as a sequence, and the plan's result is not sorted"
         )
@@ -1495,14 +1426,12 @@ def choose(
                 rerun_evidence=rerun_evidence,
             )
         seen, held = observed(report)
-        got = realization(
-            e, depends, seen, report._epsilon, held, (report._rows_exact or {}).get(e)
-        )
+        got = realization(e, verdict(report, e), seen, report._epsilon, held)
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
         gives = got.observation
-        if gives is not None and gives.rows == "sequence" and not _sorted_root(plan):
+        if gives is not None and gives.rows == "sequence" and not report._sorted:
             # The reference leaves the order of an unsorted result open.
             gives = replace(gives, rows="multiset")
         return Route(
@@ -1514,14 +1443,17 @@ def choose(
             tuple(notes),
             (),
             got.cls,
-            "tested"
-            if got.evidence == "proved" and (_robust_tested(report, e) or _allowed_tested(report))
-            else got.evidence,
+            translated_evidence(report, e, got),
             got.shims,
             reproducible,
             rerun_evidence,
             observation=gives,
             bound_proved=got.bound_proved,
+            facts=got.facts,
+            theorems=got.theorems,
+            version=got.version or probed_version(e),
+            issues=got.issues,
+            proved_facts=got.proved_facts,
         )
 
     translated = translations()
@@ -1549,22 +1481,20 @@ def choose(
             if source in ("reference", e):
                 why_not.append(f'no transfer from semantics="{source}" needed')
                 continue
-            found = transfer(source, e, depends)
+            # The checker's transfer check (`transferB`, proved sound by
+            # `Rel.transfer_of_transferB`), over every option the plan reads.
+            checked = ((verdict(report, e) or {}).get("transfer") or {}).get(source)
+            found = None if checked is None else list(checked.get("failures") or ())
             if found is None:
                 why_not.append(
-                    f'no choices table for semantics="{source}" or semantics="{e}" to check '
-                    "a transfer"
+                    f'the checker gave no transfer check from semantics="{source}" to {e}'
                 )
             elif not found:
-                which = (
-                    "" if report._depends is not None else " (every option of the plan's functions)"
-                )
                 return taken(
                     "transfer",
                     e,
                     f'verified under semantics="{source}"; {e}\'s choices are within its '
-                    "choices "
-                    f"on every option the proof depends on{which}",
+                    "choices on every option the plan reads",
                 )
             else:
                 failures = found

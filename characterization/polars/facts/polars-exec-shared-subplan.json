@@ -1,0 +1,39 @@
+{
+  "id": "polars-exec-shared-subplan",
+  "engine": "polars",
+  "engine_version": "2.1.0",
+  "title": "A LazyFrame read twice in one query is evaluated per reference",
+  "verdict": "a subplan joined with itself is computed twice, in memory and streaming",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "join",
+    "LazyFrame"
+  ],
+  "settings": {},
+  "description": [
+    "A LazyFrame with a column pl.int_range(0, 1000).shuffle() joined with itself on its key gives rows whose two reads differ (999, 1000 and 999 of 1000 rows in memory; 998, 1000, 999 streaming; 1000 with comm_subplan_elim off). Common subplan elimination does not make the two reads one evaluation here.",
+    "So a check root and a sink root over one LazyFrame may read two evaluations of a double SUM in it, in two orders (polars-sum-float, polars-sum-float-streaming): within the plan's bound of each other's reference, so a check needs a margin of 2ε, as #929's does."
+  ],
+  "reference": "The reference evaluates a shared subplan once (Rel.eval).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#929 margin check design (session tolerance-step-a)",
+      "evidence": [
+        {
+          "sql": "(Polars) lf = pl.LazyFrame({'i': list(range(1000))}).with_columns(r=pl.int_range(0, 1000).shuffle()); lf.join(lf, on='i').filter(pl.col('r') != pl.col('r_right')).select(pl.len()).collect(engine=...)",
+          "observed": "in-memory 999, 1000, 999; streaming 998, 1000, 999; comm_subplan_elim=False: 1000, 1000"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    929
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "id": "DF-18",
+  "status": "fixed upstream",
+  "fixed_in": "55.0.0",
+  "status_note": "Fixed upstream ([apache/datafusion#21060](https://github.com/apache/datafusion/issues/21060), PR [#21405](https://github.com/apache/datafusion/pull/21405), merged 2026-04-09): `translate` uses code points on 55.0.0.",
+  "summary": "`translate` maps grapheme clusters, so a combining mark stays with its base character: `translate('ée', 'e', 'x')` is `'éx'`. PostgreSQL and DuckDB map code points.",
+  "repro": "`select translate('ée', 'e', 'x')` gives `'éx'` on 51.0.0 and `'x́x'` on 55.0.0.",
+  "handling": "`translate` is not modelled (`SubstraitLean/Text.lean`, #60); modelling it per code point is planned, refused on DataFusion 51.",
+  "issues": [
+    60
+  ],
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/21060",
+    "https://github.com/apache/datafusion/pull/21405"
+  ],
+  "files": [
+    "SubstraitLean/Text.lean",
+    "python/src/sverify/ibis_substrait/strings.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "SQL repro; 51.0.0 wrong, 55.0.0 right"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "SQL repro; 51.0.0 wrong, 55.0.0 right"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}

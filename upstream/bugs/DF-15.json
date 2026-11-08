@@ -1,0 +1,39 @@
+{
+  "id": "DF-15",
+  "status": "confirmed",
+  "status_note": "Reproduces on 55.0.0, the latest release. [apache/datafusion#24432](https://github.com/apache/datafusion/issues/24432) (closed by PR #24433, 2026-08-20) changed grouped float `MIN`/`MAX`, but 55.0.0 still gives these results; no open issue covers them. Main not checked.",
+  "title": "Grouped `MIN` of `+inf` values is `f64::MAX`, and grouped `MAX` skips a NaN that ungrouped `MAX` returns",
+  "summary": "Grouped `MIN` and `MAX` of doubles start from `±f64::MAX`: a group of `+inf` values has `MIN` `1.7976931348623157e308`. Grouped `MAX` of `{NaN, 1.0}` is `1.0`, though ungrouped `MAX` of the same values is NaN under DataFusion's own order.",
+  "repro": [
+    "`select k, min(v), max(v) from (values (1, cast('inf' as double)), (1, cast('inf' as double))) t(k, v) group by k` gives `1, 1.7976931348623157e308, inf`.",
+    "`select k, min(v), max(v) from (values (1, cast('NaN' as double)), (1, 1.0)) t(k, v) group by k` gives `1, 1.0, 1.0`; `select min(v), max(v) from (values (cast('NaN' as double)), (1.0)) t(v)` gives `1.0, NaN`."
+  ],
+  "handling": "`--write-datafusion` refuses `MIN` and `MAX` of doubles (`Rel.floatExtremes`, #371).",
+  "issues": [
+    371
+  ],
+  "files": [
+    "SubstraitLean/Write.lean",
+    "SubstraitCheck.lean"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched (#24432 closed)"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched (#24432 closed)"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}

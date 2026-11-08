@@ -38,18 +38,40 @@ inductive Value where
 
 ## Abstract values
 
-`AVal` (contracts, runtime errors, keys) does not look inside lists. An
-abstract value admits a list exactly where it admits both booleans and a
-string (`AVal.top`, or a column's description after `IS NOT NULL`). A
-function of integers, booleans or strings gives NULL on a value of another
-type, so every existing abstraction already covers a list as it covers a
-value of the wrong type, and refinements keep it (`x IS NOT NULL` holds for a
-list; `AVal.prune`, which drops empty integer intervals, leaves it). Reusing
-the `str` flag alone would be unsound (`length(list)` is NULL, while the
-abstraction of `length` on strings says it is not), and so would requiring
-the `null` flag (`IS NOT NULL` clears it). Every proof that cases on a
-`Value` gains a `.list` case. Length bounds and element descriptions (#59's
-"abstract values for lists") are left for when a contract needs them.
+`AVal` (contracts, runtime errors, keys) describes a column by kind (#925):
+whether it may be NULL, numbers of a kind (`nk`) within an interval (`int`),
+booleans, strings, lists and structs. A list is described by its length
+(`card`, an interval) and by one abstract value for all its elements
+(`elems`); a struct by one abstract value per field (`fields`). `AVal.Mem`
+goes by the value's constructor: `.list vs` is a member when `list` is set,
+`vs.length` is in `card` and every element is in `elems`, and `.struct vs`
+when `struct` is set and its fields are in `fields`, one each
+(`SubstraitLean/Contracts/Lattice.lean`). A function of scalars gives NULL
+on a list or a struct, and every scalar abstraction says so through
+`nonInt`, `nonBool` and `nonStr`, which include `nested`.
+
+What the checker proves on lists, with the soundness lemma of each step in
+`Contracts/TransferSound.lean`, `Contracts/Refine.lean` and
+`Contracts/Sound.lean`:
+
+* element bounds and NOT NULL elements: the declared element type
+  (`list<i64>` gives elements in the 64-bit range), a lambda's body over an
+  element (`transform`, `HoFn.abs_sound`), and a precondition
+  `all_match(l, x -> p)` (`Expr.refineL`'s lambda case);
+* length bounds: a precondition on `cardinality(l)` (`refineCard`),
+  `filter`, which keeps at most the list's length, `transform`, which keeps
+  it, and `collect`, at least one value;
+* through `UNNEST`, an element in the column's place (`EnvMem.set_elem`); a
+  list element, NULL unless the length puts it in range
+  (`AVal.elementAbs_sound`); `cardinality`, the length bound
+  (`AVal.cardAbs_sound`); a struct field, its field's description
+  (`AVal.fieldAbs_sound`); `flatten`, the inner lists' elements.
+
+It does not describe relations between the elements of one list (sorted,
+distinct, the first larger than the last), nor anything of a list's
+elements past one level of `elems` through `flatten`. The other list
+functions (`list_prepend`, `list_concat`, `list_contains`,
+`list_position`) and `pair` give `AVal.top`.
 
 `=` on two lists is their structural equality (`BinFn.apply .eq`).
 
@@ -101,7 +123,7 @@ It is a new `Rel` constructor, so every analysis gets a case:
 
 * arity: the input's; well-formed: `col` in range (and a list, in the parser);
 * keys and facts: none (an element can repeat); abstract values: the input's,
-  with `col` unknown (`EnvMem.set_top`);
+  with `col` an element of its list (`EnvMem.set_elem`, #925);
 * runtime errors: none of its own. DataFusion pushes filters on the other
   columns below an `UNNEST`, onto rows whose lists may be empty, so
   `Rel.loose` of an unnest is the unnested loose input together with the
@@ -141,8 +163,9 @@ The parser reads a reference into the input row with nested segments
 (`structField` with a `child`), and a reference into an expression's value
 (`"expression": …` with a segment). A struct field outside the struct is an
 invalid plan, so it is refused. The writer writes both as references into the
-value. The abstraction does not look into lists: an element or a field is
-`AVal.top`, and a cardinality is a non-negative integer or NULL.
+value. The abstraction reads a list's elements and a struct's fields
+([Abstract values](#abstract-values)): an element or a field is described by
+its list's or struct's description, and a cardinality by its length.
 
 ## Lambdas (#94)
 
@@ -159,15 +182,17 @@ column `i` as field `i + 1`, and a nested lambda reads its own parameter as
 0 and the outer one as 1. The functions that renumber a row's columns
 (`mapFields`, `shift`, `subst`, `dropCols`) renumber a body under one binder,
 and the analyses read a body over the element in front of the row (over
-`AVal.top` for the element, without facts). Ibis's `contains(v)` still takes
+the list's elements, without facts). Ibis's `contains(v)` still takes
 a constant `v`; Polars runs lambdas that read only their parameter
 (`pl.element()` sees nothing else), and refuses the others.
 
 * **Errors:** the body runs on every element, so its issues on any element
   are the row's (`Expr.issues`, `Expr.mayIssues_sound`). `verify` reports
   `x -> x * 2` as possibly wrapping around, and Polars raises where it does.
-* **Contracts:** `any_match` and `all_match` give a boolean or NULL;
-  `transform` and `filter` a list or NULL (`HoFn.abs`).
+* **Contracts:** `any_match` and `all_match` give a boolean or NULL, TRUE
+  only where the body may be (FALSE likewise); `transform` a list of the
+  body's values over an element, and `filter` a list of the elements, no
+  longer than the list (`HoFn.abs`, #925).
 * **Plans:** Substrait's `Lambda` with one parameter. Its body's references
   are `lambdaParameterReference`s (with `steps_out` for an outer lambda's)
   and `rootReference`s; the parser reads them into `x :: row`
@@ -190,7 +215,7 @@ Polars also runs struct fields, list elements, `cardinality` and the
 higher-order functions (the body on `pl.element()` in `list.eval`; a body's
 errors are checked over every element). The SQL
 dialects refuse struct columns and struct fields. DataFusion 51
-gets no plan with them (`Expr.nestedAccess`): its consumer reads a
+gets no plan with them (`DataFusion.nestedAccess`): its consumer reads a
 reference into an expression's value as a reference into the row, which gives
 a wrong column, its `cardinality([])` is NULL, and it has no lambdas. The SQL
 dialects refuse lambdas too, DuckDB's included for now.

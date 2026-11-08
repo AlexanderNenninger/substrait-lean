@@ -562,8 +562,23 @@ class Agg:
     key_types: list[Ty]
 
 
-#: The anchor `_nanvl` declares `is_nan` under, before the anchors are renumbered.
-_IS_NAN = -1
+#: The anchors `_canonical` declares `is_nan` and `add` under, before the
+#: anchors are renumbered.
+_IS_NAN, _ADD = -1, -2
+
+#: The written plan's operations whose double result may be `-0.0` or a
+#: negative NaN under IEEE arithmetic (the writer's `.fadd`, `.fneg`,
+#: `.fmath` and the rest, `Functions.lean`).
+_DOUBLE_OPS = frozenset(
+    {
+        "add", "subtract", "multiply", "divide", "sverify_fmod", "power", "atan2", "logb",
+        "negate", "floor", "ceil", "round", "sqrt", "exp", "ln", "log10", "log2", "sin",
+        "cos", "tan", "asin", "acos", "atan",
+    }
+)  # fmt: skip
+_FP64 = Ty("fp64")
+#: Marks a call `_canonical` wrote or wrapped, which it leaves as it is.
+_DONE = "__sverify_canonical"
 
 
 class _Typer:
@@ -581,7 +596,9 @@ class _Typer:
         self.anchors: dict[tuple[str, str], int] = {}
         self.calls: list[Call] = []
         self.canonical = False
-        """Whether the plan canonicalises doubles (`_nanvl`)."""
+        """Whether the plan canonicalises doubles (`_canonical`)."""
+        self.wrap = True
+        """Whether to canonicalise doubles; off while `_peek` types a copy."""
         self.aggregates: list[Agg] = []
         self.sorts: list[tuple[Json, Ty]] = []
         self.casts: list[tuple[Json, Ty]] = []
@@ -721,8 +738,14 @@ class _Typer:
             return ty_of(e["cast"]["type"])
         if "scalarFunction" in e:
             f = e["scalarFunction"]
-            if self.names.get(f.get("functionReference", 0)) == "nanvl":
-                self._nanvl(e)
+            name = self.names.get(f.get("functionReference", 0), "")
+            if (
+                not f.pop(_DONE, False)
+                and self.wrap
+                and name.split(":")[0] in _DOUBLE_OPS
+                and self._peek(e, cols) == _FP64
+            ):
+                self._canonical(e)
                 return self.expr(e, cols)
             return self.call(f, cols, ("scalar",), holder=e)
         if "windowFunction" in e:
@@ -760,15 +783,34 @@ class _Typer:
             f"to_substrait does not write {sorted(e)[0]} expressions for other consumers yet"
         )
 
-    def _nanvl(self, e: Json) -> None:
-        """`nanvl(y, NaN)`, the writer's canonical double (`Write.canonical`:
-        `y = x + 0.0` has no `-0.0`, and every NaN becomes the positive one),
-        as Substrait: `if is_nan(y) then NaN else y`."""
-        a, b = (arg["value"] for arg in e["scalarFunction"]["arguments"])
-        self.names[_IS_NAN] = "is_nan"
-        test = {"scalarFunction": {"functionReference": _IS_NAN, "arguments": [{"value": a}]}}
+    def _peek(self, e: Json, cols: list[Ty]) -> Ty:
+        """The type of `e`, from a copy typed apart: `e` and this typer stay
+        as they were."""
+        t = copy.copy(self)
+        t.names, t.anchors = dict(self.names), dict(self.anchors)
+        t.calls, t.aggregates, t.sorts, t.casts = [], [], [], []
+        t.wrap = False
+        return t.expr(copy.deepcopy(e), cols)
+
+    def _canonical(self, e: Json) -> None:
+        """A double operation `x` as the reference has its result, with one
+        zero and one NaN (ST-4): `y = x + 0.0` has no `-0.0`, and
+        `if is_nan(y) then NaN else y` makes every NaN the positive one."""
+        fp64 = {"literal": {"fp64": 0.0}}
+        nan = {"literal": {"fp64": "NaN"}}
+
+        orig = copy.deepcopy(e)
+
+        def y() -> Json:
+            x = copy.deepcopy(orig)
+            x["scalarFunction"][_DONE] = True
+            args = [{"value": x}, {"value": fp64}]
+            return {"scalarFunction": {"functionReference": _ADD, "arguments": args, _DONE: True}}
+
+        self.names[_IS_NAN], self.names[_ADD] = "is_nan", "add"
+        test = {"scalarFunction": {"functionReference": _IS_NAN, "arguments": [{"value": y()}]}}
         e.clear()
-        e["ifThen"] = {"ifs": [{"if": test, "then": b}], "else": copy.deepcopy(a)}
+        e["ifThen"] = {"ifs": [{"if": test, "then": nan}], "else": y()}
         self.canonical = True
 
     def measure(self, m: Json, cols: list[Ty]) -> Ty:
@@ -1100,9 +1142,9 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
             and canonical
             and g not in ("rel.keys", "rel.sort", "cmp")
         ):
-            # The written plan canonicalises each double an operation gives
-            # (`Write.canonical`, as for DuckDB and DataFusion): one zero and
-            # one NaN, as the reference has.
+            # The exported plan canonicalises each double an operation gives
+            # (`_Typer._canonical`): one zero and one NaN, as the reference
+            # has.
             _note(
                 h.shims,
                 {
@@ -1709,6 +1751,8 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         internal_plan=json.dumps(imp.plan),
         _depends=out.get("depends"),
         _epsilon=out.get("epsilon"),
+        _engines=out.get("engines"),
+        _sorted=out.get("sorted"),
         _contract=request,
         _transfer=(out.get("transfer") or {}).get("failures") if profile == "substrait" else None,
         observation=observation,

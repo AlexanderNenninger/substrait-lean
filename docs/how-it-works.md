@@ -20,12 +20,12 @@ lake build                                                  # proofs + CLI
 tests/run.sh                                                # golden tests for the CLI
 ```
 
-There are no dependencies beyond Lean core (no Mathlib yet), so the build takes seconds.
+The core package depends on Lean core alone, so the build takes seconds. Mathlib is used only by the separate [`float-bounds/`](float-bounds.md) project.
 
 ## Checking real plans
 
 `substrait-check` reads any Substrait JSON plan, shows it in readable form,
-and reports what was verified about it:
+and reports what was proved about it:
 
 ```python
 from sverify.engines import substrait_json
@@ -56,7 +56,7 @@ produced by `sverify`'s Ibis producer or its SQL lift, or by another
 Substrait producer such as DataFusion's (Substrait 0.77). It then:
 
 1. translates it into the formal `Rel` model, or rejects anything outside the fragment (exit 1);
-2. decides `Rel.WF` with `checkWF`, which is proven equivalent (`checkWF_iff`), and
+2. decides `Rel.WF` with `checkWF`, which is proved equivalent (`checkWF_iff`), and
    checks that `RelRoot.names` match the output arity (exit 2 if ill-formed);
 3. evaluates the plan. Named tables are schema-only (arity from `baseSchema`, no rows),
    so only `VirtualTable` data produces output rows.
@@ -83,11 +83,11 @@ probes it from the Ibis side, and the catalogue's
 calls are matched by name in `extensions`, and anything else is rejected.
 
 The CLI also reports whether the plan is in the incremental fragment
-(`isIncremental`, proven equivalent to `Rel.Incremental`) and whether writing
+(`isIncremental`, proved equivalent to `Rel.Incremental`) and whether writing
 it back out as JSON and re-parsing gives the same `Rel` (`roundtrip: ok`).
 
 The parser ([Parse.lean](../SubstraitLean/Parse.lean)) and writer
-([Write.lean](../SubstraitLean/Write.lean)) are trusted, unverified code. The
+([Write.lean](../SubstraitLean/Write.lean)) are trusted, unproved code. The
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
 `df_*.json` fixtures are real plans that DataFusion's Substrait producer wrote
@@ -129,16 +129,14 @@ How it works:
 1. The query becomes a Substrait plan: an Ibis expression through the vendored
    Ibis producer (below), a SQL string through sverify's own lift (see "SQL
    producers" below).
-2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
-   union-free terms (`Rel.terms`) and applies the weight-column encoding
-   (`Rel.weighted`). It prints one Substrait plan per term, after checking each
-   one is incremental and well-formed. The plans are union-free because
-   DataFusion's Substrait consumer loses table qualifiers at a `UNION ALL`,
-   and the duplicate column names then break a later join.
+2. `substrait-check --delta` compiles the plan with `Rel.delta` and applies the
+   weight-column encoding (`Rel.weighted`). It prints one Substrait plan, after
+   checking it is incremental and well-formed.
 3. For each change batch, `sverify` registers the change tables `t$delta` (rows
-   plus `__weight` = ±1), runs every term on the connection's engine (DuckDB by
-   default; on DataFusion with its Substrait consumer), sums the weights per
-   row, and merges the result into the view.
+   plus `__weight` = ±1), runs the delta plan on the connection's engine
+   (DuckDB by default) as one query, sums the weights per row, and merges the
+   result into the view. A k-way join's delta plan is one `UNION ALL` of its
+   2^k − 1 terms.
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
@@ -153,7 +151,7 @@ tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
 backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
 contracts find a table's data). The DataFusion engine runs on a private
 DataFusion session with the same tables, created on first use. Tables are stored with their doubles as
-the model has them (below).
+the reference profile reads them (below).
 
 A Delta or Iceberg source on DuckDB is held as a scan (`sverify._scan.Scan`):
 the data files sverify keeps after its own pruning, the rows that deletion
@@ -161,8 +159,8 @@ vectors or position delete files remove (by file and row position), the
 schema and the source's filter. DuckDB reads it as a view over
 `read_parquet`, and the Ibis backend views the same files, so the table never
 passes through Python. Columns are cast to the types DuckDB gives the Arrow
-schema, a column no file has is NULL, and doubles are read as the model has
-them, which also keeps DuckDB from trusting Parquet's NaN-free statistics
+schema, a column no file has is NULL, and doubles are read as the reference
+profile has them, which also keeps DuckDB from trusting Parquet's NaN-free statistics
 ([`upstream/bugs/DD-4.json`](../upstream/bugs/DD-4.json)). Reading a scan as Arrow (`con.rows`, an engine other than DuckDB) reads it into
 Arrow, which is how the other engines get it. A refresh holds the table as the
 files of the new version, after DuckDB checks that the batch's deletes are in
@@ -178,7 +176,7 @@ backend share), and the view's rows are a DuckDB view of it. On the other
 engines it is an Arrow table. Either way, states and changes are added up by
 one plan Lean checks: the union of two weighted tables, grouped by every
 column, with the weights summed and the groups of weight 0 left out
-(`sverify._state.Merger`). Each engine's lowering groups rows as the model
+(`sverify._state.Merger`). Each engine's lowering groups rows as the reference
 compares them, so the merge gives the same state on every engine
 (`python/tests/test_state.py` runs it on each).
 
@@ -208,7 +206,9 @@ rewritten files as deleted and added, which nets to the change.
 and through delta-rs and pyiceberg, and compares the tables after every
 refresh and the statistics both record.
 
-DataFusion is optional (`pip install 'sverify[datafusion]'`): it runs plans
+DataFusion is an optional engine (`pip install 'sverify[datafusion]'`), and no
+test takes its results as a reference or an oracle
+([#1139](https://github.com/AlexanderNenninger/substrait-lean/pull/1139)). It runs plans
 with `engine="datafusion"`, and nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
 51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
@@ -216,11 +216,14 @@ registered there as record batches. DataFusion pushes filters into
 datasets, where PyArrow compares doubles by IEEE rules, which would make
 filters and projections disagree on NaN.
 
-#### Doubles: one zero and one NaN
+#### Doubles under the reference profile
 
-The model has the doubles users expect from SQL (PostgreSQL, DuckDB, Spark,
-Snowflake): −0.0 is 0.0, and every NaN is one NaN, equal to itself and above
-`inf`. `-1 * 0.0` is `0.0`, `-0.0 >= 0` is TRUE, and `GROUP BY`, `DISTINCT`,
+The core has IEEE's doubles, both zeros and signed NaNs, and each profile
+chooses how to read them
+([core, profiles and engines](core-semantics.md#core-profiles-and-engines)).
+The reference profile reads them as users expect from SQL (PostgreSQL,
+DuckDB, Spark, Snowflake): −0.0 is 0.0, and every NaN is one NaN, equal to
+itself and above `inf` (`ONE_ZERO`, `ONE_NAN`, `NAN_IS_NAN`, NaN `GREATEST`). `-1 * 0.0` is `0.0`, `-0.0 >= 0` is TRUE, and `GROUP BY`, `DISTINCT`,
 joins, partitions and sorts put the two zeros (and all NaNs) together. Each
 engine is made to agree:
 
@@ -229,16 +232,16 @@ engine is made to agree:
   every operation that IEEE lets produce −0.0 (negation, `*`, `/`, `POWER`,
   rounding, `AVG`): `-0.0 + 0.0` is `0.0`, and other values stay. Ibis
   queries on a connection run on DuckDB, so they agree too.
-* DataFusion orders doubles by `f64::total_cmp` (−0.0 < 0.0, a negative NaN
-  first), so connections store canonical tables (`sverify.engine.canonical`),
-  its results are canonicalized, and the plans Lean writes wrap every double
-  operation in `nanvl(x + 0.0, 'NaN')`, which DataFusion evaluates and every
-  parser reads back as `x`. This also gives every NaN the same payload, which
-  `total_cmp` would tell apart. Two gaps remain: a `SUM` or `AVG` of doubles
-  inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
-  `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
-  in the same plan, follows DataFusion's order; and so does SQL run on
-  DataFusion directly (a query on a `datafusion.SessionContext`).
+* DataFusion, the optional engine, orders doubles by `f64::total_cmp` (−0.0 <
+  0.0, a negative NaN first), so the tables it reads and its results are canonicalized
+  (`sverify.engine.canonical`). DataFusion is a tier-3 engine: it refuses
+  a plan with a double operation that IEEE arithmetic lets give −0.0 or a
+  negative NaN (`DataFusion.signedDoubles`,
+  [DF-13](../upstream/bugs/DF-13.json)). SQL run on DataFusion directly (a
+  query on a `datafusion.SessionContext`) follows DataFusion's order.
+* `Report.to_substrait` writes each double operation `x` for other consumers
+  as `if is_nan(x + 0.0) then NaN else x + 0.0` (ST-4), which gives every NaN
+  the same sign and payload.
 
 ### The Ibis producer
 
@@ -253,7 +256,7 @@ plan) once left an integer next to a double's code (#16). Upstream's mistakes ar
 (integer `/` divided integers, `where=` filters were dropped, sorts were always
 `NULLS FIRST`, promotions could cast a double down to an integer, timestamp
 literals were read in local time), and anything outside the model raises
-`UnsupportedError`. `python/tests/test_ibis_substrait.py` checks every verified
+`UnsupportedError`. `python/tests/test_ibis_substrait.py` checks every proved
 coverage case against DuckDB running Ibis's own SQL on random tables, except
 where DuckDB's SQL computes something else (`coverage.NO_DUCKDB_SQL`).
 
@@ -327,7 +330,7 @@ lists each.
 * Proofs: `lake build` re-checks every theorem. The main ones say that the
   update plan computes exactly the change to the result, and that running it
   with the weight-column encoding gives that result. See
-  [Proven theorems](#proven-theorems).
+  [Proved theorems](#proved-theorems).
 * Randomized testing: `uv run pytest` generates random tables and random batches of
   inserts and deletes, including NULLs and duplicates. After every batch it
   checks that the maintained result equals a full recompute. This covers the parts
@@ -335,7 +338,7 @@ lists each.
 
 ## What is proved
 
-### Proven theorems
+### Proved theorems
 
 [proofs.md](proofs.md#the-guarantees-and-their-theorems) names every
 guarantee with its theorem, its layer and its module, from the algebraic
@@ -423,8 +426,14 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   membership lemma per operator.
 
 Doubles are modelled as exact integer codes (each double is a multiple of 2⁻¹⁰⁷⁴),
-timestamps as microseconds; see [Float.lean](../SubstraitLean/Float.lean). The conversions
-between codes and native floats are trusted code.
+`-0.0` and the negative NaN included, and timestamps as microseconds; see
+[Float.lean](../SubstraitLean/Float.lean) and
+[FloatFormat.lean](../SubstraitLean/FloatFormat.lean). `+ − × ÷` compute on the
+codes, the exact result rounded once
+([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once),
+[FloatArith.lean](../SubstraitLean/FloatArith.lean)). The conversions between
+codes and native floats, which `pow`, `log` and the other libm functions use,
+are trusted code.
 
 * `Rel.aeval_sound`: every row a well-formed plan produces is described by `Rel.aeval`.
 * `Rel.colExprs_eval`: a precondition plan (`orders.select(cond, ...)`) computes its
@@ -468,8 +477,9 @@ group (checked at run time: the job raises if it does not …)` (or
 * Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
   `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, a regular expression
-  that may not compile, and `date_trunc` to a week, month, quarter or year outside
-  ±2⁶³ nanoseconds (DataFusion panics or returns garbage there).
+  that may not compile, and calendar functions (`date_part`, `date_trunc` to a week or
+  longer, `date_bin`, `strftime`, adding months) outside the reference's timestamps,
+  0001-01-01 to 9999-12-31 (D32).
 * `+`, `-`, `*` and negation leaving their declared width (64 bits, or narrower
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error
@@ -543,7 +553,7 @@ what refresh maintains is in [the guide](guide.md#nodes-composing-storing-refres
 * `Rel.zeval_lift`: with all weights 1, Z-set evaluation equals the bag
   semantics `Rel.eval`, so the two models agree.
 * `Rel.zeval_terms`: a plan's result is the concatenation of its union-free
-  terms' results (`Rel.terms`).
+  terms' results (`Rel.terms`), for an engine that runs the terms one by one.
 * `Rel.weighted_eval`: running the weight-column encoding (`Rel.weighted`) on an
   ordinary bag engine gives exactly the Z-set result, with each weight as a
   trailing column. Old tables get weight 1, and joins multiply weights.
@@ -580,7 +590,7 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and the trusted facts below. The bounds of `SUM` and `AVG` of doubles need none since D25: they are theorems about the correctly rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`), and the bound of a sharded `SUM` too (`floatSplit_sum`); a sharded `AVG` divides natively and rests on `div_scaled_err` in `Float.lean`. The statistical aggregates need none since D30: they are the exact moments rounded once (`varOf_props`, `covOf_props`, `corrOf_props` are retired). The bounds of one double `+`, `-`, `*`, `/` and `exp` (#582) rest on five: `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled` in `Float.lean` and `exp_fin` in `Safety.lean`; their signs (#441) on three: `add_nonneg`, `mul_nonneg`, `div_nonneg` in `Float.lean`. [`float-bounds/`](float-bounds.md) proves them for IEEE rounding with Mathlib, kept out of the core build (`div_scaled_err` is `core_div`'s statement).
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and the trusted facts below. The bounds of `SUM` and `AVG` of doubles need none since D25: they are theorems about the correctly rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`), and the bound of a sharded `SUM` too (`floatSplit_sum`). The statistical aggregates need none since D30: they are the exact moments rounded once (`varOf_props`, `covOf_props`, `corrOf_props` are retired). The bounds of one double `+`, `-`, `*` and `/` need none since D31 ([#1095](https://github.com/AlexanderNenninger/substrait-lean/pull/1095)): they are the exact result rounded once, and `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled`, `div_scaled_err` and the signs (#441) `add_nonneg`, `mul_nonneg`, `div_nonneg` are theorems in `FloatArith.lean`, so a sharded `AVG`'s division rests on none either. The one axiom left is `exp_fin` in `Safety.lean` (libm's `exp`, #582). [`float-bounds/`](float-bounds.md) also proves the bounds over the reals with Mathlib, kept out of the core build (`div_scaled_err` is `core_div`'s statement).
 
 ## Modelling choices
 
