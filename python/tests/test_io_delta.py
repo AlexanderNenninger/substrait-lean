@@ -425,8 +425,11 @@ def test_tables_without_metadata_are_checked_on_data():
         ibis.schema({"id": "!int64", "customer": "string", "amount": "int64"}),
         [(1, "ada", 5)],
     )
-    checked(con.table("orders"))
-    assert set(discharged(checked._last_preconditions).values()) == {ON_DATA}
+    # A transform of its own: `checked` is shared with the tests above, and
+    # its last call's preconditions are whichever test called it last (#884).
+    own = sv.transform(requires=checked.requires, ensures=checked.ensures)(checked.fn)
+    own(con.table("orders"))
+    assert set(discharged(own._last_preconditions).values()) == {ON_DATA}
 
 
 # -- Step 3: a Delta sink that carries the contract ---------------------------

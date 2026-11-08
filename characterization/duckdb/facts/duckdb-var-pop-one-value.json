@@ -1,0 +1,97 @@
+{
+  "id": "duckdb-var-pop-one-value",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`VAR_POP` and `STDDEV_POP` of one value are 0, even for NaN or ±inf",
+  "verdict": "0 for any single value; the reference gives NaN for a non-finite one",
+  "area": "aggregates",
+  "options": [
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "var_pop",
+    "stddev_pop"
+  ],
+  "settings": {},
+  "description": [
+    "The finalize of `VarPopOperation` and `STDDevPopOperation` is `count > 1 ? dsquared / count : 0` (and its square root): a group or frame with exactly one non-NULL value gives 0 whatever the value is. So `VAR_POP` and `STDDEV_POP` of `[NaN]`, of `[NULL, NaN]` and of `[inf]` are 0.0, as an aggregate, as a window over a frame, and as `list_var_pop`. Reported upstream as DD-3 (duckdb#28329, fix duckdb#28344 open).",
+    "Two values or more go through Welford's update and give NaN for a NaN or ±inf among them (duckdb-nonfinite-aggregates): `[NaN, NaN]` and `[NaN, 1]` are NaN. `VAR_SAMP` and `STDDEV_SAMP` of one value are NULL. `COVAR_POP` of one pair with a NaN is NaN: the covariance has no such special case.",
+    "sverify's grouped `VAR_*`/`STDDEV_*` return NaN when a value is NaN (`COUNT(isnan(x)) > 0`, the handling of DD-3), so the grouped plan gives the reference's NaN. The window form (`window_var`) wrote `VAR_POP(x) OVER (...)` without that guard, so a frame whose only value is NaN gave 0.0 through the written plan; #758 adds the guard. A ±inf does not reach either: the plan raises its domain error first (`MAX(ABS(x)) = inf`).",
+    "The docs are silent on one value: a docs gap (duckdb-var-stddev)."
+  ],
+  "reference": "`varOf` (`SubstraitLean/Aggregate.lean`, D30): NaN for a NaN or an infinity among the values, 0 for one finite value. The DuckDB profile's `stat_algo` row `WELFORD_CHAN` claims `StatProps` (`SubstraitLean/StatProps.lean`, `varStat`), which outside finite values asks for the reference's own value, NaN; the writer's NaN guard is what keeps DuckDB inside it. Found again by #758 (`test_engines_agree[rolling variance (rows)]`): Polars, before its refusal of windowed variances, gave NaN for a frame of `[NULL, NaN]`, and DuckDB 0.0 through both the written plan and Ibis's own SQL.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "source-reading",
+      "checked_by": "flaky-tests session (#758), started by session local_974f7865",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L93-L125",
+          "note": "VarPopOperation: `target = state.count > 1 ? (state.dsquared / state.count) : 0;` STDDevPopOperation: `state.count > 1 ? sqrt(state.dsquared / state.count) : 0`"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 through the GitHub API."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "flaky-tests session (#758), duckdb 2.0.0 and polars 2.1.0, Python 3.12, macOS arm64",
+      "evidence": [
+        {
+          "sql": "SELECT var_pop(x), stddev_pop(x), var_samp(x), stddev_samp(x) FROM (VALUES ('nan'::DOUBLE)) t(x)",
+          "observed": "0.0, 0.0, NULL, NULL"
+        },
+        {
+          "sql": "SELECT var_pop(x), stddev_pop(x), var_samp(x) FROM (VALUES ('nan'::DOUBLE), (NULL)) t(x)",
+          "observed": "0.0, 0.0, NULL"
+        },
+        {
+          "sql": "SELECT var_pop(x), stddev_pop(x) FROM (VALUES ('inf'::DOUBLE)) t(x)",
+          "observed": "0.0, 0.0"
+        },
+        {
+          "sql": "SELECT var_pop(x), stddev_pop(x), var_samp(x) FROM (VALUES ('nan'::DOUBLE), ('nan'::DOUBLE)) t(x)",
+          "observed": "NaN, NaN, NaN"
+        },
+        {
+          "sql": "SELECT var_pop(x), var_samp(x) FROM (VALUES ('nan'::DOUBLE), (1.0::DOUBLE)) t(x)",
+          "observed": "NaN, NaN"
+        },
+        {
+          "sql": "SELECT covar_pop(x, y), covar_samp(x, y), corr(x, y) FROM (VALUES ('nan'::DOUBLE, 1.0::DOUBLE)) t(x, y)",
+          "observed": "NaN, NULL, NaN"
+        },
+        {
+          "sql": "SELECT var_pop(x) OVER (ORDER BY i ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) FROM (VALUES (1, NULL::DOUBLE), (2, 'nan'::DOUBLE), (3, 1.0::DOUBLE)) t(i, x)",
+          "observed": "NULL, 0.0, NaN"
+        },
+        {
+          "sql": "SELECT list_var_pop(['nan'::DOUBLE]), list_stddev_pop(['nan'::DOUBLE])",
+          "observed": "0.0, 0.0"
+        },
+        {
+          "file": "python/tests/test_backends.py",
+          "note": "test_var_pop_of_one_nan: the case `rolling variance (rows)` on t.amount = [NULL, NaN], through the written plan on DuckDB and Ibis's own SQL; both give 0.0 at the second row"
+        }
+      ],
+      "notes": "Polars 2.1.0 (streaming engine) gives NaN for `var(ddof=0)` and `std(ddof=0)` of `[NULL, NaN]` and of `[NaN]`, as the reference does."
+    }
+  ],
+  "issues": [
+    758,
+    54,
+    85
+  ]
+}
