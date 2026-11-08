@@ -300,6 +300,15 @@ def Profile.polars.obs : ObsTable := [
   -- `1.03 · n·u·√(Q'S)` on the co-moment (polars-var-bound, #918).
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
     rerun := some { floats := .within "plan" } }).tracking 918),
+  -- A one-row frame's streaming `group_by` gives 0 for a NaN (polars-var-pop-one-nan),
+  -- where the reference gives NaN; the run returns NaN for a NaN among the values,
+  -- as DuckDB's SQL does (`Stat.nanGuard_varStat` proves the guard; the bound
+  -- around it is the row above's, fuzzed).
+  (some "agg.var", "stat_algo", ({ ObsRow.approxWithin "plan"
+      ["polars-var-std", "polars-var-std-streaming", "polars-var-bound", "polars-var-pop-one-nan"] with
+    shim := some "nan_through",
+    rerun := some { floats := .within "plan" },
+    note := "Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan); the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves), within the fuzzed bound of the row for every statistic (polars-var-bound)." }).tracking 918),
   (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with engine := some "in-memory" }).tracking 900),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
@@ -463,6 +472,13 @@ def Profile.spark.obs : ObsTable := [
   (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 900),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
+  -- `var_pop` and `stddev_pop` of one NaN are NaN (spark-var-pop-one-nan): Spark's
+  -- variance needs no NaN guard, where DuckDB's does (DD-3). The SQL writer reads
+  -- this row (`Dialect.var_nan`): without a shim, it writes Spark's own `VAR_*`.
+  (some "agg.var", "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-var-pop-one-nan"] with
+    rerun := some { floats := .within "plan" },
+    note := "Welford's update with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); a NaN among the values gives NaN, one NaN included (spark-var-pop-one-nan), so the written plan carries no NaN guard; an infinity raises first (#257)." }).proved
+    "FloatBounds.StdModel.core_var_chan"),
   (none, "quantile_interp", (ObsRow.native ["spark-quantile"]).tracking 900),
   (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
@@ -567,7 +583,8 @@ def builtinEngines : List EngineProfile := [
       ("one_zero", .expression), ("strpos_chars", .expression),
       ("substring_wrap", .expression), ("column_divisor", .expression),
       ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
-      ("max_nan_greatest", .expression), ("sort on the keys", .sort)] },
+      ("max_nan_greatest", .expression), ("nan_through", .expression),
+      ("sort on the keys", .sort)] },
   { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
     translationTheorem := "Rel.spark_sound", executes := "batch", asReference := true,
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),

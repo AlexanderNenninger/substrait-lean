@@ -446,15 +446,21 @@ def test_f1_verified_under_polars_runs_natively(con) -> None:
     assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
 
 
-def test_f1b_floor_plan_is_refused_on_duckdb(con) -> None:
-    """The same plan on DuckDB: DuckDB's `%` truncates and it has no `FLOOR`,
-    so the plan is refused there, with the reason. Verified under the
-    reference, the same expression truncates and runs on both."""
+def test_f1b_floor_plan_runs_on_duckdb(con) -> None:
+    """The same plan on DuckDB, whose `%` truncates: the SQL writer computes
+    the stated `FLOOR`, so the written plan gives Polars's values there. The
+    route stays refused, by the transfer check: the proof under
+    `semantics="polars"` does not carry over to DuckDB's profile. Verified
+    under the reference, the same expression truncates and runs on both."""
     report = _floor_report(con)
     r = routes.choose(report, "duckdb")
-    assert r.refused and "division_type FLOOR" in r.reason and "duckdb" in r.reason, r
-    with pytest.raises(RouteError, match="refused on duckdb: integer // and %"):
+    assert r.refused and "division_type: polars gives FLOOR" in r.reason, r
+    with pytest.raises(RouteError, match="refused on duckdb"):
         report.run(con, "duckdb", route="auto")
+    out = sv.engine.run_plan(con, sv.engine.written_plan(report.internal_plan or ""), "duckdb")
+    pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
+    assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
+    assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
     t = con.table("t")
     ref = sv.verify(
         t.select("k", m=t.i % t.j),

@@ -347,6 +347,16 @@ def min_ignore_nan(minimum: pl.Expr) -> pl.Expr:
     return one_zero(minimum)
 
 
+def nan_through(var: pl.Expr, has_nan: pl.Expr) -> pl.Expr:
+    """A variance or deviation from Polars's `var`/`std` and whether the
+    group holds a NaN: NaN if it does, as `varOf` gives, wherever `var` is not
+    NULL (no values, or a sample of one). Polars's streaming `group_by` over a
+    one-row frame gives 0.0 for a NaN (polars-var-pop-one-nan); the guard is
+    `Stat.nanGuard`, sound by `Stat.nanGuard_varStat`, as DuckDB's SQL
+    (`Dialect.nan_through`)."""
+    return pl.when(has_nan & var.is_not_null()).then(pl.lit(float("nan"))).otherwise(var)
+
+
 def max_nan_greatest(maximum: pl.Expr, has_nan: pl.Expr) -> pl.Expr:
     """`MAX` of doubles from Polars's `max` and whether the group holds a NaN:
     NaN if it does, as NaN is the greatest double (`nan_order = GREATEST`),
