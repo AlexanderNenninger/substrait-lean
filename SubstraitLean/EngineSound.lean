@@ -2,7 +2,7 @@ import SubstraitLean.Engine
 import SubstraitLean.AllowedNear
 
 /-!
-# What an engine's run is sound for (#900)
+# What an engine's model is sound for (#900)
 
 `Engine.Sound E side`: for every plan `r` that `E` translates to `r'`, where
 `r'` does not raise under `E`'s profile and `side` holds, the rows `r'`
@@ -20,7 +20,7 @@ computes with `E`'s functions are a result the reference allows for `r`
 
 `Engine.contract_sound` composes it with `contract_sound_allowed`: unless the
 translated plan raises, the contract's postconditions hold on the rows the
-engine's run computes. `Engine.contract_sound_runs` is the form for the
+engine's model computes for it (`r'.eval cat E.impl`). `Engine.contract_sound_runs` is the form for the
 engine's actual result, which D16's trusted claim (`Engine.Runs`) places in
 `Rel.AllowedP E.table`; it needs the transfer check `htr` from `E`'s table
 to the reference's, which fails where an engine's choice is not the
@@ -114,7 +114,7 @@ theorem Rel.Allowed.postRows {cat : Catalog} {T : Rel} {es : List Expr} {mp : Li
     (Rel.emit (.project T es) mp).Allowed cat (postRows es mp t) :=
   ⟨_, ⟨t, h, rfl⟩, rfl⟩
 
-/-- **A verified contract holds on an engine's run** (#900). On data that
+/-- **A verified contract holds on an engine's model** (#900). On data that
 meets the preconditions, with `contract_sound_allowed`'s hypotheses on the
 transformation `T` and its postconditions `es` (selected by `mp`), where `E`
 translates `T` to `T'`, `T'` does not raise under `E`'s profile and `E`'s side
