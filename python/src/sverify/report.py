@@ -844,7 +844,12 @@ class Report:
                 True. False skips the check, for a caller that has made it
                 already: the report's guarantee then holds only on data that
                 meets them, and a batch that does not may raise on the
-                engine.
+                engine. With the check, a plan on the reference's route runs
+                without the per-row checks the checker discharged on data
+                that meets them (`guard_free`, `unchecked`;
+                `Rel.guardFree_sound`): DuckDB and Polars skip them, and the
+                checks of the assumed `SUM`s and `±∞` stay. Without it, every
+                check stays.
             streaming: On Polars, `"require"` refuses a plan any of whose
                 nodes runs on the in-memory engine
                 (`polars_engine.fallback_nodes`); `"allow"` (the default)
@@ -916,6 +921,12 @@ class Report:
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
         finite = self.semantics == "reference" or kind == "translated"
+        # The checks the checker discharged (#1166): where the preconditions
+        # were checked on these tables and the plan runs by the reference's
+        # translation, a guard-free plan runs without its per-row checks
+        # (`Rel.guardFree_sound`) and another without those of its unchecked
+        # expressions (`Rel.evalG_marks`). The assumed issues keep theirs.
+        discharged = check_requires and kind == "translated" and self.semantics == "reference"
         out = run_plan(
             con,
             written_plan(self.internal_plan),
@@ -924,6 +935,8 @@ class Report:
             # A proved report's `deterministic` justifies Spark's windows
             # without a row-order tiebreak (`to_sql`'s `deterministic`).
             tie_free=self.deterministic and kind != "unverified",
+            guards=not (discharged and self._guard_free),
+            unchecked=self._unchecked if discharged and not self._guard_free else None,
         )
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}

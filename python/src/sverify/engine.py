@@ -723,6 +723,8 @@ def run_plan(
     keep: Literal[False] = False,
     finite: bool = True,
     tie_free: bool = False,
+    guards: bool = True,
+    unchecked: dict | None = None,
 ) -> pa.Table: ...
 
 
@@ -735,6 +737,8 @@ def run_plan(
     keep: bool,
     finite: bool = True,
     tie_free: bool = False,
+    guards: bool = True,
+    unchecked: dict | None = None,
 ) -> pa.Table | Resident: ...
 
 
@@ -746,6 +750,8 @@ def run_plan(
     keep: bool = False,
     finite: bool = True,
     tie_free: bool = False,
+    guards: bool = True,
+    unchecked: dict | None = None,
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. DataFusion runs it as
@@ -776,6 +782,14 @@ def run_plan(
             they run without a row-order tiebreak (`to_sql`'s
             `deterministic`). Default: False; `Report.run` and a stored
             node's refresh pass the report's fact.
+        guards: On DuckDB and Polars, write the run-time checks. False only
+            for a plan whose contract report is `guard_free`, on data that
+            meets its preconditions (`Rel.guardFree_sound`): the checks of
+            the assumed issues stay (`to_sql`'s `guards`). Default: True.
+        unchecked: On DuckDB, the expressions to write without their checks,
+            a contract report's `unchecked` for this plan, on data that meets
+            its preconditions (`Rel.evalG_marks`). Default: None, every
+            expression keeps its checks.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -840,16 +854,20 @@ def run_plan(
         # DuckDB reads `Scan` and `Resident` tables where they are.
         tables = {t: con.get(t) for t in read}
         if keep:
-            return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
-        return duckdb_engine.run(plan_json, tables, finite=finite)
+            return duckdb_engine.run(
+                plan_json, tables, keep=True, finite=finite, guards=guards, unchecked=unchecked
+            )
+        return duckdb_engine.run(
+            plan_json, tables, finite=finite, guards=guards, unchecked=unchecked
+        )
     tables = {t: con._arrow[t] for t in read}
     if engine == "polars":
         from sverify import polars_engine
 
-        guards = polars_engine.ALL_GUARDS - (
-            frozenset() if finite else {polars_engine.InfiniteResult.issue}
-        )
-        return polars_engine.run(plan_json, tables, guards=guards)
+        checked = polars_engine.ALL_GUARDS if guards else polars_engine.NO_GUARDS
+        if not finite:
+            checked -= {polars_engine.InfiniteResult.issue}
+        return polars_engine.run(plan_json, tables, guards=checked)
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
 
 

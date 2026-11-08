@@ -77,6 +77,7 @@ def run(
     tables: Mapping[str, pa.Table | Native],
     *,
     guards: bool = True,
+    unchecked: dict | None = None,
     keep: Literal[False] = False,
     finite: bool = True,
 ) -> pa.Table: ...
@@ -88,6 +89,7 @@ def run(
     tables: Mapping[str, pa.Table | Native],
     *,
     guards: bool = True,
+    unchecked: dict | None = None,
     keep: Literal[True],
     finite: bool = True,
 ) -> Resident: ...
@@ -98,6 +100,7 @@ def run(
     tables: Mapping[str, pa.Table | Native],
     *,
     guards: bool = True,
+    unchecked: dict | None = None,
     keep: bool = False,
     finite: bool = True,
 ) -> pa.Table | Resident:
@@ -109,12 +112,18 @@ def run(
     The process's database serves every call (`sverify._duckdb`; opening
     one costs ~10 ms), through a cursor of the engine's own; the tables are
     created for the call, as temporary tables, and dropped after it.
-    `guards=False`, `finite=False`: see `sverify.sql.to_sql`."""
+    `guards=False`, `unchecked`, `finite=False`: see `sverify.sql.to_sql`."""
     global _DB
     sql = (
         _sql(plan, guards, finite)
-        if isinstance(plan, str)
-        else to_sql(plan, DUCKDB, guards=guards, finite=finite)
+        if isinstance(plan, str) and unchecked is None
+        else to_sql(
+            json.loads(plan) if isinstance(plan, str) else plan,
+            DUCKDB,
+            guards=guards,
+            unchecked=unchecked,
+            finite=finite,
+        )
     )
     # `to_sql` numbers a table's rows with `rowid` where the plan needs their order.
     ordered = DUCKDB.row_ordinal() in sql

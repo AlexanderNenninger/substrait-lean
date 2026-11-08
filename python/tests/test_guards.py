@@ -150,3 +150,47 @@ def test_unguarded_runs_agree(expr, rows):
     w = written_plan(p)
     on_polars = polars_engine.run(w, tables, guards=False)
     assert canonical(tuple(r.values()) for r in on_polars.to_pylist()) == want
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_run_drops_the_discharged_checks(monkeypatch, engine):
+    """`Report.run` passes the checker's discharged issues to the writer
+    (#1166): a guard-free plan runs without per-row checks once the
+    preconditions are checked on the data; without that check every guard
+    stays."""
+    from sverify import report as report_module
+
+    seen: list[dict] = []
+    real = report_module.run_plan
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(report_module, "run_plan", spy)
+    con = sv.connect()
+    con.put("t", pa.table({"a": [6, 9, 1000], "b": [3, 1, 100]}))
+    free = sv.verify(GUARD_FREE[0], requires=BOUNDED)
+    want = free.run(con, engine, check_requires=False).to_pylist()
+    assert seen[-1]["guards"] and seen[-1]["unchecked"] is None
+    assert free.run(con, engine).to_pylist() == want
+    assert seen[-1]["guards"] is False and seen[-1]["unchecked"] is None
+    # Not guard-free (`Rel.looseSub`), and no expression marked: every check stays.
+    loose = sv.verify(T.left_join(U.filter(U.d > 0), "a").select(x=T.b + 1), requires=BOUNDED)
+    assert loose.proved and not loose._guard_free
+    con.put("u", pa.table({"a": [6], "d": [1]}))
+    loose.run(con, engine)
+    assert seen[-1]["guards"] and seen[-1]["unchecked"] == loose._unchecked
+
+
+def test_unchecked_run_on_duckdb_writes_fewer_checks():
+    """DuckDB's run takes the unchecked marks: the SQL it writes drops the
+    division's checks. The product needs none there: DuckDB's BIGINT
+    multiplication raises on overflow itself."""
+    report = sv.verify(MIXED, requires=MIXED_REQUIRES, on_inferred="off")
+    w = written_plan(json.dumps(plan(MIXED)))
+    tables = {"t": pa.table({"a": [6, 9], "b": [3, 1]})}
+    want = duckdb_engine.run(w, tables).to_pylist()
+    assert duckdb_engine.run(w, tables, unchecked=report._unchecked).to_pylist() == want
+    assert "division by zero" in to_sql(json.loads(w), DUCKDB)
+    assert "division by zero" not in to_sql(json.loads(w), DUCKDB, unchecked=report._unchecked)
