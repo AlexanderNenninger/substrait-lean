@@ -27,12 +27,13 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
-from sverify._unsupported import SverifyError
+from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
     Engine,
     connection_of,
     plan_json,
+    read_tables,
     run_guard_free,
     run_plan,
     written_plan,
@@ -158,6 +159,31 @@ RUNTIME_CHECK = (
     "the job also checks it while it runs and raises if it happens; a bound on "
     "the column and on the rows of a group rules it out"
 )
+
+
+def _pinned(table: Any) -> bool:
+    """Does every read of `table` see the same rows: an Arrow table, a table
+    DuckDB holds, or a Delta or Iceberg table's files at one version?"""
+    import pyarrow
+
+    from sverify._scan import Resident, Scan
+
+    if isinstance(table, pyarrow.Table | Resident):
+        return True
+    return isinstance(table, Scan) and "@v" in table.origin
+
+
+class InferredWarning(SverifyWarning):
+    """A precondition sverify inferred is assumed (`on_inferred="warn"`), or a
+    margin check flagged groups a run kept (#929).
+
+    Attributes:
+        report: The `Report` whose `inferred` preconditions are assumed.
+    """
+
+    def __init__(self, message: str, report: Report | None = None):
+        super().__init__(message)
+        self.report = report
 
 
 #: How a report explains a `SUM` it assumes fits (`Report.assumed`).
@@ -477,6 +503,16 @@ class Report:
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
     does not."""
+    _margin_checks: list[dict[str, Any]] = field(default_factory=list, repr=False, compare=False)
+    """The margin checks of the plan's threshold filters on double sums
+    (#929): per filter, a plan that counts the groups whose sum lies within
+    its bound's margin of the threshold (`Rel.marginCheck`). `run` runs each
+    on the engine before the plan (`check_margins`); `rows_exact` holds
+    given them."""
+    _margin_flags: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
+    """After a run with `on_inferred="warn"`, per engine, the groups the
+    margin checks flagged (#929): for those, the contract holds up to the
+    sum's bound."""
     _rows_exact: dict[str, bool] | None = field(default=None, repr=False, compare=False)
     """Per engine, whether every filter, key and sort of the plan keeps the
     same rows and groups under the columns' `ε` (#568's threshold rule): a
@@ -924,6 +960,8 @@ class Report:
                 raise routes.RouteError(chosen)
         if check_requires:
             self.check_inputs(con)
+        if kind != "unverified":
+            self.check_margins(con, engine, target, reproducible is not None)
         if target == "polars" and (chosen is not None or streaming == "require"):
             self._streaming(con, chosen, streaming)
         # The check of an overflow to ±∞ is the reference's precondition
@@ -961,6 +999,66 @@ class Report:
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
         return out
+
+    def check_margins(
+        self, con: Connection, engine: Any, target: str, deterministic: bool = False
+    ) -> int:
+        """Run the margin checks of the plan's threshold filters on double
+        sums (#929, `Rel.marginCheck`) on `engine`, on the tables of `con`
+        the plan reads too, and count the groups they flag: those whose sum
+        lies within its bound's margin of the threshold, where the engine may
+        keep other groups than the reference.
+
+        Returns:
+            The groups flagged; with `verify(on_inferred="warn")`, also
+            recorded in `_margin_flags` and warned about (`InferredWarning`).
+
+        The check and the plan must read one snapshot: each input the check
+        reads is an Arrow table, a `Resident` table or a `Scan` pinned to a
+        version (`_pinned`). Another input warns (`InferredWarning`), and
+        refuses the run with `deterministic` (the deterministic profile,
+        `reproducible=`).
+
+        Raises:
+            PreconditionError: A check flags a group, and the report was not
+                verified with `on_inferred="warn"`; or, with `deterministic`,
+                an input the check reads is not pinned to one version.
+        """
+
+        total = 0
+        for chk in self._margin_checks:
+            on = (chk.get("engines") or {}).get(target)
+            if on is None:
+                # Not covered on this engine: its threshold rule refused the route.
+                continue
+            loose = [t for t in read_tables(chk["plan"]) if con.has(t) and not _pinned(con.get(t))]
+            if loose:
+                msg = (
+                    f"the margin check and the plan read {', '.join(loose)} twice, and "
+                    f"{'it is' if len(loose) == 1 else 'they are'} not pinned to one version: "
+                    "the two reads may see different rows (#929)"
+                )
+                if deterministic:
+                    raise PreconditionError(msg)
+                warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            # Without the overflow checks of #575: the margin is at most `A`, and
+            # a `v − t` past the largest double is farther than any bound.
+            # Its windows aggregate whole partitions, so no row order matters.
+            res = run_plan(
+                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
+            )
+            k = int(res.column(0)[0].as_py() or 0)
+            if not k:
+                continue
+            total += k
+            msg = on["message"].replace("{k}", str(k))
+            if self._on_inferred == "warn":
+                warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            else:
+                raise PreconditionError(msg)
+        if self._on_inferred == "warn":
+            self._margin_flags[target] = total
+        return total
 
     def _assumed(self) -> list[Issue]:
         """The assumptions a report shows: not those about an operation
@@ -1359,6 +1457,7 @@ class Report:
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
+        lines += [f"checks at run time: {c['label']}" for c in self._margin_checks]
         for i in self.errors:
             lines.append(f"may fail: {i.message}")
             if i.hint:
@@ -1456,6 +1555,8 @@ _REPORT_INTERNAL = [
     "transfer",
     "epsilon",
     "rows_exact",
+    "margin_checks",
+    "margin_flags",
     "engines",
     "sorted",
     "conditions",
