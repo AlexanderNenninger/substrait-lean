@@ -179,15 +179,24 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "case_sensitivity", .native ["duckdb-string-match-case"]),
   (none, "string_positions", .native ["duckdb-string-match-case", "duckdb-R13"]),
   (none, "null_join_keys", .native ["duckdb-null-keys"]),
+  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]),
   -- Welford with Chan's merge meets the generic properties the reference allows:
   -- `float-bounds` proves `VAR_*`, `COVAR_*` and DuckDB's `CORR` formula within
   -- `StatProps` (`core_var_chan`, `core_cov_chan`, `core_corr_chan`; `STDDEV_*`
   -- by `core_stddev` of the variance), for IEEE rounding (`Mono`, `Grid`).
   -- D30: the reference's statistics are the exact moments rounded once, so
   -- DuckDB's are within the plan's bound of them (`Epsilon.statEps`).
-  (none, "window_sum_algo", ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["duckdb-var-stddev", "duckdb-covar", "duckdb-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
+  -- `VAR_POP` and `STDDEV_POP` of one value are 0 on DuckDB, NaN included
+  -- (DD-3), where the reference gives NaN; sverify's SQL returns NaN for a
+  -- NaN among the values. `core_var_chan` covers finite values, the guard
+  -- the rest (`Stat.nanGuard_varStat`).
+  (some "agg.var", "stat_algo", ({ ObsRow.approxWithin "plan" ["duckdb-var-stddev", "duckdb-var-pop-one-value"] with
+    shim := some "nan_through",
+    rerun := some { floats := .within "plan" },
+    note := "Welford with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); DuckDB's VAR_POP and STDDEV_POP of one value are 0 even for NaN (DD-3), so the written plan returns NaN where a value is NaN (nan_through), which meets StatProps everywhere without an infinity (Stat.nanGuard_varStat); an infinity raises first (#257)." }).proved
+    "Stat.nanGuard_varStat"),
   (none, "quantile_interp", .native ["duckdb-quantile-cont-interpolation"])]
 
 /-! ## Polars -/
@@ -536,7 +545,7 @@ def builtinEngines : List EngineProfile := [
   { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
     translationTheorem := "Rel.duckdb_refines",
     shims := [("MIN % -1 written out", .expression), ("Dialect.canon", .expression),
-      ("ORDER BY the keys", .sort)] },
+      ("ORDER BY the keys", .sort), ("nan_through", .expression)] },
   { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
     translationTheorem := "Rel.polars_sound", executes := "streaming", asReference := true,
     shims := [("null_order", .argument), ("round_half_away", .argument),

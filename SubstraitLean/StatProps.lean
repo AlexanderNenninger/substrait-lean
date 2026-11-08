@@ -185,4 +185,71 @@ def StatProps (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   | .corr => corrStat vs v
   | _ => v = f.apply vs
 
+/-! ## The NaN guard of a written variance (DD-3)
+
+DuckDB's `VAR_POP` and `STDDEV_POP` of one value are `0` whatever the value,
+NaN included (`duckdb-var-pop-one-value`, upstream DD-3), where `varStat`
+asks for the reference's NaN. Sverify's SQL writes the aggregate as
+`CASE WHEN n ≤ k THEN NULL WHEN COUNT(isnan(x)) > 0 THEN NaN ELSE body END`
+(`nan_through` in `python/src/sverify/sql/core/_base.py`, grouped and
+windowed), and raises on an infinity first (#257). `Stat.nanGuard` is that
+expression; `Stat.nanGuard_varStat` says it gives what `varStat` allows
+whenever the engine's `body` does on finite values. -/
+
+namespace Stat
+
+/-- The written variance: `NULL` for no values or a sample of one, NaN where
+a value is NaN, else the engine's `body`. -/
+def nanGuard (sample : Bool) (vs : List Value) (body : Value) : Value :=
+  if vs = [] ∨ (sample = true ∧ vs.length = 1) then .null
+  else if anyCode (fun c => decide (FloatCode.nan ≤ c)) vs then .float FloatCode.nan
+  else body
+
+set_option exponentiation.threshold 2100 in
+/-- A NaN's code is past `fits`'s range. -/
+private theorem not_fits_of_nan {vs : List Value} {c : Int} (hc : .float c ∈ vs)
+    (hn : FloatCode.nan ≤ c) : fits (floatsOf vs) = false := by
+  have hM : 2 ^ 1472 < FloatCode.maxMag := by
+    rw [FloatCode.maxMag_def]
+    exact Nat.lt_of_lt_of_le (Nat.pow_lt_pow_right (by decide) (by decide))
+      (Nat.le_mul_of_pos_left _ (by decide))
+  have hnan := nan_eq
+  have hs : ¬ (FloatCode.scaled c).natAbs ≤ 2 ^ 1472 := by
+    unfold FloatCode.scaled
+    generalize (2 : Nat) ^ 1472 = A at hM ⊢
+    generalize FloatCode.maxMag = M at hM hnan
+    split <;> omega
+  simp only [fits, Bool.and_eq_false_iff, List.all_eq_false]
+  exact .inr ⟨c, mem_floatsOf.mpr hc, by simpa using hs⟩
+
+/-- **The NaN guard is sound for `VAR_*` and `STDDEV_*`.** If the engine's
+`body` meets `varStat` on finite values, the guarded expression meets it on
+every input without an infinity (where the written plan raises, #257). -/
+theorem nanGuard_varStat {sample sqrt : Bool} {vs : List Value} {body : Value}
+    (hfin : (∀ c ∈ floatsOf vs, FloatCode.IsFin c) → varStat sample sqrt vs body)
+    (hinf : ∀ c ∈ floatsOf vs, ¬ FloatCode.IsFin c → FloatCode.nan ≤ c) :
+    varStat sample sqrt vs (nanGuard sample vs body) := by
+  unfold nanGuard
+  by_cases hd : vs = [] ∨ (sample = true ∧ vs.length = 1)
+  · simp only [varStat, hd, ite_true]
+  by_cases ha : anyCode (fun c => decide (FloatCode.nan ≤ c)) vs = true
+  · obtain ⟨w, hw, hp⟩ := List.any_eq_true.mp ha
+    cases w with
+    | float c =>
+      have hn : FloatCode.nan ≤ c := by simpa using hp
+      have hnf : nonFinite vs = some FloatCode.nan := by simp [nonFinite, ha]
+      have hs : (sample && vs.length == 1) = false := by
+        cases sample <;> simp_all
+      simp only [varStat, hd, ite_false, not_fits_of_nan hw hn, Bool.false_eq_true, and_false,
+        ha, ite_true]
+      rcases vs with _ | ⟨v0, vs'⟩
+      · simp at hw
+      · simp only [AggFn.apply, varOf, hs, hnf, Bool.false_eq_true, ite_false]
+    | _ => simp at hp
+  · simp only [ha, ite_false, Bool.false_eq_true, hd]
+    exact hfin fun c hc => Classical.byContradiction fun h => ha (List.any_eq_true.mpr
+      ⟨.float c, mem_floatsOf.mp hc, by simpa using hinf c hc h⟩)
+
+end Stat
+
 end Substrait
