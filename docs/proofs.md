@@ -327,6 +327,7 @@ generators, then the trusted reading and writing.
 | `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps; the written variance's NaN guard keeps them (`Stat.nanGuard_varStat`, DD-3) |
 | `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
 | `Options.lean` | The option catalogue and each profile's choices |
+| `Scopes.lean` | Each option's scope, where its behaviours may differ from the reference (D34) |
 | `AllowedP.lean` | `Rel.AllowedP`, the results a profile's table allows |
 | `Observations.lean` | Observations and classes against the reference |
 | `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |

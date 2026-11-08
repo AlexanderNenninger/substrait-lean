@@ -71,6 +71,7 @@ import SubstraitLean.ContractCheck
 import SubstraitLean.ShardCheck
 import SubstraitLean.Functions
 import SubstraitLean.Options
+import SubstraitLean.Scopes
 import SubstraitLean.AllowedP
 import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv
