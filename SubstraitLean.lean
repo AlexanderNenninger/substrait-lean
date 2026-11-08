@@ -90,3 +90,4 @@ import SubstraitLean.Pretty
 import SubstraitLean.Examples
 import SubstraitLean.Refresh
 import SubstraitLean.Engine
+import SubstraitLean.EngineSound

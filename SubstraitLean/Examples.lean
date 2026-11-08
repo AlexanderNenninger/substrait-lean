@@ -30,6 +30,7 @@ import SubstraitLean.Semantic
 import SubstraitLean.Obligations
 import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
+import SubstraitLean.EngineSound
 import SubstraitLean.FloatExact
 import SubstraitLean.FloatMoments
 
@@ -332,5 +333,10 @@ end Substrait.Examples
 #print axioms Substrait.Rel.floatOpenSafe_aggregate
 #print axioms Substrait.Rel.floatOpenSafe_of_closed
 #print axioms Substrait.contract_sound_allowed_closed
+#print axioms Substrait.Engine.duckdb_sound
+#print axioms Substrait.Engine.polars_sound
+#print axioms Substrait.Engine.spark_sound
+#print axioms Substrait.Engine.contract_sound
+#print axioms Substrait.Engine.contract_sound_runs
 #print axioms Substrait.Refresh.no_corruption
 #print axioms Substrait.Refresh.record_describes_table

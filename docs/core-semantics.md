@@ -826,6 +826,14 @@ automatic and costs checker time, and where it fails the plan is refused on
 few plans verify there ([Terminology](#terminology)). Translations are linear
 in the number of engines: one per engine, from the reference.
 
+For the second way, `Engine.contract_sound` (`SubstraitLean/EngineSound.lean`)
+is the theorem: unless the translated plan raises, the rows the engine's
+model computes for it (DuckDB's, Polars's, Spark's or the reference's) are a
+result the reference allows (`Engine.Sound`), and the contract holds on them.
+The engine's actual output rests on D16's claim (`Engine.Runs`) and the
+transfer check from the engine's table to the reference's
+(`Engine.contract_sound_runs`); it fails today at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on every engine, `null_order` without a preference on Polars and Spark, and integer overflow on Polars ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900), PR 3).
+
 ### Obligations, option by option
 
 The core is compositional: replacing a call or an operator by one that
@@ -1278,6 +1286,11 @@ Amended (2026-11-07): a fourth route, `recheck`, added in
 after the transfer check: the checker proves the contract again under the
 engine's profile (`python/src/sverify/routes.py`).
 
+Each route ends in `Engine.contract_sound` (#900): the contract holds on the
+rows the engine's model computes for the translated plan, unless it raises.
+The engine's actual output rests on `Engine.Runs` and the transfer check
+(`Engine.contract_sound_runs`); it fails today at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on every engine, `null_order` without a preference on Polars and Spark, and integer overflow on Polars ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900), PR 3).
+
 ### D14. Engine versions
 
 An engine profile is tied to the engine's versions: it records the version,
@@ -1307,6 +1320,13 @@ needs this stricter definition: under partial correctness, an engine could
 raise anywhere and still be correct. Partial correctness is what
 `Rel.duckdb_shim_sound` proves today for every lowered plan; for a plan
 verified to never raise the two agree (`Rel.duckdb_sound`).
+
+Amended (2026-11-08): `Engine.contract_sound` (`SubstraitLean/EngineSound.lean`,
+[#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)) proves
+a verified contract on the rows each engine's model computes for the
+translated plan, unless it raises, through each engine's `Engine.Sound`. That the engine's actual
+result is one its table allows stays trusted, as `Engine.Runs`, resting on the
+tested rows `Engine.Refines` lists ([What is trusted](proofs.md#what-is-trusted)).
 
 ### D17. Changing the reference
 
