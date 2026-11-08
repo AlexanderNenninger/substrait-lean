@@ -145,7 +145,7 @@ con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 25
 print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
 print(declared.routes["polars"])
-# shim (integer division rewritten to truncate); evidence proved
+# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc
 ```
 
 SQL's `//` truncates under the reference and Polars's integer division floors,
