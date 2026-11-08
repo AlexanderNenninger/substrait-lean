@@ -11,6 +11,7 @@ below an operator is only sound when it references columns that exist there.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 open Rel
 

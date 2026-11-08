@@ -15,6 +15,7 @@ window appears as soon as its data is present, including late data.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 open Rel
 

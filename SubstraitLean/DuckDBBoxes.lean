@@ -377,3 +377,12 @@ theorem entropy_nonneg {vs : List Value} (hne : vs ≠ []) :
   cases v <;> simp_all [ok, Ty.has, Law.holds, Boxes.duckdb, DuckDB.aggregateRows, DuckDB.agg]
 
 end Substrait.BlackBox
+
+namespace Substrait.DuckDB
+
+/-- **DuckDB's black-box catalogue in scope**, for the files that state
+DuckDB's theorems or run its plans: `open scoped Substrait.DuckDB`. Scoped, so
+no import brings it into scope (#1189). -/
+scoped instance boxes : Boxes.Ambient := ⟨Boxes.duckdb, Boxes.duckdb_wf⟩
+
+end Substrait.DuckDB

@@ -26,6 +26,7 @@ join and fetch):
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 abbrev ZSet := WSet Int
 
@@ -46,6 +47,7 @@ end ZSet
 /-- A catalog of Z-sets; `cat + Δ` applies a change set (`WCatalog`'s `+`). -/
 abbrev ZCatalog := String → ZSet
 
+omit [Boxes.Ambient] in
 theorem ZCatalog.add_apply (cat Δ : ZCatalog) (t : String) : (cat + Δ) t = cat t ++ Δ t := rfl
 
 /-- Z-set semantics: `Rel.evalK` over `Int` with Lean's functions. -/
@@ -73,6 +75,7 @@ def Rel.deltaCatalog (r : Rel) (cat Δ : ZCatalog) : ZCatalog := fun s =>
 def Rel.zdelta (cat Δ : ZCatalog) (r : Rel) : ZSet :=
   (r.delta r.deltaName).zeval (r.deltaCatalog cat Δ)
 
+omit [Boxes.Ambient] in
 theorem Rel.length_lt_deltaName {r : Rel} {t : String} (ht : t ∈ r.tables) (u : String) :
     t.length < (r.deltaName u).length := by
   have : ∀ l : List String, t ∈ l → t.length ≤ l.foldr (fun t n => max t.length n) 0 := by
@@ -87,12 +90,14 @@ theorem Rel.length_lt_deltaName {r : Rel} {t : String} (ht : t ∈ r.tables) (u 
   simp only [deltaName, String.length_append, String.length_ofList, List.length_replicate]
   have := this _ ht; omega
 
+omit [Boxes.Ambient] in
 theorem Rel.deltaCatalog_old {r : Rel} {cat Δ : ZCatalog} {t : String} (ht : t ∈ r.tables) :
     r.deltaCatalog cat Δ t = cat t := by
   unfold deltaCatalog
   rw [List.find?_eq_none.mpr fun u hu => by
     simpa using (Nat.ne_of_lt (length_lt_deltaName ht u)).symm ∘ congrArg String.length]
 
+omit [Boxes.Ambient] in
 theorem Rel.deltaCatalog_new {r : Rel} {cat Δ : ZCatalog} {t : String} (ht : t ∈ r.tables) :
     r.deltaCatalog cat Δ (r.deltaName t) = Δ t := by
   unfold deltaCatalog

@@ -18,6 +18,7 @@ result with weights encoded as a column.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-- A weighted row as an engine stores it: the weight as an extra last column. -/
 def wrow (x : Row × Int) : Row := x.1 ++ [.int x.2]
@@ -60,6 +61,7 @@ def Rel.weighted (cat : Catalog) (isW : String → Bool) : Rel → Rel
 
 /-! ## Index bookkeeping -/
 
+omit [Boxes.Ambient] in
 theorem map_range_getD (L : List Value) (n : Nat) (h : n ≤ L.length) :
     (List.range n).map (fun i => L.getD i .null) = L.take n := by
   apply List.ext_getElem (by simp; omega)
@@ -67,6 +69,7 @@ theorem map_range_getD (L : List Value) (n : Nat) (h : n ≤ L.length) :
   have : i < n := by simpa using h₁
   simp [List.getD, List.getElem?_eq_getElem (show i < L.length by omega)]
 
+omit [Boxes.Ambient] in
 theorem map_range_getD_off (L : List Value) (off k : Nat) (h : off + k ≤ L.length) :
     (List.range k).map (fun j => L.getD (off + j) .null) = (L.drop off).take k := by
   apply List.ext_getElem (by simp; omega)
@@ -74,6 +77,7 @@ theorem map_range_getD_off (L : List Value) (off k : Nat) (h : off + k ≤ L.len
   have : i < k := by simpa using h₁
   simp [List.getD, List.getElem?_eq_getElem (show off + i < L.length by omega)]
 
+omit [Boxes.Ambient] in
 /-- Evaluating the splice on `xs ++ [w] ++ ys` (with `|xs| = n`, `|ys| = k`). -/
 theorem splice_eval (xs ys : Row) (w : Value) (rest : Row) (last : Nat)
     (hlast : ((xs ++ [w]) ++ ys ++ rest).getD last .null = w') :
@@ -133,6 +137,7 @@ theorem Rel.zeval_arity {cat : Catalog} {Z : ZCatalog}
   | .fetch _ _ _, _, hi, _, _ | .window _ _ _ _, _, hi, _, _ | .semi _ _ _ _, _, hi, _, _
   | .distinct _, _, hi, _, _ | .aggregate _ _ _, _, hi, _, _ | .unnest _ _, _, hi, _, _ => hi.elim
 
+omit [Boxes.Ambient] in
 /-- Sort keys only look at their own columns. -/
 theorem sortLe_append {x y e e' : Row} :
     ∀ {ks : List SortKey}, (∀ k ∈ ks, k.col < x.length) → (∀ k ∈ ks, k.col < y.length) →
@@ -151,19 +156,23 @@ theorem sortLe_append {x y e e' : Row} :
 def pairs (A B : ZSet) : List ((Row × Int) × (Row × Int)) :=
   List.flatMap (fun a => List.map (fun b => (a, b)) B) A
 
+omit [Boxes.Ambient] in
 theorem cross_eq_pairs (A B : ZSet) :
     WSet.cross A B = (pairs A B).map fun p => (p.1.1 ++ p.2.1, p.1.2 * p.2.2) := by
   simp [WSet.cross, pairs, List.map_flatMap, Function.comp_def]
 
+omit [Boxes.Ambient] in
 theorem crossRows_encode (A B : ZSet) :
     crossRows (List.map wrow A) (List.map wrow B) = (pairs A B).map fun p => wrow p.1 ++ wrow p.2 := by
   simp [crossRows, pairs, List.flatMap_map, List.map_flatMap, Function.comp_def]
 
+omit [Boxes.Ambient] in
 theorem mem_pairs {A B : ZSet} {p : (Row × Int) × (Row × Int)} :
     p ∈ pairs A B ↔ p.1 ∈ A ∧ p.2 ∈ B := by
   obtain ⟨a, b⟩ := p
   simp [pairs]
 
+omit [Boxes.Ambient] in
 theorem getElem?_after (xa L : Row) (w : Value) (j : Nat) :
     (xa ++ w :: L)[xa.length + 1 + j]? = L[j]? := by
   rw [List.getElem?_append_right (by omega), show xa.length + 1 + j - xa.length = j + 1 by omega,
@@ -303,6 +312,7 @@ def Rel.isIncremental : Rel → Bool
   | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _
   | .aggregate _ _ _ | .unnest _ _ => false
 
+omit [Boxes.Ambient] in
 theorem Rel.isIncremental_iff {r : Rel} : r.isIncremental = true ↔ r.Incremental := by
   induction r with
   | join a b ty _ iha ihb => cases ty <;> simp_all [isIncremental, Incremental]

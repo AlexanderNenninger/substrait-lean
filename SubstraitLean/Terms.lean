@@ -10,6 +10,7 @@ whole, with its unions (`Rel.weighted_eval` covers them).
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 def Rel.terms : Rel → List Rel
   | .unionAll a b => a.terms ++ b.terms
@@ -28,6 +29,7 @@ def Rel.hasUnion : Rel → Bool
   | .distinct r | .aggregate r _ _ | .unnest r _ => r.hasUnion
   | .cross a b | .join a b _ _ | .semi a b _ _ => a.hasUnion || b.hasUnion
 
+omit [Boxes.Ambient] in
 theorem perm_flatMap_congr {α β : Type} {L : List α} {f g : α → List β}
     (h : ∀ x ∈ L, (f x).Perm (g x)) : (L.flatMap f).Perm (L.flatMap g) := by
   induction L with
@@ -36,12 +38,14 @@ theorem perm_flatMap_congr {α β : Type} {L : List α} {f g : α → List β}
     simp only [List.flatMap_cons]
     exact (h x (by simp)).append (ih fun y hy => h y (by simp [hy]))
 
+omit [Boxes.Ambient] in
 theorem ZSet.cross_flatMap_left {α : Type} (L : List α) (f : α → ZSet) (B : ZSet) :
     WSet.cross (L.flatMap f) B = L.flatMap fun x => WSet.cross (f x) B := by
   induction L with
   | nil => rfl
   | cons x L ih => simp only [List.flatMap_cons, WSet.cross_append_left, ih]
 
+omit [Boxes.Ambient] in
 theorem ZSet.cross_flatMap_right {α : Type} (A : ZSet) (L : List α) (g : α → ZSet) :
     (WSet.cross A (L.flatMap g)).Perm (L.flatMap fun y => WSet.cross A (g y)) := by
   induction L with
@@ -50,6 +54,7 @@ theorem ZSet.cross_flatMap_right {α : Type} (A : ZSet) (L : List α) (g : α �
     simp only [List.flatMap_cons]
     exact (WSet.cross_append_right _ _ _).trans (List.Perm.append_left _ ih)
 
+omit [Boxes.Ambient] in
 /-- Cross product of two concatenations, term by term. -/
 theorem ZSet.cross_flatMap {α : Type} (L M : List α) (f : α → ZSet) :
     (WSet.cross (L.flatMap f) (M.flatMap f)).Perm

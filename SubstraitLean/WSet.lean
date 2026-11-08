@@ -31,6 +31,7 @@ adds two weights of one row), so each `Perm` result also holds for those.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-- Rows with weights in `K`. -/
 abbrev WSet (K : Type) := List (Row × K)
@@ -57,9 +58,11 @@ section Cross
 
 variable [Mul K]
 
+omit [Boxes.Ambient] in
 theorem cross_append_left (a a' b : WSet K) : cross (a ++ a') b = cross a b ++ cross a' b := by
   simp [cross, List.flatMap_append]
 
+omit [Boxes.Ambient] in
 theorem cross_append_right (a b b' : WSet K) :
     (cross a (b ++ b')).Perm (cross a b ++ cross a b') := by
   induction a with
@@ -70,6 +73,7 @@ theorem cross_append_right (a b b' : WSet K) :
     simp only [List.append_assoc]
     exact List.Perm.append_left _ (List.perm_append_comm_assoc _ _ _)
 
+omit [Boxes.Ambient] in
 theorem cross_perm {a a' b b' : WSet K} (ha : a.Perm a') (hb : b.Perm b') :
     (cross a b).Perm (cross a' b') := by
   refine (List.Perm.flatMap_right _ ha).trans ?_
@@ -78,6 +82,7 @@ theorem cross_perm {a a' b b' : WSet K} (ha : a.Perm a') (hb : b.Perm b') :
   | nil => simp [cross]
   | cons x a' ih => simp only [cross, List.flatMap_cons] at *; exact (hb.map _).append ih
 
+omit [Boxes.Ambient] in
 /-- The bilinear delta rule: `(A + ΔA) × (B + ΔB) ~ A × B + (ΔA × (B + ΔB) + A × ΔB)`. -/
 theorem cross_add (A ΔA B ΔB : WSet K) :
     (cross (A ++ ΔA) (B ++ ΔB)).Perm (cross A B ++ (cross ΔA (B ++ ΔB) ++ cross A ΔB)) := by
@@ -105,8 +110,10 @@ section Weight
 
 variable [Lean.Grind.Semiring K]
 
+omit [Boxes.Ambient] in
 theorem weight_nil (row : Row) : weight ([] : WSet K) row = 0 := rfl
 
+omit [Boxes.Ambient] in
 theorem weight_cons (x : Row × K) (z : WSet K) (row : Row) :
     weight (x :: z) row = (if x.1 = row then x.2 else 0) + z.weight row := by
   simp only [weight, List.foldr_cons, beq_iff_eq]
@@ -114,6 +121,7 @@ theorem weight_cons (x : Row × K) (z : WSet K) (row : Row) :
   · rfl
   · rw [Lean.Grind.Semiring.add_comm, Lean.Grind.Semiring.add_zero]
 
+omit [Boxes.Ambient] in
 theorem weight_of_not_mem {z : WSet K} {row : Row} (h : row ∉ List.map (·.1) z) :
     z.weight row = 0 := by
   induction z with
@@ -125,6 +133,7 @@ theorem weight_of_not_mem {z : WSet K} {row : Row} (h : row ∉ List.map (·.1) 
     · exact absurd (beq_iff_eq.mp ‹_›).symm h.1
     · exact ih h.2
 
+omit [Boxes.Ambient] in
 theorem weight_append (a b : WSet K) (row : Row) :
     (a ++ b).weight row = a.weight row + b.weight row := by
   induction a with
@@ -137,6 +146,7 @@ theorem weight_append (a b : WSet K) (row : Row) :
     · rw [ih, Lean.Grind.Semiring.add_assoc]
     · exact ih
 
+omit [Boxes.Ambient] in
 theorem weight_perm {a b : WSet K} (h : a.Perm b) (row : Row) : a.weight row = b.weight row := by
   induction h with
   | nil => rfl
@@ -148,6 +158,7 @@ theorem weight_perm {a b : WSet K} (h : a.Perm b) (row : Row) : a.weight row = b
       Lean.Grind.Semiring.add_comm y.2]
   | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
 
+omit [Boxes.Ambient] in
 theorem weight_mergeSort (le : Row × K → Row × K → Bool) (z : WSet K) (row : Row) :
     weight (z.mergeSort le) row = z.weight row :=
   weight_perm (List.mergeSort_perm z le) row
@@ -162,6 +173,7 @@ abbrev WCatalog (K : Type) := String → WSet K
 /-- Apply a change set: each table gains the rows (and weights) in `Δ`. -/
 instance {K : Type} : Add (WCatalog K) := ⟨fun cat Δ t => cat t ++ Δ t⟩
 
+omit [Boxes.Ambient] in
 theorem WCatalog.add_apply {K : Type} (cat Δ : WCatalog K) (t : String) :
     (cat + Δ) t = cat t ++ Δ t := rfl
 
@@ -231,6 +243,7 @@ structure Seam (K : Type) where
   pos : WSet K → Bool := fun _ => false
   arity : Rel → Nat := fun _ => 0
 
+omit [Boxes.Ambient] in
 theorem List.filter_const_false' {α : Type} (l : List α) : l.filter (fun _ => false) = [] := by simp
 
 section EvalK
@@ -435,10 +448,12 @@ end EvalK
 
 /-! ## Agreement with bag semantics -/
 
+omit [Boxes.Ambient] in
 theorem WSet.lift_filter {K : Type} [One K] (p : Row → Bool) (rows : Relation) :
     (WSet.lift (rows.filter p) : WSet K) = WSet.filter p (WSet.lift rows) := by
   simp [WSet.lift, WSet.filter, List.filter_map, Function.comp_def]
 
+omit [Boxes.Ambient] in
 theorem WSet.positive_lift (rows : Relation) : (WSet.lift rows : WSet Nat).positive = !rows.isEmpty := by
   cases rows <;> simp [positive, lift] <;> omega
 
@@ -449,6 +464,7 @@ def Seam.bags (cat : Catalog) (I : Impl) : Seam Nat where
   pos := WSet.positive
   arity r := r.arity cat
 
+omit [Boxes.Ambient] in
 theorem any_eq_not_isEmpty_filter (p : Row → Bool) (rows : Relation) :
     rows.any p = !(rows.filter p).isEmpty := by
   induction rows with

@@ -27,6 +27,7 @@ and `substraitDiff` lists where their choices differ. No engine runs plans
 `verify(semantics="substrait")`. -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 private def fpRoundings : List Behaviour :=
   ["TIE_TO_EVEN", "TIE_AWAY_FROM_ZERO", "TRUNCATE", "CEILING", "FLOOR"]
@@ -174,6 +175,7 @@ example : Profile.substrait.table.choices.all fun (g, o, c) =>
   decide +kernel
 example : Profile.substrait.obs.all (·.2.2.wf) := by decide +kernel
 
+omit [Boxes.Ambient] in
 /-- **Substrait refines the core**, choice by choice. -/
 theorem Profile.substrait_le_core : Profile.substrait.table.Le Profile.core.table :=
   ProfileTable.le_of_leB (by decide +kernel)
