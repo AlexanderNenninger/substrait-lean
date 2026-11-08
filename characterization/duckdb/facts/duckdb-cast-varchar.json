@@ -19,7 +19,7 @@
     "TIMESTAMP: a date, then a space or `T` and hours, minutes and seconds; minutes of one digit (`'1:2'`), `24:00:00` as the next day, a time zone offset or `Z`/`UTC` read and dropped, digits of a second past six truncated (`'.9999995'` is `.999999`). Hours past 24, a minute or second of 60 are invalid."
   ],
   "reference": [
-    "Black boxes `varchar_<type>` and `try_varchar_<type>` (`core/Sverify/Core/BlackBox.lean`): `CAST` may raise (a domain error in `verify`) and is not NULL for a string; `TRY_CAST` is NULL where DuckDB rejects the string. An integer narrower than a BIGINT is the BIGINT cast down. Lean evaluates the subset of `core/Sverify/Core/VarcharCasts.lean` and refuses to print rows elsewhere."
+    "Black boxes `varchar_<type>` and `try_varchar_<type>` (`core/Sverify/Core/BlackBox.lean`): `CAST` may raise (a domain error in `verify`) and is not NULL for a string; `TRY_CAST` is NULL where DuckDB rejects the string. An integer narrower than a BIGINT is the BIGINT cast down. Lean evaluates the subset of `SubstraitLean/VarcharCasts.lean` and refuses to print rows elsewhere."
   ],
   "status": "decided",
   "evidence": "fuzz",

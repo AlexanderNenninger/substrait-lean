@@ -44,6 +44,8 @@ import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import Sverify.Core.Profile
 import SubstraitLean.ProfileImpl
+import SubstraitLean.VarcharCasts
+import SubstraitLean.DuckDBBoxes
 import SubstraitLean.DuckDBProfile
 import SubstraitLean.Lowering
 import SubstraitLean.Bind
