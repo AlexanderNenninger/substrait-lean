@@ -173,11 +173,12 @@ they were axioms about the sequential sum, proved here as `core_sum`,
   rows (`Rel.capReads_eval`), and bounds every relation's rows from it
   (`Rel.maxRows`, `Rel.maxRows_sound`). With a cap `n`, a `SUM` of doubles
   in `[lo, hi]` lies in `[min(lo, n·lo), max(hi, n·hi)]` rounded once.
-- #85's tolerances still apply where they are tighter: with a cap
-  `n ≤ 2³²` and an input interval `[lo, hi]` within `2⁴⁰⁰`, a `SUM` lies in
-  `[min(lo, n·lo) − τ, max(hi, n·hi) + τ]` and an `AVG` in
-  `[lo − τ', hi + τ']` (`tolBound`). `floatBound` (`Measure.abs`) is the
-  intersection of both.
+- #85's tolerances hold too: with a cap `n ≤ 2³²` and an input interval
+  `[lo, hi]` within `2⁴⁰⁰`, a `SUM` lies in `[min(lo, n·lo) − τ, max(hi, n·hi) + τ]`
+  and an `AVG` in `[lo − τ', hi + τ']` (`floatSumCR_mem`, `floatAvgCR_mem`).
+  Rounded once, the result lies inside them, so they add nothing.
+  `floatBound` (`Measure.abs`) is the bound above, with the sign kept where
+  the values have no finite bound or a `SUM` no cap (`signBound`).
 - Casts carry these bounds on. A cast to an integer truncates both ends of
   the interval, so `CAST(AVG(cpu) AS BIGINT)` is in `[0, 100]`, and a cast
   to a decimal rounds them. Both are monotone, and `verify` reports no failed

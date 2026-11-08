@@ -221,84 +221,37 @@ theorem Rel.capReads_eval {caps : String → Option Nat} {cat : Catalog}
 /-- The mean of the doubles `cs`, as `AggFn.avg` computes it. -/
 def avgCode (cs : List Int) : Int := floatAvgCR (cs.map .float)
 
-/-- The codes a `SUM` (`avg = false`) or an `AVG` of doubles in `b` lies in,
-by #85's tolerance: signs are exact (`floatSumCR_sign`), and with at most
-`rows` values, finite bounds and at most `2³²` rows, the result is within the
-proved tolerance of the exact one (`floatSumCR_mem`, `floatAvgCR_mem`). -/
-def tolBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
-  let signed : Bound :=
-    ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
-     b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
-  match b.lo, b.hi, rows with
-  | some cl, some ch, some n =>
-    let lo := FloatCode.scaled cl
-    let hi := FloatCode.scaled ch
-    if n ≤ 2 ^ 32 ∧ lo.natAbs ≤ 2 ^ 1474 ∧ hi.natAbs ≤ 2 ^ 1474 then
-      let Bs := max lo.natAbs hi.natAbs
-      if avg then
-        let t : Int := FloatCode.avgTolScaled n Bs
-        signed.meet ⟨some (FloatCode.codeLo (lo - t)), some (FloatCode.codeHi (hi + t))⟩
-      else
-        let t : Int := FloatCode.sumTolScaled n Bs
-        signed.meet ⟨some (FloatCode.codeLo (min lo (n * lo) - t)),
-          some (FloatCode.codeHi (max hi (n * hi) + t))⟩
-    else signed
-  | _, _, _ => signed
+/-- The signs a `SUM` (`avg = false`) or an `AVG` of doubles in `b` keeps
+(`floatSumCR_sign`): non-negative values give a non-negative result, and
+non-positive ones a non-positive result, whatever the values' bounds. -/
+def signBound (b : Bound) : Bound :=
+  ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
+   b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
 
-theorem tolBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
-    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
-    (tolBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
+theorem signBound_sound {avg : Bool} {b : Bound} {cs : List Int}
+    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) :
+    (signBound b).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
   obtain ⟨blo, bhi⟩ := b
   have hsign := floatSumCR_sign hne
-  have hsigned : (Bound.mk (blo.bind fun l => if 0 ≤ l then some 0 else none)
-      (bhi.bind fun h => if h ≤ 0 then some 0 else none)).Mem
-      (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
-    constructor
-    · intro l hl
-      simp only [Option.bind_eq_some_iff] at hl
-      obtain ⟨l', hl', h⟩ := hl
-      split at h
-      · rename_i h0
-        cases h
-        have := (hsign.1 fun c hc => Int.le_trans h0 ((hb c hc).1 l' hl'))
-        cases avg <;> simp only [Bool.false_eq_true, ↓reduceIte, avgCode] <;> omega
-      · simp at h
-    · intro u hu
-      simp only [Option.bind_eq_some_iff] at hu
-      obtain ⟨u', hu', h⟩ := hu
-      split at h
-      · rename_i h0
-        cases h
-        have := (hsign.2 fun c hc => Int.le_trans ((hb c hc).2 u' hu') h0)
-        cases avg <;> simp only [Bool.false_eq_true, ↓reduceIte, avgCode] <;> omega
-      · simp at h
-  rcases blo with _ | cl
-  · exact hsigned
-  rcases bhi with _ | ch
-  · exact hsigned
-  rcases rows with _ | n
-  · exact hsigned
-  have hlen := hrows n rfl
-  have hsc : ∀ c ∈ cs, FloatCode.scaled cl ≤ FloatCode.scaled c ∧
-      FloatCode.scaled c ≤ FloatCode.scaled ch := fun c hc =>
-    ⟨FloatCode.scaled_mono ((hb c hc).1 cl rfl), FloatCode.scaled_mono ((hb c hc).2 ch rfl)⟩
-  simp only [tolBound]
-  split
-  · rename_i hok
-    obtain ⟨h32, hlo, hhi⟩ := hok
-    cases avg
-    · simp only [Bool.false_eq_true, ↓reduceIte] at hsigned ⊢
-      obtain ⟨l, u⟩ := floatSumCR_mem hne hlen h32 hlo hhi hsc
-      refine Bound.mem_meet hsigned ⟨?_, ?_⟩
-      · intro x hx; cases hx; exact FloatCode.codeLo_le l
-      · intro x hx; cases hx; exact FloatCode.le_codeHi u
-    · simp only [↓reduceIte] at hsigned ⊢
-      obtain ⟨l, u⟩ := floatAvgCR_mem hne hlen h32 hlo hhi hsc
-      refine Bound.mem_meet hsigned ⟨?_, ?_⟩
-      · intro x hx; cases hx; exact FloatCode.codeLo_le l
-      · intro x hx; cases hx; exact FloatCode.le_codeHi u
-  · exact hsigned
-
+  constructor
+  · intro l hl
+    simp only [signBound, Option.bind_eq_some_iff] at hl
+    obtain ⟨l', hl', h⟩ := hl
+    split at h
+    · rename_i h0
+      cases h
+      have := (hsign.1 fun c hc => Int.le_trans h0 ((hb c hc).1 l' hl'))
+      cases avg <;> simp only [Bool.false_eq_true, ↓reduceIte, avgCode] <;> omega
+    · simp at h
+  · intro u hu
+    simp only [signBound, Option.bind_eq_some_iff] at hu
+    obtain ⟨u', hu', h⟩ := hu
+    split at h
+    · rename_i h0
+      cases h
+      have := (hsign.2 fun c hc => Int.le_trans ((hb c hc).2 u' hu') h0)
+      cases avg <;> simp only [Bool.false_eq_true, ↓reduceIte, avgCode] <;> omega
+    · simp at h
 
 /-- The codes a `SUM` (`avg = false`) or an `AVG` of finite doubles in `b`
 lies in, as D25 rounds once: the exact sum (mean) lies between the bounds'
@@ -373,14 +326,18 @@ theorem crBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List In
   · exact Bound.mem_top _
 
 /-- The codes a `SUM` (`avg = false`) or an `AVG` of doubles in `b` lies in:
-both #85's tolerance (`tolBound`) and D25's single rounding (`crBound`). -/
+D25's single rounding (`crBound`), and the sign where the values have no
+finite bound or a `SUM` no row count (`signBound`). #85's tolerance around
+the exact result (`floatSumCR_mem`, `floatAvgCR_mem`) holds too, and adds
+nothing: where it applies, the bounds are finite and `crBound` lies within
+it. -/
 def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
-  (tolBound avg b rows).meet (crBound avg b rows)
+  (signBound b).meet (crBound avg b rows)
 
 theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
     (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
     (floatBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) :=
-  Bound.mem_meet (tolBound_sound hne hb hrows) (crBound_sound hne hb hrows)
+  Bound.mem_meet (signBound_sound hne hb) (crBound_sound hne hb hrows)
 /-- A measure over rows described by `env` and `fs`: a count is a natural
 number, a sum of integers keeps their sign, `MIN`, `MAX` and an integer
 `AVG` are within the argument's values, and the other measures are doubles. All but
