@@ -1,0 +1,41 @@
+{
+  "id": "DF-13",
+  "status": "duplicate",
+  "status_note": "Covered by [apache/datafusion#26138](https://github.com/apache/datafusion/issues/26138) (open, the epic for `-0.0` and NaN keys) and the open PR #26091 (`-NaN = NaN`). The zero sign is fixed by 55.0.0 (`-0.0 = 0.0` is TRUE and they group together); NaN signs and payloads still count as different values.",
+  "summary": "Doubles compare by `f64::total_cmp`: on 51.0.0 `-0.0 < 0.0` and the two zeros are two groups; on 51.0.0 and 55.0.0 a NaN and a negative NaN (or two NaN payloads) are different values in `DISTINCT`, grouping and joins. The reference has one zero and one NaN (D10).",
+  "repro": [
+    "`select (-0.0) = 0.0, (-0.0) < 0.0` gives `false, true` on 51.0.0, `true, false` on 55.0.0.",
+    "`select k, count(*) from (values (0.0), (-0.0)) t(k) group by k` gives two groups on 51.0.0, one on 55.0.0.",
+    "`select count(distinct v) from (values (cast('NaN' as double)), (-cast('NaN' as double))) t(v)` gives `2` on both."
+  ],
+  "handling": "DataFusion is a tier-3 engine. Tables handed to it and its results are canonicalised (`sverify.engine.canonical`); `--write-datafusion` refuses plans whose double operations can make `-0.0` or a negative NaN (#1165), and the DataFusion tests of computed doubles skip citing this entry.",
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/26138",
+    "https://github.com/apache/datafusion/pull/26091"
+  ],
+  "files": [
+    "python/src/sverify/engine.py",
+    "python/tests/test_datafusion_quirks.py",
+    "python/tests/test_floats.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}
