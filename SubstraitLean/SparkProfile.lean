@@ -76,7 +76,9 @@ def coreUn : UnFn → Bool
 * `/` and `%` of doubles raise at a zero divisor (spark-double-divide,
   spark-double-modulus), `%` is C's `fmod` (`FloatCode.fmod`: NaN for an infinite
   dividend, the dividend for an infinite divisor) with the dividend's sign;
-* `<<` and `>>` take the count modulo 64 (spark-int-shift);
+* `<<` and `>>` of a count outside 0–63 take it modulo 64 (spark-int-shift),
+  which no choice of `shift_range` states: open (an error), where the
+  reference raises too;
 * integer `+ - * div %` raise where the reference raises (spark-int-arith,
   spark-int-divide, spark-int-modulus), and the comparisons, `AND`, `OR`,
   `GREATEST`, `LEAST` are the reference's (spark-kleene, spark-nan-equality,
@@ -97,28 +99,37 @@ def runBin : BinFn → Value → Value → Outcome
   | .fmod, .float a, .float b =>
     if isZeroCode b then .error .divByZero
     else .ok (.float (signedZero (decide (a < 0)) (FloatCode.fmod a b)))
-  | .bit .shl, .int a, .int b => .ok (.int ((BitOp.apply .shl a (b % 64)).getD 0))
-  | .bit .shr, .int a, .int b => .ok (.int ((BitOp.apply .shr a (b % 64)).getD 0))
+  -- A count outside 0–63 is taken modulo 64 (spark-int-shift), a value no
+  -- choice of `shift_range` states: open, where the reference raises.
+  | .bit .shl, .int a, .int b =>
+    if 0 ≤ b ∧ b < 64 then Profile.reference.bin (.bit .shl) (.int a) (.int b) else .error .domain
+  | .bit .shr, .int a, .int b =>
+    if 0 ≤ b ∧ b < 64 then Profile.reference.bin (.bit .shr) (.int a) (.int b) else .error .domain
   | f, v, w => if coreBin f then Profile.reference.bin f v w else .error .raised
 
-/-- Spark's unary functions: `-x` of a double flips the sign of zero and NaN
-(spark-zero-sign, spark-nan-sign); `sqrt` keeps `-0.0` and is NaN for a
-negative (spark-math-domain); `CAST(x AS BIGINT)` of the double `2⁶³` is
-`2⁶³ - 1` (spark-cast-double-to-int); the others of the core are the
+/-- Spark's unary functions: `-x` of a double flips the sign of zero
+(spark-zero-sign); `sqrt` is NaN for a negative (spark-math-domain). Where
+Spark's value is one no option of the core states (`-NaN`, the saturation of
+`CAST(2⁶³ AS BIGINT)`) or no fact records (`sqrt(-0.0)`), the call is open: an
+error, so nothing is claimed. The others of the core are the
 reference's (spark-kleene, spark-is-null, spark-bigint-to-double, spark-int-arith,
 `isNum` as `x IS NOT NULL`, `raise` as `raise_error`). -/
 def runUn : UnFn → Value → Outcome
-  | .fneg, .float a => .ok (.float (if a = 0 then FloatCode.negZero
-      else if a = FloatCode.negZero then 0
-      else if a = FloatCode.nan then FloatCode.negNan
-      else if a = FloatCode.negNan then FloatCode.nan
+  | .fneg, .float a =>
+    -- `-NaN` flips the sign bit (spark-nan-sign), which `fp.neg` has no option
+    -- for: open.
+    if a = FloatCode.nan ∨ a = FloatCode.negNan then .error .raised
+    else .ok (.float (if a = 0 then FloatCode.negZero else if a = FloatCode.negZero then 0
       else FloatCode.neg a))
   | .fmath .sqrt, .float a =>
-    if a = FloatCode.negZero then .ok (.float FloatCode.negZero)
+    -- `sqrt(-0.0)` is not probed on Spark: open.
+    if a = FloatCode.negZero then .error .raised
     else if a < 0 ∧ a ≠ FloatCode.negNan then .ok (.float FloatCode.nan)
     else Profile.reference.un (.fmath .sqrt) (.float a)
   | .ftoi, .float a =>
-    if a = FloatCode.ofInt (2 ^ 63) then .ok (.int (2 ^ 63 - 1))
+    -- `2⁶³` saturates to `2⁶³ - 1` (spark-cast-double-to-int), which no cast
+    -- option states: open, where the reference raises.
+    if a = FloatCode.ofInt (2 ^ 63) then .error .badCast
     else Profile.reference.un .ftoi (.float a)
   | f, v => if coreUn f then Profile.reference.un f v else .error .raised
 
