@@ -92,7 +92,14 @@ Tables = Mapping[str, pl.LazyFrame | pl.DataFrame | pa.Table]
 
 class Unsupported(_Unsupported):
     """The plan uses something the translator does not map to Polars
-    (`sverify.errors.UnsupportedError`)."""
+    (`sverify.errors.UnsupportedError`). DuckDB runs what the translator
+    refuses, so a message that names no exit of its own ends with
+    `engine="duckdb"` (`DUCKDB_ONLY`)."""
+
+    def __init__(self, message: str) -> None:
+        if "engine=" not in message:
+            message = f"{message}; {DUCKDB_ONLY}"
+        super().__init__(message)
 
 
 class RuntimeIssue(ArithmeticError):
@@ -1099,9 +1106,7 @@ class Exprs:
                 if ts.dtype == pl.Time and name == "date_part":
                     return date_part(which.lower(), ts)
                 if ts.dtype == pl.Time:
-                    raise Unsupported(
-                        "date_trunc of a time of day is not yet supported on Polars; " + DUCKDB_ONLY
-                    )
+                    raise Unsupported("date_trunc of a time of day is not yet supported on Polars")
                 if ts.dtype == pl.Date:
                     if name == "date_part":
                         return day_part(which.lower(), ts)
@@ -1259,7 +1264,7 @@ class Exprs:
 
     def cast(self, c: dict) -> Val:
         if c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
-            raise Unsupported("TRY_CAST is not yet supported on Polars; " + DUCKDB_ONLY)
+            raise Unsupported("TRY_CAST is not yet supported on Polars")
         v = self(c["input"])
         target = c.get("type", {})
         if "decimal" in target or is_decimal(v.dtype):
@@ -1600,9 +1605,7 @@ class Exprs:
             )  # fmt: skip
             return Val(ops[name], pl.Float64, (*issues(a, b), zero, *tiny, nan, *inf))
         if name in ("add", "subtract") and ta == pl.Time:
-            raise Unsupported(
-                "a time of day plus an interval is not yet supported on Polars; " + DUCKDB_ONLY
-            )
+            raise Unsupported("a time of day plus an interval is not yet supported on Polars")
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:
@@ -1864,11 +1867,10 @@ def _int_output(f: dict) -> bool:
     return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
 
 
-def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
+def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
     """`Measure.eval` on the values a measure aggregates (NULLs dropped), with
     Polars's profile's choices: doubles added in turn (`SEQUENTIAL`), the
-    variance by Polars. A double sum of `+∞` and `-∞` raises (#257), except in
-    a window, where the reference still gives NaN."""
+    variance by Polars. A double sum of `+∞` and `-∞` raises (#257)."""
     if distinct:
         seen: set = set()
         vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
@@ -1911,7 +1913,7 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
             raise InfiniteResult(f"{fn} overflows to infinity")
         return r + 0.0
     if fn in ("fsum", "avg"):
-        if not window and math.inf in vs and -math.inf in vs:
+        if math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")
         acc = 0.0
         # In list order (`sum_order = SEQUENTIAL`), within the plan's bound of
@@ -2110,8 +2112,8 @@ class NativeAgg:
 
 @dataclass(frozen=True)
 class WindowSpec:
-    """A window function `python_windows` computes: ranks, NTILE, aggregates
-    and FIRST/LAST/NTH_VALUE over a frame (`Window.lean`)."""
+    """A window function `Windows` computes: ranks, NTILE, aggregates and
+    FIRST/LAST/NTH_VALUE over a frame (`Window.lean`)."""
 
     fn: str
     dtype: DType
@@ -2138,158 +2140,286 @@ def window_frame(w: dict) -> tuple:
     return (bt != "BOUNDS_TYPE_ROWS", bound(w.get("lowerBound")), bound(w.get("upperBound")))
 
 
-def _key(v: Any) -> Any:
-    """A value as `Value.le` and `samePart` see it (one zero, one NaN)."""
-    return _dedup_key(v)
+def running_index() -> pl.Expr:
+    """Each row's position, from 0: a running count, which streams (a bare
+    `int_range` does not)."""
+    return pl.repeat(1, pl.len(), dtype=pl.Int64).cum_sum() - 1
 
 
-def _le(a: Any, b: Any, desc: bool, nulls_first: bool) -> bool:
-    """`SortKey.le` on one key's values."""
-    if a is None or b is None:
-        ra = (0 if nulls_first else 1) if a is None else (1 if nulls_first else 0)
-        rb = (0 if nulls_first else 1) if b is None else (1 if nulls_first else 0)
-        return ra <= rb
-    if isinstance(a, float):
-        a, b = _float_rank(a), _float_rank(b)
-    return b <= a if desc else a <= b
+#: Block levels for a frame of unknown width: Polars counts rows in `UInt32`
+#: (`pl.len()`), so a frame holds fewer than 2³² rows.
+MAX_LEVELS = 32
+#: A RANGE frame's key for NULL: below (NULLs first) or above (NULLs last)
+#: every key plus any offset, which are `i64`s.
+_NULL_KEY = 2**100
+#: Limbs of a decimal's unscaled value, so that prefix sums cannot wrap.
+_LIMB = 10**18
+_WINDOW_IDS = itertools.count()
+#: The keys a RANGE frame's offsets apply to (`Parse.parseFrame`): integers,
+#: timestamps (microseconds) and dates (days).
+_RANGE_KEYS = (pl.Int64, US, pl.Date)
 
 
-def _float_rank(x: float) -> tuple:
-    return (1, 0.0) if math.isnan(x) else (0, x + 0.0)
+class Windows:
+    """Window functions of one `PARTITION BY` and `ORDER BY`, from Polars's
+    own expressions (`WinFn.valueIn`). The frame is sorted by the window's
+    keys; a stable sort by the partition keys makes each partition a run of
+    rows in that order, and the input order comes back at the end.
 
+    A row's frame (`Frame.rows`) is a run of its partition's rows: positions
+    `lo` to `hi`, empty when `lo > hi`. A `ROWS` bound is the row's position
+    plus its offset, a `CURRENT ROW` bound of a `RANGE` frame the first or
+    last of its peers, and an offset bound of one the partition's
+    `search_sorted` of the key plus the offset. Each function then reads that
+    run:
 
-def _frame_rows(frame: tuple, sort: list, rows: list, i: int) -> list[int]:
-    """`Frame.rows`: the indexes (into the partition `rows`) of row `i`'s frame."""
-    rng, lo, hi = frame
-    if not rng:
-        lo_i = 0 if lo[0] == "unbounded" else i + (lo[1] if lo[0] == "following" else -lo[1])
-        hi_i = (
-            len(rows) - 1
-            if hi[0] == "unbounded"
-            else i + (hi[1] if hi[0] == "following" else -hi[1])
-        )
-        return [j for j in range(len(rows)) if lo_i <= j <= hi_i]
-    x = rows[i]
+    - counts, integer and decimal sums: differences of prefix sums, exact;
+    - double sums and `MIN`/`MAX`: a running fold over the partition, read
+      at `hi`, when the frame starts at the partition's first row; otherwise
+      the frame's blocks of 2ᵏ rows, each folded as a balanced tree, folded
+      in order. Both add the frame's own values, in an order the reference
+      allows (`window_sum_algo` `RUNNING_ADD` and `TREE`, polars-window-agg);
+    - `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE`: the value at a position.
+    """
 
-    def sort_le(a: tuple, b: tuple) -> bool:
-        for c, desc, nf in sort:
-            if not _le(a[c], b[c], desc, nf):
-                return False
-            if not _le(b[c], a[c], desc, nf):
-                return True
-        return True
+    def __init__(self, lf: pl.LazyFrame, dtypes: list[DType], part: list[pl.Expr], sort: list):
+        self.lf, self.dtypes, self.part, self.sort = lf, dtypes, part, sort
+        self.temps: list[str] = []
+        self.issues: list[Issue] = []
+        self.frames: dict[tuple, tuple[pl.Expr, pl.Expr, pl.Expr]] = {}
+        self.order: pl.Expr | None = None
+        if part:
+            (self.order,) = self.put(running_index())
+            self.lf = self.lf.sort(part, maintain_order=True)
+        (self.g,) = self.put(running_index())
+        if part:
+            self.ps, self.pe = self.put(self.g.min().over(part), self.g.max().over(part))
+        else:
+            # The last position as a column of its own: Polars divides by a
+            # broadcast scalar through its reciprocal (PL-3), and `PERCENT_RANK`
+            # and `CUME_DIST` divide by the partition's size.
+            self.ps, self.pe = self.put(pl.lit(0, pl.Int64), self.g * 0 + self.g.max())
+        self.peer_bounds: tuple[pl.Expr, pl.Expr] | None = None
 
-    def ok(y: tuple, b: tuple[str, int], lower: bool) -> bool:
+    def put(self, *es: pl.Expr) -> list[pl.Expr]:
+        """Compute `es` into columns of their own, for later steps to read."""
+        names = [f"__w{next(_WINDOW_IDS)}" for _ in es]
+        self.lf = self.lf.with_columns([e.alias(n) for e, n in zip(es, names, strict=True)])
+        self.temps += names
+        return [pl.col(n) for n in names]
+
+    def per_part(self, e: pl.Expr) -> pl.Expr:
+        return e.over(self.part) if self.part else e
+
+    def peers(self) -> tuple[pl.Expr, pl.Expr]:
+        """The positions of each row's first and last peer (`peer`)."""
+        if self.peer_bounds is None:
+            if not self.sort:
+                self.peer_bounds = (self.ps, self.pe)
+            else:
+                keys = self.part + [
+                    ordered(pl.col(col(c)), self.dtypes[c]) for c, _, _ in self.sort
+                ]
+                first, last = self.put(self.g.min().over(keys), self.g.max().over(keys))
+                self.peer_bounds = (first, last)
+        return self.peer_bounds
+
+    def bound(self, rng: bool, b: tuple[str, int], lower: bool) -> pl.Expr:
+        """The first (`lower`) or last position of each row's frame."""
         side, k = b
         if side == "unbounded":
-            return True
-        if k == 0:
-            return sort_le(x, y) if lower else sort_le(y, x)
+            return self.ps if lower else self.pe
         d = k if side == "following" else -k
-        c, desc, nf = sort[0]
-        vx, vy = x[c], y[c]
-        if vx is None and vy is None:
-            return True
-        if vx is None or vy is None:
-            # NULLs are at one end: `y` is in the frame only on the unbounded side.
-            rx, ry = (
-                (0 if nf else 1) if vx is None else (1 if nf else 0),
-                (0 if nf else 1) if vy is None else (1 if nf else 0),
+        if not rng:
+            return (
+                pl.max_horizontal(self.g + d, self.ps)
+                if lower
+                else pl.min_horizontal(self.g + d, self.pe)
             )
-            return rx < ry if lower else ry < rx
-        if lower:
-            return vy <= vx - d if desc else vx + d <= vy
-        return vx - d <= vy if desc else vy <= vx + d
+        first, last = self.peers()
+        if d == 0:
+            return first if lower else last
+        if len(self.sort) != 1:
+            raise Unsupported("RANGE frames with offsets need exactly one sort key")
+        c, desc, nulls_first = self.sort[0]
+        if self.dtypes[c] not in _RANGE_KEYS:
+            raise Unsupported(f"a RANGE frame with offsets over {self.dtypes[c]}")
+        # `rangeFrom`/`rangeTo` with the key negated for a descending order:
+        # an ascending key `a`, and `a + d` the bound on it. NULL keys get a
+        # key past every value at their end.
+        v = pl.col(col(c)).to_physical().cast(pl.Int128)
+        a = (i128(0) - v if desc else v).fill_null(i128(-_NULL_KEY if nulls_first else _NULL_KEY))
+        found = self.per_part(a.search_sorted(a + i128(d), side="left" if lower else "right"))
+        at = self.ps + found.cast(pl.Int64) - (0 if lower else 1)
+        # A NULL key's frame is its peers, the partition's NULLs.
+        return pl.when(v.is_null()).then(first if lower else last).otherwise(at)
 
-    return [j for j, y in enumerate(rows) if ok(y, lo, True) and ok(y, hi, False)]
+    def frame(self, fr: tuple) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
+        """Each row's frame: its first and last positions and its width."""
+        if fr not in self.frames:
+            rng, lo, hi = fr
+            lo_e, hi_e = self.put(self.bound(rng, lo, True), self.bound(rng, hi, False))
+            (w,) = self.put((hi_e - lo_e + 1).clip(lower_bound=0))
+            self.frames[fr] = (lo_e, hi_e, w)
+        return self.frames[fr]
 
+    def total(self, x: pl.Expr, fr: tuple) -> pl.Expr:
+        """The exact sum of the integers `x` (no NULLs) over each row's frame:
+        a difference of prefix sums, 0 for an empty frame."""
+        lo, hi, w = self.frame(fr)
+        x, p = self.put(x, x.cum_sum())
+        (q,) = self.put(p - x)
+        nonempty = w > 0
+        return (
+            p.gather(pl.when(nonempty).then(hi)) - q.gather(pl.when(nonempty).then(lo))
+        ).fill_null(0)
 
-def python_windows(
-    lf: pl.LazyFrame,
-    dtypes: list[DType],
-    part: list[int],
-    sort: list,
-    fns: list[tuple[int, WindowSpec]],
-    n_in: int,
-) -> pl.LazyFrame:
-    """Window functions of `fns` (output column, spec) over the sorted frame
-    of `n_in` input columns, computed row by row as `WinFn.valueIn` does."""
-    schema = {col(i): materialize(t) for i, t in enumerate(dtypes)}
+    def fold(self, x: pl.Expr, fr: tuple, op: str) -> pl.Expr:
+        """`op` (`sum`, `min`, `max`) over each row's frame. For `sum`, `x` has
+        no NULLs and the fold starts at 0.0; `min` and `max` skip NULLs."""
+        rng, lo_b, hi_b = fr
+        lo, hi, w = self.frame(fr)
+        nonempty = w > 0
+        if lo_b[0] == "unbounded":
+            # A running fold over the partition from its first row. (Polars
+            # 2.1.0 streams no reverse running fold, so a frame that ends at
+            # the partition's last row takes blocks.)
+            run = {"sum": x.cum_sum(), "min": x.cum_min(), "max": x.cum_max()}[op]
+            if op != "sum":
+                # The cumulative fold is NULL on NULL rows: the fold so far.
+                run = run.forward_fill()
+            (run,) = self.put(self.per_part(run))
+            return run.gather(pl.when(nonempty).then(hi))
+        if rng or hi_b[0] == "unbounded":
+            levels = MAX_LEVELS
+        else:
+            d = {"preceding": -1, "following": 1}
+            width = hi_b[1] * d[hi_b[0]] - lo_b[1] * d[lo_b[0]] + 1
+            levels = min(MAX_LEVELS, max(1, width.bit_length()))
 
-    def compute(df: pl.DataFrame) -> pl.DataFrame:
-        cols = [df[col(i)].to_physical().to_list() for i in range(n_in)]
-        rows = list(zip(*cols, strict=True)) if cols else [() for _ in range(df.height)]
-        groups: dict[tuple, list[int]] = {}
-        for r, row in enumerate(rows):
-            groups.setdefault(tuple(_key(row[p]) for p in part), []).append(r)
-        out: dict[int, list] = {i: [None] * len(rows) for i, _ in fns}
-        for idx in groups.values():
-            prows = [rows[r] for r in idx]
-            keys = [tuple(_key(y[c]) for c, _, _ in sort) for y in prows]
-            m = len(prows)
-            for i, r in enumerate(idx):
-                before = [keys[j] for j in range(i) if keys[j] != keys[i]]
-                peers_after = sum(1 for j in range(i + 1, m) if keys[j] == keys[i])
-                for o, f in fns:
-                    if f.fn == "rank":
-                        v: Any = len(before) + 1
-                    elif f.fn == "dense_rank":
-                        v = len(set(before)) + 1
-                    elif f.fn == "percent_rank":
-                        v = 0.0 if m <= 1 else len(before) / (m - 1)
-                    elif f.fn == "cume_dist":
-                        v = (i + 1 + peers_after) / m
-                    elif f.fn == "ntile":
-                        # The SQL standard's buckets (`ntileOf`): the first
-                        # `m % n` hold one row more.
-                        size, big = divmod(m, f.n)
-                        edge = big * (size + 1)
-                        v = i // (size + 1) + 1 if i < edge else (i - edge) // size + big + 1
-                    else:
-                        frame = [prows[j] for j in _frame_rows(f.frame, sort, prows, i)]
-                        vals = [y[f.col] for y in frame] if f.col is not None else [1] * len(frame)
-                        if f.fn == "agg" and f.agg == "dsum":
-                            # Unscaled values, summed exactly (`Measure.sumDigits`).
-                            xs = [x for x in vals if x is not None]
-                            v = sum(xs) if xs else None
-                            if v is not None and abs(v) >= 10**f.dtype.precision:  # pyrefly: ignore
-                                raise SumOverflow(f"SUM leaves {f.dtype}")
-                        elif f.fn == "agg":
-                            v = _aggregate(
-                                f.agg, False, [x for x in vals if x is not None], window=True
-                            )
-                        elif f.fn == "first_value":
-                            v = vals[0] if vals else None
-                        elif f.fn == "last_value":
-                            v = vals[-1] if vals else None
-                        else:
-                            v = vals[f.n - 1] if f.n <= len(vals) else None
-                    out[o][r] = v
-        new = []
-        for o, f in fns:
-            t = f.dtype
-            physical = (
-                pl.Int64
-                if t == US
-                else pl.Int32
-                if t == pl.Date
-                else pl.Int64
-                if t == pl.Time
-                else t
+        def add(a: pl.Expr, b: pl.Expr) -> pl.Expr:
+            if op == "sum":
+                return a + b.fill_null(0.0)
+            return pl.min_horizontal(a, b) if op == "min" else pl.max_horizontal(a, b)
+
+        # `tables[k]` at position `i`: the fold of the 2ᵏ rows from `i`, as a
+        # balanced tree (NULL past the last row, where no frame reaches). A
+        # `gather` of the next half: a chain of `shift`s streams slowly.
+        tables = self.put(x)
+        for k in range(1, levels):
+            half = self.g + (1 << (k - 1))
+            tables += self.put(
+                add(tables[-1], tables[-1].gather(pl.when(half < pl.len()).then(half)))
             )
-            if is_decimal(t):
-                # Decimals were read as their unscaled values (`to_physical`).
-                sc = t.scale  # pyrefly: ignore
-                vs = [None if x is None else Decimal(x).scaleb(-sc) for x in out[o]]
-                new.append(pl.Series(col(o), vs, dtype=t))
-                continue
-            s = pl.Series(col(o), out[o], dtype=physical)
-            new.append(s.cast(t) if physical != t else s)
-        return df.with_columns(new).select(list(schema))
+        acc: pl.Expr = pl.lit(0.0) if op == "sum" else pl.lit(None, self.dtype_of(x))
+        pos = lo
+        # The frame's width in binary: a block of 2ᵏ rows for each bit, the
+        # largest first, folded in the frame's order.
+        for k in reversed(range(levels)):
+            take = nonempty & ((w // (1 << k)) % 2 == 1)
+            block = tables[k].gather(pl.when(take).then(pos))
+            acc, pos = self.put(add(acc, block), pos + pl.when(take).then(1 << k).otherwise(0))
+        return pl.when(nonempty).then(acc)
 
-    for o, f in fns:
-        schema[col(o)] = f.dtype
-    return lf.map_batches(compute, schema=schema)
+    def dtype_of(self, x: pl.Expr) -> DType:
+        return self.lf.select(x).collect_schema().dtypes()[0]
+
+    def value(self, f: WindowSpec) -> pl.Expr:
+        """The window function `f` of each row."""
+        ps, pe, g = self.ps, self.pe, self.g
+        m = pe - ps + 1
+        if f.fn in ("rank", "dense_rank", "percent_rank", "cume_dist"):
+            first, last = self.peers()
+            if f.fn == "rank":
+                return first - ps + 1
+            if f.fn == "dense_rank":
+                return self.per_part((g == first).cast(pl.Int64).cum_sum())
+            if f.fn == "percent_rank":
+                return pl.when(m <= 1).then(0.0).otherwise((first - ps) / (m - 1))
+            return (last - ps + 1) / m
+        if f.fn == "ntile":
+            # The SQL standard's buckets (`ntileOf`): the first `m % n` hold
+            # one row more.
+            i, size, big = g - ps, m // f.n, m % f.n
+            edge = big * (size + 1)
+            return (
+                pl.when(i < edge).then(i // (size + 1) + 1).otherwise((i - edge) // size + big + 1)
+            )
+        lo, hi, w = self.frame(f.frame)
+        if f.fn in ("first_value", "last_value", "nth_value"):
+            v = pl.col(col(f.col))  # pyrefly: ignore
+            if f.fn == "first_value":
+                return v.gather(pl.when(w > 0).then(lo))
+            if f.fn == "last_value":
+                return v.gather(pl.when(w > 0).then(hi))
+            nth = lo + (f.n - 1)
+            return v.gather(pl.when(nth <= hi).then(nth))
+        return self.aggregate(f)
+
+    def aggregate(self, f: WindowSpec) -> pl.Expr:
+        """`Measure.eval` of the frame's rows, with `_aggregate`'s choices."""
+        fr = f.frame
+        _, _, w = self.frame(fr)
+        if f.col is None:
+            return w
+        v = pl.col(col(f.col))
+        n = self.total(v.is_not_null().cast(pl.Int64), fr)
+        some = n > 0
+        if f.agg == "count":
+            return n
+        if f.agg in ("sum", "iavg"):
+            s = self.total(v.cast(pl.Int128).fill_null(0), fr)
+            if f.agg == "iavg":
+                # `AggFn.iavg`: the exact mean, truncated toward zero (#209).
+                q = s.abs() // n
+                return pl.when(some).then(pl.when(s >= 0).then(q).otherwise(i128(0) - q))
+            leaves = some & ((s < I64_MIN) | (s > I64_MAX))
+            self.issues.append(issue(leaves, SumOverflow, "SUM leaves 64 bits"))
+            return pl.when(some & ~leaves).then(s)
+        if f.agg == "dsum":
+            return self.decimal_sum(v, fr, some, f.dtype)
+        if f.agg in ("fsum", "avg"):
+            x = v.cast(pl.Float64)
+            s = self.fold(x.fill_null(0.0), fr, "sum")
+            # Finite values whose sum overflows (`Measure.makesInf`, #575).
+            # A frame of `+∞` and `-∞` gives NaN, as in the reference.
+            odd = self.total((x.is_infinite() | x.is_nan()).fill_null(False).cast(pl.Int64), fr)
+            self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteResult,
+                                     f"{f.agg} overflows to infinity"))  # fmt: skip
+            return pl.when(some).then(canon(s if f.agg == "fsum" else s / n))
+        if f.agg in ("fmin", "fmax"):
+            # By the codes' order: NaN above every double, and one zero.
+            nan = self.total(v.is_nan().fill_null(False).cast(pl.Int64), fr)
+            r = self.fold(canon(v).fill_nan(None), fr, f.agg[1:])
+            if f.agg == "fmin":
+                return pl.when(some).then(pl.when(r.is_null()).then(math.nan).otherwise(r))
+            return pl.when(some).then(pl.when(nan > 0).then(math.nan).otherwise(r))
+        # `MIN`, `MAX` (`pickFold`): equal values are the same value here.
+        return self.fold(v, fr, f.agg)
+
+    def decimal_sum(self, v: pl.Expr, fr: tuple, some: pl.Expr, out: DType) -> pl.Expr:
+        """A decimal `SUM` over each row's frame, exactly (`Measure.sumDigits`):
+        the unscaled values in two limbs of 18 digits, summed apart so that no
+        prefix sum wraps, then joined."""
+        digits, s = out.precision, out.scale  # pyrefly: ignore
+        u = v.to_physical().cast(pl.Int128)
+        limb = i128(_LIMB)
+        high = self.total((u // limb).fill_null(0), fr)
+        low = self.total((u % limb).fill_null(0), fr)
+        high, low = high + low // limb, low % limb
+        # Past ±(10²⁰ + 1) limbs, the sum is beyond 38 digits either way.
+        cap = i128(10**20 + 1)
+        total = high.clip(-cap, cap) * limb + low
+        leaves = some & (total.abs() >= i128(10**digits))
+        self.issues.append(issue(leaves, SumOverflow, f"SUM leaves {out}"))
+        return pl.when(some & ~leaves).then(of_unscaled(total, s)).cast(out, strict=False)
+
+    def finish(self, outs: dict[int, pl.Expr]) -> pl.LazyFrame:
+        """The output columns; the input order back; the work columns dropped."""
+        self.lf = self.lf.with_columns([e.alias(col(o)) for o, e in outs.items()])
+        if self.order is not None:
+            self.lf = self.lf.sort(self.order)
+        return self.lf.drop(self.temps)
 
 
 #: Which runtime issues to check: True for `ALL_GUARDS`, False for
@@ -2461,7 +2591,7 @@ class Translator:
         keys = [ordered(v.expr, v.dtype) for v in (self.column(ex, p) for p in part)]
         n = len(dtypes)
         new, out = [], []
-        py: list[tuple[int, WindowSpec]] = []
+        framed: list[tuple[int, WindowSpec]] = []
         for k, w in enumerate(ws):
             name = ex.function(w.get("functionReference"))
             args = [a["value"] for a in w.get("arguments", [])]
@@ -2489,15 +2619,17 @@ class Translator:
                 e = c.shift(offset if name == "lag" else -offset, fill_value=default)
             else:
                 spec = self.window_spec(ex, name, args, w, dtypes, sorts)
-                py.append((n + k, spec))
+                framed.append((n + k, spec))
                 out.append(spec.dtype)
                 continue
             new.append((e.over(keys) if keys else e).cast(materialize(t)).alias(col(n + k)))
             out.append(materialize(t))
         lf = lf.with_columns(new)
-        if py:
-            part_idx = [ex.field(p["selection"]) for p in part]
-            lf = python_windows(lf, dtypes + out, part_idx, self.sort_specs(ex, sorts), py, n)
+        if framed:
+            win = Windows(lf, dtypes + out, keys, self.sort_specs(ex, sorts))
+            outs = {o: win.value(f).cast(f.dtype) for o, f in framed}
+            win.lf = self.guard(win.lf, [Val(pl.lit(None), pl.Null, tuple(win.issues))])
+            lf = win.finish(outs)
         return lf, dtypes + out
 
     def sort_specs(self, ex: Exprs, sorts: list[dict]) -> list[tuple[int, bool, bool]]:
@@ -2519,7 +2651,7 @@ class Translator:
     def window_spec(
         self, ex: Exprs, name: str, args: list[dict], w: dict, dtypes: list[DType], sorts: list
     ) -> WindowSpec:
-        """A window function computed row by row (`WinFn.valueIn`)."""
+        """A window function `Windows` computes (`WinFn.valueIn`)."""
 
         def int_arg(j: dict, what: str) -> int:
             if "literal" not in j or literal(j["literal"])[1] != pl.Int64:
@@ -2992,9 +3124,10 @@ ALLOWED_FALLBACKS: tuple[Fallback, ...] = (
              "an order-keeping list per group (`ARRAY_AGG`): Polars 2.1.0 has no streaming "
              "reduction for `implode` with `maintain_order` (`lower_group_by.rs`)",
              "polars-exec-streaming-fallback"),
-    Fallback("window frames", "in-memory-map", r"OPAQUE_PYTHON",
-             "window functions over frames, ranks and NTILE (`python_windows`): sverify "
-             "computes them in Python on the whole frame (`LazyFrame.map_batches`)",
+    Fallback("RANGE frame bounds", "columnar-function", r"search_sorted\(",
+             "a RANGE frame with offsets and no PARTITION BY: each row's bound is a "
+             "`search_sorted` over the whole sorted key, which Polars 2.1.0 runs on the "
+             "in-memory engine unless it runs per partition (`over`)",
              "polars-exec-streaming-fallback"),
 )  # fmt: skip
 

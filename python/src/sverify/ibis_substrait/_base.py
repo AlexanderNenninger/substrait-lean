@@ -92,8 +92,11 @@ class Exprs:
         if rule is None:
             name = type(op).__name__
             reason = _REFUSED.get(name)
+            # A refusal with a reason names its exit there; the others are
+            # the operations the producer does not map yet (#60).
             raise Unsupported(
-                f"{_OP_LABELS.get(name, name)} is not supported" + (f": {reason}" if reason else "")
+                f"{_OP_LABELS.get(name, name)} is not supported"
+                + (f": {reason}" if reason else f" yet ({_ISSUE_60})")
             )
         return rule(self, op)
 
@@ -103,6 +106,9 @@ class Exprs:
 _OP_LABELS = {"TimestampNow": "ibis.now()", "DateNow": "ibis.today()"}
 
 #: Why some operations are refused (#58).
+#: Where the Ibis operations the producer does not map yet are tracked.
+_ISSUE_60 = "see #60, https://github.com/AlexanderNenninger/substrait-lean/issues/60"
+
 _REFUSED: dict[str, str] = {}
 
 
@@ -279,7 +285,7 @@ def table_rules(
 def rel(op: Any) -> Json:
     rule = _RELS.get(type(op))
     if rule is None:
-        raise Unsupported(f"{type(op).__name__} is not supported")
+        raise Unsupported(f"{type(op).__name__} is not supported yet ({_ISSUE_60})")
     return rule(op)
 
 

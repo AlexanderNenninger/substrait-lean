@@ -41,7 +41,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 4 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Rel.polars_sound` | 15 | 13 | 1 | 5 | 8 | 0 | 15 | 7 |
-| spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 5 | 3 | 0 | 14 | 0 |
+| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 5 | 3 | 0 | 14 | 0 |
 
 Rows per evidence level:
 
@@ -49,7 +49,7 @@ Rows per evidence level:
 |---|---|---|---|---|---|---|---|
 | DuckDB | 6 | 12 | 16 | 2 | 0 | 0 | 15 |
 | Polars | 29 | 2 | 14 | 0 | 0 | 0 | 15 |
-| spark | 18 | 9 | 12 | 0 | 0 | 0 | 14 |
+| Spark | 18 | 9 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
@@ -74,12 +74,12 @@ Rows per evidence level:
 | Polars | `sum_empty_null` | expression | `empty_group_aggregates` |
 | Polars | `substring_wrap` | expression | str.sub: `string_positions` |
 | Polars | `strpos_chars` | expression | str.match: `string_positions` |
-| spark | `decimal_negate_sub` | expression | dec.arith: `overflow` |
-| spark | `int_sum_decimal` | expression | agg.isum: `overflow` |
-| spark | `Dialect.canon` | expression | `zero_sign` |
-| spark | `int_avg_decimal` | expression | `avg_int_result` |
-| spark | `null_order` | argument | `null_order` |
-| spark | `sort on the keys` | sort | `clustered` |
+| Spark | `decimal_negate_sub` | expression | dec.arith: `overflow` |
+| Spark | `int_sum_decimal` | expression | agg.isum: `overflow` |
+| Spark | `Dialect.canon` | expression | `zero_sign` |
+| Spark | `int_avg_decimal` | expression | `avg_int_result` |
+| Spark | `null_order` | argument | `null_order` |
+| Spark | `sort on the keys` | sort | `clustered` |
 
 ## DuckDB 2.0.0
 
@@ -187,7 +187,7 @@ Rows per evidence level:
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../characterization/polars/facts/polars-sum-float.json), [polars-mean-float](../characterization/polars/facts/polars-mean-float.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | fuzz | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-cov](../characterization/polars/facts/polars-cov.json), [polars-corr](../characterization/polars/facts/polars-corr.json), [polars-var-bound](../characterization/polars/facts/polars-var-bound.json) |
 | agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | fuzz | tested: [polars-var-std](../characterization/polars/facts/polars-var-std.json), [polars-var-std-streaming](../characterization/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../characterization/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../characterization/polars/facts/polars-var-pop-one-nan.json) |
-| every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../characterization/polars/facts/polars-window-agg.json) |
+| every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../characterization/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../characterization/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../characterization/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../characterization/polars/facts/polars-avg-int.json) |
 | every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [polars-quantile](../characterization/polars/facts/polars-quantile.json) |
@@ -216,11 +216,11 @@ Refused on Polars, with no expression there:
 - `like` ([polars-string-functions-missing](../characterization/polars/facts/polars-string-functions-missing.json))
 - `ilike` ([polars-string-functions-missing](../characterization/polars/facts/polars-string-functions-missing.json))
 
-## spark 4.3.0
+## Spark 4.3.0
 
 6 shims (1 argument, 4 expression, 1 sort). The translation as a whole rests on `Rel.spark_sound`.
 
-| Group | Option | Reference's tool | Reference | spark | Case | Level | Evidence |
+| Group | Option | Reference's tool | Reference | Spark | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
 | every | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-arith](../characterization/spark/facts/spark-int-arith.json), [spark-int-abs](../characterization/spark/facts/spark-int-abs.json) |
 | int.arith | `overflow` | raise | `ERROR` | `ERROR` | native; stated `SILENT`, `SATURATE`: not native | proof | proved `Rel.spark_sound`; [spark-int-arith](../characterization/spark/facts/spark-int-arith.json), [spark-int-abs](../characterization/spark/facts/spark-int-abs.json) |

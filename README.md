@@ -122,7 +122,7 @@ names the theorems each guarantee rests on. The rest of the repository:
 | File | Contents |
 |---|---|
 | `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars and Spark runners, the Snowflake SQL and the optional DataFusion runner ([the engines](docs/stability.md#engines)); differential tests |
-| `notebooks/` | The tour: three workflows and two guides (marimo) |
+| `notebooks/` | The tour: three workflows and three guides (marimo) |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
@@ -155,8 +155,8 @@ Every engine runs the plans of the 187 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 168 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · median, quantile · mode · argmin, argmax · stddev over group · rolling variance (rows) · re_extract · re_replace · hexdigest · date from columns · time + interval · time truncate · try_cast · try_cast string |
 | DuckDB | 185 | non-equi join · replace '' |
+| Polars | 168 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · median, quantile · mode · argmin, argmax · stddev over group · rolling variance (rows) · re_extract · re_replace · hexdigest · date from columns · time + interval · time truncate · try_cast · try_cast string |
 | Snowflake | 130 | order_by (with `deterministic=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `deterministic=True` it runs) · non-equi join · scalar subquery, one row · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `deterministic=True` it runs) · lag (with `deterministic=True` it runs) · rank (with `deterministic=True` it runs) · dense_rank (with `deterministic=True` it runs) · cumsum (with `deterministic=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `deterministic=True` it runs) · first (with `deterministic=True` it runs) · percent_rank, cume_dist (with `deterministic=True` it runs) · running mean · rolling sum (interval) (with `deterministic=True` it runs) · rolling sum (range) (with `deterministic=True` it runs) · last, nth (with `deterministic=True` it runs) · max, count over frame (with `deterministic=True` it runs) · min over a sliding frame (with `deterministic=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `deterministic=True` it runs) · date from columns · time + interval · time truncate · try_cast · try_cast string |
 | Spark | 129 | order_by (with `deterministic=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `deterministic=True` it runs) · non-equi join · scalar subquery, one row · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `deterministic=True` it runs) · lag (with `deterministic=True` it runs) · rank (with `deterministic=True` it runs) · dense_rank (with `deterministic=True` it runs) · cumsum (with `deterministic=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `deterministic=True` it runs) · first (with `deterministic=True` it runs) · percent_rank, cume_dist (with `deterministic=True` it runs) · running mean · rolling sum (interval) (with `deterministic=True` it runs) · rolling sum (range) (with `deterministic=True` it runs) · last, nth (with `deterministic=True` it runs) · max, count over frame (with `deterministic=True` it runs) · min over a sliding frame (with `deterministic=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · exp · ln · log10, log2 · log(base) · trigonometry · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `deterministic=True` it runs) · time of day · time parts · compare times · date from columns · time + interval · time truncate · try_cast · try_cast string |
 <!-- coverage:end -->
@@ -238,7 +238,7 @@ tasks need `lake` on your PATH.
 
 ### The tour
 
-The five notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
+The six notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
 [`01_duplicate_payments.py`](notebooks/01_duplicate_payments.py). Open the whole folder, so the
 links between notebooks work:
 
@@ -261,8 +261,9 @@ environment works too: `uv run --project python marimo edit notebooks`.
 | 3 | [An orders mart](notebooks/03_orders_mart.py) | workflow: a point-in-time join to a type-2 dimension, dbt tests as a contract, SQL |
 | 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, keys and relations, runtime errors, windows and ASOF joins, composing contracts |
 | 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, Spark and Snowflake SQL, doubles, time and text |
+| 6 | [Running it in production](notebooks/06_running_in_production.py) | `sverify check --diff` and `--fix`, a pytest test, credentials by name, OpenLineage, late rows and bounded state |
 
-[catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a sixth marimo app outside the tour: one
+[catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a marimo app outside the tour: one
 expression asked of every engine. Under-the-hood detail is in
 [docs/how-it-works.md](docs/how-it-works.md).
 
