@@ -43,7 +43,7 @@ REPO = Path(__file__).resolve().parents[3]
 ROOT = REPO / "characterization"
 SCHEMA = ROOT / "fact.schema.json"
 AREAS = ROOT / "areas.json"
-FUNCTIONS = REPO / "SubstraitLean" / "Functions.lean"
+FUNCTIONS = REPO / "core" / "Sverify" / "Core" / "Functions.lean"
 
 #: The kinds of evidence, weakest first.
 EVIDENCE = ("docs", "source", "engine_test", "probe", "fuzz", "proof")
