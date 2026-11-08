@@ -22,6 +22,58 @@ The choices this page left open were decided in its review
 #185, #202, #209, #257, #336, #427 and #444; [reference-semantics.md](reference-semantics.md)
 records them.
 
+## Core, profiles and engines
+
+Sverify has one core that does a superset of operations, and profiles refine
+it (the maintainer, 2026-11-08). This section is the one statement of that
+layering; the other pages link here.
+
+```text
+core       every value, every behaviour of every option
+   │       a profile picks a refinement: one choice per option
+   ▼
+profiles   reference · Substrait · DuckDB · Polars · Spark · Snowflake
+   │       an engine runs its profile; Engine.Refines, Engine.Sound per plan
+   ▼
+engines    DuckDB · Polars · Spark · Snowflake · DataFusion (optional)
+```
+
+- The core computes on the full value space. A double is an IEEE 754
+  binary64 code, `-0.0` and the negative NaN included
+  ([The value domain](#the-value-domain)); `+ − × ÷` are the exact result
+  rounded once ([D31](#d31-double-arithmetic-is-exact-rounded-once)), and so
+  are double sums and statistical moments
+  ([D25](#d25-float-aggregates-are-correctly-rounded-exact-sums),
+  [D30](#d30-statistical-aggregates-are-correctly-rounded-exact-moments)).
+  Every option holds all of its behaviours
+  ([The option catalogue](#the-option-catalogue)). One evaluator serves every
+  weight type, bags and Z-sets among them (`Rel.evalK`,
+  [#905](https://github.com/AlexanderNenninger/substrait-lean/issues/905)).
+- A profile is a refinement of the core: for each option it picks the
+  behaviours it allows, such as `zero_sign`, `nan_kind`, `nan_equality`,
+  `nan_order`, `stat_algo` and `sum_order` ([The options table](#the-options-table)).
+  `Rel.AllowedP_mono` proves that every result a profile allows the core
+  allows. The reference profile (`Profile.reference`) makes the usual SQL
+  choices: `ONE_ZERO`, `ONE_NAN`, `NAN_IS_NAN` and NaN `GREATEST`, and
+  raises on the edge cases where engines disagree. Substrait's profile
+  (`Profile.substrait`) is strict IEEE: two zeros, signed NaNs, and NaN
+  unequal to itself in comparisons. Each engine has a profile of its own, from its facts. The
+  profiles are siblings ([Terminology](#terminology)).
+- An engine runs its profile. A plan verified under the reference reaches
+  the engine through the engine's translation; per plan, `Engine.Refines`
+  names the observation rows the run relies on, and `Engine.Sound` proves
+  that the rows the engine's model computes are a result the reference
+  allows ([#1132](https://github.com/AlexanderNenninger/substrait-lean/pull/1132),
+  [#1134](https://github.com/AlexanderNenninger/substrait-lean/pull/1134),
+  [Which plans run on an engine](#which-plans-run-on-an-engine)). Where an
+  engine's choice of an open option differs from the reference's
+  (`sum_order`, `stat_algo`), its result is within the plan's tolerance of
+  one the reference allows (`Relation.Near`,
+  [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929)).
+  DataFusion is an optional engine, and no test takes it as a reference or
+  an oracle ([#1139](https://github.com/AlexanderNenninger/substrait-lean/pull/1139)).
+  DuckDB is the default oracle.
+
 ## Principles the code follows
 
 Four rules shape how the core states its guarantees
@@ -134,7 +186,7 @@ point, and a profile is the set of choices it allows at each point.
 - A choice point is an option: a name and a finite set of behaviours.
   Substrait's own options (`overflow`, `on_division_by_zero`, `rounding`, …)
   are options with the values of their YAML. The points Substrait leaves
-  unnamed (one zero, NaN's order, the order of a double `SUM`, the row
+  unnamed (the sign of zero, NaN's order, the order of a double `SUM`, the row
   `FIRST` takes) are options of sverify's own, with the behaviours the
   profiles have.
 - A profile gives, for each option, the subset of its behaviours it
@@ -215,7 +267,7 @@ the first column are the names the tables below use.
 
 | Option | Core | Substrait | Reference | DuckDB |
 |---|---|---|---|---|
-| `rounding` (`+ - × /`, the elementary functions, `sum`, `avg`, `variance`, `std_dev`) | the five of the YAML | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN` (native `Float`) | `TIE_TO_EVEN` (native IEEE; no fact records it) |
+| `rounding` (`+ - × /`, the elementary functions, `sum`, `avg`, `variance`, `std_dev`) | the five of the YAML | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN`: the exact result rounded once for `+ - × /` (D31) and the aggregates (D25, D30), native `Float` for the elementary functions | `TIE_TO_EVEN` (native IEEE; no fact records it) |
 | `rounding` (`round`) | the ten of the YAML | ten modes | `TIE_AWAY_FROM_ZERO` (#335) | `TIE_AWAY_FROM_ZERO` ([R15-round](../characterization/duckdb/facts/duckdb-R15-round.json), [R15-round-digits](../characterization/duckdb/facts/duckdb-R15-round-digits.json)) |
 | `on_division_by_zero` (doubles) | `IEEE`, `LIMIT`, `NULL`, `ERROR` | the four | `ERROR`; the others when asked (#204) | `IEEE` under `ieee_floating_point_ops`, `ERROR` with it off ([R5](../characterization/duckdb/facts/duckdb-R5.json)) |
 | `on_domain_error` (`sqrt`, `asin`, `acos`, `atanh`, `acosh`, logs, `atan2`, `divide`) | `NAN`, `NULL`, `ERROR` | `NAN`, `ERROR` (logs and integer `divide` add `NULL`) | `ERROR` (#215) | `NAN` ([R15-math-domain](../characterization/duckdb/facts/duckdb-R15-math-domain.json)); `atan2(0, 0)` is `0` ([R15-atan2](../characterization/duckdb/facts/duckdb-R15-atan2.json)) |
@@ -570,8 +622,10 @@ runs.
 The core needs every value any profile gives, so each must be at least as
 fine as Substrait's. `Value` has a constructor per kind ([D29](#d29-a-value-has-its-kind)):
 `null | bool | int | float | date | ts | tod | dec | str | list | struct`.
-A double is a `float` code in SQL order with one zero and one NaN
-(`SubstraitLean/Float.lean`), a decimal its scale and unscaled integer.
+A double is a `float` code, `-0.0` and the negative NaN among them
+(`SubstraitLean/FloatFormat.lean`), which the reference profile reads with
+one zero and one NaN through `canon`; a decimal is its scale and unscaled
+integer.
 
 | Value | What the core needs | Blocks #444? |
 |---|---|---|
