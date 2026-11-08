@@ -49,6 +49,7 @@ contract's preconditions.
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
+| An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
@@ -288,6 +289,7 @@ generators, then the trusted reading and writing.
 | `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
 | `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
+| `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |

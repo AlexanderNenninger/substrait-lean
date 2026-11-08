@@ -1,6 +1,10 @@
 import SubstraitLean.Obligations
 import SubstraitLean.PolarsShims
 import SubstraitLean.SparkShims
+import SubstraitLean.PolarsProfile
+import SubstraitLean.SparkProfile
+import SubstraitLean.Transfer
+import SubstraitLean.EngineTables
 
 /-!
 # The Engine object (#900)
@@ -352,5 +356,97 @@ that does not raise under `p` (no call whose value `Rel.eval` uses raises,
 theorem Rel.eval_okImpl {p : Profile} {cat : Catalog} {r : Rel} (h : ¬r.Raises p cat) :
     r.eval cat p.okImpl = r.eval cat p.impl :=
   Rel.eval_congr_ok Expr.evalOk_of_evalP h
+
+/-! ## The Engine object -/
+
+/-- **An engine**: its profile, option table and observation rows, its
+translation (`none` where it refuses the plan), the functions its run
+computes, and the proof that the table allows them. -/
+structure Engine where
+  name : String
+  profile : Profile
+  table : ProfileTable
+  obs : ObsTable
+  lower : Rel → Option Rel
+  impl : Impl
+  within : impl.Within table
+
+/-- What `E` may return for `r`: the table's choices, with `E`'s functions. -/
+def Rel.AllowedE (E : Engine) (cat : Catalog) (r : Rel) (out : Relation) : Prop :=
+  r.AllowedI E.table E.impl cat out
+
+theorem Rel.AllowedE.allowedP {E : Engine} {cat : Catalog} {r : Rel} {out : Relation}
+    (h : r.AllowedE E cat out) : r.AllowedP E.table cat out :=
+  ⟨E.impl, E.within, h⟩
+
+/-- The reference. -/
+def Engine.reference : Engine where
+  name := "reference"
+  profile := Profile.reference
+  table := Profile.reference.table
+  obs := Profile.reference.obs
+  lower := some
+  impl := Profile.reference.okImpl
+  within := Profile.okImpl_within (Profile.reference_withinOk _)
+
+/-- DuckDB with IEEE operations (`ieee_floating_point_ops`, the default),
+through its lowering (`Lowering.duckdb`, written for the default settings). -/
+def Engine.duckdb (s : DuckDBSettings) (hs : s.ieeeOps = true) : Engine where
+  name := "duckdb"
+  profile := Profile.duckdb s
+  table := Profile.duckdb.table s
+  obs := Profile.duckdb.obs
+  lower r := some (Lowering.duckdb.lowerRel r)
+  impl := (Profile.duckdb s).okImpl
+  within := Profile.okImpl_within (Profile.duckdb_withinOk hs)
+
+/-- Polars, as the translation writes the plan (`Polars.written`). -/
+def Engine.polars : Engine where
+  name := "polars"
+  profile := Profile.polars
+  table := Profile.polars.table
+  obs := Profile.polars.obs
+  lower := some
+  impl := Polars.written
+  within := Polars.written_within
+
+/-- Spark under ANSI: the reference's functions where they do not raise
+(`Profile.spark`), its own choices. -/
+def Engine.spark : Engine where
+  name := "spark"
+  profile := Profile.spark
+  table := Profile.spark.table
+  obs := Profile.spark.obs
+  lower := some
+  impl := Profile.spark.okImpl
+  within := Profile.okImpl_within (Profile.reference_withinOk _)
+
+/-! ## The rows a plan relies on -/
+
+/-- The observation rows of `E` at the options `r` reads. -/
+def Engine.rowsUsed (E : Engine) (r : Rel) : List ObsRow :=
+  r.reads.filterMap fun (g, o, _) => E.obs.row? g o
+
+/-- Is the evidence a Lean theorem? -/
+def Evidence.isProved : Evidence → Bool
+  | .proved _ _ => true
+  | _ => false
+
+/-- **The certificate of a plan on `E`**: every observation row it relies on
+is proved, or `tested` holds of it. `tested` is the trusted layer's claim
+(D16), never asserted inside the core: the certificate lists exactly the
+tested rows a result rests on. -/
+def Engine.Refines (E : Engine) (r : Rel) (tested : ObsRow → Prop) : Prop :=
+  ∀ row ∈ E.rowsUsed r, row.evidence.isProved = true ∨ tested row
+
+/-- The rows of `E` a plan may rely on whose evidence is not a theorem. -/
+def Engine.testedRows (E : Engine) : List ObsRow :=
+  E.obs.filterMap fun (_, _, row) => if row.evidence.isProved then none else some row
+
+-- No engine's certificate is empty: each but the reference has rows that
+-- are not theorems (so `Refines` is a real hypothesis, which `#print axioms`
+-- cannot show).
+#guard !(Engine.duckdb {} rfl).testedRows.isEmpty && !Engine.polars.testedRows.isEmpty &&
+  !Engine.spark.testedRows.isEmpty && Engine.reference.testedRows.isEmpty
 
 end Substrait
