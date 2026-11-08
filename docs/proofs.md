@@ -68,6 +68,7 @@ contract's preconditions.
 | The weight-column encoding runs Z-set plans on a bag engine | `zeval` | `Rel.weighted_eval` | `Weighted.lean` |
 | Union-free terms add up to the plan | `zeval` | `Rel.zeval_terms` | `Terms.lean` |
 | `COUNT`, `SUM` and `DISTINCT` are maintained from their state | `eval` | `aggregate_maintained`, `distinct_maintained` | `IncrementalAgg.lean` |
+| `SUM` and `AVG` of doubles are maintained exactly, with no drift over any batches | `eval` | `floatState_sound`, `fsum_no_drift` | `IncrementalFloat.lean` |
 | `MIN`, `MAX` and exact `AVG` are maintained under inserts | `eval` | `extreme_maintained`, `finish_iavg` | `IncrementalMinMax.lean` |
 | Semi and anti joins are maintained from a match count | `eval` | `semi_maintained` | `IncrementalSemi.lean` |
 | Recomputing only the touched groups or frames is exact | `eval` | `touched_sound`, `touched_window_sound`, `framed_sound` | `TouchedGroups.lean`, `TouchedFrames.lean` |
@@ -129,6 +130,16 @@ other pages link here.
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON. On the Python side, the glue of
   incremental views (change tables, consolidation, merge).
+- The exact state of a maintained `SUM` or `AVG` of doubles
+  (`python/src/sverify/_exact_sum.py`, #918). Lean proves that the state, an
+  integer per group, finishes to `floatSumCR` of the current rows after any
+  sequence of batches (`LinearAgg.fsum_no_drift`). Holding that integer in
+  Python, adding up each batch's contributions to it (the engine gives each
+  changed row's value and weight with the checked `contrib` plan) and
+  rounding it once with CPython's `int / int` (correctly rounded, ties to
+  even) are trusted. `tests/test_exact_sum.py` checks the finish against the
+  checker's `floatSumCR` and `floatAvgCR`, NaN, `±∞`, `-0.0` and subnormals
+  among the values.
 - Where an engine evaluates an expression. Lean proves which rows an
   expression may raise on under `Rel.eval`; which expressions an engine
   evaluates, on which rows, is trusted. `Rel.loose` models an engine that
@@ -258,7 +269,8 @@ generators, then the trusted reading and writing.
 | `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output |
 | `Weighted.lean` | Z-set plans as bag plans with a weight column |
 | `Terms.lean` | Splitting a plan into union-free terms |
-| `IncrementalAgg.lean` | Delta rules for `COUNT`, `SUM` and `DISTINCT` |
+| `IncrementalAgg.lean` | Delta rules for `COUNT`, `SUM` and `DISTINCT`, over a measure's linear state (`LinState`) |
+| `IncrementalFloat.lean` | The exact state of `SUM` and `AVG` of doubles, and its no-drift theorem |
 | `IncrementalMinMax.lean` | Delta rules for `MIN`, `MAX` and exact `AVG` |
 | `IncrementalSemi.lean` | Delta rules for semi and anti joins |
 | `TouchedGroups.lean` | Recomputing only the groups a batch touches |

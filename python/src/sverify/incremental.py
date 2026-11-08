@@ -65,7 +65,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _linear, _quarantine, _retention, _semi, _touched
+from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
@@ -1003,7 +1003,7 @@ class IncrementalView:
         """Why an aggregate without delta plans is recomputed and diffed."""
         self.linear: _linear.Linear | None = None
         """How the view is maintained from a state per group (`sverify._linear`):
-        `COUNT`, exact `SUM` and `AVG`, `MIN` and `MAX` per group, or
+        `COUNT`, exact `SUM` and `AVG` (of doubles too), `MIN` and `MAX` per group, or
         `DISTINCT`."""
         self.semi: _semi.Semi | None = None
         """How a view that ends in a semi or anti join is maintained from a
@@ -1302,7 +1302,16 @@ class IncrementalView:
         spec = self.linear or self.semi
         if spec is None:
             return None
-        return run_plan_on(self.con, spec.init, self.engine, new_tables, self.tables)
+        init = run_plan_on(self.con, spec.init, self.engine, new_tables, self.tables)
+        if self.linear is None or not self.linear.exact:
+            return init
+        # SUMs and AVGs of doubles: their exact moments, from every input row.
+        lin = self.linear
+        assert lin.values is not None
+        rows = run_plan_on(self.con, lin.values, self.engine, new_tables, self.tables)
+        rows = rows.rename_columns(init.column_names)
+        delta = _exact_sum.fold_contributions(rows, lin.keys, lin.exact)
+        return _exact_sum.attach(init, lin.keys, lin.exact, {}, delta, check=False)
 
     def _linear_change(
         self, deltas: Mapping[str, pa.Table], new_tables: Mapping[str, pa.Table | Native]
@@ -1316,8 +1325,10 @@ class IncrementalView:
         The input is not read, except with a `MIN` or `MAX`: the groups the
         change deletes from are recomputed on the new input
         (`ExtremeAgg.extreme_maintained`)."""
-        spec, groups = self.linear, self.groups
-        assert spec is not None and groups is not None
+        spec, full = self.linear, self.groups
+        assert spec is not None and full is not None
+        # The engine's columns: an exact measure's moments stay here.
+        groups = _exact_sum.strip(full, spec.exact)
         con = self.con
         parts = [r for r in self._run_deltas(spec.deltas, deltas) if r.num_rows]
         if not parts:
@@ -1333,7 +1344,9 @@ class IncrementalView:
             # expiry deletes only their rows (`Retention.expiry_sound`).
             contrib = self._kept_groups(contrib)
             keys = contrib.select(spec.keys)
-            put_table(con, tables["old"], self.store.with_keys(groups, spec.keys, keys))
+            delta_moments = _exact_sum.fold_contributions(contrib, spec.keys, spec.exact)
+            old_full = arrow_of(self.store.with_keys(full, spec.keys, keys))
+            put_table(con, tables["old"], _exact_sum.strip(old_full, spec.exact))
             put_table(con, tables["contrib"], contrib)
             new = run_plan(con, spec.merge, self.engine)
             new = new.rename_columns(groups.schema.names).cast(groups.schema)
@@ -1350,7 +1363,12 @@ class IncrementalView:
                     again = again.rename_columns(groups.schema.names).cast(groups.schema)
                     kept = by_keys(new, spec.keys, gone, keep=False)
                     new = pa.concat_tables([kept, self._kept_groups(again)])
-            put_table(con, tables["state"], new)
+            if spec.exact:
+                old_moments = _exact_sum.moments_by_key(old_full, spec.keys, spec.exact)
+                new = _exact_sum.attach(
+                    new, spec.keys, spec.exact, old_moments, delta_moments, check=True
+                )
+            put_table(con, tables["state"], _exact_sum.strip(new, spec.exact))
             out = run_plan(con, spec.finish, self.engine)
         finally:
             for t in tables.values():
@@ -1359,7 +1377,7 @@ class IncrementalView:
         old = arrow_of(self.store.with_keys(self.state, spec.columns, keys))
         change = self._merge(weighted(out, 1), self.store.negated(self._kept(old)))
         live = new.filter(_call("not_equal", new.column(_linear.COUNT), pa.scalar(0)))
-        kept = self.store.without_keys(groups, spec.keys, keys)
+        kept = self.store.without_keys(full, spec.keys, keys)
         return arrow_of(change), pa.concat_tables([kept, live])
 
     def _semi_change(self, deltas: Mapping[str, pa.Table]) -> tuple[pa.Table, pa.Table | None]:
