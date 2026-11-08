@@ -1,25 +1,16 @@
 """The checker's verdict per engine (`"engines"`, `SubstraitLean/Realize.lean`,
-#1166) agrees with what `sverify.routes.realization` computes from the tables.
-
-The checker's block covers what the tables decide: the class over the options
-the proof depends on, its evidence, the theorems, facts and shims, refused
-options and #568's threshold rule. What the postcondition observes still
-applies in Python, so the comparison is under the coarsest observation, where
-it refuses nothing. Once `routes.py` reads the block (#1166 C2), this test
-goes with the Python side.
+#1166), which `sverify.routes` reads: the class over the options the proof
+depends on, its evidence and what it rests on, the transfer check, and
+whether the result comes out of a sort.
 """
 
 from __future__ import annotations
-
-import json
 
 import ibis
 import pytest
 from ibis import _
 
 import sverify as sv
-from sverify import routes
-from sverify.observation import Observation
 
 T = ibis.table({"k": "int64", "a": "int64", "b": "int64", "x": "float64", "s": "string"}, name="t")
 BOUNDED = {"t": [_.a.between(0, 1000), _.b.between(1, 100), _.x.between(0, 1)]}
@@ -41,59 +32,35 @@ CASES = {
     "double division": (T.select(r=T.x / (T.b + 0.5)), BOUNDED),
 }
 
-#: Every component at its coarsest: no row's observation is coarser.
-COARSEST = Observation(
-    rows="multiset",
-    elements="multiset",
-    floats="plan",
-    zeros="canon",
-    timestamps="s",
-    strings="nfc",
-    decimals="value",
-    errors="kind",
-)
+#: Each case's class per engine: exact, observed, after a shim, or refused
+#: by #568's threshold rule.
+EXPECTED = {
+    "projection": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
+    "int division": {"duckdb": "exact", "polars": "shim", "spark": "exact"},
+    "int sum": {"duckdb": "exact", "polars": "exact", "spark": "shim"},
+    "double sum": {"duckdb": "observed", "polars": "observed", "spark": "observed"},
+    "double mean": {"duckdb": "observed", "polars": "observed", "spark": "observed"},
+    "filter on a double sum": {"duckdb": "refused", "polars": "refused", "spark": "refused"},
+    "sort, nulls stated": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
+    "sort, nulls unstated": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
+    "string length": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
+    "double division": {"duckdb": "observed", "polars": "observed", "spark": "observed"},
+}
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
-def test_the_checker_s_verdict_is_the_tables(case: str) -> None:
+def test_the_checker_s_verdict(case: str) -> None:
+    """Each case's verdict, as the routes read it: the class per engine."""
     expr, requires = CASES[case]
     report = sv.verify(expr, requires=requires)
-    assert report._engines is not None, "the checker reports no engines"
-    for engine, lean in report._engines.items():
-        if not (routes._options_json().get("choices") or {}).get(engine):
-            continue
-        py = routes.realization(
-            engine,
-            report._depends or [],
-            COARSEST,
-            report._epsilon,
-            None,
-            (report._rows_exact or {}).get(engine),
-        )
-        where = f"{case} on {engine}"
-        assert lean["class"] == ("refused" if py.problems else py.cls), where
-        if not lean["observed"]:
-            # Python marks an observed row's evidence tested where its bound
-            # is unproved; the checker leaves that to the observation step.
-            assert lean["evidence"] == py.evidence, where
-        assert tuple(lean["theorems"]) == py.theorems, where
-        assert set(lean["facts"]) == set(py.facts), where
-        shims = tuple(
-            f"{routes._where(s['group'], s['option'])}: {s['shim']}" for s in lean["shims"]
-        )
-        assert shims == py.shims, where
-        codes = [p["code"] for p in lean["problems"]]
-        assert ("threshold" in codes) == any("threshold" in p for p in py.problems), where
-        assert codes.count("option_refused") == sum(" is refused on " in p for p in py.problems)
+    got = {e: v["class"] for e, v in (report._engines or {}).items()}
+    assert got == EXPECTED[case], case
 
 
 def test_the_checker_says_whether_the_result_is_sorted() -> None:
     sorted_ = sv.verify(T.order_by("k").select("k", "a"), requires=BOUNDED)
     unsorted = sv.verify(T.select("k", "a"), requires=BOUNDED)
     assert (sorted_._sorted, unsorted._sorted) == (True, False)
-    assert sorted_.internal_plan is not None and unsorted.internal_plan is not None
-    assert routes._sorted_root(json.loads(sorted_.internal_plan))
-    assert not routes._sorted_root(json.loads(unsorted.internal_plan))
 
 
 def test_the_checker_s_transfer_is_its_own_check() -> None:

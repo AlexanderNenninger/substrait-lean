@@ -97,11 +97,22 @@ where
     !rowsExact && rows.any fun (d, r) =>
       rowClass E d r == .observed && r.q.floats != .exact
 
-/-- Every dependency has a row and every row's evidence is a proof. A
-dependency without a row rests on the translation's tests, and so does a
-plan without dependencies. -/
+/-- The dependencies without a row, which rest on the translation's tests. A
+call's base entry (`(g, "base")`, D34: the group's, where its options may be
+dead) stands for the call, not an option: without a row of its own it adds
+nothing. -/
+def withoutRow (ds : List Dep) (rows : List (Dep × ObsRow)) : List Dep :=
+  ds.filter fun d => d.option != "base" &&
+    !(rows.any fun (d', _) => d'.option == d.option && d'.group == d.group)
+
+/-- A base entry without a row adds nothing; an option without one is named. -/
+example : (withoutRow [⟨"g", "base", [], true⟩] []).isEmpty = true := by decide
+example : (withoutRow [⟨"g", "overflow", [], true⟩] []).length = 1 := by decide
+
+/-- Every dependency has a row and every row's evidence is a proof. A plan
+without rows rests on the translation's tests. -/
 def planProved (ds : List Dep) (rows : List (Dep × ObsRow)) : Bool :=
-  !rows.isEmpty && rows.length == ds.length && rows.all fun (_, r) => r.evidence.theorem?.isSome
+  !rows.isEmpty && (withoutRow ds rows).isEmpty && rows.all fun (_, r) => r.evidence.theorem?.isSome
 
 /-- The theorem by which each engine's translation runs a plan whose report
 is `guard_free` without its other guards, keeping the assumed issues'. An
@@ -154,9 +165,12 @@ def engineJson (es : List EngineProfile) (E : EngineProfile) (ds : List Dep) (re
     ("class_basis", toJson "computed"),
     ("evidence", toJson (if planProved ds rows then "proved" else "tested")),
     ("rows", toJson rows.length),
-    ("without_row", Json.arr ((ds.filter fun d => !(rows.any fun (d', _) =>
-      d'.option == d.option && d'.group == d.group)).map fun d => Json.mkObj (where_ d)).toArray),
+    ("without_row", Json.arr ((withoutRow ds rows).map fun d => Json.mkObj (where_ d)).toArray),
     ("theorems", toJson theorems), ("facts", toJson facts),
+    -- The facts the proved rows' theorems rest on: a proof of the engine's
+    -- model, which those facts say the engine is (#900's per-plan Refines).
+    ("proved_facts", toJson (rows.flatMap fun (_, r) =>
+      if r.evidence.theorem?.isSome then r.evidence.facts else []).eraseDups),
     ("issues", toJson (rows.filterMap fun (_, r) => r.evidence.issue?).eraseDups),
     ("guard_free_theorem", toJson (guardFreeTheorems.lookup E.name)),
     ("version", toJson E.table.version),
