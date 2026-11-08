@@ -420,9 +420,10 @@ def Expr.raiseMsg? : Expr → Option String
   | .un (.raise m) _ => some m
   | _ => none
 
-/-- The template with the guards of the messages `keep` keeps: each
-`CASE WHEN c THEN raise(m) ELSE e END` of its outer chain stays where `keep m`,
-and is replaced by `e` otherwise. -/
+/-- The template with the guards of the messages `keep` keeps: along the
+`ELSE` chain of its outer `CASE`s, each `WHEN c THEN raise(m)` stays where
+`keep m` and is left out otherwise; other arms stay. This is what
+`sverify.sql.lowering.render` writes (`guards=False` keeps none). -/
 def Expr.keepGuards (keep : String → Bool) : Expr → Expr
   | .lit v => .lit v
   | .field i => .field i
@@ -431,31 +432,38 @@ def Expr.keepGuards (keep : String → Bool) : Expr → Expr
   | .hof f l b => .hof f l b
   | .ifThen c t e => match t.raiseMsg? with
     | some m => if keep m then .ifThen c t (e.keepGuards keep) else e.keepGuards keep
-    | none => .ifThen c t e
+    | none => .ifThen c t (e.keepGuards keep)
 
 theorem Expr.keepGuards_all : ∀ t : Expr, t.keepGuards (fun _ => true) = t
   | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => rfl
   | .ifThen c t e => by
     cases hm : t.raiseMsg? <;> simp [keepGuards, hm, keepGuards_all e]
 
-/-- **The guards `keep` drops are exact on `xs`**: each evaluates under `p`, and
-is true only where the reference reports the issue `i` with the guard's
-message. -/
+/-- A guard's outcome: a value, true only where `P` holds. -/
+def Outcome.FiresOnly (o : Outcome) (P : Prop) : Prop :=
+  match o with
+  | .ok w => w.isTrue = true → P
+  | .error _ => False
+
+/-- **The guards `keep` drops are exact on `xs`**: along the `ELSE` chain, on
+arguments where the arms before it are false, each dropped guard evaluates
+under `p` and is true only where the reference reports the issue `i` with the
+guard's message. An arm whose earlier arm is true is never reached, so it
+needs nothing there. -/
 def Expr.GuardsAt (p : Profile) (keep : String → Bool) (i : Option Issue) (xs : Row) : Expr → Prop
   | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => True
-  | .ifThen c t e => match t.raiseMsg? with
-    | some m => (keep m = false →
-        ∃ w, c.evalP p xs = .ok w ∧ (w.isTrue = true → i.map Issue.name = some m)) ∧
-        e.GuardsAt p keep i xs
-    | none => True
+  | .ifThen c t e =>
+    (match t.raiseMsg? with
+     | some m => keep m = false → (c.evalP p xs).FiresOnly (i.map Issue.name = some m)
+     | none => True) ∧
+    ∀ w, c.evalP p xs = .ok w → w.isTrue = false → e.GuardsAt p keep i xs
 
 theorem Expr.guardsAt_all {p : Profile} {i : Option Issue} {xs : Row} :
     ∀ t : Expr, t.GuardsAt p (fun _ => true) i xs
   | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => trivial
   | .ifThen c t e => by
-    cases hm : t.raiseMsg? with
-    | none => simp [GuardsAt, hm]
-    | some m => simp only [GuardsAt, hm]; simpa using guardsAt_all e
+    refine ⟨?_, fun _ _ _ => guardsAt_all e⟩
+    cases t.raiseMsg? <;> simp
 
 /-- **Dropping exact guards keeps the outcome** on arguments whose issue, if
 any, is kept. -/
@@ -465,47 +473,136 @@ theorem Expr.keepGuards_agree {p : Profile} {keep : String → Bool} {i : Option
       ((t.keepGuards keep).evalP p xs).Agree o
   | .lit _, _, h | .field _, _, h | .un _ _, _, h | .bin _ _ _, _, h | .hof _ _ _, _, h => h
   | .ifThen c t e, hg, h => by
+    have hrest := hg.2
+    -- Where the arm is false, its `ELSE` is the rest, with the rest's guards.
+    have hfalse : ∀ w, c.evalP p xs = .ok w → w.isTrue = false →
+        ((e.keepGuards keep).evalP p xs).Agree o := fun w hc hw =>
+      keepGuards_agree hi e (hrest w hc hw) (by simpa [evalP, hc, hw, bind, Except.bind] using h)
+    -- An arm that stays: the same `CASE`, with the rest's guards dropped.
+    have hstay : ((Expr.ifThen c t (e.keepGuards keep)).evalP p xs).Agree o := by
+      simp only [evalP] at h ⊢
+      cases hc : c.evalP p xs with
+      | error k => simpa [hc, bind, Except.bind] using h
+      | ok w =>
+        cases hw : w.isTrue
+        · simpa [hc, hw, bind, Except.bind] using hfalse w hc hw
+        · simpa [hc, hw, bind, Except.bind] using h
     cases hm : t.raiseMsg? with
-    | none => simpa [keepGuards, hm] using h
+    | none => simpa [keepGuards, hm] using hstay
     | some m =>
-      simp only [GuardsAt, hm] at hg
       cases hk : keep m with
-      | true =>
-        simp only [keepGuards, hm, hk, ite_true]
-        simp only [evalP] at h ⊢
-        cases hc : c.evalP p xs with
-        | error k => simpa [hc, bind, Except.bind] using h
-        | ok w =>
-          simp only [hc, bind, Except.bind] at h ⊢
-          cases hw : w.isTrue
-          · simp only [hw] at h ⊢
-            exact keepGuards_agree hi e hg.2 h
-          · simpa [hw] using h
+      | true => simpa [keepGuards, hm, hk] using hstay
       | false =>
-        simp only [keepGuards, hm, hk]
-        obtain ⟨w, hc, hw⟩ := hg.1 hk
-        have hnt : w.isTrue = false := by
-          cases hwt : w.isTrue
-          · rfl
-          · obtain ⟨k, hik, hkn⟩ := Option.map_eq_some_iff.mp (hw hwt)
-            have := hi k hik
-            rw [hkn, hk] at this
-            exact absurd this (by decide)
-        refine keepGuards_agree hi e hg.2 ?_
-        simpa [evalP, hc, hnt, bind, Except.bind] using h
+        simp only [keepGuards, hm, hk, Bool.false_eq_true, ↓reduceIte]
+        have h1 := hg.1
+        simp only [hm] at h1
+        have hf := h1 hk
+        cases hc : c.evalP p xs with
+        | error k => simp [hc, Outcome.FiresOnly] at hf
+        | ok w =>
+          simp only [hc, Outcome.FiresOnly] at hf
+          have hnt : w.isTrue = false := by
+            cases hwt : w.isTrue
+            · rfl
+            · obtain ⟨k, hik, hkn⟩ := Option.map_eq_some_iff.mp (hf hwt)
+              have := hi k hik
+              rw [hkn, hk] at this
+              exact absurd this (by decide)
+          exact hfalse w hc hnt
 
-/-- Each entry's guards that `keep` drops are exact, and its template without
-them still reads every argument. `Lowering.guardsFor_all`: nothing to check
-when every guard is kept. -/
+/-- Each entry's guards that `keep` drops are exact, and, where `keep` keeps
+some guard, its template without the others still reads every argument (an
+argument raises only with a kept issue, `Lowering.kept_of_err`).
+`Lowering.guardsFor_all`: nothing to check when every guard is kept. -/
 def Lowering.GuardsFor {p : Profile} (L : Lowering p) (keep : String → Bool) : Prop :=
-  (∀ f en, L.un f = some en → 0 ∈ (en.tmpl.keepGuards keep).must ∧
+  (∀ f en, L.un f = some en → ((∃ m, keep m = true) → 0 ∈ (en.tmpl.keepGuards keep).must) ∧
     ∀ x, en.tmpl.GuardsAt p keep (f.issue x) [x]) ∧
-  (∀ f en, L.bin f = some en → (0 ∈ (en.tmpl.keepGuards keep).must ∧ 1 ∈ (en.tmpl.keepGuards keep).must) ∧
+  (∀ f en, L.bin f = some en →
+    ((∃ m, keep m = true) → 0 ∈ (en.tmpl.keepGuards keep).must ∧ 1 ∈ (en.tmpl.keepGuards keep).must) ∧
     ∀ x y, en.tmpl.GuardsAt p keep (f.issue x y) [x, y])
 
 theorem Lowering.guardsFor_all {p : Profile} (L : Lowering p) : L.GuardsFor fun _ => true :=
-  ⟨fun _ en _ => ⟨by rw [Expr.keepGuards_all]; exact en.strict, fun _ => Expr.guardsAt_all _⟩,
-   fun _ en _ => ⟨by rw [Expr.keepGuards_all]; exact en.strict, fun _ _ => Expr.guardsAt_all _⟩⟩
+  ⟨fun _ en _ => ⟨fun _ => by rw [Expr.keepGuards_all]; exact en.strict, fun _ => Expr.guardsAt_all _⟩,
+   fun _ en _ => ⟨fun _ => by rw [Expr.keepGuards_all]; exact en.strict, fun _ _ => Expr.guardsAt_all _⟩⟩
+
+/-- Where the reference raises, an issue it reports is an error. -/
+theorem Expr.issue_of_ref_err {a : Expr} {row : Row}
+    (h : (a.evalP Profile.reference row).err?.isSome) : ∃ q ∈ a.issues row, q.1.isError = true := by
+  rw [Expr.evalP_reference, Expr.refOutcome_err] at h
+  simp only [firstError, Option.isSome_map] at h
+  obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp h
+  exact ⟨q, List.mem_of_find?_eq_some hq, by simpa using List.find?_some hq⟩
+
+/-- **An argument raises only with a kept issue**: where every issue on the row
+is assumed or kept and the reference raises, `keep` keeps some guard. An
+assumed issue never raises (`Issue.infinite` is no error, `Issue.sumWraps`
+no expression's). -/
+theorem Lowering.kept_of_err {keep : String → Bool} {a : Expr} {row : Row}
+    (hk : ∀ q ∈ a.issues row, q.1.assumed = true ∨ keep q.1.name = true)
+    (hr : (a.evalP Profile.reference row).err?.isSome) : ∃ m, keep m = true := by
+  obtain ⟨q, hq, he⟩ := Expr.issue_of_ref_err hr
+  rcases hk q hq with ha | hn
+  · have hs := Expr.issues_ne_sumWraps hq
+    cases hq1 : q.1 <;> simp_all [Issue.assumed, Issue.isError]
+  · exact ⟨_, hn⟩
+
+/-- A template with no `raise` arm on its `ELSE` chain: no guard to check. -/
+def Expr.noGuards : Expr → Bool
+  | .ifThen _ t e => t.raiseMsg?.isNone && e.noGuards
+  | _ => true
+
+theorem Expr.guardsAt_of_noGuards {p : Profile} {keep : String → Bool} {i : Option Issue}
+    {xs : Row} : ∀ t : Expr, t.noGuards = true → t.GuardsAt p keep i xs
+  | .lit _, _ | .field _, _ | .un _ _, _ | .bin _ _ _, _ | .hof _ _ _, _ => trivial
+  | .ifThen c t e, h => by
+    simp only [noGuards, Bool.and_eq_true, Option.isNone_iff_eq_none] at h
+    refine ⟨?_, fun _ _ _ => guardsAt_of_noGuards e h.2⟩
+    simp only [h.1]
+
+/-- Where every issue the reference reports is named `m`, it raises only
+with an issue named `m`. -/
+theorem Outcome.raises_named {i : Option Issue} {v : Value} {m : String}
+    (hn : ∀ k, i = some k → k.name = m) : (raiseIf i v).err?.isSome → i.map Issue.name = some m := by
+  cases i with
+  | none => simp [raiseIf, Outcome.err?]
+  | some k => intro _; simp [hn k rfl]
+
+/-- **One guard, from the template's agreement**: in `CASE WHEN c THEN raise(m)
+ELSE e END`, with no guard in `e`, the guard is exact where it evaluates and
+every issue the reference raises with is named `m`. Where it is true, the
+template raises, so the reference does (`agree`), with an issue named `m`.
+The generator proves most guards so, without evaluating them case by case. -/
+theorem Expr.GuardsAt.one {p : Profile} {c t e : Expr} {m : String} {i : Option Issue}
+    {xs : Row} {o : Outcome} (hm : t.raiseMsg? = some m)
+    (hagree : ((Expr.ifThen c t e).evalP p xs).Agree o) (ht : (t.evalP p xs).err?.isSome)
+    (ho : o.err?.isSome → i.map Issue.name = some m) (hc : ∃ w, c.evalP p xs = .ok w)
+    (he : e.GuardsAt p (fun _ => false) i xs) :
+    (Expr.ifThen c t e).GuardsAt p (fun _ => false) i xs := by
+  obtain ⟨w, hw⟩ := hc
+  refine ⟨?_, fun _ _ _ => he⟩
+  simp only [hm]
+  intro _
+  simp only [hw, Outcome.FiresOnly]
+  intro htrue
+  apply ho
+  have := Outcome.agree_err hagree
+  simp only [Expr.evalP, hw, bind, Except.bind, htrue, ↓reduceIte] at this
+  rw [← this]; exact ht
+
+/-- `<<`'s guard fires only on a shift outside `0`–`63` of an integer, where
+the reference reports a domain error (`Lowering.GuardsFor`). -/
+theorem Lowering.bit_shl_guards (s : DuckDBSettings) (x y : Value) :
+    Lowering.shlTemplate.GuardsAt (Profile.duckdb s) (fun _ => false) ((BinFn.bit .shl).issue x y)
+      [x, y] := by
+  simp only [Lowering.shlTemplate, Expr.GuardsAt, Expr.raiseMsg?]
+  refine ⟨fun _ => ?_, fun _ _ _ => ⟨trivial, fun _ _ _ => trivial⟩⟩
+  simp only [Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind, Lowering.duck_lt,
+    Lowering.duck_and, Lowering.duck_or, Lowering.duck_not, Lowering.duck_isNum, Outcome.FiresOnly]
+  cases x <;> cases y <;> simp [Value.isNum, BinFn.apply, and3, or3, Value.isTrue, BinFn.issue,
+    domainIssue, Lowering.shl_apply, Issue.name]
+  rename_i a b
+  by_cases h0 : b < 0 <;> by_cases h1 : b < 64 <;> simp [h0, h1] <;>
+    first | omega | exact ⟨.domain, ⟨fun _ => by omega, rfl⟩, rfl⟩
 
 /-! ## Lowering an expression -/
 
@@ -561,8 +658,9 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
     | error k =>
       have hr : (a.evalP Profile.reference row).err?.isSome := by
         rw [← Outcome.agree_err iha, hx]; rfl
+      have hkp := kept_of_err (fun q hq => hk q (by simp [Expr.issues, hq])) hr
       refine Outcome.agree_of_err
-        (Expr.subst_raises (p := p) (row := row) (σ := [a']) (i := 0) ?_ _ (hG.1 f en hen).1) ?_
+        (Expr.subst_raises (p := p) (row := row) (σ := [a']) (i := 0) ?_ _ ((hG.1 f en hen).1 hkp)) ?_
       · simp [hx, Outcome.err?]
       · cases h' : a.evalP Profile.reference row with
         | ok _ => simp [h', Outcome.err?] at hr
@@ -589,8 +687,9 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
     | error k =>
       have hr : (a.evalP Profile.reference row).err?.isSome := by
         rw [← Outcome.agree_err iha, hx]; rfl
+      have hkp := kept_of_err (fun q hq => hk q (by simp [Expr.issues, hq])) hr
       refine Outcome.agree_of_err
-        (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 0) ?_ _ (hG.2 f en hen).1.1) ?_
+        (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 0) ?_ _ ((hG.2 f en hen).1 hkp).1) ?_
       · simp [hx, Outcome.err?]
       · cases h' : a.evalP Profile.reference row with
         | ok _ => simp [h', Outcome.err?] at hr
@@ -605,8 +704,9 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
         | error k =>
           have hr : (b.evalP Profile.reference row).err?.isSome := by
             rw [← Outcome.agree_err ihb, hy]; rfl
+          have hkp := kept_of_err (fun q hq => hk q (by simp [Expr.issues, hq])) hr
           refine Outcome.agree_of_err
-            (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 1) ?_ _ (hG.2 f en hen).1.2) ?_
+            (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 1) ?_ _ ((hG.2 f en hen).1 hkp).2) ?_
           · simp [hy, Outcome.err?]
           · cases h'' : b.evalP Profile.reference row with
             | ok _ => simp [h'', Outcome.err?] at hr

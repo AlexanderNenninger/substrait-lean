@@ -295,6 +295,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.duckdb_sound
 #print axioms Substrait.Rel.duckdb_shim_sound
 #print axioms Substrait.Lowering.lowerRel_sound
+#print axioms Substrait.Lowering.lowerRelWith_sound
+#print axioms Substrait.Rel.duckdb_guardFree_sound
 #print axioms Substrait.Lowering.lower_correct
 #print axioms Substrait.Lowering.duckdb_exact
 #print axioms Substrait.liftDuckDB.total
