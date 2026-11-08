@@ -1,6 +1,7 @@
 import SubstraitLean.MarginCheck
 import SubstraitLean.SumBound
 import SubstraitLean.FloatArith
+import SubstraitLean.Partition
 
 /-!
 # The margin check is sound, in codes (#929)
