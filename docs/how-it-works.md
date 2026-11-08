@@ -236,7 +236,7 @@ engine is made to agree:
   0.0, a negative NaN first), so the tables it reads and its results are canonicalized
   (`sverify.engine.canonical`). DataFusion is a tier-3 engine: it refuses
   a plan with a double operation that IEEE arithmetic lets give −0.0 or a
-  negative NaN (`Expr.signedDoubles`,
+  negative NaN (`DataFusion.signedDoubles`,
   [DF-13](../upstream/bugs/DF-13.json)). SQL run on DataFusion directly (a
   query on a `datafusion.SessionContext`) follows DataFusion's order.
 * `Report.to_substrait` writes each double operation `x` for other consumers
