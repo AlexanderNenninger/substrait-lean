@@ -40,6 +40,7 @@ import SubstraitLean.IncrementalMinMax
 import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.Lowering
 import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
@@ -70,6 +71,7 @@ import SubstraitLean.ContractCheck
 import SubstraitLean.ShardCheck
 import SubstraitLean.Functions
 import SubstraitLean.Options
+import SubstraitLean.Scopes
 import SubstraitLean.AllowedP
 import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv
