@@ -14,6 +14,7 @@ import SubstraitLean.Implied
 import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
 import SubstraitLean.AllowedAnalysis
+import SubstraitLean.AnalysisCongr
 
 /-!
 # Checking a contract
@@ -963,5 +964,95 @@ theorem check_wf {input : Json} {R : Request} {rep : Report}
     ∀ q ∈ R.ensures, (q.root.capReads R.caps).checkWF R.cat = true := by
   have h := (Request.check_ok (check_parse hR hc)).1
   simpa only [List.all_eq_true] using h
+
+/-! ### The checker's verdict is the contract theorem (#1088)
+
+`check` parses the request (`parse`, trusted: the JSON reader and
+`schemaEnv`) and analyses it on a catalog with the tables' arities and no rows
+(`tablesCatalog`). `check_proved_sound` takes a postcondition the report marks
+proved to the contract theorem on the data's catalog, through
+`check_ensures` (the report's verdicts are `ensureResults`'), `check_wf`
+(the analysed plans are well-formed), `Request.kenv_eq` (the description of
+the inputs is `KnowledgeEnv.ofSpec`'s) and the analyses' congruence in the
+catalog's arities (`AnalysisCongr.lean`). -/
+
+theorem lookup_map_self {β : Type} (f : String → β) (t : String) :
+    ∀ l : List String, (l.map fun x => (x, f x)).lookup t = if t ∈ l then some (f t) else none
+  | [] => rfl
+  | x :: l => by
+    simp only [List.map_cons, List.lookup_cons, List.mem_cons]
+    by_cases h : t = x
+    · subst h; simp
+    · have : (t == x) = false := by simpa using h
+      simp [this, h, lookup_map_self f t l]
+
+/-- The description of the inputs `check` computes once per table is
+`KnowledgeEnv.ofSpec`'s. -/
+theorem Request.kenv_eq (R : Request) :
+    R.kenv = KnowledgeEnv.ofSpec R.schemas R.preOf R.keysOf := by
+  funext t
+  simp only [Request.kenv, KnowledgeEnv.ofSpec, lookup_map_self]
+  split <;> rfl
+
+theorem Request.resultsOf_all (q : Plan) (env : List AVal)
+    (h : ∀ e ∈ Request.ensureResults.resultsOf q env, e.2.1 = true) :
+    env.all AVal.certainlyTrue = true := by
+  simp only [Request.ensureResults.resultsOf] at h
+  rw [List.all_eq_true]
+  intro a ha
+  obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem ha
+  split at h
+  · rename_i hn
+    have hn := (beq_iff_eq.mp hn)
+    have hi' : i < (q.names.zip (env.map fun a => (a.certainlyTrue, a.render))).length := by
+      simp [hn, hi]
+    have := h _ (List.getElem_mem hi')
+    simpa using this
+  · have hi' : i < ((List.range env.length).map (s!"#{·}") |>.zip
+        (env.map fun a => (a.certainlyTrue, a.render))).length := by simp [hi]
+    have := h _ (List.getElem_mem hi')
+    simpa using this
+
+/-- **The checker's verdict is the contract theorem** (#1088). When `check`
+reports every column of the request's `k`-th postcondition proved, the
+postcondition holds on every row of every result the reference allows
+(`Rel.OrderAllowed`: every order of the ties, D24), for any data that has the
+request's tables (`harity`) and meets their schemas (`hS`), preconditions
+(`hpre`: those stated and those sverify inferred and assumed, both in the
+request), keys (`hkeys`) and row caps (`hcap`, `sv.max_rows`).
+
+`check` analyses under the reference whatever profile the request names: a
+report under another one is the reference's, relabelled by `underProfile`
+(`SubstraitCheck.lean`), a trusted step until #271 gives those engines
+profiles of their own. A tolerance or an observation on the engine's doubles
+belongs to the engine's soundness (`Engine.Sound`), which starts from this
+conclusion.
+
+The issues the report lists, the assumed ones among them (`Issue.assumed`: a
+`SUM` that leaves its type, an overflow to `±∞`), are not hypotheses:
+`Rel.OrderAllowed` gives a value at each, and the analysis is sound for that
+value. Where the reference raises instead (`Profile.reference`, `raiseIf`),
+it gives no result for the statement to speak of. -/
+theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hcat : data.WF) (harity : ∀ t, (data t).arity = (R.cat t).arity)
+    (hS : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row)
+    (hpre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true)
+    (hkeys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows)
+    (hcap : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n)
+    {k : Nat} {q : Plan} (hq : R.ensures[k]? = some q)
+    (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) :
+    ∀ {out : Relation}, q.root.OrderAllowed data out → ∀ row ∈ out, ∀ v ∈ row, v = .bool true := by
+  intro out ho
+  have hall : (R.ensureEnv q).all AVal.certainlyTrue = true := by
+    rw [check_ensures hR hc, List.getD_eq_getElem?_getD, List.getElem?_map, hq] at hproved
+    exact Request.resultsOf_all q _ hproved
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hS hpre hkeys
+  have hQ : (q.root.capReads R.caps).WF data :=
+    Rel.wf_congr harity (Rel.checkWF_iff.mp (check_wf hR hc q (List.mem_of_getElem? hq)))
+  have henv : R.ensureEnv q = ((q.root.capReads R.caps).analyse data R.kenv).cols := by
+    simp only [Request.ensureEnv, Rel.analyse, KnowledgeEnv.windows,
+      Rel.keyedWindows_congr harity, (Rel.aeval_congr harity _ _ _ false _).1]
+  exact Knowledge.contract_sound_all hcat hK hQ (henv ▸ hall) (Rel.orderAllowed_capReads hcap ho)
 
 end Substrait.ContractCheck

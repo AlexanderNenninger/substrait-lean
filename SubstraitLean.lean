@@ -65,6 +65,7 @@ import SubstraitLean.LiftCache
 import SubstraitLean.LiftSearch
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Keys
+import SubstraitLean.AnalysisCongr
 import SubstraitLean.Quarantine
 import SubstraitLean.Semantic
 import SubstraitLean.Compose

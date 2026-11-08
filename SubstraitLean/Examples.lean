@@ -33,6 +33,7 @@ import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
 import SubstraitLean.AllowedAnalysis
 import SubstraitLean.EngineSound
+import SubstraitLean.ContractCheck
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatMoments
 
@@ -211,6 +212,7 @@ end Substrait.Examples
 #print axioms Substrait.Rel.ratioPart_csimp
 #print axioms Substrait.Knowledge.contract_sound
 #print axioms Substrait.Knowledge.contract_sound_all
+#print axioms Substrait.ContractCheck.check_proved_sound
 #print axioms Substrait.Knowledge.mayIssues_sound
 #print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines
