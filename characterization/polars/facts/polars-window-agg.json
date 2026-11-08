@@ -25,11 +25,12 @@
     "engine": "streaming"
   },
   "description": [
-    "sverify's Polars translation computes window functions with Polars expressions (`Windows`, `polars_engine.py`). Each row's frame is a run of positions `lo..hi` of its partition. A double `SUM` or `AVG` whose frame starts at the partition's first row (`UNBOUNDED PRECEDING`) reads `cum_sum().over(partition)` of the values (NULLs as 0.0) at `hi`: Polars's `cum_sum` adds each value to one `f64` state in row order from 0.0 (`det_sum`, `cum_scan_numeric`), so the value at `hi` is the frame's values added in frame order, the sum the former row-by-row translation gave. Any other frame is cut into blocks of 2ᵏ rows by the bits of its width, largest first; each block's sum is a balanced tree (`T_k = T_{k-1} + T_{k-1}.shift(-2^{k-1})`), and the blocks are added in frame order from 0.0. Both are sums of the frame's own values: `RUNNING_ADD` and `TREE`.",
-    "Polars's own `rolling_sum` (and `rolling_mean`, `rolling_sum_by`) is a sliding accumulator: it subtracts the value leaving the window and adds the one entering, each with a Kahan compensation of its own (`SumWindow`, `add_finite_kahan`, `sub_finite_kahan`), and counts non-finite values apart. Its result is no sum of the frame's values: over `[5.692038748222123e31, -2550690257394217.0, -5.326737114388029, -4.561150809059341]` with a window of 2 its last frame gives -10.061150809059342, where the frame's sum is -9.88788792344737. The translation does not use it.",
-    "Order class: `RUNNING_ADD` (frames from the partition's first row) and `TREE` (the others), each within the plan's bound of `floatSumCR` for the input's row cap (`StdModel.epsilon_sum_cr`; `docs/core-semantics.md`, window sums)."
+    "sverify's Polars translation computes window functions with Polars expressions (`Windows`, `polars_engine.py`). Each row's frame is a run of positions `lo..hi` of its partition. A double `SUM` or `AVG` whose frame starts at the partition's first row (`UNBOUNDED PRECEDING`) reads `cum_sum().over(partition)` of the values (NULLs as 0.0) at `hi`. That is one sequential `+=` from 0.0 in row order, in memory, streaming and per partition (polars-cum-sum-float), so the value at `hi` is the frame's values added in frame order, the sum the former row-by-row translation gave, bit for bit.",
+    "Any other frame is cut into blocks of 2ᵏ rows by the bits of its width, largest first. Each block's sum is a balanced tree built with elementwise `+` of `gather`ed columns (`T_k[i] = T_{k-1}[i] + T_{k-1}[i + 2^{k-1}]`, IEEE additions, polars-fp-ieee), and the blocks are added in frame order from 0.0: a tree of the frame's own values.",
+    "Polars's own `rolling_sum`, `rolling_mean` and `rolling_*_by` keep one sliding state with Kahan compensation, which is no sum of the window's values (polars-rolling-sum-float). The translation does not use them for doubles.",
+    "Order class: `RUNNING_ADD` (frames from the partition's first row) and `TREE` (the others). Both are sums of the frame's values in an order Polars's `sum_order` allows (`SEQUENTIAL`, `ANY`), so the value is a member of the Polars profile's `Allowed` (`WinFn.AllowedP`) with no bound of its own. Against the reference's correctly rounded sum (`EXACT`, D25) the plan's bound of `floatSumCR` for the input's row cap applies, as for every engine (`StdModel.epsilon_sum_cr`)."
   ],
-  "reference": "`WinFn.valueIn` sums each frame's values anew (`window_sum_algo = RECOMPUTE`); the frame's `SUM` and `AVG` are `floatSumCR` and `floatAvgCR` (D25). `RUNNING_ADD` and `TREE` sum the frame's own values, within that bound.",
+  "reference": "`WinFn.valueIn` sums each frame's values (`window_sum_algo = RECOMPUTE`); `WinFn.AllowedP` admits the frame's values in any order the profile's `sum_order` allows. The reference's `SUM` and `AVG` are `floatSumCR` and `floatAvgCR` (D25).",
   "status": "no-finding",
   "evidence": "probe",
   "provenance": [
@@ -101,6 +102,14 @@
         {
           "sql": "SELECT i, sum(v) OVER (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS s FROM (VALUES (0, 5.692038748222123e31), (1, -2550690257394217.0), (2, -5.326737114388029), (3, -4.561150809059341)) AS t(i, v) ORDER BY i",
           "observed": "5.692038748222123e31, 5.692038748222123e31, -2550690257394222.5, -9.88788792344737"
+        },
+        {
+          "file": "characterization/polars/facts/polars-cum-sum-float.json",
+          "note": "the running sum's order, from the source"
+        },
+        {
+          "file": "characterization/polars/facts/polars-rolling-sum-float.json",
+          "note": "why `rolling_sum` is not used"
         }
       ],
       "notes": "Polars py-2.1.0 through sverify's translation (a verified plan run on engine='polars'), macOS arm64; DuckDB gave the same four values. Polars's own `pl.Series(v).rolling_sum(window_size=2, min_samples=1)` gave -10.061150809059342 for the last frame."
