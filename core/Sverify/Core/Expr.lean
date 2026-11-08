@@ -388,19 +388,19 @@ def UnFn.apply : UnFn → Value → Value
   | .isNull, _ => .bool false
   | .neg, .int i => .int (-i)
   | .itof, .int i => .float (FloatCode.ofInt i)
-  -- Under `zero_sign` = `ONE_ZERO` and `nan_kind` = `ONE_NAN` every function
-  -- of doubles reads its arguments through `canon`, and `-x` gives one NaN
-  -- (D31, `UnFn.apply_canon`).
-  | .fneg, .float k => .float (FloatCode.canon (FloatCode.neg (FloatCode.canon k)))
-  | .ffloor, .float c => .float (FloatCode.floor (FloatCode.canon c))
-  | .fceil, .float c => .float (FloatCode.ceil (FloatCode.canon c))
-  | .fround, .float c => .float (FloatCode.round (FloatCode.canon c))
-  | .froundTo d, .float c => .float (FloatCode.roundTo d (FloatCode.canon c))
-  | .ftoi, .float c => match FloatCode.toInt? (FloatCode.canon c) with
+  -- IEEE 754's negation, on the raw value: `-(0.0)` is `-0.0` (D31: scalar
+  -- functions run on raw values; `zero_sign` = `ONE_ZERO` canonicalises only
+  -- at identity boundaries).
+  | .fneg, .float k => .float (FloatCode.negI k)
+  | .ffloor, .float c => .float (FloatCode.floor c)
+  | .fceil, .float c => .float (FloatCode.ceil c)
+  | .fround, .float c => .float (FloatCode.round c)
+  | .froundTo d, .float c => .float (FloatCode.roundTo d c)
+  | .ftoi, .float c => match FloatCode.toInt? c with
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
-  | .ftoiOrNull, .float c => match FloatCode.toInt? (FloatCode.canon c) with
+  | .ftoiOrNull, .float c => match FloatCode.toInt? c with
     | some i => if fitsBits 64 i then .int i else .null
     | none => .null
   | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
@@ -440,7 +440,7 @@ def UnFn.apply : UnFn → Value → Value
   | .epochUs, .ts ts => .int ts
   | .strftime fmt, .ts ts => .str (Time.strftime fmt ts)
   | .bucket k o, .ts ts => .ts (Time.bucket k o ts)
-  | .fmath f, .float c => match f.apply (FloatCode.canon c) with
+  | .fmath f, .float c => match f.apply c with
     | some r => .float r
     | none => .null
   -- A decimal's type: its unscaled integer at scale `s`.
@@ -453,7 +453,7 @@ def UnFn.apply : UnFn → Value → Value
   | .dtrunc k, v => match v.unscaled? with
     | some i => .int (i.tdiv (10 ^ k))
     | none => .null
-  | .ftod s, .float c => match FloatCode.toDecimal? (FloatCode.canon c) s with
+  | .ftod s, .float c => match FloatCode.toDecimal? c s with
     | some m => .int m
     | none => .null
   | .dtof s, v => match v.unscaled? with
@@ -711,8 +711,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fadd, .float a, .float b => .float (FloatCode.fadd a b)
   | .fsub, .float a, .float b => .float (FloatCode.fsub a b)
   | .fmul, .float a, .float b => .float (FloatCode.fmul a b)
-  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a (FloatCode.canon b))
-  | .fmod, .float a, .float b => .float (FloatCode.fmod (FloatCode.canon a) (FloatCode.canon b))
+  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a b)
+  | .fmod, .float a, .float b => .float (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
   -- A time of day modulo a day (`Parse`'s wrap around midnight).
@@ -720,8 +720,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   -- Exponents beyond 64 overflow anyway (unless `|a| ≤ 1`); don't compute them.
   | .ipow, .int a, .int b =>
     if b < 0 ∨ (64 < b ∧ 1 < a.natAbs) then .null else .int (a ^ b.toNat)
-  | .fpow, .float a, .float b =>
-    .float (FloatCode.lift₂ Float.pow (FloatCode.canon a) (FloatCode.canon b))
+  | .fpow, .float a, .float b => .float (FloatCode.lift₂ Float.pow a b)
   | .concat, .str a, .str b => .str (a ++ b)
   | .strpos, .str a, .str b => .int (Text.strpos a b)
   | .startsWith, .str a, .str b => .bool (Text.startsWith a b)
@@ -749,10 +748,10 @@ def BinFn.apply : BinFn → Value → Value → Value
     | _, _ => .null
   | .dateAdd, .date d, .int n => .date (d + n)
   | .dateDiff, .date d, .date e => .int (d - e)
-  | .fatan2, .float y, .float x => match atan2? (FloatCode.canon y) (FloatCode.canon x) with
+  | .fatan2, .float y, .float x => match atan2? y x with
     | some r => .float r
     | none => .null
-  | .flogb, .float x, .float b => match logb? (FloatCode.canon x) (FloatCode.canon b) with
+  | .flogb, .float x, .float b => match logb? x b with
     | some r => .float r
     | none => .null
   | .bit op, .int a, .int b => match op.apply a b with

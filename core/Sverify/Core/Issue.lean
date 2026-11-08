@@ -127,7 +127,7 @@ def UnFn.issue : UnFn → Value → Option Issue
   -- A black box that may raise, where it does (#325).
   | .bbox n, v => if BlackBox.raisesOn n [v] then some .domain else none
   | .neg, .int i => wrapIf (-i)
-  | .ftoi, .float c => match FloatCode.toInt? (FloatCode.canon c) with
+  | .ftoi, .float c => match FloatCode.toInt? c with
     | some x => if inI64 x then none else some .badCast
     | none => some .badCast
   | .narrow n, .int i => if fitsBits n i then none else some .badCast
@@ -148,13 +148,12 @@ def UnFn.issue : UnFn → Value → Option Issue
     rangeIssue Time.tsMin Time.tsMax ts ts
   | .dayPart _, .date d => rangeIssue Time.dayMin Time.dayMax d d
   | .bucket k o, .ts ts => rangeIssue Time.tsMin Time.tsMax ts (Time.bucket k o ts)
-  | .fmath f, .float c => domainIssue (f.apply (FloatCode.canon c))
+  | .fmath f, .float c => domainIssue (f.apply c)
   | .decimal p _, v => match v.unscaled? with
     | some i => if fitsDigits p i then none else some .overflow
     | none => none
   -- NaN and ±∞ have no decimal.
-  | .ftod s, .float c =>
-    if (FloatCode.toDecimal? (FloatCode.canon c) s).isSome then none else some .badCast
+  | .ftod s, .float c => if (FloatCode.toDecimal? c s).isSome then none else some .badCast
   | .raise _, _ => some .raised
   | _, _ => none
 
@@ -198,28 +197,25 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .idiv, .int a, .int b =>
     if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
   | .imod, .int _, .int b | .imod, .tod _, .int b => if b = 0 then some .divByZero else none
-  -- A double divided by zero (`0.0` or `-0.0`, one zero under `ONE_ZERO`,
+  -- A double divided by zero, `0.0` or `-0.0` (the one zero of `ONE_ZERO`,
   -- D31): Substrait's `on_division_by_zero` = ERROR. The parser writes the
-  -- other options as a `CASE` around this (`Parse.divByZero`). Doubles are
-  -- read through `canon` (`BinFn.issue_canon`).
+  -- other options as a `CASE` around this (`Parse.divByZero`).
   | .fdiv, .float a, .float b =>
-    if FloatCode.canon b = 0 then some .divByZero else nanIssue .fdiv (FloatCode.canon a) (FloatCode.canon b)
+    if FloatCode.canon b = 0 then some .divByZero else nanIssue .fdiv a b
   | .fmod, .float a, .float b =>
-    if FloatCode.canon b = 0 then some .divByZero else nanIssue .fmod (FloatCode.canon a) (FloatCode.canon b)
-  | .fadd, .float a, .float b => nanIssue .fadd (FloatCode.canon a) (FloatCode.canon b)
-  | .fsub, .float a, .float b => nanIssue .fsub (FloatCode.canon a) (FloatCode.canon b)
-  | .fmul, .float a, .float b => nanIssue .fmul (FloatCode.canon a) (FloatCode.canon b)
-  | .fpow, .float a, .float b =>
-    if negInfPow (FloatCode.canon a) (FloatCode.canon b) then some .domain
-    else nanIssue .fpow (FloatCode.canon a) (FloatCode.canon b)
+    if FloatCode.canon b = 0 then some .divByZero else nanIssue .fmod a b
+  | .fadd, .float a, .float b => nanIssue .fadd a b
+  | .fsub, .float a, .float b => nanIssue .fsub a b
+  | .fmul, .float a, .float b => nanIssue .fmul a b
+  | .fpow, .float a, .float b => if negInfPow a b then some .domain else nanIssue .fpow a b
   | .ipow, .int a, .int b =>
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
     else if inI64 (a ^ b.toNat) then none else some .overflow
   | .strRepeat, .str s, .int n => if Text.repeatFits s n then none else some .overflow
   | .substr n _, .str _, .int a => if Text.substrInRange a n then none else some .domain
-  | .fatan2, .float y, .float x => domainIssue (atan2? (FloatCode.canon y) (FloatCode.canon x))
-  | .flogb, .float x, .float b => domainIssue (logb? (FloatCode.canon x) (FloatCode.canon b))
+  | .fatan2, .float y, .float x => domainIssue (atan2? y x)
+  | .flogb, .float x, .float b => domainIssue (logb? x b)
   | .bit op, .int a, .int b => domainIssue (op.apply a b)
   | _, _, _ => none
 
@@ -235,17 +231,14 @@ def BinFn.makesInf : BinFn → Bool
 def BinFn.infIssue (f : BinFn) (v w : Value) : Option Issue :=
   match v, w, f.apply v w with
   | .float a, .float b, .float r =>
-    if f.makesInf && isFiniteCode (FloatCode.canon a) && isFiniteCode (FloatCode.canon b) && isInfCode r then
-      some .infinite
-    else none
+    if f.makesInf && isFiniteCode a && isFiniteCode b && isInfCode r then some .infinite else none
   | _, _, _ => none
 
 /-- `exp` of a finite double whose result is `±∞` (#575): the other
 elementary functions of a finite double are finite, or a domain error. -/
 def UnFn.infIssue (f : UnFn) (v : Value) : Option Issue :=
   match f, v, f.apply v with
-  | .fmath .exp, .float a, .float r =>
-    if isFiniteCode (FloatCode.canon a) && isInfCode r then some .infinite else none
+  | .fmath .exp, .float a, .float r => if isFiniteCode a && isInfCode r then some .infinite else none
   | _, _, _ => none
 
 /-- The issue of a call: the error first, else an overflow to `±∞`. -/
