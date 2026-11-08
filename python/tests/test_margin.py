@@ -62,7 +62,7 @@ def test_the_checker_writes_the_check_and_the_rows_are_exact_given_it(having):
     assert r._margin_checks[0]["column"] == "total"
     assert r._rows_exact is not None and all(r._rows_exact.values())
     # No row cap: the SUM's bound is per group, from its own values.
-    assert r.epsilon["total"]["theorem"] == "FloatBounds.StdModel.epsilon_group"
+    assert (r._epsilon or {})["total"]["theorem"] == "FloatBounds.StdModel.epsilon_group"
     # Without the check the threshold rule refuses the plan, as before (#568).
     off = sv.verify(HAVING, requires=REQUIRES, on_inferred="off")
     assert off._margin_checks == []
@@ -96,7 +96,7 @@ def test_warn_keeps_the_flagged_groups_and_counts_them(having_warn):
         warnings.simplefilter("always")
         got = r.run(near, "duckdb").to_pylist()
     assert got == [{"customer_id": 2, "total": 5000.0}]
-    assert r.margin_flags == {"duckdb": 1}
+    assert r._margin_flags == {"duckdb": 1}
     assert any(isinstance(x.message, InferredWarning) and "group(s)" in str(x.message) for x in w)
 
 
@@ -117,7 +117,7 @@ def test_the_check_counts_what_its_formula_says(having_warn, groups):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         r.run(_con(ids, amounts), "duckdb")
-    assert r.margin_flags["duckdb"] == _flagged(groups, 1000.0)
+    assert r._margin_flags["duckdb"] == _flagged(groups, 1000.0)
 
 
 def test_a_group_with_no_values_is_not_flagged():

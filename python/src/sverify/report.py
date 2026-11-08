@@ -27,7 +27,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
-from sverify._unsupported import SverifyError
+from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
     Engine,
@@ -157,6 +157,19 @@ RUNTIME_CHECK = (
     "the job also checks it while it runs and raises if it happens; a bound on "
     "the column and on the rows of a group rules it out"
 )
+
+
+class InferredWarning(SverifyWarning):
+    """A precondition sverify inferred is assumed (`on_inferred="warn"`), or a
+    margin check flagged groups a run kept (#929).
+
+    Attributes:
+        report: The `Report` whose `inferred` preconditions are assumed.
+    """
+
+    def __init__(self, message: str, report: Report | None = None):
+        super().__init__(message)
+        self.report = report
 
 
 #: How a report explains a `SUM` it assumes fits (`Report.assumed`).
@@ -482,7 +495,7 @@ class Report:
     its bound's margin of the threshold (`Rel.marginCheck`). `run` runs each
     on the engine before the plan (`check_margins`); `rows_exact` holds
     given them."""
-    margin_flags: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
+    _margin_flags: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
     """After a run with `on_inferred="warn"`, per engine, the groups the
     margin checks flagged (#929): for those, the contract holds up to the
     sum's bound."""
@@ -951,13 +964,12 @@ class Report:
 
         Returns:
             The groups flagged; with `verify(on_inferred="warn")`, also
-            recorded in `margin_flags` and warned about (`InferredWarning`).
+            recorded in `_margin_flags` and warned about (`InferredWarning`).
 
         Raises:
             PreconditionError: A check flags a group, and the report was not
                 verified with `on_inferred="warn"`.
         """
-        from sverify.contracts import InferredWarning
 
         total = 0
         for chk in self._margin_checks:
@@ -978,7 +990,7 @@ class Report:
             else:
                 raise PreconditionError(msg)
         if self._on_inferred == "warn":
-            self.margin_flags[target] = total
+            self._margin_flags[target] = total
         return total
 
     def _assumed(self) -> list[Issue]:

@@ -157,6 +157,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     TIES_HINT,
     TRUNC_HINT,
     Condition,
+    InferredWarning,
     Issue,
     Needed,
     OnInferred,
@@ -916,18 +917,6 @@ def infer_bounds(
 
 
 OnUnproved = Literal["error", "check", "warn"]
-
-
-class InferredWarning(SverifyWarning):
-    """A precondition sverify inferred is assumed (`on_inferred="warn"`).
-
-    Attributes:
-        report: The `Report` whose `inferred` preconditions are assumed.
-    """
-
-    def __init__(self, message: str, report: Report | None = None):
-        super().__init__(message)
-        self.report = report
 
 
 class UnprovedWarning(SverifyWarning):

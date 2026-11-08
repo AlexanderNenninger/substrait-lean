@@ -306,7 +306,7 @@ The checker writes the check as a plan of its own (`Rel.marginCheck`,
 the reference's rows given it. `Report.run` runs it on the engine before the
 plan: a flagged group refuses the run with a `PreconditionError` that counts
 them, or, verified with `on_inferred="warn"`, a warning, the flagged groups
-kept up to the bound (`Report.margin_flags`).
+kept up to the bound, the warning counting them.
 A double `SUM` of exact values with no row cap has no number that bounds
 every group, but each group has its own bound: `"epsilon"` reports it as
 `"per_group"`, proved by `StdModel.epsilon_group`, in place of a missing
