@@ -907,6 +907,21 @@ class Dialect:
         """`SUM` of BIGINTs over a frame; must raise where it leaves 64 bits."""
         raise Unsupported(f"{self.name}: window sums are not implemented")
 
+    def var_nan(self, v: str, over: str, body: str) -> str:
+        """A variance's `body` (over the window `over`, or the group with
+        `""`) where a value of `v` may be NaN. The engine's own `VAR_*` and
+        `STDDEV_*` give NaN there, as `varOf` does (spark-var-pop-one-nan), so
+        the body stays. An engine whose variance of one NaN is 0 returns
+        `nan_through` instead."""
+        return body
+
+    def nan_through(self, v: str, over: str, body: str) -> str:
+        """`body`, or NaN where a value of `v` is NaN, as in `varOf`: the
+        NaN guard of DD-3 (`Stat.nanGuard_varStat`)."""
+        one = self.case_when(self.is_nan(v), self.int_lit(1), self.null("int"))
+        nans = f"COUNT({one}) {over}".rstrip()
+        return self.case_when(f"{nans} > {self.int_lit(0)}", self.float_lit(math.nan), body)
+
     def clamp_stat(self, fn: str, x: str) -> str:
         """The clamp shims of D30: a variance or deviation at least `0`, a
         correlation in `[-1, 1]`, NaN kept. The exact value lies in the
@@ -4035,7 +4050,7 @@ class _Writer:
                     )
                 body = d.canon(d.clamp_stat(m.fn, d.float_var(m.fn, shifted or v)))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
-                value = d.case_when(none, d.null("float"), self.nan_through(v, "", body))
+                value = d.case_when(none, d.null("float"), d.var_nan(v, "", body))
                 # Finite values whose variance overflows (#575), kept without
                 # guards; an infinity raises below.
                 value = self.agg_finite(value)
@@ -4295,7 +4310,7 @@ class _Writer:
         name = ("STDDEV_" if fn.startswith("std") else "VAR_") + ("SAMP" if sample else "POP")
         body = d.canon(d.clamp_stat(fn, f"{name}({v}) {w}"))
         none = f"COUNT({v}) {w} <= {d.int_lit(1 if sample else 0)}"
-        value = self.agg_finite(d.case_when(none, d.null("float"), self.nan_through(v, w, body)))
+        value = self.agg_finite(d.case_when(none, d.null("float"), d.var_nan(v, w, body)))
         if not d.guards:
             return value
         # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
@@ -4750,14 +4765,6 @@ class _Writer:
                 f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
             )
         return d.bool_lit(False)
-
-    def nan_through(self, v: str, over: str, body: str) -> str:
-        """A variance's `body`, or NaN where a value of `v` (over the window
-        `over`, or the group with `""`) is NaN, as in `varOf`: DuckDB's
-        `VAR_POP` of one NaN is 0.0 (upstream/bugs/DD-3.json)."""
-        d = self.d
-        nans = f"COUNT({d.case_when(d.is_nan(v), d.int_lit(1), d.null('int'))}) {over}".rstrip()
-        return d.case_when(f"{nans} > {d.int_lit(0)}", d.float_lit(math.nan), body)
 
     def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
         """An aggregate's `value`, raising where it is `±∞` though its values

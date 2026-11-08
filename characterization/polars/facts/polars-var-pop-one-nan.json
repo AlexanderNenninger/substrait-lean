@@ -1,0 +1,81 @@
+{
+  "id": "polars-var-pop-one-nan",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Streaming `group_by` of a one-row frame: `var(ddof=0)` and `std(ddof=0)` of NaN are 0",
+  "verdict": "NaN everywhere else; 0.0 for a group_by over an input of exactly one row whose value is NaN (or ±inf), on the streaming engine",
+  "area": "aggregates",
+  "options": [
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "var",
+    "std",
+    "group_by"
+  ],
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
+  "description": [
+    "Ungrouped, `var(ddof=0)` and `std(ddof=0)` of `[NaN]` and of `[NULL, NaN]` are NaN on both engines, as the reference. Grouped, a group whose only value is NaN is NaN when the frame has more rows: `[NaN, NULL]` in one group, or `[NaN]` beside a second group, and a frame filtered down to the one NaN row.",
+    "On the streaming engine, a `group_by(...).agg(var(ddof=0))` whose input is a one-row frame with NaN gives 0.0, with or without `maintain_order`; `+inf` gives 0.0 too. The in-memory engine gives NaN for both. It is DuckDB's DD-3 on a narrower path: a variance of one value finalized as 0 without looking at the value.",
+    "sverify's Polars path raises on an infinity before the variance (`DomainError`), so only the NaN reaches the result: a grouped `VAR_POP` of a one-row table holding NaN returns 0.0 where the reference gives NaN. The SQL writer's NaN guard (`Dialect.var_nan`) is DuckDB's and does not run on Polars; a guard in `polars_engine`'s `NativeAgg` for `var_*`/`std_*` would cover it."
+  ],
+  "reference": "`varOf` (`SubstraitLean/Aggregate.lean`, D30): NaN for a NaN among the values. Polars agrees except on this path.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "engine-leaks session (DD-3 guard as a dialect hook), polars 2.1.0, Python 3.12, macOS arm64",
+      "evidence": [
+        {
+          "sql": "pl.LazyFrame({'g': [1], 'x': [nan]}).group_by('g').agg(vp=pl.col('x').var(ddof=0), sp=pl.col('x').std(ddof=0)).collect(engine='streaming')",
+          "observed": "(1, 0.0, 0.0); engine='in-memory': (1, NaN, NaN)"
+        },
+        {
+          "sql": "pl.LazyFrame({'g': [1], 'x': [inf]}).group_by('g').agg(pl.col('x').var(ddof=0)).collect(engine='streaming')",
+          "observed": "(1, 0.0); engine='in-memory': (1, NaN)"
+        },
+        {
+          "sql": "pl.LazyFrame({'g': [1, 1], 'x': [nan, None]}).group_by('g').agg(var(ddof=0), std(ddof=0)), streaming and in-memory",
+          "observed": "(1, NaN, NaN)"
+        },
+        {
+          "sql": "pl.LazyFrame({'g': [1, 2], 'x': [nan, 1.0]}).group_by('g').agg(var(ddof=0), std(ddof=0)), streaming and in-memory",
+          "observed": "(1, NaN, NaN), (2, 0.0, 0.0)"
+        },
+        {
+          "sql": "pl.LazyFrame({'g': [1, 2, 3], 'x': [nan, 1.0, 2.0]}).filter(pl.col('g') == 1).group_by('g').agg(var(ddof=0)), streaming",
+          "observed": "(1, NaN)"
+        },
+        {
+          "sql": "pl.LazyFrame({'x': [nan]}).select(var(ddof=0), std(ddof=0), var(ddof=1)), streaming; also [None, nan] and [nan, 1.0]",
+          "observed": "(NaN, NaN, NULL); (NaN, NaN, NULL); (NaN, NaN, NaN)"
+        },
+        {
+          "sql": "pl.LazyFrame({'g': [1, 2], 'x': [nan, 1.0]}).select(pl.col('x').var(ddof=0).over('g')), streaming and in-memory",
+          "observed": "NaN, 0.0"
+        }
+      ],
+      "notes": "Not yet reported upstream, nor searched for in Polars's issues."
+    }
+  ],
+  "issues": [
+    54,
+    758
+  ]
+}

@@ -69,6 +69,11 @@ class DuckDBDialect(Dialect):
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"
         return self.cast(f"error({text})", kind)
 
+    def var_nan(self, v: str, over: str, body: str) -> str:
+        # `VAR_POP` and `STDDEV_POP` of one value are 0, NaN included
+        # (upstream/bugs/DD-3.json, duckdb-var-pop-one-value).
+        return self.nan_through(v, over, body)
+
     def trunc_div(self, a: str, b: str) -> str:
         # The dividend minus the remainder divides exactly, however `//` rounds. `%`
         # raises on `MIN % -1`, which is where the quotient overflows.

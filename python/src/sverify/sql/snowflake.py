@@ -322,6 +322,12 @@ class SnowflakeDialect(Dialect):
             "recorded privately)"
         )
 
+    def var_nan(self, v: str, over: str, body: str) -> str:
+        # A NaN among other values gives NaN, but Snowflake's variance of one
+        # NaN is not recorded (its population variance of one value is 0):
+        # the guard stays until it is (Snowflake behaviour recorded privately).
+        return self.nan_through(v, over, body)
+
     def stat_input(self, x: str, partition: Sequence[str]) -> str | None:
         # Snowflake's VAR_* and STDDEV_* of doubles cancel catastrophically on
         # values far from their mean (Snowflake behaviour recorded privately).

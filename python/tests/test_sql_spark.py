@@ -217,6 +217,23 @@ def test_groups_have_one_zero_and_one_nan(spark):
     assert sorted(repr(r) for r in got) == ["(0.0, 3)", "(None, 1)", "(nan, 1)"]
 
 
+def test_variance_of_one_nan(spark):
+    """Spark's `var_pop` and `stddev_pop` of one NaN are NaN
+    (spark-var-pop-one-nan), so its plan has no NaN guard: DD-3's is
+    DuckDB's (`DuckDBDialect.var_nan`)."""
+    from sverify import spark_engine
+
+    assert SPARK.var_nan("x", "", "body") == "body"
+    con = connect()
+    t = pa.table({"g": pa.array([1, 2, 2], pa.int64()), "x": pa.array([math.nan, math.nan, 1.0])})
+    put_table(con, "t", t)
+    sql = "SELECT g, var_pop(x) AS v, stddev_pop(x) AS s FROM t GROUP BY g"
+    plan = written_plan(substrait_json(con, sql))
+    got = sorted(tuple(r.values()) for r in spark_engine.run(plan, {"t": t}, spark).to_pylist())
+    assert [g for g, *_ in got] == [1, 2]
+    assert all(math.isnan(v) and math.isnan(s) for _, v, s in got)
+
+
 def test_integers(spark):
     d = SPARK
     big, lo = d.int_lit(2**62), d.int_lit(-(2**63))

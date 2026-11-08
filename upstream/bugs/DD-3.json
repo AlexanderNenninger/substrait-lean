@@ -6,13 +6,15 @@
   "status_note": "filed [#28329](https://github.com/duckdb/duckdb/issues/28329), open (reproduced); fix [#28344](https://github.com/duckdb/duckdb/pull/28344) open. Reproduces on 2.0.0 and the 2.0.1.dev2610291258 and 2.1.0.dev2610310630 nightlies.",
   "summary": "`VAR_POP` and `STDDEV_POP` of a single NaN are `0.0`, not NaN; with a second value they are NaN. IEEE and every other engine propagate the NaN.",
   "repro": "`select var_pop(x) from (values ('nan'::double)) t(x)` gives `0.0`",
-  "handling": "The SQL writer returns NaN when an input is NaN (#54)",
+  "handling": "DuckDB's SQL dialect returns NaN when an input is NaN (#54, `DuckDBDialect.var_nan`, `Dialect.nan_through`); the other dialects keep the engine's own `VAR_*`, which gives NaN (spark-var-pop-one-nan), except Snowflake's, whose variance of one NaN is not recorded",
   "found_by": "#54",
   "issues": [
     54
   ],
   "files": [
-    "python/src/sverify/sql/core/_base.py"
+    "python/src/sverify/sql/core/_base.py",
+    "python/src/sverify/sql/duckdb.py",
+    "python/src/sverify/sql/snowflake.py"
   ],
   "checked": [
     {
