@@ -85,6 +85,24 @@ tracks their proof (#1131): `EngineProfile.tracked` requires one. -/
 def ObsRow.tracking (r : ObsRow) (n : Nat) : ObsRow :=
   { r with evidence := r.evidence.tracking n, rerunEvidence := r.rerunEvidence.tracking n }
 
+/-- A double `SUM` or `AVG`'s `sum_order` row: within the plan's bound of the
+reference's correctly rounded sum, in each run (`StdModel.epsilon_sum_cr`, D25);
+`ids` are the facts behind it, `rerunIds` those behind its run-to-run variation. -/
+def ObsRow.fsumOrder (ids rerunIds : List String) (note : String := "") : ObsRow :=
+  ({ ObsRow.approxWithin "plan" ids with
+    note, rerun := some { floats := .within "plan" },
+    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr" rerunIds }).proved
+    "FloatBounds.StdModel.epsilon_sum_cr"
+
+/-- A double `SUM` or `AVG`'s `rounding` row: the standard model
+(`FloatBounds.StdModel`) holds of every rounding to nearest, whatever its tie
+rule, so `StdModel.epsilon_sum_cr` (and `epsilon_avg_cr` for `AVG`) bounds the
+engine's additions, each rounded, against the reference's sum, rounded once,
+within the plan's bound. `ids` are the facts that the engine's additions round
+to nearest and that its order is one `StdModel.Summed` covers; `note` says how. -/
+def ObsRow.fsumRounding (ids : List String) (note : String) : ObsRow :=
+  ({ ObsRow.approxWithin "plan" ids with note }).proved "FloatBounds.StdModel.epsilon_sum_cr"
+
 /-! ## DuckDB -/
 
 /-- DuckDB 2.0.0 under the settings `s`. -/
@@ -158,12 +176,12 @@ def Profile.duckdb.obs : ObsTable := [
   -- Which order depends on the parallel plan, so at two threads or more runs
   -- vary (3 to 4 values in 5 runs), each within the bound. `fsum` (Kahan)
   -- does not vary.
-  (none, "sum_order", ({ ObsRow.approxWithin "plan" ["duckdb-sum-double", "duckdb-avg-double"] with
-    note := "Sequential only at one thread; partials merged in finishing order at more threads or when spilled (ANY); a constant vector, or a constant-compressed segment, is added as one fl(k · x), which is not known to be a tree sum (#633). Every one of them is within the plan's bound of the reference's correctly rounded sum (StdModel.epsilon_sum_cr, D25).",
-    rerun := some { floats := .within "plan" },
-    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
-      ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }).proved
-    "FloatBounds.StdModel.epsilon_sum_cr"),
+  (none, "sum_order", ObsRow.fsumOrder ["duckdb-sum-double", "duckdb-avg-double"]
+    ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"]
+    "Sequential only at one thread; partials merged in finishing order at more threads or when spilled (ANY); a constant vector, or a constant-compressed segment, is added as one fl(k · x), which is not known to be a tree sum (#633). Every one of them is within the plan's bound of the reference's correctly rounded sum (StdModel.epsilon_sum_cr, D25)."),
+  (some "agg.fsum", "rounding", ObsRow.fsumRounding
+    ["duckdb-float-ieee", "duckdb-sum-double", "duckdb-avg-double"]
+    "Each addition rounds to nearest, ties to even (duckdb-float-ieee); the sum is sequential runs merged in any tree, with a constant run as one fl(k · x) (duckdb-sum-double), and AVG divides it once by the count (duckdb-avg-double): StdModel.TreeSum (its const case) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest."),
   (none, "avg_int_result", (ObsRow.native ["duckdb-R6"]).tracking 241),
   (none, "empty_group_aggregates", (ObsRow.native ["duckdb-sum-double", "duckdb-avg-int"]).tracking 241),
   (none, "null_order", (ObsRow.native ["duckdb-F2"]).tracking 241),
@@ -290,11 +308,12 @@ def Profile.polars.obs : ObsTable := [
   -- whatever the input's size: a grouped sum of [1e16, 1, 1, -1e16] gave 2.0,
   -- 1.0 and 0.0 over 200 runs on 10 threads (always 0.0 with
   -- POLARS_MAX_THREADS ≤ 2).
-  (none, "sum_order", ({ ObsRow.approxWithin "plan" ["polars-sum-float", "polars-mean-float"] with
-    rerun := some { floats := .within "plan" },
-    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
-      ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"] }).proved
-    "FloatBounds.StdModel.epsilon_sum_cr"),
+  (none, "sum_order", ObsRow.fsumOrder ["polars-sum-float", "polars-mean-float"]
+    ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"]),
+  (some "agg.fsum", "rounding", ObsRow.fsumRounding
+    ["polars-fp-ieee", "polars-sum-float-streaming", "polars-mean-float-streaming",
+      "polars-sum-float", "polars-mean-float"]
+    "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, in-memory group sums Kahan's (polars-sum-float), and mean divides the f64 sum once: StdModel.Summed (a tree or Kahan's sum) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["polars-window-agg"]).tracking 900),
   -- Schubert and Gertz's merge: no theorem yet, a fuzzed bound of
   -- `1.03 · n·u·√(Q'S)` on the co-moment (polars-var-bound, #918).
@@ -436,11 +455,11 @@ def Profile.spark.obs : ObsTable := [
   (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),
   -- Partial sums merged in the order the tasks finish: trees the reference
   -- allows, within #85's bound, varying run to run with the partitioning.
-  (none, "sum_order", ({ ObsRow.approxWithin "plan" ["spark-sum-double", "spark-avg-double"] with
-    rerun := some { floats := .within "plan" },
-    rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
-      ["spark-sum-double", "spark-avg-double", "spark-exec-parallel"] }).proved
-    "FloatBounds.StdModel.epsilon_sum_cr"),
+  (none, "sum_order", ObsRow.fsumOrder ["spark-sum-double", "spark-avg-double"]
+    ["spark-sum-double", "spark-avg-double", "spark-exec-parallel"]),
+  (some "agg.fsum", "rounding", ObsRow.fsumRounding
+    ["spark-double-arith", "spark-sum-double", "spark-avg-double"]
+    "Each addition is the JVM's, rounded to nearest, ties to even (spark-double-arith); the sum is plain additions in an order the partitioning sets (spark-sum-double), a FLOAT column summed in DOUBLE, and AVG divides it once by the count (spark-avg-double): StdModel.TreeSum and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest."),
   (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Shim.avg_trunc"),
   (none, "empty_group_aggregates", (ObsRow.native ["spark-sum-int", "spark-sum-double"]).tracking 271),
   -- Unstated, Spark puts NULLs first in an ascending key; the writer states

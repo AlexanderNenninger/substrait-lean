@@ -337,6 +337,24 @@ def test_a_plan_dependent_float_bound(con) -> None:
     assert route(sv.within(rel=1e-9), nested).evidence == "proved"
 
 
+def test_a_shim_does_not_lift_the_plans_bound(con) -> None:
+    """A row with a shim and a per-plan bound (DuckDB's VAR row, whose
+    `nan_through` handles NaN only) still refuses a tolerance its bound does
+    not meet: the census's `var-within-rel-cap`, `within(rel=1e-9)` against
+    abs = 1.78e-7."""
+    t = con.table("t")
+
+    def route(tolerance):
+        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
+        report._epsilon = {"v": {"abs": 1.77815e-07, "proved": True}}
+        plan = [_observed("stat_algo", {"floats": {"bound": "plan"}}, shim="nan_through")]
+        return _on_polars(report, cls="observed", observed=plan)
+
+    r = route(sv.within(rel=1e-9))
+    assert r.refused and "v is within abs=1.77815e-07" in r.reason
+    assert route(sv.within(abs=1e-6)).cls == "observed"
+
+
 def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     """#568's threshold rule, as the checker applies it: where a filter, key
     or sort on a double may keep other rows on the engine than on the

@@ -1629,7 +1629,10 @@ plan's bound, the distance of any order of additions from the exact sum
 (`StdModel.epsilon_sum` in [`float-bounds/`](float-bounds.md)) plus half an
 ulp of the final rounding (`epsilon_sum_cr`). Their `sum_order` rows stay
 `approxWithin "plan"`, so a double `SUM` or `AVG` on an engine is
-`observed (tolerance)`, as it was.
+`observed (tolerance)`, as it was. Their `agg.fsum` `rounding` rows are
+`approxWithin "plan"` too, proved by the same theorem (#929): its standard
+model holds of every rounding to nearest, whatever the tie rule, so the
+engine's rounded additions stay within the plan's bound.
 
 Three consequences:
 
