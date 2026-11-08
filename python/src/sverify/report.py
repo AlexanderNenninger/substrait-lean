@@ -33,6 +33,7 @@ from sverify.engine import (
     Engine,
     connection_of,
     plan_json,
+    run_guard_free,
     run_plan,
     written_plan,
 )
@@ -853,11 +854,11 @@ class Report:
                 already: the report's guarantee then holds only on data that
                 meets them, and a batch that does not may raise on the
                 engine. With the check, a guard-free plan on the reference's
-                route runs on Polars without the per-row checks the checker
-                discharged on data that meets them (`guard_free`,
-                `Rel.polars_sound`); the checks of the assumed `SUM`s and
-                `±∞` stay. Without it, and on the other engines, every check
-                stays.
+                route runs without the per-row checks the checker discharged
+                on data that meets them, on an engine whose writer a theorem
+                covers without them (`guard_free`; Polars, `Rel.polars_sound`);
+                the checks of the assumed `SUM`s and `±∞` stay. Without it,
+                and on the other engines, every check stays.
             streaming: On Polars, `"require"` refuses a plan any of whose
                 nodes runs on the in-memory engine
                 (`polars_engine.fallback_nodes`); `"allow"` (the default)
@@ -931,27 +932,31 @@ class Report:
         finite = self.semantics == "reference" or kind == "translated"
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
-        # translation, a guard-free plan runs without its per-row checks on
-        # the writers a theorem covers. Polars: `Rel.polars_sound`, which keeps
-        # the assumed issues' checks. DuckDB keeps every check until
-        # `Rel.duckdb_guardFree_sound` (#1169) covers its writer's guards.
-        discharged = (
+        # translation, a guard-free plan runs without its per-row checks on an
+        # engine whose writer a theorem covers without them, as the checker
+        # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
+        name = chosen.engine if chosen is not None else ""
+        theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
+        if (
             check_requires
             and kind == "translated"
             and self.semantics == "reference"
             and self._guard_free
-            and target == "polars"
-        )
-        out = run_plan(
-            con,
-            written_plan(self.internal_plan),
-            engine,
-            finite=finite,
-            # A proved report's `deterministic` justifies Spark's windows
-            # without a row-order tiebreak (`to_sql`'s `deterministic`).
-            tie_free=self.deterministic and kind != "unverified",
-            guards=not discharged,
-        )
+            and theorem is not None
+        ):
+            out = run_guard_free(
+                con, written_plan(self.internal_plan), name, theorem, finite=finite
+            )
+        else:
+            out = run_plan(
+                con,
+                written_plan(self.internal_plan),
+                engine,
+                finite=finite,
+                # A proved report's `deterministic` justifies Spark's windows
+                # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                tie_free=self.deterministic and kind != "unverified",
+            )
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)

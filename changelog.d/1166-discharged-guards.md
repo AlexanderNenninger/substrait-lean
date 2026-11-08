@@ -6,5 +6,5 @@
   `±∞` stay. On the catalogue's 52 proved plans, Polars's plans hold 107 guard
   columns where they held 206
   ([#1166](https://github.com/AlexanderNenninger/substrait-lean/issues/1166)).
-  With `check_requires=False`, and on the other engines, every check stays.
-- `sverify.engines.run` takes `guards=`, as `to_sql` does.
+  With `check_requires=False`, and on engines whose writer no theorem covers
+  without its guards (DuckDB, Spark, Snowflake), every check stays.

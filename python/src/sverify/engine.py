@@ -723,7 +723,6 @@ def run_plan(
     keep: Literal[False] = False,
     finite: bool = True,
     tie_free: bool = False,
-    guards: bool = True,
 ) -> pa.Table: ...
 
 
@@ -736,7 +735,6 @@ def run_plan(
     keep: bool,
     finite: bool = True,
     tie_free: bool = False,
-    guards: bool = True,
 ) -> pa.Table | Resident: ...
 
 
@@ -748,7 +746,6 @@ def run_plan(
     keep: bool = False,
     finite: bool = True,
     tie_free: bool = False,
-    guards: bool = True,
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. DataFusion runs it as
@@ -779,11 +776,6 @@ def run_plan(
             they run without a row-order tiebreak (`to_sql`'s
             `deterministic`). Default: False; `Report.run` and a stored
             node's refresh pass the report's fact.
-        guards: On DuckDB and Polars, write the run-time checks. False only
-            for a plan whose contract report is `guard_free`, on data that
-            meets its preconditions: the checks of the assumed issues stay
-            (`to_sql`'s `guards`; on Polars, `Rel.polars_sound`). Default:
-            True.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -848,17 +840,53 @@ def run_plan(
         # DuckDB reads `Scan` and `Resident` tables where they are.
         tables = {t: con.get(t) for t in read}
         if keep:
-            return duckdb_engine.run(plan_json, tables, keep=True, finite=finite, guards=guards)
-        return duckdb_engine.run(plan_json, tables, finite=finite, guards=guards)
+            return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
+        return duckdb_engine.run(plan_json, tables, finite=finite)
     tables = {t: con._arrow[t] for t in read}
     if engine == "polars":
         from sverify import polars_engine
 
-        checked = polars_engine.ALL_GUARDS if guards else polars_engine.NO_GUARDS
-        if not finite:
-            checked -= {polars_engine.InfiniteResult.issue}
-        return polars_engine.run(plan_json, tables, guards=checked)
+        guards = polars_engine.ALL_GUARDS - (
+            frozenset() if finite else {polars_engine.InfiniteResult.issue}
+        )
+        return polars_engine.run(plan_json, tables, guards=guards)
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+
+
+def _polars_guard_free(con: Connection, plan_json: str, finite: bool) -> pa.Table:
+    from sverify import polars_engine
+
+    checked = polars_engine.NO_GUARDS
+    if not finite:
+        checked -= {polars_engine.InfiniteResult.issue}
+    tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
+    return polars_engine.run(plan_json, tables, guards=checked)
+
+
+#: The writers that run a plan without the guards its contract report
+#: discharged (`guard_free`), keeping the assumed issues' checks, each with the
+#: theorem that says so; the checker names the theorem per engine
+#: (`"guard_free_theorem"`, `SubstraitLean/Realize.lean`).
+_GUARD_FREE_WRITERS = {"polars": ("Rel.polars_sound", _polars_guard_free)}
+
+
+def run_guard_free(
+    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool = True
+) -> pa.Table:
+    """Run a plan whose contract report is `guard_free` on `engine` without
+    its other per-row checks, on data that meets its preconditions.
+
+    Raises:
+        ValueError: No theorem covers the engine's writer without them, or
+            `theorem` is not the one that does.
+    """
+    found = _GUARD_FREE_WRITERS.get(engine)
+    if found is None or theorem != found[0]:
+        raise ValueError(
+            f"no theorem covers {engine}'s writer without its guards"
+            + (f" ({theorem} is not its writer's)" if theorem and found else "")
+        )
+    return found[1](con, plan_json, finite)
 
 
 def _rename_tables(node: object, names: dict[str, str]) -> None:
