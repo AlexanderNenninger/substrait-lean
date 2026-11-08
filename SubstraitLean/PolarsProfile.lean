@@ -9,7 +9,7 @@ import SubstraitLean.Parse
 `verify(semantics="polars")` is checked under: what Polars 2.1.0's streaming
 engine computes, as its facts record it (`characterization/polars/facts/`),
 on the options where sverify models Polars's own choice, and the reference
-elsewhere. Per option (D21, `docs/core-semantics.md`, "Polars as a profile"):
+elsewhere. Per option (D21, `docs/engine-profiles.md`, "Polars as a profile"):
 
 * `division_type`: `FLOOR`, Polars's own. Integer `//` floors and `%` takes
   the divisor's sign (polars-int-divide, polars-int-modulus).

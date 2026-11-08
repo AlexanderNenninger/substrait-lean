@@ -7,7 +7,7 @@ JSON document each in [facts/](facts/), in the format of
 them). They are the evidence `Profile.polars`
 (`SubstraitLean/PolarsProfile.lean`, the profile
 `verify(semantics="polars")` checks under; [Polars as a
-profile](../../docs/core-semantics.md#polars-as-a-profile)) and its row of the
+profile](../../docs/engine-profiles.md#polars-as-a-profile)) and its row of the
 realizability table are built from.
 
 Polars here is version 2.1.0, the version `python/uv.lock` pins: the Python
