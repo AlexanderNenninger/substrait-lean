@@ -533,6 +533,27 @@
             "tested"
           ]
         },
+        "facts": {
+          "description": "The engine facts behind the choices the class rests on.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "theorems": {
+          "description": "The Lean theorems that prove those choices, where they are proved.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "version": {
+          "description": "The engine version the facts were probed at.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "reason": {
           "type": "string"
         },
