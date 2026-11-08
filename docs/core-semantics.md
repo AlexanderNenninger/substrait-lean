@@ -55,7 +55,10 @@ engines    DuckDB · Polars · Spark · Snowflake · DataFusion (optional)
   `Rel.AllowedP_mono` proves that every result a profile allows the core
   allows. The reference profile (`Profile.reference`) makes the usual SQL
   choices: `ONE_ZERO`, `ONE_NAN`, `NAN_IS_NAN` and NaN `GREATEST`, and
-  raises on the edge cases where engines disagree. Substrait's profile
+  raises on the edge cases where engines disagree. For each option it picks
+  a behaviour every 1.0 engine has natively or reaches with a cheap shim in
+  the writers, such as `Dialect.canon` for `ONE_ZERO` or a stated
+  `NULLS LAST` ([principle 3](reference-semantics.md#principles)). Substrait's profile
   (`Profile.substrait`) is strict IEEE: two zeros, signed NaNs, and NaN
   unequal to itself in comparisons. Each engine has a profile of its own, from its facts. The
   profiles are siblings ([Terminology](#terminology)).
