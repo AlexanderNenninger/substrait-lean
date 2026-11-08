@@ -129,6 +129,32 @@ theorem onMag_mono {pos neg : Nat → Nat}
       by_cases h₁ : maxMag < mag c <;> by_cases h₂ : maxMag < mag d <;> simp only [h₁, h₂, hc, hd,
         ite_true, ite_false] <;> first | omega | (have := hpb _ (Nat.not_lt.mp h₁); omega)
 
+/-- Rounding a canonical code keeps it canonical: a finite result is `0` or
+odd, of magnitude at most `maxMag`, and NaN and `±∞` stay (D31). -/
+theorem canon_onMag {pos neg : Nat → Nat} (hp : ∀ m, m ≤ maxMag → pos m ≤ maxMag)
+    (hn : ∀ m, m ≤ maxMag → neg m ≤ maxMag) {c : Int} (hc : canon c = c) :
+    canon (onMag pos neg c) = onMag pos neg c := by
+  unfold onMag
+  split
+  · exact hc
+  · rename_i hm
+    have hm' : mag c ≤ maxMag := by omega
+    have := fp64.negZero_eq; have := fp64.negNan_eq
+    have : (fp64.maxMag : Int) = maxMag := rfl
+    apply fp64.canon_eq_self
+    show _ ≠ fp64.negZero ∧ _ ≠ fp64.negNan
+    have h1 := hn _ hm'; have h2 := hp _ hm'
+    split <;> (unfold code; split) <;> constructor <;> omega
+
+theorem canon_floor {c : Int} (hc : canon c = c) : canon (floor c) = floor c :=
+  canon_onMag floorMag_bound ceilMag_bound hc
+
+theorem canon_ceil {c : Int} (hc : canon c = c) : canon (ceil c) = ceil c :=
+  canon_onMag ceilMag_bound floorMag_bound hc
+
+theorem canon_round {c : Int} (hc : canon c = c) : canon (round c) = round c :=
+  canon_onMag roundMag_bound roundMag_bound hc
+
 theorem floor_mono {c d : Int} (h : c ≤ d) : floor c ≤ floor d :=
   onMag_mono floorMag_mono ceilMag_mono floorMag_bound ceilMag_bound h
 
