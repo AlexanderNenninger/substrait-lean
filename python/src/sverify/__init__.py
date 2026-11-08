@@ -34,7 +34,8 @@ and Snowflake.
   transform's contract for input schemas, without raising or reading data.
 * `connect` gives a connection of named in-memory tables, for Ibis
   expressions bound to data; `asof_join` matches each row with the latest
-  earlier row of another table, with operators Lean verifies.
+  earlier row of another table, as a plan of a join and a window that is
+  proved as any other.
 
 Engines, SQL dialects and plans are in `sverify.engines`, the exceptions in
 `sverify.errors`. `__version__` is the installed version.

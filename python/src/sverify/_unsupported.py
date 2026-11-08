@@ -11,8 +11,8 @@ from typing import ClassVar
 
 #: Where #271 is, for refusals: an engine that does not run a function yet.
 ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
-#: The end of a refusal of what only DuckDB runs.
-DUCKDB_ONLY = f"DuckDB runs it ({ISSUE_271})"
+#: The end of a refusal of what only DuckDB runs: its exit.
+DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 
 
 class SverifyError(Exception):

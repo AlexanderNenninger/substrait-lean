@@ -11,10 +11,10 @@ holds the order (`LAYERS`) and fails on an import against it.
 
 | Layer | Modules | Job |
 |---|---|---|
-| base | `_meta`, `_deprecated`, `_duration`, `_stages`, `_cursor`, `_unsupported`, `_plan_read`, `_user_text`, `_functions`, `black_box`, `_engines`, `_support`, `plan_json`, `_decimals`, `_polars_shims`, `_duckdb`, `_scan`, `_proof_cache`, `_checker`, `_lean_eval`, `_weighted`, `_hooks`, `_pipe`, `profiles` | The version and the checker protocol, deprecated names, durations, timings, cursors as JSON, errors, the engine table, the function tables, the plan JSON both frontends write, the reference's decimal types, running `substrait-check`, its cache of proofs and Lean's evaluation of plans, weighted row counts, the hooks, `Pipeable`, engine profiles from outside |
+| base | `_meta`, `_deprecated`, `_duration`, `_stages`, `_cursor`, `_unsupported`, `_plan_read`, `_user_text`, `_functions`, `black_box`, `_engines`, `_support`, `plan_json`, `_decimals`, `_polars_shims`, `_duckdb`, `_scan`, `_proof_cache`, `_checker`, `_lean_eval`, `_weighted`, `_hooks`, `_pipe`, `profiles` | The version and the checker protocol, deprecated names, durations, timings, cursors as JSON, errors, the engines the plugins name, the function tables, the plan JSON both frontends write, the reference's decimal types, running `substrait-check`, its cache of proofs and Lean's evaluation of plans, weighted row counts, the hooks, `Pipeable`, the plugin interface engines register through |
 | frontends | `ibis_substrait`, `sql_lift` | Ibis expressions and DuckDB SQL to Substrait plans |
 | writers and engines | `sql`, `duckdb_engine`, `polars_engine`, `spark_engine`, `datafusion_engine` | The SQL dialects and the engines that run a written plan |
-| checker | `engine`, `_engine_settings` | Connections, `plan_json`, `run_plan`, delta plans, the engines' settings |
+| checker | `engine`, `_engine_settings`, `_builtin` | Connections, `plan_json`, `run_plan`, delta plans, the engines' settings, sverify's own engines as plugins |
 | conditions | `observation`, `counterexample`, `conditions`, `_quarantine` | The table conditions and their checks on data, what a result is observed up to, the counterexample search, the rows a source sets aside |
 | report | `routes`, `report`, `report_json`, `substrait_export`, `_substrait_shims` | What a proof found (`Report`, `Issue`, the errors that carry a report), the routes a plan runs by, the report as JSON and as Substrait |
 | transform | `contracts` | `verify`, inferred preconditions, composition and provenance, `transform` |
