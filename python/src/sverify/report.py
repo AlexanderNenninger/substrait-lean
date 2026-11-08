@@ -481,6 +481,14 @@ class Report:
     same rows and groups under the columns' `ε` (#568's threshold rule): a
     comparison on a double whose threshold lies within `ε` of its range may
     flip. None where the checker does not say."""
+    _engines: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
+    """Per engine, the checker's verdict on the plan's translation from the
+    reference (`SubstraitLean/Realize.lean`, #1166): its class and evidence
+    over the options the proof depends on, the theorems and facts, the shims,
+    the options realized only up to an observation, what refuses it, and the
+    transfer check from each other profile. None from a checker without it."""
+    _sorted: bool | None = field(default=None, repr=False, compare=False)
+    """Whether the plan's result comes out of a sort, as the checker reads it."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
