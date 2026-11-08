@@ -229,14 +229,3 @@ def _polars_plans_stream(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(polars_engine, "collect", checked)
 
-
-# The checker reports each postcondition's ignored components (#1071); every
-# check in the suite compares them with Python's derivation, which goes once
-# they agree everywhere.
-def _cross_check_ignores() -> None:
-    from sverify import contracts
-
-    contracts._CROSS_CHECK_IGNORES = True
-
-
-_cross_check_ignores()
