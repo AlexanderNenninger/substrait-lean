@@ -176,7 +176,7 @@ needs an extension, a setting, a second connection, …). Rerun with:
 cd python && uv run python -m sverify_dev.slt --jobs 2
 ```
 
-Totals over 46322 queries of DuckDB's tests: 12011 agree, 24 disagree, 21692 refused, 12595 skipped (1035 files skipped whole). The fuzzer checked 42306 random queries on homelab and kept 17 distinct disagreements (`fuzz/*`).
+Totals over 46322 queries of DuckDB's tests: 12006 agree, 24 disagree, 21697 refused, 12595 skipped (1035 files skipped whole). The fuzzer checked 42306 random queries on homelab and kept 17 distinct disagreements (`fuzz/*`).
 
 <!-- slt:start -->
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
@@ -186,7 +186,7 @@ Totals over 46322 queries of DuckDB's tests: 12011 agree, 24 disagree, 21692 ref
 | [attach](attach.json) | 7 | 0 | 0 |  | 150 | 90 | 15 | lift 98, tables 52 |
 | [binder](binder.json) | 63 | 1 | 0 |  | 143 | 103 | 3 | lift 134, checker 9 |
 | [cast](cast.json) | 31 | 4 | 1 | engine 1 | 1027 | 175 | 2 | lift 682, checker 345 |
-| [catalog](catalog.json) | 112 | 0 | 0 |  | 412 | 673 | 4 | lift 404, tables 8 |
+| [catalog](catalog.json) | 109 | 0 | 0 |  | 415 | 673 | 4 | lift 404, tables 11 |
 | [collate](collate.json) | 4 | 1 | 0 |  | 31 | 232 | 7 | lift 30, checker 1 |
 | [conjunction](conjunction.json) | 0 | 0 | 0 |  | 3 | 0 | 0 | lift 3 |
 | [connect](connect.json) | 0 | 0 | 0 |  | 1 | 0 | 3 | lift 1 |
@@ -223,7 +223,7 @@ Totals over 46322 queries of DuckDB's tests: 12011 agree, 24 disagree, 21692 ref
 | [function/timestamp](function__timestamp.json) | 26 | 0 | 0 |  | 344 | 220 | 18 | lift 344 |
 | [function/timetz](function__timetz.json) | 0 | 0 | 0 |  | 30 | 42 | 2 | tables 27, lift 3 |
 | [function/tokenize](function__tokenize.json) | 0 | 0 | 0 |  | 0 | 0 | 2 |  |
-| [function/uuid](function__uuid.json) | 2 | 0 | 0 |  | 6 | 0 | 1 | lift 6 |
+| [function/uuid](function__uuid.json) | 0 | 0 | 0 |  | 8 | 0 | 1 | tables 4, lift 4 |
 | [function/variant](function__variant.json) | 0 | 0 | 0 |  | 92 | 48 | 8 | lift 92 |
 | [fuzz/eval_order](fuzz__eval_order.json) | 16183 | 0 | 0 |  | 0 | 0 | 0 |  |
 | [fuzz/float_arith](fuzz__float_arith.json) | 14530 | 0 | 0 |  | 0 | 0 | 0 |  |
