@@ -464,7 +464,11 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
 their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckArith, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
+    ``Outcome.ok_bind, ``DuckFn.eval, ``DuckFn.meaning, ``DuckFn.evalOwn, ``Semantics.profile,
+    ``DuckDBSQL.duck_fdiv_float, ``DuckDBSQL.duck_fmod_float, ``DuckDBSQL.duck_fadd_float,
+    ``DuckDBSQL.duck_fsub_float, ``DuckDBSQL.duck_fmul_float, ``DuckDBSQL.duck_fpow_float,
+    ``DuckDBSQL.duck_fmath_float, ``DuckDBSQL.duck_bin_null_l, ``DuckDBSQL.duck_bin_null_r,
+    ``DuckDBSQL.duck_un_null, ``DuckDBSQL.duck_itof, ``duckElementary, ``FMath.isLog, ``duckSign,
     ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
     ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
@@ -486,7 +490,8 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let intro ← if n == 1 then `(tactic| (intro x hx; cases x <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx))
     else `(tactic| (intro x y hx hy; cases x <;> cases y <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx hy))
   let cheap ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckFn.eval, ``DuckDBSQL.ref_itof]
+    ``Outcome.ok_bind, ``DuckFn.eval, ``DuckFn.meaning, ``DuckFn.evalOwn, ``Semantics.profile,
+    ``DuckDBSQL.ref_itof]
   `(tactic| (
     $intro:tactic
     all_goals try (simp only [$cheap,*]; exact Outcome.agree_refl _)
@@ -756,7 +761,8 @@ def elabGenerateLift : CommandElab := fun stx => do
   let ctors := (← getConstInfoInduct ``DuckFn).ctors
   let results ← liftTermElabM do
     -- Equation lemmas once, outside the attempts (a failed one discards them).
-    for d in [``BinFn.apply, ``BinFn.issue, ``UnFn.apply, ``UnFn.issue, ``DuckFn.eval, ``nanCase] do
+    for d in [``BinFn.apply, ``BinFn.issue, ``UnFn.apply, ``UnFn.issue, ``DuckFn.eval, ``DuckFn.evalOwn,
+        ``nanCase] do
       discard <| Meta.getEqnsFor? d
       discard <| Meta.getUnfoldEqnFor? d (nonRec := true)
     let sE ← instantiateMVars (← elabTermEnsuringType sStx (Lean.mkConst ``Semantics))

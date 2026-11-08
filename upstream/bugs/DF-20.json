@@ -1,0 +1,39 @@
+{
+  "id": "DF-20",
+  "status": "confirmed",
+  "status_note": "Reproduces on 55.0.0, the latest release (`not implemented`). `cardinality` of an empty list is fixed by 55.0.0 (`0`). No upstream issue found. Main not checked.",
+  "title": "The Substrait consumer has no `ListElement` reference",
+  "summary": "The Substrait consumer refuses a `ListElement` direct reference (`Direct reference with types other than StructField is not supported`), so a plan cannot index a list; and on 51.0.0 `cardinality([])` is NULL, where the reference (and 55.0.0) give 0.",
+  "repro": [
+    "The Substrait plan (Lean's `--write`) of `select [k, x][2] from a` fails: `This feature is not implemented: Direct reference with types other than StructField is not supported` (51.0.0 and 55.0.0).",
+    "`select cardinality(make_array())` gives NULL on 51.0.0, `0` on 55.0.0."
+  ],
+  "handling": "`--write-datafusion` refuses struct fields, list elements, `cardinality` and lambdas (`Expr.nestedAccess`, #94).",
+  "issues": [
+    94
+  ],
+  "files": [
+    "SubstraitLean/Write.lean",
+    "SubstraitCheck.lean"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "consumer and SQL repros; apache/datafusion searched"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "consumer and SQL repros; apache/datafusion searched"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}

@@ -396,7 +396,7 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     fun hp hP ⟨b, hb, rest⟩ =>
       let ⟨b', hb', hle⟩ := h _ hp b hb
       ⟨b', hb', hP b b' hle rest⟩
-  rintro (hc | ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩)
+  rintro (hc | ⟨r, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hsc⟩)
   · left
     cases f
     case quantile cont num scale =>
@@ -428,7 +428,7 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     have hp : (r.group, o, []) ∈ f.reads := by
       simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map]
       exact .inl ⟨o, ho, rfl⟩
-    exact ⟨r, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩
+    exact ⟨r, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩, hsc⟩
 
 theorem Measure.AllowedP.monoOn {I : Impl} {m : Measure} (h : ∀ p ∈ m.reads, t.LeAt u p)
     {rows : Relation} {v : Value} : m.AllowedP t I rows v → m.AllowedP u I rows v :=
@@ -531,16 +531,17 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
   let J := Impl.restrict r.ctors I
   have hag : Impl.AgreeOn r.ctors I J :=
     ⟨fun f hf v => by simp [J, Impl.restrict, hf], fun f hf v w => by simp [J, Impl.restrict, hf]⟩
-  have hx : ∀ c ∈ r.ctors, CallExtra t c → CallExtra u c :=
-    fun c hc ⟨row, hr, os, hos, o, ho, hi, b, hb, hn⟩ =>
-      ⟨row, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
-        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb, hn⟩
+  have hx : ∀ c ∈ r.ctors, ∀ args, CallExtra t c args → CallExtra u c args :=
+    fun c hc _ ⟨row, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hs⟩ =>
+      ⟨row, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
+        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb,
+        hn⟩, hs⟩
   refine ⟨J, ⟨fun f v => ?_, fun f v w => ?_⟩, ?_⟩
   · by_cases hf : Ctor.un f ∈ r.ctors
-    · simp only [J, Impl.restrict, hf, ite_true]; exact (hun f v).imp_right (hx _ hf)
+    · simp only [J, Impl.restrict, hf, ite_true]; exact (hun f v).imp_right (hx _ hf _)
     · left; simp [J, Impl.restrict, hf]
   · by_cases hf : Ctor.bin f ∈ r.ctors
-    · simp only [J, Impl.restrict, hf, ite_true]; exact (hbin f v w).imp_right (hx _ hf)
+    · simp only [J, Impl.restrict, hf, ite_true]; exact (hbin f v w).imp_right (hx _ hf _)
     · left; simp [J, Impl.restrict, hf]
   · exact Rel.AllowedI.monoOn h ((Rel.allowedI_congr hag out).mp ho)
 
@@ -608,7 +609,7 @@ def Rel.dependenciesJson (es : List EngineProfile) (r : Rel) : Json :=
         match t.tool with | .raise => "raise" | .choose => "choose" | .leaveOpen => "leave_open"))] ++
       (reportProfiles es).map fun (t, obs) => (t.name, Json.mkObj [
         ("choice", choiceAt t p), ("allows", toJson (t.allows p.1 p.2.1 p.2.2)),
-        ("row", rowAt obs p)]))).toArray),
+        ("row", rowAt obs p), ("version", toJson t.version)]))).toArray),
     ("transfer", Json.mkObj ((reportProfiles es).map fun (t, _) => (t.name,
       Json.mkObj ((reportProfiles es).map fun (u, _) => (u.name, toJson (transferB r t u)))))),
     ("functions", toJson r.functions),
@@ -650,8 +651,8 @@ def ObsTable.factsAt (obs : ObsTable) (group : Option String) (option : String) 
     | none => (obs.find? fun (x : Option String × String × ObsRow) =>
         x.1.isNone && x.2.1 == option).map fun (x : Option String × String × ObsRow) => x.2.2
   match row with
-  | some { evidence := .tested ids, .. } | some { evidence := .proved _ ids, .. } => ids
-  | some { evidence := .probed ids, .. } => ids
+  | some { evidence := .tested ids _, .. } | some { evidence := .proved _ ids, .. } => ids
+  | some { evidence := .probed ids _, .. } => ids
   | _ => []
 
 open Lean (Json toJson) in
