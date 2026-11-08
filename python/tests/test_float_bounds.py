@@ -5,9 +5,10 @@
   are within `γ` of the exact sum and mean (DuckDB adds in parallel, so the
   sharded bound applies), `VAR_*`/`STDDEV_*` within the generic co-moment
   bound `64 · n² · u · B²`, whatever algorithm DuckDB uses.
-* With a row cap (`sv.max_rows`), the checker bounds `SUM` and `AVG` of
-  doubles by the proved tolerance: `sv.approx(_.avg <= 100)` proves where the
-  exact `_.avg <= 100` does not, and signs are exact without a cap.
+* The checker bounds `SUM` and `AVG` of doubles as D25 computes them, rounded
+  once: an `AVG` of values in `[0, 100]` is in `[0, 100]`, with or without a
+  row cap, and a `SUM` of at most `n` of them is in `[0, 100 n]` with the cap
+  `sv.max_rows(n)`. Signs are exact without a cap.
 """
 
 import math
@@ -195,34 +196,36 @@ def test_averages_within_0_to_100_are_proved_up_to_rounding() -> None:
     assert report.proved, str(report)
 
 
-def test_exact_claims_that_rounding_breaks_are_not_proved() -> None:
+def test_an_average_keeps_its_range_exactly() -> None:
+    # D25 rounds the exact mean once, and 100 is a double: the mean of values
+    # at most 100 is at most 100, though not at most 99.
     report = sv.verify(
         rollup,
         requires={"metrics": [*CPU, sv.max_rows(10_000_000)]},
         ensures=[_.cpu_avg <= 100, sv.approx(_.cpu_avg <= 100, rel=1e-20), _.cpu_avg <= 99],
     )
-    assert [c.proved for c in report.ensures] == [False, False, False]
-    # The first misses only by rounding, and the report says so.
-    [hint] = [h for h in report._hints if "rounding" in h]
-    assert hint.startswith("(_.cpu_avg <= 100) holds up to rounding") and "sv.approx" in hint
-
-
-def test_without_a_row_cap_only_signs_are_proved() -> None:
-    report = sv.verify(
-        rollup,
-        requires={"metrics": CPU},
-        ensures=[_.cpu_avg >= 0, _.cpu_sum >= 0, sv.approx(_.cpu_avg <= 100)],
-    )
     assert [c.proved for c in report.ensures] == [True, True, False]
 
 
-def test_a_cap_too_large_for_the_bound_proves_nothing() -> None:
+def test_without_a_row_cap_a_sum_keeps_only_its_sign() -> None:
+    # A mean needs no count; a sum of an unknown number of values does.
+    report = sv.verify(
+        rollup,
+        requires={"metrics": CPU},
+        ensures=[_.cpu_avg >= 0, _.cpu_sum >= 0, _.cpu_avg <= 100, _.cpu_sum <= 100],
+    )
+    assert [c.proved for c in report.ensures] == [True, True, True, False]
+
+
+def test_a_large_cap_bounds_a_sum_by_its_count() -> None:
+    # `100 · 2⁴⁰` is a double, so the sum of at most `2⁴⁰` values at most 100
+    # rounds to at most it, and may reach it.
     report = sv.verify(
         rollup,
         requires={"metrics": [*CPU, sv.max_rows(2**40)]},
-        ensures=[sv.approx(_.cpu_avg <= 100)],
+        ensures=[_.cpu_avg <= 100, _.cpu_sum <= 100 * 2**40, _.cpu_sum <= 100 * 2**40 - 1],
     )
-    assert not report.proved
+    assert [c.proved for c in report.ensures] == [True, True, False]
 
 
 def test_negative_values_keep_their_sign() -> None:
@@ -370,16 +373,19 @@ def test_casts_of_rounded_aggregates_keep_their_bounds() -> None:
     )
     assert report.proved, str(report)
     assert not report.issues
-    # Rounding can take the sum past the exact bound, and its cast with it.
-    loose = sv.verify(casts, requires={"hosts": HOSTS}, ensures=[_.si <= 10_000_000_000])
-    assert not loose.proved
+    # The sum rounds once, and `10¹⁰` is a double: its cast keeps the bound.
+    exact = sv.verify(casts, requires={"hosts": HOSTS}, ensures=[_.si <= 10_000_000_000])
+    assert exact.proved
 
 
-def test_casts_of_rounded_aggregates_need_a_cap() -> None:
+def test_the_cast_of_a_sum_needs_a_cap() -> None:
     capless = [c for c in HOSTS if not isinstance(c, sv.contracts.MaxRows)]
-    rolled = hosts.group_by("host").aggregate(ai=hosts.cpu.mean().cast("int64"))
-    report = sv.verify(rolled, requires={"hosts": capless}, ensures=[_.ai >= 0])
+    total = hosts.group_by("host").aggregate(si=hosts.n.cast("float64").sum().cast("int64"))
+    report = sv.verify(total, requires={"hosts": capless}, ensures=[_.si >= 0])
     assert [i.kind for i in report.issues] == ["cast out of range"]
+    # A mean needs none.
+    mean = hosts.group_by("host").aggregate(ai=hosts.cpu.mean().cast("int64"))
+    assert not sv.verify(mean, requires={"hosts": capless}, ensures=[_.ai >= 0]).issues
 
 
 def test_a_decimal_too_narrow_for_the_bound_may_overflow() -> None:
