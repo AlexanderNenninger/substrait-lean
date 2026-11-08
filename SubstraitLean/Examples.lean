@@ -177,6 +177,7 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_lift
 #print axioms Substrait.Rel.incrementalK_sound
 #print axioms Substrait.Rel.delta_evalK_eq
+#print axioms Substrait.Rel.eval_eq_evalK
 #print axioms Substrait.Rel.evalK_lift
 #print axioms Substrait.Rel.evalK_mapW
 #print axioms Substrait.Rel.weighted_eval
