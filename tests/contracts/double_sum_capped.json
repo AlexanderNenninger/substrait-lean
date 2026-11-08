@@ -1,0 +1,833 @@
+{
+ "requires": [
+  {
+   "extensions": [
+    {
+     "extensionFunction": {
+      "functionAnchor": 1,
+      "name": "gte"
+     }
+    },
+    {
+     "extensionFunction": {
+      "functionAnchor": 2,
+      "name": "lte"
+     }
+    },
+    {
+     "extensionFunction": {
+      "functionAnchor": 3,
+      "name": "and"
+     }
+    }
+   ],
+   "relations": [
+    {
+     "root": {
+      "input": {
+       "project": {
+        "common": {
+         "emit": {
+          "outputMapping": [
+           5
+          ]
+         }
+        },
+        "input": {
+         "read": {
+          "baseSchema": {
+           "names": [
+            "k",
+            "a",
+            "b",
+            "x",
+            "s"
+           ],
+           "struct": {
+            "types": [
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "fp64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "string": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             }
+            ],
+            "nullability": "NULLABILITY_REQUIRED"
+           }
+          },
+          "namedTable": {
+           "names": [
+            "t"
+           ]
+          }
+         }
+        },
+        "expressions": [
+         {
+          "scalarFunction": {
+           "functionReference": 3,
+           "arguments": [
+            {
+             "value": {
+              "scalarFunction": {
+               "functionReference": 1,
+               "arguments": [
+                {
+                 "value": {
+                  "selection": {
+                   "directReference": {
+                    "structField": {
+                     "field": 1
+                    }
+                   },
+                   "rootReference": {}
+                  }
+                 }
+                },
+                {
+                 "value": {
+                  "cast": {
+                   "type": {
+                    "i64": {
+                     "nullability": "NULLABILITY_NULLABLE"
+                    }
+                   },
+                   "input": {
+                    "literal": {
+                     "i8": 0
+                    }
+                   },
+                   "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            },
+            {
+             "value": {
+              "scalarFunction": {
+               "functionReference": 2,
+               "arguments": [
+                {
+                 "value": {
+                  "selection": {
+                   "directReference": {
+                    "structField": {
+                     "field": 1
+                    }
+                   },
+                   "rootReference": {}
+                  }
+                 }
+                },
+                {
+                 "value": {
+                  "cast": {
+                   "type": {
+                    "i64": {
+                     "nullability": "NULLABILITY_NULLABLE"
+                    }
+                   },
+                   "input": {
+                    "literal": {
+                     "i16": 1000
+                    }
+                   },
+                   "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "names": [
+       "c"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "extensions": [
+    {
+     "extensionFunction": {
+      "functionAnchor": 1,
+      "name": "gte"
+     }
+    },
+    {
+     "extensionFunction": {
+      "functionAnchor": 2,
+      "name": "lte"
+     }
+    },
+    {
+     "extensionFunction": {
+      "functionAnchor": 3,
+      "name": "and"
+     }
+    }
+   ],
+   "relations": [
+    {
+     "root": {
+      "input": {
+       "project": {
+        "common": {
+         "emit": {
+          "outputMapping": [
+           5
+          ]
+         }
+        },
+        "input": {
+         "read": {
+          "baseSchema": {
+           "names": [
+            "k",
+            "a",
+            "b",
+            "x",
+            "s"
+           ],
+           "struct": {
+            "types": [
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "fp64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "string": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             }
+            ],
+            "nullability": "NULLABILITY_REQUIRED"
+           }
+          },
+          "namedTable": {
+           "names": [
+            "t"
+           ]
+          }
+         }
+        },
+        "expressions": [
+         {
+          "scalarFunction": {
+           "functionReference": 3,
+           "arguments": [
+            {
+             "value": {
+              "scalarFunction": {
+               "functionReference": 1,
+               "arguments": [
+                {
+                 "value": {
+                  "selection": {
+                   "directReference": {
+                    "structField": {
+                     "field": 2
+                    }
+                   },
+                   "rootReference": {}
+                  }
+                 }
+                },
+                {
+                 "value": {
+                  "cast": {
+                   "type": {
+                    "i64": {
+                     "nullability": "NULLABILITY_NULLABLE"
+                    }
+                   },
+                   "input": {
+                    "literal": {
+                     "i8": 1
+                    }
+                   },
+                   "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            },
+            {
+             "value": {
+              "scalarFunction": {
+               "functionReference": 2,
+               "arguments": [
+                {
+                 "value": {
+                  "selection": {
+                   "directReference": {
+                    "structField": {
+                     "field": 2
+                    }
+                   },
+                   "rootReference": {}
+                  }
+                 }
+                },
+                {
+                 "value": {
+                  "cast": {
+                   "type": {
+                    "i64": {
+                     "nullability": "NULLABILITY_NULLABLE"
+                    }
+                   },
+                   "input": {
+                    "literal": {
+                     "i8": 100
+                    }
+                   },
+                   "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "names": [
+       "c"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "extensions": [
+    {
+     "extensionFunction": {
+      "functionAnchor": 1,
+      "name": "gte"
+     }
+    },
+    {
+     "extensionFunction": {
+      "functionAnchor": 2,
+      "name": "lte"
+     }
+    },
+    {
+     "extensionFunction": {
+      "functionAnchor": 3,
+      "name": "and"
+     }
+    }
+   ],
+   "relations": [
+    {
+     "root": {
+      "input": {
+       "project": {
+        "common": {
+         "emit": {
+          "outputMapping": [
+           5
+          ]
+         }
+        },
+        "input": {
+         "read": {
+          "baseSchema": {
+           "names": [
+            "k",
+            "a",
+            "b",
+            "x",
+            "s"
+           ],
+           "struct": {
+            "types": [
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "i64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "fp64": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             },
+             {
+              "string": {
+               "nullability": "NULLABILITY_NULLABLE"
+              }
+             }
+            ],
+            "nullability": "NULLABILITY_REQUIRED"
+           }
+          },
+          "namedTable": {
+           "names": [
+            "t"
+           ]
+          }
+         }
+        },
+        "expressions": [
+         {
+          "scalarFunction": {
+           "functionReference": 3,
+           "arguments": [
+            {
+             "value": {
+              "scalarFunction": {
+               "functionReference": 1,
+               "arguments": [
+                {
+                 "value": {
+                  "selection": {
+                   "directReference": {
+                    "structField": {
+                     "field": 3
+                    }
+                   },
+                   "rootReference": {}
+                  }
+                 }
+                },
+                {
+                 "value": {
+                  "cast": {
+                   "type": {
+                    "fp64": {
+                     "nullability": "NULLABILITY_NULLABLE"
+                    }
+                   },
+                   "input": {
+                    "literal": {
+                     "i8": 0
+                    }
+                   },
+                   "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            },
+            {
+             "value": {
+              "scalarFunction": {
+               "functionReference": 2,
+               "arguments": [
+                {
+                 "value": {
+                  "selection": {
+                   "directReference": {
+                    "structField": {
+                     "field": 3
+                    }
+                   },
+                   "rootReference": {}
+                  }
+                 }
+                },
+                {
+                 "value": {
+                  "cast": {
+                   "type": {
+                    "fp64": {
+                     "nullability": "NULLABILITY_NULLABLE"
+                    }
+                   },
+                   "input": {
+                    "literal": {
+                     "i8": 1
+                    }
+                   },
+                   "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                  }
+                 }
+                }
+               ]
+              }
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "names": [
+       "c"
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "ensures": [
+  {
+   "extensions": [
+    {
+     "extensionFunction": {
+      "functionAnchor": 1,
+      "name": "sum"
+     }
+    },
+    {
+     "extensionFunction": {
+      "functionAnchor": 2,
+      "name": "gte"
+     }
+    }
+   ],
+   "relations": [
+    {
+     "root": {
+      "input": {
+       "project": {
+        "common": {
+         "emit": {
+          "outputMapping": [
+           2
+          ]
+         }
+        },
+        "input": {
+         "aggregate": {
+          "input": {
+           "read": {
+            "baseSchema": {
+             "names": [
+              "k",
+              "a",
+              "b",
+              "x",
+              "s"
+             ],
+             "struct": {
+              "types": [
+               {
+                "i64": {
+                 "nullability": "NULLABILITY_NULLABLE"
+                }
+               },
+               {
+                "i64": {
+                 "nullability": "NULLABILITY_NULLABLE"
+                }
+               },
+               {
+                "i64": {
+                 "nullability": "NULLABILITY_NULLABLE"
+                }
+               },
+               {
+                "fp64": {
+                 "nullability": "NULLABILITY_NULLABLE"
+                }
+               },
+               {
+                "string": {
+                 "nullability": "NULLABILITY_NULLABLE"
+                }
+               }
+              ],
+              "nullability": "NULLABILITY_REQUIRED"
+             }
+            },
+            "namedTable": {
+             "names": [
+              "t"
+             ]
+            }
+           }
+          },
+          "groupingExpressions": [
+           {
+            "selection": {
+             "directReference": {
+              "structField": {
+               "field": 0
+              }
+             },
+             "rootReference": {}
+            }
+           }
+          ],
+          "groupings": [
+           {
+            "expressionReferences": [
+             0
+            ]
+           }
+          ],
+          "measures": [
+           {
+            "measure": {
+             "functionReference": 1,
+             "arguments": [
+              {
+               "value": {
+                "selection": {
+                 "directReference": {
+                  "structField": {
+                   "field": 3
+                  }
+                 },
+                 "rootReference": {}
+                }
+               }
+              }
+             ],
+             "invocation": "AGGREGATION_INVOCATION_ALL"
+            }
+           }
+          ]
+         }
+        },
+        "expressions": [
+         {
+          "scalarFunction": {
+           "functionReference": 2,
+           "arguments": [
+            {
+             "value": {
+              "selection": {
+               "directReference": {
+                "structField": {
+                 "field": 1
+                }
+               },
+               "rootReference": {}
+              }
+             }
+            },
+            {
+             "value": {
+              "cast": {
+               "type": {
+                "fp64": {
+                 "nullability": "NULLABILITY_NULLABLE"
+                }
+               },
+               "input": {
+                "literal": {
+                 "i8": 0
+                }
+               },
+               "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+              }
+             }
+            }
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "names": [
+       "(_.s >= 0)"
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "transform": {
+  "extensions": [
+   {
+    "extensionFunction": {
+     "functionAnchor": 1,
+     "name": "sum"
+    }
+   }
+  ],
+  "relations": [
+   {
+    "root": {
+     "input": {
+      "aggregate": {
+       "input": {
+        "read": {
+         "baseSchema": {
+          "names": [
+           "k",
+           "a",
+           "b",
+           "x",
+           "s"
+          ],
+          "struct": {
+           "types": [
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "fp64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "string": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            }
+           ],
+           "nullability": "NULLABILITY_REQUIRED"
+          }
+         },
+         "namedTable": {
+          "names": [
+           "t"
+          ]
+         }
+        }
+       },
+       "groupingExpressions": [
+        {
+         "selection": {
+          "directReference": {
+           "structField": {
+            "field": 0
+           }
+          },
+          "rootReference": {}
+         }
+        }
+       ],
+       "groupings": [
+        {
+         "expressionReferences": [
+          0
+         ]
+        }
+       ],
+       "measures": [
+        {
+         "measure": {
+          "functionReference": 1,
+          "arguments": [
+           {
+            "value": {
+             "selection": {
+              "directReference": {
+               "structField": {
+                "field": 3
+               }
+              },
+              "rootReference": {}
+             }
+            }
+           }
+          ],
+          "invocation": "AGGREGATION_INVOCATION_ALL"
+         }
+        }
+       ]
+      }
+     },
+     "names": [
+      "k",
+      "s"
+     ]
+    }
+   }
+  ]
+ },
+ "keys": {
+  "t": []
+ },
+ "ensures_keys": [],
+ "references": {
+  "t": []
+ },
+ "max_rows": {
+  "t": 1000
+ },
+ "rows_per": {},
+ "observation": {
+  "coarsens": [
+   "rows",
+   "floats"
+  ],
+  "floats_plan": true,
+  "approx": [
+   false
+  ],
+  "sql": false
+ }
+}
