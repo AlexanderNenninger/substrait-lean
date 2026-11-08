@@ -15,8 +15,8 @@ order:
 
 1. **Native:** the function itself, `f(#0, #1)`, unless the engine does not
    have it (`fns`, such as `UnFn.fit`).
-2. **Hand-written schema** (`schema?`), where the search does not reach: the
-   wrap-around of `overflow` = `SILENT`.
+2. **Hand-written schema** (`Schemas`, the engine's own), where the search
+   does not reach: for DuckDB, the wrap-around of `overflow` = `SILENT`.
 3. **Guarded:** `CASE WHEN g THEN r ELSE f(#0, #1) END`, where `r` raises with
    the reference's message (`UnFn.raise`, DuckDB's `error()`) or is a
    constant, and the guard `g` is a predicate over the arguments built from
@@ -270,105 +270,13 @@ def fmathTerm (f : FMath) : Lean.Expr :=
 /-- `#i = ±∞`. -/
 def isInfT (x : Tm) : Tm := orFn (eqFn x posInfT) (eqFn x negInfT)
 
-/-- The guard on which a double operation makes a NaN of numbers (`nanCase`),
-atom for atom. -/
-def nanGuard : BinFn → Option Tm
-  | .fadd => some (orFn (andFn (eqFn (.field 0) posInfT) (eqFn (.field 1) negInfT))
-      (andFn (eqFn (.field 0) negInfT) (eqFn (.field 1) posInfT)))
-  | .fsub => some (orFn (andFn (eqFn (.field 0) posInfT) (eqFn (.field 1) posInfT))
-      (andFn (eqFn (.field 0) negInfT) (eqFn (.field 1) negInfT)))
-  | .fmul => some (orFn (andFn (eqFn (.field 0) (.lit (.float 0))) (isInfT (.field 1)))
-      (andFn (isInfT (.field 0)) (eqFn (.field 1) (.lit (.float 0)))))
-  | .fdiv => some (andFn (isInfT (.field 0)) (isInfT (.field 1)))
-  | .fmod => some (andFn (isInfT (.field 0)) (notFn (eqFn (.field 1) nanT)))
-  | .fpow => some (andFn (andFn (ltFn negInfT (.field 0)) (ltFn (.field 0) (.lit (.float 0))))
-      (andFn (andFn (ltFn negInfT (.field 1)) (ltFn (.field 1) posInfT))
-        (notFn (eqFn (ffloorFn (.field 1)) (.field 1)))))
-  | _ => none
-
-/-- `CASE WHEN x IS NOT NULL AND y = 0 THEN error ELSE e END`: a zero divisor
-raises, `NULL / 0` stays `NULL`. `x` is of one of the kinds `ks`, `0` of kind
-`k` (#923). -/
-def zeroGuard (ks : List NumKind) (k : NumKind) (e : Tm) : Tm :=
-  let isNum := match ks with
-    | [] => Tm.lit (.bool false)
-    | k :: ks => ks.foldl (fun g k => orFn g (isNumFn k (.field 0))) (isNumFn k (.field 0))
-  .ite (andFn isNum (eqFn (.field 1) (.lit (k.val 0))))
-    (.raise "division by zero" (.field 1)) e
-
-/-- **Hand-written template schemas,** for constructs the search does not
-reach (#241, #242). Each instance is still proved, by the kernel.
-
-* `overflow` = `SILENT` wraps around at a width, which takes arithmetic rather
-  than a `CASE`: `CASE WHEN x IS NOT NULL THEN ((x + h) % m + m) % m - h ELSE x
-  END` in 128-bit integers (`BinFn.dadd`, `dsub`, `imod`), with `h = 2^(w-1)`
-  and `m = 2^w`.
-* An elementary function raises outside its domain (`FMath.inDomain`), where
-  DuckDB gives NaN or `-∞`: `CASE WHEN x < lo OR (hi < x AND x <> NaN) THEN
-  error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`. -/
-def schema? : UnFn → Option Tm
-  | .fit .silent w =>
-    let h := w.half
-    let m := w.modulus
-    let x := Tm.field 0
-    some (.ite (isNumFn .int x)
-      (dsubFn (imodFn (daddFn (imodFn (daddFn x (.lit (.int h))) (.lit (.int m))) (.lit (.int m)))
-        (.lit (.int m))) (.lit (.int h))) x)
-  | .fmath f =>
-    let x := Tm.field 0
-    -- The bounds as `FMath.lo?` and `FMath.hi?` write them, by name, so that
-    -- the proofs treat `±1` and `±∞` as the variables they generalize to.
-    let c (n : Lean.Name) := Lean.mkConst n
-    let op (h i inst : Lean.Name) (a : Lean.Expr) : Lean.Expr :=
-      mkApp6 (Lean.mkConst h [Level.zero, Level.zero, Level.zero]) (c ``Int) (c ``Int) (c ``Int)
-        (mkApp2 (Lean.mkConst i [Level.zero]) (c ``Int) (c inst)) a (toExpr (1 : Int))
-    let term (v : Int) : Lean.Expr :=
-      if v == FloatCode.negOne then c ``FloatCode.negOne
-      else if v == FloatCode.one then c ``FloatCode.one
-      else if v == FloatCode.negInf + 1 then op ``HAdd.hAdd ``instHAdd ``Int.instAdd (c ``FloatCode.negInf)
-      else if v == FloatCode.posInf - 1 then op ``HSub.hSub ``instHSub ``Int.instSub (c ``FloatCode.posInf)
-      else toExpr v
-    let bound (v : Int) (l : String) : Tm := namedFloat v (term v) l
-    let lo := f.lo?.map fun v => ltFn x (bound v s!"lo({f.name})")
-    let hi := f.hi?.map fun v =>
-      andFn (ltFn (bound v s!"hi({f.name})") x) (notFn (eqFn x nanT))
-    let g := match lo, hi with
-      | some a, some b => some (orFn a b)
-      | some a, none => some a
-      | none, some b => some b
-      | none, none => none
-    g.map fun g => .ite g (.raise "domain error" x) (.self [x])
-  | _ => none
-
-/-- Hand-written schemas of binary constructs (#242), for DuckDB's IEEE
-operations:
-
-* `+ - * / % ^` of doubles raise where the reference does: a zero divisor
-  (`zeroGuard`), and the operands of which IEEE 754 makes a NaN (`nanGuard`),
-  where DuckDB gives NaN or `±∞`.
-* `%` of integers is `0` by `-1`, where DuckDB raises on `MIN % -1`.
-* `>>` raises on a shift outside `0`–`63`, where DuckDB gives `0`. -/
-def schemaBin? (f : BinFn) : Option Tm :=
-  let self := Tm.self [.field 0, .field 1]
-  let nan (e : Tm) : Option Tm := (nanGuard f).map fun g => .ite g (.raise "domain error" (.field 1)) e
-  match f with
-  | .fdiv | .fmod => (nan self).map (zeroGuard [.float] .float)
-  -- `(-∞) ^ y` for a finite `y` that is not an integer raises too
-  -- (`negInfPow`), where DuckDB gives `+∞` or `0`.
-  | .fpow => (nanGuard .fpow).map fun g =>
-    .ite (orFn g (andFn (eqFn (.field 0) negInfT) (andFn (andFn (ltFn negInfT (.field 1))
-      (ltFn (.field 1) posInfT)) (notFn (eqFn (ffloorFn (.field 1)) (.field 1))))))
-      (.raise "domain error" (.field 1)) self
-  | .imod => some (zeroGuard [.int, .tod] .int
-      (.ite (andFn (eqFn (.field 1) (.lit (.int (-1)))) (isNumFn .int (.field 0))) (.lit (.int 0)) self))
-  -- `<<` is `Lowering.shlTemplate`, written and proved by hand
-  -- (`Lowering.bit_shl_agree`): the tactic does not reach it in time.
-  | .bit .shl => some (.expr Lowering.shlTemplate (Lean.mkConst ``Lowering.shlTemplate)
-      "shl: error outside 0-63, else wrap64(#0 * 2^#1)")
-  | .bit .shr => some (.ite (andFn (isNumFn .int (.field 0))
-      (orFn (ltFn (.field 1) (.lit (.int 0))) (notFn (ltFn (.field 1) (.lit (.int 64))))))
-      (.raise "domain error" (.field 1)) self)
-  | _ => nan self
+/-- **An engine's hand-written template schemas** (#241, #242), for the
+constructs the search does not reach: a construct's schema is tried before the
+search. Each instance is still proved, by the kernel. DuckDB's are
+`duckdbSchemas` (`SubstraitLean/LoweringDuckDB/Schemas.lean`). -/
+structure Schemas where
+  un : UnFn → Option Tm := fun _ => none
+  bin : BinFn → Option Tm := fun _ => none
 
 partial def Tm.hasSelf : Tm → Bool
   | .field _ | .lit _ | .named .. | .expr .. => false
@@ -643,12 +551,26 @@ def instances (c : Name) (unary : Bool) : MetaM (Option (List Construct)) := do
       combos := combos.flatMap fun a => iv.ctors.map a.push
     return some (combos.map fun a => ⟨c, unary, a⟩)
 
+/-- `finite_values% T`: the values of the inductive `T` (`UnFn`, `BinFn`) whose
+constructor has no fields, or only fields of types of constructors without
+fields (`instances`): every function a table's export may list, from the type
+itself, so a new constructor is listed without anyone adding it. -/
+elab "finite_values% " t:ident : term => do
+  let ind ← realizeGlobalConstNoOverloadWithInfo t
+  let mut out : Array Lean.Expr := #[]
+  for c in (← getConstInfoInduct ind).ctors do
+    if (← getConstInfoCtor c).numFields == 0 then
+      out := out.push (Lean.mkConst c)
+    else if let some ks ← instances c true then
+      out := out ++ (ks.map fun k => mkAppN (Lean.mkConst c) (k.args.map Lean.mkConst)).toArray
+  mkListLit (Lean.mkConst ind) out.toList
+
 /-- Search for a template for the construct `k`, test the candidates on the
 samples, prove the first that passes, and emit `tbl.k_agree` and the entry
 `tbl.k`. Hand-written schemas come first; a construct the engine does not
 have (`excluded`) gets no template that calls it. -/
-def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excluded : Bool)
-    (k : Construct) (hint? : Option String := none) (sink : Option Sink := none) :
+def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) (tac : Syntax)
+    (excluded : Bool) (k : Construct) (hint? : Option String := none) (sink : Option Sink := none) :
     TermElabM (Except String String) := do
   let unary := k.unary
   let n := if unary then 1 else 2
@@ -661,8 +583,8 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
     let (ref, mk) ← sampleFns sample unary
     let rows := if unary then (samples ++ boundarySamples).map ([·]) else sampleRows n
     let msg := rows.findSome? fun row => match ref row with | .error k => some k.name | .ok _ => none
-    let schema ← if unary then pure ((schema? (← evalUnFn sample)).map (·, true))
-      else pure ((schemaBin? (← evalBinFn sample)).map (·, true))
+    let schema ← if unary then pure ((schemas.un (← evalUnFn sample)).map (·, true))
+      else pure ((schemas.bin (← evalBinFn sample)).map (·, true))
     -- The plain call is tried as a candidate for an instance (`fmath .atan`):
     -- its constructor as a whole is not native.
     -- Guards compare with constants of the construct's kind (#923).
@@ -748,16 +670,20 @@ def guardFns : List Name :=
 
 syntax (name := generateLowering) "generate_lowering " ident " : " term
   " unfolding " "[" ident,* "]" " using " "[" ident,* "]" " excluding " "[" ident,* "]"
-  (" cache " ident)? (" writing " str)? : command
+  (" hand_written " ident)? (" cache " ident)? (" writing " str)? : command
 
 unsafe def evalHintsImpl (n : Name) : TermElabM (List LoweringHint) := do
   Meta.evalExpr (List LoweringHint) (← mkAppM ``List #[Lean.mkConst ``LoweringHint]) (Lean.mkConst n)
 @[implemented_by evalHintsImpl] opaque evalHints (n : Name) : TermElabM (List LoweringHint)
 
-/-- `generate_lowering L : p unfolding [defs] using [lemmas] excluding [ctors] cache hints`:
+unsafe def evalSchemasImpl (n : Name) : TermElabM Schemas := evalConst Schemas n
+@[implemented_by evalSchemasImpl] opaque evalSchemas (n : Name) : TermElabM Schemas
+
+/-- `generate_lowering L : p unfolding [defs] using [lemmas] excluding [ctors] hand_written S cache hints`:
 `defs` unfold the profile, `lemmas` help the proofs, `ctors` are functions the
-engine does not have, which every template must avoid, and `hints` (optional,
-a `List LoweringHint`) the templates to try first. -/
+engine does not have, which every template must avoid, `S` (optional, a
+`Schemas`) the engine's hand-written schemas, and `hints` (optional, a
+`List LoweringHint`) the templates to try first. -/
 @[command_elab generateLowering]
 def elabGenerateLowering : CommandElab := fun stx => do
   Generated.requireChecked "generate_lowering"
@@ -768,9 +694,11 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let unfold ← names 6
   let extra ← names 10
   let excluded ← names 14
-  let cacheName ← if stx[16].isNone then pure none
+  let schemasName ← if stx[16].isNone then pure none
     else some <$> liftCoreM (realizeGlobalConstNoOverloadWithInfo stx[16][1])
-  let writeDir : Option String := if stx[17].isNone then none else stx[17][1].isStrLit?
+  let cacheName ← if stx[17].isNone then pure none
+    else some <$> liftCoreM (realizeGlobalConstNoOverloadWithInfo stx[17][1])
+  let writeDir : Option String := if stx[18].isNone then none else stx[18][1].isStrLit?
   let sink : Option Sink ← if writeDir.isSome then some <$> IO.mkRef #[] else pure none
   let ctors ← [(``UnFn, true), (``BinFn, false)].flatMapM fun (ind, unary) => do
     return (← getConstInfoInduct ind).ctors.map (·, unary)
@@ -779,6 +707,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
     let pE ← instantiateMVars (← elabTermEnsuringType pStx (Lean.mkConst ``Profile))
     let p ← evalProfile pE
     let hints ← match cacheName with | some n => evalHints n | none => pure []
+    let schemas ← match schemasName with | some n => evalSchemas n | none => pure ({} : Schemas)
     let hintOf (k : Construct) : Option String :=
       (hints.find? fun h => h.table == short.toString && h.construct == k.label && !h.template.isEmpty).map
         (·.template)
@@ -804,7 +733,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
       for k in ks do
         let t0 ← IO.monoMsNow
         let t := tac
-        let how ← withCurrHeartbeats (lowerSearch tbl pE p t (excluded.contains c) k (hintOf k) sink)
+        let how ← withCurrHeartbeats (lowerSearch tbl pE p schemas t (excluded.contains c) k (hintOf k) sink)
         done := done.push (k, how, (← IO.monoMsNow) - t0)
       results := results.push (c, some done)
     return (results, natives, ← ppSource pE)
