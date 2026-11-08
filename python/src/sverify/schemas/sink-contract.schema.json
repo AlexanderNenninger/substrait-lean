@@ -49,7 +49,7 @@
       "additionalProperties": {"type": "string"}
     },
     "cursors": {
-      "description": "The cursor of each source whose cursors last across processes (Source.restore), at its version in `sources`, as sverify.io._common.cursor_json encodes it: JSON values, and other values tagged as {\"$cursor\": <type>, \"value\": ...}.",
+      "description": "The cursor of each source whose cursors last across processes (Source.restore), at its version in `sources`, as sverify.io._common.cursor_json encodes it: JSON values, and other values tagged as {\"$cursor\": <type>, \"value\": ...}. Stored in clear, readable by every reader of the table: a cursor holds no credential.",
       "type": "object"
     },
     "table_ids": {

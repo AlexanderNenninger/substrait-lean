@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from sverify.io._common import has_userinfo, public_uri
 from sverify.io._secrets import Secret
 from sverify.io._storage import Storage
 
@@ -63,8 +64,9 @@ class CredentialUse:
         return out + (" (outside its scope)" if self.in_scope is False else "")
 
 
-def _location(obj: Any) -> str | None:
-    for attr in ("uri", "location", "identifier"):
+def _given(obj: Any) -> str | None:
+    """Where the source or sink is, as the user wrote it."""
+    for attr in ("uri", "location", "identifier", "path"):
         v = getattr(obj, attr, None)
         if isinstance(v, str) and v:
             return v
@@ -95,7 +97,9 @@ def uses(obj: Any, access: Access) -> list[CredentialUse]:
     token, an Iceberg table's catalog, and the `credentials` a custom
     source or sink declares."""
     name = getattr(obj, "name", type(obj).__name__)
-    location = _location(obj)
+    given = _given(obj)
+    location = None if given is None else public_uri(given)
+    in_uri = given is not None and has_userinfo(given)
     out: list[CredentialUse] = []
 
     def add(credential: str, in_scope: bool | None = None) -> None:
@@ -114,7 +118,7 @@ def uses(obj: Any, access: Access) -> list[CredentialUse]:
                 add(s)
             if plain and not secrets:
                 add(INLINE)
-        elif location is not None and "://" in location:
+        elif location is not None and "://" in location and not in_uri:
             add(DEFAULT)
     if isinstance(getattr(obj, "secret", None), Secret):
         add(obj.secret.ref)
@@ -125,6 +129,8 @@ def uses(obj: Any, access: Access) -> list[CredentialUse]:
         add(f"catalog {getattr(catalog, 'name', type(catalog).__name__)}")
     for s in getattr(obj, "credentials", None) or ():
         add(s.ref if isinstance(s, Secret) else str(s))
+    if in_uri and all(u.credential != INLINE for u in out):
+        add(INLINE)
     return out
 
 

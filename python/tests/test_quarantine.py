@@ -153,10 +153,15 @@ def test_reports_say_what_was_set_aside():
     assert r.outcome == "quarantined"
     assert "orders: 3 row(s) quarantined" in str(r)
     alert = r.alert()
-    assert alert is not None and "(_.amount >= 0)" in alert and "| id | amount |" in alert
+    assert alert is not None and "(_.amount >= 0)" in alert and "| id |" not in alert
+    assert "| id | amount |" in (r.alert(rows=True) or "")
     doc = json.loads(r.to_json())
     assert doc["format"] == 1 and doc["outcome"] == "quarantined"
     assert doc["nodes"][0]["quarantined"] == 3
+    # Rows of the data leave the process only when asked (#887).
+    assert doc["nodes"][0]["quarantine"][0]["examples"] == []
+    (shown,) = json.loads(r.to_json(examples=True))["nodes"][0]["quarantine"]
+    assert {e["id"] for e in shown["examples"]} == {2, 3}
     # An upstream fix: the negative row deleted, one of the repeated ids too.
     orders.apply(Changes(inserts=table([(2, 5)]), deletes=table([(2, -5), (3, 8)])))
     r = node.refresh()

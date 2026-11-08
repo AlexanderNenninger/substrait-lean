@@ -514,8 +514,14 @@ class QuarantineReport:
         parts.append(f"{self.total} in quarantine{where}")
         return f"{self.source}: " + ", ".join(parts)
 
-    def to_dict(self) -> dict[str, Any]:
-        """The report as JSON values, for `Refresh.to_json`."""
+    def to_dict(self, *, examples: bool = False) -> dict[str, Any]:
+        """The report as JSON values, for `Refresh.to_json`.
+
+        Args:
+            examples: Whether `examples` carries the rows of `self.examples`
+                (rows of the user's data). Default False: an empty list,
+                so the document can go to CI or an issue (#887).
+        """
         return {
             "source": self.source,
             "quarantined": self.quarantined,
@@ -524,7 +530,7 @@ class QuarantineReport:
             "deleted": self.deleted,
             "total": self.total,
             "table": self.table,
-            "examples": [] if self.examples is None else _json_rows(self.examples),
+            "examples": [] if self.examples is None or not examples else _json_rows(self.examples),
         }
 
 

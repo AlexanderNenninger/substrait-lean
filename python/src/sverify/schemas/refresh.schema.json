@@ -163,6 +163,7 @@
                 ]
               },
               "examples": {
+                "description": "Up to ten of the rows set aside, with their reasons: rows of the user's data, so empty unless asked for (Refresh.to_json(examples=True), sverify refresh --examples).",
                 "type": "array",
                 "items": {
                   "type": "object"

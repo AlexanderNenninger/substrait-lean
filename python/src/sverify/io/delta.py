@@ -68,6 +68,7 @@ from sverify.io._common import (
     _TableSource,
     filter_rows,
     last_record,
+    public_uri,
     q,
 )
 from sverify.io._sink import SinkChange, _TableSink
@@ -217,7 +218,9 @@ def _basename(uri: str) -> str:
     with dots replaced by underscores, or the table's own name for
     `uc://catalog.schema.table`. Plans name a table by its dotted parts
     (catalog.schema.table), so a dot in the name would make DuckDB look for
-    a table in another schema (#451)."""
+    a table in another schema (#451). Userinfo and a query string are no
+    part of it (`public_uri`)."""
+    uri = public_uri(uri)
     base = PurePosixPath(uri.rstrip("/")).name or uri
     if _is_catalog(uri):
         return base.rsplit(".", 1)[-1]
@@ -521,8 +524,9 @@ class DeltaSource(_TableSource):
         c = last.record
         if c is None or not last.kept:
             return None
-        where = f"{self.uri}@v{dt.version()}"
-        return Stored(where, self.uri, c.plan, c.sources, c.digests, _read(dt), c.table_ids)
+        where_key = public_uri(self.uri)
+        where = f"{where_key}@v{dt.version()}"
+        return Stored(where, where_key, c.plan, c.sources, c.digests, _read(dt), c.table_ids)
 
     def _check_cdf(self, dt: DeltaTable, since: int, end: int) -> None:
         """Raise unless every commit after `since` up to `end` wrote its

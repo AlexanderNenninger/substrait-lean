@@ -505,5 +505,12 @@ def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     got, doc = run_json(capsys, "refresh", f"{path}:p")
     assert got == code and doc["status"] == status and doc["outcome"] == status
     assert doc["alert"] and "(_.amount >= 20)" in doc["alert"]
+    # Rows of the data only with --examples (#887).
+    assert "| id |" not in doc["alert"]
+    assert all(q["examples"] == [] for n in doc["nodes"] for q in n["quarantine"])
+    got, shown = run_json(capsys, "refresh", f"{path}:p", "--examples")
+    assert got == code and "| id |" in shown["alert"]
+    if policy == "quarantine":
+        assert any(q["examples"] for n in shown["nodes"] for q in n["quarantine"])
     got, out = run(capsys, "refresh", f"{path}:p")
-    assert got == code and "### paid" in out
+    assert got == code and "### paid" in out and "| id |" not in out

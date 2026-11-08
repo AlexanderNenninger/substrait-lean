@@ -10,8 +10,17 @@ export, the ODCS export, OpenLineage events, logs, warnings, printed output
 and the exceptions of a failed resolution. Each sentinel is a fresh test
 value, never a real credential.
 
+Credentials can also hide in a URI's userinfo (`s3://key:secret@bucket`):
+a `from_files` source and a Delta sink written that way are checked and
+exported, and no output may carry the sentinel (#887). A custom source's
+cursor is stored in clear in the sink's own record, which resumes from it:
+the gate plants one and allows it there and nowhere else.
+
+A new source, sink or output format joins the fixture and the `outputs`
+it greps in the same pull request.
+
 The ontology index (#772) does not exist yet; when it does, its output
-belongs in `OUTPUTS` below.
+belongs in `outputs` below.
 """
 
 from __future__ import annotations
@@ -34,6 +43,7 @@ pytest.importorskip("pyiceberg")
 fl = pytest.importorskip("pyarrow.flight")
 
 from sverify import odcs  # noqa: E402
+from sverify import openlineage as ol  # noqa: E402
 from sverify.cli import main  # noqa: E402
 from sverify.errors import SecretError  # noqa: E402
 from sverify.io import Resolver, Secret, set_resolver  # noqa: E402
@@ -53,8 +63,14 @@ SENTINELS = {
         "sink",
         "catalog",
         "lineage",
+        "userinfo",
     )
 }
+CURSOR = f"svleak-cursor-{uuid.uuid4().hex}"
+"""A custom source's cursor. The sink stores it in clear in the table's
+own record, which resumes from it (`Source.restore` says a cursor holds no
+credential): it may be there, and nowhere else (#887)."""
+CURSOR_CARRIERS = ("contract g", "file marts/g/_delta_log/")
 
 PIPELINE = """
 import os
@@ -63,7 +79,7 @@ import sverify as sv
 from ibis import _
 from pyiceberg.catalog.sql import SqlCatalog
 from sverify.io import (
-    DeltaSink, DeltaSource, Secret, Storage, from_query, sink_from,
+    Batch, DeltaSink, DeltaSource, Secret, Source, Storage, from_files, from_query, sink_from,
 )
 from sverify.io.flight import FlightSource
 from sverify.io.iceberg import IcebergSink, IcebergSource
@@ -117,7 +133,32 @@ c = orders_c.pipe(big).write(DeltaSink(root + "/marts/c", storage_options=inline
 d = ice.pipe(big).write(IcebergSink(catalog, "db.big"))
 e = samples.pipe(big).write(sink_from(save, name="e", credentials="env:SVLEAK_SINK"))
 f = fetched.pipe(big).write(DeltaSink(root + "/marts/f"))
-NODES = [a, b, c, d, e, f]
+
+
+class Feed(Source):
+    def read(self, since):
+        if since is None:
+            rows = pa.table({"id": [1, 2], "amount": [5, 50]})
+            return Batch(rows, cursor=os.environ["SVLEAK_CURSOR"])
+        return None
+
+    def restore(self, cursor):
+        return None
+
+
+feed = Feed("feed", schema=pa.schema([("id", pa.int64()), ("amount", pa.int64())]))
+g = feed.pipe(big).write(DeltaSink(root + "/marts/g"))
+
+# Credentials in a URI's userinfo: checked, never refreshed (no such
+# bucket); `sverify check` reads no data, since the schema is declared.
+bucket = "s3://svleak:" + os.environ["SVLEAK_USERINFO"] + "@bucket"
+drop = from_files(
+    bucket + "/drop", name="drop",
+    schema=pa.schema([("id", pa.int64()), ("amount", pa.int64())]),
+)
+h = drop.pipe(big).write(DeltaSink(bucket + "/marts/h"))
+NODES = [a, b, c, d, e, f, g]
+UNREFRESHED = [h]
 """
 
 
@@ -132,6 +173,10 @@ class _Lineage(BaseHTTPRequestHandler):
         _Lineage.seen.append((self.headers.get("Authorization", ""), body))
         self.send_response(201)
         self.end_headers()
+
+
+def _has(text: str | bytes, value: str) -> bool:
+    return value.encode() in text if isinstance(text, bytes) else value in text
 
 
 def _found(text: str | bytes) -> list[str]:
@@ -159,6 +204,8 @@ def lake(tmp_path, monkeypatch):
         "SVLEAK_SINK": SENTINELS["sink"],
         "SVLEAK_CATALOG": SENTINELS["catalog"],
         "SVLEAK_LINEAGE": SENTINELS["lineage"],
+        "SVLEAK_USERINFO": SENTINELS["userinfo"],
+        "SVLEAK_CURSOR": CURSOR,
     }
     for k, v in env.items():
         monkeypatch.setenv(k, v)
@@ -223,8 +270,15 @@ def test_no_secret_reaches_any_output(lake, capsys, caplog):
     assert ("f", "fetched", "api", "read") in names
     assert ("e", "e", "env:SVLEAK_SINK", "write") in names
     assert ("c", "orders_c", "inline values", "read") in names
+    # A URI with userinfo counts as inline credentials, and is listed without them.
+    assert ("h", "drop", "inline values", "read") in names
+    assert ("h", "h", "inline values", "write") in names
+    located = {(c["node"], c["table"]): c["location"] for c in doc["credentials"]}
+    assert located["h", "drop"] == "s3://bucket/drop"
+    assert located["h", "h"] == "s3://bucket/marts/h"
     codes = {(f["code"], f["item"]) for f in doc["findings"]}
     assert ("scope", "b") in codes and ("inline_credentials", "c") in codes
+    assert ("inline_credentials", "h") in codes
 
     # The pipeline, refreshed in this process.
     g = runpy.run_path(str(path))
@@ -241,6 +295,12 @@ def test_no_secret_reaches_any_output(lake, capsys, caplog):
             contract = node.sink.contract()
             outputs[f"contract {node.name}"] = "" if contract is None else contract.to_json()
             outputs[f"status {node.name}"] = str(node.status())
+        for node in g["UNREFRESHED"]:
+            outputs[f"report {node.name}"] = f"{node.report}\n{node.report.to_json()}"
+            outputs[f"repr {node.name}"] = repr(node) + repr(node.credentials())
+            outputs[f"odcs {node.name}"] = odcs.dumps(odcs.export(node), "json")
+            outputs[f"lineage id {node.name}"] = repr(ol.dataset_id(node.sink))
+        outputs["lineage ids"] = repr(ol.dataset_id(g["drop"]))
     outputs["warnings"] = "\n".join(str(w.message) for w in caught)
     assert g["saved"], "the function sink wrote"
     # The lineage server got the token as a header, and only there.
@@ -272,6 +332,11 @@ def test_no_secret_reaches_any_output(lake, capsys, caplog):
     outputs["logs"] = caplog.text
     leaks = {where: found for where, text in outputs.items() if (found := _found(text))}
     assert not leaks, f"secret values reached: {leaks}"
+    # The cursor is in the table's own record, which resumes from it, and in
+    # no report, document, event or export.
+    carriers = [where for where, text in outputs.items() if _has(text, CURSOR)]
+    assert carriers and "contract g" in carriers, carriers
+    assert all(w.startswith(CURSOR_CARRIERS) for w in carriers), carriers
     assert len([k for k in outputs if k.startswith("file ")]) > 10
 
 

@@ -484,6 +484,18 @@ def cmd_drop(args: argparse.Namespace) -> int:
     return 0
 
 
+RESUME_ONLY = ("cursors", "table_ids", "digests")
+"""Keys of the sink's contract record that only a resume reads: a source's
+cursor may be a data value or a continuation token, so the catalog leaves
+them out (#887)."""
+
+
+def published(contract: Any) -> dict[str, Any]:
+    """The sink's contract record as the catalog publishes it."""
+    record = json.loads(contract.to_json())
+    return {k: v for k, v in record.items() if k not in RESUME_ONLY}
+
+
 def cmd_catalog(args: argparse.Namespace) -> int:
     import pyarrow.parquet as pq
     from deltalake import DeltaTable
@@ -538,7 +550,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
                 "version": dt.version(),
                 "updated": freshness(last.get("timestamp")),
                 "schema": [(f.name, str(f.type)) for f in arrow.schema],
-                "contract": None if contract is None else json.loads(contract.to_json()),
+                "contract": None if contract is None else published(contract),
                 "words": contract_words(contract.node, checks) if contract else None,
                 "files": files,
                 "chart": chart_svg(arrow, meta["chart"]) if meta.get("chart") else "",

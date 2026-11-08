@@ -109,6 +109,9 @@ def test_refresh_then_catalog(env, tmp_path):
     meta = json.loads((site / "gdp.json").read_text())
     assert meta["rows"] == 1100
     assert meta["files"] == ["data/gdp.parquet"]
+    # The contract without what only a resume reads: cursors can be data (#887).
+    assert meta["contract"]["node"] == "gdp"
+    assert not {"cursors", "table_ids", "digests"} & meta["contract"].keys()
     assert (site / "data" / "gdp.parquet").exists()
 
     # A public repository's pages read the data branch's files.
