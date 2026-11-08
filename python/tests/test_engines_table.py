@@ -17,6 +17,7 @@ from typing import get_args
 
 import pytest
 
+from _repo import needs_repo
 from sverify import _engines, engines, profiles, routes
 from sverify.engine import _LOCAL_ENGINES, Engine
 from sverify.profiles import ProfilePlugin
@@ -47,6 +48,14 @@ def test_every_engine_has_a_plugin() -> None:
     assert set(engines.ENGINES) <= set(get_args(Engine))
     assert set(_LOCAL_ENGINES) == {*engines.ENGINES, "datafusion"}
     assert set(DIALECTS) <= _engines.NAMED
+    # The engines within the 1.x promise, and their names in prose.
+    assert set(_engines.SUPPORTED) == {*engines.ENGINES, "spark", "snowflake"}
+    assert [_engines.title(e) for e in _engines.SUPPORTED] == [
+        "DuckDB",
+        "Polars",
+        "Snowflake",
+        "Spark",
+    ]
 
 
 def test_every_engine_a_plan_runs_on_has_a_translation() -> None:
@@ -209,3 +218,56 @@ def test_shared_code_names_no_engine(module: str) -> None:
 
     found = _name_tests(Path(sverify.__file__).parent / module)
     assert found <= _NAME_TESTS[module], f"{module}: {found} comparisons with an engine's name"
+
+
+#: Literals that list two or more engines by name (a tuple, list, set or
+#: dict's keys), per file of `sverify` and `sverify_dev`. A list of the
+#: engines comes from `sverify._engines`; what is left is per-function data
+#: (`_support`, the coverage cases; #1166's PR D) and the catalogue's own
+#: columns. This count only goes down.
+_NAME_LISTS = {
+    "sverify/_functions.py": 6,
+    "sverify/_support.py": 2,
+    "sverify/engine.py": 1,
+    "sverify/report.py": 1,
+    "sverify_dev/bugs.py": 2,
+    "sverify_dev/catalogue.py": 3,
+    "sverify_dev/coverage.py": 1,
+    "sverify_dev/coverage_cases/_common.py": 3,
+    "sverify_dev/coverage_cases/joins.py": 1,
+    "sverify_dev/coverage_cases/numeric.py": 1,
+    "sverify_dev/coverage_cases/strings.py": 1,
+    "sverify_dev/coverage_cases/temporal.py": 3,
+    "sverify_dev/probe_float_arith.py": 2,
+    "sverify_dev/probe_statistics.py": 1,
+    "sverify_dev/probe_window_sums.py": 1,
+}
+
+
+def _name_lists(path: Path) -> int:
+    n = 0
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+            elts: list = node.elts
+        elif isinstance(node, ast.Dict):
+            elts = list(node.keys)
+        else:
+            continue
+        if sum(isinstance(c, ast.Constant) and c.value in BUILTIN for c in elts) >= 2:
+            n += 1
+    return n
+
+
+@needs_repo
+def test_engine_lists_come_from_the_plugins() -> None:
+    import sverify
+
+    src = Path(sverify.__file__).parent.parent
+    tools = src.parent / "tools"
+    found = {}
+    for root in (src / "sverify", tools / "sverify_dev"):
+        for f in root.rglob("*.py"):
+            if n := _name_lists(f):
+                found[f.relative_to(root.parent).as_posix()] = n
+    over = {f: n for f, n in found.items() if n > _NAME_LISTS.get(f, 0)}
+    assert not over, f"lists of engines by name: {over}; take them from sverify._engines"

@@ -197,9 +197,9 @@ def test_replay(replayed):
     # DuckDB's SQL as it is, through `sverify.sql_lift`.
     assert _result(replayed, "SELECT i + 1").cls == "agree"
     # DuckDB raises on 64-bit overflow; `Rel.eval`'s integers are unbounded,
-    # and the verifier warns.
+    # and the verifier warns: the reference raises with DuckDB (#747).
     overflow = _result(replayed, "SELECT 9223372036854775807")
-    assert (overflow.cls, overflow.side) == ("disagree", "lean")
+    assert (overflow.cls, overflow.side) == ("agree", None)
     assert overflow.lean == '[["9223372036854775808"]]'
     assert overflow.engine.startswith("error: Out of Range Error")
     # `verify` without inference reports the overflow the test expects, which
@@ -208,7 +208,7 @@ def test_replay(replayed):
     # Lean's division by zero is NULL; DuckDB 2.0 raises (and so does the
     # written plan, guarded); the verifier flags it.
     div = _result(replayed, "SELECT i // 0")
-    assert (div.cls, div.side) == ("disagree", "lean")
+    assert (div.cls, div.side) == ("agree", None)
     assert div.reason.startswith("verify: division by zero")
     assert _result(replayed, "SELECT list_sort").reason.startswith("lift: ")
     # Data-modifying CTEs are outside sverify's scope (#318); DuckDB still
@@ -232,11 +232,11 @@ def test_ledger(replayed, tmp_path):
     path = slt.write_ledger("area", "2.0.0", rows, {"area/y.test": "require json"}, tmp_path)
     assert path.name == "area.json"
     led = json.loads(path.read_text())
-    assert led["summary"] == {"agree": 2, "disagree": 2, "refused": 1, "skipped": 3}
-    assert led["disagree_sides"] == {"lean": 2}
+    assert led["summary"] == {"agree": 4, "disagree": 0, "refused": 1, "skipped": 3}
+    assert led["disagree_sides"] == {}
     assert len(led["results"]) == len(rows)
     summary = slt.write_summary(tmp_path).read_text()
-    assert "| [area](area.json) | 2 | 0 | 2 | lean 2 | 1 | 3 | 1 |" in summary
+    assert "| [area](area.json) | 4 | 0 | 0 |  | 1 | 3 | 1 |" in summary
     # Rewriting keeps one table.
     assert slt.write_summary(tmp_path).read_text().count("<!-- slt:start -->") == 1
 
@@ -392,6 +392,25 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
     assert (r.cls, r.lean) == ("disagree", '[["NULL"]]')
     assert r.duckdb in ('[["nan"]]', '[["-nan"]]'), r.duckdb
     assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
+
+
+def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
+    """Where the test expects an error and `verify` reports it, the reference
+    raises with DuckDB: Lean's side agrees (#747)."""
+    path = tmp_path / "mod.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement error
+            select mod(42, 0)
+            ----
+            Division by zero
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/mod.test")
+    assert r.cls == "agree", r
+    assert (r.reason or "").startswith("verify: division by zero"), r.reason
 
 
 def test_a_time_of_24_00_is_refused(tmp_path):

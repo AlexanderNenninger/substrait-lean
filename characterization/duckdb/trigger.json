@@ -4,6 +4,7 @@
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "trigger",
   "summary": {"agree": 223, "disagree": 0, "refused": 51, "skipped": 19},
+  "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {"trigger/create_trigger_parse.test": "require sqlite_scanner"},
   "results": [
@@ -92,7 +93,7 @@
     {"file": "trigger/trigger_after_insert_referencing.test", "line": 69, "sql": "SELECT n FROM t_rows_log;", "expected": "[\"3\"]", "duckdb": "[[\"3\"]]", "lean": "[[\"3\"]]", "engine": "[[\"3\"]]", "cls": "agree"},
     {"file": "trigger/trigger_after_insert_referencing.test", "line": 77, "sql": "SELECT n FROM t_rows_log;", "expected": "[\"2\", \"3\"]", "duckdb": "[[\"3\"], [\"2\"]]", "lean": "[[\"3\"], [\"2\"]]", "engine": "[[\"3\"], [\"2\"]]", "cls": "agree"},
     {"file": "trigger/trigger_after_insert_referencing.test", "line": 97, "sql": "SELECT COUNT(*) FROM t_plain_log;", "expected": "[\"1\"]", "duckdb": "[[\"1\"]]", "lean": "[[\"1\"]]", "engine": "[[\"1\"]]", "cls": "agree"},
-    {"file": "trigger/trigger_after_insert_referencing.test", "line": 115, "sql": "SELECT sql LIKE '%REFERENCING NEW TABLE AS ins%' FROM duckdb_triggers() WHERE trigger_name = 'trg_tosql';", "cls": "refused", "reason": "lift: unknown function duckdb_triggers(): DuckDB SQL here has no such function"},
+    {"file": "trigger/trigger_after_insert_referencing.test", "line": 115, "sql": "SELECT sql LIKE '%REFERENCING NEW TABLE AS ins%' FROM duckdb_triggers() WHERE trigger_name = 'trg_tosql';", "cls": "refused", "reason": "lift: Unsupported: unknown function duckdb_triggers(): DuckDB SQL here has no such function"},
     {"file": "trigger/trigger_after_insert_referencing.test", "line": 136, "sql": "SELECT total, cnt FROM t_agg_log;", "expected": "[\"60\", \"3\"]", "duckdb": "[[\"60\", \"3\"]]", "lean": "[[\"60\", \"3\"]]", "engine": "[[\"60\", \"3\"]]", "cls": "agree"},
     {"file": "trigger/trigger_after_insert_referencing.test", "line": 160, "sql": "SELECT id FROM t_conflict_log;", "expected": "[\"2\", \"3\"]", "duckdb": "[[\"2\"], [\"3\"]]", "lean": "[[\"2\"], [\"3\"]]", "engine": "[[\"2\"], [\"3\"]]", "cls": "agree"},
     {"file": "trigger/trigger_after_insert_referencing.test", "line": 208, "sql": "SELECT COUNT(*) FROM t_rollback;", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
