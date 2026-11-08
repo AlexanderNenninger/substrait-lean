@@ -71,7 +71,9 @@ def render(
     DuckDB's own function is the reference's (no template). `raise_` writes
     an error with its message and the value it depends on. Without `guards`
     (`to_sql(..., guards=False)`, for plans proved not to raise) the arms of
-    a `CASE` that raise are left out: they would never be taken."""
+    a `CASE` that raise are left out: they would never be taken. That the
+    templates without them still give the reference's rows is
+    `Rel.duckdb_guardFree_sound` (`SubstraitLean/LoweringDuckDB.lean`)."""
     tmpl = table().get(fn)
     if tmpl is None:
         return None
