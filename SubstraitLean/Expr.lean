@@ -102,7 +102,8 @@ inductive UnFn where
   | ftoi
   /-- `CAST(x AS INT)` of an integer to `bits` bits (32, or 16 for `SMALLINT`
   and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit,
-  which raises (`badCast` in `Safety.lean`), as DuckDB, Polars and Spark do. -/
+  which raises (`badCast` in `Safety.lean`), as DuckDB, Polars and Spark do
+  (duckdb-int-narrow, polars-cast-int, spark-cast-int-narrow). -/
   | narrow (bits : Nat)
   /-- `TRY_CAST(x AS BIGINT)` of a double (#58): `ftoi`, or `NULL` where that
   fails (NaN, `±∞`, outside 64 bits), which is then no error. -/
@@ -112,7 +113,8 @@ inductive UnFn where
   | narrowOrNull (bits : Nat)
   /-- Integer arithmetic at `bits` bits (`INT`, `SMALLINT`, `TINYINT`): the
   value itself, like 64-bit arithmetic. Where it does not fit it raises
-  (`wraps` in `Safety.lean`): DuckDB and Spark raise, Polars wraps around. -/
+  (`wraps` in `Safety.lean`): DuckDB and Spark raise (duckdb-int-narrow,
+  spark-int-arith), Polars wraps around (polars-int-arith). -/
   | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
@@ -255,7 +257,8 @@ inductive BinFn where
   | substr (n : Option Nat) (wrap : Bool)
   /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
   | trim (left right : Bool)
-  /-- `repeat(s, n)`: `''` for `n ≤ 0`, as DuckDB and Spark give. Beyond
+  /-- `repeat(s, n)`: `''` for `n ≤ 0`, as DuckDB and Spark give
+  (duckdb-repeat-nonpositive, spark-repeat-nonpositive). Beyond
   `Text.repeatMax` bytes it raises (`Text.repeatFits`), and its value there
   is `''`. -/
   | strRepeat

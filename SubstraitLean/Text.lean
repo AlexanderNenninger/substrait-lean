@@ -160,8 +160,9 @@ def trim (left right : Bool) (s set : String) : String :=
 
 /-! ## Repeating, reversing, replacing -/
 
-/-- The longest string `repeat` writes, in bytes: Arrow's `Utf8` offsets are
-32-bit. -/
+/-- The longest string `repeat` writes, in bytes; past it, `repeat` raises.
+What the engines do there is pending a probe on homelab (it allocates
+gigabytes), which will give the reference's own reason. -/
 def repeatMax : Nat := 2 ^ 31 - 1
 
 /-- Does `repeat(s, n)` fit in `repeatMax` bytes? (`n ≤ 0` gives `''`.) -/
