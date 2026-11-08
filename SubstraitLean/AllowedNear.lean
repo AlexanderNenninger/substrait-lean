@@ -13,7 +13,8 @@ reference: before D25 a double `SUM` or `AVG` added in any order and grouping
 (`FloatSums`), and still a statistical aggregate (`StatProps`). A
 postcondition proved of `Rel.eval`'s values must allow for the others.
 
-`contract_sound_allowed` does that. A postcondition narrowed by each
+`contract_sound_allowed` (`AllowedAnalysis.lean`) does that, from this
+module's closeness. A postcondition narrowed by each
 column's tolerance (`Expr.narrow`, `Robust.lean`) and proved under
 `contract_sound_all` holds on every result `Rel.Allowed` admits, for a plan
 whose allowed results are, up to the observation `q`, results of its orders:
@@ -254,107 +255,5 @@ theorem Rel.floatOpenSafe_aggregate {cat : Catalog} {r : Rel} {gs : List Expr}
   rintro out ⟨i, hi, o, hp, ho⟩
   obtain ⟨o', ho', e⟩ := aggAllowed_near hms ho
   exact ⟨o', ⟨i, Rel.allowed_orderAllowed hr hi, o', .refl _, ho'⟩, ⟨o, e, hp.symm⟩⟩
-
-/-! ## Postconditions on every allowed result -/
-
-/-- Column `j` of a selection `T.select(…)` over `n` columns: a column of
-`T`, or the expression appended there. -/
-def postExpr (n : Nat) (es : List Expr) (j : Nat) : Expr :=
-  if j < n then .field j else es.getD (j - n) (.lit .null)
-
-theorem postExpr_eval {n : Nat} {es : List Expr} {x : Row} (hx : x.length = n) (j : Nat) :
-    (x ++ es.map (·.eval x)).getD j .null = (postExpr n es j).eval x := by
-  unfold postExpr
-  split
-  · next h =>
-    simp only [Expr.eval, List.getD_eq_getElem?_getD, List.getElem?_append_left (hx ▸ h)]
-  · next h =>
-    rw [List.getD_eq_getElem?_getD, List.getElem?_append_right (l₁ := x) (by omega), hx,
-      List.getElem?_map, List.getD_eq_getElem?_getD]
-    cases es[j - n]? <;> rfl
-
-theorem postExpr_narrow (n : Nat) (es : List Expr) (sh : Nat → Option Shift) (j : Nat) :
-    postExpr n (es.map (·.narrow sh)) j = (postExpr n es j).narrow sh := by
-  unfold postExpr
-  split
-  · simp [Expr.narrow, Expr.narrowCmp, Expr.cmp?]
-  · simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
-    cases es[j - n]? <;> simp [Expr.narrow, Expr.narrowCmp, Expr.cmp?]
-
-theorem Row.EquivFrom.length_eq {q : Obs} {ctx : ObsCtx} :
-    ∀ {i : Nat} {r r' : Row}, Row.EquivFrom q ctx i r r' → r.length = r'.length
-  | _, [], [], _ => rfl
-  | _, _ :: _, _ :: _, ⟨_, t⟩ => by simp [Row.EquivFrom.length_eq t]
-  | _, [], _ :: _, h | _, _ :: _, [], h => h.elim
-
-/-- **Contracts hold on every allowed result.** On data meeting the
-preconditions, the postconditions `es` of the transformation `T`, selected
-by `mp`, hold on every result the reference allows (`Rel.Allowed`, every
-order and grouping of a double `SUM` or `AVG`), when
-
-* `T` is `Rel.FloatOpenSafe` under the observation `q` (rows as a multiset),
-* each postcondition is `Expr.robustB` under `q` with the shifts `sh`,
-  sound for `q` (`Shift.Sound`), and
-* the checker proves the postconditions narrowed by `sh` (`Expr.narrow`),
-  as `contract_sound_all` proves them, on every order. -/
-theorem contract_sound_allowed {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
-    {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
-    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
-    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
-    (hT : T.WF cat) {q : Obs} {ctx : ObsCtx} (hq : q.rows = .multiset)
-    (hsafe : T.FloatOpenSafe q ctx cat) {sh : Nat → Option Shift}
-    (hsh : ∀ i s, sh i = some s → s.Sound q ctx i)
-    (hrob : ∀ j ∈ mp, (postExpr (T.arity cat) es j).robustB q ctx sh = true)
-    (hQ : (Rel.emit (.project T (es.map (·.narrow sh))) mp).WF cat) {W : WindowKeys}
-    (hW : W.SoundAll cat)
-    (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
-      (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
-        AVal.certainlyTrue = true) :
-    ∀ {out : Relation}, (Rel.emit (.project T es) mp).Allowed cat out →
-      ∀ row ∈ out, ∀ v ∈ row, v = .bool true := by
-  rintro out ⟨_, ⟨t, ht, rfl⟩, rfl⟩ row hrow v hv
-  obtain ⟨t', ht', heq⟩ := hsafe t ht
-  unfold Relation.Equiv at heq; rw [hq] at heq
-  obtain ⟨p, hf, hpt⟩ := heq
-  -- The row of `T` it comes from, and its partner in an order's result.
-  simp only [List.map_map, List.mem_map, Function.comp] at hrow
-  obtain ⟨x, hx, rfl⟩ := hrow
-  obtain ⟨x', hx', hxx⟩ := Forall2.mem_right hf (hpt.mem_iff.mpr hx)
-  have hlen' : x'.length = T.arity cat := Rel.orderAllowed_arity hcat hT ht' x' hx'
-  have hlen : x.length = T.arity cat := (Row.EquivFrom.length_eq hxx).symm.trans hlen'
-  -- The narrowed postconditions hold on the partner (`contract_sound_all`).
-  have hall := contract_sound_all hcat hS hpre hQ hW hproved
-    (out := (t'.map fun row => row ++ (es.map (·.narrow sh)).map (·.eval row)).map
-      fun row => mp.map (row.getD · .null)) ⟨_, ⟨t', ht', rfl⟩, rfl⟩
-  obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hv
-  have h' := hall (mp.map ((x' ++ (es.map (·.narrow sh)).map (·.eval x')).getD · .null))
-    (List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨x', hx', rfl⟩, rfl⟩) _
-    (List.mem_map.mpr ⟨j, hj, rfl⟩)
-  rw [postExpr_eval hlen', postExpr_narrow] at h'
-  rw [postExpr_eval hlen, ← Value.isTrue_iff]
-  exact Expr.narrow_sound hsh _ (hrob j hj) hxx (Value.isTrue_iff.mpr h')
-
-/-- **Contracts hold on every allowed result of a closed plan** (D25): the
-side condition of `contract_sound_allowed` replaced by the decidable
-`Rel.closedB`, which holds of every plan whose measures are not
-`VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT` (a double `SUM` or
-`AVG` is order-free since D25), for a context reflexive at `q`. -/
-theorem contract_sound_allowed_closed {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
-    {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
-    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
-    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
-    (hT : T.WF cat) {q : Obs} {ctx : ObsCtx} (hq : q.rows = .multiset) (hc : ctx.ReflAt q)
-    (hclosed : T.closedB = true) {sh : Nat → Option Shift}
-    (hsh : ∀ i s, sh i = some s → s.Sound q ctx i)
-    (hrob : ∀ j ∈ mp, (postExpr (T.arity cat) es j).robustB q ctx sh = true)
-    (hQ : (Rel.emit (.project T (es.map (·.narrow sh))) mp).WF cat) {W : WindowKeys}
-    (hW : W.SoundAll cat)
-    (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
-      (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
-        AVal.certainlyTrue = true) :
-    ∀ {out : Relation}, (Rel.emit (.project T es) mp).Allowed cat out →
-      ∀ row ∈ out, ∀ v ∈ row, v = .bool true :=
-  contract_sound_allowed hcat hS hpre hT hq (Rel.floatOpenSafe_of_closed hc hclosed) hsh hrob hQ hW
-    hproved
 
 end Substrait

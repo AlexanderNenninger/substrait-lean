@@ -54,8 +54,8 @@ contract's preconditions.
 | An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean` |
 | A verified contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `EngineSound.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
-| A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `Semantic.lean` |
-| A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean` |
+| A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `AllowedAnalysis.lean`, `Semantic.lean` |
+| A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean`, `AllowedAnalysis.lean` |
 | An open measure's allowed value, and an aggregate's allowed output, are equal up to the order of the additions to an order's | `Allowed`, `Equiv` | `Measure.Allowed.near_eval`, `measures_near`, `aggAllowed_near` | `AllowedNear.lean` |
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Equiv` | `Expr.robust_of_depends`, `Expr.robust_of_depends_canon`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | Sources within a tolerance give a result within the plan's fold of it (`Rel.tol`), node after node in a pipeline; tolerances add along a chain in one cell (`M∞`) and summed over the rows (`M₁`) | `Near` | `Rel.plan_near`, `Rel.pipeline_near`, `Relation.NearT.add`, `Relation.NearL1.add` | `Lipschitz.lean` |
@@ -297,6 +297,7 @@ generators, then the trusted reading and writing.
 | `Contracts/Facts.lean` | Relational facts through a plan; `Rel.facts_sound` |
 | `Contracts/Plan.lean` | Abstract plan evaluation: `Rel.maxRows`, `Rel.aeval` and its one pass, `Rel.lane` |
 | `Contracts/Sound.lean` | `Rel.aeval_sound`, `contract_sound` |
+| `Issue.lean` | The issue model: what goes wrong when a function runs on a row (`Issue`, `Expr.issues`) |
 | `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound` |
 | `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
 | `Rows.lean` | Row caps that rule out `SUM` overflow |
@@ -311,6 +312,7 @@ generators, then the trusted reading and writing.
 
 | Module | Job |
 |---|---|
+| `Decomposable.lean` | Aggregates that combine from parts or ignore the order of their rows; `Measure.eval_perm` |
 | `Partition.lean` | Sharded evaluation and two-phase aggregates |
 | `Pruning.lean` | Skipping files and partitions by their statistics |
 | `TableFormat.lean` | Change feeds and file statistics of Delta and Iceberg |
@@ -320,7 +322,7 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `Allowed.lean` | `Rel.Allowed`, the results the reference allows |
-| `Ties.lean` | Every row order the reference allows is one `Rel.Allowed` allows, and row caps keep them |
+| `Ties.lean` | Every row order the reference allows is one `Rel.Allowed` allows |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
@@ -332,7 +334,8 @@ generators, then the trusted reading and writing.
 | `Observations.lean` | Observations and classes against the reference |
 | `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
 | `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
-| `AllowedNear.lean` | Postconditions on every allowed result, every order of a double `SUM` or `AVG` among them |
+| `AllowedNear.lean` | Allowed results close to an order's: every order of a double `SUM` or `AVG` among them |
+| `AllowedAnalysis.lean` | What the analysis proves of the allowed results: plans without choices, row caps, postconditions on every allowed result |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
 | `EngineSound.lean` | What an engine's model is sound for (#900): `Engine.Sound` per engine, `Engine.contract_sound` on the model's rows, and `Engine.contract_sound_runs` on the actual output under the transfer check |
@@ -342,6 +345,7 @@ generators, then the trusted reading and writing.
 | `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
 | `Profile.lean` | Engine profiles as outcomes per function; the reference is one |
+| `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`) |
 | `DuckDBProfile.lean` | `Profile.duckdb` under DuckDB's settings, as the SQL printer writes it, and `Rel.duckdb_sound` |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |

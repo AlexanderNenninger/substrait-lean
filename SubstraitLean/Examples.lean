@@ -31,6 +31,7 @@ import SubstraitLean.Semantic
 import SubstraitLean.Obligations
 import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
+import SubstraitLean.AllowedAnalysis
 import SubstraitLean.EngineSound
 import SubstraitLean.FloatExact
 import SubstraitLean.FloatMoments

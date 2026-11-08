@@ -136,6 +136,10 @@ def intSum : List Value → Int
   | .int i :: vs | .dec _ i :: vs => i + intSum vs
   | _ :: vs => intSum vs
 
+theorem intSum_cons (v : Value) (vs : List Value) :
+    intSum (v :: vs) = v.unscaled?.getD 0 + intSum vs := by
+  cases v <;> simp [intSum]
+
 /-- Is the value a decimal? -/
 def Value.isDec : Value → Bool
   | .dec _ _ => true
