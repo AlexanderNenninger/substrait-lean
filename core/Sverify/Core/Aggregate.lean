@@ -301,7 +301,8 @@ def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
     match nonFinite vs with
     | some _ => .float FloatCode.nan
     | none =>
-      let cs := floatsOf vs
+      -- The doubles by their canonical codes (D31).
+      let cs := (floatsOf vs).map FloatCode.canon
       let d := if sample then cs.length - 1 else cs.length
       let N := comomentNum cs
       if sqrt then .float (FloatCode.posCode (FloatCode.sqrtMag N.toNat (cs.length * d)))
@@ -309,7 +310,7 @@ def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
 
 /-- The pairs of doubles among `vs` (`BinFn.pair`'s lists). -/
 def pairsOf (vs : List Value) : List (Int × Int) :=
-  vs.filterMap fun | .list [.float a, .float b] => some (a, b) | _ => none
+  vs.filterMap fun | .list [.float a, .float b] => some (FloatCode.canon a, FloatCode.canon b) | _ => none
 
 /-- `COVAR_SAMP` / `COVAR_POP` of the pairs among `vs`, D30: the exact
 co-moment `C = Σxy − Σx·Σy/n` over `d`, rounded once; NULL without pairs
@@ -347,7 +348,8 @@ theorem pairsOf_perm {vs ws : List Value} (h : vs.Perm ws) : (pairsOf vs).Perm (
 /-- D30: a variance is a function of the multiset of values. -/
 theorem varOf_perm (sample sqrt : Bool) {vs ws : List Value} (h : vs.Perm ws) :
     varOf sample sqrt vs = varOf sample sqrt ws := by
-  have hi : (floatsOf vs).Perm (floatsOf ws) := h.filterMap _
+  have hi : ((floatsOf vs).map FloatCode.canon).Perm ((floatsOf ws).map FloatCode.canon) :=
+    (h.filterMap _).map _
   simp only [varOf, h.length_eq, nonFinite_perm h, comomentNum_perm hi, hi.length_eq]
 
 theorem covOf_perm (sample : Bool) {vs ws : List Value} (h : vs.Perm ws) :
