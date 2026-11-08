@@ -1439,6 +1439,51 @@ def _(con, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Averages round
+
+    A sum or average of doubles rounds, and each engine adds in its own
+    order. Say every reading is at most 60: their average is at most 60 on
+    paper, and a rounded average can land a few units of 10⁻⁹ above it. With
+    a row cap, Lean bounds the rounding (`StdModel.epsilon_avg_cr`) and the
+    report says how close the claim comes:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from ibis import _
+
+    _readings = ibis.table({"sensor": "int64", "temp": "float64"}, name="readings")
+    _avg = _readings.group_by("sensor").aggregate(avg_temp=_readings.temp.mean())
+    _requires = {"readings": [_.temp >= -50.0, _.temp <= 60.0, sv.max_rows(1_000_000)]}
+    exact_claim = sv.verify(_avg, requires=_requires, ensures=[_.avg_temp <= 60.0])
+    approx_claim = sv.verify(_avg, requires=_requires, ensures=[sv.approx(_.avg_temp <= 60.0)])
+    assert not exact_claim.proved and approx_claim.proved
+    print(exact_claim)
+    return (approx_claim,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The hint names the exit, `sv.approx`, which states the claim up to that
+    rounding. With it the claim is proved, and the report's `observes:` line
+    says which results count as the same: the doubles within the plan's
+    bound (`floats="plan"`, the default of `sv.equivalent`):
+    """)
+    return
+
+
+@app.cell
+def _(approx_claim):
+    print(approx_claim.observation)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Timestamps and intervals
 
     Timestamps are microseconds since 1970 (UTC) in the model, and
