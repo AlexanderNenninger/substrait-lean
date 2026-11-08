@@ -1653,8 +1653,15 @@ hold of every engine's result. The bounds differ in kind: `VAR_*` and
 `STDDEV_*` are relative to the spread, the deviation's half the variance's;
 `CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
 `√(Sxx · Syy)`, or relative only under a sign-definite precondition.
-`Report.epsilon` reports `VAR_*` and `STDDEV_*` columns (`Epsilon.statEps`);
-`COVAR_*` and `CORR` columns have no bound there yet. Snowflake keeps
+`Report.epsilon` reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
+(`Epsilon.statEps`). `CORR` has no data-free bound (decided 2026-11-08,
+#918): its distance to the reference is bounded only under a lower bound on
+both sides' variances (`core_corr_chan`'s `L`), stated by the user and
+checked by the run as a precondition, never inferred. Without one, a `CORR`
+postcondition beyond `[-1, 1]` and the clamp is tested only, and the report
+names that precondition as the way to a bound (`Epsilon.corrWhy`). The
+contract language has no preconditions on aggregates yet, so the stated
+bound waits for them. Snowflake keeps
 refusing these aggregates (Snowflake behaviour recorded privately).
 
 Consequences:

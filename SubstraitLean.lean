@@ -44,6 +44,7 @@ import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
 import SubstraitLean.LoweringCache
 import SubstraitLean.LoweringSearch
+import SubstraitLean.LoweringDuckDB.Schemas
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.StatProps
 import SubstraitLean.Allowed
