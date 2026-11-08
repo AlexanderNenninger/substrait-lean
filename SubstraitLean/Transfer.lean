@@ -608,7 +608,7 @@ def Rel.dependenciesJson (es : List EngineProfile) (r : Rel) : Json :=
         match t.tool with | .raise => "raise" | .choose => "choose" | .leaveOpen => "leave_open"))] ++
       (reportProfiles es).map fun (t, obs) => (t.name, Json.mkObj [
         ("choice", choiceAt t p), ("allows", toJson (t.allows p.1 p.2.1 p.2.2)),
-        ("row", rowAt obs p)]))).toArray),
+        ("row", rowAt obs p), ("version", toJson t.version)]))).toArray),
     ("transfer", Json.mkObj ((reportProfiles es).map fun (t, _) => (t.name,
       Json.mkObj ((reportProfiles es).map fun (u, _) => (u.name, toJson (transferB r t u)))))),
     ("functions", toJson r.functions),
@@ -650,8 +650,8 @@ def ObsTable.factsAt (obs : ObsTable) (group : Option String) (option : String) 
     | none => (obs.find? fun (x : Option String × String × ObsRow) =>
         x.1.isNone && x.2.1 == option).map fun (x : Option String × String × ObsRow) => x.2.2
   match row with
-  | some { evidence := .tested ids, .. } | some { evidence := .proved _ ids, .. } => ids
-  | some { evidence := .probed ids, .. } => ids
+  | some { evidence := .tested ids _, .. } | some { evidence := .proved _ ids, .. } => ids
+  | some { evidence := .probed ids _, .. } => ids
   | _ => []
 
 open Lean (Json toJson) in
