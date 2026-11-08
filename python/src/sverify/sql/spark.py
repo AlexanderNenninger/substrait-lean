@@ -118,11 +118,11 @@ class SparkDialect(Dialect):
         if isinstance(kind, Dec):
             return super().type_name(kind)
         if kind not in _TYPES:
-            raise Unsupported(f"spark has no {kind} type (TIME needs Spark 4.1)")
+            raise self.to_duckdb(f"spark has no {kind} type (TIME needs Spark 4.1)")
         return _TYPES[kind]
 
     def time_of_day_lit(self, micros: int) -> str:
-        raise Unsupported("spark has no tod type (TIME needs Spark 4.1)")
+        raise self.to_duckdb("spark has no tod type (TIME needs Spark 4.1)")
 
     def raise_(self, message: str, dep: str, kind: Kind) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS STRING))"
@@ -185,11 +185,15 @@ class SparkDialect(Dialect):
         return f"ROUND({x})"
 
     def float_logb(self, x: str, b: str) -> str:
-        raise Unsupported("Spark's LN is Java's StrictMath, not the C libm the Lean model uses")
+        raise self.to_duckdb(
+            "Spark's LN is Java's StrictMath, not the C libm the Lean model uses "
+            "(spark-elem-rounding)"
+        )
 
     def float_pow(self, a: str, b: str) -> str:
-        raise Unsupported(
-            "Spark's POWER is Java's Math.pow, within 1 ulp of the C pow the Lean model uses"
+        raise self.to_duckdb(
+            "Spark's POWER is Java's Math.pow, within 1 ulp of the C pow the Lean model uses "
+            "(spark-elem-rounding)"
         )
 
     def float_to_int(self, x: str) -> str:
@@ -315,9 +319,11 @@ class SparkDialect(Dialect):
             return f"(-{a})"
         if k is not None and (k.p <= 37 or k.s <= 6):
             return self.cast(f"({self.decimal_lit(0, Dec(1, 0))} - {a})", k)
-        raise Unsupported(
+        raise self.to_duckdb(
             f"negation of a DECIMAL({k.p if k else '?'}, {k.s if k else '?'}) on Spark: "
-            "Spark rounds -x past 34 digits and 0 - x past scale 6 at 38 digits (SP-1)"
+            "Spark rounds -x past 34 digits and 0 - x past scale 6 at 38 digits (SP-1)",
+            "see #27",
+            "cast it to 34 digits or fewer",
         )
 
     def decimal_abs(self, a: str, k: Dec | None = None) -> str:
@@ -328,9 +334,11 @@ class SparkDialect(Dialect):
         if src != "float":
             return self.cast(a, k)
         if k.p > 18:
-            raise Unsupported(
+            raise self.to_duckdb(
                 f"CAST of a double to DECIMAL({k.p}, {k.s}) on Spark: Spark reads the "
-                "double as its shortest text, which past 18 digits is not its value"
+                "double as its shortest text, which past 18 digits is not its value",
+                "see #27",
+                "cast to 18 digits or fewer",
             )
         # `round(x · 10ˢ)` in doubles, halves away from zero (Spark's `ROUND` of
         # a double rounds its shortest text, which keeps every half where it
@@ -344,9 +352,11 @@ class SparkDialect(Dialect):
         return f"CAST({a} AS BIGINT)"
 
     def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
-        raise Unsupported(
+        raise self.to_duckdb(
             "decimal division (an AVG of decimals) on Spark: Spark's decimal quotient "
-            "rounds at a scale of its own first (spark-decimal-arith, #27)"
+            "rounds at a scale of its own first (spark-decimal-arith)",
+            "see #27",
+            "cast it to DOUBLE",
         )
 
     def float_extreme(self, fn: str, v: str, over: str) -> str:
@@ -371,7 +381,7 @@ class SparkDialect(Dialect):
 
     def over(self, partition: Sequence[str], order: Sequence[str]) -> str:
         if not order:
-            raise Unsupported("Spark window functions need an ORDER BY")
+            raise self.to_duckdb("Spark window functions need an ORDER BY")
         return super().over(partition, order)
 
     def lag(self, x: str, offset: int, default: str, over: str) -> str:

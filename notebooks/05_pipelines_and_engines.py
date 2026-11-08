@@ -1643,6 +1643,64 @@ def _(events, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Decimals, and the types sverify reads
+
+    Money is a decimal, and a scale that drops a cent is a wrong answer that
+    looks right. Sverify reads each column's type and keeps a decimal's
+    precision and scale through the plan: a price of `DECIMAL(10, 2)` times
+    a quantity is still in cents. A type it doesn't model yet is refused
+    when it reads the table, with the cast that gets you through. We'll load
+    order lines whose ids came in as unsigned integers:
+    """)
+    return
+
+
+@app.cell
+def _(pa, sv):
+    import decimal as _decimal
+
+    _raw = pa.table(
+        {
+            "id": pa.array([1, 2], pa.uint32()),
+            "price": pa.array(
+                [_decimal.Decimal("9.99"), _decimal.Decimal("0.10")], pa.decimal128(10, 2)
+            ),
+            "qty": pa.array([3, 7], pa.int64()),
+        }
+    )
+    con_lines = sv.connect()
+    con_lines.put("lines", _raw)
+    _lines = con_lines.table("lines")
+    try:
+        sv.verify(_lines.select("id", total=_lines.price * _lines.qty))
+    except sv.errors.UnsupportedError as _e:
+        print(f"UnsupportedError: {_e}")
+    con_lines.put("lines", _raw.set_column(0, "id", _raw["id"].cast(pa.int64())))
+    return (con_lines,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    With the ids cast to a signed integer before sverify reads the table,
+    the plan is proved, and the total keeps the price's scale
+    (`Rel.kinds_sound`):
+    """)
+    return
+
+
+@app.cell
+def _(con_lines, sv):
+    _lines = con_lines.table("lines")
+    _totals = sv.verify(_lines.select("id", total=_lines.price * _lines.qty))
+    assert _totals.proved
+    {"total": str(_totals.output["total"]), "rows": _totals.run(con_lines, "duckdb").to_pylist()}
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Text
 
     Strings are sequences of Unicode characters in the model. `substring`,

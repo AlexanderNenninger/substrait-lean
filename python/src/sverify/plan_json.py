@@ -58,7 +58,7 @@ def _type_json(dtype: Any) -> Json:
     if dtype.is_unsigned_integer():
         raise Unsupported(
             f"unsigned integers ({dtype}) are not supported yet (#350); cast the column to "
-            "a signed integer"
+            "a signed integer before sverify reads the table"
         )
     if dtype.is_integer():
         return {f"i{dtype.nbytes * 8}": NULLABLE}
@@ -82,11 +82,12 @@ def _type_json(dtype: Any) -> Json:
         if dtype.timezone is not None:
             raise Unsupported(
                 "timestamps with a time zone are not supported yet (#323); cast the column to "
-                "a timestamp in UTC without a time zone"
+                "a timestamp in UTC without a time zone before sverify reads the table"
             )
         if dtype.scale not in (None, 6):
             raise Unsupported(
-                "only microsecond timestamps are supported (#323); cast the column to microseconds"
+                "only microsecond timestamps are supported (#323); cast the column to "
+                "microseconds before sverify reads the table"
             )
         return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
     if dtype.is_time():
@@ -136,7 +137,7 @@ def literal(value: Any, dtype: Any) -> Json:
         if value.tzinfo is not None:
             raise Unsupported(
                 "timestamps with a time zone are not supported yet (#323); cast the column to "
-                "a timestamp in UTC without a time zone"
+                "a timestamp in UTC without a time zone before sverify reads the table"
             )
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
