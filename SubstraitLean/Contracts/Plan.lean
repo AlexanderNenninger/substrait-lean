@@ -36,9 +36,6 @@ bound where that is negative, and 0 otherwise (no terms sum to 0); at most
 def sumCap (b : Bound) (n : Nat) : Bound :=
   ⟨b.lo.map fun l => min 0 (n * l), b.hi.map fun h => max 0 (n * h)⟩
 
-/-- Admits integers and NULL only: no booleans, strings or lists. -/
-def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
-
 /-- Every value but NULL is a number of kind `k`. -/
 def AVal.kindOnly (k : NumKind) (a : AVal) : Bool := a.intsOnly && a.nk == some k
 
@@ -58,7 +55,7 @@ def sumKind (a : AVal) : Option NumKind :=
   | _ => none
 
 /-- Some double, or NULL. -/
-def AVal.double : AVal := ⟨true, some Bound.top, false, false, false, none, some .float⟩
+def AVal.double : AVal := { null := true, int := some Bound.top, nk := some .float }
 
 /-! ### Row counts and float error bounds (#85) -/
 
@@ -395,42 +392,46 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   -- without a filter has a value: `COUNT(*)` per group is at least 1.
   let valued := grouped && m.filter.isNone && !a.null
   match m.fn with
-  | .count => ⟨false, some (Bound.ge (if valued then 1 else 0)), false, false, false, none, some .int⟩
+  | .count => { int := some (Bound.ge (if valued then 1 else 0)), nk := some .int }
   -- A sum is over at least one input (none: NULL), so with integer inputs
   -- it is at least the smallest one, if that is not negative.
   -- With at most `rows` rows, at most `rows` times the largest value (#470).
-  | .sum => ⟨!valued, some (match a.int with
+  | .sum =>
+    let b := match a.int with
       | some b => (if a.unscaledOnly then sumBoundPos b else sumBound b).meet
           (match rows with
             | some n => sumCap b n
             | none => Bound.top)
-      | none => Bound.top), false, false, false, none, sumKind a⟩
+      | none => Bound.top
+    { null := !valued, int := some b, nk := sumKind a }
   -- Doubles round: within the proved error bound of the exact sum or mean
   -- when the values are finite and there are at most `rows` of them (#85).
-  | .fsum => ⟨!valued,
-      some (if a.kindOnly .float then floatBound false (a.int.getD Bound.top) rows else Bound.top),
-      false, false, false, none, some .float⟩
-  | .avg => ⟨!valued,
-      some (if a.kindOnly .float then floatBound true (a.int.getD Bound.top) rows else Bound.top),
-      false, false, false, none, some .float⟩
+  | .fsum =>
+    let b := if a.kindOnly .float then floatBound false (a.int.getD Bound.top) rows else Bound.top
+    { null := !valued, int := some b, nk := some .float }
+  | .avg =>
+    let b := if a.kindOnly .float then floatBound true (a.int.getD Bound.top) rows else Bound.top
+    { null := !valued, int := some b, nk := some .float }
   -- Between the smallest and the largest value (`AggFn.iavg`, #237).
   | .iavg =>
-    ⟨!valued, some (if a.kindOnly .int then a.int.getD Bound.top else Bound.top), false, false, false,
-      none, some .int⟩
+    { null := !valued, int := some (if a.kindOnly .int then a.int.getD Bound.top else Bound.top),
+      nk := some .int }
   | .cov _ | .corr => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
-  | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false, none, some .float⟩
-  | .bit _ => ⟨true, some Bound.top, false, false, false, none, some .int⟩
+  | .var _ _ => { null := true, int := some ⟨some 0, none⟩, nk := some .float }
+  | .bit _ => { null := true, int := some Bound.top, nk := some .int }
   | .min | .max => if valued then a else a.nullable
   -- One of the values, in the measure's order (#55).
   | .pick _ => a.nullable
   -- A string, or NULL without values.
-  | .concat _ => ⟨true, none, false, false, true, none, none⟩
+  | .concat _ => { null := true, str := true }
   -- One of the values (#53).
   | .quantile false _ _ | .mode => a.nullable
   -- A double between two of the values: within the argument's interval.
-  | .quantile true _ _ => ⟨true, a.int, false, false, false, none, some .float⟩
-  | .collect => AVal.top
+  | .quantile true _ _ => { null := true, int := a.int, nk := some .float }
+  -- A list of the argument's non-NULL values, at least one; NULL without (#925).
+  | .collect =>
+    { null := true, list := true, elems := some { a with null := false }, card := .ge 1 }
   -- A black box's laws over values; its `empty` value without (#325).
   | .bbox n => BlackBox.aggAbs n valued
 
@@ -443,8 +444,8 @@ described like one over a group (`Measure.abs`); `FIRST_VALUE` and friends
 may be anything. -/
 def WinFn.abs (sz : Bool) (env : List AVal) : WinFn → AVal
   | .rowNumber | .rank _ | .denseRank _ | .ntile _ =>
-    ⟨false, some ⟨some 1, if sz then some Text.rowCap else none⟩, false, false, false, none, some .int⟩
-  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false, none, some .float⟩
+    { int := some ⟨some 1, if sz then some Text.rowCap else none⟩, nk := some .int }
+  | .percentRank _ | .cumeDist _ => { int := some Bound.top, nk := some .float }
   -- An aggregate over a frame, rows of the input: a sum of non-negative
   -- integers is not negative, `MIN` and `MAX` are among the inputs (#229).
   | .agg m _ _ => m.abs env []
@@ -493,7 +494,10 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
       env ++ fns.map (WinFn.abs sz env)
   | .semi a _ _ _ => a.aeval cat A F T sz
   | .orderBy r _ | .distinct r => r.aeval cat A F T sz
-  | .unnest r c => (r.aeval cat A F T sz).set c AVal.top
+  -- An element of the column's list in its place (#925).
+  | .unnest r c =>
+      let env := r.aeval cat A F T sz
+      env.set c (env.getD c AVal.top).elemsOf
   | .aggregate r gs ms =>
       let env := r.aeval cat A F T sz
       let fs := r.facts cat F T
@@ -578,7 +582,7 @@ def Rel.laneStep (cat : Catalog) (A : String → List AVal) (F : String → List
         gs.map (·.absD l.env l.facts) ++ ms.map fun m => Measure.abs l.env l.facts m (!gs.isEmpty) l.rows,
         ratioFacts gs.length l.env l.facts ms, if gs.isEmpty then some 1 else l.rows⟩
   | .unnest _ c, l, _ =>
-      ⟨l.arity, [], l.env.set c AVal.top, [], none⟩
+      ⟨l.arity, [], l.env.set c (l.env.getD c AVal.top).elemsOf, [], none⟩
 
 
 /-- The analyses of every subplan in one bottom-up pass. -/

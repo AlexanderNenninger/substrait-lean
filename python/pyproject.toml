@@ -159,6 +159,7 @@ cwd = "${POE_ROOT}/.."
 help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
 shell = """
 lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLean.LoweringDuckDB.Lemmas \
+  SubstraitLean.LoweringDuckDB.Schemas \
   && lake env lean -M 6144 scripts/RegenLowering.lean
 """
 cwd = "${POE_ROOT}/.."
