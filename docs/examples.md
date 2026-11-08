@@ -344,11 +344,13 @@ try:
     parity.run(con, "duckdb", route="auto")
 except RouteError as e:
     print(e)
-# refused on duckdb: integer // and % with division_type FLOOR (Polars's, semantics='polars') run on polars only; duckdb truncates: verify with semantics='reference' to run on duckdb
+# refused on duckdb: verify with semantics='reference' to run on duckdb (the plan was verified with semantics='polars', whose proof does not carry over to duckdb)...
 ```
 
 Under the reference `-7 % 2` is `-1`, as on DuckDB, so the postcondition
-does not hold there, and DuckDB refuses the plan. A zero divisor and integer
+does not hold there, and the route to DuckDB is refused: the proof under
+Polars's profile does not carry over to DuckDB's. The written plan itself
+states the floor, and sverify's SQL computes it on every SQL engine. A zero divisor and integer
 overflow raise under `Profile.polars` as under the reference, so `verify`
 infers the same preconditions. [engine-profiles.md](engine-profiles.md#polars-as-a-profile)
 says which choices the profile takes from Polars.

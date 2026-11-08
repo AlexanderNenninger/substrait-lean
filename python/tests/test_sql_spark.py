@@ -234,6 +234,42 @@ def test_variance_of_one_nan(spark):
     assert all(math.isnan(v) and math.isnan(s) for _, v, s in got)
 
 
+def test_floor_division(spark):
+    """A plan that states `division_type: FLOOR` (`semantics="polars"`): the
+    SQL writer computes it from Spark's truncating `div` and `%`, so negative
+    operands floor, and a zero divisor and `MIN // -1` raise."""
+    import json
+
+    from ibis import _
+
+    import sverify as sv
+    from sverify import spark_engine
+
+    vcon = sv.connect()
+    vcon.put("t", pa.table({"i": pa.array([1], pa.int64()), "j": pa.array([1], pa.int64())}))
+    t = vcon.table("t")
+    report = sv.verify(
+        t.select(m=t.i % t.j, q=t.i // t.j),
+        requires={"t": [_.i >= -9 * 10**18, _.j != 0]},
+        semantics="polars",
+    )
+    plan = written_plan(report.internal_plan or "")
+    assert '"FLOOR"' in plan
+    assert "Unsupported" not in to_sql(json.loads(plan), SPARK)
+    lo, hi = -(2**63), 2**63 - 1
+
+    def run(rows: list[tuple[int, int]]) -> list[tuple]:
+        i, j = zip(*rows, strict=True)
+        t = pa.table({"i": pa.array(i, pa.int64()), "j": pa.array(j, pa.int64())})
+        return [tuple(r.values()) for r in spark_engine.run(plan, {"t": t}, spark).to_pylist()]
+
+    edges = [(-7, 2), (7, -2), (-7, -2), (0, -3), (lo, 1), (lo, 2), (hi, -1), (hi, lo)]
+    assert sorted(run(edges)) == sorted((a % b, a // b) for a, b in edges)
+    for bad in ([(1, 0)], [(lo, -1)]):
+        with pytest.raises(Exception, match="(?i)zero|overflow"):
+            run(bad)
+
+
 def test_integers(spark):
     d = SPARK
     big, lo = d.int_lit(2**62), d.int_lit(-(2**63))

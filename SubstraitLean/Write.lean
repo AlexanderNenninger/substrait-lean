@@ -717,8 +717,9 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
         ("then", writeExpr cols ctx (.un .fneg t))]]),
       ("else", writeExpr cols ctx e)])]
   -- Integer `//` and `%` with `division_type` = `FLOOR`, as the parser reads
-  -- them (`Expr.floorDivOf`, `Expr.floorModOf`): written as those calls, so
-  -- that Polars runs its own `//` and `%` and the other engines refuse them.
+  -- them (`Expr.floorDivOf`, `Expr.floorModOf`): written back as the calls
+  -- with the option the plan stated. Polars runs them as its own `//` and
+  -- `%`; the SQL writer computes them in truncating operations.
   | .ifThen c t e =>
     let dflt := caseChain (writeExpr cols .bool c) (writeExpr cols ctx t) (writeExpr cols ctx e)
     match c, t with

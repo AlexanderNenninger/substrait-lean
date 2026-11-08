@@ -2342,13 +2342,16 @@ class _Parser:
                     ]
                     mode = _div_by_zero_mode(v)
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
-                        op = "fdiv" if name == "divide" else "fmod"
-                        return _div_by_zero(mode, True, op, *parsed)
+                        op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
+                        return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
-                if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
-                    op = "idiv" if name == "divide" else "imod"
-                    return _div_by_zero(mode, False, op, *parsed)
+                if name in ("divide", "modulus") and len(parsed) == 2:
+                    # `division_type` = `FLOOR` (Polars's `//` and `%`), in the
+                    # reference's truncating operations (`Parse.divisionTypeMode`).
+                    floor = _option(v, "division_type", "TRUNCATE") == "FLOOR"
+                    div = _int_div(name == "divide", floor)
+                    return _div_by_zero(mode, False, div, *parsed)
                 out_e = _call(name, parsed)
                 # `overflow` = SILENT or SATURATE (`UnFn.fit`, #241): the exact
                 # result, wrapped around or clamped at the width. The width is
@@ -3460,13 +3463,52 @@ def _div_by_zero_mode(f: dict) -> str:
     return _option(f, "on_division_by_zero", "ERROR")
 
 
+def _floor_div(a: Expr, b: Expr) -> Expr:
+    """`Expr.floorDivOf`: `a // b` with `division_type` = `FLOOR`. With the
+    signs apart `(a + 1) / b - 1` or `(a - 1) / b - 1`, so that no step
+    overflows; otherwise the truncated quotient."""
+    zero, one = Lit(0, "int"), Lit(1, "int")
+    q = Bin("idiv", a, b)
+
+    def apart(x: Expr) -> Expr:
+        return Bin("add", Bin("idiv", x, b), Lit(-1, "int"))
+
+    return If(Bin("lt", a, zero), If(Bin("lt", zero, b), apart(Bin("add", a, one)), q),
+              If(Bin("lt", b, zero), If(Bin("lt", zero, a), apart(Bin("sub", a, one)), q),
+                 q))  # fmt: skip
+
+
+def _floor_mod(a: Expr, b: Expr) -> Expr:
+    """`Expr.floorModOf`: `a % b` with `division_type` = `FLOOR`, the sign of
+    `b`. With the signs apart `(b - 1) - (-1 - a) % b` or
+    `(a - 1) % b + (b + 1)`; otherwise the truncated remainder."""
+    zero, one = Lit(0, "int"), Lit(1, "int")
+    r = Bin("imod", a, b)
+    neg = Bin("sub", Bin("sub", b, one), Bin("imod", Bin("sub", Lit(-1, "int"), a), b))
+    pos = Bin("add", Bin("imod", Bin("sub", a, one), b), Bin("add", b, one))
+    return If(Bin("lt", a, zero), If(Bin("lt", zero, b), neg, r),
+              If(Bin("lt", b, zero), If(Bin("lt", zero, a), pos, r), r))  # fmt: skip
+
+
+def _int_div(quotient: bool, floor: bool) -> Callable[[Expr, Expr], Expr]:
+    """Integer `divide` (`quotient`) or `modulus`, truncating or `FLOOR`."""
+    if floor:
+        return _floor_div if quotient else _floor_mod
+    op: Literal["idiv", "imod"] = "idiv" if quotient else "imod"
+    return lambda a, b: Bin(op, a, b)
+
+
 def _div_by_zero(
-    mode: str, double: bool, op: Literal["fdiv", "fmod", "idiv", "imod"], a: Expr, b: Expr
+    mode: str, double: bool, div: Callable[[Expr, Expr], Expr], a: Expr, b: Expr
 ) -> Expr:
-    """`Parse.divByZero`: `a / b` under `on_division_by_zero` = `mode`, a `CASE`
-    on the divisor around the division that raises on zero. `IEEE` and `LIMIT`
-    are only for dividing doubles (`Parse.optionAccepts`)."""
-    if mode not in ("IEEE", "LIMIT", "NULL") or (op != "fdiv" and mode != "NULL"):
+    """`Parse.divByZero`: `div a b` under `on_division_by_zero` = `mode`; other
+    than `ERROR`, a `CASE` on the divisor around the division. `IEEE` and
+    `LIMIT` are only for dividing doubles (`Parse.optionAccepts`)."""
+    q = div(a, b)
+    if mode == "ERROR":
+        return q
+    fdiv = isinstance(q, Bin) and q.op == "fdiv"
+    if mode not in ("IEEE", "LIMIT", "NULL") or (not fdiv and mode != "NULL"):
         raise Unsupported(f"on_division_by_zero = {mode} is not supported")
     lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
     nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
@@ -3480,7 +3522,7 @@ def _div_by_zero(
     else:
         by_zero = If(is_nan, nan, null) if double else null
     zero = lit(0.0) if double else lit(0)
-    return If(Un("not", Bin("eq", b, zero)), Bin(op, a, b),
+    return If(Un("not", Bin("eq", b, zero)), q,
               If(Un("is_null", b), null, If(Un("is_null", a), null, by_zero)))  # fmt: skip
 
 
