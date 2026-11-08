@@ -105,6 +105,12 @@ class Linear:
     which `sverify._exact_sum.fold` adds up into the initial state."""
 
 
+#: Why a view has no state per group when it is not one this module keeps:
+#: the checker's refusal of its delta rules says more (`IncrementalView`).
+SQL = "the view is SQL"
+NOT_AGGREGATE = "not an aggregate or DISTINCT under filters and projections of its rows"
+
+
 def plan(name: str, query: ir.Table | str) -> Linear | str:
     """How to maintain the view `name` of `query` from a group state, or why
     it cannot be."""
@@ -112,7 +118,7 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
     from sverify.ibis_substrait.core import DecimalDiv
 
     if isinstance(query, str):
-        return "the view is SQL"
+        return SQL
     found = _split(query.op())
     if isinstance(found, str):
         return found
@@ -361,7 +367,7 @@ def _split(
         return agg, dict(agg.groups), measures, names, "aggregate"
     found = _under(op, lambda o: isinstance(o, ops.Distinct))
     if found is None:
-        return "not an aggregate or DISTINCT under filters and projections of its rows"
+        return NOT_AGGREGATE
     node, names = found
     parent = node.parent  # type: ignore[attr-defined]
     groups = {c: ops.Field(parent, c) for c in parent.schema.names}
