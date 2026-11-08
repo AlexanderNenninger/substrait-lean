@@ -156,7 +156,10 @@ TESTED = [
 REFUSED = [
     ("no translation from the reference to", "refused: no route from the reference (Snowflake)"),
     ("which the observation ignores", "refused: postcondition reads doubles a tolerance ignores"),
-    ("of the reference: write it as sv.approx", "refused: exact bound, the engine adds in another order"),
+    (
+        "of the reference: write it as sv.approx",
+        "refused: exact bound, the engine adds in another order",
+    ),
     ("not verified: ensures", "refused: postcondition not proved"),
     ("no engine meets the observation's tolerance", "refused: tolerance unmet"),
     ("and the postcondition asks within", "refused: tolerance unmet"),
