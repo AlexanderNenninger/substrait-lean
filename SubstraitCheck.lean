@@ -111,7 +111,7 @@ partial def renderCell : Kind → Value → String
 #guard renderCell (.list (.dec 4 1)) (.list [.dec 1 10, .null, .dec 1 25]) == "[1.0, NULL, 2.5]"
 #guard renderCell (.struct [.str, .dec 9 3]) (.struct [.str "a", .dec 3 1500]) == "[\"a\", 1.500]"
 
-/-- A value as JSON, doubles as their codes (`SubstraitLean/Float.lean`). -/
+/-- A value as JSON, doubles as their codes (`core/Sverify/Core/Float.lean`). -/
 def valueJson : Value → Lean.Json
   | .null => .null
   | .bool b => .bool b

@@ -56,7 +56,7 @@ def native(df: pl.DataFrame, *exprs: pl.Expr) -> list[tuple]:
 
 @needs_repo
 def test_every_shim_and_guard_is_a_function_with_a_fact():
-    options = (ROOT / "SubstraitLean" / "Options.lean").read_text()
+    options = (ROOT / "core" / "Sverify" / "Core" / "Options.lean").read_text()
     areas = (ROOT / "characterization" / "areas.json").read_text()
     for s in shims.SHIMS:
         assert callable(getattr(shims, s.name)), s.name
@@ -882,8 +882,9 @@ def test_polars_skips_nan_and_keeps_either_zero_and_the_shims_do_not():
     lo, hi = both([1.0, math.nan, -1.0], True)
     assert lo == -1.0 and math.isnan(hi)
     # The zero Polars keeps is the platform's (polars-min-max-zero): `min` is
-    # -0.0 on macOS arm64, and `max` too on Linux x86_64. The shims read one.
-    assert math.copysign(1.0, both([0.0, -0.0], False)[0]) == -1.0
+    # -0.0 on macOS arm64, and `max` too on Linux x86_64; which one `min` gives
+    # on Linux depends on the runner's CPU. The shims read one.
+    assert both([0.0, -0.0], False) == (0.0, 0.0)
     assert [math.copysign(1.0, z) for z in both([0.0, -0.0], True)] == [1.0, 1.0]
     assert both([None, None], True) == (None, None)
 

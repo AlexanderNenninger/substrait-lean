@@ -644,7 +644,7 @@ def _(mo):
     This reads: for each row, the `ts` of the previous row of the same
     sensor, in `ts` order, and NULL for the first one. The model supports
     `LAG`, `LEAD` and `ROW_NUMBER` with any sort direction, NULLs first or
-    last, offsets and defaults (`SubstraitLean/Window.lean`).
+    last, offsets and defaults (`core/Sverify/Core/Window.lean`).
     """)
     return
 

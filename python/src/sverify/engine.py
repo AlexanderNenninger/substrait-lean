@@ -532,7 +532,11 @@ def stale_checker(path: Path | None = None) -> str | None:
         root = path.parents[3]
         if path.parent.parts[-3:] != (".lake", "build", "bin"):
             return None
-        sources = [root / "SubstraitLean.lean", *(root / "SubstraitLean").rglob("*.lean")]
+        sources = [
+            root / "SubstraitLean.lean",
+            *(root / "SubstraitLean").rglob("*.lean"),
+            *(root / "core").rglob("*.lean"),
+        ]
         built = path.stat().st_mtime
         newer = [f for f in sources if f.exists() and f.stat().st_mtime > built]
     except (OSError, IndexError):

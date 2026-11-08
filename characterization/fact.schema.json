@@ -26,7 +26,7 @@
       "uniqueItems": true
     },
     "rows": {
-      "description": "The rows of the engine choice tables the fact settles: a function group of SubstraitLean/Functions.lean (`groups`; omitted for an option no group takes, such as null_order), one of its options, and the types the fact's checks cover. `python -m sverify_dev.facts --coverage <engine>` lists the rows and their types.",
+      "description": "The rows of the engine choice tables the fact settles: a function group of core/Sverify/Core/Functions.lean (`groups`; omitted for an option no group takes, such as null_order), one of its options, and the types the fact's checks cover. `python -m sverify_dev.facts --coverage <engine>` lists the rows and their types.",
       "type": "array",
       "items": {
         "type": "object",

@@ -14,7 +14,7 @@ variable (M : StdModel)
 # Two-pass: Lean's own algorithm
 
 The means, then the products of the deviations from them, added in order
-(`meanOf`, then `coDevSum` in `SubstraitLean/Aggregate.lean`).
+(`meanOf`, then `coDevSum` in `core/Sverify/Core/Aggregate.lean`).
 -/
 
 /-- `γ k ≤ 2 k u` while `k u ≤ 1/2`. -/

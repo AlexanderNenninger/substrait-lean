@@ -64,7 +64,7 @@ _KNOWN = {"date_part", "datepart", "prefix", "suffix"}
 @dataclasses.dataclass(frozen=True)
 class Profile:
     """What DuckDB SQL means, as data the lift reads (#231: "keep it
-    simple"). The Lean side is `Profile.reference` (`SubstraitLean/Profile.lean`)
+    simple"). The Lean side is `Profile.reference` (`core/Sverify/Core/Profile.lean`)
     and `Profile.duckdb` (`SubstraitLean/DuckDBProfile.lean`).
 
     The first group of fields is how the SQL text reads, which is DuckDB's

@@ -11,11 +11,16 @@ def checkGenerated : Bool := get_config? check_generated == some "true"
 
 package «substrait-lean»
 
+require «sverify-core» from "core"
+
 @[default_target]
 lean_lib SubstraitLean
 
 /-- The generated modules, which `check_generated` applies to. Declared after
-`SubstraitLean`: Lake gives a module to the last library that contains it. -/
+`SubstraitLean`: within a package, Lake gives a module to the last library
+that contains it. Across packages a library claims every module under its
+root's prefix, which is why each package has a root of its own (`Sverify.Core`)
+and none is rooted at `Sverify` alone. -/
 lean_lib SubstraitLeanGenerated where
   roots := #[]
   globs := #[.submodules `SubstraitLean.LoweringDuckDB.On,

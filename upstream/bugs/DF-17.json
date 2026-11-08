@@ -8,9 +8,9 @@
     "`select date_trunc('month', arrow_cast('2300-06-15T00:00:00', 'Timestamp(Microsecond, None)'))` gives `1715-11-01` on 51.0.0 and `Timestamp 10428048000000000 out of range` on 55.0.0; `date_part('year', …)` of it is `2300`.",
     "`select cast('2300-06-15 00:00:00' as timestamp)` fails: `Overflow converting 2300-06-15 00:00:00 to Nanosecond`."
   ],
-  "handling": "The reference follows DataFusion here (`SubstraitLean/Time.lean`): calendar functions are defined within ±2⁶³ ns on every engine. A proposal to use 0001–9999 and refuse only on DataFusion is under review.",
+  "handling": "The reference follows DataFusion here (`core/Sverify/Core/Time.lean`): calendar functions are defined within ±2⁶³ ns on every engine. A proposal to use 0001–9999 and refuse only on DataFusion is under review.",
   "files": [
-    "SubstraitLean/Time.lean",
+    "core/Sverify/Core/Time.lean",
     "python/src/sverify/polars_engine.py",
     "python/src/sverify/sql/core/_base.py"
   ],

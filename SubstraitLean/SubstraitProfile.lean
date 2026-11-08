@@ -1,6 +1,6 @@
 import Lean.Data.Json
-import SubstraitLean.Observations
-import SubstraitLean.AllowedP
+import Sverify.Core.Observations
+import Sverify.Core.AllowedP
 
 /-!
 # The Substrait profile (#444, step 2)

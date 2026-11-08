@@ -6,7 +6,7 @@ public import FloatBounds.Shard
 # Sums in any order (#444, #85)
 
 The reference allows a double `SUM` any tree of rounded additions over the
-values in any order (`FloatSums` in `SubstraitLean/Allowed.lean`: `seq`, a
+values in any order (`FloatSums` in `core/Sverify/Core/Allowed.lean`: `seq`, a
 sequential sum of a permutation, and `split`, two such sums added). DuckDB
 adds a constant run of `k` rows as one product `fl(k · x)` (duckdb-sum-double,
 `SCALED_CONSTANT`). `StdModel.TreeSum` is the doubles all of these give, over
@@ -355,7 +355,7 @@ theorem Tree.seq {ws : List ℝ} (hw : ∀ w ∈ ws, R.G w) :
 end Rnd
 
 /-- The doubles a tree of rounded additions gives for the values `xs`:
-`FloatSums` (`SubstraitLean/Allowed.lean`) over the reals, and a constant run
+`FloatSums` (`core/Sverify/Core/Allowed.lean`) over the reals, and a constant run
 of `k` values `x` added as one rounded product (`SCALED_CONSTANT`). -/
 inductive StdModel.TreeSum (M : StdModel) : List ℝ → ℝ → Prop
   | seq {xs ws : List ℝ} : ws.Perm xs → StdModel.TreeSum M xs (M.sum ws)

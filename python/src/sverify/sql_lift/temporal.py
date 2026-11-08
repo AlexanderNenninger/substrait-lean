@@ -94,7 +94,7 @@ def _temporal(e: E, t: Any) -> E:
     return E(literal(v, ts), ts, v)
 
 
-#: The units `date_trunc` truncates a timestamp to (`SubstraitLean/Time.lean`).
+#: The units `date_trunc` truncates a timestamp to (`core/Sverify/Core/Time.lean`).
 _TRUNC_UNITS = ("second", "minute", "hour", "day", "week", "month", "quarter", "year")
 
 

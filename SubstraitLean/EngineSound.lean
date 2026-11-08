@@ -1,5 +1,5 @@
 import SubstraitLean.Engine
-import SubstraitLean.AllowedNear
+import Sverify.Core.AllowedNear
 import SubstraitLean.AllowedAnalysis
 
 /-!

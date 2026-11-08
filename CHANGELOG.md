@@ -673,7 +673,7 @@ the sum is assumed to fit and checked on the data while the job runs
 ### Black-box functions
 
 DuckDB functions the checker treats as opaque now come from one table,
-`SubstraitLean/BlackBox.lean` ([#325](https://github.com/AlexanderNenninger/substrait-lean/issues/325)).
+`core/Sverify/Core/BlackBox.lean` ([#325](https://github.com/AlexanderNenninger/substrait-lean/issues/325)).
 Each row gives a function's types, how it treats NULL, whether it may raise,
 and its laws, which the contract checker uses and Lean proves of the model.
 The SQL lift reads them, the plan calls them under the URN
@@ -864,7 +864,7 @@ both. Lean does not prove these bounds yet
 ### The reference's options in one table
 
 The options a plan may set, and the reference's choice at each, are now one
-table in Lean (`SubstraitLean/Options.lean`, step 1a of
+table in Lean (`core/Sverify/Core/Options.lean`, step 1a of
 [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444)), and
 the parser reads it. `substrait-check --options` prints it. Plans are read as
 before, with one addition: `variance` and `std_dev` of integers accept
@@ -2039,7 +2039,7 @@ stores and the other engines read through Arrow as before.
 
 `docs/reference-semantics.md` now defines correctness through the set of
 results the reference allows for each input (`Rel.Allowed`,
-`SubstraitLean/Allowed.lean`). The set holds more than one result where the
+`core/Sverify/Core/Allowed.lean`). The set holds more than one result where the
 reference leaves a choice to the engine: the order of rows and of ties,
 `FIRST`/`LAST` and `distinct(on=)` without an order, the order in which a double
 `SUM` or `AVG` adds (#85), and the statistical aggregates. `Rel.eval` is one
@@ -2178,7 +2178,7 @@ TPC-H q11, q14 and q20 state row caps from the specification's largest scale fac
 
 ### The SQL written for DuckDB is proved to return the reference's rows or raise
 
-`Rel.duckdb_shim_sound` (`SubstraitLean/Profile.lean`) proves that DuckDB,
+`Rel.duckdb_shim_sound` (`core/Sverify/Core/Profile.lean`) proves that DuckDB,
 running the SQL sverify writes, returns `Rel.eval`'s rows or raises, for any
 plan, with no contract needed (#185). Engine profiles state what DuckDB
 computes for each function, and where it differs from the reference the

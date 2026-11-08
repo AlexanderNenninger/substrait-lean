@@ -11,8 +11,8 @@ import SubstraitLean.Infer
 import SubstraitLean.Rows
 import SubstraitLean.Knowledge
 import SubstraitLean.Implied
-import SubstraitLean.Robust
-import SubstraitLean.AllowedNear
+import Sverify.Core.Robust
+import Sverify.Core.AllowedNear
 import SubstraitLean.AllowedAnalysis
 
 /-!
@@ -69,7 +69,7 @@ fields by their types (#925), `depth` levels down. -/
 def typeEnvD : Nat → Json → AVal
   | 0, _ => AVal.top
   | depth + 1, ty =>
-    -- Numbers: integers, doubles (by their codes, `SubstraitLean/Float.lean`), timestamps and dates.
+    -- Numbers: integers, doubles (by their codes, `core/Sverify/Core/Float.lean`), timestamps and dates.
     let ints := ["i8", "i16", "i32", "i64", "fp32", "fp64", "precisionTimestamp", "timestamp", "date"]
     let kinds := ints ++ ["string", "varchar", "fixedChar", "bool", "decimal", "list", "struct"]
     let kind := (kinds.find? fun k => (ty.getObjVal? k).toOption.isSome).getD ""

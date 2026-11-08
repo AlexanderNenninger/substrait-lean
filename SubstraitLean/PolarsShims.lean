@@ -1,5 +1,5 @@
-import SubstraitLean.Profile
-import SubstraitLean.Order
+import Sverify.Core.Profile
+import Sverify.Core.Order
 import SubstraitLean.EngineTables
 import SubstraitLean.Shims
 

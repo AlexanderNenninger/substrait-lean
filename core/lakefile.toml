@@ -1,0 +1,10 @@
+name = "sverify-core"
+defaultTargets = ["SverifyCore"]
+
+# The core (#1189): the reference's semantics. It imports nothing but Lean.
+# A standalone `lake build --wfail` here is the guard (CI runs it): inside the
+# root workspace an import of an analysis or engine module would resolve.
+
+[[lean_lib]]
+name = "SverifyCore"
+roots = ["Sverify.Core"]

@@ -15,7 +15,7 @@ defaults:
   (division by zero, `MIN / -1`, a bad `POWER` or `CAST(double AS BIGINT)`),
   Lean's value is NULL and `SubstraitLean/Safety.lean` says when that can
   happen; the SQL raises there too (`Dialect.raise_`).
-* Doubles have one zero and one NaN (`SubstraitLean/Float.lean`): `-0.0` is
+* Doubles have one zero and one NaN (`core/Sverify/Core/Float.lean`): `-0.0` is
   `0.0`, NaN equals itself and is above `inf`, in comparisons, join
   conditions, groups, window partitions and sort keys. Every double read
   from a table, and every one an operation could make `-0.0`, goes through

@@ -43,7 +43,7 @@ inductive DuckType where
   | bigint | double | tinyint
   deriving Repr, DecidableEq, Inhabited
 
-/-- Values of the type: `NULL` or an integer; for a `DOUBLE`, a double, whose code is (`SubstraitLean/Float.lean`): between `-∞`'s and `+∞`'s, or NaN's. -/
+/-- Values of the type: `NULL` or an integer; for a `DOUBLE`, a double, whose code is (`core/Sverify/Core/Float.lean`): between `-∞`'s and `+∞`'s, or NaN's. -/
 def DuckType.Has : DuckType → Value → Prop
   | _, .null => True
   | .double, .float c => (FloatCode.negInf ≤ c ∧ c ≤ FloatCode.posInf) ∨ c = FloatCode.nan

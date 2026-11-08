@@ -17,13 +17,13 @@ Since Lean 4.35, `Float`'s operations have a logical model in the kernel
 proved from that model; Lean has no lemmas about the model yet.
 
 `Float.toReal` reads a double's value from its bits, the decoding
-`FloatCode.ofFloat` in `SubstraitLean/Float.lean` uses: a code's magnitude is
+`FloatCode.ofFloat` in `core/Sverify/Core/Float.lean` uses: a code's magnitude is
 `|x| · 2¹⁰⁷⁴`.
 
 `exp` is trusted to one ulp: the platform's `libm` (#582).
 
 `native_sum_error` is the bound of `sum_error` for a fold of native doubles,
-`xs.foldl (· + ·) 0`, which is `floatSum` in `SubstraitLean/Aggregate.lean`
+`xs.foldl (· + ·) 0`, which is `floatSum` in `core/Sverify/Core/Aggregate.lean`
 on codes; `native_avg_error` adds `AVG`'s division by the count.
 -/
 

@@ -1,4 +1,4 @@
-"""The 1.0 API review's items on `Report` and `sverify.io` (`api-review/PROPOSAL.md`):
+"""The 1.0 API review's items on `Report` and `sverify.io` (#795):
 internal fields behind an underscore with deprecated aliases (B4, E1), and
 `FlightLog` in `sverify.testing` (E1)."""
 
