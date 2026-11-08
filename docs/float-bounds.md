@@ -160,16 +160,25 @@ they were axioms about the sequential sum, proved here as `core_sum`,
 
 - Signs are exact: a `SUM` or `AVG` of doubles `≥ 0` is `≥ 0`, and of
   doubles `≤ 0` is `≤ 0`.
-- The bounds need a row count. `sv.max_rows(n)` in `requires` caps an input
+- D25 rounds the exact sum or mean once, and rounding is monotone, so an
+  `AVG` of finite doubles in `[lo, hi]` lies in `[lo, hi]` rounded, which is
+  `[lo, hi]` itself where `lo` and `hi` are doubles: the mean of `cpu` in
+  `[0, 100]` is in `[0, 100]` (`crBound`, `crBound_sound`,
+  `FloatCode.ofExactDiv_mul`). A mean needs no row count.
+- A `SUM` needs one. `sv.max_rows(n)` in `requires` caps an input
   and is checked on the data (`COUNT(*) <= n`), or proved from the record
   counts of a Delta or Iceberg table's files. The same cap proves integer
   `SUM`s fit 64 bits ([Row caps](guide.md#row-caps)). The checker reads capped
   tables through a `FETCH` of `n` rows (`Rel.capReads`), which keeps their
   rows (`Rel.capReads_eval`), and bounds every relation's rows from it
-  (`Rel.maxRows`, `Rel.maxRows_sound`).
-- With a cap `n ≤ 2³²` and an input interval `[lo, hi]` within `2⁴⁰⁰`, a
-  `SUM` lies in `[min(lo, n·lo) − τ, max(hi, n·hi) + τ]` and an `AVG` in
-  `[lo − τ', hi + τ']` (`floatBound`, `Measure.abs`).
+  (`Rel.maxRows`, `Rel.maxRows_sound`). With a cap `n`, a `SUM` of doubles
+  in `[lo, hi]` lies in `[min(lo, n·lo), max(hi, n·hi)]` rounded once.
+- #85's tolerances hold too: with a cap `n ≤ 2³²` and an input interval
+  `[lo, hi]` within `2⁴⁰⁰`, a `SUM` lies in `[min(lo, n·lo) − τ, max(hi, n·hi) + τ]`
+  and an `AVG` in `[lo − τ', hi + τ']` (`floatSumCR_mem`, `floatAvgCR_mem`).
+  Rounded once, the result lies inside them, so they add nothing.
+  `floatBound` (`Measure.abs`) is the bound above, with the sign kept where
+  the values have no finite bound or a `SUM` no cap (`signBound`).
 - Casts carry these bounds on. A cast to an integer truncates both ends of
   the interval, so `CAST(AVG(cpu) AS BIGINT)` is in `[0, 100]`, and a cast
   to a decimal rounds them. Both are monotone, and `verify` reports no failed
@@ -180,16 +189,17 @@ they were axioms about the sequential sum, proved here as `core_sum`,
   (`FloatCode.ofInt_mono`), so each conversion's rounding beyond `2⁵³` is in
   them already.
 - `sv.approx(cond, rel=1e-6)` relaxes each comparison of a column with a
-  number `k` in `cond` by `rel · max(1, |k|)`. The default covers a `SUM` or
-  `AVG` over any cap up to `2³²` rows. A report hints at it when an exact
-  claim fails only by rounding.
+  number `k` in `cond` by `rel · max(1, |k|)`, for a bound that is not a
+  double or an engine whose order of additions differs from the reference
+  ([The engines' orders](#the-engines-orders-and-epsilon-444)). A report
+  hints at it when an exact claim fails only by rounding.
 
 The homelab metrics rollup states its contract this way:
 
 ```python
 @sv.transform(
     requires={"metrics": [_.cpu >= 0, _.cpu <= 100, _.cpu.notnull(), sv.max_rows(10_000_000)]},
-    ensures=[_.cpu_avg >= 0, sv.approx(_.cpu_avg <= 100)],
+    ensures=[_.cpu_avg >= 0, _.cpu_avg <= 100],
 )
 ```
 

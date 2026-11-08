@@ -100,9 +100,11 @@ def test_exact_doubles_into_a_sink_are_asked_for(tmp_path) -> None:
 
 def test_a_postcondition_on_a_double_keeps_it_exact_unless_every_engine_meets_it() -> None:
     """`_.m >= 0` holds of every value within the mean's bound and of its sign,
-    so it runs (#1045). `_.m <= 1000 + 1.5e-10` is proved of the reference's
-    mean, but an engine's may exceed it by up to the bound (1.1e-10), so the
-    run asks for `sv.approx` or a stated tolerance."""
+    so it runs (#1045). `_.m <= 1000` is proved of the reference's mean, the
+    exact mean rounded once (D25, #1160), but an engine's may exceed it by up
+    to the bound (1.1e-10), so the run asks for `sv.approx` or a stated
+    tolerance. With room for the bound (`<= 1000 + 1.5e-10`) every engine
+    meets it."""
     c = sv.connect()
     c.put("orders", pa.table({"id": [1], "customer": ["ada"], "amount": [5]}))
     o = c.table("orders")
@@ -111,10 +113,12 @@ def test_a_postcondition_on_a_double_keeps_it_exact_unless_every_engine_meets_it
     sign = sv.verify(expr, requires=req, ensures=[_.m >= 0])
     assert sign.proved and sign.ensures[0].robust
     assert sign.run(c, "polars").num_rows == 1
-    tight = sv.verify(expr, requires=req, ensures=[_.m <= 1000 + 1.5e-10])
+    tight = sv.verify(expr, requires=req, ensures=[_.m <= 1000])
     assert tight.proved and not tight.ensures[0].robust
     with pytest.raises(RouteError, match=r"reads m.*sv.approx"):
         tight.run(c, "polars")
+    room = sv.verify(expr, requires=req, ensures=[_.m <= 1000 + 1.5e-10])
+    assert room.proved and room.ensures[0].robust
 
 
 def test_the_plan_bound_level() -> None:

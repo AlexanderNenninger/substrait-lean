@@ -650,9 +650,10 @@ INFINITE = "overflow to infinity"
         ("SELECT sum(x) AS v FROM f", ["x >= 0"], [INFINITE]),
         # Values within 2⁴⁰⁰ over at most 2³² rows sum to a finite double (#85).
         ("SELECT sum(x) AS v FROM f", ["x < 1e100", "x > -1e100", sv.max_rows(1000)], []),
-        # An integer converts to a finite double; without a row cap the
-        # checker has no bound on the mean.
-        ("SELECT avg(CAST(i AS DOUBLE)) AS v FROM f", [], [INFINITE]),
+        # An integer converts to a finite double, and the reference's mean
+        # is the exact mean rounded once (D25, #1160): within the values'
+        # bound, with no row cap.
+        ("SELECT avg(CAST(i AS DOUBLE)) AS v FROM f", [], []),
     ],
 )
 def test_nan_creation_is_a_domain_error(sql, requires, errors):
