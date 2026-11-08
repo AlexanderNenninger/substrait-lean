@@ -46,8 +46,8 @@ Lean file; [proofs.md](proofs.md) lists each guarantee with its theorem.
 |---|---|---|---|---|
 | Routes and classes: `route="auto"` | A proof made under one semantics says nothing about an engine with another unless something carries it over; a route is that carrier, and its class tells you what you can rely on. | `report.run(con, engine, route="auto")`, `report.routes[engine]`: "exact", "observed", "shim" or "refused", with the evidence; `RouteError` names the options that differ. An explicit `route=` refusal names no exit: [#1046] | [05](../notebooks/05_pipelines_and_engines.py), "Routes: how a proof reaches an engine" | `Lowering.lowerRel_sound` ([Lowering.lean](../SubstraitLean/Lowering.lean)), `Rel.duckdb_refines` ([Obligations.lean](../SubstraitLean/Obligations.lean)), `Rel.polars_sound` ([PolarsShims.lean](../SubstraitLean/PolarsShims.lean)), `Rel.spark_sound` ([SparkShims.lean](../SubstraitLean/SparkShims.lean)), `Rel.AllowedP_transfer` ([Transfer.lean](../SubstraitLean/Transfer.lean)); no row per class: [#1046] |
 | Profiles: `semantics=` | Your engine rounds, divides and orders by its own rules; a profile states those rules, and Sverify can prove a plan under the engine's own profile or under its strict reference. | `sv.verify(..., semantics="duckdb" \| "polars" \| "spark" \| "substrait")`; the report's `semantics:` line | Examples 7 to 9; no notebook: [#1046] | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)), `Rel.allowed_substrait_core` ([SubstraitProfile.lean](../SubstraitLean/SubstraitProfile.lean)) |
-| Engines: DuckDB, Polars, Spark, Snowflake | One plan, proved once, runs where your data lives; [stability.md, Engines](stability.md#engines) says which engines and how. | `refresh(engine=...)`, `report.run(con, engine)`; a function only DuckDB runs is refused with "run it with engine='duckdb' (see #271)". Several engine refusals name no exit: [#1047] | [01](../notebooks/01_duplicate_payments.py), "3. One plan, every engine"; [05](../notebooks/05_pipelines_and_engines.py), "Choosing the engine for a node". Spark runs in no notebook: [#1047] | As for routes; Snowflake's profile is [#851], from Snowflake behaviour recorded privately |
-| SQL for an engine: `to_sql` | Your warehouse runs SQL, and a hand translation loses the proof; Sverify writes the proved plan as DuckDB, Spark or Snowflake SQL. | `report.to_sql(dialect)`; `UnsupportedError` for a window with open ties, naming `deterministic=`; some writer refusals name no exit: [#1047] | [02](../notebooks/02_sensor_alerts.py), "5. Every engine, and the warehouses"; [05](../notebooks/05_pipelines_and_engines.py), "SQL for DuckDB, Snowflake and Spark" | `Lowering.lowerRel_sound` for DuckDB; `Rel.spark_sound` for Spark; Snowflake waits on [#851] |
+| Engines: DuckDB, Polars, Spark, Snowflake | One plan, proved once, runs where your data lives; [stability.md, Engines](stability.md#engines) says which engines and how. | `refresh(engine=...)`, `report.run(con, engine)`; a function only DuckDB runs is refused with "run it with engine='duckdb' (see #271)". Each engine refusal names `engine="duckdb"` or a rewrite | [01](../notebooks/01_duplicate_payments.py), "3. One plan, every engine"; [05](../notebooks/05_pipelines_and_engines.py), "Choosing the engine for a node". Spark runs in no notebook: [#1047] | As for routes; Snowflake's profile is [#851], from Snowflake behaviour recorded privately |
+| SQL for an engine: `to_sql` | Your warehouse runs SQL, and a hand translation loses the proof; Sverify writes the proved plan as DuckDB, Spark or Snowflake SQL. | `report.to_sql(dialect)`; `UnsupportedError` for a window with open ties, naming `deterministic=`; the other writer refusals name `engine="duckdb"` | [02](../notebooks/02_sensor_alerts.py), "5. Every engine, and the warehouses"; [05](../notebooks/05_pipelines_and_engines.py), "SQL for DuckDB, Snowflake and Spark" | `Lowering.lowerRel_sound` for DuckDB; `Rel.spark_sound` for Spark; Snowflake waits on [#851] |
 | Engine settings and versions | An engine upgraded or reconfigured behind your back can change what a proof assumed; Sverify checks the engine's version and settings before it runs. | `EngineVersionError`, "install a N.x release"; `EngineSettingsError`, "restore it with `SET ...`" | No notebook: [#1056] | The engine facts the profile rests on ([characterization/README.md](../characterization/README.md)) |
 | SQL in sverify: `sv.sql`, `verify` of a SQL string | Half your rules are SQL already; Sverify reads DuckDB SQL into the same plan an Ibis expression gives and proves it the same way. | `sv.verify("SELECT ...", tables=...)`, `.pipe(sv.sql(query))`; `UnsupportedError` for what the lift does not read yet, often with no exit: [#1049] | [03](../notebooks/03_orders_mart.py), "The same model in SQL". `sv.sql` in no notebook: [#1049] | The `agree` field of each `LiftEntry` ([LiftSearch.lean](../SubstraitLean/LiftSearch.lean)); no row in proofs.md: [#1049] |
 | Typed values and kinds | A decimal added to a double, or a scale that silently drops a cent, is a wrong answer that looks right; Sverify checks each expression's kind and refuses a mix it cannot type. Changes with [#1039] | A Lean refusal reaches you as a plain `ValueError`, "substrait-check --contract failed: ..."; unsigned integers and zoned timestamps are refused without an exit: [#1050] | No notebook: [#1050] | `Rel.kinds_sound`, `Expr.kindT_sound` ([Kinds.lean](../SubstraitLean/Kinds.lean)) |
@@ -111,20 +111,20 @@ on 2026-11-07.
 | `EngineSettingsError` | Engine settings | `SET ...` as named |
 | `RouteError`, "N node(s) of the streaming plan run on the in-memory engine" | Polars | `streaming=` other than `"require"` |
 | "X runs on duckdb only (see #271)" | Engines | `engine="duckdb"`; lifted by [#271] |
-| Spark and Snowflake date guards; DataFusion's NTILE | Engines | None: [#1047] |
+| Spark and Snowflake date guards; DataFusion's NTILE | Engines | `engine="duckdb"`; lifted by [#271] and DF-11 |
 | "run on polars only; E truncates" | Profiles | `semantics="reference"` |
 | A DuckDB-only construct on another writer (TRY_CAST, lists, black boxes, ...) | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
-| "{dialect}: integer division is not implemented" and other writer hooks | SQL for an engine | None: [#1047] |
-| "overflow = X is not supported on E yet" | SQL for an engine | None named; lifted by [#241]: [#1047] |
+| "the E writer does not write integer division yet" and other writer hooks | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
+| "the E writer does not write overflow = X yet" | SQL for an engine | `engine="duckdb"`; lifted by [#241] |
 | "tables have no row order" on Spark | SQL for an engine | `deterministic=True` |
-| "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | None: [#1047] |
-| Spark's LN, POWER, ATAN2 | Engines | None: [#1047] |
+| "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
+| Spark's LN, POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |
-| Spark decimal negation, division, double to DECIMAL | Engines | None: [#1047], lifted by [#27] |
-| Snowflake's libm, MOD, VAR, decimals, intervals | Engines | None; Snowflake behaviour recorded privately: [#1047], lifted by [#851] |
+| Spark decimal negation, division, double to DECIMAL | Engines | A cast to fewer digits (to DOUBLE for an AVG), or `engine="duckdb"`; lifted by [#27] |
+| Snowflake's libm, MOD, VAR, decimals, intervals | Engines | `engine="duckdb"`; Snowflake behaviour recorded privately; lifted by [#852] |
 | "Snowflake SQL is written only for plans verified under the reference" | SQL for an engine | `semantics="reference"` |
-| DataFusion's AVG of integers, substring | Engines | None: [#1047] |
-| Polars decimals, categorical strings, type mismatches, refused functions | Engines | None: [#1047] |
+| DataFusion's AVG of integers, substring | Engines | `engine="duckdb"` (DF-24, DF-23) |
+| Polars decimals, categorical strings, type mismatches, refused functions | Engines | `engine="duckdb"`, which every Polars refusal names |
 | "unsigned integers are not supported", zoned timestamps | Typed values | None: [#1050], lifted by [#350] and [#323] |
 | float32, "use float64"; nanosecond times, "cast them to microseconds" | Typed values | As named |
 | "substrait-check --contract failed: ..." | Typed values, frontends | Lean's message, often none: [#1050] |
@@ -170,6 +170,7 @@ on 2026-11-07.
 [#444]: https://github.com/AlexanderNenninger/substrait-lean/issues/444
 [#575]: https://github.com/AlexanderNenninger/substrait-lean/issues/575
 [#851]: https://github.com/AlexanderNenninger/substrait-lean/issues/851
+[#852]: https://github.com/AlexanderNenninger/substrait-lean/issues/852
 [#1031]: https://github.com/AlexanderNenninger/substrait-lean/issues/1031
 [#1032]: https://github.com/AlexanderNenninger/substrait-lean/issues/1032
 [#1039]: https://github.com/AlexanderNenninger/substrait-lean/pull/1039

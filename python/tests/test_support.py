@@ -61,7 +61,8 @@ def test_messages() -> None:
         "run it with engine='duckdb' (spark does not run it yet; see #271, https://"
     )
     assert _support.refusal("ntile", "DataFusion") == (
-        "DataFusion's NTILE does not deal out buckets as SQL does"
+        "ntile: DataFusion's NTILE does not deal out buckets as SQL does; "
+        "run it with engine='duckdb' (upstream/bugs/DF-11.json)"
     )
 
 

@@ -74,7 +74,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify._plan_read import SUBSTR_MAX
-from sverify._support import DUCKDB_ONLY
 from sverify.sql.core import Dec, Dialect, Kind, Lst, Unsupported, _timestamp_text
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -100,13 +99,14 @@ class SnowflakeDialect(Dialect):
         if isinstance(kind, Dec):
             return super().type_name(kind)
         if isinstance(kind, Lst):
-            raise Unsupported("lists are not yet supported on Snowflake; " + DUCKDB_ONLY)
+            raise self.to_duckdb("lists are not yet supported on Snowflake")
         return _TYPES[kind]
 
     def result_kind(self, kind: Kind | None) -> None:
         if kind == "interval":
-            raise Unsupported(
-                "Snowflake has no interval type, so an interval result column is refused"
+            raise self.to_duckdb(
+                "Snowflake has no interval type, so an interval result column is refused",
+                "see #852",
             )
 
     def raise_(self, message: str, dep: str, kind: Kind) -> str:
@@ -144,7 +144,9 @@ class SnowflakeDialect(Dialect):
         try:
             EPOCH + dt.timedelta(microseconds=micros)  # in years 1-9999
         except OverflowError as e:
-            raise Unsupported(f"timestamp {micros} µs is outside years 1-9999") from e
+            raise self.to_duckdb(
+                f"timestamp {micros} µs is outside years 1-9999", "see #852"
+            ) from e
         # `_timestamp_text` pads the year itself (glibc writes year 1 as `1`).
         return f"CAST('{_timestamp_text(micros)}' AS TIMESTAMP_NTZ(6))"
 
@@ -152,7 +154,7 @@ class SnowflakeDialect(Dialect):
         try:
             d = EPOCH.date() + dt.timedelta(days=days)
         except OverflowError as e:
-            raise Unsupported(f"date {days} days is outside years 1-9999") from e
+            raise self.to_duckdb(f"date {days} days is outside years 1-9999", "see #852") from e
         return f"CAST('{d.isoformat()}' AS DATE)"  # four-digit years on every platform
 
     def interval_lit(self, micros: int) -> str:
@@ -220,7 +222,7 @@ class SnowflakeDialect(Dialect):
         return f"CAST({a} AS FLOAT)"
 
     def float_logb(self, x: str, b: str) -> str:
-        raise Unsupported("Snowflake's LN is not documented to be C's libm")
+        raise self.to_duckdb("Snowflake's LN is not documented to be C's libm", "see #852")
 
     def is_nan(self, x: str) -> str:
         return f"({x} = {NAN})"
@@ -318,10 +320,11 @@ class SnowflakeDialect(Dialect):
         return f"CAST({self.checked(f'SUM({v}) {over}', row=False)} AS NUMBER(38,0))"
 
     def float_mod(self, a: str, b: str) -> str:
-        raise Unsupported(
+        raise self.to_duckdb(
             "Snowflake's MOD of doubles is a - b * TRUNC(a / b) with each step rounded, which "
             "differs from the reference's fmod where the quotient is large (Snowflake behaviour "
-            "recorded privately)"
+            "recorded privately)",
+            "see #852",
         )
 
     def stat_input(self, x: str, partition: Sequence[str]) -> str | None:
@@ -412,7 +415,7 @@ class SnowflakeDialect(Dialect):
 
     def over(self, partition: Sequence[str], order: Sequence[str]) -> str:
         if not order:
-            raise Unsupported("Snowflake window functions need an ORDER BY")
+            raise self.to_duckdb("Snowflake window functions need an ORDER BY")
         part = f"PARTITION BY {', '.join(partition)} " if partition else ""
         return f"OVER ({part}ORDER BY {', '.join(order)})"
 

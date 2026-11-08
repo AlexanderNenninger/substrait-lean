@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from sverify import _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
-from sverify._support import DUCKDB_ONLY
+from sverify._support import DUCKDB_ONLY, ISSUE_271
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -99,6 +99,19 @@ class Dialect:
     precondition. Off (`to_sql(..., finite=False)`) for a plan verified under
     an engine's semantics that allows `±∞` (`verify(semantics="duckdb")`)."""
 
+    def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
+        """A refusal of this dialect for `reason`, where DuckDB's writer
+        writes the construct: the exit is `rewrite` (a change to the plan),
+        when there is one, or `engine="duckdb"`; `issue` tracks this
+        dialect's."""
+        exit_ = f"{rewrite}, or run it" if rewrite else "run it"
+        return Unsupported(f"{reason}: {exit_} with engine='duckdb' ({issue})")
+
+    def not_written(self, what: str, issue: str = ISSUE_271) -> Unsupported:
+        """The refusal of `what`, a construct this dialect's writer does not
+        write yet (`to_duckdb`)."""
+        return self.to_duckdb(f"the {self.name} writer does not write {what} yet", issue)
+
     def refused(self, fn: str) -> Unsupported:
         """The refusal of a function this dialect does not run. `to_sql`
         raises it before writing anything (`sverify._support`); the hooks of
@@ -119,7 +132,7 @@ class Dialect:
     def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
         """`overflow` = `mode` (`SILENT` or `SATURATE`) of `op` (`+`, `-`, `*`, or
         `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
-        raise Unsupported(f"overflow = {mode} is not supported on {self.name} yet (#241)")
+        raise self.not_written(f"overflow = {mode}", "see #241")
 
     def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
         """`fn` of `args` as the engine's generated, proved lowering writes it
@@ -217,15 +230,15 @@ class Dialect:
         """An expression of type `kind` that fails at run time with `message`
         when evaluated (and is NULL when `dep` is NULL). Only evaluated in a
         `CASE` branch that needs it."""
-        raise Unsupported(f"{self.name} has no way to raise an error at run time")
+        raise self.not_written("an error at run time")
 
     def trunc_div(self, a: str, b: str) -> str:
         """`a / b` rounded toward zero, for `b <> 0`; must raise on `MIN / -1`."""
-        raise Unsupported(f"{self.name}: integer division is not implemented")
+        raise self.not_written("integer division")
 
     def trunc_mod(self, a: str, b: str) -> str:
         """The remainder of `trunc_div`, with the sign of `a`, for `b` not 0 or -1."""
-        raise Unsupported(f"{self.name}: integer remainder is not implemented")
+        raise self.not_written("integer remainder")
 
     def int_div(self, a: str, b: str) -> str:
         """`BinFn.idiv`: truncating; division by zero raises (Lean: NULL), but
@@ -281,7 +294,7 @@ class Dialect:
 
     def int_product(self, a: str, n: str) -> str:
         """`a` multiplied `n` times (1 ≤ n ≤ 64), raising on 64-bit overflow."""
-        raise Unsupported(f"{self.name}: POWER with a non-constant exponent is not implemented")
+        raise self.not_written("POWER with a non-constant exponent")
 
     def int_pow_var(self, a: str, b: str) -> str:
         """`BinFn.ipow` with an exponent column: as `int_pow`, row by row."""
@@ -399,7 +412,7 @@ class Dialect:
     def float_to_int(self, x: str) -> str:
         """`CAST(x AS BIGINT)`: truncation toward zero; NaN, ±inf and values
         outside 64 bits must raise (Lean: NULL)."""
-        raise Unsupported(f"{self.name}: CAST(double AS BIGINT) is not implemented")
+        raise self.not_written("CAST(double AS BIGINT)")
 
     def float_to_int_or_null(self, x: str) -> str:
         """`TRY_CAST(x AS BIGINT)` (`UnFn.ftoiOrNull`, #58): truncation toward
@@ -457,7 +470,7 @@ class Dialect:
         `week` the ISO week, `dow` from Sunday = 0, `millisecond` and
         `microsecond` within the minute. Outside the reference's timestamps
         the writer raises first (D32), so any value does there."""
-        raise Unsupported(f"{self.name}: date_part is not implemented")
+        raise self.not_written("date_part")
 
     def day_part(self, part: str, d: str) -> str:
         """`UnFn.dayPart`: the part of a DATE's midnight, for a date in the
@@ -466,7 +479,7 @@ class Dialect:
 
     def date_trunc(self, unit: str, ts: str) -> str:
         """`Time.trunc`: rounded down to the unit, weeks from Monday."""
-        raise Unsupported(f"{self.name}: date_trunc is not implemented")
+        raise self.not_written("date_trunc")
 
     def to_date(self, ts: str) -> str:
         """`UnFn.toDate`: the calendar day of a timestamp (rounding down)."""
@@ -496,7 +509,7 @@ class Dialect:
 
     def as_time(self, us: str) -> str:
         """`UnFn.asTime`: the timestamp `us` microseconds after 1970-01-01."""
-        raise Unsupported(f"{self.name}: timestamps from microseconds are not implemented")
+        raise self.not_written("timestamps from microseconds")
 
     def date_time(self, d: str) -> str:
         """`UnFn.dateTime`: a DATE as the TIMESTAMP of its midnight (#807)."""
@@ -519,7 +532,7 @@ class Dialect:
 
     def time_micros(self, ts: str) -> str:
         """A timestamp as microseconds since 1970-01-01 (a BIGINT)."""
-        raise Unsupported(f"{self.name}: timestamps as microseconds are not implemented")
+        raise self.not_written("timestamps as microseconds")
 
     def date_days(self, d: str) -> str:
         """A DATE as days since 1970-01-01 (a BIGINT)."""
@@ -540,7 +553,7 @@ class Dialect:
     def add_months(self, x: str, months: int, kind: Kind) -> str:
         """`Time.addMonths`: the same day `months` months later, clamped to
         the end of that month (`kind` is `date` or `time`)."""
-        raise Unsupported(f"{self.name}: adding months is not implemented")
+        raise self.not_written("adding months")
 
     # Strings: sequences of Unicode scalar values (`SubstraitLean/Text.lean`).
     # Lengths and positions count characters, and string order (which only
@@ -566,7 +579,7 @@ class Dialect:
     def like_pattern(self, p: str) -> str:
         """`like_pattern` of a computed pattern: a backslash appended when `p`
         ends with an odd number of them."""
-        raise Unsupported(f"{self.name}: LIKE with a computed pattern is not implemented")
+        raise self.not_written("LIKE with a computed pattern")
 
     def substring(self, s: str, start: str, length: str | None) -> str:
         """Characters from 1-based `start` ≥ 1 on (`length` of them)."""
@@ -598,7 +611,7 @@ class Dialect:
         """Does the regular expression (a constant) match somewhere in `s`?
         Regular expressions are black boxes in Lean; each engine has its
         own dialect, which agrees with Rust's on simple patterns."""
-        raise Unsupported(f"{self.name}: regular expressions are not implemented")
+        raise self.not_written("regular expressions")
 
     def regex_extract(self, s: str, pattern: str, group: int) -> str:
         """`UnFn.regexExtract` (#50): group `group` of the first match of the
@@ -653,7 +666,7 @@ class Dialect:
         """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
         prefix is smaller, two NULL elements are equal, and a NULL element
         against a value makes the result NULL (#207)."""
-        raise Unsupported(f"{self.name}: ordering comparisons of lists are not implemented")
+        raise self.not_written("ordering comparisons of lists")
 
     # Decimals (#27). The reference computes them exactly; a dialect whose
     # engine does too, with the hooks below, sets `decimals`.
@@ -736,13 +749,13 @@ class Dialect:
     def int_sum(self, v: str) -> str:
         """`SUM` of the BIGINT column `v`, exactly; a sum outside 64 bits
         raises (DataFusion wraps around, Lean's sum is the true one)."""
-        raise Unsupported(f"{self.name}: integer SUM is not implemented")
+        raise self.not_written("integer SUM")
 
     def int_avg(self, v: str, over: str) -> str:
         """`AggFn.iavg` of the BIGINT column `v` (over the window `over`, or
         grouped for `''`): the exact mean, truncated toward zero; NULL without
         values (#209)."""
-        raise Unsupported(f"{self.name}: AVG with an integer result is not implemented")
+        raise self.not_written("AVG with an integer result")
 
     def bit_agg(self, fn: str, v: str, over: str) -> str:
         """`AggFn.bit` (`bit_and`, `bit_or`, `bit_xor`) of the BIGINT column
@@ -906,7 +919,7 @@ class Dialect:
 
     def window_int_sum(self, v: str, over: str) -> str:
         """`SUM` of BIGINTs over a frame; must raise where it leaves 64 bits."""
-        raise Unsupported(f"{self.name}: window sums are not implemented")
+        raise self.not_written("window sums")
 
     def var_nan(self, v: str, over: str, body: str) -> str:
         """A variance's `body` (over the window `over`, or the group with
