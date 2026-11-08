@@ -46,7 +46,11 @@ def _section(title: str) -> str:
 
 @pytest.mark.parametrize("module", _modules(), ids=lambda p: str(p.relative_to(ROOT)))
 def test_every_module_has_a_line(module):
-    base = next(d for d in [CORE, ROOT / "float-bounds" / "FloatBounds", ROOT / "SubstraitLean"] if d in module.parents)
+    base = next(
+        d
+        for d in [CORE, ROOT / "float-bounds" / "FloatBounds", ROOT / "SubstraitLean"]
+        if d in module.parents
+    )
     rel = module.relative_to(base)
     assert f"`{rel.as_posix()}`" in _section("The modules"), f"{rel} is missing from docs/proofs.md"
 
