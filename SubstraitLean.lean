@@ -25,11 +25,14 @@ import SubstraitLean.Incremental
 import SubstraitLean.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Write
+import SubstraitLean.DataFusion
 import SubstraitLean.Check
 import SubstraitLean.Contracts
+import SubstraitLean.Issue
 import SubstraitLean.Safety
 import SubstraitLean.Infer
 import SubstraitLean.Rows
+import SubstraitLean.Decomposable
 import SubstraitLean.Partition
 import SubstraitLean.Retention
 import SubstraitLean.TouchedGroups
@@ -40,6 +43,7 @@ import SubstraitLean.IncrementalMinMax
 import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import SubstraitLean.Profile
+import SubstraitLean.ProfileImpl
 import SubstraitLean.DuckDBProfile
 import SubstraitLean.Lowering
 import SubstraitLean.Bind
@@ -49,6 +53,7 @@ import SubstraitLean.LoweringSearch
 import SubstraitLean.LoweringDuckDB.Schemas
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.StatProps
+import SubstraitLean.AllowedAnalysis
 import SubstraitLean.Allowed
 import SubstraitLean.Ties
 import SubstraitLean.Seam
@@ -82,6 +87,7 @@ import SubstraitLean.AllowedNear
 import SubstraitLean.Lipschitz
 import SubstraitLean.LipschitzL1
 import SubstraitLean.EngineTables
+import SubstraitLean.Shims
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
 import SubstraitLean.SparkShims

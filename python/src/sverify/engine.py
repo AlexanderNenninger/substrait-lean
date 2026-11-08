@@ -33,7 +33,7 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
-from sverify import _duckdb, _stages, _support
+from sverify import _duckdb, _stages
 from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
     _CHECKER,
     _REBUILD,
@@ -45,12 +45,9 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     checker_path,
     run_checker,
 )
-from sverify._plan_read import base_name, function_names
 from sverify._scan import Native, Resident, Scan
-from sverify._support import DUCKDB_ONLY
 from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
-from sverify.sql import core as sql
 
 Engine = Literal["duckdb", "polars", "spark"]
 """The engines sverify 1.x supports. A `Connection` runs plans on DuckDB and
@@ -282,8 +279,14 @@ class Connection:
             # A scan whose files were removed is held, but cannot be read.
             if table.readable():
                 self._views[name] = table.attach(self._ibis.con, name)
+                try:
+                    _check_calendar_view(self._ibis.con, name, table)
+                except BaseException:
+                    self.drop(name)
+                    raise
             return
         _check_times(table.schema)
+        _check_calendar(table)
         self._tables[name] = table
         self._ibis.con.register(name, table)
         if self._datafusion is not None:
@@ -602,123 +605,6 @@ def written_plan(plan_json: str) -> str:
     return check("--write")
 
 
-def datafusion_plan(plan_json: str) -> str:
-    """The plan for DataFusion to run (`substrait-check --write-datafusion`):
-    Lean's written form, compensating for where DataFusion's semantics differ
-    from `Rel.eval` (an integer `SUM` fails outside 64 bits instead of
-    wrapping around)."""
-    code, out, err = run_checker(("--write-datafusion",), plan_json)
-    if code != 0:
-        msg = (err or out).strip().splitlines()[-1:]
-        raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
-    plan = json.loads(out)
-    _check_datafusion_plan(plan)
-    # sverify's own remainder of doubles (#256) is DataFusion's `%` of doubles,
-    # C's `fmod` too.
-    for e in plan.get("extensions", []):
-        f = e.get("extensionFunction", {})
-        if f.get("name", "").split(":")[0] == "sverify_fmod":
-            f["name"] = "modulus"
-    _datafusion_variances(plan)
-    return json.dumps(plan)
-
-
-def _datafusion_variances(plan: dict) -> None:
-    """Substrait's `variance` and `std_dev` say sample or population in an
-    option; DataFusion has a function for each, and its consumer knows only
-    those (#54, upstream/bugs/DF-21.json)."""
-    exts = plan.get("extensions", [])
-    names: dict[Any, str] = {
-        a: base_name(n) for a, n in function_names(plan, sql.Unsupported).items()
-    }
-    anchors: dict[str, int] = {}
-
-    def anchor(name: str) -> int:
-        if name not in anchors:
-            a = max([*names, *anchors.values(), 0]) + 1
-            anchors[name] = a
-            exts.append({"extensionFunction": {"functionAnchor": a, "name": name}})
-        return anchors[name]
-
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            m = node.get("measure")
-            if isinstance(m, dict) and names.get(m.get("functionReference")) in (
-                "variance",
-                "std_dev",
-            ):
-                pop = any(
-                    o.get("name") == "distribution"
-                    and o.get("preference", [])[:1] == ["POPULATION"]
-                    for o in m.get("options", [])
-                )
-                base = "var" if names[m["functionReference"]] == "variance" else "stddev"
-                m["functionReference"] = anchor(f"{base}_pop" if pop else f"{base}_samp")
-                m.pop("options", None)
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    walk(plan)
-
-
-def _check_datafusion_plan(plan: dict) -> None:
-    """Refuse what DataFusion computes differently from the reference (#209):
-    a `substring` whose start may be negative (DataFusion puts it left of the
-    beginning, the reference counts it from the end, `Text.substrWrap`) unless
-    the plan asks for `LEFT_OF_BEGINNING`; and an `avg` with an integer result
-    (`AggFn.iavg`), which DataFusion computes as a double."""
-    _support.check(plan, "DataFusion", sql.Unsupported)
-    names: dict[Any, str] = {
-        a: base_name(n) for a, n in function_names(plan, sql.Unsupported).items()
-    }
-
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            for key in ("measure", "windowFunction"):
-                a = node.get(key)
-                is_avg = isinstance(a, dict) and names.get(a.get("functionReference")) == "avg"
-                ints = ("i8", "i16", "i32", "i64")
-                if is_avg and any(k in a.get("outputType", {}) for k in ints):
-                    raise sql.Unsupported(
-                        "DataFusion's AVG has no integer result (upstream/bugs/DF-24.json)"
-                    )
-            c = node.get("cast")
-            if isinstance(c, dict) and c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
-                raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; " + DUCKDB_ONLY)
-            f = node.get("scalarFunction")
-            fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None
-            if isinstance(f, dict) and fname == "round" and len(f.get("arguments", [])) == 2:
-                # DataFusion's `round(x · 10ᵈ) / 10ᵈ` is not DuckDB's (#335).
-                raise sql.Unsupported(
-                    "round(x, d) is DuckDB's (#335, upstream/bugs/DF-25.json) and not yet "
-                    "supported on DataFusion; " + DUCKDB_ONLY
-                )
-            if isinstance(f, dict) and fname == "substring":
-                left = any(
-                    o.get("name") == "negative_start"
-                    and o.get("preference", [])[:1] == ["LEFT_OF_BEGINNING"]
-                    for o in f.get("options", [])
-                )
-                args = f.get("arguments", [])
-                lit = args[1].get("value", {}).get("literal", {}) if len(args) > 1 else {}
-                start = next((v for k, v in lit.items() if k in ("i8", "i16", "i32", "i64")), None)
-                if not left and (start is None or int(start) < 0):
-                    raise sql.Unsupported(
-                        "DataFusion's substring does not count a negative start from the end "
-                        "(upstream/bugs/DF-23.json)"
-                    )
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    walk(plan)
-
-
 @overload
 def run_plan(
     con: Connection,
@@ -754,9 +640,9 @@ def run_plan(
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. DataFusion runs it as
-    `datafusion_plan` writes it; `"spark"` runs it on the local Spark session
-    (`sverify.spark_engine.session`), and a Spark session as `engine` runs it
-    there.
+    `sverify.datafusion_engine.datafusion_plan` writes it; `"spark"` runs it
+    on the local Spark session (`sverify.spark_engine.session`), and a Spark
+    session as `engine` runs it there.
 
     DuckDB runs the SQL `sverify.engines.to_sql` writes for the plan, Polars
     a translation to a lazy frame, Spark the Spark SQL
@@ -837,6 +723,8 @@ def run_plan(
             finite=finite,
         )
     if engine == "datafusion":
+        from sverify.datafusion_engine import datafusion_plan
+
         return run_substrait_json(con, datafusion_plan(plan_json))
     read = read_tables(json.loads(plan_json))
     if engine == "duckdb":
@@ -911,6 +799,114 @@ def put_table(con: Connection, name: str, table: pa.Table | Native) -> None:
     """Register (or replace) an in-memory table, or one DuckDB reads where
     it is (`Scan`, `Resident`)."""
     con.put(name, table)
+
+
+#: The reference's dates and timestamps (D32), 0001-01-01 to 9999-12-31:
+#: days and microseconds since 1970-01-01 (`Time.dayMin` … `Time.tsMax`).
+_DAY_MIN, _DAY_MAX = -719162, 2932896
+_TS_MIN, _TS_MAX = -62135596800000000, 253402300799999999
+_PER_UNIT = {"s": 1_000_000, "ms": 1000, "us": 1}
+
+
+def _calendar_range(t: pa.DataType) -> tuple[pa.DataType, int, int, str] | None:
+    """For a DATE or TIMESTAMP column: its physical integer type and the
+    reference's range in its unit (D32), and what its values are called.
+    None for other types, and for nanosecond timestamps, which reach only
+    1677 to 2262."""
+    if pa.types.is_date32(t):
+        return pa.int32(), _DAY_MIN, _DAY_MAX, "dates"
+    if pa.types.is_date64(t):
+        ms = 86_400_000
+        return pa.int64(), _DAY_MIN * ms, (_DAY_MAX + 1) * ms - 1, "dates"
+    if pa.types.is_timestamp(t) and t.unit in _PER_UNIT:
+        k = _PER_UNIT[t.unit]
+        return pa.int64(), -(-_TS_MIN // k), _TS_MAX // k, "timestamps"
+    return None
+
+
+def _calendar_error(column: str, what: str, count: int, example: str) -> Exception:
+    from sverify.plan_json import Unsupported
+
+    return Unsupported(
+        f"{column} holds {what} outside 0001–9999 ({count}, e.g. {example}); the reference's "
+        "calendar covers 0001–9999. Filter them, or read the column as text."
+    )
+
+
+def _check_calendar(table: pa.Table) -> None:
+    """Refuse a DATE or TIMESTAMP column with a value outside the reference's
+    0001-01-01 to 9999-12-31 (D32): the checker takes a column read to lie in
+    it by its type (`ContractCheck.typeEnv`), so the read checks it, once per
+    column, naming the column, the count and one value."""
+    for f in table.schema:
+        r = _calendar_range(f.type)
+        if r is None:
+            continue
+        phys, lo, hi, what = r
+        x = table.column(f.name).cast(phys)
+        mm = pc.call_function("min_max", [x]).as_py()
+        if mm["min"] is None or (lo <= mm["min"] and mm["max"] <= hi):
+            continue
+        bad = pc.call_function(
+            "or", [pc.call_function("less", [x, lo]), pc.call_function("greater", [x, hi])]
+        )
+        count = pc.call_function("sum", [bad]).as_py()
+        example = table.column(f.name).filter(bad).cast(pa.string())[0].as_py()
+        raise _calendar_error(f.name, what, count, example)
+
+
+def _parquet_in_calendar(files: tuple[str, ...], columns: list[str]) -> bool:
+    """Whether the Parquet files' min/max statistics put every value of
+    `columns` in the reference's calendar. Python's dates and datetimes span
+    exactly 0001 to 9999, so a statistic that reads as one is in range; one
+    that is missing, or does not read as one, sends the read to the rows."""
+    import datetime as dt
+
+    import pyarrow.parquet as pq
+
+    try:
+        for path in files:
+            meta = pq.ParquetFile(path).metadata
+            names = [meta.schema.column(i).name for i in range(meta.num_columns)]
+            for g in range(meta.num_row_groups):
+                group = meta.row_group(g)
+                for c in columns:
+                    if c not in names:
+                        return False
+                    stats = group.column(names.index(c)).statistics
+                    if stats is None or not stats.has_min_max:
+                        return False
+                    if not all(isinstance(v, dt.date) for v in (stats.min, stats.max)):
+                        return False
+    except Exception:  # noqa: BLE001 - statistics that do not read: check the rows
+        return False
+    return True
+
+
+def _check_calendar_view(db: Any, name: str, table: Native) -> None:
+    """`_check_calendar` for a table DuckDB reads where it is: discharged by
+    the files' Parquet statistics where they cover every column (Delta and
+    Iceberg write them), else one range predicate per column over the view."""
+    from sverify._scan import _q
+
+    columns = [(f.name, r) for f in table.schema if (r := _calendar_range(f.type)) is not None]
+    if not columns:
+        return
+    if isinstance(table, Scan) and _parquet_in_calendar(table.files, [c for c, _ in columns]):
+        return
+    for column, (_, _, _, what) in columns:
+        if what == "dates":
+            lo, hi = "DATE '0001-01-01'", "DATE '9999-12-31'"
+        else:
+            lo, hi = "TIMESTAMP '0001-01-01 00:00:00'", "TIMESTAMP '9999-12-31 23:59:59.999999'"
+        q = _q(column)
+        bad = f"{q} < {lo} OR {q} > {hi}"
+        count, example = db.execute(
+            f"SELECT count(*), CAST(min({q}) FILTER (WHERE {bad}) AS VARCHAR) "
+            f"FROM {_q(name)} WHERE {bad}"
+        ).fetchall()[0]
+        if count:
+            raise _calendar_error(column, what, count, example)
 
 
 def _check_times(schema: pa.Schema) -> None:

@@ -80,9 +80,17 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
         "sort on the keys",
         "decimal_negate_sub",
     }
-    for name in ("int_sum_decimal", "int_avg_decimal", "null_order", "decimal_negate_sub"):
+    # A shim Polars writes the same way cites the shared lemma (`Shims.lean`).
+    proofs = {
+        "int_sum_decimal": "Shim.sum_empty_null",
+        "int_avg_decimal": "Shim.avg_trunc",
+        "null_order": "Shim.null_order",
+        "Dialect.canon": "Shim.one_zero",
+        "decimal_negate_sub": "Spark.decimal_negate_sub",
+    }
+    for name, thm in proofs.items():
         assert shims[name]["evidence"] == "proved"
-        assert shims[name]["theorem"] == f"Spark.{name}"
+        assert shims[name]["theorem"] == thm
     assert rows[(None, "overflow")]["theorem"] == "Rel.spark_sound"
 
 
@@ -172,9 +180,9 @@ def test_native_run(spark, report: sv.Report) -> None:
     )
 )
 def test_int_sum_decimal_is_the_exact_sum(spark, xs: list[int]) -> None:
-    """The trusted part of `Spark.int_sum_decimal`: Spark's `DECIMAL(38,0)`
-    `SUM` of 64-bit values is the exact total, in any order, where a `BIGINT`
-    one raises on a partial sum (spark-sum-int)."""
+    """The trusted part of the `int_sum_decimal` shim (`Shim.sum_empty_null`):
+    Spark's `DECIMAL(38,0)` `SUM` of 64-bit values is the exact total, in any
+    order, where a `BIGINT` one raises on a partial sum (spark-sum-int)."""
     from sverify import spark_engine
 
     spark_engine.put_tables({"xs": pa.table({"x": pa.array(xs, pa.int64())})}, spark)

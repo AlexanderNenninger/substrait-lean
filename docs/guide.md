@@ -543,9 +543,11 @@ build on it like on any other precondition of a source.
   inferred bounds added, so a wrong bound makes the proof fail
   ([SubstraitLean/Infer.lean](../SubstraitLean/Infer.lean)).
 * Bounds are rounded inward to round numbers (`3 * 10**18`, `2**62`) and
-  timestamps to whole years (`ts.truncate("M")` needs
-  `_.ts >= datetime(1678, 1, 1)` and `_.ts < datetime(2262, 1, 1)`, the
-  range of nanosecond timestamps).
+  timestamps to whole years (`(ts + ibis.interval(days=1)).truncate("M")`
+  needs `_.ts < datetime(9999, 1, 1)`). A DATE or TIMESTAMP column lies in
+  0001-01-01 to 9999-12-31 by its type, and reading one outside fails
+  ([D32](core-semantics.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)),
+  so a column read needs no bound.
 * Other runtime errors get preconditions the same way:
 
   | Operation | Inferred precondition |
@@ -558,7 +560,7 @@ build on it like on any other precondition of a source.
   | `a.cast("int32")` | `(_.a >= -2**31)`, `(_.a < 2**31)` |
   | `ibis.literal("ab").repeat(n)` | `(_.n < 2**30)` |
   | `big * 2` of a `DECIMAL(38, 2)` | `(_.big >= -4 * 10**35)`, `(_.big < 5 * 10**35)` |
-  | `d + ibis.interval(days=10)` | `(_.d >= date(1, 1, 1))`, `(_.d < date(9999, 1, 1))` |
+  | `d + ibis.interval(days=10)` | `(_.d < date(9999, 1, 1))` |
 
   [test_infer_errors.py](../python/tests/test_infer_errors.py) has these
   cases.
@@ -582,7 +584,6 @@ per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")])
     cpu=samples.cpu.sum()
 )
 print(sv.verify(per_minute))
-# needs: (_.ts >= datetime(1, 1, 1)) on samples, inferred from `ts.truncate('minute')` ...
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
@@ -607,7 +608,7 @@ print(report)
 # semantics: reference
 # evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #241)
 # evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
-# evidence: spark shim, proved by Spark.int_sum_decimal on spark's model (facts spark-sum-int, spark-exec-parallel)
+# evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)
 # known about the output:
 #   rows: at most 1,000,000,000,000
 # ...
@@ -832,7 +833,7 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 0 | proved, or every postcondition it does not prove is checked on the data at each refresh; a refresh committed every row |
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
-| 3 | unsupported or refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`), or no route takes a proved node to the engine |
+| 3 | refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`), or no route takes a proved node to the engine |
 | 4 | time or memory budget exceeded |
 | 5 | a refresh committed with rows quarantined, or held a node |
 | 6 | error: the file raised, I/O, a crash |
@@ -985,8 +986,9 @@ group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
 [`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
-`DECIMAL` `SUM` and `AVG` keep the same state, `SUM` and `AVG` of doubles
-an exact one, rounded once, with no drift
+`DECIMAL` `SUM` and `AVG` keep the same state, `SUM`, `AVG`, `VAR`,
+`STDDEV`, `COVAR` and `CORR` of doubles an exact one, rounded once, with no
+drift
 (`LinearAgg.fsum_no_drift` in
 [`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
@@ -1523,7 +1525,7 @@ the data as `dataQualityAssertions`, and two more facets:
   ([openlineage-contract-facet.schema.json](../python/src/sverify/schemas/openlineage-contract-facet.schema.json),
   format 1): the node, the sha256 of its plan, each postcondition with its
   status (`proved`, `checked`, `not_proved`), the preconditions, the route
-  and class, the outcome, quarantined rows, and the verified plan exported
+  and class, the outcome, quarantined rows, and the proved plan exported
   to Substrait ([Exporting to Substrait](#exporting-to-substrait);
   `Lineage(plan=False)` leaves it out).
 
@@ -1735,7 +1737,7 @@ reference by default, `semantics="duckdb"` for what DuckDB does,
 `semantics="polars"` for what Polars does, or
 `semantics="substrait"` for Substrait's extension YAMLs, open wherever they
 say nothing. Each profile refines one core that does a superset of
-operations ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)). An engine computes its own semantics, so running a verified
+operations ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)). An engine computes its own semantics, so running a proved
 plan raises a question: does the proof hold for what the engine computes?
 A route answers it. `report.run(con, engine, route="auto")` and
 `node.refresh(engine=..., route="auto")` pick one of four, and run the plan
@@ -1743,9 +1745,9 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars, `semantics="spark"` on Spark) |
-| `translated` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
-| `transfer` | the plan was verified under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
+| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars, `semantics="spark"` on Spark) |
+| `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
+| `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
 | `recheck` | the checker proves the plan again under the engine's profile |
 
 `report.routes[engine]` records the route, with its class, which says what
@@ -1862,10 +1864,10 @@ of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
 
 ### Exporting to Substrait
 
-`report.to_substrait(format="json" | "binary")` returns a verified plan for
+`report.to_substrait(format="json" | "binary")` returns a proved plan for
 any conforming Substrait consumer, with the conditions under which its proof
 holds ([#664](https://github.com/AlexanderNenninger/substrait-lean/issues/664)).
-It is the plan the checker verified, written for Substrait 0.106:
+It is the plan the checker proved, written for Substrait 0.106:
 
 - each call declares its YAML's URN and its compound name (`add:i64_i64`),
   and states its output type (`_substrait_extensions.json`, generated from
@@ -1873,7 +1875,7 @@ It is the plan the checker verified, written for Substrait 0.106:
 - each option the proof depends on is pinned in the
   call's options at the reference's behaviour: `overflow`, `rounding`,
   `division_type`, `on_division_by_zero` and the rest the YAMLs list;
-- a plan verified with `semantics="substrait"` goes out as it is, since its
+- a plan proved with `semantics="substrait"` goes out as it is, since its
   proof holds for every choice Substrait allows.
 
 Where the proof uses a choice Substrait cannot state, a spec gap
@@ -1906,7 +1908,7 @@ the export handles it in one of these ways:
 - `"refuse"` refuses the export at any such gap.
 
 A refusal raises `sverify.errors.ExportError`, which names the reason and
-the gap. So does an unproved report, a plan verified under an engine's
+the gap. So does an unproved report, a plan proved under an engine's
 profile, and a function outside Substrait's YAMLs.
 
 `node.to_substrait()` and `transform.to_substrait()` export the report of
@@ -1931,7 +1933,7 @@ Within 1.x the message and the manifest only gain fields, and
 |---|---|
 | `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
 | `extension_urns` | the YAMLs the plan's calls come from |
-| `semantics` | the semantics the plan was verified under |
+| `semantics` | the semantics the plan was proved under |
 | `class` | `exact`, `observed` (equal up to `equivalence`) or `assumed` (with annotated choices) |
 | `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
 | `equivalence`, `equivalence_components` | what the postconditions tell apart (`sv.equivalent`) |
@@ -1943,7 +1945,7 @@ Within 1.x the message and the manifest only gain fields, and
 sidecar file. `sv.Report.from_substrait(exported)` reads a plan back, in either
 format, and proves its contract again with the checker; the report it
 returns has the same postconditions and verdict.
-[Example 10](examples.md#10-a-verified-plan-for-any-substrait-consumer)
+[Example 10](examples.md#10-a-proved-plan-for-any-substrait-consumer)
 exports a plan and shows the three modes. DataFusion's Substrait consumer
 runs the exports in `tests/test_substrait_export.py` and gives the
 reference's results; it does not know Substrait's `variance` or

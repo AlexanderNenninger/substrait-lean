@@ -3,10 +3,10 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign",
@@ -17,7 +17,7 @@
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: win.agg's window_sum_algo"
@@ -31,8 +31,8 @@
       },
       "spark": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: win.agg's window_sum_algo"
@@ -48,16 +48,16 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -68,7 +68,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -183,31 +183,22 @@
         "causes": [
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "tolerance bound not proved"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "row tested: agg.fsum's rounding",
-          "tolerance bound not proved"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
       },
       "spark": {
-        "causes": [
-          "row tested: agg.fsum's rounding",
-          "tolerance bound not proved"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       }
     },
     "pattern": "observation",
@@ -510,9 +501,9 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -522,8 +513,8 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -536,7 +527,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -551,17 +542,17 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -572,7 +563,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -607,9 +598,9 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -619,7 +610,7 @@
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -632,7 +623,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -649,7 +640,6 @@
         "causes": [
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -659,7 +649,6 @@
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -672,7 +661,6 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -687,9 +675,9 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -699,8 +687,8 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -713,7 +701,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -828,7 +816,6 @@
         "causes": [
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: int.arith's overflow",
           "row tested: rel.sort's null_order"
         ],
@@ -837,8 +824,7 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding"
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -848,11 +834,8 @@
         "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
       },
       "spark": {
-        "causes": [
-          "row tested: agg.fsum's rounding"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       }
     },
     "pattern": "top_n",
@@ -862,9 +845,9 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: fp.arith's float_overflow",
           "row tested: fp.arith's nan_creation",
           "row tested: fp.arith's rounding",
@@ -875,8 +858,8 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding",
           "row tested: fp.arith's rounding"
         ],
         "class": "shim",
@@ -888,7 +871,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: fp.arith's rounding"
         ],
         "class": "shim",
@@ -902,10 +885,10 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: rel.sort's null_order",
           "row tested: win.agg's window_sum_algo"
         ],
@@ -914,8 +897,8 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding",
           "row tested: win.agg's window_sum_algo"
         ],
         "class": "shim",
@@ -927,8 +910,8 @@
       },
       "spark": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's rounding",
           "row tested: win.agg's window_sum_algo"
         ],
         "class": "observed",
@@ -942,6 +925,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -949,6 +933,7 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
           "row tested: agg.var's rounding",
           "row tested: agg.var's stat_algo"
@@ -962,6 +947,7 @@
       },
       "spark": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -975,6 +961,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -982,6 +969,7 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's rounding",
           "row tested: agg.var's stat_algo"
         ],
@@ -994,6 +982,7 @@
       },
       "spark": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -1058,29 +1047,22 @@
       "duckdb": {
         "causes": [
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "row tested: agg.fsum's rounding"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
       },
       "spark": {
-        "causes": [
-          "row tested: agg.fsum's rounding"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       }
     },
     "pattern": "bound",
@@ -1090,16 +1072,16 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1110,7 +1092,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1148,17 +1130,17 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1169,7 +1151,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1182,16 +1164,16 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1202,7 +1184,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1215,16 +1197,16 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1235,7 +1217,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1293,29 +1275,22 @@
       "duckdb": {
         "causes": [
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "row tested: agg.fsum's rounding"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
       },
       "spark": {
-        "causes": [
-          "row tested: agg.fsum's rounding"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       }
     },
     "pattern": "observation",
@@ -1325,9 +1300,9 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -1337,8 +1312,8 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -1351,7 +1326,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -1413,6 +1388,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -1420,6 +1396,7 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
           "row tested: agg.var's rounding",
           "row tested: agg.var's stat_algo"
@@ -1433,6 +1410,7 @@
       },
       "spark": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -1445,27 +1423,24 @@
   "var-within-rel-cap": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "row tested: agg.var's rounding"
-        ],
-        "class": "shim",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "agg.var's stat_algo: v is within abs=1.77815e-07 (tested) of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound; no row cap on x makes the plan's bound meet the tolerance"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound; no row cap on x makes the plan's bound meet the tolerance"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       }
     },
     "pattern": "observation",
-    "proved": true
+    "proved": false
   },
   "zscore-outliers": {
     "engines": {
