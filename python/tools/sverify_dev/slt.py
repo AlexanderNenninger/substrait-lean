@@ -27,8 +27,8 @@ and classifies the query:
   `disagree` on Lean's side, with the warning as its `reason`: the plan is
   not proved, and sverify does not run it. Where the test expects an error,
   the warning is the reference raising, and Lean's side agrees;
-* `refused`: sverify does not plan the query (the lift or the checker
-  refuses it);
+* `refused`: sverify does not plan the query (the lift, the checker or
+  `verify` refuses it);
 * `skipped`: the test needs something the replay does not have (an
   extension, a setting, a second connection, a loop too long, …).
 
@@ -877,7 +877,13 @@ class Replay:
         if lean_err is not None:
             res.lean = lean_err
         lean_ok = outcome(lean_rows, lean_err, ordered)
-        if not lean_ok and (found := issues()):
+        try:
+            found = [] if lean_ok else issues()
+        except Exception as e:  # noqa: BLE001 - `verify` refusing the query
+            # sverify does not verify the query, so it never runs it.
+            res.cls, res.reason = "refused", f"verify: {type(e).__name__}: {_clip(str(e), 200)}"
+            return res
+        if found:
             # Not an agreement (`Rel.eval` gives rows), but the verifier warns.
             # A row that raises is NULL in `Rel.eval`, and the error is
             # `verify`'s: `sin('inf'::DOUBLE)` raises in the reference where
@@ -947,12 +953,9 @@ def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
     `SELECT 7 // 0`'s division by zero (#333)."""
     from sverify.contracts import verify
 
-    try:
-        # Without inference: an inferred precondition would absorb the
-        # overflow the test expects (#619).
-        report = verify(sql, tables=schemas, on_inferred="off")
-    except Exception:  # noqa: BLE001
-        return []
+    # Without inference: an inferred precondition would absorb the overflow
+    # the test expects (#619). A query `verify` refuses raises.
+    report = verify(sql, tables=schemas, on_inferred="off")
     return [str(i) for i in report.issues + report.assumed]
 
 
@@ -1196,7 +1199,6 @@ KNOWN: tuple[Known, ...] = (
         (
             "function/list/aggregates/bigints_sum_avg.test",
             "function/list/aggregates/sum.test",
-            "types/nested/list/test_list_extract.test",
             "types/nested/list/list_comparison_stale_positions.test",
         ),
     ),
