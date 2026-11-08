@@ -246,7 +246,7 @@ def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
   | _, _, _ => signed
 
 theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
-    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
+    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem (FloatCode.canon c)) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
     (floatBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
   obtain ⟨blo, bhi⟩ := b
   have hsign := floatSumCR_sign hne
@@ -279,8 +279,8 @@ theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List
   rcases rows with _ | n
   · exact hsigned
   have hlen := hrows n rfl
-  have hsc : ∀ c ∈ cs, FloatCode.scaled cl ≤ FloatCode.scaled c ∧
-      FloatCode.scaled c ≤ FloatCode.scaled ch := fun c hc =>
+  have hsc : ∀ c ∈ cs, FloatCode.scaled cl ≤ FloatCode.scaled (FloatCode.canon c) ∧
+      FloatCode.scaled (FloatCode.canon c) ≤ FloatCode.scaled ch := fun c hc =>
     ⟨FloatCode.scaled_mono ((hb c hc).1 cl rfl), FloatCode.scaled_mono ((hb c hc).2 ch rfl)⟩
   simp only [floatBound]
   split

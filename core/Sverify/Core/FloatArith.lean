@@ -126,12 +126,40 @@ theorem posCode_le_posInf (m : Nat) : posCode m ≤ posInf := by
   · exact Int.le_refl _
   · split <;> omega
 
+/-- A code in `[0, +∞]` is its own canon. -/
+theorem canon_of_bounds' {c : Int} (h0 : 0 ≤ c) (h1 : c ≤ posInf) : canon c = c := by
+  have := posInf_eq; have := negZero_eq'; have := negNan_eq'
+  have e1 : fp64.negZero = negZero := rfl
+  have e2 : fp64.negNan = negNan := rfl
+  exact fp64.canon_eq_self ⟨by show c ≠ fp64.negZero; omega, by show c ≠ fp64.negNan; omega⟩
+
 theorem isRef_ofExactDiv (v : Int) (n : Nat) : IsRef (ofExactDiv v n) := by
   have h1 := posCode_le_posInf (roundMagDiv v.natAbs n)
   have h2 := posCode_nonneg (roundMagDiv v.natAbs n)
   have := posInf_eq; have := negInf_eq; have := nan_eq
   show negInf ≤ _ ∧ _ ≤ nan
   unfold ofExactDiv; split <;> omega
+
+theorem canon_nonFinite {vs : List Value} {c : Int} (h : nonFinite vs = some c) : canon c = c := by
+  have := posInf_eq; have := negInf_eq; have := nan_eq
+  have e1 : fp64.negInf = negInf := rfl
+  have e2 : fp64.nan = nan := rfl
+  unfold nonFinite at h
+  split at h <;> (try split at h) <;> (try split at h) <;> cases h <;>
+    exact canon_of_isRef ⟨by show fp64.negInf ≤ _; omega, by show _ ≤ fp64.nan; omega⟩
+
+/-- `SUM` and `AVG` of doubles are reference codes (D25, D31). -/
+theorem canon_floatSumCR (vs : List Value) : canon (floatSumCR vs) = floatSumCR vs := by
+  unfold floatSumCR
+  cases h : nonFinite vs with
+  | none => exact canon_of_isRef (isRef_ofExactDiv _ _)
+  | some c => exact canon_nonFinite h
+
+theorem canon_floatAvgCR (vs : List Value) : canon (floatAvgCR vs) = floatAvgCR vs := by
+  unfold floatAvgCR
+  cases h : nonFinite vs with
+  | none => exact canon_of_isRef (isRef_ofExactDiv _ _)
+  | some c => exact canon_nonFinite h
 
 theorem canon_rnd (v : Int) (n : Nat) : canon (rnd v n) = ofExactDiv v n := by
   unfold rnd; dsimp only; split
