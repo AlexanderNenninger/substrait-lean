@@ -381,9 +381,8 @@ def evidence_text(x: Route | Realized, engine: str) -> str:
             out += f" on {engine}'s model (facts {', '.join(x.proved_facts)})"
         return out
     out = "tested"
-    version = x.version or probed_version(engine)
-    if version:
-        out += f" at {version}"
+    if x.version:
+        out += f" at {x.version}"
     cited = [f"facts {', '.join(x.facts)}"] if x.facts else []
     cited += [f"#{i}" for i in x.issues]
     if cited:
@@ -850,7 +849,7 @@ def realization(
         all(proved) if proved else None,
         tuple(verdict.get("facts", ())),
         tuple(verdict.get("theorems", ())),
-        verdict.get("version") or None,
+        verdict.get("version") or probed_version(engine),
         tuple(verdict.get("issues", ())),
         tuple(verdict.get("proved_facts", ())),
     )
