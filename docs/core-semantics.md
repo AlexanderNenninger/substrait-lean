@@ -1891,7 +1891,7 @@ exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
 
-### D32. Doubles have one zero and one NaN
+### D36. Doubles have one zero and one NaN
 
 Decided on [#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), merged 2026-10-31, and on #209.
 
@@ -1911,7 +1911,7 @@ Polars and Spark compare NaN so (`nan_equality` `NAN_IS_NAN` in their
 tables); IEEE's NaN, unequal to itself,
 would split `GROUP BY` and `DISTINCT` and drop rows from joins.
 
-### D33. No operation creates a NaN
+### D37. No operation creates a NaN
 
 Decided on #185 ("no newly created NaNs") and [#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257), closed
 2026-11-02.
@@ -1928,7 +1928,7 @@ none in the outputs. Engines give NaN, NULL or an error there, and a plan
 proved to never raise reaches none of them, so no engine needs a shim
 ([D21](#d21-tighten-the-reference-where-it-stays-practical)).
 
-### D34. No operation on finite doubles overflows to infinity
+### D38. No operation on finite doubles overflows to infinity
 
 Decided on [#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575), closed 2026-11-04.
 
