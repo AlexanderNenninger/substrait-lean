@@ -1,4 +1,4 @@
-import SubstraitLean.Issue
+import Sverify.Core.Issue
 import SubstraitLean.Contracts
 
 /-!
@@ -21,7 +21,7 @@ checks while it runs). Date arithmetic raises outside the reference's dates
 (#251), and the calendar functions on timestamps (`date_part`, truncation to a
 week or longer, `date_bin`, `strftime`, adding months) outside the reference's
 timestamps, 0001-01-01 to 9999-12-31 (D32). Arguments outside a function's
-domain (`sqrt` of a negative, a shift by 64, …, `SubstraitLean/Numeric.lean`)
+domain (`sqrt` of a negative, a shift by 64, …, `core/Sverify/Core/Numeric.lean`)
 raise too, where an engine may give an IEEE value or a wrapped shift
 instead: an error allows that.
 

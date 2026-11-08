@@ -1,4 +1,4 @@
-"""Strings: sequences of Unicode scalar values (`SubstraitLean/Text.lean`).
+"""Strings: sequences of Unicode scalar values (`core/Sverify/Core/Text.lean`).
 
 The string functions of `mkCall`, their SQL and their kinds. A function of
 strings alone is a row of the function table (`sverify._functions`), which
@@ -50,7 +50,7 @@ def regex_groups(p: str) -> int:
 def call(name: str, args: list[Expr]) -> Expr | None:
     """`mkCall`'s strings functions."""
     match name, args:
-        # Strings (`SubstraitLean/Text.lean`); the table's are `_base.table_call`'s.
+        # Strings (`core/Sverify/Core/Text.lean`); the table's are `_base.table_call`'s.
         # The third argument is the escape character; NULL means a backslash.
         case "like", ([a, b] | [a, b, Lit(value=None)]):
             return Bin("like", a, b)

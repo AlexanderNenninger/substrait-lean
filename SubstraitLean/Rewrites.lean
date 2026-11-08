@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import Sverify.Core.Rel
 
 /-!
 # Verified plan rewrites

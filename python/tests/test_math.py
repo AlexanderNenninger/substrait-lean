@@ -1,5 +1,5 @@
 """Elementary functions of doubles and bitwise operations of integers
-(`SubstraitLean/Numeric.lean`).
+(`core/Sverify/Core/Numeric.lean`).
 
 Lean computes `SQRT`, `LN`, `SIN`, … with native floats (C's `libm`) and the
 bitwise operations in 64-bit two's complement. Inside each function's domain,

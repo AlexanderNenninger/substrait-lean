@@ -21,8 +21,8 @@ open Lean (Json toJson)
 /-! ## Function anchors
 
 Every function the writer can emit has a fixed anchor, from its area's table
-in `SubstraitLean/Functions.lean` (black boxes from
-`SubstraitLean/BlackBox.lean`). Anchors below 100 predate the areas' ranges
+in `core/Sverify/Core/Functions.lean` (black boxes from
+`core/Sverify/Core/BlackBox.lean`). Anchors below 100 predate the areas' ranges
 and stay as they are. The checks below reject a duplicate anchor or name and
 an anchor outside its area's range; `Functions.lean` checks its rows.
 
@@ -34,7 +34,7 @@ def declaredOf (rows : List Functions.FnRow) : List (Nat × String) :=
   (rows.map fun r => (r.anchor, r.name)).eraseDups
 
 /-- Black boxes (#325), scalar and aggregate: anchors 700–799, in the order of
-`SubstraitLean/BlackBox.lean`'s table, under its URN (`BlackBox.blackBoxUrn`). -/
+`core/Sverify/Core/BlackBox.lean`'s table, under its URN (`BlackBox.blackBoxUrn`). -/
 def blackBoxFns : List (Nat × String) :=
   (BlackBox.scalars.map (·.name) ++ BlackBox.aggregates.map (·.name)).zipIdx.map
     fun (n, i) => (700 + i, n)

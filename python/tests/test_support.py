@@ -9,7 +9,9 @@ from _repo import needs_repo
 from sverify import _support, black_box
 from sverify.sql import Unsupported
 
-FUNCTIONS_LEAN = Path(__file__).resolve().parents[2] / "SubstraitLean" / "Functions.lean"
+FUNCTIONS_LEAN = (
+    Path(__file__).resolve().parents[2] / "core" / "Sverify" / "Core" / "Functions.lean"
+)
 
 
 def lean_functions() -> set[str]:

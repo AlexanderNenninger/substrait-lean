@@ -282,7 +282,7 @@ def run_checker(flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
 
 
 # Doubles, timestamps and dates are integer codes in the Lean model
-# (SubstraitLean/Float.lean). A double with magnitude m = |x| * 2^1074 has
+# (core/Sverify/Core/Float.lean). A double with magnitude m = |x| * 2^1074 has
 # code ±(2m + 1), and zero (-0.0 too) has code 0, which orders codes like SQL
 # engines order doubles (-inf < ... < 0.0 < ... < +inf < NaN, one NaN).
 # Timestamps are microseconds, dates days.

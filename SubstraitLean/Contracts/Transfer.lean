@@ -349,7 +349,7 @@ def datePartAbs (p : Time.DatePart) (a : AVal) : AVal :=
 /-! ## Domains
 
 The elementary functions, `atan2`, `logb` and the shifts are `NULL` (an
-error, `Issue.domain`) outside their domains (`SubstraitLean/Numeric.lean`).
+error, `Issue.domain`) outside their domains (`core/Sverify/Core/Numeric.lean`).
 Their results are "some double" or "some integer", or `NULL` where an
 argument may be outside the domain. -/
 
@@ -393,7 +393,7 @@ def ftodAbs (s : Nat) (a : AVal) : AVal :=
 
 /-! ## Black boxes (#325)
 
-What a black box's row declares of its result (`SubstraitLean/BlackBox.lean`):
+What a black box's row declares of its result (`core/Sverify/Core/BlackBox.lean`):
 its type, and its laws, which hold of the model by construction
 (`BlackBox.Scalar.call_ok`). -/
 

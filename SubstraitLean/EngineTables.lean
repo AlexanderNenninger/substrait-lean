@@ -1,7 +1,7 @@
 import Lean.Data.Json
-import SubstraitLean.Observations
-import SubstraitLean.AllowedP
-import SubstraitLean.Profile
+import Sverify.Core.Observations
+import Sverify.Core.AllowedP
+import Sverify.Core.Profile
 import SubstraitLean.DuckDBProfile
 import SubstraitLean.SubstraitProfile
 

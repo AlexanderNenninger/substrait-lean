@@ -179,7 +179,7 @@ elimination (#83) drops the guards the inferred bounds rule out.
 
 ## The shape
 
-The reference is already a relation: `Rel.Allowed` (`SubstraitLean/Allowed.lean`,
+The reference is already a relation: `Rel.Allowed` (`core/Sverify/Core/Allowed.lean`,
 [#427](https://github.com/AlexanderNenninger/substrait-lean/pull/427)) allows a
 set of results per input, and `Rel.eval` computes one of them
 (`Rel.eval_allowed`). The core generalises it in one direction: every place
@@ -314,14 +314,14 @@ the first column are the names the tables below use.
 Opaque functions need no option: the black boxes (#325), the regexes and the
 digests have one meaning each, the function itself, and every profile shares
 it. The conversions between integers, decimals and doubles stay opaque
-constants with proved properties (`SubstraitLean/Conversions.lean`), the same
+constants with proved properties (`core/Sverify/Core/Conversions.lean`), the same
 in every profile.
 
 ### Function groups
 
 Functions with the same options share a row. Every function of an area is in
 exactly one group; wave 3's tables give each function its group
-(`SubstraitLean/Functions.lean`, one row per constructor, so `add` has a row
+(`core/Sverify/Core/Functions.lean`, one row per constructor, so `add` has a row
 in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 
 | Area | Group | Functions | Options |
@@ -382,7 +382,7 @@ each `fp.*` group covers both formats, and the options apply per format.
 
 Three tables, the first two shared by every profile:
 
-1. Options (`SubstraitLean/Options.lean`, new): one row per option of the
+1. Options (`core/Sverify/Core/Options.lean`, new): one row per option of the
    catalogue above.
 2. Functions (wave 3: the per-area tables of
    [#269](https://github.com/AlexanderNenninger/substrait-lean/issues/269) in
@@ -413,7 +413,7 @@ def options : List OptionSpec := [
   … ]
 ```
 
-Checks by `decide` (`SubstraitLean/Options.lean`) reject a repeated id or
+Checks by `decide` (`core/Sverify/Core/Options.lean`) reject a repeated id or
 behaviour, and a `yaml` value or `extra` behaviour outside `core`; the rest of
 `core` is sverify's own (`ONE_ZERO`, `DROP_BITS`). `tests/test_functions.py`
 checks that every fact id names a file of `characterization/*/facts/`.
@@ -628,7 +628,7 @@ The core needs every value any profile gives, so each must be at least as
 fine as Substrait's. `Value` has a constructor per kind ([D29](#d29-a-value-has-its-kind)):
 `null | bool | int | float | date | ts | tod | dec | str | list | struct`.
 A double is a `float` code, `-0.0` and the negative NaN among them
-(`SubstraitLean/FloatFormat.lean`), which the reference profile reads with
+(`core/Sverify/Core/FloatFormat.lean`), which the reference profile reads with
 one zero and one NaN through `canon`; a decimal is its scale and unscaled
 integer.
 
@@ -653,10 +653,10 @@ never meets the new codes, so its proofs do not change. The SQL order of the
 full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 `IEEE` behaviour of `zero_sign` and `nan_order`.
 
-Step 1b put them there (`SubstraitLean/FloatFormat.lean`): `negNan` is the
+Step 1b put them there (`core/Sverify/Core/FloatFormat.lean`): `negNan` is the
 code negation of NaN and `negZero` the even code below it, `key` orders the
 full set, `canon_idem` and `canon_mono` prove `canon` idempotent and
-order-preserving, and `SubstraitLean/Float.lean` proves that each operation
+order-preserving, and `core/Sverify/Core/Float.lean` proves that each operation
 on doubles commutes with `canon` on the reference's codes (`lift₂_canon`,
 `roundTo_canon`, `fmod_canon`, `finite_canon`; `canon_ofFloat` for results
 built from a native double). Code negation is the one exception: it sends
@@ -822,7 +822,7 @@ pairs.
 Refinement up to an observation `o` asks the first only up to `o`: every
 result `Q` allows for `t` is, up to `o`, one `P` allows for `r`
 (`Rel.RefinesUpTo`, `Rel.RefinesPUpTo`, with `Relation.Equiv o` from
-[ObsEquiv.lean](../SubstraitLean/ObsEquiv.lean)). `o = Obs.exact` is the
+[ObsEquiv.lean](../core/Sverify/Core/ObsEquiv.lean)). `o = Obs.exact` is the
 relation above (`Rel.Refines`); `o = {rows := .multiset}` forgets the order
 of rows (`Rel.RefinesBag`, `Rel.RefinesP`), which is all an unsorted plan
 gives against an `ORDER BY`.
@@ -837,7 +837,7 @@ The relation covers every move sverify makes:
 
 | Move | As refinement | Today |
 |---|---|---|
-| A rewrite within a profile | `(P, t) ⊑ (P, r)` up to `o` | `Rel.RefinesUpTo` ([Allowed.lean](../SubstraitLean/Allowed.lean)); `optimize` up to the order of rows, for plans without choices (`Rel.optimize_refines`, `Rel.refines_of_same`, `Rel.refines_of_perm`) |
+| A rewrite within a profile | `(P, t) ⊑ (P, r)` up to `o` | `Rel.RefinesUpTo` ([Allowed.lean](../core/Sverify/Core/Allowed.lean)); `optimize` up to the order of rows, for plans without choices (`Rel.optimize_refines`, `Rel.refines_of_same`, `Rel.refines_of_perm`) |
 | A narrower profile, the same plan | `(P, r) ⊑ (core, r)` when `P`'s choices are within the core's | step 1c's `Rel.AllowedP_mono` |
 | Lowering to an engine | `(E, T_E r) ⊑ (reference, r)`: exactly for DuckDB's lowering, up to an engine row's `q` where the row is `refinesUpTo q` | `Rel.duckdb_refines` (from `Rel.duckdb_shim_allowed` and `Lowering.lowerRel_raises`), `Lowering.lower_correct`, `Rel.guardFree_allowed` |
 | Lifting from a source language | `(X, s) ⊑ (P, L s)`: whatever `X` does with `s` is allowed for the lifted plan under `P` | the SQLGlot lift, trusted and tested; `LiftDuckDB`'s entries proved per rule (#242) |
@@ -1364,7 +1364,7 @@ were probed at, and the profile is only as good as its facts.
 The choices table holds, next to each choice, its class, its observation
 `q` and its shim: each (profile, group, option) row reads choice, class,
 `q`, shim, so an engine's realizability row comes from one table. This
-extends step 1a's `ProfileTable` (#578, `SubstraitLean/Options.lean`): a
+extends step 1a's `ProfileTable` (#578, `core/Sverify/Core/Options.lean`): a
 column for the class and `q`, one for the run-to-run variation
 ([D20](#d20-two-observations-per-output)) and one for the shim, filled for
 engines in step 3a, and read by step 1c.
@@ -1402,7 +1402,7 @@ An observation `q'` refines `q` when `q'` observes everything `q` observes:
 the finer guarantee refines the coarser one, as `Allowed_P' ⊆ Allowed_P`
 does for profiles. The identity is the finest observation, a constant the
 coarsest. In Lean, equality up to `q` is `Relation.Equiv q`
-(`SubstraitLean/ObsEquiv.lean`), and `Relation.Equiv_mono` proves that
+(`core/Sverify/Core/ObsEquiv.lean`), and `Relation.Equiv_mono` proves that
 `Obs.le q' q` gives it: equality up to `q'` implies equality up to `q`. Five
 consequences:
 
@@ -1578,7 +1578,7 @@ The reference leaves `tie_order` and `tie_pick` open. Rows that tie in an
 first rows of any order the plan allows, and `FIRST`, `LAST`,
 `ARG_MIN`/`ARG_MAX`, `STRING_AGG`, `collect` and `MODE` take the rows that
 tie in their own order in any order. `Rel.OrderAllowed`
-(`SubstraitLean/OrderAllowed.lean`) holds the results of every such order, and a
+(`core/Sverify/Core/OrderAllowed.lean`) holds the results of every such order, and a
 contract holds on all of them: `contract_sound_all` for postconditions,
 `Rel.keys_sound_all` for keys. An engine's own pick is one of these orders,
 so it runs natively.
@@ -1618,7 +1618,7 @@ In the reference, a `SUM`, `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`
 of doubles is the correctly rounded value of the exact sum or moments. Every
 finite double is an integer multiple of 2⁻¹⁰⁷⁴, so the sum of the values is
 an exact dyadic rational; the result is the double nearest to it, ties to
-even (`floatSumCR`, `SubstraitLean/FloatExact.lean`), and `AVG` is the exact
+even (`floatSumCR`, `core/Sverify/Core/FloatExact.lean`), and `AVG` is the exact
 sum divided by the count, rounded once (`floatAvgCR`). NaN and infinities
 follow IEEE 754: a NaN, or `+∞` with `-∞`, gives NaN, and one kind of
 infinity gives it. The value is a function of the multiset of values, so it
@@ -1677,10 +1677,10 @@ values (`window_sum_algo`: each frame anew, a tree, or a running sum).
 In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition)
 `NULL = NULL` is unknown, so a NULL never matches, never equals and never
 compares: three-valued logic, `and3`/`or3`, `UnFn.apply .not` and `BinFn.apply .eq` in
-`SubstraitLean/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
+`core/Sverify/Core/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
 `EXCEPT`, `INTERSECT`, a window's `PARTITION BY` and `IS NOT DISTINCT FROM`,
 all NULLs are one value: syntactic equality, `Value.decEq` in
-`SubstraitLean/Value.lean`, as `dedup` and `groupKey` use it. A key
+`core/Sverify/Core/Value.lean`, as `dedup` and `groupKey` use it. A key
 (`sv.unique`, `KeyOn`) uses the second, so two rows with NULL in a key column
 collide, which is stricter than SQL's `UNIQUE` (`Keys.lean`'s header). The
 anti part of a left join and a semi or anti join use the first.
@@ -1860,7 +1860,7 @@ The reference observes these results through its own zero and NaN rules
 (ONE_ZERO, #89; `on_division_by_zero`), so its values are unchanged; a
 profile with IEEE `zero_sign` sees the signed result.
 
-In the model (`SubstraitLean/FloatArith.lean`): every finite double is an
+In the model (`core/Sverify/Core/FloatArith.lean`): every finite double is an
 integer multiple of 2⁻¹⁰⁷⁴, so the exact sum, difference and product are
 integers in that unit, the product in 2⁻²¹⁴⁸, and the quotient a fraction of
 two. `ofExactDiv` rounds each, as it rounds D25's sums, to the nearest
@@ -1902,7 +1902,7 @@ advisor).
 The reference's timestamps are those of its dates (#251): 0001-01-01
 00:00:00 to 9999-12-31 23:59:59.999999, `Time.tsMin` to `Time.tsMax` in
 microseconds since 1970. Every calendar function is defined on all of them,
-with the proleptic Gregorian calendar of `SubstraitLean/Time.lean`.
+with the proleptic Gregorian calendar of `core/Sverify/Core/Time.lean`.
 `date_part`, `strftime`, `time_of_day`, adding months to a timestamp,
 truncation to a week, month, quarter or year, truncation of a date, and
 `date_bin` raise (`Issue.overflow`) where the operand or the result leaves
@@ -1982,7 +1982,7 @@ call's arguments and reference result stated beside the option. Engine rows
 are statements about the scope; agreement outside it is the function's base
 row. A plan depends on an option only where a call may be in its scope.
 
-In the model, `optionScope` (`SubstraitLean/Scopes.lean`) states each
+In the model, `optionScope` (`core/Sverify/Core/Scopes.lean`) states each
 option's scope, one row per option of the catalogue in its order, and
 `Rel.AllowedP` reads it: a call (`CallExtra`) or an aggregate (`AggExtra`)
 takes another value than the reference's only where its table allows one of
