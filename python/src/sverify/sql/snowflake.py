@@ -75,7 +75,7 @@ from dataclasses import dataclass
 
 from sverify._plan_read import SUBSTR_MAX
 from sverify._support import DUCKDB_ONLY
-from sverify.sql.core import Dec, Dialect, Kind, Lst, Unsupported
+from sverify.sql.core import Dec, Dialect, Kind, Lst, Unsupported, _timestamp_text
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 INT32_MAX = 2**31 - 1
@@ -142,17 +142,18 @@ class SnowflakeDialect(Dialect):
 
     def timestamp_lit(self, micros: int) -> str:
         try:
-            t = EPOCH + dt.timedelta(microseconds=micros)
+            EPOCH + dt.timedelta(microseconds=micros)  # in years 1-9999
         except OverflowError as e:
             raise Unsupported(f"timestamp {micros} µs is outside years 1-9999") from e
-        return f"CAST('{t:%Y-%m-%d %H:%M:%S.%f}' AS TIMESTAMP_NTZ(6))"
+        # `_timestamp_text` pads the year itself (glibc writes year 1 as `1`).
+        return f"CAST('{_timestamp_text(micros)}' AS TIMESTAMP_NTZ(6))"
 
     def date_lit(self, days: int) -> str:
         try:
             d = EPOCH.date() + dt.timedelta(days=days)
         except OverflowError as e:
             raise Unsupported(f"date {days} days is outside years 1-9999") from e
-        return f"CAST('{d:%Y-%m-%d}' AS DATE)"
+        return f"CAST('{d.isoformat()}' AS DATE)"  # four-digit years on every platform
 
     def interval_lit(self, micros: int) -> str:
         return str(micros)
