@@ -247,36 +247,116 @@ theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α
     (if p ∨ q then a else b) = if p then a else if q then a else b := by
   by_cases hp : p <;> by_cases hq : q <;> simp [hp, hq]
 
+/-! What DuckDB's profile gives for the functions the lift reads, computed
+from `Profile.duckdb` (the lift's proofs rewrite with them). -/
+
+theorem DuckDBSQL.duck_fdiv_float (a b : Int) :
+    (Profile.duckdb {}).bin .fdiv (.float a) (.float b) = .ok (.float (if b = 0 then ieeeDivZero a
+      else if nanCase .fdiv a b then FloatCode.nan else FloatCode.fdiv a b)) := by
+  by_cases hb : b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
+    simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, nanIssue,
+      BinFn.apply, hb, hn, Issue.isError]
+
+/-- `fmod` of an infinite dividend is NaN, whatever the divisor. -/
+theorem DuckDBSQL.fmod_of_inf {a : Int} (b : Int) (h : isInfCode a = true) :
+    FloatCode.fmod a b = FloatCode.nan := by
+  have hp := FloatCode.posInf_eq; have hn := FloatCode.negInf_eq
+  have hi : FloatCode.infMag = FloatCode.maxMag + 1 := rfl
+  simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at h
+  unfold FloatCode.fmod FloatCode.finiteParts
+  have hm : FloatCode.infMag ≤ (a.natAbs - 1) / 2 := by
+    rcases h with rfl | rfl <;> omega
+  simp [hm]
+
+theorem DuckDBSQL.duck_fmod_float (a b : Int) :
+    (Profile.duckdb {}).bin .fmod (.float a) (.float b) =
+      .ok (.float (if b = 0 ∨ isInfCode a then FloatCode.nan else FloatCode.fmod a b)) := by
+  by_cases hb : b = 0
+  · simp [Profile.duckdb, BinFn.onFloats, duckBin, hb]
+  · by_cases hi : isInfCode a = true
+    · by_cases hn : nanCase .fmod a b
+      · simp [Profile.duckdb, BinFn.onFloats, duckBin, hb, hn, hi]
+      · simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue,
+          nanIssue, BinFn.apply, hb, hn, hi, DuckDBSQL.fmod_of_inf b hi]
+    · have hn : nanCase .fmod a b = false := by simp [nanCase, hi]
+      simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue,
+        nanIssue, BinFn.apply, hb, hn, hi]
+
+theorem DuckDBSQL.duck_arith_float (f : BinFn) (hf : f = .fadd ∨ f = .fsub ∨ f = .fmul) (a b : Int) :
+    (Profile.duckdb {}).bin f (.float a) (.float b) =
+      .ok (if nanCase f a b then .float FloatCode.nan else f.apply (.float a) (.float b)) := by
+  by_cases hn : nanCase f a b <;> rcases hf with rfl | rfl | rfl <;>
+    simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, nanIssue,
+      hn, Issue.isError]
+
+theorem DuckDBSQL.duck_fadd_float (a b : Int) : (Profile.duckdb {}).bin .fadd (.float a) (.float b) =
+    .ok (if nanCase .fadd a b then .float FloatCode.nan else BinFn.apply .fadd (.float a) (.float b)) :=
+  DuckDBSQL.duck_arith_float .fadd (.inl rfl) a b
+theorem DuckDBSQL.duck_fsub_float (a b : Int) : (Profile.duckdb {}).bin .fsub (.float a) (.float b) =
+    .ok (if nanCase .fsub a b then .float FloatCode.nan else BinFn.apply .fsub (.float a) (.float b)) :=
+  DuckDBSQL.duck_arith_float .fsub (.inr (.inl rfl)) a b
+theorem DuckDBSQL.duck_fmul_float (a b : Int) : (Profile.duckdb {}).bin .fmul (.float a) (.float b) =
+    .ok (if nanCase .fmul a b then .float FloatCode.nan else BinFn.apply .fmul (.float a) (.float b)) :=
+  DuckDBSQL.duck_arith_float .fmul (.inr (.inr rfl)) a b
+
+theorem DuckDBSQL.duck_fpow_float (a b : Int) :
+    (Profile.duckdb {}).bin .fpow (.float a) (.float b) = .ok (.float (if negInfPow a b then
+      duckNegInfPow b else if nanCase .fpow a b then FloatCode.nan
+      else FloatCode.lift₂ Float.pow a b)) := by
+  by_cases hi : negInfPow a b <;> by_cases hn : nanCase .fpow a b <;>
+    simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, nanIssue,
+      BinFn.apply, hi, hn, Issue.isError]
+
+theorem DuckDBSQL.duck_fmath_float (f : FMath) (a : Int) :
+    (Profile.duckdb {}).un (.fmath f) (.float a) = .ok (.float (duckElementary f a)) := by
+  cases h : f.apply a <;>
+    simp [Profile.duckdb, duckUn, duckElementary, Profile.reference, raiseIf, UnFn.issue, UnFn.apply,
+      domainIssue, h]
+
+theorem DuckDBSQL.duck_bin_null_l (f : BinFn) (y : Value) :
+    (Profile.duckdb {}).bin f .null y = Profile.reference.bin f .null y := by
+  cases y <;> rfl
+
+theorem DuckDBSQL.duck_bin_null_r (f : BinFn) (x : Value) :
+    (Profile.duckdb {}).bin f x .null = Profile.reference.bin f x .null := by
+  cases x <;> rfl
+
+theorem DuckDBSQL.duck_un_null (f : UnFn) : (Profile.duckdb {}).un f .null = Profile.reference.un f .null :=
+  rfl
+
+theorem DuckDBSQL.duck_itof (v : Value) : (Profile.duckdb {}).un .itof v = Profile.reference.un .itof v := by
+  cases v <;> rfl
+
 /-- `sign` of an integer, or of a double's code (codes are ordered as their
 doubles; NaN's is the largest, and its sign is `0`). -/
 def duckSign (x : Int) : Int := if x < 0 then -1 else if 0 < x then 1 else 0
 
-/-- DuckDB's `+`, `-` or `*` of doubles: NaN for `∞ - ∞` and `0 · ∞`, else
-IEEE 754's, rounded once (D31, `duckdb-ieee-arith-*`). -/
-def duckArith (f : BinFn) (op : Int → Int → Int) (a b : Int) : Int :=
-  if nanCase f a b then FloatCode.nan else op a b
+/-- The profile a semantics evaluates DuckDB's functions with: DuckDB's own
+(`Profile.duckdb`, default settings), or the reference. -/
+def Semantics.profile : Semantics → Profile
+  | .duckdb => Profile.duckdb {}
+  | .reference => Profile.reference
 
-/-- What the function gives for its arguments, under the semantics. `NULL`
-in, `NULL` out, but for `greatest` and `least`, which skip `NULL`s. -/
-def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
-  | .duckdb, .divInt, [.int a, .int b] =>
-    .ok (.float (duckDivide (FloatCode.ofInt a) (FloatCode.ofInt b)))
-  | .duckdb, .divDouble, [.float a, .float b] => .ok (.float (duckDivide a b))
-  | .duckdb, .modDouble, [.float a, .float b] => .ok (.float (duckMod a b))
-  | .duckdb, .addDouble, [.float a, .float b] => .ok (.float (duckArith .fadd FloatCode.fadd a b))
-  | .duckdb, .subDouble, [.float a, .float b] => .ok (.float (duckArith .fsub FloatCode.fsub a b))
-  | .duckdb, .mulDouble, [.float a, .float b] => .ok (.float (duckArith .fmul FloatCode.fmul a b))
-  | .duckdb, .elementary f, [.float a] => .ok (.float (duckElementary f a))
-  | .duckdb, .power, [.float a, .float b] => .ok (.float (duckPower a b))
-  | .reference, .divInt, [.int a, .int b] =>
-    Profile.reference.bin .fdiv (.float (FloatCode.ofInt a)) (.float (FloatCode.ofInt b))
-  | .reference, .divDouble, [a, b] => Profile.reference.bin .fdiv a b
-  | .reference, .modDouble, [a, b] => Profile.reference.bin .fmod a b
-  | .reference, .addDouble, [a, b] => Profile.reference.bin .fadd a b
-  | .reference, .subDouble, [a, b] => Profile.reference.bin .fsub a b
-  | .reference, .mulDouble, [a, b] => Profile.reference.bin .fmul a b
-  | .reference, .elementary f, [a] => Profile.reference.un (.fmath f) a
-  | .reference, .power, [a, b] => Profile.reference.bin .fpow a b
+/-- **What a DuckDB function means, in the model's functions**, for those whose
+DuckDB side is a model function under DuckDB's profile: `/` of integers divides
+their doubles (F1), DuckDB's `log(x)` is `log10`. Under either semantics the
+function is this expression under `Semantics.profile`, so what DuckDB computes
+is stated once, by `Profile.duckdb`. The others (`sign`, `greatest`, `least`,
+the casts) mean the same under both and are stated in `DuckFn.eval`. -/
+def DuckFn.meaning : DuckFn → Option Expr
+  | .divInt => some (.bin .fdiv (.un .itof (.field 0)) (.un .itof (.field 1)))
+  | .divDouble => some (.bin .fdiv (.field 0) (.field 1))
+  | .modDouble => some (.bin .fmod (.field 0) (.field 1))
+  | .addDouble => some (.bin .fadd (.field 0) (.field 1))
+  | .subDouble => some (.bin .fsub (.field 0) (.field 1))
+  | .mulDouble => some (.bin .fmul (.field 0) (.field 1))
+  | .elementary f => some (.un (.fmath f) (.field 0))
+  | .power => some (.bin .fpow (.field 0) (.field 1))
+  | _ => none
+
+/-- What the functions without a meaning in the model's functions give: the
+same under both semantics, but for the reference's cast to `BIGINT`. -/
+def DuckFn.evalOwn : Semantics → DuckFn → List Value → Outcome
   | _, .signBigint, [.int a] => .ok (.int (duckSign a))
   | _, .signDouble, [.float a] => .ok (.int (if a = FloatCode.nan then 0 else duckSign a))
   | _, .greatestBigint, [x, y] => .ok (match x, y with
@@ -298,6 +378,14 @@ def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
   | .reference, .castDoubleBigint, [a] => Profile.reference.un .ftoi a
   | _, .castBigintDouble, [.int a] => .ok (.float (FloatCode.ofInt a))
   | _, _, _ => .ok .null
+
+/-- What the function gives for its arguments, under the semantics: its
+meaning under the semantics' profile, else `DuckFn.evalOwn`. `NULL` in, `NULL`
+out, but for `greatest` and `least`, which skip `NULL`s. -/
+def DuckFn.eval (s : Semantics) (f : DuckFn) (xs : List Value) : Outcome :=
+  match f.meaning with
+  | some e => e.evalP s.profile xs
+  | none => DuckFn.evalOwn s f xs
 
 /-! ## Aggregates -/
 
