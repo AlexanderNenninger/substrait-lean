@@ -27,6 +27,7 @@ brings:
   `read_settings`. `sverify.engines.run` runs plans with it, and a
   `Connection` takes the engine when it is `local`.
 - a SQL dialect: `dialect`, for `to_sql`.
+- its name in prose: `title`.
 
 Several entry points may describe one engine; they are merged field by
 field, so a package can add a profile to an engine whose dialect another
@@ -134,6 +135,8 @@ class ProfilePlugin:
     read where the engine runs."""
     dialect: Callable[[], Any] | None = None
     """The `sverify.sql.Dialect` that `to_sql` writes for it."""
+    title: str = ""
+    """The engine's name as prose writes it (`"DuckDB"`); empty: `engine`."""
 
 
 def _merged(found: list[ProfilePlugin]) -> ProfilePlugin:

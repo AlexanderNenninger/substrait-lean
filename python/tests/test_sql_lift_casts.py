@@ -61,6 +61,10 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
     ("query", "message"),
     [
         ("SELECT '1e38'::DECIMAL(38,0)", "does not fit"),
+        # DuckDB raises on these, which Python's Decimal reads.
+        ("SELECT '_12.12'::DECIMAL(4,2)", "not supported"),
+        ("SELECT '12_.12'::DECIMAL(4,2)", "not supported"),
+        ("SELECT '1e-9999999999'::DECIMAL", "not supported"),
         ('SELECT 42::TINYINT::"null"', "CAST to"),
         ("SELECT TRY_CAST(id AS INT) FROM orders", "TRY_CAST"),
         ("SELECT CAST(customer AS DECIMAL(10, 2)) AS d FROM orders", "#27"),
