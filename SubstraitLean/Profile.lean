@@ -421,7 +421,7 @@ def Profile.duckdb (s : DuckDBSettings) : Profile where
     | _, _ => Profile.reference.bin f v w
 
 /-- DuckDB's `%` by a positive divisor is the reference's (the wrap-around
-schema computes with it, `LoweringSearch.schema?`). -/
+schema computes with it, `LoweringSearch.duckdbSchemas`). -/
 theorem Profile.duckdb_imod_pos (s : DuckDBSettings) (a m : Int) (hm : 0 < m) :
     (Profile.duckdb s).bin .imod (.int a) (.int m) = Profile.reference.bin .imod (.int a) (.int m) := by
   have h0 : m ≠ 0 := by omega
@@ -444,22 +444,24 @@ theorem Outcome.agree_val {o o' : Outcome} (h : o.Agree o') : o.val = o'.val := 
   cases o <;> cases o' <;> simp_all [Outcome.Agree, Outcome.val]
 
 theorem findSome?_isSome_congr {xs : List Value} {f g : Value → Option Issue}
-    (h : ∀ x, (f x).isSome = (g x).isSome) :
+    (h : ∀ x ∈ xs, (f x).isSome = (g x).isSome) :
     (xs.findSome? f).isSome = (xs.findSome? g).isSome := by
   induction xs with
   | nil => rfl
   | cons x xs ih =>
     simp only [List.findSome?_cons]
-    have := h x
+    have := h x (List.mem_cons_self ..)
+    have ih := ih fun y hy => h y (List.mem_cons_of_mem x hy)
     cases hf : f x <;> cases hg : g x <;> simp_all
 
+/-- Lambdas that agree on the list's elements give agreeing outcomes. -/
 theorem HoFn.applyP_agree (f : HoFn) (v : Value) {p q : Value → Outcome}
-    (h : ∀ x, Outcome.Agree (p x) (q x)) : Outcome.Agree (f.applyP v p) (f.applyP v q) := by
-  have hs := findSome?_isSome_congr (xs := v.elems) (fun x => Outcome.agree_err (h x))
+    (h : ∀ x ∈ v.elems, Outcome.Agree (p x) (q x)) : Outcome.Agree (f.applyP v p) (f.applyP v q) := by
+  have hs := findSome?_isSome_congr (xs := v.elems) (fun x hx => Outcome.agree_err (h x hx))
   unfold HoFn.applyP
   cases hp : v.elems.findSome? (fun x => (p x).err?) <;>
     cases hq : v.elems.findSome? (fun x => (q x).err?) <;> simp_all [Outcome.Agree]
-  exact HoFn.apply_congr f v fun x _ => Outcome.agree_val (h x)
+  exact HoFn.apply_congr f v fun x hx => Outcome.agree_val (h x hx)
 
 /-! ## Plans that cannot raise
 

@@ -43,6 +43,7 @@ contract's preconditions.
 | An operator that factors through the multiset has one meaning over every order; a plan without choices one multiset, an unordered `FETCH` several | `OrderAllowed`, `Bags` | `Sem.eq_iff_of_permInv`, `Measure.orderAllowed_eq`, `Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two` | `Seam.lean` |
 | DuckDB, under its default settings, computes the reference | `eval` | `Rel.duckdb_sound` | `Profile.lean` |
 | The generated DuckDB lowering computes the reference | `eval`, `AllowedP` | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
+| A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `Obligations.lean` |
 | Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` lemma per shim | `PolarsShims.lean` |
 | Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` lemma per shim | `SparkShims.lean` |
@@ -346,6 +347,7 @@ generators, then the trusted reading and writing.
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |
 | `LoweringDuckDB.lean` | The DuckDB lowering's table and its exports |
 | `LoweringDuckDB/Lemmas.lean` | Lemmas the generated DuckDB lowering computes with |
+| `LoweringDuckDB/Schemas.lean` | DuckDB's hand-written template schemas, for the search |
 | `LoweringDuckDB/On/*.lean` | The DuckDB lowering's entries, one module per area (generated) |
 | `DuckDBSQL.lean` | What each DuckDB SQL function means under each semantics |
 | `LiftHint.lean` | The hints that tell the lift search which template to try first |
