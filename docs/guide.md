@@ -605,6 +605,9 @@ print(report)
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
 # semantics: reference
+# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6)
+# evidence: polars exact, proved by Polars.sum_leaves_i64
+# evidence: spark shim, proved by Spark.int_sum_decimal
 # known about the output:
 #   rows: at most 1,000,000,000,000
 # ...
@@ -1748,7 +1751,7 @@ only if one applies:
 `report.routes[engine]` records the route, with its class, which says what
 you can rely on. A route prints its class first, then
 the evidence, and the route where it is not `translated`:
-`shim (integer division rewritten to truncate); evidence tested`, or
+`shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc`, or
 `exact; transfer: verified under semantics="duckdb"; …`.
 
 | Class (`route.cls`) | What it means for you |
@@ -1759,7 +1762,12 @@ the evidence, and the route where it is not `translated`:
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
-or on tests and probes (`tested`). Before the plan runs, its preconditions,
+or on anything else, tests and probes among them (`tested`). `route.theorems`
+names the proofs, and `route.facts` and `route.version` the engine facts and
+the engine version they were probed at. `print(report)` shows the same before
+any run, one `evidence:` line per engine:
+`evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc` or
+`evidence: spark exact, tested at 4.3.0 (facts spark-int-arith, …)`. Before the plan runs, its preconditions,
 the inferred bounds and the assumed `SUM`s are checked on the data, and a
 batch that breaks one raises `PreconditionError`.
 
