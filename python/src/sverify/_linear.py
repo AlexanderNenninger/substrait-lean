@@ -11,10 +11,11 @@ each measure the number of values it adds up (`__n0`, …: rows that pass its
 the same with every column a key and no measures: a count per row. A
 `DECIMAL` `AVG` keeps the sum and the count of its values, and divides them
 when it finishes, as the model computes it (`Parse.decimalAvgs`). A `MIN`
-or `MAX` keeps the extreme of its values in `__s`. A `SUM` or `AVG` of
-doubles keeps its exact moments beside the state (`sverify._exact_sum`,
-`LinearAgg.fsum_no_drift`): `contrib` gives each changed row's value, and
-`__s` is the value finished from them.
+or `MAX` keeps the extreme of its values in `__s`. A `SUM`, `AVG`, `VAR`,
+`STDDEV`, `COVAR` or `CORR` of doubles keeps its exact moments beside the
+state (`sverify._exact_sum`, `LinearAgg.no_drift`): `contrib` gives each
+changed row's value (a pair's second in `__t`), and `__s` is the value
+finished from them.
 
 A batch updates the state at the cost of the change, without reading the
 view's input:
@@ -59,7 +60,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
-from sverify import _decimals
+from sverify import _decimals, _exact_sum
 from sverify._retention import _aggregate, _own_tree, _row_local, _under
 
 COUNT = "__count"
@@ -95,10 +96,10 @@ class Linear:
     """With a `MIN` or `MAX`: the state of the groups in `<view>$keys`, from
     the whole (new) input. A batch that deletes from a group recomputes its
     state with it; the others merge."""
-    exact: tuple[tuple[int, bool], ...] = ()
-    """The `SUM`s (`False`) and `AVG`s (`True`) of doubles, by measure
-    index: their exact moments are kept beside the state
-    (`sverify._exact_sum`), and their `__s` is the finished value."""
+    exact: tuple[_exact_sum.Exact, ...] = ()
+    """The `SUM`s, `AVG`s and statistical aggregates of doubles: their exact
+    moments are kept beside the state (`sverify._exact_sum`), and their
+    `__s` is the finished value."""
     values: str | None = None
     """With an exact measure: each input row's contribution, unaggregated,
     which `sverify._exact_sum.fold` adds up into the initial state."""
@@ -146,6 +147,8 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
         cols[COUNT] = one if weight is None else weight
         for i, m in enumerate(measures):
             cond: Any = ibis.literal(True) if m.arg is None else own(m.arg).notnull()
+            if m.arg2 is not None:
+                cond = cond & own(m.arg2).notnull()
             if m.where is not None:
                 passes: Any = own(m.where)
                 cond = cond & passes.fill_null(False)
@@ -156,15 +159,22 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
             elif m.kind in ("min", "max"):
                 # The extreme of the values; a delete recomputes the group.
                 value = ibis.ifelse(cond, own(m.arg), ibis.null(m.state))
-            elif m.kind in ("fsum", "favg"):
-                # The value itself: the weight is in `__n`, and the exact
-                # sum is added up outside the engine (`sverify._exact_sum`).
+            elif m.kind in EXACT_KINDS:
+                # The value itself (a pair's second in `__t`): the weight is in
+                # `__n`, and the exact moments are added up outside the engine
+                # (`sverify._exact_sum`).
                 value = ibis.ifelse(cond, own(m.arg).cast(m.state), ibis.null(m.state))
+                if m.arg2 is not None:
+                    second = ibis.ifelse(cond, own(m.arg2).cast(m.state), ibis.null(m.state))
+                    cols[f"__t{i}"] = second
             else:
                 v = own(m.arg).cast(m.state)
                 v = v if weight is None else v * weight
                 value = ibis.ifelse(cond, v, ibis.literal(0, m.state))
             cols[f"__s{i}"] = value
+            if m.arg2 is not None:
+                # `__t` after `__s`, as the state's columns are.
+                cols[f"__t{i}"] = cols.pop(f"__t{i}")
         return rows.select(**cols)
 
     def added(rows: ir.Table) -> ir.Table:
@@ -177,16 +187,23 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
                 s.min()
                 if m.kind == "min"
                 else s.max()
-                if m.kind in ("max", "fsum", "favg")
+                if m.kind in ("max", *EXACT_KINDS)
                 else s.sum()
             )
+            if m.arg2 is not None:
+                sums[f"__t{i}"] = rows[f"__t{i}"].max()
         return rows.group_by(keys).aggregate(**sums)
 
     exact = tuple(
-        (i, m.kind == "favg") for i, m in enumerate(measures) if m.kind in ("fsum", "favg")
+        _exact_sum.Exact(i, m.kind, m.sample, m.sqrt)
+        for i, m in enumerate(measures)
+        if m.kind in EXACT_KINDS
     )
     if exact and any(m.kind in ("min", "max") for m in measures):
-        return "a SUM or AVG of doubles beside a MIN or MAX: the touched groups are recomputed"
+        return (
+            "a SUM, AVG or statistical aggregate of doubles beside a MIN or MAX: the touched "
+            "groups are recomputed"
+        )
     init = added(contributions(parent))
     changed = ibis.table({**parent.schema(), WEIGHT_IN: "int64"}, name=f"{name}$in")
     contrib = contributions(changed, changed[WEIGHT_IN])
@@ -214,8 +231,10 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
             out[m.name] = n
         elif m.kind in ("min", "max"):
             out[m.name] = s
-        elif m.kind in ("fsum", "favg"):
-            out[m.name] = ibis.ifelse(n == 0, ibis.null(m.state), s)
+        elif m.kind in EXACT_KINDS:
+            # Finished from the exact moments, NULL where Lean's is
+            # (`sverify._exact_sum.finish`).
+            out[m.name] = s
         elif m.kind == "avg":
             mean = DecimalDiv(s.op(), n.op(), m.to).to_expr()  # type: ignore[abstract]
             out[m.name] = ibis.ifelse(n == 0, ibis.null(m.to), mean)
@@ -246,8 +265,8 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
 class _Measure:
     name: str
     kind: str
-    """"count", "sum", "avg", "min", "max", or "fsum" and "favg" for a `SUM`
-    and an `AVG` of doubles."""
+    """"count", "sum", "avg", "min", "max", or one of `EXACT_KINDS` for a
+    `SUM`, an `AVG`, a `VAR`/`STDDEV`, a `COVAR` or a `CORR` of doubles."""
     arg: ops.Value | None
     """None for `COUNT(*)`."""
     where: ops.Value | None
@@ -257,6 +276,16 @@ class _Measure:
     the argument's for `MIN` and `MAX`; None for `COUNT`."""
     to: Any = None
     """A decimal `AVG`'s type: four more digits and decimal places."""
+    arg2: ops.Value | None = None
+    """A `COVAR`'s or `CORR`'s second argument."""
+    sample: bool = False
+    """A sample's `VAR`, `STDDEV` or `COVAR` (else the population's)."""
+    sqrt: bool = False
+    """`STDDEV` (the root of `VAR`)."""
+
+
+EXACT_KINDS = ("fsum", "favg", "var", "cov", "corr")
+"""The measures kept from exact moments (`sverify._exact_sum`)."""
 
 
 def _measure(name: str, v: ops.Value) -> _Measure | str:
@@ -291,7 +320,22 @@ def _measure(name: str, v: ops.Value) -> _Measure | str:
         case ops.Min(arg=arg, where=where) | ops.Max(arg=arg, where=where):
             kind = "min" if isinstance(v, ops.Min) else "max"
             return _Measure(name, kind, arg, where, arg.dtype)
-    return f"{name} is not COUNT, SUM, AVG, MIN or MAX"
+        case (
+            ops.Variance(arg=arg, how=how, where=where)
+            | ops.StandardDev(arg=arg, how=how, where=where)
+        ):
+            # D30: the exact moments rounded once, kept exactly (#918).
+            if not exact(arg).is_float64():
+                return f"{name} is a variance of {exact(arg)}: only DOUBLE variances are kept"
+            sqrt = isinstance(v, ops.StandardDev)
+            return _Measure(name, "var", arg, where, dt.float64, sample=how != "pop", sqrt=sqrt)
+        case (
+            ops.Covariance(left=x, right=y, how=how, where=where)
+            | ops.Correlation(left=x, right=y, how=how, where=where)
+        ):
+            kind = "corr" if isinstance(v, ops.Correlation) else "cov"
+            return _Measure(name, kind, x, where, dt.float64, arg2=y, sample=how != "pop")
+    return f"{name} is not COUNT, SUM, AVG, MIN, MAX or a statistical aggregate"
 
 
 def _split(
@@ -314,7 +358,7 @@ def _split(
             got = _measure(m, v)
             if isinstance(got, str):
                 return got
-            parts = [p for p in (got.arg, got.where) if p is not None]
+            parts = [p for p in (got.arg, got.arg2, got.where) if p is not None]
             if not _row_local(parts, parent) or any(
                 p.find(ops.Reduction, filter=_own_tree) for p in parts
             ):
