@@ -1,4 +1,4 @@
-import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 
 /-!
 # What DuckDB's SQL means (#268)

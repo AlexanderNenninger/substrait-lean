@@ -39,6 +39,7 @@ import SubstraitLean.IncrementalMinMax
 import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.Lowering
 import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
