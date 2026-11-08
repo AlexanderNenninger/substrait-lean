@@ -56,14 +56,19 @@ def type_json(dtype: Any, nullable: bool = True) -> Json:
 
 def _type_json(dtype: Any) -> Json:
     if dtype.is_unsigned_integer():
-        raise Unsupported(f"unsigned integers ({dtype}) are not supported")
+        raise Unsupported(
+            f"unsigned integers ({dtype}) are not supported yet (#350); cast the column to "
+            "a signed integer"
+        )
     if dtype.is_integer():
         return {f"i{dtype.nbytes * 8}": NULLABLE}
     if dtype.is_float64():
         return {"fp64": NULLABLE}
     if dtype.is_decimal():
         if dtype.precision is None or dtype.scale is None:
-            raise Unsupported("decimals of unknown precision are not supported")
+            raise Unsupported(
+                "decimals of unknown precision are not supported; cast to DECIMAL(p, s)"
+            )
         return {"decimal": {"precision": dtype.precision, "scale": dtype.scale, **NULLABLE}}
     if dtype.is_floating():
         raise Unsupported(f"{dtype} is not supported; use float64")
@@ -75,9 +80,14 @@ def _type_json(dtype: Any) -> Json:
         return {"date": NULLABLE}
     if dtype.is_timestamp():
         if dtype.timezone is not None:
-            raise Unsupported("timestamps with a time zone are not supported")
+            raise Unsupported(
+                "timestamps with a time zone are not supported yet (#323); cast the column to "
+                "a timestamp in UTC without a time zone"
+            )
         if dtype.scale not in (None, 6):
-            raise Unsupported("only microsecond timestamps are supported")
+            raise Unsupported(
+                "only microsecond timestamps are supported (#323); cast the column to microseconds"
+            )
         return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
     if dtype.is_time():
         return {"precisionTime": {"precision": 6, **NULLABLE}}
@@ -124,7 +134,10 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_timestamp():
         type_json(dtype)
         if value.tzinfo is not None:
-            raise Unsupported("timestamps with a time zone are not supported")
+            raise Unsupported(
+                "timestamps with a time zone are not supported yet (#323); cast the column to "
+                "a timestamp in UTC without a time zone"
+            )
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
     if dtype.is_date():

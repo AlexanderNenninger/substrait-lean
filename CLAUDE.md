@@ -57,9 +57,11 @@ in three shards.
 Before every push, run the cheap checks from `python/`: `poe fmt` (ruff's fixes
 and formatting, also of the notebooks), then `poe lint` and `poe typecheck`
 (pyrefly). They take seconds and catch what CI's `static` job would fail on.
-After an edit to `pyproject.toml` or `uv.lock`, call them as
-`.venv/bin/poe …`, since `uv run` would rebuild the package. A push that
-changes Lean also builds with `lake build --wfail` first.
+Call them as `.venv/bin/poe …` (or `.venv/bin/ruff`, `.venv/bin/pyrefly`):
+`uv run` may rebuild the package, and its build hook runs a full `lake build`
+that races any build already running. A worktree without a venv can use
+another worktree's tools. A push that changes Lean also builds with
+`lake build --wfail` first.
 
 On pull requests CI runs what the change can affect; pushes to main, merge
 queue entries and retargets run everything. One job builds `substrait-check`
