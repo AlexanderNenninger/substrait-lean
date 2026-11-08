@@ -73,7 +73,8 @@ def report_of(c: Case, schemas: dict[str, Any]) -> Any:
 def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
     """Why a route that is taken rests on a test: the options whose rows are
     tested, a tolerance bound Lean does not prove, a postcondition robust only
-    by the engine's facts, or one proved on the reference's orders only."""
+    by the engine's facts, one proved on the reference's orders only, or a
+    double column without a bound."""
     from sverify import routes
 
     causes: list[str] = []
@@ -81,6 +82,8 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
         r = routes.row(engine, d.get("group"), d["option"])
         if r is not None and r.get("evidence") == "tested":
             causes.append(f"row tested: {routes._where(d.get('group'), d['option'])}")
+    if any(routes._unbounded(e) for e in (report._epsilon or {}).values()):
+        causes.append("no bound on the doubles (a SUM or AVG without sv.max_rows)")
     if route.bound_proved is False:
         causes.append("tolerance bound not proved")
     if routes._robust_tested(report, engine):
@@ -141,6 +144,7 @@ TESTED = [
     ("win.agg's window_sum_algo", "tested: double SUM/AVG rounding row (D25)"),
     ("agg.var's", "tested: VAR/STDDEV row (D30)"),
     ("agg.quant's", "tested: quantile row"),
+    ("no bound on the doubles", "tested: no bound without a row cap"),
     ("tolerance bound not proved", "tested: tolerance bound not proved"),
     ("robust only by", "tested: robust only by the engine's facts (#1045)"),
     ("agg.isum's overflow", "tested: integer SUM overflow row"),
