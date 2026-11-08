@@ -150,7 +150,7 @@ theorem DoubleStats.colStats_correct {s : DoubleStats} {c : Nat} {rows : Relatio
     ite_false]
   rcases h.vals row hr with hv | hv | ⟨x, hv, hlo, hhi⟩
   · rw [hv]
-    simp only [AVal.Mem]
+    simp only [AVal.Mem, AVal.MemR]
     cases hn : s.nulls with
     | none => rfl
     | some n =>

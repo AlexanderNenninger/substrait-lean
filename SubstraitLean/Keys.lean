@@ -244,11 +244,12 @@ theorem KeyOn.eqVariants {e : Expr} {k k' : List Nat} {rows : Relation} (hk : Ke
       · simp at hp
 
 /-- Every value is a (non-NULL) integer. -/
-def AVal.intOnly (a : AVal) : Bool := !a.null && !a.tt && !a.ff && !a.str && a.nk == some .int
+def AVal.intOnly (a : AVal) : Bool := !a.null && a.intsOnly && a.nk == some .int
 
 theorem AVal.intOnly_mem {a : AVal} {v : Value} (h : a.intOnly = true) (hm : a.Mem v) :
     ∃ y, v = .int y := by
-  simp only [AVal.intOnly, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at h
+  simp only [AVal.intOnly, AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+    beq_iff_eq, Bool.or_eq_false_iff] at h
   rcases AVal.mem_cases hm with ⟨_, hn⟩ | ⟨k, i, _, rfl, _, _, hk⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
       ⟨_, _, hs⟩ | ⟨_, _, hs⟩
   · simp_all
@@ -256,7 +257,7 @@ theorem AVal.intOnly_mem {a : AVal} {v : Value} (h : a.intOnly = true) (hm : a.M
   · simp_all
   · simp_all
   · simp_all
-  · simp_all
+  · simp_all [AVal.nested]
 
 theorem Expr.linTerm_int {e : Expr} {j : Nat} {c y : Int} {row : Row}
     (h : e.linTerm = some (j, c)) (hy : row.getD j .null = .int y) : e.eval row = .int (y + c) := by
@@ -380,13 +381,13 @@ theorem strsDisjoint_false {a b : AVal} {s : String} (h : strsDisjoint a b = tru
 def AVal.disjoint (a b : AVal) : Bool :=
   !(a.null && b.null) && !(a.tt && b.tt) && !(a.ff && b.ff) &&
   (match a.int, b.int with | some x, some y => x.disjoint y | _, _ => true) &&
-  (!(a.str && b.str) || strsDisjoint a b)
+  (!(a.str && b.str) || strsDisjoint a b) && !(a.list && b.list) && !(a.struct && b.struct)
 
 theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (ha : a.Mem v)
     (hb : b.Mem w) : v ≠ w := by
   rintro rfl
   simp only [AVal.disjoint, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true] at hd
-  obtain ⟨⟨⟨⟨hn, ht⟩, hf⟩, hi⟩, hs⟩ := hd
+  obtain ⟨⟨⟨⟨⟨⟨hn, ht⟩, hf⟩, hi⟩, hs⟩, hl⟩, hst⟩ := hd
   cases v with
   | null => simp_all [AVal.Mem]
   | bool x => cases x <;> simp_all [AVal.Mem]
@@ -397,7 +398,7 @@ theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (
       rw [hx, hy] at hi
       exact Bound.disjoint_ne hi hxi hyi rfl
   | str s =>
-      simp only [AVal.Mem, Bool.and_eq_true] at ha hb
+      simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
       rcases hs with hs | hs
       · simp_all
       · exact strsDisjoint_false hs ha.2 hb.2
