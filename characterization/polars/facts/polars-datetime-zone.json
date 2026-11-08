@@ -1,0 +1,34 @@
+{
+  "id": "polars-datetime-zone",
+  "engine": "polars",
+  "engine_version": "2.1.0",
+  "title": "`dt.offset_by` on a zoned `Datetime` follows the column's time zone",
+  "verdict": "a day added across a DST change keeps the wall clock of the column's zone",
+  "area": "temporal",
+  "constructs": [
+    "dt.offset_by",
+    "dt.convert_time_zone"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "`Datetime(\"us\", \"UTC\")` 2024-03-30 11:00, converted to Europe/Berlin and offset by `1d`, is 2024-03-31 10:00 UTC: the day is a calendar day of the column's zone (CET to CEST), not 24 hours. Calendar arithmetic on an instant depends on the zone the column carries, which a plan does not state."
+  ],
+  "reference": "`Kind.timeTz` is refused: the reference's calendar arithmetic on instants would need a time zone the plan does not carry.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#1166 restatement probe (session youthful-margulis), polars 2.1.0, macOS arm64",
+      "evidence": [
+        {
+          "sql": "pl.LazyFrame({'t': [datetime(2024, 3, 30, 11)]}).select(pl.col('t').dt.replace_time_zone('UTC').dt.convert_time_zone('Europe/Berlin').dt.offset_by('1d').dt.convert_time_zone('UTC')).collect(engine='streaming')",
+          "observed": "2024-03-31 10:00:00+00:00"
+        }
+      ]
+    }
+  ]
+}

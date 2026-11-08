@@ -24,7 +24,8 @@ Doubles are integer *codes* (see `SubstraitLean/Float.lean`), so they share
 operators (`fadd`, …), computed with native floats; rounding a double to an
 integer is exact (see `SubstraitLean/Rounding.lean`).
 
-Integer division and remainder truncate toward zero, as in DataFusion. Where
+Integer division and remainder truncate toward zero; the writers shim an
+engine whose division floors (Polars). Where
 an operation raises an error (division by zero, a cast out of range, a domain
 error, …) the value here is `null`; `SubstraitLean/Safety.lean` says when
 that happens.
@@ -100,8 +101,9 @@ inductive UnFn where
   /-- `CAST(x AS BIGINT)` of a double: truncation toward zero. -/
   | ftoi
   /-- `CAST(x AS INT)` of an integer to `bits` bits (32, or 16 for `SMALLINT`
-  and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit and
-  DataFusion fails (`badCast` in `Safety.lean`). -/
+  and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit,
+  which raises (`badCast` in `Safety.lean`), as DuckDB, Polars and Spark do
+  (duckdb-int-narrow, polars-cast-int, spark-cast-int-narrow). -/
   | narrow (bits : Nat)
   /-- `TRY_CAST(x AS BIGINT)` of a double (#58): `ftoi`, or `NULL` where that
   fails (NaN, `±∞`, outside 64 bits), which is then no error. -/
@@ -110,8 +112,9 @@ inductive UnFn where
   `NULL` where the value does not fit is then no error. -/
   | narrowOrNull (bits : Nat)
   /-- Integer arithmetic at `bits` bits (`INT`, `SMALLINT`, `TINYINT`): the
-  value itself, like 64-bit arithmetic, which DataFusion wraps around where it
-  does not fit (`wraps` in `Safety.lean`). -/
+  value itself, like 64-bit arithmetic. Where it does not fit it raises
+  (`wraps` in `Safety.lean`): DuckDB and Spark raise (duckdb-int-narrow,
+  spark-int-arith), Polars wraps around (polars-int-arith). -/
   | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
@@ -254,7 +257,10 @@ inductive BinFn where
   | substr (n : Option Nat) (wrap : Bool)
   /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
   | trim (left right : Bool)
-  /-- `repeat(s, n)`: `''` where DataFusion fails (`Text.repeatFits`). -/
+  /-- `repeat(s, n)`: `''` for `n ≤ 0`, as DuckDB and Spark give
+  (duckdb-repeat-nonpositive, spark-repeat-nonpositive). Beyond
+  `Text.repeatMax` bytes it raises (`Text.repeatFits`), and its value there
+  is `''`. -/
   | strRepeat
   /-- `s ILIKE p` (a black box) and `levenshtein(s, t)`. -/
   | ilike | levenshtein
@@ -652,14 +658,14 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .mul, .int a, .int b => .int (a * b)
   | .eq, .bool a, .bool b => .bool (a == b)
   | .eq, .str a, .str b => .bool (a == b)
-  -- Lists are equal element by element, NULL elements equal (DataFusion, DuckDB).
+  -- Lists are equal element by element, NULL elements equal (DuckDB).
   | .eq, .list a, .list b | .eq, .struct a, .struct b => .bool (decide (a = b))
   | .eq, a, b => match a.numPair b with
     | some (x, y) => .bool (x == y)
     | none => .null
   -- Strings by code point, which is UTF-8 byte order (as `Value.le`).
   | .lt, .str a, .str b => .bool (decide (a < b))
-  -- FALSE < TRUE, as in DataFusion.
+  -- FALSE < TRUE, as SQL orders booleans.
   | .lt, .bool a, .bool b => .bool (!a && b)
   -- Lexicographically, element by element (#207).
   | .lt, .list a, .list b | .lt, .struct a, .struct b => Value.ofLt3 (Value.listLt3 a b)

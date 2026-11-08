@@ -3,24 +3,24 @@ import SubstraitLean.Contracts
 /-!
 # Runtime errors
 
-The reference raises where an engine may fail at run time, and an error
-allows any engine's answer. The list comes from DataFusion (checked against
-DataFusion 51), which fails on integer division or remainder by zero, on
-`MIN / -1`, on integer powers with a negative exponent or a result outside
-64 bits, on `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, on
-an invalid regular expression, on `repeat` writing more than `2³¹ - 1`
-bytes, on `date_trunc` to a week, month, quarter or
-year outside ±2⁶³ nanoseconds, and on date arithmetic (`DATE ± days`, adding
-months) outside the years `chrono` represents. `date_trunc` of a DATE goes
-through nanoseconds and gives garbage outside them (1677 to 2262), which is
-reported as an error too. Integer `+`, `-`, `*` and negation do not fail in
-DataFusion: they wrap around silently; so does `date_trunc` to a day or less
-below `-2⁶³`. The reference raises there (#202: `overflow` omitted means
-ERROR, at the declared width). All of these are `Issue`s and errors, an
-integer `SUM` that leaves 64 bits too (`Issue.sumWraps`, which the job also
-checks while it runs). So are arguments
-outside a function's domain (`sqrt` of a negative, a shift by 64, …,
-`SubstraitLean/Numeric.lean`), where the reference raises and an engine may
+The reference raises where a result leaves its type or an argument leaves a
+function's domain, and an error allows any engine's answer, whether the
+engine raises, wraps or gives NULL there: integer division or remainder by
+zero, `MIN / -1`,
+integer powers with a negative exponent or a result outside 64 bits, integer
+`+`, `-`, `*` and negation outside their declared width (#202: `overflow`
+omitted means ERROR; DuckDB and Spark in ANSI mode raise, Polars wraps:
+duckdb-int-narrow, spark-int-arith, polars-int-arith), a cast to a narrower
+integer that does not fit (DuckDB, Polars and Spark raise: duckdb-int-narrow,
+polars-cast-int, spark-cast-int-narrow),
+`CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, an invalid
+regular expression, `repeat` writing more than `Text.repeatMax` bytes, and an
+integer `SUM` that leaves 64 bits (`Issue.sumWraps`, which the job also
+checks while it runs). Date arithmetic raises outside the reference's dates
+(#251). Calendar truncation raises outside ±2⁶³ nanoseconds and `date_part`
+is NULL outside the years `chrono` represents: ranges taken from DataFusion,
+still open in the reference. Arguments outside a function's domain (`sqrt` of a negative, a
+shift by 64, …, `SubstraitLean/Numeric.lean`) raise too, where an engine may
 give an IEEE value or a wrapped shift instead: an error allows that.
 
 ## Where an engine evaluates an expression
@@ -70,9 +70,10 @@ open FloatCode (minI64 maxI64 castLo castHi)
 inductive Issue where
   /-- Integer division or remainder by zero, or a double divided by zero. -/
   | divByZero
-  /-- A result outside 64 bits where DataFusion fails (`MIN / -1`, `POWER`),
-  a `repeat` beyond `Text.repeatMax` bytes, or a decimal of more digits than
-  its precision (`UnFn.decimal`). -/
+  /-- A result that leaves its type: outside 64 bits (`MIN / -1`, `POWER`), a
+  `repeat` beyond `Text.repeatMax` bytes, a decimal of more digits than its
+  precision (`UnFn.decimal`), or a calendar value outside `Time.lean`'s
+  ranges. -/
   | overflow
   /-- `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value. -/
   | badCast
@@ -82,8 +83,9 @@ inductive Issue where
   | badRegex
   /-- `+`, `-`, `*` or negation whose result does not fit its declared width:
   64 bits, or narrower integers (`UnFn.wrap`). With `overflow` omitted or
-  `ERROR`, the reference raises (#202); DataFusion wraps around instead,
-  which an error allows (a refinement). -/
+  `ERROR`, the reference raises (#202), as DuckDB and Spark do
+  (duckdb-int-narrow, spark-int-arith); Polars wraps around instead
+  (polars-int-arith), which an error allows (a refinement). -/
   | wraps
   /-- A `SUM` leaving its type (`Measure.sumOk`): 64 bits for integers, the
   result's precision for decimals (#316). The reference raises, and so does
@@ -100,8 +102,8 @@ inductive Issue where
   is 1, a shift count outside `0`–`63`, a `substring` offset outside
   `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336,
   where DuckDB raises too). The reference raises (Substrait's
-  `on_domain_error` = ERROR); DataFusion gives NaN, ±∞ or a wrapped shift
-  instead, which an error allows (a refinement, epic #185). -/
+  `on_domain_error` = ERROR); an engine that gives NaN, ±∞ or a wrapped
+  shift instead refines it (epic #185). -/
   | domain
   /-- Raised by a shim's guard (`UnFn.raise`, #185), where an engine would
   answer while the reference raises. Plans `verify` checks have none. -/
@@ -1441,9 +1443,10 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
 
 /-! ## Plans -/
 
-/-- The plan with the filters DataFusion may merge into or push past removed:
-filters go, inner joins become cross joins, semi and anti joins, sorts and
-`DISTINCT` give way to their (left) input. Fetches, windows and aggregates
+/-- The plan with the filters an optimizer may merge into or push past
+removed (the reference does not fix where a filter runs): filters go, inner
+joins become cross joins, semi and anti joins, sorts and `DISTINCT` give way
+to their (left) input. Fetches, windows and aggregates
 stop it: filters do not move across them (a filter on grouping columns does,
 but only to rows with the same grouping values). -/
 def Rel.loose : Rel → Rel
@@ -1461,8 +1464,8 @@ def Rel.loose : Rel → Rel
   | .semi a _ _ _ => a.loose
   | .orderBy r _ | .distinct r => r.loose
   | .aggregate r gs ms => .aggregate r gs ms
-  -- DataFusion pushes filters on the other columns below an `UNNEST`, onto
-  -- rows whose lists may be empty: the loose rows are both.
+  -- A filter on the other columns may run below an `UNNEST`, on rows whose
+  -- lists are empty (DataFusion's optimizer does): the loose rows are both.
   | .unnest r c => .unionAll (.unnest r.loose c) r.loose
 
 theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.arity cat
