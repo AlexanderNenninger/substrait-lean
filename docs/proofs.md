@@ -68,6 +68,8 @@ contract's preconditions.
 | A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides; of values whose distances sum to `D`, within `D + g` or `D + 1` (`M₁`). Both from one bound on the exact sums | `Near` | `floatSumCR_of_exact`, `floatAvgCR_of_exact`, `floatSumCR_near`, `floatAvgCR_near`, `floatSumCR_nearL1`, `floatAvgCR_nearL1`, `Measure.fsum_near`, `Measure.avg_near` | `FloatNear.lean`, `Lipschitz/Basic.lean`, `LipschitzL1.lean` |
 | A result one profile allows, another allows too, option by option | `AllowedP` | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | An engine's double `SUM` under a non-`EXACT` order (D35) is finite and in a range computed from its inputs' range and row bound | `AllowedP` | `SumOrder.bound` | `SumBound.lean` |
+| An engine's double `AVG` under every `sum_order` (D35) is finite and in a range computed from its inputs' range and row bound; each sum and mean `AllowedP` allows is within `2(n + 1) · Σ(\|xᵢ\| + 2⁻¹⁰²²) · 2⁻⁵³` of the exact sum (times `n` for a mean, plus one more rounding) | `AllowedP` | `AvgOrder.bound`, `SumOrder.near`, `AvgOrder.near` | `MarginSound.lean` |
+| The margin check of a threshold filter on a double `SUM` or `AVG` (#929), in the core's doubles: a group's row `marginCount` does not flag passes the check, and a group passing it on one sum or mean `AllowedP` allows has every allowed sum or mean, and the reference's, strictly on one side of `t` | `AllowedP` | `margin_row`, `check_sum`, `check_avg`, `margin_sum`, `margin_avg` | `MarginSound.lean` |
 | A delta plan computes the change of the view | `zeval` | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | `Rel.eval` is weighted evaluation over `Nat`: every unordered arm (filter, project, emit, cross, joins, union, sort, `DISTINCT`, semi and anti joins, unnest) at once, with the ordered and aggregate nodes read through the seam | `eval` | `Rel.eval_eq_evalK` | `WSet.lean` |
 | The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `zeval`, `eval` | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
@@ -226,9 +228,12 @@ other pages link here.
   (`Rel.duckdb_refines`' second part), outside this chain.
 
   Beside D16, the margin check of a threshold filter on a double `SUM` or
-  `AVG` (#929, `Rel.marginCheck`): that the plan it writes computes, per group,
-  the test `StdModel.margin_check` is about, and that the check and the plan
-  read one snapshot. `Report.run` makes the snapshot a condition of the run
+  `AVG` (#929, `Rel.marginCheck`): that the check's aggregate and the plan's
+  read the same rows per group, from one snapshot, and that each group's
+  `Σ|xᵢ| + n · 2⁻¹⁰²²` stays below a quarter of the largest double
+  (`margin_sum`, `margin_avg`). The check's arithmetic and constants are
+  proved in codes (`margin_row`, `check_sum`, `check_avg`); `float-bounds`'
+  `StdModel.margin_check` is the same argument over the reals. `Report.run` makes the snapshot a condition of the run
   (`Report.check_margins`): every input the check reads is an Arrow table, a
   table DuckDB holds (`Resident`), or a Delta or Iceberg table pinned to one
   version (`Scan`, `name@vN`). An input of another kind, which may change
@@ -385,6 +390,7 @@ runs that build as the guard. The modules below it import the core as
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
 | `EngineSound.lean` | What an engine's model is sound for (#900): `Engine.Sound` per engine, `Engine.contract_sound` on the model's rows, and `Engine.contract_sound_runs` on the actual output under the transfer check |
 | `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
+| `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, and the range of an engine's double `AVG` (`AvgOrder.bound`) |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
