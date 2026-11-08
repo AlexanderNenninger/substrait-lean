@@ -19,6 +19,7 @@ and print the table of outcomes by cause and engine with `--table`.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tomllib
 from collections import Counter
@@ -94,6 +95,11 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
     return sorted(set(causes))
 
 
+#: A list of engine fact ids in a reason, "(duckdb-var-stddev, duckdb-covar)":
+#: it changes with every characterization PR, and the outcome does not.
+FACTS = re.compile(r" \((?:(?:duckdb|polars|spark|snowflake|datafusion)-[\w-]+(?:, )?)+\)")
+
+
 def census_case(c: Case, schemas: dict[str, Any]) -> dict[str, Any]:
     from sverify import routes
 
@@ -113,7 +119,7 @@ def census_case(c: Case, schemas: dict[str, Any]) -> dict[str, Any]:
             engines[e] = {"outcome": "error", "reason": f"{type(err).__name__}: {err}"}
             continue
         if r.refused:
-            engines[e] = {"outcome": "refused", "reason": r.reason}
+            engines[e] = {"outcome": "refused", "reason": FACTS.sub("", r.reason)}
         elif r.evidence == "proved":
             engines[e] = {"outcome": "proved", "class": r.cls}
         else:

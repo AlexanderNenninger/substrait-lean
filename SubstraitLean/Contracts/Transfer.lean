@@ -310,7 +310,7 @@ def powAbs (a b : AVal) : AVal :=
   mapAbs₂ intsOnly powBound (fun _ y => powFails y) a b
 
 /-- May be something other than a (non-NULL) string. -/
-def AVal.nonStr (a : AVal) : Bool := a.null || a.int.isSome || a.tt || a.ff
+def AVal.nonStr (a : AVal) : Bool := a.null || a.int.isSome || a.tt || a.ff || a.nested
 
 /-- The interval `[lo, ∞)`. -/
 def Bound.ge (lo : Int) : Bound := ⟨some lo, none⟩
@@ -410,21 +410,25 @@ def BlackBox.Ty.numKind : BlackBox.Ty → Option NumKind
   | .timestamp => some .ts
   | _ => none
 
+/-- The elements of a black box's list result type, where it is one. -/
+def BlackBox.Ty.elemAbs : BlackBox.Ty → Option AVal
+  | .doubles => some (.num true Bound.top .float)
+  | .ints => some (.num true Bound.top .int)
+  | .strs => some { null := true, str := true }
+  | _ => none
+
 /-- The results of type `result` that keep `laws`, where no argument is NULL
 (`set`) or some may be. -/
 def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bool) : AVal :=
-  ⟨!(set && laws.contains .nonNull),
-   if result == .int || result == .double || result == .date || result == .timestamp ||
-       result == .atom || result == .any then
-     some (laws.foldr (fun l b => l.bound.meet b) Bound.top)
-   else none,
-   -- A list is a member where booleans and strings are (`AVal.Mem`).
-   result == .bool || result == .atom || result == .doubles || result == .ints ||
-     result == .strs || result == .any,
-   result == .bool || result == .atom || result == .doubles || result == .ints ||
-     result == .strs || result == .any,
-   result == .str || result == .atom || result == .doubles || result == .ints ||
-     result == .strs || result == .any, none, result.numKind⟩
+  let any := result == .any
+  { null := !(set && laws.contains .nonNull),
+    int := if result == .int || result == .double || result == .date || result == .timestamp ||
+        result == .atom || any then
+      some (laws.foldr (fun l b => l.bound.meet b) Bound.top)
+    else none,
+    tt := result == .bool || result == .atom || any, ff := result == .bool || result == .atom || any,
+    str := result == .str || result == .atom || any, nk := result.numKind,
+    list := result.elemAbs.isSome || any, elems := result.elemAbs, struct := any }
 
 theorem BlackBox.lawsBound_mem {set : Bool} {k : NumKind} {i : Int} :
     ∀ {laws : List BlackBox.Law}, (laws.all fun l => l.holds set (k.val i)) = true →
@@ -443,7 +447,7 @@ theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {
   obtain ⟨ht, hl⟩ := h
   match v with
   | .null =>
-    simp only [AVal.Mem, BlackBox.lawsAbs, Bool.not_eq_true', Bool.and_eq_false_iff]
+    simp only [AVal.Mem, AVal.MemR, BlackBox.lawsAbs, Bool.not_eq_true', Bool.and_eq_false_iff]
     cases set
     · simp
     · right
@@ -474,14 +478,22 @@ theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {
           by cases result <;> simp_all [BlackBox.lawsAbs, BlackBox.Ty.has, BlackBox.Ty.numKind]⟩
   | .bool true | .bool false | .str _ =>
     cases result <;> simp_all [AVal.Mem, BlackBox.lawsAbs, BlackBox.Ty.has]
-  | .list _ | .struct _ =>
+  | .struct _ =>
     cases result <;> simp_all [AVal.Mem, BlackBox.lawsAbs, BlackBox.Ty.has]
+  | .list vs =>
+    cases result <;> simp_all [AVal.Mem, BlackBox.lawsAbs, BlackBox.Ty.has, BlackBox.Ty.elemAbs,
+      AVal.memAll_iff, Bound.mem_top]
+    all_goals
+      intro v hv
+      have := ht v hv
+      cases v <;> simp_all [BlackBox.intOrNull, BlackBox.floatOrNull, BlackBox.strOrNull, AVal.num,
+        AVal.MemNum, Bound.mem_top]
 
 /-- A scalar black box's result, where no argument is NULL (`set`) or some may be. -/
 def BlackBox.scalarAbs (name : String) (set : Bool) : AVal :=
   match BlackBox.scalar? name with
   | some f => BlackBox.lawsAbs f.result f.laws set
-  | none => ⟨true, none, false, false, false, none, none⟩
+  | none => { null := true }
 
 theorem BlackBox.scalarAbs_mem {name : String} {vs : List Value} {set : Bool}
     (hs : set = true → vs.contains .null = false) :
@@ -503,7 +515,7 @@ def BlackBox.aggAbs (name : String) (valued : Bool) : AVal :=
   match BlackBox.aggregate? name with
   | some f => (BlackBox.lawsAbs f.result f.laws true).join
       (if valued then AVal.bot else AVal.ofValue f.empty)
-  | none => ⟨true, none, false, false, false, none, none⟩
+  | none => { null := true }
 
 theorem BlackBox.aggAbs_mem {name : String} {vs : List Value} {valued : Bool}
     (hv : valued = true → vs ≠ []) :
@@ -528,11 +540,39 @@ def FMath.safeB (f : FMath) (ob : Option Bound) : Bool :=
   ob.all fun b => f.lo?.all b.allGe && f.hi?.all b.allLe
 
 /-- An integer in `[lo, hi]`. -/
-def AVal.intIn (null : Bool) (b : Bound) : AVal := ⟨null, some b, false, false, false, none, some .int⟩
+def AVal.intIn (null : Bool) (b : Bound) : AVal := { null := null, int := some b, nk := some .int }
+
+/-! ### Lists and structs (#925) -/
+
+/-- Field `i` of a struct in `a`: in its description, `NULL` where the
+struct may be `NULL` or another value, or lack the field. -/
+def AVal.fieldAbs (i : Nat) (a : AVal) : AVal :=
+  let f := match a.fields with
+    | some fs => fs.getD i { null := true }
+    | none => AVal.top
+  if a.nonStruct then f.nullable else f
+
+/-- Is element `off` of every list of a length in `card` in range? -/
+def Bound.hasElem (off : Int) (card : Bound) : Bool :=
+  card.allGe (if off < 0 then -off else off + 1)
+
+/-- Element `off` of a list in `a`: one of its elements, `NULL` where the
+list may be `NULL` or another value, or too short. -/
+def AVal.elementAbs (off : Int) (a : AVal) : AVal :=
+  if a.nonList || !a.card.hasElem off then a.elemsOf.nullable else a.elemsOf
+
+/-- `cardinality` of a list in `a`: its length, `NULL` where it may be `NULL`
+or another value. -/
+def AVal.cardAbs (a : AVal) : AVal :=
+  { null := a.nonList, int := some (a.card.meet (.ge 0)), nk := some .int }
+
+/-- `flatten` of a list of lists in `a`: a list of the inner lists' elements. -/
+def AVal.flattenAbs (a : AVal) : AVal := { null := a.nonList, list := a.list,
+                                           elems := a.elemsOf.elems }
 
 def UnFn.abs : UnFn → AVal → AVal
-  | .not, a => ⟨a.nonBool, none, a.ff, a.tt, false, none, none⟩
-  | .isNull, a => ⟨false, none, a.null, a.int.isSome || a.tt || a.ff || a.str, false, none, none⟩
+  | .not, a => { null := a.nonBool, tt := a.ff, ff := a.tt }
+  | .isNull, a => { tt := a.null, ff := a.int.isSome || a.tt || a.ff || a.str || a.nested }
   | .neg, a => mapAbs NumKind.int.is (fun _ => .int) Bound.neg (fun _ => false) a
   -- Double negation is code negation too (zero is `0`).
   | .fneg, a => mapAbs NumKind.float.is (fun _ => .float) Bound.neg (fun _ => false) a
@@ -553,18 +593,18 @@ def UnFn.abs : UnFn → AVal → AVal
       mapAbs intOrDec (fun _ => .int) (fun _ => Bound.top) (fun _ => false) a
   | .dtof s, a => convAbs intOrDec (FloatCode.decConv s) a
   | .ftod s, a => ftodAbs s a
-  | .itos, a => ⟨a.nonNum .int, none, false, false, a.int.isSome, none, none⟩
+  | .itos, a => { null := a.nonNum .int, str := a.int.isSome }
   | .widen, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a
   | .regexReplace _ _ _, a | .md5, a | .sha256, a =>
-    ⟨a.nonStr, none, false, false, a.str, none, none⟩
+    { null := a.nonStr, str := a.str }
   -- Below `Text.sizeCap`, by the size hypothesis for strings.
   | .length, a | .ascii, a =>
-    ⟨a.nonStr, if a.str then some ⟨some 0, some Text.sizeCap⟩ else none, false, false, false, none,
-      some .int⟩
+    { null := a.nonStr, int := if a.str then some ⟨some 0, some Text.sizeCap⟩ else none,
+      nk := some .int }
   -- `NULL` when the pattern does not match.
   | .regexMatch _, a =>
-    ⟨true, if a.str then some (.ge 1) else none, false, false, false, none, some .int⟩
+    { null := true, int := if a.str then some (.ge 1) else none, nk := some .int }
   | .datePart p, a => datePartAbs p a
   | .dateTrunc u, a => mapAbs tsOrTod id (·.mapMono (Time.trunc u)) (fun _ => false) a
   | .toDate, a => monoAbs .ts .date Time.days a
@@ -579,16 +619,16 @@ def UnFn.abs : UnFn → AVal → AVal
   | .asTime, a => monoAbs .int .ts id a
   | .dateTime, a => monoAbs .date .ts (· * Time.usPerDay) a
   | .epochUs, a => monoAbs .ts .int id a
-  | .strftime _, a => ⟨a.nonNum .ts, none, false, false, a.int.isSome, none, none⟩
+  | .strftime _, a => { null := a.nonNum .ts, str := a.int.isSome }
   | .bucket k o, a => monoAbs .ts .ts (Time.bucket k o) a
   | .fmath f, a => mapAbs NumKind.float.is (fun _ => .float) (fun _ => Bound.top)
       (fun ob => !f.safeB ob) a
-  -- The abstraction does not look into lists: an element or a field is
-  -- anything.
-  | .structField _, _ | .listElement _, _ | .flatten, _ => AVal.top
-  | .cardinality, _ => ⟨true, some (.ge 0), false, false, false, none, some .int⟩
-  | .raise _, _ => ⟨true, none, false, false, false, none, none⟩
-  | .isNum _, _ => ⟨false, none, true, true, false, none, none⟩
+  | .structField i, a => a.fieldAbs i
+  | .listElement off, a => a.elementAbs off
+  | .flatten, a => a.flattenAbs
+  | .cardinality, a => a.cardAbs
+  | .raise _, _ => { null := true }
+  | .isNum _, _ => { tt := true, ff := true }
   | .fit _ _, _ => AVal.top
   | .bbox n, a => BlackBox.scalarAbs n !a.null
 
@@ -674,7 +714,7 @@ def pickAbs (both : Bound → Bound → Bound) (a b : AVal) : AVal :=
     | some x, some y => some (if sameNk a b then both x y else x.join y)
     | _, _ => none
   let ints := joinInt (if b.nonInt then a.int else none) (joinInt (if a.null then b.int else none) pair)
-  ⟨a.null && b.null, ints, a.tt || b.tt, a.ff || b.ff, a.str || b.str, none, joinNk a b⟩
+  { a.join b with null := a.null && b.null, int := ints, nk := joinNk a b }
 
 /-! ### Double arithmetic (#582)
 
@@ -819,11 +859,11 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .greatest, a, b => pickAbs Bound.greatest a b
   | .least, a, b => pickAbs Bound.least a b
   | .and, a, b =>
-      ⟨(a.nonBool && (b.tt || b.nonBool)) || (a.tt && b.nonBool), none, a.tt && b.tt,
-       a.ff || b.ff, false, none, none⟩
+      { null := (a.nonBool && (b.tt || b.nonBool)) || (a.tt && b.nonBool), tt := a.tt && b.tt,
+        ff := a.ff || b.ff }
   | .or, a, b =>
-      ⟨(a.nonBool && (b.ff || b.nonBool)) || (a.ff && b.nonBool), none, a.tt || b.tt,
-       a.ff && b.ff, false, none, none⟩
+      { null := (a.nonBool && (b.ff || b.nonBool)) || (a.ff && b.nonBool), tt := a.tt || b.tt,
+        ff := a.ff && b.ff }
   | .add, a, b => arith addNK Bound.add a b
   | .sub, a, b => arith subNK Bound.sub a b
   | .dateDiff, a, b => arith dateDiffNK Bound.sub a b
@@ -845,35 +885,38 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .flogb, a, b => partialAbs₂ floatsOnly .flogb a b
   | .bit op, a, b => partialAbs₂ intsOnly (.bit op) a b
   | .concat, a, b | .trim _ _, a, b =>
-      ⟨a.nonStr || b.nonStr, none, false, false, a.str && b.str, none, none⟩
+      { null := a.nonStr || b.nonStr, str := a.str && b.str }
   | .strpos, a, b | .levenshtein, a, b =>
-      ⟨a.nonStr || b.nonStr, if a.str && b.str then some ⟨some 0, some Text.sizeCap⟩ else none,
-        false, false, false, none, some .int⟩
+      { null := a.nonStr || b.nonStr,
+        int := if a.str && b.str then some ⟨some 0, some Text.sizeCap⟩ else none, nk := some .int }
   | .startsWith, a, b | .endsWith, a, b | .like, a, b | .ilike, a, b =>
-      ⟨a.nonStr || b.nonStr, none, a.str && b.str, a.str && b.str, false, none, none⟩
+      { null := a.nonStr || b.nonStr, tt := a.str && b.str, ff := a.str && b.str }
   | .substr _ _, a, b | .strRepeat, a, b =>
-      ⟨a.nonStr || b.nonNum .int, none, false, false, a.str && b.int.isSome, none, none⟩
+      { null := a.nonStr || b.nonNum .int, str := a.str && b.int.isSome }
   | .eq, a, b =>
       -- Numbers of different kinds do not compare (`Value.numPair`).
+      let scalar (a : AVal) := a.int.isSome || a.tt || a.ff || a.str
       let mismatch := a.null || b.null || (a.int.isSome && (b.tt || b.ff || b.str)) ||
         ((a.tt || a.ff) && (b.int.isSome || b.str)) || (a.str && (b.int.isSome || b.tt || b.ff)) ||
-        (a.int.isSome && b.int.isSome && !sameNk a b)
-      ⟨mismatch, none,
-       intEq a b || (a.tt && b.tt) || (a.ff && b.ff) || strMayEq a b,
-       intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || strMayNe a b, false, none, none⟩
+        (a.int.isSome && b.int.isSome && !sameNk a b) || (a.nested && scalar b) ||
+        (scalar a && b.nested) || (a.list && b.struct) || (a.struct && b.list)
+      -- Lists (structs) are equal element by element.
+      let same := (a.list && b.list) || (a.struct && b.struct)
+      { null := mismatch, tt := intEq a b || (a.tt && b.tt) || (a.ff && b.ff) || strMayEq a b || same,
+        ff := intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || strMayNe a b || same }
   -- A list, which the abstraction does not look into, or `NULL`.
   | .pair, _, _ => AVal.top
   -- Of lists, which the abstraction does not look into (#812).
   | .listFn _, _, _ => AVal.top
   | .lt, a, b =>
-      -- Two strings may compare either way; FALSE < TRUE.
-      let s := a.str && b.str
+      -- Two strings, lists or structs may compare either way; FALSE < TRUE.
+      let s := (a.str && b.str) || (a.nested && b.nested)
       let t := s || (a.ff && b.tt)
       let f := s || (a.tt && (b.tt || b.ff)) || (a.ff && b.ff)
       match a.int, b.int with
       | some x, some y =>
-        ⟨a.nonInt || b.nonInt || !sameNk a b, none, canLt x y || t, canGe x y || f, false, none, none⟩
-      | _, _ => ⟨true, none, t, f, false, none, none⟩
+        { null := a.nonInt || b.nonInt || !sameNk a b, tt := canLt x y || t, ff := canGe x y || f }
+      | _, _ => { null := true, tt := t, ff := f }
 
 theorem strMayEq_of {a b : AVal} {s : String}
     (ha : a.str = true ∧ a.strs.all (·.contains s) = true)
@@ -896,11 +939,18 @@ theorem strMayNe_of {a b : AVal} {s s' : String}
     rw [← ha.2, ← hb.2]; exact hne
   · rfl
 
-/-- A higher-order function's result: a boolean or `NULL` (`any_match`,
-`all_match`), or a list or `NULL`, which the abstraction does not look into. -/
-def HoFn.abs : HoFn → AVal
-  | .anyMatch | .allMatch => ⟨true, none, true, true, false, none, none⟩
-  | .transform | .filter => AVal.top
+/-- A higher-order function of a list in `l`, whose lambda's body is in `b`
+on every element (#925). `any_match` is TRUE only where the body may be,
+`all_match` FALSE only where it may be, and either is `NULL` only where the
+list may be something else or the body something other than a boolean;
+`transform` gives a list of the body's values and `filter` a list of `l`'s
+elements, no longer than `l`'s. -/
+def HoFn.abs : HoFn → AVal → AVal → AVal
+  | .anyMatch, l, b => { null := l.nonList || b.nonBool, tt := b.tt, ff := true }
+  | .allMatch, l, b => { null := l.nonList || b.nonBool, tt := true, ff := b.ff }
+  | .transform, l, b => { null := l.nonList, list := l.list, elems := some b, card := l.card }
+  | .filter, l, _ =>
+    { null := l.nonList, list := l.list, elems := l.elems, card := ⟨some 0, l.card.hi⟩ }
 
 theorem or3_bool_or_null (a b : Value) : or3 a b = .null ∨ ∃ x, or3 a b = .bool x := by
   unfold or3; split <;> simp
@@ -908,30 +958,95 @@ theorem or3_bool_or_null (a b : Value) : or3 a b = .null ∨ ∃ x, or3 a b = .b
 theorem and3_bool_or_null (a b : Value) : and3 a b = .null ∨ ∃ x, and3 a b = .bool x := by
   unfold and3; split <;> simp
 
-theorem HoFn.abs_sound (f : HoFn) (v : Value) (p : Value → Value) : f.abs.Mem (f.apply v p) := by
-  have key : ∀ r : Value, (r = .null ∨ ∃ x, r = .bool x) →
-      (⟨true, none, true, true, false, none, none⟩ : AVal).Mem r := by
-    rintro r (rfl | ⟨x, rfl⟩)
-    · rfl
-    · cases x <;> rfl
-  cases f
-  case transform | filter => exact AVal.mem_top _
-  case anyMatch =>
-    apply key
-    cases v
-    case list vs =>
-      cases vs with
-      | nil => exact .inr ⟨false, rfl⟩
-      | cons x xs => exact or3_bool_or_null _ _
-    all_goals exact .inl rfl
-  case allMatch =>
-    apply key
-    cases v
-    case list vs =>
-      cases vs with
-      | nil => exact .inr ⟨true, rfl⟩
-      | cons x xs => exact and3_bool_or_null _ _
-    all_goals exact .inl rfl
+/-- A value in `a` other than a list makes `a.nonList` true. -/
+theorem AVal.nonList_of_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : ∀ vs, v ≠ .list vs) :
+    a.nonList = true := by
+  mem_cases h with i b hb hi
+  all_goals simp_all [AVal.nonList, AVal.nested, AVal.Mem]
+
+/-- A value in `b` other than a boolean makes `b.nonBool` true. -/
+theorem AVal.nonBool_of_mem {b : AVal} {v : Value} (h : b.Mem v) (hv : ∀ x, v ≠ .bool x) :
+    b.nonBool = true := by
+  mem_cases h with i x hx hi
+  all_goals simp_all [AVal.nonBool]
+
+/-- One step of `any_match`: the body's value ORed into what the rest gives. -/
+theorem or3_mem {n t : Bool} {b : AVal} {y acc : Value} (htt : b.tt = true → t = true)
+    (hn : b.nonBool = true → n = true) (hy : b.Mem y)
+    (hacc : ({ null := n, tt := t, ff := true } : AVal).Mem acc) :
+    ({ null := n, tt := t, ff := true } : AVal).Mem (or3 y acc) := by
+  have ha : (acc = .null ∧ n = true) ∨ (acc = .bool true ∧ t = true) ∨ acc = .bool false := by
+    cases acc <;> (try rename_i x; cases x) <;> simp_all [AVal.Mem, AVal.MemNum]
+  have hb : y = .bool true ∧ b.tt = true ∨ y = .bool false ∨ b.nonBool = true := by
+    cases y
+    case bool x => cases x <;> simp_all [AVal.Mem]
+    all_goals exact .inr (.inr (AVal.nonBool_of_mem hy (by simp)))
+  rcases hb with ⟨rfl, hbt⟩ | rfl | hnb
+  · simp [or3, AVal.Mem, htt hbt]
+  · rcases ha with ⟨rfl, h⟩ | ⟨rfl, h⟩ | rfl <;> simp_all [or3, AVal.Mem]
+  · have := hn hnb
+    rcases ha with ⟨rfl, h⟩ | ⟨rfl, h⟩ | rfl <;> cases y <;> (try rename_i x; cases x) <;>
+      simp_all [or3, AVal.Mem]
+
+/-- One step of `all_match`: the body's value ANDed into what the rest gives. -/
+theorem and3_mem {n f : Bool} {b : AVal} {y acc : Value} (hff : b.ff = true → f = true)
+    (hn : b.nonBool = true → n = true) (hy : b.Mem y)
+    (hacc : ({ null := n, tt := true, ff := f } : AVal).Mem acc) :
+    ({ null := n, tt := true, ff := f } : AVal).Mem (and3 y acc) := by
+  have ha : (acc = .null ∧ n = true) ∨ (acc = .bool false ∧ f = true) ∨ acc = .bool true := by
+    cases acc <;> (try rename_i x; cases x) <;> simp_all [AVal.Mem, AVal.MemNum]
+  have hb : y = .bool false ∧ b.ff = true ∨ y = .bool true ∨ b.nonBool = true := by
+    cases y
+    case bool x => cases x <;> simp_all [AVal.Mem]
+    all_goals exact .inr (.inr (AVal.nonBool_of_mem hy (by simp)))
+  rcases hb with ⟨rfl, hbf⟩ | rfl | hnb
+  · simp [and3, AVal.Mem, hff hbf]
+  · rcases ha with ⟨rfl, h⟩ | ⟨rfl, h⟩ | rfl <;> simp_all [and3, AVal.Mem]
+  · have := hn hnb
+    rcases ha with ⟨rfl, h⟩ | ⟨rfl, h⟩ | rfl <;> cases y <;> (try rename_i x; cases x) <;>
+      simp_all [and3, AVal.Mem]
+
+/-- `HoFn.abs` is sound where the body's description holds of its value on
+every element of the list's description (#925). -/
+theorem HoFn.abs_sound (f : HoFn) {l b : AVal} {v : Value} {p : Value → Value} (hl : l.Mem v)
+    (hp : ∀ x, l.elemsOf.Mem x → b.Mem (p x)) : (f.abs l b).Mem (f.apply v p) := by
+  cases v
+  case list vs =>
+    obtain ⟨hlist, hc, he⟩ := AVal.mem_list.mp hl
+    have hb : ∀ x ∈ vs, b.Mem (p x) := fun x hx => hp x (he x hx)
+    cases f
+    case anyMatch =>
+      simp only [HoFn.apply, HoFn.abs]
+      clear hl hc he
+      induction vs with
+      | nil => rfl
+      | cons x xs ih =>
+        exact or3_mem id (fun h => by simp [h]) (hb x (by simp))
+          (ih fun y hy => hb y (by simp [hy]))
+    case allMatch =>
+      simp only [HoFn.apply, HoFn.abs]
+      clear hl hc he
+      induction vs with
+      | nil => rfl
+      | cons x xs ih =>
+        exact and3_mem id (fun h => by simp [h]) (hb x (by simp))
+          (ih fun y hy => hb y (by simp [hy]))
+    case transform =>
+      simp only [HoFn.apply, HoFn.abs, AVal.Mem, AVal.MemR, List.length_map, AVal.memAll_iff, List.mem_map]
+      exact ⟨hlist, hc, by rintro _ ⟨x, hx, rfl⟩; exact hb x hx⟩
+    case filter =>
+      simp only [HoFn.apply, HoFn.abs, AVal.Mem, AVal.MemR]
+      have hlen := List.length_filter_le (fun x => (p x).isTrue) vs
+      refine ⟨hlist, ⟨fun l hl => by simp at hl; omega, fun u hu => by have := hc.2 u hu; omega⟩, ?_⟩
+      simp only [AVal.Mem, AVal.MemR] at hl
+      cases he' : l.elems with
+      | none => trivial
+      | some e =>
+        simp only [he', AVal.memAll_iff] at hl ⊢
+        exact fun x hx => hl.2.2 x (List.mem_filter.mp hx).1
+  all_goals
+    have := AVal.nonList_of_mem hl (by simp)
+    cases f <;> simp [HoFn.apply, HoFn.abs, AVal.Mem, this]
 
 def Expr.abs (env : List AVal) : Expr → AVal
   | .lit v => AVal.ofValue v
@@ -942,7 +1057,9 @@ def Expr.abs (env : List AVal) : Expr → AVal
       let ac := c.abs env
       (if ac.tt then t.abs env else AVal.bot).join
         (if ac.nonBool || ac.ff then e.abs env else AVal.bot)
-  | .hof f _ _ => f.abs
+  | .hof f l b =>
+      let al := l.abs env
+      f.abs al (b.abs (al.elemsOf :: env))
 
 /-- Proves a function's shape (`Value.mapP`, `Value.mapP₂`) on one value. -/
 macro "hf_tac" : tactic => `(tactic| first

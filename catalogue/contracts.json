@@ -1155,19 +1155,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see str(report)); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see str(report)); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see str(report)); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (duckdb-sum-double, duckdb-avg-double) (see str(report)); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see str(report)); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "observation",
@@ -1327,19 +1327,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-var-pop-one-value) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-var-pop-one-value) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-var-pop-one-value) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (duckdb-var-stddev, duckdb-var-pop-one-value) (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
+        "reason": "not verified: no engine meets the observation's tolerance on doubles: agg.var's stat_algo: v is within abs=1.77815e-07 of the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=sv.within(abs=2e-07)) or looser in ensures, or sv.equivalent(floats=\"plan\") for the plan's own bound (see str(report)); run(..., unverified=True) runs it anyway; no row cap on x makes the plan's bound meet the tolerance"
       }
     },
     "pattern": "observation",

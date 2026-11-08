@@ -191,6 +191,116 @@ theorem topAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
     (mapAbs ok kout (fun _ => Bound.top) (fun _ => false) a).Mem (f.apply v) :=
   mapAbs_sound hf (fun _ _ _ _ _ => Bound.mem_top _) (fun _ _ _ hr => by simp at hr) h
 
+/-! ### Lists and structs (#925) -/
+
+theorem AVal.nonStruct_of_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : ∀ vs, v ≠ .struct vs) :
+    a.nonStruct = true := by
+  mem_cases h with i b hb hi
+  all_goals simp_all [AVal.nonStruct, AVal.nested, AVal.Mem]
+
+theorem AVal.memFields_getD {i : Nat} : ∀ {fs : List AVal} {vs : List Value}, AVal.MemFields fs vs →
+    (fs.getD i { null := true }).Mem (vs.getD i .null)
+  | [], [], _ => rfl
+  | f :: fs, v :: vs, ⟨hf, hfs⟩ => by
+    cases i with
+    | zero => exact hf
+    | succ i => simpa using AVal.memFields_getD (i := i) hfs
+
+theorem AVal.fieldAbs_sound (i : Nat) {a : AVal} {v : Value} (h : a.Mem v) :
+    (a.fieldAbs i).Mem (UnFn.apply (.structField i) v) := by
+  have hf : ∀ vs, a.Mem (.struct vs) →
+      (match a.fields with
+        | some fs => fs.getD i { null := true }
+        | none => AVal.top).Mem (vs.getD i .null) := by
+    intro vs hv
+    obtain ⟨_, hm⟩ := hv
+    cases hfs : a.fields with
+    | none => exact AVal.mem_top _
+    | some fs => simp only [hfs] at hm; exact AVal.memFields_getD hm
+  unfold AVal.fieldAbs
+  cases v
+  case struct vs =>
+    simp only [UnFn.apply]
+    split
+    · exact AVal.mem_nullable (hf vs h)
+    · exact hf vs h
+  all_goals
+    simp only [UnFn.apply, AVal.nonStruct_of_mem h (by simp), ↓reduceIte]
+    rfl
+
+theorem List.getD_null_mem (vs : List Value) (n : Nat) :
+    vs.getD n .null = .null ∨ vs.getD n .null ∈ vs := by
+  rw [List.getD_eq_getElem?_getD]
+  by_cases h : n < vs.length
+  · right; rw [List.getElem?_eq_getElem h]; exact List.getElem_mem h
+  · left; rw [List.getElem?_eq_none (by omega)]; rfl
+
+/-- Element `off` of `vs` is `NULL` or one of them. -/
+theorem Value.listElement_mem (off : Int) (vs : List Value) :
+    Value.listElement off vs = .null ∨ Value.listElement off vs ∈ vs := by
+  simp only [Value.listElement]
+  split <;> split <;> first | exact List.getD_null_mem vs _ | exact .inl rfl
+
+/-- One of them where every length in `card` has element `off`. -/
+theorem Value.listElement_mem_of {off : Int} {vs : List Value} {card : Bound}
+    (hc : card.Mem vs.length) (h : card.hasElem off = true) : Value.listElement off vs ∈ vs := by
+  have hl := Bound.allGe_le h hc
+  simp only [Value.listElement]
+  by_cases ho : off < 0
+  · simp only [ho, ite_true] at hl ⊢
+    rw [ite_eq_left (by omega), List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega)]
+    exact List.getElem_mem _
+  · simp only [ho, ite_false] at hl ⊢
+    rw [ite_eq_left (by omega), List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega)]
+    exact List.getElem_mem _
+
+theorem AVal.elementAbs_sound (off : Int) {a : AVal} {v : Value} (h : a.Mem v) :
+    (a.elementAbs off).Mem (UnFn.apply (.listElement off) v) := by
+  unfold AVal.elementAbs
+  cases v
+  case list vs =>
+    obtain ⟨_, hc, he⟩ := AVal.mem_list.mp h
+    simp only [UnFn.apply]
+    split
+    · rcases Value.listElement_mem off vs with hn | hm
+      · rw [hn]; rfl
+      · exact AVal.mem_nullable (he _ hm)
+    · rename_i hn
+      simp only [Bool.or_eq_true, Bool.not_eq_true', not_or, Bool.not_eq_false] at hn
+      exact he _ (Value.listElement_mem_of hc (by simpa using hn.2))
+  all_goals
+    simp only [UnFn.apply, AVal.nonList_of_mem h (by simp), Bool.true_or, ↓reduceIte]
+    rfl
+
+theorem AVal.cardAbs_sound {a : AVal} {v : Value} (h : a.Mem v) :
+    a.cardAbs.Mem (UnFn.apply .cardinality v) := by
+  cases v
+  case list vs =>
+    obtain ⟨_, hc, _⟩ := AVal.mem_list.mp h
+    exact ⟨_, rfl, Bound.mem_meet hc ⟨fun l hl => by simp [Bound.ge] at hl; omega,
+      fun u hu => by simp [Bound.ge] at hu⟩, rfl⟩
+  all_goals exact AVal.nonList_of_mem h (by simp)
+
+theorem AVal.flattenAbs_sound {a : AVal} {v : Value} (h : a.Mem v) :
+    a.flattenAbs.Mem (UnFn.apply .flatten v) := by
+  cases v
+  case list vs =>
+    obtain ⟨hl, _, he⟩ := AVal.mem_list.mp h
+    simp only [UnFn.apply, Value.flatten, AVal.flattenAbs, AVal.Mem, AVal.MemR]
+    refine ⟨hl, Bound.mem_top _, ?_⟩
+    cases hf : a.elemsOf.elems with
+    | none => trivial
+    | some f =>
+      simp only [AVal.memAll_iff, List.mem_flatMap]
+      rintro w ⟨u, hu, hw⟩
+      have hu' := he u hu
+      cases u
+      case list ws =>
+        have : (a.elemsOf.elems.getD AVal.top).Mem w := (AVal.mem_list.mp hu').2.2 w hw
+        rwa [hf] at this
+      all_goals simp at hw
+  all_goals exact AVal.nonList_of_mem h (by simp)
+
 theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     (f.abs a).Mem (f.apply v) := by
   cases f
@@ -322,14 +432,16 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     mem_cases h with i b hb hi <;> (try cases k) <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.Mem, Text.ascii_nonneg,
         Text.capped_le, Text.capped_nonneg, NumKind.val, AVal.MemNum]
-  case structField | listElement | fit | flatten => exact AVal.mem_top _
+  case structField i => exact AVal.fieldAbs_sound i h
+  case listElement off => exact AVal.elementAbs_sound off h
+  case flatten => exact AVal.flattenAbs_sound h
+  case fit => exact AVal.mem_top _
   case raise => cases v <;> rfl
   case isNum k => simp only [UnFn.apply]; cases v.isNum k <;> rfl
-  case cardinality =>
-    cases v <;> simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.MemNum, Bound.ge, Bound.Mem]
+  case cardinality => exact AVal.cardAbs_sound h
   case regexMatch p =>
     mem_cases h with i b hb hi <;> (try cases k) <;>
-      simp only [UnFn.abs, UnFn.apply, AVal.Mem, NumKind.val]
+      simp only [UnFn.abs, UnFn.apply, AVal.Mem, AVal.MemR, NumKind.val]
     all_goals (try cases Text.regexMatch s p) <;>
       simp_all [Bound.ge, Bound.Mem, AVal.Mem, AVal.MemNum] <;> omega
   all_goals
@@ -603,17 +715,19 @@ theorem Value.ltB_mix' (k : NumKind) {j : Int} {v : Value} (hv : v.numOf? = none
 /-- A value that is not a number, kept by `GREATEST`/`LEAST`. -/
 theorem pickAbs_other_left {both : Bound → Bound → Bound} {a b : AVal} {v : Value} (h : a.Mem v)
     (hv : v.numOf? = none) (hn : v ≠ .null) : (pickAbs both a b).Mem v := by
+  have := AVal.mem_join_left (b := b) h
   cases v <;> (try rename_i bb; cases bb) <;> simp_all [AVal.Mem, pickAbs, Value.numOf?]
 
 theorem pickAbs_other_right {both : Bound → Bound → Bound} {a b : AVal} {w : Value} (h : b.Mem w)
     (hw : w.numOf? = none) (hn : w ≠ .null) : (pickAbs both a b).Mem w := by
+  have := AVal.mem_join_right (a := a) h
   cases w <;> (try rename_i bb; cases bb) <;> simp_all [AVal.Mem, pickAbs, Value.numOf?]
 
 /-- A value that is not a number makes `nonInt`. -/
 theorem AVal.nonInt_of_other {a : AVal} {w : Value} (h : a.Mem w) (hw : w.numOf? = none) :
     a.nonInt = true := by
-  cases w <;> simp_all [AVal.Mem, AVal.nonInt, Value.numOf?]
-  all_goals (rename_i b; cases b <;> simp_all)
+  cases w <;> (try rename_i bb; cases bb) <;>
+    simp_all [AVal.Mem, AVal.nonInt, AVal.nested, Value.numOf?]
 
 theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Value → Bool}
     (hboth : ∀ {x y : Bound} {i j : Int} (k : NumKind), x.Mem i → y.Mem j →
@@ -958,7 +1072,7 @@ theorem eqAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     | none =>
       rw [BinFn.cmp_num_other (.inl rfl) k i hw]
       show (BinFn.abs .eq a b).null = true
-      cases w <;> (try rename_i bb; cases bb) <;> simp_all [BinFn.abs, AVal.Mem, Value.numOf?]
+      cases w <;> (try rename_i bb; cases bb) <;> simp_all [BinFn.abs, AVal.Mem, AVal.nested, Value.numOf?]
   | none =>
     cases hw : w.numOf? with
     | some q =>
@@ -967,20 +1081,21 @@ theorem eqAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
       obtain ⟨y, hy, hj, hk'⟩ := AVal.mem_val.mp hb
       rw [BinFn.cmp_other_num (.inl rfl) k' j hv]
       show (BinFn.abs .eq a b).null = true
-      cases v <;> (try rename_i bb; cases bb) <;> simp_all [BinFn.abs, AVal.Mem, Value.numOf?]
+      cases v <;> (try rename_i bb; cases bb) <;> simp_all [BinFn.abs, AVal.Mem, AVal.nested, Value.numOf?]
     | none =>
       cases v <;> cases w <;> simp only [Value.numOf?, reduceCtorEq] at hv hw
       case str.str s s' =>
-        simp only [BinFn.abs, BinFn.apply, AVal.Mem, Bool.and_eq_true] at ha hb ⊢
+        simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
+        simp only [BinFn.apply]
         by_cases hss : s = s'
-        · subst hss; simp [strMayEq_of ha hb]
+        · subst hss; simp [BinFn.abs, AVal.Mem, strMayEq_of ha hb]
         · have : (s == s') = false := by simpa using hss
-          rw [this]; simp [strMayNe_of ha hb hss]
+          rw [this]; simp [BinFn.abs, AVal.Mem, strMayNe_of ha hb hss]
       case list.list vs ws | struct.struct vs ws =>
-        simp only [BinFn.abs, BinFn.apply, AVal.Mem] at ha hb ⊢
+        simp only [BinFn.abs, BinFn.apply, AVal.Mem, AVal.MemR] at ha hb ⊢
         by_cases hvw : vs = ws <;> simp_all
       all_goals (try rename_i b1 b2; cases b1 <;> cases b2) <;> (try rename_i b1; cases b1) <;>
-        simp_all [BinFn.abs, BinFn.apply, AVal.Mem]
+        simp_all [BinFn.abs, BinFn.apply, AVal.Mem, AVal.nested]
 
 set_option maxHeartbeats 1000000 in
 theorem ltAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
@@ -1034,15 +1149,73 @@ theorem ltAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
       have hna := AVal.nonInt_of_other ha hv
       cases v <;> cases w <;> simp only [Value.numOf?, reduceCtorEq] at hv hw
       case str.str s s' =>
-        simp only [AVal.Mem, Bool.and_eq_true] at ha hb
+        simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
         simp only [BinFn.abs, BinFn.apply, ha.1, hb.1, Bool.true_and, Bool.true_or]
         split <;> (cases decide (s < s') <;> simp [AVal.Mem])
       case list.list vs ws | struct.struct vs ws =>
-        simp only [AVal.Mem] at ha hb
+        simp only [AVal.Mem, AVal.MemR] at ha hb
         simp only [BinFn.abs, BinFn.apply]
-        split <;> apply AVal.mem_ofLt3 <;> simp_all [AVal.nonInt]
+        split <;> apply AVal.mem_ofLt3 <;> simp_all [AVal.nonInt, AVal.nested]
       all_goals (try rename_i b1 b2; cases b1 <;> cases b2) <;> (try rename_i b1; cases b1) <;>
-        simp only [BinFn.abs, BinFn.apply] <;> split <;> simp_all [AVal.Mem, AVal.nonInt]
+        simp only [BinFn.abs, BinFn.apply] <;> split <;> simp_all [AVal.Mem, AVal.nonInt, AVal.nested]
+
+/-! ### Functions of strings
+
+`BinFn.abs_sound` proves each string function from its shape: a function of
+two strings (or of a string and an integer) is `NULL` on anything else, so
+its abstraction is sound where it is on those arguments. -/
+
+theorem AVal.nonStr_of_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : ∀ s, v ≠ .str s) :
+    a.nonStr = true := by
+  mem_cases h with i b hb hi
+  all_goals simp_all [AVal.nonStr, AVal.nested]
+
+theorem AVal.nonNumInt_of_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : ∀ i, v ≠ .int i) :
+    a.nonNum .int = true := by
+  mem_cases h with i b hb hi
+  · simp [AVal.nonNum, AVal.nonInt, hn]
+  · cases k
+    case int => exact absurd rfl (hv i)
+    all_goals exact AVal.nonNum_of_memNum (AVal.mem_val.mp h) (by simp)
+  all_goals simp_all [AVal.nonNum, AVal.nonInt, AVal.nested]
+
+/-- A function of two strings: `g` on them, `NULL` on anything else. -/
+theorem str₂_sound {f : BinFn} {g : String → String → Value} {R a b : AVal} {v w : Value}
+    (hf : ∀ v w, f.apply v w = match v, w with | .str s, .str t => g s t | _, _ => .null)
+    (hR : R.null = (a.nonStr || b.nonStr)) (hg : a.str = true → b.str = true → ∀ s t, R.Mem (g s t))
+    (ha : a.Mem v) (hb : b.Mem w) : R.Mem (f.apply v w) := by
+  rw [hf]
+  split
+  · rename_i s t
+    simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
+    exact hg ha.1 hb.1 s t
+  · rename_i hne
+    show R.null = true
+    rw [hR]
+    by_cases hv : ∃ s, v = .str s
+    · obtain ⟨s, rfl⟩ := hv
+      simp [AVal.nonStr_of_mem hb fun t ht => hne s t rfl ht]
+    · simp [AVal.nonStr_of_mem ha fun s hs => hv ⟨s, hs⟩]
+
+/-- A function of a string and an integer: `g` on them, `NULL` on anything else. -/
+theorem strInt_sound {f : BinFn} {g : String → Int → Value} {R a b : AVal} {v w : Value}
+    (hf : ∀ v w, f.apply v w = match v, w with | .str s, .int n => g s n | _, _ => .null)
+    (hR : R.null = (a.nonStr || b.nonNum .int))
+    (hg : a.str = true → b.int.isSome = true → ∀ s n, R.Mem (g s n))
+    (ha : a.Mem v) (hb : b.Mem w) : R.Mem (f.apply v w) := by
+  rw [hf]
+  split
+  · rename_i s n
+    simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha
+    obtain ⟨x, hx, -⟩ := hb
+    exact hg ha.1 (by simp [hx]) s n
+  · rename_i hne
+    show R.null = true
+    rw [hR]
+    by_cases hv : ∃ s, v = .str s
+    · obtain ⟨s, rfl⟩ := hv
+      simp [AVal.nonNumInt_of_mem hb fun n hn => hne s n rfl hn]
+    · simp [AVal.nonStr_of_mem ha fun s hs => hv ⟨s, hs⟩]
 
 set_option maxHeartbeats 4000000 in
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
@@ -1113,13 +1286,25 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     cases hs : BinFn.domainSafe (.bit op) (some x) (some y)
     · rfl
     · have := BinFn.domainSafe_bit (i := i) hs hj; rw [hr] at this; cases this
-  case concat | trim | strpos | startsWith | endsWith | like | substr | strRepeat | ilike
-    | levenshtein =>
-    mem_cases₂ ha hb <;> (try cases k) <;> (try cases k') <;>
-    (try simp_all [BinFn.abs, BinFn.apply, AVal.Mem, AVal.nonStr, AVal.nonInt, Bound.Mem,
-      Text.strpos_nonneg, Text.strpos_le, Text.capped_le, Text.capped_nat_nonneg, NumKind.val,
-      AVal.MemNum, AVal.nonNum])
-    all_goals first | (split <;> simp_all) | (cases hbn : b.nk <;> simp_all)
+  case concat | trim =>
+    exact str₂_sound (fun v w => by cases v <;> cases w <;> rfl) rfl
+      (fun hs ht _ _ => by simp [BinFn.abs, BinFn.apply, AVal.Mem, hs, ht]) ha hb
+  case strpos =>
+    refine str₂_sound (fun v w => by cases v <;> cases w <;> rfl) rfl (fun hs ht s t => ?_) ha hb
+    exact ⟨⟨some 0, some Text.sizeCap⟩, by simp [BinFn.abs, hs, ht],
+      ⟨fun _ h => by cases h; exact Text.strpos_nonneg s t,
+        fun _ h => by cases h; exact Text.strpos_le s t⟩, rfl⟩
+  case levenshtein =>
+    refine str₂_sound (fun v w => by cases v <;> cases w <;> rfl) rfl (fun hs ht s t => ?_) ha hb
+    exact ⟨⟨some 0, some Text.sizeCap⟩, by simp [BinFn.abs, hs, ht],
+      ⟨fun _ h => by cases h; exact Text.capped_nat_nonneg _,
+        fun _ h => by cases h; exact Text.capped_le _⟩, rfl⟩
+  case startsWith | endsWith | like | ilike =>
+    exact str₂_sound (fun v w => by cases v <;> cases w <;> rfl) rfl
+      (fun hs ht _ _ => by simp [BinFn.abs, BinFn.apply, AVal.Mem, hs, ht]) ha hb
+  case substr | strRepeat =>
+    exact strInt_sound (fun v w => by cases v <;> cases w <;> rfl) rfl
+      (fun hs hn _ _ => by simp [BinFn.abs, BinFn.apply, AVal.Mem, hs, hn]) ha hb
   case eq => exact eqAbs_sound ha hb
   case lt => exact ltAbs_sound ha hb
   all_goals
@@ -1135,6 +1320,12 @@ theorem Value.eq_true_of_isTrue {v : Value} (h : v.isTrue = true) : v = .bool tr
 /-- Abstract values describe a row: column `i` lies in `env.getD i top`. -/
 def EnvMem (env : List AVal) (row : Row) : Prop :=
   ∀ i, (env.getD i AVal.top).Mem (row.getD i .null)
+
+/-- A lambda's body reads its parameter in front of the row (D28). -/
+theorem EnvMem.cons {env : List AVal} {row : Row} {e : AVal} {x : Value} (hx : e.Mem x)
+    (h : EnvMem env row) : EnvMem (e :: env) (x :: row)
+  | 0 => hx
+  | i + 1 => h i
 
 theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
     ∀ e : Expr, (e.abs env).Mem (e.eval row)
@@ -1165,6 +1356,6 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
           · simp [AVal.nonBool, hs]
         rw [ite_eq_left this]
         exact Expr.abs_sound h e
-  | .hof f _ _ => HoFn.abs_sound f _ _
+  | .hof f l b => HoFn.abs_sound f (Expr.abs_sound h l) fun _ hx => Expr.abs_sound (h.cons hx) b
 
 end Substrait
