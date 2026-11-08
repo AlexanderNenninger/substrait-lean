@@ -159,27 +159,6 @@ RUNTIME_CHECK = (
 )
 
 
-#: What a run says of the groups a margin check flags (#929).
-MARGIN_TEXT = (
-    "{k} group(s) have {col} within its bound of the threshold{at} (the bound per group "
-    "from its count and Σ|x|; {engine}'s SUM adds in an order of its own, {facts}): "
-    "{engine} may keep other groups than the reference there. Widen the threshold's "
-    'margin, sum in DECIMAL, or verify with on_inferred="warn" to keep them, '
-    "the contract holding up to the bound"
-)
-
-
-def _margin_line(chk: Mapping[str, Any]) -> str:
-    """What a report says of a margin check (#929)."""
-    col = chk.get("column") or "a SUM"
-    t = chk.get("threshold")
-    at = f" {decode_double(t):g}" if t is not None else ""
-    return (
-        f"{col} is farther than its bound from the threshold{at} in every group, so the "
-        "engine keeps the reference's groups (the bound per group from its count and Σ|x|)"
-    )
-
-
 #: How a report explains a `SUM` it assumes fits (`Report.assumed`).
 SUM_ASSUMED = (
     "fits {} in every group (checked at run time: the job raises if it does not; "
@@ -978,11 +957,14 @@ class Report:
             PreconditionError: A check flags a group, and the report was not
                 verified with `on_inferred="warn"`.
         """
-        from sverify import routes
         from sverify.contracts import InferredWarning
 
         total = 0
         for chk in self._margin_checks:
+            on = (chk.get("engines") or {}).get(target)
+            if on is None:
+                # Not covered on this engine: its threshold rule refused the route.
+                continue
             # Without the overflow checks of #575: the margin is at most `A`, and
             # a `v − t` past the largest double is farther than any bound.
             res = run_plan(con, written_plan(json.dumps(chk["plan"])), engine, finite=False)
@@ -990,12 +972,7 @@ class Report:
             if not k:
                 continue
             total += k
-            r = routes.row(target, "agg.fsum", "sum_order") or {}
-            facts = ", ".join(r.get("facts") or ()) or "its sum_order row"
-            col = chk.get("column") or "the SUM"
-            t = chk.get("threshold")
-            at = f" of {decode_double(t):g}" if t is not None else ""
-            msg = MARGIN_TEXT.format(k=k, col=col, at=at, engine=target, facts=facts)
+            msg = on["message"].replace("{k}", str(k))
             if self._on_inferred == "warn":
                 warnings.warn(InferredWarning(msg, self), stacklevel=3)
             else:
@@ -1388,7 +1365,7 @@ class Report:
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
-        lines += [f"checks at run time: {_margin_line(c)}" for c in self._margin_checks]
+        lines += [f"checks at run time: {c['label']}" for c in self._margin_checks]
         for i in self.errors:
             lines.append(f"may fail: {i.message}")
             if i.hint:

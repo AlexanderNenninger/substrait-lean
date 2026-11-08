@@ -13,7 +13,10 @@ own: the filter's input aggregate with each group's `SUM(x)`, `COUNT(x)` and
 
   `|fl(v − t)| > fl(cₙ · fl(A + n · tiny))`, `cₙ = (8n + 16) · 2⁻⁵³`,
 
-or have more than `2³²` values, and their count. On an engine whose sums are
+or have more than `2³²` values, and their count. A group with no values has a
+NULL sum, which the filter drops on the reference and on every engine; the
+check decides the others, whose `n ≥ 1` gives `mag xs ≥ tiny`, as
+`StdModel.check_sound` needs. On an engine whose sums are
 `StdModel.Summed` (its `sum_order` row), a count of `0` puts every group's
 sum, in the check and in the sink alike, on the reference's side of `t`
 (`StdModel.margin_check` in `float-bounds/FloatBounds/Margin.lean`): the
@@ -43,9 +46,10 @@ def Expr.thresholdOf : Expr → Option (Nat × Expr)
   | .un .not c => c.thresholdOf
   | _ => none
 
-/-- The groups whose sum is within the margin of `t`, or that have more than
-`2³²` values: columns `s`, `s + 1` and `s + 2` hold `SUM(x)`, `COUNT(x)` and
-`SUM(ABS(x))`. -/
+/-- The groups with a value whose sum is within the margin of `t`, or that
+have more than `2³²` values: columns `s`, `s + 1` and `s + 2` hold `SUM(x)`,
+`COUNT(x)` and `SUM(ABS(x))`. A group with no values (`n = 0`, its sum NULL)
+is not flagged: the filter drops it everywhere. -/
 def marginFlag (s : Nat) (t : Expr) : Expr :=
   let d := Expr.bin .fsub (.field s) t
   let n := Expr.un .itof (.field (s + 1))
@@ -53,7 +57,8 @@ def marginFlag (s : Nat) (t : Expr) : Expr :=
     (Expr.dlit (Float.scaleB 1.0 (-53)))
   let m := Expr.bin .fmul c (.bin .fadd (.field (s + 2)) (.bin .fmul n (Expr.dlit (Float.scaleB 1.0 (-1022)))))
   let pass := Expr.bin .or (.bin .lt m d) (.bin .lt m (.un .fneg d))
-  .bin .or (.un .not pass) (.bin .lt (.lit (.int (2 ^ 32))) (.field (s + 1)))
+  let some := Expr.un .not (.bin .lt (.field (s + 1)) (.lit (.int 1)))
+  .bin .or (.bin .and some (.un .not pass)) (.bin .lt (.lit (.int (2 ^ 32))) (.field (s + 1)))
 
 /-- **The margin check of a threshold filter** over an aggregate: the count
 of the groups that fail it, a plan of one row and one column. `none` where
@@ -72,6 +77,18 @@ def Rel.marginCheck : Rel → Option Rel
       [m, { fn := .count, arg := .field i }, { fn := .fsum, arg := (Expr.field i).fabs }]
     some (.aggregate (.filter inner (marginFlag gs.length t)) [] [{ fn := .count, arg := .lit (.int 1) }])
   | _ => none
+
+/-- What the margin check decides, for the report (#929): the conditions of
+`StdModel.margin_check` it checks on each group. -/
+def marginConditions : List String :=
+  ["|SUM(x) − t| > (8n + 16) · 2⁻⁵³ · (SUM(|x|) + n · 2⁻¹⁰²²), computed in doubles",
+   "n ≤ 2³² values", "n ≥ 1, or the group's sum is NULL and the filter drops it everywhere"]
+
+/-- A double as a report prints it: an integer without its `.0`. -/
+def fmtDouble (f : Float) : String :=
+  if f == f.round && f.abs < 1.0e15 then
+    (if f < 0 then "-" else "") ++ toString f.abs.toUInt64
+  else toString f
 
 /-- The margin checks of a plan's threshold filters, outermost first. -/
 def Rel.marginChecks : Rel → List Rel

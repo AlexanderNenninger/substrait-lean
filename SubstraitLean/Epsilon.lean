@@ -692,12 +692,34 @@ def marginChecksJson (es : List EngineProfile) (input : Json) : Except String Js
     let (j, t) := match site with
       | .filter _ c => (c.thresholdOf.getD (0, .lit .null))
       | _ => (0, .lit .null)
-    let tv : Json := match t.eval [] with
-      | .float code => toJson code
-      | _ => Json.null
-    Json.mkObj ([("plan", Write.writePlan schemaOf plan.catalog chk ["flagged"]),
-      ("threshold", tv)] ++
-      if site == plan.root then [("column", toJson (plan.names.getD j ""))] else [])
+    let tf : Option Float := match t.eval [] with
+      | .float code => some (FloatCode.toFloat code)
+      | _ => none
+    let col := if site == plan.root then plan.names.getD j "the SUM" else "the SUM"
+    let atT := match tf with
+      | some f => " " ++ fmtDouble f
+      | none => ""
+    -- Per engine whose sums `StdModel.margin_check` covers: the facts behind
+    -- its order, and the message of a run whose check flags `{k}` groups.
+    let engines := (es.filter fun e => ordersProved [e]).map fun e =>
+      let facts := e.obs.factsAt none "sum_order"
+      let factsTxt := if facts.isEmpty then "its sum_order row" else ", ".intercalate facts
+      (e.name, Json.mkObj [("facts", toJson facts), ("message", toJson (
+        "{k} group(s) have " ++ col ++ " within its bound of the threshold" ++ atT ++
+        " (the bound per group from its count and Σ|x|), or more than 2³² values: " ++ e.name ++
+        "'s SUM adds in an order of its own (" ++ factsTxt ++ "), so " ++ e.name ++
+        " may keep other groups than the reference there. A group with no values has a NULL " ++
+        "sum, which the filter drops on every engine. Widen the threshold's margin, sum in " ++
+        "DECIMAL, or verify with on_inferred=\"warn\" to keep them, the contract holding up " ++
+        "to the bound"))])
+    Json.mkObj [("plan", Write.writePlan schemaOf plan.catalog chk ["flagged"]),
+      ("column", if site == plan.root then toJson (plan.names.getD j "") else Json.null),
+      ("threshold", match tf with | some f => toJson f | none => Json.null),
+      ("label", toJson (col ++ " is farther than its bound from the threshold" ++ atT ++
+        " in every group with a value, so the engine keeps the reference's groups (the " ++
+        "bound per group from its count and Σ|x|)")),
+      ("conditions", toJson marginConditions),
+      ("engines", Json.mkObj engines)]
 
 /-- Where an output column comes from, as far as window aggregates of doubles
 go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that

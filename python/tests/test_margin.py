@@ -116,3 +116,16 @@ def test_the_check_counts_what_its_formula_says(having_warn, groups):
         warnings.simplefilter("ignore")
         r.run(_con(ids, amounts), "duckdb")
     assert r.margin_flags["duckdb"] == _flagged(groups, 1000.0)
+
+
+def test_a_group_with_no_values_is_not_flagged():
+    """Its sum is NULL, which the filter drops on every engine; the check
+    decides only groups with a value (`n ≥ 1`, which `check_sound` needs)."""
+    c = sv.connect()
+    c.put(
+        "orders",
+        pa.table({"customer_id": [1, 2], "amount": pa.array([None, 5000.0], pa.float64())}),
+    )
+    r = sv.verify(HAVING, requires={"orders": [_.amount.isnull() | (_.amount >= 0)]})
+    assert r.run(c, "duckdb").to_pylist() == [{"customer_id": 2, "total": 5000.0}]
+    assert "n ≥ 1" in " ".join(r._margin_checks[0]["conditions"])
