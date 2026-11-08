@@ -396,7 +396,7 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     fun hp hP ⟨b, hb, rest⟩ =>
       let ⟨b', hb', hle⟩ := h _ hp b hb
       ⟨b', hb', hP b b' hle rest⟩
-  rintro (hc | ⟨r, hr, os, hos, o, ho, hi, b, hb, hn⟩)
+  rintro (hc | ⟨r, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hsc⟩)
   · left
     cases f
     case quantile cont num scale =>
@@ -428,7 +428,7 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     have hp : (r.group, o, []) ∈ f.reads := by
       simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map]
       exact .inl ⟨o, ho, rfl⟩
-    exact ⟨r, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩
+    exact ⟨r, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩, hsc⟩
 
 theorem Measure.AllowedP.monoOn {I : Impl} {m : Measure} (h : ∀ p ∈ m.reads, t.LeAt u p)
     {rows : Relation} {v : Value} : m.AllowedP t I rows v → m.AllowedP u I rows v :=
@@ -531,16 +531,17 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
   let J := Impl.restrict r.ctors I
   have hag : Impl.AgreeOn r.ctors I J :=
     ⟨fun f hf v => by simp [J, Impl.restrict, hf], fun f hf v w => by simp [J, Impl.restrict, hf]⟩
-  have hx : ∀ c ∈ r.ctors, CallExtra t c → CallExtra u c :=
-    fun c hc ⟨row, hr, os, hos, o, ho, hi, b, hb, hn⟩ =>
-      ⟨row, hr, os, hos, o, ho, hi, b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
-        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb, hn⟩
+  have hx : ∀ c ∈ r.ctors, ∀ args, CallExtra t c args → CallExtra u c args :=
+    fun c hc _ ⟨row, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hs⟩ =>
+      ⟨row, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
+        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb,
+        hn⟩, hs⟩
   refine ⟨J, ⟨fun f v => ?_, fun f v w => ?_⟩, ?_⟩
   · by_cases hf : Ctor.un f ∈ r.ctors
-    · simp only [J, Impl.restrict, hf, ite_true]; exact (hun f v).imp_right (hx _ hf)
+    · simp only [J, Impl.restrict, hf, ite_true]; exact (hun f v).imp_right (hx _ hf _)
     · left; simp [J, Impl.restrict, hf]
   · by_cases hf : Ctor.bin f ∈ r.ctors
-    · simp only [J, Impl.restrict, hf, ite_true]; exact (hbin f v w).imp_right (hx _ hf)
+    · simp only [J, Impl.restrict, hf, ite_true]; exact (hbin f v w).imp_right (hx _ hf _)
     · left; simp [J, Impl.restrict, hf]
   · exact Rel.AllowedI.monoOn h ((Rel.allowedI_congr hag out).mp ho)
 
