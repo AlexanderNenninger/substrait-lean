@@ -1439,6 +1439,8 @@ _REPORT_INTERNAL = [
     "transfer",
     "epsilon",
     "rows_exact",
+    "engines",
+    "sorted",
     "conditions",
     "dialect",
     "on_inferred",
