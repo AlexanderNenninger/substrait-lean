@@ -937,6 +937,8 @@ def realization(
         r = row(engine, g, o)
         cls = None if r is None else row_class(r)
         if r is None or cls is None:
+            # No row: the translation's tests stand for this option.
+            evidence.append("tested")
             continue
         if r.get("shim") and _gives_as_stated(r.get("choice"), d):
             # The plan states the behaviour, and the engine gives it as
@@ -989,7 +991,8 @@ def realization(
         # on the evidence of its tests (`TRANSLATIONS`).
         return Realized("exact", "tested", (), problems)
     worst = max(classes, key=CLASSES.index)
-    # Anything but a proof (a test, a probe, a row without evidence) is tested.
+    # Anything but a proof (a test, a probe, a row without evidence, an option
+    # without a row) is tested.
     ev: Evidence = "proved" if all(x == "proved" for x in evidence) else "tested"
     gives = None
     if worst == "observed" and seen:

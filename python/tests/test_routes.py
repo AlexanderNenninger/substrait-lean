@@ -235,6 +235,9 @@ def test_anything_but_proved_is_tested(monkeypatch, con) -> None:
     assert routes.choose(report, "polars").evidence == "tested"
     _classed_tables(monkeypatch, [_row("a", "refines"), {**_row("b", "refines"), "evidence": None}])
     assert routes.choose(report, "polars").evidence == "tested"
+    # An option without a row rests on the translation's tests.
+    _classed_tables(monkeypatch, [{**_row("a", "refines"), "theorem": "Polars.a"}])
+    assert routes.choose(report, "polars").evidence == "tested"
     proved = [{**_row(o, "refines"), "theorem": f"Polars.{o}"} for o in ("a", "b")]
     _classed_tables(monkeypatch, proved)
     r = routes.choose(report, "polars")
