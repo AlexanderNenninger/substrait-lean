@@ -61,14 +61,24 @@ def test_generated_globs_have_lines():
 
 
 def _theorems() -> set[str]:
+    """Every theorem's name as declared, and with the namespaces it is declared
+    in (`Knowledge.contract_sound`), the project's root `Substrait` left out."""
     names = set()
     for p in [
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]:
-        names.update(
-            re.findall(r"^(?:private )?(?:theorem|lemma) ([^\s({:]+)", p.read_text(), re.M)
-        )
+        spaces: list[str] = []
+        for line in p.read_text().splitlines():
+            if m := re.match(r"^namespace (\S+)", line):
+                spaces.append(m.group(1))
+            elif (m := re.match(r"^end (\S+)", line)) and spaces and spaces[-1] == m.group(1):
+                spaces.pop()
+            elif m := re.match(r"^(?:private )?(?:theorem|lemma) ([^\s({:]+)", line):
+                names.add(m.group(1))
+                prefix = ".".join(n for n in spaces if n != "Substrait")
+                if prefix:
+                    names.add(f"{prefix}.{m.group(1)}")
     return names
 
 
@@ -77,9 +87,9 @@ def test_named_theorems_exist():
     known = _theorems()
     named = set()
     for row in table.splitlines():
-        cells = row.split(" | ")
-        if row.startswith("| ") and len(cells) == 3 and not row.startswith("| Guarantee"):
-            named.update(re.findall(r"`([^`]+)`", cells[1]))
+        cells = row.split(" | ")  # guarantee, layer, theorems, module
+        if row.startswith("| ") and len(cells) == 4 and not row.startswith("| Guarantee"):
+            named.update(re.findall(r"`([^`]+)`", cells[2]))
     assert len(named) > 40
     missing = sorted(n for n in named if "<" not in n and n not in known)
     assert not missing, f"docs/proofs.md names theorems the Lean project lacks: {missing}"

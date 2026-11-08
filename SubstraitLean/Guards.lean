@@ -3,14 +3,16 @@ import SubstraitLean.Partition
 /-!
 # Guard elimination
 
-Engines compute integers in 64 bits, and DataFusion wraps around where Lean's
-integers do not, so the SQL that `sverify.sql` writes checks every
+Engines compute integers in 64 bits, where Lean's integers are unbounded,
+and an engine may wrap around there: Polars does (`polars-int-arith`), Spark
+without ANSI mode (`spark-int-arith`) and DataFusion too, while DuckDB raises
+(`duckdb-R15-int-arith`). So the SQL that `sverify.sql` writes checks every
 operation: a sum or product outside 64 bits raises, so does a division by
-zero (Lean: NULL), and so on. These **guards** cost a `CASE` per operation.
+zero (Lean: NULL), and so on. These guards cost a `CASE` per operation.
 
 When `Rel.mayIssues` reports nothing for a plan, nothing can go wrong on any
 row the plan evaluates, and the guards never fire. This module proves that
-running the plan *without* them gives the same result.
+running the plan without them gives the same result.
 
 * `Impl` is an engine's own implementation of the functions, without
   checks. `Impl.Faithful` is what is assumed of it, function by function:

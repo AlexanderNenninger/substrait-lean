@@ -961,11 +961,11 @@ integer `//` and `%` floor, so `-7 % 2` is `1`, and the plan states
 `division_type: FLOOR` on each, which Polars runs natively and the other
 engines refuse; a zero divisor and integer overflow still raise, so `verify`
 infers the same preconditions as under the reference
-([core-semantics.md](core-semantics.md#polars-as-a-profile)).
+([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode: the same values as the reference, and doubles that overflow
 are ±inf with no precondition, so the plan runs on Spark natively
-([core-semantics.md](core-semantics.md#spark-as-a-profile)). Until
+([engine-profiles.md](engine-profiles.md#spark-as-a-profile)). Until
 #411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
 joins of every kind, subqueries and CTEs, GROUP BY with grouping sets,
 windows, set operations, ORDER BY, LIMIT, CASE, CAST, and the numeric,

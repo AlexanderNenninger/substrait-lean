@@ -57,8 +57,8 @@ result is the Lean value, checked on a local Spark session by
   can stand for Lean's list order, which FETCH and ties in a sort or window
   follow: `row_ordinal` is refused. Windows and sorts run with
   `to_sql(..., deterministic=True)`, when the caller knows there are no ties.
-  Over `VALUES` the order is known, and a `SUM` or `AVG` of doubles adds in
-  that order (`aggregate` over the sorted values), as Lean does.
+  A `SUM` or `AVG` of doubles is Spark's own, within the plan's bound of the
+  reference's correctly rounded sum (D25, `float_sum`).
 * **Identifiers** are quoted with backticks; `spark.sql.caseSensitive` keeps
   `a` and `A` apart.
 """
