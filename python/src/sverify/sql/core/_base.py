@@ -3481,8 +3481,7 @@ def _floor_div(a: Expr, b: Expr) -> Expr:
     signs apart `(a + 1) / b - 1` or `(a - 1) / b - 1`, so that no step
     overflows; otherwise the truncated quotient. Trusted to mirror the Lean
     term (`Polars.floorDivT`) and tested against floor division
-    (`test_written_floor_runs_on_duckdb`); generating it from Lean is the
-    planned replacement."""
+    (`test_written_floor_runs_on_duckdb`); #1202 generates it from Lean."""
     zero, one = Lit(0, "int"), Lit(1, "int")
     q = Bin("idiv", a, b)
 
@@ -3497,7 +3496,8 @@ def _floor_div(a: Expr, b: Expr) -> Expr:
 def _floor_mod(a: Expr, b: Expr) -> Expr:
     """`Expr.floorModOf`: `a % b` with `division_type` = `FLOOR`, the sign of
     `b`. With the signs apart `(b - 1) - (-1 - a) % b` or
-    `(a - 1) % b + (b + 1)`; otherwise the truncated remainder."""
+    `(a - 1) % b + (b + 1)`; otherwise the truncated remainder. Trusted to
+    mirror `Polars.floorModT` and tested, as `_floor_div` (#1202)."""
     zero, one = Lit(0, "int"), Lit(1, "int")
     r = Bin("imod", a, b)
     neg = Bin("sub", Bin("sub", b, one), Bin("imod", Bin("sub", Lit(-1, "int"), a), b))
