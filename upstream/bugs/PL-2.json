@@ -3,8 +3,8 @@
   "project": "polars",
   "kind": "bug",
   "version": "2.1.0",
-  "status": "confirmed",
-  "status_note": "Reproduces on Polars 2.1.0, the latest release: the cast to `String` panics in-memory and streaming, as do printing and `item()`; `date32_to_date` is unchanged on main (35a2cb73, 2026-11-04), read in the source. No issue on `Date`; related: [pola-rs/polars#25742](https://github.com/pola-rs/polars/issues/25742) (open, the same panic for out-of-range `Datetime`) and [#11991](https://github.com/pola-rs/polars/issues/11991) (closed by #25471, which meant `dt.year()` of such a date to raise; 2.1.0 returns NULL).",
+  "status": "duplicate",
+  "status_note": "Covered by [pola-rs/polars#25742](https://github.com/pola-rs/polars/issues/25742) (open): printing or casting an out-of-range temporal value panics in `temporal_conversions.rs`; this is the same panic for `Date`. Worth a comment there with this case. Reproduces on Polars 2.1.0.",
   "summary": "A `Date` is an `Int32` of days, but chrono's `NaiveDate` covers only about ±262 000 years. A cast of a larger day count to `Date` succeeds, and then casting it to `String`, printing the frame or reading the value panics (`PanicException: out-of-range date`, from `date32_to_date`'s `expect`) where an error or NULL is expected; `dt.year()` of it is NULL.",
   "repro": "import polars as pl\ndf = pl.DataFrame({\"x\": [2**31 - 1]}, schema={\"x\": pl.Int32}).select(pl.col(\"x\").cast(pl.Date))\ndf.select(pl.col(\"x\").dt.year()).item()  # None\ndf.select(pl.col(\"x\").cast(pl.String))  # PanicException: out-of-range date",
   "handling": "No Polars profile yet; the characterization records it (polars-date-range). The reference's dates stay within 0001-01-01 … 9999-12-31 (#251), so a guarded plan never builds such a date.",
@@ -33,6 +33,13 @@
         "polars main": "35a2cb73fdf81d89b2117bec152c3530eb3e4146"
       },
       "note": "repros/PL-2.py on 2.1.0 (macOS arm64), each step in a subprocess, in-memory and streaming; main source only: crates/polars-arrow/src/temporal_conversions.rs date32_to_date."
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "triage: pola-rs/polars searched; #25742 open"
     }
   ],
   "upstream": [

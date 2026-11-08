@@ -35,19 +35,29 @@ The id is the project's prefix and the next free number:
 | `ST` | Substrait: its tooling and its spec |
 
 The status is `unverified` (seen, not yet reduced to a minimal repro or
-checked against the latest upstream release), `confirmed` (minimal repro on
-the stated version), `filed` (with the link in `upstream`), `fixed upstream`
-(with the release in `fixed_in`) or `not a bug` (with the reason in
-`status_note`). `checked` records when an entry was last checked, and
-against which releases: every entry of the old ledger was checked on 2026-11-03 against
-sqlglot 30.29.0, ibis-framework 12.0.0, datafusion 55.0.0, duckdb 2.0.0 and
-deltalake 1.6.6.
+checked against the latest upstream release), `confirmed` (reproduces on the
+latest release or main, and no upstream issue reports it: ready to report),
+`filed` (with the link in `upstream`), `fixed upstream` (fixed on the
+project's main, with the release in `fixed_in`, marked unreleased until it
+ships), `duplicate` (an open upstream issue covers it, linked in `upstream`;
+a comment there is all it needs) or `not a bug` (documented or intended, or a
+difference only sverify's model cares about, which an engine fact records;
+the reason in `status_note`). `checked` records when an entry was last
+checked, and against which releases. On 2026-11-07 every entry was
+classified, and each that was not filed, fixed or declared intended was run
+again on the latest release (sqlglot 30.30.0, duckdb 2.0.0, polars 2.1.0,
+pyspark 4.3.0, ibis-framework 12.0.0, deltalake 1.6.6) or checked against
+Substrait's main; its last `checked` entry says what. A `confirmed` bug has a
+one-line `title`.
 
 DataFusion is a backend only since #211. Bugs in its Substrait producer and
 SQL planner (most `DF` entries, found on DataFusion 51) no longer affect
 sverify's results, and they are worth reporting.
 
-The documents are the record; there is no generated overview.
-`python -m sverify_dev.bugs` checks them (`python/tests/test_bugs.py` runs
-the same check). The `upstream-report` skill
+The documents are the record. `REPORT.md`, generated from them on
+`main`, lists the bugs to report and counts each class (report, filed,
+fixed, duplicate, not-a-bug, spec-gap) by project; feature branches don't
+commit it. `python -m sverify_dev.bugs` checks the documents
+(`python/tests/test_bugs.py` runs the same check), and with `--write` renders
+the report. The `upstream-report` skill
 (`.claude/skills/upstream-report/`) drafts a report from a document.

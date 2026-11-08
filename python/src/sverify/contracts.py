@@ -213,10 +213,23 @@ def _expr_semantics(transform: Transform) -> Semantics:
     return "duckdb" if sems == {"duckdb"} else "reference"
 
 
+def _profile_requests() -> frozenset[str]:
+    """`_PROFILE_REQUESTS`, with the installed profiles from outside sverify
+    (`sverify.profiles`)."""
+    from sverify import profiles
+
+    return _PROFILE_REQUESTS | frozenset(profiles.plugins())
+
+
 def _checked_semantics(semantics: str) -> Semantics:
+    from sverify import profiles
+
+    if semantics in profiles.plugins():
+        return semantics  # type: ignore[return-value]
     if semantics not in ("reference", "duckdb", "polars", "spark", "substrait"):
         raise ValueError(
-            "semantics must be 'reference', 'duckdb', 'polars', 'spark' or 'substrait', "
+            "semantics must be 'reference', 'duckdb', 'polars', 'spark', 'substrait' or an "
+            "installed engine profile (sverify.profiles), "
             f"not {semantics!r}"
         )
     return semantics  # type: ignore[return-value]
@@ -1400,7 +1413,7 @@ def _verify_once(
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
-    if semantics in _PROFILE_REQUESTS and isinstance(transform, str):
+    if semantics in _profile_requests() and isinstance(transform, str):
         raise ValueError(
             f"semantics={semantics!r} checks Ibis transformations; "
             "SQL is DuckDB's, so its semantics is 'duckdb' or 'reference'"
@@ -1415,7 +1428,7 @@ def _verify_once(
     def lift(query: Any) -> Semantics:
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
         # under the reference where the profile has no lift of its own.
-        own = not (isinstance(query, str) and semantics in _PROFILE_REQUESTS)
+        own = not (isinstance(query, str) and semantics in _profile_requests())
         return semantics if own else "reference"
 
     def plan(query: Transform) -> Any:
@@ -1508,15 +1521,16 @@ def _verify_once(
         "rows_per": per_key,
     }
 
-    if semantics in _PROFILE_REQUESTS:
+    if semantics in _profile_requests():
         contract["profile"] = semantics
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
         raise checker_failed("--contract", stderr)
     out = json.loads(stdout)
-    if semantics in _PROFILE_REQUESTS and out.get("profile") != semantics:
+    if semantics in _profile_requests() and out.get("profile") != semantics:
         raise ValueError(
-            f'this checker cannot check under semantics="{semantics}" yet (#444, step 3a)'
+            f'the checker in use has no profile "{semantics}": install the package that '
+            "registers it (sverify.profiles), or set SVERIFY_CHECKER to a checker built with it"
         )
     # SQL's types come from the lift, so a timestamp is described as one (#452).
     from sverify.ibis_substrait import sql_model_schema

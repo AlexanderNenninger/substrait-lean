@@ -10,80 +10,38 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 
 A shard holds some of the rows of each sharded table (a Delta or Iceberg
 partition, a file, a worker's slice); every other table is broadcast, a copy
-on each shard. `substrait-check --shard` splits the plan into the plan each
-shard runs and the plan that combines their results, and Lean proves the
-combined result is the plan's result on all the data (`Rel.shardSplit_sound`
-in `SubstraitLean/Partition.lean`):
+on each shard. `split` asks `substrait-check --shard` for the plan each shard
+runs and the plan that combines their results, or raises `NotShardable` with
+the reason. Lean proves the combined result is the plan's result on all the
+data (`Rel.shardSplit_sound` in `SubstraitLean/Partition.lean`). A linear
+plan runs on every shard and the results are concatenated (`Split.mode`
+`"linear"`); an aggregate runs in two phases, each shard aggregating by the
+grouping keys and the combining plan aggregating the partial rows again
+(`"two_phase"`).
 
-* A **linear** plan (filters, projections, sorts, unions, and joins whose
-  other side is broadcast) runs on every shard; the results are concatenated.
-* An **aggregate** of `COUNT`, integer `SUM`, `MIN` and `MAX` (`MIN` and
-  `MAX` also `DISTINCT`), under such a plan, runs in **two phases**: each
-  shard aggregates by the grouping keys, then the partial rows are grouped
-  again and combined (`COUNT` by `SUM`). Filters, projections and sorts above
-  the aggregate run after combining.
-* An integer `AVG` (Substrait's `avg` of `i64` with an `i64` result) is
-  algebraic: each shard computes its `SUM` and `COUNT`, the combining
-  plan adds them up and divides, truncating toward zero
-  (`Rel.eval_algebraic`). It needs the argument to be an integer by the
-  plan's column types.
+`run_sharded` (`sverify.engines.run_sharded`) runs the shards on Polars, in
+parallel threads. It first checks the split keys (`keys=`) and the `unique=`
+column sets on the data (`check_keys`, `check_unique`).
 
-**Split keys** (`keys={"orders": ["region"]}`) say that rows with equal values
-on those columns are always on the same shard, as a Delta or Iceberg
-partition column guarantees. `run_sharded` checks it on the data. With them:
+Which plans split, which are refused and why, and why a 64-bit partial sum
+can fail where the total would not: docs/optimizations.md, "2. Sharded
+evaluation".
 
-* an aggregate whose `GROUP BY` contains the key, and a `DISTINCT` whose
-  columns do, run on each shard and are concatenated, whatever their
-  measures (except `SUM`/`AVG` of doubles, which add in row order);
-* `COUNT(DISTINCT k)` and `SUM(DISTINCT k)` of the key itself run in two
-  phases;
-* a join of two sharded tables whose condition equates their keys
-  (co-partitioned: `ON r.k = s.k`, inner, left, semi or anti) runs on each
-  shard;
-* a window whose `PARTITION BY` contains the key runs on each shard, when
-  `unique=` columns show that its `PARTITION BY` and `ORDER BY` columns have
-  no ties (Lean breaks ties by row order, which sharding does not keep).
-  `run_sharded` checks `unique` on the data too.
-
-Refused, with the reason: `SUM`/`AVG` of doubles (floating-point addition is
-not associative, so the rounding would depend on the split), other
-`DISTINCT` aggregates, `DISTINCT` without the key, other windows, `FETCH`,
-and joins of sharded tables that are not co-partitioned.
-
-`float_order="any"` splits `SUM`/`AVG` of doubles anyway, with a proved
-error bound (#428). The sums of doubles round as the split makes them, so
-`Split.proved` is false, and `Split.float_bounds` says which output columns
-are within a tolerance τ of Lean's value; the rest of the plan is still what
-Lean computes. Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)`
-per split double, and `run_sharded(..., tolerance=True)` computes τ for each
-group from them. For `n` values in `k` shards of at most `m` values, with
-`A` the shards' rounded `SUM(|x|)`s added up and `γ j = j u / (1 − j u)`,
-`u = 2⁻⁵³`, τ is the larger of two bounds. Lean's own split, each shard's
-exact sum rounded once and then the partials' (D25), is within
-`A / 2⁵⁰` of the whole's one rounding, and a split mean within
-`A / (n · 2⁴⁷) + 2⁻¹⁰⁷⁴` (`floatSplit_sum`, `floatSplit_avg` in
-`SubstraitLean/Partition.lean`, proved on integers). An engine adding the
-shards in its own order is within
-
-    τ_sum = (γ(m + k) + γ(n)) · ((A + n·2⁻¹⁰²²) / (1 − γ(m)) + k·2⁻¹⁰²²)
-    τ_avg = (γ(m + k + 2) + γ(n + 2)) · ((A + n·2⁻¹⁰²²) / (1 − γ(m)) + k·2⁻¹⁰²²) / n
-
-of the exact sum and the reference's rounding of it
-(`float-bounds/FloatBounds/Shard.lean`; its `γ(n)` term covers the
-reference's one rounding, at most `u` relatively).
-
-The bound needs `n ≤ 2³²` and `n · (max |x| + 2⁻¹⁰²¹) ≤ 2¹⁰²²`, far from
-overflow; a group that misses it, or holds NaN or an infinity, gets τ = ∞.
-`apriori_tolerance` gives the bound before running, from a cap on the rows
-(a contract's `sv.max_rows`) and a bound on `|x|`.
-
-Partial integer sums are checked to fit in 64 bits like any `SUM`, so a
-partial sum can fail where the total would not (a shard of large positive
-values next to one of large negative values); the result is then an error,
-never a wrong answer. With values of one sign that cannot happen
-(`inI64_partial`).
-
-Shards run on Polars (`sverify.polars_engine`), in parallel threads.
+`float_order="any"` splits `SUM`/`AVG` of doubles anyway (#428): `Split.proved`
+is then false, and `Split.float_bounds` says which output columns are within
+a tolerance τ of Lean's value. `run_sharded(..., tolerance=True)` computes τ
+for each group of `n` values from the partial rows (`group_tolerance`), with
+`A` the shards' rounded `SUM(|x|)`s added up. τ is the larger of two bounds.
+Lean's own split, each shard's exact sum rounded once and then the partials'
+(D25), is within `A / 2⁵⁰` of the whole's one rounding, and a split mean
+within `A / (n · 2⁴⁷) + 2⁻¹⁰⁷⁴` (`shard_tol_cr`, `shard_avg_tol_cr`). An
+engine adding the shards in its own order is within `shard_tol_scaled` of
+the reference's rounding; its `γ(n)` term covers that rounding, at most
+`u = 2⁻⁵³` relatively. A group with NaN or an infinity, near overflow or with
+more than 2³² values gets τ = ∞. `apriori_tolerance` gives the bound before
+running, from a cap on the rows (a contract's `sv.max_rows`) and a bound on
+`|x|`. The bounds and their proofs: docs/float-bounds.md, "Sharded `SUM` and
+`AVG`".
 """
 
 from __future__ import annotations

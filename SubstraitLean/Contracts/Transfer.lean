@@ -679,7 +679,7 @@ def pickAbs (both : Bound → Bound → Bound) (a b : AVal) : AVal :=
 /-! ### Double arithmetic (#582)
 
 A double `+`, `-`, `*`, `/` of finite doubles is bounded from its inputs'
-bounds, by the trusted facts `FloatCode.add_scaled` … `div_scaled`: on
+bounds, by `FloatCode.add_scaled` … `div_scaled` (D31, `FloatArith.lean`): on
 scaled values, the exact result's interval widened by its rounding, then
 back to codes. Where the inputs may be infinite or NaN, or the result may
 come near the largest double, the bound is `top`. -/

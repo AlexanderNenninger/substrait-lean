@@ -2,8 +2,8 @@
   "id": "SG-3",
   "project": "sqlglot",
   "version": "30.27.0",
-  "status": "filed",
-  "status_note": "top-n `min(x, n)` filed as [#8888](https://github.com/tobymao/sqlglot/issues/8888), fixed on main by [#8896](https://github.com/tobymao/sqlglot/pull/8896) (bdaf7d1, 2026-11-04; other dialects now warn), not released. Reproduces on 30.29.0. `strftime`, `POSITIONAL`/`ASOF` and `TRY` not rechecked: SQLGlot has no DataFusion dialect.",
+  "status": "fixed upstream",
+  "status_note": "The filed part, top-n `min(x, n)`, fixed upstream in 30.30.0 ([#8888](https://github.com/tobymao/sqlglot/issues/8888), PR [#8896](https://github.com/tobymao/sqlglot/pull/8896)): writing it to a dialect without top-n warns. The other cases (`strftime`, `POSITIONAL`/`ASOF`, `TRY`) need a DataFusion dialect, which SQLGlot does not have, so there is nothing to report.",
   "upstream": [
     "https://github.com/tobymao/sqlglot/issues/8541",
     "https://github.com/tobymao/sqlglot/issues/8888",
@@ -36,6 +36,15 @@
         "duckdb": "2.0.0"
       },
       "note": "top-n case on 30.27.0, 30.29.0 and main"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "sqlglot": "30.30.0",
+        "sqlglot main": "b99f5d58b1"
+      },
+      "note": "triage: repro run on 30.30.0"
     }
-  ]
+  ],
+  "fixed_in": "30.30.0"
 }

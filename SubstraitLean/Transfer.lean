@@ -586,16 +586,16 @@ def ProfileTable.missingIn (t : ProfileTable) (fns : List String) : List (String
 /-! ## The report, for Python -/
 
 /-- The profiles a report compares. -/
-def reportProfiles : List (ProfileTable × ObsTable) :=
+def reportProfiles (es : List EngineProfile) : List (ProfileTable × ObsTable) :=
   (Profile.reference.table, Profile.reference.obs) ::
-    (Profile.substrait.table, Profile.substrait.obs) :: engineTables
+    (Profile.substrait.table, Profile.substrait.obs) :: es.map fun e => (e.table, e.obs)
 
 open Lean (Json toJson) in
 /-- `substrait-check --dependencies`: the options the plan meets, each with
 every profile's choice and observation row; per pair of profiles whether a
 proof under the first holds under the second (`transferB`); and per engine
 the shims its translation from the reference needs for this plan. -/
-def Rel.dependenciesJson (r : Rel) : Json :=
+def Rel.dependenciesJson (es : List EngineProfile) (r : Rel) : Json :=
   let reads := r.reads.eraseDups
   let choiceAt (t : ProfileTable) (p : Read) : Json :=
     match t.choice? p.1 p.2.1 with | some c => c.json | none => Json.null
@@ -606,33 +606,33 @@ def Rel.dependenciesJson (r : Rel) : Json :=
       ("group", toJson p.1), ("option", toJson p.2.1), ("preferences", toJson p.2.2),
       ("tool", toJson ((Profile.reference.tools.find? (·.option == p.2.1)).map fun t =>
         match t.tool with | .raise => "raise" | .choose => "choose" | .leaveOpen => "leave_open"))] ++
-      reportProfiles.map fun (t, obs) => (t.name, Json.mkObj [
+      (reportProfiles es).map fun (t, obs) => (t.name, Json.mkObj [
         ("choice", choiceAt t p), ("allows", toJson (t.allows p.1 p.2.1 p.2.2)),
         ("row", rowAt obs p)]))).toArray),
-    ("transfer", Json.mkObj (reportProfiles.map fun (t, _) => (t.name,
-      Json.mkObj (reportProfiles.map fun (u, _) => (u.name, toJson (transferB r t u)))))),
+    ("transfer", Json.mkObj ((reportProfiles es).map fun (t, _) => (t.name,
+      Json.mkObj ((reportProfiles es).map fun (u, _) => (u.name, toJson (transferB r t u)))))),
     ("functions", toJson r.functions),
-    ("missing", Json.mkObj (engineTables.map fun (t, _) => (t.name,
-      Json.arr <| ((t.missingIn r.functions).map fun (f, ids) =>
+    ("missing", Json.mkObj (es.map fun e => (e.name,
+      Json.arr <| ((e.table.missingIn r.functions).map fun (f, ids) =>
         Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray))),
     -- A shim the plan needs at an option, unless every read there states a
     -- preference the engine gives as stated (a key's `NULLS LAST` on Polars):
     -- the shim is for the reference's default (#444, step 3b).
-    ("shims", Json.mkObj (engineTables.map fun (t, obs) => (t.name,
+    ("shims", Json.mkObj (es.map fun e => (e.name,
       Json.arr <| ((reads.map fun p => (p.1, p.2.1)).eraseDups.filterMap fun (g, o) =>
         let stated := reads.filter fun p => p.1 == g && p.2.1 == o
         if stated.all (fun p => !p.2.2.isEmpty &&
-            (t.allows g o p.2.2).all (Profile.reference.table.allows g o p.2.2).contains) then none
-        else (obs.row? g o).bind fun row => row.shim.map fun sh =>
+            (e.table.allows g o p.2.2).all (Profile.reference.table.allows g o p.2.2).contains) then none
+        else (e.obs.row? g o).bind fun row => row.shim.map fun sh =>
           Json.mkObj [("group", toJson g), ("option", toJson o), ("shim", toJson sh)]).toArray)))]
 
 /-! ## The transfer check, on a dependency report -/
 
 /-- The profiles by name: the reference, the core, Substrait, and the engines
 (DuckDB under its default settings). -/
-def profileNamed (name : String) : Option (ProfileTable × ObsTable) :=
+def profileNamed (es : List EngineProfile) (name : String) : Option (ProfileTable × ObsTable) :=
   ((Profile.reference.table, Profile.reference.obs) :: (Profile.core.table, []) ::
-    (Profile.substrait.table, Profile.substrait.obs) :: engineTables).find?
+    (Profile.substrait.table, Profile.substrait.obs) :: es.map fun e => (e.table, e.obs)).find?
     (·.1.name == name)
 
 /-- What `t` allows at `group` (`none`: the row without a group) and `option`. -/
@@ -662,10 +662,10 @@ fails where `E` allows a behaviour not below one the proof used (`behaviourLe`;
 `behaviours`, or else all `P` allows there), and each function `E` lacks fails. With
 `depends` = `Rel.reads` and no `behaviours`, this is `transferB`, which
 `Rel.transfer_of_transferB` proves sound. -/
-def transferJson (input : Json) : Except String Json := do
+def transferJson (es : List EngineProfile) (input : Json) : Except String Json := do
   let name (k : String) : Except String (ProfileTable × ObsTable) := do
     let n ← input.getObjValAs? String k
-    match profileNamed n with
+    match profileNamed es n with
     | some p => pure p
     | none => throw s!"unknown profile {n}"
   let (P, _) ← name "from"

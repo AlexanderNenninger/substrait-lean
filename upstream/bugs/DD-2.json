@@ -33,5 +33,8 @@
       },
       "note": "reverse pass: concat skips NULLs (src/function/scalar/string/concat.cpp#L40-L70), as the docs state (sql/functions/text#concatvalue-); pinned by test/sql/function/string/test_concat.test#L68-L72"
     }
+  ],
+  "facts": [
+    "duckdb-null-concat"
   ]
 }

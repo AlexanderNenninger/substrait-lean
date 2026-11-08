@@ -4,7 +4,8 @@
   "kind": "bug",
   "version": "2.0.0",
   "status": "confirmed",
-  "status_note": "A bug in the documentation, confirmed on 2.0.0 (Python, macOS arm64) against https://duckdb.org/docs/2.0/sql/functions/numeric.html; not filed. The engine's NaN is pinned by its own test (test/sql/types/float/ieee_floating_points.test#L23-L31), so the page is what is wrong.",
+  "status_note": "A bug in the documentation. Reproduces on 2.0.0; the sentence is unchanged in duckdb-web's `docs/2.0/sql/functions/numeric.md` on main (cab31bd0, 2026-11-07). No issue in duckdb/duckdb-web.",
+  "title": "Docs: `%` on `FLOAT` and `DOUBLE` by zero gives NaN, where the page says it raises",
   "summary": [
     "The documentation, not the engine: the numeric functions page (https://duckdb.org/docs/2.0/sql/functions/numeric.html, \"Division and Modulo Operators\") says \"Integer division (`//`), modulo (`%`), and `INTERVAL / 0` throw an `Invalid Input Error` on division by zero instead of returning `NULL`.\" For FLOAT and DOUBLE, `%` by zero is NaN under the default `ieee_floating_point_ops`: `%` of floats binds `BindBinaryFloatingPoint<ModuloOperator>` (https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1452-L1469), which runs `std::fmod` without a zero check.",
     "On the same page, the function `fmod` is documented as floored (true: `fmod(-7.5, 2)` is 0.5), while `%` on doubles is C's truncating `fmod` (`-7.5::DOUBLE % 2` is -1.5), and the page never says so: the C name and the operator behave oppositely without a word.",
@@ -29,6 +30,14 @@
         "duckdb": "2.0.0"
       },
       "note": "probe on the pinned release and the 2.0 docs; main and the nightly docs not checked"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "duckdb": "2.0.0",
+        "duckdb-web main": "cab31bd0"
+      },
+      "note": "triage: repro run on 2.0.0; docs source read on main"
     }
   ]
 }

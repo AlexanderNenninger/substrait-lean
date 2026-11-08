@@ -44,7 +44,7 @@ not (D25); `float-bounds` bounds this set's distance from it
 inductive FloatSums : List Value → Int → Prop
   | seq {vs ws : List Value} : ws.Perm vs → FloatSums vs (floatSum ws)
   | split {vs xs ys : List Value} {a b : Int} : vs.Perm (xs ++ ys) → FloatSums xs a →
-      FloatSums ys b → FloatSums vs (FloatCode.lift₂ (· + ·) a b)
+      FloatSums ys b → FloatSums vs (FloatCode.fadd a b)
 
 /-- The doubles a `SUM` of `vs` gives under a `sum_order` behaviour: the
 correctly rounded exact sum for `EXACT`, the reference's (D25). -/
@@ -61,7 +61,7 @@ exact mean rounded once for `EXACT`, else a sum `SumOrder` allows divided by
 the count. -/
 def AvgOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "EXACT" then c = floatAvgCR vs
-  else ∃ s, SumOrder b vs s ∧ c = FloatCode.lift₂ (· / ·) s (FloatCode.ofInt vs.length)
+  else ∃ s, SumOrder b vs s ∧ c = FloatCode.fdiv s (FloatCode.ofInt vs.length)
 
 /-- What a statistical aggregate gives under a `stat_algo` behaviour: the
 exact moments rounded once for `EXACT`, the reference's (D30). An engine's

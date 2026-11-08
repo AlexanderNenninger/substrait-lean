@@ -482,11 +482,75 @@ def withReruns (obs : ObsTable) : ObsTable :=
       if ev != .none && (rerunExact.contains o || (o == "zero_sign" && g == some "fp.arith")) then (g, o, { r with rerun := some Obs.exact, rerunEvidence := ev })
       else (g, o, r)
 
-/-- The engine profiles, under DuckDB's default settings. -/
-def engineTables : List (ProfileTable × ObsTable) :=
-  [(Profile.duckdb.table {}, withReruns Profile.duckdb.obs),
-   (Profile.polars.table, withReruns Profile.polars.obs),
-   (Profile.spark.table, withReruns Profile.spark.obs)]
+/-- What a shim costs at run time. -/
+inductive ShimCost
+  /-- A written argument or keyword (`NULLS LAST`, `nulls_last=True`): free. -/
+  | argument
+  /-- An extra expression per row or group (a `CASE`, a cast). -/
+  | expression
+  /-- An extra sort. -/
+  | sort
+  deriving Repr, DecidableEq
+
+def ShimCost.name : ShimCost → String
+  | .argument => "argument" | .expression => "expression" | .sort => "sort"
+
+/-- An engine profile as the checker reports it: its choices, its
+observation rows, the theorem its translation from the reference rests on,
+and its shims' costs. The checker takes a list of them (`checkerMain`), so a
+package outside this repository can add a profile: it requires this one,
+checks its entry with `#check_engine_profiles`, and builds a checker of its
+own over `builtinEngines ++ [its entry]`. -/
+structure EngineProfile where
+  table : ProfileTable
+  obs : ObsTable
+  /-- The theorem the translation from the reference rests on, by name
+  (`Rel.polars_sound`); `#check_engine_profiles` resolves it. -/
+  translationTheorem : String
+  /-- Each shim of `obs`, by name, with its cost. -/
+  shims : List (String × ShimCost) := []
+  /-- Where the engine executes, as `--options` reports it (`"streaming"`,
+  `"batch"`), or empty. -/
+  executes : String := ""
+  /-- A `--contract` request under this profile gets the reference's report,
+  marked with the profile's name: the profile evaluates as the reference
+  (`Profile.spark_eval`), or a plan states its choices as the reference's
+  templates (`Polars.elaborate_eq`). -/
+  asReference : Bool := false
+
+def EngineProfile.name (e : EngineProfile) : String := e.table.name
+
+/-- The cost of the shim `name` of `e`, if `e` has it. -/
+def EngineProfile.shimCost? (e : EngineProfile) (name : String) : Option ShimCost :=
+  e.shims.lookup name
+
+/-- The engine named `name` among `es`. -/
+def engineNamed? (es : List EngineProfile) (name : String) : Option EngineProfile :=
+  es.find? (·.name == name)
+
+/-- The engine profiles of this repository, DuckDB under its default
+settings. Each one's shims are named as its rows name them; Polars's are
+`python/src/sverify/_polars_shims.py`'s `SHIMS` (named as their lemmas
+`Polars.<name>`), which `tests/test_realizability.py` checks against these. -/
+def builtinEngines : List EngineProfile := [
+  { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
+    translationTheorem := "Rel.duckdb_refines",
+    shims := [("MIN % -1 written out", .expression), ("Dialect.canon", .expression),
+      ("ORDER BY the keys", .sort)] },
+  { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
+    translationTheorem := "Rel.polars_sound", executes := "streaming", asReference := true,
+    shims := [("null_order", .argument), ("round_half_away", .argument),
+      ("int_div_trunc", .expression), ("int_mod_trunc", .expression),
+      ("sum_empty_null", .expression), ("avg_int_declared", .expression),
+      ("one_zero", .expression), ("strpos_chars", .expression),
+      ("substring_wrap", .expression), ("column_divisor", .expression),
+      ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
+      ("max_nan_greatest", .expression), ("sort on the keys", .sort)] },
+  { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
+    translationTheorem := "Rel.spark_sound", executes := "batch", asReference := true,
+    shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
+      ("Dialect.canon", .expression), ("null_order", .argument), ("sort on the keys", .sort),
+      ("decimal_negate_sub", .expression)] }]
 
 /-- **Every DuckDB setting refines the core.** -/
 theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
@@ -521,10 +585,16 @@ def ObsTable.wf (t : ObsTable) : Bool :=
   t.all (fun (_, o, r) => r.wf && (OptionSpec.find? o).isSome) &&
     nodupB (t.map fun (g, o, _) => (g, o))
 
-example : engineTables.all (·.2.wf) := by decide +kernel
-/-- Each observation row is at an option the slice characterizes. -/
-example : engineTables.all fun (_, obs) => obs.all fun (_, o, _) => prototypeSlice.contains o := by
-  decide +kernel
+/-- An engine's rows: well-formed, at options the slice characterizes, and
+its table within the core's (`EngineProfile.leCore`). `#check_engine_profiles`
+evaluates it for a profile from outside; this repository's are proved. -/
+def EngineProfile.rowsWf (e : EngineProfile) : Bool :=
+  e.obs.wf && e.obs.all fun (_, o, _) => prototypeSlice.contains o
+
+/-- `e`'s choices refine the core's (`ProfileTable.le_of_leB`). -/
+def EngineProfile.leCore (e : EngineProfile) : Bool := e.table.leB Profile.core.table
+
+example : builtinEngines.all (·.rowsWf) := by decide +kernel
 
 /-- How many of an engine's rows at `option` need a shim. -/
 def shimCount (obs : ObsTable) (option : String) : Nat :=
@@ -539,13 +609,13 @@ def choicesJson (t : ProfileTable) : Json :=
 
 open Lean (Json toJson) in
 /-- The tool table, with each engine's shim count per option. -/
-def toolsJson : Json :=
+def toolsJson (es : List EngineProfile) : Json :=
   Json.arr <| (Profile.reference.tools.map fun r => Json.mkObj [
     ("option", toJson r.option),
     ("tool", toJson (match r.tool with
       | .raise => "raise" | .choose => "choose" | .leaveOpen => "leave_open")),
     ("precondition", toJson r.precondition),
-    ("shims", Json.mkObj (engineTables.map fun (t, obs) => (t.name, toJson (shimCount obs r.option))))
+    ("shims", Json.mkObj (es.map fun e => (e.name, toJson (shimCount e.obs r.option))))
   ]).toArray
 
 open Lean (Json toJson) in
@@ -608,29 +678,29 @@ def profileRowsJson (t : ProfileTable) (obs : ObsTable) (reference : Bool) : Jso
 
 open Lean (Json toJson) in
 /-- `substrait-check --options`: the options, the groups' options, each
-profile's choices and observation rows, the profiles' versions, and the tool
-table. -/
-def tablesJson : Json :=
+profile's choices and observation rows (the engines `es`), the profiles'
+versions, and the tool table. -/
+def tablesJson (es : List EngineProfile) : Json :=
   optionsJson
     |>.setObjVal! "choices" (Json.mkObj ([
         ("reference", profileRowsJson Profile.reference.table Profile.reference.obs true),
         ("core", choicesJson Profile.core.table),
         ("substrait", profileRowsJson Profile.substrait.table Profile.substrait.obs false)] ++
-      engineTables.map fun (t, obs) => (t.name, profileRowsJson t obs false)))
+      es.map fun e => (e.name, profileRowsJson e.table e.obs false)))
     |>.setObjVal! "profiles" (Json.mkObj ([
         ("reference", Json.mkObj [("engine", Json.null)]),
         ("core", Json.mkObj [("engine", Json.null)]),
         ("substrait", Json.mkObj [("engine", Json.null), ("yaml", toJson Profile.substrait.table.version)])] ++
-      engineTables.map fun (t, _) => (t.name, Json.mkObj [
-        ("engine", toJson t.name), ("versions", toJson [t.version]),
-        ("executes", toJson (if t.name == "polars" then "streaming" else if t.name == "spark" then "batch" else "")),
-        ("missing", Json.arr <| (t.missing.map fun (f, ids) =>
+      es.map fun e => (e.name, Json.mkObj [
+        ("engine", toJson e.name), ("versions", toJson [e.table.version]),
+        ("executes", toJson e.executes),
+        ("missing", Json.arr <| (e.table.missing.map fun (f, ids) =>
           Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))
     |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs),
         ("substrait", obsTableJson Profile.substrait.obs)] ++
-      engineTables.map fun (t, obs) => (t.name, obsTableJson obs)))
-    |>.setObjVal! "versions" (Json.mkObj (engineTables.map fun (t, _) => (t.name, toJson t.version)))
-    |>.setObjVal! "tools" toolsJson
+      es.map fun e => (e.name, obsTableJson e.obs)))
+    |>.setObjVal! "versions" (Json.mkObj (es.map fun e => (e.name, toJson e.table.version)))
+    |>.setObjVal! "tools" (toolsJson es)
     |>.setObjVal! "levels" obsLevelsJson
 
 end Substrait

@@ -82,9 +82,11 @@ def checker_env() -> str | None:
 
 
 def checker_path() -> Path:
-    """`$SVERIFY_CHECKER` if set, else the `substrait-check` the wheel ships
-    with (a symlink to the lake build in an editable install). The first call
-    for a path checks that the checker speaks this sverify's protocol
+    """`$SVERIFY_CHECKER` if set, else the checker an installed engine
+    profile from outside names (`sverify.profiles`), else the
+    `substrait-check` the wheel ships with (a symlink to the lake build in
+    an editable install). The first call for a path checks that the checker
+    speaks this sverify's protocol
     (`CheckerVersionError` if not). `SVERIFY_CHECK`, its name before 1.0, is
     read with a `DeprecationWarning`."""
     path = _checker_file()
@@ -98,6 +100,11 @@ def _checker_file() -> Path:
     needs no process."""
     if env := checker_env():
         return Path(env)
+    from sverify import profiles
+
+    # A profile from outside ships a checker over the built-in profiles and its own.
+    if plugged := profiles.checker():
+        return plugged
     path = Path(__file__).parent / "_bin" / "substrait-check"
     if not path.exists():
         raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECKER")

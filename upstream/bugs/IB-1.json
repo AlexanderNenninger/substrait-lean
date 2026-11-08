@@ -3,7 +3,8 @@
   "project": "ibis",
   "version": "12.0.0",
   "status": "confirmed",
-  "status_note": "Reproduces on 12.0.0 with pandas 3.1.0 and 3.1.1, and on Ibis main (f73d329, 2026-11-02).",
+  "status_note": "Reproduces on 12.0.0 with pandas 3.1.1; Ibis main (6d40f963, 2026-11-05) still reads the option in `ibis/formats/pandas.py` (lines 38 and 60). No upstream issue found.",
+  "title": "Every `execute()` warns: Ibis reads pandas's deprecated `future.infer_string`",
   "summary": "Ibis reads the deprecated `pd.options.future.infer_string` in `PandasType.from_ibis` (`ibis/formats/pandas.py:60`), so every `execute()` warns `Pandas4Warning: The 'future.infer_string' option is deprecated` under pandas 3.1, also for a scalar with no string in it.",
   "repro": "`python -W error::DeprecationWarning -c \"import ibis; ibis.literal(1).execute()\"` raises `Pandas4Warning`.",
   "handling": "The checks on data fetch their counts through Arrow (`_count` in `conditions.py`: `to_pyarrow().as_py()`), so users see no warning ([#479](https://github.com/AlexanderNenninger/substrait-lean/issues/479)). The tests still ignore the message (`filterwarnings` in `python/pyproject.toml`).",
@@ -33,6 +34,16 @@
         "duckdb": "1.5.6"
       },
       "note": "also pandas 3.1.0"
+    },
+    {
+      "checked_at": "2026-11-07",
+      "against": {
+        "ibis-framework": "12.0.0",
+        "ibis main": "6d40f963",
+        "duckdb": "2.0.0",
+        "pandas": "3.1.1"
+      },
+      "note": "triage: repro run on 12.0.0; main read; ibis-project/ibis searched"
     }
   ]
 }
