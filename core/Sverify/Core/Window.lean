@@ -1,4 +1,4 @@
-import SubstraitLean.Aggregate
+import Sverify.Core.Aggregate
 
 /-!
 # Window functions

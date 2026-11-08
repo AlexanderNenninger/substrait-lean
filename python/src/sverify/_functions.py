@@ -5,7 +5,7 @@ the SQL lift and the Ibis producer make of it (#544, wave 3).
 The rows follow `docs/core-semantics.md`: a function's options are its
 group's (`GROUPS`), each option is a row of `OPTIONS`, and each profile
 chooses among an option's behaviours (`CHOICES`). Lean's tables are the
-source (D1, `SubstraitLean/Functions.lean`); `tests/test_functions.py`
+source (D1, `core/Sverify/Core/Functions.lean`); `tests/test_functions.py`
 checks the names, anchors, groups, options and the reference's choices
 against them (`substrait-check --functions` and `--options`, #444).
 

@@ -1,6 +1,6 @@
 import Sverify.Core.Forall2
 import SubstraitLean.Observations
-import SubstraitLean.Order
+import Sverify.Core.Order
 
 /-!
 # Equal up to an observation (#896)

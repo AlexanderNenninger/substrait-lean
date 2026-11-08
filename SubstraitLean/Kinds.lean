@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import Sverify.Core.Rel
 
 /-!
 # Kinds: a decidable kind checker and its soundness

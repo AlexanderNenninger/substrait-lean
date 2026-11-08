@@ -23,7 +23,7 @@ proved from that model; Lean has no lemmas about the model yet.
 `exp` is trusted to one ulp: the platform's `libm` (#582).
 
 `native_sum_error` is the bound of `sum_error` for a fold of native doubles,
-`xs.foldl (· + ·) 0`, which is `floatSum` in `SubstraitLean/Aggregate.lean`
+`xs.foldl (· + ·) 0`, which is `floatSum` in `core/Sverify/Core/Aggregate.lean`
 on codes; `native_avg_error` adds `AVG`'s division by the count.
 -/
 

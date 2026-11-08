@@ -10,7 +10,7 @@ public import FloatBounds.Kahan
 DuckDB computes `VAR_*`, `STDDEV_*` with Welford's update in each thread and
 Chan's merge of the threads' states (duckdb-var-stddev), modelled as
 `StdModel.vEval` of a `VPlan`. `chanVar_rel` bounds its co-moment. What
-`StatProps` (`SubstraitLean/StatProps.lean`) also asks is that the variance
+`StatProps` (`core/Sverify/Core/StatProps.lean`) also asks is that the variance
 is `≥ 0`, which Welford's update keeps only because rounding is monotone:
 the new mean lies between the old one and the value, so `(x − m)` and
 `(x − m')` have one sign. The standard model does not say rounding is

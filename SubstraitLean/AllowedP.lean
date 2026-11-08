@@ -1,5 +1,5 @@
 import SubstraitLean.Allowed
-import SubstraitLean.Options
+import Sverify.Core.Options
 import SubstraitLean.Scopes
 
 /-!
@@ -7,7 +7,7 @@ import SubstraitLean.Scopes
 
 `Rel.Allowed` is the reference's relation. `Rel.AllowedP t` is the same
 relation with every choice point read from a profile's table `t`
-(`SubstraitLean/Options.lean`):
+(`core/Sverify/Core/Options.lean`):
 
 * a call takes the reference's value, or, where `t` allows a behaviour of
   one of its group's options that the reference does not and the call is in

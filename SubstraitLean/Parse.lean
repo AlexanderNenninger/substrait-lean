@@ -1,7 +1,7 @@
 import Lean.Data.Json
 import SubstraitLean.Keys
-import SubstraitLean.Functions
-import SubstraitLean.Options
+import Sverify.Core.Functions
+import Sverify.Core.Options
 import SubstraitLean.Kinds
 
 /-!
@@ -975,7 +975,7 @@ def eagerly (c : Expr) (xs : List Expr) : Expr :=
 
 Substrait lets a plan choose some behaviours (`overflow`, `rounding`, …); a
 consumer takes the first preference it supports. The reference's choices are
-`Profile.reference.table` (`SubstraitLean/Options.lean`, #444): an option is
+`Profile.reference.table` (`core/Sverify/Core/Options.lean`, #444): an option is
 known for a call when its group takes it, and accepted when the reference's
 choice is one of its preferences. A choice may also accept behaviours that
 differ from the model's only on rows where `SubstraitLean/Safety.lean`
@@ -1311,7 +1311,7 @@ def replacement (p r : String) (global : Bool) (a : Expr) : J Expr :=
 `mkCall` maps Substrait standard-extension functions onto the modelled ones,
 one area at a time, the areas of `Write.lean`: core, strings, temporal,
 nested. Each area's `mk…Call?` gives `none` for a function it does not know.
-Its last arm reads the area's table (`SubstraitLean/Functions.lean`): a row
+Its last arm reads the area's table (`core/Sverify/Core/Functions.lean`): a row
 marked `.plain` is read as its constructor, so a function that maps
 one-to-one onto a constructor needs only its row. The others get an arm of
 their own, at the end of the area's dispatcher before the table's arm, so

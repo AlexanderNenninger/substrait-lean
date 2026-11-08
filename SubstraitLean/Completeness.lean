@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import Sverify.Core.Rel
 
 /-!
 # Completeness: nothing that should be in the result is lost

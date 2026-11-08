@@ -1,6 +1,6 @@
 # Reference semantics
 
-What sverify's plans mean. `Rel.eval` (`SubstraitLean/Rel.lean`) is the
+What sverify's plans mean. `Rel.eval` (`core/Sverify/Core/Rel.lean`) is the
 **reference semantics**, the strict profile plans are verified under:
 `verify` proves things about it, and every engine's row of the realizability
 table is its difference from it. The reference is one profile of the core,
@@ -37,7 +37,7 @@ only where the reference may raise; resource errors, such as running out of
 memory, are excluded ([D16](core-semantics.md#d16-engine-correctness)). Lean
 proves partial correctness today, an allowed result or an error
 (`Rel.duckdb_shim_sound`); for a plan verified to never raise the two agree
-(`Rel.duckdb_sound`). `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
+(`Rel.duckdb_sound`). `Rel.eval` (`core/Sverify/Core/Rel.lean`) computes one allowed result, a
 witness (`Rel.eval_allowed`), and `verify` proves its theorems through it.
 
 The set holds more than one result only where the reference leaves a choice
@@ -329,7 +329,7 @@ The reference picks none. Since [D30](core-semantics.md#d30-statistical-aggregat
 its value is the exact moments rounded once (`varOf`, `covOf`, `corrOf`): one
 value, whatever the order of the rows. Before D30 it allowed any result with
 the generic properties below; they are now what an engine's algorithm may
-give (`StatProps` in `SubstraitLean/StatProps.lean`, `StatAlgo` in
+give (`StatProps` in `core/Sverify/Core/StatProps.lean`, `StatAlgo` in
 `AllowedP.lean`), and each engine is within the plan's bound of the
 reference. For `n ≤ 2³²`
 finite values at most `2³⁹⁸`, with `u = 2⁻⁵³`, `tiny = 2⁻¹⁰²²`, the exact

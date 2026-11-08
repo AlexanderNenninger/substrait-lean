@@ -1,5 +1,5 @@
 import SubstraitLean.Issue
-import SubstraitLean.Options
+import Sverify.Core.Options
 
 /-!
 # Option scopes (D34)

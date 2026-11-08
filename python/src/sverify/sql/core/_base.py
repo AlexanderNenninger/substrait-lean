@@ -1258,7 +1258,7 @@ class Distinct:
 
 @dataclass(frozen=True)
 class Measure:
-    """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
+    """`fn` of `arg` over the rows `filter` keeps (`core/Sverify/Core/Aggregate.lean`)."""
 
     fn: Literal[
         "count",

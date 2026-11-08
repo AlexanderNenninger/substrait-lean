@@ -1,4 +1,4 @@
-import SubstraitLean.Window
+import Sverify.Core.Window
 
 /-!
 # Relational operators
@@ -66,7 +66,7 @@ inductive Rel where
   /-- `DISTINCT`: the first occurrence of every row. -/
   | distinct (input : Rel)
   /-- `GROUP BY groups`, appending one column per measure (see
-  `SubstraitLean/Aggregate.lean`). -/
+  `core/Sverify/Core/Aggregate.lean`). -/
   | aggregate (input : Rel) (groups : List Expr) (measures : List Measure)
   /-- `UNNEST` of the list in column `col`: one row per element, in its place
   (no standard Substrait relation; see `docs/nested-values.md`). -/

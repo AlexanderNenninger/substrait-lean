@@ -17,7 +17,7 @@ for `n ≤ 2³²` pairs, all within `B` (`Scale`):
 
 * `twoPass_error`: the mean, then the products of the deviations, added in
   order. This is Lean's own (`sqDevSum`, `coDevSum` in
-  `SubstraitLean/Aggregate.lean`).
+  `core/Sverify/Core/Aggregate.lean`).
 * `textbook_error`: `Σxy − Σx · Σy / n`, the weakest of the three, with
   absolute error `O(n · u · Σx²)`; `64 · n² · u · B²` is of that form.
 * `plan_good` (`FloatBounds/Welford.lean`): Welford's update and Chan's

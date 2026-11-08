@@ -3,7 +3,7 @@ import SubstraitLean.DuckDBProfile
 import SubstraitLean.Issue
 import Sverify.Core.Numeric
 import SubstraitLean.LoweringDuckDB.Lemmas
-import SubstraitLean.Expr
+import Sverify.Core.Expr
 import SubstraitLean.Lowering
 import Lean.Meta.Tactic.Simp.BuiltinSimprocs.Int
 import Lean.Meta.Tactic.Simp.BuiltinSimprocs.Nat

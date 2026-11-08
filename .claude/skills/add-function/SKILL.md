@@ -12,7 +12,7 @@ digests), `temporal`, `nested` (lists, structs, lambdas, UNNEST),
 `aggregates`, `windows`, `relations` and `casts`. A feature edits its area's
 file; touch the shared `_base.py` only for what the area files say lives there.
 
-- **Substrait function** (`SubstraitLean/Functions.lean`): add a row at the
+- **Substrait function** (`core/Sverify/Core/Functions.lean`): add a row at the
   end of its area's table (`core`, `strings`, `temporal`, `nested`,
   `aggregates`, `windows`), one per constructor it is modelled by, with the
   next free anchor in that area's range (100s core, 200s strings, 300s

@@ -1,7 +1,7 @@
 import SubstraitLean.LiftSearch
 import Sverify.Core.Numeric
 import Init.Data.Option.Basic
-import SubstraitLean.Expr
+import Sverify.Core.Expr
 import SubstraitLean.LiftDuckDB.Duckdb.Arith
 import SubstraitLean.LiftDuckDB.Duckdb.Compare
 import SubstraitLean.LiftDuckDB.Duckdb.Math

@@ -1,7 +1,7 @@
 import SubstraitLean.LiftSearch
 import Sverify.Core.Numeric
 import Init.Data.Option.Basic
-import SubstraitLean.Expr
+import Sverify.Core.Expr
 
 /-!
 # Substrait.liftDuckDB: Casts

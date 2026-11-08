@@ -1,4 +1,4 @@
-import SubstraitLean.Aggregate
+import Sverify.Core.Aggregate
 
 /-!
 # What a statistical aggregate may give (#85)

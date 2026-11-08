@@ -1,6 +1,6 @@
 import SubstraitLean.Decomposable
 import SubstraitLean.OrderAllowed
-import SubstraitLean.StatProps
+import Sverify.Core.StatProps
 import SubstraitLean.ObsEquiv
 
 /-!

@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import Sverify.Core.Rel
 
 /-!
 # Aggregates whose value does not depend on the order of their rows

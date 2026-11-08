@@ -321,7 +321,7 @@ in every profile.
 
 Functions with the same options share a row. Every function of an area is in
 exactly one group; wave 3's tables give each function its group
-(`SubstraitLean/Functions.lean`, one row per constructor, so `add` has a row
+(`core/Sverify/Core/Functions.lean`, one row per constructor, so `add` has a row
 in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 
 | Area | Group | Functions | Options |
@@ -382,7 +382,7 @@ each `fp.*` group covers both formats, and the options apply per format.
 
 Three tables, the first two shared by every profile:
 
-1. Options (`SubstraitLean/Options.lean`, new): one row per option of the
+1. Options (`core/Sverify/Core/Options.lean`, new): one row per option of the
    catalogue above.
 2. Functions (wave 3: the per-area tables of
    [#269](https://github.com/AlexanderNenninger/substrait-lean/issues/269) in
@@ -413,7 +413,7 @@ def options : List OptionSpec := [
   … ]
 ```
 
-Checks by `decide` (`SubstraitLean/Options.lean`) reject a repeated id or
+Checks by `decide` (`core/Sverify/Core/Options.lean`) reject a repeated id or
 behaviour, and a `yaml` value or `extra` behaviour outside `core`; the rest of
 `core` is sverify's own (`ONE_ZERO`, `DROP_BITS`). `tests/test_functions.py`
 checks that every fact id names a file of `characterization/*/facts/`.
@@ -1362,7 +1362,7 @@ were probed at, and the profile is only as good as its facts.
 The choices table holds, next to each choice, its class, its observation
 `q` and its shim: each (profile, group, option) row reads choice, class,
 `q`, shim, so an engine's realizability row comes from one table. This
-extends step 1a's `ProfileTable` (#578, `SubstraitLean/Options.lean`): a
+extends step 1a's `ProfileTable` (#578, `core/Sverify/Core/Options.lean`): a
 column for the class and `q`, one for the run-to-run variation
 ([D20](#d20-two-observations-per-output)) and one for the shim, filled for
 engines in step 3a, and read by step 1c.
@@ -1751,7 +1751,7 @@ engines go from refining exactly to within a plan's bound.
 In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition)
 `NULL = NULL` is unknown, so a NULL never matches, never equals and never
 compares: three-valued logic, `and3`/`or3`/`not3` and `BinFn.apply .eq` in
-`SubstraitLean/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
+`core/Sverify/Core/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
 `EXCEPT`, `INTERSECT`, a window's `PARTITION BY` and `IS NOT DISTINCT FROM`,
 all NULLs are one value: syntactic equality, `Value.decEq` in
 `core/Sverify/Core/Value.lean`, as `dedup` and `groupKey` use it. A key

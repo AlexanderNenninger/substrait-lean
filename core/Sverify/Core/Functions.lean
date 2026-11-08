@@ -1,5 +1,5 @@
 import Lean.Data.Json
-import SubstraitLean.Aggregate
+import Sverify.Core.Aggregate
 import Sverify.Core.Reflect
 
 /-!

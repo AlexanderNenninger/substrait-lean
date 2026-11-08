@@ -1,5 +1,5 @@
 import Sverify.Core.Forall2
-import SubstraitLean.Rel
+import Sverify.Core.Rel
 
 /-!
 # Every order the reference allows, below the analyses (#679, D24, #904)

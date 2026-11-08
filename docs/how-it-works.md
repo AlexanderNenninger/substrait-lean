@@ -76,7 +76,7 @@ rows (3):
   (3, "ada")
 ```
 
-What it accepts is the model's fragment (`SubstraitLean/Rel.lean` lists the
+What it accepts is the model's fragment (`core/Sverify/Core/Rel.lean` lists the
 operators): the coverage table under [What is supported](../README.md#what-is-supported)
 probes it from the Ibis side, and the catalogue's
 [`features.toml`](../catalogue/features.toml) records it per feature. Function

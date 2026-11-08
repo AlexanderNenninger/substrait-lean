@@ -1,4 +1,4 @@
-import SubstraitLean.Order
+import Sverify.Core.Order
 import Sverify.Core.Dedup
 import Sverify.Core.FloatMoments
 

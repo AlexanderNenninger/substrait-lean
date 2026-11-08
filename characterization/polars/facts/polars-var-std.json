@@ -78,7 +78,7 @@
     "The Python wheels build with the `nightly` feature, so `alg_add_f64` is Rust's `algebraic_add`, which lets the compiler reassociate and fuse the additions of a block's two passes: their rounding order is the compiler's, fixed per build. Welford's updates (`online_variance`, `VarState::insert_one`) and Chan's merge use plain IEEE operations.",
     "Streaming runs `VarState` too. Ungrouped, each morsel's chunks go through the 128-value blocks and merge by Chan's formula into their pipeline's state, and the pipelines' states merge in pipeline order: block boundaries follow the morsels. Grouped, each value goes through `insert_one` (Welford) and the pipelines merge by Chan's formula. In memory, groups of indices use `online_variance` (Welford, no clamp). The two engines agree on NULL, the clamp of `VarState` and the type, and can differ in the last bits."
   ],
-  "reference": "`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
+  "reference": "`AggFn.var` (`varOf`, `core/Sverify/Core/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
   "evidence": "probe",
   "superseded_by": "polars-var-std-streaming",

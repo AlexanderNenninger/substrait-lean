@@ -1,5 +1,5 @@
 import Lean.Data.Json
-import SubstraitLean.Functions
+import Sverify.Core.Functions
 
 /-!
 # The options and the profiles' choices

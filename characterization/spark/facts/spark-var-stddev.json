@@ -100,7 +100,7 @@
     "`var_samp`/`variance`/`stddev_samp`/`stddev`/`std` take the sample (`distribution: SAMPLE`), `var_pop`/`stddev_pop` the population. Every input type, `BIGINT` and decimals included, is cast to `DOUBLE`, and the result is `DOUBLE`. The probes: one value gives NULL for the sample forms and 0.0 for the population ones (NaN for the sample forms with `spark.sql.legacy.statisticalAggregate`); 1e9 + {4, 7, 13, 16} gives exactly 30 and 22.5, Welford's update cancelling no digits there.",
     "Probed (`sverify_dev.probe_statistics`): `VAR_SAMP` 30 and `VAR_POP` 22.5 of {4, 7, 13, 16} shifted by 0, 1e6, 1e8, 1e9 and 1e12; values whose textbook variance in doubles is negative give 0.0."
   ],
-  "reference": "`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
+  "reference": "`AggFn.var` (`varOf`, `core/Sverify/Core/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [

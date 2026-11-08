@@ -1,5 +1,5 @@
 import Lean.Data.Json
-import SubstraitLean.Options
+import Sverify.Core.Options
 
 /-!
 # Observations, classes and the reference's tools (#444)
