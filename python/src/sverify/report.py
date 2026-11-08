@@ -159,6 +159,27 @@ RUNTIME_CHECK = (
 )
 
 
+#: What a run says of the groups a margin check flags (#929).
+MARGIN_TEXT = (
+    "{k} group(s) have {col} within its bound of the threshold{at} (the bound per group "
+    "from its count and Σ|x|; {engine}'s SUM adds in an order of its own, {facts}): "
+    "{engine} may keep other groups than the reference there. Widen the threshold's "
+    'margin, sum in DECIMAL, or verify with on_inferred="warn" to keep them, '
+    "the contract holding up to the bound"
+)
+
+
+def _margin_line(chk: Mapping[str, Any]) -> str:
+    """What a report says of a margin check (#929)."""
+    col = chk.get("column") or "a SUM"
+    t = chk.get("threshold")
+    at = f" {decode_double(t):g}" if t is not None else ""
+    return (
+        f"{col} is farther than its bound from the threshold{at} in every group, so the "
+        "engine keeps the reference's groups (the bound per group from its count and Σ|x|)"
+    )
+
+
 #: How a report explains a `SUM` it assumes fits (`Report.assumed`).
 SUM_ASSUMED = (
     "fits {} in every group (checked at run time: the job raises if it does not; "
@@ -476,6 +497,16 @@ class Report:
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
     does not."""
+    _margin_checks: list[dict[str, Any]] = field(default_factory=list, repr=False, compare=False)
+    """The margin checks of the plan's threshold filters on double sums
+    (#929): per filter, a plan that counts the groups whose sum lies within
+    its bound's margin of the threshold (`Rel.marginCheck`). `run` runs each
+    on the engine before the plan (`check_margins`); `rows_exact` holds
+    given them."""
+    margin_flags: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
+    """After a run with `on_inferred="warn"`, per engine, the groups the
+    margin checks flagged (#929): for those, the contract holds up to the
+    sum's bound."""
     _rows_exact: dict[str, bool] | None = field(default=None, repr=False, compare=False)
     """Per engine, whether every filter, key and sort of the plan keeps the
     same rows and groups under the columns' `ε` (#568's threshold rule): a
@@ -910,6 +941,8 @@ class Report:
                 raise routes.RouteError(chosen)
         if check_requires:
             self.check_inputs(con)
+        if kind != "unverified":
+            self.check_margins(con, engine, target)
         if target == "polars" and (chosen is not None or streaming == "require"):
             self._streaming(con, chosen, streaming)
         # The check of an overflow to ±∞ is the reference's precondition
@@ -929,6 +962,47 @@ class Report:
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
         return out
+
+    def check_margins(self, con: Connection, engine: Any, target: str) -> int:
+        """Run the margin checks of the plan's threshold filters on double
+        sums (#929, `Rel.marginCheck`) on `engine`, on the tables of `con`
+        the plan reads too, and count the groups they flag: those whose sum
+        lies within its bound's margin of the threshold, where the engine may
+        keep other groups than the reference.
+
+        Returns:
+            The groups flagged; with `verify(on_inferred="warn")`, also
+            recorded in `margin_flags` and warned about (`InferredWarning`).
+
+        Raises:
+            PreconditionError: A check flags a group, and the report was not
+                verified with `on_inferred="warn"`.
+        """
+        from sverify import routes
+        from sverify.contracts import InferredWarning
+
+        total = 0
+        for chk in self._margin_checks:
+            # Without the overflow checks of #575: the margin is at most `A`, and
+            # a `v − t` past the largest double is farther than any bound.
+            res = run_plan(con, written_plan(json.dumps(chk["plan"])), engine, finite=False)
+            k = int(res.column(0)[0].as_py() or 0)
+            if not k:
+                continue
+            total += k
+            r = routes.row(target, "agg.fsum", "sum_order") or {}
+            facts = ", ".join(r.get("facts") or ()) or "its sum_order row"
+            col = chk.get("column") or "the SUM"
+            t = chk.get("threshold")
+            at = f" of {decode_double(t):g}" if t is not None else ""
+            msg = MARGIN_TEXT.format(k=k, col=col, at=at, engine=target, facts=facts)
+            if self._on_inferred == "warn":
+                warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            else:
+                raise PreconditionError(msg)
+        if self._on_inferred == "warn":
+            self.margin_flags[target] = total
+        return total
 
     def _assumed(self) -> list[Issue]:
         """The assumptions a report shows: not those about an operation
@@ -1314,6 +1388,7 @@ class Report:
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
+        lines += [f"checks at run time: {_margin_line(c)}" for c in self._margin_checks]
         for i in self.errors:
             lines.append(f"may fail: {i.message}")
             if i.hint:

@@ -128,6 +128,13 @@ other pages link here.
   `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
+- The margin check of a threshold filter on a double `SUM` (#929,
+  `Rel.marginCheck`): that the plan it writes computes, per group, the test
+  `StdModel.margin_check` is about, and that `Report.run` runs it on the same
+  inputs as the plan, the same snapshot. Within a run both read the
+  connection's tables, as `check_inputs` does; a source that changes between
+  the check and the plan (a live table) breaks it. `tests/test_margin.py`
+  runs the check against its formula in Python's doubles.
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON. On the Python side, the glue of
   incremental views (change tables, consolidation, merge).
@@ -319,6 +326,7 @@ generators, then the trusted reading and writing.
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
 | `EngineSound.lean` | What an engine's model is sound for (#900): `Engine.Sound` per engine, `Engine.contract_sound` on the model's rows, and `Engine.contract_sound_runs` on the actual output under the transfer check |
+| `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |

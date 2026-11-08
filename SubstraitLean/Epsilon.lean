@@ -1,5 +1,6 @@
 import SubstraitLean.ShardCheck
 import SubstraitLean.Transfer
+import SubstraitLean.MarginCheck
 
 /-!
 # The float tolerance of a plan's outputs (#444, #85)
@@ -472,14 +473,21 @@ differ between engines. -/
 def keepIf (ok : Bool) (cs : List (Option (Float × Bool))) : List (Option (Float × Bool)) :=
   if ok then cs else cs.map (·.map fun (e, _) => (e, false))
 
+/-- A threshold filter the margin check decides on `engine` (#929): one the
+check covers (`Rel.marginCheck`), on an engine whose sums are in the orders
+`StdModel.margin_check` covers. The check runs on the data before the plan. -/
+def marginCovered (es : List EngineProfile) (engine : String) (r : Rel) (c : Expr) : Bool :=
+  (Rel.filter r c).marginCheck.isSome && ordersProved (es.filter (·.name == engine))
+
 /-- Each column's error on `engine`, and whether it is proved, for plans of
-projections, filters, sorts and one aggregate over reads. -/
+projections, filters, sorts and one aggregate over reads. A threshold filter
+the margin check covers keeps the reference's rows (`marginCovered`). -/
 def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (T : WindowKeys) : Rel → Option (List (Option (Float × Bool)))
   | .read t => some ((List.range (cat t).arity).map fun _ => some (0.0, true))
   | .values n _ => some ((List.range n).map fun _ => some (0.0, true))
   | .filter r c => (colEps es engine cat A F T r).map fun cs =>
-      keepIf (exactP (exprEps engine (r.aeval cat A F T) cs c)) cs
+      keepIf (exactP (exprEps engine (r.aeval cat A F T) cs c) || marginCovered es engine r c) cs
   | .orderBy r keys => (colEps es engine cat A F T r).map fun cs =>
       keepIf (keys.all fun k => exactP (cs.getD k.col none)) cs
   | .distinct r => (colEps es engine cat A F T r).map fun cs => keepIf (cs.all exactP) cs
@@ -539,7 +547,8 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
     (F : String → List Fact) (T : WindowKeys) : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r c => rowsExact es engine cat A F T r &&
-      (colEps es engine cat A F T r).any fun cs => exactP (exprEps engine (r.aeval cat A F T) cs c)
+      (marginCovered es engine r c ||
+        (colEps es engine cat A F T r).any fun cs => exactP (exprEps engine (r.aeval cat A F T) cs c))
   | .orderBy r keys => rowsExact es engine cat A F T r &&
       (colEps es engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
   | .distinct r => rowsExact es engine cat A F T r &&
@@ -642,6 +651,53 @@ def rowsExactByEngine (es : List EngineProfile) (input : Json) : Except String J
   let root := plan.root.capReads caps
   let T := Rel.keyedWindows cat A F (fun _ => [])
   return Json.mkObj <| es.map fun e => (e.name, toJson (rowsExact es e.name cat A F T root))
+
+/-- `"margin_checks"` of a `--contract` request (#929): the margin check of
+each threshold filter on a double `SUM` that no static bound decides, as a
+plan of its own (`Rel.marginCheck`), with the column it reads. `Report.run`
+runs each on the engine before the plan and counts the groups it flags. -/
+def marginChecksJson (es : List EngineProfile) (input : Json) : Except String Json := do
+  let some tj := (input.getObjVal? "transform").toOption | return Json.arr #[]
+  let plan ← parseJsonPlan tj
+  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
+    parseJsonPlan
+  let tables : Tables := (plan :: requires).flatMap (·.tables)
+  let cat : Catalog := fun t => match tables.lookup t with
+    | some (n, _) => ⟨n, []⟩
+    | none => ⟨0, []⟩
+  let schemas : String → List AVal := fun t => match tables.lookup t with
+    | some (_, s) => schemaEnv s
+    | none => []
+  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
+  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
+  let A := fun t => tableEnv (schemas t) (preOf t)
+  let F := fun t => (preOf t).flatMap Expr.factsOf
+  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  -- The filters no static bound decides on some engine, judged on the plan
+  -- with its reads capped (`Rel.capReads`); the check reads the data as it is.
+  let rec sites : Rel → List (Rel × Rel)
+    | r@(.filter i c) =>
+      let ic := i.capReads caps
+      let static := es.all fun e => (colEps es e.name cat A F T ic).any fun cs =>
+        exactP (exprEps e.name (ic.aeval cat A F T) cs c)
+      (if static then [] else r.marginCheck.toList.map (r, ·)) ++ sites i
+    | .project i _ | .emit i _ | .fetch i _ _ | .window i .. | .orderBy i _ | .distinct i
+    | .aggregate i _ _ | .unnest i _ => sites i
+    | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => sites a ++ sites b
+    | .read _ | .values _ _ => []
+  let schemaOf := Write.planSchemas plan
+  return Json.arr <| (sites plan.root).toArray.map fun (site, chk) =>
+    -- The threshold, and the column's name where the filter is the plan's output.
+    let (j, t) := match site with
+      | .filter _ c => (c.thresholdOf.getD (0, .lit .null))
+      | _ => (0, .lit .null)
+    let tv : Json := match t.eval [] with
+      | .float code => toJson code
+      | _ => Json.null
+    Json.mkObj ([("plan", Write.writePlan schemaOf plan.catalog chk ["flagged"]),
+      ("threshold", tv)] ++
+      if site == plan.root then [("column", toJson (plan.names.getD j ""))] else [])
 
 /-- Where an output column comes from, as far as window aggregates of doubles
 go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that

@@ -891,6 +891,11 @@ def infer_bounds(
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
+    if on_inferred == "off" and out._margin_checks:
+        # Nothing is checked on the data: a threshold filter on a double sum
+        # may keep other groups than the reference's (#568).
+        out._margin_checks = []
+        out._rows_exact = dict.fromkeys(out._rows_exact or {}, False)
     if not out.deterministic and not isinstance(transform, str):
         out.ties = _confirmed_ties(transform, requires, out, tables, params, inputs, semantics)
     if on_inferred == "warn" and out._inferred:
@@ -1648,6 +1653,7 @@ def _verify_once(
         _depends=out.get("depends"),
         _epsilon=out.get("epsilon"),
         _rows_exact=out.get("rows_exact"),
+        _margin_checks=list(out.get("margin_checks") or []),
         _contract=contract,
         _transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,

@@ -308,9 +308,12 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
           (Lean.Json.mkObj [])
         -- Per postcondition, whether it holds on every engine's doubles (#1045).
         let robust := (EngineRobust.robust es j).toOption.getD (Lean.Json.arr #[])
+        -- The margin checks of threshold filters on double sums (#929).
+        let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
         match underProfile es j (report.json |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
-            |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust)
+            |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
+            |>.setObjVal! "margin_checks" margins)
             report.allProved with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>
