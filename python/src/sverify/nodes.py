@@ -1038,7 +1038,7 @@ class StageRefresh:
                 parts.append(f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}")
         return f"{self.heading}: " + ", ".join(parts)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, examples: bool = False) -> dict[str, Any]:
         """The entry as JSON values (`Refresh.to_json`)."""
         report = self.report
         return {
@@ -1059,7 +1059,7 @@ class StageRefresh:
             ],
             "quarantined": self.quarantined,
             "quarantine_table": self.quarantine_table,
-            "quarantine": [q.to_dict() for q in self.quarantine],
+            "quarantine": [q.to_dict(examples=examples) for q in self.quarantine],
             "write": None
             if self.write is None
             else {
@@ -1143,12 +1143,21 @@ class Refresh:
         outcomes = {s.outcome for s in self.nodes}
         return next((o for o in ("held", "quarantined") if o in outcomes), "ok")
 
-    def alert(self) -> str | None:
+    def alert(self, *, rows: bool = False) -> str | None:
         """A short Markdown text for whoever is on call, when the outcome is
-        not "ok": per node, what broke, how many rows, a few examples, where
-        the rows are, and what to do. None when there is nothing to say.
+        not "ok": per node, what broke, how many rows, where the rows are,
+        and what to do. None when there is nothing to say.
 
-        A scheduled job posts it, for example as a GitHub issue (#771)."""
+        A scheduled job posts it, for example as a GitHub issue (#771).
+
+        Args:
+            rows: Whether the text shows a few of the rows that broke a
+                condition (rows of the user's data) as Markdown tables.
+                Default False: counts, labels and where the rows are, so the
+                text can go where more people read it than read the data
+                (#887). The rows stay on `PreconditionError.rows` and
+                `QuarantineReport.examples`.
+        """
         parts = []
         for s in self.nodes:
             if s.outcome == "ok":
@@ -1156,15 +1165,15 @@ class Refresh:
             lines = [f"### {s.node}"]
             if s.held is not None:
                 lines.append(f"Held: {s.held}.")
-                rows = getattr(s.held_error, "rows", None)
-                if rows is not None and rows.num_rows:
-                    lines.append(_markdown_rows(rows))
+                held = getattr(s.held_error, "rows", None)
+                if rows and held is not None and held.num_rows:
+                    lines.append(_markdown_rows(held))
                 lines.append("Fix the rows upstream: the next refresh reads the batch again.")
             for q in s.quarantine:
                 if not (q.quarantined or q.released or q.deleted):
                     continue
                 lines.append(f"{q}.")
-                if q.examples is not None and q.examples.num_rows:
+                if rows and q.examples is not None and q.examples.num_rows:
                     lines.append(_markdown_rows(q.examples))
             if s.quarantined:
                 where = s.quarantine_table or "memory (`node.quarantined()`)"
@@ -1176,19 +1185,26 @@ class Refresh:
             parts.append("\n\n".join(lines))
         return "\n\n".join(parts) or None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, examples: bool = False) -> dict[str, Any]:
         """The refresh as JSON values: its format, `outcome` and one entry
-        per node (`StageRefresh.to_dict`)."""
+        per node (`StageRefresh.to_dict`).
+
+        Args:
+            examples: Whether each quarantine entry's `examples` carries up
+                to ten of the rows it set aside (rows of the user's data).
+                Default False: `examples` is an empty list, so the document
+                can go to a CI artifact or an issue (#887).
+        """
         return {
             "$schema": REFRESH_SCHEMA,
             "format": REFRESH_FORMAT,
             "outcome": self.outcome,
-            "nodes": [s.to_dict() for s in self.nodes],
+            "nodes": [s.to_dict(examples=examples) for s in self.nodes],
         }
 
-    def to_json(self) -> str:
+    def to_json(self, *, examples: bool = False) -> str:
         """`to_dict` as JSON, for a CLI or a scheduled job."""
-        return json.dumps(self.to_dict(), default=str)
+        return json.dumps(self.to_dict(examples=examples), default=str)
 
     def __str__(self) -> str:
         return "\n".join(str(s) for s in self.nodes)

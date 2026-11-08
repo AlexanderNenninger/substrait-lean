@@ -30,6 +30,7 @@ from sverify.io._common import (
     SinkWrite,
     check_same_state,
     other_tables,
+    public_uri,
     sink_schema,
     view_contract_record,
 )
@@ -243,7 +244,7 @@ class Sink:
     ):
         self.name = name
         self.app_id = app_id or f"sverify:{name}"
-        self.location = location or name
+        self.location = public_uri(location) if location else name
         if reproducible is not None:
             self.reproducible = reproducible
 

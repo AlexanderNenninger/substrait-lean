@@ -206,6 +206,38 @@ def test_a_failure_fails_the_run_and_aborts_the_rest(tmp_path):
     assert "PreconditionError" in fail["run"]["facets"]["errorMessage"]["message"]
 
 
+def test_a_library_error_sends_its_type_and_the_trace_only_when_asked(tmp_path, monkeypatch):
+    """Another library's error text can name a bucket, an endpoint or a
+    catalog URI, and a trace the paths of the machine: neither reaches the
+    lineage server unless `trace=True` (#887)."""
+    leak = "s3://svfake-user:svfake-password@bucket/raw"
+
+    def broken(self, change):
+        raise RuntimeError(f"cannot reach {leak}")
+
+    monkeypatch.setattr(DeltaSink, "write", broken)
+    for trace in (False, True):
+        log = tmp_path / f"events-{trace}.jsonl"
+        p = orders().pipe(paid).write(DeltaSink(str(tmp_path / f"paid-{trace}")))
+        with pytest.raises(RuntimeError):
+            p.refresh(lineage=ol.Lineage(log, trace=trace))
+        (fail,) = (valid(e) for e in events(log) if e["eventType"] == "FAIL")
+        facet = fail["run"]["facets"]["errorMessage"]
+        assert facet["message"] == "RuntimeError"
+        assert ("stackTrace" in facet) is trace
+        assert (leak in log.read_text()) is trace
+
+
+def test_recorded_uris_carry_no_userinfo():
+    """A URI with credentials in it is recorded without them (#887)."""
+    sink = DeltaSink("s3://AKIAFAKE:svfake-secret@bucket/marts/paid?versionId=1#x")
+    assert sink.location == "s3://bucket/marts/paid"
+    assert sink.name == "paid"
+    assert ol.dataset_id(sink) == ("s3://bucket", "marts/paid")
+    lineage = ol.Lineage("https://svfake:svfake-secret@marquez.example/api?key=svfake-key")
+    assert "svfake" not in repr(lineage) and "marquez.example/api" in repr(lineage)
+
+
 def test_the_plan_parts_are_built_once_per_node(tmp_path, monkeypatch):
     """The contract, its Substrait export and the column lineage change only
     with the plan: later refreshes reuse them."""

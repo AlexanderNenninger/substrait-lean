@@ -262,7 +262,9 @@ class Source(Pipeable, ABC):
         number, a high-water mark, the files read. Then `read(cursor)` must
         return what is new since, and the next refresh is incremental. A
         sink records the cursor if it has a JSON form (see
-        `Batch.cursor`).
+        `Batch.cursor`). It stores it in clear, in the table's own metadata,
+        where every reader of the table can read it: a cursor must not be a
+        credential, a signed URL or a token that grants access (#887).
 
         The restored table is trusted to be the table the stored nodes were
         computed from; `refresh(audit=True)` reads the whole table again on
