@@ -813,6 +813,58 @@ def _(mo):
     gives the same rows. The proof therefore describes what the engine
     computes, however it breaks ties.
 
+    A run can ask for more: `report.run(con, engine,
+    reproducible=sv.equivalent())` refuses a plan whose result a rerun may
+    change, and names the key that would fix it. We'll take the largest
+    order, where two orders tie on the amount:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from sverify.errors import RouteError as _RouteError
+
+    con_ties = sv.connect()
+    con_ties.create(
+        "orders",
+        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 30), (2, "bob", 30), (3, "cy", 5)],
+    )
+    _orders = con_ties.table("orders")
+    _largest = sv.verify(_orders.order_by(ibis.desc("amount")).limit(1))
+    try:
+        _largest.run(con_ties, "duckdb", reproducible=sv.equivalent())
+    except _RouteError as _e:
+        print(f"RouteError: {_e}")
+    return (con_ties,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The fix is the one the refusal names: a key in the order. With `id` as
+    the tiebreak and `sv.key("id")` in `requires`, the result is
+    determined, and the run goes ahead:
+    """)
+    return
+
+
+@app.cell
+def _(con_ties, ibis, sv):
+    _orders = con_ties.table("orders")
+    _largest = sv.verify(
+        _orders.order_by([ibis.desc("amount"), "id"]).limit(1),
+        requires={"orders": [sv.key("id")]},
+    )
+    assert _largest.deterministic
+    _largest.run(con_ties, "duckdb", reproducible=sv.equivalent()).to_pylist()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### ASOF joins
 
     An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their
