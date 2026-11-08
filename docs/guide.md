@@ -982,8 +982,9 @@ group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
 [`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
-`DECIMAL` `SUM` and `AVG` keep the same state, `SUM` and `AVG` of doubles
-an exact one, rounded once, with no drift
+`DECIMAL` `SUM` and `AVG` keep the same state, `SUM`, `AVG`, `VAR`,
+`STDDEV`, `COVAR` and `CORR` of doubles an exact one, rounded once, with no
+drift
 (`LinearAgg.fsum_no_drift` in
 [`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
