@@ -524,7 +524,7 @@ parameter, as an unknown value of its type, is planned (#354).
 ## How the model holds a plan
 
 Choices of the Lean model that shape how a plan is represented and
-evaluated. Where an entry names DataFusion, it records how that experimental
+evaluated. Where an entry names DataFusion, it records how that optional
 engine differs ([the engines](stability.md#engines)).
 
 * Positional schemas. Substrait field references are ordinals, so a
@@ -572,9 +572,9 @@ engine differs ([the engines](stability.md#engines)).
   value in the model is `NULL`.
 * Strings are Unicode scalar values. `substring`, `strpos`, `LIKE`, `btrim`, `||`,
   `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
-  computed exactly, checked against DuckDB (and Rust's string functions, as
-  DataFusion computes them) by `python/tests/test_text.py`; a
-  `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
+  computed exactly, by Rust's string functions: `python/tests/test_text.py` checks
+  them against DuckDB where DuckDB computes them so, and Polars and DuckDB running
+  Lean's plans everywhere; a `repeat` of more than 2³¹ - 1 bytes is an error. `UPPER`, `LOWER`,
   `ILIKE`, regular expressions, `md5` and `sha256` are black boxes (`opaque`): no proof
   depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
   regular expressions with RE2's leftmost-first matching ([Regex.lean](../SubstraitLean/Regex.lean))
@@ -598,8 +598,8 @@ engine differs ([the engines](stability.md#engines)).
   `^` only (its shifts are not 64-bit, and its libm is not documented). Checked by
   `python/tests/test_math.py`.
 * Timestamps are microseconds (UTC). `date_part` and `date_trunc` are computed
-  exactly, checked against DuckDB and DataFusion by `python/tests/test_time.py`, including at
-  the ends of the ranges where DataFusion stops being exact; dates are in [Temporal](#temporal).
+  exactly, checked against DuckDB and Python's calendar by `python/tests/test_time.py`,
+  including at the ends of the nanosecond range; dates are in [Temporal](#temporal).
 * Integer `//` from Ibis is exact. Ibis compiles it through doubles
   (`CAST(FLOOR(CAST(a AS DOUBLE) / b) AS BIGINT)`), which is wrong beyond 2⁵³;
   `sverify` compiles it to integer division instead.

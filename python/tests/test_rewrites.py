@@ -92,6 +92,7 @@ TYPED = [
 ]
 
 
+@pytest.mark.backend("datafusion")
 @pytest.mark.parametrize("sql", TYPED)
 def test_written_plans_run_on_datafusion(sql):
     con = connect()

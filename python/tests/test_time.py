@@ -13,9 +13,10 @@
   parts and truncation give Lean's rows on Polars and DuckDB, and fail
   outside the dates chrono computes; Ibis's date operations that
   DataFusion's own SQL cannot run agree with Python's calendar.
-* Times of day (`CAST(ts AS TIME)`, clock parts) and `strftime` agree with
-  DataFusion's own SQL (chrono's formats, which no other engine has) within
-  the years chrono represents, and fail outside them.
+* Times of day (`CAST(ts AS TIME)`, clock parts) and `strftime` (chrono's
+  formats) give Lean's rows on Polars and DuckDB within the years chrono
+  represents, Lean's agree with Python's calendar in years 1000 to 9999, and
+  they fail outside chrono's years.
 * Time-based windows mean what Polars' `rolling_sum_by` and
   `group_by_dynamic` compute.
 """
@@ -34,7 +35,6 @@ from ibis import _
 import sverify as sv
 from sverify import duckdb_engine, polars_engine
 from sverify.engine import (
-    collect,
     connect,
     put_table,
     run_checker,
@@ -450,7 +450,7 @@ TOD_EXPR = R_TS.select(
 def tod_runs(
     expr: ibis.Table,
     values: list[int | None],
-    engines: tuple[str, ...] = ("datafusion", "polars", "duckdb"),
+    engines: tuple[str, ...] = ("polars", "duckdb"),
 ) -> dict[str, list[tuple]]:
     """As `date_runs`, over a timestamp column `ts`; times as microseconds.
     Lean always runs; `engines` picks the others."""
@@ -469,10 +469,6 @@ def tod_runs(
     written = written_plan(json.dumps(plan))
     inline_tables(plan, {"r": [(v,) for v in values]})
     runs = {
-        # chrono's formats and years, which only DataFusion's own SQL has.
-        "datafusion": lambda: plain(
-            collect(con._datafusion_session.sql(ibis.to_sql(expr, dialect="datafusion")))
-        ),
         "polars": lambda: plain(run_plan(con, written, "polars")),
         "duckdb": lambda: plain(run_plan(con, written, "duckdb")),
     }
@@ -485,16 +481,33 @@ chrono = st.one_of(
 )
 
 
-@pytest.mark.backend("datafusion")
+def python_tod(v: int) -> tuple:
+    """`TOD_EXPR` of a timestamp in years 1000 to 9999, by Python's calendar."""
+    d = datetime(1970, 1, 1) + timedelta(microseconds=v)
+    clock = d.strftime("%Y-%m-%d %H:%M:%S")
+    return (v % US_PER_DAY, clock, f"{clock} {d.strftime('%j')} %", d.hour)
+
+
+#: Years 1000 to 9999, where chrono's `%Y` is Python's.
+FOUR_DIGITS = (
+    int((datetime(1000, 1, 1) - datetime(1970, 1, 1)) / timedelta(microseconds=1)),
+    int((datetime(9999, 12, 31, 23, 59, 59) - datetime(1970, 1, 1)) / timedelta(microseconds=1)),
+)
+
+
 @settings(max_examples=40, deadline=None)
 @given(values=st.lists(st.one_of(st.none(), chrono), max_size=8))
-def test_times_of_day_and_formats_match_datafusion(values):
+def test_times_of_day_and_formats_match_the_reference(values):
     """`CAST(ts AS TIME)`, `to_char` (chrono's `%Y`: four digits, a sign
-    outside 0 to 9999) and clock parts of a time agree with DataFusion."""
+    outside 0 to 9999) and clock parts of a time: Polars and DuckDB give
+    Lean's rows, and Lean's are Python's in years 1000 to 9999."""
     runs = tod_runs(TOD_EXPR, values)
-    expected = canonical(runs.pop("datafusion"))
+    expected = runs.pop("lean")
     for engine, rows in runs.items():
-        assert canonical(rows) == expected, engine
+        assert canonical(rows) == canonical(expected), engine
+    for v, row in zip(values, expected, strict=True):
+        if v is not None and FOUR_DIGITS[0] <= v <= FOUR_DIGITS[1]:
+            assert row == python_tod(v), v
 
 
 US_PER_DAY = 86_400_000_000
@@ -548,14 +561,11 @@ def test_time_arithmetic_outside_the_model_is_refused():
     assert code != 0 and "months" in out + err
 
 
-@pytest.mark.backend("datafusion")
 @pytest.mark.parametrize("t", [R_TS.ts.time(), R_TS.ts.strftime("%Y")])
 def test_times_outside_chrono_fail(t):
     con = connect()
     put_table(con, "r", pa.table({"ts": pa.array([PART_MIN - 1], pa.timestamp("us"))}))
     expr = R_TS.select(t=t)
-    with pytest.raises(BaseException, match="(?i)convert|naive|datetime"):
-        collect(con._datafusion_session.sql(ibis.to_sql(expr, dialect="datafusion")))
     report = sv.verify(expr, on_inferred="off")
     assert "overflow" in [i.kind for i in report.errors]
     with pytest.raises(polars_engine.Overflow):

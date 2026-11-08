@@ -1,7 +1,7 @@
-"""Polars against DataFusion and against Lean's `Rel.eval`.
+"""Polars against DuckDB and against Lean's `Rel.eval`.
 
 Polars runs the plan Lean writes back out (`written_plan`, and the delta plans
-of `--delta`). Results must agree with DataFusion as bags and with Lean
+of `--delta`). Results must agree with DuckDB, the oracle, as bags and with Lean
 exactly, row order included: the translator keeps `Rel.eval`'s list order,
 which is what makes `FetchRel` and windows meaningful.
 """
@@ -9,7 +9,6 @@ which is what makes `FetchRel` and windows meaningful.
 import datetime as dt
 import json
 import math
-from decimal import Decimal
 from pathlib import Path
 
 import ibis
@@ -21,7 +20,6 @@ from hypothesis import strategies as st
 import sverify as sv
 from _pipelines import integer_powers
 from sverify import polars_engine
-from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
 from sverify.engine import (
     connect,
     plan_json,
@@ -29,11 +27,10 @@ from sverify.engine import (
     read_tables,
     run_checker,
     run_plan,
-    run_substrait_json,
     substrait_json,
     written_plan,
 )
-from sverify.engines import delta_plans
+from sverify.engines import ENGINES, delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.io import Changes
@@ -71,15 +68,9 @@ def rows_of(table: pa.Table) -> list[tuple]:
     return [tuple(r.values()) for r in table.to_pylist()]
 
 
-def datafusion_rows(table: pa.Table) -> list[tuple]:
-    """DataFusion types `ROW_NUMBER() - 1` (unsigned minus signed) as a
-    decimal; the model has one integer type."""
-    return [tuple(int(v) if isinstance(v, Decimal) else v for v in r) for r in rows_of(table)]
-
-
 def on_both(con, plan: str) -> tuple[list[tuple], list[tuple]]:
-    df = datafusion_rows(run_plan(con, plan, "datafusion"))
-    return df, rows_of(run_plan(con, plan, "polars"))
+    """The plan's rows on DuckDB, the oracle, and on Polars."""
+    return rows_of(run_plan(con, plan, "duckdb")), rows_of(run_plan(con, plan, "polars"))
 
 
 # --- Golden fixtures -------------------------------------------------------
@@ -173,14 +164,6 @@ def table_data(draw, schema: pa.Schema) -> pa.Table:
     return pa.table(cols, schema=schema)
 
 
-#: DataFusion writes `DISTINCT` as an aggregate with one empty grouping, which
-#: its own consumer rejects.
-DATAFUSION_CANNOT_READ = {"df_distinct"}
-#: Fixtures whose meaning DataFusion's own engine does not give: in
-#: `df_strings`, `substring` from a negative start counts from the end (#209).
-DATAFUSION_DIFFERS = {"df_strings"}
-
-
 def same_bag(a: list[tuple], b: list[tuple]) -> bool:
     return canonical(a) == canonical(b)
 
@@ -201,34 +184,18 @@ def test_golden_fixtures(fixture, data):
         # Only virtual tables: Lean evaluated it for the golden file.
         got = rows_of(polars_engine.run(plan, {}))
         assert [f"({', '.join(map(render, r))})" for r in got] == rows
-        # No DataFusion run: Lean writes virtual tables with placeholder
-        # `i64` column types and `FetchRel`'s deprecated `offset`/`count`,
-        # both of which DataFusion rejects.
-
         return
     con = connect()
     tables = {t: data.draw(table_data(s)) for t, s in schemas.items()}
     for t, table in tables.items():
         put_table(con, t, table)
-    if '"fetch"' in plan:
-        # DataFusion reads the current `offsetExpr`/`countExpr`, not the
-        # deprecated fields Lean writes: it runs the fixture itself.
-        df = datafusion_rows(run_substrait_json(con, source))
-        pl_rows = rows_of(run_plan(con, plan, "polars"))
+    pl_rows = rows_of(run_plan(con, plan, "polars"))
+    try:
+        duck = rows_of(run_plan(con, plan, "duckdb"))
+    except Unsupported:
+        pass  # DuckDB's lowering refuses the plan: Lean's rows below decide.
     else:
-        try:
-            df, pl_rows = on_both(con, plan)
-        except Unsupported:
-            # DataFusion cannot give the reference result (#209).
-            df, pl_rows = None, rows_of(run_plan(con, plan, "polars"))
-    if df is not None:
-        assert same_bag(df, pl_rows)
-    if (
-        fixture.stem.startswith("df_")
-        and fixture.stem not in DATAFUSION_CANNOT_READ | DATAFUSION_DIFFERS
-    ):
-        # DataFusion's own plan (captured from it), not just Lean's rewrite.
-        assert same_bag(datafusion_rows(run_substrait_json(con, source)), pl_rows)
+        assert same_bag(duck, pl_rows)
     if all(f.type == pa.int64() for s in schemas.values() for f in s):
         inlined = inline_tables(json.loads(plan), {t: rows_of(x) for t, x in tables.items()})
         assert lean_rows(json.dumps(inlined)) == pl_rows
@@ -313,15 +280,15 @@ def test_delta_plans_agree(name, data):
             "orders$delta",
             "customers$delta",
         }
-        df, pl_rows = on_both(con, d)
-        assert same_bag(df, pl_rows)
+        duck, pl_rows = on_both(con, d)
+        assert same_bag(duck, pl_rows)
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("name", PIPELINES)
 @SETTINGS
 @given(data=st.data())
-def test_polars_view_matches_datafusion_view(name, data):
+def test_polars_view_matches_duckdb_view(name, data):
     """The same batches maintained by each engine give the same view."""
     orders = data.draw(st.lists(orders_row, max_size=6))
     customers = data.draw(st.lists(customers_row, max_size=4))
@@ -342,7 +309,7 @@ def test_polars_view_matches_datafusion_view(name, data):
         for view in views.values():
             view.apply(changes)
             assert view.rows() == view.recompute()
-        assert views["polars"].rows() == views["datafusion"].rows()
+        assert views["polars"].rows() == views["duckdb"].rows()
 
 
 # --- Semantic traps ------------------------------------------------------------
@@ -388,9 +355,9 @@ def test_float_join_keys_have_one_zero_and_one_nan():
     con.create("a", schema, [(math.nan, 1), (-0.0, 2), (0.0, 3), (None, 4)])
     con.create("b", schema, [(math.nan, 10), (0.0, 30), (None, 40)])
     sql = "SELECT a.v, b.v AS w FROM a JOIN b ON a.k = b.k"
-    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
+    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
     assert pl_rows == [(1, 10), (2, 30), (3, 30)]
-    assert same_bag(df, pl_rows)
+    assert same_bag(duck, pl_rows)
 
 
 def test_three_valued_logic_in_filters():
@@ -447,7 +414,7 @@ def test_float_window_order_has_one_zero_and_one_nan():
     xs = [math.nan, 0.0, -math.inf, -0.0, math.inf, -math.nan, None]
     con.create("f", schema, [(x,) for x in xs])
     sql = "SELECT x, ROW_NUMBER() OVER (ORDER BY x ASC NULLS LAST) AS n FROM f"
-    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
+    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
     assert repr(pl_rows) == repr(
         [
             (-math.inf, 1),
@@ -459,7 +426,7 @@ def test_float_window_order_has_one_zero_and_one_nan():
             (None, 7),
         ]
     )
-    assert canonical(df) == canonical(pl_rows)
+    assert canonical(duck) == canonical(pl_rows)
 
 
 def test_integer_overflow_raises():
@@ -484,16 +451,15 @@ def test_timestamp_arithmetic_is_checked_too():
     con.create("t", schema, [(dt.datetime(2024, 1, 1),)])
     t = con.table("t")
     expr = t.select(x=t.ts + ibis.interval(seconds=90), d=t.ts - t.ts)
-    df, pl_rows = on_both(con, written_plan(to_substrait_json(expr)))
+    pl_rows = rows_of(run_plan(con, written_plan(to_substrait_json(expr)), "polars"))
     assert pl_rows == [(dt.datetime(2024, 1, 1, 0, 1, 30), dt.timedelta(0))]
-    assert df == pl_rows
 
 
 # --- Refusals ----------------------------------------------------------------------
 
 
 def test_unwritten_plans_are_refused():
-    """DataFusion's own plans use constructs Lean rewrites away (`gt`, casts,
+    """Plans as producers write them use constructs Lean rewrites away (`gt`, casts,
     `ReadRel.projection`, …); the translator refuses them instead of guessing."""
     con = connect()
     con.create("r", R, [])
@@ -531,7 +497,8 @@ def test_unknown_function_is_refused():
 
 
 def test_integer_sum_overflow_raises():
-    """`SUM` of integers is exact in Lean; DataFusion wraps around (`Issue.wraps`)."""
+    """`SUM` of integers is exact in Lean; an engine that wraps around would
+    give a wrong sum (`Issue.wraps`)."""
     con = connect()
     con.create("r", R, [(2**62, 1, 0), (2**62, 1, 0), (1, 2, 0)])
     with pytest.raises(polars_engine.IntegerOverflow):
@@ -568,7 +535,7 @@ def test_integer_functions_match_lean_in_order(sql, rows):
     assert same_bag(rows_of(duckdb_sql(con, sql)), polars)
 
 
-def test_rounding_matches_datafusion_bit_for_bit():
+def test_rounding_matches_duckdb_bit_for_bit():
     """Halves away from zero, `CEIL(-0.5)` is 0.0, NaN and ±∞ stay."""
     con = connect()
     xs = [*DOUBLES, -0.0, -0.4, math.nan, math.inf, -math.inf, None]
@@ -579,11 +546,11 @@ def test_rounding_matches_datafusion_bit_for_bit():
         # A zero divisor raises (`on_division_by_zero` = ERROR).
         "SELECT f, f / 10.0 AS x, CASE WHEN f <> 0 THEN 3.0 / f END AS y FROM r",
     ]:
-        df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
+        duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, semantics="duckdb")))
         if "/" in sql:
             # Polars divides by a constant through its reciprocal (PL-3): the
             # reference's division is within 2 ulps there (#444).
-            for a, b in zip(df, pl_rows, strict=True):
+            for a, b in zip(duck, pl_rows, strict=True):
                 for x, y in zip(a, b, strict=True):
                     assert (x is None) == (y is None), sql
                     if x is not None and math.isfinite(x):
@@ -591,14 +558,14 @@ def test_rounding_matches_datafusion_bit_for_bit():
                     elif x is not None:
                         assert repr(x) == repr(y), sql
         else:
-            assert repr(df) == repr(pl_rows), sql
+            assert repr(duck) == repr(pl_rows), sql
         assert [math.copysign(1, v) for r in pl_rows for v in r if v is not None] == [
-            math.copysign(1, v) for r in df for v in r if v is not None
+            math.copysign(1, v) for r in duck for v in r if v is not None
         ], sql
 
 
 def test_round_to_digits_matches_duckdb_bit_for_bit():
-    """`round(x, d)` is DuckDB's (#335); DataFusion rounds otherwise."""
+    """`round(x, d)` is DuckDB's (#335)."""
     con = connect()
     xs = [*DOUBLES, -0.0, -0.4, 521924.88982515107, 1e308, math.nan, math.inf, -math.inf, None]
     con.create("r", F, [(x,) for x in xs])
@@ -609,16 +576,14 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
     plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     duck = rows_of(run_plan(con, plan, "duckdb"))
     assert repr(rows_of(run_plan(con, plan, "polars"))) == repr(duck)
-    with pytest.raises(Exception, match="#335"):
-        run_plan(con, plan, "datafusion")
 
 
 def test_casts_to_bigint_truncate_and_refuse_nan():
     con = connect()
     con.create("r", F, [(x,) for x in DOUBLES])
     sql = "SELECT f, CAST(f AS BIGINT) AS i FROM r"
-    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
-    assert df == pl_rows
+    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
+    assert duck == pl_rows
     con.create("r", F, [(1.0,), (math.nan,)])
     with pytest.raises(polars_engine.BadCast):
         polars_rows(con, sql)
@@ -640,7 +605,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
         ("SELECT a FROM r WHERE b <> 0 AND a % b > 1", polars_engine.DivisionByZero),
         # An unused column is still computed.
         ("SELECT a FROM (SELECT a, a % b AS q FROM r)", polars_engine.DivisionByZero),
-        # Wrapping, which DataFusion does silently.
+        # Wrapping, which an engine may do silently.
         ("SELECT a - 1 AS x FROM r WHERE b = -1", polars_engine.IntegerOverflow),
         ("SELECT -a AS x FROM r WHERE b = -1", polars_engine.IntegerOverflow),
     ],

@@ -92,7 +92,7 @@ __all__ = [
     "table",
 ]
 
-#: The engines besides DataFusion, which runs Ibis's own plans.
+#: The engines the coverage table has a column for.
 ENGINES = ("polars", "duckdb", "snowflake", "spark")
 
 #: The memtables of the cases, by name: engines that run Ibis's SQL need them

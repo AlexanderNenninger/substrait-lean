@@ -1,4 +1,4 @@
-"""Substrait producers, and DuckDB, Polars or DataFusion as consumer.
+"""Substrait producers, and DuckDB or Polars as consumer.
 
 Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 `sverify.engines` and `sverify.errors`; it may change in any release.
@@ -11,8 +11,8 @@ producer (`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings
 written form (`substrait-check --write`, `--delta`) on the connection's engine
 or the one a call names.
 
-DataFusion is optional (`pip install 'sverify[datafusion]'`): it is needed
-only to run plans with `engine="datafusion"`.
+DataFusion is an optional engine (`pip install 'sverify[datafusion]'`): it
+is needed only to run plans with `engine="datafusion"`.
 """
 
 from __future__ import annotations
@@ -55,15 +55,15 @@ from sverify.sql import core as sql
 Engine = Literal["duckdb", "polars", "spark"]
 """The engines sverify 1.x supports. A `Connection` runs plans on DuckDB and
 Polars; `sverify.engines.run` and `Node.refresh` also run them on Spark.
-`"datafusion"` is still accepted where a `Connection` runs plans: it is
-experimental, outside the 1.x promise (`docs/stability.md`)."""
+`"datafusion"` is accepted where a `Connection` runs plans: an optional
+engine, outside the 1.x promise (`docs/stability.md`)."""
 ENGINES: tuple[Engine, ...] = ("duckdb", "polars")
 """The engines a `Connection` runs plans on: `"duckdb"` (the default) and
 `"polars"`. Loop over it to run a plan on each, as the tests do.
 `sverify.engines.run` also takes `"spark"` or a Spark session."""
 _LOCAL_ENGINES = (*ENGINES, "datafusion")
-"""The engines a `Connection` accepts: `ENGINES` and the experimental
-DataFusion engine."""
+"""The engines a `Connection` accepts: `ENGINES` and DataFusion, an optional
+engine."""
 
 
 def _datafusion() -> Any:
@@ -77,14 +77,6 @@ def _datafusion() -> Any:
             "(it runs plans with engine='datafusion')"
         ) from e
     return datafusion
-
-
-def has_datafusion() -> bool:
-    try:
-        _datafusion()
-    except ImportError:
-        return False
-    return True
 
 
 def _register(ctx: Any, name: str, table: pa.Table) -> None:
@@ -771,7 +763,7 @@ def run_plan(
         plan_json: A plan in Lean's written form (a node's `plan`, or
             `sverify.engines.written_plan`'s output).
         engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session
-            (`"datafusion"` is experimental). Default: the connection's
+            (`"datafusion"` is an optional engine). Default: the connection's
             engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
