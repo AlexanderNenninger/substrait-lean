@@ -1004,6 +1004,34 @@ def _(ibis, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    A team that keeps its contracts in a data catalog rather than beside the
+    plan reads them as ODCS, the Open Data Contract Standard. `sverify.odcs`
+    writes a node's contract as an ODCS document, with the proved
+    guarantees as its schema and quality rules, and reads one back as
+    conditions for the next team's `requires`. We'll run `paid` over a
+    small source, export the node's contract, and read it back:
+    """)
+    return
+
+
+@app.cell
+def _(paid):
+    import pyarrow as _pa
+    from sverify import odcs
+    from sverify.io import StaticSource as _StaticSource
+
+    _source = _StaticSource(
+        _pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, None]}),
+        name="orders",
+    )
+    paid_odcs = odcs.export(_source.pipe(paid), descriptions={"amount": "in cents"})
+    odcs.read(paid_odcs).conditions()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     You can now put a contract on a transformation and read what Lean proved
     about every column. You can prove keys and relations between columns,
     rule out the runtime errors that page people at night, pin down windows
