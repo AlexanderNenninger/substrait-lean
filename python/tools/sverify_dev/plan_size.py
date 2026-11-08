@@ -35,6 +35,8 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from sverify._engines import DIALECTS
+
 #: The bounds `tests/test_plan_size.py` checks: today's worst cases pass them.
 #: Tighten them when a change makes the SQL smaller.
 BOUND = {"ratio": 950.0, "depth": 10, "chars": 70_000}
@@ -50,9 +52,6 @@ _REL_KEYS = frozenset(
     {"read", "filter", "project", "aggregate", "join", "cross", "fetch", "sort", "set",
      "window", "extensionSingle", "extensionMulti", "extensionLeaf", "reference"}
 )  # fmt: skip
-
-#: The dialects of the SQL engines, with SQLGlot's name for each.
-DIALECTS = {"duckdb": "duckdb", "snowflake": "snowflake", "spark": "spark"}
 
 
 @dataclass(frozen=True)
@@ -127,7 +126,7 @@ def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
                 sql = plan_sql(plan, dialect, deterministic=True)
             except Unsupported:
                 continue
-        nodes, depth = sql_size(sql, DIALECTS[name])
+        nodes, depth = sql_size(sql, name)
         yield Size(source, label, name, in_nodes, len(sql), nodes, depth)
 
 

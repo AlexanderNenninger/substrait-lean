@@ -169,6 +169,14 @@ def refineCard (env : List AVal) (i : Nat) (w : Value) (f : Int → Bound → Bo
   | .int c => refineCol env i fun a => a.listIn a.elems (f c a.card)
   | _ => env
 
+/-- A column whose `abs` is compared with the double `w`: a non-NULL double,
+its code within `-c` and `c`, inclusive unless `strict`. -/
+def refineAbs (env : List AVal) (i : Nat) (w : Value) (strict : Bool) : List AVal :=
+  match w with
+  | .float c => refineCol env i
+      (·.nonNullNum .float (·.meet (if strict then ⟨some (-c + 1), some (c - 1)⟩ else ⟨some (-c), some c⟩)))
+  | _ => env
+
 /-- What a row that makes `e` TRUE satisfies, for constants that are number
 literals (`Expr.refine` folds the others first). Recognizes conjunctions,
 disjunctions, comparisons of a column with a constant, `IS NULL` and
@@ -220,6 +228,13 @@ def Expr.refineL (env : List AVal) : Expr → List AVal
   | .hof .allMatch (.field i) b =>
       let a := env.getD i AVal.top
       refineCol env i fun _ => a.listIn (some ((b.refineL (a.elemsOf :: env)).getD 0 AVal.top)) a.card
+  -- `abs(x) < c` and `abs(x) <= c` of a double, as the parser writes `abs`
+  -- (`CASE WHEN x < 0.0 THEN -x ELSE x END`): `x` within `-c` and `c`.
+  | .bin .lt (.ifThen (.bin .lt (.field i) (.lit (.float 0))) (.un .fneg (.field j)) (.field k))
+      (.lit w) => if i = j ∧ i = k then refineAbs env i w true else env
+  | .un .not (.bin .lt (.lit w)
+      (.ifThen (.bin .lt (.field i) (.lit (.float 0))) (.un .fneg (.field j)) (.field k))) =>
+      if i = j ∧ i = k then refineAbs env i w false else env
   | _ => env
 termination_by e => sizeOf e
 
@@ -264,9 +279,14 @@ theorem refineCard_length (env : List AVal) (i : Nat) (w : Value) (f : Int → B
     (refineCard env i w f).length = env.length := by
   unfold refineCard; split <;> simp [refineCol_length]
 
+theorem refineAbs_length (env : List AVal) (i : Nat) (w : Value) (strict : Bool) :
+    (refineAbs env i w strict).length = env.length := by
+  unfold refineAbs; split <;> simp [refineCol_length]
+
 theorem Expr.refineL_length (env : List AVal) (e : Expr) :
     (e.refineL env).length = env.length := by
-  fun_induction Expr.refineL env e <;> simp_all [refineCol_length, refineNum_length, refineCard_length]
+  fun_induction Expr.refineL env e <;> (try split) <;> simp_all [refineCol_length, refineNum_length, refineCard_length,
+    refineAbs_length]
 
 @[simp] theorem Value.isTrue_ofBool (b : Bool) : (Value.bool b).isTrue = b := by cases b <;> rfl
 
@@ -519,6 +539,58 @@ theorem allMatch_true {v : Value} {p : Value → Value}
       · exact ih h.2 x hx
   all_goals simp [HoFn.apply, Value.isTrue] at h
 
+theorem absF_lt {v : Value} {c : Int}
+    (h : (BinFn.apply .lt (if (BinFn.apply .lt v (.float 0)).isTrue then UnFn.apply .fneg v else v)
+      (.float c)).isTrue = true) : ∃ a, v = .float a ∧ -c < a ∧ a < c := by
+  cases v
+  case float a =>
+    refine ⟨a, rfl, ?_⟩
+    have e := BinFn.lt_vals .float .float a 0
+    simp only [NumKind.val] at e
+    by_cases ha : a < 0
+    · have e2 := BinFn.lt_vals .float .float (-a) c
+      simp only [NumKind.val] at e2
+      simp [e, ha, UnFn.apply, FloatCode.neg, e2] at h; omega
+    · have e2 := BinFn.lt_vals .float .float a c
+      simp only [NumKind.val] at e2
+      simp [e, ha, e2] at h; omega
+  all_goals simp [BinFn.apply, Value.numPair, Value.isTrue] at h
+
+theorem absF_le {v : Value} {c : Int}
+    (h : (UnFn.apply .not (BinFn.apply .lt (.float c)
+      (if (BinFn.apply .lt v (.float 0)).isTrue then UnFn.apply .fneg v else v))).isTrue = true) :
+    ∃ a, v = .float a ∧ -c ≤ a ∧ a ≤ c := by
+  cases v
+  case float a =>
+    refine ⟨a, rfl, ?_⟩
+    have e := BinFn.lt_vals .float .float a 0
+    simp only [NumKind.val] at e
+    by_cases ha : a < 0
+    · have e2 := BinFn.lt_vals .float .float c (-a)
+      simp only [NumKind.val] at e2
+      simp [e, ha, UnFn.apply, FloatCode.neg, e2] at h; omega
+    · have e2 := BinFn.lt_vals .float .float c a
+      simp only [NumKind.val] at e2
+      simp [e, ha, e2, UnFn.apply] at h; omega
+  all_goals simp [BinFn.apply, Value.numPair, Value.isTrue, UnFn.apply] at h
+
+theorem refineAbs_sound {env : List AVal} {row : Row} {i : Nat} {w : Value} {strict : Bool}
+    (h : EnvMem env row)
+    (hw : ∀ c, w = .float c → ∃ a, row.getD i .null = .float a ∧
+      (if strict then -c < a ∧ a < c else -c ≤ a ∧ a ≤ c)) :
+    EnvMem (refineAbs env i w strict) row := by
+  unfold refineAbs
+  split
+  · rename_i c
+    obtain ⟨a, ha, hb⟩ := hw c rfl
+    refine refineCol_sound h ?_
+    have hm := h i
+    rw [ha] at hm ⊢
+    refine nonNullNum_mem (k := .float) hm fun b hmb => Bound.mem_meet hmb ?_
+    cases strict <;> simp only [Bool.false_eq_true, ↓reduceIte] at hb ⊢ <;>
+      exact ⟨fun l hl => by cases hl; omega, fun u hu => by cases hu; omega⟩
+  · exact h
+
 theorem Expr.refineL_sound' (env : List AVal) (e : Expr) : ∀ {row : Row}, EnvMem env row →
     (e.eval row).isTrue = true → EnvMem (e.refineL env) row := by
   fun_induction Expr.refineL env e <;> intro row h ht
@@ -662,7 +734,21 @@ theorem Expr.refineL_sound' (env : List AVal) (e : Expr) : ∀ {row : Row}, EnvM
     refine ⟨hl, hc, ?_⟩
     simp only [AVal.listIn, AVal.memAll_iff]
     exact fun x hx => ih (h.cons (he x hx)) (hall x hx) 0
-  case case25 => exact h
+  case case25 env i j k w hij =>
+    obtain ⟨rfl, rfl⟩ := hij
+    refine refineAbs_sound h fun c hw => ?_
+    subst hw
+    obtain ⟨a, ha, hb⟩ := absF_lt (by simpa [eval, List.getD_eq_getElem?_getD] using ht)
+    exact ⟨a, by simpa [List.getD_eq_getElem?_getD] using ha, by simpa using hb⟩
+  case case26 => exact h
+  case case27 env w i j k hij =>
+    obtain ⟨rfl, rfl⟩ := hij
+    refine refineAbs_sound h fun c hw => ?_
+    subst hw
+    obtain ⟨a, ha, hb⟩ := absF_le (by simpa [eval, List.getD_eq_getElem?_getD] using ht)
+    exact ⟨a, by simpa [List.getD_eq_getElem?_getD] using ha, by simpa using hb⟩
+  case case28 => exact h
+  case case29 => exact h
 
 theorem Expr.refineL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
     (ht : (e.eval row).isTrue = true) : EnvMem (e.refineL env) row :=

@@ -19,7 +19,7 @@ import json
 from typing import Any
 
 from sverify import _support
-from sverify._checker import run_checker
+from sverify._checker import checker_refusal, run_checker
 from sverify._plan_read import base_name, function_names
 from sverify._support import DUCKDB_ONLY
 from sverify.sql import core as sql
@@ -32,8 +32,7 @@ def datafusion_plan(plan_json: str) -> str:
     wrapping around)."""
     code, out, err = run_checker(("--write-datafusion",), plan_json)
     if code != 0:
-        msg = (err or out).strip().splitlines()[-1:]
-        raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
+        raise checker_refusal("--write-datafusion", err or out)
     plan = json.loads(out)
     _check_datafusion_plan(plan)
     # sverify's own remainder of doubles (#256) is DataFusion's `%` of doubles,
@@ -110,7 +109,8 @@ def _check_datafusion_plan(plan: dict) -> None:
                 ints = ("i8", "i16", "i32", "i64")
                 if is_avg and any(k in a.get("outputType", {}) for k in ints):
                     raise sql.Unsupported(
-                        "DataFusion's AVG has no integer result (upstream/bugs/DF-24.json)"
+                        "DataFusion's AVG has no integer result (upstream/bugs/DF-24.json); "
+                        + DUCKDB_ONLY
                     )
             c = node.get("cast")
             if isinstance(c, dict) and c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
@@ -135,7 +135,7 @@ def _check_datafusion_plan(plan: dict) -> None:
                 if not left and (start is None or int(start) < 0):
                     raise sql.Unsupported(
                         "DataFusion's substring does not count a negative start from the end "
-                        "(upstream/bugs/DF-23.json)"
+                        "(upstream/bugs/DF-23.json); " + DUCKDB_ONLY
                     )
             for v in node.values():
                 walk(v)

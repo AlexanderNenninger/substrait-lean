@@ -78,7 +78,7 @@ from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import ibis
 import ibis.expr.operations as ops
@@ -197,7 +197,7 @@ states the condition (None: unset)."""
 
 #: The profiles the checker is asked for by name (`"profile"` in a
 #: `--contract` request): those beyond the reference and DuckDB's lift.
-_PROFILE_REQUESTS = frozenset({"polars", "spark", "substrait"})
+_PROFILE_REQUESTS = frozenset(get_args(Semantics)) - {"reference", "duckdb"}
 
 
 def _expr_semantics(transform: Transform) -> Semantics:
@@ -214,24 +214,28 @@ def _expr_semantics(transform: Transform) -> Semantics:
     return "duckdb" if sems == {"duckdb"} else "reference"
 
 
-def _profile_requests() -> frozenset[str]:
-    """`_PROFILE_REQUESTS`, with the installed profiles from outside sverify
-    (`sverify.profiles`)."""
+def _outside_profiles() -> frozenset[str]:
+    """The installed profiles from outside sverify (`sverify.profiles`): the
+    plugins that carry their profile's versions. sverify's own profiles are
+    the checker's."""
     from sverify import profiles
 
-    return _PROFILE_REQUESTS | frozenset(profiles.plugins())
+    return frozenset(e for e, p in profiles.plugins().items() if p.versions)
+
+
+def _profile_requests() -> frozenset[str]:
+    """`_PROFILE_REQUESTS`, with the installed profiles from outside sverify."""
+    return _PROFILE_REQUESTS | _outside_profiles()
 
 
 def _checked_semantics(semantics: str) -> Semantics:
-    from sverify import profiles
-
-    if semantics in profiles.plugins():
+    if semantics in _outside_profiles():
         return semantics  # type: ignore[return-value]
-    if semantics not in ("reference", "duckdb", "polars", "spark", "substrait"):
+    if semantics not in get_args(Semantics):
+        named = ", ".join(map(repr, get_args(Semantics)))
         raise ValueError(
-            "semantics must be 'reference', 'duckdb', 'polars', 'spark', 'substrait' or an "
-            "installed engine profile (sverify.profiles), "
-            f"not {semantics!r}"
+            f"semantics must be one of {named} or an installed engine profile "
+            f"(sverify.profiles), not {semantics!r}"
         )
     return semantics  # type: ignore[return-value]
 

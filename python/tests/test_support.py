@@ -7,6 +7,7 @@ import pytest
 
 from _repo import needs_repo
 from sverify import _support, black_box
+from sverify._engines import NAMED
 from sverify.sql import Unsupported
 
 FUNCTIONS_LEAN = (
@@ -24,7 +25,7 @@ def test_rows_are_functions_lean_writes() -> None:
     known = lean_functions() | black_box.NAMES
     assert set(_support.SUPPORT) <= known, set(_support.SUPPORT) - known
     for name, engines in _support.SUPPORT.items():
-        assert engines <= _support.ENGINES, name
+        assert engines <= NAMED, name
         assert "duckdb" in engines, name
 
 
@@ -63,7 +64,8 @@ def test_messages() -> None:
         "run it with engine='duckdb' (spark does not run it yet; see #271, https://"
     )
     assert _support.refusal("ntile", "DataFusion") == (
-        "DataFusion's NTILE does not deal out buckets as SQL does"
+        "ntile: DataFusion's NTILE does not deal out buckets as SQL does; "
+        "run it with engine='duckdb' (upstream/bugs/DF-11.json)"
     )
 
 

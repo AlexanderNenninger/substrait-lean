@@ -5,7 +5,9 @@ the models run. It reads the project after `dbt compile`, checks each
 model's compiled SQL with [sverify](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md) against the tests on
 the models and sources it reads, and reports per model which tests hold on
 every run, which may fail and why, and which source tests would let it prove
-more. A test it proves can be left out of `dbt build`.
+more. A test it proves can be left out of `dbt build`: it rests on
+`contract_sound` and `Rel.keys_sound`, applied to the model's compiled SQL
+under `semantics="duckdb"` ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proofs.md)).
 
 It reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
 other engines ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).

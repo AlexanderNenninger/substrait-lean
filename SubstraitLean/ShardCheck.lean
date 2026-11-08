@@ -95,7 +95,7 @@ def why (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys
           "an aggregate over DISTINCT values: a value in two shards counts once in the whole and twice in the parts, unless its argument is the split key"
         else if m.fn = .iavg then
           "an integer AVG splits into SUM and COUNT only when its argument is an integer, by the plan's column types"
-        else "SUM or AVG of doubles: floating-point addition is not associative, so the rounding depends on how the rows are split (float_order=\"any\" splits them anyway, unproved)"
+        else "SUM or AVG of doubles: floating-point addition is not associative, so the rounding depends on how the rows are split (run_sharded(reproducible=sv.equivalent(floats=\"plan\")) splits them anyway, within a proved tolerance)"
       | none => "only one aggregate can be split in two phases, at the top of the plan; one below other operators needs the split key in its GROUP BY"
   | .unionAll a b =>
     if !a.tables.any S || !b.tables.any S then

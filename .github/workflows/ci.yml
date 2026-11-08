@@ -507,13 +507,14 @@ jobs:
       # test_functions checks the facts Lean's tables cite; test_probe and
       # test_probe_polars the probes' `probes.json`; test_polars_shims the
       # facts its shims cite and `areas.json`; test_substrait_cases the
-      # ledger of Substrait's test cases and the ST entries it cites.
+      # ledger of Substrait's test cases and the ST entries it cites;
+      # test_unexplained that every engine disagreement names its explanation.
       - working-directory: python
         run: >-
           uv run --locked pytest -n auto --dist worksteal
           tests/test_facts.py tests/test_bugs.py tests/test_functions.py
           tests/test_probe.py tests/test_probe_polars.py tests/test_polars_shims.py
-          tests/test_substrait_cases.py
+          tests/test_substrait_cases.py tests/test_unexplained.py
       # A change to the lift's backlog changes how its tests report
       # (tests/conftest.py): run every test it lists before or after.
       - if: needs.changes.outputs.backlog == 'true'
