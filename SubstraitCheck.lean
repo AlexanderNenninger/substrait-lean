@@ -25,7 +25,7 @@ why it cannot be split.
 `substrait-check --write plan.json`: print the plan in Lean's written form
 (the plan `Rel.eval` runs, as Substrait JSON). `--write-datafusion`: the same
 plan for DataFusion to run, compensating for where its semantics differ
-(`Write.writeRel`); it does not parse back to the same `Rel`.
+(`SubstraitLean/DataFusion.lean`); it does not parse back to the same `Rel`.
 
 `substrait-check --lowering-coverage`: print how each construct is lowered to
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
@@ -207,44 +207,30 @@ def evalChoices (plan : Plan) : IO UInt32 := do
   IO.println (Lean.Json.mkObj [("rows", out)]).compress
   return 0
 
-def write (df : Bool) (plan : Plan) : IO UInt32 := do
+def write (plan : Plan) : IO UInt32 := do
   -- Decimals (#27) are written back as Substrait's own calls and casts where
-  -- that parses back to the same plan; DataFusion does not compute them as
-  -- the reference does.
-  -- `overflow` = `SILENT` or `SATURATE` (#241): only DuckDB's SQL has it so far.
-  if df && plan.root.anyExpr Expr.fits then
-    IO.eprintln "error: overflow = SILENT or SATURATE is not supported on DataFusion (#241)"
+  -- that parses back to the same plan.
+  if plan.root.decimalOps && !Write.roundtrips plan then
+    IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
     return 1
-  if plan.root.decimalOps then
-    if df then
-      IO.eprintln "error: DataFusion does not compute decimals as the reference does (#27)"
-      return 1
-    if !Write.roundtrips plan then
-      IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
-      return 1
-  if df then
-    if plan.root.floatExtremes plan.tables then
-      IO.eprintln "error: MIN and MAX of doubles are not supported on DataFusion (upstream/bugs/DF-15.json)"
-      return 1
-    if plan.root.slidingFrames then
-      IO.eprintln "error: SUM of doubles, AVG and MIN over a sliding frame are not supported on DataFusion (upstream/bugs/DF-16.json); use a frame from UNBOUNDED PRECEDING"
-      return 1
-    if plan.root.anyExpr Expr.signedDoubles then
-      IO.eprintln "error: DataFusion orders the -0.0 and NaN a double operation can give apart from 0.0 and NaN (upstream/bugs/DF-13.json)"
-      return 1
-    if plan.root.anyExpr Expr.nestedAccess then
-      IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94, upstream/bugs/DF-20.json)"
-      return 1
-    if let some (code, msg) := checkPlan plan then
-      IO.eprintln msg; return code
   -- Arguments of nested calls become columns (`Rel.bindArgs`, #821), so the
   -- writers' guards read a column where they would copy a call. Decimal
   -- arithmetic stays as the parser read it: it must parse back (#27).
   -- The bound plan is written only where it parses back as itself.
   let bound := plan.root.bindArgs plan.catalog
-  let root := if df || plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
+  let root := if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
     else bound
-  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names df).compress
+  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names).compress
+  return 0
+
+/-- `--write-datafusion`: the plan as DataFusion runs it
+(`SubstraitLean/DataFusion.lean`), or the reason it does not get it. -/
+def writeDataFusion (plan : Plan) : IO UInt32 := do
+  if let some msg := DataFusion.refusal plan then
+    IO.eprintln s!"error: {msg}"; return 1
+  if let some (code, msg) := checkPlan plan then
+    IO.eprintln msg; return code
+  IO.println (DataFusion.writePlan plan).compress
   return 0
 
 open Lean (Json toJson) in
@@ -331,8 +317,8 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
     | "--rows" => pure (check · false false)
     | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
-    | "--write" => pure (write false)
-    | "--write-datafusion" => pure (write true)
+    | "--write" => pure write
+    | "--write-datafusion" => pure writeDataFusion
     | "--outcomes" => pure outcomes
     | "--dependencies" => pure fun plan => do
         -- The options the plan meets and the transfer check (#444).

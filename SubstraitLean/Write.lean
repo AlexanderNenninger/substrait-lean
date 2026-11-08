@@ -766,8 +766,8 @@ def sumKind : WKind → WKind
   | .dec p s => .dec (min 38 (p + 10)) s
   | _ => .int
 
-/-- Does the expression compute with decimals (#27)? DataFusion gets no plans
-with these: it does not compute decimals as the reference does. -/
+/-- Does the expression compute with decimals (#27)? Their plans are written
+only where they parse back as themselves (`roundtrips`). -/
 def _root_.Substrait.Expr.decimalOps : Expr → Bool
   | .lit _ | .field _ => false
   | .un f a =>
@@ -793,78 +793,6 @@ def _root_.Substrait.Rel.anyExpr (p : Expr → Bool) : Rel → Bool
   | .aggregate r gs ms => r.anyExpr p || gs.any p || ms.any fun m => m.exprs.any p
 
 def _root_.Substrait.Rel.decimalOps (r : Rel) : Bool := r.anyExpr Expr.decimalOps
-
-/-- Does the plan take a `MIN` or `MAX` of doubles (#371)? DataFusion's
-grouped ones compare like IEEE 754 from `±f64::MAX` (a group of `+∞` has
-`MIN` `f64::MAX`, and NaN is skipped). -/
-def _root_.Substrait.Rel.floatExtremes (tables : Parse.Tables) : Rel → Bool
-  | .read _ | .values _ _ => false
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
-  | .unnest r _ => r.floatExtremes tables
-  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ =>
-    a.floatExtremes tables || b.floatExtremes tables
-  | .window r _ _ fns =>
-    r.floatExtremes tables || fns.any fun
-      | .agg m _ _ => (m.fn == .min || m.fn == .max) && m.arg.kind (r.kinds tables) == .float
-      | _ => false
-  | .aggregate r _ ms =>
-    r.floatExtremes tables ||
-      ms.any fun m => (m.fn == .min || m.fn == .max) && m.arg.kind (r.kinds tables) == .float
-
-/-- Does the plan take a double `SUM`, an `AVG` or a `MIN` over a sliding
-frame (one not from UNBOUNDED PRECEDING)? DataFusion slides a frame by
-retracting the rows that leave it: a sum of doubles then rounds differently
-from adding up the frame, an average of a frame that has become empty is NaN,
-and a `MIN` of one with only NULLs left is the last minimum. -/
-def _root_.Substrait.Rel.slidingFrames : Rel → Bool
-  | .read _ | .values _ _ => false
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
-  | .unnest r _ | .aggregate r _ _ => r.slidingFrames
-  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => a.slidingFrames || b.slidingFrames
-  | .window r _ _ fns =>
-    r.slidingFrames || fns.any fun
-      | .agg m _ fr => [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding
-      | _ => false
-
-/-- Does the expression have a double operation that IEEE arithmetic lets
-give `-0.0` or a negative NaN? DataFusion orders those apart from `0.0` and
-NaN (`f64::total_cmp`, upstream/bugs/DF-13.json), so it gets no plans with
-these. -/
-def _root_.Substrait.Expr.signedDoubles : Expr → Bool
-  | .lit _ | .field _ => false
-  | .un f a =>
-    (match f with
-      | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ => true
-      | _ => false) || a.signedDoubles
-  | .bin f a b =>
-    (match f with
-      | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb => true
-      | _ => false) || a.signedDoubles || b.signedDoubles
-  | .ifThen c t e => c.signedDoubles || t.signedDoubles || e.signedDoubles
-  | .hof _ l b => l.signedDoubles || b.signedDoubles
-
-/-- Does the expression wrap around or clamp (`overflow` = `SILENT` or
-`SATURATE`, `UnFn.fit`, #241)? -/
-def _root_.Substrait.Expr.fits : Expr → Bool
-  | .lit _ | .field _ => false
-  | .un f a => (f matches .fit _ _) || a.fits
-  | .bin _ a b => a.fits || b.fits
-  | .ifThen c t e => c.fits || t.fits || e.fits
-  | .hof _ l b => l.fits || b.fits
-
-/-- Does the expression reach into a struct or a list, count a list, or take
-a lambda (#94)? DataFusion 51 reads a reference into a value as a reference
-into the row, its `cardinality([])` is NULL, and its consumer has no lambdas,
-so it gets no plans with these. -/
-def _root_.Substrait.Expr.nestedAccess : Expr → Bool
-  | .lit _ | .field _ => false
-  | .un f a =>
-    (match f with | .structField _ | .listElement _ | .cardinality | .flatten => true | _ => false) ||
-      a.nestedAccess
-  | .bin f a b =>
-    (match f with | .listFn _ => true | _ => false) || a.nestedAccess || b.nestedAccess
-  | .ifThen c t e => c.nestedAccess || t.nestedAccess || e.nestedAccess
-  | .hof _ _ _ => true
 
 /-- Column kinds, from the schemas the writer uses. -/
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
@@ -970,14 +898,14 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
         | _ => []
       | _ => [])))]
 
-/-- An `AggregateRel` measure over input columns of kinds `cols`. -/
-def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
+/-- An `AggregateRel` measure over input columns of kinds `cols`. With
+`wideSums`, an integer `SUM` sums its argument as `DECIMAL(38,0)`, for an
+engine whose integer `SUM` wraps around (`aggregateJson` casts it back). -/
+def writeMeasure (wideSums : Bool) (cols : List WKind) (m : Measure) : Json :=
   let arg := measureArg cols m
   let decimal := obj [("decimal", obj [("precision", toJson 38), ("scale", toJson 0),
     ("nullability", "NULLABILITY_NULLABLE")])]
-  -- DataFusion's integer `SUM` wraps (upstream/bugs/DF-14.json): it sums a
-  -- `DECIMAL(38,0)`, which fails instead.
-  let arg := if df && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
+  let arg := if wideSums && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
     else arg
   let measure := obj [
     ("functionReference", toJson (AggFn.anchor m.fn)),
@@ -1004,43 +932,18 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
   obj ([("measure", measure)] ++
     (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 
-/-- The conjuncts of a condition. -/
-def conjunctsOf : Expr → List Expr
-  | .bin .and a b => conjunctsOf a ++ conjunctsOf b
-  | e => [e]
-
-/-- The conjunction of `cs`, if any. -/
-def andAll : List Expr → Option Expr
-  | [] => none
-  | c :: cs => some ((andAll cs).elim c (.bin .and c ·))
-
-/-- Does `e` read a field, and only fields `p` holds of? -/
-def readsOnly (p : Nat → Bool) (e : Expr) : Bool :=
-  -- (reads a field, all fields satisfy p), past `k` lambda parameters
-  let rec go (k : Nat) : Expr → Bool × Bool
-    | .lit _ => (false, true)
-    | .field i => if i < k then (false, true) else (true, p (i - k))
-    | .un _ a => go k a
-    | .bin _ a b => let (x, y) := go k a; let (z, w) := go k b; (x || z, y && w)
-    | .ifThen c t e =>
-      let (x, y) := go k c; let (z, w) := go k t; let (u, v) := go k e; (x || z || u, y && w && v)
-    -- A lambda's body reads its parameter, then the row (D28).
-    | .hof _ l b => let (x, y) := go k l; let (z, w) := go (k + 1) b; (x || z, y && w)
-  let (reads, all) := go 0 e
-  reads && all
-
 /-- An `AggregateRel` of the written input `input`, whose columns have kinds
 `ks`. -/
-def aggregateJson (df : Bool) (input : Json) (ks : List WKind) (gs : List Expr)
+def aggregateJson (wideSums : Bool) (input : Json) (ks : List WKind) (gs : List Expr)
     (ms : List Measure) (out : Option (List Nat)) : Json :=
   let agg := withCommon "aggregate" [
     ("input", input),
     ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (wkind ks g) g).toArray),
     ("groupings", if gs.isEmpty then Json.arr #[] else
       Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
-    ("measures", Json.arr (ms.map (writeMeasure df ks)).toArray)]
+    ("measures", Json.arr (ms.map (writeMeasure wideSums ks)).toArray)]
   -- The DECIMAL sums (`writeMeasure`), cast back to `i64` by a project.
-  let sums := (ms.zipIdx.filter fun (m, _) => df && m.fn matches .sum).map (gs.length + ·.2)
+  let sums := (ms.zipIdx.filter fun (m, _) => wideSums && m.fn matches .sum).map (gs.length + ·.2)
   if sums.isEmpty then agg out else
     let n := gs.length + ms.length
     let back := sums.map fun i => obj [("cast", obj [("type", i64Type),
@@ -1090,32 +993,31 @@ def decimalAvgsOf (g : Nat) (ms : List Measure) (qs : List Expr) (m : List Nat) 
 
 /-- Write a relation; `emit` is an output mapping to put on its `RelCommon`.
 
-With `df`, write it for DataFusion to run (`--write-datafusion`), compensating
-for where DataFusion's semantics differ from `Rel.eval` (#24): an integer
-`SUM` wraps around in DataFusion, so it is summed as `DECIMAL(38,0)` and cast
-back, which fails outside 64 bits instead. Such a plan does not parse back to
+With `wideSums`, an integer `SUM` is summed as `DECIMAL(38,0)` and cast back,
+which fails outside 64 bits on an engine whose integer `SUM` wraps around
+(#24, `SubstraitLean/DataFusion.lean`). Such a plan does not parse back to
 the same `Rel`. -/
-def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
+def writeRel (schemas : Schemas) (cat : Catalog) (wideSums : Bool := false)
     (hint : List WKind := []) : Rel → Option (List Nat) → Json
   -- Decimal `AVG`s, written back as `avg` measures (`decimalAvgsOf`).
   | .emit p@(.project (.aggregate r gs ms) qs) m, out =>
     match decimalAvgsOf gs.length ms qs m with
     | some (ms', m') =>
-      aggregateJson df (writeRel schemas cat df [] r none) (relKinds schemas cat r) gs ms'
+      aggregateJson wideSums (writeRel schemas cat wideSums [] r none) (relKinds schemas cat r) gs ms'
         (some (match out with
           | none => m'
           | some o => o.map (m'.getD · 0)))
     | none =>
       let h := (List.range (relKinds schemas cat p).length).map fun c =>
         ((m.idxOf? c).bind (hint[·]?)).getD .other
-      writeRel schemas cat df h p (some (match out with
+      writeRel schemas cat wideSums h p (some (match out with
         | none => m
         | some o => o.map (m.getD · 0)))
   | .emit r m, out =>
     -- `hint` is for the emitted columns; `r`'s column `c` is emitted at `m.idxOf c`.
     let h := (List.range (relKinds schemas cat r).length).map fun c =>
       ((m.idxOf? c).bind (hint[·]?)).getD .other
-    writeRel schemas cat df h r (some (match out with
+    writeRel schemas cat wideSums h r (some (match out with
       | none => m
       | some o => o.map (m.getD · 0)))
   | .read t, out => withCommon "read" [
@@ -1132,83 +1034,62 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
         obj [("fields", Json.arr (row.zipIdx.map fun (v, i) =>
           valuesLit (tys.getD i i64Type) v).toArray)]).toArray)])] out
   | .filter r c, out => withCommon "filter" [
-      ("input", writeRel schemas cat df [] r none),
+      ("input", writeRel schemas cat wideSums [] r none),
       ("condition", writeExpr (relKinds schemas cat r) .bool c)] out
   | .project r es, out => withCommon "project" [
-      ("input", writeRel schemas cat df [] r none),
+      ("input", writeRel schemas cat wideSums [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
         Json.arr ((es.zip (projKinds schemas ks es)).zipIdx.map fun ((e, k), i) =>
           writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
-      ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none)] out
+      ("left", writeRel schemas cat wideSums [] a none), ("right", writeRel schemas cat wideSums [] b none)] out
   | .join a b ty on, out =>
-    -- For DataFusion, whose consumer takes every `=` of a join condition for
-    -- a key pair across the inputs (#98), conjuncts over one input become a
-    -- filter on it: the right input's, and in an inner join the left
-    -- input's. In a left join those decide the padding, so they stay, as
-    -- `CASE WHEN c THEN TRUE ELSE FALSE END`: the same in a join condition
-    -- (NULL and FALSE both do not match), and not an `=`.
-    let n := a.arity cat
-    let cs := conjunctsOf on
-    -- DataFusion's consumer takes a conjunct over one input for a join key
-    -- (upstream/bugs/DF-19.json): such conjuncts become filters or a `CASE`.
-    let left := if df && ty matches .inner then cs.filter (readsOnly (· < n)) else []
-    let right := if df then cs.filter (readsOnly (n ≤ ·)) else []
-    let rest := (cs.filter fun c => !left.contains c && !right.contains c).map fun c =>
-      if df && readsOnly (· < n) c then .ifThen c (.lit (.bool true)) (.lit (.bool false)) else c
-    let ka := relKinds schemas cat a
-    let kb := relKinds schemas cat b
-    let side (r : Json) (ks : List WKind) (cs : List Expr) : Json := match andAll cs with
-      | none => r
-      | some c => withCommon "filter" [("input", r), ("condition", writeExpr ks .bool c)] none
     withCommon "join" [
-      ("left", side (writeRel schemas cat df [] a none) ka left),
-      ("right", side (writeRel schemas cat df [] b none) kb (right.map (·.mapFields (· - n)))),
-      ("expression", writeExpr (ka ++ kb) .bool
-        (if !df then on else (andAll rest).getD (.lit (.bool true)))),
+      ("left", writeRel schemas cat wideSums [] a none), ("right", writeRel schemas cat wideSums [] b none),
+      ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", match ty with | .inner => "JOIN_TYPE_INNER" | .left => "JOIN_TYPE_LEFT")] out
   -- The current encoding, `offsetExpr`/`countExpr`: DataFusion's protobuf no
   -- longer has the deprecated `offset`/`count`.
   | .fetch r off cnt, out => withCommon "fetch" ([
-      ("input", writeRel schemas cat df [] r none),
+      ("input", writeRel schemas cat wideSums [] r none),
       ("offsetExpr", obj [("literal", writeValue (.int off))])] ++
       (cnt.map fun c => [("countExpr", obj [("literal", writeValue (.int c))])]).getD []) out
   -- A branch's bare `NULL`s take the other branch's column kinds: a FULL
   -- JOIN's padding (#96).
   | .unionAll a b, out => withCommon "set" [
-      ("inputs", Json.arr #[writeRel schemas cat df (relKinds schemas cat b) a none,
-        writeRel schemas cat df (relKinds schemas cat a) b none]),
+      ("inputs", Json.arr #[writeRel schemas cat wideSums (relKinds schemas cat b) a none,
+        writeRel schemas cat wideSums (relKinds schemas cat a) b none]),
       ("op", "SET_OP_UNION_ALL")] out
   | .semi a b anti on, out => withCommon "join" [
-      ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none),
+      ("left", writeRel schemas cat wideSums [] a none), ("right", writeRel schemas cat wideSums [] b none),
       ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", if anti then "JOIN_TYPE_LEFT_ANTI" else "JOIN_TYPE_LEFT_SEMI")] out
   | .orderBy r keys, out => withCommon "sort" [
-      ("input", writeRel schemas cat df [] r none),
+      ("input", writeRel schemas cat wideSums [] r none),
       ("sorts", Json.arr (keys.map (writeSortKey (relKinds schemas cat r))).toArray)] out
   -- Grouping by every column, with no measures.
   | .distinct r, out =>
       let ks := relKinds schemas cat r
       withCommon "aggregate" [
-        ("input", writeRel schemas cat df [] r none),
+        ("input", writeRel schemas cat wideSums [] r none),
         ("groupingExpressions", Json.arr ((List.range ks.length).map fun i =>
           writeExpr ks .other (.field i)).toArray),
         ("groupings", Json.arr #[obj [("expressionReferences",
           Json.arr ((List.range ks.length).map toJson).toArray)]])] out
   | .aggregate r gs ms, out =>
-      aggregateJson df (writeRel schemas cat df [] r none) (relKinds schemas cat r) gs ms out
+      aggregateJson wideSums (writeRel schemas cat wideSums [] r none) (relKinds schemas cat r) gs ms out
   | .unnest r c, out => withCommon "extensionSingle" [
-      ("input", writeRel schemas cat df [] r none),
+      ("input", writeRel schemas cat wideSums [] r none),
       ("detail", obj [("@type", "type.googleapis.com/sverify.Unnest"), ("column", toJson c)])] out
   | .window r part sort fns, out => withCommon "project" [
-      ("input", writeRel schemas cat df [] r none),
+      ("input", writeRel schemas cat wideSums [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
         Json.arr (fns.map (writeWindow ks part sort)).toArray)] out
 
 def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List String)
-    (df : Bool := false) : Json :=
+    (wideSums : Bool := false) : Json :=
   obj [
     -- The black boxes' URN (#325); the other functions are Substrait's own.
     ("extensionUrns", Json.arr #[obj [("extensionUrnAnchor", toJson 1),
@@ -1217,7 +1098,7 @@ def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List Str
       ("functionAnchor", toJson a), ("name", toJson n)] ++
       if blackBoxFns.contains (a, n) then [("extensionUrnReference", toJson 1)] else []))]).toArray),
     ("relations", Json.arr #[obj [("root", obj [
-      ("input", writeRel schemas cat df [] root none), ("names", toJson names)])]])]
+      ("input", writeRel schemas cat wideSums [] root none), ("names", toJson names)])]])]
 
 /-- Schemas recorded by the parser, falling back to placeholders. -/
 def planSchemas (p : Parse.Plan) : Schemas := fun t n =>
