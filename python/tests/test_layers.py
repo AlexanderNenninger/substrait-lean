@@ -29,6 +29,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_user_text",
             "_functions",
             "black_box",
+            "_engines",
             "_support",
             "plan_json",
             "_polars_shims",

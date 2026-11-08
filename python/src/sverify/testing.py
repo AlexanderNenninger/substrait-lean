@@ -51,6 +51,7 @@ import ibis
 import pyarrow as pa
 
 from sverify import counterexample
+from sverify._engines import MODULES
 from sverify._lean_eval import (  # noqa: F401  (re-exported for the tests)
     _ESCAPE,
     _TOKEN,
@@ -161,8 +162,6 @@ type Rows = pa.Table | Sequence[Mapping[str, Any]] | Sequence[tuple]
 """A table's rows: an Arrow table, dicts by column name, or tuples in the
 schema's column order."""
 
-_EXTRAS = {"duckdb": (), "polars": ("polars", "numpy"), "datafusion": ("datafusion",)}
-
 
 def installed_engines() -> tuple[str, ...]:
     """The engines of `sverify.engines.ENGINES` that can run here: DuckDB
@@ -171,7 +170,7 @@ def installed_engines() -> tuple[str, ...]:
     Returns:
         Engine names, in the order of `ENGINES`.
     """
-    return tuple(e for e in ENGINES if all(importlib.util.find_spec(m) for m in _EXTRAS[e]))
+    return tuple(e for e in ENGINES if all(importlib.util.find_spec(m) for m in MODULES[e]))
 
 
 def _arrow_schema(schema: Any) -> pa.Schema:
