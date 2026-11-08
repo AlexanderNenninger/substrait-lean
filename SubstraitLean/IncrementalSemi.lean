@@ -59,26 +59,26 @@ left rows the new count keeps and the old one did not, and, retracted, the
 old left rows the old count kept and the new one does not. `B` is the old
 right side and `ΔB` its change. -/
 def change (on : Expr) (anti : Bool) (a : Relation) (Δa B ΔB : ZSet) : ZSet :=
-  ZSet.filter (fun x => keeps anti (matchCount on x B + matchCount on x ΔB)) Δa ++
-    ZSet.filter (fun x => keeps anti (matchCount on x B + matchCount on x ΔB) &&
+  WSet.filter (fun x => keeps anti (matchCount on x B + matchCount on x ΔB)) Δa ++
+    WSet.filter (fun x => keeps anti (matchCount on x B + matchCount on x ΔB) &&
       !keeps anti (matchCount on x B)) (ZSet.lift a) ++
-    ZSet.neg (ZSet.filter (fun x => keeps anti (matchCount on x B) &&
+    ZSet.neg (WSet.filter (fun x => keeps anti (matchCount on x B) &&
       !keeps anti (matchCount on x B + matchCount on x ΔB)) (ZSet.lift a))
 
 theorem weight_filter (p : Row → Bool) (z : ZSet) (r : Row) :
-    (ZSet.filter p z).weight r = if p r then z.weight r else 0 := by
+    (WSet.filter p z).weight r = if p r then z.weight r else 0 := by
   induction z with
-  | nil => simp [ZSet.filter, ZSet.weight_nil]
+  | nil => simp [WSet.filter, WSet.weight_nil]
   | cons x z ih =>
-    simp only [ZSet.filter, List.filter_cons] at ih ⊢
+    simp only [WSet.filter, List.filter_cons] at ih ⊢
     by_cases hx : x.1 = r
     · subst hx
-      split <;> simp_all [ZSet.weight_cons]
-    · split <;> simp_all [ZSet.weight_cons]
+      split <;> simp_all [WSet.weight_cons]
+    · split <;> simp_all [WSet.weight_cons]
 
 theorem lift_filter (p : Row → Bool) (rows : Relation) :
-    ZSet.lift (rows.filter p) = ZSet.filter p (ZSet.lift rows) := by
-  simp [ZSet.lift, ZSet.filter, List.filter_map, Function.comp_def]
+    ZSet.lift (rows.filter p) = WSet.filter p (ZSet.lift rows) := by
+  simp [ZSet.lift, WSet.filter, List.filter_map, Function.comp_def]
 
 /-- **Maintaining a semi or anti join.** The left side goes from the bag
 `a` to `a'` by `Δa`, the right side from `b` to `b'` by `Δb` (each with the
@@ -95,7 +95,7 @@ theorem semi_maintained {on : Expr} {anti : Bool} {a a' b b' : Relation} {Δa Δ
     rw [hasMatch_iff, ← matchCount_congr on x hb, matchCount_append]; rfl
   have hold : ∀ x, (hasMatch on b x != anti) = keeps anti (matchCount on x (ZSet.lift b)) :=
     fun x => by rw [hasMatch_iff]; rfl
-  simp only [hnew, hold, lift_filter, change, ZSet.weight_append, ZSet.weight_neg, weight_filter,
+  simp only [hnew, hold, lift_filter, change, WSet.weight_append, ZSet.weight_neg, weight_filter,
     ← ha r]
   generalize keeps anti (matchCount on r (ZSet.lift b) + matchCount on r Δb) = p'
   generalize keeps anti (matchCount on r (ZSet.lift b)) = p

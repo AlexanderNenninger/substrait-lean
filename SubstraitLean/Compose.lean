@@ -318,28 +318,22 @@ theorem Rel.chain_sound {C cat Δ : ZCatalog} {δ : String → String} {u : Stri
   rw [hu, hUδ]
   exact (Rel.zeval_add hU).symm
 
-/-- A row's total weight in a Z-set. -/
-def ZSet.weight (z : ZSet) (r : Row) : Int :=
-  ((List.filter (fun x : Row × Int => x.1 == r) z).map (·.2)).sum
-
 def ZSet.neg (z : ZSet) : ZSet := List.map (fun x : Row × Int => (x.1, -x.2)) z
-
-theorem ZSet.weight_append (a b : ZSet) (r : Row) : (a ++ b).weight r = a.weight r + b.weight r := by
-  simp [ZSet.weight, List.filter_append, List.sum_append]
 
 theorem ZSet.weight_neg (z : ZSet) (r : Row) : z.neg.weight r = -z.weight r := by
   induction z with
-  | nil => simp [ZSet.neg, ZSet.weight]
+  | nil => rfl
   | cons x z ih =>
-      simp only [ZSet.neg, ZSet.weight, List.map_cons, List.filter_cons] at ih ⊢
-      split <;> simp_all <;> omega
+      simp only [ZSet.neg, List.map_cons] at ih ⊢
+      rw [WSet.weight_cons, WSet.weight_cons, ih]
+      split <;> omega
 
 /-- **Recompute and diff.** A view without a delta rule is recomputed (`new`)
 and its change taken as `new - old`; its old state plus that change has the
 weights of `new`, so it is a correct change for the views downstream. -/
 theorem ZSet.diff_correct (old new : ZSet) (r : Row) :
     (old ++ (new ++ old.neg)).weight r = new.weight r := by
-  simp only [ZSet.weight_append, ZSet.weight_neg]
+  simp only [WSet.weight_append, ZSet.weight_neg]
   omega
 
 end Substrait
