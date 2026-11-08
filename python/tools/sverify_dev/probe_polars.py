@@ -141,6 +141,12 @@ PROBES: list[Probe] = [
     Probe("{0} == {1}", "equal", FF, "boolean"),
     Probe("{0} < {1}", "lt", FF, "boolean"),
     Probe("{0}.is_null()", "is_null", F, "boolean"),
+    # `is_null` of the other kinds, and the bitwise operators of integers (#271).
+    Probe("{0}.is_null()", "is_null", ("int64",), "boolean"),
+    Probe("{0}.is_null()", "is_null", S, "boolean"),
+    Probe("{0} & {1}", "bitwise_and", ("int64", "int64"), "int64"),
+    Probe("{0} | {1}", "bitwise_or", ("int64", "int64"), "int64"),
+    Probe("{0} ^ {1}", "bitwise_xor", ("int64", "int64"), "int64"),
     Probe("pl.max_horizontal({0}, {1})", "greatest", FF, "float64"),
     Probe("pl.min_horizontal({0}, {1})", "least", FF, "float64"),
     # Strings. A constant argument is written into the construct and passed
@@ -579,6 +585,26 @@ OBSERVATIONS: list[Observation] = [
        "df(a=[dt.date(2024, 3, 1)], b=[dt.date(2024, 1, 31)]).select("
        "(pl.col('a') - pl.col('b')).alias('diff'),"
        " (pl.col('a') - pl.col('b')).dt.total_days().alias('days')).rows()"),
+    # `date_diff`, `date_bin` and `CAST(ts AS TIME)` as `polars_engine` writes
+    # them (#271): days since 1970 as integers, a remainder of Int128s, and
+    # nanoseconds cast to a time of day.
+    _o("date-physical-diff", "temporal",
+       "df(a=[dt.date(1, 1, 1), dt.date(9999, 12, 31), dt.date(1969, 12, 31), None],"
+       " b=[dt.date(9999, 12, 31), dt.date(1, 1, 1), dt.date(1970, 1, 1), dt.date(2000, 1, 1)])"
+       ".select((pl.col('a').to_physical().cast(pl.Int64)"
+       " - pl.col('b').to_physical().cast(pl.Int64)).alias('d')).to_series().to_list()"),
+    _o("int128-remainder", "integers",
+       "df(x=[-1, -86400000000, 86400000001, -7, 7, -9223372036854775808, None]).select("
+       "(pl.col('x').cast(pl.Int128) % 86400000000).alias('day'),"
+       " (pl.col('x').cast(pl.Int128) % 5).alias('five'),"
+       " (pl.col('x').cast(pl.Int128) - (pl.col('x').cast(pl.Int128) - 3) % 10)"
+       ".alias('bin')).rows()"),
+    _o("list-len", "nested",
+       "df(x=[[1, 2], [], None, [None], [1, None, 3]]).select(pl.col('x').list.len()"
+       ".cast(pl.Int64)).to_series().to_list()"),
+    _o("int-to-time", "temporal",
+       "df(x=[0, 1000, 86399999999000, None]).select(pl.col('x').cast(pl.Time).alias('t'),"
+       " pl.col('x').cast(pl.Time).to_physical().alias('ns')).rows()"),
     _o("strftime", "temporal",
        "df(x=[dt.datetime(2024, 1, 5, 3, 4, 5, 600000)]).select("
        "pl.col('x').dt.strftime('%Y-%m-%d %H:%M:%S%.f %j %a %U %V')).item()"),

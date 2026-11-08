@@ -2739,6 +2739,86 @@
    }
   },
   {
+   "construct": "Int64.is_null()",
+   "function": "is_null",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.is_null()",
+   "function": "is_null",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64 & Int64",
+   "function": "bitwise_and",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64 | Int64",
+   "function": "bitwise_or",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64 ^ Int64",
+   "function": "bitwise_xor",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
    "construct": "pl.max_horizontal(Float64, Float64)",
    "function": "greatest",
    "option": null,
@@ -3872,6 +3952,30 @@
    "area": "temporal",
    "code": "df(a=[dt.date(2024, 3, 1)], b=[dt.date(2024, 1, 31)]).select((pl.col('a') - pl.col('b')).alias('diff'), (pl.col('a') - pl.col('b')).dt.total_days().alias('days')).rows()",
    "observed": "[(datetime.timedelta(days=30), 30)]"
+  },
+  {
+   "construct": "date-physical-diff",
+   "area": "temporal",
+   "code": "df(a=[dt.date(1, 1, 1), dt.date(9999, 12, 31), dt.date(1969, 12, 31), None], b=[dt.date(9999, 12, 31), dt.date(1, 1, 1), dt.date(1970, 1, 1), dt.date(2000, 1, 1)]).select((pl.col('a').to_physical().cast(pl.Int64) - pl.col('b').to_physical().cast(pl.Int64)).alias('d')).to_series().to_list()",
+   "observed": "[-3652058, 3652058, -1, None]"
+  },
+  {
+   "construct": "int128-remainder",
+   "area": "integers",
+   "code": "df(x=[-1, -86400000000, 86400000001, -7, 7, -9223372036854775808, None]).select((pl.col('x').cast(pl.Int128) % 86400000000).alias('day'), (pl.col('x').cast(pl.Int128) % 5).alias('five'), (pl.col('x').cast(pl.Int128) - (pl.col('x').cast(pl.Int128) - 3) % 10).alias('bin')).rows()",
+   "observed": "[(86399999999, 4, -7), (0, 0, -86400000007), (1, 1, 86399999993), (86399999993, 3, -7), (7, 2, 3), (71945224192, 2, -9223372036854775817), (None, None, None)]"
+  },
+  {
+   "construct": "list-len",
+   "area": "nested",
+   "code": "df(x=[[1, 2], [], None, [None], [1, None, 3]]).select(pl.col('x').list.len().cast(pl.Int64)).to_series().to_list()",
+   "observed": "[2, 0, None, 1, 3]"
+  },
+  {
+   "construct": "int-to-time",
+   "area": "temporal",
+   "code": "df(x=[0, 1000, 86399999999000, None]).select(pl.col('x').cast(pl.Time).alias('t'), pl.col('x').cast(pl.Time).to_physical().alias('ns')).rows()",
+   "observed": "[(datetime.time(0, 0), 0), (datetime.time(0, 0, 0, 1), 1000), (datetime.time(23, 59, 59, 999999), 86399999999000), (None, None)]"
   },
   {
    "construct": "strftime",
