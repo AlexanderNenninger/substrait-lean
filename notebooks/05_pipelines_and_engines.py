@@ -1171,6 +1171,98 @@ def _(mo):
     mo.md(r"""
     Every engine returns the same rows, and the NULL key matches nothing.
 
+    ### Splitting a plan across machines
+
+    When a table outgrows one machine, its rows live in pieces, and the plan
+    has to run piece by piece. `sverify.engines.run_sharded` asks the
+    checker how the plan splits: what each shard computes, and how the
+    parts combine into the plan's result on all the rows
+    (`Rel.shardSplit_sound`). It runs each shard on Polars and refuses a
+    plan whose result would depend on the split. We'll total each meter's
+    readings, kept in two regions:
+    """)
+    return
+
+
+@app.cell
+def _(pa, substrait_json, sv):
+    from sverify.engines import run_sharded
+
+    def _readings(rows):
+        return pa.table(
+            {
+                "meter": pa.array([m for m, _, _ in rows], pa.int64()),
+                "wh": pa.array([w for _, w, _ in rows], pa.int64()),
+                "kwh": pa.array([k for _, _, k in rows], pa.float64()),
+            }
+        )
+
+    regions = [
+        {"readings": _readings([(1, 120, 0.12), (2, 300, 0.3), (1, 80, 0.08)])},
+        {"readings": _readings([(2, 50, 0.05), (3, 10, 0.01)])},
+    ]
+    _con = sv.connect()
+    _con.create("readings", regions[0]["readings"].schema)
+    wh_plan = substrait_json(_con, "SELECT meter, SUM(wh) AS wh FROM readings GROUP BY meter")
+    kwh_plan = substrait_json(_con, "SELECT meter, SUM(kwh) AS kwh FROM readings GROUP BY meter")
+    _wh = run_sharded(wh_plan, regions, sharded=["readings"])
+    sorted(_wh.to_pylist(), key=lambda r: r["meter"])
+    return kwh_plan, regions, run_sharded
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    An integer sum splits exactly: each region sums its meters, and the
+    parts add up. A sum of doubles doesn't, since each region rounds its
+    partial sum, and the rounding depends on which rows land where. The
+    plan is refused, and the refusal names the way through:
+    """)
+    return
+
+
+@app.cell
+def _(kwh_plan, regions, run_sharded):
+    try:
+        run_sharded(kwh_plan, regions, sharded=["readings"])
+    except ValueError as _e:
+        print(f"{type(_e).__name__}: {_e}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    With `reproducible=sv.equivalent(floats="plan")` we accept doubles
+    within the bound the proof gives for this split
+    (`StdModel.sharded_near`), and `tolerance=True` reports it per row:
+    """)
+    return
+
+
+@app.cell
+def _(kwh_plan, regions, run_sharded, sv):
+    _kwh = run_sharded(
+        kwh_plan,
+        regions,
+        sharded=["readings"],
+        reproducible=sv.equivalent(floats="plan"),
+        tolerance=True,
+    )
+    assert _kwh.rows_exact
+    {
+        "kwh": _kwh.table.sort_by("meter").to_pylist(),
+        "within": _kwh.tolerance["kwh"],
+    }
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Each meter's total is within a few units of 10⁻¹⁶ of the sum on one
+    machine, and the bound comes with the result.
+
     ### Routes: how a proof reaches an engine
 
     A proof is about the plan under one semantics, the reference by default.
