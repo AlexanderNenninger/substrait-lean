@@ -572,6 +572,17 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
 `Float32` in single precision (polars-sum-float), which no bound here covers. -/
 def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
 
+/-- What `"epsilon"` says of a double `SUM` of exact values with no row cap,
+grouped by exact keys, on engines whose orders `StdModel.Summed` covers
+(#929): each group's sum is within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the
+reference's, from its own `n ≤ 2³²` values (`StdModel.epsilon_group`). No
+number bounds every group, so a stated tolerance is not met by it; the plan's
+bound is. -/
+def perGroupJson : Json := Json.mkObj [("abs", Json.null),
+  ("per_group", toJson "(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²), n ≤ 2³² the group's values"),
+  ("theorem", toJson "FloatBounds.StdModel.epsilon_group"),
+  ("proved", Json.mkObj [("abs", toJson false), ("per_group", toJson true)])]
+
 /-- A computed bound as JSON, with the factor that covers its evaluation in
 doubles. -/
 def epsJson (e : Float) : Json := upJsonZ (e * (1.0 + Float.scaleB 1.0 (-40)))
@@ -888,7 +899,10 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
     | .bounded j => some (name, match doubles[j]?.bind fun m =>
           (measureEps env m r.maxRows).map (·, same m) with
         | some ((e, rel), p) => boundJson e rel p
-        | none => Json.mkObj [("abs", Json.null)])
+        | none =>
+          -- No row cap: each group's sum still has a bound from its own values.
+          if doubles[j]?.any fun m => m.fn == .fsum && !m.distinct && m.filter.isNone && same m
+          then perGroupJson else Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
   -- D30: a statistic's column is within `statEps` of the reference's on an

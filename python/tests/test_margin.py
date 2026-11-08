@@ -61,6 +61,8 @@ def test_the_checker_writes_the_check_and_the_rows_are_exact_given_it(having):
     assert len(r._margin_checks) == 1
     assert r._margin_checks[0]["column"] == "total"
     assert r._rows_exact is not None and all(r._rows_exact.values())
+    # No row cap: the SUM's bound is per group, from its own values.
+    assert r.epsilon["total"]["theorem"] == "FloatBounds.StdModel.epsilon_group"
     # Without the check the threshold rule refuses the plan, as before (#568).
     off = sv.verify(HAVING, requires=REQUIRES, on_inferred="off")
     assert off._margin_checks == []
