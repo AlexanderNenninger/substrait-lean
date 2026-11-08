@@ -10,7 +10,7 @@
   ],
   "summary": "`levenshtein` counts bytes, not code points, on non-ASCII text, and `reverse` works on grapheme clusters. Possibly intended: check the docs before filing.",
   "repro": "`levenshtein('é', 'e')`",
-  "handling": "sverify raises \"non-ASCII text differs between engines\" for these on non-ASCII text (#195, `Dialect.ascii_only`). The guard stays after the fix: Lean's evaluator follows Rust's strings and does not evaluate these functions on non-ASCII text (`SubstraitLean/Text.lean`), so the guard is the reference's limit, not DuckDB's workaround alone.",
+  "handling": "sverify raises \"non-ASCII text differs between engines\" for these on non-ASCII text (#195, `Dialect.ascii_only`). The guard stays after the fix: Lean's evaluator follows Rust's strings and does not evaluate these functions on non-ASCII text (`core/Sverify/Core/Text.lean`), so the guard is the reference's limit, not DuckDB's workaround alone.",
   "found_by": "#195",
   "prs": [
     195

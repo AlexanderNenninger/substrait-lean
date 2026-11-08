@@ -1,5 +1,5 @@
-import SubstraitLean.Rel
-import SubstraitLean.Functions
+import Sverify.Core.Rel
+import Sverify.Core.Functions
 
 /-! # Human-readable rendering of values, expressions and plans -/
 
@@ -35,7 +35,7 @@ def Row.render (row : Row) : String :=
   "(" ++ ", ".intercalate (row.map Value.render) ++ ")"
 
 /-! Constructors without parameters render as their row of
-`SubstraitLean/Functions.lean` says (`Functions.prettyOf`); the others, and
+`core/Sverify/Core/Functions.lean` says (`Functions.prettyOf`); the others, and
 those without a row (casts), by an arm of their own. -/
 
 def UnFn.render : UnFn → String

@@ -27,7 +27,7 @@
     "The aggregates `list(x)` (`array_agg`), `first(x)` and `last(x)` keep the rows where `x` is NULL; `string_agg` skips them. `last_value(x IGNORE NULLS) OVER (…)` takes the frame's last non-NULL value in the window's order."
   ],
   "reference": [
-    "`BinFn.listPrepend`, `listConcat`, `listContains`, `listPosition` and `UnFn.flatten` (SubstraitLean/Expr.lean) state exactly this, with `#guard`s, and the DuckDB lowering runs them natively (#812). The model's `array_agg`, `first` and `last` skip NULLs (`Measure.inputs`), so the SQL lift aggregates `[x]`, which is never NULL: `flatten(array_agg([x]))` and `first([x])[1]` (#810). The window measures `first` and `last` over a frame are `FIRST_VALUE`/`LAST_VALUE(x IGNORE NULLS)` (#811). The lift refuses `list_contains` and `list_position` on lists of doubles, decimals and nested values, which DuckDB compares otherwise (`-0.0 = 0.0`, NaN equal to NaN)."
+    "`BinFn.listPrepend`, `listConcat`, `listContains`, `listPosition` and `UnFn.flatten` (core/Sverify/Core/Expr.lean) state exactly this, with `#guard`s, and the DuckDB lowering runs them natively (#812). The model's `array_agg`, `first` and `last` skip NULLs (`Measure.inputs`), so the SQL lift aggregates `[x]`, which is never NULL: `flatten(array_agg([x]))` and `first([x])[1]` (#810). The window measures `first` and `last` over a frame are `FIRST_VALUE`/`LAST_VALUE(x IGNORE NULLS)` (#811). The lift refuses `list_contains` and `list_position` on lists of doubles, decimals and nested values, which DuckDB compares otherwise (`-0.0 = 0.0`, NaN equal to NaN)."
   ],
   "status": "no-finding",
   "evidence": "probe",

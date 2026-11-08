@@ -2,7 +2,7 @@
 
 * Lean's semantics of `substring`, `strpos`, `starts_with`, `ends_with`,
   `btrim`/`ltrim`/`rtrim`, `||`, `character_length` and `LIKE` with a
-  backslash escape agrees with DuckDB, the oracle (`SubstraitLean/Text.lean`);
+  backslash escape agrees with DuckDB, the oracle (`core/Sverify/Core/Text.lean`);
   Polars and DuckDB, which run the plan Lean writes, give Lean's rows. `UPPER`,
   `LOWER` and regular expressions, black boxes in Lean pinned to Rust's
   strings, agree with DuckDB on the alphabet drawn here (sverify's DuckDB

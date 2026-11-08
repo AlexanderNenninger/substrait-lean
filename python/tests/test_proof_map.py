@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MAP_PATH = ROOT / "docs" / "proofs.md"
 MAP = MAP_PATH.read_text() if MAP_PATH.is_file() else ""
 
+CORE = ROOT / "core" / "Sverify" / "Core"
 GENERATED_DIRS = [
     ROOT / "SubstraitLean" / "LoweringDuckDB" / "On",
     ROOT / "SubstraitLean" / "LiftDuckDB" / "Duckdb",
@@ -30,6 +31,7 @@ CACHES = [ROOT / "SubstraitLean" / "LoweringCache.lean", ROOT / "SubstraitLean" 
 
 def _modules() -> list[Path]:
     lean = [
+        *CORE.glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]
@@ -44,9 +46,12 @@ def _section(title: str) -> str:
 
 @pytest.mark.parametrize("module", _modules(), ids=lambda p: str(p.relative_to(ROOT)))
 def test_every_module_has_a_line(module):
-    rel = module.relative_to(
-        ROOT / ("float-bounds/FloatBounds" if "float-bounds" in module.parts else "SubstraitLean")
+    base = next(
+        d
+        for d in [CORE, ROOT / "float-bounds" / "FloatBounds", ROOT / "SubstraitLean"]
+        if d in module.parents
     )
+    rel = module.relative_to(base)
     assert f"`{rel.as_posix()}`" in _section("The modules"), f"{rel} is missing from docs/proofs.md"
 
 
@@ -65,6 +70,7 @@ def _theorems() -> set[str]:
     in (`Knowledge.contract_sound`), the project's root `Substrait` left out."""
     names = set()
     for p in [
+        *CORE.glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]:

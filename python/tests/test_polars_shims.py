@@ -56,7 +56,7 @@ def native(df: pl.DataFrame, *exprs: pl.Expr) -> list[tuple]:
 
 @needs_repo
 def test_every_shim_and_guard_is_a_function_with_a_fact():
-    options = (ROOT / "SubstraitLean" / "Options.lean").read_text()
+    options = (ROOT / "core" / "Sverify" / "Core" / "Options.lean").read_text()
     areas = (ROOT / "characterization" / "areas.json").read_text()
     for s in shims.SHIMS:
         assert callable(getattr(shims, s.name)), s.name

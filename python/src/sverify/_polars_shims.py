@@ -35,7 +35,7 @@ class Shim:
     name: str
     """The Python function and the Lean lemma (`Polars.<name>`)."""
     option: str
-    """The option it discharges (`SubstraitLean/Options.lean`)."""
+    """The option it discharges (`core/Sverify/Core/Options.lean`)."""
     reference: str
     """The reference's choice."""
     polars: str
