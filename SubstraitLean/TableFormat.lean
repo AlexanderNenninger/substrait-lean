@@ -44,13 +44,6 @@ theorem ZSet.lin_append (g : Row → Int) (a b : ZSet) :
     ZSet.lin g (a ++ b) = ZSet.lin g a + ZSet.lin g b := by
   simp [ZSet.lin]
 
-theorem ZSet.weight_nil (r : Row) : ZSet.weight [] r = 0 := rfl
-
-theorem ZSet.weight_cons (x : Row × Int) (z : ZSet) (r : Row) :
-    ZSet.weight (x :: z) r = (if x.1 = r then x.2 else 0) + z.weight r := by
-  simp only [ZSet.weight, List.filter_cons, beq_iff_eq]
-  split <;> simp_all
-
 theorem sum_map_add {L : List Row} (f h : Row → Int) :
     (L.map fun r => f r + h r).sum = (L.map f).sum + (L.map h).sum := by
   induction L with
@@ -85,14 +78,14 @@ theorem sum_indicator {L : List Row} (hL : L.Nodup) {a : Row} (ha : a ∈ L) (f 
 /-- `lin g z` is a sum over any duplicate-free list of rows covering `z`. -/
 theorem ZSet.lin_support (g : Row → Int) :
     ∀ (z : ZSet) {L : List Row}, L.Nodup → (∀ x ∈ z, x.1 ∈ L) →
-      ZSet.lin g z = (L.map fun r => g r * ZSet.weight z r).sum
-  | [], L, _, _ => by simp [ZSet.lin_nil, ZSet.weight_nil, sum_map_zero]
+      ZSet.lin g z = (L.map fun r => g r * WSet.weight z r).sum
+  | [], L, _, _ => by simp [ZSet.lin_nil, WSet.weight_nil, sum_map_zero]
   | x :: z, L, hL, hz => by
       have hrest := ZSet.lin_support g z hL (fun y hy => hz y (List.mem_cons_of_mem _ hy))
-      have hsplit : (L.map fun r => g r * ZSet.weight (x :: z) r) =
-          L.map fun r => (if x.1 = r then g r * x.2 else 0) + g r * ZSet.weight z r := by
+      have hsplit : (L.map fun r => g r * WSet.weight (x :: z) r) =
+          L.map fun r => (if x.1 = r then g r * x.2 else 0) + g r * WSet.weight z r := by
         refine List.map_congr_left fun r _ => ?_
-        rw [ZSet.weight_cons]; split <;> simp [Int.mul_add]
+        rw [WSet.weight_cons]; split <;> simp [Int.mul_add]
       rw [ZSet.lin_cons, hsplit, sum_map_add, hrest,
         sum_indicator hL (hz x List.mem_cons_self) (fun r => g r * x.2)]
 
@@ -122,100 +115,95 @@ theorem ZSet.weight_eq_lin (z : ZSet) (r : Row) :
     z.weight r = ZSet.lin (fun s => if s = r then 1 else 0) z := by
   induction z with
   | nil => rfl
-  | cons x z ih => rw [ZSet.weight_cons, ZSet.lin_cons, ih]; split <;> simp
-
-theorem ZSet.weight_perm {z z' : ZSet} (h : z.Perm z') (r : Row) : z.weight r = z'.weight r := by
-  induction h with
-  | nil => rfl
-  | cons x _ ih => rw [ZSet.weight_cons, ZSet.weight_cons, ih]
-  | swap x y z => rw [ZSet.weight_cons, ZSet.weight_cons, ZSet.weight_cons, ZSet.weight_cons]; omega
-  | trans _ _ ih1 ih2 => exact ih1.trans ih2
+  | cons x z ih => rw [WSet.weight_cons, ZSet.lin_cons, ih]; split <;> simp
 
 theorem ZSet.weight_filter (p : Row → Bool) (z : ZSet) (r : Row) :
-    (ZSet.filter p z).weight r = ZSet.lin (fun s => if p s ∧ s = r then 1 else 0) z := by
+    (WSet.filter p z).weight r = ZSet.lin (fun s => if p s ∧ s = r then 1 else 0) z := by
   induction z with
   | nil => rfl
   | cons x z ih =>
-      simp only [ZSet.filter, List.filter_cons] at ih ⊢
+      simp only [WSet.filter, List.filter_cons] at ih ⊢
       rw [ZSet.lin_cons, ← ih]
-      by_cases hp : p x.1 <;> simp only [hp, ite_true, ZSet.weight_cons] <;> split <;>
+      by_cases hp : p x.1 <;> simp only [hp, ite_true, WSet.weight_cons] <;> split <;>
         simp_all
 
 theorem ZSet.weight_map (f : Row → Row) (z : ZSet) (r : Row) :
-    (ZSet.map f z).weight r = ZSet.lin (fun s => if f s = r then 1 else 0) z := by
+    (WSet.map f z).weight r = ZSet.lin (fun s => if f s = r then 1 else 0) z := by
   induction z with
   | nil => rfl
   | cons x z ih =>
-      simp only [ZSet.map, List.map_cons] at ih ⊢
-      rw [ZSet.weight_cons, ZSet.lin_cons, ← ih]; split <;> simp
+      simp only [WSet.map, List.map_cons] at ih ⊢
+      rw [WSet.weight_cons, ZSet.lin_cons, ← ih]; split <;> simp
 
 theorem ZSet.weight_cross (a b : ZSet) (r : Row) :
-    (ZSet.cross a b).weight r =
+    (WSet.cross a b).weight r =
       ZSet.lin (fun xa => ZSet.lin (fun xb => if xa ++ xb = r then 1 else 0) b) a := by
   induction a with
   | nil => rfl
   | cons x a ih =>
-      simp only [ZSet.cross, List.flatMap_cons] at ih ⊢
-      rw [ZSet.weight_append, ih, ZSet.lin_cons]
+      simp only [WSet.cross, List.flatMap_cons] at ih ⊢
+      rw [WSet.weight_append, ih, ZSet.lin_cons]
       congr 1
       clear ih
       induction b with
-      | nil => simp [ZSet.weight_nil, ZSet.lin_nil]
+      | nil => simp [WSet.weight_nil, ZSet.lin_nil]
       | cons y b ihb =>
-          rw [List.map_cons, ZSet.weight_cons, ihb, ZSet.lin_cons]
+          rw [List.map_cons, WSet.weight_cons, ihb, ZSet.lin_cons]
           split <;> simp [Int.mul_add, Int.mul_comm]
-
-theorem ZSet.weight_mergeSort (le : Row × Int → Row × Int → Bool) (z : ZSet) (r : Row) :
-    ZSet.weight (z.mergeSort le) r = z.weight r :=
-  ZSet.weight_perm (List.mergeSort_perm z le) r
 
 /-- Two Z-catalogs agree on a table when the table's rows have the same weights. -/
 def ZCatalog.SameWeights (cat cat' : ZCatalog) (ts : List String) : Prop :=
   ∀ t ∈ ts, ∀ row, (cat t).weight row = (cat' t).weight row
 
-/-- **Views only depend on weights.** On the incremental fragment, Z-set
-evaluation on catalogs whose tables have the same weights gives results
-with the same weights. -/
-theorem Rel.zeval_weight_congr {cat cat' : ZCatalog} :
+private theorem Rel.zeval_weight_congr_aux {cat cat' : ZCatalog} :
     ∀ {r : Rel}, r.Incremental → cat.SameWeights cat' r.tables →
-      ∀ row, (r.zeval cat).weight row = (r.zeval cat').weight row
+      ∀ row, (r.evalK Impl.lean cat).weight row = (r.evalK Impl.lean cat').weight row
   | .read t, _, h, row => h t (by simp [tables]) row
   | .values _ _, _, _, _ => rfl
   | .filter r c, hr, h, row => by
-      simp only [zeval, ZSet.weight_filter]
-      exact ZSet.lin_congr _ (zeval_weight_congr (r := r) hr h)
+      simp only [evalK, ZSet.weight_filter]
+      exact ZSet.lin_congr _ (zeval_weight_congr_aux (r := r) hr h)
   | .project r es, hr, h, row => by
-      simp only [zeval, ZSet.weight_map]
-      exact ZSet.lin_congr _ (zeval_weight_congr (r := r) hr h)
+      simp only [evalK, ZSet.weight_map]
+      exact ZSet.lin_congr _ (zeval_weight_congr_aux (r := r) hr h)
   | .emit r m, hr, h, row => by
-      simp only [zeval, ZSet.weight_map]
-      exact ZSet.lin_congr _ (zeval_weight_congr (r := r) hr h)
+      simp only [evalK, ZSet.weight_map]
+      exact ZSet.lin_congr _ (zeval_weight_congr_aux (r := r) hr h)
   | .orderBy r keys, hr, h, row => by
-      rw [zeval, zeval, ZSet.weight_mergeSort, ZSet.weight_mergeSort]
-      exact zeval_weight_congr (r := r) hr h row
+      rw [evalK, evalK, WSet.weight_mergeSort, WSet.weight_mergeSort]
+      exact zeval_weight_congr_aux (r := r) hr h row
   | .unionAll a b, hr, h, row => by
       have ha : cat.SameWeights cat' a.tables := fun t ht => h t (by simp [tables, ht])
       have hb : cat.SameWeights cat' b.tables := fun t ht => h t (by simp [tables, ht])
-      simp only [zeval, ZSet.weight_append, zeval_weight_congr hr.1 ha, zeval_weight_congr hr.2 hb]
+      simp only [evalK, WSet.weight_append, zeval_weight_congr_aux hr.1 ha,
+        zeval_weight_congr_aux hr.2 hb]
   | .cross a b, hr, h, row => by
       have ha : cat.SameWeights cat' a.tables := fun t ht => h t (by simp [tables, ht])
       have hb : cat.SameWeights cat' b.tables := fun t ht => h t (by simp [tables, ht])
-      simp only [zeval, ZSet.weight_cross]
-      rw [ZSet.lin_congr _ (zeval_weight_congr hr.1 ha)]
+      simp only [evalK, ZSet.weight_cross]
+      rw [ZSet.lin_congr _ (zeval_weight_congr_aux hr.1 ha)]
       exact congrArg List.sum (List.map_congr_left fun x _ => by
-        simp only []; rw [ZSet.lin_congr _ (zeval_weight_congr hr.2 hb)])
+        simp only []; rw [ZSet.lin_congr _ (zeval_weight_congr_aux hr.2 hb)])
   | .join a b .inner on, hr, h, row => by
       have ha : cat.SameWeights cat' a.tables := fun t ht => h t (by simp [tables, ht])
       have hb : cat.SameWeights cat' b.tables := fun t ht => h t (by simp [tables, ht])
-      simp only [zeval, ZSet.weight_filter]
+      simp only [evalK, ZSet.weight_filter]
       refine ZSet.lin_congr _ fun s => ?_
       simp only [ZSet.weight_cross]
-      rw [ZSet.lin_congr _ (zeval_weight_congr hr.1 ha)]
+      rw [ZSet.lin_congr _ (zeval_weight_congr_aux hr.1 ha)]
       exact congrArg List.sum (List.map_congr_left fun x _ => by
-        simp only []; rw [ZSet.lin_congr _ (zeval_weight_congr hr.2 hb)])
+        simp only []; rw [ZSet.lin_congr _ (zeval_weight_congr_aux hr.2 hb)])
   | .join _ _ .left _, hr, _, _ => hr.elim
   | .fetch _ _ _, hr, _, _ | .window _ _ _ _, hr, _, _ | .semi _ _ _ _, hr, _, _
   | .distinct _, hr, _, _ => hr.elim
+
+/-- **Views only depend on weights.** On the incremental fragment, Z-set
+evaluation on catalogs whose tables have the same weights gives results
+with the same weights. -/
+theorem Rel.zeval_weight_congr {cat cat' : ZCatalog} {r : Rel} (hr : r.Incremental)
+    (h : cat.SameWeights cat' r.tables) (row : Row) :
+    (r.zeval cat).weight row = (r.zeval cat').weight row :=
+  zeval_weight_congr_aux hr h row
 
 /-! ## Change feeds -/
 
@@ -241,8 +229,8 @@ theorem ChangeFeed.of_changed_files {old new U A B : ZCatalog} {ts : List String
     (hold : ∀ t ∈ ts, ∀ r, (old t).weight r = (U t ++ A t).weight r)
     (hnew : ∀ t ∈ ts, ∀ r, (new t).weight r = (U t ++ B t).weight r) :
     ChangeFeed old (fun t => B t ++ (A t).neg) new ts := fun t ht r => by
-  rw [ZCatalog.add_apply, ZSet.weight_append, hold t ht r, hnew t ht r]
-  simp only [ZSet.weight_append, ZSet.weight_neg]
+  rw [ZCatalog.add_apply, WSet.weight_append, hold t ht r, hnew t ht r]
+  simp only [WSet.weight_append, ZSet.weight_neg]
   omega
 
 /-- **Maintaining a view from a change feed.** If the feed is correct
@@ -255,7 +243,7 @@ theorem Rel.cdf_sound {C old Δ new : ZCatalog} {δ : String → String} {V : Re
     (hold : ∀ t ∈ V.tables, C t = old t) (hδ : ∀ t ∈ V.tables, C (δ t) = Δ t) (row : Row) :
     (V.zeval new).weight row = (V.zeval old ++ (V.delta δ).zeval C).weight row := by
   rw [← zeval_weight_congr hV hfeed row]
-  exact ZSet.weight_perm (Rel.incremental_sound hV hold hδ) row
+  exact WSet.weight_perm (Rel.incremental_sound hV hold hδ) row
 
 /-! ## File statistics -/
 

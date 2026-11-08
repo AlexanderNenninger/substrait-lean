@@ -371,25 +371,27 @@ where
 /-! ## `DISTINCT` -/
 
 theorem weight_lift_nonneg : ∀ (rows : Relation) (k : Row), 0 ≤ (ZSet.lift rows).weight k
-  | [], _ => by simp [ZSet.lift, ZSet.weight_nil]
+  | [], _ => by simp [ZSet.lift, WSet.weight_nil]
   | a :: rows, k => by
       have := weight_lift_nonneg rows k
       simp only [ZSet.lift, List.map_cons] at this ⊢
-      rw [ZSet.weight_cons]
+      rw [WSet.weight_cons]
       split <;> omega
 
 theorem weight_lift_pos {rows : Relation} {k : Row} :
     0 < (ZSet.lift rows).weight k ↔ k ∈ rows := by
   induction rows with
-  | nil => simp [ZSet.lift, ZSet.weight_nil]
+  | nil => simp [ZSet.lift, WSet.weight_nil]
   | cons a rows ih =>
       have hn := weight_lift_nonneg rows k
       simp only [ZSet.lift, List.map_cons] at ih hn ⊢
-      rw [ZSet.weight_cons, List.mem_cons]
+      rw [WSet.weight_cons, List.mem_cons]
       by_cases h : a = k
       · subst h; simp only [↓reduceIte, true_or, iff_true]; omega
-      · simp only [h, ↓reduceIte, Int.zero_add, ih]
-        exact ⟨Or.inr, fun h' => h'.resolve_left (Ne.symm h)⟩
+      · simp only [h, ↓reduceIte]
+        constructor
+        · intro h'; exact Or.inr (ih.mp (by omega))
+        · intro h'; have := ih.mpr (h'.resolve_left (Ne.symm h)); omega
 
 /-- **`DISTINCT` from a count per row**: on a Z-set `z` with the weights of
 the bag `rows`, `DISTINCT` of `rows` is the rows whose count is positive. -/
@@ -421,7 +423,7 @@ theorem distinct_maintained {rows rows' : Relation} {Δ : ZSet}
     rw [he, ((hks b).mp hb).1] at h1; simp at h1
   refine (List.perm_ext_iff_of_nodup (nodup_dedup _)
     (List.nodup_append.mpr ⟨(nodup_dedup _).filter _, hnd, hdisj⟩)).mpr fun k => ?_
-  rw [mem_dedup, ← weight_lift_pos, ← hΔ, ZSet.weight_append, List.mem_append, List.mem_filter,
+  rw [mem_dedup, ← weight_lift_pos, ← hΔ, WSet.weight_append, List.mem_append, List.mem_filter,
     mem_dedup, ← weight_lift_pos, hks]
   cases hk : K k
   · simp [hzero k hk]

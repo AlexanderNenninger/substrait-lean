@@ -105,6 +105,15 @@ section Weight
 
 variable [Lean.Grind.Semiring K]
 
+theorem weight_nil (row : Row) : weight ([] : WSet K) row = 0 := rfl
+
+theorem weight_cons (x : Row × K) (z : WSet K) (row : Row) :
+    weight (x :: z) row = (if x.1 = row then x.2 else 0) + z.weight row := by
+  simp only [weight, List.foldr_cons, beq_iff_eq]
+  split
+  · rfl
+  · rw [Lean.Grind.Semiring.add_comm, Lean.Grind.Semiring.add_zero]
+
 theorem weight_of_not_mem {z : WSet K} {row : Row} (h : row ∉ List.map (·.1) z) :
     z.weight row = 0 := by
   induction z with
@@ -138,6 +147,10 @@ theorem weight_perm {a b : WSet K} (h : a.Perm b) (row : Row) : a.weight row = b
     rw [← Lean.Grind.Semiring.add_assoc, ← Lean.Grind.Semiring.add_assoc,
       Lean.Grind.Semiring.add_comm y.2]
   | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+
+theorem weight_mergeSort (le : Row × K → Row × K → Bool) (z : WSet K) (row : Row) :
+    weight (z.mergeSort le) row = z.weight row :=
+  weight_perm (List.mergeSort_perm z le) row
 
 end Weight
 
@@ -295,6 +308,40 @@ theorem Rel.incrementalK_sound {C cat Δ : WCatalog K} {δ : String → String} 
   | .join _ _ .left _, h, _, _ => h.elim
   | .fetch _ _ _, h, _, _ | .window _ _ _ _, h, _, _ | .semi _ _ _ _, h, _, _
   | .distinct _, h, _, _ | .aggregate _ _ _, h, _, _ | .unnest _ _, h, _, _ => h.elim
+
+/-- **The delta plan's output only depends on the old tables and the
+changes**: two engine catalogs that hold them, under any names for the change
+tables, give the same rows. -/
+theorem Rel.delta_evalK_eq {C C' cat Δ : WCatalog K} {δ δ' : String → String} :
+    ∀ {r : Rel}, (∀ t ∈ r.tables, C t = cat t) → (∀ t ∈ r.tables, C (δ t) = Δ t) →
+      (∀ t ∈ r.tables, C' t = cat t) → (∀ t ∈ r.tables, C' (δ' t) = Δ t) →
+      (r.delta δ).evalK I C = (r.delta δ').evalK I C'
+  | .read t, _, hδ, _, hδ' => (hδ t (by simp [tables])).trans (hδ' t (by simp [tables])).symm
+  | .values _ _, _, _, _, _ => rfl
+  | .filter r _, h1, h2, h3, h4 | .project r _, h1, h2, h3, h4 | .emit r _, h1, h2, h3, h4
+  | .orderBy r _, h1, h2, h3, h4 => by
+      simp only [delta, evalK, delta_evalK_eq (r := r) h1 h2 h3 h4]
+  | .cross a b, h1, h2, h3, h4 | .join a b .inner _, h1, h2, h3, h4 => by
+      simp only [tables, List.mem_append] at h1 h2 h3 h4
+      simp only [delta, evalK,
+        delta_evalK_eq (r := a) (fun t ht => h1 t (.inl ht)) (fun t ht => h2 t (.inl ht))
+          (fun t ht => h3 t (.inl ht)) (fun t ht => h4 t (.inl ht)),
+        delta_evalK_eq (r := b) (fun t ht => h1 t (.inr ht)) (fun t ht => h2 t (.inr ht))
+          (fun t ht => h3 t (.inr ht)) (fun t ht => h4 t (.inr ht)),
+        evalK_congr (r := a) (fun t ht => h1 t (.inl ht)),
+        evalK_congr (r := a) (fun t ht => h3 t (.inl ht)),
+        evalK_congr (r := b) (fun t ht => h1 t (.inr ht)),
+        evalK_congr (r := b) (fun t ht => h3 t (.inr ht))]
+  | .unionAll a b, h1, h2, h3, h4 => by
+      simp only [tables, List.mem_append] at h1 h2 h3 h4
+      simp only [delta, evalK,
+        delta_evalK_eq (r := a) (fun t ht => h1 t (.inl ht)) (fun t ht => h2 t (.inl ht))
+          (fun t ht => h3 t (.inl ht)) (fun t ht => h4 t (.inl ht)),
+        delta_evalK_eq (r := b) (fun t ht => h1 t (.inr ht)) (fun t ht => h2 t (.inr ht))
+          (fun t ht => h3 t (.inr ht)) (fun t ht => h4 t (.inr ht))]
+  | .join _ _ .left _, _, _, _, _ | .fetch _ _ _, _, _, _, _ | .window _ _ _ _, _, _, _, _
+  | .semi _ _ _ _, _, _, _, _ | .distinct _, _, _, _, _ | .aggregate _ _ _, _, _, _, _
+  | .unnest _ _, _, _, _, _ => rfl
 
 /-- **Changing the weights commutes with evaluation**: a map `h` that keeps
 `*` and `1` sends the evaluation over `K` to the evaluation over `L` of the
