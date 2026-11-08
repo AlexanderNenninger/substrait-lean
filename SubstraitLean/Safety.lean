@@ -9,8 +9,10 @@ engine raises, wraps or gives NULL there: integer division or remainder by
 zero, `MIN / -1`,
 integer powers with a negative exponent or a result outside 64 bits, integer
 `+`, `-`, `*` and negation outside their declared width (#202: `overflow`
-omitted means ERROR; DuckDB and Spark in ANSI mode raise, Polars wraps), a
-cast to a narrower integer that does not fit (DuckDB, Polars and Spark raise),
+omitted means ERROR; DuckDB and Spark in ANSI mode raise, Polars wraps:
+duckdb-int-narrow, spark-int-arith, polars-int-arith), a cast to a narrower
+integer that does not fit (DuckDB, Polars and Spark raise: duckdb-int-narrow,
+polars-cast-int, spark-cast-int-narrow),
 `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, an invalid
 regular expression, `repeat` writing more than `Text.repeatMax` bytes, and an
 integer `SUM` that leaves 64 bits (`Issue.sumWraps`, which the job also
@@ -82,8 +84,9 @@ inductive Issue where
   | badRegex
   /-- `+`, `-`, `*` or negation whose result does not fit its declared width:
   64 bits, or narrower integers (`UnFn.wrap`). With `overflow` omitted or
-  `ERROR`, the reference raises (#202), as DuckDB and Spark do; Polars wraps
-  around instead, which an error allows (a refinement). -/
+  `ERROR`, the reference raises (#202), as DuckDB and Spark do
+  (duckdb-int-narrow, spark-int-arith); Polars wraps around instead
+  (polars-int-arith), which an error allows (a refinement). -/
   | wraps
   /-- A `SUM` leaving its type (`Measure.sumOk`): 64 bits for integers, the
   result's precision for decimals (#316). The reference raises, and so does
