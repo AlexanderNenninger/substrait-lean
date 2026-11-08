@@ -156,8 +156,9 @@ of [the changelog](../CHANGELOG.md).
 ## Engines
 
 This section is the one statement of which engines sverify supports; other
-pages link here. Lean's model is the reference
-([reference semantics](reference-semantics.md)), and an engine runs a plan
+pages link here. The reference is Lean's reference profile
+([reference semantics](reference-semantics.md)), one of the profiles that
+refine the core ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)), and an engine runs a plan
 by a route that the checker justifies against it
 ([routes, classes and profiles](guide.md#routes-classes-and-profiles)).
 
