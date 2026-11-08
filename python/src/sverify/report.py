@@ -1043,7 +1043,10 @@ class Report:
                 warnings.warn(InferredWarning(msg, self), stacklevel=3)
             # Without the overflow checks of #575: the margin is at most `A`, and
             # a `v − t` past the largest double is farther than any bound.
-            res = run_plan(con, written_plan(json.dumps(chk["plan"])), engine, finite=False)
+            # Its windows aggregate whole partitions, so no row order matters.
+            res = run_plan(
+                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
+            )
             k = int(res.column(0)[0].as_py() or 0)
             if not k:
                 continue

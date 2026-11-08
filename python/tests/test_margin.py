@@ -133,6 +133,60 @@ def test_a_group_with_no_values_is_not_flagged():
     assert "n ≥ 1" in " ".join(r._margin_checks[0]["conditions"])
 
 
+AVG_HAVING = ORDERS.group_by("customer_id").aggregate(m=_.amount.mean()).filter(_.m >= 50)
+
+
+def _flagged_avg(groups: list[list[float]], t: float) -> int:
+    """The `AVG` check in Python's doubles (`check_sound_avg`)."""
+    tiny = 2.0**-1022
+    out = 0
+    for xs in groups:
+        n = len(xs)
+        v, a = sum(xs) / n, sum(abs(x) for x in xs)
+        c = (8.0 * n + 32.0) * 2.0**-53
+        if not abs(v - t) > c * ((a + n * tiny) / n) or n > 2**32:
+            out += 1
+    return out
+
+
+def test_an_avg_threshold_has_a_check():
+    r = sv.verify(AVG_HAVING, requires={"orders": [_.amount.between(0, 100)]}, on_inferred="warn")
+    assert len(r._margin_checks) == 1
+    assert r._rows_exact is not None and all(r._rows_exact.values())
+    assert (r._epsilon or {})["m"]["theorem"] == "FloatBounds.StdModel.epsilon_group_avg"
+    groups = [[40.0, 60.0], [50.0, 50.0, 50.0], [10.0, 99.0], [49.0]]
+    ids = [g for g, xs in enumerate(groups) for _x in xs]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        got = r.run(_con(ids, [x for xs in groups for x in xs]), "duckdb").to_pylist()
+    assert r._margin_flags["duckdb"] == _flagged_avg(groups, 50.0) == 2
+    assert sorted(row["customer_id"] for row in got) == [0, 1, 2]
+
+
+READINGS = ibis.table({"sensor_id": "int64", "value": "float64"}, name="readings")
+ABOVE_AVG = READINGS.mutate(m=_.value.mean().over(group_by="sensor_id")).filter(_.value > _.m)
+
+
+@pytest.mark.parametrize("engine", ["duckdb", pytest.param("polars", marks=pytest.mark.slow)])
+def test_a_row_against_its_partitions_mean(engine):
+    """`x > AVG(x) OVER (PARTITION BY k)`: per row, the partition's mean
+    against the row's value, with the partition's bound."""
+    r = sv.verify(ABOVE_AVG, requires={"readings": [_.value.between(0, 100)]})
+    assert r._margin_checks and r._rows_exact is not None and all(r._rows_exact.values())
+    far = sv.connect()
+    far.put("readings", pa.table({"sensor_id": [1, 1, 2, 2], "value": [10.0, 30.0, 5.0, 7.0]}))
+    got = sorted(r.run(far, engine).to_pylist(), key=lambda row: row["sensor_id"])
+    assert got == [
+        {"sensor_id": 1, "value": 30.0, "m": 20.0},
+        {"sensor_id": 2, "value": 7.0, "m": 6.0},
+    ]
+    # 20 is its partition's mean exactly: the engine's mean may fall either side.
+    near = sv.connect()
+    near.put("readings", pa.table({"sensor_id": [1, 1, 1], "value": [10.0, 20.0, 30.0]}))
+    with pytest.raises(PreconditionError, match=r"1 row\(s\) have m within its bound"):
+        r.run(near, engine)
+
+
 def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
     """The check and the plan read their inputs twice: an Arrow table, a
     resident table or a Delta/Iceberg scan at one version reads the same rows;

@@ -1,6 +1,8 @@
 ### Thresholds on double sums run, checked on the data
 
-- A filter on a double `SUM` against a constant (`HAVING SUM(amount) > 1000`)
+- A filter on a double `SUM` or `AVG` against a constant (`HAVING SUM(amount) > 1000`),
+  or on a row's value against its partition's window `SUM` or `AVG`
+  (`value > AVG(value) OVER (PARTITION BY sensor)`),
   is no longer refused on DuckDB, Polars and Spark when no static bound
   decides it ([#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929)).
   The run first checks, per group, that the engine's sum is farther from the
