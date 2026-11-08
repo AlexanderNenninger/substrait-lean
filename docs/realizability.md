@@ -47,8 +47,8 @@ Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 3 | 12 | 11 | 2 | 0 | 0 | 21 |
-| Polars | 28 | 0 | 14 | 0 | 0 | 0 | 16 |
+| DuckDB | 3 | 12 | 17 | 2 | 0 | 0 | 15 |
+| Polars | 28 | 0 | 15 | 0 | 0 | 0 | 15 |
 | spark | 16 | 9 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
@@ -96,7 +96,7 @@ Rows per evidence level:
 | every | `min_mod_neg_one` | choose | `ZERO` | `ERROR` | shim `MIN % -1 written out` (expression) | probe | tested: [duckdb-R15-int-modulus](../characterization/duckdb/facts/duckdb-R15-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
-| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | missing | proved `Choice.le_sound` |
+| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [duckdb-float-ieee](../characterization/duckdb/facts/duckdb-float-ieee.json), [duckdb-ieee-arith-macos-arm64](../characterization/duckdb/facts/duckdb-ieee-arith-macos-arm64.json), [duckdb-ieee-arith-linux-x86-64](../characterization/duckdb/facts/duckdb-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [duckdb-R15-round](../characterization/duckdb/facts/duckdb-R15-round.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
@@ -104,12 +104,12 @@ Rows per evidence level:
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `Dialect.canon` (expression) | probe | tested: [duckdb-R14](../characterization/duckdb/facts/duckdb-R14.json) |
-| every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | missing | proved `Choice.le_sound` |
+| every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [duckdb-nan-equality](../characterization/duckdb/facts/duckdb-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [duckdb-arg-min-nulls](../characterization/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | probe | tested: [duckdb-signbit](../characterization/duckdb/facts/duckdb-signbit.json) |
 | every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | engine_test | tested: [duckdb-R13](../characterization/duckdb/facts/duckdb-R13.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
-| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | missing | proved `Choice.le_sound` |
+| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | probe | tested: [duckdb-string-match-case](../characterization/duckdb/facts/duckdb-string-match-case.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
 | every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
@@ -130,10 +130,10 @@ Rows per evidence level:
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
-| every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | missing | proved `Choice.le_sound` |
+| every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | probe | tested: [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-int](../characterization/duckdb/facts/duckdb-avg-int.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
-| every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | missing | proved `Choice.le_sound` |
-| every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | missing | proved `Choice.le_sound` |
+| every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [duckdb-null-keys](../characterization/duckdb/facts/duckdb-null-keys.json) |
+| every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | probe | tested: [duckdb-string-match-case](../characterization/duckdb/facts/duckdb-string-match-case.json), [duckdb-R13](../characterization/duckdb/facts/duckdb-R13.json) |
 
 ## Polars 2.1.0
 
@@ -155,7 +155,7 @@ Rows per evidence level:
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `decimal_round_half_away` (expression) | proof | proved `Polars.decimal_round_half_away`; [polars-decimal-arith](../characterization/polars/facts/polars-decimal-arith.json), [polars-decimal-casts](../characterization/polars/facts/polars-decimal-casts.json) |
 | dec.div | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `decimal_div_half_away` (expression) | proof | proved `Polars.decimal_div_half_away`; [polars-decimal-arith](../characterization/polars/facts/polars-decimal-arith.json) |
-| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | missing | proved `Choice.le_sound` |
+| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [polars-fp-ieee](../characterization/polars/facts/polars-fp-ieee.json), [polars-ieee-arith-macos-arm64](../characterization/polars/facts/polars-ieee-arith-macos-arm64.json), [polars-ieee-arith-linux-x86-64](../characterization/polars/facts/polars-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../characterization/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../characterization/polars/facts/polars-scalar-divisor.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Rel.polars_sound`; [polars-double-divide](../characterization/polars/facts/polars-double-divide.json) |
