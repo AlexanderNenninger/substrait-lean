@@ -250,7 +250,7 @@ theorem Lowering.apply_ffloor_str (t : String) : UnFn.apply .ffloor (.str t) = .
 theorem Lowering.apply_ffloor_list (vs : List Value) : UnFn.apply .ffloor (.list vs) = .null := rfl
 theorem Lowering.apply_ffloor_struct (vs : List Value) : UnFn.apply .ffloor (.struct vs) = .null := rfl
 
-/-! `<<` and `>>` as the templates compute them (`LoweringSearch.schemaBin?`). -/
+/-! `<<` and `>>` as the templates compute them (`LoweringSearch.duckdbSchemas`). -/
 
 theorem Lowering.shl_toInt (a : Int) (n : Nat) (h : n < 64) :
     (BitVec.ofInt 64 a <<< n).toInt = Int.bmod (a * 2 ^ n) (2 ^ 64) := by
@@ -303,7 +303,7 @@ theorem Lowering.shr_apply (a b : Int) : BitOp.apply .shr a b =
     · simp only [h1, and_false, h0, ite_false]
 
 /-- `CASE WHEN #1 = k THEN 2ᵏ …` over `ks`, else NULL: `2ʸ` for a shift `y`, which
-`<<`'s template multiplies by (`LoweringSearch.schemaBin?`). One lemma, by induction,
+`<<`'s template multiplies by (`LoweringSearch.duckdbSchemas`). One lemma, by induction,
 rather than a case per shift in every proof. -/
 @[irreducible] def Lowering.pow2Chain (ks : List Nat) : Expr :=
   ks.foldr (fun (k : Nat) (e : Expr) =>
@@ -401,40 +401,168 @@ def BinEntry.native {p : Profile} (f : BinFn)
     (h : ∀ x y, (p.bin f x y).Agree (Profile.reference.bin f x y)) : BinEntry p f :=
   ⟨.bin f (.field 0) (.field 1), by simp [Expr.must], fun x y => by simpa [Expr.evalP, bind, Except.bind] using h x y⟩
 
-/-- An expression lowered with the table: each function replaced by its
-template, applied to its lowered arguments; `none` if some function has no
-entry. -/
-def Lowering.lower {p : Profile} (L : Lowering p) : Expr → Option Expr
+/-! ## Guards
+
+A template's **guards** are its outer chain of `CASE WHEN c THEN raise(m) ELSE …`:
+the condition `c` over the arguments, and the message `m`, which the generator
+takes from the reference's issue (`Issue.name`). A writer may drop the guard of
+an issue the checker rules out for the plan (`Lowering.lowerWith`). That is
+sound when each dropped guard always evaluates and fires only where the
+reference reports its issue (`Expr.GuardsAt`, for a table `Lowering.GuardsFor`):
+dropping it then changes nothing on the rows where its issue does not happen,
+and those are the rows the plan runs on (`Lowering.lowerRelWith_sound`). A kept
+guard needs nothing new: the template with all its guards agrees with the
+reference (`agree`), so a row where the reference raises with a kept issue
+raises on the engine too. -/
+
+/-- The message of a `raise`, the `THEN` of a guard. -/
+def Expr.raiseMsg? : Expr → Option String
+  | .un (.raise m) _ => some m
+  | _ => none
+
+/-- The template with the guards of the messages `keep` keeps: each
+`CASE WHEN c THEN raise(m) ELSE e END` of its outer chain stays where `keep m`,
+and is replaced by `e` otherwise. -/
+def Expr.keepGuards (keep : String → Bool) : Expr → Expr
+  | .lit v => .lit v
+  | .field i => .field i
+  | .un f a => .un f a
+  | .bin f a b => .bin f a b
+  | .hof f l b => .hof f l b
+  | .ifThen c t e => match t.raiseMsg? with
+    | some m => if keep m then .ifThen c t (e.keepGuards keep) else e.keepGuards keep
+    | none => .ifThen c t e
+
+theorem Expr.keepGuards_all : ∀ t : Expr, t.keepGuards (fun _ => true) = t
+  | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => rfl
+  | .ifThen c t e => by
+    cases hm : t.raiseMsg? <;> simp [keepGuards, hm, keepGuards_all e]
+
+/-- **The guards `keep` drops are exact on `xs`**: each evaluates under `p`, and
+is true only where the reference reports the issue `i` with the guard's
+message. -/
+def Expr.GuardsAt (p : Profile) (keep : String → Bool) (i : Option Issue) (xs : Row) : Expr → Prop
+  | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => True
+  | .ifThen c t e => match t.raiseMsg? with
+    | some m => (keep m = false →
+        ∃ w, c.evalP p xs = .ok w ∧ (w.isTrue = true → i.map Issue.name = some m)) ∧
+        e.GuardsAt p keep i xs
+    | none => True
+
+theorem Expr.guardsAt_all {p : Profile} {i : Option Issue} {xs : Row} :
+    ∀ t : Expr, t.GuardsAt p (fun _ => true) i xs
+  | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => trivial
+  | .ifThen c t e => by
+    cases hm : t.raiseMsg? with
+    | none => simp [GuardsAt, hm]
+    | some m => simp only [GuardsAt, hm]; simpa using guardsAt_all e
+
+/-- **Dropping exact guards keeps the outcome** on arguments whose issue, if
+any, is kept. -/
+theorem Expr.keepGuards_agree {p : Profile} {keep : String → Bool} {i : Option Issue} {xs : Row}
+    {o : Outcome} (hi : ∀ k, i = some k → keep k.name = true) :
+    ∀ t : Expr, t.GuardsAt p keep i xs → (t.evalP p xs).Agree o →
+      ((t.keepGuards keep).evalP p xs).Agree o
+  | .lit _, _, h | .field _, _, h | .un _ _, _, h | .bin _ _ _, _, h | .hof _ _ _, _, h => h
+  | .ifThen c t e, hg, h => by
+    cases hm : t.raiseMsg? with
+    | none => simpa [keepGuards, hm] using h
+    | some m =>
+      simp only [GuardsAt, hm] at hg
+      cases hk : keep m with
+      | true =>
+        simp only [keepGuards, hm, hk, ite_true]
+        simp only [evalP] at h ⊢
+        cases hc : c.evalP p xs with
+        | error k => simpa [hc, bind, Except.bind] using h
+        | ok w =>
+          simp only [hc, bind, Except.bind] at h ⊢
+          cases hw : w.isTrue
+          · simp only [hw] at h ⊢
+            exact keepGuards_agree hi e hg.2 h
+          · simpa [hw] using h
+      | false =>
+        simp only [keepGuards, hm, hk]
+        obtain ⟨w, hc, hw⟩ := hg.1 hk
+        have hnt : w.isTrue = false := by
+          cases hwt : w.isTrue
+          · rfl
+          · obtain ⟨k, hik, hkn⟩ := Option.map_eq_some_iff.mp (hw hwt)
+            have := hi k hik
+            rw [hkn, hk] at this
+            exact absurd this (by decide)
+        refine keepGuards_agree hi e hg.2 ?_
+        simpa [evalP, hc, hnt, bind, Except.bind] using h
+
+/-- Each entry's guards that `keep` drops are exact, and its template without
+them still reads every argument. `Lowering.guardsFor_all`: nothing to check
+when every guard is kept. -/
+def Lowering.GuardsFor {p : Profile} (L : Lowering p) (keep : String → Bool) : Prop :=
+  (∀ f en, L.un f = some en → 0 ∈ (en.tmpl.keepGuards keep).must ∧
+    ∀ x, en.tmpl.GuardsAt p keep (f.issue x) [x]) ∧
+  (∀ f en, L.bin f = some en → (0 ∈ (en.tmpl.keepGuards keep).must ∧ 1 ∈ (en.tmpl.keepGuards keep).must) ∧
+    ∀ x y, en.tmpl.GuardsAt p keep (f.issue x y) [x, y])
+
+theorem Lowering.guardsFor_all {p : Profile} (L : Lowering p) : L.GuardsFor fun _ => true :=
+  ⟨fun _ en _ => ⟨by rw [Expr.keepGuards_all]; exact en.strict, fun _ => Expr.guardsAt_all _⟩,
+   fun _ en _ => ⟨by rw [Expr.keepGuards_all]; exact en.strict, fun _ _ => Expr.guardsAt_all _⟩⟩
+
+/-! ## Lowering an expression -/
+
+/-- An expression lowered with the table, with the guards `keep` keeps: each
+function replaced by its template, applied to its lowered arguments; `none` if
+some function has no entry. -/
+def Lowering.lowerWith {p : Profile} (L : Lowering p) (keep : String → Bool) : Expr → Option Expr
   | .lit v => some (.lit v)
   | .field i => some (.field i)
   | .un f a => do
     let e ← L.un f
-    some (e.tmpl.subst [← L.lower a])
+    some ((e.tmpl.keepGuards keep).subst [← L.lowerWith keep a])
   | .bin f a b => do
     let e ← L.bin f
-    let a' ← L.lower a
-    let b' ← L.lower b
-    some (e.tmpl.subst [a', b'])
-  | .ifThen c t e => do some (.ifThen (← L.lower c) (← L.lower t) (← L.lower e))
-  | .hof f l b => do some (.hof f (← L.lower l) (← L.lower b))
+    let a' ← L.lowerWith keep a
+    let b' ← L.lowerWith keep b
+    some ((e.tmpl.keepGuards keep).subst [a', b'])
+  | .ifThen c t e => do some (.ifThen (← L.lowerWith keep c) (← L.lowerWith keep t) (← L.lowerWith keep e))
+  | .hof f l b => do some (.hof f (← L.lowerWith keep l) (← L.lowerWith keep b))
+
+/-- An expression lowered with the table, every guard kept. -/
+def Lowering.lower {p : Profile} (L : Lowering p) : Expr → Option Expr := L.lowerWith fun _ => true
+
+/-- A call's issue is never assumed (`Issue.assumed`): those come from
+aggregates and overflows to `±∞`, which `issue` does not report. -/
+theorem Issue.not_assumed_of_un {f : UnFn} {x : Value} {k : Issue} (h : f.issue x = some k) :
+    k.assumed = false := by
+  cases k <;> simp only [Issue.assumed]
+  · exact absurd h (f.issue_ne_sumWraps x)
+  · exact absurd h (f.issue_ne_infinite x)
+
+theorem Issue.not_assumed_of_bin {f : BinFn} {x y : Value} {k : Issue} (h : f.issue x y = some k) :
+    k.assumed = false := by
+  cases k <;> simp only [Issue.assumed]
+  · exact absurd h (f.issue_ne_sumWraps x y)
+  · exact absurd h (f.issue_ne_infinite x y)
 
 /-- **A lowered expression has the reference's outcome** under the engine's
-profile: the same value, or an error. -/
-theorem Lowering.lower_correct {p : Profile} (L : Lowering p) :
-    ∀ (e t : Expr), L.lower e = some t → ∀ row : Row,
+profile, the same value or an error, on a row where every issue the reference
+meets is assumed or has its guard kept. -/
+theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String → Bool}
+    (hG : L.GuardsFor keep) :
+    ∀ (e t : Expr), L.lowerWith keep e = some t → ∀ row : Row,
+      (∀ q ∈ e.issues row, q.1.assumed = true ∨ keep q.1.name = true) →
       Outcome.Agree (t.evalP p row) (e.evalP Profile.reference row)
-  | .lit _, t, h, _ => by simp only [lower, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
-  | .field _, t, h, _ => by simp only [lower, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
-  | .un f a, t, h, row => by
-    simp only [lower, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-    obtain ⟨en, _, a', ha, rfl⟩ := h
-    have iha := L.lower_correct a a' ha row
+  | .lit _, t, h, _, _ => by simp only [lowerWith, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
+  | .field _, t, h, _, _ => by simp only [lowerWith, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
+  | .un f a, t, h, row, hk => by
+    simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+    obtain ⟨en, hen, a', ha, rfl⟩ := h
+    have iha := L.lowerWith_correct hG a a' ha row fun q hq => hk q (by simp [Expr.issues, hq])
     cases hx : a'.evalP p row with
     | error k =>
       have hr : (a.evalP Profile.reference row).err?.isSome := by
         rw [← Outcome.agree_err iha, hx]; rfl
       refine Outcome.agree_of_err
-        (Expr.subst_raises (p := p) (row := row) (σ := [a']) (i := 0) ?_ en.tmpl en.strict) ?_
+        (Expr.subst_raises (p := p) (row := row) (σ := [a']) (i := 0) ?_ _ (hG.1 f en hen).1) ?_
       · simp [hx, Outcome.err?]
       · cases h' : a.evalP Profile.reference row with
         | ok _ => simp [h', Outcome.err?] at hr
@@ -447,18 +575,22 @@ theorem Lowering.lower_correct {p : Profile} (L : Lowering p) :
         simp only [h', Outcome.Agree] at iha; subst iha
         simp only [Expr.evalP, h', bind, Except.bind]
         rw [Expr.evalP_subst (vs := [x]) (fun i => by cases i <;> simp [hx, Expr.evalP])]
-        exact en.agree x
-  | .bin f a b, t, h, row => by
-    simp only [lower, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-    obtain ⟨en, _, a', ha, b', hb, rfl⟩ := h
-    have iha := L.lower_correct a a' ha row
-    have ihb := L.lower_correct b b' hb row
+        refine Expr.keepGuards_agree (fun k hik => ?_) _ ((hG.1 f en hen).2 x) (en.agree x)
+        have hxe : x = a.eval row := Expr.evalP_reference_ok h'
+        rcases hk (k, .un f a) (by simp [Expr.issues, ← hxe, UnFn.issueAll, hik]) with ha | hn
+        · rw [Issue.not_assumed_of_un hik] at ha; exact absurd ha (by decide)
+        · exact hn
+  | .bin f a b, t, h, row, hk => by
+    simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+    obtain ⟨en, hen, a', ha, b', hb, rfl⟩ := h
+    have iha := L.lowerWith_correct hG a a' ha row fun q hq => hk q (by simp [Expr.issues, hq])
+    have ihb := L.lowerWith_correct hG b b' hb row fun q hq => hk q (by simp [Expr.issues, hq])
     cases hx : a'.evalP p row with
     | error k =>
       have hr : (a.evalP Profile.reference row).err?.isSome := by
         rw [← Outcome.agree_err iha, hx]; rfl
       refine Outcome.agree_of_err
-        (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 0) ?_ en.tmpl en.strict.1) ?_
+        (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 0) ?_ _ (hG.2 f en hen).1.1) ?_
       · simp [hx, Outcome.err?]
       · cases h' : a.evalP Profile.reference row with
         | ok _ => simp [h', Outcome.err?] at hr
@@ -474,7 +606,7 @@ theorem Lowering.lower_correct {p : Profile} (L : Lowering p) :
           have hr : (b.evalP Profile.reference row).err?.isSome := by
             rw [← Outcome.agree_err ihb, hy]; rfl
           refine Outcome.agree_of_err
-            (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 1) ?_ en.tmpl en.strict.2) ?_
+            (Expr.subst_raises (p := p) (row := row) (σ := [a', b']) (i := 1) ?_ _ (hG.2 f en hen).1.2) ?_
           · simp [hy, Outcome.err?]
           · cases h'' : b.evalP Profile.reference row with
             | ok _ => simp [h'', Outcome.err?] at hr
@@ -488,21 +620,68 @@ theorem Lowering.lower_correct {p : Profile} (L : Lowering p) :
             simp only [Expr.evalP, h', h'', bind, Except.bind]
             rw [Expr.evalP_subst (vs := [x, y]) (fun i => by
               rcases i with _ | _ | i <;> simp [hx, hy, Expr.evalP])]
-            exact en.agree x y
-  | .ifThen c t' e, t, h, row => by
-    simp only [lower, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+            refine Expr.keepGuards_agree (fun k hik => ?_) _ ((hG.2 f en hen).2 x y) (en.agree x y)
+            have hxe : x = a.eval row := Expr.evalP_reference_ok h'
+            have hye : y = b.eval row := Expr.evalP_reference_ok h''
+            rcases hk (k, .bin f a b) (by simp [Expr.issues, ← hxe, ← hye, BinFn.issueAll, hik])
+              with ha | hn
+            · rw [Issue.not_assumed_of_bin hik] at ha; exact absurd ha (by decide)
+            · exact hn
+  | .ifThen c t' e, t, h, row, hk => by
+    simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨c', hc, t'', ht, e', he, rfl⟩ := h
+    have ihc := L.lowerWith_correct hG c c' hc row fun q hq => hk q (by simp [Expr.issues, hq])
     simp only [Expr.evalP]
-    refine Outcome.agree_bind (L.lower_correct c c' hc row) fun v => ?_
-    split
-    · exact L.lower_correct t' t'' ht row
-    · exact L.lower_correct e e' he row
-  | .hof f l b, t, h, row => by
-    simp only [lower, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+    cases hr : c.evalP Profile.reference row with
+    | error k =>
+      rw [hr] at ihc
+      cases hl : c'.evalP p row with
+      | ok _ => simp [hl, Outcome.Agree] at ihc
+      | error _ => simp [bind, Except.bind, Outcome.Agree]
+    | ok v =>
+      rw [hr] at ihc
+      cases hl : c'.evalP p row with
+      | error _ => simp [hl, Outcome.Agree] at ihc
+      | ok v' =>
+        simp only [hl, Outcome.Agree] at ihc; subst ihc
+        have hv : v' = c.eval row := Expr.evalP_reference_ok hr
+        simp only [bind, Except.bind]
+        cases hct : v'.isTrue
+        · simp only [Bool.false_eq_true, ↓reduceIte]
+          exact L.lowerWith_correct hG e e' he row fun q hq =>
+            hk q (by simp [Expr.issues, ← hv, hct, hq])
+        · simp only [↓reduceIte]
+          exact L.lowerWith_correct hG t' t'' ht row fun q hq =>
+            hk q (by simp [Expr.issues, ← hv, hct, hq])
+  | .hof f l b, t, h, row, hk => by
+    simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨l', hl, b', hb, rfl⟩ := h
+    have ihl := L.lowerWith_correct hG l l' hl row fun q hq => hk q (by simp [Expr.issues, hq])
     simp only [Expr.evalP]
-    exact Outcome.agree_bind (L.lower_correct l l' hl row) fun v =>
-      HoFn.applyP_agree f v fun x => L.lower_correct b b' hb (x :: row)
+    cases hr : l.evalP Profile.reference row with
+    | error k =>
+      rw [hr] at ihl
+      cases hl' : l'.evalP p row with
+      | ok _ => simp [hl', Outcome.Agree] at ihl
+      | error _ => simp [bind, Except.bind, Outcome.Agree]
+    | ok v =>
+      rw [hr] at ihl
+      cases hl' : l'.evalP p row with
+      | error _ => simp [hl', Outcome.Agree] at ihl
+      | ok v' =>
+        simp only [hl', Outcome.Agree] at ihl; subst ihl
+        have hv : v' = l.eval row := Expr.evalP_reference_ok hr
+        simp only [bind, Except.bind]
+        exact HoFn.applyP_agree f v' fun x hx => L.lowerWith_correct hG b b' hb (x :: row) fun q hq =>
+          hk q (by
+            simp only [Expr.issues, List.mem_append, List.mem_flatMap]
+            exact .inr ⟨x, hv ▸ hx, hq⟩)
+
+/-- **A lowered expression has the reference's outcome** under the engine's
+profile: the same value, or an error. -/
+theorem Lowering.lower_correct {p : Profile} (L : Lowering p) (e t : Expr) (h : L.lower e = some t)
+    (row : Row) : Outcome.Agree (t.evalP p row) (e.evalP Profile.reference row) :=
+  L.lowerWith_correct L.guardsFor_all e t h row fun _ _ => .inr rfl
 
 /-- **A lowered expression is exact** under the engine's profile. -/
 theorem Lowering.lower_exact {p : Profile} (L : Lowering p) {e t : Expr} (hs : L.lower e = some t) :
@@ -520,39 +699,81 @@ theorem Lowering.lower_exact {p : Profile} (L : Lowering p) {e t : Expr} (hs : L
 def Lowering.Total {p : Profile} (L : Lowering p) : Prop :=
   (∀ f, (L.un f).isSome) ∧ ∀ f, (L.bin f).isSome
 
-theorem Lowering.lower_isSome {p : Profile} {L : Lowering p} (hL : L.Total) :
-    ∀ e : Expr, (L.lower e).isSome
+theorem Lowering.lowerWith_isSome {p : Profile} {L : Lowering p} (hL : L.Total) (keep : String → Bool) :
+    ∀ e : Expr, (L.lowerWith keep e).isSome
   | .lit _ | .field _ => rfl
   | .un f a => by
     obtain ⟨en, he⟩ := Option.isSome_iff_exists.mp (hL.1 f)
-    obtain ⟨a', ha⟩ := Option.isSome_iff_exists.mp (lower_isSome hL a)
-    simp [lower, he, ha]
+    obtain ⟨a', ha⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep a)
+    simp [lowerWith, he, ha]
   | .bin f a b => by
     obtain ⟨en, he⟩ := Option.isSome_iff_exists.mp (hL.2 f)
-    obtain ⟨a', ha⟩ := Option.isSome_iff_exists.mp (lower_isSome hL a)
-    obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp (lower_isSome hL b)
-    simp [lower, he, ha, hb]
+    obtain ⟨a', ha⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep a)
+    obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep b)
+    simp [lowerWith, he, ha, hb]
   | .ifThen c t e => by
-    obtain ⟨c', hc⟩ := Option.isSome_iff_exists.mp (lower_isSome hL c)
-    obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp (lower_isSome hL t)
-    obtain ⟨e', he⟩ := Option.isSome_iff_exists.mp (lower_isSome hL e)
-    simp [lower, hc, ht, he]
+    obtain ⟨c', hc⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep c)
+    obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep t)
+    obtain ⟨e', he⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep e)
+    simp [lowerWith, hc, ht, he]
   | .hof f l b => by
-    obtain ⟨l', hl⟩ := Option.isSome_iff_exists.mp (lower_isSome hL l)
-    obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp (lower_isSome hL b)
-    simp [lower, hl, hb]
+    obtain ⟨l', hl⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep l)
+    obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep b)
+    simp [lowerWith, hl, hb]
+
+theorem Lowering.lower_isSome {p : Profile} {L : Lowering p} (hL : L.Total) (e : Expr) :
+    (L.lower e).isSome :=
+  lowerWith_isSome hL _ e
+
+/-- The lowering of an expression with the guards `keep` keeps, for a total table. -/
+def Lowering.lowerEWith {p : Profile} (L : Lowering p) (keep : String → Bool) (e : Expr) : Expr :=
+  (L.lowerWith keep e).getD e
 
 /-- The lowering of an expression, for a total table. -/
 def Lowering.lowerE {p : Profile} (L : Lowering p) (e : Expr) : Expr := (L.lower e).getD e
 
+/-- `t` computes `e`'s value on `row` wherever it does not raise there. -/
+def Expr.ExactAt (p : Profile) (t e : Expr) (row : Row) : Prop :=
+  ∀ v, t.evalP p row = .ok v → t.eval row p.impl = e.eval row
+
+theorem Expr.ExactAt.eq {p : Profile} {t e : Expr} {row : Row} (hx : Expr.ExactAt p t e row)
+    (h : ¬t.RaisesOn p row) : t.eval row p.impl = e.eval row := by
+  obtain ⟨v, hv⟩ := Expr.ok_of_not_raises h
+  exact hx v hv
+
+theorem Lowering.lowerEWith_exactAt {p : Profile} {L : Lowering p} (hL : L.Total)
+    {keep : String → Bool} (hG : L.GuardsFor keep) (e : Expr) (row : Row)
+    (hk : ∀ q ∈ e.issues row, q.1.assumed = true ∨ keep q.1.name = true) :
+    Expr.ExactAt p (L.lowerEWith keep e) e row := by
+  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep e)
+  simp only [lowerEWith, ht, Option.getD_some]
+  intro v hv
+  have hag := L.lowerWith_correct hG e t ht row hk
+  rw [hv] at hag
+  cases hr : e.evalP Profile.reference row with
+  | error k => rw [hr] at hag; simp [Outcome.Agree] at hag
+  | ok w =>
+    rw [hr] at hag; simp only [Outcome.Agree] at hag; subst hag
+    exact (Expr.evalI_of_evalP hv).trans (Expr.evalP_reference_ok hr)
+
 theorem Lowering.lowerE_exact {p : Profile} {L : Lowering p} (hL : L.Total) (e : Expr) :
-    Expr.Exact p (L.lowerE e) e := by
-  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (lower_isSome hL e)
-  simp only [lowerE, ht, Option.getD_some]
-  exact L.lower_exact ht
+    Expr.Exact p (L.lowerE e) e :=
+  fun row => lowerEWith_exactAt hL L.guardsFor_all e row fun _ _ => .inr rfl
+
+/-- A plan lowered with the table, with the guards `keep` keeps. -/
+def Lowering.lowerRelWith {p : Profile} (L : Lowering p) (keep : String → Bool) (r : Rel) : Rel :=
+  r.mapExprs (L.lowerEWith keep)
 
 /-- A plan lowered with the table: every expression lowered. -/
 def Lowering.lowerRel {p : Profile} (L : Lowering p) (r : Rel) : Rel := r.mapExprs L.lowerE
+
+/-- With every guard kept, `lowerWith` is `lower` and `lowerRelWith` is `lowerRel`. -/
+theorem Lowering.lowerWith_all {p : Profile} (L : Lowering p) : L.lowerWith (fun _ => true) = L.lower :=
+  rfl
+
+theorem Lowering.lowerRelWith_all {p : Profile} (L : Lowering p) :
+    L.lowerRelWith (fun _ => true) = L.lowerRel :=
+  rfl
 
 /-- **A lowered plan runs correctly on the engine, or raises.** Unless one of
 its expressions raises on a row the engine evaluates it on, the engine's
@@ -562,5 +783,140 @@ theorem Lowering.lowerRel_sound {p : Profile} {L : Lowering p} (hL : L.Total) {c
     {r : Rel} (h : ¬(L.lowerRel r).Raises p cat) :
     (L.lowerRel r).eval cat p.impl = r.eval cat :=
   Rel.evalI_mapExprs (lowerE_exact hL) (fun _ => rfl) h
+
+/-! ## Dropping guards in a plan -/
+
+/-- `Rel.evalI_mapExprs` where `f` is exact only on rows whose issues satisfy
+`P`: when every issue the plan meets (`Rel.HasIssue`, on the rows of
+`Rel.loose`) satisfies `P`, and the mapped plan does not raise, it computes
+`Rel.eval`. -/
+theorem Rel.evalI_mapExprs_of {p : Profile} {f : Expr → Expr} {P : Issue → Prop}
+    (hx : ∀ e row, (∀ q ∈ e.issues row, P q.1) → Expr.ExactAt p (f e) e row)
+    (hf : ∀ i, f (.field i) = .field i) {cat : Catalog} :
+    ∀ {u : Bool} {r : Rel}, r.looseSub = true → (∀ q, r.HasIssue cat u q → P q.1) →
+      ¬(r.mapExprs f).Raises p cat → (r.mapExprs f).eval cat p.impl = r.eval cat
+  | _, .read _, _, _, _ | _, .values _ _, _, _, _ => rfl
+  | _, .unnest _ _, hs, _, _ => by simp [looseSub] at hs
+  | _, .filter r c, hs, hP, h => by
+    simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
+    have ih := evalI_mapExprs_of hx hf (u := true) (r := r) hs (fun q hq => hP q (.inl hq)) h.1
+    have h2 := h.2; rw [ih] at h2
+    simp only [mapExprs, eval, ih]
+    exact List.filter_congr fun row hr => by
+      rw [(hx c row fun q hq => hP q (.inr ⟨row, mem_loose (r := r) hs row hr, hq⟩)).eq (h2 row hr)]
+  | u, .project r es, hs, hP, h => by
+    simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
+    have ih := evalI_mapExprs_of hx hf (u := u) (r := r) hs (fun q hq => hP q (.inl hq)) h.1
+    have h2 := h.2; rw [ih] at h2
+    simp only [mapExprs, eval, ih, List.map_map]
+    exact List.map_congr_left fun row hr => congrArg (row ++ ·) (List.map_congr_left fun e he =>
+      (hx e row fun q hq => hP q (.inr ⟨row, mem_loose_if (r := r) hs u hr, e, he, hq⟩)).eq
+        (h2 row hr (f e) (List.mem_map_of_mem he)))
+  | u, .emit r _, hs, hP, h | u, .orderBy r _, hs, hP, h | u, .distinct r, hs, hP, h => by
+    simp only [mapExprs, Raises] at h
+    simp only [mapExprs, eval, evalI_mapExprs_of hx hf (u := u) (r := r) hs hP h]
+  | u, .window r _ _ _, hs, hP, h => by
+    simp only [looseSub] at hs
+    simp only [mapExprs, Raises] at h
+    simp only [mapExprs, eval, evalI_mapExprs_of hx hf (u := u) (r := r) hs (fun q hq => hP q (.inl hq)) h]
+  | u, .fetch r _ cnt, hs, hP, h => by
+    simp only [looseSub] at hs
+    simp only [mapExprs, Raises] at h
+    have ih := evalI_mapExprs_of hx hf (u := u) (r := r) hs hP h
+    cases cnt <;> simp only [mapExprs, eval, ih]
+  | u, .cross a b, hs, hP, h | u, .unionAll a b, hs, hP, h => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [mapExprs, Raises, not_or] at h
+    simp only [mapExprs, eval,
+      evalI_mapExprs_of hx hf (u := u) (r := a) hs.1 (fun q hq => hP q (.inl hq)) h.1,
+      evalI_mapExprs_of hx hf (u := u) (r := b) hs.2 (fun q hq => hP q (.inr hq)) h.2]
+  | _, .join a b .inner on, hs, hP, h => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
+    have iha := evalI_mapExprs_of hx hf (u := true) (r := a) hs.1 (fun q hq => hP q (.inl hq)) h.1
+    have ihb := evalI_mapExprs_of hx hf (u := true) (r := b) hs.2
+      (fun q hq => hP q (.inr (.inl hq))) h.2.1
+    have h2 := h.2.2; rw [iha, ihb] at h2
+    simp only [mapExprs, eval, iha, ihb]
+    exact List.filter_congr fun row hr => by
+      obtain ⟨x, hx', y, hy, rfl⟩ := mem_crossRows.mp hr
+      rw [(hx on (x ++ y) fun q hq => hP q (.inr (.inr
+        ⟨x, mem_loose hs.1 x hx', y, mem_loose hs.2 y hy, hq⟩))).eq (h2 x hx' y hy)]
+  | _, .join a b .left on, hs, hP, h => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
+    have iha := evalI_mapExprs_of hx hf (u := true) (r := a) hs.1 (fun q hq => hP q (.inl hq)) h.1
+    have ihb := evalI_mapExprs_of hx hf (u := true) (r := b) (looseExact_sub hs.2)
+      (fun q hq => hP q (.inr (.inl hq))) h.2.1
+    have h2 := h.2.2; rw [iha, ihb] at h2
+    simp only [mapExprs, eval, iha, ihb, arity_mapExprs]
+    exact flatMap_congr fun x hx' => leftJoinRowI_map fun y hy =>
+      (hx on (x ++ y) fun q hq => hP q (.inr (.inr
+        ⟨x, mem_loose hs.1 x hx', y, (looseExact_mem hs.2 y).mpr hy, hq⟩))).eq (h2 x hx' y hy)
+  | _, .semi a b _ on, hs, hP, h => by
+    simp only [looseSub, Bool.and_eq_true] at hs
+    simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
+    have iha := evalI_mapExprs_of hx hf (u := true) (r := a) hs.1 (fun q hq => hP q (.inl hq)) h.1
+    have ihb := evalI_mapExprs_of hx hf (u := true) (r := b) hs.2
+      (fun q hq => hP q (.inr (.inl hq))) h.2.1
+    have h2 := h.2.2; rw [iha, ihb] at h2
+    simp only [mapExprs, eval, iha, ihb]
+    exact List.filter_congr fun x hx' => by
+      rw [hasMatchI_map fun y hy => (hx on (x ++ y) fun q hq => hP q (.inr (.inr
+        ⟨x, mem_loose hs.1 x hx', y, mem_loose hs.2 y hy, hq⟩))).eq (h2 x hx' y hy)]
+  | u, .aggregate r gs ms, hs, hP, h => by
+    simp only [looseSub] at hs
+    simp only [mapExprs, Raises, not_or, not_exists, not_and] at h
+    have ih := evalI_mapExprs_of hx hf (u := u) (r := r) hs (fun q hq => hP q (.inl hq)) h.1
+    have h2 := h.2; rw [ih] at h2
+    simp only [mapExprs, eval, ih]
+    refine aggregateEvalI_map fun row hr e he => ?_
+    have hPe : ∀ q ∈ e.issues row, P q.1 := fun q hq =>
+      hP q (.inr (.inl ⟨row, mem_loose_if (r := r) hs u hr, e, he, hq⟩))
+    have hmem : ∀ e' ∈ gs.map f ++ (ms.map (Measure.mapExpr f)).flatMap Measure.exprs,
+        ¬e'.RaisesOn p row := h2 row hr
+    simp only [List.mem_append, List.mem_flatMap] at he
+    rcases he with he | ⟨m, hm, he⟩
+    · exact (hx e row hPe).eq (hmem _ (List.mem_append_left _ (List.mem_map_of_mem he)))
+    · have hin : ∀ e' ∈ (m.mapExpr f).exprs, ¬e'.RaisesOn p row := fun e' he' =>
+        hmem e' (List.mem_append_right _ (List.mem_flatMap.mpr ⟨_, List.mem_map_of_mem hm, he'⟩))
+      rw [Measure.mapExpr_exprs] at hin
+      simp only [Measure.exprs, List.mem_cons, List.mem_append, List.mem_map] at he
+      rcases he with (rfl | he) | ⟨k, _, rfl⟩
+      · exact (hx _ row hPe).eq (hin _ (List.mem_cons_self ..))
+      · exact (hx e row hPe).eq
+          (hin _ (List.mem_cons_of_mem _ (List.mem_append_left _ (List.mem_map_of_mem he))))
+      · rw [hf]; rfl
+
+/-- **Dropping the guards of issues a plan never meets is sound.** Where
+every issue the plan meets (`Rel.HasIssue`) is assumed or has its guard kept,
+and the lowered plan does not raise, the engine's functions give `Rel.eval`'s
+rows, on every catalog. With the guards of the issues the checker cannot rule
+out kept, data that breaks a precondition makes the run raise, as the
+reference does, rather than return the engine's own value. -/
+theorem Lowering.lowerRelWith_sound {p : Profile} {L : Lowering p} (hL : L.Total)
+    {keep : String → Bool} (hG : L.GuardsFor keep) {cat : Catalog} {r : Rel}
+    (hs : r.looseSub = true)
+    (hk : ∀ q, r.HasIssue cat false q → q.1.assumed = true ∨ keep q.1.name = true)
+    (h : ¬(L.lowerRelWith keep r).Raises p cat) :
+    (L.lowerRelWith keep r).eval cat p.impl = r.eval cat :=
+  Rel.evalI_mapExprs_of (P := fun i => i.assumed = true ∨ keep i.name = true)
+    (fun e row he => lowerEWith_exactAt hL hG e row he) (fun _ => rfl) hs hk h
+
+/-- **`Lowering.lowerRelWith_sound` from the checker's report**, in the shape of
+`Rel.guardFree_sound`: on a catalog that satisfies the preconditions, a guard
+may be dropped for every issue `Rel.mayIssues` does not report. -/
+theorem Lowering.lowerRelWith_mayIssues_sound {p : Profile} {L : Lowering p} (hL : L.Total)
+    {keep : String → Bool} (hG : L.GuardsFor keep) {cat : Catalog} (hcat : cat.WF)
+    {A : String → List AVal} {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
+    (hm : (r.mayIssues cat A F T false).all (fun q => q.1.assumed || keep q.1.name) = true)
+    (h : ¬(L.lowerRelWith keep r).Raises p cat) :
+    (L.lowerRelWith keep r).eval cat p.impl = r.eval cat :=
+  lowerRelWith_sound hL hG hs (fun q hq => by
+    have := List.all_eq_true.mp hm q (Rel.mayIssues_sound hcat hA hF hT hwf hsmall q hq)
+    simpa only [Bool.or_eq_true] using this) h
 
 end Substrait
