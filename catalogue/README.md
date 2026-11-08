@@ -70,7 +70,7 @@ postcondition is proved, no window's rows depend on how ties are broken
 (`deterministic`: `Rel.window_deterministic`, `window_orderFree`), the
 synthetic tables meet the preconditions, and DuckDB gives the reference's rows
 on them. (`proved` additionally rules out runtime errors.) Two theorems in
-`SubstraitLean/Profile.lean` then say what DuckDB does on *every* database
+`core/Sverify/Core/Profile.lean` then say what DuckDB does on *every* database
 that meets the preconditions:
 
 * `Rel.duckdb_shim_sound`: the plan, shimmed for DuckDB, gives `Rel.eval`'s

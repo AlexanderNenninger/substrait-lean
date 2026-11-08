@@ -401,7 +401,7 @@ class Dialect:
         """C's `pow`: IEEE results, no errors."""
         return f"POWER({a}, {b})"
 
-    # Elementary functions (`SubstraitLean/Numeric.lean`), as C's `libm`
+    # Elementary functions (`core/Sverify/Core/Numeric.lean`), as C's `libm`
     # computes them, and bitwise operations are the function table's (`fn`).
     # The writer guards their domains, so they only see arguments inside them.
 
@@ -555,7 +555,7 @@ class Dialect:
         the end of that month (`kind` is `date` or `time`)."""
         raise self.not_written("adding months")
 
-    # Strings: sequences of Unicode scalar values (`SubstraitLean/Text.lean`).
+    # Strings: sequences of Unicode scalar values (`core/Sverify/Core/Text.lean`).
     # Lengths and positions count characters, and string order (which only
     # sorts use) is by code point, i.e. byte order: no collation.
 
@@ -1084,7 +1084,7 @@ class Bin:
     `substr` whose negative start does not wrap from the end."""
 
 
-#: `FMath.name`: elementary functions of a double (`SubstraitLean/Numeric.lean`).
+#: `FMath.name`: elementary functions of a double (`core/Sverify/Core/Numeric.lean`).
 FMATH = tuple(f.name for f in _functions.FUNCTIONS if f.op == "fmath")
 #: `BitOp.name`: bitwise operations of integers.
 BITWISE = tuple(f.name for f in _functions.FUNCTIONS if f.op == "bit")
@@ -1287,7 +1287,7 @@ class Distinct:
 
 @dataclass(frozen=True)
 class Measure:
-    """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
+    """`fn` of `arg` over the rows `filter` keeps (`core/Sverify/Core/Aggregate.lean`)."""
 
     fn: Literal[
         "count",
@@ -3417,7 +3417,7 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("imod", a, b)
         case "power", [a, b]:
             return Bin("ipow", a, b)
-        # Bitwise operations (`SubstraitLean/Numeric.lean`); `NOT x` is `x XOR -1`.
+        # Bitwise operations (`core/Sverify/Core/Numeric.lean`); `NOT x` is `x XOR -1`.
         case "bitwise_not", [a]:
             return Bin("bit", a, Lit(-1, "int"), param="bitwise_xor")
         case "shift_left", [a, b]:

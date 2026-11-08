@@ -5,7 +5,7 @@ A plan runs on the engine `E` by one of four routes, tried in this order:
 
 1. `"native"`: it was verified under `Profile.E` (`verify(semantics=E)`).
 2. `"translated"`: it was verified under the reference, and runs through
-   the translation from the reference to `E` (`TRANSLATIONS`).
+   the translation from the reference to `E` (`_engines.TRANSLATIONS`).
 3. `"transfer"`: it was verified under another profile `P`, and at every
    option the plan reads, `E`'s choices are within `P`'s: the proof holds
    under `Profile.E` as it is. The checker decides it (`transferB`, proved
@@ -60,6 +60,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
+from sverify._engines import translations
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.observation import Observation, Within, _deterministic_arg
 
@@ -94,27 +95,6 @@ class EngineProfile:
     versions: tuple[str, ...]
     """The engine versions the profile's facts were probed at
     (`characterization/<engine>/facts/`)."""
-
-
-#: The translation from the reference to each engine, with what makes it
-#: sound.
-TRANSLATIONS: Mapping[str, str] = {
-    "duckdb": "sverify's DuckDB lowering, proved for every plan, and its SQL writer",
-    "polars": "sverify's Polars translation, with shims where Polars differs from the "
-    "reference, tested against the reference",
-    "datafusion": "sverify's SQL writer, with shims where DataFusion differs from the "
-    "reference, tested against the reference",
-    "spark": "sverify's Spark SQL writer, with shims where Spark differs from the reference, "
-    "proved against Spark's facts (Rel.spark_sound) and tested against the reference",
-}
-
-
-def translations() -> dict[str, str]:
-    """`TRANSLATIONS`, with those of the installed profiles from outside
-    sverify (`sverify.profiles`)."""
-    from sverify import profiles as plugged
-
-    return {**TRANSLATIONS, **{e: p.translation for e, p in plugged.plugins().items()}}
 
 
 def shim_text(name: str) -> str:
@@ -786,7 +766,7 @@ def realization(
         if engine not in (_options_json().get("profiles") or {}):
             # An engine without a profile in the checker (DataFusion, an
             # installed one): no option has a row, so the translation's tests
-            # stand for the plan (`TRANSLATIONS`).
+            # stand for the plan (`_engines.TRANSLATIONS`).
             return Realized("exact", "tested", (), [])
         return Realized(
             "refused",

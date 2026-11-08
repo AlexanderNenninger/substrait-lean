@@ -1,4 +1,4 @@
-"""The API review's sweep before 1.0 (`api-review/PROPOSAL.md`, items 11
+"""The API review's sweep before 1.0 (#795, items 11
 and 12): `contract()` on every source and sink, `maintain`'s names, required
 `name=`, snake_case values, and the top level (`Changes`, `from_substrait`,
 `rows_per`, `arrives_within`, `approx`, `sql(name=)`, `ContractedTransform.report`).

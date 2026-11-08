@@ -6,7 +6,7 @@ public import FloatBounds.CoreStats
 /-!
 # The statistical aggregates the core trusts, to first order in the spread (#85)
 
-The properties of `SubstraitLean/StatProps.lean` in the form of
+The properties of `core/Sverify/Core/StatProps.lean` in the form of
 `TwoPassRel.lean`, `CovTwoPass.lean`, `MergeRel.lean` and `CovRel.lean`,
 proved for the algorithm Lean computes (two-pass) on the doubles
 `FloatCode.toFloat` decodes. Decoding moves a co-moment by

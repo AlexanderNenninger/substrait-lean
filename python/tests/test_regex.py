@@ -1,8 +1,8 @@
 """Regular expressions with a constant pattern, and digests (#50).
 
 `regexp_extract`, `regexp_replace`, `md5` and `sha256` are black boxes in the
-proofs (`SubstraitLean/Text.lean`); Lean evaluates them, regular expressions
-with RE2's meaning (`SubstraitLean/Regex.lean`). Here:
+proofs (`core/Sverify/Core/Text.lean`); Lean evaluates them, regular expressions
+with RE2's meaning (`core/Sverify/Core/Regex.lean`). Here:
 
 * Lean's evaluator agrees with DuckDB, which uses RE2, on patterns drawn from
   the subset `Text.simpleRegex` accepts: the leftmost-first match, its groups,

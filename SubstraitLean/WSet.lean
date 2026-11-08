@@ -1,4 +1,4 @@
-import SubstraitLean.Rel
+import Sverify.Core.Rel
 
 /-!
 # Weighted relations and their evaluator (#905)

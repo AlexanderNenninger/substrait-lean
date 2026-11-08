@@ -11,16 +11,17 @@ import sqlglot.expressions as sge
 
 from _repo import needs_repo
 from sverify import _functions as fns
+from sverify._engines import DIALECTS as SQL_DIALECTS
 from sverify.engine import checker_path
 from sverify.sql_lift import PROFILES
 
 ROOT = Path(__file__).resolve().parents[2]
-DIALECTS = {"", "duckdb", "spark", "snowflake"}
+DIALECTS = {"", *SQL_DIALECTS}
 
 
 @functools.cache
 def lean_rows() -> tuple[dict, ...]:
-    """Lean's function tables (`SubstraitLean/Functions.lean`), as
+    """Lean's function tables (`core/Sverify/Core/Functions.lean`), as
     `substrait-check --functions` prints them: a row per constructor."""
     out = subprocess.run(
         [str(checker_path()), "--functions"], capture_output=True, text=True, check=True
@@ -31,7 +32,7 @@ def lean_rows() -> tuple[dict, ...]:
 @functools.cache
 def lean_options() -> dict:
     """Lean's options table, the groups' options and the reference's choices
-    (`SubstraitLean/Options.lean`), as `substrait-check --options` prints them."""
+    (`core/Sverify/Core/Options.lean`), as `substrait-check --options` prints them."""
     out = subprocess.run(
         [str(checker_path()), "--options"], capture_output=True, text=True, check=True
     )

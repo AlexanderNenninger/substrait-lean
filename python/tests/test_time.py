@@ -1,6 +1,6 @@
 """`date_part` and `date_trunc`.
 
-* Lean's semantics (`SubstraitLean/Time.lean`) agrees with DuckDB, also for
+* Lean's semantics (`core/Sverify/Core/Time.lean`) agrees with DuckDB, also for
   timestamps before 1970 and at the ends of the reference's timestamps,
   0001-01-01 to 9999-12-31 (D32).
 * `date_part` and truncating to a week, month, quarter or year outside that

@@ -1,4 +1,4 @@
-"""Timestamps, dates, times of day and intervals (`SubstraitLean/Time.lean`).
+"""Timestamps, dates, times of day and intervals (`core/Sverify/Core/Time.lean`).
 
 The date and time functions of `mkCall`, their SQL and their kinds. A new one
 goes here, its `Dialect` hook in the timestamps section of `_base.Dialect`.
@@ -68,7 +68,7 @@ def _add_months(m: int, days: int) -> int:
 def call(name: str, args: list[Expr]) -> Expr | None:
     """`mkCall`'s temporal functions."""
     match name, args:
-        # Timestamps (`SubstraitLean/Time.lean`).
+        # Timestamps (`core/Sverify/Core/Time.lean`).
         case (("date_part" | "datepart"), [Lit(value=str(part)), a]):
             if part.lower() not in DATE_PARTS:
                 raise Unsupported(f"unsupported date part '{part}'")
