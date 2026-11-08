@@ -54,20 +54,29 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
-      # Quarto's package from the cache, downloaded only on a miss and then
-      # with retries: GitHub's release downloads time out (504) often enough
-      # to fail a run.
+      # Quarto's package from the cache, downloaded only on a miss. GitHub's
+      # release download URL times out (504) often enough to fail a run, while
+      # the API's asset endpoint, which `gh release download` uses, still
+      # answers; so each try takes the API first, then the URL.
       - id: quarto-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/quarto-deb
           key: quarto-${{ env.QUARTO_VERSION }}-linux-amd64
       - if: steps.quarto-cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          deb="quarto-${QUARTO_VERSION}-linux-amd64.deb"
           mkdir -p ~/quarto-deb
-          curl -fsSL --retry 10 --retry-all-errors --retry-delay 15 \
-            -o ~/quarto-deb/quarto.deb \
-            "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.deb"
+          for try in 1 2 3 4 5 6; do
+            gh release download "v${QUARTO_VERSION}" -R quarto-dev/quarto-cli \
+              -p "$deb" -O ~/quarto-deb/quarto.deb --clobber && exit 0
+            curl -fsSL -o ~/quarto-deb/quarto.deb \
+              "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/$deb" && exit 0
+            echo "try $try failed; waiting"; sleep 20
+          done
+          exit 1
       - run: sudo dpkg -i ~/quarto-deb/quarto.deb && quarto --version
       - run: uv sync --locked --project python --group docs
       - run: uv run --locked --project python poe -C python docs
