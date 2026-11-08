@@ -258,8 +258,10 @@ def Profile.polars.table : ProfileTable where
     -- target): pairwise, Kahan over groups.
     -- `COMPENSATED`: in memory, Kahan's sum over groups (polars-sum-float, #633).
     (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY", "COMPENSATED"]),
-    -- The translation sums each frame anew, in frame order (polars-window-agg).
-    (none, "window_sum_algo", .oneOf ["RECOMPUTE"]),
+    -- The translation sums a frame from the partition's first row as a running
+    -- sum read at the frame's last row, and any other frame as blocks of 2ᵏ
+    -- rows, each a balanced tree (polars-window-agg).
+    (none, "window_sum_algo", .oneOf ["RUNNING_ADD", "TREE"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     -- Streaming falls back to the in-memory engine; the translation asks for
     -- `linear` (polars-quantile).
