@@ -150,6 +150,18 @@ Three kinds of semantics, each with one job.
   overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
   so neither of the two refines the other.
 
+Black boxes are rows of a black-box catalogue (`Boxes`,
+`core/Sverify/Core/BlackBox.lean`) that engine packages supply: DuckDB's is
+`Boxes.duckdb` (`SubstraitLean/DuckDBBoxes.lean`). The core holds the
+mechanism and no rows, and the reference is parametric in the catalogue
+(`Rel.Allowed B cat`). A proof uses only a row's laws, and they hold by
+construction: the model's value is the row's function where that keeps the
+laws and the row's sample elsewhere, and the catalogue's well-formedness
+(`Boxes.WF`, each sample keeps its laws) is proved by the engine package. A
+black box's value under the reference is any value keeping its row's laws;
+the catalogue's evaluator is one such value, and that an engine's function
+keeps the laws is a fact of that engine, with evidence in its package.
+
 ### What strictness buys
 
 A plan proved under the reference never raises: its preconditions,

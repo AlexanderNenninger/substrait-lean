@@ -328,6 +328,34 @@ example : Boxes.duckdb.names.Nodup := nodup_of_nodupB (by decide +kernel)
 theorem _root_.Substrait.Boxes.duckdb_wf : Boxes.duckdb.WF :=
   Boxes.wf_of_check (by decide +kernel)
 
+/-! ## The evaluators keep the laws
+
+The clamp (`Scalar.call`) gives the sample where an evaluator breaks its
+row's laws, so a wrong evaluator would go unseen there. These samples catch
+it: for each row Lean evaluates, arguments and what DuckDB returns for them
+(the guards above, and `python/tests/test_black_box.py` on random data). Each
+must be the evaluator's value, unclamped, and keep the row's laws. -/
+
+/-- Arguments of a row Lean evaluates, and DuckDB's result. -/
+def evaluated : List (String × List Value × Value) := [
+  ("base64", [.str "foo"], .str "Zm9v"), ("base64", [.str ""], .str ""),
+  ("octet_length", [.str "é"], .int 2), ("strlen", [.str "abc"], .int 3),
+  ("signbit", [.float (-DuckDB.codeOne)], .bool true), ("signbit", [.float DuckDB.codeOne], .bool false),
+  ("yearweek", [.date 19723], .int 202401), ("yearweek", [.date Time.dayMin], .int 101),
+  ("bit_count", [.int (-1)], .int 64), ("bit_count", [.int 7], .int 3),
+  ("list_sum", [.list [.int 1, .null, .int 2]], .int 3), ("list_sum", [.list [.null]], .null),
+  ("string_split", [.str "a,,b", .str ","], .list [.str "a", .str "", .str "b"]),
+  ("string_split", [.str "ab", .null], .list [.str "ab"]),
+  ("varchar_bigint", [.str " 42 "], .int 42), ("try_varchar_bigint", [.str "x"], .null),
+  ("varchar_boolean", [.str "yes"], .bool true), ("try_varchar_date", [.str "x"], .null)]
+
+#guard evaluated.all fun (n, args, out) =>
+  DuckDB.evalScalar n args == out &&
+    (DuckDB.scalarRows.find? (·.name == n)).any fun f => ok f.result f.laws (!args.contains .null) out
+
+-- A catalogue joined with itself is refused: each name once (`Boxes.combine`).
+#guard (Boxes.combine [Boxes.duckdb]).toBool && !(Boxes.combine [Boxes.duckdb, Boxes.duckdb]).toBool
+
 /-! ## The examples' laws, as theorems -/
 
 /-- `base64` of a string is a string. -/

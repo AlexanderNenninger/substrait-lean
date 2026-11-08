@@ -200,6 +200,15 @@ theorem wf_of_check {B : Boxes} (h : B.check = true) : B.WF := by
 def names (B : Boxes) : List String :=
   B.scalars.map (·.name) ++ B.aggregates.map (·.name)
 
+/-- The catalogue of several packages' rows, refused where a name appears
+twice: a row's function cannot be compared, so two packages may not both
+state one function. -/
+def combine (bs : List Boxes) : Except String Boxes :=
+  let B : Boxes := ⟨bs.flatMap (·.scalars), bs.flatMap (·.aggregates)⟩
+  match B.names.filter (fun n => B.names.count n > 1) with
+  | [] => .ok B
+  | n :: _ => .error s!"the black box {n} has rows in more than one catalogue"
+
 def scalar? (B : Boxes) (name : String) : Option Scalar :=
   B.scalars.find? (·.name == name)
 
