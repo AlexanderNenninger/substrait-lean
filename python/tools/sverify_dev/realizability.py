@@ -26,11 +26,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from sverify import _engines
+
 ROOT = Path(__file__).resolve().parents[3]
 DOC = ROOT / "docs" / "realizability.md"
 
-#: Display names of the engines.
-ENGINES = {"duckdb": "DuckDB", "polars": "Polars"}
 
 #: The summary's column for a case.
 LABELS = {
@@ -89,7 +89,7 @@ TABLE_THEOREMS = ("Choice.le_sound",)
 
 
 def _fact_path(engine: str, ident: str) -> Path | None:
-    for e in (engine, *ENGINES):
+    for e in (engine, *sorted(_engines.NAMED)):
         path = ROOT / "characterization" / e / "facts" / f"{ident}.json"
         if path.exists():
             return path
@@ -211,7 +211,7 @@ def render(t: dict[str, Any]) -> str:
         n = counts(e["rows"])
         cells = [str(n[c]) for c in CASES[0:1] + CASES[2:]]
         out.append(
-            f"| {ENGINES.get(name, name)} | {e['version']} | `{e['theorem']}` | "
+            f"| {_engines.title(name)} | {e['version']} | `{e['theorem']}` | "
             f"{len(e['shims'])} | " + " | ".join(cells) + f" | {len(e['refused_functions'])} |"
         )
     out += [
@@ -224,7 +224,7 @@ def render(t: dict[str, Any]) -> str:
     for name, e in t.items():
         levels = [row_level(name, r) for r in e["rows"]]
         out.append(
-            f"| {ENGINES.get(name, name)} | "
+            f"| {_engines.title(name)} | "
             + " | ".join(str(levels.count(lv)) for lv in LEVELS[::-1])
             + " |"
         )
@@ -239,10 +239,10 @@ def render(t: dict[str, Any]) -> str:
                 }
             )
             out.append(
-                f"| {ENGINES.get(name, name)} | `{s['name']}` | {s['cost']} | {', '.join(opts)} |"
+                f"| {_engines.title(name)} | `{s['name']}` | {s['cost']} | {', '.join(opts)} |"
             )
     for name, e in t.items():
-        title = ENGINES.get(name, name)
+        title = _engines.title(name)
         costs: dict[str, int] = {}
         for s in e["shims"]:
             costs[s["cost"]] = costs.get(s["cost"], 0) + 1

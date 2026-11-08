@@ -26,11 +26,13 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from sverify import _engines
 from sverify_dev import catalogue as cat
 
 CASES = cat.ROOT / "contracts.toml"
 RESULTS = cat.ROOT / "contracts.json"
-ENGINES = ("duckdb", "polars", "spark", "snowflake")
+#: The engines the census has an outcome for: those sverify supports.
+ENGINES = _engines.SUPPORTED
 
 
 @dataclass(frozen=True)
