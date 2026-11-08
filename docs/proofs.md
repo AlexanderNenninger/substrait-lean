@@ -306,7 +306,7 @@ generators, then the trusted reading and writing.
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
-| `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps |
+| `StatProps.lean` | The properties any variance, covariance or correlation algorithm keeps; the written variance's NaN guard keeps them (`Stat.nanGuard_varStat`, DD-3) |
 | `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
 | `Options.lean` | The option catalogue and each profile's choices |
 | `AllowedP.lean` | `Rel.AllowedP`, the results a profile's table allows |

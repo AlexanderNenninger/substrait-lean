@@ -48,6 +48,7 @@ from sverify.conditions import (
     ROWS_SHOWN,
     ArrivesWithin,
     CheckedCondition,
+    Discharged,
     Inferred,
     Key,
     MaxRows,
@@ -504,6 +505,11 @@ class Report:
     """The schema of each input table the plan reads, by table name: the
     columns `requires` may name, per table, as `output` holds those
     `ensures` may name."""
+    preconditions: list[Discharged] = field(default_factory=list, repr=False, compare=False)
+    """How each precondition on a bound input was established in the call
+    that made this report: from its schema, from metadata (`sverify.io`
+    tables) or on the data. Empty for a report of unbound tables; a refresh
+    reports its own (`StageRefresh.preconditions`)."""
 
     def to_json(self, indent: int | None = None) -> str:
         """The report as a versioned JSON document, for CI jobs and tools

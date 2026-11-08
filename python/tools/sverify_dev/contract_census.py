@@ -148,6 +148,7 @@ REFUSED = [
     ("which the observation ignores", "refused: postcondition reads doubles a tolerance ignores"),
     ("not verified: ensures", "refused: postcondition not proved"),
     ("no engine meets the observation's tolerance", "refused: tolerance unmet"),
+    ("and the postcondition asks within", "refused: tolerance unmet"),
     ("may keep other rows", "refused: threshold rule (#568)"),
     ("not verified: may fail", "refused: may raise"),
     ("runs on duckdb only", "refused: function runs on DuckDB only (#271)"),
