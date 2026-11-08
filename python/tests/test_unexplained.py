@@ -11,18 +11,19 @@ import re
 
 import pytest
 
-from _repo import ROOT, needs_repo
-from sverify_dev import slt
+from _repo import needs_repo
+from sverify_dev import bugs, facts, slt, spark_fuzz
 
 pytestmark = [needs_repo, pytest.mark.backend("duckdb")]
 
-FACTS = ROOT / "characterization"
-BUGS = ROOT / "upstream" / "bugs"
+#: The facts and upstream bugs, by id, through their checkers' loaders.
+FACT_IDS = {f["id"] for f in facts.load().values()}
+BUG_IDS = {p.stem for p in bugs.load()}
 
 
 def _disagreements() -> list[dict]:
     found = []
-    for path in sorted((FACTS / "duckdb").glob("*.json")):
+    for path in sorted(slt.REPLAY_DIR.glob("*.json")):
         ledger = json.loads(path.read_text())
         if isinstance(ledger, dict) and "results" in ledger:
             found += [r for r in ledger["results"] if r["cls"] == "disagree"]
@@ -30,11 +31,7 @@ def _disagreements() -> list[dict]:
 
 
 def _exists(by: str) -> bool:
-    if re.fullmatch(r"#\d+", by):
-        return True
-    if re.fullmatch(r"[A-Z]{2}-\d+", by):
-        return (BUGS / f"{by}.json").is_file()
-    return any(FACTS.glob(f"*/facts/{by}.json"))
+    return re.fullmatch(r"#\d+", by) is not None or by in BUG_IDS or by in FACT_IDS
 
 
 def test_every_duckdb_disagreement_is_explained():
@@ -57,7 +54,7 @@ def test_every_explanation_exists_and_is_used():
 
 
 def test_spark_fuzz_has_no_finding():
-    ledger = json.loads((FACTS / "spark" / "fuzz.json").read_text())
+    ledger = json.loads(spark_fuzz.OUT.read_text())
     for name, target in ledger.items():
         if name == "_meta":
             continue
