@@ -47,11 +47,14 @@ class _Body(Exprs):
         if isinstance(op, ops.Argument):
             if op != self.param:
                 raise Unsupported(
-                    "a lambda body that reads an outer lambda's parameter is not supported yet"
+                    "a lambda body that reads an outer lambda's parameter is not supported "
+                    "yet (#327)"
                 )
             return PARAM
         if isinstance(op, ops.Field):
-            raise Unsupported("a lambda body that reads the table's columns is not supported yet")
+            raise Unsupported(
+                "a lambda body that reads the table's columns is not supported yet (#327)"
+            )
         return super().translate(op)
 
 
@@ -67,7 +70,7 @@ def _higher_order(name: str) -> Callable[[Exprs, Any], Json]:
 
     def rule(x: Exprs, op: Any) -> Json:
         if op.index is not None:
-            raise Unsupported("lambdas that take the element's index are not supported")
+            raise Unsupported("lambdas that take the element's index are not supported yet (#327)")
         body = _Body(op.param)(op.body)
         return call(name, [x(op.arg), lambda_json(op.arg.dtype.value_type, body)])
 

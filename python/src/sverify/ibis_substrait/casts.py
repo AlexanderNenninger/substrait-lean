@@ -88,11 +88,15 @@ def _typeof(x: Exprs, op: Any) -> Json:
     INTEGER), so only a column's is folded."""
     column: Any = op.arg
     if not isinstance(column, ops.Field):
-        raise Unsupported("typeof is only supported of a column")
+        raise Unsupported(
+            "typeof is only supported of a column; select the expression as a column first"
+        )
     t = cast("dt.DataType", column.dtype)
     name = duckdb_type_name(t)
     if name is None:
-        raise Unsupported(f"typeof of a {t} column is not supported")
+        raise Unsupported(
+            f"typeof of a {t} column is not supported; write the type's name as a constant"
+        )
     return literal(name, dt.string)
 
 
