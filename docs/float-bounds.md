@@ -1,7 +1,9 @@
 # Float error bounds
 
 Doubles round. Sverify models them exactly where it can (comparisons, `MIN`,
-`MAX`) and computes their arithmetic with Lean's native `Float`. Epic #85
+`MAX`), computes `+ − × ÷` as the exact result rounded once ([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once)),
+and computes `pow`, `log` and the other libm functions with Lean's native
+`Float`. Epic #85
 adds proved error bounds for the aggregates that add up doubles: `SUM`,
 `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`. This note records the model,
 where the proofs live, and what each bound says.
@@ -15,9 +17,10 @@ toolchain pin are unchanged. CI's `float-bounds` job builds the package with
 Mathlib's prebuilt oleans; `poe prove-floats` does the same locally. It is
 not part of `poe qa`, because of the Mathlib download.
 
-The core uses the bound formulas as trusted facts, next to its other trust in
+The core used the bound formulas as trusted facts, next to its other trust in
 native `Float` (`SubstraitLean/Float.lean`), and cross-references them to the
-proofs here.
+proofs here. Since D31 it proves the arithmetic ones itself
+(`SubstraitLean/FloatArith.lean`); `FloatCode.exp_fin` stays a trusted fact.
 
 ## The model of rounding
 
@@ -97,7 +100,7 @@ after the columns `floatCombine` reads (`floatBoundParts`). The counts give
 values far from overflow. These bound an engine's own two-phase sum. Since
 D25 the core proves Lean's own split on integers, without axioms
 (`twoPhaseSum_near`, `twoPhaseAvg_near` in `Partition.lean`, the mean with
-`FloatCode.div_scaled_err` for its native division), and `floatSplit_sum` and
+`FloatCode.div_scaled_err` for its division), and `floatSplit_sum` and
 `floatSplit_avg` apply them to a group's shards:
 `floatPartial`'s `SUM` and `COUNT`, combined as `floatCombine` combines them,
 against the measure on the whole group. `absPart_eval` says what the
@@ -311,8 +314,9 @@ The checker bounds a double `+`, `-`, `*` and `/` from its inputs' bounds
 (`faddBound`, `fmulBound`, `fdivBound` in `SubstraitLean/Contracts.lean`), so
 chains such as `(a + b) * c` have bounds, and a result the bounds keep below
 the largest double needs no "stays finite" precondition on the data
-(`BinFn.mayInf`). The core trusts one fact per operation on scaled values,
-which [`Arith.lean`](../float-bounds/FloatBounds/Arith.lean) proves for native
+(`BinFn.mayInf`). The core trusted one fact per operation on scaled values
+until D31, which proves all but `exp_fin` in `FloatArith.lean`;
+[`Arith.lean`](../float-bounds/FloatBounds/Arith.lean) proves each for native
 doubles decoded within `2u` of the codes' values:
 
 | Core fact | Theorem | Where | Result, against the exact one |

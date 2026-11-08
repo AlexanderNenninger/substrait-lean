@@ -11,7 +11,10 @@ each measure the number of values it adds up (`__n0`, …: rows that pass its
 the same with every column a key and no measures: a count per row. A
 `DECIMAL` `AVG` keeps the sum and the count of its values, and divides them
 when it finishes, as the model computes it (`Parse.decimalAvgs`). A `MIN`
-or `MAX` keeps the extreme of its values in `__s`.
+or `MAX` keeps the extreme of its values in `__s`. A `SUM` or `AVG` of
+doubles keeps its exact moments beside the state (`sverify._exact_sum`,
+`LinearAgg.fsum_no_drift`): `contrib` gives each changed row's value, and
+`__s` is the value finished from them.
 
 A batch updates the state at the cost of the change, without reading the
 view's input:
@@ -92,6 +95,13 @@ class Linear:
     """With a `MIN` or `MAX`: the state of the groups in `<view>$keys`, from
     the whole (new) input. A batch that deletes from a group recomputes its
     state with it; the others merge."""
+    exact: tuple[tuple[int, bool], ...] = ()
+    """The `SUM`s (`False`) and `AVG`s (`True`) of doubles, by measure
+    index: their exact moments are kept beside the state
+    (`sverify._exact_sum`), and their `__s` is the finished value."""
+    values: str | None = None
+    """With an exact measure: each input row's contribution, unaggregated,
+    which `sverify._exact_sum.fold` adds up into the initial state."""
 
 
 def plan(name: str, query: ir.Table | str) -> Linear | str:
@@ -140,6 +150,10 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
             elif m.kind in ("min", "max"):
                 # The extreme of the values; a delete recomputes the group.
                 value = ibis.ifelse(cond, own(m.arg), ibis.null(m.state))
+            elif m.kind in ("fsum", "favg"):
+                # The value itself: the weight is in `__n`, and the exact
+                # sum is added up outside the engine (`sverify._exact_sum`).
+                value = ibis.ifelse(cond, own(m.arg).cast(m.state), ibis.null(m.state))
             else:
                 v = own(m.arg).cast(m.state)
                 v = v if weight is None else v * weight
@@ -152,11 +166,21 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
         for i, m in enumerate(measures):
             s = rows[f"__s{i}"]
             sums[f"__n{i}"] = rows[f"__n{i}"].sum()
+            # An exact measure's `__s` is replaced by its finished value.
             sums[f"__s{i}"] = (
-                s.min() if m.kind == "min" else s.max() if m.kind == "max" else s.sum()
+                s.min()
+                if m.kind == "min"
+                else s.max()
+                if m.kind in ("max", "fsum", "favg")
+                else s.sum()
             )
         return rows.group_by(keys).aggregate(**sums)
 
+    exact = tuple(
+        (i, m.kind == "favg") for i, m in enumerate(measures) if m.kind in ("fsum", "favg")
+    )
+    if exact and any(m.kind in ("min", "max") for m in measures):
+        return "a SUM or AVG of doubles beside a MIN or MAX: the touched groups are recomputed"
     init = added(contributions(parent))
     changed = ibis.table({**parent.schema(), WEIGHT_IN: "int64"}, name=f"{name}$in")
     contrib = contributions(changed, changed[WEIGHT_IN])
@@ -184,6 +208,8 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
             out[m.name] = n
         elif m.kind in ("min", "max"):
             out[m.name] = s
+        elif m.kind in ("fsum", "favg"):
+            out[m.name] = ibis.ifelse(n == 0, ibis.null(m.state), s)
         elif m.kind == "avg":
             mean = DecimalDiv(s.op(), n.op(), m.to).to_expr()  # type: ignore[abstract]
             out[m.name] = ibis.ifelse(n == 0, ibis.null(m.to), mean)
@@ -205,6 +231,8 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
         merge=merge,
         finish=write(view),
         regroup=regroup,
+        exact=exact,
+        values=write(contributions(parent)) if exact else None,
     )
 
 
@@ -212,7 +240,8 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
 class _Measure:
     name: str
     kind: str
-    """"count", "sum", "avg", "min" or "max"."""
+    """"count", "sum", "avg", "min", "max", or "fsum" and "favg" for a `SUM`
+    and an `AVG` of doubles."""
     arg: ops.Value | None
     """None for `COUNT(*)`."""
     where: ops.Value | None
@@ -245,9 +274,13 @@ def _measure(name: str, v: ops.Value) -> _Measure | str:
                     return _Measure(name, "sum", arg, where, state)
                 to = dt.Decimal(*_decimals.avg_of((t.precision, t.scale)))
                 return _Measure(name, "avg", arg, where, state, to)
+            if t.is_float64():
+                # D25: the exact sum rounded once, kept exactly (#918).
+                return _Measure(name, "favg" if mean else "fsum", arg, where, dt.float64)
             what = "AVG" if mean else "SUM"
             return (
-                f"{name} is a {what} of {t}: only integer SUMs and DECIMAL SUMs and AVGs are kept"
+                f"{name} is a {what} of {t}: only integer SUMs and DECIMAL and DOUBLE SUMs "
+                "and AVGs are kept"
             )
         case ops.Min(arg=arg, where=where) | ops.Max(arg=arg, where=where):
             kind = "min" if isinstance(v, ops.Min) else "max"

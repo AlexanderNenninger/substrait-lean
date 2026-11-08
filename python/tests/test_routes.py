@@ -173,14 +173,19 @@ def test_sequence_needs_a_sorted_result(con) -> None:
 
 
 def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(routes, "_options_json", lambda: {})
+    versions = {"duckdb": "2.0.0", "polars": "2.1.0", "spark": "4.3.0"}
+    monkeypatch.setattr(
+        routes,
+        "_options_json",
+        lambda: {"profiles": {e: {"engine": e, "versions": [v]} for e, v in versions.items()}},
+    )
     assert routes.check_version("duckdb", "2.0.0") is None
     assert routes.check_version("datafusion", "1.0.0") is None
     with pytest.warns(routes.EngineVersionWarning, match="polars 2.2.0"):
         assert routes.check_version("polars", "2.2.0")
     with pytest.raises(routes.EngineVersionError, match="needs its facts probed again"):
         routes.check_version("duckdb", "3.0.0")
-    # The checker's profiles take precedence.
+    # The checker's profiles are the only source of the versions.
     monkeypatch.setattr(
         routes,
         "_options_json",
@@ -191,7 +196,9 @@ def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_installed_versions_are_the_probed_ones() -> None:
     """The pinned engines match their profiles' facts; bump the facts with the pins."""
-    for engine, prof in routes.PROFILES.items():
+    found = {e: p for e, p in routes.profiles().items() if e in ("duckdb", "polars", "spark")}
+    assert set(found) == {"duckdb", "polars", "spark"}
+    for engine, prof in found.items():
         assert routes.installed_version(engine) in prof.versions, engine
 
 
@@ -216,6 +223,38 @@ def _row(option: str, cls: str, q: dict | None = None, shim: str | None = None, 
     }
 
 
+def test_anything_but_proved_is_tested(monkeypatch, con) -> None:
+    """A probe, or a row without evidence, is tested evidence (#1166); only
+    rows that are all proved make a proved route, which names its theorems."""
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    report._depends = [{"group": None, "option": "a"}, {"group": None, "option": "b"}]
+    _classed_tables(
+        monkeypatch, [_row("a", "refines", ev="probe"), _row("b", "refines", ev="probe")]
+    )
+    assert routes.choose(report, "polars").evidence == "tested"
+    _classed_tables(monkeypatch, [_row("a", "refines"), {**_row("b", "refines"), "evidence": None}])
+    assert routes.choose(report, "polars").evidence == "tested"
+    # An option without a row rests on the translation's tests.
+    _classed_tables(monkeypatch, [{**_row("a", "refines"), "theorem": "Polars.a"}])
+    assert routes.choose(report, "polars").evidence == "tested"
+    proved = [{**_row(o, "refines"), "theorem": f"Polars.{o}"} for o in ("a", "b")]
+    _classed_tables(monkeypatch, proved)
+    r = routes.choose(report, "polars")
+    assert (r.evidence, r.theorems) == ("proved", ("Polars.a", "Polars.b"))
+    assert "evidence: polars exact, proved by Polars.a, Polars.b" in str(report)
+    from sverify import report_json
+
+    assert report_json.route(report_json.route_json(r)) == r
+    # A tested row names its engine version and its tracking issue (#1170).
+    tracked = {**_row("a", "refines", ev="tested"), "version": "2.1.1", "issue": 1166}
+    _classed_tables(monkeypatch, [tracked, _row("b", "refines")])
+    r = routes.choose(report, "polars")
+    assert (r.version, r.issues) == ("2.1.1", (1166,))
+    assert str(r).endswith("; evidence tested at 2.1.1 (facts polars-a, polars-b; #1166)")
+    assert report_json.route(report_json.route_json(r)) == r
+
+
 def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k"))
@@ -225,7 +264,9 @@ def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:
     )
     r = routes.choose(report, "polars")
     assert (r.kind, r.cls, r.evidence, r.shims) == ("translated", "shim", "tested", ("b: CASE",))
-    assert str(r).startswith("shim (") and str(r).endswith("; evidence tested")
+    assert str(r).startswith("shim (")
+    assert str(r).endswith("; evidence tested (facts polars-a, polars-b)")
+    assert r.facts == ("polars-a", "polars-b") and r.theorems == ()
     _classed_tables(monkeypatch, [_row("a", "refines"), _row("b", "refused")])
     r = routes.choose(report, "polars")
     assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.reason

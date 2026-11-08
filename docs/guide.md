@@ -209,7 +209,7 @@ The most common, and what sverify does about each:
 | Pitfall | What the engines do | sverify |
 |---|---|---|
 | Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Snowflake and Spark SQL is only written with a proved `deterministic=True` |
-| NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
+| NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the reference's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
 | Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
@@ -605,6 +605,9 @@ print(report)
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
 # semantics: reference
+# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6 ...
+# evidence: polars exact, proved by Polars.sum_leaves_i64
+# evidence: spark shim, proved by Spark.int_sum_decimal
 # known about the output:
 #   rows: at most 1,000,000,000,000
 # ...
@@ -982,7 +985,10 @@ group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
 [`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
-`DECIMAL` `SUM` and `AVG` keep the same state, and `MIN` and `MAX` keep each
+`DECIMAL` `SUM` and `AVG` keep the same state, `SUM` and `AVG` of doubles
+an exact one, rounded once, with no drift
+(`LinearAgg.fsum_no_drift` in
+[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
 groups it deletes from are recomputed from the new input
 (`ExtremeAgg.extreme_maintained` in
@@ -1728,7 +1734,8 @@ A proof is about the plan under one semantics, a profile: sverify's
 reference by default, `semantics="duckdb"` for what DuckDB does,
 `semantics="polars"` for what Polars does, or
 `semantics="substrait"` for Substrait's extension YAMLs, open wherever they
-say nothing. An engine computes its own semantics, so running a verified
+say nothing. Each profile refines one core that does a superset of
+operations ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)). An engine computes its own semantics, so running a verified
 plan raises a question: does the proof hold for what the engine computes?
 A route answers it. `report.run(con, engine, route="auto")` and
 `node.refresh(engine=..., route="auto")` pick one of four, and run the plan
@@ -1744,7 +1751,7 @@ only if one applies:
 `report.routes[engine]` records the route, with its class, which says what
 you can rely on. A route prints its class first, then
 the evidence, and the route where it is not `translated`:
-`shim (integer division rewritten to truncate); evidence tested`, or
+`shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc`, or
 `exact; transfer: verified under semantics="duckdb"; …`.
 
 | Class (`route.cls`) | What it means for you |
@@ -1755,7 +1762,12 @@ the evidence, and the route where it is not `translated`:
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
-or on tests and probes (`tested`). Before the plan runs, its preconditions,
+or on anything else, tests and probes among them (`tested`). `route.theorems`
+names the proofs, and `route.facts` and `route.version` the engine facts and
+the engine version they were probed at. `print(report)` shows the same before
+any run, one `evidence:` line per engine:
+`evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc` or
+`evidence: spark exact, tested at 4.3.0 (facts spark-int-arith, …)`. Before the plan runs, its preconditions,
 the inferred bounds and the assumed `SUM`s are checked on the data, and a
 batch that breaks one raises `PreconditionError`.
 

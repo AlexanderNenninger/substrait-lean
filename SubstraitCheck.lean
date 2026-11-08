@@ -8,11 +8,11 @@ well-formed, and evaluate it.
 (the specification) in place of `Rel.evalFast` (`SubstraitLean/EvalFast.lean`),
 which is faster and proved equal; for tests.
 
-`substrait-check --delta plan.json`: print the Substrait JSON plans an engine
-runs to maintain `plan.json` incrementally, one per line. They read the old
+`substrait-check --delta plan.json`: print the Substrait JSON plan an engine
+runs to maintain `plan.json` incrementally, on one line. It reads the old
 tables `t` and change tables `t$delta` (the same columns plus a trailing
-`__weight`); concatenated, their outputs are the change to the result, with a
-trailing `__weight` column. Each plan is union-free (see `Rel.terms`).
+`__weight`); its output is the change to the result, with a trailing
+`__weight` column.
 
 `substrait-check --contract contract.json`: try to prove postconditions from
 preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
@@ -88,14 +88,11 @@ def delta (plan : Plan) : IO UInt32 := do
   -- `isIncremental_iff`: this decides `Rel.Incremental`.
   if !plan.root.isIncremental then
     IO.eprintln "not incrementally maintainable (left join, fetch or window)"; return 3
-  let cat := Write.deltaCatalog plan
-  let terms := Write.deltaTerms plan
-  -- `Rel.weighted_eval` needs each term to be incremental and well-formed.
-  for term in terms do
-    if !term.isIncremental || term.hasUnion || !term.checkWF cat then
-      IO.eprintln "a delta term failed its static checks"; return 2
-  for term in terms do
-    IO.println (Write.writeDeltaPlan plan term).compress
+  let d := plan.root.delta Write.deltaName
+  -- `Rel.weighted_eval` needs the delta plan to be incremental and well-formed.
+  if !d.isIncremental || !d.checkWF (Write.deltaCatalog plan) then
+    IO.eprintln "the delta plan failed its static checks"; return 2
+  IO.println (Write.writeDeltaPlan plan d).compress
   return 0
 
 /-- A result value, printed by its column's kind: integers (unbounded in the
@@ -224,13 +221,16 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
       return 1
   if df then
     if plan.root.floatExtremes plan.tables then
-      IO.eprintln "error: MIN and MAX of doubles are not yet supported on DataFusion; see #271"
+      IO.eprintln "error: MIN and MAX of doubles are not supported on DataFusion (upstream/bugs/DF-15.json)"
       return 1
     if plan.root.slidingFrames then
-      IO.eprintln "error: SUM of doubles, AVG and MIN over a sliding frame are not supported on DataFusion; use a frame from UNBOUNDED PRECEDING"
+      IO.eprintln "error: SUM of doubles, AVG and MIN over a sliding frame are not supported on DataFusion (upstream/bugs/DF-16.json); use a frame from UNBOUNDED PRECEDING"
+      return 1
+    if plan.root.anyExpr Expr.signedDoubles then
+      IO.eprintln "error: DataFusion orders the -0.0 and NaN a double operation can give apart from 0.0 and NaN (upstream/bugs/DF-13.json)"
       return 1
     if plan.root.anyExpr Expr.nestedAccess then
-      IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94)"
+      IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94, upstream/bugs/DF-20.json)"
       return 1
     if let some (code, msg) := checkPlan plan then
       IO.eprintln msg; return code
