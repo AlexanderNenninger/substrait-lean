@@ -206,6 +206,18 @@ every session should hold before it touches `SubstraitLean/`.
   YAMLs' own looseness, a sibling of the reference, since the reference
   overrides Substrait in places.
 
+What goes into the core. The core is the idealised setting and holds no
+engine-specific workaround: no shim, no engine's quirk, no version-specific
+behaviour, no branch on an engine's name. A behaviour enters the core only
+as an option, and only when a tier-1 engine (DuckDB, Polars, Spark) needs
+that option for its plans to be checkable, that is, when without it the
+core could not state what that engine computes. Then the option is added
+once, for every engine, with the reference's value for it recorded as a
+decision. Everything else lives in the profiles: a single engine's
+behaviour in its profile and facts, a translation in its lowering, a
+compensation in its shims. If a change to `Rel.eval` or `Rel.Allowed`
+mentions an engine, it is in the wrong place.
+
 Two consequences. An engine's profile is an engine fact, never a choice:
 defining one as `Profile.reference` (as `Profile.spark` is today) states a
 verification semantics, not what Spark computes, and a theorem over it says
