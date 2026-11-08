@@ -409,8 +409,21 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
             y += 1
         out.append(Inferred(f"{null}{sql} >= {lit(y)}", f"({ref} >= {py}({y}, 1, 1))"))
     if hi is not None:
-        y = _year_of(hi + 1, unit)
-        out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
+        last = (
+            datetime(9999, 12, 31, 23, 59, 59, 999999)
+            if kind == "TIMESTAMP"
+            else datetime(9999, 12, 31)
+        )
+        if hi >= (last - _EPOCH) // unit:
+            # Up to the reference's last one (D32): 9999-12-31 itself holds.
+            if kind == "TIMESTAMP":
+                text, args = "9999-12-31 23:59:59.999999", "9999, 12, 31, 23, 59, 59, 999999"
+            else:
+                text, args = "9999-12-31", "9999, 12, 31"
+            out.append(Inferred(f"{null}{sql} <= {kind} '{text}'", f"({ref} <= {py}({args}))"))
+        else:
+            y = _year_of(hi + 1, unit)
+            out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
     return out
 
 

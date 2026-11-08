@@ -297,7 +297,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | strings | `str.plain` | `character_length`, `reverse`, `ascii`, `repeat`, `btrim`, `ltrim`, `rtrim`, `levenshtein` | none (the size hypothesis bounds their results) |
 | strings | `str.opaque` | `regexp_match`, `regexp_extract`, `regexp_replace`, `ilike`, `md5`, `sha256` | none; `case_sensitivity` fixed by the function |
 | temporal | `time.arith` | date and timestamp `±` intervals, `date_diff`, `date_bin` | `date_range`, `time_interval_months` |
-| temporal | `time.part` | `date_part`, `date_trunc`, `strftime` | none (their range is open in the reference, [Temporal](reference-semantics.md#temporal)) |
+| temporal | `time.part` | `date_part`, `date_trunc`, `strftime` | none (their range is the reference's timestamps, D32) |
 | nested | `list.order` | `list_lt`, `ORDER BY`/`MIN`/`MAX` of lists | `list_null_order`, and the element's options |
 | nested | `list.plain` | `array_length`, `cardinality`, `any_match`, `all_match`, `transform`, `filter` | none |
 | aggregates | `agg.isum` | `sum`, `avg` of integers and decimals | `overflow`, `avg_int_result` |
@@ -1829,3 +1829,67 @@ or `x · y` was provable, and the checker trusted eight axioms for them. The
 exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
+
+### D32. Calendar functions work on the reference's timestamps, 0001 to 9999
+
+Decided 2026-11-08 (signed off by the maintainer, reviewed by the theory
+advisor).
+
+The reference's timestamps are those of its dates (#251): 0001-01-01
+00:00:00 to 9999-12-31 23:59:59.999999, `Time.tsMin` to `Time.tsMax` in
+microseconds since 1970. Every calendar function is defined on all of them,
+with the proleptic Gregorian calendar of `SubstraitLean/Time.lean`.
+`date_part`, `strftime`, `time_of_day`, adding months to a timestamp,
+truncation to a week, month, quarter or year, truncation of a date, and
+`date_bin` raise (`Issue.overflow`) where the operand or the result leaves
+the range. They no longer depend on DataFusion's ±2⁶³ nanoseconds (1677 to
+2262) or on chrono's ±262,142 years. 0001-01-01 is a Monday, so no
+truncation of a timestamp in range leaves it. A `date_bin` origin outside
+the range is refused when the plan is checked, never at run time.
+
+Outside the range the engines disagree: DuckDB and Polars give
+`date_part('year')` 0 and 10000, but `strftime` of year 10000 is
+`+10000-01-01` on Polars and Spark, and the reference has no year 0. So the
+reference raises there, as it does for date arithmetic (#251), and picks no
+value.
+
+Each 1.0 engine reaches the reference natively inside the range and with
+one guard outside it:
+
+| engine | inside 0001 to 9999 | outside | type the writer pins |
+|---|---|---|---|
+| DuckDB | native ([duckdb-calendar-range](../characterization/duckdb/facts/duckdb-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP` (µs) |
+| Polars | native ([polars-calendar-range](../characterization/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
+| Spark | native ([spark-calendar-range](../characterization/spark/facts/spark-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP_NTZ`, session time zone UTC |
+| Snowflake | reachable by a shim, probe pending: parts in year 1 are right and sverify truncates weeks itself (private facts); month, quarter and year truncation at the ends is not recorded | computes (years 0 to 302024); the SQL guards | `TIMESTAMP_NTZ` |
+| DataFusion | refused: it truncates and bins in nanoseconds ([DF-17](../upstream/bugs/DF-17.json)) | — | — |
+
+The facts record the probe points: 0001-01-01, the leap days 0004-02-29,
+1600-02-29 and 2000-02-29, 1900-02-28 and 1900-03-01, both sides of the
+Gregorian switch (1582-10-04 and 1582-10-15) and 9999-12-31, each at
+23:59:59.999999. `Time.lean`'s `#guard`s and `test_time.py::test_d32_probe_points`
+check the same points.
+
+In the model: `Time.tsMin` and `Time.tsMax` replace `nsMin`, `nsMax`,
+`nsDayMin`, `nsDayMax`, `partMin`, `partMax`, `chronoDayMin` and
+`chronoDayMax`. `Time.datePart` is `NULL` outside the range, where
+`UnFn.issue` now raises (`datePart`, `dayPart`); `UnFn.mayIssue` reports it
+unless the operand's bounds are inside the range, so a timestamp with a range
+fact, or a date with one, discharges the guard. `UnFn.mayIssue_sound` covers
+the new rows with the existing `rangeIssue_sound`. `Infer.atIssue` infers the
+range as a precondition.
+
+Consequences:
+
+- A `date_part` gets a per-row guard where its operand has no range fact:
+  on the catalogue, guards in the DuckDB SQL go from 445 to 480, all 35 of
+  them `date_part`'s; calendar truncations and `date_bin` keep their 5. The
+  checker's discharged issues reach the Polars writer (#1174) and DuckDB's
+  (#1169).
+- Truncation and parts of timestamps from 1677 back to 0001 and from 2262 to
+  9999 run on every 1.0 engine, where they raised before.
+- `strftime`'s `%Y` is always four digits.
+
+Why: the old ranges were DataFusion's, and DataFusion is a tier-3 engine
+(2026-11-08). The SQL standard's timestamps are the reference's dates', which
+every 1.0 engine represents.

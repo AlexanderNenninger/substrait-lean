@@ -15,11 +15,12 @@ cast to a narrower integer that does not fit (DuckDB, Polars and Spark raise),
 regular expression, `repeat` writing more than `Text.repeatMax` bytes, and an
 integer `SUM` that leaves 64 bits (`Issue.sumWraps`, which the job also
 checks while it runs). Date arithmetic raises outside the reference's dates
-(#251). Calendar truncation raises outside ±2⁶³ nanoseconds and `date_part`
-is NULL outside the years `chrono` represents: ranges taken from DataFusion,
-which a proposed decision (D32) replaces with the reference's timestamps. Arguments outside a function's domain (`sqrt` of a negative, a
-shift by 64, …, `SubstraitLean/Numeric.lean`) raise too, where an engine may
-give an IEEE value or a wrapped shift instead: an error allows that.
+(#251), and the calendar functions on timestamps (`date_part`, truncation to a
+week or longer, `date_bin`, `strftime`, adding months) outside the reference's
+timestamps, 0001-01-01 to 9999-12-31 (D32). Arguments outside a function's
+domain (`sqrt` of a negative, a shift by 64, …, `SubstraitLean/Numeric.lean`)
+raise too, where an engine may give an IEEE value or a wrapped shift
+instead: an error allows that.
 
 ## Where an engine evaluates an expression
 
@@ -167,7 +168,7 @@ def wrapNum (v : Value) : Option Issue :=
 def domainIssue (r : Option Int) : Option Issue := if r.isSome then none else some .domain
 
 /-- `overflow` unless the argument `x` and the result `y` are in `[lo, hi]`:
-the dates and timestamps `chrono` represents, or DataFusion's nanoseconds. -/
+the reference's dates or timestamps (#251, D32). -/
 def rangeIssue (lo hi x y : Int) : Option Issue :=
   if between lo hi x && between lo hi y then none else some .overflow
 
@@ -186,17 +187,18 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
   | .dateTrunc u, .ts ts | .dateTrunc u, .tod ts =>
     if u.calendar then
-      if ts ≤ Time.nsMax ∧ Time.nsMin ≤ Time.trunc u ts then none else some .overflow
+      if ts ≤ Time.tsMax ∧ Time.tsMin ≤ Time.trunc u ts then none else some .overflow
     else wrapIf (Time.trunc u ts)
-  | .dayTrunc u, .date d => rangeIssue Time.nsDayMin Time.nsDayMax d (Time.truncDay u d)
+  | .dayTrunc u, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.truncDay u d)
   | .addMonths m false, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.addMonths m d)
   -- The reference's dates (#807); DuckDB raises past its timestamps' years.
   | .dateTime, .date d => rangeIssue Time.dayMin Time.dayMax d d
-  | .addMonths m true, .ts ts => rangeIssue Time.partMin Time.partMax ts (Time.addMonthsUs m ts)
-  -- chrono's calendar, which fails outside its years.
-  | .timeOfDay, .ts ts | .timeOfDay, .tod ts | .strftime _, .ts ts => rangeIssue Time.partMin Time.partMax ts ts
-  -- DataFusion bins in nanoseconds, which wrap around outside ±2⁶³.
-  | .bucket k o, .ts ts => rangeIssue Time.nsMin Time.nsMax ts (Time.bucket k o ts)
+  -- The calendar on the reference's timestamps (D32).
+  | .addMonths m true, .ts ts => rangeIssue Time.tsMin Time.tsMax ts (Time.addMonthsUs m ts)
+  | .timeOfDay, .ts ts | .timeOfDay, .tod ts | .strftime _, .ts ts | .datePart _, .ts ts =>
+    rangeIssue Time.tsMin Time.tsMax ts ts
+  | .dayPart _, .date d => rangeIssue Time.dayMin Time.dayMax d d
+  | .bucket k o, .ts ts => rangeIssue Time.tsMin Time.tsMax ts (Time.bucket k o ts)
   | .fmath f, .float c => domainIssue (f.apply c)
   | .decimal p _, v => match v.unscaled? with
     | some i => if fitsDigits p i then none else some .overflow
@@ -349,10 +351,10 @@ def AVal.decFits (s : Nat) (a : AVal) : Bool := a.int.all fun b =>
   | some l, some h => (FloatCode.toDecimal? l s).isSome && (FloatCode.toDecimal? h s).isSome
   | _, _ => false
 
-/-- Every timestamp `aa` describes, and its truncation `ar`, is within
-DataFusion's nanosecond range. -/
-def nsFits (aa ar : AVal) : Bool :=
-  aa.int.all (·.allLe Time.nsMax) && ar.int.all (·.allGe Time.nsMin)
+/-- Every timestamp `aa` describes, and its truncation `ar`, is within the
+reference's timestamps (D32). -/
+def tsFits (aa ar : AVal) : Bool :=
+  aa.int.all (·.allLe Time.tsMax) && ar.int.all (·.allGe Time.tsMin)
 
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.within minI64 maxI64 then [] else [.wraps]
@@ -361,14 +363,15 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .wrap n, aa, _ => if aa.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1) then [] else [.wraps]
   | .regexMatch p, _, _ => if Text.simpleRegex p then [] else [.badRegex]
   | .dateTrunc u, aa, ar =>
-    if u.calendar then (if nsFits aa ar then [] else [.overflow])
+    if u.calendar then (if tsFits aa ar then [] else [.overflow])
     else if ar.within minI64 maxI64 then [] else [.wraps]
-  | .dayTrunc _, aa, ar => rangeMay Time.nsDayMin Time.nsDayMax aa ar
+  | .dayTrunc _, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .dateTime, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
-  | .addMonths _ true, aa, ar => rangeMay Time.partMin Time.partMax aa ar
-  | .timeOfDay, aa, _ | .strftime _, aa, _ => rangeMay Time.partMin Time.partMax aa aa
-  | .bucket _ _, aa, ar => rangeMay Time.nsMin Time.nsMax aa ar
+  | .addMonths _ true, aa, ar => rangeMay Time.tsMin Time.tsMax aa ar
+  | .timeOfDay, aa, _ | .strftime _, aa, _ | .datePart _, aa, _ => rangeMay Time.tsMin Time.tsMax aa aa
+  | .dayPart _, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
+  | .bucket _ _, aa, ar => rangeMay Time.tsMin Time.tsMax aa ar
   | .fmath f, aa, _ => if f.safe aa then [] else [.domain]
   | .decimal p _, aa, _ => if aa.within (1 - 10 ^ p) (10 ^ p - 1) then [] else [.overflow]
   | .ftod s, aa, _ => if aa.decFits s then [] else [.badCast]
@@ -1038,7 +1041,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       split
       · rename_i hout hfits
         exfalso; apply hout
-        simp only [nsFits, Bool.and_eq_true, Option.all_eq_true] at hfits
+        simp only [tsFits, Bool.and_eq_true, Option.all_eq_true] at hfits
         obtain ⟨b, hb, hm, -⟩ := ha
         obtain ⟨b', hb', hm', -⟩ := hr'
         have h1 := hfits.1 b hb
@@ -1051,7 +1054,8 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
   case dayTrunc.date u d | bucket.ts k o d =>
     have hr' := hr; simp only [UnFn.apply] at hr'
     exact rangeIssue_sound ha hr' hk
-  case timeOfDay.ts ts | timeOfDay.tod ts | dateTime.date ts | strftime.ts fmt ts =>
+  case timeOfDay.ts ts | timeOfDay.tod ts | dateTime.date ts | strftime.ts fmt ts |
+      datePart.ts p ts | dayPart.date p ts =>
     exact rangeIssue_sound ha ha hk
   case addMonths.date m t x | addMonths.ts m t x =>
     cases t <;> (try simp only [reduceCtorEq] at hk) <;>

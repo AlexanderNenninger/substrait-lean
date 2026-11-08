@@ -91,6 +91,21 @@ def _root_.Substrait.Expr.nestedAccess : Expr → Bool
   | .ifThen c t e => c.nestedAccess || t.nestedAccess || e.nestedAccess
   | .hof _ _ _ => true
 
+/-- Does the expression truncate to a week or longer, truncate a date, or bin
+timestamps? DataFusion computes those in nanoseconds, which fail (or, on 51,
+give a wrong date) outside ±2⁶³ ns (upstream/bugs/DF-17.json), where the
+reference's timestamps reach 0001 to 9999 (D32). -/
+def _root_.Substrait.Expr.nanoCalendar : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with
+      | .dateTrunc u => u.calendar
+      | .dayTrunc _ | .bucket _ _ => true
+      | _ => false) || a.nanoCalendar
+  | .bin _ a b => a.nanoCalendar || b.nanoCalendar
+  | .ifThen c t e => c.nanoCalendar || t.nanoCalendar || e.nanoCalendar
+  | .hof _ l b => l.nanoCalendar || b.nanoCalendar
+
 namespace DataFusion
 
 open Write (relKinds)
@@ -175,6 +190,9 @@ def refusal (plan : Parse.Plan) : Option String :=
   else if r.anyExpr Expr.signedDoubles then
     some ("DataFusion orders the -0.0 and NaN a double operation can give apart from 0.0 " ++
       "and NaN (upstream/bugs/DF-13.json)")
+  else if r.anyExpr Expr.nanoCalendar then
+    some ("DataFusion truncates to a week or longer, truncates dates and bins timestamps in " ++
+      "nanoseconds, outside the reference's timestamps (upstream/bugs/DF-17.json)")
   else if r.anyExpr Expr.nestedAccess then
     some ("DataFusion does not run struct fields, list elements or cardinality as the " ++
       "reference does (#94, upstream/bugs/DF-20.json)")

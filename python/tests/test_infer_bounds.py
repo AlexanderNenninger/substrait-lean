@@ -67,13 +67,16 @@ def inferred(report) -> list[str]:
         (
             T.select(x=T.ts.truncate("M")),
             [],
-            ["(_.ts >= datetime(1678, 1, 1))", "(_.ts < datetime(2262, 1, 1))"],
+            [
+                "(_.ts >= datetime(1, 1, 1))",
+                "(_.ts <= datetime(9999, 12, 31, 23, 59, 59, 999999))",
+            ],
         ),
         (T.select(x=T.ts.truncate("m")), [], ["(_.ts >= datetime(1, 1, 1))"]),
         (
             T.select(x=T.d.truncate("Y")),
             [],
-            ["(_.d >= date(1679, 1, 1))", "(_.d < date(2262, 1, 1))"],
+            ["(_.d >= date(1, 1, 1))", "(_.d <= date(9999, 12, 31))"],
         ),
         # Through a filter and a projection, to the base column.
         (
@@ -332,14 +335,17 @@ def test_datetime_bound_is_checked_on_data():
     ok = StaticSource(pa.table({"ts": [datetime(2024, 5, 3)]}), name="ev")
     node = ok.pipe(per_month)
     assert inferred(per_month.report) == [
-        "(_.ts >= datetime(1678, 1, 1))",
-        "(_.ts < datetime(2262, 1, 1))",
+        "(_.ts >= datetime(1, 1, 1))",
+        "(_.ts <= datetime(9999, 12, 31, 23, 59, 59, 999999))",
     ]
     node.refresh()
     assert node.to_arrow().to_pylist() == [{"m": datetime(2024, 5, 1)}]
-    late = StaticSource(pa.table({"ts": [datetime(2300, 1, 1)]}), name="late")
-    with pytest.raises(PreconditionError, match=r"datetime\(2262, 1, 1\)"):
-        late.pipe(per_month).refresh()
+    # 2300 was outside DataFusion's nanoseconds; it is a timestamp of the
+    # reference's (D32), and 9999-12-31 still holds.
+    late = StaticSource(
+        pa.table({"ts": [datetime(2300, 1, 1), datetime(9999, 12, 31, 23)]}), name="late"
+    )
+    late.pipe(per_month).refresh()
 
 
 def test_null_passes_an_inferred_bound():

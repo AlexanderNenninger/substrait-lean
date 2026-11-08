@@ -2,15 +2,17 @@
 # Timestamps: `date_part` and `date_trunc`
 
 Timestamps are microseconds since 1970-01-01 00:00 (UTC, proleptic Gregorian
-calendar). This file computes DataFusion's `date_part` and `date_trunc`
-exactly, checked against DataFusion 51 by `python/tests/test_time.py`:
+calendar). The reference's timestamps are those of its dates, 0001-01-01
+00:00:00 to 9999-12-31 23:59:59.999999 (`tsMin`, `tsMax`; D32), and the
+calendar functions are defined on all of them, checked against DuckDB, Polars
+and Spark at the probe points below and by `python/tests/test_time.py`:
 
-* `date_part` is `NULL` outside the dates `chrono` represents, the years
-  -262143 to 262142.
-* `date_trunc` to a day or less rounds down; below `-2⁶³` it wraps around.
-  To a week (from Monday), month, quarter or year, DataFusion computes in
-  nanoseconds, so it fails (or gives garbage) unless the timestamp and its
-  truncation are within ±2⁶³ ns, i.e. ±9223372036854775 µs.
+* `date_part` gives the part; outside the reference's timestamps it raises
+  (`Issue.overflow` in `Safety.lean`), and its value there is `NULL`.
+* `date_trunc` to a day or less rounds down (below `-2⁶³` µs it wraps). To a
+  week (from Monday), month, quarter or year it raises outside the
+  reference's timestamps; 0001-01-01 is a Monday, so the truncation of a
+  timestamp in range is in range.
 
 The calendar is computed through `monthIndex d = 12 · year + (month - 1)` of
 day `d` and `monthStart i`, the first day of month `i`. The one fact about
@@ -219,12 +221,16 @@ def partOf : DatePart → Int → Int
   | .dow, ts => (days ts + 4) % 7
   | .doy, ts => dayOfYear (days ts)
 
-/-- The timestamps `chrono` represents: -262143-01-01 to 262142-12-31. -/
-def partMin : Int := -8334601228800000000
-def partMax : Int := 8210266876799999999
+/-- The reference's timestamps (D32): 0001-01-01 00:00:00 (`dayMin`'s
+midnight) … -/
+def tsMin : Int := -62135596800000000
+/-- … to 9999-12-31 23:59:59.999999 (the last microsecond of `dayMax`). -/
+def tsMax : Int := 253402300799999999
 
+/-- `date_part(p, ts)`: the part, `NULL` outside the reference's timestamps,
+where it raises (`Safety.lean`). -/
 def datePart (p : DatePart) (ts : Int) : Option Int :=
-  if partMin ≤ ts ∧ ts ≤ partMax then some (partOf p ts) else none
+  if tsMin ≤ ts ∧ ts ≤ tsMax then some (partOf p ts) else none
 
 /-- The range of each part but the year. -/
 def DatePart.range : DatePart → Option (Int × Int)
@@ -283,7 +289,9 @@ def TimeUnit.name : TimeUnit → String
 
 def TimeUnit.ofName? (s : String) : Option TimeUnit := TimeUnit.all.find? (·.name == s.toLower)
 
-/-- Units DataFusion truncates to in nanoseconds. -/
+/-- Units truncated through the calendar, a week or longer: they raise
+outside the reference's timestamps (D32); shorter ones floor the
+microseconds. -/
 def TimeUnit.calendar : TimeUnit → Bool
   | .week | .month | .quarter | .year => true
   | _ => false
@@ -302,11 +310,6 @@ def trunc : TimeUnit → Int → Int
   | .month, ts => monthStart (monthIndex (days ts)) * usPerDay
   | .quarter, ts => monthStart (monthIndex (days ts) / 3 * 3) * usPerDay
   | .year, ts => monthStart (monthIndex (days ts) / 12 * 12) * usPerDay
-
-/-- Calendar truncation is exact for timestamps from here … -/
-def nsMin : Int := -9223372036854775
-/-- … to here. -/
-def nsMax : Int := 9223372036854775
 
 theorem floorTo_mono {k s t : Int} (hk : 0 < k) (h : s ≤ t) : floorTo k s ≤ floorTo k t :=
   Int.mul_le_mul_of_nonneg_right (Int.ediv_le_ediv hk h) (Int.le_of_lt hk)
@@ -327,15 +330,8 @@ theorem trunc_mono (u : TimeUnit) {s t : Int} (h : s ≤ t) : trunc u s ≤ trun
 
 /-! ## Dates
 
-A DATE is the number of days since 1970-01-01. DataFusion computes date
-arithmetic with `chrono`, which fails (panics) outside the years it
-represents; `date_trunc` of a DATE goes through nanoseconds, like the
-calendar truncations above. -/
-
-/-- The days `chrono` represents: -262143-01-01 (`partMin`) to 262142-12-31
-(`partMax`). `date_part` of a date is NULL outside them. -/
-def chronoDayMin : Int := -96465292
-def chronoDayMax : Int := 95026236
+A DATE is the number of days since 1970-01-01. Date arithmetic, `date_part`
+and `date_trunc` of a DATE raise outside the reference's dates (#251, D32). -/
 
 /-- The reference's dates (#251): the SQL standard's, 0001-01-01 to
 9999-12-31, which every engine represents. Date arithmetic that leaves them
@@ -343,12 +339,8 @@ raises (`Safety.lean`). -/
 def dayMin : Int := -719162
 def dayMax : Int := 2932896
 
-/-- The days whose midnight is within DataFusion's nanosecond range. -/
-def nsDayMin : Int := -106751
-def nsDayMax : Int := 106751
-
 /-- `date_part(p, d)` of a date: the part of its midnight (`NULL` outside
-the dates `chrono` represents, as for timestamps). -/
+the reference's dates, where it raises, as for timestamps). -/
 def datePartDay (p : DatePart) (d : Int) : Option Int := datePart p (d * usPerDay)
 
 /-- `date_trunc(u, d)` of a date, as a date. -/
@@ -406,8 +398,8 @@ theorem truncDay_mono (u : TimeUnit) {d e : Int} (h : d ≤ e) : truncDay u d �
 #guard addMonthsUs 1 (19753 * usPerDay + 36000000000) == 19782 * usPerDay + 36000000000
 #guard addMonthsUs 1 (-1) == 2678400000000 - 1
 #guard [DatePart.year, .month, .day, .dow].map (datePartDay · 19782) == [some 2024, some 2, some 29, some 4]
-#guard datePartDay .year chronoDayMax == some 262142 && datePartDay .year (chronoDayMax + 1) == none
-#guard datePartDay .year chronoDayMin == some (-262143) && datePartDay .year (chronoDayMin - 1) == none
+#guard tsMin == dayMin * usPerDay && tsMax == (dayMax + 1) * usPerDay - 1
+#guard datePartDay .year (dayMax + 1) == none && datePartDay .year (dayMin - 1) == none
 #guard datePartDay .year dayMin == some 1 && datePartDay .year dayMax == some 9999
 #guard [DatePart.month, .day].map (datePartDay · dayMin) == [some 1, some 1]
 #guard [DatePart.month, .day].map (datePartDay · dayMax) == [some 12, some 31]
@@ -471,7 +463,7 @@ theorem timeOfDay_range (ts : Int) : 0 ≤ timeOfDay ts ∧ timeOfDay ts < usPer
 #guard strftime "%Y-%m-%d %H:%M:%S" 1700000000123456 == "2023-11-14 22:13:20"
 #guard strftime "%Y-%m-%d %H:%M:%S" (-62135596800000001) == "0000-12-31 23:59:59"
 #guard strftime "%F %T" 253402300800000000 == "+10000-01-01 00:00:00"
-#guard strftime "%Y" partMin == "-262143" && strftime "%j %%" (-1) == "365 %"
+#guard strftime "%Y" tsMin == "0001" && strftime "%j %%" (-1) == "365 %"
 #guard (parseFormat "%Y %q".toList).isNone && (parseFormat "50%".toList).isNone
 #guard timeOfDay (-1) == usPerDay - 1
 
@@ -494,14 +486,59 @@ theorem bucket_mono (k : Nat) (origin : Int) {s t : Int} (h : s ≤ t) :
 #guard bucket 900000000 0 (-1) == -900000000 && bucket 900000000 300000000 0 == -600000000
 #guard bucket 900000000 0 899999999 == 0 && bucket 900000000 0 900000000 == 900000000
 
-/-! Values DataFusion gives (`python/tests/test_time.py` checks many more). -/
+/-! The probe points of D32 (the facts `characterization/<engine>/facts/
+<engine>-calendar-range.json` record the same rows on DuckDB, Polars and
+Spark): the ends of the reference's timestamps, leap days, and both sides of
+the Gregorian switch, which the proleptic calendar does not skip.
+0001-01-01 is a Monday, so no truncation of a timestamp in range leaves it. -/
+
+#guard Time.trunc .week tsMin == tsMin && Time.trunc .year tsMax == 2932532 * usPerDay
+#guard Time.strftime "%F" tsMax == "9999-12-31"
+-- 0001-01-01
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (-719162)) ==
+  [some 1, some 1, some 1, some 1, some 1, some 1, some 1]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (-719162)) == [-719162, -719162, -719162, -719162]
+-- 0004-02-29
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (-718008)) ==
+  [some 4, some 1, some 2, some 9, some 29, some 0, some 60]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (-718008)) == [-718014, -718036, -718067, -718067]
+-- 1582-10-04
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (-141438)) ==
+  [some 1582, some 4, some 10, some 40, some 4, some 1, some 277]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (-141438)) == [-141438, -141441, -141441, -141714]
+-- 1582-10-15
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (-141427)) ==
+  [some 1582, some 4, some 10, some 41, some 15, some 5, some 288]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (-141427)) == [-141431, -141441, -141441, -141714]
+-- 1600-02-29
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (-135081)) ==
+  [some 1600, some 1, some 2, some 9, some 29, some 2, some 60]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (-135081)) == [-135082, -135109, -135140, -135140]
+-- 1900-02-28
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (-25509)) ==
+  [some 1900, some 1, some 2, some 9, some 28, some 3, some 59]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (-25509)) == [-25511, -25536, -25567, -25567]
+-- 1900-03-01
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (-25508)) ==
+  [some 1900, some 1, some 3, some 9, some 1, some 4, some 60]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (-25508)) == [-25511, -25508, -25567, -25567]
+-- 2000-02-29
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (11016)) ==
+  [some 2000, some 1, some 2, some 9, some 29, some 2, some 60]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (11016)) == [11015, 10988, 10957, 10957]
+-- 9999-12-31
+#guard [DatePart.year, .quarter, .month, .week, .day, .dow, .doy].map (datePartDay · (2932896)) ==
+  [some 9999, some 4, some 12, some 52, some 31, some 5, some 365]
+#guard [TimeUnit.week, .month, .quarter, .year].map (truncDay · (2932896)) == [2932892, 2932866, 2932805, 2932532]
+
+/-! Values `python/tests/test_time.py` checks on the engines (and many more). -/
 
 #guard DatePart.all.map (partOf · 1700000000123456) == [2023, 4, 11, 46, 14, 22, 13, 20, 20123, 20123456, 2, 318]
 #guard DatePart.all.map (partOf · (-1)) == [1969, 4, 12, 1, 31, 23, 59, 59, 59999, 59999999, 3, 365]
 #guard DatePart.all.map (partOf · (-62135596800000000)) == [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1]
 #guard DatePart.all.map (partOf · 951782400000005) == [2000, 1, 2, 9, 29, 0, 0, 0, 0, 5, 2, 60]
-#guard datePart .year (partMin - 1) == none && datePart .year partMin == some (-262143)
-#guard datePart .year partMax == some 262142 && datePart .year (partMax + 1) == none
+#guard datePart .year (tsMin - 1) == none && datePart .year tsMin == some 1
+#guard datePart .year tsMax == some 9999 && datePart .year (tsMax + 1) == none
 #guard TimeUnit.all.map (trunc · 1700000000123456) == [1700000000123456, 1700000000123000,
   1700000000000000, 1699999980000000, 1699999200000000, 1699920000000000, 1699833600000000,
   1698796800000000, 1696118400000000, 1672531200000000]

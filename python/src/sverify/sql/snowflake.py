@@ -44,8 +44,9 @@ documentation they rest on:
   session's `WEEK_START` and `WEEK_OF_YEAR_POLICY`, so the SQL uses the ISO
   forms (`DAYOFWEEKISO`, `WEEKISO`) and truncates to Monday itself. There is
   no sub-minute millisecond part: it is `SECOND` and `NANOSECOND` combined.
-  `TIMESTAMP_NTZ` stays within the years chrono represents, so `date_part`
-  is never NULL for a non-NULL timestamp, as in Lean. `DATEADD(MONTH, …)`
+  `TIMESTAMP_NTZ` holds years 0 to 302024 (snowflake-date-range), so the
+  writer raises outside the reference's timestamps, 0001-01-01 to
+  9999-12-31, before `date_part` (D32). `DATEADD(MONTH, …)`
   clamps to the end of a shorter month, as `Time.addMonths` does.
 * **Windows**: `LAG`/`LEAD` take the default when the offset leaves the
   partition, as in Lean; `ORDER BY` is required. Tables have no row order

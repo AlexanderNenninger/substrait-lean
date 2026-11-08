@@ -536,7 +536,8 @@ translator pins the semantics and takes no Polars defaults:
   toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
 * Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
   zero, `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions
-  that do not compile and `date_trunc` to a week or longer outside ±2⁶³ ns. Each expression
+  that do not compile, and calendar functions outside the reference's timestamps
+  (0001-01-01 to 9999-12-31, D32). Each expression
   carries a per-row flag for each one, masked by `CASE` as `Expr.issues`
   masks it. The operator raises the matching error if a flag is set on a row
   it evaluates. Polars runs filters where the plan puts them, so a filter
