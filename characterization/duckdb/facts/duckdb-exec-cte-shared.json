@@ -1,0 +1,41 @@
+{
+  "id": "duckdb-exec-cte-shared",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "A CTE read twice in one statement is evaluated once",
+  "verdict": "materialized once by default; NOT MATERIALIZED evaluates it per reference",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "WITH",
+    "CTE"
+  ],
+  "settings": {
+    "threads": "the host's core count"
+  },
+  "description": [
+    "A CTE that a statement reads twice is evaluated once by default: a CTE with random() joined with itself on its key has no row whose two reads differ, in three runs; a scalar CTE read by two subqueries gives equal values. WITH ... AS MATERIALIZED does the same; WITH ... AS NOT MATERIALIZED evaluates the CTE per reference, and every row's two reads differ.",
+    "So a check root and a sink root written as one statement over one CTE read the same evaluation of a double SUM in it on DuckDB, unless the CTE is NOT MATERIALIZED. The statement runs in one transaction's snapshot (MVCC), so both reads see one version of the tables."
+  ],
+  "reference": "The reference evaluates a plan once per catalog: Rel.eval of a shared subplan is one value. Which evaluation an engine reads is outside the model (#929's margin check).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#929 margin check design (session tolerance-step-a)",
+      "evidence": [
+        {
+          "sql": "CREATE TABLE t AS SELECT range AS i FROM range(1000); WITH c AS (SELECT i, random() AS r FROM t) SELECT count(*) FROM c a JOIN c b USING (i) WHERE a.r <> b.r",
+          "observed": "0 (three runs); with WITH c AS NOT MATERIALIZED: 1000; WITH c AS MATERIALIZED: 0; (SELECT r FROM c) = (SELECT r FROM c) for a scalar CTE: true"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    929
+  ]
+}

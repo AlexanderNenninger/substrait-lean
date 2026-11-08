@@ -1,5 +1,6 @@
 import SubstraitLean.Ties
 import SubstraitLean.Rows
+import SubstraitLean.AllowedAnalysis
 
 /-!
 # What the analysis knows of a relation (#902)
@@ -19,7 +20,7 @@ and a bound on its rows (`Rel.maxRows`). `Knowledge` holds the four, and
   order (`Rel.OrderAllowed`, D24); `Rel.analyse_sound` of `Rel.eval`.
 * The consumers, stated on one hypothesis: `Knowledge.contract_sound`,
   `Knowledge.contract_sound_all`, `Knowledge.mayIssues_sound`,
-  `Knowledge.guardFree_sound`, `Knowledge.duckdb_sound`,
+  `Knowledge.guardFree_sound`, `Knowledge.duckdb_sound` (`DuckDBProfile.lean`),
   `Knowledge.allowed_perm_eval`, `Knowledge.refines_of_perm` and
   `Knowledge.eval_sharded`.
 
@@ -166,14 +167,6 @@ theorem guardFree_sound {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK :
     (hm : (r.mayIssues cat K.cols K.facts (K.windows cat) false).all (·.1.assumed) = true)
     {I : Impl} (hI : I.Faithful) : r.eval cat I = r.eval cat :=
   Rel.guardFree_sound hcat hK.cols hK.facts (hK.windows hcat) hwf hsmall hs hm hI
-
-/-- `Rel.duckdb_sound` on one hypothesis. -/
-theorem duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
-    (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat) {r : Rel} (hwf : r.WF cat)
-    (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat K.cols K.facts (K.windows cat) false).all (·.1.assumed) = true) :
-    r.eval cat (Profile.duckdbWritten s).impl = r.eval cat :=
-  Rel.duckdb_sound s hieee hcat hK.cols hK.facts (hK.windows hcat) hwf hsmall hs hm
 
 /-- `Rel.allowed_perm_eval` on one hypothesis. -/
 theorem allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat)

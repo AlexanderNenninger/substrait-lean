@@ -231,6 +231,27 @@
         "type": "object"
       }
     },
+    "engines": {
+      "description": "Per engine, the checker's verdict on the plan (substrait-check --contract's \"engines\"): its class, evidence and what refuses it. Null in a report from a checker without it.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "sorted": {
+      "description": "Whether the plan's result comes out of a sort, as the checker reads it.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "depends": {
+      "description": "The options the proof depends on (substrait-check --contract's \"depends\").",
+      "type": [
+        "array",
+        "null"
+      ]
+    },
     "floats_on": {
       "description": "Per engine, why its doubles may not meet the equivalence (empty where they do).",
       "type": "object",
@@ -532,6 +553,41 @@
             "proved",
             "tested"
           ]
+        },
+        "facts": {
+          "description": "The engine facts behind the choices the class rests on.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "theorems": {
+          "description": "The Lean theorems that prove those choices, where they are proved.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "version": {
+          "description": "The engine version the facts were probed at.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issues": {
+          "description": "The issues that track the tested choices.",
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "proved_facts": {
+          "description": "The facts the theorems rest on, where they prove the engine's model.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "reason": {
           "type": "string"

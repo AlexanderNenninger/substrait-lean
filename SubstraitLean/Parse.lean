@@ -1339,13 +1339,10 @@ def mkCoreCall? : String → List Expr → Option (J Expr)
   | "gte", [a, b] => some <| pure (.un .not (.bin .lt a b))
   -- There is one NaN, equal to itself.
   | "is_nan", [a] | "isnan", [a] => some <| pure (.bin .eq a (.lit (.float FloatCode.nan)))
-  -- `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
-  -- zero: the writer's `canonical`, read back as it was.
+  -- `nanvl(x, NaN)` is `x`: the model has one NaN.
   | "nanvl", [a, .lit (.float c)] => some <|
     if c != FloatCode.nan then throw "nanvl is only supported with NaN as its fallback"
-    else match a with
-      | .bin .fadd x (.lit (.float 0)) => pure x
-      | _ => pure a
+    else pure a
   -- `and` / `or` are variadic in Substrait.
   | "and", a :: as => some <| pure (as.foldl (.bin .and) a)
   | "or", a :: as => some <| pure (as.foldl (.bin .or) a)
@@ -1820,6 +1817,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let o ← match ← constOf? fns oj with
         | some (.int o) | some (.ts o) => pure o
         | _ => throw "date_bin needs a constant origin"
+      -- D32: an origin outside the reference's timestamps is refused here,
+      -- never at run time; with one in range, the operand's check covers it.
+      if o < Time.tsMin || o > Time.tsMax then
+        throw "date_bin's origin is outside the reference's timestamps (0001-01-01 to 9999-12-31)"
       let ts ← parseExpr fns cols bits tj
       if ts.kind cols != .time then throw "date_bin is only supported on timestamps"
       return .un (.bucket k.toNat o) ts
@@ -2403,7 +2404,7 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- (`parseWindowProject`).
       let fr ← parseFrame cols sort w
       -- A sliding frame (one not from UNBOUNDED PRECEDING) is refused on
-      -- DataFusion only (`Rel.slidingFrames`).
+      -- DataFusion only (`DataFusion.slidingFrames`).
       -- `VARIANCE` and `STDDEV` over a frame are the reference's own two
       -- passes (`varOf`) over the frame's rows; writers compute them so.
       if m.fn matches .cov _ || m.fn matches .corr then

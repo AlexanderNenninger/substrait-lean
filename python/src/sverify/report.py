@@ -27,12 +27,14 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
-from sverify._unsupported import SverifyError
+from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
     Engine,
     connection_of,
     plan_json,
+    read_tables,
+    run_guard_free,
     run_plan,
     written_plan,
 )
@@ -157,6 +159,31 @@ RUNTIME_CHECK = (
     "the job also checks it while it runs and raises if it happens; a bound on "
     "the column and on the rows of a group rules it out"
 )
+
+
+def _pinned(table: Any) -> bool:
+    """Does every read of `table` see the same rows: an Arrow table, a table
+    DuckDB holds, or a Delta or Iceberg table's files at one version?"""
+    import pyarrow
+
+    from sverify._scan import Resident, Scan
+
+    if isinstance(table, pyarrow.Table | Resident):
+        return True
+    return isinstance(table, Scan) and "@v" in table.origin
+
+
+class InferredWarning(SverifyWarning):
+    """A precondition sverify inferred is assumed (`on_inferred="warn"`), or a
+    margin check flagged groups a run kept (#929).
+
+    Attributes:
+        report: The `Report` whose `inferred` preconditions are assumed.
+    """
+
+    def __init__(self, message: str, report: Report | None = None):
+        super().__init__(message)
+        self.report = report
 
 
 #: How a report explains a `SUM` it assumes fits (`Report.assumed`).
@@ -476,11 +503,29 @@ class Report:
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
     does not."""
+    _margin_checks: list[dict[str, Any]] = field(default_factory=list, repr=False, compare=False)
+    """The margin checks of the plan's threshold filters on double sums
+    (#929): per filter, a plan that counts the groups whose sum lies within
+    its bound's margin of the threshold (`Rel.marginCheck`). `run` runs each
+    on the engine before the plan (`check_margins`); `rows_exact` holds
+    given them."""
+    _margin_flags: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
+    """After a run with `on_inferred="warn"`, per engine, the groups the
+    margin checks flagged (#929): for those, the contract holds up to the
+    sum's bound."""
     _rows_exact: dict[str, bool] | None = field(default=None, repr=False, compare=False)
     """Per engine, whether every filter, key and sort of the plan keeps the
     same rows and groups under the columns' `ε` (#568's threshold rule): a
     comparison on a double whose threshold lies within `ε` of its range may
     flip. None where the checker does not say."""
+    _engines: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
+    """Per engine, the checker's verdict on the plan's translation from the
+    reference (`SubstraitLean/Realize.lean`, #1166): its class and evidence
+    over the options the proof depends on, the theorems and facts, the shims,
+    the options realized only up to an observation, what refuses it, and the
+    transfer check from each other profile. None from a checker without it."""
+    _sorted: bool | None = field(default=None, repr=False, compare=False)
+    """Whether the plan's result comes out of a sort, as the checker reads it."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
@@ -844,7 +889,12 @@ class Report:
                 True. False skips the check, for a caller that has made it
                 already: the report's guarantee then holds only on data that
                 meets them, and a batch that does not may raise on the
-                engine.
+                engine. With the check, a guard-free plan on the reference's
+                route runs without the per-row checks the checker discharged
+                on data that meets them, on an engine whose writer a theorem
+                covers without them (`guard_free`; Polars, `Rel.polars_sound`);
+                the checks of the assumed `SUM`s and `±∞` stay. Without it,
+                and on the other engines, every check stays.
             streaming: On Polars, `"require"` refuses a plan any of whose
                 nodes runs on the in-memory engine
                 (`polars_engine.fallback_nodes`); `"allow"` (the default)
@@ -910,25 +960,105 @@ class Report:
                 raise routes.RouteError(chosen)
         if check_requires:
             self.check_inputs(con)
+        if kind != "unverified":
+            self.check_margins(con, engine, target, reproducible is not None)
         if target == "polars" and (chosen is not None or streaming == "require"):
             self._streaming(con, chosen, streaming)
         # The check of an overflow to ±∞ is the reference's precondition
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
         finite = self.semantics == "reference" or kind == "translated"
-        out = run_plan(
-            con,
-            written_plan(self.internal_plan),
-            engine,
-            finite=finite,
-            # A proved report's `deterministic` justifies Spark's windows
-            # without a row-order tiebreak (`to_sql`'s `deterministic`).
-            tie_free=self.deterministic and kind != "unverified",
-        )
+        # The checks the checker discharged (#1166): where the preconditions
+        # were checked on these tables and the plan runs by the reference's
+        # translation, a guard-free plan runs without its per-row checks on an
+        # engine whose writer a theorem covers without them, as the checker
+        # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
+        name = chosen.engine if chosen is not None else ""
+        theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
+        if (
+            check_requires
+            and kind == "translated"
+            and self.semantics == "reference"
+            and self._guard_free
+            and theorem is not None
+        ):
+            out = run_guard_free(
+                con, written_plan(self.internal_plan), name, theorem, finite=finite
+            )
+        else:
+            out = run_plan(
+                con,
+                written_plan(self.internal_plan),
+                engine,
+                finite=finite,
+                # A proved report's `deterministic` justifies Spark's windows
+                # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                tie_free=self.deterministic and kind != "unverified",
+            )
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
         return out
+
+    def check_margins(
+        self, con: Connection, engine: Any, target: str, deterministic: bool = False
+    ) -> int:
+        """Run the margin checks of the plan's threshold filters on double
+        sums (#929, `Rel.marginCheck`) on `engine`, on the tables of `con`
+        the plan reads too, and count the groups they flag: those whose sum
+        lies within its bound's margin of the threshold, where the engine may
+        keep other groups than the reference.
+
+        Returns:
+            The groups flagged; with `verify(on_inferred="warn")`, also
+            recorded in `_margin_flags` and warned about (`InferredWarning`).
+
+        The check and the plan must read one snapshot: each input the check
+        reads is an Arrow table, a `Resident` table or a `Scan` pinned to a
+        version (`_pinned`). Another input warns (`InferredWarning`), and
+        refuses the run with `deterministic` (the deterministic profile,
+        `reproducible=`).
+
+        Raises:
+            PreconditionError: A check flags a group, and the report was not
+                verified with `on_inferred="warn"`; or, with `deterministic`,
+                an input the check reads is not pinned to one version.
+        """
+
+        total = 0
+        for chk in self._margin_checks:
+            on = (chk.get("engines") or {}).get(target)
+            if on is None:
+                # Not covered on this engine: its threshold rule refused the route.
+                continue
+            loose = [t for t in read_tables(chk["plan"]) if con.has(t) and not _pinned(con.get(t))]
+            if loose:
+                msg = (
+                    f"the margin check and the plan read {', '.join(loose)} twice, and "
+                    f"{'it is' if len(loose) == 1 else 'they are'} not pinned to one version: "
+                    "the two reads may see different rows (#929)"
+                )
+                if deterministic:
+                    raise PreconditionError(msg)
+                warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            # Without the overflow checks of #575: the margin is at most `A`, and
+            # a `v − t` past the largest double is farther than any bound.
+            # Its windows aggregate whole partitions, so no row order matters.
+            res = run_plan(
+                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
+            )
+            k = int(res.column(0)[0].as_py() or 0)
+            if not k:
+                continue
+            total += k
+            msg = on["message"].replace("{k}", str(k))
+            if self._on_inferred == "warn":
+                warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            else:
+                raise PreconditionError(msg)
+        if self._on_inferred == "warn":
+            self._margin_flags[target] = total
+        return total
 
     def _assumed(self) -> list[Issue]:
         """The assumptions a report shows: not those about an operation
@@ -992,6 +1122,19 @@ class Report:
         if not self._floats_on or not all(self._floats_on.values()):
             return None
         return "; ".join(f"on {e}: {'; '.join(ps)}" for e, ps in self._floats_on.items())
+
+    def _evidence_lines(self) -> list[str]:
+        """An `evidence:` line per engine a run has not taken the plan to
+        yet: its class there, and whether a theorem proves it or a test of
+        the engine's facts stands for it (`routes.evidence_on`)."""
+        from sverify import routes as _routes
+
+        lines = []
+        for e, got in _routes.evidence_on(self).items():
+            if e in self.routes or got.problems or got.evidence is None:
+                continue
+            lines.append(f"evidence: {e} {got.cls}, {_routes.evidence_text(got, e)}")
+        return lines
 
     def _observes_lines(self) -> list[str]:
         """The `observes:` line: the observation, the plan's bound beside a
@@ -1314,6 +1457,7 @@ class Report:
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
+        lines += [f"checks at run time: {c['label']}" for c in self._margin_checks]
         for i in self.errors:
             lines.append(f"may fail: {i.message}")
             if i.hint:
@@ -1323,6 +1467,7 @@ class Report:
         lines.append(f"semantics: {self.semantics}")
         lines += [f"  {_transfer_failure(f)}" for f in self._transfer or ()]
         lines += self._observes_lines()
+        lines += self._evidence_lines()
         lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
         if self.facts or self.rows is not None:
             lines.append("known about the output:")
@@ -1410,6 +1555,10 @@ _REPORT_INTERNAL = [
     "transfer",
     "epsilon",
     "rows_exact",
+    "margin_checks",
+    "margin_flags",
+    "engines",
+    "sorted",
     "conditions",
     "dialect",
     "on_inferred",
@@ -1588,10 +1737,18 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
             lo = None if lo is not None and lo <= -(2**60) else lo
             hi = None if hi is not None and hi >= 2**60 else hi
         if span is not None:
-            # So do bounds past what a Python date or datetime holds, the years
-            # 1 to 9999: a DATE cast from a TIMESTAMP reaches far beyond (#435).
-            lo = None if lo is not None and lo < span[0] else lo
-            hi = None if hi is not None and hi > span[1] else hi
+            # So do bounds at or past what a Python date or datetime holds, the
+            # years 1 to 9999: they are the reference's own (D32), which a DATE
+            # or TIMESTAMP has by its type (a DATE cast from a TIMESTAMP is
+            # computed and may reach beyond, #435).
+            lo = None if lo is not None and lo <= span[0] else lo
+            hi = None if hi is not None and hi >= span[1] else hi
+        if dtype.is_interval():
+            # And an interval as long as two of the reference's timestamps
+            # apart, or longer.
+            widest = (datetime.max - datetime.min) // _MICROSECOND
+            lo = None if lo is not None and lo <= -widest else lo
+            hi = None if hi is not None and hi >= widest else hi
         if lo is None and hi is None:
             parts.append(f"any {noun.split(' ', 1)[1]}")
         elif lo is not None and hi is not None and lo == hi:

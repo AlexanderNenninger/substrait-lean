@@ -8,11 +8,11 @@ well-formed, and evaluate it.
 (the specification) in place of `Rel.evalFast` (`SubstraitLean/EvalFast.lean`),
 which is faster and proved equal; for tests.
 
-`substrait-check --delta plan.json`: print the Substrait JSON plans an engine
-runs to maintain `plan.json` incrementally, one per line. They read the old
+`substrait-check --delta plan.json`: print the Substrait JSON plan an engine
+runs to maintain `plan.json` incrementally, on one line. It reads the old
 tables `t` and change tables `t$delta` (the same columns plus a trailing
-`__weight`); concatenated, their outputs are the change to the result, with a
-trailing `__weight` column. Each plan is union-free (see `Rel.terms`).
+`__weight`); its output is the change to the result, with a trailing
+`__weight` column.
 
 `substrait-check --contract contract.json`: try to prove postconditions from
 preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
@@ -25,7 +25,7 @@ why it cannot be split.
 `substrait-check --write plan.json`: print the plan in Lean's written form
 (the plan `Rel.eval` runs, as Substrait JSON). `--write-datafusion`: the same
 plan for DataFusion to run, compensating for where its semantics differ
-(`Write.writeRel`); it does not parse back to the same `Rel`.
+(`SubstraitLean/DataFusion.lean`); it does not parse back to the same `Rel`.
 
 `substrait-check --lowering-coverage`: print how each construct is lowered to
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
@@ -88,14 +88,11 @@ def delta (plan : Plan) : IO UInt32 := do
   -- `isIncremental_iff`: this decides `Rel.Incremental`.
   if !plan.root.isIncremental then
     IO.eprintln "not incrementally maintainable (left join, fetch or window)"; return 3
-  let cat := Write.deltaCatalog plan
-  let terms := Write.deltaTerms plan
-  -- `Rel.weighted_eval` needs each term to be incremental and well-formed.
-  for term in terms do
-    if !term.isIncremental || term.hasUnion || !term.checkWF cat then
-      IO.eprintln "a delta term failed its static checks"; return 2
-  for term in terms do
-    IO.println (Write.writeDeltaPlan plan term).compress
+  let d := plan.root.delta Write.deltaName
+  -- `Rel.weighted_eval` needs the delta plan to be incremental and well-formed.
+  if !d.isIncremental || !d.checkWF (Write.deltaCatalog plan) then
+    IO.eprintln "the delta plan failed its static checks"; return 2
+  IO.println (Write.writeDeltaPlan plan d).compress
   return 0
 
 /-- A result value, printed by its column's kind: integers (unbounded in the
@@ -207,41 +204,30 @@ def evalChoices (plan : Plan) : IO UInt32 := do
   IO.println (Lean.Json.mkObj [("rows", out)]).compress
   return 0
 
-def write (df : Bool) (plan : Plan) : IO UInt32 := do
+def write (plan : Plan) : IO UInt32 := do
   -- Decimals (#27) are written back as Substrait's own calls and casts where
-  -- that parses back to the same plan; DataFusion does not compute them as
-  -- the reference does.
-  -- `overflow` = `SILENT` or `SATURATE` (#241): only DuckDB's SQL has it so far.
-  if df && plan.root.anyExpr Expr.fits then
-    IO.eprintln "error: overflow = SILENT or SATURATE is not supported on DataFusion (#241)"
+  -- that parses back to the same plan.
+  if plan.root.decimalOps && !Write.roundtrips plan then
+    IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
     return 1
-  if plan.root.decimalOps then
-    if df then
-      IO.eprintln "error: DataFusion does not compute decimals as the reference does (#27)"
-      return 1
-    if !Write.roundtrips plan then
-      IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
-      return 1
-  if df then
-    if plan.root.floatExtremes plan.tables then
-      IO.eprintln "error: MIN and MAX of doubles are not yet supported on DataFusion; see #271"
-      return 1
-    if plan.root.slidingFrames then
-      IO.eprintln "error: SUM of doubles, AVG and MIN over a sliding frame are not supported on DataFusion; use a frame from UNBOUNDED PRECEDING"
-      return 1
-    if plan.root.anyExpr Expr.nestedAccess then
-      IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94)"
-      return 1
-    if let some (code, msg) := checkPlan plan then
-      IO.eprintln msg; return code
   -- Arguments of nested calls become columns (`Rel.bindArgs`, #821), so the
   -- writers' guards read a column where they would copy a call. Decimal
   -- arithmetic stays as the parser read it: it must parse back (#27).
   -- The bound plan is written only where it parses back as itself.
   let bound := plan.root.bindArgs plan.catalog
-  let root := if df || plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
+  let root := if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
     else bound
-  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names df).compress
+  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names).compress
+  return 0
+
+/-- `--write-datafusion`: the plan as DataFusion runs it
+(`SubstraitLean/DataFusion.lean`), or the reason it does not get it. -/
+def writeDataFusion (plan : Plan) : IO UInt32 := do
+  if let some msg := DataFusion.refusal plan then
+    IO.eprintln s!"error: {msg}"; return 1
+  if let some (code, msg) := checkPlan plan then
+    IO.eprintln msg; return code
+  IO.println (DataFusion.writePlan plan).compress
   return 0
 
 open Lean (Json toJson) in
@@ -308,9 +294,15 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
           (Lean.Json.mkObj [])
         -- Per postcondition, whether it holds on every engine's doubles (#1045).
         let robust := (EngineRobust.robust es j).toOption.getD (Lean.Json.arr #[])
-        match underProfile es j (report.json |>.setObjVal! "depends" depends
+        -- The margin checks of threshold filters on double sums (#929).
+        let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
+        -- Per engine, the plan's class, evidence and what refuses it (#1166).
+        let engines := (Realize.enginesJson es j rowsExact).toOption.getD []
+        let base := report.json |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
-            |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust)
+            |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
+            |>.setObjVal! "margin_checks" margins
+        match underProfile es j (engines.foldl (fun r (k, v) => r.setObjVal! k v) base)
             report.allProved with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>
@@ -328,8 +320,8 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
     | "--rows" => pure (check · false false)
     | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
-    | "--write" => pure (write false)
-    | "--write-datafusion" => pure (write true)
+    | "--write" => pure write
+    | "--write-datafusion" => pure writeDataFusion
     | "--outcomes" => pure outcomes
     | "--dependencies" => pure fun plan => do
         -- The options the plan meets and the transfer check (#444).

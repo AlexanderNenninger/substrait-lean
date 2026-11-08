@@ -125,13 +125,13 @@ theorem partBound_mem (p : Time.DatePart) {b : Bound} {ts r : Int} (hi : b.Mem t
   · cases hr
 
 theorem partFails_of (p : Time.DatePart) {b : Bound} {ts : Int} (hi : b.Mem ts)
-    (hn : Time.datePart p ts = none) : (!(some b).all (·.within Time.partMin Time.partMax)) = true := by
+    (hn : Time.datePart p ts = none) : (!(some b).all (·.within Time.tsMin Time.tsMax)) = true := by
   simp only [Time.datePart] at hn
   split at hn
   · cases hn
   · rename_i hr
     simp only [Option.all_some, Bool.not_eq_true']
-    cases hw : b.within Time.partMin Time.partMax
+    cases hw : b.within Time.tsMin Time.tsMax
     · rfl
     · have := Bound.within_mem hw hi
       simp only [between, Bool.and_eq_true, decide_eq_true_eq] at this

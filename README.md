@@ -17,8 +17,11 @@ Sverify is purely observational. It's a tool to explore and compare database sem
 
 ## Principles
 
-Sverify checks every plan against a reference semantics written in Lean, and
-describes each engine by how it differs from that reference. Four principles
+Sverify's Lean core does a superset of operations, and profiles refine it:
+the reference, Substrait's and one per engine
+([core, profiles and engines](docs/core-semantics.md#core-profiles-and-engines)). Sverify checks every plan against
+the reference profile, and describes each engine by how it differs from
+that reference. Four principles
 decide what the reference does: it follows Substrait, takes the least
 surprising choice where Substrait is silent, can be followed by every engine
 with reasonable effort, and keeps optimizations provable. They are stated,
@@ -45,7 +48,7 @@ SQL string ─► SQLGlot lift ────────────────�
   (`Rel.eval`), and proves what sverify relies on: contracts, runtime-error
   analysis, incremental delta plans, sharding and rewrites. It builds the
   `substrait-check` command line tool, which reads a Substrait JSON plan and
-  prints what it verified.
+  prints what it proved.
 * Python (`python/`) is the `sverify` package. It produces plans from Ibis
   and SQL, calls `substrait-check`, writes the checked plan for each engine,
   and runs it. Delta and Iceberg IO, nodes, sinks and the pytest plugin live
@@ -63,7 +66,7 @@ SQL string ─► SQLGlot lift ────────────────�
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) and lowering expectations |
 | `notebooks/` | The tour, in [marimo](https://marimo.io) ([below](#the-tour)) |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O and more), probed against the checker and the engines; [findings](catalogue/FINDINGS.md) |
-| `characterization/` | What each engine does, as a diff against the reference model: one JSON document per fact, with provenance ([DuckDB's facts](characterization/duckdb/facts/)) |
+| `characterization/` | What each engine does, as a diff against the reference profile: one JSON document per fact, with provenance ([DuckDB's facts](characterization/duckdb/facts/)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
 | `upstream/` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream: one JSON document per bug ([the bugs](upstream/bugs/)) |
@@ -91,8 +94,8 @@ SQL string ─► SQLGlot lift ────────────────�
 * [docs/stability.md](docs/stability.md): what stays stable in 1.x: the formats
   a running pipeline reads, the contracts proved, the Python API, and
   [which engines](docs/stability.md#engines) sverify supports.
-* [docs/core-semantics.md](docs/core-semantics.md): the loose core, the
-  profiles as constraints on it, the translations between them, and the
+* [docs/core-semantics.md](docs/core-semantics.md): the loose core, which
+  does a superset of operations, the profiles that refine it, the translations between them, and the
   decisions D1 onwards; [docs/realizability.md](docs/realizability.md): the
   class of every option on each engine, generated.
 * [docs/proofs.md](docs/proofs.md): each guarantee with its theorem, what is

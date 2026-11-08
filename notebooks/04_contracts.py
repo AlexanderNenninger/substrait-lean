@@ -473,7 +473,7 @@ def _(mo):
     * Integer `POWER` with a negative exponent or a huge result.
     * A regular expression that does not compile.
     * Truncating a timestamp near the ends of its range to a month or year.
-      DataFusion, which is experimental and outside the
+      DataFusion, an optional engine outside the
       [1.x promise](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines), panics or returns garbage there.
     * `+`, `-`, `*` leaving the declared width (64 bits for `BIGINT`). The
       reference raises, and so do the DuckDB and Polars translations.

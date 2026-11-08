@@ -195,7 +195,7 @@ belongs to a shim the rows name. -/
 def EngineProfile.evidenced (e : EngineProfile) : Bool :=
   let os := obligations e.table e.obs
   (os.all fun r => match r.case with
-    | .shim s => (e.shimCost? s).isSome && r.evidence != .none && r.evidence != .tested []
+    | .shim s => (e.shimCost? s).isSome && r.evidence != .none && r.evidence != .tested [] none
     | .uncharacterized => true
     | _ => r.evidence != .none) &&
   e.shims.all fun (n, _) => (shimNames os).contains n
@@ -205,6 +205,27 @@ theorem obligations_consistent : builtinEngines.all (·.consistent) := by
 
 theorem obligations_evidenced : builtinEngines.all (·.evidenced) := by
   decide +kernel
+
+/-- A row's evidence and its reruns' name the issue tracking their proof,
+where they are no proof (#1131). -/
+def ObsRow.Tracked (r : ObsRow) : Prop :=
+  (∀ ids i, r.evidence = .tested ids i ∨ r.evidence = .probed ids i → i.isSome) ∧
+    ∀ ids i, r.rerunEvidence = .tested ids i ∨ r.rerunEvidence = .probed ids i → i.isSome
+
+theorem Evidence.tracked_iff (e : Evidence) :
+    e.tracked = true ↔ ∀ ids i, e = .tested ids i ∨ e = .probed ids i → i.isSome := by
+  cases e <;> simp [Evidence.tracked]
+
+/-- Every row of `e` that rests on no theorem, and every rerun claim, names
+the issue tracking its proof: the checker `#check_engine_profiles` runs. -/
+def EngineProfile.tracked (e : EngineProfile) : Bool :=
+  e.obs.all fun (_, _, r) => r.evidence.tracked && r.rerunEvidence.tracked
+
+/-- **`tracked` decides `ObsRow.Tracked`** of every row. -/
+theorem EngineProfile.tracked_iff (e : EngineProfile) :
+    e.tracked = true ↔ ∀ x ∈ e.obs, x.2.2.Tracked := by
+  simp only [EngineProfile.tracked, List.all_eq_true, Bool.and_eq_true, ObsRow.Tracked,
+    Evidence.tracked_iff]
 
 /-- This repository's tables refine the core (`Profile.duckdb_le_core`, …). -/
 theorem builtinEngines_leCore : builtinEngines.all (·.leCore) := by
@@ -395,6 +416,7 @@ elab "#check_engine_profiles " t:term : command => do
     unless e.leCore do throwError "{e.name}: choices not within the core's"
     unless e.consistent do throwError "{e.name}: a row differs from the reference with no shim"
     unless e.evidenced do throwError "{e.name}: a shim or row without evidence or cost"
+    unless e.tracked do throwError "{e.name}: a tested or probed row names no issue tracking its proof"
 
 #check_engine_profiles builtinEngines
 
@@ -424,8 +446,10 @@ def Obligation.json (e : EngineProfile) (r : Obligation) : Json :=
       | _ => []) ++
     (match r.evidence with
       | .proved thm ids => [("evidence", toJson "proved"), ("theorem", toJson thm), ("facts", toJson ids)]
-      | .tested ids => [("evidence", toJson "tested"), ("facts", toJson ids)]
-      | .probed ids => [("evidence", toJson "probe"), ("facts", toJson ids)]
+      | .tested ids i => [("evidence", toJson "tested"), ("facts", toJson ids), ("issue", toJson i),
+          ("version", toJson e.table.version)]
+      | .probed ids i => [("evidence", toJson "probe"), ("facts", toJson ids), ("issue", toJson i),
+          ("version", toJson e.table.version)]
       | .none => [("evidence", Json.null), ("facts", toJson ([] : List String))])
 
 open Lean (Json toJson) in
