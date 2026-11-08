@@ -41,7 +41,7 @@ contract's preconditions.
 | `Rel.eval` gives a result the reference allows | `eval`, `Allowed` | `Rel.eval_allowed` | `Allowed.lean` |
 | Every row order the reference allows is one `Rel.Allowed` allows | `OrderAllowed`, `Allowed` | `Rel.orderAllowed_allowed` | `Ties.lean` |
 | An operator that factors through the multiset has one meaning over every order; a plan without choices one multiset, an unordered `FETCH` several | `OrderAllowed`, `Bags` | `Sem.eq_iff_of_permInv`, `Measure.orderAllowed_eq`, `Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two` | `Seam.lean` |
-| DuckDB, under its default settings, computes the reference | `eval` | `Rel.duckdb_sound` | `Profile.lean` |
+| DuckDB, under its default settings, computes the reference | `eval` | `Rel.duckdb_sound` | `DuckDBProfile.lean` |
 | The generated DuckDB lowering computes the reference | `eval`, `AllowedP` | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `LoweringDuckDB.lean`, `LoweringDuckDB/On/Guards.lean` |
@@ -179,7 +179,7 @@ other pages link here.
   ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)).
 - The models of the engines' own functions, and that each engine matches
   its profile: `Impl.Faithful` (`Guards.lean`) for the functions the SQL
-  calls unguarded, `Profile.duckdb` (`Profile.lean`, `EngineTables.lean`),
+  calls unguarded, `Profile.duckdb` (`DuckDBProfile.lean`, `EngineTables.lean`),
   `Profile.polars` and `Polars.*` (`PolarsProfile.lean`, `PolarsShims.lean`)
   and `Profile.spark` and `Spark.*` (`SparkProfile.lean`, `SparkShims.lean`),
   each from the engine's characterization facts
@@ -340,7 +340,8 @@ generators, then the trusted reading and writing.
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
 | `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
-| `Profile.lean` | Engine profiles as outcomes per function, and DuckDB's shims |
+| `Profile.lean` | Engine profiles as outcomes per function; the reference is one |
+| `DuckDBProfile.lean` | `Profile.duckdb` under DuckDB's settings, as the SQL printer writes it, and `Rel.duckdb_sound` |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |
 | `PolarsShims.lean` | The Polars shims, proved against a model of Polars's functions |

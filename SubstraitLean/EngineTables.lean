@@ -2,6 +2,7 @@ import Lean.Data.Json
 import SubstraitLean.Observations
 import SubstraitLean.AllowedP
 import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.SubstraitProfile
 
 /-!

@@ -1,4 +1,4 @@
-import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 
 /-!
 # Lowerings: a table of proved templates (#241)
