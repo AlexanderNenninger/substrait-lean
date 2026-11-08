@@ -10,8 +10,21 @@
     "nan_zero_grouping"
   ],
   "rows": [
-    {"group": "cmp", "option": "zero_sign", "types": ["fp64"]},
-    {"group": "cmp", "option": "zero_sign", "types": ["fp32"], "evidence": "engine_test"}
+    {
+      "group": "cmp",
+      "option": "zero_sign",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "cmp",
+      "option": "zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "engine_test"
+    }
   ],
   "constructs": [
     "==",
@@ -28,6 +41,7 @@
   },
   "description": [
     "`0.0 == -0.0` is true, `sort` treats them as equal (with `maintain_order` the input order stays), and `group_by`, `unique` and joins put them together. Without `maintain_order`, the group's key and the surviving row of `unique` carry the zero seen first, which can be `-0.0`; with `group_by(maintain_order=True)` the key was `0.0` in a probe where `-0.0` came first. Polars promises neither. Arithmetic still tells the zeros apart (polars-zero-sign).",
+    "On the streaming engine, which zero a group key or `unique` keeps varies from run to run: over 300 runs of `[-0.0] + [0.0] * 99_999`, `group_by('x')` kept `0.0` 5 times and `-0.0` 295 times, `unique()` kept `0.0` 13 times; `group_by('x', maintain_order=True)` kept `0.0` every time. sverify does not see it: its written plan reads doubles as the one zero (`polars_engine.conform`), gives `canon` to every operation that can make `-0.0`, and groups on the canonical key (`aggregate`, `distinct`), so every zero it groups is `0.0` (`test_double_group_keys_have_one_zero_and_one_nan`).",
     "No upstream test pins which zero a group key or `unique` keeps, or zero grouping on the streaming engine; it may change between versions."
   ],
   "reference": "`ONE_ZERO` (#89): `-0.0` is `0.0` everywhere, so a group key is never `-0.0`.",
@@ -204,6 +218,27 @@
           "note": "`test_joins`: -0.0 joins 0.0, NaN joins NaN, eager. No upstream test pins which zero a group key or unique row keeps, nor zero grouping on the streaming engine."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "manual-repro",
+      "checked_by": "session lowerings-271 (#271)",
+      "evidence": [
+        {
+          "sql": "f = pl.LazyFrame({'x': [-0.0] + [0.0] * 99_999}); [math.copysign(1, f.group_by('x', maintain_order=m).agg(pl.len()).collect(engine='streaming').rows()[0][0]) for _ in range(300)], likewise f.unique()",
+          "observed": "maintain_order=False: 0.0 five times, -0.0 295 times; maintain_order=True: 0.0 300 times; unique(): 0.0 13 times, -0.0 287 times"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-zero-key-first",
+          "note": "Recorded with -0.0 for maintain_order=False; a rerun on 2026-11-08 gave 0.0."
+        },
+        {
+          "test": "python/tests/test_polars_shims.py::test_double_group_keys_have_one_zero_and_one_nan",
+          "note": "The written plan's group key is 0.0 where Polars alone keeps -0.0."
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) on macOS arm64, 10 cores, default thread pool. The written plan uses `group_by(..., maintain_order=True)` and `unique(..., maintain_order=True)` on `_float_key` columns, so the varying zero never reaches a result."
     }
   ],
   "issues": [
