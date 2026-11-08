@@ -273,7 +273,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_creation", (ObsRow.native ["polars-double-arith"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
-    with shim := some "one_zero" }).proved "Polars.one_zero"),
+    with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "nan_kind", .upTo { zeros := .canon } ["polars-nan-sign"]),
   (none, "nan_order", .native ["polars-nan-order"]),
   (none, "nan_equality", .native ["polars-nan-equality"]),
@@ -303,15 +303,15 @@ def Profile.polars.obs : ObsTable := [
   -- `min`/`max` of `-0.0` and `0.0`: up to one zero.
   (some "agg.order", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-order", "polars-min-max-zero"] with
-    shim := some "one_zero" }).proved "Polars.one_zero"),
+    shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "avg_int_result", (ObsRow.shimmed "avg_int_declared" ["polars-avg-int"]).proved "Polars.avg_int_declared"),
-  (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Polars.sum_empty_null"),
+  (none, "empty_group_aggregates", (ObsRow.shimmed "sum_empty_null" ["polars-sum-int"]).proved "Shim.sum_empty_null"),
   -- Every stated placement is native, by `nulls_last`; where a key leaves it
   -- open, Polars's default (first) is not the reference's (last), which the
   -- choices say (`transferB`), so the translation writes `nulls_last` on every
-  -- key, a written argument. `Polars.null_order`: with it, Polars orders as
+  -- key, a written argument. `Shim.null_order`: with it, Polars orders as
   -- `sortLe`.
-  (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Polars.null_order"),
+  (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Shim.null_order"),
   (none, "clustered", .shimmed "sort on the keys" ["polars-clustered"]),
   -- A streaming sort of a large input does not keep ties in input order.
   (none, "tie_order", ({ ObsRow.native ["polars-sort-stability", "polars-first-last"] with
@@ -326,8 +326,8 @@ def Profile.polars.obs : ObsTable := [
       ["polars-double-modulus", "polars-scalar-divisor"] with
     note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0): the translation broadcasts the divisor to a column, where Polars divides as IEEE does." }),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
-    ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Polars.one_zero"),
-  (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Polars.makes_infinite"),
+    ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
+  (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
   (none, "negative_start", .native ["polars-substring"]),
   (none, "case_sensitivity", .native ["polars-match-functions"]),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
@@ -407,7 +407,7 @@ def Profile.spark.obs : ObsTable := [
   -- A `BIGINT` partial sum raises by the order of the rows; the writer sums
   -- exact `DECIMAL(38,0)` values (`Spark.partial_sums_fit`).
   (some "agg.isum", "overflow", (ObsRow.shimmed "int_sum_decimal" ["spark-sum-int", "spark-exec-parallel"]).proved
-    "Spark.int_sum_decimal"),
+    "Shim.sum_empty_null"),
   (some "int.div", "overflow", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
   (none, "on_division_by_zero", (ObsRow.native ["spark-int-divide", "spark-int-modulus"]).proved "Rel.spark_sound"),
   (some "fp.div", "on_division_by_zero", .native ["spark-double-divide"]),
@@ -420,11 +420,11 @@ def Profile.spark.obs : ObsTable := [
   (some "fp.round", "rounding", { ObsRow.native ["spark-round"] with
     note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }),
   (none, "nan_creation", (ObsRow.native ["spark-double-arith", "spark-nonfinite-aggregates"]).proved "Rel.spark_sound"),
-  (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Polars.makes_infinite"),
+  (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Shim.makes_infinite"),
   -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"] with
-    shim := some "Dialect.canon" }).proved "Spark.one_zero"),
+    shim := some "Dialect.canon" }).proved "Shim.one_zero"),
   (none, "nan_kind", .upTo { zeros := .canon } ["spark-nan-sign"]),
   (none, "nan_order", .native ["spark-nan-order"]),
   (none, "nan_equality", .native ["spark-nan-equality"]),
@@ -435,11 +435,11 @@ def Profile.spark.obs : ObsTable := [
     rerunEvidence := .proved "FloatBounds.StdModel.epsilon_sum_cr"
       ["spark-sum-double", "spark-avg-double", "spark-exec-parallel"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
-  (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Spark.int_avg_decimal"),
+  (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Shim.avg_trunc"),
   (none, "empty_group_aggregates", .native ["spark-sum-int", "spark-sum-double"]),
   -- Unstated, Spark puts NULLs first in an ascending key; the writer states
-  -- each key's placement (`Spark.null_order`).
-  (none, "null_order", (ObsRow.shimmed "null_order" ["spark-null-order"]).proved "Spark.null_order"),
+  -- each key's placement (`Shim.null_order`).
+  (none, "null_order", (ObsRow.shimmed "null_order" ["spark-null-order"]).proved "Shim.null_order"),
   (none, "clustered", .shimmed "sort on the keys" ["spark-clustered"]),
   -- After a shuffle, ties come in the order the partitions' rows arrive.
   (none, "tie_order", { ObsRow.native ["spark-sort-stability", "spark-window-values", "spark-rank"] with

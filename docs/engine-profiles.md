@@ -403,13 +403,14 @@ on DuckDB by `transfer` where DuckDB's choices are within Spark's at every
 option the proof depends on. What is proved
 ([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
 
-- `Spark.int_sum_decimal`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
+- `Shim.sum_empty_null`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
   on Spark raises as soon as a partial sum leaves 64 bits, which depends on
   the order of the rows ([sum-int](../characterization/spark/facts/spark-sum-int.json));
   the writer sums exact `DECIMAL(38,0)` values, and no partial sum of fewer
   than 10¹⁸ 64-bit values leaves 38 digits, in any order.
-- `Spark.int_avg_decimal`, `Spark.null_order`, `Spark.one_zero`: the other
-  shims give the reference's value.
+- `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
+  the reference's value, by the lemmas Polars's shims share
+  ([Shims.lean](../SubstraitLean/Shims.lean)).
 - `Spark.written_faithful` and `Rel.spark_sound`: Spark under ANSI, as the
   writer writes it, gives `Rel.eval`'s rows for a plan whose only issues are
   assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the

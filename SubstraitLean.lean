@@ -77,6 +77,7 @@ import SubstraitLean.AllowedNear
 import SubstraitLean.Lipschitz
 import SubstraitLean.LipschitzL1
 import SubstraitLean.EngineTables
+import SubstraitLean.Shims
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
 import SubstraitLean.SparkShims
