@@ -1,7 +1,9 @@
 # Float error bounds
 
 Doubles round. Sverify models them exactly where it can (comparisons, `MIN`,
-`MAX`) and computes their arithmetic with Lean's native `Float`. Epic #85
+`MAX`), computes `+ − × ÷` as the exact result rounded once ([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once)),
+and computes `pow`, `log` and the other libm functions with Lean's native
+`Float`. Epic #85
 adds proved error bounds for the aggregates that add up doubles: `SUM`,
 `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`. This note records the model,
 where the proofs live, and what each bound says.
@@ -15,9 +17,10 @@ toolchain pin are unchanged. CI's `float-bounds` job builds the package with
 Mathlib's prebuilt oleans; `poe prove-floats` does the same locally. It is
 not part of `poe qa`, because of the Mathlib download.
 
-The core uses the bound formulas as trusted facts, next to its other trust in
+The core used the bound formulas as trusted facts, next to its other trust in
 native `Float` (`SubstraitLean/Float.lean`), and cross-references them to the
-proofs here.
+proofs here. Since D31 it proves the arithmetic ones itself
+(`SubstraitLean/FloatArith.lean`); `FloatCode.exp_fin` stays a trusted fact.
 
 ## The model of rounding
 
@@ -97,7 +100,7 @@ after the columns `floatCombine` reads (`floatBoundParts`). The counts give
 values far from overflow. These bound an engine's own two-phase sum. Since
 D25 the core proves Lean's own split on integers, without axioms
 (`twoPhaseSum_near`, `twoPhaseAvg_near` in `Partition.lean`, the mean with
-`FloatCode.div_scaled_err` for its native division), and `floatSplit_sum` and
+`FloatCode.div_scaled_err` for its division), and `floatSplit_sum` and
 `floatSplit_avg` apply them to a group's shards:
 `floatPartial`'s `SUM` and `COUNT`, combined as `floatCombine` combines them,
 against the measure on the whole group. `absPart_eval` says what the
@@ -290,6 +293,18 @@ do not meet (`rule_threshold`): a filter, `CASE` condition, grouping key or
 sort key on it keeps the same rows on both sides. Where they meet, the rows
 may differ, and no column's bound below or after it is marked proved.
 
+A comparison whose ranges meet can still be decided on the data (#929).
+[`Margin.lean`](../float-bounds/FloatBounds/Margin.lean) bounds a group's
+sum against the reference's from its own row count `n` and `Σ |xᵢ|`, in any
+order an engine adds: `(γₙ + u) · Σ(|xᵢ| + tiny)` (`StdModel.epsilon_group`).
+The engine computes a check per group from its `SUM(ABS(x))` `A`:
+`|fl(v − t)| > fl(cₙ · fl(A + n · tiny))`, `cₙ = (8n + 16) · 2⁻⁵³`, exact in
+doubles but for its two roundings. A group that passes is farther than twice
+the bound from `t` (`StdModel.check_sound`), so every evaluation of its sum,
+the check's and the filter's, lies on the reference's side of `t`
+(`margin_sound`, `StdModel.margin_check`). The factor 2 covers an engine
+that computes the sum twice, in two orders.
+
 Each column whose range leaves out zero also has a relative bound, `ε`
 over the least magnitude of the reference's value. A difference of nearly
 equal values has a range that reaches zero, so it gets none: cancellation
@@ -311,8 +326,9 @@ The checker bounds a double `+`, `-`, `*` and `/` from its inputs' bounds
 (`faddBound`, `fmulBound`, `fdivBound` in `SubstraitLean/Contracts.lean`), so
 chains such as `(a + b) * c` have bounds, and a result the bounds keep below
 the largest double needs no "stays finite" precondition on the data
-(`BinFn.mayInf`). The core trusts one fact per operation on scaled values,
-which [`Arith.lean`](../float-bounds/FloatBounds/Arith.lean) proves for native
+(`BinFn.mayInf`). The core trusted one fact per operation on scaled values
+until D31, which proves all but `exp_fin` in `FloatArith.lean`;
+[`Arith.lean`](../float-bounds/FloatBounds/Arith.lean) proves each for native
 doubles decoded within `2u` of the codes' values:
 
 | Core fact | Theorem | Where | Result, against the exact one |

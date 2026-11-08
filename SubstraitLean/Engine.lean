@@ -34,41 +34,40 @@ namespace Substrait
 
 /-! ## A table's allowance, decidably -/
 
-/-- `CallExtra`, decidably: `t` allows the call's group, at an option the
-aggregate semantics does not interpret, a behaviour the reference's table
-does not. -/
-def callExtraB (t : ProfileTable) (c : Functions.Ctor) : Bool :=
+/-- Does `t` allow `c`'s group, at its option `o` (one the aggregate semantics
+does not interpret), a behaviour the reference's table does not? -/
+def extraAtB (t : ProfileTable) (c : Functions.Ctor) (o : String) : Bool :=
   match Functions.rowOf c with
   | some r => match Functions.groups.lookup r.group with
-    | some os => os.any fun o => !aggInterpreted.contains o &&
+    | some os => os.contains o && !aggInterpreted.contains o &&
         (t.allows r.group o []).any fun b => !(Profile.reference.table.allows r.group o []).contains b
     | none => false
   | none => false
 
-theorem callExtra_of_B {t : ProfileTable} {c : Functions.Ctor} (h : callExtraB t c = true) :
-    CallExtra t c := by
-  unfold callExtraB at h
+/-- `CallExtra` at the option `o`, from the table and the call's scope (D34). -/
+theorem callExtra_of_at {t : ProfileTable} {c : Functions.Ctor} {o : String} {args : List Value}
+    (h : extraAtB t c o = true) (hs : optionScope o c args = true) : CallExtra t c args := by
+  unfold extraAtB at h
   split at h
   · rename_i r hr
     split at h
     · rename_i os hos
-      obtain ⟨o, ho, h⟩ := List.any_eq_true.1 h
-      simp only [Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_any_beq, List.any_eq_false,
-        beq_iff_eq] at h
-      obtain ⟨hagg, h⟩ := h
-      obtain ⟨b, hb, hnb⟩ := List.any_eq_true.1 h
-      simp only [Bool.not_eq_true', List.any_eq_false, beq_iff_eq] at hnb
-      exact ⟨r, hr, os, hos, o, ho, fun hm => hagg o hm rfl, b, hb, fun hm => hnb b hm rfl⟩
+      simp only [Bool.and_eq_true] at h
+      obtain ⟨⟨hmem, hagg⟩, hb⟩ := h
+      obtain ⟨b, hb, hnb⟩ := List.any_eq_true.1 hb
+      exact ⟨r, hr, os, hos, o, by simpa using hmem, by simpa using hagg,
+        ⟨b, hb, by simpa using hnb⟩, hs⟩
     · cases h
   · cases h
 
 /-! ## Functions within a table, where they do not raise -/
 
 /-- **Where a call of `p` does not raise, `t` allows its value**: the
-reference's, or a behaviour `t` allows the call (`CallExtra`). -/
+reference's, or a behaviour `t` allows the call in its option's scope
+(`CallExtra`). -/
 def Profile.WithinOk (p : Profile) (t : ProfileTable) : Prop :=
-  (∀ f v w, p.un f v = .ok w → w = f.apply v ∨ CallExtra t (.un f)) ∧
-    ∀ f v w x, p.bin f v w = .ok x → x = f.apply v w ∨ CallExtra t (.bin f)
+  (∀ f v w, p.un f v = .ok w → w = f.apply v ∨ CallExtra t (.un f) [v]) ∧
+    ∀ f v w x, p.bin f v w = .ok x → x = f.apply v w ∨ CallExtra t (.bin f) [v, w]
 
 /-- `p`'s functions where a call does not raise, the reference's where it
 does. -/
@@ -99,14 +98,14 @@ theorem Impl.lean_within (t : ProfileTable) : Impl.lean.Within t :=
   ⟨fun _ _ => .inl rfl, fun _ _ _ => .inl rfl⟩
 
 /-- **DuckDB's functions are within its table**, with IEEE operations on:
-each function `duckBin` and `duckUn` change has a row of the table. With
-`ieee_floating_point_ops` off, `(-∞) ^ y` has none (#900). -/
+each value `duckBin` and `duckUn` change is in the scope of an option the
+table allows another behaviour (D34): a domain error's NaN, a zero divisor's
+`±∞` or NaN or NULL, a created NaN, a shift out of range. With
+`ieee_floating_point_ops` off, `(-∞) ^ y` has no row (#900). -/
 theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
     (Profile.duckdb s).WithinOk (Profile.duckdb.table s) := by
   obtain ⟨e, i⟩ := s
   simp only at hs; subst hs
-  have ce : ∀ c, callExtraB (Profile.duckdb.table ⟨e, true⟩) c = true →
-      CallExtra (Profile.duckdb.table ⟨e, true⟩) c := fun _ => callExtra_of_B
   refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
   · simp only [Profile.duckdb] at h
     cases v with
@@ -116,55 +115,177 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
       | none => rw [hd] at h; exact .inl (raiseIf_ok h)
       | some o =>
         right
-        cases f <;> simp [duckUn] at hd
+        cases f <;> simp only [duckUn, reduceCtorEq] at hd
         rename_i g
-        exact ce _ (by cases e <;> cases g <;> decide)
+        split at hd
+        · rename_i hc
+          refine callExtra_of_at (o := "on_domain_error") (by cases e <;> cases g <;> decide) ?_
+          simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
+        · cases hd
     | _ => exact .inl (raiseIf_ok h)
-  · have hdb : ∀ {a b : Int} {va vb : Value},
-        (duckBin ⟨e, true⟩ f a b).getD (Profile.reference.bin f va vb) = .ok x →
-        x = f.apply va vb ∨ CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) := by
-      intro a b va vb h
+  · -- Each deviation, with the option whose scope it is in.
+    have hfl : ∀ {a b : Int}, f.onFloats = true →
+        (duckBin ⟨e, true⟩ f a b).getD (Profile.reference.bin f (.float a) (.float b)) = .ok x →
+        x = f.apply (.float a) (.float b) ∨
+          CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.float a, .float b] := by
+      intro a b hf h
+      cases hd : duckBin ⟨e, true⟩ f a b with
+      | none => rw [hd] at h; exact .inl (raiseIf_ok h)
+      | some o =>
+        right
+        have nanC : nanCase f a b = true → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+            "nan_creation" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+              [.float a, .float b] := fun hn hx => callExtra_of_at hx (by simp [optionScope, hn])
+        have dom : (f.issue (.float a) (.float b)) = some .domain → extraAtB
+            (Profile.duckdb.table ⟨e, true⟩) (.bin f) "on_domain_error" = true →
+            CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.float a, .float b] :=
+          fun hi hx => callExtra_of_at hx (by
+            simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, hi])
+        have zero : b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+            "on_division_by_zero" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+              [.float a, .float b] := fun hb hx => callExtra_of_at hx (by
+            subst hb; simp [optionScope, divisorZero])
+        cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
+          simp only [duckBin] at hd
+        case fadd | fsub | fmul =>
+          split at hd
+          · exact nanC (by assumption) (by cases e <;> decide)
+          · cases hd
+        case fdiv =>
+          split at hd
+          · exact zero (by assumption) (by cases e <;> decide)
+          · split at hd
+            · exact nanC (by assumption) (by cases e <;> decide)
+            · cases hd
+        case fmod =>
+          split at hd
+          · rename_i hb
+            exact callExtra_of_at (o := "nan_creation") (by cases e <;> decide)
+              (by simp [optionScope, hb])
+          · split at hd
+            · exact nanC (by assumption) (by cases e <;> decide)
+            · cases hd
+        case fpow =>
+          split at hd
+          · exact dom (by simp_all [BinFn.issue]) (by cases e <;> decide)
+          · split at hd
+            · rename_i hn hn'
+              exact dom (by simp [BinFn.issue, nanIssue, hn', Bool.not_eq_true _ |>.mp hn])
+                (by cases e <;> decide)
+            · cases hd
+        case fatan2 =>
+          split at hd
+          · rename_i hz
+            obtain ⟨rfl, rfl⟩ := hz
+            exact dom (by simp [BinFn.issue, domainIssue, atan2?]) (by cases e <;> decide)
+          · cases hd
+    have hint : ∀ {a b : Int}, f.onFloats = false →
+        (duckBin ⟨e, true⟩ f a b).getD (Profile.reference.bin f (.int a) (.int b)) = .ok x →
+        x = f.apply (.int a) (.int b) ∨
+          CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.int a, .int b] := by
+      intro a b hnf h
       cases hd : duckBin ⟨e, true⟩ f a b with
       | none => rw [hd] at h; exact .inl (raiseIf_ok h)
       | some o =>
         rw [hd] at h
         simp only [Option.getD] at h
-        cases f <;> (try (rename_i op; cases op)) <;> simp [duckBin] at hd
-        all_goals
-          cases e <;> first
-            | exact .inr (ce _ rfl)
-            | (simp_all [duckZero]; done)
+        have zero : b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+            "on_division_by_zero" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+              [.int a, .int b] := fun hb hx => callExtra_of_at hx (by
+            subst hb; simp [optionScope, divisorZero])
+        cases f
+        case idiv =>
+          simp only [duckBin] at hd
+          split at hd
+          · rename_i hb
+            cases hd; cases e <;> simp only [duckZero, reduceCtorEq, Bool.false_eq_true,
+              ↓reduceIte, Except.ok.injEq] at h
+            exact .inr (zero hb (by decide))
+          · cases hd
+        case imod =>
+          simp only [duckBin] at hd
+          split at hd
+          · rename_i hb
+            cases hd; cases e <;> simp only [duckZero, reduceCtorEq, Bool.false_eq_true,
+              ↓reduceIte, Except.ok.injEq] at h
+            exact .inr (zero hb (by decide))
+          · split at hd
+            · cases hd; simp at h
+            · cases hd
+        case bit g =>
+          have sh : CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin (.bit g)) [.int a, .int b] →
+              x = (BinFn.bit g).apply (.int a) (.int b) ∨
+                CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin (.bit g)) [.int a, .int b] := .inr
+          cases g with
+          | shl => exact sh (callExtra_of_at (o := "shift_range") (by cases e <;> decide)
+              (by simp [optionScope]))
+          | shr => exact sh (callExtra_of_at (o := "shift_range") (by cases e <;> decide)
+              (by simp [optionScope]))
+          | _ => simp [duckBin] at hd
+        all_goals first
+          | (simp [BinFn.onFloats] at *; done)
+          | simp [duckBin] at hd
     simp only [Profile.duckdb] at h
     cases v <;> cases w <;> simp only at h <;> try exact .inl (raiseIf_ok h)
     case float.float a b =>
       split at h
-      · exact hdb h
+      · exact hfl (by assumption) h
       · exact .inl (raiseIf_ok h)
     case int.int a b =>
       split at h
       · exact .inl (raiseIf_ok h)
-      · exact hdb h
+      · exact hint (by simp_all) h
 
 /-- **The written Polars plan's functions are within Polars's table**:
-wrapping `+ - *`, `//` and `%` by zero, and NaN for `∞ - ∞`, `0 · ∞`, `∞ / ∞`
-each have a row. -/
+wrapping `+ - *` past 64 bits (`overflow`), `//` and `%` by zero
+(`on_division_by_zero`), and NaN for `∞ - ∞`, `0 · ∞`, `∞ / ∞`
+(`nan_creation`), each in its option's scope (D34). -/
 theorem Polars.written_within : Polars.written.Within Profile.polars.table := by
-  have ce : ∀ c, callExtraB Profile.polars.table c = true → CallExtra Profile.polars.table c :=
-    fun _ => callExtra_of_B
+  have ovf : ∀ {f : BinFn} {a b : Int}, f.issue (.int a) (.int b) = some .wraps →
+      extraAtB Profile.polars.table (.bin f) "overflow" = true →
+      CallExtra Profile.polars.table (.bin f) [.int a, .int b] := fun hi hx =>
+    callExtra_of_at hx (by simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, hi])
+  have zero : ∀ {f : BinFn} {a : Int}, extraAtB Profile.polars.table (.bin f)
+      "on_division_by_zero" = true →
+      CallExtra Profile.polars.table (.bin f) [.int a, .int 0] := fun hx =>
+    callExtra_of_at hx (by simp [optionScope, divisorZero])
+  have wrap : ∀ {f : BinFn} {a b r : Int}, f.apply (.int a) (.int b) = .int r →
+      extraAtB Profile.polars.table (.bin f) "overflow" = true →
+      f.issue (.int a) (.int b) = wrapIf r →
+      Value.int (Polars.wrap64 r) = f.apply (.int a) (.int b) ∨
+        CallExtra Profile.polars.table (.bin f) [.int a, .int b] := by
+    intro f a b r hr hx hi
+    by_cases h64 : inI64 r = true
+    · exact .inl (by rw [hr, Polars.wrap64_of_inI64 h64])
+    · exact .inr (ovf (by rw [hi]; simp [wrapIf, h64]) hx)
   refine ⟨fun _ _ => .inl rfl, fun f v w => ?_⟩
   show Polars.bin f v w = f.apply v w ∨ _
   unfold Polars.bin
   split
-  · exact .inr (ce _ (by decide))
-  · exact .inr (ce _ (by decide))
-  · exact .inr (ce _ (by decide))
-  · exact .inr (ce _ (by decide))
-  · exact .inr (ce _ (by decide))
+  · exact wrap rfl (by decide) (by simp [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?])
+  · exact wrap rfl (by decide) (by simp [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?])
+  · exact wrap rfl (by decide) (by simp [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?])
+  · rename_i a b
+    split
+    · rename_i hb; subst hb; exact .inr (zero (by decide))
+    · rename_i hb; left; simp only [BinFn.apply, hb, ↓reduceIte]; rw [Polars.int_div_trunc a hb]
+  · rename_i a b
+    split
+    · rename_i hb; subst hb; exact .inr (zero (by decide))
+    · rename_i hb; left; simp only [BinFn.apply, hb, ↓reduceIte]; rw [Polars.int_mod_trunc a hb]
   · rename_i a b
     split
     · rename_i hn
       right
-      cases f <;> simp [nanCase] at hn <;> exact ce _ (by decide)
+      -- `power` has no `nan_creation`: its NaN is a domain error's.
+      by_cases hp : f = .fpow
+      · subst hp
+        refine callExtra_of_at (o := "on_domain_error") (by decide) ?_
+        have : BinFn.issue .fpow (.float a) (.float b) = some .domain := by
+          simp only [BinFn.issue, nanIssue, hn]; split <;> rfl
+        simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, this]
+      · refine callExtra_of_at (o := "nan_creation") ?_ (by simp [optionScope, hn])
+        cases f <;> simp [nanCase] at hn <;> first | decide | exact absurd rfl hp
     · exact .inl rfl
   · exact .inl rfl
 

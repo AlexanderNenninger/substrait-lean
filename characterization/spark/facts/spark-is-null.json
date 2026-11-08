@@ -1,0 +1,35 @@
+{
+  "id": "spark-is-null",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`IS NULL` is true exactly for NULL",
+  "verdict": "native",
+  "area": "nulls",
+  "constructs": [
+    "IS NULL"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      "true",
+      "false"
+    ]
+  },
+  "description": "`IS NULL` of a BIGINT, a DOUBLE and a STRING is true for NULL and false otherwise; NaN, `-0.0`, `''` and `MIN` are not NULL.",
+  "reference": "`UnFn.isNull`: true for NULL, false for every other value.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "is-null-kinds"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
+    }
+  ]
+}

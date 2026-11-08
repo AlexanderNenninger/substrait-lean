@@ -1,5 +1,6 @@
 import SubstraitLean.LoweringHint
 import SubstraitLean.LoweringDuckDB.On.Table
+import SubstraitLean.LoweringDuckDB.On.Guards
 
 /-!
 # The generated lowering to DuckDB (#241)
@@ -87,15 +88,11 @@ def exprJson : Expr → Json
       ("else", exprJson e)]
   | .hof .. => Json.mkObj [("unsupported", "a higher-order function")]
 
-/-- The constructs whose entries may differ from the native call. -/
-def unFns : List UnFn :=
-  FMath.all.map .fmath ++
-    [OverflowMode.silent, .saturate].flatMap fun m => [IntWidth.i8, .i16, .i32, .i64].map (.fit m)
-
-def binFns : List BinFn :=
-  [.fadd, .fsub, .fmul, .fdiv, .fmod, .fpow, .fatan2, .idiv, .imod] ++
-    [BitOp.and, .or, .xor, .shl, .shr].map .bit
-
+/-- The constructs a table's export looks at: every function with finite
+parameters, from the types themselves (`finite_values%`). A function with an
+infinite parameter (a message, a decimal scale) is native in every table. -/
+def unFns : List UnFn := finite_values% UnFn
+def binFns : List BinFn := finite_values% BinFn
 
 /-- The entries of a table that are not the native call. -/
 def tableJson {p : Profile} (L : Lowering p) : Json :=
@@ -137,5 +134,26 @@ theorem Rel.duckdb_shim_sound {cat : Catalog} {r : Rel}
     (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
     (Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).impl = r.eval cat :=
   Lowering.lowerRel_sound Lowering.duckdb_total h
+
+/-- Every guard of DuckDB's table is exact: a writer may drop them all. -/
+theorem Lowering.duckdb_guardsFor_none : Lowering.duckdb.GuardsFor fun _ => false :=
+  duckdbOn.guardsFor_none
+
+/-- **DuckDB's SQL without guards** (`to_sql(…, guards=False)`, whose templates
+`sverify.sql.lowering.render` writes with their `raise` arms left out): where
+`Rel.mayIssues` reports only assumed issues (`guard_free`), on a catalog that
+satisfies the preconditions, DuckDB's functions give `Rel.eval`'s rows, or
+the plan raises. Trusted, as for `Rel.duckdb_shim_sound`: that
+`Profile.duckdb` is DuckDB's, and that the SQL printer is faithful. -/
+theorem Rel.duckdb_guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
+    (h : ¬(Lowering.duckdb.lowerRelWith (fun _ => false) r).Raises (Profile.duckdb {}) cat) :
+    (Lowering.duckdb.lowerRelWith (fun _ => false) r).eval cat (Profile.duckdb {}).impl = r.eval cat :=
+  Lowering.lowerRelWith_mayIssues_sound Lowering.duckdb_total Lowering.duckdb_guardsFor_none hcat hA hF
+    hT hwf hsmall hs (by simpa using hm) h
 
 end Substrait

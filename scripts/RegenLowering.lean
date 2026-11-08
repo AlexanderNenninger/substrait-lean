@@ -1,6 +1,7 @@
 import SubstraitLean.LoweringSearch
 import SubstraitLean.LoweringCache
 import SubstraitLean.LoweringDuckDB.Lemmas
+import SubstraitLean.LoweringDuckDB.Schemas
 
 /-!
 # Regenerating the DuckDB lowering (`poe regen-lowering`)
@@ -32,7 +33,9 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
     Lowering.apply_ffloor_date, Lowering.apply_ffloor_ts, Lowering.apply_ffloor_tod,
     Lowering.apply_ffloor_dec, Lowering.apply_ffloor_struct, Lowering.pow2Chain_eval, List.mem_range]
   excluding [UnFn.fit]
+  hand_written LoweringSearch.duckdbSchemas
   cache loweringCache
   writing "SubstraitLean/LoweringDuckDB/On"
+  proving_guards
 
 end Substrait

@@ -5,13 +5,15 @@ epic [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)
 (which supersedes the first design for #23), and the evidence for each engine
 in [`characterization/`](../characterization/). This note sums up what was
 decided there and what Lean proves today; where the two differ, #185 wins.
-The layers (the loose core, the reference profile, engine profiles), the
-classes of an engine's functions and which plans run on an engine are in
-[core-semantics.md](core-semantics.md#terminology).
+The layers (the core, its profiles, the engines that run them) are in
+[core, profiles and engines](core-semantics.md#core-profiles-and-engines);
+the classes of an engine's functions and which plans run on an engine are in
+[core-semantics.md](core-semantics.md#which-plans-run-on-an-engine).
 
-## The reference model
+## The reference profile
 
-`verify` proves things about `Rel.eval`, the **reference semantics**. It is
+`verify` proves things about `Rel.eval`, the **reference semantics**, the
+core under the reference profile. It is
 not a model of any engine, DuckDB included. Its principles, the decided
 defaults (overflow and division by zero are errors, errors mean "may raise",
 rewrites are refinements) and every row of its behaviour, with its status on
@@ -78,8 +80,9 @@ SQL strings go through SQLGlot and sverify's own lift (#231): DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`,
 #239), whose two profiles are generated Lean modules
 (`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). DataFusion's SQL planner
-is no longer a frontend (#211); DataFusion stays an optional engine, never a
-reference or an oracle: Lean's model is the reference, DuckDB the default oracle.
+is no longer a frontend (#211); DataFusion stays an optional engine, and no test
+takes it as a reference or an oracle (#1139): the reference is Lean's
+reference profile, and DuckDB is the default oracle.
 
 ## Profiles and shims in Lean (#185, first slice)
 
@@ -123,7 +126,7 @@ reference or an oracle: Lean's model is the reference, DuckDB the default oracle
   which the search finds among `CASE` chains over constants the reference
   gives. `SILENT`'s wrap-around, `((x + 2^(w-1)) % 2^w + 2^w) % 2^w -
   2^(w-1)` in 128-bit arithmetic, is beyond the search: it is a hand-written
-  schema (`LoweringSearch.schema?`), still proved for each width by the
+  schema (`LoweringSearch.duckdbSchemas`), still proved for each width by the
   kernel and marked as such in the coverage report. So are the guards for
   DuckDB's IEEE operations (#242), which copy the reference's error
   conditions atom for atom: `nanCase` for `+ - * / % ^` of doubles (with the
@@ -153,7 +156,21 @@ reference or an oracle: Lean's model is the reference, DuckDB the default oracle
   lowering with any such table is correct: **`Lowering.lower_correct`** (the
   lowered expression, under the engine's profile, has the reference's
   outcome, the same value or an error), and `Lowering.lowerRel_sound` for
-  plans, by `Rel.evalI_mapExprs`. Equality saturation (lean-egg) was
+  plans, by `Rel.evalI_mapExprs`. A template's guards are its outer chain of
+  `CASE WHEN c THEN error(m)`, `m` the reference issue's name. A writer may drop
+  the guards of issues a plan never meets (`Lowering.lowerWith`): where each
+  dropped guard always evaluates and fires only at its own issue
+  (`Lowering.GuardsFor`), `Lowering.lowerRelWith_sound` proves the run is
+  `Rel.eval`'s or raises, on every catalog, and
+  `Lowering.lowerRelWith_mayIssues_sound` takes the issues to drop from
+  `Rel.mayIssues`, as `Rel.guardFree_sound` does. The kept guards need no new
+  proof: the template with all its guards has the reference's outcome. DuckDB's
+  generated guards are proved exact (`duckdbOn.guardsFor_none`, in
+  `SubstraitLean/LoweringDuckDB/On/Guards.lean`), so its SQL without guards
+  (`to_sql(guards=False)`) is `Rel.duckdb_guardFree_sound`. The
+  search is the same for every engine; an engine's hand-written schemas are an
+  argument of `generate_lowering` (DuckDB's in
+  `SubstraitLean/LoweringDuckDB/Schemas.lean`). Equality saturation (lean-egg) was
   considered and not used: it proves equalities rather than finding terms,
   it is deprecated, and it needs Lean 4.30 and Rust.
 
@@ -500,7 +517,7 @@ translator pins the semantics and takes no Polars defaults:
   of each set of equal rows in place. So `FetchRel` takes the same rows as
   Lean, and the tests compare Polars with Lean row for row.
 * Doubles compare, join, partition and sort with one zero and one NaN
-  (`-inf < … < 0.0 < … < inf < NaN`), like the float codes. Sorts place NULLs
+  (`-inf < … < 0.0 < … < inf < NaN`), as the reference reads the float codes. Sorts place NULLs
   as each key says. `DISTINCT` compares rows as `Value`s: NULLs are equal,
   and so are -0.0 and 0.0, and all NaNs.
 * Aggregates (`aggregateEval`): one row per group, in order of first

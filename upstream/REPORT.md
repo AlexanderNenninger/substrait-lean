@@ -2,7 +2,7 @@
 
 <!-- Generated from `bugs/*.json` by `python -m sverify_dev.bugs --write`. -->
 
-Sverify's upstream ledger holds 73 entries ([README](README.md)). 27 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
+Sverify's upstream ledger holds 87 entries ([README](README.md)). 32 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
 
 ## To report
 
@@ -32,6 +32,11 @@ Sverify's upstream ledger holds 73 entries ([README](README.md)). 27 are bugs to
 | [IB-3](bugs/IB-3.json) | Ibis | DuckDB: `argmin` and `argmax` of a group whose keys are all NULL return a value | ibis-framework 12.0.0, ibis main 6d40f963, duckdb 2.0.0 (2026-11-07) |
 | [IB-4](bugs/IB-4.json) | Ibis | A negative `following` or `preceding` writes `-1 following`, which DuckDB refuses | ibis-framework 12.0.0, ibis main 6d40f963, duckdb 2.0.0 (2026-11-07) |
 | [DL-2](bugs/DL-2.json) | delta-rs | `history()` after `load_as_version` lists the latest commits, numbered from the loaded version | deltalake 1.6.6, delta-rs main ca279b73 (2026-11-07) |
+| [DF-15](bugs/DF-15.json) | DataFusion | Grouped `MIN` of `+inf` values is `f64::MAX`, and grouped `MAX` skips a NaN that ungrouped `MAX` returns | datafusion 55.0.0 (2026-11-08) |
+| [DF-17](bugs/DF-17.json) | DataFusion | `date_trunc` to a month fails on a microsecond timestamp outside ±2⁶³ ns | datafusion 55.0.0 (2026-11-08) |
+| [DF-19](bugs/DF-19.json) | DataFusion | The Substrait consumer takes an equality of two columns of one join input for a join key | datafusion 55.0.0 (2026-11-08) |
+| [DF-20](bugs/DF-20.json) | DataFusion | The Substrait consumer has no `ListElement` reference | datafusion 55.0.0 (2026-11-08) |
+| [DF-21](bugs/DF-21.json) | DataFusion | The Substrait consumer does not know Substrait's `variance` and `std_dev` | datafusion 55.0.0 (2026-11-08) |
 | [ST-13](bugs/ST-13.json) | Substrait | Thirteen test cases expect values their inputs do not give (`variance`, `std_dev`, `multiply`, `shift_left`) | substrait main ecb826b53abd (2026-11-07) |
 | [ST-14](bugs/ST-14.json) | Substrait | Four `logb` test cases read the base first, and the YAML defines `logb(x, b)` | substrait main ecb826b53abd (2026-11-07) |
 | [ST-15](bugs/ST-15.json) | Substrait | Forty-five test cases state an option or value their function's YAML does not have | substrait main ecb826b53abd (2026-11-07) |
@@ -44,20 +49,23 @@ An open upstream issue covers these; the case is worth a comment there.
 |---|---|---|
 | [PL-1](bugs/PL-1.json) | Polars | [pola-rs/polars#30398](https://github.com/pola-rs/polars/issues/30398) |
 | [PL-2](bugs/PL-2.json) | Polars | [pola-rs/polars#25742](https://github.com/pola-rs/polars/issues/25742) |
+| [DF-13](bugs/DF-13.json) | DataFusion | [apache/datafusion#26138](https://github.com/apache/datafusion/issues/26138) |
+| [DF-14](bugs/DF-14.json) | DataFusion | [apache/datafusion#3520](https://github.com/apache/datafusion/issues/3520) |
+| [DF-16](bugs/DF-16.json) | DataFusion | [apache/datafusion#26222](https://github.com/apache/datafusion/issues/26222) |
 
 ## By class and project
 
-| Project | report | filed | fixed | duplicate | not-a-bug | spec-gap | total |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| DuckDB | 3 | 3 | 2 | 0 | 1 | 0 | 9 |
-| Polars | 9 | 0 | 0 | 2 | 3 | 0 | 14 |
-| Spark | 5 | 2 | 0 | 0 | 0 | 0 | 7 |
-| SQLGlot | 2 | 0 | 7 | 0 | 1 | 0 | 10 |
-| Ibis | 4 | 0 | 0 | 0 | 0 | 0 | 4 |
-| delta-rs | 1 | 1 | 0 | 0 | 0 | 0 | 2 |
-| DataFusion | 0 | 5 | 4 | 0 | 2 | 0 | 11 |
-| Substrait | 3 | 0 | 0 | 0 | 0 | 13 | 16 |
-| total | 27 | 11 | 13 | 2 | 7 | 13 | 73 |
+| Project | report | filed | fixed | duplicate | not-a-bug | spec-gap | unverified | total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| DuckDB | 3 | 3 | 2 | 0 | 1 | 0 | 0 | 9 |
+| Polars | 9 | 0 | 0 | 2 | 3 | 0 | 0 | 14 |
+| Spark | 5 | 2 | 0 | 0 | 0 | 0 | 0 | 7 |
+| SQLGlot | 2 | 0 | 7 | 0 | 1 | 0 | 0 | 10 |
+| Ibis | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
+| delta-rs | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
+| DataFusion | 5 | 5 | 6 | 3 | 5 | 0 | 1 | 25 |
+| Substrait | 3 | 0 | 0 | 0 | 0 | 13 | 0 | 16 |
+| total | 32 | 11 | 15 | 5 | 10 | 13 | 1 | 87 |
 
 The classes:
 
@@ -67,11 +75,12 @@ The classes:
 - `duplicate`: an open upstream issue covers it: a comment there with the case.
 - `not-a-bug`: documented or intended, or matters only to sverify's model (an engine fact).
 - `spec-gap`: Substrait leaves it unspecified: for the spec discussion.
+- `unverified`: not yet checked against the latest release.
 
 filed: [DD-3](bugs/DD-3.json), [DD-4](bugs/DD-4.json), [DD-5](bugs/DD-5.json), [SP-1](bugs/SP-1.json), [SP-2](bugs/SP-2.json), [DL-1](bugs/DL-1.json), [DF-1](bugs/DF-1.json), [DF-4](bugs/DF-4.json), [DF-8](bugs/DF-8.json), [DF-9](bugs/DF-9.json), [DF-10](bugs/DF-10.json).
 
-fixed: [DD-1](bugs/DD-1.json), [DD-7](bugs/DD-7.json), [SG-1](bugs/SG-1.json), [SG-3](bugs/SG-3.json), [SG-4](bugs/SG-4.json), [SG-5](bugs/SG-5.json), [SG-6](bugs/SG-6.json), [SG-7](bugs/SG-7.json), [SG-10](bugs/SG-10.json), [DF-2](bugs/DF-2.json), [DF-3](bugs/DF-3.json), [DF-6](bugs/DF-6.json), [DF-11](bugs/DF-11.json).
+fixed: [DD-1](bugs/DD-1.json), [DD-7](bugs/DD-7.json), [SG-1](bugs/SG-1.json), [SG-3](bugs/SG-3.json), [SG-4](bugs/SG-4.json), [SG-5](bugs/SG-5.json), [SG-6](bugs/SG-6.json), [SG-7](bugs/SG-7.json), [SG-10](bugs/SG-10.json), [DF-2](bugs/DF-2.json), [DF-3](bugs/DF-3.json), [DF-6](bugs/DF-6.json), [DF-11](bugs/DF-11.json), [DF-18](bugs/DF-18.json), [DF-22](bugs/DF-22.json).
 
-not-a-bug: [DD-2](bugs/DD-2.json), [PL-3](bugs/PL-3.json), [PL-4](bugs/PL-4.json), [PL-13](bugs/PL-13.json), [SG-2](bugs/SG-2.json), [DF-5](bugs/DF-5.json), [DF-7](bugs/DF-7.json).
+not-a-bug: [DD-2](bugs/DD-2.json), [PL-3](bugs/PL-3.json), [PL-4](bugs/PL-4.json), [PL-13](bugs/PL-13.json), [SG-2](bugs/SG-2.json), [DF-5](bugs/DF-5.json), [DF-7](bugs/DF-7.json), [DF-23](bugs/DF-23.json), [DF-24](bugs/DF-24.json), [DF-25](bugs/DF-25.json).
 
 spec-gap: [ST-1](bugs/ST-1.json), [ST-2](bugs/ST-2.json), [ST-3](bugs/ST-3.json), [ST-4](bugs/ST-4.json), [ST-5](bugs/ST-5.json), [ST-6](bugs/ST-6.json), [ST-7](bugs/ST-7.json), [ST-8](bugs/ST-8.json), [ST-9](bugs/ST-9.json), [ST-10](bugs/ST-10.json), [ST-11](bugs/ST-11.json), [ST-12](bugs/ST-12.json), [ST-16](bugs/ST-16.json).

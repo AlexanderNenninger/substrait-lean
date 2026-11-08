@@ -19,6 +19,8 @@ verifies it, and which engines run it.
 | `pitfalls.toml` | Cross-engine correctness pitfalls, each linked to the entries of [backend_semantics.py](backend_semantics.py), a marimo app that asks one question of every engine |
 | `schemas.toml` | The tables of each dataset (only the columns the queries use), with value pools for synthetic data |
 | `status.json` | What the probes found for every query (generated) |
+| `contracts.toml` | The contract census: 49 contracts on aggregates of doubles (a bound, a HAVING threshold, a top-N, a tolerance, a window) and controls, over `schemas.toml`'s datasets |
+| `contracts.json` | How each census contract reaches DuckDB, Polars, Spark and Snowflake: proved, tested (with the cause) or refused (with the reason), checked by `tests/test_contract_census.py` |
 | `INDEX.md`, `FINDINGS.md` tables | Generated from the above, on `main` only (see below) |
 
 A query looks like this:
@@ -100,6 +102,7 @@ uv run python -m sverify_dev.catalogue                 # validate the TOML
 uv run python -m sverify_dev.catalogue tpch win-dedup-latest   # probe a suite or query
 uv run python -m sverify_dev.catalogue --write         # probe all; rewrite status.json
 uv run python -m sverify_dev.catalogue --write-tables  # rewrite INDEX.md and FINDINGS.md's tables from status.json
+uv run python -m sverify_dev.contract_census --write --table  # rerun the census; rewrite contracts.json and print its table
 ```
 
 A probe compiles the query as `sverify` compiles everything (an Ibis

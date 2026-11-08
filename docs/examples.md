@@ -145,7 +145,7 @@ con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 25
 print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
 print(declared.routes["polars"])
-# shim (integer division rewritten to truncate); evidence proved
+# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc
 ```
 
 SQL's `//` truncates under the reference and Polars's integer division floors,
@@ -242,11 +242,13 @@ print(totals.refresh(engine="polars", route="auto"))
 # sums:
 #   route on polars: ...
 # ...
-#   view sums: 1 touched group(s) recomputed
+#   view sums: readings@v1
 #   wrote sums from readings@v1: merge v2, 1 row(s) written, 1 deleted
 ```
 
-The second refresh recomputes only the group the insert touched. A result
+The second refresh adds the insert to its group's exact sum and rounds it
+once, without reading the input
+([`LinearAgg.fsum_no_drift`](../SubstraitLean/IncrementalFloat.lean)). A result
 not determined up to row order, such as a `LIMIT` over ties, is refused by
 every sink.
 

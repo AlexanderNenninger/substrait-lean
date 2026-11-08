@@ -1730,8 +1730,8 @@ def _declared_double(fns: dict[int, str], j: Any) -> bool:
             return out == "float"
         name = fns.get(f.get("functionReference", 0))
         if name is None or _base_name(name) not in (
-            *_ARITHMETIC_FNS, "coalesce", "nullif", "greatest", "least", "nanvl", "round",
-            "floor", "ceil",
+            *_ARITHMETIC_FNS, "coalesce", "nullif", "greatest", "least", "round", "floor",
+            "ceil",
         ):  # fmt: skip
             return False
         args = f.get("arguments")
@@ -3376,13 +3376,6 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return a
         case (("is_nan" | "isnan"), [a]):
             return Bin("eq", a, Lit(math.nan, "float"))
-        # `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
-        # zero: Lean's `canonical`, read back as `Parse.mkCall` reads it.
-        case "nanvl", [a, Lit(value=float(v))] if math.isnan(v):
-            match a:
-                case Bin(op="fadd", left=x, right=Lit(value=0 | 0.0)):
-                    return x
-            return a
         case (("and" | "or"), [a, *rest]):
             for b in rest:
                 a = Bin(name, a, b)  # type: ignore[arg-type]

@@ -1583,10 +1583,12 @@ def IntArgs.Sound (I : IntArgs) (cat : Catalog) : Prop :=
 /-- `IntArgs` from the tables' column types `A`, by abstract evaluation. -/
 def IntArgs.ofTypes (cat : Catalog) (A : String → List AVal) : IntArgs := fun r e =>
   let a := e.absD (r.aeval cat A (fun _ => []) WindowKeys.none) []
-  !a.tt && !a.ff && !a.str && a.nk == some .int
+  a.intsOnly && a.nk == some .int
 
-theorem AVal.intOrNull_of_mem {a : AVal} {v : Value} (h : a.Mem v) (ht : a.tt = false)
-    (hf : a.ff = false) (hs : a.str = false) (hk : a.nk = some .int) : v.intOrNull = true := by
+theorem AVal.intOrNull_of_mem {a : AVal} {v : Value} (h : a.Mem v) (hi : a.intsOnly = true)
+    (hk : a.nk = some .int) : v.intOrNull = true := by
+  simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+    Bool.or_eq_false_iff] at hi
   cases v with
   | null => rfl
   | int _ => rfl
@@ -1599,13 +1601,12 @@ theorem AVal.intOrNull_of_mem {a : AVal} {v : Value} (h : a.Mem v) (ht : a.tt = 
 theorem IntArgs.ofTypes_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row) : (IntArgs.ofTypes cat A).Sound cat := by
   intro r e h hw row hrow
-  simp only [ofTypes, Bool.and_eq_true, Bool.not_eq_true'] at h
+  simp only [ofTypes, Bool.and_eq_true] at h
   have hm := Rel.aeval_sound hcat hA (F := fun _ => []) (fun _ _ _ => by simp [FactsHold])
     (T := WindowKeys.none) (fun _ _ _ h _ => by simp [WindowKeys.none] at h) (sz := false) hw
     (by simp) row hrow
   exact AVal.intOrNull_of_mem
-    (Expr.absD_sound hm (by simp [FactsHold]) (by simp [KsHold]) e) h.1.1.1 h.1.1.2 h.1.2
-    (by simpa using h.2)
+    (Expr.absD_sound hm (by simp [FactsHold]) (by simp [KsHold]) e) h.1 (by simpa using h.2)
 
 theorem ediv_mean_between {lo hi s n : Int} (hn : 0 < n) (h₁ : n * lo ≤ s) (h₂ : s ≤ n * hi) :
     lo ≤ s / n ∧ s / n ≤ hi :=

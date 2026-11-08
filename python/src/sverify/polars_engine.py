@@ -1548,10 +1548,6 @@ class Exprs:
 
     def binary(self, name: str, a: Val, b: Val) -> Val:
         ta, tb = a.dtype, b.dtype
-        if name == "nanvl" and unify(ta, tb, name) == pl.Float64:
-            # The writer's `canonical`: NaN becomes the fallback.
-            x, y = a.expr, b.expr
-            return Val(pl.when(x.is_nan()).then(y).otherwise(x), pl.Float64, issues(a, b))
         if name in ("atan2", "logb"):
             if unify(ta, tb, name) not in (pl.Float64, pl.Null):
                 raise Unsupported(f"{name} of {ta} and {tb}")

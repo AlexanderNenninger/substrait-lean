@@ -289,11 +289,24 @@ def checked(d: Mapping[str, Any]) -> CheckedCondition:
 
 
 def route_json(r: Route) -> Json:
+    # The evidence's provenance (#1166), where the route has one: a report
+    # written before it reads back as it was.
+    cited = {
+        k: v
+        for k, v in (
+            ("facts", list(r.facts)),
+            ("theorems", list(r.theorems)),
+            ("version", r.version),
+            ("issues", list(r.issues)),
+        )
+        if v
+    }
     return {
         "engine": r.engine,
         "kind": r.kind,
         "class": r.cls,
         "evidence": r.evidence,
+        **cited,
         "semantics": r.profile,
         "reason": r.reason,
         "deterministic": r.deterministic,
@@ -326,6 +339,10 @@ def route(d: Mapping[str, Any]) -> Route:
         failures=tuple(d.get("failures", ())),
         cls=d.get("class"),
         evidence=d.get("evidence"),
+        facts=tuple(d.get("facts", ())),
+        theorems=tuple(d.get("theorems", ())),
+        version=d.get("version"),
+        issues=tuple(d.get("issues", ())),
         shims=tuple(d.get("shims", ())),
         reproducible=eq("reproducible"),
         rerun_evidence=d.get("rerun_evidence"),

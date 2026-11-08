@@ -1,0 +1,54 @@
+{
+  "id": "spark-temporal-micros",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Dates and timestamps as days and microseconds, as `sverify.sql.spark` writes them",
+  "verdict": "native",
+  "area": "temporal",
+  "constructs": [
+    "CAST(TIMESTAMP_NTZ AS DATE)",
+    "timestamp_micros",
+    "unix_micros",
+    "unix_date"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      "true",
+      "false"
+    ]
+  },
+  "description": [
+    "`CAST(ts AS DATE)` of a TIMESTAMP_NTZ floors to its day (1969-12-31 23:59:59.999999 gives 1969-12-31), from 0001-01-01 to 9999-12-31.",
+    "`CAST(timestamp_micros(us) AS TIMESTAMP_NTZ)` and `unix_micros(CAST(ts AS TIMESTAMP_LTZ))`, under the session time zone UTC, are inverse: -1 is 1969-12-31 23:59:59.999999, and the range 0001-01-01 to 9999-12-31 23:59:59.999999 round-trips.",
+    "`unix_date(a) - unix_date(b)` as BIGINTs is the difference of day numbers: −3652058, 3652058 and −1 for 0001-01-01/9999-12-31, the reverse, and 1969-12-31/1970-01-01."
+  ],
+  "reference": "`UnFn.toDate` (days, rounding down), `UnFn.asTime` and `Time` microseconds since 1970, `BinFn.dateDiff` (the day numbers' difference).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "timestamp-to-date"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "micros-to-timestamp"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "timestamp-to-micros"
+        },
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "unix-date-diff"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
+    }
+  ]
+}

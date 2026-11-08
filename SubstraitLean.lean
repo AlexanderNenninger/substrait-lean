@@ -35,15 +35,18 @@ import SubstraitLean.Retention
 import SubstraitLean.TouchedGroups
 import SubstraitLean.TouchedFrames
 import SubstraitLean.IncrementalAgg
+import SubstraitLean.IncrementalFloat
 import SubstraitLean.IncrementalMinMax
 import SubstraitLean.IncrementalSemi
 import SubstraitLean.Guards
 import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.Lowering
 import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
 import SubstraitLean.LoweringCache
 import SubstraitLean.LoweringSearch
+import SubstraitLean.LoweringDuckDB.Schemas
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.StatProps
 import SubstraitLean.Allowed
@@ -68,6 +71,7 @@ import SubstraitLean.ContractCheck
 import SubstraitLean.ShardCheck
 import SubstraitLean.Functions
 import SubstraitLean.Options
+import SubstraitLean.Scopes
 import SubstraitLean.AllowedP
 import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv

@@ -849,7 +849,7 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
 -- `∞ · 0` as a `CASE`, whose `ELSE` branch has no domain error; the bare product
 -- has one. (Both may overflow to `±∞`, an assumed issue of its own.)
 #guard
-  let dbl : AVal := ⟨false, some Bound.top, false, false, false, none, some .float⟩
+  let dbl : AVal := { int := some Bound.top, nk := some .float }
   let a := Expr.field 0
   let b := Expr.field 1
   let isInf (x : Expr) := Expr.bin .or (.bin .eq x (.lit (.float FloatCode.posInf)))

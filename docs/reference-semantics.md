@@ -3,9 +3,11 @@
 What sverify's plans mean. `Rel.eval` (`SubstraitLean/Rel.lean`) is the
 **reference semantics**, the strict profile plans are verified under:
 `verify` proves things about it, and every engine's row of the realizability
-table is its difference from it. The loose core it refines, the engine
-profiles and what a proof under the reference guarantees are in
-[core-semantics.md](core-semantics.md#terminology). This page collects the choices
+table is its difference from it. The reference is one profile of the core,
+which does a superset of operations; the other profiles and the engines are
+in [core, profiles and engines](core-semantics.md#core-profiles-and-engines),
+and what a proof under the reference guarantees in
+[core-semantics.md](core-semantics.md#what-a-proof-under-the-reference-guarantees). This page collects the choices
 the project owner decided, mostly in comments on epic
 [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185), and
 says for each row whether it holds on `main` or which issue or pull request
@@ -182,7 +184,7 @@ option"; #202 "Decided (2026-11-01)"; #209 "Decided".
 
 | Topic | Reference | Status |
 |---|---|---|
-| `fp64` | IEEE 754 binary64, computed with Lean's native `Float`. | ✓ |
+| `fp64` | IEEE 754 binary64. `+ − × ÷` are the exact result rounded once, to nearest, ties to even ([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once), `FloatArith.lean`); `pow`, `log` and the other libm functions use Lean's native `Float`. | ✓ |
 | `fp32` | IEEE binary32. | **Not yet.** `fp32` arithmetic is refused (fact [duckdb-R12](../characterization/duckdb/facts/duckdb-R12.json), #208); [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) models it. |
 | Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209) |
 | NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. A NaN's sign is no value of the reference: the sign of a NaN an operation creates depends on the platform, negative on Linux x86_64 and positive on macOS arm64, in DuckDB and Polars alike ([duckdb-exec-platform](../characterization/duckdb/facts/duckdb-exec-platform.json)). | ✓ |
@@ -436,7 +438,7 @@ the writers in `python/src/sverify/black_box.py`.
 | `base64` | `base64(encode(s))` (also `to_base64`): the UTF-8 bytes of a string in base64. Strict, and not NULL for a string. Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
 | `printf`, `format` | `printf(fmt, x)` (C's format strings) and `format(fmt, x)` (`{}` fields) of one integer, string or boolean ([#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328)). Strict; raise where a field does not fit the value or has none, which `verify` reports as a domain error; a string where they do not. A double or a date is refused: the model's value of either is an integer, which the function could not tell apart from one (`duckdb-printf`). More values are refused. Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them until #271 |
 | `octet_length`, `strlen` | `octet_length(encode(s))` and `strlen(s)`: the number of UTF-8 bytes of a string (#328). Strict, not NULL for a string, and at least 0. Lean evaluates them. | ✓ on DuckDB; other engines refuse them until #271 |
-| `signbit` | `signbit(x)` of a double: its sign bit (#328), TRUE for `-0.0` and a negative NaN. Strict, and not NULL for a double. The model's codes have one zero and one NaN, so Lean evaluates it everywhere else and refuses to print rows there (`duckdb-signbit`). | ✓ on DuckDB; other engines refuse it until #271 |
+| `signbit` | `signbit(x)` of a double: its sign bit (#328), TRUE for `-0.0` and a negative NaN. Strict, and not NULL for a double. The reference reads doubles with one zero and one NaN, so Lean evaluates it everywhere else and refuses to print rows there (`duckdb-signbit`). | ✓ on DuckDB; other engines refuse it until #271 |
 | `yearweek` | `yearweek(d)` of a date: its ISO year times 100 plus its ISO week, the week subtracted in the years up to 0 (#328, `duckdb-yearweek`). Strict, between -587764053 and 588158053, and NULL for an infinite date and before 5877641-01-04 BC, where DuckDB raises (as `date_part` is NULL outside chrono's dates). Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
 | `weekday` | `weekday(d)` is `dayofweek(d)`, `date_part('dow', d)`: modelled exactly, Sunday 0 (#328). | ✓ |
 | Vectors | `list_cosine_similarity`, `list_cosine_distance`, `list_distance`, `list_inner_product` (also `list_dot_product`), `list_negative_inner_product` and `array_cross_product` of two lists of doubles ([#327](https://github.com/AlexanderNenninger/substrait-lean/issues/327)). Strict; raise where a list holds a NULL or the two differ in length (the cross product: are not of length 3). The similarity is at least `-1.0` and the cosine distance at least `+0.0`: NULL for empty lists, NaN for a zero vector or one with NaN or an infinity, so neither has an upper bound. The distance is not NULL and at least `+0.0`; the inner products and the cross product are not NULL (`duckdb-list-vectors`). The model has no fixed-size ARRAY, so DuckDB's `array_cosine_similarity`, `array_distance`, `array_inner_product`, … are read as the functions of lists. Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them until #271 |
@@ -536,8 +538,8 @@ engine differs ([the engines](stability.md#engines)).
   Several rewrites are stronger than that and hold as exact list equality.
 * Semi joins and `DISTINCT` are their own operators. `Rel.semi` keeps the left
   rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
-  the first occurrence of every row (NULLs equal, doubles by their codes: one
-  zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
+  the first occurrence of every row (NULLs equal, doubles by their codes as
+  the reference reads them: one zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
   `DISTINCT` as an aggregate with one empty grouping, which its own consumer
   rejects; the parser reads it as "all columns".
 * Aggregates have one grouping set. `Rel.aggregate` outputs one row per
@@ -610,7 +612,8 @@ A theorem about `Rel.eval` holds for the model; what links it to a real run
 is trusted: the size hypothesis (an override of Substrait,
 [Overrides](#overrides)), the frontends, black boxes as DuckDB's functions,
 the engines' match with their profiles, the printers and the parser, and
-native `Float`. [proofs.md, What is trusted](proofs.md#what-is-trusted)
+native `Float` for `pow`, `log` and the other libm functions (`+ − × ÷` are
+exact since D31). [proofs.md, What is trusted](proofs.md#what-is-trusted)
 states each, with its status.
 
 ## Where things are decided
@@ -624,4 +627,5 @@ states each, with its status.
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
 | Float aggregates as correctly rounded exact sums, two NULL equalities, the size hypothesis, lexical lambdas | [core-semantics.md](core-semantics.md#decisions): D25 to D28, [#922](https://github.com/AlexanderNenninger/substrait-lean/issues/922) |
 | Statistical aggregates as correctly rounded exact moments | [core-semantics.md](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments): D30, [#918](https://github.com/AlexanderNenninger/substrait-lean/issues/918) |
+| Options differ from the reference only on their scopes | [core-semantics.md](core-semantics.md#d34-an-option-differs-from-the-reference-only-on-its-scope): D34 |
 | The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md), [#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444) |
