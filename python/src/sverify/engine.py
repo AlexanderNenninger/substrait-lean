@@ -83,7 +83,11 @@ def _register(ctx: Any, name: str, table: pa.Table) -> None:
     """Register (or replace) a table in a DataFusion session, as record
     batches rather than a PyArrow dataset: DataFusion pushes filters into
     datasets, where PyArrow compares doubles by IEEE rules instead of
-    DataFusion's total order (NaN = NaN)."""
+    DataFusion's total order (NaN = NaN). The table's doubles become
+    `canonical` (DataFusion's order tells `-0.0` from `0.0`) and its strings
+    plain ones (the type DataFusion's consumer checks the plans' strings
+    against)."""
+    table = canonical(table.cast(plain_schema(table.schema)))
     if ctx.table_exist(name):
         ctx.deregister_table(name)
     batches = table.to_batches() or [pa.RecordBatch.from_pylist([], schema=table.schema)]
@@ -257,12 +261,10 @@ class Connection:
         return self._tables[name].schema
 
     def put(self, name: str, table: pa.Table | Native) -> None:
-        """Add or replace table `name`, with doubles as the model has them
-        (`canonical`: one zero, one NaN).
-
-        Large and view strings become plain strings, the one string type of
-        Substrait plans. The table is registered with the Ibis backend and,
-        once it exists, the DataFusion session.
+        """Add or replace table `name`, as it is: no copy. The engines read
+        `-0.0` as `0.0` and every NaN as one, as the model has them. The
+        table is registered with the Ibis backend and, once it exists, the
+        DataFusion session.
 
         Args:
             name: The table's name.
@@ -282,7 +284,6 @@ class Connection:
                 self._views[name] = table.attach(self._ibis.con, name)
             return
         _check_times(table.schema)
-        table = canonical(table.cast(plain_schema(table.schema)))
         self._tables[name] = table
         self._ibis.con.register(name, table)
         if self._datafusion is not None:
@@ -460,10 +461,8 @@ def collect(df: Any) -> pa.Table:
 
 def canonical(table: pa.Table) -> pa.Table:
     """Doubles as the model has them: `-0.0` as `0.0` and every NaN as the
-    positive one. Connections store tables this way; DataFusion orders
-    doubles by `f64::total_cmp`, where both signs show, so its results go
-    through this too, and the plans Lean writes canonicalize what an
-    operation computes (`Write.canonical`)."""
+    positive one. DataFusion orders doubles by `f64::total_cmp`, where both
+    signs show, so the tables it reads and its results go through this."""
     columns = []
     for c in table.columns:
         if pa.types.is_floating(c.type):

@@ -22,9 +22,10 @@ and the others are NULL. Checked against DataFusion 51:
 * `SUM` and `AVG` of doubles round, in an order DataFusion does not promise;
   here they add in list order with native floats. `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.
-* `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`). The parser
-  refuses them on doubles: DataFusion's grouped `MIN` of a group of +∞ is
-  the largest finite double, and it skips NaN next to other values.
+* `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`). Only
+  `--write-datafusion` refuses them on doubles (`Rel.floatExtremes`):
+  DataFusion's grouped `MIN` of a group of +∞ is the largest finite double,
+  and it skips NaN next to other values.
 * Grouping compares values exactly; doubles have one zero and one NaN
   (`SubstraitLean/Float.lean`), so -0.0 and 0.0 are one group, and NULLs
   group together.

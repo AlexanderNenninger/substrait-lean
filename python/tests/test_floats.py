@@ -151,11 +151,12 @@ def test_signed_zeros_are_one_row(engine):
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 1.0), (t, 2.0)])
 
 
-@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("engine", [e for e in ENGINES if e != "datafusion"])
 def test_computed_zeros_and_nans_are_canonical(engine):
     """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `NaN * -1.0` is the one NaN,
-    sorted last, though x86 computes a negative NaN (on DataFusion, which
-    orders by `total_cmp`, Lean's written plans make both canonical)."""
+    sorted last, though x86 computes a negative NaN. DataFusion, a tier-3
+    engine, orders computed doubles by `total_cmp` (`docs/how-it-works.md`,
+    "Doubles")."""
     con = sv.connect()
     sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf, math.nan])}))
 

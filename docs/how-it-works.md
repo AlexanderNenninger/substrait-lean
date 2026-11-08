@@ -230,15 +230,15 @@ engine is made to agree:
   rounding, `AVG`): `-0.0 + 0.0` is `0.0`, and other values stay. Ibis
   queries on a connection run on DuckDB, so they agree too.
 * DataFusion orders doubles by `f64::total_cmp` (−0.0 < 0.0, a negative NaN
-  first), so connections store canonical tables (`sverify.engine.canonical`),
-  its results are canonicalized, and the plans Lean writes wrap every double
-  operation in `nanvl(x + 0.0, 'NaN')`, which DataFusion evaluates and every
-  parser reads back as `x`. This also gives every NaN the same payload, which
-  `total_cmp` would tell apart. Two gaps remain: a `SUM` or `AVG` of doubles
-  inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
-  `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
-  in the same plan, follows DataFusion's order; and so does SQL run on
-  DataFusion directly (a query on a `datafusion.SessionContext`).
+  first), so the tables it reads and its results are canonicalized
+  (`sverify.engine.canonical`). DataFusion is a tier-3 engine: a double
+  that an operation inside a plan makes −0.0 or a negative NaN, and that the
+  same plan then compares, groups or sorts, follows DataFusion's order. So
+  does SQL run on DataFusion directly (a query on a
+  `datafusion.SessionContext`).
+* `Report.to_substrait` writes each double operation `x` for other consumers
+  as `if is_nan(x + 0.0) then NaN else x + 0.0` (ST-4), which gives every NaN
+  the same sign and payload.
 
 ### The Ibis producer
 
