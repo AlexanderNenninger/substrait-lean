@@ -89,3 +89,4 @@ import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples
 import SubstraitLean.Refresh
+import SubstraitLean.Engine
