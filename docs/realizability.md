@@ -47,7 +47,7 @@ Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 4 | 12 | 17 | 2 | 0 | 0 | 15 |
+| DuckDB | 5 | 12 | 16 | 2 | 0 | 0 | 15 |
 | Polars | 28 | 1 | 14 | 0 | 0 | 0 | 15 |
 | spark | 16 | 9 | 12 | 0 | 0 | 0 | 14 |
 
@@ -94,7 +94,7 @@ Rows per evidence level:
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | fuzz | tested: [duckdb-R3](../characterization/duckdb/facts/duckdb-R3.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../characterization/duckdb/facts/duckdb-R3.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../characterization/duckdb/facts/duckdb-R3.json) |
-| every | `min_mod_neg_one` | choose | `ZERO` | `ERROR` | shim `MIN % -1 written out` (expression) | probe | tested: [duckdb-R15-int-modulus](../characterization/duckdb/facts/duckdb-R15-int-modulus.json) |
+| every | `min_mod_neg_one` | choose | `ZERO` | `ERROR` | shim `MIN % -1 written out` (expression) | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-int-modulus](../characterization/duckdb/facts/duckdb-R15-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [duckdb-float-ieee](../characterization/duckdb/facts/duckdb-float-ieee.json), [duckdb-ieee-arith-macos-arm64](../characterization/duckdb/facts/duckdb-ieee-arith-macos-arm64.json), [duckdb-ieee-arith-linux-x86-64](../characterization/duckdb/facts/duckdb-ieee-arith-linux-x86-64.json) |

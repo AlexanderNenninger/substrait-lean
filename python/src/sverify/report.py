@@ -1091,6 +1091,26 @@ class Report:
             return None
         return "; ".join(f"on {e}: {'; '.join(ps)}" for e, ps in self._floats_on.items())
 
+    def _evidence_lines(self) -> list[str]:
+        """An `evidence:` line per engine a run has not taken the plan to
+        yet: its class there, and whether a theorem proves it or a test of
+        the engine's facts stands for it (`routes.evidence_on`)."""
+        from sverify import routes as _routes
+
+        lines = []
+        for e, got in _routes.evidence_on(self).items():
+            if e in self.routes or got.problems or got.evidence is None:
+                continue
+            text = _routes.evidence_text(
+                got.evidence,
+                got.facts,
+                got.theorems,
+                got.version or _routes.probed_version(e),
+                got.issues,
+            )
+            lines.append(f"evidence: {e} {got.cls}, {text}")
+        return lines
+
     def _observes_lines(self) -> list[str]:
         """The `observes:` line: the observation, the plan's bound beside a
         stated tolerance, and which engines' doubles meet it."""
@@ -1422,6 +1442,7 @@ class Report:
         lines.append(f"semantics: {self.semantics}")
         lines += [f"  {_transfer_failure(f)}" for f in self._transfer or ()]
         lines += self._observes_lines()
+        lines += self._evidence_lines()
         lines += [f"route on {e}: {r}" for e, r in self.routes.items()]
         if self.facts or self.rows is not None:
             lines.append("known about the output:")

@@ -1,0 +1,35 @@
+{
+  "id": "spark-decimal-to-double",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "A decimal through its text to a double is correctly rounded",
+  "verdict": "native",
+  "area": "casts",
+  "constructs": [
+    "CAST(CAST(dec AS STRING) AS DOUBLE)"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      "true",
+      "false"
+    ]
+  },
+  "description": "`CAST(CAST(x AS STRING) AS DOUBLE)`, as the writer casts a decimal to a double, gives the nearest double: 0.1, 2.5, 0.0 for `-0.0`, 1e38 for 38 nines, and 0.3 for 0.30000000000000000444089209850062616169 (closer to 0.29999999999999998890 than to 0.30000000000000004441).",
+  "reference": "`UnFn.dtof`: `FloatCode.ofDecimal`, correctly rounded; one zero.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "characterization/spark/probes.json",
+          "probe": "decimal-to-double-text"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
+    }
+  ]
+}

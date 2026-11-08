@@ -1,5 +1,5 @@
 import SubstraitLean.LoweringSearch
-import SubstraitLean.Profile
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.Safety
 import SubstraitLean.Numeric
 import SubstraitLean.LoweringDuckDB.Lemmas

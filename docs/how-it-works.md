@@ -129,16 +129,14 @@ How it works:
 1. The query becomes a Substrait plan: an Ibis expression through the vendored
    Ibis producer (below), a SQL string through sverify's own lift (see "SQL
    producers" below).
-2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
-   union-free terms (`Rel.terms`) and applies the weight-column encoding
-   (`Rel.weighted`). It prints one Substrait plan per term, after checking each
-   one is incremental and well-formed. The plans are union-free because
-   DataFusion's Substrait consumer loses table qualifiers at a `UNION ALL`,
-   and the duplicate column names then break a later join.
+2. `substrait-check --delta` compiles the plan with `Rel.delta` and applies the
+   weight-column encoding (`Rel.weighted`). It prints one Substrait plan, after
+   checking it is incremental and well-formed.
 3. For each change batch, `sverify` registers the change tables `t$delta` (rows
-   plus `__weight` = ±1), runs every term on the connection's engine (DuckDB by
-   default; on DataFusion with its Substrait consumer), sums the weights per
-   row, and merges the result into the view.
+   plus `__weight` = ±1), runs the delta plan on the connection's engine
+   (DuckDB by default) as one query, sums the weights per row, and merges the
+   result into the view. A k-way join's delta plan is one `UNION ALL` of its
+   2^k − 1 terms.
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
@@ -234,16 +232,16 @@ engine is made to agree:
   every operation that IEEE lets produce −0.0 (negation, `*`, `/`, `POWER`,
   rounding, `AVG`): `-0.0 + 0.0` is `0.0`, and other values stay. Ibis
   queries on a connection run on DuckDB, so they agree too.
-* DataFusion, the optional engine, orders doubles by `f64::total_cmp` (−0.0 < 0.0, a negative NaN
-  first), so connections store canonical tables (`sverify.engine.canonical`),
-  its results are canonicalized, and the plans Lean writes wrap every double
-  operation in `nanvl(x + 0.0, 'NaN')`, which DataFusion evaluates and every
-  parser reads back as `x`. This also gives every NaN the same payload, which
-  `total_cmp` would tell apart. Two gaps remain: a `SUM` or `AVG` of doubles
-  inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
-  `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
-  in the same plan, follows DataFusion's order; and so does SQL run on
-  DataFusion directly (a query on a `datafusion.SessionContext`).
+* DataFusion, the optional engine, orders doubles by `f64::total_cmp` (−0.0 <
+  0.0, a negative NaN first), so the tables it reads and its results are canonicalized
+  (`sverify.engine.canonical`). DataFusion is a tier-3 engine: it refuses
+  a plan with a double operation that IEEE arithmetic lets give −0.0 or a
+  negative NaN (`Expr.signedDoubles`,
+  [DF-13](../upstream/bugs/DF-13.json)). SQL run on DataFusion directly (a
+  query on a `datafusion.SessionContext`) follows DataFusion's order.
+* `Report.to_substrait` writes each double operation `x` for other consumers
+  as `if is_nan(x + 0.0) then NaN else x + 0.0` (ST-4), which gives every NaN
+  the same sign and payload.
 
 ### The Ibis producer
 
@@ -554,7 +552,7 @@ what refresh maintains is in [the guide](guide.md#nodes-composing-storing-refres
 * `Rel.zeval_lift`: with all weights 1, Z-set evaluation equals the bag
   semantics `Rel.eval`, so the two models agree.
 * `Rel.zeval_terms`: a plan's result is the concatenation of its union-free
-  terms' results (`Rel.terms`).
+  terms' results (`Rel.terms`), for an engine that runs the terms one by one.
 * `Rel.weighted_eval`: running the weight-column encoding (`Rel.weighted`) on an
   ordinary bag engine gives exactly the Z-set result, with each weight as a
   trailing column. Old tables get weight 1, and joins multiply weights.

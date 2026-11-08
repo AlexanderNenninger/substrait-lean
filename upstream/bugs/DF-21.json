@@ -1,0 +1,35 @@
+{
+  "id": "DF-21",
+  "status": "confirmed",
+  "status_note": "Reproduces on 55.0.0, the latest release. No upstream issue found. Main not checked.",
+  "title": "The Substrait consumer does not know Substrait's `variance` and `std_dev`",
+  "summary": "Substrait's `variance` and `std_dev` aggregates, with the `distribution` option for sample or population, are not supported by the Substrait consumer, which knows DataFusion's own `var_pop`, `var_samp`, `stddev_pop` and `stddev_samp`.",
+  "repro": "The Substrait plan (Lean's `--write`) of `select var_pop(v), var_samp(v) from f` fails: `Aggregate function variance is not supported: function anchor = 503` (51.0.0 and 55.0.0).",
+  "handling": "`sverify.engine.datafusion_plan` renames each `variance`/`std_dev` measure to DataFusion's function for its `distribution` (`_datafusion_variances`, #54).",
+  "issues": [
+    54
+  ],
+  "files": [
+    "python/src/sverify/engine.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "consumer repro; apache/datafusion searched"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "consumer repro; apache/datafusion searched"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}
