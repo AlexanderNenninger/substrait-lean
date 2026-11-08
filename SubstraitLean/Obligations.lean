@@ -206,13 +206,26 @@ theorem obligations_consistent : builtinEngines.all (·.consistent) := by
 theorem obligations_evidenced : builtinEngines.all (·.evidenced) := by
   decide +kernel
 
+/-- A row's evidence and its reruns' name the issue tracking their proof,
+where they are no proof (#1131). -/
+def ObsRow.Tracked (r : ObsRow) : Prop :=
+  (∀ ids i, r.evidence = .tested ids i ∨ r.evidence = .probed ids i → i.isSome) ∧
+    ∀ ids i, r.rerunEvidence = .tested ids i ∨ r.rerunEvidence = .probed ids i → i.isSome
+
+theorem Evidence.tracked_iff (e : Evidence) :
+    e.tracked = true ↔ ∀ ids i, e = .tested ids i ∨ e = .probed ids i → i.isSome := by
+  cases e <;> simp [Evidence.tracked]
+
 /-- Every row of `e` that rests on no theorem, and every rerun claim, names
-the issue tracking its proof (#1131). -/
+the issue tracking its proof: the checker `#check_engine_profiles` runs. -/
 def EngineProfile.tracked (e : EngineProfile) : Bool :=
   e.obs.all fun (_, _, r) => r.evidence.tracked && r.rerunEvidence.tracked
 
-theorem obligations_tracked : builtinEngines.all (·.tracked) := by
-  decide +kernel
+/-- **`tracked` decides `ObsRow.Tracked`** of every row. -/
+theorem EngineProfile.tracked_iff (e : EngineProfile) :
+    e.tracked = true ↔ ∀ x ∈ e.obs, x.2.2.Tracked := by
+  simp only [EngineProfile.tracked, List.all_eq_true, Bool.and_eq_true, ObsRow.Tracked,
+    Evidence.tracked_iff]
 
 /-- This repository's tables refine the core (`Profile.duckdb_le_core`, …). -/
 theorem builtinEngines_leCore : builtinEngines.all (·.leCore) := by

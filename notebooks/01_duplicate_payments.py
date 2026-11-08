@@ -381,7 +381,8 @@ def _(mo):
     production. The node's plan is the one Lean checked. Sverify runs it on
     each engine through its own translation, which keeps Lean's semantics
     (NULL keys never match, integers don't wrap around, ties break one way)
-    or refuses the plan. Lean's model is the reference, and
+    or refuses the plan. Lean's reference profile is the reference, one of
+    the [profiles that refine the core](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines), and
     [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists which engines run plans, each with a proved
     profile. With `route="auto"`, `refresh` also says how the proof reaches
     the engine ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)).
