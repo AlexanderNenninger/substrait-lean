@@ -1886,3 +1886,44 @@ or `x · y` was provable, and the checker trusted eight axioms for them. The
 exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
+
+### D35. Engine summation orders are bounded sets
+
+Decided 2026-11-08 (#929): approved by the theory advisor, to whom the
+maintainer delegated the sign-off.
+
+`SumOrder b vs c`, the doubles a double `SUM` gives under a `sum_order`
+behaviour, bounds every behaviour but `EXACT`. On `n ≤ 2³²` finite doubles
+whose `2 · Σ(|xᵢ| + 2⁻¹⁰²²)` stays below the largest double, the sum is finite
+and within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact sum, `u = 2⁻⁵³`,
+`γₙ = nu / (1 − nu)` (`SumBound`). Stated in units of `2⁻¹⁰⁷⁴` and multiplied
+out, it is an exact inequality on integers, so it needs no rounding of its
+own.
+
+- `ANY` and `PAIRWISE` keep their trees (`FloatSums`) and `SEQUENTIAL` its
+  permuted sequential sum, each with the bound.
+- `COMPENSATED` (Kahan's sum, Polars) and `SCALED_CONSTANT` (a constant run's
+  `fl(k · x)`, DuckDB) were any double. They are now the bound alone: no
+  theorem of the core reads their shape (`TreeSum.const` is float-bounds').
+- `AvgOrder` follows: a sum within the bound, divided by the count.
+- `EXACT`, the reference's order (D25), is unchanged.
+- Window sums take their frame's `SumOrder` (`WinFn.AllowedP`): `TREE` and
+  `RECOMPUTE` sum each frame's own values. `RUNNING_ADD` is a running state
+  over the partition's prefix that never removes a row (duckdb-window-sum-order,
+  spark-window-agg), so its value at a row is a sum of exactly the rows
+  before it, the frame of the growing windows it runs: the prefix bound is
+  the frame's, by those facts. A sliding sum (`SLIDING`) stays any value.
+
+What stays trusted: the engines' algorithms meet the bound. `StdModel`'s
+theorems in `float-bounds` justify it on the engines' facts
+(`StdModel.Summed.near`, `epsilon_sum_cr`, `Rnd.kahan_near`), as the
+`sum_order` rows' evidence. #1196, the bridge from float-bounds to the core,
+retires it.
+
+Why: `Rel.AllowedP` is the set the soundness theorems quantify over. A
+behaviour that allows any double made every contract on a double `SUM`
+unprovable at the plan level on DuckDB and Polars, although both algorithms
+are bounded. `SumOrder.bound` reads the bound as a range the abstract domain
+computes (finite, in `[sumLo, sumHi]`), which cuts `nan_creation`,
+`float_overflow` and the NaN cases of a comparison downstream (D34), and the
+margin check's theorem over its plan reads the same set.

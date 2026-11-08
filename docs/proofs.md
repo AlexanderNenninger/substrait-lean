@@ -63,6 +63,7 @@ contract's preconditions.
 | `x ± y`, `x · y`, `x / c`, and `x / y` with `y`'s range clear of zero, of tolerated doubles (D31) are within the fold's bounds, from the operands' ranges in the sources' knowledge | `Near` | `Expr.arithTol_sound`, `Expr.tolA_sound`, `fadd_near`, `fmul_near`, `fdiv_lit_near`, `fdiv_near`, `round_pair₂` | `Lipschitz/Arith.lean` |
 | A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides | `Near` | `floatSumCR_near`, `floatAvgCR_near`, `Measure.fsum_near`, `Measure.avg_near` | `FloatNear.lean`, `Lipschitz/Basic.lean` |
 | A result one profile allows, another allows too, option by option | `AllowedP` | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
+| An engine's double `SUM` under a non-`EXACT` order (D35) is finite and in a range computed from its inputs' range and row bound | `AllowedP` | `SumOrder.bound` | `SumBound.lean` |
 | A delta plan computes the change of the view | `zeval` | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | `Rel.eval` is weighted evaluation over `Nat`: every unordered arm (filter, project, emit, cross, joins, union, sort, `DISTINCT`, semi and anti joins, unnest) at once, with the ordered and aggregate nodes read through the seam | `eval` | `Rel.eval_eq_evalK` | `WSet.lean` |
 | The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `zeval`, `eval` | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
@@ -210,6 +211,12 @@ other pages link here.
   between the two reads, warns, and refuses the run under the deterministic
   profile (`reproducible=`). `tests/test_margin.py` runs the check against
   its formula in Python's doubles.
+
+  Beside D16, D35's bound: the engines' summation algorithms meet
+  `SumBound` (a double `SUM` within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact
+  sum), which `Rel.AllowedP` takes for every non-`EXACT` `sum_order`. It is
+  justified by `float-bounds`' `StdModel.Summed.near`, `epsilon_sum_cr` and
+  `Rnd.kahan_near` on the engines' facts; #1196 retires it.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
@@ -323,6 +330,7 @@ generators, then the trusted reading and writing.
 | `Functions.lean` | The function tables: names, anchors, groups, how the parser reads each |
 | `Options.lean` | The option catalogue and each profile's choices |
 | `AllowedP.lean` | `Rel.AllowedP`, the results a profile's table allows |
+| `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
 | `Observations.lean` | Observations and classes against the reference |
 | `ObsEquiv.lean` | Equality up to an observation (`Relation.Equiv`), and within a tolerance (`Relation.Near`) |
 | `Robust.lean` | Postconditions robust under an observation, and narrowing a comparison by a tolerance |
