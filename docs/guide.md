@@ -391,13 +391,12 @@ except VerificationError as e:
 * Doubles and time: comparisons with constants are exact, including
   sentinels like `-9999.0`, `isnan()` and intervals; doubles compare as SQL
   engines compare them, with one zero and one NaN above every number.
-* Sums and means of doubles round. Their signs are exact, and with a row cap
-  in `requires`, `sv.max_rows(10_000_000)` (checked on the data), Lean
-  bounds them by the proved rounding error ([float bounds](float-bounds.md)).
-  `sv.approx(_.cpu_avg <= 100)` states a postcondition up to that rounding;
-  the report suggests it when an exact claim misses only by rounding, and
-  only for an input with a row cap: without `sv.max_rows` in `requires`,
-  Lean has no bound on the sum's error and suggests nothing.
+* Sums and means of doubles round once (D25). Their signs are exact, a mean
+  of values in `[0, 100]` is in `[0, 100]`, and with a row cap in
+  `requires`, `sv.max_rows(10_000_000)` (checked on the data), a sum of
+  values in `[0, 100]` is in `[0, 10⁹]` ([float bounds](float-bounds.md)).
+  `sv.approx(_.total <= 1e9)` states a postcondition up to rounding; the
+  report suggests it when an exact claim misses only by rounding.
 * Strings: a column's strings while they are few (up to 64), from constants,
   `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and `UNION ALL`. That
   proves dbt's `accepted_values` and keys over `UNION ALL` branches tagged by

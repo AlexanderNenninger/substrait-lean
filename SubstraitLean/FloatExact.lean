@@ -204,6 +204,30 @@ theorem roundMagDiv_exact {k s : Nat} (hk : k < 2 ^ 53) : roundMagDiv (k * 2 ^ s
       Nat.pow_le_pow_right (by omega) (by omega)
     omega
 
+/-- `ka / kd` rounds as `a / d`. -/
+theorem rndDiv_mul_left (a d : Nat) {k : Nat} (hk : 0 < k) : rndDiv (k * a) (k * d) = rndDiv a d := by
+  unfold rndDiv
+  rw [Nat.mul_div_mul_left _ _ hk, Nat.mul_mod_mul_left, Nat.mul_left_comm 2 k]
+  simp only [Nat.mul_lt_mul_left hk, Nat.mul_left_cancel_iff hk]
+
+/-- `k · a / k` rounds as `a`. -/
+theorem roundMagDiv_mul (a : Nat) {k : Nat} (hk : 0 < k) : roundMagDiv (k * a) k = roundMagDiv a 1 := by
+  have hg : gridExp (k * a) k = gridExp a 1 := by
+    simp only [gridExp, Nat.mul_div_cancel_left _ hk, Nat.div_one]
+  unfold roundMagDiv
+  rw [hg, Nat.one_mul, rndDiv_mul_left _ _ hk]
+
+/-- The mean of `k` copies of `v` rounds as `v` (D25's `AVG` of equal values). -/
+theorem ofExactDiv_mul (v : Int) {k : Nat} (hk : 0 < k) : ofExactDiv (k * v) k = ofExact v := by
+  unfold ofExact ofExactDiv
+  rw [Int.natAbs_mul, Int.natAbs_natCast, roundMagDiv_mul _ hk]
+  have hk' : (0 : Int) < k := by omega
+  by_cases hv : v < 0
+  · have : (k : Int) * v < 0 := Int.mul_neg_of_pos_of_neg hk' hv
+    simp [hv, this]
+  · have : 0 ≤ (k : Int) * v := Int.mul_nonneg (by omega) (by omega)
+    simp [hv, show ¬ (k : Int) * v < 0 by omega]
+
 /-! ### Codes -/
 
 theorem posCode_mono {m m' : Nat} (h : m ≤ m') : posCode m ≤ posCode m' := by
