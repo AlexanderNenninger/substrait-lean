@@ -237,7 +237,7 @@ jobs:
             out models=false
           fi
           # sverify-dbt reads sverify, and what the checker proves.
-          if grep -qE '^(dbt/|python/|SubstraitLean/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          if grep -qE '^(dbt/|python/|SubstraitLean/|core/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out dbt=true
           else
             out dbt=false

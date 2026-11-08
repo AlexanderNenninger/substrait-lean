@@ -673,7 +673,7 @@ the sum is assumed to fit and checked on the data while the job runs
 ### Black-box functions
 
 DuckDB functions the checker treats as opaque now come from one table,
-`SubstraitLean/BlackBox.lean` ([#325](https://github.com/AlexanderNenninger/substrait-lean/issues/325)).
+`core/Sverify/Core/BlackBox.lean` ([#325](https://github.com/AlexanderNenninger/substrait-lean/issues/325)).
 Each row gives a function's types, how it treats NULL, whether it may raise,
 and its laws, which the contract checker uses and Lean proves of the model.
 The SQL lift reads them, the plan calls them under the URN

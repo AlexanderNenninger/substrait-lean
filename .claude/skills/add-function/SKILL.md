@@ -62,7 +62,7 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   shared tables in `python/tests/_sql_lift.py`.
 - **Black box** (#325), a DuckDB function the checker treats as opaque: add a
   row to `BlackBox.scalars` or `BlackBox.aggregates`
-  (`SubstraitLean/BlackBox.lean`) with its types, NULL handling, whether it
+  (`core/Sverify/Core/BlackBox.lean`) with its types, NULL handling, whether it
   raises, its laws and a `sample` the laws allow (`scalars_wf` checks it by
   `decide`), and the same row, at the same index, to `TABLE` in
   `python/src/sverify/black_box.py` with DuckDB's SQL. Its anchor is 700 plus

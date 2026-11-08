@@ -1,4 +1,4 @@
-import SubstraitLean.FloatExact
+import Sverify.Core.FloatExact
 
 /-!
 # Double arithmetic, rounded once (D31)

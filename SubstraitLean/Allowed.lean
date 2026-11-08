@@ -23,7 +23,7 @@ The reference leaves these choices to the engine:
   statistical aggregate are their exact values rounded once.
 
 A double `SUM` or `AVG` is no choice (D25): it is the exact sum, or mean,
-rounded once (`floatSumCR`, `SubstraitLean/FloatExact.lean`), whatever the
+rounded once (`floatSumCR`, `core/Sverify/Core/FloatExact.lean`), whatever the
 order of the rows. An engine's order of additions is a behaviour of its
 profile (`SumOrder`, `SubstraitLean/AllowedP.lean`), within #85's bound of it
 (`epsilon_sum_cr` in `float-bounds/`).

@@ -1,5 +1,5 @@
-import SubstraitLean.Float
-import SubstraitLean.Value
+import Sverify.Core.Float
+import Sverify.Core.Value
 
 /-!
 # Correctly rounded sums of doubles (D25, #914)

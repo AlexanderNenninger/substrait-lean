@@ -1,6 +1,6 @@
 import Lean.Data.Json
 import SubstraitLean.Aggregate
-import SubstraitLean.Reflect
+import Sverify.Core.Reflect
 
 /-!
 # The function tables
@@ -371,7 +371,7 @@ def windows : List FnRow := [
 
 /-- Each area's name, rows and the range its new anchors come from. Black
 boxes (#325, anchors 700–799) have a table of their own,
-`SubstraitLean/BlackBox.lean`. -/
+`core/Sverify/Core/BlackBox.lean`. -/
 def areas : List (String × List FnRow × Nat) :=
   [("core", core, 100), ("strings", strings, 200), ("temporal", temporal, 300),
    ("nested", nested, 400), ("aggregates", aggregates, 500), ("windows", windows, 600)]

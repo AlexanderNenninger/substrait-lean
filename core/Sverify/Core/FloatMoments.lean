@@ -1,4 +1,4 @@
-import SubstraitLean.FloatExact
+import Sverify.Core.FloatExact
 
 /-!
 # Exact moments and correctly rounded square roots (#918, preparation)

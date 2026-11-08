@@ -1,13 +1,13 @@
-import SubstraitLean.Value
-import SubstraitLean.Float
-import SubstraitLean.Time
+import Sverify.Core.Value
+import Sverify.Core.Float
+import Sverify.Core.Time
 
 /-!
 # Casts from VARCHAR: Lean's evaluators (#806)
 
 The black boxes `varchar_bigint`, `varchar_double`, `varchar_boolean`,
 `varchar_date`, `varchar_timestamp` and their `try_` rows
-(`SubstraitLean/BlackBox.lean`) are DuckDB's `CAST` and `TRY_CAST` of a
+(`core/Sverify/Core/BlackBox.lean`) are DuckDB's `CAST` and `TRY_CAST` of a
 string. No proof depends on what they compute. This file is how Lean runs
 them, and it reads a string three ways:
 

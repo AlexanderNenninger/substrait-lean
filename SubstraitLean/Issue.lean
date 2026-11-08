@@ -43,7 +43,7 @@ inductive Issue where
   `wraps` because it comes from a group's rows, not from one row:
   `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
   | sumWraps
-  /-- An argument outside a function's domain (`SubstraitLean/Numeric.lean`):
+  /-- An argument outside a function's domain (`core/Sverify/Core/Numeric.lean`):
   `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`
   outside `[-1, 1]`, `atan2(0, 0)`, `logb` to a base that is not positive or
   is 1, a shift count outside `0`–`63`, a `substring` offset outside

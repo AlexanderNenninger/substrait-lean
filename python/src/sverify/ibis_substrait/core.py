@@ -328,7 +328,7 @@ register(
         ops.Clip: _clip,
         ops.IsNan: _is_nan,
         # Elementary functions of doubles (DataFusion converts integers) and
-        # bitwise operations (`SubstraitLean/Numeric.lean`): the function table's.
+        # bitwise operations (`core/Sverify/Core/Numeric.lean`): the function table's.
         **table_rules("core", {"int.bit": _bitwise, "int.shift": _bitwise}),
         ops.Log: _log,
         # DataFusion's `COT(x)` is `1 / tan(x)` in IEEE division, so `cot(0)` is

@@ -1,10 +1,10 @@
-import SubstraitLean.Float
+import Sverify.Core.Float
 
 /-!
 # Exact rounding of doubles
 
 `FLOOR`, `CEIL`, `ROUND` (to an integer) and `CAST(double AS BIGINT)` are
-computed exactly on double codes (see `SubstraitLean/Float.lean`), not with
+computed exactly on double codes (see `core/Sverify/Core/Float.lean`), not with
 native floats, so that their monotonicity, and the range of a cast, can be
 proved.
 

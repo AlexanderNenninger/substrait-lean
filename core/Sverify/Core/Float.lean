@@ -1,4 +1,4 @@
-import SubstraitLean.FloatFormat
+import Sverify.Core.FloatFormat
 
 /-!
 # Floats and timestamps as integers
@@ -12,7 +12,7 @@ puts `-0.0` below `+0.0` and negative NaNs first; `sverify` canonicalizes
 DataFusion's inputs and results instead.)
 
 A double is represented by an integer *code* with exactly that order
-(`SubstraitLean/FloatFormat.lean` states the codes for every format; doubles
+(`core/Sverify/Core/FloatFormat.lean` states the codes for every format; doubles
 are its instance `fp64`): for
 magnitude `m` (`|x| · 2¹⁰⁷⁴` for finite `x`, which is an exact integer;
 `M + 1` for ∞, `M + 2` for NaN) the code is `±(2m + 1)`, and zero is `0`.
@@ -21,7 +21,7 @@ Comparing doubles is then comparing codes, so filters such as `v > 0.5` or
 and negation is code negation (the parser keeps NaN fixed under it).
 
 Float *arithmetic* rounds. `+ − × ÷` are the exact result rounded once
-(D31, `SubstraitLean/FloatArith.lean`), computed on the codes; `pow` and the
+(D31, `core/Sverify/Core/FloatArith.lean`), computed on the codes; `pow` and the
 libm functions are computed with Lean's native `Float` (`lift₂`). The
 conversions below go through the IEEE bit pattern and are trusted code.
 
@@ -537,7 +537,7 @@ theorem codeLo_le {c s : Int} (h : s ≤ scaled c) : codeLo s ≤ c := by
 
 /-- A finite double's code. The bounds of one double operation on finite
 doubles (`add_scaled` …, trusted before D31) are theorems in
-`SubstraitLean/FloatArith.lean`. -/
+`core/Sverify/Core/FloatArith.lean`. -/
 def IsFin (c : Int) : Prop := negInf < c ∧ c < posInf
 
 /-- `2⁵²`. -/
@@ -698,7 +698,7 @@ theorem fmod_canon {a b : Int} (ha : IsRef a) (hb : IsRef b) :
     · exact (fp64.canon_ofMag _ _).symm
 
 /-- `CAST(x AS DECIMAL(_, s))` of a double with native floats (the model's is
-`toDecimal?`, `SubstraitLean/Conversions.lean`), as the decimal's unscaled integer:
+`toDecimal?`, `core/Sverify/Core/Conversions.lean`), as the decimal's unscaled integer:
 `round(x · 10ˢ)` computed in doubles, halves away from zero, as DuckDB and
 DataFusion cast (#27). NaN and ±∞ have none. -/
 def toDecimalNative? (c : Int) (s : Nat) : Option Int :=
@@ -709,7 +709,7 @@ def toDecimalNative? (c : Int) (s : Nat) : Option Int :=
     some (if negative then -q else q)
 
 /-- A decimal's unscaled integer `n` at scale `s` as a double's code with
-native floats (the model's is `ofDecimal`, `SubstraitLean/Conversions.lean`),
+native floats (the model's is `ofDecimal`, `core/Sverify/Core/Conversions.lean`),
 correctly rounded (#27). A decimal has at most 38 digits, far below `2¹⁰²⁴`,
 so `finite` changes nothing and tells the checker the double is finite
 (#257). -/

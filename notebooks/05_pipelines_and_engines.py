@@ -1126,7 +1126,7 @@ def _(mo):
       beforehand.
 
     Lean's column is missing for the last two queries. The model stores a
-    double as a very large integer code (`SubstraitLean/Float.lean`), so
+    double as a very large integer code (`core/Sverify/Core/Float.lean`), so
     the checker's printer can't tell a double from an integer beyond 64
     bits. The test suite compares doubles through the engines.
 
@@ -1445,7 +1445,7 @@ def _(mo):
     intervals are durations. Comparisons with literals, `ts + interval`,
     `ts1 - ts0` and joins on time are tracked like integers. The calendar
     functions are computed exactly on the Gregorian calendar
-    ([`Time.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Time.lean)),
+    ([`Time.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/core/Sverify/Core/Time.lean)),
     and Lean proves they grow with the timestamp, so a range of timestamps
     gives a range of years and of truncated months. Pick a time window and
     see what Lean derives:

@@ -1,6 +1,6 @@
 import SubstraitLean.Order
-import SubstraitLean.Dedup
-import SubstraitLean.FloatMoments
+import Sverify.Core.Dedup
+import Sverify.Core.FloatMoments
 
 /-!
 # Aggregation
@@ -27,7 +27,7 @@ and the others are NULL. Checked against DataFusion 51:
   DataFusion's grouped `MIN` of a group of +∞ is the largest finite double,
   and it skips NaN next to other values.
 * Grouping compares values exactly; doubles have one zero and one NaN
-  (`SubstraitLean/Float.lean`), so -0.0 and 0.0 are one group, and NULLs
+  (`core/Sverify/Core/Float.lean`), so -0.0 and 0.0 are one group, and NULLs
   group together.
 -/
 
@@ -78,7 +78,7 @@ inductive AggFn where
   in the measure's `sort` order, joined by the constant `sep`; NULLs skipped,
   NULL without values. Ties make it depend on the engine, as for `pick`. -/
   | concat (sep : String)
-  /-- An aggregate black box (`SubstraitLean/BlackBox.lean`, #325): the
+  /-- An aggregate black box (`core/Sverify/Core/BlackBox.lean`, #325): the
   table's row `name`, its `empty` value without values. -/
   | bbox (name : String)
   /-- `QUANTILE_DISC(x, q)` (`cont := false`) and `QUANTILE_CONT(x, q)` of the

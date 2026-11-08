@@ -1,4 +1,4 @@
-import SubstraitLean.Value
+import Sverify.Core.Value
 
 /-!
 Prototype for #905: how much of `ZSet.cross_add` (the bilinear delta rule

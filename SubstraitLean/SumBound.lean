@@ -1,5 +1,5 @@
 import SubstraitLean.AllowedP
-import SubstraitLean.FloatArith
+import Sverify.Core.FloatArith
 
 /-!
 # The range of an engine's double `SUM` (D35)

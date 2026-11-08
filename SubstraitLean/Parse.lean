@@ -140,7 +140,7 @@ def sigTokens (name : String) : List String :=
 /-! ## Column kinds
 
 Doubles, timestamps and dates all become integers in the model (see
-`SubstraitLean/Float.lean`); the parser and the writer track which is which. -/
+`core/Sverify/Core/Float.lean`); the parser and the writer track which is which. -/
 
 partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
@@ -1040,7 +1040,7 @@ private def optionAcceptsBefore (base : String) (float : Bool) : String → Opti
   | "rounding" =>
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
     else if !float then none
-    -- `ROUND` rounds halves away from zero (`SubstraitLean/Rounding.lean`).
+    -- `ROUND` rounds halves away from zero (`core/Sverify/Core/Rounding.lean`).
     else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
     -- Native doubles round to nearest, ties to even.
     else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg", "variance",
@@ -1063,12 +1063,12 @@ private def optionAcceptsBefore (base : String) (float : Bool) : String → Opti
     else none
   | "on_log_zero" =>
     if ["ln", "log10", "log2", "logb"].contains base then some (some ["ERROR"]) else none
-  -- The model's string matching is case-sensitive (`SubstraitLean/Text.lean`).
+  -- The model's string matching is case-sensitive (`core/Sverify/Core/Text.lean`).
   | "case_sensitivity" =>
     if ["like", "contains", "starts_with", "ends_with", "strpos"].contains base then
       some (some ["CASE_SENSITIVE"])
     else none
-  -- `UPPER` and `LOWER` map Unicode case (`SubstraitLean/Text.lean`).
+  -- `UPPER` and `LOWER` map Unicode case (`core/Sverify/Core/Text.lean`).
   | "char_set" => if base == "upper" || base == "lower" then some (some ["UTF8"]) else none
   -- `Text.substrWrap` and `Text.substr`; `ERROR` is not modelled.
   | "negative_start" =>
@@ -1366,7 +1366,7 @@ def mkCoreCall? : String → List Expr → Option (J Expr)
   | "is_not_distinct_from", [a, b] => some <| pure (notDistinct a b)
   | "is_distinct_from", [a, b] => some <| pure (.un .not (notDistinct a b))
   -- Integer division and remainder truncate; doubles go to `mkFloatCall`.
-  -- Bitwise operations of integers (`SubstraitLean/Numeric.lean`); `NOT x`
+  -- Bitwise operations of integers (`core/Sverify/Core/Numeric.lean`); `NOT x`
   -- is `x XOR -1`.
   | "bitwise_not", [a] => some <| pure (.bin (.bit .xor) a (.lit (.int (-1))))
   -- Substrait's names of the shifts; DataFusion's are the table's.
@@ -1382,7 +1382,7 @@ where
     | [] => a
     | b :: bs => .ifThen (.un .not (.un .isNull a)) a (coalesce b bs)
 
-/-- Strings (`SubstraitLean/Text.lean`). -/
+/-- Strings (`core/Sverify/Core/Text.lean`). -/
 def mkStringCall? : String → List Expr → Option (J Expr)
   | "char_length", [a] | "length", [a] => some <| pure (.un .length a)
   | "concat", a :: as => some <| pure (as.foldl (.bin .concat) a)
@@ -1420,7 +1420,7 @@ def mkStringCall? : String → List Expr → Option (J Expr)
   | "regexp_replace", _ => some <| throw "regexp_replace needs a constant pattern and replacement"
   | name, args => (Functions.read? Functions.strings .plain name args).map pure
 
-/-- Dates and times (`SubstraitLean/Time.lean`). -/
+/-- Dates and times (`core/Sverify/Core/Time.lean`). -/
 def mkTemporalCall? : String → List Expr → Option (J Expr)
   -- Intervals are total microseconds, already normalized.
   | "normalized_interval", [a] => some <| pure a
@@ -1508,7 +1508,7 @@ def mkFloatCall : String → List Expr → J Expr
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.float 0))) (.un .fneg a) a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
-  -- `SubstraitLean/Numeric.lean`.
+  -- `core/Sverify/Core/Numeric.lean`.
   | name, args => match Functions.read? Functions.core .float name args with
     | some e => pure e
     | none => throw s!"unsupported double function {name}/{args.length}"

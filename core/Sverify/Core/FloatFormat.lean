@@ -8,13 +8,13 @@ bfloat16 are both 16 bits wide, with `p = 11` and `p = 8`.
 
 Every finite value is `±m · 2^-scale` with `scale = emax + p - 2` and an
 integer magnitude `m`, so a value has an integer *code* in the SQL order
-(`SubstraitLean/Float.lean`): `±(2m + 1)` for the magnitude `m`, `0` for the
+(`core/Sverify/Core/Float.lean`): `±(2m + 1)` for the magnitude `m`, `0` for the
 one zero, `M + 1` for ∞ and `M + 2` for the one NaN, where `M` is the largest
 finite magnitude. `-0.0` and the negative NaN have codes of their own
 outside that range (#444 step 1b), which `canon` maps to `0` and NaN. What is
 stated here holds for every format: the codes,
 their order and what the checker knows of a cast into the format. `fp64`, on
-Lean's native `Float`, is the only instance so far (`SubstraitLean/Float.lean`).
+Lean's native `Float`, is the only instance so far (`core/Sverify/Core/Float.lean`).
 -/
 
 namespace Substrait

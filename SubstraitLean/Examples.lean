@@ -33,8 +33,8 @@ import SubstraitLean.Robust
 import SubstraitLean.AllowedNear
 import SubstraitLean.AllowedAnalysis
 import SubstraitLean.EngineSound
-import SubstraitLean.FloatExact
-import SubstraitLean.FloatMoments
+import Sverify.Core.FloatExact
+import Sverify.Core.FloatMoments
 
 /-!
 # Examples

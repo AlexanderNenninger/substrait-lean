@@ -471,7 +471,7 @@ def Profile.reference.table : ProfileTable where
     (none, "shift_range", .oneOf ["DROP_BITS"]),
     (none, "decimal_rescale", .oneOf ["TIE_AWAY_FROM_ZERO"]),
     -- Native doubles round to nearest, ties to even (D5); `ROUND` rounds
-    -- halves away from zero (`SubstraitLean/Rounding.lean`, #335).
+    -- halves away from zero (`core/Sverify/Core/Rounding.lean`, #335).
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
     (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
     -- Outside their domains the elementary functions raise (`Numeric.lean`,
@@ -490,7 +490,7 @@ def Profile.reference.table : ProfileTable where
     (none, "negative_start", .asked ["WRAP_FROM_END", "LEFT_OF_BEGINNING"] ["WRAP_FROM_END"]),
     (none, "substring_range", .oneOf ["ERROR"]),
     -- The model's string matching is case-sensitive, and `UPPER` and `LOWER`
-    -- map Unicode case (`SubstraitLean/Text.lean`).
+    -- map Unicode case (`core/Sverify/Core/Text.lean`).
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
     (none, "char_set", .asked ["UTF8"] ["UTF8"]),
     (none, "null_handling", .asked ["ACCEPT_NULLS"] ["ACCEPT_NULLS"]),

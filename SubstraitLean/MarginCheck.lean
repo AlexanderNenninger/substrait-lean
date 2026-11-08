@@ -1,5 +1,5 @@
 import SubstraitLean.Robust
-import SubstraitLean.Float
+import Sverify.Core.Float
 import SubstraitLean.Rel
 
 /-!

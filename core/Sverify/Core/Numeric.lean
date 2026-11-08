@@ -1,4 +1,4 @@
-import SubstraitLean.Float
+import Sverify.Core.Float
 
 /-!
 # Elementary functions and bitwise operations

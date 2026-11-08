@@ -1,10 +1,10 @@
-import SubstraitLean.Value
-import SubstraitLean.Conversions
-import SubstraitLean.Text
-import SubstraitLean.Time
-import SubstraitLean.Numeric
-import SubstraitLean.FloatArith
-import SubstraitLean.BlackBox
+import Sverify.Core.Value
+import Sverify.Core.Conversions
+import Sverify.Core.Text
+import Sverify.Core.Time
+import Sverify.Core.Numeric
+import Sverify.Core.FloatArith
+import Sverify.Core.BlackBox
 
 /-!
 # Scalar expressions
@@ -19,10 +19,10 @@ Models a fragment of Substrait's `Expression` message:
 Boolean connectives use SQL three-valued logic (Kleene logic), which is what
 the Substrait standard extensions (`functions_boolean.yaml`) specify.
 
-Doubles are integer *codes* (see `SubstraitLean/Float.lean`), so they share
+Doubles are integer *codes* (see `core/Sverify/Core/Float.lean`), so they share
 `Value.int` and the integer comparisons. Float arithmetic has its own
 operators (`fadd`, …), computed with native floats; rounding a double to an
-integer is exact (see `SubstraitLean/Rounding.lean`).
+integer is exact (see `core/Sverify/Core/Rounding.lean`).
 
 Integer division and remainder truncate toward zero; the writers shim an
 engine whose division floors (Polars). Where
@@ -30,11 +30,11 @@ an operation raises an error (division by zero, a cast out of range, a domain
 error, …) the value here is `null`; `SubstraitLean/Safety.lean` says when
 that happens.
 
-String functions are in `SubstraitLean/Text.lean` (`UPPER`, `LOWER` and
+String functions are in `core/Sverify/Core/Text.lean` (`UPPER`, `LOWER` and
 regular expressions are black boxes there); timestamps are microseconds and dates
 days; `date_part`, `date_trunc` and month arithmetic are in
-`SubstraitLean/Time.lean`. Elementary functions of doubles and bitwise
-operations are in `SubstraitLean/Numeric.lean`.
+`core/Sverify/Core/Time.lean`. Elementary functions of doubles and bitwise
+operations are in `core/Sverify/Core/Numeric.lean`.
 -/
 
 namespace Substrait
@@ -209,7 +209,7 @@ inductive UnFn where
   printers write `x IS NOT NULL`, since in SQL a non-NULL operand of a
   function of numbers of kind `k` is one. -/
   | isNum (k : NumKind)
-  /-- A scalar black box of one argument (`SubstraitLean/BlackBox.lean`, #325):
+  /-- A scalar black box of one argument (`core/Sverify/Core/BlackBox.lean`, #325):
   the table's row `name`. -/
   | bbox (name : String)
   /-- `flatten(l)`: the elements of `l`'s lists, in order; a `NULL` inner
@@ -289,7 +289,7 @@ inductive BinFn where
   (`apply_greatest`), so that `GREATEST(a, b, c, …)` is linear in its
   arguments: the conditional copies its first argument (#340). -/
   | greatest | least
-  /-- A scalar black box of two arguments (`SubstraitLean/BlackBox.lean`, #325). -/
+  /-- A scalar black box of two arguments (`core/Sverify/Core/BlackBox.lean`, #325). -/
   | bbox2 (name : String)
   /-- DuckDB's list functions of two arguments (`ListOp`, #812). -/
   | listFn (op : ListOp)

@@ -1,4 +1,4 @@
-import SubstraitLean.Rounding
+import Sverify.Core.Rounding
 
 /-!
 # Conversions between doubles, decimals and integers
@@ -6,7 +6,7 @@ import SubstraitLean.Rounding
 The conversions round, and contracts need what IEEE promises of them: they
 are monotone, and within half a unit in the last place. Lean's native floats
 promise nothing a proof can use, so each conversion is computed here exactly,
-on the codes of `SubstraitLean/Float.lean`, and `#guard`s compare it with the
+on the codes of `core/Sverify/Core/Float.lean`, and `#guard`s compare it with the
 native one. The computation sits behind an `opaque` constant with its proved
 properties (as `FloatCode.intToDouble` does): the kernel never unfolds it, and
 proofs about plans use only the properties.

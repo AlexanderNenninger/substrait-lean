@@ -17,7 +17,7 @@ Since Lean 4.35, `Float`'s operations have a logical model in the kernel
 proved from that model; Lean has no lemmas about the model yet.
 
 `Float.toReal` reads a double's value from its bits, the decoding
-`FloatCode.ofFloat` in `SubstraitLean/Float.lean` uses: a code's magnitude is
+`FloatCode.ofFloat` in `core/Sverify/Core/Float.lean` uses: a code's magnitude is
 `|x| · 2¹⁰⁷⁴`.
 
 `exp` is trusted to one ulp: the platform's `libm` (#582).

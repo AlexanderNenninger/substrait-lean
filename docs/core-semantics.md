@@ -314,7 +314,7 @@ the first column are the names the tables below use.
 Opaque functions need no option: the black boxes (#325), the regexes and the
 digests have one meaning each, the function itself, and every profile shares
 it. The conversions between integers, decimals and doubles stay opaque
-constants with proved properties (`SubstraitLean/Conversions.lean`), the same
+constants with proved properties (`core/Sverify/Core/Conversions.lean`), the same
 in every profile.
 
 ### Function groups
@@ -626,7 +626,7 @@ The core needs every value any profile gives, so each must be at least as
 fine as Substrait's. `Value` has a constructor per kind ([D29](#d29-a-value-has-its-kind)):
 `null | bool | int | float | date | ts | tod | dec | str | list | struct`.
 A double is a `float` code, `-0.0` and the negative NaN among them
-(`SubstraitLean/FloatFormat.lean`), which the reference profile reads with
+(`core/Sverify/Core/FloatFormat.lean`), which the reference profile reads with
 one zero and one NaN through `canon`; a decimal is its scale and unscaled
 integer.
 
@@ -651,10 +651,10 @@ never meets the new codes, so its proofs do not change. The SQL order of the
 full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 `IEEE` behaviour of `zero_sign` and `nan_order`.
 
-Step 1b put them there (`SubstraitLean/FloatFormat.lean`): `negNan` is the
+Step 1b put them there (`core/Sverify/Core/FloatFormat.lean`): `negNan` is the
 code negation of NaN and `negZero` the even code below it, `key` orders the
 full set, `canon_idem` and `canon_mono` prove `canon` idempotent and
-order-preserving, and `SubstraitLean/Float.lean` proves that each operation
+order-preserving, and `core/Sverify/Core/Float.lean` proves that each operation
 on doubles commutes with `canon` on the reference's codes (`lift₂_canon`,
 `roundTo_canon`, `fmod_canon`, `finite_canon`; `canon_ofFloat` for results
 built from a native double). Code negation is the one exception: it sends
@@ -1616,7 +1616,7 @@ In the reference, a `SUM`, `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`
 of doubles is the correctly rounded value of the exact sum or moments. Every
 finite double is an integer multiple of 2⁻¹⁰⁷⁴, so the sum of the values is
 an exact dyadic rational; the result is the double nearest to it, ties to
-even (`floatSumCR`, `SubstraitLean/FloatExact.lean`), and `AVG` is the exact
+even (`floatSumCR`, `core/Sverify/Core/FloatExact.lean`), and `AVG` is the exact
 sum divided by the count, rounded once (`floatAvgCR`). NaN and infinities
 follow IEEE 754: a NaN, or `+∞` with `-∞`, gives NaN, and one kind of
 infinity gives it. The value is a function of the multiset of values, so it
@@ -1754,7 +1754,7 @@ compares: three-valued logic, `and3`/`or3`/`not3` and `BinFn.apply .eq` in
 `SubstraitLean/Expr.lean`. In `GROUP BY`, `DISTINCT`, `UNION` (distinct),
 `EXCEPT`, `INTERSECT`, a window's `PARTITION BY` and `IS NOT DISTINCT FROM`,
 all NULLs are one value: syntactic equality, `Value.decEq` in
-`SubstraitLean/Value.lean`, as `dedup` and `groupKey` use it. A key
+`core/Sverify/Core/Value.lean`, as `dedup` and `groupKey` use it. A key
 (`sv.unique`, `KeyOn`) uses the second, so two rows with NULL in a key column
 collide, which is stricter than SQL's `UNIQUE` (`Keys.lean`'s header). The
 anti part of a left join and a semi or anti join use the first.
@@ -1856,7 +1856,7 @@ The reference observes these results through its own zero and NaN rules
 (ONE_ZERO, #89; `on_division_by_zero`), so its values are unchanged; a
 profile with IEEE `zero_sign` sees the signed result.
 
-In the model (`SubstraitLean/FloatArith.lean`): every finite double is an
+In the model (`core/Sverify/Core/FloatArith.lean`): every finite double is an
 integer multiple of 2⁻¹⁰⁷⁴, so the exact sum, difference and product are
 integers in that unit, the product in 2⁻²¹⁴⁸, and the quotient a fraction of
 two. `ofExactDiv` rounds each, as it rounds D25's sums, to the nearest
@@ -1898,7 +1898,7 @@ advisor).
 The reference's timestamps are those of its dates (#251): 0001-01-01
 00:00:00 to 9999-12-31 23:59:59.999999, `Time.tsMin` to `Time.tsMax` in
 microseconds since 1970. Every calendar function is defined on all of them,
-with the proleptic Gregorian calendar of `SubstraitLean/Time.lean`.
+with the proleptic Gregorian calendar of `core/Sverify/Core/Time.lean`.
 `date_part`, `strftime`, `time_of_day`, adding months to a timestamp,
 truncation to a week, month, quarter or year, truncation of a date, and
 `date_bin` raise (`Issue.overflow`) where the operand or the result leaves

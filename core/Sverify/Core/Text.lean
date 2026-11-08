@@ -1,5 +1,5 @@
-import SubstraitLean.Regex
-import SubstraitLean.Digest
+import Sverify.Core.Regex
+import Sverify.Core.Digest
 
 /-!
 # String functions
@@ -41,9 +41,9 @@ at run time what their engines compute differently (#70). `ILIKE` folds case
 with Unicode's simple case folding (the `regex` crate's `(?i)`, so
 `'É' ILIKE 'é'` but not `'ß' ILIKE 'SS'`). Lean's evaluator maps ASCII case
 only, and evaluates regular expressions with RE2's meaning
-(`SubstraitLean/Regex.lean`) where it agrees with Rust's: elsewhere it
+(`core/Sverify/Core/Regex.lean`) where it agrees with Rust's: elsewhere it
 panics, and `substrait-check` then refuses to print rows rather than print
-wrong ones. The table of black boxes, `SubstraitLean/BlackBox.lean` (#325),
+wrong ones. The table of black boxes, `core/Sverify/Core/BlackBox.lean` (#325),
 generalises these: a DuckDB function declared by one row.
 -/
 
@@ -318,7 +318,7 @@ subset of both syntaxes: literal characters, `.`, `^`, `$`, escapes, groups
 (also non-capturing, `(?:…)`), alternatives, simple classes and the
 quantifiers `*`, `+`, `?` and `{n}`, `{n,}`, `{n,m}` with `n ≤ m ≤ 1000`, in
 patterns of at most 200 characters (Rust allows 250 nested groups). That
-these compile in both, and that RE2 matches them as `SubstraitLean/Regex.lean`
+these compile in both, and that RE2 matches them as `core/Sverify/Core/Regex.lean`
 does, is part of the trusted model, tested by `python/tests/test_text.py`. -/
 
 def plain (c : Char) : Bool := !"\\.+*?()|[]{}^$".contains c

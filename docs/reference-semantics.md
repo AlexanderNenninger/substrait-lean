@@ -242,7 +242,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `substring` with a negative start | `negative_start` omitted means `WRAP_FROM_END`: `substring('hello', -2, 2) = 'lo'`. A plan that sets `LEFT_OF_BEGINNING` gets that. | ✓ (#209, R13) |
 | `substring` range | An offset outside `[-2³², 2³²)` or a length of `2³²` or more is an error, as in DuckDB ("Substring offset outside of supported range"); NULL arguments give NULL. `verify` reports it as a domain error unless the offset's bounds rule it out, for example `_.start >= -2**32` and `_.start < 2**32` in `requires`. | ✓ ([#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336)): `Text.substrInRange`, `Issue.domain`; DuckDB raises itself, and the written plan guards the offset its wrap-around arithmetic shifts |
 | Matching | Case-sensitive only (`case_sensitivity` = `CASE_SENSITIVE`); `LIKE` has `%`, `_` and a backslash escape. | ✓ |
-| **Black boxes** | `upper`, `lower`, `ilike`, regular expressions and the digests `md5` and `sha256` are opaque to the proofs: no proof depends on what they compute, only on their types, that NULL in gives NULL out, and that equal inputs give equal outputs. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator maps ASCII case only, and evaluates regular expressions with RE2's meaning (`SubstraitLean/Regex.lean`) where it agrees with Rust's, which is everywhere but `\d`, `\w`, `\s` and `\b` on non-ASCII text (and `\s` on `\v`); there `substrait-check` refuses to print rows rather than print wrong ones. | ✓ (#70, #50) |
+| **Black boxes** | `upper`, `lower`, `ilike`, regular expressions and the digests `md5` and `sha256` are opaque to the proofs: no proof depends on what they compute, only on their types, that NULL in gives NULL out, and that equal inputs give equal outputs. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator maps ASCII case only, and evaluates regular expressions with RE2's meaning (`core/Sverify/Core/Regex.lean`) where it agrees with Rust's, which is everywhere but `\d`, `\w`, `\s` and `\b` on non-ASCII text (and `\s` on `\v`); there `substrait-check` refuses to print rows rather than print wrong ones. | ✓ (#70, #50) |
 | `regexp_extract`, `regexp_replace` | A constant pattern that `Text.simpleRegex` accepts, or the plan is refused. `regexp_extract(s, p, g)` is group `g` (0 to 9; DuckDB raises past 9) of the leftmost-first match, `''` where nothing matches, the group took no part, or `p` has fewer groups. `regexp_replace` replaces the first match, or every match with the flag `'g'` (an empty match right after the previous one is skipped); in the replacement, `\0` … `\9` are groups and `\\` a backslash, and other escapes are refused. DuckDB only so far (#271). | ✓ (#50) |
 | `regexp_matches`, `regexp_full_match` | Whether a constant pattern matches somewhere in the string, or all of it (the pattern in `^(?:…)$`); NULL for a NULL string. Both are `array_length(regexp_match(s, p)) > 0`. Options, and patterns outside `Text.simpleRegex`, are refused, and so is the operator `~`: SQLGlot reads it as a full match, DuckDB as a match anywhere ([SG-10](../upstream/bugs/SG-10.json)). | ✓ ([#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808)) |
 | `right`, `lpad`, `rpad` | Of a constant count, in characters. `right(s, n)` is the last `n` characters, or all but the first `-n` for a negative `n`. `lpad(s, n, p)` and `rpad(s, n, p)` are the first `n` characters of `s`, or `s` filled to `n` with the constant `p` repeated and cut, as DuckDB pads; `''` for `n ≤ 0`. An empty `p` is refused, as DuckDB raises where `s` is shorter. | ✓ (#808) |
@@ -425,7 +425,7 @@ The rules for decimals are in [Decimals](#decimals).
 
 DuckDB functions that are hard or pointless to model exactly are black boxes
 ([#325](https://github.com/AlexanderNenninger/substrait-lean/issues/325)): one
-row each in a table, `SubstraitLean/BlackBox.lean`, mirrored for the lift and
+row each in a table, `core/Sverify/Core/BlackBox.lean`, mirrored for the lift and
 the writers in `python/src/sverify/black_box.py`.
 
 | Topic | Reference | Status |
@@ -446,7 +446,7 @@ the writers in `python/src/sverify/black_box.py`.
 | `list_extract`, `array_value` | `list_extract(l, i)`, `list_element` and `array_extract` of a list are `l[i]`, and `array_value(a, …)` is the list literal `[a, …]`: modelled exactly (#327), with their limits (a constant index, constant elements). | ✓ |
 | `bit_count` | `bit_count(x)` of a BIGINT: the 1 bits of its 64-bit two's complement ([#326](https://github.com/AlexanderNenninger/substrait-lean/issues/326)). Strict, not NULL, in [0, 64]. DuckDB counts the bits of the argument's own width, so narrower integers are refused. Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
 | `string_split` | `string_split(s, sep)` (also `str_split`): the pieces of `s` between the occurrences of `sep`, found left to right without overlapping, a list of strings ([#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808)). Its characters (code points) for `sep = ''`, and `['']` for `s = ''`. NULL for a NULL `s`, and `[s]` for a NULL `sep`, so not strict; not NULL otherwise. Lean evaluates it. | ✓ on DuckDB; other engines refuse it until #271 |
-| Casts from VARCHAR | `varchar_bigint`, `varchar_double`, `varchar_boolean`, `varchar_date` and `varchar_timestamp` are `CAST(s AS …)` of a string: strict, raising on a string DuckDB rejects, and not NULL. Their `try_` rows are `TRY_CAST`: strict, never raising, NULL there (#806, `duckdb-cast-varchar`). Lean evaluates them on a subset (`SubstraitLean/VarcharCasts.lean`): numbers without `_`, hexadecimal or binary, ISO dates of the years 1 to 9999 and times to 23:59:59, and the strings DuckDB rejects for sure; elsewhere it refuses to print rows. | ✓ on DuckDB; other engines refuse them until #271 |
+| Casts from VARCHAR | `varchar_bigint`, `varchar_double`, `varchar_boolean`, `varchar_date` and `varchar_timestamp` are `CAST(s AS …)` of a string: strict, raising on a string DuckDB rejects, and not NULL. Their `try_` rows are `TRY_CAST`: strict, never raising, NULL there (#806, `duckdb-cast-varchar`). Lean evaluates them on a subset (`core/Sverify/Core/VarcharCasts.lean`): numbers without `_`, hexadecimal or binary, ISO dates of the years 1 to 9999 and times to 23:59:59, and the strings DuckDB rejects for sure; elsewhere it refuses to print rows. | ✓ on DuckDB; other engines refuse them until #271 |
 | `age` | `age(a, b)` is an INTERVAL of months, days and microseconds, which the model lacks; `age(ts)` reads the clock. Refused (#328). | Refused |
 | `entropy` | `entropy(x)` of any type: the Shannon entropy, in bits, of the counts of the distinct values; `0.0` without values. Not NULL and at least `+0.0`. Lean does not evaluate it, so `substrait-check` refuses to print rows of a plan with it. | ✓ on DuckDB; other engines refuse it until #271 |
 
@@ -579,7 +579,7 @@ engine differs ([the engines](stability.md#engines)).
   Lean's plans everywhere; a `repeat` of more than 2³¹ - 1 bytes is an error. `UPPER`, `LOWER`,
   `ILIKE`, regular expressions, `md5` and `sha256` are black boxes (`opaque`): no proof
   depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
-  regular expressions with RE2's leftmost-first matching ([Regex.lean](../SubstraitLean/Regex.lean))
+  regular expressions with RE2's leftmost-first matching ([Regex.lean](../core/Sverify/Core/Regex.lean))
   where RE2 and Rust agree, checked against DuckDB by `python/tests/test_regex.py`.
   `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error
   (for `regexp_match`) or refused (for `regexp_extract` and `regexp_replace`) unless
@@ -587,7 +587,7 @@ engine differs ([the engines](stability.md#engines)).
   tested to compile in both.
 * Elementary functions follow Substrait, with errors outside their domains.
   `sqrt`, `exp`, `ln`, `log10`, `log2`, `logb`, the trigonometric functions and
-  `atan2` are computed with C's libm ([Numeric.lean](../SubstraitLean/Numeric.lean)), and
+  `atan2` are computed with C's libm ([Numeric.lean](../core/Sverify/Core/Numeric.lean)), and
   contracts treat each result as "some double". Outside a function's domain (`sqrt` of a
   negative, the logarithm of zero or a negative, `asin` and `acos` outside `[-1, 1]`,
   `atan2(0, 0)`, `logb` to a base that is not positive or is 1) the result is an error,

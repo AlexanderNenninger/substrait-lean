@@ -14,7 +14,7 @@ namespace Substrait
 
 /-- A value, tagged by its kind (#923): a function applied to a value of
 the wrong kind is a non-matching pattern. Doubles are their codes
-(`SubstraitLean/Float.lean`), dates days since 1970-01-01, timestamps
+(`core/Sverify/Core/Float.lean`), dates days since 1970-01-01, timestamps
 (`ts`, with or without a time zone) and times of day (`tod`) microseconds,
 decimals their unscaled integer at their scale. A struct is its fields in
 order. -/
@@ -170,7 +170,7 @@ theorem Value.num?_null : Value.null.num? = none := rfl
 /-! ## Column kinds
 
 Doubles, timestamps and dates all become integers in the model (see
-`SubstraitLean/Float.lean`); the parser and the writer track which is which,
+`core/Sverify/Core/Float.lean`); the parser and the writer track which is which,
 and `Rel.inferKinds` (`SubstraitLean/Kinds.lean`) checks it. -/
 
 inductive Kind where

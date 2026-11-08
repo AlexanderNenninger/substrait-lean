@@ -1,8 +1,8 @@
-import SubstraitLean.Value
-import SubstraitLean.Float
-import SubstraitLean.Time
-import SubstraitLean.Reflect
-import SubstraitLean.VarcharCasts
+import Sverify.Core.Value
+import Sverify.Core.Float
+import Sverify.Core.Time
+import Sverify.Core.Reflect
+import Sverify.Core.VarcharCasts
 
 /-!
 # Black-box functions (#325)
@@ -54,7 +54,7 @@ namespace Substrait.BlackBox
 def blackBoxUrn : String := "extension:io.sverify:black_box"
 
 /-- The types of a black box's arguments and result. Doubles are their codes
-(`SubstraitLean/Float.lean`). -/
+(`core/Sverify/Core/Float.lean`). -/
 inductive Ty where
   | int | double | str | bool
   /-- A date, as days since 1970-01-01. -/
@@ -172,7 +172,7 @@ structure Aggregate where
 A row per function. `CLAUDE.md` ("Adding functions") says what else a new
 row needs: its lift rule and its SQL, both from the row's name. -/
 
-/-- The code of `1.0` (`SubstraitLean/Float.lean`): `2 · 2¹⁰⁷⁴ + 1`. -/
+/-- The code of `1.0` (`core/Sverify/Core/Float.lean`): `2 · 2¹⁰⁷⁴ + 1`. -/
 def codeOne : Int := 2 * 2 ^ 1074 + 1
 
 #guard codeOne == FloatCode.ofFloat 1.0 && -codeOne == FloatCode.ofFloat (-1.0)
@@ -198,7 +198,7 @@ def scalars : List Scalar := [
     sample := .int 0 },
   -- `signbit(x)`: the sign bit of a double (#328), TRUE for `-0.0` and a
   -- negative NaN, which the model's codes do not tell from `+0.0` and NaN
-  -- (`SubstraitLean/Float.lean`). Lean evaluates it elsewhere.
+  -- (`core/Sverify/Core/Float.lean`). Lean evaluates it elsewhere.
   { name := "signbit", args := [.double], result := .bool, laws := [.nonNull],
     sample := .bool false },
   -- `yearweek(d)`: the ISO year times 100 plus the ISO week, the week
@@ -249,7 +249,7 @@ def scalars : List Scalar := [
   -- (a BIGINT rounds half away from zero), `inf` and `nan`, `true`/`t`/`yes`/
   -- `y`/`1`, ISO dates and times. `CAST` raises on a string DuckDB rejects,
   -- so it is not NULL for a string; `TRY_CAST` is NULL there. Lean evaluates
-  -- a subset (`SubstraitLean/VarcharCasts.lean`).
+  -- a subset (`core/Sverify/Core/VarcharCasts.lean`).
   { name := "varchar_bigint", args := [.str], result := .int, raises := .sometimes,
     laws := [.nonNull], sample := .int 0 },
   { name := "try_varchar_bigint", args := [.str], result := .int, sample := .int 0 },

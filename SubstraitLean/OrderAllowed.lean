@@ -1,4 +1,4 @@
-import SubstraitLean.Forall2
+import Sverify.Core.Forall2
 import SubstraitLean.Rel
 
 /-!

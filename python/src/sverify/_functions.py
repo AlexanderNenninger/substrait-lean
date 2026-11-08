@@ -249,7 +249,7 @@ def _str(name: str, anchor: int, group: str, args: int, result: ResultKind, op: 
 
 #: The rows, in `Functions.lean`'s order within each area.
 FUNCTIONS: tuple[Fn, ...] = (
-    # Elementary functions of doubles (`FMath`, `SubstraitLean/Numeric.lean`).
+    # Elementary functions of doubles (`FMath`, `core/Sverify/Core/Numeric.lean`).
     _fp("sqrt", 100, "fp.elem", "Sqrt", "Sqrt"),
     _fp("exp", 101, "fp.elem", "Exp", "Exp"),
     _fp("ln", 102, "fp.log", "Ln", "Ln"),
@@ -276,7 +276,7 @@ FUNCTIONS: tuple[Fn, ...] = (
          "shiftleft({0}, CAST({1} AS INT))", ""),
     _bit("bitwise_shift_right", 117, "BitwiseRightShift", "({0} >> {1})",
          "shiftright({0}, CAST({1} AS INT))", ""),
-    # Strings (`SubstraitLean/Text.lean`): characters are Unicode scalar values.
+    # Strings (`core/Sverify/Core/Text.lean`): characters are Unicode scalar values.
     # Upper and lower case are a black box, Rust's `str::to_uppercase`;
     # engines map case with their own tables (`'ß'`).
     _str("upper", 20, "str.case", 1, "str", expr=True, ascii="UPPER", sql={"": "UPPER({0})"},

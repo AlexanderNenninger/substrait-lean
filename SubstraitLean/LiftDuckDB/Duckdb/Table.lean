@@ -1,5 +1,5 @@
 import SubstraitLean.LiftSearch
-import SubstraitLean.Numeric
+import Sverify.Core.Numeric
 import Init.Data.Option.Basic
 import SubstraitLean.Expr
 import SubstraitLean.LiftDuckDB.Duckdb.Arith
