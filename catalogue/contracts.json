@@ -556,9 +556,9 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -568,7 +568,7 @@
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -581,7 +581,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -598,7 +598,6 @@
         "causes": [
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -608,7 +607,6 @@
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -621,7 +619,6 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -636,9 +633,9 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
           "row tested: cmp's zero_sign"
@@ -648,8 +645,8 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
@@ -662,7 +659,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding",
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order"
         ],
