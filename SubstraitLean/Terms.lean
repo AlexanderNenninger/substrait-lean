@@ -5,9 +5,8 @@ import SubstraitLean.Incremental
 
 Every operator in the incremental fragment distributes over `UNION ALL`, so
 a plan is equivalent to the concatenation of union-free plans (`Rel.terms`).
-Engines can then run each term separately. DataFusion's Substrait consumer
-needs this for delta plans: it loses table qualifiers at a union, and the
-duplicate column names then break a later join.
+An engine could run each term separately; the checker runs a delta plan
+whole, with its unions (`Rel.weighted_eval` covers them).
 -/
 
 namespace Substrait
