@@ -33,7 +33,7 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
-from sverify import _duckdb, _stages
+from sverify import _duckdb, _engines, _stages
 from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
     _CHECKER,
     _REBUILD,
@@ -54,11 +54,11 @@ Engine = Literal["duckdb", "polars", "spark"]
 Polars; `sverify.engines.run` and `Node.refresh` also run them on Spark.
 `"datafusion"` is accepted where a `Connection` runs plans: an optional
 engine, outside the 1.x promise (`docs/stability.md`)."""
-ENGINES: tuple[Engine, ...] = ("duckdb", "polars")
+ENGINES: tuple[Engine, ...] = _engines.LOCAL  # type: ignore[assignment] - names of `Engine`
 """The engines a `Connection` runs plans on: `"duckdb"` (the default) and
 `"polars"`. Loop over it to run a plan on each, as the tests do.
 `sverify.engines.run` also takes `"spark"` or a Spark session."""
-_LOCAL_ENGINES = (*ENGINES, "datafusion")
+_LOCAL_ENGINES = _engines.ACCEPTED
 """The engines a `Connection` accepts: `ENGINES` and DataFusion, an optional
 engine."""
 
