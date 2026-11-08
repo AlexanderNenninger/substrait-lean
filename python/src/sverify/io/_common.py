@@ -11,6 +11,7 @@ import copy
 import json
 import math
 import re
+import urllib.parse
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -58,6 +59,39 @@ def _bounded(t: pa.DataType) -> bool:
         or pa.types.is_date32(t)
         or (pa.types.is_timestamp(t) and t.unit == "us" and t.tz is None)
     )
+
+
+_CONTAINER_SCHEMES = frozenset({"abfs", "abfss", "az", "wasb", "wasbs"})
+"""Schemes whose user part names the container
+(`abfss://container@account.dfs.core.windows.net/path`): `public_uri` keeps
+it and drops a password."""
+
+
+def public_uri(uri: str) -> str:
+    """`uri` as sverify records it: the scheme, host, port and path, without
+    userinfo (`user:password@`), query string or fragment (#887). A path, an
+    Iceberg identifier or any other text without `://` comes back as it is.
+
+    Every URI that goes into a record, a report, an export or an event goes
+    through this: the sink's `location`, `started`, `credentials[].location`,
+    the ODCS `physicalName` and the OpenLineage namespace."""
+    if "://" not in uri:
+        return uri
+    parts = urllib.parse.urlsplit(uri)
+    user, at, host = parts.netloc.rpartition("@")
+    if at and parts.scheme.lower() in _CONTAINER_SCHEMES:
+        host = f"{user.partition(':')[0]}@{host}"
+    return f"{parts.scheme}://{host}{parts.path}"
+
+
+def has_userinfo(uri: str) -> bool:
+    """Whether `uri` carries credentials in its userinfo: `user:password@`,
+    or a bare `user@` outside the container schemes `public_uri` keeps."""
+    if "://" not in uri:
+        return False
+    parts = urllib.parse.urlsplit(uri)
+    user, at, _ = parts.netloc.rpartition("@")
+    return bool(at) and (":" in user or parts.scheme.lower() not in _CONTAINER_SCHEMES)
 
 
 def q(name: str) -> str:

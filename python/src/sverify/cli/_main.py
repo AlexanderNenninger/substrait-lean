@@ -450,7 +450,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 "held": s.held,
                 "quarantined": s.quarantined,
                 "quarantine_table": s.quarantine_table,
-                "quarantine": [q.to_dict() for q in s.quarantine],
+                "quarantine": [q.to_dict(examples=args.examples) for q in s.quarantine],
                 "route": str(s.route) if s.route is not None else None,
                 "write": None
                 if w is None
@@ -468,10 +468,10 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     result["memory_limit"] = args.memory_limit
     if code != OK:
         result["status"] = outcome
-    result["alert"] = done.alert()
+    alert = done.alert(rows=args.examples)
+    result["alert"] = alert
 
     def human() -> str:
-        alert = done.alert()
         return done.summary() + ("" if alert is None else "\n\n" + alert)
 
     return _emit(args, code, result, human)
@@ -562,6 +562,12 @@ def parser() -> argparse.ArgumentParser:
         metavar="TARGET",
         help="send OpenLineage run events: to a file (JSON lines), 'console', a URL "
         "(Marquez), or without TARGET as openlineage.yml and OPENLINEAGE_* say",
+    )
+    r.add_argument(
+        "--examples",
+        action="store_true",
+        help="show the rows that broke a condition: up to 10 per source in the JSON's "
+        "quarantine examples, and 5 in the alert (rows of your data; off by default)",
     )
     r.set_defaults(run=cmd_refresh, full=False)
     e = sub.add_parser("explain", parents=[common], help="what a [code] of check's output means")

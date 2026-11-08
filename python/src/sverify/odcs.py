@@ -45,6 +45,8 @@ from typing import TYPE_CHECKING, Any
 
 import sqlglot as sg
 
+from sverify.io._common import public_uri
+
 if TYPE_CHECKING:
     import ibis
 
@@ -381,7 +383,7 @@ def export(
         "properties": properties,
     }
     if (location := getattr(getattr(node, "sink", None), "location", None)) is not None:
-        obj["physicalName"] = str(location)
+        obj["physicalName"] = public_uri(str(location))
     if description:
         obj["description"] = description
     if rules[None]:

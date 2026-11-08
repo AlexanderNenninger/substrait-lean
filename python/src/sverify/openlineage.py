@@ -59,6 +59,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sverify.io._common import public_uri
 from sverify.io._secrets import Secret
 
 if TYPE_CHECKING:
@@ -151,8 +152,8 @@ def dataset_id(obj: Any) -> tuple[str, str]:
     name = str(getattr(obj, "name", "unknown"))
     if not uri or uri == name:
         return "sverify", name
-    uri = str(uri)
-    parsed = urllib.parse.urlparse(uri)
+    uri = public_uri(str(uri))
+    parsed = urllib.parse.urlsplit(uri)
     if parsed.scheme in ("", "file") or len(parsed.scheme) == 1:  # a path, or C:\
         path = parsed.path if parsed.scheme == "file" else uri
         return "file", str(Path(path).expanduser().resolve())
@@ -490,6 +491,12 @@ class Lineage:
         plan: Whether the `sverify_contract` facet carries the verified plan
             exported to Substrait, which a downstream job needs to prove the
             contract again. Default True.
+        trace: Whether the FAIL event of a refresh that raised carries the
+            Python stack trace, with the paths and source lines of your
+            machine. Default False: the message names the exception's type,
+            and gives its text only for sverify's own errors, since another
+            library's text may name a bucket, an endpoint or a catalog URI
+            (#887).
 
     `OPENLINEAGE_DISABLED=true` turns every target off. A target that fails
     warns (`LineageWarning`) and the refresh goes on.
@@ -503,9 +510,10 @@ class Lineage:
         api_key: str | Secret | None = None,
         timeout: float = 5.0,
         plan: bool = True,
+        trace: bool = False,
     ):
         self.namespace = namespace or os.environ.get("OPENLINEAGE_NAMESPACE") or "default"
-        self.plan = plan
+        self.plan, self.trace = plan, trace
         self.disabled = os.environ.get("OPENLINEAGE_DISABLED", "").lower() in ("1", "true")
         self.target = target
         # Per node: the parts of its events that only change with its plan
@@ -527,10 +535,7 @@ class Lineage:
             self._transport = _File(target)
 
     def __repr__(self) -> str:
-        target = self.target
-        if isinstance(target, str) and "@" in target.partition("://")[2].partition("/")[0]:
-            scheme, _, rest = target.partition("://")
-            target = f"{scheme}://***@{rest.partition('@')[2]}"
+        target = public_uri(self.target) if isinstance(self.target, str) else self.target
         return f"Lineage({target!r}, namespace={self.namespace!r})"
 
     def emit(self, event: Mapping[str, Any]) -> None:
@@ -717,8 +722,12 @@ class _Runs:
         raised (and for every node if nothing ran), ABORT for the rest."""
         import traceback
 
-        message = f"{type(error).__name__}: {error}"
-        trace = "".join(traceback.format_exception(error))
+        from sverify._unsupported import SverifyError
+
+        message = type(error).__name__
+        if isinstance(error, SverifyError):
+            message += f": {error}"
+        trace = "".join(traceback.format_exception(error)) if self.lineage.trace else None
         nothing_ran = not self.started
         for n in self.order:
             if id(n) in self.ended:

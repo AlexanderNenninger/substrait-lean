@@ -836,6 +836,9 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 
 With 5, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
+`--examples` adds the rows that broke a condition to both, rows of your
+data that otherwise stay out of CI artifacts and issues
+([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
 
 `--timeout` (default 30 s, or `SVERIFY_TIMEOUT`; 0 turns it off) bounds
 proof, planning and checking. A refresh moving data has no time limit:
@@ -1177,9 +1180,15 @@ explains. Its format is stable within 1.x ([stability](stability.md)).
 `Refresh.outcome` is `"ok"`, `"quarantined"` (rows are set aside) or
 `"held"` (a node skipped a batch), for a job's exit code. `Refresh.alert()`
 gives a short Markdown text for whoever is on call: what broke, how many
-rows, a few examples, where they are, and what to do. `Refresh.to_json()`
+rows, where they are, and what to do. `Refresh.to_json()`
 gives the whole refresh as JSON
 ([`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json)).
+Both leave the rows themselves out, since they go to CI artifacts and
+issues that more people read than read the data: `alert(rows=True)` shows
+five as a table, `to_json(examples=True)` writes up to ten per source in
+`examples`, and `PreconditionError.rows` and `QuarantineReport.examples`
+hold them in the process
+([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
 
 A change to the schema that a contract cannot follow raises `SchemaError`,
 and its message names the column, the version and the contract:
@@ -1428,7 +1437,14 @@ reading or writing (`StageRefresh.credentials`, `"credentials"` in
 `sverify check` prints them, warns with `[scope]` when a sink lies outside
 what its credential may write (`Storage(writes=[...])` or the
 configuration's `writes`), and with `[inline_credentials]` when options
-hold values.
+hold values or a URI holds them in its userinfo (`s3://key:secret@bucket`).
+Every URI sverify records, reports, exports or sends is written without
+userinfo, query string or fragment: a sink's `location`, `started`,
+`credentials[].location`, the ODCS `physicalName` and the OpenLineage
+namespace
+([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
+A source's cursor (`Source.restore`) is stored in clear in the sink's
+table, so it must not be a credential.
 
 ### OpenLineage
 
@@ -1504,6 +1520,12 @@ the data as `dataQualityAssertions`, and two more facets:
   and class, the outcome, quarantined rows, and the verified plan exported
   to Substrait ([Exporting to Substrait](#exporting-to-substrait);
   `Lineage(plan=False)` leaves it out).
+
+A refresh that raises sends FAIL with the exception's type, and its text
+only for sverify's own errors (`sverify.errors.SverifyError`): another
+library's message may name a bucket, an endpoint or a catalog URI.
+`Lineage(trace=True)` adds the Python stack trace
+([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
 
 Datasets are named by OpenLineage's conventions: a Delta table in object
 storage is `s3://bucket` and its path, a local one `file` and its absolute
