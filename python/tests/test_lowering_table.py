@@ -88,3 +88,21 @@ def test_guard_free_sql_has_no_errors():
         guards=False,
     )
     assert sql is not None and "error(" not in sql and "HUGEINT" in sql
+
+
+def _raise_arms(t, chain: bool) -> list[bool]:
+    """Whether each `raise` arm of a template sits on its outer `ELSE` chain."""
+    if "if" in t:
+        here = [chain] if t["then"].get("fn") == "raise" else []
+        return (here + _raise_arms(t["if"], False) + _raise_arms(t["then"], False)
+                + _raise_arms(t["else"], chain))  # fmt: skip
+    return [a for x in t.get("args", []) for a in _raise_arms(x, False)]
+
+
+def test_every_guard_is_on_the_outer_else_chain():
+    # `render(..., guards=False)` leaves out every `raise` arm; Lean's
+    # `Expr.keepGuards` (none kept), which `Rel.duckdb_guardFree_sound`
+    # proves sound, leaves out those of the outer `ELSE` chain. They are the
+    # same SQL while every guard sits there.
+    for fn, t in lowering.table().items():
+        assert all(_raise_arms(t, True)), fn

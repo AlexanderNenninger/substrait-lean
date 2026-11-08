@@ -1339,13 +1339,10 @@ def mkCoreCall? : String → List Expr → Option (J Expr)
   | "gte", [a, b] => some <| pure (.un .not (.bin .lt a b))
   -- There is one NaN, equal to itself.
   | "is_nan", [a] | "isnan", [a] => some <| pure (.bin .eq a (.lit (.float FloatCode.nan)))
-  -- `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
-  -- zero: the writer's `canonical`, read back as it was.
+  -- `nanvl(x, NaN)` is `x`: the model has one NaN.
   | "nanvl", [a, .lit (.float c)] => some <|
     if c != FloatCode.nan then throw "nanvl is only supported with NaN as its fallback"
-    else match a with
-      | .bin .fadd x (.lit (.float 0)) => pure x
-      | _ => pure a
+    else pure a
   -- `and` / `or` are variadic in Substrait.
   | "and", a :: as => some <| pure (as.foldl (.bin .and) a)
   | "or", a :: as => some <| pure (as.foldl (.bin .or) a)

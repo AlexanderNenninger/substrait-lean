@@ -36,5 +36,6 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
   hand_written LoweringSearch.duckdbSchemas
   cache loweringCache
   writing "SubstraitLean/LoweringDuckDB/On"
+  proving_guards
 
 end Substrait

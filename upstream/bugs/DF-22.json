@@ -1,0 +1,33 @@
+{
+  "id": "DF-22",
+  "status": "fixed upstream",
+  "fixed_in": "55.0.0",
+  "status_note": "Fixed upstream: on 55.0.0 `DataFrame.to_arrow_table()` concatenates the batches.",
+  "summary": "A `UNION ALL` gives record batches whose schemas differ in nullability (and, for a recursive CTE, in column names), and `DataFrame.to_arrow_table()` fails to concatenate them: `Schema at index 1 was different`.",
+  "repro": "`ctx.sql('select 1 as a union all select null').to_arrow_table()` fails on 51.0.0 (`a: int64 not null vs a: int64`) and works on 55.0.0.",
+  "handling": "`sverify.engine.collect` reconciles the batches' schemas (`test_union_batches_differ_in_nullability`).",
+  "files": [
+    "python/src/sverify/engine.py",
+    "python/tests/test_datafusion_quirks.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "datafusion-python repro; 51.0.0 fails, 55.0.0 works"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "datafusion-python repro; 51.0.0 fails, 55.0.0 works"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}
