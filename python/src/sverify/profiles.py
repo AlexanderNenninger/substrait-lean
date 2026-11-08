@@ -1,30 +1,44 @@
-"""Engine profiles from outside sverify: a package registers one under the
-entry-point group `sverify.profiles`.
+"""Engines, built in or from outside sverify: a package registers one under
+the entry-point group `sverify.profiles`, and sverify finds engines there and
+nowhere else (#1189).
 
-A profile from outside comes in two parts. Its Lean package requires
-substrait-lean, states its `EngineProfile` (choices, observation rows, the
-theorem its translation rests on), checks it with `#check_engine_profiles`,
-and builds a checker over `builtinEngines ++ [its profile]`
-(`SubstraitCheckExamples/DummyEngine.lean` shows how). Its Python package
-names that checker and what the routes need, as a `ProfilePlugin`:
+An engine is one `ProfilePlugin`. sverify's own engines register theirs in
+sverify's metadata (`sverify._builtin`), the same way a package from outside
+does:
 
 ```toml
 [project.entry-points."sverify.profiles"]
 myengine = "my_package:PROFILE"
 ```
 
-With the package installed, `verify(semantics="myengine")` checks under the
-profile, and `sverify.routes.choose` routes plans to the engine with their
-class, as for the engines sverify ships with. `$SVERIFY_CHECKER` still takes
-precedence over a plugin's checker.
+Every field but `engine` is optional, and each says one thing the engine
+brings:
+
+- a profile: `versions`, `translation`, `settings`, `shim_text`,
+  `installed_version`, `restore`, `checker`. A profile from outside has a
+  Lean package that requires substrait-lean, states its `EngineProfile`,
+  checks it with `#check_engine_profiles` and builds a checker over
+  `builtinEngines ++ [its profile]` (`SubstraitCheckExamples/DummyEngine.lean`);
+  its plugin names that checker. With it installed, `verify(semantics=...)`
+  checks under the profile and `sverify.routes.choose` routes plans to the
+  engine with their class. `$SVERIFY_CHECKER` still takes precedence over a
+  plugin's checker.
+- a runner: `runner`, `local`, `optional`, `session`, `modules`,
+  `read_settings`. `sverify.engines.run` runs plans with it, and a
+  `Connection` takes the engine when it is `local`.
+- a SQL dialect: `dialect`, for `to_sql`.
+
+Several entry points may describe one engine; they are merged field by
+field, so a package can add a profile to an engine whose dialect another
+ships. Two that set one field differently warn, and the first one wins.
 """
 
 from __future__ import annotations
 
 import functools
 import warnings
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import MISSING, dataclass, field, fields, replace
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any, Literal
@@ -32,6 +46,9 @@ from typing import Any, Literal
 from sverify._unsupported import SverifyWarning
 
 __all__ = ["ProfilePlugin", "Setting", "plugins"]
+
+#: A plan runner: `runner(con, plan_json, session, keep=, finite=, tie_free=)`.
+Runner = Callable[..., Any]
 
 Action = Literal["refuse", "warn"]
 
@@ -64,15 +81,20 @@ GROUP = "sverify.profiles"
 
 @dataclass(frozen=True)
 class ProfilePlugin:
-    """An engine profile from outside sverify, as the routes need it."""
+    """An engine, as sverify needs it: its profile, its runner and its SQL
+    dialect, each optional. This is the plugin interface; sverify's own
+    engines use it as a package from outside does."""
 
     engine: str
     """The engine's name, the profile's in the checker's tables."""
-    versions: tuple[str, ...]
-    """The engine versions its facts were probed at (D14)."""
-    translation: str
+    versions: tuple[str, ...] = ()
+    """The engine versions its facts were probed at (D14). Empty for a
+    profile the checker carries the versions of (sverify's own) or an
+    engine without one."""
+    translation: str = ""
     """The translation from the reference to the engine, with what makes it
-    sound, as a route line names it."""
+    sound, as a route line names it. Empty: no translation of its own, so a
+    route takes the reference's."""
     checker: str | Path | None = None
     """A `substrait-check` built over the built-in profiles and this one;
     None to use sverify's own."""
@@ -84,6 +106,51 @@ class ProfilePlugin:
     """The engine version this process runs, where it can tell."""
     restore: Callable[[Setting], str] | None = None
     """How the user puts a setting back."""
+    runner: Runner | None = None
+    """Runs a plan in Lean's written form over a `Connection`'s tables:
+    `runner(con, plan_json, session, *, keep, finite, tie_free)`, with
+    `session` the object `session` recognised (None: the engine's own).
+    None: `sverify.engines.run` does not run on the engine."""
+    local: bool = False
+    """A `Connection` takes the engine as the one it runs plans on."""
+    optional: bool = False
+    """Outside the 1.x promise: `sverify.engines.ENGINES` leaves it out
+    (`docs/stability.md`)."""
+    session: Callable[[Any], bool] | None = None
+    """Recognises a session of the engine passed as `engine=` in place of
+    its name (a Spark session)."""
+    modules: tuple[str, ...] = ()
+    """The modules a run on it needs (`sverify.testing.installed_engines`)."""
+    read_settings: Callable[[Sequence[str], Any], Mapping[str, Any]] | None = None
+    """The values of the named settings in `session` (None: the session the
+    next run uses); empty where it cannot tell yet. None: the settings are
+    read where the engine runs."""
+    dialect: Callable[[], Any] | None = None
+    """The `sverify.sql.Dialect` that `to_sql` writes for it."""
+
+
+def _merged(found: list[ProfilePlugin]) -> ProfilePlugin:
+    """One engine's entries, merged field by field: a field takes the first
+    value an entry sets; a second, different one warns."""
+    out = found[0]
+    for other in found[1:]:
+        changes = {}
+        for f in fields(ProfilePlugin)[1:]:  # `engine` is theirs in common
+            mine, theirs = getattr(out, f.name), getattr(other, f.name)
+            default = f.default if f.default is not MISSING else f.default_factory()  # type: ignore[misc]
+            if theirs in (default, mine):
+                continue
+            if mine == default:
+                changes[f.name] = theirs
+            else:
+                warnings.warn(
+                    f"two {GROUP} entry points set {out.engine}'s {f.name}; "
+                    "the first one's is kept",
+                    ProfilePluginWarning,
+                    stacklevel=3,
+                )
+        out = replace(out, **changes)
+    return out
 
 
 class ProfilePluginWarning(SverifyWarning):
@@ -92,9 +159,10 @@ class ProfilePluginWarning(SverifyWarning):
 
 @functools.cache
 def plugins() -> dict[str, ProfilePlugin]:
-    """The installed profiles from outside sverify, by engine. An entry point
-    that fails to load, or loads no `ProfilePlugin`, warns and is skipped."""
-    out: dict[str, ProfilePlugin] = {}
+    """The installed engines, by name, sverify's own among them. An entry
+    point that fails to load, or loads no `ProfilePlugin`, warns and is
+    skipped; entries of one engine are merged."""
+    found: dict[str, list[ProfilePlugin]] = {}
     for ep in entry_points(group=GROUP):
         try:
             plugin = ep.load()
@@ -112,8 +180,16 @@ def plugins() -> dict[str, ProfilePlugin]:
                 stacklevel=2,
             )
             continue
-        out[plugin.engine] = plugin
-    return out
+        found.setdefault(plugin.engine, []).append(plugin)
+    return {e: _merged(ps) for e, ps in sorted(found.items())}
+
+
+def find(engine: Any) -> ProfilePlugin | None:
+    """The installed engine `engine` names: by name (any case), or a session
+    an engine recognises (`ProfilePlugin.session`)."""
+    if isinstance(engine, str):
+        return plugins().get(engine.lower())
+    return next((p for p in plugins().values() if p.session and p.session(engine)), None)
 
 
 def checker() -> Path | None:

@@ -170,9 +170,12 @@ class Connection:
     """
 
     def __init__(self, engine: Engine = "duckdb"):
-        if engine not in _LOCAL_ENGINES:
+        from sverify import profiles
+
+        plugin = profiles.find(engine)
+        if plugin is None or not plugin.local:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
-        self.engine: Engine = engine
+        self.engine: Engine = plugin.engine  # type: ignore[assignment] - an installed engine's name
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
         self._arrow: MutableMapping[str, pa.Table] = _Arrow(self)
@@ -709,45 +712,16 @@ def run_plan(
             assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
         ```
     """
+    from sverify import profiles
+
     engine = engine or con.engine
-    if engine == "spark" or not isinstance(engine, str):
-        # Spark: the local session, or the session given as the engine.
-        from sverify import spark_engine
-
-        plan = json.loads(plan_json)
-        # Spark's temporary views take plain names, not the delta plans' `t$delta`.
-        names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
-        _rename_tables(plan, names)
-        tables = {alias: con._arrow[t] for t, alias in names.items()}
-        return spark_engine.run(
-            plan,
-            tables,
-            None if engine == "spark" else engine,
-            deterministic=tie_free,
-            finite=finite,
-        )
-    if engine == "datafusion":
-        from sverify.datafusion_engine import datafusion_plan
-
-        return run_substrait_json(con, datafusion_plan(plan_json))
-    read = read_tables(json.loads(plan_json))
-    if engine == "duckdb":
-        from sverify import duckdb_engine
-
-        # DuckDB reads `Scan` and `Resident` tables where they are.
-        tables = {t: con.get(t) for t in read}
-        if keep:
-            return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
-        return duckdb_engine.run(plan_json, tables, finite=finite)
-    tables = {t: con._arrow[t] for t in read}
-    if engine == "polars":
-        from sverify import polars_engine
-
-        guards = polars_engine.ALL_GUARDS - (
-            frozenset() if finite else {polars_engine.InfiniteResult.issue}
-        )
-        return polars_engine.run(plan_json, tables, guards=guards)
-    raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+    plugin = profiles.find(engine)
+    if plugin is None or plugin.runner is None:
+        raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+    # A session of the caller's (Spark's) runs the plan there; a name, on the
+    # engine's own.
+    session = None if isinstance(engine, str) else engine
+    return plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
 
 
 def _polars_guard_free(con: Connection, plan_json: str, finite: bool) -> pa.Table:

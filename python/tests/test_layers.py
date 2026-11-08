@@ -50,7 +50,7 @@ LAYERS: list[tuple[str, list[str]]] = [
         "writers and engines",
         ["sql", "duckdb_engine", "polars_engine", "spark_engine", "datafusion_engine"],
     ),
-    ("checker", ["engine", "_engine_settings"]),
+    ("checker", ["engine", "_engine_settings", "_builtin"]),
     ("conditions", ["observation", "counterexample", "conditions", "_quarantine"]),
     ("report", ["routes", "report", "report_json", "substrait_export", "_substrait_shims"]),
     ("transform", ["contracts"]),
