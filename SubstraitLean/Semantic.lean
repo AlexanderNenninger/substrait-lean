@@ -1,6 +1,6 @@
 import SubstraitLean.Keys
 import SubstraitLean.Check
-import SubstraitLean.Allowed
+import SubstraitLean.AllowedAnalysis
 
 /-!
 # Semantic rewrites from contracts

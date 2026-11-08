@@ -1,4 +1,4 @@
-import SubstraitLean.Safety
+import SubstraitLean.Issue
 import SubstraitLean.Options
 
 /-!

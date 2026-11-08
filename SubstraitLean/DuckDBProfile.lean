@@ -1,4 +1,4 @@
-import SubstraitLean.Profile
+import SubstraitLean.ProfileImpl
 import SubstraitLean.Knowledge
 
 /-!
