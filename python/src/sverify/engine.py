@@ -489,10 +489,10 @@ class NotIncrementalError(SverifyError):
 
 
 def delta_plans(plan_json: str) -> list[str]:
-    """Ask Lean for the weighted delta plans of a Substrait JSON plan; the
-    change to the view is the concatenation of their outputs.
+    """Ask Lean for the weighted delta plan of a Substrait JSON plan; its
+    output is the change to the view.
 
-    Each delta plan reads the view's input tables `t` at their old contents
+    The delta plan reads the view's input tables `t` at their old contents
     and their changes as tables `t$delta`, which have the columns of `t` and
     an extra `__weight` column (+1 for an inserted row, -1 for a deleted
     one). Its output has the view's columns and a weight column likewise.
@@ -502,7 +502,9 @@ def delta_plans(plan_json: str) -> list[str]:
             `sverify.engines.substrait_json` or a node's `plan` write it.
 
     Returns:
-        The delta plans, each a Substrait JSON plan in Lean's written form.
+        The delta plan, a Substrait JSON plan in Lean's written form, as a
+        one-item list. A checker older than 0.8 printed several plans whose
+        outputs add up to the change; callers concatenate the outputs.
 
     Raises:
         sverify.errors.NotIncrementalError: The plan has an operator without a

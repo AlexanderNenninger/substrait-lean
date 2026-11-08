@@ -1,1 +1,0 @@
-SELECT s1.`c0` AS `id`, s1.`c1` AS `__weight` FROM (SELECT s2.`c0` AS `c0`, s2.`c3` AS `c1` FROM (SELECT s3.`c0` AS `c0`, s3.`c1` AS `c1`, s3.`c2` AS `c2`, s3.`c3` AS `c3` FROM (SELECT `id` AS `c0`, `customer` AS `c1`, `amount` AS `c2`, `__weight` AS `c3` FROM `orders$delta`) AS s3 WHERE ((s3.`c2` < CAST(3 AS BIGINT)) IS TRUE)) AS s2) AS s1
