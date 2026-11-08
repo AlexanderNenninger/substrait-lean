@@ -1474,6 +1474,8 @@ _REPORT_INTERNAL = [
     "transfer",
     "epsilon",
     "rows_exact",
+    "margin_checks",
+    "margin_flags",
     "conditions",
     "dialect",
     "on_inferred",
