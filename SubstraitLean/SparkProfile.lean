@@ -114,7 +114,9 @@ def runUn : UnFn → Value → Outcome
   | .fneg, .float a =>
     -- `-NaN` flips the sign bit (spark-nan-sign); `fp.neg` has no `nan_kind`
     -- option that would state it (D34 scopes): open.
-    if FloatCode.isNanCode a then .error .raised else .ok (.float (FloatCode.negI a))
+    -- `-(-0.0)` is a code the reference's negation does not take: open too.
+    if FloatCode.isNanCode a || a == FloatCode.negZero then .error .raised
+    else .ok (.float (FloatCode.negI a))
   | .fmath .sqrt, .float a =>
     -- `sqrt(-0.0)` is not probed on Spark: open.
     if a = FloatCode.negZero then .error .raised
@@ -128,6 +130,50 @@ def runUn : UnFn → Value → Outcome
   | f, v => if coreUn f then Profile.reference.un f v else .error .raised
 
 end Spark
+
+/-! IEEE's operations never give the negative NaN: theirs is the NaN code. -/
+
+theorem Spark.special_ne_negNan : FloatCode.nan ≠ FloatCode.negNan ∧
+    FloatCode.posInf ≠ FloatCode.negNan ∧ FloatCode.negInf ≠ FloatCode.negNan ∧
+    (0 : Int) ≠ FloatCode.negNan ∧ FloatCode.negZero ≠ FloatCode.negNan := by
+  have := fp64.nan_eq; have := fp64.negNan_eq; have := fp64.posInf_eq; have := fp64.negInf_eq
+  have := fp64.negZero_eq
+  simp only [FloatCode.nan, FloatCode.negNan, FloatCode.posInf, FloatCode.negInf, FloatCode.negZero]
+  omega
+
+theorem Spark.rnd_ne_negNan (v : Int) (n : Nat) : FloatCode.rnd v n ≠ FloatCode.negNan := by
+  have hr := FloatCode.isRef_ofExactDiv v n
+  simp only [FloatCode.rnd]
+  split
+  · exact Spark.special_ne_negNan.2.2.2.2
+  · intro h; rw [h] at hr; exact fp64.not_isRef_negNan hr
+
+/-- The values IEEE's operations give, but `rnd`'s, are none of them the negative NaN. -/
+macro "spark_ne_negNan" : tactic => `(tactic| (
+  have sp := Spark.special_ne_negNan
+  repeat' split
+  all_goals first
+    | exact Spark.rnd_ne_negNan _ _
+    | (simp only [FloatCode.zeroOf, FloatCode.infOf]; split <;> simp [sp])
+    | (rename_i h; simp only [FloatCode.isInfCode, Bool.or_eq_true, beq_iff_eq] at h
+       rcases h with h | h <;> simp [h, sp])
+    | simp [sp]))
+
+theorem Spark.addI_ne_negNan (a b : Int) : FloatCode.addI a b ≠ FloatCode.negNan := by
+  simp only [FloatCode.addI]; spark_ne_negNan
+
+theorem Spark.mulI_ne_negNan (a b : Int) : FloatCode.mulI a b ≠ FloatCode.negNan := by
+  simp only [FloatCode.mulI]; spark_ne_negNan
+
+theorem Spark.divI_ne_negNan (a b : Int) : FloatCode.divI a b ≠ FloatCode.negNan := by
+  simp only [FloatCode.divI]; spark_ne_negNan
+
+/-- A code that is neither `-0.0` nor the negative NaN is its own canon. -/
+theorem Spark.canon_self {c : Int} (h0 : c ≠ FloatCode.negZero) (hn : c ≠ FloatCode.negNan) :
+    FloatCode.canon c = c := by
+  unfold FloatCode.canon FloatFormat.canon
+  simp only [FloatCode.negZero, FloatCode.negNan] at h0 hn
+  simp [h0, hn]
 
 /-- **What Spark computes**, as its facts record it (#271 S1): the profile a
 lowered plan runs under on Spark. -/

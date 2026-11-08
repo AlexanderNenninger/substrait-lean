@@ -539,6 +539,84 @@ theorem Profile.reference_okImpl : Profile.reference.okImpl = Impl.lean := by
   simp only [Profile.okImpl, Impl.lean]
   congr 1 <;> funext <;> simp only [hu, hb]
 
+/-- **What Spark computes is within its table** (D34 scopes): a double result
+is the reference's or a `-0.0` where the reference's is `0.0` (`zero_sign`),
+`sqrt` of a negative is NaN where the reference reports a domain error
+(`on_domain_error`), and every other value Spark gives is the reference's. -/
+theorem Profile.sparkRun_withinOk : Profile.sparkRun.WithinOk Profile.spark.table := by
+  have ieee : ∀ {f : BinFn} {a b r : Int},
+      extraAtB Profile.spark.table (.bin f) "zero_sign" = true →
+      f.apply (.float a) (.float b) = .float (FloatCode.canon r) → r ≠ FloatCode.negNan →
+      Value.float r = f.apply (.float a) (.float b) ∨
+        CallExtra Profile.spark.table (.bin f) [.float a, .float b] := by
+    intro f a b r hx happ hn
+    by_cases hz : r = FloatCode.negZero
+    · right
+      refine callExtra_of_at hx ?_
+      simp [optionScope, Functions.Ctor.result, happ, hz, Value.hasZero, Value.anyZero,
+        fp64.canon_negZero]
+    · left; rw [happ, Spark.canon_self hz hn]
+  refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
+  · simp only [Profile.sparkRun, Spark.runUn] at h
+    split at h
+    · rename_i a
+      split at h
+      · cases h
+      · rename_i hc
+        simp only [Bool.or_eq_true, beq_iff_eq, not_or] at hc
+        cases h
+        by_cases h0 : a = 0
+        · right
+          exact callExtra_of_at (o := "zero_sign") (by decide)
+            (by simp [optionScope, Value.anyZero, Value.hasZero, h0])
+        · left
+          simp [FloatCode.negI, h0, hc.2, UnFn.apply, FloatCode.neg]
+    · rename_i a
+      split at h
+      · cases h
+      · split at h
+        · cases h
+          right
+          exact callExtra_of_at (o := "on_domain_error") (by decide) (by
+            simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue,
+              FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, *])
+        · exact .inl (raiseIf_ok h)
+    · split at h
+      · cases h
+      · exact .inl (raiseIf_ok h)
+    · split at h
+      · exact .inl (raiseIf_ok h)
+      · cases h
+  · simp only [Profile.sparkRun, Spark.runBin] at h
+    split at h
+    · cases h; exact ieee (by decide) rfl (Spark.addI_ne_negNan _ _)
+    · cases h; exact ieee (by decide) rfl (Spark.addI_ne_negNan _ _)
+    · cases h; exact ieee (by decide) rfl (Spark.mulI_ne_negNan _ _)
+    · split at h
+      · cases h
+      · cases h; exact ieee (by decide) rfl (Spark.divI_ne_negNan _ _)
+    · rename_i a b
+      split at h
+      · cases h
+      · cases h
+        simp only [Spark.signedZero]
+        split
+        · rename_i hz
+          right
+          exact callExtra_of_at (o := "zero_sign") (by decide)
+            (by simp [optionScope, Functions.Ctor.result, BinFn.apply, hz.1, Value.hasZero,
+              Value.anyZero])
+        · exact .inl rfl
+    · split at h
+      · exact .inl (raiseIf_ok h)
+      · cases h
+    · split at h
+      · exact .inl (raiseIf_ok h)
+      · cases h
+    · split at h
+      · exact .inl (raiseIf_ok h)
+      · cases h
+
 /-- The reference. -/
 def Engine.reference : Engine where
   name := "reference"
