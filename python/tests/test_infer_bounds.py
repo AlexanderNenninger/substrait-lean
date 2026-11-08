@@ -210,7 +210,8 @@ def test_bound_inputs_are_checked_at_call():
     schema = ibis.schema({"id": "int64", "amount": "int64"})
     db.create("ok", schema, [(1, 7)])
     doubled(db.table("ok"))
-    assert [str(p) for p in doubled._last_preconditions][-1] == (
+    assert doubled.report is not None
+    assert [str(p) for p in doubled.report.preconditions][-1] == (
         "orders: (_.amount < 2**62) (inferred, checked on data)"
     )
     db.create("big", schema, [(1, 2**62)])
@@ -235,7 +236,7 @@ def test_an_eager_table_gets_the_inferred_bound():
     report = mutated.report
     assert report is not None and report.proved
     assert inferred(report) == ["(_.amount < 2**62)"]
-    assert discharged(mutated._last_preconditions)[("orders", "(_.amount < 2**62)")] == ON_DATA
+    assert discharged(report.preconditions)[("orders", "(_.amount < 2**62)")] == ON_DATA
     assert sorted(out.to_pyarrow().column("doubled").to_pylist()) == [20, 40]
     big = ibis.memtable(pa.table({"id": [1], "amount": pa.array([2**62 + 5], pa.int64())}))
     with pytest.raises(
@@ -351,7 +352,8 @@ def test_null_passes_an_inferred_bound():
     db = sv.connect()
     db.create("nulls", ibis.schema({"amount": "int64"}), [(None,), (3,)])
     twice(db.table("nulls"))
-    assert [p.condition for p in twice._last_preconditions] == [
+    assert twice.report is not None
+    assert [p.condition for p in twice.report.preconditions] == [
         "(_.amount >= -2**62)",
         "(_.amount < 2**62)",
     ]

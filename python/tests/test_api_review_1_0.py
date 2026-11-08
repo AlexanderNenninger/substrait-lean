@@ -28,6 +28,7 @@ PUBLIC = {
     "output",
     "ties",
     "inputs",
+    "preconditions",
     "internal_plan",
 }
 

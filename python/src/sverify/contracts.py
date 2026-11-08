@@ -2611,9 +2611,6 @@ class ContractedTransform:
         or None before the first call: the report of this transform, as a
         node's `report` is the node's."""
         self._counterexamples: int | None = None
-        self._last_preconditions: list[Discharged] = []
-        """How each precondition on a bound input was established, in the
-        last call: from metadata (`sverify.io` tables) or on the data."""
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
 
@@ -2626,18 +2623,6 @@ class ContractedTransform:
             stacklevel=2,
         )
         return self.report
-
-    @property
-    def last_preconditions(self) -> list[Discharged]:
-        """Deprecated: the refresh report carries how each precondition was
-        established (`Refresh.report.preconditions`)."""
-        warnings.warn(
-            "ContractedTransform.last_preconditions is deprecated; a refresh report's "
-            "preconditions say how each was established",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._last_preconditions
 
     def to_substrait(
         self,
@@ -2730,12 +2715,14 @@ class ContractedTransform:
             )
         return self._cache[key]
 
-    def _check_on_data(self, table: ir.Table, param: str, conds: Sequence[Condition]) -> bool:
+    def _check_on_data(
+        self, table: ir.Table, param: str, conds: Sequence[Condition], found: list[Discharged]
+    ) -> bool:
         """Establish preconditions on a bound input, from its metadata where
-        possible (`discharge`); False if it is not bound."""
+        possible (`discharge`), adding how to `found`; False if it is not bound."""
         if not is_bound(table):
             return False
-        self._last_preconditions += discharge(
+        found += discharge(
             table, param, conds, self.check_engine, table_facts(table), f"row(s) of {param}"
         )
         return True
@@ -2745,6 +2732,7 @@ class ContractedTransform:
         param: str,
         value: ir.Table,
         conds: list[Condition],
+        found: list[Discharged],
         entry: Collected | None = None,
     ) -> _Abstraction:
         """Discharge this transformation's preconditions on a derived input by
@@ -2779,14 +2767,14 @@ class ContractedTransform:
         if prov is None:
             # Like a base table: checked on the data when it is bound, else assumed.
             if self.check_requires:
-                self._check_on_data(value, param, unproved)
+                self._check_on_data(value, param, unproved, found)
             return out
         error = CompositionError(
             report, self.name, param, prov.transform.name, [label(c) for c in known]
         )
         if self.on_unproved == "warn":
             warnings.warn(UnprovedWarning(_warning_text(error), report), stacklevel=4)
-        elif self.on_unproved == "check" and self._check_on_data(value, param, unproved):
+        elif self.on_unproved == "check" and self._check_on_data(value, param, unproved, found):
             pass
         elif entry is not None:
             entry.links.append(error)
@@ -2906,7 +2894,7 @@ class ContractedTransform:
         placeholder tables) has its runtime-checked postconditions checked
         at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
-        self._last_preconditions = []
+        found: list[Discharged] = []
         entry = None
         if (collected := COLLECTING.get()) is not None:
             entry = Collected(self, node)
@@ -2932,9 +2920,9 @@ class ContractedTransform:
                 _merge(base, {op.name: conds})  # type: ignore[attr-defined]
                 bound_inputs.setdefault(op.name, (param, value))  # type: ignore[attr-defined]
                 if self.check_requires:
-                    self._check_on_data(value, param, conds)
+                    self._check_on_data(value, param, conds, found)
                 continue
-            link = self._link(param, value, conds, entry)
+            link = self._link(param, value, conds, found, entry)
             _merge(external, link.external)
             _merge_policies(policies, link.policies)
             unproved_links += link.unproved_links
@@ -2970,7 +2958,10 @@ class ContractedTransform:
                 _merge(base, {t: conds})
                 param, value = bound_inputs[t]
             if self.check_requires:
-                self._check_on_data(value, param, conds)
+                self._check_on_data(value, param, conds, found)
+        if found:
+            # The report may be cached and shared by calls: this call's copy.
+            report = self.report = replace(report, preconditions=found)
         checked: list[Condition] = []
         if not report.proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in

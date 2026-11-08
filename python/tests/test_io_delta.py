@@ -426,7 +426,8 @@ def test_tables_without_metadata_are_checked_on_data():
         [(1, "ada", 5)],
     )
     checked(con.table("orders"))
-    assert set(discharged(checked._last_preconditions).values()) == {ON_DATA}
+    assert checked.report is not None
+    assert set(discharged(checked.report.preconditions).values()) == {ON_DATA}
 
 
 # -- Step 3: a Delta sink that carries the contract ---------------------------
