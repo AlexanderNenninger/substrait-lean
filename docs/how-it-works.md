@@ -76,7 +76,7 @@ rows (3):
   (3, "ada")
 ```
 
-What it accepts is the model's fragment (`SubstraitLean/Rel.lean` lists the
+What it accepts is the model's fragment (`core/Sverify/Core/Rel.lean` lists the
 operators): the coverage table under [What is supported](../README.md#what-is-supported)
 probes it from the Ibis side, and the catalogue's
 [`features.toml`](../catalogue/features.toml) records it per feature. Function
@@ -427,11 +427,11 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
 
 Doubles are modelled as exact integer codes (each double is a multiple of 2⁻¹⁰⁷⁴),
 `-0.0` and the negative NaN included, and timestamps as microseconds; see
-[Float.lean](../SubstraitLean/Float.lean) and
-[FloatFormat.lean](../SubstraitLean/FloatFormat.lean). `+ − × ÷` compute on the
+[Float.lean](../core/Sverify/Core/Float.lean) and
+[FloatFormat.lean](../core/Sverify/Core/FloatFormat.lean). `+ − × ÷` compute on the
 codes, the exact result rounded once
 ([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once),
-[FloatArith.lean](../SubstraitLean/FloatArith.lean)). The conversions between
+[FloatArith.lean](../core/Sverify/Core/FloatArith.lean)). The conversions between
 codes and native floats, which `pow`, `log` and the other libm functions use,
 are trusted code.
 
@@ -512,13 +512,13 @@ group (checked at run time: the job raises if it does not …)` (or
   same `AND`, nor in an earlier *filter*: an engine may merge filters (`Rel.loose`;
   DataFusion does), so `t.filter(n != 0).filter(q % n > 1)` can fail.
 * `FloatCode.floor_mono`, `round_mono`, `toInt?_mono`, `toInt?_of_range`
-  ([Rounding.lean](../SubstraitLean/Rounding.lean)): `FLOOR`, `CEIL`, `ROUND` and the cast
+  ([Rounding.lean](../core/Sverify/Core/Rounding.lean)): `FLOOR`, `CEIL`, `ROUND` and the cast
   to `BIGINT` are exact on double codes and monotone, so `amount ∈ [0, 100]` proves
   `amount.round()` is an integer in `[0, 100]`, and the cast safe.
 * Abstract rules for truncating `/` and `%` (`divBound_sound`, `modBound_sound`) and
   for squares (`powAbs_sound`).
 * `Time.monthIndex_spec`, `Time.trunc_mono`, `Time.year_mono`
-  ([Time.lean](../SubstraitLean/Time.lean)): every day lies in the month the calendar
+  ([Time.lean](../core/Sverify/Core/Time.lean)): every day lies in the month the calendar
   arithmetic computes, so years and truncations grow with the timestamp, and
   `ts ∈ [2024-01-01, 2025-01-01)` proves `ts.year() == 2024` and
   `ts.truncate("M") >= 2024-01-01`. The other parts have proved ranges (`day` in

@@ -68,7 +68,7 @@ def binName : BinFn → String
   | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
   | f => reprStr f
 
-/-- A literal: a double by its code (`SubstraitLean/Float.lean`). -/
+/-- A literal: a double by its code (`core/Sverify/Core/Float.lean`). -/
 def litJson : Value → Json
   | .null => Json.mkObj [("null", true)]
   | .bool b => Json.mkObj [("bool", b)]

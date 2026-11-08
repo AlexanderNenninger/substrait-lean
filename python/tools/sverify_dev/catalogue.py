@@ -443,7 +443,7 @@ def native_differs(q: Query) -> list[str]:
 
 def _code(v: object) -> object:
     """A value as `substrait-check` prints it: timestamps in microseconds,
-    dates in days, intervals in microseconds (`SubstraitLean/Float.lean`)."""
+    dates in days, intervals in microseconds (`core/Sverify/Core/Float.lean`)."""
     if isinstance(v, dt.datetime):
         return (v - dt.datetime(1970, 1, 1)) // dt.timedelta(microseconds=1)
     if isinstance(v, dt.date):

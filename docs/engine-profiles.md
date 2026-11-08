@@ -86,7 +86,7 @@ reference profile, and DuckDB is the default oracle.
 
 ## Profiles and shims in Lean (#185, first slice)
 
-`SubstraitLean/Profile.lean` states the scalar part:
+`core/Sverify/Core/Profile.lean` states the scalar part:
 
 * An engine evaluation gives an **`Outcome`**, a value or an error.
 * A **`Profile`** gives each function's outcome; `Expr.evalP` evaluates under
@@ -534,7 +534,7 @@ translator pins the semantics and takes no Polars defaults:
   backslash, and a trailing one stands for itself. `UPPER`, `LOWER` and
   regular expressions are black boxes in Lean; Polars computes them with the
   Rust code DataFusion uses.
-* `date_part` and `date_trunc` follow `SubstraitLean/Time.lean`: parts
+* `date_part` and `date_trunc` follow `core/Sverify/Core/Time.lean`: parts
   within a day are integer arithmetic on the microseconds, the calendar comes
   from chrono (as in DataFusion), and `date_part` is NULL outside the years
   chrono represents.
@@ -612,7 +612,7 @@ the engine:
   (either way the start is normalized before it reaches the engine), and
   `LIKE` names its escape character;
 * `date_part` and `date_trunc` use the engine's calendar functions where they
-  agree with `SubstraitLean/Time.lean` (ISO weeks, `dow` from Sunday,
+  agree with `core/Sverify/Core/Time.lean` (ISO weeks, `dow` from Sunday,
   milliseconds within the minute), and the SQL raises where DataFusion's
   calendar truncation fails;
 * below a `FETCH`, a window or a sort, an ordinal column carries Lean's list
