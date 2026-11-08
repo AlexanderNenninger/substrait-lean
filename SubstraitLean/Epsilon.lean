@@ -143,8 +143,10 @@ def doubleMag (env : List AVal) (e : Expr) : Option Float := do
   engine is within `covTol` of `C / d` (`core_cov_chan`), the reference
   within `u · |C / d|` (`epsilon_cov_cr`), with `r₁ = n (Bx + t) By`,
   `r₂ = n (By + t) Bx`, `r_s = n Bx By ≥ |C|`, `r_q = n (Bx + t)(By + t)`.
-* `CORR`: none. Its error grows as a side's variance shrinks, and the
-  ranges give no lower bound on it (`core_corr_chan` bounds its magnitude).
+* `CORR`: none, by D30's decision. Its error grows as a side's variance
+  shrinks, and the ranges give no lower bound on it; `core_corr_chan` bounds
+  it under a stated lower bound `L` on both co-moments, which waits for
+  preconditions on aggregates (#918). `[-1, 1]` holds regardless.
 
 Each is padded by `2⁻⁴⁰` relatively and one subnormal, for the `Float`
 arithmetic here. -/
@@ -271,9 +273,9 @@ def statsProvedOn (es : List EngineProfile) : List String :=
 -- DuckDB's and Spark's rows are proved; Polars's algorithm is not (float-bounds.md).
 #guard statsProvedOn builtinEngines == ["duckdb", "spark"]
 
-/-- Why a `CORR` column has no bound, and what lifts it. -/
+/-- Why a `CORR` column has no bound, and what lifts it (D30). -/
 def corrWhy : String :=
-  "CORR: no bound without a lower bound on each side's variance (#918)"
+  "CORR has no data-free bound: its distance to the reference is bounded only under a stated lower bound on both sides' variances, a precondition the run checks; without one only [-1, 1] holds, and a tolerance on it is tested (D30, #918)"
 
 /-- A bound on `|e|` from the preconditions, for a double expression. -/
 def magOf (env : List AVal) (e : Expr) : Option Float := do

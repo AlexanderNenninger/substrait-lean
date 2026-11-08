@@ -281,7 +281,9 @@ def Profile.polars.obs : ObsTable := [
       ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
   (none, "window_sum_algo", ObsRow.approxWithin "plan" ["polars-window-agg"]),
-  (none, "stat_algo", { ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr"] with
+  -- Schubert and Gertz's merge: no theorem yet, a fuzzed bound of
+  -- `1.03 · n·u·√(Q'S)` on the co-moment (polars-var-bound, #918).
+  (none, "stat_algo", { ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
     rerun := some { floats := .within "plan" } }),
   (none, "quantile_interp", { ObsRow.native ["polars-quantile"] with engine := some "in-memory" }),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
