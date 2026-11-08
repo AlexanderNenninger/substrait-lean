@@ -4035,13 +4035,7 @@ class _Writer:
                     )
                 body = d.canon(d.clamp_stat(m.fn, d.float_var(m.fn, shifted or v)))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
-                # A NaN passes through; DuckDB's VAR_POP of one NaN is 0.0
-                # (upstream/bugs/DD-3.json).
-                nans = f"COUNT({d.case_when(d.is_nan(v), d.int_lit(1), d.null('int'))})"
-                nan = f"{nans} > {d.int_lit(0)}"
-                value = d.case_when(
-                    none, d.null("float"), d.case_when(nan, d.float_lit(math.nan), body)
-                )
+                value = d.case_when(none, d.null("float"), self.nan_through(v, "", body))
                 # Finite values whose variance overflows (#575), kept without
                 # guards; an infinity raises below.
                 value = self.agg_finite(value)
@@ -4301,7 +4295,7 @@ class _Writer:
         name = ("STDDEV_" if fn.startswith("std") else "VAR_") + ("SAMP" if sample else "POP")
         body = d.canon(d.clamp_stat(fn, f"{name}({v}) {w}"))
         none = f"COUNT({v}) {w} <= {d.int_lit(1 if sample else 0)}"
-        value = self.agg_finite(d.case_when(none, d.null("float"), body))
+        value = self.agg_finite(d.case_when(none, d.null("float"), self.nan_through(v, w, body)))
         if not d.guards:
             return value
         # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
@@ -4756,6 +4750,14 @@ class _Writer:
                 f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
             )
         return d.bool_lit(False)
+
+    def nan_through(self, v: str, over: str, body: str) -> str:
+        """A variance's `body`, or NaN where a value of `v` (over the window
+        `over`, or the group with `""`) is NaN, as in `varOf`: DuckDB's
+        `VAR_POP` of one NaN is 0.0 (upstream/bugs/DD-3.json)."""
+        d = self.d
+        nans = f"COUNT({d.case_when(d.is_nan(v), d.int_lit(1), d.null('int'))}) {over}".rstrip()
+        return d.case_when(f"{nans} > {d.int_lit(0)}", d.float_lit(math.nan), body)
 
     def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
         """An aggregate's `value`, raising where it is `±∞` though its values
