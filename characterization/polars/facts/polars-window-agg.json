@@ -43,7 +43,7 @@
           "note": "`Engine.window` sends aggregates to `window_spec` and `python_windows`; `_aggregate` adds `fsum`/`avg` values in turn"
         }
       ],
-      "notes": "The former translation (`python_windows`, row by row in Python), replaced by Polars expressions in #1265. A fact about sverify's translation on Polars py-2.1.0, not about a Polars kernel: Polars' own `rolling_sum` is not used."
+      "notes": "The former translation (`python_windows`, row by row in Python), replaced by Polars expressions in #1269. A fact about sverify's translation on Polars py-2.1.0, not about a Polars kernel: Polars' own `rolling_sum` is not used."
     },
     {
       "checked_at": "2026-11-07",
@@ -59,7 +59,7 @@
           "observed": "1e16, 1e16, 2.0, 2.0, 2.0"
         }
       ],
-      "notes": "The former translation (`python_windows`, row by row in Python), replaced by Polars expressions in #1265. Polars py-2.1.0 through sverify's translation (a verified plan run on engine='polars'). Polars' own `rolling_sum` (window 2), which the translation does not use, also gave 1e16, 1e16, 2.0, 2.0, 2.0. A sliding accumulator (add the entering row, subtract the leaving one) would carry 1e16 and give 0.0 for the frames [1, 1]; summing the frame's own values gives 2.0."
+      "notes": "The former translation (`python_windows`, row by row in Python), replaced by Polars expressions in #1269. Polars py-2.1.0 through sverify's translation (a verified plan run on engine='polars'). Polars' own `rolling_sum` (window 2), which the translation does not use, also gave 1e16, 1e16, 2.0, 2.0, 2.0. A sliding accumulator (add the entering row, subtract the leaving one) would carry 1e16 and give 0.0 for the frames [1, 1]; summing the frame's own values gives 2.0."
     },
     {
       "checked_at": "2026-11-08",
