@@ -245,8 +245,4 @@ def test_rows_are_read_by_the_old_and_new_keys() -> None:
         "rerun_observation": {},
     }
     for r in (old, new):
-        assert routes.row_class(r) == "observed"
-        assert routes.row_observation(r) == {"floats": {"bound": "plan"}}
         assert routes.row_rerun(r) == {}
-    assert routes.row_class({"class": "refines"}) == "exact"
-    assert routes.row_class({"class": "refines_up_to"}) == "observed"

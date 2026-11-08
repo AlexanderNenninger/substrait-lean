@@ -1011,14 +1011,7 @@ class Report:
         for e, got in _routes.evidence_on(self).items():
             if e in self.routes or got.problems or got.evidence is None:
                 continue
-            text = _routes.evidence_text(
-                got.evidence,
-                got.facts,
-                got.theorems,
-                got.version or _routes.probed_version(e),
-                got.issues,
-            )
-            lines.append(f"evidence: {e} {got.cls}, {text}")
+            lines.append(f"evidence: {e} {got.cls}, {_routes.evidence_text(got, e)}")
         return lines
 
     def _observes_lines(self) -> list[str]:

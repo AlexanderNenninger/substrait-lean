@@ -157,6 +157,10 @@ def engineJson (es : List EngineProfile) (E : EngineProfile) (ds : List Dep) (re
     ("without_row", Json.arr ((ds.filter fun d => !(rows.any fun (d', _) =>
       d'.option == d.option && d'.group == d.group)).map fun d => Json.mkObj (where_ d)).toArray),
     ("theorems", toJson theorems), ("facts", toJson facts),
+    -- The facts the proved rows' theorems rest on: a proof of the engine's
+    -- model, which those facts say the engine is (#900's per-plan Refines).
+    ("proved_facts", toJson (rows.flatMap fun (_, r) =>
+      if r.evidence.theorem?.isSome then r.evidence.facts else []).eraseDups),
     ("issues", toJson (rows.filterMap fun (_, r) => r.evidence.issue?).eraseDups),
     ("guard_free_theorem", toJson (guardFreeTheorems.lookup E.name)),
     ("version", toJson E.table.version),
