@@ -46,7 +46,7 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     run_checker,
 )
 from sverify._scan import Native, Resident, Scan
-from sverify._unsupported import SverifyError
+from sverify._unsupported import SverifyError, UnsupportedError
 from sverify.ibis_substrait import to_substrait_json
 
 Engine = Literal["duckdb", "polars", "spark"]
@@ -546,13 +546,26 @@ def stale_checker(path: Path | None = None) -> str | None:
     )
 
 
+#: Where the constructs Lean's model does not cover yet are tracked: the exit
+#: of a checker refusal that names none of its own.
+COVERAGE_ISSUES = (
+    "https://github.com/AlexanderNenninger/substrait-lean/issues?q=is%3Aopen+label%3Acoverage"
+)
+
+
 def checker_failed(mode: str, err: str) -> Exception:
     """The error for a checker request that failed: `CheckerVersionError`
-    where the checker is a stale build (`stale_checker`), else a
-    `ValueError` with the checker's message."""
+    where the checker is a stale build (`stale_checker`), else an
+    `UnsupportedError` (a `ValueError`) with the checker's message and its
+    exit."""
     if (why := stale_checker()) is not None:
         return CheckerVersionError(f"{why}. The checker said: {err.strip()}")
-    return ValueError(f"substrait-check {mode} failed: {err.strip()}")
+    msg = err.strip().removeprefix("error: ") or "(no message)"
+    return UnsupportedError(
+        f"substrait-check {mode} refuses the plan: {msg}. Lean's model does not cover it "
+        f"yet: rewrite the step, or find its issue among the open coverage issues "
+        f"({COVERAGE_ISSUES})"
+    )
 
 
 def read_tables(plan: dict) -> list[str]:
@@ -590,15 +603,14 @@ def written_plan(plan_json: str) -> str:
         The plan in Lean's written form, as protobuf JSON.
 
     Raises:
-        ValueError: The checker rejects the plan (an operator, function or
-            type outside the Lean model, or an ill-formed plan).
+        UnsupportedError: The checker rejects the plan (an operator, function
+            or type outside the Lean model, or an ill-formed plan).
     """
 
     def check(*flags: str) -> str:
         code, out, err = run_checker(flags, plan_json)
         if code != 0:
-            msg = (err or out).strip().splitlines()[-1:]
-            raise ValueError(f"substrait-check {' '.join(flags)} rejects the plan: {msg}")
+            raise checker_failed(" ".join(flags) or "--check", err or out)
         return out
 
     check()

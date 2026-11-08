@@ -49,8 +49,8 @@ Lean file; [proofs.md](proofs.md) lists each guarantee with its theorem.
 | Engines: DuckDB, Polars, Spark, Snowflake | One plan, proved once, runs where your data lives; [stability.md, Engines](stability.md#engines) says which engines and how. | `refresh(engine=...)`, `report.run(con, engine)`; a function only DuckDB runs is refused with "run it with engine='duckdb' (see #271)". Several engine refusals name no exit: [#1047] | [01](../notebooks/01_duplicate_payments.py), "3. One plan, every engine"; [05](../notebooks/05_pipelines_and_engines.py), "Choosing the engine for a node". Spark runs in no notebook: [#1047] | As for routes; Snowflake's profile is [#851], from Snowflake behaviour recorded privately |
 | SQL for an engine: `to_sql` | Your warehouse runs SQL, and a hand translation loses the proof; Sverify writes the proved plan as DuckDB, Spark or Snowflake SQL. | `report.to_sql(dialect)`; `UnsupportedError` for a window with open ties, naming `deterministic=`; some writer refusals name no exit: [#1047] | [02](../notebooks/02_sensor_alerts.py), "5. Every engine, and the warehouses"; [05](../notebooks/05_pipelines_and_engines.py), "SQL for DuckDB, Snowflake and Spark" | `Lowering.lowerRel_sound` for DuckDB; `Rel.spark_sound` for Spark; Snowflake waits on [#851] |
 | Engine settings and versions | An engine upgraded or reconfigured behind your back can change what a proof assumed; Sverify checks the engine's version and settings before it runs. | `EngineVersionError`, "install a N.x release"; `EngineSettingsError`, "restore it with `SET ...`" | No notebook: [#1056] | The engine facts the profile rests on ([characterization/README.md](../characterization/README.md)) |
-| SQL in sverify: `sv.sql`, `verify` of a SQL string | Half your rules are SQL already; Sverify reads DuckDB SQL into the same plan an Ibis expression gives and proves it the same way. | `sv.verify("SELECT ...", tables=...)`, `.pipe(sv.sql(query))`; `UnsupportedError` for what the lift does not read yet, often with no exit: [#1049] | [03](../notebooks/03_orders_mart.py), "The same model in SQL". `sv.sql` in no notebook: [#1049] | The `agree` field of each `LiftEntry` ([LiftSearch.lean](../SubstraitLean/LiftSearch.lean)); no row in proofs.md: [#1049] |
-| Typed values and kinds | A decimal added to a double, or a scale that silently drops a cent, is a wrong answer that looks right; Sverify checks each expression's kind and refuses a mix it cannot type. Changes with [#1039] | A Lean refusal reaches you as a plain `ValueError`, "substrait-check --contract failed: ..."; unsigned integers and zoned timestamps are refused without an exit: [#1050] | No notebook: [#1050] | `Rel.kinds_sound`, `Expr.kindT_sound` ([Kinds.lean](../SubstraitLean/Kinds.lean)) |
+| SQL in sverify: `sv.sql`, `verify` of a SQL string | Half your rules are SQL already; Sverify reads DuckDB SQL into the same plan an Ibis expression gives and proves it the same way. | `sv.verify("SELECT ...", tables=...)`, `.pipe(sv.sql(query))`; `UnsupportedError` for what the lift does not read yet, naming the rewrite or the issue that adds it | [03](../notebooks/03_orders_mart.py), "The same model in SQL". `sv.sql` in no notebook: [#1049] | The `agree` field of each `LiftEntry` ([LiftSearch.lean](../SubstraitLean/LiftSearch.lean)); no row in proofs.md: [#1049] |
+| Typed values and kinds | A decimal added to a double, or a scale that silently drops a cent, is a wrong answer that looks right; Sverify checks each expression's kind and refuses a mix it cannot type. Changes with [#1039] | A Lean refusal reaches you as an `UnsupportedError`, "substrait-check --contract refuses the plan: ...", naming the open coverage issues; unsigned integers and zoned timestamps name a cast and [#350], [#323] | No notebook: [#1050] | `Rel.kinds_sound`, `Expr.kindT_sound` ([Kinds.lean](../SubstraitLean/Kinds.lean)) |
 | Timestamps and intervals | A month bucket of a timestamp near the year 1 or 9999 overflows; Sverify bounds the timestamps a truncation needs and reads intervals in the units it models. | The report's `needs:` for a timestamp bound; "interval of days or months is not modelled yet (#342); write it in hours or seconds" | [05](../notebooks/05_pipelines_and_engines.py), "Timestamps and intervals" | `Rel.mayIssues_sound` ([Safety.lean](../SubstraitLean/Safety.lean)) |
 | `sv.asof_join` | A trade matched to a quote from after it is a look-ahead bug; `sv.asof_join` matches each row with the latest earlier row of another table, and Sverify checks the join's tolerance. | `sv.asof_join(left, right, on=, by=, tolerance=, how=)`; "only ASOF [LEFT] JOIN", "needs an ON condition" | [04](../notebooks/04_contracts.py), "ASOF joins" | No theorem: [#1052] |
 | `sv.connect` | You want to try a contract on a few rows before wiring a pipeline; `sv.connect` holds named in-memory tables for Ibis expressions. | `con = sv.connect(); con.create(...)` or `con.put(...)` | [04](../notebooks/04_contracts.py), "Contracts on real data" | It holds data and makes no claim |
@@ -125,20 +125,19 @@ on 2026-11-07.
 | "Snowflake SQL is written only for plans verified under the reference" | SQL for an engine | `semantics="reference"` |
 | DataFusion's AVG of integers, substring | Engines | None: [#1047] |
 | Polars decimals, categorical strings, type mismatches, refused functions | Engines | None: [#1047] |
-| "unsigned integers are not supported", zoned timestamps | Typed values | None: [#1050], lifted by [#350] and [#323] |
+| "unsigned integers are not supported yet", zoned timestamps | Typed values | A cast to a signed integer or to UTC; lifted by [#350] and [#323] |
 | float32, "use float64"; nanosecond times, "cast them to microseconds" | Typed values | As named |
-| "substrait-check --contract failed: ..." | Typed values, frontends | Lean's message, often none: [#1050] |
-| "the checker refuses the SQL: ..." | SQL in sverify | Lean's message |
-| "cannot parse the SQL as DuckDB's", "only SELECT queries are" | SQL in sverify | None: [#1049] |
+| `UnsupportedError`, "substrait-check --contract refuses the plan: ..." | Typed values, frontends | Lean's message, then a rewrite or the open coverage issues |
+| "cannot parse the SQL as DuckDB's", "only SELECT queries are" | SQL in sverify | Check that DuckDB runs it, or write the step in Ibis; write it as a SELECT |
 | An alias clash (SG-1), `~` (SG-10), `t.*` with USING (SG-5) | SQL in sverify | Rename, `regexp_matches`, list the columns |
-| Underscores in numbers (SG-4), `ago` (SG-8), EXPORT_STATE (SG-9), NULL order | SQL in sverify | None: [#1049] |
-| WITH RECURSIVE, DISTINCT ON, named windows, correlated subqueries, JOIN USING, UNPIVOT | SQL in sverify | None: [#1049] |
+| Underscores in numbers (SG-4), `ago` (SG-8), EXPORT_STATE (SG-9), NULL order | SQL in sverify | The rewrite named (no underscore, a negative interval, no EXPORT_STATE), or SQLGlot's pinned release |
+| WITH RECURSIVE, DISTINCT ON, QUALIFY, named windows, LATERAL, PIVOT, correlated subqueries, JOIN USING | SQL in sverify | The rewrite named (ROW_NUMBER in a subquery, OVER (…), a join, ON); [#320], [#319], [#813] |
 | A CAST that rounds in DuckDB, `mode()` ties, `median` of DECIMAL | SQL in sverify | `semantics="reference"` or `round()`, an order, a cast to DOUBLE |
-| An aggregate of a DATE at midnight | SQL in sverify | None named; lifted by [#240]: [#1049] |
+| An aggregate of a DATE at midnight | SQL in sverify | CAST it to DATE first |
 | "interval of days or months is not modelled yet" | Timestamps | Write it in hours or seconds; lifted by [#342] |
 | `ibis.now()`, random, row ids, hashes, `approx_*` | Contracts | Pass the value in |
 | An unbound Ibis parameter | Contracts | `params={param: value}` ([#354]) |
-| Other Ibis operations: translate, array_value, lambdas, typeof | SQL in sverify | None: [#1049], lifted by [#60] and [#327] |
+| Other Ibis operations: translate, array_value, lambdas, typeof | SQL in sverify | [#60] and [#327] as named; typeof of a column, or the type's name as a constant |
 | ASOF joins other than ASOF [LEFT] JOIN, or without ON | `asof_join` | Rewrite as named |
 | `NotIncrementalError` | Refresh | None: [#1051] |
 | "conditions on derived inputs were not proved", foreign keys in views, checked preconditions on views | Refresh | None: [#1051] |
@@ -159,9 +158,10 @@ on 2026-11-07.
 [#60]: https://github.com/AlexanderNenninger/substrait-lean/issues/60
 [#85]: https://github.com/AlexanderNenninger/substrait-lean/issues/85
 [#219]: https://github.com/AlexanderNenninger/substrait-lean/issues/219
-[#240]: https://github.com/AlexanderNenninger/substrait-lean/issues/240
 [#241]: https://github.com/AlexanderNenninger/substrait-lean/issues/241
 [#271]: https://github.com/AlexanderNenninger/substrait-lean/issues/271
+[#319]: https://github.com/AlexanderNenninger/substrait-lean/issues/319
+[#320]: https://github.com/AlexanderNenninger/substrait-lean/issues/320
 [#323]: https://github.com/AlexanderNenninger/substrait-lean/issues/323
 [#327]: https://github.com/AlexanderNenninger/substrait-lean/issues/327
 [#342]: https://github.com/AlexanderNenninger/substrait-lean/issues/342
@@ -169,6 +169,7 @@ on 2026-11-07.
 [#354]: https://github.com/AlexanderNenninger/substrait-lean/issues/354
 [#444]: https://github.com/AlexanderNenninger/substrait-lean/issues/444
 [#575]: https://github.com/AlexanderNenninger/substrait-lean/issues/575
+[#813]: https://github.com/AlexanderNenninger/substrait-lean/issues/813
 [#851]: https://github.com/AlexanderNenninger/substrait-lean/issues/851
 [#1031]: https://github.com/AlexanderNenninger/substrait-lean/issues/1031
 [#1032]: https://github.com/AlexanderNenninger/substrait-lean/issues/1032

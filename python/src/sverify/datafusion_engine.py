@@ -22,6 +22,7 @@ from sverify import _support
 from sverify._checker import run_checker
 from sverify._plan_read import base_name, function_names
 from sverify._support import DUCKDB_ONLY
+from sverify.engine import checker_failed
 from sverify.sql import core as sql
 
 
@@ -32,8 +33,7 @@ def datafusion_plan(plan_json: str) -> str:
     wrapping around)."""
     code, out, err = run_checker(("--write-datafusion",), plan_json)
     if code != 0:
-        msg = (err or out).strip().splitlines()[-1:]
-        raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
+        raise checker_failed("--write-datafusion", err or out)
     plan = json.loads(out)
     _check_datafusion_plan(plan)
     # sverify's own remainder of doubles (#256) is DataFusion's `%` of doubles,
