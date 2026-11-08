@@ -1032,7 +1032,10 @@ The issues the report lists, the assumed ones among them (`Issue.assumed`: a
 `SUM` that leaves its type, an overflow to `±∞`), are not hypotheses:
 `Rel.OrderAllowed` gives a value at each, and the analysis is sound for that
 value. Where the reference raises instead (`Profile.reference`, `raiseIf`),
-it gives no result for the statement to speak of. -/
+it gives no result for the statement to speak of. An assumed issue is a
+statement about the engine's run: whether it raises, whether it widens, and
+whether its value means anything. It enters the engine's corollary as a
+hypothesis through `Engine.Runs`, and leaves no hole in this lemma. -/
 theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hcat : data.WF) (harity : ∀ t, (data t).arity = (R.cat t).arity)
