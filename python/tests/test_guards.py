@@ -150,3 +150,51 @@ def test_unguarded_runs_agree(expr, rows):
     w = written_plan(p)
     on_polars = polars_engine.run(w, tables, guards=False)
     assert canonical(tuple(r.values()) for r in on_polars.to_pylist()) == want
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_run_drops_the_discharged_checks(monkeypatch, engine):
+    """`Report.run` runs a guard-free plan without its per-row checks on an
+    engine whose writer a theorem covers without them, as the checker names it
+    (`"guard_free_theorem"`, #1166), once the preconditions are checked on the
+    data: Polars (`Rel.polars_sound`). DuckDB keeps every check until its
+    writer's theorem lands (#1169); so does a run without the precondition
+    check, and a plan that is not guard-free."""
+    from sverify import report as report_module
+
+    seen: list[str] = []
+    for name in ("run_plan", "run_guard_free"):
+        real = getattr(report_module, name)
+
+        def spy(*args, _name=name, _real=real, **kwargs):
+            seen.append(_name)
+            return _real(*args, **kwargs)
+
+        monkeypatch.setattr(report_module, name, spy)
+    con = sv.connect()
+    con.put("t", pa.table({"a": [6, 9, 1000], "b": [3, 1, 100]}))
+    con.put("u", pa.table({"a": [6], "d": [1]}))
+    free = sv.verify(GUARD_FREE[0], requires=BOUNDED)
+    covered = (free._engines or {})[engine]["guard_free_theorem"] is not None
+    assert covered is (engine == "polars")
+    want = free.run(con, engine, check_requires=False).to_pylist()
+    assert seen[-1] == "run_plan"
+    assert free.run(con, engine).to_pylist() == want
+    assert seen[-1] == ("run_guard_free" if covered else "run_plan")
+    # Not guard-free (`Rel.looseSub`): every check stays.
+    loose = sv.verify(T.left_join(U.filter(U.d > 0), "a").select(x=T.b + 1), requires=BOUNDED)
+    assert loose.proved and not loose._guard_free
+    loose.run(con, engine)
+    assert seen[-1] == "run_plan"
+
+
+def test_no_writer_runs_without_guards_unless_a_theorem_covers_it():
+    from sverify.engine import run_guard_free
+
+    con = sv.connect()
+    con.put("t", pa.table({"a": [6], "b": [3]}))
+    p = written_plan(plan_json(connect(), GUARD_FREE[0]))
+    for engine, theorem in [("duckdb", "Rel.duckdb_guardFree_sound"), ("polars", "Rel.other")]:
+        with pytest.raises(ValueError, match="no theorem covers"):
+            run_guard_free(con, p, engine, theorem)
+    assert run_guard_free(con, p, "polars", "Rel.polars_sound").num_rows == 1
