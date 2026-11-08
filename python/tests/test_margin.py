@@ -185,3 +185,28 @@ def test_a_row_against_its_partitions_mean(engine):
     near.put("readings", pa.table({"sensor_id": [1, 1, 1], "value": [10.0, 20.0, 30.0]}))
     with pytest.raises(PreconditionError, match=r"1 row\(s\) have m within its bound"):
         r.run(near, engine)
+
+
+def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
+    """The check and the plan read their inputs twice: an Arrow table, a
+    resident table or a Delta/Iceberg scan at one version reads the same rows;
+    a file scan without a version warns, and the deterministic profile
+    refuses it."""
+    import pyarrow.parquet as pq
+
+    from sverify._scan import Scan
+
+    rows = pa.table({"customer_id": [1, 2], "amount": [600.0, 5000.0]})
+    path = tmp_path / "orders.parquet"
+    pq.write_table(rows, path)
+    c = sv.connect()
+    c.put("orders", Scan((str(path),), rows.schema, None, None, "orders.parquet"))
+    with pytest.warns(InferredWarning, match="not pinned to one version"):
+        assert having.run(c, "duckdb").to_pylist() == [{"customer_id": 2, "total": 5000.0}]
+    with pytest.raises(PreconditionError, match="not pinned to one version"):
+        having.run(c, "duckdb", reproducible=sv.equivalent())
+    # The same files at a version: no warning.
+    c.put("orders", Scan((str(path),), rows.schema, None, None, "orders@v3"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", InferredWarning)
+        having.run(c, "duckdb")

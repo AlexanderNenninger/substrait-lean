@@ -12,3 +12,7 @@
   counts them; with `verify(on_inferred="warn")` the run warns, keeps them
   with the count in the warning. `on_inferred="off"`
   refuses the plan, as before.
+- The check and the plan read their inputs twice, so the run requires one
+  snapshot: an Arrow table, a table DuckDB holds, or a Delta or Iceberg table
+  at one version. An input of another kind warns, and refuses the run with
+  `reproducible=`.
