@@ -81,11 +81,11 @@ def findFrom (t : List Char) : List Char → Nat → Option Nat
       | _ :: r => findFrom t r (i + 1)
 
 /-- **The size hypothesis for strings** (trusted, #202, #336): every string
-has fewer than `2³²` characters. DuckDB's strings hold at most `2³² - 1`
-bytes, and its `substring` takes offsets and lengths in that range only. So a
-length or position never reaches `sizeCap`, and capping it there changes
-nothing; it gives the range analysis an upper bound, so that `strpos(s, t) - 1`
-is proved not to overflow. (Relations keep their own bound, `rowCap`.) -/
+has fewer than `2³²` characters, a bound of the reference's that the engines'
+strings stay within (DuckDB's hold at most `2³² - 1` bytes). So a length or
+position never reaches `sizeCap`, and capping it there changes nothing; it
+gives the range analysis an upper bound, so that `strpos(s, t) - 1` is proved
+not to overflow. (Relations keep their own bound, `rowCap`.) -/
 def sizeCap : Int := 2 ^ 32
 
 /-- **The size hypothesis for relations** (trusted, #202): a relation a window
@@ -94,8 +94,11 @@ stay below `rowCap`. -/
 def rowCap : Int := 2 ^ 62
 
 /-- `substring`'s offsets and lengths stay below `substrMax` in magnitude
-(#336): DuckDB raises for an offset outside `[-2³², 2³²)` or a length of
-`2³²` or more, and so does the reference (`Issue.domain`). -/
+(#336): the reference's choice for the option `substring_range` is `ERROR`
+for an offset outside `[-2³², 2³²)` or a length of `2³²` or more
+(`Issue.domain`), the strings' own bound (`sizeCap`). DuckDB shares the limit
+(duckdb-substring-range); a profile that computes there (`COMPUTE`,
+`Profile.substrait`) refines it. -/
 def substrMax : Int := 2 ^ 32
 
 /-- Is `substring(s, a, n)` within the range of offsets and lengths? -/
