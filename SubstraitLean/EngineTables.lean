@@ -147,7 +147,7 @@ def Profile.duckdb.obs : ObsTable := [
   -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
-    shim := some "Dialect.canon" }).proved "Spark.one_zero"),
+    shim := some "Dialect.canon" }).tracking 241),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["duckdb-signbit"]).tracking 241),
   (none, "nan_order", (ObsRow.native ["duckdb-arg-min-nulls"]).tracking 241),
   (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).tracking 241),
@@ -317,7 +317,7 @@ def Profile.polars.obs : ObsTable := [
   -- key, a written argument. `Polars.null_order`: with it, Polars orders as
   -- `sortLe`.
   (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Polars.null_order"),
-  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["polars-clustered"]).proved "Rel.polars_sound"),
+  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["polars-clustered"]).tracking 271),
   -- A streaming sort of a large input does not keep ties in input order.
   (none, "tie_order", ({ ObsRow.native ["polars-sort-stability", "polars-first-last"] with
     rerun := some { rows := .tiesPermuted } }).proved "Polars.tie_order"),
@@ -445,7 +445,7 @@ def Profile.spark.obs : ObsTable := [
   -- Unstated, Spark puts NULLs first in an ascending key; the writer states
   -- each key's placement (`Spark.null_order`).
   (none, "null_order", (ObsRow.shimmed "null_order" ["spark-null-order"]).proved "Spark.null_order"),
-  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["spark-clustered"]).proved "Rel.spark_sound"),
+  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["spark-clustered"]).tracking 271),
   -- After a shuffle, ties come in the order the partitions' rows arrive.
   (none, "tie_order", ({ ObsRow.native ["spark-sort-stability", "spark-window-values", "spark-rank"] with
     rerun := some { rows := .tiesPermuted, elements := .multiset },

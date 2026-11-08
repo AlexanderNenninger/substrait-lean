@@ -61,7 +61,7 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | Page | Job | Site |
 |---|---|---|
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers, what is proved | Design |
-| [core-semantics.md](core-semantics.md) | The loose core, profiles as constraints on it, translations, the decisions D1 onwards | Design |
+| [core-semantics.md](core-semantics.md) | The loose core, which does a superset of operations, the profiles that refine it, translations, the decisions D1 onwards | Design |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
