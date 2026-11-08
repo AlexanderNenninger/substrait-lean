@@ -1,0 +1,47 @@
+{
+  "id": "polars-date-days",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "A date's physical value is its days since 1970-01-01",
+  "verdict": "native",
+  "area": "temporal",
+  "constructs": [
+    "Date.to_physical"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "`to_physical()` of a Date is its count of days since 1970-01-01 (Int32): the difference of two, as `polars_engine` writes `date_diff`, is the reference's on 0001-01-01, 9999-12-31 and across 1970 (−3652058, 3652058, −1); NULL in, NULL out.",
+  "reference": "`BinFn.dateDiff`: the difference of the two dates' day numbers.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "date-physical-diff"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; the probe strings; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python) on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars --diff (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "date-physical-diff"
+        }
+      ],
+      "notes": "`--diff`: the streaming engine gives what the in-memory one gives, one row at a time and on a column of several morsels."
+    }
+  ]
+}
