@@ -157,6 +157,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     TIES_HINT,
     TRUNC_HINT,
     Condition,
+    InferredWarning,
     Issue,
     Needed,
     OnInferred,
@@ -403,14 +404,43 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
         day = date(year, 1, 1)
         return f"{kind} '{day.isoformat()}{' 00:00:00' if kind == 'TIMESTAMP' else ''}'"
 
+    if lo is not None and hi is not None and lo > hi:
+        return []  # no value meets it: nothing to suggest
     if lo is not None:
         y = _year_of(lo, unit)
         if code(y) < lo:
             y += 1
-        out.append(Inferred(f"{null}{sql} >= {lit(y)}", f"({ref} >= {py}({y}, 1, 1))"))
+        if y > 9999 and lo > (datetime.max - _EPOCH) // unit:
+            return []  # past Python's last datetime: no value meets it
+        if y > 9999:
+            # Inside the last year: no whole year to round up to, so the bound
+            # itself, as Python's last datetime or date allows.
+            exact = _EPOCH + lo * unit
+            text = exact.isoformat(sep=" ") if kind == "TIMESTAMP" else exact.date().isoformat()
+            args = (
+                ", ".join(map(str, exact.timetuple()[:6]))
+                if kind == "TIMESTAMP"
+                else (f"{exact.year}, {exact.month}, {exact.day}")
+            )
+            out.append(Inferred(f"{null}{sql} >= {kind} '{text}'", f"({ref} >= {py}({args}))"))
+        else:
+            out.append(Inferred(f"{null}{sql} >= {lit(y)}", f"({ref} >= {py}({y}, 1, 1))"))
     if hi is not None:
-        y = _year_of(hi + 1, unit)
-        out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
+        last = (
+            datetime(9999, 12, 31, 23, 59, 59, 999999)
+            if kind == "TIMESTAMP"
+            else datetime(9999, 12, 31)
+        )
+        if hi >= (last - _EPOCH) // unit:
+            # Up to the reference's last one (D32): 9999-12-31 itself holds.
+            if kind == "TIMESTAMP":
+                text, args = "9999-12-31 23:59:59.999999", "9999, 12, 31, 23, 59, 59, 999999"
+            else:
+                text, args = "9999-12-31", "9999, 12, 31"
+            out.append(Inferred(f"{null}{sql} <= {kind} '{text}'", f"({ref} <= {py}({args}))"))
+        else:
+            y = _year_of(hi + 1, unit)
+            out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
     return out
 
 
@@ -891,6 +921,11 @@ def infer_bounds(
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
+    if on_inferred == "off" and out._margin_checks:
+        # Nothing is checked on the data: a threshold filter on a double sum
+        # may keep other groups than the reference's (#568).
+        out._margin_checks = []
+        out._rows_exact = dict.fromkeys(out._rows_exact or {}, False)
     if not out.deterministic and not isinstance(transform, str):
         out.ties = _confirmed_ties(transform, requires, out, tables, params, inputs, semantics)
     if on_inferred == "warn" and out._inferred:
@@ -911,18 +946,6 @@ def infer_bounds(
 
 
 OnUnproved = Literal["error", "check", "warn"]
-
-
-class InferredWarning(SverifyWarning):
-    """A precondition sverify inferred is assumed (`on_inferred="warn"`).
-
-    Attributes:
-        report: The `Report` whose `inferred` preconditions are assumed.
-    """
-
-    def __init__(self, message: str, report: Report | None = None):
-        super().__init__(message)
-        self.report = report
 
 
 class UnprovedWarning(SverifyWarning):
@@ -1648,6 +1671,7 @@ def _verify_once(
         _depends=out.get("depends"),
         _epsilon=out.get("epsilon"),
         _rows_exact=out.get("rows_exact"),
+        _margin_checks=list(out.get("margin_checks") or []),
         _engines=out.get("engines"),
         _sorted=out.get("sorted"),
         _contract=contract,

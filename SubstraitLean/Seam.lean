@@ -1,4 +1,5 @@
 import SubstraitLean.Ties
+import SubstraitLean.AllowedAnalysis
 
 /-!
 # The ordered seam (#928)

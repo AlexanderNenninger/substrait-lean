@@ -319,13 +319,13 @@ def test_epsilon_through_scalar_rules_and_thresholds(monkeypatch):
     # The mean is at least 1 - ε: `m > 0.5` keeps every group on both sides.
     assert eps(agg.filter(ibis._.m > 0.5))["s"]["proved"]["abs"] is True
     assert json.loads(seen["out"])["rows_exact"] == {"duckdb": True, "polars": True, "spark": True}
-    # `m > 5` may keep a group on one side and drop it on the other.
-    assert eps(agg.filter(ibis._.m > 5))["s"]["proved"]["abs"] is False
-    assert json.loads(seen["out"])["rows_exact"] == {
-        "duckdb": False,
-        "polars": False,
-        "spark": False,
-    }
+    # `m > 5` may keep a group on one side and drop it on the other: no static
+    # bound decides it, the margin check does (#929), so the rows are exact
+    # given it, and the check is in the report.
+    assert eps(agg.filter(ibis._.m > 5))["s"]["proved"]["abs"] is True
+    out = json.loads(seen["out"])
+    assert out["rows_exact"] == {"duckdb": True, "polars": True, "spark": True}
+    assert len(out["margin_checks"]) == 1
 
 
 def test_transfer_up_to_the_behaviour_order():

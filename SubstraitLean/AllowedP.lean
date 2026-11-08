@@ -48,15 +48,40 @@ inductive FloatSums : List Value → Int → Prop
   | split {vs xs ys : List Value} {a b : Int} : vs.Perm (xs ++ ys) → FloatSums xs a →
       FloatSums ys b → FloatSums vs (FloatCode.fadd a b)
 
+/-- `Σ |xᵢ|` over the doubles among `vs`, in units of `2⁻¹⁰⁷⁴`. -/
+def scaledAbsSum : List Value → Nat
+  | [] => 0
+  | .float c :: vs => (FloatCode.scaled c).natAbs + scaledAbsSum vs
+  | _ :: vs => scaledAbsSum vs
+
+set_option exponentiation.threshold 2100 in
+/-- **The bound every engine summation order meets (D35).** On `n ≤ 2³²`
+finite doubles whose `2 · Σ(|xᵢ| + 2⁻¹⁰²²)` stays below the largest double,
+a sum `c` is finite and within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact sum,
+`u = 2⁻⁵³`, `γₙ = nu / (1 − nu)`: in units of `2⁻¹⁰⁷⁴` and multiplied out,
+an exact inequality on integers. `float-bounds` proves it of every order the
+engines' facts record (`StdModel.Summed.near`: trees, a sequential sum,
+Kahan's, a constant run's `fl(k · x)`); that the engines' algorithms meet it
+is trusted (docs/proofs.md, retired by #1196). -/
+def SumBound (vs : List Value) (c : Int) : Prop :=
+  (∀ x, Value.float x ∈ vs → FloatCode.IsFin x) → vs.length ≤ 2 ^ 32 →
+    2 * (scaledAbsSum vs + vs.length * 2 ^ 52) ≤ FloatCode.maxMag →
+    FloatCode.IsFin c ∧
+      (FloatCode.scaled c - exactSum vs).natAbs * (2 ^ 53 * (2 ^ 53 - vs.length)) ≤
+        (vs.length * 2 ^ 53 + (2 ^ 53 - vs.length)) * (scaledAbsSum vs + vs.length * 2 ^ 52)
+
 /-- The doubles a `SUM` of `vs` gives under a `sum_order` behaviour: the
-correctly rounded exact sum for `EXACT`, the reference's (D25). -/
+correctly rounded exact sum for `EXACT`, the reference's (D25); for every
+other behaviour a sum within `SumBound` (D35) and, where the behaviour has
+one, of its shape: a tree (`ANY`, `PAIRWISE`) or a sequential sum in some
+order (`SEQUENTIAL`). Kahan's compensated sum (`COMPENSATED`) and a constant
+run's product (`SCALED_CONSTANT`) are the bound alone. -/
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "EXACT" then c = floatSumCR vs
-  else if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
-  else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
-  -- Not modelled here (Kahan's compensated sum, a constant run's product):
-  -- any double. `float-bounds` bounds both (`StdModel.Summed`).
-  else True
+  else SumBound vs c ∧
+    if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
+    else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
+    else True
 
 /-- The doubles an `AVG` of `vs` gives under a `sum_order` behaviour: the
 exact mean rounded once for `EXACT`, else a sum `SumOrder` allows divided by

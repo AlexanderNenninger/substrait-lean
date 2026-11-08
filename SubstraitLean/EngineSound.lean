@@ -1,5 +1,6 @@
 import SubstraitLean.Engine
 import SubstraitLean.AllowedNear
+import SubstraitLean.AllowedAnalysis
 
 /-!
 # What an engine's model is sound for (#900)
