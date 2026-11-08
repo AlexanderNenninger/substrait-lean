@@ -605,9 +605,9 @@ print(report)
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
 # semantics: reference
-# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6 ...
-# evidence: polars exact, proved by Polars.sum_leaves_i64
-# evidence: spark shim, proved by Shim.sum_empty_null
+# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #241)
+# evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
+# evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)
 # known about the output:
 #   rows: at most 1,000,000,000,000
 # ...
@@ -1745,7 +1745,7 @@ only if one applies:
 |---|---|
 | `native` | the plan was verified under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars, `semantics="spark"` on Spark) |
 | `translated` | the plan was verified under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
-| `transfer` | the plan was verified under another profile, and at every option the proof depends on, the engine's choices are within that profile's |
+| `transfer` | the plan was verified under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
 | `recheck` | the checker proves the plan again under the engine's profile |
 
 `report.routes[engine]` records the route, with its class, which says what
@@ -1766,8 +1766,10 @@ or on anything else, tests and probes among them (`tested`). `route.theorems`
 names the proofs, and `route.facts` and `route.version` the engine facts and
 the engine version they were probed at. `print(report)` shows the same before
 any run, one `evidence:` line per engine:
-`evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc` or
-`evidence: spark exact, tested at 4.3.0 (facts spark-int-arith, …)`. Before the plan runs, its preconditions,
+`evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc on polars's model (facts …)` or
+`evidence: spark exact, tested at 4.3.0 (facts spark-int-arith, …; #…)`. A proof
+"on the engine's model" proves the model the engine's facts describe; those facts
+say the engine is that model (#900). Before the plan runs, its preconditions,
 the inferred bounds and the assumed `SUM`s are checked on the data, and a
 batch that breaks one raises `PreconditionError`.
 
