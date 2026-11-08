@@ -70,9 +70,9 @@ def coreUn : UnFn → Bool
   | _ => false
 
 /-- Spark's binary functions:
-* `+ - * /` of doubles are IEEE's, NaN where `nanCase` (spark-double-arith), with
-  IEEE's two zeros (`-0.0 + -0.0`, `-0.0 - 0.0`, a zero product or quotient of
-  operands of different signs: spark-zero-sign);
+* `+ - * /` of doubles are IEEE 754's on the full set of codes (`FloatCode.addI`,
+  `subI`, `mulI`, `divI`, D31): NaN for `∞ - ∞`, `0 · ∞`, `∞ / ∞`
+  (spark-double-arith), IEEE's two zeros (spark-zero-sign);
 * `/` and `%` of doubles raise at a zero divisor (spark-double-divide,
   spark-double-modulus), `%` is C's `fmod` (`FloatCode.fmod`: NaN for an infinite
   dividend, the dividend for an infinite divisor) with the dividend's sign;
@@ -83,19 +83,14 @@ def coreUn : UnFn → Bool
   spark-int-divide, spark-int-modulus), and the comparisons, `AND`, `OR`,
   `GREATEST`, `LEAST` are the reference's (spark-kleene, spark-nan-equality,
   spark-nan-order, spark-zero-order).
-A NaN Spark creates has the platform's sign (spark-nan-sign); the model's one
-NaN stands for it, the sign being `nan_kind`'s. -/
+A NaN Spark creates has the platform's sign (spark-nan-sign); as in D31 the
+sign of a NaN an operation produces is open, and the NaN code stands for it. -/
 def runBin : BinFn → Value → Value → Outcome
-  | .fadd, .float a, .float b => .ok (.float (if nanCase .fadd a b then FloatCode.nan
-      else signedZero (a == FloatCode.negZero && b == FloatCode.negZero) (FloatCode.fadd a b)))
-  | .fsub, .float a, .float b => .ok (.float (if nanCase .fsub a b then FloatCode.nan
-      else signedZero (a == FloatCode.negZero && b == 0) (FloatCode.fsub a b)))
-  | .fmul, .float a, .float b => .ok (.float (if nanCase .fmul a b then FloatCode.nan
-      else signedZero (decide (a < 0) != decide (b < 0)) (FloatCode.fmul a b)))
+  | .fadd, .float a, .float b => .ok (.float (FloatCode.addI a b))
+  | .fsub, .float a, .float b => .ok (.float (FloatCode.subI a b))
+  | .fmul, .float a, .float b => .ok (.float (FloatCode.mulI a b))
   | .fdiv, .float a, .float b =>
-    if isZeroCode b then .error .divByZero
-    else .ok (.float (if nanCase .fdiv a b then FloatCode.nan
-      else signedZero (decide (a < 0) != decide (b < 0)) (FloatCode.fdiv a b)))
+    if isZeroCode b then .error .divByZero else .ok (.float (FloatCode.divI a b))
   | .fmod, .float a, .float b =>
     if isZeroCode b then .error .divByZero
     else .ok (.float (signedZero (decide (a < 0)) (FloatCode.fmod a b)))
@@ -107,20 +102,19 @@ def runBin : BinFn → Value → Value → Outcome
     if 0 ≤ b ∧ b < 64 then Profile.reference.bin (.bit .shr) (.int a) (.int b) else .error .domain
   | f, v, w => if coreBin f then Profile.reference.bin f v w else .error .raised
 
-/-- Spark's unary functions: `-x` of a double flips the sign of zero
-(spark-zero-sign); `sqrt` is NaN for a negative (spark-math-domain). Where
-Spark's value is one no option of the core states (`-NaN`, the saturation of
+/-- Spark's unary functions: `-x` of a double is IEEE's negation, flipping
+the sign of a zero and a NaN (`FloatCode.negI`, spark-zero-sign), open for a NaN, whose sign it flips
+(spark-nan-sign); `sqrt` is NaN for a negative (spark-math-domain). Where
+Spark's value is one no option of the core states (the saturation of
 `CAST(2⁶³ AS BIGINT)`) or no fact records (`sqrt(-0.0)`), the call is open: an
 error, so nothing is claimed. The others of the core are the
 reference's (spark-kleene, spark-is-null, spark-bigint-to-double, spark-int-arith,
 `isNum` as `x IS NOT NULL`, `raise` as `raise_error`). -/
 def runUn : UnFn → Value → Outcome
   | .fneg, .float a =>
-    -- `-NaN` flips the sign bit (spark-nan-sign), which `fp.neg` has no option
-    -- for: open.
-    if a = FloatCode.nan ∨ a = FloatCode.negNan then .error .raised
-    else .ok (.float (if a = 0 then FloatCode.negZero else if a = FloatCode.negZero then 0
-      else FloatCode.neg a))
+    -- `-NaN` flips the sign bit (spark-nan-sign); `fp.neg` has no `nan_kind`
+    -- option that would state it (D34 scopes): open.
+    if FloatCode.isNanCode a then .error .raised else .ok (.float (FloatCode.negI a))
   | .fmath .sqrt, .float a =>
     -- `sqrt(-0.0)` is not probed on Spark: open.
     if a = FloatCode.negZero then .error .raised

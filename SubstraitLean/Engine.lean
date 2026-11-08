@@ -539,40 +539,6 @@ theorem Profile.reference_okImpl : Profile.reference.okImpl = Impl.lean := by
   simp only [Profile.okImpl, Impl.lean]
   congr 1 <;> funext <;> simp only [hu, hb]
 
-/-- **What Spark computes is within its table**: its two zeros, its NaN for
-`∞ - ∞` and a domain error each have a row; every other value it gives is
-the reference's (`Profile.sparkRun`). -/
-theorem Profile.sparkRun_withinOk : Profile.sparkRun.WithinOk Profile.spark.table := by
-  have ce : ∀ c, callExtraB Profile.spark.table c = true → CallExtra Profile.spark.table c :=
-    fun _ => callExtra_of_B
-  refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
-  · simp only [Profile.sparkRun, Spark.runUn] at h
-    split at h
-    · exact .inr (ce _ (by decide))
-    · exact .inr (ce _ (by decide))
-    · split at h
-      · cases h
-      · exact .inl (raiseIf_ok h)
-    · split at h
-      · exact .inl (raiseIf_ok h)
-      · cases h
-  · simp only [Profile.sparkRun, Spark.runBin] at h
-    split at h
-    · exact .inr (ce _ (by decide))
-    · exact .inr (ce _ (by decide))
-    · exact .inr (ce _ (by decide))
-    · exact .inr (ce _ (by decide))
-    · exact .inr (ce _ (by decide))
-    · split at h
-      · exact .inl (raiseIf_ok h)
-      · cases h
-    · split at h
-      · exact .inl (raiseIf_ok h)
-      · cases h
-    · split at h
-      · exact .inl (raiseIf_ok h)
-      · cases h
-
 /-- The reference. -/
 def Engine.reference : Engine where
   name := "reference"

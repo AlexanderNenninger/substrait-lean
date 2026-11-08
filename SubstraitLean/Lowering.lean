@@ -884,6 +884,64 @@ theorem Lowering.lowerRel_sound {p : Profile} {L : Lowering p} (hL : L.Total) {c
     (L.lowerRel r).eval cat p.impl = r.eval cat :=
   Rel.evalI_mapExprs (lowerE_exact hL) (fun _ => rfl) h
 
+/-! ## A partial table
+
+An engine's table may have no entry for a function the engine has no proved
+spelling of (Spark's, #271 S1). A plan that calls such a function is refused
+(`Lowering.lowerRel?`), with the first function it misses (`Lowering.missing`).
+Each expression of a plan it accepts is lowered by `lowerP`, which sends a
+function without an entry to `noEntry`, an expression that always raises: so
+`lowerP` is exact on every expression, and soundness needs no `Total`. -/
+
+/-- What a function without an entry is lowered to: it always raises. -/
+def Lowering.noEntry : Expr := .un (.raise "no lowering") (.lit .null)
+
+/-- The lowering of an expression, `noEntry` where the table has no entry. -/
+def Lowering.lowerP {p : Profile} (L : Lowering p) (e : Expr) : Expr :=
+  (L.lower e).getD Lowering.noEntry
+
+/-- Under a profile whose `raise` raises, `lowerP` is exact on every expression. -/
+theorem Lowering.lowerP_exact {p : Profile} (L : Lowering p)
+    (hraise : ∀ m v, (p.un (.raise m) v).err?.isSome) (e : Expr) :
+    Expr.Exact p (L.lowerP e) e := by
+  cases ht : L.lower e with
+  | some t => simp only [lowerP, ht, Option.getD_some]; exact L.lower_exact ht
+  | none =>
+    simp only [lowerP, ht, Option.getD_none]
+    intro row v hv
+    have := hraise "no lowering" .null
+    simp only [noEntry, Expr.evalP, bind, Except.bind] at hv
+    cases hr : p.un (.raise "no lowering") .null with
+    | ok _ => simp [hr, Outcome.err?] at this
+    | error _ => simp [hr] at hv
+
+/-- Every expression of a plan satisfies `q`. -/
+def Rel.exprsAll (q : Expr → Bool) : Rel → Bool
+  | .read _ | .values _ _ => true
+  | .filter r c => r.exprsAll q && q c
+  | .project r es => r.exprsAll q && es.all q
+  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
+    r.exprsAll q
+  | .cross a b | .unionAll a b => a.exprsAll q && b.exprsAll q
+  | .join a b _ on | .semi a b _ on => a.exprsAll q && b.exprsAll q && q on
+  | .aggregate r gs ms => r.exprsAll q && gs.all q &&
+      ms.all fun m => q m.arg && m.filter.all q
+
+/-- A plan lowered with a table that may be partial: refused (`none`) where it
+calls a function without an entry. -/
+def Lowering.lowerRel? {p : Profile} (L : Lowering p) (r : Rel) : Option Rel :=
+  if r.exprsAll fun e => (L.lower e).isSome then some (r.mapExprs L.lowerP) else none
+
+/-- **A plan the partial table lowers runs correctly on the engine, or raises**,
+as `Lowering.lowerRel_sound`, for a profile whose `raise` raises. -/
+theorem Lowering.lowerRel?_sound {p : Profile} (L : Lowering p)
+    (hraise : ∀ m v, (p.un (.raise m) v).err?.isSome) {cat : Catalog} {r r' : Rel}
+    (hl : L.lowerRel? r = some r') (h : ¬r'.Raises p cat) : r'.eval cat p.impl = r.eval cat := by
+  unfold lowerRel? at hl
+  split at hl
+  · cases hl; exact Rel.evalI_mapExprs (L.lowerP_exact hraise) (fun _ => rfl) h
+  · cases hl
+
 /-! ## Dropping guards in a plan -/
 
 /-- `Rel.evalI_mapExprs` where `f` is exact only on rows whose issues satisfy
