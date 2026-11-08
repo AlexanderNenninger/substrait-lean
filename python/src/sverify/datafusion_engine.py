@@ -109,7 +109,8 @@ def _check_datafusion_plan(plan: dict) -> None:
                 ints = ("i8", "i16", "i32", "i64")
                 if is_avg and any(k in a.get("outputType", {}) for k in ints):
                     raise sql.Unsupported(
-                        "DataFusion's AVG has no integer result (upstream/bugs/DF-24.json)"
+                        "DataFusion's AVG has no integer result (upstream/bugs/DF-24.json); "
+                        + DUCKDB_ONLY
                     )
             c = node.get("cast")
             if isinstance(c, dict) and c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
@@ -134,7 +135,7 @@ def _check_datafusion_plan(plan: dict) -> None:
                 if not left and (start is None or int(start) < 0):
                     raise sql.Unsupported(
                         "DataFusion's substring does not count a negative start from the end "
-                        "(upstream/bugs/DF-23.json)"
+                        "(upstream/bugs/DF-23.json); " + DUCKDB_ONLY
                     )
             for v in node.values():
                 walk(v)

@@ -92,7 +92,14 @@ Tables = Mapping[str, pl.LazyFrame | pl.DataFrame | pa.Table]
 
 class Unsupported(_Unsupported):
     """The plan uses something the translator does not map to Polars
-    (`sverify.errors.UnsupportedError`)."""
+    (`sverify.errors.UnsupportedError`). DuckDB runs what the translator
+    refuses, so a message that names no exit of its own ends with
+    `engine="duckdb"` (`DUCKDB_ONLY`)."""
+
+    def __init__(self, message: str) -> None:
+        if "engine=" not in message:
+            message = f"{message}; {DUCKDB_ONLY}"
+        super().__init__(message)
 
 
 class RuntimeIssue(ArithmeticError):
@@ -1099,9 +1106,7 @@ class Exprs:
                 if ts.dtype == pl.Time and name == "date_part":
                     return date_part(which.lower(), ts)
                 if ts.dtype == pl.Time:
-                    raise Unsupported(
-                        "date_trunc of a time of day is not yet supported on Polars; " + DUCKDB_ONLY
-                    )
+                    raise Unsupported("date_trunc of a time of day is not yet supported on Polars")
                 if ts.dtype == pl.Date:
                     if name == "date_part":
                         return day_part(which.lower(), ts)
@@ -1259,7 +1264,7 @@ class Exprs:
 
     def cast(self, c: dict) -> Val:
         if c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
-            raise Unsupported("TRY_CAST is not yet supported on Polars; " + DUCKDB_ONLY)
+            raise Unsupported("TRY_CAST is not yet supported on Polars")
         v = self(c["input"])
         target = c.get("type", {})
         if "decimal" in target or is_decimal(v.dtype):
@@ -1600,9 +1605,7 @@ class Exprs:
             )  # fmt: skip
             return Val(ops[name], pl.Float64, (*issues(a, b), zero, *tiny, nan, *inf))
         if name in ("add", "subtract") and ta == pl.Time:
-            raise Unsupported(
-                "a time of day plus an interval is not yet supported on Polars; " + DUCKDB_ONLY
-            )
+            raise Unsupported("a time of day plus an interval is not yet supported on Polars")
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:
