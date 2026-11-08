@@ -279,21 +279,24 @@ def test_rollup_contract_is_proved():
     )
     assert report.proved, str(report)
     assert report.facts["mx"] == "an integer in [0, 1000]"
-    # The mean is a double division, which rounds: no bound from the inputs (#85).
+    # The reference rounds the exact mean once (D25), so it stays within the
+    # inputs' bound (#1160). Its relation to the group's own max is not tracked.
     report = sv.verify(
         g, requires={"s": [_.cpu >= 0, _.cpu <= 1000]}, ensures=[_.mx >= _.avg, _.avg <= 1000]
     )
-    assert [c.proved for c in report.ensures] == [False, False]
+    assert [c.proved for c in report.ensures] == [False, True]
 
 
-def test_avg_of_doubles_is_not_null_but_unbounded():
+def test_avg_of_doubles_is_bounded_by_its_inputs():
+    # The exact mean rounded once (D25, #1160) lies within the inputs' bound;
+    # the relation to the group's own max is not tracked.
     g = samples.group_by("host").aggregate(avg=samples.cpu.mean(), hi=samples.cpu.max())
     report = sv.verify(
         g,
         requires={"samples": [_.cpu >= 0, _.cpu <= 100]},
         ensures=[_.avg.notnull(), _.avg <= 100, _.avg <= _.hi],
     )
-    assert [c.proved for c in report.ensures] == [True, False, False]
+    assert [c.proved for c in report.ensures] == [True, True, False]
 
 
 def test_decimal_avg_is_bounded_by_its_inputs():
