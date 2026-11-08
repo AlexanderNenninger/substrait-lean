@@ -33,7 +33,10 @@ case label:
 * `UNORDERED_LISTS`: lists built from rows in an order the plan does not fix,
   compared as bags;
 * `APPROXIMATE`: doubles each engine computes with its own algorithm
-  (`VARIANCE`, `STDDEV`, #54), compared to nine significant digits.
+  (`VARIANCE`, `STDDEV`, #54), compared to nine significant digits;
+* `DUCKDB_ORACLE`: cases whose Ibis SQL meets a DuckDB bug the plan's SQL
+  handles (`upstream/bugs/`), with the Ibis expression whose DuckDB SQL is
+  the oracle instead.
 
 `tests/test_coverage.py` pins every case to its `expected` status and its
 refusals, so a change in coverage is a deliberate edit there. The README
@@ -64,6 +67,7 @@ from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
     APPROXIMATE,
     CASES,
+    DUCKDB_ORACLE,
     NO_DUCKDB_SQL,
     REFUSED,
     TIE_FREE,
@@ -81,6 +85,7 @@ __all__ = [
     "TIE_FREE",
     "UNORDERED_LISTS",
     "APPROXIMATE",
+    "DUCKDB_ORACLE",
     "Case",
     "L",
     "Result",
