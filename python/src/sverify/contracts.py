@@ -873,7 +873,7 @@ def infer_bounds(
     infer: bool = True,
     inputs: Collection[str] | None = None,
     semantics: Semantics = "reference",
-    on_inferred: OnInferred = "ignore",
+    on_inferred: OnInferred,
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred (#244).
 
@@ -1521,8 +1521,16 @@ def _verify_once(
             "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
             "sql": isinstance(transform, str),
         }
-    if semantics in _profile_requests():
+    if semantics != "reference":
+        # The profile decides which issues are errors (an overflow to ±∞ is
+        # the reference's alone, #575) and, for those beyond DuckDB's lift,
+        # the report's profile (`underProfile`).
         contract["profile"] = semantics
+    # The engines a route may reach: the checker gives each a verdict, those
+    # without a profile of their own too (#1166).
+    from sverify.routes import translations
+
+    contract["engines"] = sorted(translations())
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
         raise checker_failed("--contract", stderr)

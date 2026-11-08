@@ -398,6 +398,7 @@ def Report.json (r : Report) : Json :=
         ("group_rows", match g with | some n => Lean.toJson n | none => .null)]).toArray),
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
+        ("assumed", Lean.toJson i.assumed),
         ("expr", Lean.toJson e.render),
         ("constant", Lean.toJson (r.constant.contains (i, e))),
         ("under_and_or", Lean.toJson (r.underAndOr.contains e)),
@@ -414,8 +415,12 @@ def Report.json (r : Report) : Json :=
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
 
+/-- Every postcondition and key proved, and every issue ruled out but the
+assumed ones (`Issue.assumed`), which the data is checked against while the
+job runs (`Report.assumed` in Python, #575). -/
 def Report.allProved (r : Report) : Bool :=
-  r.ensures.flatten.all (·.2.1) && r.keys.all (·.2) && !r.issues.any (·.1.isError)
+  r.ensures.flatten.all (·.2.1) && r.keys.all (·.2) &&
+    !r.issues.any fun (i, _) => i.isError && !i.assumed
 
 def natLists (j : Json) : List (List Nat) :=
   ((j.getArr?).toOption.getD #[]).toList.map fun k =>
@@ -838,10 +843,15 @@ def Request.analyses (R : Request) (envs : List (List AVal)) : Except String Rep
   let constant := match transform with
     | some p => if p.root.checkWF cat then p.root.constIssues else []
     | none => []
+  -- An overflow to `±∞` is the reference's error (#575): under another
+  -- profile the request names, the engine gives `±∞`, and no precondition
+  -- rules it out.
+  let reference := ((input.getObjValAs? String "profile").toOption.getD "reference") == "reference"
   let issues := match transform with
     | some p =>
       if p.root.checkWF cat then
-        ((p.root.issuesCapped cat A F T inputKeys caps perKey) ++ constant).eraseDups
+        ((p.root.issuesCapped cat A F T inputKeys caps perKey) ++ constant).eraseDups.filter
+          fun (i, _) => reference || i != .infinite
       else []
     | none => []
   let rows := match transform with

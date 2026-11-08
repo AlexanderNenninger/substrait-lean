@@ -729,8 +729,11 @@ def _cited(facts: Sequence[str] | None) -> str:
 
 def verdict(report: Report, engine: str) -> Mapping[str, Any] | None:
     """The checker's verdict on the report's plan on `engine` (`"engines"`,
-    `SubstraitLean/Realize.lean`); None where it gives none."""
-    return (report._engines or {}).get(engine)
+    `SubstraitLean/Realize.lean`); None where it gives none, or gives the
+    verdict on an engine without a profile (`"profile": false`), whose
+    translation's tests stand for the plan (`realization`)."""
+    v = (report._engines or {}).get(engine)
+    return None if v is None or v.get("profile") is False else v
 
 
 def realization(

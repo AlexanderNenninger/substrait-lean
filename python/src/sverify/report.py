@@ -534,7 +534,9 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
-    _on_inferred: OnInferred = field(default="ignore", repr=False, compare=False)
+    # What an inferred precondition does (`verify(on_inferred=...)`): an error
+    # unless the caller says otherwise (D23).
+    _on_inferred: OnInferred = field(default="error", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
     not proved (`needed`)."""
