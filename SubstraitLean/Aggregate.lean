@@ -23,7 +23,7 @@ and the others are NULL. Checked against DataFusion 51:
   here they add in list order with native floats. `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.
 * `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`). Only
-  `--write-datafusion` refuses them on doubles (`Rel.floatExtremes`):
+  `--write-datafusion` refuses them on doubles (`DataFusion.floatExtremes`):
   DataFusion's grouped `MIN` of a group of +∞ is the largest finite double,
   and it skips NaN next to other values.
 * Grouping compares values exactly; doubles have one zero and one NaN
@@ -135,6 +135,10 @@ def intSum : List Value → Int
   | [] => 0
   | .int i :: vs | .dec _ i :: vs => i + intSum vs
   | _ :: vs => intSum vs
+
+theorem intSum_cons (v : Value) (vs : List Value) :
+    intSum (v :: vs) = v.unscaled?.getD 0 + intSum vs := by
+  cases v <;> simp [intSum]
 
 /-- Is the value a decimal? -/
 def Value.isDec : Value → Bool

@@ -298,6 +298,7 @@ def route_json(r: Route) -> Json:
             ("theorems", list(r.theorems)),
             ("version", r.version),
             ("issues", list(r.issues)),
+            ("proved_facts", list(r.proved_facts)),
         )
         if v
     }
@@ -343,6 +344,7 @@ def route(d: Mapping[str, Any]) -> Route:
         theorems=tuple(d.get("theorems", ())),
         version=d.get("version"),
         issues=tuple(d.get("issues", ())),
+        proved_facts=tuple(d.get("proved_facts", ())),
         shims=tuple(d.get("shims", ())),
         reproducible=eq("reproducible"),
         rerun_evidence=d.get("rerun_evidence"),
@@ -395,6 +397,11 @@ def to_json(report: Report) -> Json:
         "implied": dict(report._implied),
         "transfer": None if report._transfer is None else [dict(f) for f in report._transfer],
         "floats_on": {e: list(ps) for e, ps in report._floats_on.items()},
+        # The checker's verdicts its routes read (#1166): a report read back
+        # routes as it did.
+        "engines": report._engines,
+        "sorted": report._sorted,
+        "depends": report._depends,
     }
 
 
@@ -447,6 +454,9 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         semantics=d.get("semantics", "reference"),
         observation=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
         _floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
+        _engines=d.get("engines"),
+        _sorted=d.get("sorted"),
+        _depends=d.get("depends"),
         routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
         _transfer=d.get("transfer"),
         output=_output(d.get("output") or {}),

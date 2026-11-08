@@ -1,27 +1,29 @@
+import SubstraitLean.Issue
 import SubstraitLean.Contracts
 
 /-!
 # Runtime errors
 
-The reference raises where an engine may fail at run time, and an error
-allows any engine's answer. The list comes from DataFusion (checked against
-DataFusion 51), which fails on integer division or remainder by zero, on
-`MIN / -1`, on integer powers with a negative exponent or a result outside
-64 bits, on `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, on
-an invalid regular expression, on `repeat` writing more than `2³¹ - 1`
-bytes, on `date_trunc` to a week, month, quarter or
-year outside ±2⁶³ nanoseconds, and on date arithmetic (`DATE ± days`, adding
-months) outside the years `chrono` represents. `date_trunc` of a DATE goes
-through nanoseconds and gives garbage outside them (1677 to 2262), which is
-reported as an error too. Integer `+`, `-`, `*` and negation do not fail in
-DataFusion: they wrap around silently; so does `date_trunc` to a day or less
-below `-2⁶³`. The reference raises there (#202: `overflow` omitted means
-ERROR, at the declared width). All of these are `Issue`s and errors, an
-integer `SUM` that leaves 64 bits too (`Issue.sumWraps`, which the job also
-checks while it runs). So are arguments
-outside a function's domain (`sqrt` of a negative, a shift by 64, …,
-`SubstraitLean/Numeric.lean`), where the reference raises and an engine may
-give an IEEE value or a wrapped shift instead: an error allows that.
+The reference raises where a result leaves its type or an argument leaves a
+function's domain, and an error allows any engine's answer, whether the
+engine raises, wraps or gives NULL there: integer division or remainder by
+zero, `MIN / -1`,
+integer powers with a negative exponent or a result outside 64 bits, integer
+`+`, `-`, `*` and negation outside their declared width (#202: `overflow`
+omitted means ERROR; DuckDB and Spark in ANSI mode raise, Polars wraps:
+duckdb-int-narrow, spark-int-arith, polars-int-arith), a cast to a narrower
+integer that does not fit (DuckDB, Polars and Spark raise: duckdb-int-narrow,
+polars-cast-int, spark-cast-int-narrow),
+`CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, an invalid
+regular expression, `repeat` writing more than `Text.repeatMax` bytes, and an
+integer `SUM` that leaves 64 bits (`Issue.sumWraps`, which the job also
+checks while it runs). Date arithmetic raises outside the reference's dates
+(#251), and the calendar functions on timestamps (`date_part`, truncation to a
+week or longer, `date_bin`, `strftime`, adding months) outside the reference's
+timestamps, 0001-01-01 to 9999-12-31 (D32). Arguments outside a function's
+domain (`sqrt` of a negative, a shift by 64, …, `SubstraitLean/Numeric.lean`)
+raise too, where an engine may give an IEEE value or a wrapped shift
+instead: an error allows that.
 
 ## Where an engine evaluates an expression
 
@@ -67,260 +69,6 @@ namespace Substrait
 
 open FloatCode (minI64 maxI64 castLo castHi)
 
-inductive Issue where
-  /-- Integer division or remainder by zero, or a double divided by zero. -/
-  | divByZero
-  /-- A result outside 64 bits where DataFusion fails (`MIN / -1`, `POWER`),
-  a `repeat` beyond `Text.repeatMax` bytes, or a decimal of more digits than
-  its precision (`UnFn.decimal`). -/
-  | overflow
-  /-- `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value. -/
-  | badCast
-  /-- `POWER` of integers with a negative exponent. -/
-  | negExponent
-  /-- A regular expression outside `Text.simpleRegex`, which may not compile. -/
-  | badRegex
-  /-- `+`, `-`, `*` or negation whose result does not fit its declared width:
-  64 bits, or narrower integers (`UnFn.wrap`). With `overflow` omitted or
-  `ERROR`, the reference raises (#202); DataFusion wraps around instead,
-  which an error allows (a refinement). -/
-  | wraps
-  /-- A `SUM` leaving its type (`Measure.sumOk`): 64 bits for integers, the
-  result's precision for decimals (#316). The reference raises, and so does
-  the SQL sverify writes, which keeps its check while the job runs (DuckDB
-  raises on a decimal `SUM` that leaves 38 digits). An error like any other:
-  a plan that may raise is not proved, unless the input's rows and the
-  argument's range bound the sum (`Measure.sumFits`). Kept apart from
-  `wraps` because it comes from a group's rows, not from one row:
-  `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
-  | sumWraps
-  /-- An argument outside a function's domain (`SubstraitLean/Numeric.lean`):
-  `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`
-  outside `[-1, 1]`, `atan2(0, 0)`, `logb` to a base that is not positive or
-  is 1, a shift count outside `0`–`63`, a `substring` offset outside
-  `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336,
-  where DuckDB raises too). The reference raises (Substrait's
-  `on_domain_error` = ERROR); DataFusion gives NaN, ±∞ or a wrapped shift
-  instead, which an error allows (a refinement, epic #185). -/
-  | domain
-  /-- Raised by a shim's guard (`UnFn.raise`, #185), where an engine would
-  answer while the reference raises. Plans `verify` checks have none. -/
-  | raised
-  /-- An operation on finite doubles whose result is `±∞` (#575): `+`, `-`,
-  `*`, `/` and `power` that overflow (or `0 ^ -1`), `exp` past `709.78`, and a
-  `SUM`, `AVG` or statistical aggregate of finite values that overflows. An
-  error of the reference: it raises there. As for a `SUM` that leaves its
-  type, verification rules it out by an inferred precondition, proved from the
-  bounds where they do it (`Measure.abs`) and otherwise checked on the data
-  while the job runs (`Issue.assumed`, `Report.assumed`). `Rel.eval` and
-  `Profile.reference` keep the IEEE value, `±∞`, on the rows the precondition
-  excludes (`Issue.isError` is false for it), so the lift of DuckDB's SQL and
-  the lowering state DuckDB's result exactly. -/
-  | infinite
-  deriving Repr, DecidableEq
-
-def Issue.name : Issue → String
-  | .divByZero => "division by zero"
-  | .overflow => "overflow"
-  | .badCast => "cast out of range"
-  | .negExponent => "negative exponent"
-  | .badRegex => "invalid regular expression"
-  | .wraps => "overflow"
-  | .sumWraps => "SUM overflow"
-  | .domain => "domain error"
-  | .raised => "raised by a guard"
-  | .infinite => "overflow to infinity"
-
-/-- The aggregates among a list of window functions. -/
-def WinFn.aggs (fns : List WinFn) : List Measure :=
-  fns.filterMap fun
-    | .agg m _ _ => some m
-    | _ => none
-
-/-- Whether `Profile.reference` gives an error outcome for the issue (`raiseIf`).
-Every issue raises in the reference and a proof must rule each out. An
-overflow to `±∞` (#575) keeps its IEEE value in `Rel.eval` and
-`Profile.reference`: its precondition (`Issue.assumed`) rules it out, so no
-verified run reaches that value. -/
-def Issue.isError : Issue → Bool
-  | .infinite => false
-  | _ => true
-
-/-- The errors ruled out by an inferred precondition, inferred like #244's
-bounds and checked on the data while the job runs where the bounds do not
-prove it (`Report.assumed`): a `SUM` that leaves its type, an overflow to
-`±∞`. -/
-def Issue.assumed : Issue → Bool
-  | .sumWraps | .infinite => true
-  | _ => false
-
-def inI64 : Int → Bool := between minI64 maxI64
-
-def wrapIf (i : Int) : Option Issue := if inI64 i then none else some .wraps
-
-/-- `wraps` for a number outside 64 bits. -/
-def wrapNum (v : Value) : Option Issue :=
-  match v.numOf? with
-  | some (_, i) => wrapIf i
-  | none => none
-
-/-- A domain error where a partial function has no result. -/
-def domainIssue (r : Option Int) : Option Issue := if r.isSome then none else some .domain
-
-/-- `overflow` unless the argument `x` and the result `y` are in `[lo, hi]`:
-the dates and timestamps `chrono` represents, or DataFusion's nanoseconds. -/
-def rangeIssue (lo hi x y : Int) : Option Issue :=
-  if between lo hi x && between lo hi y then none else some .overflow
-
-/-! ## What goes wrong on a row -/
-
-def UnFn.issue : UnFn → Value → Option Issue
-  -- A black box that may raise, where it does (#325).
-  | .bbox n, v => if BlackBox.raisesOn n [v] then some .domain else none
-  | .neg, .int i => wrapIf (-i)
-  | .ftoi, .float c => match FloatCode.toInt? c with
-    | some x => if inI64 x then none else some .badCast
-    | none => some .badCast
-  | .narrow n, .int i => if fitsBits n i then none else some .badCast
-  | .wrap n, .int i => if fitsBits n i then none else some .wraps
-  -- The pattern is compiled whatever the input.
-  | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
-  | .dateTrunc u, .ts ts | .dateTrunc u, .tod ts =>
-    if u.calendar then
-      if ts ≤ Time.nsMax ∧ Time.nsMin ≤ Time.trunc u ts then none else some .overflow
-    else wrapIf (Time.trunc u ts)
-  | .dayTrunc u, .date d => rangeIssue Time.nsDayMin Time.nsDayMax d (Time.truncDay u d)
-  | .addMonths m false, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.addMonths m d)
-  -- The reference's dates (#807); DuckDB raises past its timestamps' years.
-  | .dateTime, .date d => rangeIssue Time.dayMin Time.dayMax d d
-  | .addMonths m true, .ts ts => rangeIssue Time.partMin Time.partMax ts (Time.addMonthsUs m ts)
-  -- chrono's calendar, which fails outside its years.
-  | .timeOfDay, .ts ts | .timeOfDay, .tod ts | .strftime _, .ts ts => rangeIssue Time.partMin Time.partMax ts ts
-  -- DataFusion bins in nanoseconds, which wrap around outside ±2⁶³.
-  | .bucket k o, .ts ts => rangeIssue Time.nsMin Time.nsMax ts (Time.bucket k o ts)
-  | .fmath f, .float c => domainIssue (f.apply c)
-  | .decimal p _, v => match v.unscaled? with
-    | some i => if fitsDigits p i then none else some .overflow
-    | none => none
-  -- NaN and ±∞ have no decimal.
-  | .ftod s, .float c => if (FloatCode.toDecimal? c s).isSome then none else some .badCast
-  | .raise _, _ => some .raised
-  | _, _ => none
-
-/-- Is `c` the code of `+∞` or `-∞`? -/
-def isInfCode (c : Int) : Bool := c == FloatCode.posInf || c == FloatCode.negInf
-
-/-- The inputs on which IEEE 754 makes a double operation's result NaN though
-neither input is NaN (#257): `∞ - ∞`, `0 · ∞`, `∞ / ∞` (`0 / 0` is a division
-by zero), a power of a finite negative number to a finite exponent that is
-not an integer, and `fmod` of `±∞`. The reference never creates a NaN, so
-these raise (a domain error). -/
-def nanCase : BinFn → Int → Int → Bool
-  | .fadd, a, b => (a == FloatCode.posInf && b == FloatCode.negInf) ||
-      (a == FloatCode.negInf && b == FloatCode.posInf)
-  | .fsub, a, b => (a == FloatCode.posInf && b == FloatCode.posInf) ||
-      (a == FloatCode.negInf && b == FloatCode.negInf)
-  | .fmul, a, b => (a == 0 && isInfCode b) || (isInfCode a && b == 0)
-  | .fdiv, a, b => isInfCode a && isInfCode b
-  | .fmod, a, b => isInfCode a && b != FloatCode.nan
-  | .fpow, a, b => decide (FloatCode.negInf < a) && decide (a < 0) &&
-      decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) && FloatCode.floor b != b
-  | _, _, _ => false
-
-def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
-
-/-- `power(-∞, y)` for a finite `y` that is not an integer. IEEE 754 gives
-`+∞` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5`
-is a square root, NaN. The reference raises (a domain error, as for a finite
-negative base), so a verified plan never meets it and no engine needs a shim. -/
-def negInfPow (a b : Int) : Bool :=
-  decide (a = FloatCode.negInf) && decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) &&
-    FloatCode.floor b != b
-
-def BinFn.issue : BinFn → Value → Value → Option Issue
-  | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
-  -- Integers, and timestamps, times of day and dates moved by an interval.
-  | .add, v, w => wrapNum (BinFn.add.apply v w)
-  | .sub, v, w => wrapNum (BinFn.sub.apply v w)
-  | .mul, v, w => wrapNum (BinFn.mul.apply v w)
-  | .dateAdd, .date a, .int b => rangeIssue Time.dayMin Time.dayMax a (a + b)
-  | .idiv, .int a, .int b =>
-    if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
-  | .imod, .int _, .int b | .imod, .tod _, .int b => if b = 0 then some .divByZero else none
-  -- A double divided by zero (the code of `0.0`): Substrait's
-  -- `on_division_by_zero` = ERROR. The parser writes the other options as a
-  -- `CASE` around this (`Parse.divByZero`).
-  | .fdiv, .float a, .float b => if b = 0 then some .divByZero else nanIssue .fdiv a b
-  | .fmod, .float a, .float b => if b = 0 then some .divByZero else nanIssue .fmod a b
-  | .fadd, .float a, .float b => nanIssue .fadd a b
-  | .fsub, .float a, .float b => nanIssue .fsub a b
-  | .fmul, .float a, .float b => nanIssue .fmul a b
-  | .fpow, .float a, .float b => if negInfPow a b then some .domain else nanIssue .fpow a b
-  | .ipow, .int a, .int b =>
-    if b < 0 then some .negExponent
-    else if 64 < b ∧ 1 < a.natAbs then some .overflow
-    else if inI64 (a ^ b.toNat) then none else some .overflow
-  | .strRepeat, .str s, .int n => if Text.repeatFits s n then none else some .overflow
-  | .substr n _, .str _, .int a => if Text.substrInRange a n then none else some .domain
-  | .fatan2, .float y, .float x => domainIssue (atan2? y x)
-  | .flogb, .float x, .float b => domainIssue (logb? x b)
-  | .bit op, .int a, .int b => domainIssue (op.apply a b)
-  | _, _, _ => none
-
-/-- Is `c` the code of a finite double? -/
-def isFiniteCode (c : Int) : Bool := decide (FloatCode.negInf < c) && decide (c < FloatCode.posInf)
-
-/-- The operations of doubles that may overflow to `±∞` (#575). -/
-def BinFn.makesInf : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fpow => true
-  | _ => false
-
-/-- An operation on finite doubles whose IEEE result is `±∞` (#575). -/
-def BinFn.infIssue (f : BinFn) (v w : Value) : Option Issue :=
-  match v, w, f.apply v w with
-  | .float a, .float b, .float r =>
-    if f.makesInf && isFiniteCode a && isFiniteCode b && isInfCode r then some .infinite else none
-  | _, _, _ => none
-
-/-- `exp` of a finite double whose result is `±∞` (#575): the other
-elementary functions of a finite double are finite, or a domain error. -/
-def UnFn.infIssue (f : UnFn) (v : Value) : Option Issue :=
-  match f, v, f.apply v with
-  | .fmath .exp, .float a, .float r => if isFiniteCode a && isInfCode r then some .infinite else none
-  | _, _, _ => none
-
-/-- The issue of a call: the error first, else an overflow to `±∞`. -/
-def UnFn.issueAll (f : UnFn) (v : Value) : Option Issue := (f.issue v).or (f.infIssue v)
-
-def BinFn.issueAll (f : BinFn) (v w : Value) : Option Issue := (f.issue v w).or (f.infIssue v w)
-
-theorem UnFn.infIssue_eq {f : UnFn} {v : Value} {k : Issue} (h : f.infIssue v = some k) :
-    k = .infinite := by
-  unfold UnFn.infIssue at h; split at h <;> (try split at h) <;> simp_all
-
-theorem BinFn.infIssue_eq {f : BinFn} {v w : Value} {k : Issue} (h : f.infIssue v w = some k) :
-    k = .infinite := by
-  unfold BinFn.infIssue at h; split at h <;> (try split at h) <;> simp_all
-
-/-- The issues evaluating `e` on `row` runs into, each with the operation
-that raises it. A `CASE` only evaluates the branch it takes. -/
-def Expr.issues (row : Row) : Expr → List (Issue × Expr)
-  | .lit _ | .field _ => []
-  | .un f a => a.issues row ++ ((f.issueAll (a.eval row)).map (·, .un f a)).toList
-  | .bin f a b =>
-    a.issues row ++ b.issues row ++ ((f.issueAll (a.eval row) (b.eval row)).map (·, .bin f a b)).toList
-  | .ifThen c t e => c.issues row ++ if (c.eval row).isTrue then t.issues row else e.issues row
-  -- The lambda runs on every element.
-  | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues (x :: row)
-
--- `AND` and `OR` evaluate both operands (D19, #604): `x <> 0 AND 10 / x > 1`
--- divides by zero on `x = 0`; guarding the division with a `CASE` does not.
-#guard (Expr.issues [.int 0] (.bin .and (.un .not (.bin .eq (.field 0) (.lit (.int 0))))
-  (.bin .lt (.lit (.int 1)) (.bin .idiv (.lit (.int 10)) (.field 0))))).length == 1
-#guard (Expr.issues [.int 0] (.bin .lt (.lit (.int 1))
-  (.ifThen (.un .not (.bin .eq (.field 0) (.lit (.int 0)))) (.bin .idiv (.lit (.int 10)) (.field 0))
-    (.lit .null)))).isEmpty
-
 /-! ## What may go wrong, abstractly -/
 
 def rangeMay (lo hi : Int) (aa ar : AVal) : List Issue :=
@@ -330,6 +78,26 @@ theorem AVal.memNum_of_unscaled {a : AVal} {v : Value} {i : Int} (hm : a.Mem v)
     (hv : v.unscaled? = some i) : ∃ k, a.MemNum k i := by
   cases v <;> simp only [Value.unscaled?, Option.some.injEq, reduceCtorEq] at hv <;> subst hv <;>
     exact ⟨_, hm⟩
+
+/-- A value of the reference's calendar types lies in 0001-01-01 …
+9999-12-31 (D32): a DATE in `Time.dayMin` … `Time.dayMax`, a TIMESTAMP in
+`Time.tsMin` … `Time.tsMax`. A column read has it by its type
+(`ContractCheck.typeEnv`), and the source read checks it; a computed date
+outside it raises (#251). -/
+def _root_.Substrait.Value.InCalendar : Value → Prop
+  | .date d => Time.dayMin ≤ d ∧ d ≤ Time.dayMax
+  | .ts t => Time.tsMin ≤ t ∧ t ≤ Time.tsMax
+  | _ => True
+
+/-- `date_part` raises nothing on the reference's values: calendar functions
+are total on them (D32). -/
+theorem UnFn.datePart_issue_of_inCalendar (p : Time.DatePart) {v : Value}
+    (h : v.InCalendar) : (UnFn.datePart p).issue v = none := by
+  cases v <;> simp_all [Value.InCalendar, UnFn.issue, rangeIssue, between]
+
+theorem UnFn.dayPart_issue_of_inCalendar (p : Time.DatePart) {v : Value}
+    (h : v.InCalendar) : (UnFn.dayPart p).issue v = none := by
+  cases v <;> simp_all [Value.InCalendar, UnFn.issue, rangeIssue, between]
 
 theorem rangeIssue_sound {lo hi x y : Int} {aa ar : AVal} {k : Issue} {kx ky : NumKind}
     (ha : aa.MemNum kx x) (hr : ar.MemNum ky y) (hk : rangeIssue lo hi x y = some k) : k ∈ rangeMay lo hi aa ar := by
@@ -350,10 +118,10 @@ def AVal.decFits (s : Nat) (a : AVal) : Bool := a.int.all fun b =>
   | some l, some h => (FloatCode.toDecimal? l s).isSome && (FloatCode.toDecimal? h s).isSome
   | _, _ => false
 
-/-- Every timestamp `aa` describes, and its truncation `ar`, is within
-DataFusion's nanosecond range. -/
-def nsFits (aa ar : AVal) : Bool :=
-  aa.int.all (·.allLe Time.nsMax) && ar.int.all (·.allGe Time.nsMin)
+/-- Every timestamp `aa` describes, and its truncation `ar`, is within the
+reference's timestamps (D32). -/
+def tsFits (aa ar : AVal) : Bool :=
+  aa.int.all (·.allLe Time.tsMax) && ar.int.all (·.allGe Time.tsMin)
 
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.within minI64 maxI64 then [] else [.wraps]
@@ -362,14 +130,15 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .wrap n, aa, _ => if aa.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1) then [] else [.wraps]
   | .regexMatch p, _, _ => if Text.simpleRegex p then [] else [.badRegex]
   | .dateTrunc u, aa, ar =>
-    if u.calendar then (if nsFits aa ar then [] else [.overflow])
+    if u.calendar then (if tsFits aa ar then [] else [.overflow])
     else if ar.within minI64 maxI64 then [] else [.wraps]
-  | .dayTrunc _, aa, ar => rangeMay Time.nsDayMin Time.nsDayMax aa ar
+  | .dayTrunc _, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .dateTime, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
-  | .addMonths _ true, aa, ar => rangeMay Time.partMin Time.partMax aa ar
-  | .timeOfDay, aa, _ | .strftime _, aa, _ => rangeMay Time.partMin Time.partMax aa aa
-  | .bucket _ _, aa, ar => rangeMay Time.nsMin Time.nsMax aa ar
+  | .addMonths _ true, aa, ar => rangeMay Time.tsMin Time.tsMax aa ar
+  | .timeOfDay, aa, _ | .strftime _, aa, _ | .datePart _, aa, _ => rangeMay Time.tsMin Time.tsMax aa aa
+  | .dayPart _, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
+  | .bucket _ _, aa, ar => rangeMay Time.tsMin Time.tsMax aa ar
   | .fmath f, aa, _ => if f.safe aa then [] else [.domain]
   | .decimal p _, aa, _ => if aa.within (1 - 10 ^ p) (10 ^ p - 1) then [] else [.overflow]
   | .ftod s, aa, _ => if aa.decFits s then [] else [.badCast]
@@ -1039,7 +808,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       split
       · rename_i hout hfits
         exfalso; apply hout
-        simp only [nsFits, Bool.and_eq_true, Option.all_eq_true] at hfits
+        simp only [tsFits, Bool.and_eq_true, Option.all_eq_true] at hfits
         obtain ⟨b, hb, hm, -⟩ := ha
         obtain ⟨b', hb', hm', -⟩ := hr'
         have h1 := hfits.1 b hb
@@ -1052,7 +821,8 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
   case dayTrunc.date u d | bucket.ts k o d =>
     have hr' := hr; simp only [UnFn.apply] at hr'
     exact rangeIssue_sound ha hr' hk
-  case timeOfDay.ts ts | timeOfDay.tod ts | dateTime.date ts | strftime.ts fmt ts =>
+  case timeOfDay.ts ts | timeOfDay.tod ts | dateTime.date ts | strftime.ts fmt ts |
+      datePart.ts p ts | dayPart.date p ts =>
     exact rangeIssue_sound ha ha hk
   case addMonths.date m t x | addMonths.ts m t x =>
     cases t <;> (try simp only [reduceCtorEq] at hk) <;>
@@ -1441,9 +1211,10 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
 
 /-! ## Plans -/
 
-/-- The plan with the filters DataFusion may merge into or push past removed:
-filters go, inner joins become cross joins, semi and anti joins, sorts and
-`DISTINCT` give way to their (left) input. Fetches, windows and aggregates
+/-- The plan with the filters an optimizer may merge into or push past
+removed (the reference does not fix where a filter runs): filters go, inner
+joins become cross joins, semi and anti joins, sorts and `DISTINCT` give way
+to their (left) input. Fetches, windows and aggregates
 stop it: filters do not move across them (a filter on grouping columns does,
 but only to rows with the same grouping values). -/
 def Rel.loose : Rel → Rel
@@ -1461,8 +1232,8 @@ def Rel.loose : Rel → Rel
   | .semi a _ _ _ => a.loose
   | .orderBy r _ | .distinct r => r.loose
   | .aggregate r gs ms => .aggregate r gs ms
-  -- DataFusion pushes filters on the other columns below an `UNNEST`, onto
-  -- rows whose lists may be empty: the loose rows are both.
+  -- A filter on the other columns may run below an `UNNEST`, on rows whose
+  -- lists are empty (DataFusion's optimizer does): the loose rows are both.
   | .unnest r c => .unionAll (.unnest r.loose c) r.loose
 
 theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.arity cat

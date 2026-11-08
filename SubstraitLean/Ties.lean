@@ -26,7 +26,7 @@ with `Rel.Allowed` and #85's bounds. A double `SUM` or `AVG` is no choice
   `contract_sound_all` in `Contracts.lean`, `Rel.keys_sound_all` in
   `Keys.lean` (#904). Their `Rel.eval` forms are corollaries by
   `Rel.eval_orderAllowed`.
-* `Rel.orderAllowed_capReads`: a row cap keeps every order.
+* `Rel.orderAllowed_capReads` (`AllowedAnalysis.lean`): a row cap keeps every order.
 -/
 
 namespace Substrait
@@ -75,41 +75,5 @@ theorem Rel.orderAllowed_allowed {cat : Catalog} :
     ⟨i, orderAllowed_allowed (r := r) hi, h⟩
   | .aggregate r _ _, _, ⟨i, hi, o, h, ho⟩ =>
     ⟨i, orderAllowed_allowed (r := r) hi, o, h, aggOrderAllowed_allowed ho⟩
-
-/-! ## Facts and the abstract interpreter -/
-
-
-/-! ## Row caps -/
-
-/-- On tables within their caps, every order of a plan is one of the plan
-with capped reads (`Rel.capReads`), which the checker interprets. -/
-theorem Rel.orderAllowed_capReads {caps : String → Option Nat} {cat : Catalog}
-    (hc : ∀ t n, caps t = some n → (cat t).rows.length ≤ n) :
-    ∀ {r : Rel} {out : Relation}, r.OrderAllowed cat out → (r.capReads caps).OrderAllowed cat out
-  | .read t, out, h => by
-    unfold capReads
-    split
-    · rename_i n hn
-      refine ⟨out, h, ?_⟩
-      simp only [List.drop_zero]
-      exact (List.take_of_length_le (h.length_eq ▸ hc t n hn)).symm
-    · exact h
-  | .values _ _, _, h => h
-  | .filter r _, _, ⟨i, hi, h⟩ | .project r _, _, ⟨i, hi, h⟩ | .emit r _, _, ⟨i, hi, h⟩ =>
-    ⟨i, orderAllowed_capReads hc (r := r) hi, h⟩
-  | .fetch r _ _, _, ⟨i, hi, h⟩ => ⟨i, orderAllowed_capReads hc (r := r) hi, h⟩
-  | .cross a b, _, ⟨x, y, hx, hy, h⟩ | .unionAll a b, _, ⟨x, y, hx, hy, h⟩
-  | .semi a b _ _, _, ⟨x, y, hx, hy, h⟩ =>
-    ⟨x, y, orderAllowed_capReads hc (r := a) hx, orderAllowed_capReads hc (r := b) hy, h⟩
-  | .join a b .inner _, _, ⟨x, y, hx, hy, h⟩ =>
-    ⟨x, y, orderAllowed_capReads hc (r := a) hx, orderAllowed_capReads hc (r := b) hy, h⟩
-  | .join a b .left _, _, ⟨x, y, hx, hy, h⟩ => by
-    refine ⟨x, y, orderAllowed_capReads hc (r := a) hx, orderAllowed_capReads hc (r := b) hy, ?_⟩
-    rw [capReads_arity]; exact h
-  | .window r _ _ _, _, ⟨i, hi, h⟩ => ⟨i, orderAllowed_capReads hc (r := r) hi, h⟩
-  | .orderBy r _, _, ⟨i, hi, h⟩ => ⟨i, orderAllowed_capReads hc (r := r) hi, h⟩
-  | .distinct r, _, ⟨i, hi, h⟩ | .unnest r _, _, ⟨i, hi, h⟩ =>
-    ⟨i, orderAllowed_capReads hc (r := r) hi, h⟩
-  | .aggregate r _ _, _, ⟨i, hi, h⟩ => ⟨i, orderAllowed_capReads hc (r := r) hi, h⟩
 
 end Substrait

@@ -1,0 +1,38 @@
+{
+  "id": "spark-timestamp-session-zone",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`TIMESTAMP` (LTZ) `+ INTERVAL` follows the session time zone",
+  "verdict": "the same instant plus a day is 10:00 or 11:00 UTC across a DST change, by `spark.sql.session.timeZone`",
+  "area": "temporal",
+  "constructs": [
+    "TIMESTAMP + INTERVAL"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": "true",
+    "spark.sql.session.timeZone": "Europe/Berlin, then UTC"
+  },
+  "description": [
+    "`TIMESTAMP '2024-03-30 11:00:00 UTC' + INTERVAL 1 DAY` is 2024-03-31 12:00 in Europe/Berlin (10:00 UTC) under that session zone and 2024-03-31 11:00 under UTC. sverify pins UTC and `TIMESTAMP_NTZ` (`SPARK_CONF`), so its plans never meet this."
+  ],
+  "reference": "`Kind.timeTz` is refused: the reference's calendar arithmetic on instants would need a time zone the plan does not carry.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#1166 restatement probe (session youthful-margulis), spark 4.3.0, macOS arm64",
+      "evidence": [
+        {
+          "sql": "SET spark.sql.session.timeZone=Europe/Berlin; select cast(TIMESTAMP '2024-03-30 11:00:00 UTC' + INTERVAL 1 DAY as string)",
+          "observed": "2024-03-31 12:00:00"
+        },
+        {
+          "sql": "SET spark.sql.session.timeZone=UTC; select cast(TIMESTAMP '2024-03-30 11:00:00 UTC' + INTERVAL 1 DAY as string)",
+          "observed": "2024-03-31 11:00:00"
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,4 @@
-import SubstraitLean.Safety
-import SubstraitLean.Guards
+import SubstraitLean.Issue
 
 /-!
 # Engine profiles and proven shims (#185)
@@ -319,21 +318,11 @@ theorem HoFn.applyP_agree (f : HoFn) (v : Value) {p q : Value → Outcome}
     cases hq : v.elems.findSome? (fun x => (q x).err?) <;> simp_all [Outcome.Agree]
   exact HoFn.apply_congr f v fun x hx => Outcome.agree_val (h x hx)
 
-/-! ## Plans that cannot raise
-
-For a plan `verify` proves error-free from its contract, no shim is needed:
-an engine whose profile agrees with the reference wherever the reference
-does not raise (`Impl.Faithful`) gives `Rel.eval`'s rows, by guard
-elimination (`Rel.guardFree_sound`). DuckDB's profile is such a profile. The
-benchmark queries of #229 take this route. -/
+/-! ## A profile's values -/
 
 /-- A profile's values, where it does not raise: what an engine computes. -/
 def Profile.impl (p : Profile) : Impl :=
   ⟨fun f v => (p.un f v).val, fun f v w => (p.bin f v w).val⟩
-
-theorem Profile.reference_faithful : Profile.reference.impl.Faithful :=
-  ⟨fun f v h => by simp [Profile.impl, Profile.reference, raiseIf, h, Outcome.val],
-   fun f v w h => by simp [Profile.impl, Profile.reference, raiseIf, h, Outcome.val]⟩
 
 /-! ## Plans that may raise
 

@@ -1,5 +1,6 @@
 import SubstraitLean.Ties
 import SubstraitLean.Rows
+import SubstraitLean.AllowedAnalysis
 
 /-!
 # What the analysis knows of a relation (#902)

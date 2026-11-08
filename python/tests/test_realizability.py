@@ -128,14 +128,15 @@ def test_shim_counts(table):
 
 
 def test_polars_shims_match_the_python_table(table):
-    """Each shim of `_polars_shims.SHIMS` is proved as `Polars.<name>` by some
-    row, and each Polars shim the table proves by `Polars.<name>` is a row of
+    """Each shim of `_polars_shims.SHIMS` is proved as `Polars.<name>`, or as
+    `Shim.<name>` where another engine shares it (`Shims.lean`), by some row,
+    and each Polars shim the table proves by `Polars.<name>` is a row of
     `SHIMS` with the same cost."""
     rows = table["polars"]["rows"]
     theorems = {r.get("theorem") for r in rows}
     by_name = {s.name: s for s in SHIMS}
     for s in SHIMS:
-        assert f"Polars.{s.name}" in theorems, s.name
+        assert {f"Polars.{s.name}", f"Shim.{s.name}"} & theorems, s.name
     costs = {s["name"]: s["cost"] for s in table["polars"]["shims"]}
     for r in rows:
         if r["case"] == "shim" and r.get("theorem") == f"Polars.{r['shim']}":
