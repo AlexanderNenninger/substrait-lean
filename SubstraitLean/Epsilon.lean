@@ -1069,9 +1069,10 @@ def liveReads (cat : Catalog) : Rel → List Nat → List Read
       liveReads cat r (gs.flatMap colRefs ++
         used.flatMap fun (m, _) => colRefs m.arg ++ (m.filter.map colRefs).getD [])
 
-/-- `"depends"` of a `--contract` request. -/
-def depends (input : Json) : Except String Json := do
-  let some tj := (input.getObjVal? "transform").toOption | return .null
+/-- The reads `"depends"` reports for a `--contract` request: those that can
+reach the output, or raise; none without a transformation. -/
+def dependsReads (input : Json) : Except String (Option (List Read)) := do
+  let some tj := (input.getObjVal? "transform").toOption | return none
   let plan ← parseJsonPlan tj
   let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
     parseJsonPlan
@@ -1106,6 +1107,10 @@ def depends (input : Json) : Except String Json := do
     !(g == "rel.keys" && !keys) && !(o == "empty_group_aggregates" && !empty) &&
       !(o == "avg_int_result" && !iavg) && !(g == "cmp" && !cmp) &&
       !(o == "min_mod_neg_one" && !minMod)
-  return readsJson reads
+  return some reads
+
+/-- `"depends"` of a `--contract` request. -/
+def depends (input : Json) : Except String Json :=
+  return ((← dependsReads input).map readsJson).getD .null
 
 end Substrait.Epsilon

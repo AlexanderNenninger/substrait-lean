@@ -1643,6 +1643,8 @@ def _verify_once(
         _epsilon=out.get("epsilon"),
         _rows_exact=out.get("rows_exact"),
         _margin_checks=list(out.get("margin_checks") or []),
+        _engines=out.get("engines"),
+        _sorted=out.get("sorted"),
         _contract=contract,
         _transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         output=dtypes,
