@@ -332,8 +332,8 @@ theorem SumOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = tru
   rcases h with rfl | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩ | ⟨h, -⟩
   · exact hs
   · simp only [SumOrder] at hs ⊢
-    obtain ⟨ws, hp, rfl⟩ := hs
-    exact .seq hp
+    obtain ⟨hb, ws, hp, rfl⟩ := hs
+    exact ⟨hb, .seq hp⟩
   · simpa [SumOrder] using hs
   all_goals simp at h
 
