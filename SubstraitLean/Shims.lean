@@ -210,8 +210,9 @@ theorem null_order (ks : List SortKey) : sortWith (ks.map fun k => (k, nullsLast
 /-! ## Guards: `makes_infinite` -/
 
 /-- `makes_infinite`: finite arguments, an infinite result (`is_finite`,
-`is_infinite` on codes). -/
-def makesInfinite (y : Int) (xs : List Int) : Bool := xs.all isFiniteCode && isInfCode y
+`is_infinite` on codes; `-0.0` is finite, read through `canon`, D31). -/
+def makesInfinite (y : Int) (xs : List Int) : Bool :=
+  xs.all (fun x => isFiniteCode (FloatCode.canon x)) && isInfCode y
 
 /-- **`Shim.makes_infinite`** (A4): an engine whose IEEE operations are the
 reference's (D31; `polars-ieee-arith-*`, spark-double-arith) flags a row

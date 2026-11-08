@@ -432,13 +432,13 @@ def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bo
 
 theorem BlackBox.lawsBound_mem {set : Bool} {k : NumKind} {i : Int} :
     ∀ {laws : List BlackBox.Law}, (laws.all fun l => l.holds set (k.val i)) = true →
-      (laws.foldr (fun l b => l.bound.meet b) Bound.top).Mem i
-  | [], _ => Bound.mem_top i
+      (laws.foldr (fun l b => l.bound.meet b) Bound.top).Mem (k.norm i)
+  | [], _ => Bound.mem_top _
   | l :: ls, h => by
     simp only [List.all_cons, Bool.and_eq_true] at h
     refine Bound.mem_meet ?_ (lawsBound_mem h.2)
     cases l <;> cases k <;> simp_all [BlackBox.Law.holds, BlackBox.Law.bound, Bound.Mem, Bound.top,
-      NumKind.val]
+      NumKind.val, NumKind.norm]
 
 theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {set : Bool}
     {v : Value} (h : BlackBox.ok result laws set v = true) :
@@ -1066,7 +1066,7 @@ macro "hf_tac" : tactic => `(tactic| first
   | rfl
   | (simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
       NumKind.val, Value.unscaled?, intsOnly, floatsOnly, addNK, subNK, decNK, dateAddNK,
-      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp]
+      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp, NumKind.norm]
      try (repeat' split) <;> first | rfl | simp_all))
 
 end Substrait

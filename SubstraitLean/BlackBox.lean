@@ -118,9 +118,12 @@ inductive Law where
 some may be? -/
 def Law.holds (set : Bool) : Law → Value → Bool
   | .nonNull, v => !set || v != .null
-  | .atLeast k, .int i | .atLeast k, .float i | .atLeast k, .date i | .atLeast k, .ts i
+  -- A double by its canonical code (D31).
+  | .atLeast k, .float i => decide (k ≤ FloatCode.canon i)
+  | .atLeast k, .int i | .atLeast k, .date i | .atLeast k, .ts i
   | .atLeast k, .tod i | .atLeast k, .dec _ i => decide (k ≤ i)
-  | .atMost k, .int i | .atMost k, .float i | .atMost k, .date i | .atMost k, .ts i
+  | .atMost k, .float i => decide (FloatCode.canon i ≤ k)
+  | .atMost k, .int i | .atMost k, .date i | .atMost k, .ts i
   | .atMost k, .tod i | .atMost k, .dec _ i => decide (i ≤ k)
   | _, _ => true
 
@@ -580,9 +583,10 @@ theorem base64_str (s : String) : ∃ t, callScalar "base64" [.str s] = .str t :
   generalize Scalar.call _ _ = v at h
   cases v <;> simp_all [ok, Ty.has, Law.holds, scalars]
 
-/-- `entropy` over values is a double at least `+0.0`. -/
+/-- `entropy` over values is a double at least `+0.0`, by its canonical code
+(`-0.0` is `+0.0`, D31). -/
 theorem entropy_nonneg {vs : List Value} (hne : vs ≠ []) :
-    ∃ c, callAgg "entropy" vs = .float c ∧ 0 ≤ c := by
+    ∃ c, callAgg "entropy" vs = .float c ∧ 0 ≤ FloatCode.canon c := by
   have hf : aggregate? "entropy" = some (aggregates.head (by decide)) := rfl
   have h := Aggregate.call_ok (aggregate?_mem hf) hne
   simp only [callAgg, hf]

@@ -261,15 +261,18 @@ def equiKeys (la : Nat) : Expr → List EqKey
 @[simp] theorem Value.isTrue_bool (c : Bool) : (Value.bool c).isTrue = c := by cases c <;> rfl
 @[simp] theorem Value.isTrue_null : Value.null.isTrue = false := rfl
 
-theorem isTrue_eq {a b : Value} (h : (BinFn.apply .eq a b).isTrue = true) : a = b ∧ a ≠ .null := by
-  cases a <;> cases b <;> simp_all [BinFn.apply]
+/-- Values `=` calls equal have one canonical form (`-0.0 = 0.0`, D31). -/
+theorem isTrue_eq {a b : Value} (h : (BinFn.apply .eq a b).isTrue = true) :
+    a.canonV = b.canonV ∧ a ≠ .null := by
+  cases a <;> cases b <;> simp_all [BinFn.apply, Value.canonV]
   all_goals (rename_i s _ t _; by_cases hs : s = t <;> simp_all)
 
 theorem eval_notDistinct {row : Row} {a b : Expr}
     (h : ((Expr.ifThen (.un .isNull a) (.un .isNull b)
       (.ifThen (.un .isNull b) (.lit (.bool false)) (.bin .eq a b))).eval row).isTrue = true) :
-    a.eval row = b.eval row := by
-  cases ha : a.eval row <;> cases hb : b.eval row <;> simp_all [Expr.eval, UnFn.apply, BinFn.apply]
+    (a.eval row).canonV = (b.eval row).canonV := by
+  cases ha : a.eval row <;> cases hb : b.eval row <;>
+    simp_all [Expr.eval, UnFn.apply, BinFn.apply, Value.canonV]
   all_goals (rename_i s _ t _; by_cases hs : s = t <;> simp_all)
 
 theorem eqKey_sound {x y : Row} {a b : Expr} {l r : Expr} (hk : eqKey x.length a b = some (l, r)) :
@@ -287,10 +290,13 @@ theorem eqKey_sound {x y : Row} {a b : Expr} {l r : Expr} (hk : eqKey x.length a
 
 /-- What a key promises where the condition holds on `x ++ y`. -/
 def EqKey.Holds (x y : Row) (k : EqKey) : Prop :=
-  k.left.eval x = k.right.eval y ∧ (k.strict = true → k.left.eval x ≠ .null)
+  (k.left.eval x).canonV = (k.right.eval y).canonV ∧ (k.strict = true → k.left.eval x ≠ .null)
+
+theorem Value.canonV_null {v : Value} : v.canonV = .null ↔ v = .null := by
+  cases v <;> simp [Value.canonV]
 
 theorem pairKey_sound {x y : Row} {strict : Bool} {a b : Expr}
-    (hab : a.eval (x ++ y) = b.eval (x ++ y))
+    (hab : (a.eval (x ++ y)).canonV = (b.eval (x ++ y)).canonV)
     (hn : strict = true → a.eval (x ++ y) ≠ .null) :
     ∀ k ∈ pairKey x.length strict a b, k.Holds x y := by
   intro k hk
@@ -303,7 +309,9 @@ theorem pairKey_sound {x y : Row} {strict : Bool} {a b : Expr}
   · rename_i l r _ hk'
     simp only [List.mem_singleton] at hk; subst hk
     obtain ⟨hl, hr⟩ := eqKey_sound (y := y) hk'
-    exact ⟨by rw [hl, hr, hab], fun hs => by rw [hl, ← hab]; exact hn hs⟩
+    refine ⟨by rw [hl, hr, hab], fun hs => ?_⟩
+    rw [hl]; intro h0
+    exact hn hs (Value.canonV_null.mp (hab ▸ Value.canonV_null.mpr h0))
   · simp at hk
 
 theorem leafKeys_sound {x y : Row} {e : Expr} (h : (e.eval (x ++ y)).isTrue = true) :
@@ -349,14 +357,14 @@ structure JoinIndex where
 def JoinIndex.make (on : Expr) (la : Nat) (ys : Relation) : JoinIndex :=
   let keys := equiKeys la on
   { keys, la, rows := ys,
-    index := if keys.isEmpty then ∅ else indexBy (fun y => keys.map (·.right.eval y)) ys }
+    index := if keys.isEmpty then ∅ else indexBy (fun y => keys.map (·.right.eval y |>.canonV)) ys }
 
 /-- The right rows that may satisfy `on` next to `x`: those with `x`'s keys,
 none for a NULL in a strict key, and all of them without keys. -/
 def JoinIndex.candidates (J : JoinIndex) (x : Row) : Relation :=
   if J.keys.isEmpty || x.length != J.la then J.rows else
     if J.keys.any (fun k => k.strict && k.left.eval x == .null) then [] else
-      (J.index.getD (J.keys.map (·.left.eval x)) #[]).toList
+      (J.index.getD (J.keys.map (·.left.eval x |>.canonV)) #[]).toList
 
 theorem JoinIndex.candidates_eq (on : Expr) (la : Nat) (ys : Relation) (x : Row) :
     ∃ q : Row → Bool, (JoinIndex.make on la ys).candidates x = ys.filter q ∧
@@ -381,8 +389,8 @@ theorem JoinIndex.candidates_eq (on : Expr) (la : Nat) (ys : Relation) (x : Row)
     obtain ⟨k, hk, hs, hkn⟩ := hnull
     exact (hsound y h k hk).2 hs hkn
   · simp only [hnull, Bool.false_eq_true, ↓reduceIte]
-    refine ⟨fun y => (equiKeys x.length on).map (·.right.eval y) ==
-        (equiKeys x.length on).map (·.left.eval x), indexBy_getD _ _ _, fun y h => ?_⟩
+    refine ⟨fun y => (equiKeys x.length on).map (·.right.eval y |>.canonV) ==
+        (equiKeys x.length on).map (·.left.eval x |>.canonV), indexBy_getD _ _ _, fun y h => ?_⟩
     simp only [beq_iff_eq, List.map_inj_left]
     exact fun k hk => (hsound y h k hk).1.symm
 

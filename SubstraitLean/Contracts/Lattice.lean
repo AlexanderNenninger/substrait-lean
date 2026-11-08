@@ -332,7 +332,7 @@ def strCap : Nat := 64
 
 /-- `i` is a number of kind `k` that `a` holds. -/
 def AVal.MemNum (a : AVal) (k : NumKind) (i : Int) : Prop :=
-  ∃ b, a.int = some b ∧ b.Mem i ∧ a.nk.all (· == k) = true
+  ∃ b, a.int = some b ∧ b.Mem (k.norm i) ∧ a.nk.all (· == k) = true
 
 mutual
 /-- `AVal.Mem`, by recursion on the value. -/
@@ -388,7 +388,7 @@ theorem AVal.mem_val {a : AVal} {k : NumKind} {i : Int} : a.Mem (k.val i) ↔ a.
 def AVal.within (lo hi : Int) (a : AVal) : Bool := a.int.all (·.within lo hi)
 
 theorem AVal.within_memNum {lo hi i : Int} {a : AVal} {k : NumKind} (h : a.within lo hi = true)
-    (hm : a.MemNum k i) : between lo hi i = true := by
+    (hm : a.MemNum k i) : between lo hi (k.norm i) = true := by
   obtain ⟨b, hb, hi, _⟩ := hm
   simp only [AVal.within, hb, Option.all_some] at h
   exact Bound.within_mem h hi
@@ -410,7 +410,7 @@ def AVal.elemsOf (a : AVal) : AVal := a.elems.getD AVal.top
 def AVal.ofValue : Value → AVal
   | .null => { null := true }
   | .int i => .num false (.exact i) .int
-  | .float i => .num false (.exact i) .float
+  | .float i => .num false (.exact (FloatCode.canon i)) .float
   | .date i => .num false (.exact i) .date
   | .ts i => .num false (.exact i) .ts
   | .tod i => .num false (.exact i) .tod
@@ -538,7 +538,8 @@ theorem AVal.memNum_kind {a : AVal} {k k' : NumKind} {i : Int} (hm : a.MemNum k'
 theorem AVal.mem_top : ∀ v, AVal.top.Mem v
   | .null | .bool true | .bool false | .str _ => rfl
   | .list _ | .struct _ => by simp [AVal.Mem, AVal.top, Bound.mem_top]
-  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_top i, rfl⟩
+  | .int i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_top i, rfl⟩
+  | .float i => ⟨_, rfl, Bound.mem_top _, rfl⟩
 
 /-- A list in `a` has its elements in `a.elemsOf`. -/
 theorem AVal.mem_list {a : AVal} {vs : List Value} :
@@ -558,8 +559,9 @@ theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
   | .str s => by simp [AVal.Mem, AVal.ofValue]
   | .list _ => by simp [AVal.Mem, AVal.ofValue, Bound.mem_exact]
   | .struct _ => by simp [AVal.Mem, AVal.ofValue]
-  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i =>
+  | .int i | .date i | .ts i | .tod i | .dec _ i =>
     ⟨_, rfl, Bound.mem_exact i, by simp [AVal.ofValue, AVal.num]⟩
+  | .float i => ⟨_, rfl, Bound.mem_exact _, by simp [AVal.ofValue, AVal.num]⟩
 
 theorem joinStrs_left {a b : AVal} {s : String} (ha : a.str = true)
     (hs : a.strs.all (·.contains s) = true) : (joinStrs a b).all (·.contains s) = true := by
@@ -712,7 +714,7 @@ theorem AVal.certainlyTrue_mem {a : AVal} {v : Value} (hc : a.certainlyTrue = tr
 list or a struct is one case: functions of scalars give NULL on both. -/
 theorem AVal.mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
     (v = .null ∧ a.null = true) ∨
-    (∃ k i b, v = k.val i ∧ a.int = some b ∧ b.Mem i ∧ a.nk.all (· == k) = true) ∨
+    (∃ k i b, v = k.val i ∧ a.int = some b ∧ b.Mem (k.norm i) ∧ a.nk.all (· == k) = true) ∨
     (v = .bool true ∧ a.tt = true) ∨ (v = .bool false ∧ a.ff = true) ∨
     (∃ s, v = .str s ∧ a.str = true ∧ a.strs.all (·.contains s) = true) ∨
     (∃ vs, (v = .list vs ∨ v = .struct vs) ∧ a.nested = true) := by
@@ -770,7 +772,8 @@ its result's kind; a number of another kind gives NULL. `mapAbs` and
 def Value.mapP (ok : NumKind → Bool) (kout : NumKind → NumKind) (g : Int → Option Int)
     (v : Value) : Value :=
   match v.numOf? with
-  | some (k, c) => if ok k then (match g c with | some r => (kout k).val r | none => .null) else .null
+  | some (k, c) =>
+    if ok k then (match g (k.norm c) with | some r => (kout k).val r | none => .null) else .null
   | none => .null
 
 /-- A function of two numbers: `g` on numbers of kinds `tbl` takes, of the
@@ -779,7 +782,7 @@ def Value.mapP₂ (tbl : NumKind → NumKind → Option NumKind) (g : Int → In
     (v w : Value) : Value :=
   match v.numOf?, w.numOf? with
   | some (k, x), some (k', y) =>
-    match tbl k k', g x y with
+    match tbl k k', g (k.norm x) (k'.norm y) with
     | some ko, some r => ko.val r
     | _, _ => .null
   | _, _ => .null
@@ -814,6 +817,8 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
     (hf : ∀ v, f.apply v = Value.mapP ok kout g v)
     (hb : ∀ b i r, b.Mem i → g i = some r → (bf b).Mem r)
     (hn : ∀ b i, b.Mem i → g i = none → extra (some b) = true)
+    (hc : ∀ k i r, ok k = true → g (k.norm i) = some r → (kout k).norm r = r := by
+      intro k _ _ _ _; cases k <;> rfl)
     {a : AVal} {v : Value} (h : a.Mem v) : (mapAbs ok kout bf extra a).Mem (f.apply v) := by
   rw [hf]
   mem_cases h with i b hb' hi
@@ -828,11 +833,11 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
       · rw [AVal.ok_of_memNum hb' hk hn'] at hok; cases hok
       · rfl
     · simp only [↓reduceIte]
-      cases hg : g i with
+      cases hg : g (k.norm i) with
       | some r =>
         simp only []
         rw [AVal.mem_val]
-        refine ⟨bf b, by simp [mapAbs, hb'], hb b i r hi hg, ?_⟩
+        refine ⟨bf b, by simp [mapAbs, hb'], by rw [hc k i r hok hg]; exact hb b _ r hi hg, ?_⟩
         cases hnk : a.nk with
         | none => simp [mapAbs, hnk]
         | some k' =>
@@ -840,8 +845,8 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
           subst hk; simp [mapAbs, hnk]
       | none =>
         show (mapAbs ok kout bf extra a).null = true
-        simp [mapAbs, hb', hn b i hi hg]
-  all_goals simp_all [Value.mapP, Value.numOf?, mapAbs, AVal.Mem, AVal.nonNumP, AVal.nonInt]
+        simp [mapAbs, hb', hn b _ hi hg]
+  all_goals (clear hc; simp_all [Value.mapP, Value.numOf?, mapAbs, AVal.Mem, AVal.nonNumP, AVal.nonInt])
 
 /-- The kind of a function of two numbers of kinds `a.nk` and `b.nk`. -/
 def outKind (tbl : NumKind → NumKind → Option NumKind) (a b : AVal) : Option NumKind :=
@@ -864,6 +869,8 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
     (hf : ∀ v w, f.apply v w = Value.mapP₂ tbl g v w)
     (hb : ∀ x y i j r, x.Mem i → y.Mem j → g i j = some r → (bf x y).Mem r)
     (hn : ∀ x y i j, x.Mem i → y.Mem j → g i j = none → extra (some x) (some y) = true)
+    (hc : ∀ k k' ko i j r, tbl k k' = some ko → g (k.norm i) (k'.norm j) = some r → ko.norm r = r := by
+      intro _ _ ko _ _ _ _ _; cases ko <;> rfl)
     {a b : AVal} {v w : Value} (ha : a.Mem v) (hb' : b.Mem w) :
     (mapAbs₂ tbl bf extra a b).Mem (f.apply v w) := by
   rw [hf]
@@ -872,7 +879,7 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
     simp only [Value.mapP₂, NumKind.numOf?_val]
     cases hout : outKind tbl a b with
     | none =>
-      cases htb : tbl k k' <;> cases hg : g i j <;> simp only []
+      cases htb : tbl k k' <;> cases hg : g (k.norm i) (k'.norm j) <;> simp only []
       · show (mapAbs₂ tbl bf extra a b).null = true
         simp [mapAbs₂, hx, hy, hout]
       · show (mapAbs₂ tbl bf extra a b).null = true
@@ -881,7 +888,8 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
         simp [mapAbs₂, hx, hy, hout]
       · rename_i ko r
         rw [AVal.mem_val]
-        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], hb x y i j r hi hj hg, by simp [mapAbs₂, hout]⟩
+        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], by rw [hc k k' ko i j r htb hg]; exact hb x y _ _ r hi hj hg,
+          by simp [mapAbs₂, hout]⟩
     | some ko =>
       have hko : tbl k k' = some ko := by
         unfold outKind at hout
@@ -891,14 +899,15 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
         simp only [hkb, Option.all_some, beq_iff_eq] at hk'
         subst hk hk'; exact hout
       simp only [hko]
-      cases hg : g i j with
+      cases hg : g (k.norm i) (k'.norm j) with
       | some r =>
         simp only []
         rw [AVal.mem_val]
-        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], hb x y i j r hi hj hg, by simp [mapAbs₂, hout]⟩
+        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], by rw [hc k k' ko i j r hko hg]; exact hb x y _ _ r hi hj hg,
+          by simp [mapAbs₂, hout]⟩
       | none =>
         show (mapAbs₂ tbl bf extra a b).null = true
-        simp [mapAbs₂, hx, hy, hn x y i j hi hj hg]
-  all_goals simp_all [Value.mapP₂, Value.numOf?, mapAbs₂, AVal.Mem, AVal.nonInt]
+        simp [mapAbs₂, hx, hy, hn x y _ _ hi hj hg]
+  all_goals (clear hc; simp_all [Value.mapP₂, Value.numOf?, mapAbs₂, AVal.Mem, AVal.nonInt])
 
 end Substrait
