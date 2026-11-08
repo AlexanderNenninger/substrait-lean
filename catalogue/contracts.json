@@ -371,8 +371,11 @@
         "outcome": "tested"
       },
       "polars": {
+        "causes": [
+          "translation tested (no row for the options)"
+        ],
         "class": "shim",
-        "outcome": "proved"
+        "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",

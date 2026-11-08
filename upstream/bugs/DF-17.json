@@ -1,0 +1,37 @@
+{
+  "id": "DF-17",
+  "status": "confirmed",
+  "status_note": "Reproduces on 55.0.0, the latest release, which fails where 51.0.0 gave a wrong date. No open issue: #25129 and #25432 (closed) fixed other `date_trunc` paths. Main not checked.",
+  "title": "`date_trunc` to a month fails on a microsecond timestamp outside ±2⁶³ ns",
+  "summary": "`date_trunc` to a week, month, quarter or year computes in nanoseconds, so a `Timestamp(Microsecond)` outside ±2⁶³ ns (before 1677 or after 2262) gives a wrong date on 51.0.0 and an error on 55.0.0, though Arrow represents it. Timestamp literals are cast to nanoseconds and fail there too.",
+  "repro": [
+    "`select date_trunc('month', arrow_cast('2300-06-15T00:00:00', 'Timestamp(Microsecond, None)'))` gives `1715-11-01` on 51.0.0 and `Timestamp 10428048000000000 out of range` on 55.0.0; `date_part('year', …)` of it is `2300`.",
+    "`select cast('2300-06-15 00:00:00' as timestamp)` fails: `Overflow converting 2300-06-15 00:00:00 to Nanosecond`."
+  ],
+  "handling": "The reference follows DataFusion here (`SubstraitLean/Time.lean`): calendar functions are defined within ±2⁶³ ns on every engine. A proposal to use 0001–9999 and refuse only on DataFusion is under review.",
+  "files": [
+    "SubstraitLean/Time.lean",
+    "python/src/sverify/polars_engine.py",
+    "python/src/sverify/sql/core/_base.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}

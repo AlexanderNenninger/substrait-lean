@@ -1,0 +1,36 @@
+{
+  "id": "DF-16",
+  "status": "duplicate",
+  "status_note": "Covered by [apache/datafusion#26222](https://github.com/apache/datafusion/issues/26222) (open), with the open PR #26784. Reproduces on 55.0.0.",
+  "summary": "`SUM` and `AVG` of doubles over a sliding frame subtract the value that leaves the frame, so once an infinity is in the running sum it stays: the frames after it are `inf` (or NaN) though their values are finite.",
+  "repro": "`select v, sum(v) over (order by i rows between 1 preceding and current row) from (values (1, 1e308), (2, 1e308), (3, 1.0), (4, 1.0)) t(i, v)` gives `1e308, inf, inf, inf`; the frames' sums are `1e308, inf, 1e308, 2.0`. `avg` gives `inf` likewise.",
+  "handling": "`--write-datafusion` refuses `SUM` of doubles, `AVG` and `MIN` over a frame that does not start at `UNBOUNDED PRECEDING` (`Rel.slidingFrames`). Sliding `MIN` gave the right rows in these probes.",
+  "upstream": [
+    "https://github.com/apache/datafusion/issues/26222",
+    "https://github.com/apache/datafusion/pull/26784"
+  ],
+  "files": [
+    "SubstraitLean/Write.lean",
+    "SubstraitCheck.lean"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "51.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched"
+    },
+    {
+      "checked_at": "2026-11-08",
+      "against": {
+        "datafusion": "55.0.0"
+      },
+      "note": "SQL repros; apache/datafusion searched"
+    }
+  ],
+  "project": "datafusion",
+  "kind": "bug",
+  "version": "51",
+  "found_by": "audit of DataFusion's limits on the shared path (2026-11-08)"
+}

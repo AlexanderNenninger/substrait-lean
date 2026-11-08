@@ -1,0 +1,45 @@
+{
+  "id": "spark-exec-cte-inlined",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "A deterministic CTE read twice is inlined and computed per reference",
+  "verdict": "inlined: one aggregate and one scan per reference; a non-deterministic CTE is kept once",
+  "area": "execution",
+  "options": [
+    "parallel_nondeterminism"
+  ],
+  "constructs": [
+    "WITH",
+    "CTE"
+  ],
+  "settings": {
+    "spark.sql.shuffle.partitions": "2 (sverify's session)"
+  },
+  "description": [
+    "WITH c AS (SELECT k, sum(x) AS v FROM t GROUP BY k) SELECT ... FROM c a JOIN c b ON a.k = b.k has two HashAggregate(sum) nodes in the executed plan, each over its own scan of t: the CTE is inlined and the sum computed per reference, in an order the partitioning sets per scan (spark-sum-double).",
+    "A CTE with rand() is not inlined: joined with itself, no row's two reads differ (three runs). SUM counts as deterministic, so a double SUM's CTE is inlined. A check root and a sink root over one CTE may read two evaluations of the sum, which a margin of 2ε covers; whether the two scans of a table read one version (a Delta or Iceberg source) is not characterized."
+  ],
+  "reference": "The reference evaluates a shared subplan once (Rel.eval).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#929 margin check design (session tolerance-step-a)",
+      "evidence": [
+        {
+          "sql": "WITH c AS (SELECT k, sum(x) AS v FROM t GROUP BY k) SELECT a.k, a.v, b.v FROM c a JOIN c b ON a.k = b.k",
+          "observed": "executedPlan: two HashAggregate(keys=[k], functions=[sum(x)]), each over Exchange and its own Scan ExistingRDD"
+        },
+        {
+          "sql": "WITH c AS (SELECT id, rand() AS r FROM t) SELECT count(*) FROM c a JOIN c b ON a.id = b.id WHERE a.r <> b.r",
+          "observed": "0, 0, 0"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    929
+  ]
+}

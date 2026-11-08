@@ -15,6 +15,15 @@ from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
 from sverify.incremental import IncrementalView
 from sverify.io import Changes
 
+#: DataFusion refuses plans whose double operations can give `-0.0` or a
+#: negative NaN, which it orders apart (upstream/bugs/DF-13.json).
+DOUBLE_ENGINES = [
+    pytest.param(e, marks=pytest.mark.skip(reason="DF-13: refused, total_cmp order"))
+    if e == "datafusion"
+    else e
+    for e in ENGINES
+]
+
 ERR = -9999.0
 s1 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s1")
 s2 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s2")
@@ -69,7 +78,7 @@ minutes = st.integers(0, 4)
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("engine", DOUBLE_ENGINES)
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_incremental_view_with_floats_matches_recompute(engine, data):
@@ -151,11 +160,12 @@ def test_signed_zeros_are_one_row(engine):
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 1.0), (t, 2.0)])
 
 
-@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("engine", DOUBLE_ENGINES)
 def test_computed_zeros_and_nans_are_canonical(engine):
     """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `NaN * -1.0` is the one NaN,
-    sorted last, though x86 computes a negative NaN (on DataFusion, which
-    orders by `total_cmp`, Lean's written plans make both canonical)."""
+    sorted last, though x86 computes a negative NaN. DataFusion orders
+    computed doubles by `total_cmp` and refuses these plans
+    (upstream/bugs/DF-13.json)."""
     con = sv.connect()
     sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf, math.nan])}))
 
