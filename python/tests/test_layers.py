@@ -55,7 +55,7 @@ LAYERS: list[tuple[str, list[str]]] = [
     ("transform", ["contracts"]),
     (
         "incremental",
-        ["_state", "_retention", "_linear", "_semi", "_touched", "incremental"],
+        ["_state", "_retention", "_exact_sum", "_linear", "_semi", "_touched", "incremental"],
     ),
     ("io", ["io"]),
     ("nodes", ["steps", "nodes", "sql_model", "partition", "asof"]),

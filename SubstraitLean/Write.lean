@@ -1,6 +1,5 @@
 import SubstraitLean.Parse
 import SubstraitLean.Weighted
-import SubstraitLean.Terms
 
 /-!
 # Writing `Rel` back out as Substrait JSON
@@ -1109,13 +1108,9 @@ have their base table's arity (the weight column is not counted). -/
 def deltaCatalog (p : Parse.Plan) : Catalog := fun t =>
   if isDeltaName t then p.catalog (t.dropEnd 6).toString else p.catalog t
 
-/-- The union-free terms of `Rel.delta` (`Rel.zeval_terms`); an engine runs
-each one (after the weight-column encoding) and concatenates the results.
-Union-free plans keep DataFusion's consumer from losing table qualifiers at a
-union, which makes column names collide in a later join. -/
-def deltaTerms (p : Parse.Plan) : List Rel := (p.root.delta deltaName).terms
-
-def writeDeltaPlan (p : Parse.Plan) (term : Rel) : Json :=
+/-- The delta plan `d` (`Rel.delta`) as the engine runs it: after the
+weight-column encoding (`Rel.weighted_eval`), over the engine's tables. -/
+def writeDeltaPlan (p : Parse.Plan) (d : Rel) : Json :=
   let schemas : Schemas := fun t n =>
     if isDeltaName t then deltaSchema (planSchemas p (t.dropEnd 6).toString (n - 1))
     else planSchemas p t n
@@ -1123,6 +1118,6 @@ def writeDeltaPlan (p : Parse.Plan) (term : Rel) : Json :=
   let engineCat : Catalog := fun t =>
     let c := deltaCatalog p t
     if isDeltaName t then ⟨c.arity + 1, []⟩ else c
-  writePlan schemas engineCat (term.weighted (deltaCatalog p) isDeltaName) (p.names ++ ["__weight"])
+  writePlan schemas engineCat (d.weighted (deltaCatalog p) isDeltaName) (p.names ++ ["__weight"])
 
 end Substrait.Write
