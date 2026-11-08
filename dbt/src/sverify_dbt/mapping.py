@@ -28,6 +28,16 @@ Condition = Any
 `sv.references(...)`."""
 
 
+#: The exit of a test or constraint sverify-dbt does not map: dbt still runs
+#: it, and the mapped form sverify proves.
+_RUNS = "dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it"
+#: A relationships test or foreign key on a model's result.
+_NO_FOREIGN_KEYS = (
+    "sverify proves no foreign keys of a model's result; dbt still runs it, and the same "
+    "test on a model that reads this one is a precondition sverify checks"
+)
+
+
 @dataclass
 class Mapped:
     """A test or constraint as conditions, or why it has none."""
@@ -186,7 +196,7 @@ def test_conditions(
     elif base == "relationships" and col:
         return _references(test, col, side, table_of)
     else:
-        return Mapped([], f"sverify-dbt has no mapping for {k}")
+        return Mapped([], f"sverify-dbt has no mapping for {k}; {_RUNS}")
     if cond is None:
         return Mapped([], f"the {k} test has no bounds or values")
     return Mapped([_filtered(cond, row_filter)], columns=_cols(test))
@@ -222,7 +232,7 @@ def _unique(
 
 def _references(test: Test, col: str, side: str, table_of: Callable[[str], str | None]) -> Mapped:
     if side == "ensures":
-        return Mapped([], "sverify proves no foreign keys of a model's result", (col,))
+        return Mapped([], _NO_FOREIGN_KEYS, (col,))
     others = [d for d in test.depends_on if d != test.on] or test.depends_on
     target = next((t for d in others if (t := table_of(d)) is not None), None)
     field = test.kwargs.get("field")
@@ -245,8 +255,8 @@ def constraint_conditions(constraint: dict[str, Any], column: str | None) -> Map
     if kind == "check" and constraint.get("expression"):
         return Mapped([f"coalesce(({constraint['expression']}), TRUE)"], columns=cols)
     if kind == "foreign_key":
-        return Mapped([], "sverify proves no foreign keys of a model's result", cols)
-    return Mapped([], f"sverify-dbt has no mapping for a {kind} constraint", cols)
+        return Mapped([], _NO_FOREIGN_KEYS, cols)
+    return Mapped([], f"sverify-dbt has no mapping for a {kind} constraint; {_RUNS}", cols)
 
 
 def constraint_label(constraint: dict[str, Any], column: str | None) -> str:

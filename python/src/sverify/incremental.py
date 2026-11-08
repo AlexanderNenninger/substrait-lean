@@ -872,6 +872,10 @@ class RefreshReport:
         return "\n".join(lines)
 
 
+#: The exit of an `AuditError` that only a bug explains: where to report it.
+_REPORT = "report it at https://github.com/AlexanderNenninger/substrait-lean/issues/new"
+
+
 class AuditError(SverifyError):
     """In audit mode, the change feed or a view disagrees with recomputation.
 
@@ -1027,7 +1031,10 @@ class IncrementalView:
                 self.plan = written_plan(json.dumps(plan))
                 return
             if standalone:
-                raise
+                raise NotIncrementalError(
+                    f"{e}: a view in a Pipeline (a node built with .pipe) is recomputed "
+                    "and diffed instead"
+                ) from e
             self.deltas, self.fallback = [], str(e)
             found = _touched.plan(self.name, query)
             if isinstance(found, _touched.Touched):
@@ -1760,9 +1767,14 @@ class Pipeline:
     def _check_requires(self, requires: Mapping[str, Sequence[Condition]]) -> None:
         for t, conds in requires.items():
             if t in self.views:
-                raise ValueError(f"preconditions on view {t!r} must be proved, not checked")
+                raise ValueError(
+                    f"preconditions on view {t!r} must be proved, not checked: state them in "
+                    "the ensures of the transform that builds it"
+                )
             if refs := [label(c) for c in conds if isinstance(c, References)]:
-                raise ValueError(f"incremental views do not support foreign keys yet: {refs}")
+                raise ValueError(
+                    f"incremental views do not support foreign keys yet (#869): {refs}"
+                )
             known = {label(c) for c in self.requires.get(t, [])}
             new = [c for c in conds if label(c) not in known]
             if new and self._quarantining(t) and t in self.sources:
@@ -2238,7 +2250,9 @@ class Pipeline:
             state = v._kept(pending.states.get(v.name, v.state))
             if arrow_of(v._merge(weighted(want, 1), v.store.negated(state))).num_rows:
                 raise AuditError(
-                    f"view {v.name} differs from its recomputation; nothing was applied"
+                    f"view {v.name} differs from its recomputation; nothing was applied. "
+                    f"A view's delta rules are proved, so the change feed or sverify is wrong: "
+                    f"check the sources' feeds, and if they are right, {_REPORT}"
                 )
 
     def _check_changed(self, changes: Mapping[str, object]) -> None:
@@ -2481,11 +2495,11 @@ def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -
         if start == end:
             raise AuditError(
                 f"{t}@v{start} differs from the table read again in full: its batches missed "
-                "rows; nothing was applied"
+                f"rows; nothing was applied. Check the source's batches, or {_REPORT}"
             )
         raise AuditError(
             f"{t}: the change feed v{start}→v{end} does not turn the state into snapshot "
-            f"v{end}; nothing was applied"
+            f"v{end}; nothing was applied. Check the source's change feed, or {_REPORT}"
         )
 
 
