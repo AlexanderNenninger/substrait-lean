@@ -79,6 +79,7 @@ import Sverify.Core.Options
 import Sverify.Core.Scopes
 import Sverify.Core.AllowedP
 import SubstraitLean.SumBound
+import SubstraitLean.MarginSound
 import Sverify.Core.Observations
 import Sverify.Core.ObsEquiv
 import Sverify.Core.Robust
