@@ -40,6 +40,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Pinned so the cache below has a key; bump it to update Quarto.
+      QUARTO_VERSION: "1.11.9"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,7 +54,21 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
-      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
+      # Quarto's package from the cache, downloaded only on a miss and then
+      # with retries: GitHub's release downloads time out (504) often enough
+      # to fail a run.
+      - id: quarto-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/quarto-deb
+          key: quarto-${{ env.QUARTO_VERSION }}-linux-amd64
+      - if: steps.quarto-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/quarto-deb
+          curl -fsSL --retry 10 --retry-all-errors --retry-delay 15 \
+            -o ~/quarto-deb/quarto.deb \
+            "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.deb"
+      - run: sudo dpkg -i ~/quarto-deb/quarto.deb && quarto --version
       - run: uv sync --locked --project python --group docs
       - run: uv run --locked --project python poe -C python docs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
