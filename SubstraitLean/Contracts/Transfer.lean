@@ -1065,13 +1065,41 @@ def Expr.abs (env : List AVal) : Expr → AVal
       let al := l.abs env
       f.abs al (b.abs (al.elemsOf :: env))
 
-/-- Proves a function's shape (`Value.mapP`, `Value.mapP₂`) on one value. -/
+/-- The congruences of `canon` that the functions of doubles satisfy (D31). -/
+macro "canon_tac" : tactic => `(tactic| first
+  | exact (FloatCode.canon_floor_canon _).symm
+  | exact (FloatCode.canon_ceil_canon _).symm
+  | exact (FloatCode.canon_round_canon _).symm
+  | exact (FloatCode.canon_negI_canon _).symm
+  | exact (FloatCode.fadd_canon _ _).symm
+  | exact (FloatCode.fsub_canon _ _).symm
+  | exact (FloatCode.fmul_canon _ _).symm
+  | exact (FloatCode.fdiv_canon_left _ _).symm)
+
+/-- `f.apply v` is `mapP`'s value up to `canon` (`Value.CanonEq`). -/
 macro "hf_tac" : tactic => `(tactic| first
-  | rfl
-  | (simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
+  | exact .inl rfl
+  | (refine .inr ⟨_, _, rfl, rfl, ?_⟩
+     repeat rw [NumKind.norm_float]
+     try rw [FloatCode.canon_idem]
+     canon_tac)
+  | (refine .inl ?_
+     simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
       NumKind.val, Value.unscaled?, intsOnly, floatsOnly, addNK, subNK, decNK, dateAddNK,
-      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp, NumKind.norm,
-      FloatCode.fadd_canon, FloatCode.fsub_canon, FloatCode.fmul_canon, FloatCode.fdiv_canon_left]
+      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp,
+      NumKind.norm_int, NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
+     try (repeat' split) <;> first | rfl | simp_all))
+
+/-- `f.apply v` is `mapP`'s value in shape (`Value.ShapeEq`). -/
+macro "hf_top_tac" : tactic => `(tactic| first
+  | exact .inl rfl
+  | exact .inr ⟨.float, _, _, rfl, rfl⟩
+  | exact .inr ⟨.int, _, _, rfl, rfl⟩
+  | exact .inr ⟨_, _, _, rfl, rfl⟩
+  | (refine .inl ?_
+     simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
+      NumKind.val, Value.unscaled?, intsOnly, floatsOnly, Function.comp,
+      NumKind.norm_int, NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
      try (repeat' split) <;> first | rfl | simp_all))
 
 end Substrait

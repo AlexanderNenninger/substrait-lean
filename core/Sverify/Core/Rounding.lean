@@ -155,6 +155,42 @@ theorem canon_ceil {c : Int} (hc : canon c = c) : canon (ceil c) = ceil c :=
 theorem canon_round {c : Int} (hc : canon c = c) : canon (round c) = round c :=
   canon_onMag roundMag_bound roundMag_bound hc
 
+theorem onMag_of_big {pos neg : Nat → Nat} {c : Int} (h : maxMag < mag c) : onMag pos neg c = c := by
+  unfold onMag; exact ite_eq_left h
+
+theorem onMag_zero {pos neg : Nat → Nat} (hp : pos 0 = 0) : onMag pos neg 0 = 0 := by
+  simp [onMag, mag, code, hp]
+
+theorem maxMag_lt_mag_special : maxMag < mag negZero ∧ maxMag < mag negNan ∧ maxMag < mag nan := by
+  have h1 : negZero = -(2 * (maxMag : Int) + 6) := fp64.negZero_eq
+  have h2 : negNan = -(2 * (maxMag : Int) + 5) := fp64.negNan_eq
+  have h3 : nan = 2 * (maxMag : Int) + 5 := fp64.nan_eq
+  refine ⟨?_, ?_, ?_⟩ <;> unfold mag <;> omega
+
+/-- `floor`, `ceil` and `round` read a double up to `canon` (D31): they keep
+`-0.0` and the negative NaN, which `canon` makes `0` and the NaN. -/
+theorem canon_onMag_canon {pos neg : Nat → Nat} (hp : pos 0 = 0) (c : Int) :
+    canon (onMag pos neg (canon c)) = canon (onMag pos neg c) := by
+  obtain ⟨m0, m1, m2⟩ := maxMag_lt_mag_special
+  by_cases h0 : c = negZero
+  · subst h0
+    rw [show canon negZero = 0 from fp64.canon_negZero, onMag_zero hp, onMag_of_big m0,
+      show canon negZero = 0 from fp64.canon_negZero, canon_zero]
+  by_cases h1 : c = negNan
+  · subst h1
+    rw [show canon negNan = nan from fp64.canon_negNan, onMag_of_big m2, onMag_of_big m1,
+      show canon negNan = nan from fp64.canon_negNan, canon_of_isRef isRef_nan]
+  · rw [show canon c = c from fp64.canon_eq_self ⟨h0, h1⟩]
+
+theorem canon_floor_canon (c : Int) : canon (floor (canon c)) = canon (floor c) :=
+  canon_onMag_canon (by decide) c
+
+theorem canon_ceil_canon (c : Int) : canon (ceil (canon c)) = canon (ceil c) :=
+  canon_onMag_canon (by decide) c
+
+theorem canon_round_canon (c : Int) : canon (round (canon c)) = canon (round c) :=
+  canon_onMag_canon (by simp [roundMag, K]) c
+
 theorem floor_mono {c d : Int} (h : c ≤ d) : floor c ≤ floor d :=
   onMag_mono floorMag_mono ceilMag_mono floorMag_bound ceilMag_bound h
 

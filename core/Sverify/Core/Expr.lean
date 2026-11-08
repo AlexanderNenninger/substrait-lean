@@ -712,7 +712,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fadd, .float a, .float b => .float (FloatCode.fadd a b)
   | .fsub, .float a, .float b => .float (FloatCode.fsub a b)
   | .fmul, .float a, .float b => .float (FloatCode.fmul a b)
-  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a b)
+  -- A zero divisor raises (`BinFn.issue`), so the divisor's zero sign is moot.
+  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a (FloatCode.canon b))
   | .fmod, .float a, .float b => .float (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)

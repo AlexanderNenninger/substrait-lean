@@ -555,6 +555,24 @@ theorem canon_negI_canon (b : Int) : canon (negI (canon b)) = canon (negI b) := 
       canon_of_isRef isRef_nan]
   · rw [h]
 
+/-- IEEE's negation is code negation, up to `canon` (D31). -/
+theorem canon_negI_neg (c : Int) : canon (negI c) = canon (neg (canon c)) := by
+  have := negZero_eq'; have := negNan_eq'; have := nan_eq
+  have hzn : negI 0 = negZero := by unfold negI; split <;> omega
+  rcases canon_cases c with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h, show negI negZero = 0 by unfold negI; split <;> (try split) <;> omega,
+      show neg 0 = 0 from rfl]
+  · rw [h, show negI negNan = nan by unfold negI; split <;> (try split) <;> omega,
+      show neg nan = negNan by unfold neg; omega, canon_of_isRef isRef_nan,
+      show canon negNan = nan from fp64.canon_negNan]
+  · rw [h]
+    by_cases h0 : c = 0
+    · subst h0; rw [hzn, show neg 0 = 0 from rfl, show canon negZero = 0 from fp64.canon_negZero,
+        canon_zero]
+    · have h1 : c ≠ negZero := fun e => by
+        have := fp64.canon_ne c; rw [show fp64.canon c = c from h] at this; exact this.1 e
+      unfold negI; rw [ite_eq_right h0, ite_eq_right h1]; rfl
+
 /-- **`+`, `-`, `*` and `/` of doubles are congruent for `canon`** (D31): up to
 the sign of a zero, their results do not depend on which zero or NaN they
 read (`/` in its dividend; a zero divisor raises). -/
