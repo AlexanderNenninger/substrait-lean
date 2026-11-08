@@ -1,9 +1,11 @@
 # Notes for Claude
 
-## Every PR leaves its area faster or simpler
+## Every PR leaves its area faster and simpler
 
-Each pull request comes with at least one improvement in the area it
-touches, beside its main change. It can be any of these:
+Each pull request comes with two improvements in the area it touches,
+beside its main change: one to performance and one to code quality.
+
+Performance, one of these:
 
 - Faster development: a quicker or leaner build, test, proof or check. For
   example, a slow test made cheap, a `decide` replaced by reflection, a
@@ -11,6 +13,9 @@ touches, beside its main change. It can be any of these:
 - Faster at runtime: sverify running faster or in less memory for its users.
   For example, a smaller written plan, a cheaper proof, less data read or a
   lower peak.
+
+Code quality, one of these:
+
 - Simpler code:
   - less code for the same behaviour, such as dead code, a duplicate helper
     or a table kept in two places;
@@ -32,11 +37,13 @@ touches, beside its main change. It can be any of these:
     has more than 1,500 lines and each part keeps at least 300. Tiny
     modules don't count.
 
-Measure it, before and after, and put the numbers in the PR body under
-"Improvement". Count lines, shims, xfails, hypotheses, axioms, public names,
-names for one concept or seconds, whichever fits. Keep it in the code the
-PR already touches, so it doesn't collide with other sessions' work. A PR that touches nothing
-measurable (docs, facts, ledgers) says so instead.
+Measure both, before and after, and put the numbers in the PR body under
+"Improvement", one line for each. Count lines, shims, xfails, hypotheses,
+axioms, public names, names for one concept, seconds or bytes, whichever
+fits. Keep them in the code the PR already touches, so they don't collide
+with other sessions' work. A PR that touches nothing measurable (docs,
+facts, ledgers) says so instead, and a PR whose area has no runtime or
+build cost to cut says which of the two it couldn't find.
 
 Behaviour stays the same: an improvement changes no result and weakens no
 proof. Shorter must also stay clear. Golfed code or a cryptic proof doesn't

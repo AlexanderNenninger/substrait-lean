@@ -27,13 +27,13 @@
     "Relations that fall back: a `MapFunction` that is not streamable (`rechunk`, a fast count, an opaque Python or Rust UDF not marked streamable, such as `LazyFrame.map_batches`); a join that is not an equi, semi, anti, cross or range join, an as-of join whose `by` keys are not known sorted the same way, a join with a non-equality condition other than a fused predicate, and any join with `validate`; `unique(keep=\"last\", maintain_order=True)`; a group-by with an `apply`, with rolling or dynamic options (when not handled by the sorted rolling node), over object columns, or whose aggregations the streaming group-by cannot split (more than one non-elementwise input to one aggregation, non-elementwise post-processing, all expressions input-independent); an anonymous scan.",
     "Expressions that fall back, each computed over the full input in its own node: `median` and `implode` as plain aggregations, a cumulative `eval`, a window `over` that cannot be lowered to a streaming group-by, and every non-elementwise function or UDF without its own streaming rule (`ColumnarFunction`), such as `map_batches` without `is_elementwise=True`.",
     "What changes in a fallback node: the in-memory engine's algorithms (float sums, `group_by` row order) apply to that node's materialized input, so a fact probed in memory holds there, and one probed streaming may not. Evaluation order is the same in both: both evaluate expressions with polars-expr's physical expressions, so the masking of elementwise `when/then` branches (polars-exec-when-eager) applies in a fallback node too; a non-elementwise branch is computed over every row in either engine.",
-    "sverify's Polars translation reaches several of these: `map_batches` without `is_elementwise` (`_on_days`, the measure results), `LazyFrame.map_batches` (window computation), `implode` in an ungrouped aggregation, and `over`. Probes of `explain(engine=\"streaming\")` for each translated construct go to the next round.",
+    "sverify's Polars translation reaches several of these: `map_batches` without `is_elementwise` (`_on_days`, the measure results), `search_sorted` over a whole column (a RANGE frame's bounds without PARTITION BY; per partition, under `over`, it streams), `implode` in an ungrouped aggregation, and `over`. Probes of `explain(engine=\"streaming\")` for each translated construct go to the next round.",
     "The docs are silent on which constructs fall back and a fallback node's results differing: a docs gap.",
     "No upstream test pins the fallback of `map_batches`, `LazyFrame.map_batches` or `implode`; it may change between versions."
   ],
   "reference": "The reference has no engines. A profile's facts hold for the engine they were probed on; sverify pins the streaming engine (#605), so a fact whose construct falls back must hold for the in-memory engine as well, and a probe must check which engine ran it.",
   "status": "open",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -146,6 +146,21 @@
           "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_scalar_window.py#L208-L226",
           "note": "over forms that are not lowered to a scalar window match the in-memory result; no upstream test for map_batches, LazyFrame.map_batches or implode fallbacks"
         }
+      ]
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "session vigilant-brattain-703421 (native windows)",
+      "evidence": [
+        {
+          "file": "python/tests/test_polars_windows.py",
+          "note": "test_window_plans_stream_without_python: a windowed AVG over a RANGE frame, partitioned, has no fallback node"
+        }
+      ],
+      "notes": [
+        "`show_graph(engine='streaming', plan_stage='physical')` on Polars 2.1.0, macOS arm64: `cum_sum`, `cum_min`, `cum_max`, `forward_fill`, `shift`, `gather` with an index column, and `min`, `max`, `cum_sum`, `search_sorted` under `over(...)` stream; `cum_sum(reverse=True)` is a `columnar-function` fallback, and under `over` an `in-memory-map`; `search_sorted` without `over` is a `columnar-function` fallback; `join_asof` with `by` is an `in-memory-join`.",
+        "Polars divides by a column broadcast from a scalar (`g.max()` in `with_columns`) through its reciprocal, as by a literal (polars-double-scalar-divisor): 10 / 11 gave 0.9090909090909092, and 0.9090909090909091 once the divisor is a computed column."
       ]
     }
   ]
