@@ -352,7 +352,7 @@ class SparkDialect(Dialect):
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         # NaN is the greatest double, and -0.0 equals 0.0, keeping whichever
         # came first (spark-nan-order, spark-zero-order): the codes' order up
-        # to the zero, which `canon` makes the one zero (`Spark.one_zero`).
+        # to the zero, which `canon` makes the one zero (`Shim.one_zero`).
         return self.canon(f"{fn}({v}) {over}" if over else f"{fn}({v})")
 
     def like_pattern(self, p: str) -> str:
