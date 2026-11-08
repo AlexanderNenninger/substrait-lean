@@ -432,12 +432,22 @@ def Evidence.isProved : Evidence → Bool
   | .proved _ _ => true
   | _ => false
 
-/-- **The certificate of a plan on `E`**: every observation row it relies on
-is proved, or `tested` holds of it. `tested` is the trusted layer's claim
-(D16), never asserted inside the core: the certificate lists exactly the
-tested rows a result rests on. -/
+/-- **The certificate of a plan on `E`**: every option the plan reads has
+an observation row of `E` (an uncharacterized option has none, and leaves the
+certificate unprovable), and that row is proved, or `tested` holds of it.
+`tested` is the trusted layer's claim (D16), never asserted inside the core:
+the certificate lists exactly the tested rows a result rests on. -/
 def Engine.Refines (E : Engine) (r : Rel) (tested : ObsRow → Prop) : Prop :=
-  ∀ row ∈ E.rowsUsed r, row.evidence.isProved = true ∨ tested row
+  ∀ rd ∈ r.reads, ∃ row, E.obs.row? rd.1 rd.2.1 = some row ∧
+    (row.evidence.isProved = true ∨ tested row)
+
+theorem Engine.Refines.rowsUsed {E : Engine} {r : Rel} {tested : ObsRow → Prop}
+    (h : E.Refines r tested) : ∀ row ∈ E.rowsUsed r, row.evidence.isProved = true ∨ tested row := by
+  intro row hr
+  obtain ⟨⟨g, o, ps⟩, hrd, hrow⟩ := List.mem_filterMap.1 hr
+  obtain ⟨row', h1, h2⟩ := h _ hrd
+  simp only at h1 hrow
+  rw [h1] at hrow; cases hrow; exact h2
 
 /-- The rows of `E` a plan may rely on whose evidence is not a theorem. -/
 def Engine.testedRows (E : Engine) : List ObsRow :=

@@ -137,7 +137,7 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "on_domain_error", .native ["duckdb-R15-double-arith"]),
   (none, "division_type", .native ["duckdb-R3"]),
   (none, "min_mod_neg_one", .shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]),
-  (none, "rounding", .native []),
+  (none, "rounding", .native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]),
   (none, "nan_creation", .native ["duckdb-R15-double-arith"]),
   -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
   -- after `Dialect.canon`.
@@ -145,7 +145,7 @@ def Profile.duckdb.obs : ObsTable := [
     shim := some "Dialect.canon" }),
   (none, "nan_kind", .upTo { zeros := .canon } ["duckdb-signbit"]),
   (none, "nan_order", .native ["duckdb-arg-min-nulls"]),
-  (none, "nan_equality", .native []),
+  (none, "nan_equality", .native ["duckdb-nan-equality"]),
   -- Partials merged in finishing order are trees the reference allows, but a
   -- constant vector's `fl(k · x)` is not known to be one (#633): within #85's
   -- bound of the reference's correctly rounded sum (`StdModel.epsilon_sum_cr`).
@@ -159,7 +159,7 @@ def Profile.duckdb.obs : ObsTable := [
       ["duckdb-sum-double", "duckdb-avg-double", "duckdb-exec-row-order"] }).proved
     "FloatBounds.StdModel.epsilon_sum_cr"),
   (none, "avg_int_result", .native ["duckdb-R6"]),
-  (none, "empty_group_aggregates", .native []),
+  (none, "empty_group_aggregates", .native ["duckdb-sum-double", "duckdb-avg-int"]),
   (none, "null_order", .native ["duckdb-F2"]),
   -- The written `ORDER BY` is the model's sort, which `SortAllowed` allows for
   -- a clustered key (`Rel.duckdb_refines`; `test_realizability.py` runs it).
@@ -176,9 +176,9 @@ def Profile.duckdb.obs : ObsTable := [
   (some "fp.round", "rounding", .native ["duckdb-R15-round"]),
   (none, "float_overflow", .native ["duckdb-R15-double-arith"]),
   (none, "negative_start", .native ["duckdb-R13"]),
-  (none, "case_sensitivity", .native []),
-  (none, "string_positions", .native []),
-  (none, "null_join_keys", .native []),
+  (none, "case_sensitivity", .native ["duckdb-string-match-case"]),
+  (none, "string_positions", .native ["duckdb-string-match-case", "duckdb-R13"]),
+  (none, "null_join_keys", .native ["duckdb-null-keys"]),
   -- Welford with Chan's merge meets the generic properties the reference allows:
   -- `float-bounds` proves `VAR_*`, `COVAR_*` and DuckDB's `CORR` formula within
   -- `StatProps` (`core_var_chan`, `core_cov_chan`, `core_corr_chan`; `STDDEV_*`
@@ -260,7 +260,7 @@ def Profile.polars.obs : ObsTable := [
   (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Polars.int_div_trunc"),
   (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
   (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
-  (none, "rounding", .native []),
+  (none, "rounding", .native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]),
   (none, "nan_creation", (ObsRow.native ["polars-double-arith"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]

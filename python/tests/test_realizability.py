@@ -76,6 +76,19 @@ def test_every_shim_is_proved_or_tested(table):
 
 
 @needs_repo
+def test_every_unproved_row_names_a_fact(table):
+    """A row whose evidence is not a Lean theorem names the facts it rests on
+    (#900): the per-plan certificate (`Engine.Refines`) lists exactly these
+    rows, so each must say what it rests on."""
+    for engine, e in table.items():
+        for r in e["rows"]:
+            # An uncharacterized option has no row to rest on: no plan reading
+            # it is certified (`Engine.Refines`).
+            if r["case"] != "uncharacterized" and r["evidence"] != "proved":
+                assert r["facts"], (engine, r["option"])
+
+
+@needs_repo
 def test_every_row_names_real_facts(table):
     for engine, e in table.items():
         for r in e["rows"]:
