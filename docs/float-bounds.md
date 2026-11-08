@@ -196,7 +196,7 @@ The homelab metrics rollup states its contract this way:
 ## The engines' orders and `epsilon` (#444)
 
 An engine may add a double `SUM` in another order than the reference, so a
-contract's double `SUM` or `AVG` is `approx`: within a per-plan `ε` of a
+contract's double `SUM` or `AVG` is `observed`: within a per-plan `ε` of a
 result the reference allows. `substrait-check --contract` reports it per
 output column (`"epsilon"`, `SubstraitLean/Epsilon.lean`), and
 [`Epsilon.lean`](../float-bounds/FloatBounds/Epsilon.lean) proves it for every
@@ -304,6 +304,26 @@ the bound from `t` (`StdModel.check_sound`), so every evaluation of its sum,
 the check's and the filter's, lies on the reference's side of `t`
 (`margin_sound`, `StdModel.margin_check`). The factor 2 covers an engine
 that computes the sum twice, in two orders.
+An `AVG`'s threshold has the same check over `n`: the engine's mean is
+within `(γₙ + 4u) · Σ(|xᵢ| + tiny) / n` of the reference's
+(`StdModel.epsilon_group_avg`), and the check is
+`|fl(v − t)| > fl(cₙ · fl(fl(A + n · tiny) / n))`, `cₙ = (8n + 32) · 2⁻⁵³`
+(`StdModel.check_sound_avg`, `StdModel.margin_check_avg`).
+A row's value against its partition's window `SUM` or `AVG` over the whole
+partition (`x > AVG(x) OVER (PARTITION BY k)`) has the same check per row,
+the bound from the partition's count and `Σ|x|`, the threshold the row's own
+value. The check plan computes `v − t` and the margin once each in a
+projection, so that an engine's SQL does not repeat a window's aggregate.
+The checker writes the check as a plan of its own (`Rel.marginCheck`,
+`"margin_checks"` of `--contract`), and the threshold filter it covers keeps
+the reference's rows given it. `Report.run` runs it on the engine before the
+plan: a flagged group refuses the run with a `PreconditionError` that counts
+them, or, verified with `on_inferred="warn"`, a warning, the flagged groups
+kept up to the bound, the warning counting them.
+A double `SUM` of exact values with no row cap has no number that bounds
+every group, but each group has its own bound: `"epsilon"` reports it as
+`"per_group"`, proved by `StdModel.epsilon_group`, in place of a missing
+`"abs"`.
 
 Each column whose range leaves out zero also has a relative bound, `ε`
 over the least magnitude of the reference's value. A difference of nearly
@@ -316,7 +336,7 @@ manual states and the probes measured (0.502 ulp on macOS,
 [duckdb-ulp-libm](../characterization/duckdb/facts/duckdb-ulp-libm.json)), and
 `rule_exp` bounds `exp a`, `a ≤ ha`, by
 `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + tiny)`. The other elementary
-functions stay probed, not proved. The checker evaluates the formulas in
+functions stay tested. The checker evaluates the formulas in
 doubles; every term is nonnegative, so each rounding is relative, and a
 factor `1 + 2⁻⁴⁰` covers them.
 

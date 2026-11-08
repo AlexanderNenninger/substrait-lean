@@ -100,10 +100,6 @@ theorem EnvMem.nulls (env : List AVal) (m : Nat) :
   simp only [List.getElem?_map, List.getD_eq_getElem?_getD, List.getElem?_replicate]
   cases env[j]? <;> split <;> simp [AVal.top, AVal.nullable, AVal.Mem]
 
-theorem intSum_cons (v : Value) (vs : List Value) :
-    intSum (v :: vs) = v.unscaled?.getD 0 + intSum vs := by
-  cases v <;> simp [intSum]
-
 theorem sumOf_unscaled {vs : List Value} {x : Int} (h : (sumOf vs).unscaled? = some x) :
     x = intSum vs := by
   rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] at h <;>

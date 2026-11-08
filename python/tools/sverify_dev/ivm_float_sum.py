@@ -154,7 +154,10 @@ def init_cost(n: int, groups: int = 1000) -> dict[str, object]:
     rows = con.sql("SELECT k0, 1::BIGINT AS w, x FROM t").to_arrow_table()
     fetched = time.perf_counter()
     out = _exact_sum.fold(
-        rows.select(["k0"]), rows.column("x").combine_chunks(), rows.column("w").combine_chunks()
+        "fsum",
+        rows.select(["k0"]),
+        [rows.column("x").combine_chunks()],
+        rows.column("w").combine_chunks(),
     )
     done = time.perf_counter()
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

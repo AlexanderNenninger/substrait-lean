@@ -3,7 +3,7 @@
 Ten short examples, each a step up from the one before: a contract proved
 and run, SQL, the preconditions Sverify infers, routes to Polars, tolerances
 for doubles, reproducible sinks, engine profiles, Substrait's own semantics,
-a plan checked under Polars's, and the export of a verified plan to any
+a plan checked under Polars's, and the export of a proved plan to any
 Substrait consumer. The inputs are a few rows in memory. Every block runs as written,
 in order: `python/tests/test_readme.py` runs them and checks each printed
 line against the comment under it.
@@ -145,7 +145,7 @@ con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 25
 print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
 print(declared.routes["polars"])
-# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc
+# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc on polars's model ...
 ```
 
 SQL's `//` truncates under the reference and Polars's integer division floors,
@@ -257,14 +257,15 @@ every sink.
 `semantics="duckdb"` checks a plan under what DuckDB does, from its
 [characterization](https://alexandernenninger.github.io/substrait-lean/ledgers/duckdb-facts.html). A route to Polars then takes the proof
 across only where Polars's choices are within DuckDB's on every option the
-proof depends on, and names the options and facts where they are not:
+plan reads (the checker's transfer check, `Rel.transfer_of_transferB`), and
+names the options and facts where they are not:
 
 ```python
 t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the proof depends on ...
+# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the plan reads
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -355,9 +356,9 @@ overflow raise under `Profile.polars` as under the reference, so `verify`
 infers the same preconditions. [engine-profiles.md](engine-profiles.md#polars-as-a-profile)
 says which choices the profile takes from Polars.
 
-## 10. A verified plan for any Substrait consumer
+## 10. A proved plan for any Substrait consumer
 
-`report.to_substrait()` returns the plan the checker verified, written for
+`report.to_substrait()` returns the plan the checker proved, written for
 any conforming consumer of Substrait 0.106: each call names its YAML's URN,
 its compound name and its output type, and each option the proof depends on
 is pinned at the reference's behaviour. The contract travels with it, and

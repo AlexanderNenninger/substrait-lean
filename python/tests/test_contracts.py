@@ -359,24 +359,30 @@ SAMPLES = ibis.table(
     ("expr", "col", "low", "high"),
     [
         (
-            SAMPLES.select(m=SAMPLES.ts.truncate("m")),
+            SAMPLES.select(m=(SAMPLES.ts + ibis.interval(days=1)).truncate("M")),
             "ts",
             datetime(2000, 1, 1),
             datetime(2100, 1, 1),
         ),
-        (SAMPLES.select(m=SAMPLES.day.truncate("M")), "day", date(2000, 1, 1), date(2100, 1, 1)),
+        (
+            SAMPLES.select(m=(SAMPLES.day + ibis.interval(days=1)).truncate("M")),
+            "day",
+            date(2000, 1, 1),
+            date(2100, 1, 1),
+        ),
     ],
 )
 def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
     # Inferred (#244), needed by default (#655); without inference, the
-    # issue's hint names them.
+    # issue's hint names them. A column read lies in 0001 to 9999 by its type
+    # (D32), so the truncation is of a computed value.
     assert sv.verify(expr, on_inferred="ignore").proved
     assert not sv.verify(expr).proved
     report = sv.verify(expr, on_inferred="off")
     [issue] = report.errors
     assert issue.kind == "overflow" and issue.hint is not None
     hint = issue.hint
-    assert f"`(_.{col} >= " in hint and "the requires of 'samples'" in hint
+    assert f"`(_.{col} " in hint and "the requires of 'samples'" in hint
     assert OVERFLOW_HINT not in str(report)  # the hint covers the overflow
     bounded = sv.verify(expr, requires={"samples": [_[col] >= low, _[col] < high]})
     assert not bounded.issues

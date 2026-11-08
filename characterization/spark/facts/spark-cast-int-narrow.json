@@ -1,0 +1,35 @@
+{
+  "id": "spark-cast-int-narrow",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "A narrowing cast that does not fit raises under ANSI",
+  "verdict": "`CAST(BIGINT AS INT)` out of range raises `CAST_OVERFLOW`",
+  "area": "casts",
+  "constructs": [
+    "CAST(BIGINT AS INT)"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": "true",
+    "spark.sql.session.timeZone": "UTC",
+    "spark.sql.timestampType": "TIMESTAMP_NTZ"
+  },
+  "description": [
+    "Under ANSI mode a cast to a narrower integer that does not fit raises `CAST_OVERFLOW`."
+  ],
+  "reference": "`UnFn.narrow` raises where the value does not fit (`badCast`): Spark under ANSI raises natively.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#1166 restatement probe (session youthful-margulis), spark 4.3.0, macOS arm64",
+      "evidence": [
+        {
+          "sql": "select cast(1099511627776 as int)",
+          "observed": "[CAST_OVERFLOW] The value 1099511627776L of the type \"BIGINT\" cannot be cast to \"INT\" due to an overflow."
+        }
+      ]
+    }
+  ]
+}

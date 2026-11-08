@@ -48,7 +48,7 @@ SQL string ─► SQLGlot lift ────────────────�
   (`Rel.eval`), and proves what sverify relies on: contracts, runtime-error
   analysis, incremental delta plans, sharding and rewrites. It builds the
   `substrait-check` command line tool, which reads a Substrait JSON plan and
-  prints what it verified.
+  prints what it proved.
 * Python (`python/`) is the `sverify` package. It produces plans from Ibis
   and SQL, calls `substrait-check`, writes the checked plan for each engine,
   and runs it. Delta and Iceberg IO, nodes, sinks and the pytest plugin live

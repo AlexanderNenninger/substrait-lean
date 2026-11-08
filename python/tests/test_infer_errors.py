@@ -59,7 +59,7 @@ def inferred(report: sv.Report) -> list[str]:
         (T.select(r=T.big * 2), ["(_.big >= -4 * 10**35)", "(_.big < 5 * 10**35)"]),
         (
             T.select(r=T.d + ibis.interval(days=10)),
-            ["(_.d >= date(1, 1, 1))", "(_.d < date(9999, 1, 1))"],
+            ["(_.d < date(9999, 1, 1))"],
         ),
     ],
     ids=lambda v: v if isinstance(v, str) else None,

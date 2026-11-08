@@ -1,5 +1,5 @@
-import SubstraitLean.Partition
-import SubstraitLean.Profile
+import SubstraitLean.Decomposable
+import SubstraitLean.OrderAllowed
 import SubstraitLean.StatProps
 import SubstraitLean.ObsEquiv
 
@@ -28,9 +28,10 @@ order of the rows. An engine's order of additions is a behaviour of its
 profile (`SumOrder`, `SubstraitLean/AllowedP.lean`), within #85's bound of it
 (`epsilon_sum_cr` in `float-bounds/`).
 
-For a plan without these choices (`Rel.detPlan`), every allowed result is
-`Rel.eval`'s up to the order of rows (`Rel.allowed_perm_eval`), so whatever
-is proved of `Rel.eval`'s rows holds of every allowed result. A rewrite is
+For a plan without these choices (`Rel.detPlan`, `SubstraitLean/AllowedAnalysis.lean`),
+every allowed result is `Rel.eval`'s up to the order of rows
+(`Rel.allowed_perm_eval`), so whatever is proved of `Rel.eval`'s rows holds
+of every allowed result. A rewrite is
 correct when it **refines** the plan up to an observation
 (`Rel.RefinesUpTo`): every result it allows is, up to the observation, one
 the plan allows. `Rel.Refines` is the exact case and `Rel.RefinesBag` the
@@ -185,96 +186,6 @@ theorem Rel.eval_allowed (cat : Catalog) : ∀ r : Rel, r.Allowed cat (r.eval ca
   | .distinct r | .unnest r _ => ⟨_, eval_allowed cat r, .refl _⟩
   | .aggregate r gs ms => ⟨_, eval_allowed cat r, _, .refl _, aggregateEval_allowed gs ms _⟩
 
-/-! ## Plans without choices -/
-
-/-- Does `r` leave the engine no choice but the order of its rows? No
-`FETCH` (which rows come first), each window's ties broken alike
-(`Rel.windowsTotal`'s checks), and aggregates that are functions of their
-values (`Measure.orderFree`: `COUNT`, `SUM`, `AVG` of doubles too (D25),
-`MIN`, `MAX`). -/
-def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → Bool
-  | .read _ | .values _ _ => true
-  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r
-  | .unnest r _ => r.detPlan cat A F K
-  | .fetch _ _ _ => false
-  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
-      a.detPlan cat A F K && b.detPlan cat A F K
-  | .window r part sort fns =>
-      r.detPlan cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-        fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part))
-  | .aggregate r _ ms => r.detPlan cat A F K && ms.all (·.orderFree)
-
-theorem crossRows_perm {xs xs' ys ys' : Relation} (hx : xs.Perm xs') (hy : ys.Perm ys') :
-    (crossRows xs ys).Perm (crossRows xs' ys') :=
-  (crossRows_perm_right hy).trans (hx.flatMap_right _)
-
-/-- **A plan without choices allows only `Rel.eval`'s rows**, in any order. -/
-theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
-    {F : String → List Fact}
-    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
-    ∀ {r : Rel}, r.WF cat → r.detPlan cat A F K = true → ∀ {out : Relation},
-      r.Allowed cat out → out.Perm (r.eval cat)
-  | .read _, _, _, _, h | .values _ _, _, _, _, h => h
-  | .filter r _, hwf, hd, _, ⟨i, hi, rfl⟩ =>
-    (allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).filter _
-  | .project r _, hwf, hd, _, ⟨i, hi, rfl⟩ =>
-    (allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).map _
-  | .emit r _, hwf, hd, _, ⟨i, hi, rfl⟩ =>
-    (allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).map _
-  | .cross a b, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
-    simp only [detPlan, Bool.and_eq_true] at hd
-    exact h.trans (crossRows_perm (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx)
-      (allowed_perm_eval hcat hA hF hK hwf.2 hd.2 hy))
-  | .join a b .inner _, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
-    simp only [detPlan, Bool.and_eq_true] at hd
-    exact h.trans ((crossRows_perm (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx)
-      (allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy)).filter _)
-  | .join a b .left _, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
-    simp only [detPlan, Bool.and_eq_true] at hd
-    have hx' := allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx
-    have hy' := allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy
-    exact h.trans ((flatMap_perm_congr fun z _ => leftJoinRow_perm z hy').trans
-      (hx'.flatMap_right _))
-  | .fetch _ _ _, _, hd, _, _ => by simp [detPlan] at hd
-  | .unionAll a b, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
-    simp only [detPlan, Bool.and_eq_true] at hd
-    exact h.trans ((allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx).append
-      (allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy))
-  | .window r part sort fns, hwf, hd, _, ⟨i, hi, s, hs, hsort, h⟩ => by
-    simp only [detPlan, Bool.and_eq_true, Bool.or_eq_true] at hd
-    have hp : s.Perm (r.eval cat) := hs.trans (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hi)
-    refine h.trans ?_
-    rcases hd.2 with (hk | hf) | hc
-    · obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
-      simp only [List.all_eq_true, decide_eq_true_eq] at hsub
-      exact window_tiebreak ((keys_sound hcat hA hF hK hwf.1 k hk).superset hsub) hp hsort
-    · exact window_tieFree hf hp hsort
-    · simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
-      exact Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc hp
-  | .semi a b _ on, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
-    simp only [detPlan, Bool.and_eq_true] at hd
-    have hx' := allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx
-    have hy' := allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy
-    refine h.trans ?_
-    rw [List.filter_congr fun z _ => by rw [hasMatch_perm z hy']]
-    exact hx'.filter _
-  | .orderBy r _, hwf, hd, _, ⟨i, hi, h, _⟩ =>
-    h.trans ((allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).trans
-      (List.mergeSort_perm _ _).symm)
-  | .distinct r, hwf, hd, _, ⟨i, hi, h⟩ => by
-    have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf hd hi
-    exact h.trans (dedup_perm_of_mem fun y => hp.mem_iff)
-  | .aggregate r gs ms, hwf, hd, _, ⟨i, hi, o, h, ho⟩ => by
-    simp only [detPlan, Bool.and_eq_true, List.all_eq_true] at hd
-    have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd.1 hi
-    rw [aggAllowed_eq hd.2 ho] at h
-    exact h.trans (aggregateEval_perm hd.2 hp)
-  | .unnest r _, hwf, hd, _, ⟨i, hi, h⟩ =>
-    h.trans ((allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).flatMap_right _)
-
 /-! ## Refinement -/
 
 /-- **`q` refines `r` up to the observation `o`**: every result `q` allows
@@ -337,17 +248,6 @@ theorem Rel.RefinesBag.trans {cat : Catalog} {p q r : Rel} (h₁ : p.RefinesBag 
 theorem Rel.Refines.bag {cat : Catalog} {q r : Rel} (h : q.Refines cat r) : q.RefinesBag cat r :=
   Rel.RefinesUpTo_mono .default (Obs.exact_le _) h
 
-/-- A rewrite to a plan without choices whose rows are the original's
-refines it up to the order of rows, whatever choices the original leaves. -/
-theorem Rel.refines_of_perm {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
-    {F : String → List Fact}
-    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {q r : Rel} (hwf : q.WF cat)
-    (hd : q.detPlan cat A F K = true) (h : (q.eval cat).Perm (r.eval cat)) : q.RefinesBag cat r :=
-  Rel.refinesBag_iff.2 fun _ hq => ⟨r.eval cat, r.eval_allowed cat,
-    (allowed_perm_eval hcat hA hF hK hwf hd hq).trans h⟩
-
 /-- **The order an `ORDER BY` fixes counts**: a plan's rows unsorted refine
 its `ORDER BY` twin up to the order of rows and not exactly. -/
 theorem Rel.unsorted_refinesBag_not_refines :
@@ -364,21 +264,5 @@ theorem Rel.unsorted_refinesBag_not_refines :
     .of_sorted (by decide +kernel)⟩, ho.trans (.swap _ _ _)⟩, fun h => hs ?_⟩
   obtain ⟨i, -, -, hsort⟩ := Rel.refines_iff.1 h _ (List.Perm.refl _)
   exact hsort
-
-/-! ## Engines
-
-The theorems about engines conclude that an engine computes `Rel.eval`'s rows
-(or raises); so it returns an allowed result. -/
-
-/-- Guard elimination: the plan run without its row-level checks returns an
-allowed result. -/
-theorem Rel.guardFree_allowed {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
-    {F : String → List Fact}
-    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
-    {I : Impl} (hI : I.Faithful) : r.Allowed cat (r.eval cat I) := by
-  rw [Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm hI]; exact r.eval_allowed cat
 
 end Substrait
