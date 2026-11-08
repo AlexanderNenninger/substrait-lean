@@ -145,7 +145,7 @@ con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 25
 print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
 print(declared.routes["polars"])
-# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc
+# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc on polars's model ...
 ```
 
 SQL's `//` truncates under the reference and Polars's integer division floors,
@@ -257,14 +257,15 @@ every sink.
 `semantics="duckdb"` checks a plan under what DuckDB does, from its
 [characterization](https://alexandernenninger.github.io/substrait-lean/ledgers/duckdb-facts.html). A route to Polars then takes the proof
 across only where Polars's choices are within DuckDB's on every option the
-proof depends on, and names the options and facts where they are not:
+plan reads (the checker's transfer check, `Rel.transfer_of_transferB`), and
+names the options and facts where they are not:
 
 ```python
 t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the proof depends on ...
+# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the plan reads
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),

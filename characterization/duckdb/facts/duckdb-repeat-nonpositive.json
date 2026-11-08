@@ -1,0 +1,35 @@
+{
+  "id": "duckdb-repeat-nonpositive",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`repeat(s, n)` is `''` for `n ≤ 0`",
+  "verdict": "`repeat('ab', -1)` and `repeat('ab', 0)` are `''`",
+  "area": "strings",
+  "constructs": [
+    "repeat"
+  ],
+  "settings": {},
+  "description": [
+    "`repeat(s, n)` with `n ≤ 0` gives the empty string."
+  ],
+  "reference": "`UnFn.strRepeat`: `''` for `n ≤ 0` (`Text.repeatStr`).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#1166 restatement probe (session youthful-margulis), duckdb 2.0.0, macOS arm64",
+      "evidence": [
+        {
+          "sql": "select repeat('ab', -1)",
+          "observed": "''"
+        },
+        {
+          "sql": "select repeat('ab', 0)",
+          "observed": "''"
+        }
+      ]
+    }
+  ]
+}

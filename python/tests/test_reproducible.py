@@ -146,9 +146,6 @@ def test_a_sink_states_what_a_rerun_must_reproduce(monkeypatch, tmp_path) -> Non
     doubles within the plan's bound, which this plan has none of (no row
     cap); a sink that asks exact values or accepts a tolerance says so."""
     _tables(monkeypatch, {"floats": {"rel": 1e-12}})
-    monkeypatch.setattr(
-        routes, "plan_options", lambda plan: [{"group": None, "option": "sum_order"}]
-    )
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7)])
     unbounded = mean_amount(orders).write(DeltaSink(str(tmp_path / "unbounded")))
     with pytest.raises(RouteError, match="no bound on the plan's doubles"):

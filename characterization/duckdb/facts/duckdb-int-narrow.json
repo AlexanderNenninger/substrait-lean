@@ -1,0 +1,41 @@
+{
+  "id": "duckdb-int-narrow",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Narrowing casts and `INT`/`TINYINT` arithmetic past the width raise",
+  "verdict": "`CAST(BIGINT AS INT)` out of range and `INT + INT` past 32 bits raise",
+  "area": "integers",
+  "constructs": [
+    "CAST(BIGINT AS INT)",
+    "INT + INT",
+    "TINYINT + TINYINT"
+  ],
+  "settings": {},
+  "description": [
+    "A cast to a narrower integer that does not fit raises a `Conversion Error`; `+` of `INT` or `TINYINT` values past their width raises an `Out of Range Error` (no promotion to `BIGINT`)."
+  ],
+  "reference": "`UnFn.narrow` and `UnFn.wrap` raise where the value does not fit (`badCast`, `wraps`; #202): DuckDB raises natively.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "#1166 restatement probe (session youthful-margulis), duckdb 2.0.0, macOS arm64",
+      "evidence": [
+        {
+          "sql": "select cast(1099511627776 as int)",
+          "observed": "Conversion Error: Type INT64 with value 1099511627776 can't be cast because the value is out of range for the destination type INT32"
+        },
+        {
+          "sql": "select cast(2147483647 as int) + cast(1 as int)",
+          "observed": "Out of Range Error: Overflow in addition of INT32 (2147483647 + 1)!"
+        },
+        {
+          "sql": "select cast(127 as tinyint) + cast(1 as tinyint)",
+          "observed": "Out of Range Error: Overflow in addition of INT8 (127 + 1)!"
+        }
+      ]
+    }
+  ]
+}
