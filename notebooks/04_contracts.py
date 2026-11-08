@@ -373,6 +373,80 @@ def _(orders, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Foreign keys and row caps
+
+    An order for a customer who isn't in `customers` drops out of the join,
+    and its revenue with it. `sv.references` states that every customer an
+    order names exists, and `sv.key` is a key whose columns are never NULL.
+    We'll add an order for Cy, whom `customers` doesn't know:
+    """)
+    return
+
+
+@app.cell
+def _(PreconditionError, ibis, mo, sv, with_city):
+    con_refs = sv.connect()
+    con_refs.create(
+        "orders",
+        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 30), (2, "bob", 5), (3, "cy", 12)],
+    )
+    con_refs.create(
+        "customers",
+        ibis.schema({"name": "string", "city": "string"}),
+        [("ada", "Paris"), ("bob", "Oslo")],
+    )
+    _with_city = sv.transform(
+        requires={
+            "orders": [sv.key("id"), sv.references("customer", to=("customers", "name"))],
+            "customers": [sv.key("name")],
+        },
+        ensures=[sv.key("id")],
+    )(with_city)
+    try:
+        _with_city(con_refs.table("orders"), con_refs.table("customers"))
+    except PreconditionError as _e:
+        _err = _e
+    mo.callout(mo.md(f"PreconditionError: {_err}"), kind="danger")
+    return (con_refs,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Cy's order is caught before the join drops it. Nothing proves a foreign
+    key in `ensures`: it stays a precondition, checked on the data.
+
+    A row cap works the other way round. `sv.max_rows(n)` in `requires` is
+    checked on the data, and Lean carries it through the plan
+    (`Rel.maxRows_sound`). With it, a sum of amounts per customer is proved
+    to fit 64 bits, and the cap on the output is proved too. Without it, the
+    report assumes the sum fits and checks it as the job runs:
+    """)
+    return
+
+
+@app.cell
+def _(con_refs, sv):
+    from ibis import _
+
+    _orders = con_refs.table("orders")
+    _totals = _orders.group_by("customer").aggregate(total=_orders.amount.sum())
+    _amounts = [_.amount >= 0, _.amount <= 1_000_000]
+    capped = sv.verify(
+        _totals,
+        requires={"orders": [*_amounts, sv.max_rows(1_000_000)]},
+        ensures=[_.total >= 0, sv.max_rows(1_000_000)],
+    )
+    uncapped = sv.verify(_totals, requires={"orders": _amounts}, ensures=[_.total >= 0])
+    assert capped.proved and not capped.assumed
+    {"with sv.max_rows": capped.rows, "assumed without it": [str(a) for a in uncapped.assumed]}
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Relations between columns
 
     Filter and join conditions such as `a.t = b.t + 1`, `start < end` or
@@ -739,6 +813,58 @@ def _(mo):
     gives the same rows. The proof therefore describes what the engine
     computes, however it breaks ties.
 
+    A run can ask for more: `report.run(con, engine,
+    reproducible=sv.equivalent())` refuses a plan whose result a rerun may
+    change, and names the key that would fix it. We'll take the largest
+    order, where two orders tie on the amount:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from sverify.errors import RouteError as _RouteError
+
+    con_ties = sv.connect()
+    con_ties.create(
+        "orders",
+        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 30), (2, "bob", 30), (3, "cy", 5)],
+    )
+    _orders = con_ties.table("orders")
+    _largest = sv.verify(_orders.order_by(ibis.desc("amount")).limit(1))
+    try:
+        _largest.run(con_ties, "duckdb", reproducible=sv.equivalent())
+    except _RouteError as _e:
+        print(f"RouteError: {_e}")
+    return (con_ties,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The fix is the one the refusal names: a key in the order. With `id` as
+    the tiebreak and `sv.key("id")` in `requires`, the result is
+    determined, and the run goes ahead:
+    """)
+    return
+
+
+@app.cell
+def _(con_ties, ibis, sv):
+    _orders = con_ties.table("orders")
+    _largest = sv.verify(
+        _orders.order_by([ibis.desc("amount"), "id"]).limit(1),
+        requires={"orders": [sv.key("id")]},
+    )
+    assert _largest.deterministic
+    _largest.run(con_ties, "duckdb", reproducible=sv.equivalent()).to_pylist()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### ASOF joins
 
     An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their
