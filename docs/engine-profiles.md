@@ -24,7 +24,7 @@ the reference allows, or raises only where the reference may raise; resource
 errors, such as running out of memory, are excluded
 ([D16](core-semantics.md#d16-engine-correctness)). Today Lean proves partial
 correctness, `Rel.eval`'s rows or an error (`Rel.duckdb_shim_sound` below),
-and for a plan verified to never raise the two agree (`Rel.duckdb_sound`).
+and for a plan proved to never raise the two agree (`Rel.duckdb_sound`).
 
 **The size hypothesis.** Integers have their declared widths, and so do
 lengths, positions and ranks. The reference assumes, as every engine's memory
@@ -52,7 +52,7 @@ accumulators, and its frontend quirks. Translating a plan for the engine
 means applying that diff: writing each function in a form the engine
 evaluates to the reference result, or refusing it where no shim exists.
 Where the reference raises (overflow, NaN creation, a domain error), a plan
-verified to never raise needs no shim, only the guard of a precondition
+proved to never raise needs no shim, only the guard of a precondition
 checked on the data ([What strictness buys](core-semantics.md#what-strictness-buys)).
 `Rel.duckdb_sound` below proves this for DuckDB.
 
@@ -211,7 +211,7 @@ pushed-down filter); that skips evaluations without changing a value, which
 is the engine's own correctness. `verified_sql` in the catalogue rests on
 this theorem; `guard_free` is the stronger fact that nothing raises.
 
-Trusted: that `Profile.duckdb` matches DuckDB (probed on edge cases,
+Trusted: that `Profile.duckdb` matches DuckDB (tested on edge cases,
 `tests/test_probe.py`),
 and that the SQL printer prints the shimmed plan faithfully (`isNum` as `IS
 NOT NULL` included).
@@ -229,8 +229,8 @@ remaining items in
 [#573](https://github.com/AlexanderNenninger/substrait-lean/pull/573)) lists
 where Polars differs from the reference. Sorted by the three kinds:
 
-Error side, no shim for a verified plan (15). The reference raises on each,
-so a verified plan never reaches Polars's behaviour:
+Error side, no shim for a proved plan (15). The reference raises on each,
+so a proved plan never reaches Polars's behaviour:
 
 - integer `overflow` of `+ - ×`, negate and `**` (wraps,
   [int-arith](../characterization/polars/facts/polars-int-arith.json)),
@@ -266,8 +266,7 @@ the quantile's `method`. The others are shims with a cost:
   `CORR` of one pair ([corr](../characterization/polars/facts/polars-corr.json)),
   `mode`'s list ([mode](../characterization/polars/facts/polars-mode.json)),
   the rank of NULL ([rank](../characterization/polars/facts/polars-rank.json));
-- `zero_sign` and `nan_kind` (`canon`, or `refines up to canon` in #568's
-  terms), and `round` to negative digits
+- `zero_sign` and `nan_kind` (`canon`, or `observed` up to `canon`, D22), and `round` to negative digits
   ([round-digits](../characterization/polars/facts/polars-round-digits.json));
 - decimal result types and `decimal_rescale`
   ([decimal-arith](../characterization/polars/facts/polars-decimal-arith.json),
@@ -278,9 +277,9 @@ the quantile's `method`. The others are shims with a cost:
   `strpos`'s NULL, a regex's NULL without a match, `reverse` by graphemes
   (#570), and `list_null_order` (#573).
 
-Open, native or `approx`: `tie_pick` and `tie_order` (Polars picks
+Open, native or `observed`: `tie_pick` and `tie_order` (Polars picks
 deterministically, which the reference allows), `sum_order` and `stat_algo`
-(`approx[D, ε]` within #85's bounds), and `log10`, `log2` an ulp off
+(`observed` within `ε`, #85's bounds), and `log10`, `log2` an ulp off
 ([log-base](../characterization/polars/facts/polars-log-base.json)).
 
 Refused: the shifts, `ntile`, `percent_rank`, `cume_dist` and seven string
@@ -288,7 +287,7 @@ functions have no Polars expression, and `<`, `min`, `max` of lists raise in
 Polars where the reference does not, a raise the reference's raise set does
 not cover.
 
-So 15 of Polars's differences cost a verified plan nothing, 7 cost a
+So 15 of Polars's differences cost a proved plan nothing, 7 cost a
 written argument, and the 23 run-time shims left each implement a value the
 reference chose.
 
@@ -330,7 +329,7 @@ as `Profile.duckdb` is, and it takes Polars's choice option by option (D21):
 |---|---|---|---|
 | `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../characterization/polars/facts/polars-int-divide.json), [int-modulus](../characterization/polars/facts/polars-int-modulus.json)) | Polars's own value, so the native route needs no shim |
 | `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/polars/facts/polars-double-arith.json)) | as under DuckDB's profile |
-| `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a verified plan never wraps |
+| `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a proved plan never wraps |
 | `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
 | `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
 | every other option | the reference's | the table above | the translation keeps its written arguments and shims there |
@@ -354,7 +353,7 @@ parser reads, and the report says `"profile": "polars"`. What is proved:
 - `Rel.allowed_polars_core`: `Allowed_polars ⊆ Allowed_core`, from the
   choices table.
 
-On the routes: a plan verified under `Profile.polars` runs on Polars by
+On the routes: a plan proved under `Profile.polars` runs on Polars by
 `native`, where `polars_engine` runs Polars's `//` and `%` for the stated
 calls and the translation's shims elsewhere. DuckDB, DataFusion and Spark
 refuse a stated `FLOOR` before they run (`sverify._support`), and the
@@ -379,7 +378,7 @@ from its [facts](../characterization/spark/facts/). Option by option (D21):
 |---|---|---|---|
 | `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/spark/facts/spark-double-arith.json)) | as under DuckDB's and Polars's profiles |
 | `overflow`, `on_division_by_zero` | `ERROR` | `ERROR` ([int-arith](../characterization/spark/facts/spark-int-arith.json), [int-divide](../characterization/spark/facts/spark-int-divide.json)) | native: ANSI raises where the reference raises |
-| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../characterization/spark/facts/spark-math-domain.json)) | tightened, as the reference; a verified plan never reaches them |
+| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../characterization/spark/facts/spark-math-domain.json)) | tightened, as the reference; a proved plan never reaches them |
 | `avg_int_result` | the reference's | `FP64` ([avg-int](../characterization/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
 | `null_order` | the reference's | first for an ascending key ([null-order](../characterization/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
 | every other option | the reference's | the table | native, or the writer's shims |
@@ -387,7 +386,7 @@ from its [facts](../characterization/spark/facts/). Option by option (D21):
 Spark's profile states no choice of its own in a plan, so `Profile.spark`
 evaluates as the reference (`Profile.spark_eval`), and the report of a
 `"profile": "spark"` request is the reference's, marked `"spark"`. What it
-adds is the route: a plan verified under it runs on Spark by `native`, and
+adds is the route: a plan proved under it runs on Spark by `native`, and
 on DuckDB by `transfer` where DuckDB's choices are within Spark's at every
 option the proof depends on. What is proved
 ([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
@@ -749,7 +748,7 @@ the rest on the unscaled values (`to_physical`, an `Int128`):
 | decimal → double is correctly rounded, → integer truncates, comparisons are exact | the same | native |
 
 `tests/test_polars_decimal.py` runs each operation's written plan on Polars
-and on DuckDB against `Rel.eval`, and the 40 verified catalogue queries with
+and on DuckDB against `Rel.eval`, and the 40 proved catalogue queries with
 decimal columns run on Polars (`catalogue/status.json`).
 
 #### `MIN` and `MAX` of doubles on Polars

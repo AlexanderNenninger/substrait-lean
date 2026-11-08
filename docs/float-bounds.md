@@ -196,7 +196,7 @@ The homelab metrics rollup states its contract this way:
 ## The engines' orders and `epsilon` (#444)
 
 An engine may add a double `SUM` in another order than the reference, so a
-contract's double `SUM` or `AVG` is `approx`: within a per-plan `ε` of a
+contract's double `SUM` or `AVG` is `observed`: within a per-plan `ε` of a
 result the reference allows. `substrait-check --contract` reports it per
 output column (`"epsilon"`, `SubstraitLean/Epsilon.lean`), and
 [`Epsilon.lean`](../float-bounds/FloatBounds/Epsilon.lean) proves it for every
@@ -304,7 +304,7 @@ manual states and the probes measured (0.502 ulp on macOS,
 [duckdb-ulp-libm](../characterization/duckdb/facts/duckdb-ulp-libm.json)), and
 `rule_exp` bounds `exp a`, `a ≤ ha`, by
 `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + tiny)`. The other elementary
-functions stay probed, not proved. The checker evaluates the formulas in
+functions stay tested. The checker evaluates the formulas in
 doubles; every term is nonnegative, so each rounding is relative, and a
 factor `1 + 2⁻⁴⁰` covers them.
 

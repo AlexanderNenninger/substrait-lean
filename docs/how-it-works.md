@@ -25,7 +25,7 @@ The core package depends on Lean core alone, so the build takes seconds. Mathlib
 ## Checking real plans
 
 `substrait-check` reads any Substrait JSON plan, shows it in readable form,
-and reports what was verified about it:
+and reports what was proved about it:
 
 ```python
 from sverify.engines import substrait_json
@@ -56,7 +56,7 @@ produced by `sverify`'s Ibis producer or its SQL lift, or by another
 Substrait producer such as DataFusion's (Substrait 0.77). It then:
 
 1. translates it into the formal `Rel` model, or rejects anything outside the fragment (exit 1);
-2. decides `Rel.WF` with `checkWF`, which is proven equivalent (`checkWF_iff`), and
+2. decides `Rel.WF` with `checkWF`, which is proved equivalent (`checkWF_iff`), and
    checks that `RelRoot.names` match the output arity (exit 2 if ill-formed);
 3. evaluates the plan. Named tables are schema-only (arity from `baseSchema`, no rows),
    so only `VirtualTable` data produces output rows.
@@ -83,11 +83,11 @@ probes it from the Ibis side, and the catalogue's
 calls are matched by name in `extensions`, and anything else is rejected.
 
 The CLI also reports whether the plan is in the incremental fragment
-(`isIncremental`, proven equivalent to `Rel.Incremental`) and whether writing
+(`isIncremental`, proved equivalent to `Rel.Incremental`) and whether writing
 it back out as JSON and re-parsing gives the same `Rel` (`roundtrip: ok`).
 
 The parser ([Parse.lean](../SubstraitLean/Parse.lean)) and writer
-([Write.lean](../SubstraitLean/Write.lean)) are trusted, unverified code. The
+([Write.lean](../SubstraitLean/Write.lean)) are trusted, unproved code. The
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
 `df_*.json` fixtures are real plans that DataFusion's Substrait producer wrote
@@ -258,7 +258,7 @@ plan) once left an integer next to a double's code (#16). Upstream's mistakes ar
 (integer `/` divided integers, `where=` filters were dropped, sorts were always
 `NULLS FIRST`, promotions could cast a double down to an integer, timestamp
 literals were read in local time), and anything outside the model raises
-`UnsupportedError`. `python/tests/test_ibis_substrait.py` checks every verified
+`UnsupportedError`. `python/tests/test_ibis_substrait.py` checks every proved
 coverage case against DuckDB running Ibis's own SQL on random tables, except
 where DuckDB's SQL computes something else (`coverage.NO_DUCKDB_SQL`).
 
@@ -332,7 +332,7 @@ lists each.
 * Proofs: `lake build` re-checks every theorem. The main ones say that the
   update plan computes exactly the change to the result, and that running it
   with the weight-column encoding gives that result. See
-  [Proven theorems](#proven-theorems).
+  [Proved theorems](#proved-theorems).
 * Randomized testing: `uv run pytest` generates random tables and random batches of
   inserts and deletes, including NULLs and duplicates. After every batch it
   checks that the maintained result equals a full recompute. This covers the parts
@@ -340,7 +340,7 @@ lists each.
 
 ## What is proved
 
-### Proven theorems
+### Proved theorems
 
 [proofs.md](proofs.md#the-guarantees-and-their-theorems) names every
 guarantee with its theorem, its layer and its module, from the algebraic

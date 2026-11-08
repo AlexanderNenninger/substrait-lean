@@ -4,7 +4,7 @@ Sverify's semantics share one loose core in Lean, and every semantics
 sverify knows is a refinement of it: Substrait's, the reference's and each
 engine's
 ([#444](https://github.com/AlexanderNenninger/substrait-lean/issues/444)).
-Plans are verified under the strict reference profile
+Plans are proved under the strict reference profile
 ([Terminology](#terminology)).
 This page began as the design pass of step 3 of epic
 [#544](https://github.com/AlexanderNenninger/substrait-lean/issues/544), and
@@ -62,7 +62,7 @@ engines    DuckDB · Polars · Spark · Snowflake · DataFusion (optional)
   (`Profile.substrait`) is strict IEEE: two zeros, signed NaNs, and NaN
   unequal to itself in comparisons. Each engine has a profile of its own, from its facts. The
   profiles are siblings ([Terminology](#terminology)).
-- An engine runs its profile. A plan verified under the reference reaches
+- An engine runs its profile. A plan proved under the reference reaches
   the engine through the engine's translation; per plan, `Engine.Refines`
   names the observation rows the run relies on, and `Engine.Sound` proves
   that the rows the engine's model computes are a result the reference
@@ -128,7 +128,7 @@ Three kinds of semantics, each with one job.
   the core. A proof under it would hold under every profile, but few plans
   verify there: the core allows every engine's raises and NaNs at once.
 - The reference profile (`Profile.reference`, "the reference") is what plans
-  are verified under. It is strict, stricter than every engine in most
+  are proved under. It is strict, stricter than every engine in most
   options. Where engines disagree on an edge case (integer overflow, NaN
   creation, double overflow to `±∞` (#575), domain errors, division by zero,
   out-of-range casts and dates), it raises. Where it picks a value, it picks
@@ -138,11 +138,11 @@ Three kinds of semantics, each with one job.
   where that keeps the profile practical for users (the NULL order, rounding
   ties). Each such choice costs a shim on every engine that differs, so these
   choices are few and deliberate: the reference prefers raising, proved
-  absent for a verified plan, or a choice every engine gives natively.
+  absent for a proved plan, or a choice every engine gives natively.
 - Engine profiles say what each engine does, from
   `characterization/<engine>/facts/`, and refine the core. They are
   siblings: no engine profile refines another, or the reference. A plan
-  verified under the reference reaches an engine through a translation,
+  proved under the reference reaches an engine through a translation,
   shimmed only on the reference's value choices
   ([Which plans run on an engine](#which-plans-run-on-an-engine)).
   `Profile.substrait` (step 2) is a sibling of the same kind: the YAMLs'
@@ -152,24 +152,24 @@ Three kinds of semantics, each with one job.
 
 ### What strictness buys
 
-A plan verified under the reference never raises: its preconditions,
+A plan proved under the reference never raises: its preconditions,
 stated or inferred, are proved to exclude the reference's raise set, or
 checked on the data. The inputs where engines disagree on errors are in that
-raise set, so a verified plan never reaches them, and it creates no new NaN
-(`nan_creation` raises in the reference). In
-[#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)'s
-terms, each call of such a plan is `refines[D]` on every engine, with `D` the
+raise set, so a proved plan never reaches them, and it creates no new NaN
+(`nan_creation` raises in the reference). In the classes of
+[#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568),
+each call of such a plan is `exact` on every engine on the domain `D`, the
 reference's non-raising domain at that call, and the proof keeps the plan's
 inputs inside `D`.
 
-So the options split in three, and a verified plan needs a shim only for the
+So the options split in three, and a proved plan needs a shim only for the
 second:
 
-| Kind | Reference | Options | A verified plan on an engine |
+| Kind | Reference | Options | A proved plan on an engine |
 |---|---|---|---|
 | Error side | raises | `overflow` (`ERROR`), `on_division_by_zero`, `on_domain_error`, `on_log_zero`, `nan_creation`, double overflow to `±∞` (#575), `shift_range`, `substring_range`, `date_range`, `cast_failure` (`UNSPECIFIED`), `stat_degenerate` for `±∞` | no shim: the engine's behaviour there (a wrap, NULL, NaN, `±∞`, a panic) is never reached |
 | Value side | picks one value | `null_order`, `rounding` of `round`, `division_type`, floor or truncating division of negatives, `float_to_int`, `decimal_rescale`, `avg_int_result`, an empty `SUM`, string and list positions, `zero_sign`, `nan_kind`, `nan_order`, `list_null_order`, `stat_degenerate` for `CORR`, result types | native where the engine picks the same value; a shim otherwise |
-| Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `approx[D, ε]` (#568) otherwise |
+| Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `observed` within the plan's tolerance `ε` (#568, D22) otherwise |
 
 An option the plan states itself (`overflow: SILENT`) is a value choice too.
 A precondition only checked on the data, such as a `SUM`'s overflow bound
@@ -227,7 +227,7 @@ raises only where the reference may raise; resource errors, such as running
 out of memory, are outside this ([D16](#d16-engine-correctness)). This is
 the raise-set half of [Soundness](#soundness). Today Lean proves partial
 correctness for every lowered plan, an allowed result or an error
-(`Rel.duckdb_shim_sound`). For a plan verified to never raise the two agree,
+(`Rel.duckdb_shim_sound`). For a plan proved to never raise the two agree,
 and the engine raises nowhere (`Rel.duckdb_sound`,
 [engine-profiles.md](engine-profiles.md#profiles-and-shims-in-lean-185-first-slice)).
 
@@ -541,7 +541,7 @@ and the reference's choices. Decided ([D1](#d1-where-the-tables-live)).
 
 For every option, the behaviour the reference chooses, and every engine:
 native, a shim with its cost (an extra `CASE`, a cast to `HUGEINT`, a second
-pass), or refused. An error-side option needs no shim for a plan verified
+pass), or refused. An error-side option needs no shim for a plan proved
 to never raise ([What strictness buys](#what-strictness-buys)), so its cell
 names the guard, used only where a precondition is checked on the data.
 Generated from `REALIZE` and the facts, published in
@@ -571,28 +571,30 @@ named apart (`SEQUENTIAL` is one order of `ANY`) are listed in
 Each row of the realizability table, for an engine, a function and its
 argument types, falls in one class against the reference
 ([#568](https://github.com/AlexanderNenninger/substrait-lean/issues/568)),
-best first:
+best first. #568 named them `refines[D]`, `refines[D]` up to an observation
+and `approx[D, ε]`; [D22](#d22-four-route-classes-and-tolerances-are-observations)
+renamed them `exact`, `observed` and `observed`:
 
-1. `refines[D]`: on every input in the domain `D`, every outcome the engine
-   gives is one the reference allows. For a verified plan, `D` is the
+1. `exact` on `D`: on every input in the domain `D`, every outcome the engine
+   gives is one the reference allows. For a proved plan, `D` is the
    reference's non-raising domain, so error-side differences cost nothing
    ([What strictness buys](#what-strictness-buys)).
-2. `refines[D]` up to an observation `q`: `q ∘ f_engine = q ∘ f_reference` on
-   `D`, with `q` a map that forgets the difference: the multiset of rows,
+2. `observed` up to an observation `o`: `o ∘ f_engine = o ∘ f_reference` on
+   `D`, with `o` a map that forgets the difference: the multiset of rows,
    permutations within ties, `canon` (one zero, one NaN), the error's kind,
    a decimal's value without its scale, the UTC instant, parsing back a
-   string, NFC. Equality up to `q` is transitive and composes. The contract
-   must not tell `q`-equal results apart, and each operation downstream
-   must keep `q`; where one does not, a shim makes the value canonical first
+   string, NFC. Equality up to `o` is transitive and composes. The contract
+   must not tell `o`-equal results apart, and each operation downstream
+   must keep `o`; where one does not, a shim makes the value canonical first
    ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632368108)).
-3. `approx[D, ε]`: on `D`, within `ε` of an outcome the reference allows.
+3. `observed` within a tolerance `ε`: on `D`, within `ε` of an outcome the reference allows.
    Floating point only; `ε` propagates through arithmetic, and a comparison
    whose threshold lies within `ε` of its argument's range drops the call
    site to a shim
    ([#568's comment](https://github.com/AlexanderNenninger/substrait-lean/issues/568#issuecomment-6632287946)).
    Lean proves `ε` for a double `SUM` and `AVG` under every summation order
    the engines use, and its propagation through `+`, `−`, `×` and `/`;
-   elementary functions stay probed
+   elementary functions stay tested
    ([float-bounds.md](float-bounds.md#the-engines-orders-and-epsilon-444)).
 4. Each of the three after a shim: a written flag, a rewrite or a guard,
    mostly for the reference's value choices.
@@ -600,12 +602,12 @@ best first:
 
 A plan takes the worst class over its call sites.
 
-Each row also carries the engine's run-to-run variation next to its class
-`q`: the observation up to which two runs of the engine on the same input
-agree. The class answers correctness against the postcondition's `q_post`,
-the variation answers reproducibility against a consumer's `q_det`
+Each row also carries the engine's run-to-run variation next to its class:
+the observation up to which two runs of the engine on the same input
+agree. The class answers correctness against the postcondition's
+observation, the variation answers reproducibility against a consumer's
 ([D20](#d20-two-observations-per-output)). Polars's streaming float `SUM`,
-for example, is `approx[D, ε]` and also varies in its last bits between
+for example, is `observed` within `ε` and also varies in its last bits between
 runs.
 
 ### Where the evidence lives
@@ -866,11 +868,11 @@ Profiles are siblings under the core, and sverify has no translations
 between them, so no shims for them either. A plan runs on the engine `E`
 in one of three ways:
 
-1. Verified under `Profile.E`: it runs natively.
-2. Verified under the reference: it runs through the translation from the
+1. Proved under `Profile.E`: it runs natively.
+2. Proved under the reference: it runs through the translation from the
    reference to `E`, whose realizability row is proved once per engine, so
    it costs a plan nothing.
-3. Verified under another profile `P`, with a proof that transfers to
+3. Proved under another profile `P`, with a proof that transfers to
    `Profile.E` by the option-wise check: for every option the proof depends
    on (the option dependency report, step 3c), `E`'s choices are within
    `P`'s. By monotonicity (`Rel.AllowedP_mono`, applied per option) the
@@ -905,12 +907,12 @@ group. For two profiles `P` and `Q`, a group and one of its options, with
 |---|---|---|
 | `q ⊆ p` | native: the call as it is | `overflow`, reference to DuckDB: both `ERROR` |
 | `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `zero_sign`, reference (`ONE_ZERO`) to DuckDB (`IEEE`): `Dialect.canon`; `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
-| `q ⊄ p` only on inputs a precondition excludes | a precondition: proved, or listed in `Report.assumed` and checked on the data | the reference's error-side options to any engine: `nan_creation` (raise) to DuckDB (`NAN`) is sound on the inputs a plan verified to never raise reaches; `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
+| `q ⊄ p` only on inputs a precondition excludes | a precondition: proved, or listed in `Report.assumed` and checked on the data | the reference's error-side options to any engine: `nan_creation` (raise) to DuckDB (`NAN`) is sound on the inputs a plan proved to never raise reaches; `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
 | none of these | refused | `ntile_spread` on DataFusion ([DF-11](../upstream/bugs/DF-11.json)); `FLOOR` modulus anywhere today |
 
 From the reference to an engine, the third case covers every error-side
 option ([What strictness buys](#what-strictness-buys)): the reference raises
-there, so its raise set is the precondition, and a plan verified to never
+there, so its raise set is the precondition, and a plan proved to never
 raise discharges it. The guard that raises (`UnFn.raise`) is needed only
 where the precondition is checked on the data. The second case is left for
 the value choices.
@@ -990,7 +992,7 @@ to check.
 
 ### What a proof under the reference guarantees
 
-A plan verified under the reference, `requires R ⇒ ensures E`, keeps `E` on
+A plan proved under the reference, `requires R ⇒ ensures E`, keeps `E` on
 every engine with a sound translation, along every chain of them, and for
 every choice the reference leaves open (ties, order-free `FIRST`, clustered
 groups). It does not carry to the core or to `Profile.substrait`, which
@@ -1129,7 +1131,7 @@ way [Necula00]; Alive2 does it per function, with bounded unrolling. CompCert
 mixes both: an unverified translator followed by a verified validator is a
 verified translator [Leroy09, Thm. 1], and register allocation is checked
 this way [Leroy09, §8.2.4]. sverify's lowering and lift searches are of this
-kind at the granularity of table entries: an unverified search proposes an
+kind at the granularity of table entries: an unproved search proposes an
 entry, Lean proves it at build time, and `Lowering.lower_correct` composes the
 entries. Single plans are checked only for translations sverify does not own (D7).
 
@@ -1313,7 +1315,7 @@ exact, or within a stated tolerance, absolute, relative or in ulps, which
 `verify` checks against `ε` on each engine; timestamps up to a precision;
 strings up to NFC. Verification then
 means that every engine result the route allows is equivalent, under the
-stated relation, to a result the reference allows. `approx` is "verified
+stated relation, to a result the reference allows. A tolerance means "proved
 within the stated tolerance", with #568's propagation of `ε` checking that
 the tolerance holds; it is no verdict of its own. The user states what they
 need, so the classes of [Classes of an engine's functions](#classes-of-an-engines-functions)
@@ -1376,11 +1378,11 @@ as running out of memory, are excluded. The guarantee of no error
 needs this stricter definition: under partial correctness, an engine could
 raise anywhere and still be correct. Partial correctness is what
 `Rel.duckdb_shim_sound` proves today for every lowered plan; for a plan
-verified to never raise the two agree (`Rel.duckdb_sound`).
+proved to never raise the two agree (`Rel.duckdb_sound`).
 
 Amended (2026-11-08): `Engine.contract_sound` (`SubstraitLean/EngineSound.lean`,
 [#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)) proves
-a verified contract on the rows each engine's model computes for the
+a proved contract on the rows each engine's model computes for the
 translated plan, unless it raises, through each engine's `Engine.Sound`. That the engine's actual
 result is one its table allows stays trusted, as `Engine.Runs`, resting on the
 tested rows `Engine.Refines` lists ([What is trusted](proofs.md#what-is-trusted)).
@@ -1916,7 +1918,7 @@ plan that states `on_division_by_zero: IEEE` gets NaN at `0.0 / 0.0`.
 
 Why: with no NaN in the inputs (`~_.v.isnan()` in `requires`), there is
 none in the outputs. Engines give NaN, NULL or an error there, and a plan
-verified to never raise reaches none of them, so no engine needs a shim
+proved to never raise reaches none of them, so no engine needs a shim
 ([D21](#d21-tighten-the-reference-where-it-stays-practical)).
 
 ### D34. No operation on finite doubles overflows to infinity

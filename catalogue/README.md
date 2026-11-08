@@ -58,7 +58,7 @@ the synthetic data, never NULL), `not_null` and `rows` (a table's number of
 rows, for a table of fixed size such as TPC-H's 25 nations), so that the
 synthetic tables meet the contracts' preconditions.
 
-### Verified SQL on DuckDB (#229)
+### Proved SQL on DuckDB (#229)
 
 For a query with a contract, the probe records `contract` (whether `verify`
 proves it, whether the plan is `guard_free`, the preconditions `verify`
@@ -121,7 +121,7 @@ place (`as_double`), to separate DECIMAL from the other gaps.
 
 `tests/test_catalogue.py` (part of `poe test`) re-probes every query and fails
 when a recorded status no longer holds, and checks the annotations against the
-probes: no verified query may need a feature marked `no`, and every failure
+probes: no proved query may need a feature marked `no`, and every failure
 message must point at a feature the query lists as not fully supported. After
 a change in coverage, run `--write` and review the diff of `status.json`.
 

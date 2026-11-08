@@ -1,7 +1,7 @@
 # Reference semantics
 
 What sverify's plans mean. `Rel.eval` (`SubstraitLean/Rel.lean`) is the
-**reference semantics**, the strict profile plans are verified under:
+**reference semantics**, the strict profile plans are proved under:
 `verify` proves things about it, and every engine's row of the realizability
 table is its difference from it. The reference is one profile of the core,
 which does a superset of operations; the other profiles and the engines are
@@ -36,7 +36,7 @@ The reference is a relation: for each input it allows a set of results
 only where the reference may raise; resource errors, such as running out of
 memory, are excluded ([D16](core-semantics.md#d16-engine-correctness)). Lean
 proves partial correctness today, an allowed result or an error
-(`Rel.duckdb_shim_sound`); for a plan verified to never raise the two agree
+(`Rel.duckdb_shim_sound`); for a plan proved to never raise the two agree
 (`Rel.duckdb_sound`). `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
 witness (`Rel.eval_allowed`), and `verify` proves its theorems through it.
 
@@ -72,7 +72,7 @@ it does not yet flag the other choices.
 
 The reference is not a model of any engine, DuckDB included. It is stricter
 than every engine in most options: where engines disagree on an edge case it
-raises, so a verified plan never reaches that case. Each engine is
+raises, so a proved plan never reaches that case. Each engine is
 characterized as a **diff** against it (`characterization/<engine>/`): which
 behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
 which the translation refuses. The shims are proved against the reference in
@@ -248,7 +248,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `right`, `lpad`, `rpad` | Of a constant count, in characters. `right(s, n)` is the last `n` characters, or all but the first `-n` for a negative `n`. `lpad(s, n, p)` and `rpad(s, n, p)` are the first `n` characters of `s`, or `s` filled to `n` with the constant `p` repeated and cut, as DuckDB pads; `''` for `n ≤ 0`. An empty `p` is refused, as DuckDB raises where `s` is shorter. | ✓ (#808) |
 | `split_part`, `concat_ws` | `split_part(s, sep, n)` of a constant `n` is piece `n` of `string_split(s, sep)` (a black box): from 1, from the end for a negative `n`, `''` for `0` and past the pieces, NULL if `s` or `sep` is. `string_split(s, sep)[n]` is the list element. `concat_ws(sep, …)` joins the strings that are not NULL with `sep`: `''` if all are NULL, NULL if `sep` is. | ✓ (#808) |
 | `md5`, `sha256` | Lowercase hex of the UTF-8 bytes' digest; never NULL for a string. DuckDB's `hash()` is refused: it is the engine's own and changes between versions. | ✓ (#50) |
-| Not modelled | `translate` (it works on grapheme clusters). | refused |
+| Refused | `translate` (it works on grapheme clusters). | refused |
 
 ## Temporal
 
@@ -495,7 +495,7 @@ give a backend-independent meaning today.
 
 Which Ibis backends implement this semantics fully: none of them on every
 row. Ibis-on-DataFusion is closest (it differs on `-0.0 == 0.0` and on
-`max` of NaN). To run a verified expression with exactly this meaning, run
+`max` of NaN). To run a proved expression with exactly this meaning, run
 the plan: `sverify.engines.run(con, plan, engine)` on DuckDB, Polars or
 Spark ([the engines](stability.md#engines)), whose translations raise where
 they would differ.
