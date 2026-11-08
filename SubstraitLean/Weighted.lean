@@ -98,36 +98,36 @@ theorem Rel.zeval_arity {cat : Catalog} {Z : ZCatalog}
     ∀ {r : Rel}, r.WF cat → r.Incremental → ∀ x ∈ r.zeval Z, x.1.length = r.arity cat
   | .read t, _, _, x, h => hZ t x h
   | .values _ _, hwf, _, x, h => by
-      simp only [zeval, ZSet.lift, List.mem_map] at h
+      simp only [zeval, evalK, WSet.lift, List.mem_map] at h
       obtain ⟨row, hr, rfl⟩ := h
       exact hwf row hr
   | .filter r _, hwf, hi, x, h => by
-      simp only [zeval, ZSet.filter, List.mem_filter] at h
+      simp only [zeval, evalK, WSet.filter, List.mem_filter] at h
       exact zeval_arity hZ hwf.1 hi x h.1
   | .project r es, hwf, hi, x, h => by
-      simp only [zeval, ZSet.map, List.mem_map] at h
+      simp only [zeval, evalK, WSet.map, List.mem_map] at h
       obtain ⟨y, hy, rfl⟩ := h
       simp [arity, zeval_arity hZ hwf.1 hi y hy]
   | .emit _ _, _, _, x, h => by
-      simp only [zeval, ZSet.map, List.mem_map] at h
+      simp only [zeval, evalK, WSet.map, List.mem_map] at h
       obtain ⟨y, _, rfl⟩ := h
       simp [arity]
   | .cross a b, hwf, hi, x, h => by
-      simp only [zeval, ZSet.cross, List.mem_flatMap, List.mem_map] at h
+      simp only [zeval, evalK, WSet.cross, List.mem_flatMap, List.mem_map] at h
       obtain ⟨y, hy, z, hz, rfl⟩ := h
       simp [arity, zeval_arity hZ hwf.1 hi.1 y hy, zeval_arity hZ hwf.2 hi.2 z hz]
   | .join a b .inner _, hwf, hi, x, h => by
-      simp only [zeval, ZSet.filter, ZSet.cross, List.mem_filter, List.mem_flatMap,
+      simp only [zeval, evalK, WSet.filter, WSet.cross, List.mem_filter, List.mem_flatMap,
         List.mem_map] at h
       obtain ⟨⟨y, hy, z, hz, rfl⟩, _⟩ := h
       simp [arity, zeval_arity hZ hwf.1 hi.1 y hy, zeval_arity hZ hwf.2.1 hi.2 z hz]
   | .unionAll a b, hwf, hi, x, h => by
-      simp only [zeval, List.mem_append] at h
+      simp only [zeval, evalK, List.mem_append] at h
       rcases h with h | h
       · exact zeval_arity hZ hwf.1 hi.1 x h
       · simp only [arity, hwf.2.2]; exact zeval_arity hZ hwf.2.1 hi.2 x h
   | .orderBy r _, hwf, hi, x, h => by
-      simp only [zeval, List.mem_mergeSort] at h
+      simp only [zeval, evalK, List.mem_mergeSort] at h
       exact zeval_arity hZ (r := r) hwf.1 hi x h
   | .join _ _ .left _, _, hi, _, _ => hi.elim
   | .fetch _ _ _, _, hi, _, _ | .window _ _ _ _, _, hi, _, _ | .semi _ _ _ _, _, hi, _, _
@@ -152,8 +152,8 @@ def pairs (A B : ZSet) : List ((Row × Int) × (Row × Int)) :=
   List.flatMap (fun a => List.map (fun b => (a, b)) B) A
 
 theorem cross_eq_pairs (A B : ZSet) :
-    ZSet.cross A B = (pairs A B).map fun p => (p.1.1 ++ p.2.1, p.1.2 * p.2.2) := by
-  simp [ZSet.cross, pairs, List.map_flatMap, Function.comp_def]
+    WSet.cross A B = (pairs A B).map fun p => (p.1.1 ++ p.2.1, p.1.2 * p.2.2) := by
+  simp [WSet.cross, pairs, List.map_flatMap, Function.comp_def]
 
 theorem crossRows_encode (A B : ZSet) :
     crossRows (List.map wrow A) (List.map wrow B) = (pairs A B).map fun p => wrow p.1 ++ wrow p.2 := by
@@ -200,16 +200,16 @@ theorem Rel.weighted_eval {cat E : Catalog} {Z : ZCatalog} {isW : String → Boo
       (r.weighted cat isW).eval E = (r.zeval Z).encode
   | .read t, _, _, hT => hT t (by simp [tables])
   | .values _ _, _, _, _ => by
-      simp [weighted, eval, zeval, ZSet.encode, ZSet.lift, wrow]
+      simp [weighted, eval, zeval, evalK, ZSet.encode, WSet.lift, wrow]
   | .filter r c, hwf, hi, hT => by
-      simp only [weighted, eval, zeval, weighted_eval hZ hwf.1 hi hT, ZSet.encode, ZSet.filter,
+      simp only [weighted, eval, zeval, evalK, weighted_eval hZ hwf.1 hi hT, ZSet.encode, WSet.filter,
         List.filter_map]
       congr 1
       apply List.filter_congr
       intro x hx
       simp [wrow, Expr.eval_append _ hwf.2 (zeval_arity hZ hwf.1 hi x hx)]
   | .project r es, hwf, hi, hT => by
-      simp only [weighted, eval, zeval, weighted_eval hZ hwf.1 hi hT, ZSet.encode, ZSet.map,
+      simp only [weighted, eval, zeval, evalK, weighted_eval hZ hwf.1 hi hT, ZSet.encode, WSet.map,
         List.map_map]
       apply List.map_congr_left
       intro x hx
@@ -223,7 +223,7 @@ theorem Rel.weighted_eval {cat E : Catalog} {Z : ZCatalog} {isW : String → Boo
       simp only [List.append_nil] at this
       exact this
   | .emit r m, hwf, hi, hT => by
-      simp only [weighted, eval, zeval, weighted_eval hZ hwf.1 hi hT, ZSet.encode, ZSet.map,
+      simp only [weighted, eval, zeval, evalK, weighted_eval hZ hwf.1 hi hT, ZSet.encode, WSet.map,
         List.map_map]
       apply List.map_congr_left
       intro x hx
@@ -237,7 +237,7 @@ theorem Rel.weighted_eval {cat E : Catalog} {Z : ZCatalog} {isW : String → Boo
       · simp [List.getD, ← hlen]
   | .cross a b, hwf, hi, hT => by
       simp only [tables, List.mem_append] at hT
-      simp only [weighted, eval, zeval,
+      simp only [weighted, eval, zeval, evalK,
         weighted_eval hZ hwf.1 hi.1 (fun t ht => hT t (.inl ht)),
         weighted_eval hZ hwf.2 hi.2 (fun t ht => hT t (.inr ht)),
         ZSet.encode, crossRows_encode, cross_eq_pairs, List.map_map]
@@ -251,10 +251,10 @@ theorem Rel.weighted_eval {cat E : Catalog} {Z : ZCatalog} {isW : String → Boo
       exact weight_mul_row p.1.1 p.2.1 p.1.2 p.2.2
   | .join a b .inner on, hwf, hi, hT => by
       simp only [tables, List.mem_append] at hT
-      simp only [weighted, eval, zeval,
+      simp only [weighted, eval, zeval, evalK,
         weighted_eval hZ hwf.1 hi.1 (fun t ht => hT t (.inl ht)),
         weighted_eval hZ hwf.2.1 hi.2 (fun t ht => hT t (.inr ht)),
-        ZSet.encode, crossRows_encode, cross_eq_pairs, ZSet.filter, List.map_map,
+        ZSet.encode, crossRows_encode, cross_eq_pairs, WSet.filter, List.map_map,
         List.filter_map]
       -- The shifted condition on encoded rows is the condition on plain rows.
       rw [List.filter_congr (q := fun p => (on.eval (p.1.1 ++ p.2.1)).isTrue) ?cond]
@@ -275,11 +275,11 @@ theorem Rel.weighted_eval {cat E : Catalog} {Z : ZCatalog} {isW : String → Boo
       exact weight_mul_row p.1.1 p.2.1 p.1.2 p.2.2
   | .unionAll a b, hwf, hi, hT => by
       simp only [tables, List.mem_append] at hT
-      simp [weighted, eval, zeval, ZSet.encode,
+      simp [weighted, eval, zeval, evalK, ZSet.encode,
         weighted_eval hZ hwf.1 hi.1 (fun t ht => hT t (.inl ht)),
         weighted_eval hZ hwf.2.1 hi.2 (fun t ht => hT t (.inr ht))]
   | .orderBy r keys, hwf, hi, hT => by
-      simp only [weighted, eval, zeval, weighted_eval hZ hwf.1 hi hT, ZSet.encode]
+      simp only [weighted, eval, zeval, evalK, weighted_eval hZ hwf.1 hi hT, ZSet.encode]
       refine (List.map_mergeSort fun a ha b hb => ?_).symm
       have hla := zeval_arity hZ hwf.1 hi a ha
       have hlb := zeval_arity hZ hwf.1 hi b hb
@@ -293,7 +293,7 @@ theorem Rel.weighted_eval {cat E : Catalog} {Z : ZCatalog} {isW : String → Boo
 every row at weight 1. -/
 theorem weighted_read_plain {cat E : Catalog} {isW : String → Bool} {t : String}
     (h : isW t = false) :
-    ((Rel.read t).weighted cat isW).eval E = (ZSet.lift (E t).rows).encode := by
+    ((Rel.read t).weighted cat isW).eval E = ZSet.encode (ZSet.lift (E t).rows) := by
   simp [Rel.weighted, h, Rel.eval, Expr.eval, ZSet.encode, ZSet.lift, wrow]
 
 def Rel.isIncremental : Rel → Bool
