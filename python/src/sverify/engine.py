@@ -746,6 +746,42 @@ def run_plan(
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
 
 
+def _polars_guard_free(con: Connection, plan_json: str, finite: bool) -> pa.Table:
+    from sverify import polars_engine
+
+    checked = polars_engine.NO_GUARDS
+    if not finite:
+        checked -= {polars_engine.InfiniteResult.issue}
+    tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
+    return polars_engine.run(plan_json, tables, guards=checked)
+
+
+#: The writers that run a plan without the guards its contract report
+#: discharged (`guard_free`), keeping the assumed issues' checks, each with the
+#: theorem that says so; the checker names the theorem per engine
+#: (`"guard_free_theorem"`, `SubstraitLean/Realize.lean`).
+_GUARD_FREE_WRITERS = {"polars": ("Rel.polars_sound", _polars_guard_free)}
+
+
+def run_guard_free(
+    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool = True
+) -> pa.Table:
+    """Run a plan whose contract report is `guard_free` on `engine` without
+    its other per-row checks, on data that meets its preconditions.
+
+    Raises:
+        ValueError: No theorem covers the engine's writer without them, or
+            `theorem` is not the one that does.
+    """
+    found = _GUARD_FREE_WRITERS.get(engine)
+    if found is None or theorem != found[0]:
+        raise ValueError(
+            f"no theorem covers {engine}'s writer without its guards"
+            + (f" ({theorem} is not its writer's)" if theorem and found else "")
+        )
+    return found[1](con, plan_json, finite)
+
+
 def _rename_tables(node: object, names: dict[str, str]) -> None:
     """Rename the named tables a Substrait plan (as a dict) reads, in place."""
     if isinstance(node, dict):
