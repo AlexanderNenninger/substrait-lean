@@ -160,7 +160,8 @@ def trim (left right : Bool) (s set : String) : String :=
 
 /-! ## Repeating, reversing, replacing -/
 
-/-- The longest string DataFusion's `repeat` writes, in bytes. -/
+/-- The longest string `repeat` writes, in bytes: Arrow's `Utf8` offsets are
+32-bit. -/
 def repeatMax : Nat := 2 ^ 31 - 1
 
 /-- Does `repeat(s, n)` fit in `repeatMax` bytes? (`n ≤ 0` gives `''`.) -/
