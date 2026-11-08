@@ -91,6 +91,7 @@ def test_the_checker_says_whether_the_result_is_sorted() -> None:
     sorted_ = sv.verify(T.order_by("k").select("k", "a"), requires=BOUNDED)
     unsorted = sv.verify(T.select("k", "a"), requires=BOUNDED)
     assert (sorted_._sorted, unsorted._sorted) == (True, False)
+    assert sorted_.internal_plan is not None and unsorted.internal_plan is not None
     assert routes._sorted_root(json.loads(sorted_.internal_plan))
     assert not routes._sorted_root(json.loads(unsorted.internal_plan))
 
