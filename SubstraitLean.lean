@@ -71,6 +71,7 @@ import SubstraitLean.Functions
 import SubstraitLean.Options
 import SubstraitLean.AllowedP
 import SubstraitLean.SumBound
+import SubstraitLean.MarginSound
 import SubstraitLean.Observations
 import SubstraitLean.ObsEquiv
 import SubstraitLean.Robust
