@@ -106,18 +106,18 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -128,8 +128,8 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.fsum's empty_group_aggregates"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -142,17 +142,17 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -163,7 +163,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -176,16 +176,16 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding"
+          "row tested: agg.fsum's nan_creation"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -196,7 +196,7 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.fsum's rounding"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -792,10 +792,10 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates",
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
-          "row tested: agg.fsum's rounding",
           "row tested: rel.sort's null_order",
           "row tested: win.agg's window_sum_algo"
         ],
@@ -804,8 +804,8 @@
       },
       "polars": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.fsum's rounding",
           "row tested: win.agg's window_sum_algo"
         ],
         "class": "shim",
@@ -817,8 +817,8 @@
       },
       "spark": {
         "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's rounding",
           "row tested: win.agg's window_sum_algo"
         ],
         "class": "observed",
