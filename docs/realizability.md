@@ -39,7 +39,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 3 | 23 | 1 | 3 | 4 | 0 | 15 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 3 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 4 | 8 | 0 | 15 | 7 |
 | spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 3 | 3 | 0 | 14 | 0 |
 
@@ -47,7 +47,7 @@ Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 3 | 12 | 17 | 2 | 0 | 0 | 15 |
+| DuckDB | 4 | 12 | 17 | 2 | 0 | 0 | 15 |
 | Polars | 28 | 0 | 15 | 0 | 0 | 0 | 15 |
 | spark | 16 | 9 | 12 | 0 | 0 | 0 | 14 |
 
@@ -57,6 +57,7 @@ Rows per evidence level:
 |---|---|---|---|
 | DuckDB | `MIN % -1 written out` | expression | `min_mod_neg_one` |
 | DuckDB | `Dialect.canon` | expression | `zero_sign` |
+| DuckDB | `nan_through` | expression | agg.var: `stat_algo` |
 | DuckDB | `ORDER BY the keys` | sort | `clustered` |
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
 | Polars | `int_div_trunc` | expression | int.div: `division_type` |
@@ -81,7 +82,7 @@ Rows per evidence level:
 
 ## DuckDB 2.0.0
 
-3 shims (2 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
+4 shims (3 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -118,6 +119,7 @@ Rows per evidence level:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `ANY`, `SCALED_CONSTANT` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../characterization/duckdb/facts/duckdb-avg-double.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../characterization/duckdb/facts/duckdb-covar.json), [duckdb-corr](../characterization/duckdb/facts/duckdb-corr.json) |
+| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | proof | proved `Stat.nanGuard_varStat`; [duckdb-var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [duckdb-var-pop-one-value](../characterization/duckdb/facts/duckdb-var-pop-one-value.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `TREE`, `RUNNING_ADD`, `RECOMPUTE` | observed: within the plan's bound | probe | tested: [duckdb-window-sum-order](../characterization/duckdb/facts/duckdb-window-sum-order.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | probe | tested: [duckdb-R6](../characterization/duckdb/facts/duckdb-R6.json) |
