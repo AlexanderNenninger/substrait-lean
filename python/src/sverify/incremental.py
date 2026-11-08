@@ -1029,7 +1029,10 @@ class IncrementalView:
                 return
             if standalone:
                 raise
-            self.deltas, self.fallback = [], str(e)
+            # An aggregate's own reason (a SUM of doubles) names the operator;
+            # for other views the checker's refusal does.
+            plain = linear in (_linear.SQL, _linear.NOT_AGGREGATE)
+            self.deltas, self.fallback = [], str(e) if plain else str(linear)
             found = _touched.plan(self.name, query)
             if isinstance(found, _touched.Touched):
                 self.touched = found
