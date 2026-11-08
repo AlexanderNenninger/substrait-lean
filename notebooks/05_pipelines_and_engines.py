@@ -998,14 +998,15 @@ def _(mo):
     DuckDB (the default), Polars on its streaming engine and Spark 4.x run
     plans, each with a proved profile, and sverify writes DuckDB, Spark and
     Snowflake SQL; Snowflake's profile and running plans on it come before
-    1.0. DataFusion is experimental and outside the 1.x promise.
-    [The engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) has the details. Lean's model is the reference,
+    1.0. DataFusion is an optional engine outside the 1.x promise.
+    [The engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) has the details. Lean's reference profile is the reference,
+    one of the [profiles that refine the core](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines),
     and the tests use DuckDB as their default oracle. DuckDB and Polars are
     characterized fact by fact, each fact with its evidence
     ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
     written form of the plan (`sverify.engines.written_plan`), so what runs
-    is what was checked, and their translators spell out the model's
-    semantics instead of taking engine defaults.
+    is what was checked, and their translators spell out the reference's
+    semantics explicitly, whatever the engine's defaults.
 
     We'll line the engines up. Pick a query, and each engine runs the same
     checked plan (`sverify.engines.run(con, plan, engine)`) next to Lean's
@@ -1120,7 +1121,7 @@ def _(mo):
     * NaN is one value, equal to itself and above every number, so
       `NaN > 0` is TRUE. The next section covers doubles.
     * `qty + 1` on the largest integer is where engines differ most:
-      DataFusion (experimental, outside the 1.x promise) wraps around to the
+      DataFusion (optional, outside the 1.x promise) wraps around to the
       smallest integer, while the Polars and DuckDB translators raise, as
       the reference does. An integer that
       leaves its declared width is an error, and `verify` reports it
@@ -1300,12 +1301,12 @@ def _(mo):
     and every query of the Snowflake suite on a local Spark session
     (Java 17 or 21) and compare them with `Rel.eval`. The Lean evaluator is
     the specification: the suite runs every fixture and every update plan
-    on Polars and DuckDB, and on the experimental DataFusion, with random
+    on Polars and DuckDB, and on the optional DataFusion, with random
     tables, and compares them
     with each other and with `Rel.eval`, row for row in Lean's order where
     order matters. The Snowflake SQL is parsed and run on fakesnow. The
     [engine profiles](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/engine-profiles.md)
-    list where each engine departs from the model.
+    list where each engine departs from the reference.
 
     ## Doubles, time and text
 
@@ -1318,15 +1319,18 @@ def _(mo):
 
     In IEEE 754 comparisons and in Python, NaN equals nothing, itself
     included. SQL engines (PostgreSQL, DuckDB, Spark, Snowflake) order
-    doubles differently, and so does the model:
+    doubles differently, and so does sverify's reference profile:
 
     > −∞ < … < 0.0 < … < +∞ < NaN
 
     There is one NaN, equal to itself and larger than every number, and one
     zero: −0.0 is 0.0, so `-0.0 >= 0` holds and −0.0 never shows in a
-    result. DataFusion's own order, `f64::total_cmp`, splits both, so
-    sverify stores DataFusion's tables the model's way
-    ([`docs/how-it-works.md`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#doubles-one-zero-and-one-nan)).
+    result. Lean's core keeps both zeros and signed NaNs, and the reference
+    profile reads them this way
+    ([core, profiles and engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines)).
+    DataFusion's own order, `f64::total_cmp`, splits both, so
+    sverify stores DataFusion's tables the reference's way
+    ([`docs/how-it-works.md`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#doubles-under-the-reference-profile)).
     Here is a table with both zeros and NaN:
     """)
     return

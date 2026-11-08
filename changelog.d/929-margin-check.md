@@ -8,5 +8,5 @@
   `Σ|x|` (`StdModel.margin_check`). Then the engine keeps the reference's
   groups. A group that fails refuses the run with a `PreconditionError` that
   counts them; with `verify(on_inferred="warn")` the run warns, keeps them
-  and records the count in `Report.margin_flags`. `on_inferred="off"`
+  with the count in the warning. `on_inferred="off"`
   refuses the plan, as before.
