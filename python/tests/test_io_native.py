@@ -393,6 +393,7 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
     assert t.filter(t.x > 100.0).count().execute() == 1
 
 
+@pytest.mark.backend("datafusion")
 def test_a_datafusion_session_gets_arrow(tmp_path):
     pytest.importorskip("datafusion")
     write_deltalake(tmp_path / "t", pa.table({"id": [1, 2]}))

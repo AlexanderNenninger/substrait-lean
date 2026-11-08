@@ -32,6 +32,7 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
+from sverify.engines import ENGINES
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
@@ -493,7 +494,7 @@ def test_bit_aggregates_match_every_engine(t):
     con = connect()
     con.create("t", B.schema(), t)
     written = written_plan(plan)
-    for engine in ("duckdb", "polars", "datafusion"):
+    for engine in ENGINES:
         got = [tuple(r.values()) for r in run_plan(con, written, engine).to_pylist()]
         assert sorted(got, key=repr) == expected, engine
 
@@ -543,7 +544,7 @@ def test_variance_agrees_across_engines(rows):
     plan = to_substrait_json(var_expr())
     lean = decoded(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))))
     written = written_plan(plan)
-    for engine in ("duckdb", "polars", "datafusion"):
+    for engine in ENGINES:
         got = decoded(arrow_rows(run_plan(con, written, engine)))
         assert len(got) == len(lean), engine
         for g, e in zip(got, lean, strict=True):
@@ -564,7 +565,7 @@ def test_variance_meaning():
         (2, None, 0.0, None, 0.0, None),
     ]
     written = written_plan(to_substrait_json(var_expr()))
-    for engine in ("duckdb", "polars", "datafusion"):
+    for engine in ENGINES:
         got = decoded(arrow_rows(run_plan(con, written, engine)))
         for g, e in zip(got, expected, strict=True):
             assert all(near(x, y) for x, y in zip(g, e, strict=True)), (engine, g, e)

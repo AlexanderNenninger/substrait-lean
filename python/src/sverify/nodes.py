@@ -400,7 +400,8 @@ class Node:
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
         stored ones. `engine` runs the plans: `"duckdb"` (in memory, the
-        default), `"polars"`, `"datafusion"`, `"spark"` or a Spark session. With
+        default), `"polars"`, `"spark"`, a Spark session, or the optional
+        `"datafusion"`. With
         `audit`, every batch is compared with recomputation before it is
         applied (`AuditError`).
 
@@ -424,8 +425,8 @@ class Node:
         a node that has none (`status` says which).
 
         Args:
-            engine: What runs the plans: `"duckdb"`, `"polars"`,
-                `"datafusion"`, `"spark"` or a Spark session. It may differ
+            engine: What runs the plans: `"duckdb"`, `"polars"`, `"spark"`,
+                a Spark session, or the optional `"datafusion"`. It may differ
                 from one refresh to the next. Default None: DuckDB, in
                 memory, the engine of the nodes' state (as `Report.run`'s
                 None is its connection's).
@@ -1325,8 +1326,8 @@ class Group:
         they read: each is refreshed and written once. See `Node.refresh`.
 
         Args:
-            engine: What runs the plans: `"duckdb"`, `"polars"`,
-                `"datafusion"`, `"spark"` or a Spark session. Default None:
+            engine: What runs the plans: `"duckdb"`, `"polars"`, `"spark"`,
+                a Spark session, or the optional `"datafusion"`. Default None:
                 DuckDB, in memory.
             audit: Whether to compare every batch with recomputation before
                 applying it. Default False.

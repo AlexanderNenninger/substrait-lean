@@ -1,14 +1,10 @@
 """SQL generation: every golden fixture and every delta plan runs on DuckDB
-(through `sverify.sql.to_sql`) with Lean's result (`Rel.eval`), or, where
-Lean's doubles can't be compared value by value, with DataFusion's running
-the same plan; the semantic traps between engines are pinned down; and the
-generated SQL of a few fixtures is kept as snapshots.
+(through `sverify.sql.to_sql`) with Lean's result (`Rel.eval`, doubles to the
+six decimals Lean prints); the semantic traps between engines are pinned
+down; and the generated SQL of a few fixtures is kept as snapshots.
 
 Results compare as bags, except where FETCH or a window makes order part of
-the meaning: there DuckDB must give Lean's rows in Lean's order (DataFusion
-promises no order, so it still compares as a bag). The tests of doubles'
-total order and rounding have DataFusion as their only oracle, so they run
-under its backend.
+the meaning: there DuckDB must give Lean's rows in Lean's order.
 """
 
 import copy
@@ -18,7 +14,6 @@ import math
 import os
 import re
 from dataclasses import dataclass
-from decimal import Decimal
 from pathlib import Path
 
 import duckdb
@@ -44,10 +39,18 @@ from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
 from sverify.io import Changes
 from sverify.sql import Unsupported, parse_plan, to_sql
-from sverify.sql.core import Fetch, kinds, order_matters
+from sverify.sql.core import kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
 from sverify.sql.snowflake import SNOWFLAKE
-from sverify.testing import EPOCH, canonical, duckdb_rows, inline_tables, lean_rows, parse_rows
+from sverify.testing import (
+    EPOCH,
+    allows_rows,
+    canonical,
+    duckdb_rows,
+    inline_tables,
+    lean_values,
+    parse_rows,
+)
 from sverify_dev import examples
 from sverify_dev.examples import PIPELINES
 
@@ -165,40 +168,6 @@ def written(plan_json: str) -> str:
     return out
 
 
-def integral(v: object) -> object:
-    # DataFusion's consumer types `ROW_NUMBER() - 1` as a DECIMAL.
-    return int(v) if isinstance(v, Decimal) and v == int(v) else v
-
-
-def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple], list[tuple]]:
-    """The plan's rows on DataFusion and on DuckDB. DataFusion runs the plan
-    as Lean writes it for DataFusion (`run_plan`, `--write-datafusion`): some
-    fixtures are hand-written in encodings its protobuf parser no longer
-    reads, and the translation compensates for its quirks (#24)."""
-    con = connect()
-    for name, t in tables.items():
-        put_table(con, name, t)
-    df = [tuple(map(integral, r)) for r in arrow_rows(run_plan(con, plan_json, "datafusion"))]
-    return df, duckdb_rows(plan_json, tables)
-
-
-def both_or_duckdb(
-    plan_json: str, tables: dict[str, pa.Table]
-) -> tuple[list[tuple] | None, list[tuple]]:
-    """`both`, with no DataFusion rows where DataFusion cannot be made to give
-    the reference result (a `substring` from a negative start, #209)."""
-    try:
-        return both(plan_json, tables)
-    except Unsupported:
-        return None, duckdb_rows(plan_json, tables)
-
-
-def lean_printable(plan: dict) -> bool:
-    """Can Lean's output be compared value by value (no doubles in or out)?"""
-    tables_ok = all("fp64" not in type_names(s) for s in schemas(plan).values())
-    return tables_ok and "float" not in kinds(parse_plan(plan).root)
-
-
 def from_lean(plan: dict, rows: list[tuple]) -> list[tuple]:
     """Lean's integers as the values they stand for (timestamps, dates)."""
     ks = kinds(parse_plan(plan).root)
@@ -219,38 +188,31 @@ def from_lean(plan: dict, rows: list[tuple]) -> list[tuple]:
 def lean_on(plan: dict, tables: dict[str, pa.Table]) -> list[tuple]:
     rows = {name: arrow_rows(t) for name, t in tables.items()}
     inlined = inline_tables(copy.deepcopy(plan), rows)
-    return from_lean(plan, lean_rows(json.dumps(inlined)))
+    return from_lean(plan, lean_values(json.dumps(inlined)))
 
 
-def has_fetch(r: object) -> bool:
-    if isinstance(r, Fetch):
-        return True
-    return any(has_fetch(getattr(r, k)) for k in ("input", "left", "right") if hasattr(r, k))
+def near(x: object, y: object) -> bool:
+    """Equal, doubles to the six decimals Lean prints, with the model's one
+    zero and one NaN."""
+    if isinstance(x, float) and isinstance(y, float):
+        return (x != x and y != y) or math.isclose(x, y, rel_tol=1e-6, abs_tol=1e-6)
+    return x == y
 
 
-def agree(plan: dict, df: list[tuple] | None, duck: list[tuple], lean: list[tuple] | None) -> None:
-    """DuckDB agrees with Lean (in Lean's order where order matters), or,
-    where Lean's rows can't be compared value by value (doubles), with
-    DataFusion as bags. FETCH takes whichever rows come first, and
-    DataFusion's order is not Lean's, so there DataFusion is not compared."""
-    if lean is not None:
-        if order_matters(parse_plan(plan).root):
-            assert duck == lean
-        else:
-            assert canonical(duck) == canonical(lean)
-    elif df is not None and not has_fetch(parse_plan(plan).root):
-        assert canonical(duck) == canonical(df)
+def agree(plan: dict, duck: list[tuple], lean: list[tuple]) -> None:
+    """DuckDB gives Lean's rows (`near`): in Lean's order where order
+    matters, else as bags."""
+    if order_matters(parse_plan(plan).root):
+        assert len(duck) == len(lean), (duck, lean)
+        for d, e in zip(duck, lean, strict=True):
+            assert len(d) == len(e) and all(map(near, d, e)), (duck, lean)
+    else:
+        assert allows_rows(duck, [[("v", v) for v in r] for r in lean], near), (duck, lean)
 
 
-def lean_or_both(
-    plan: dict, tables: dict[str, pa.Table]
-) -> tuple[list[tuple] | None, list[tuple], list[tuple] | None]:
-    """DataFusion's, DuckDB's and Lean's rows of the plan: Lean's where they
-    compare value by value, else DataFusion's (`both_or_duckdb`)."""
-    if lean_printable(plan):
-        return None, duckdb_rows(json.dumps(plan), tables), lean_on(plan, tables)
-    df, duck = both_or_duckdb(json.dumps(plan), tables)
-    return df, duck, None
+def lean_and_duckdb(plan: dict, tables: dict[str, pa.Table]) -> tuple[list[tuple], list[tuple]]:
+    """DuckDB's and Lean's rows of the plan."""
+    return duckdb_rows(json.dumps(plan), tables), lean_on(plan, tables)
 
 
 # --------------------------------------------------------------------------
@@ -272,7 +234,7 @@ def test_refused_fixtures_are_refused(name):
 @pytest.mark.parametrize("name", [n for n in ACCEPTED if not schemas(fixture(n))])
 def test_virtual_fixtures_match_the_golden_rows(name):
     plan = fixture(name)
-    agree(plan, None, duckdb_rows(json.dumps(plan)), parse_rows(golden(name)))
+    agree(plan, duckdb_rows(json.dumps(plan)), parse_rows(golden(name)))
 
 
 @pytest.mark.parametrize("name", [n for n in ACCEPTED if schemas(fixture(n))])
@@ -281,7 +243,7 @@ def test_virtual_fixtures_match_the_golden_rows(name):
 def test_fixtures_agree_on_random_tables(name, data):
     plan = fixture(name)
     tables = {t: data.draw(table_for(s)) for t, s in schemas(plan).items()}
-    agree(plan, *lean_or_both(plan, tables))
+    agree(plan, *lean_and_duckdb(plan, tables))
 
 
 @pytest.mark.parametrize("name", ACCEPTED)
@@ -334,7 +296,7 @@ def test_delta_plans_agree(name, data):
     for d in deltas:
         plan = json.loads(d)
         needed = {t: tables[t] for t in read_tables(plan)}
-        agree(plan, *lean_or_both(plan, needed))
+        agree(plan, *lean_and_duckdb(plan, needed))
 
 
 # --------------------------------------------------------------------------
@@ -354,12 +316,14 @@ def ints(**cols: list) -> pa.Table:
     return pa.table({k: pa.array(v, pa.int64()) for k, v in cols.items()})
 
 
-def check_three_ways(sql: str, tables: dict[str, pa.Table]) -> list[tuple]:
+def check_three_ways(
+    sql: str, tables: dict[str, pa.Table], semantics: str = "duckdb"
+) -> list[tuple]:
     """DuckDB and Lean agree on `sql`; returns DuckDB's rows."""
-    plan_json = plan_of(sql, tables)
+    plan_json = plan_of(sql, tables, semantics)
     plan = json.loads(plan_json)
     duck = duckdb_rows(plan_json, tables)
-    agree(plan, None, duck, lean_on(plan, tables))
+    agree(plan, duck, lean_on(plan, tables))
     return duck
 
 
@@ -453,7 +417,7 @@ def test_integer_powers_are_exact():
     r = ints(a=[-3, 2, 0, 1, -1, None, 3037000499])
     rows = check_three_ways("SELECT power(a, 2) AS s FROM r", {"r": r})
     assert rows[-1][0] == 3037000499**2
-    # `power(NULL, 0)` is 1, as in DataFusion; Lean and the SQL agree.
+    # `power(NULL, 0)` is 1; Lean and the SQL agree.
     zero = check_three_ways("SELECT power(a, 0) AS z FROM r", {"r": r})
     assert zero == [(1,)] * 7
     check_three_ways("SELECT power(a, 3) AS c FROM r", {"r": ints(a=[-3, 2, 0, 1, -1, None])})
@@ -484,9 +448,9 @@ ROUNDING += [math.nan, NEG_NAN, math.inf, -math.inf, 9.2e18, -9.2e18, 1.005, Non
         "SELECT CAST(i AS VARCHAR) AS s FROM r",
     ],
 )
-@pytest.mark.backend("datafusion")
-def test_rounding_and_casts_match_datafusion(sql):
-    """Signs of zeros and NaNs included (compared by `repr`)."""
+def test_rounding_and_casts_match_lean(sql):
+    """On halves, NaN, ±inf and the edges of 64 bits (the model has one zero
+    and one NaN)."""
     r = pa.table(
         {
             "f": pa.array(ROUNDING, pa.float64()),
@@ -496,19 +460,14 @@ def test_rounding_and_casts_match_datafusion(sql):
             ),
         }
     )
-    df, duck = both(plan_of(sql, {"r": r}, "reference"), {"r": r})
-    assert canonical(duck) == canonical(df)
+    check_three_ways(sql, {"r": r}, "reference")
 
 
-@pytest.mark.backend("datafusion")
-def test_round_to_digits_is_duckdbs_and_refused_on_datafusion():
-    """`round(x, d)` is DuckDB's (#335): DataFusion's `round(x · 10ᵈ) / 10ᵈ`
-    rounds otherwise, so it refuses; the written plan on DuckDB is DuckDB's own."""
+def test_round_to_digits_is_duckdbs():
+    """`round(x, d)` is DuckDB's (#335): the written plan on DuckDB is DuckDB's own."""
     r = pa.table({"f": pa.array(ROUNDING, pa.float64())})
     sql = "SELECT f, round(f, 2) AS x, round(f, -1) AS y, round(f, -400) AS z FROM r"
     plan = plan_of(sql, {"r": r}, "reference")
-    with pytest.raises(Unsupported, match="#335"):
-        both(plan, {"r": r})
     native = duckdb.connect()
     native.register("r", r)
     # The model has one zero; DuckDB's own result keeps -0.0.
@@ -519,7 +478,6 @@ def test_round_to_digits_is_duckdbs_and_refused_on_datafusion():
     assert canonical(duckdb_rows(plan, {"r": r})) == canonical(own)
 
 
-@pytest.mark.backend("datafusion")
 def test_double_division_by_zero_raises_unless_ieee():
     """`on_division_by_zero` ERROR (the reference's, #204) raises; a plan
     asking for IEEE (DuckDB's `/`) gets ±inf and NaN, written as a `CASE`
@@ -535,8 +493,8 @@ def test_double_division_by_zero_raises_unless_ieee():
             f["scalarFunction"]["options"] = [
                 {"name": "on_division_by_zero", "preference": ["IEEE"]}
             ]
-    df, duck = both(json.dumps(plan), {"r": r})
-    assert canonical(df) == canonical(duck)
+    duck, lean = lean_and_duckdb(plan, {"r": r})
+    agree(plan, duck, lean)
     assert [repr(q) for (q,) in duck] == ["3.5", "-inf", "nan", repr(1 / 3)]
     assert "CAST(" in to_sql(json.loads(plan_json), DUCKDB)
 
@@ -562,8 +520,8 @@ def _walk(node):
     ],
 )
 def test_integer_overflow_raises(sql, rows):
-    """DataFusion wraps around; Lean's integers are unbounded, so a wrapped
-    result would be wrong. DuckDB's SQL raises instead."""
+    """Lean's integers are unbounded, so a wrapped result would be wrong.
+    DuckDB's SQL raises instead."""
     r = ints(a=rows[0], b=rows[1])
     plan_json = plan_of(sql, {"r": r})
     with pytest.raises((duckdb.OutOfRangeException, duckdb.ConversionException)):
@@ -598,16 +556,12 @@ def doubles_table() -> pa.Table:
         "SELECT v, w FROM f WHERE v IN (0.0, 1.5, w)",
     ],
 )
-@pytest.mark.backend("datafusion")
 def test_doubles_compare_by_the_total_order(sql):
     """-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN, NaN = NaN: DuckDB's own
     `=` says -0.0 = +0.0, so the SQL must not use it unguarded."""
-    f = doubles_table()
-    df, duck = both(plan_of(sql, {"f": f}), {"f": f})
-    assert canonical(duck) == canonical(df)
+    check_three_ways(sql, {"f": doubles_table()})
 
 
-@pytest.mark.backend("datafusion")
 def test_double_window_order_and_partitions():
     values = [v for v in DOUBLES if v is not None] + [None]
     f = pa.table({"v": pa.array(values, pa.float64()), "w": pa.array(values[::-1], pa.float64())})
@@ -616,11 +570,9 @@ def test_double_window_order_and_partitions():
         "SELECT v, ROW_NUMBER() OVER (ORDER BY v DESC NULLS LAST) AS n FROM f",
         "SELECT v, w, LAG(w) OVER (ORDER BY v DESC NULLS FIRST) AS n FROM f",
     ]:
-        df, duck = both(plan_of(sql, {"f": f}), {"f": f})
-        assert canonical(duck) == canonical(df), sql
+        check_three_ways(sql, {"f": f})
 
 
-@pytest.mark.backend("datafusion")
 def test_zeros_and_nans_partition_together():
     """One zero and one NaN: -0.0 and 0.0 share a partition, as do both NaNs."""
     f = pa.table(
@@ -630,8 +582,7 @@ def test_zeros_and_nans_partition_together():
         }
     )
     sql = "SELECT v, t, ROW_NUMBER() OVER (PARTITION BY v ORDER BY t) AS n FROM f"
-    df, duck = both(plan_of(sql, {"f": f}), {"f": f})
-    assert canonical(duck) == canonical(df)
+    duck = check_three_ways(sql, {"f": f})
     assert sorted((t, n) for _, t, n in duck) == [(1, 1), (2, 2), (3, 3), (4, 1), (5, 2)]
     assert sorted(repr(v) for v, _, _ in duck) == ["0.0"] * 3 + ["nan"] * 2
 
