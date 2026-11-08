@@ -308,14 +308,36 @@ def _(history_t, orders_t, sv):
     )
     assert all(c.proved for c in sql_report.ensures)
     print(sql_report)
+    return (MODEL_SQL,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The SQL can be a transform too. `sv.sql` makes the query the body of
+    one, over its inputs by name, and the transform carries the same
+    contract as the Ibis version. We'll check it against the same schemas:
+    """)
+    return
+
+
+@app.cell
+def _(ENSURES, MODEL_SQL, REQUIRES, history_t, orders_t, sv):
+    @sv.transform(requires=REQUIRES, ensures=ENSURES)
+    def daily_city_revenue_sql(orders, history):
+        return sv.sql(MODEL_SQL, orders=orders, history=history)
+
+    sql_transform = daily_city_revenue_sql.check(orders=orders_t, history=history_t)
+    assert sql_transform.proved
+    print(sql_transform)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The job below uses the Ibis version, because nodes are built from
-    transforms and contracts travel from one step to the next through them.
+    Either transform builds the node below; we use the Ibis one, and
+    contracts travel from one step to the next through it.
 
     ## 3. Build it from the Delta tables
 
