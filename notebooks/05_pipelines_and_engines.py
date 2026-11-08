@@ -134,7 +134,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(apply_batch, customers, delta_plans, display, mo, orders, orders_with_city, sv, view):
+def _(apply_batch, customers, display, mo, orders, orders_with_city, sv, view):
     import random as _random
 
     def _rows(table):
@@ -198,8 +198,7 @@ def _(apply_batch, customers, delta_plans, display, mo, orders, orders_with_city
                 mo.md(
                     f"After {apply_batch.value} batch(es) the maintained view "
                     + ("equals full recomputation" if _equal else "differs from it")
-                    + f". Each batch runs {len(delta_plans(view.internal_plan))} Lean-generated"
-                    " update plans on DuckDB."
+                    + ". Each batch runs the Lean-generated update plan on DuckDB as one query."
                 ),
                 kind="success" if _equal else "danger",
             ),
@@ -373,7 +372,7 @@ def _(mo):
     as an ordinary plan that reads the old tables and the change tables,
     and `Rel.delta_correct` proves it computes exactly the change. Any
     engine can run it. `sverify.engines.delta_plans(view.internal_plan)` returns the
-    plans of our view. `orders$delta` and `customers$delta` are the change
+    plan of our view. `orders$delta` and `customers$delta` are the change
     tables, with a trailing `__weight` column; old tables get weight 1
     (`Project +[1]`), and the join multiplies weights (`$3 * $6`):
     """)
@@ -408,10 +407,9 @@ def _(delta_plans, mo, view):
 def _(mo):
     mo.md(r"""
     On each refresh, `substrait-check --delta` builds the update plan
-    (`Rel.delta`), splits it into pieces without `UNION ALL` (`Rel.terms`)
-    and encodes each row's weight as the `__weight` column
+    (`Rel.delta`) and encodes each row's weight as the `__weight` column
     (`Rel.weighted`, with `Rel.weighted_eval` covering an ordinary engine).
-    Sverify registers the change tables, runs the plans, sums the weights
+    Sverify registers the change tables, runs the plan as one query, sums the weights
     per row and merges the result into the view. A batch is computed
     completely before anything is replaced, so a failure changes nothing.
     A change that can't happen, such as deleting a row that doesn't exist,

@@ -129,16 +129,14 @@ How it works:
 1. The query becomes a Substrait plan: an Ibis expression through the vendored
    Ibis producer (below), a SQL string through sverify's own lift (see "SQL
    producers" below).
-2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
-   union-free terms (`Rel.terms`) and applies the weight-column encoding
-   (`Rel.weighted`). It prints one Substrait plan per term, after checking each
-   one is incremental and well-formed. The plans are union-free because
-   DataFusion's Substrait consumer loses table qualifiers at a `UNION ALL`,
-   and the duplicate column names then break a later join.
+2. `substrait-check --delta` compiles the plan with `Rel.delta` and applies the
+   weight-column encoding (`Rel.weighted`). It prints one Substrait plan, after
+   checking it is incremental and well-formed.
 3. For each change batch, `sverify` registers the change tables `t$delta` (rows
-   plus `__weight` = ±1), runs every term on the connection's engine (DuckDB by
-   default; on DataFusion with its Substrait consumer), sums the weights per
-   row, and merges the result into the view.
+   plus `__weight` = ±1), runs the delta plan on the connection's engine
+   (DuckDB by default) as one query, sums the weights per row, and merges the
+   result into the view. A k-way join's delta plan is one `UNION ALL` of its
+   2^k − 1 terms.
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
@@ -543,7 +541,7 @@ what refresh maintains is in [the guide](guide.md#nodes-composing-storing-refres
 * `Rel.zeval_lift`: with all weights 1, Z-set evaluation equals the bag
   semantics `Rel.eval`, so the two models agree.
 * `Rel.zeval_terms`: a plan's result is the concatenation of its union-free
-  terms' results (`Rel.terms`).
+  terms' results (`Rel.terms`), for an engine that runs the terms one by one.
 * `Rel.weighted_eval`: running the weight-column encoding (`Rel.weighted`) on an
   ordinary bag engine gives exactly the Z-set result, with each weight as a
   trailing column. Old tables get weight 1, and joins multiply weights.

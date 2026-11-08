@@ -4,10 +4,9 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 `sverify.engines` and `sverify.errors`; it may change in any release.
 
 The verified part is the delta plan: `substrait-check --delta` compiles the
-view's Substrait plan with `Rel.delta`, splits it into union-free terms
-(`Rel.terms`) and applies the weight-column encoding (`Rel.weighted`). Lean
-proves the concatenated results are the change to the view
-(`Rel.incremental_sound`, `Rel.zeval_terms`, `Rel.weighted_eval`). This module
+view's Substrait plan with `Rel.delta` and applies the weight-column encoding
+(`Rel.weighted`). Lean proves its result is the change to the view
+(`Rel.incremental_sound`, `Rel.weighted_eval`). This module
 is the trusted glue around it: it keeps the view as rows with multiplicities
 (a weighted Arrow table, `sverify._weighted`), builds the change tables, runs
 the delta plans on the refresh's engine and merges the result. A batch is
