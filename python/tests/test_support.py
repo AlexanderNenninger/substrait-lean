@@ -7,6 +7,7 @@ import pytest
 
 from _repo import needs_repo
 from sverify import _support, black_box
+from sverify._engines import NAMED
 from sverify.sql import Unsupported
 
 FUNCTIONS_LEAN = Path(__file__).resolve().parents[2] / "SubstraitLean" / "Functions.lean"
@@ -22,7 +23,7 @@ def test_rows_are_functions_lean_writes() -> None:
     known = lean_functions() | black_box.NAMES
     assert set(_support.SUPPORT) <= known, set(_support.SUPPORT) - known
     for name, engines in _support.SUPPORT.items():
-        assert engines <= _support.ENGINES, name
+        assert engines <= NAMED, name
         assert "duckdb" in engines, name
 
 

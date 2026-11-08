@@ -11,11 +11,12 @@ import sqlglot.expressions as sge
 
 from _repo import needs_repo
 from sverify import _functions as fns
+from sverify._engines import DIALECTS as SQL_DIALECTS
 from sverify.engine import checker_path
 from sverify.sql_lift import PROFILES
 
 ROOT = Path(__file__).resolve().parents[2]
-DIALECTS = {"", "duckdb", "spark", "snowflake"}
+DIALECTS = {"", *SQL_DIALECTS}
 
 
 @functools.cache

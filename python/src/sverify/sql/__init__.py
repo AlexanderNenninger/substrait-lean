@@ -6,9 +6,8 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 
 from typing import Any
 
+from sverify._engines import DIALECTS
 from sverify.sql.core import Dialect, Kind, Unsupported, parse_plan, to_sql
-
-DIALECTS = ("duckdb", "snowflake", "spark")
 
 
 def dialect_of(dialect: Any) -> Dialect:

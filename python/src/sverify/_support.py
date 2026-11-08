@@ -13,9 +13,9 @@ from __future__ import annotations
 from typing import Any
 
 from sverify import _plan_read, black_box
+from sverify._engines import NAMED
 from sverify._unsupported import DUCKDB_ONLY, ISSUE_271  # noqa: F401  (re-exported)
 
-ENGINES = frozenset({"duckdb", "spark", "snowflake", "datafusion", "polars"})
 _DUCKDB = frozenset({"duckdb"})
 
 #: The functions by their plan names, each with the engines that run it.
@@ -54,7 +54,7 @@ SUPPORT: dict[str, frozenset[str]] = {
     # (`GUARDS`). Polars and DataFusion run plans without a way to raise.
     "sverify_raise": _DUCKDB,
     # Windows: DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
-    "ntile": ENGINES - {"datafusion"},
+    "ntile": NAMED - {"datafusion"},
     # Black boxes (#325).
     **{name: _DUCKDB for name in sorted(black_box.NAMES)},
 }
@@ -158,7 +158,7 @@ def refusal(name: str, engine: str, window: bool = False) -> str:
             f"({engine} does not run it yet; {ISSUE_271})"
         )
     label = _LABELS.get(name, name)
-    runs = sorted(SUPPORT.get(name, ENGINES))
+    runs = sorted(SUPPORT.get(name, NAMED))
     where = " and ".join(runs)
     return (
         f"{label} runs on {where} only: run it with engine={runs[0]!r} "
