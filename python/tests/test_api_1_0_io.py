@@ -109,8 +109,7 @@ def test_a_transform_has_a_report() -> None:
     assert keep.report is not None and keep.report.proved
     with pytest.warns(DeprecationWarning, match=r"read \.report"):
         assert keep.last_report is keep.report
-    with pytest.warns(DeprecationWarning):
-        assert keep.last_preconditions == []
+    assert keep.report.preconditions == []
 
 
 # -- E2: contract() on every source and sink --------------------------------------
