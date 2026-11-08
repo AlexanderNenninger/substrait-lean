@@ -19,25 +19,6 @@ def con() -> sv.engine.Connection:
     return c
 
 
-def _tables(monkeypatch: pytest.MonkeyPatch, choices: dict) -> None:
-    def rows(table: dict) -> list[dict]:
-        return [
-            {
-                "group": g,
-                "option": o,
-                "choice": {"kind": "oneOf", "behaviours": bs},
-                "facts": [f"{o}-fact"],
-            }
-            for (g, o), bs in table.items()
-        ]
-
-    tables = {
-        "groups": {"int.mod": ["division_type"]},
-        "choices": {p: rows(t) for p, t in choices.items()},
-    }
-    monkeypatch.setattr(routes, "_options_json", lambda: tables)
-
-
 def test_native_and_reference(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]})
@@ -73,50 +54,44 @@ def test_run_chooses_a_route_by_default(con) -> None:
 
 
 def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
+    """The transfer route takes the checker's check (`transferB`, proved
+    sound by `Rel.transfer_of_transferB`) over every option the plan reads."""
     duck = sv.verify(
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
-    _tables(
-        monkeypatch,
-        {
-            "duckdb": {("int.mod", "division_type"): ["TRUNCATE"]},
-            "polars": {("int.mod", "division_type"): ["FLOOR"]},
-            "datafusion": {("int.mod", "division_type"): ["TRUNCATE"]},
-        },
-    )
-    monkeypatch.setattr(routes, "_groups_of", lambda name: {"int.mod"})
     r = routes.choose(duck, "polars", "transfer")
     assert r.refused
-    assert r.failures == (
-        {
-            "group": "int.mod",
-            "option": "division_type",
-            "from": ["TRUNCATE"],
-            "to": ["FLOOR"],
-            "facts": ["division_type-fact"],
-        },
+    assert {
+        "group": "int.mod",
+        "option": "division_type",
+        "preferences": [],
+        "from": ["TRUNCATE"],
+        "to": ["FLOOR"],
+        "facts": ["polars-int-modulus"],
+    } in r.failures
+    assert (
+        "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR (polars-int-modulus)"
+        in r.reason
     )
-    assert "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR" in r.reason
     # #655: under "auto", the refusal leads with what to do. The re-check
     # under `Profile.polars` proves this plan, so it is made to fail here.
     assert routes.choose(duck, "polars").kind == "recheck"
     monkeypatch.setattr(routes, "recheck", lambda report, e: (False, "not proved"))
     auto = routes.choose(duck, "polars")
     assert auto.reason.startswith("verify with semantics='reference' to run on polars")
-    assert routes.choose(duck, "datafusion", "transfer").kind == "transfer"
-    # The checker's own dependency report narrows the check.
-    duck._depends = []
+    # Where the check passes, the route is taken.
+    assert duck._engines is not None
+    duck._engines["polars"]["transfer"]["duckdb"] = {"ok": True, "failures": []}
     assert routes.choose(duck, "polars", "transfer").kind == "transfer"
 
 
-def test_transfer_without_tables_is_refused_with_the_reason(monkeypatch, con) -> None:
-    monkeypatch.setattr(routes, "_options_json", lambda: {})
+def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
     duck = sv.verify(
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
+    duck._engines = None
     r = routes.choose(duck, "polars", "transfer")
-    assert r.refused
-    assert "no choices table" in r.reason
+    assert r.refused and "gave no transfer check" in r.reason
     # `auto` goes on to the re-check, which the checker proves under
     # `Profile.polars` (the plan states its options, `PolarsProfile.lean`).
     auto = routes.choose(duck, "polars")
@@ -202,104 +177,116 @@ def test_installed_versions_are_the_probed_ones() -> None:
         assert routes.installed_version(engine) in prof.versions, engine
 
 
-def _classed_tables(monkeypatch: pytest.MonkeyPatch, polars_rows: list[dict]) -> None:
-    tables = {
-        "groups": {},
-        "choices": {"reference": [], "duckdb": [], "polars": polars_rows},
-    }
-    monkeypatch.setattr(routes, "_options_json", lambda: tables)
-
-
-def _row(option: str, cls: str, q: dict | None = None, shim: str | None = None, ev: str = "proved"):
+def _verdict(cls="exact", evidence="proved", observed=(), shims=(), problems=(), **kw) -> dict:
+    """A checker verdict on Polars (`"engines"`, `SubstraitLean/Realize.lean`)."""
     return {
-        "group": None,
-        "option": option,
-        "choice": {"kind": "oneOf", "behaviours": ["X"]},
         "class": cls,
-        "q": q,
+        "evidence": evidence,
+        "observed": list(observed),
+        "shims": list(shims),
+        "problems": list(problems),
+        "theorems": [],
+        "facts": [],
+        "issues": [],
+        "proved_facts": [],
+        "version": "",
+        "transfer": {},
+        **kw,
+    }
+
+
+def _observed(option: str, observation: dict, shim: str | None = None) -> dict:
+    return {
+        "group": "",
+        "option": option,
+        "observation": observation,
         "shim": shim,
-        "evidence": ev,
         "facts": [f"polars-{option}"],
     }
 
 
-def test_anything_but_proved_is_tested(monkeypatch, con) -> None:
-    """A probe, or a row without evidence, is tested evidence (#1166); only
-    rows that are all proved make a proved route, which names its theorems."""
+def _on_polars(report, **kw) -> routes.Route:
+    report._engines = {"polars": _verdict(**kw)}
+    return routes.choose(report, "polars")
+
+
+def test_the_route_carries_the_checker_s_evidence(con) -> None:
+    """The class, the evidence and what it cites are the checker's (#1166):
+    a route takes them as they are, and names them."""
     t = con.table("t")
     report = sv.verify(t.select("k"))
-    report._depends = [{"group": None, "option": "a"}, {"group": None, "option": "b"}]
-    _classed_tables(
-        monkeypatch, [_row("a", "refines", ev="probe"), _row("b", "refines", ev="probe")]
-    )
-    assert routes.choose(report, "polars").evidence == "tested"
-    _classed_tables(monkeypatch, [_row("a", "refines"), {**_row("b", "refines"), "evidence": None}])
-    assert routes.choose(report, "polars").evidence == "tested"
-    # An option without a row rests on the translation's tests.
-    _classed_tables(monkeypatch, [{**_row("a", "refines"), "theorem": "Polars.a"}])
-    assert routes.choose(report, "polars").evidence == "tested"
-    proved = [{**_row(o, "refines"), "theorem": f"Polars.{o}"} for o in ("a", "b")]
-    _classed_tables(monkeypatch, proved)
-    r = routes.choose(report, "polars")
-    assert (r.evidence, r.theorems) == ("proved", ("Polars.a", "Polars.b"))
+    assert _on_polars(report, evidence="tested").evidence == "tested"
+    r = _on_polars(report, theorems=["Polars.a", "Polars.b"], facts=["polars-a"])
+    assert (r.evidence, r.theorems, r.facts) == ("proved", ("Polars.a", "Polars.b"), ("polars-a",))
     assert "evidence: polars exact, proved by Polars.a, Polars.b" in str(report)
     from sverify import report_json
 
     assert report_json.route(report_json.route_json(r)) == r
     # A tested row names its engine version and its tracking issue (#1170).
-    tracked = {**_row("a", "refines", ev="tested"), "version": "2.1.1", "issue": 1166}
-    _classed_tables(monkeypatch, [tracked, _row("b", "refines")])
-    r = routes.choose(report, "polars")
+    r = _on_polars(
+        report, evidence="tested", facts=["polars-a", "polars-b"], version="2.1.1", issues=[1166]
+    )
     assert (r.version, r.issues) == ("2.1.1", (1166,))
     assert str(r).endswith("; evidence tested at 2.1.1 (facts polars-a, polars-b; #1166)")
     assert report_json.route(report_json.route_json(r)) == r
 
 
-def test_the_class_is_the_worst_over_the_options(monkeypatch, con) -> None:
+def test_a_proof_of_the_engine_s_model_names_its_facts(con) -> None:
+    """A theorem about the engine's model reaches the engine only through the
+    facts that say the engine is that model (#900): the evidence names them.
+    A theorem without such facts is plainly proved."""
     t = con.table("t")
     report = sv.verify(t.select("k"))
-    report._depends = [{"group": None, "option": "a"}, {"group": None, "option": "b"}]
-    _classed_tables(
-        monkeypatch, [_row("a", "refines"), _row("b", "shim", shim="CASE", ev="tested")]
+    r = _on_polars(report, theorems=["Rel.polars_sound"], proved_facts=["polars-int-arith"])
+    assert str(r).endswith(
+        "; evidence proved by Rel.polars_sound on polars's model (facts polars-int-arith)"
     )
-    r = routes.choose(report, "polars")
+    assert "evidence: polars exact, proved by Rel.polars_sound on polars's model" in str(report)
+    from sverify import report_json
+
+    assert report_json.route(report_json.route_json(r)) == r
+    r = _on_polars(report, theorems=["Lowering.lower_correct"])
+    assert str(r).endswith("; evidence proved by Lowering.lower_correct")
+
+
+def test_the_class_and_the_refusals_are_the_checker_s(con) -> None:
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    shim = {"group": "", "option": "b", "shim": "CASE"}
+    r = _on_polars(report, cls="shim", evidence="tested", shims=[shim], facts=["polars-b"])
     assert (r.kind, r.cls, r.evidence, r.shims) == ("translated", "shim", "tested", ("b: CASE",))
-    assert str(r).startswith("shim (")
-    assert str(r).endswith("; evidence tested (facts polars-a, polars-b)")
-    assert r.facts == ("polars-a", "polars-b") and r.theorems == ()
-    _classed_tables(monkeypatch, [_row("a", "refines"), _row("b", "refused")])
-    r = routes.choose(report, "polars")
+    assert str(r).startswith("shim (") and str(r).endswith(
+        "; evidence tested at 2.1.0 (facts polars-b)"
+    )
+    refused = {"code": "option_refused", "group": "", "option": "b", "facts": ["polars-b"]}
+    r = _on_polars(report, cls="refused", problems=[refused])
     assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.reason
+    report._engines = None
+    r = routes.choose(report, "polars")
+    assert r.refused and "gave no verdict on polars" in r.reason
 
 
-def test_q_refinement_against_the_postcondition(monkeypatch, con) -> None:
+def test_q_refinement_against_the_postcondition(con) -> None:
     """D18's check: an engine equal to the reference up to `canon` meets a
     postcondition that observes zeros only if it says `zeros="canon"`, or
     through the row's shim."""
     t = con.table("t")
     exact = sv.verify(t.select("k"))
     canon = sv.verify(t.select("k"), ensures=[sv.equivalent(zeros="canon")])
-    for report in (exact, canon):
-        report._depends = [{"group": None, "option": "zero_sign"}]
-    _classed_tables(monkeypatch, [_row("zero_sign", "refines_up_to", q={"zeros": "canon"})])
-    r = routes.choose(exact, "polars")
+    zeros = [_observed("zero_sign", {"zeros": "canon"})]
+    r = _on_polars(exact, cls="observed", observed=zeros)
     assert r.refused and "observes its zeros" in r.reason and "sv.equivalent" in r.reason
-    assert routes.choose(canon, "polars").cls == "observed"
-    _classed_tables(
-        monkeypatch, [_row("zero_sign", "refines_up_to", q={"zeros": "canon"}, shim="canon")]
-    )
-    assert routes.choose(exact, "polars").cls == "shim"
+    assert _on_polars(canon, cls="observed", observed=zeros).cls == "observed"
+    shimmed = [_observed("zero_sign", {"zeros": "canon"}, shim="canon")]
+    assert _on_polars(exact, cls="observed", observed=shimmed).cls == "shim"
     # A tolerance: the engine's ε must be within the stated one.
-    _classed_tables(
-        monkeypatch, [_row("sum_order", "approx", q={"rows": "multiset", "floats": {"rel": 1e-12}})]
-    )
+    tol = [_observed("sum_order", {"rows": "multiset", "floats": {"rel": 1e-12}})]
     for report, ok in (
         (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-9))]), True),
         (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))]), False),
         (exact, False),
     ):
-        report._depends = [{"group": None, "option": "sum_order"}]
-        r = routes.choose(report, "polars")
+        r = _on_polars(report, cls="observed", observed=tol)
         assert (r.cls == "observed") is ok, r
 
 
@@ -321,18 +308,17 @@ def test_inputs_are_checked_before_the_run(con) -> None:
     report.run(con, "polars", check_requires=False)
 
 
-def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
+def test_a_plan_dependent_float_bound(con) -> None:
     """Polars's `sum_order`: `q` bounds the doubles per plan. The contract's
     `ε` gives bounds that each hold on their own; a stated tolerance is met
     by one no larger than its bound of the same kind (B1)."""
     t = con.table("t")
-    _classed_tables(monkeypatch, [_row("sum_order", "approx", q={"floats": {"bound": "plan"}})])
 
     def route(tolerance, epsilon):
         report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report._depends = [{"group": None, "option": "sum_order"}]
         report._epsilon = epsilon
-        return routes.choose(report, "polars")
+        plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
+        return _on_polars(report, cls="observed", observed=plan)
 
     both = {"total": {"abs": 222.0, "rel": 1e-10}, "k": {}}
     assert route(sv.within(rel=1e-9), both).cls == "observed"
@@ -351,41 +337,32 @@ def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
     assert route(sv.within(rel=1e-9), nested).evidence == "proved"
 
 
-def test_a_shim_does_not_lift_the_plans_bound(monkeypatch, con) -> None:
+def test_a_shim_does_not_lift_the_plans_bound(con) -> None:
     """A row with a shim and a per-plan bound (DuckDB's VAR row, whose
     `nan_through` handles NaN only) still refuses a tolerance its bound does
     not meet: the census's `var-within-rel-cap`, `within(rel=1e-9)` against
     abs = 1.78e-7."""
     t = con.table("t")
-    row = _row("stat_algo", "approx", q={"floats": {"bound": "plan"}}, shim="nan_through")
-    _classed_tables(monkeypatch, [row])
 
     def route(tolerance):
         report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report._depends = [{"group": None, "option": "stat_algo"}]
         report._epsilon = {"v": {"abs": 1.77815e-07, "proved": True}}
-        return routes.choose(report, "polars")
+        plan = [_observed("stat_algo", {"floats": {"bound": "plan"}}, shim="nan_through")]
+        return _on_polars(report, cls="observed", observed=plan)
 
     r = route(sv.within(rel=1e-9))
     assert r.refused and "v is within abs=1.77815e-07" in r.reason
     assert route(sv.within(abs=1e-6)).cls == "observed"
 
 
-def test_rows_that_may_flip_under_the_bound_are_refused(monkeypatch, con) -> None:
-    """#568's threshold rule: where a filter, key or sort on a double may
-    keep other rows on the engine than on the reference (`rows_exact`), a
-    per-plan float bound does not carry over, and the route is refused."""
+def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
+    """#568's threshold rule, as the checker applies it: where a filter, key
+    or sort on a double may keep other rows on the engine than on the
+    reference, the route is refused."""
     t = con.table("t")
-    _classed_tables(monkeypatch, [_row("sum_order", "approx", q={"floats": {"bound": "plan"}})])
-
-    def route(rows_exact):
-        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(abs=1e3))])
-        report._depends = [{"group": None, "option": "sum_order"}]
-        report._epsilon = {"total": {"abs": 222.0, "proved": True}}
-        report._rows_exact = rows_exact
-        return routes.choose(report, "polars")
-
-    assert route({"polars": True}).cls == "observed"
-    assert route(None).cls == "observed"
-    r = route({"polars": False})
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(abs=1e3))])
+    report._epsilon = {"total": {"abs": 222.0, "proved": True}}
+    plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
+    assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
+    r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])
     assert r.refused and "may keep other rows on polars" in r.reason
