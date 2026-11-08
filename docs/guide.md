@@ -605,7 +605,7 @@ print(report)
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
 # semantics: reference
-# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6)
+# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6 ...
 # evidence: polars exact, proved by Polars.sum_leaves_i64
 # evidence: spark shim, proved by Spark.int_sum_decimal
 # known about the output:
