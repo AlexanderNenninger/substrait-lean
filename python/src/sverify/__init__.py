@@ -1,5 +1,5 @@
-"""Contracts and incremental views, proved in Lean, on DuckDB, Polars,
-DataFusion and Spark.
+"""Contracts and incremental views, proved in Lean, on DuckDB, Polars, Spark
+and Snowflake.
 
     import sverify as sv
     from sverify.io import DeltaSink, DeltaSource

@@ -1,20 +1,22 @@
 """String functions, and the regular expressions that certainly compile.
 
 * Lean's semantics of `substring`, `strpos`, `starts_with`, `ends_with`,
-  `btrim`/`ltrim`/`rtrim`, `||` and `character_length` agrees with DuckDB
-  (`SubstraitLean/Text.lean`), and of `LIKE` with a backslash escape with
-  DataFusion; so do Polars and DuckDB, which run the plan Lean writes (also
-  `UPPER`, `LOWER` and regular expressions, black boxes in Lean pinned to
-  Rust's strings as DataFusion computes them, where DuckDB raises on
-  non-ASCII text instead, #70).
-* So do `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` (#49), on
-  DataFusion's (Rust's) edge cases: negative counts, empty patterns,
-  combining marks.
-  `ILIKE`, a black box, agrees on ASCII text, and Polars, with the `regex`
-  crate's case folding, agrees on all text.
-* Every pattern `Text.simpleRegex` accepts compiles in DataFusion: this tests
-  the trusted part of the "invalid regular expression" check (DuckDB's, and
-  Lean's evaluator of regular expressions: `test_regex.py`).
+  `btrim`/`ltrim`/`rtrim`, `||`, `character_length` and `LIKE` with a
+  backslash escape agrees with DuckDB, the oracle (`SubstraitLean/Text.lean`);
+  Polars and DuckDB, which run the plan Lean writes, give Lean's rows. `UPPER`,
+  `LOWER` and regular expressions, black boxes in Lean pinned to Rust's
+  strings, agree with DuckDB on the alphabet drawn here (sverify's DuckDB
+  lowering raises on non-ASCII case mapping, #70).
+* Polars and DuckDB give Lean's rows of `repeat`, `reverse`, `replace`,
+  `ascii` and `levenshtein` (#49) on Rust's edge cases: negative counts,
+  empty patterns, combining marks. DuckDB's own functions count bytes or
+  grapheme clusters there, so only `replace` has DuckDB as its oracle.
+  `ILIKE`, a black box, gives Lean's rows on ASCII text; on other text,
+  where Polars folds case as the `regex` crate does, no oracle computes
+  the reference.
+* Every pattern `Text.simpleRegex` accepts compiles in DuckDB and in Polars:
+  this tests the trusted part of the "invalid regular expression" check
+  (Lean's evaluator of regular expressions: `test_regex.py`).
 * Contracts see through the black boxes as far as they can.
 """
 
@@ -31,9 +33,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import canonical as canonical_doubles
 from sverify.engine import (
-    collect,
     connect,
     put_table,
     run_plan,
@@ -56,38 +56,37 @@ QUERIES = [
 
 text = st.one_of(st.none(), st.text(alphabet='ab %_\\é,"', max_size=6))
 
-#: The plans of the queries whose text DuckDB's SQL reads otherwise than
-#: DataFusion's: `btrim` is DuckDB's `trim`; LIKE with a column pattern or a
-#: backslash escape, and regular expressions, are written in Ibis, whose
-#: semantics are DataFusion's (and the model's).
+#: The plans of the queries whose text DuckDB's SQL reads otherwise than the
+#: model: `btrim` is DuckDB's `trim`; LIKE with a column pattern or a
+#: backslash escape, and regular expressions, are written in Ibis.
 PLANS: dict[str, Any] = {
     QUERIES[2]: lambda r: r.select(l=r.s.like(r.t), m=r.s.like("a%"), n=r.s.like("_\\%%")),
     QUERIES[3]: "SELECT trim(s, t) AS b, ltrim(s, t) AS l, rtrim(s, t) AS r, trim(s) AS w FROM r",
 }
 
 
-#: The queries DuckDB is the oracle for. Not LIKE with a backslash escape
-#: (written in Ibis): DuckDB's LIKE has no escape character unless one is
-#: named, and with one it raises on a column pattern that ends in it.
-DUCKDB_ORACLE = [q for q in QUERIES if q != QUERIES[2]]
+#: DuckDB's SQL for the queries whose oracle text differs from the plan's:
+#: DuckDB's LIKE has no escape character unless one is named.
+ORACLE_SQL = {
+    QUERIES[2]: "SELECT s LIKE t ESCAPE '\\' AS l, s LIKE 'a%' AS m,"
+    " s LIKE '_\\%%' ESCAPE '\\' AS n FROM r",
+}
+
+
+def ends_in_escape(pattern: str | None) -> bool:
+    """A pattern ending in an unpaired backslash, which DuckDB's `ESCAPE`
+    rejects."""
+    return pattern is not None and (len(pattern) - len(pattern.rstrip("\\"))) % 2 == 1
 
 
 def oracle(con, sql: str) -> list[tuple]:
-    """The rows `sql` should give: DuckDB's for the queries the lift reads as
-    DuckDB's SQL (`DUCKDB_ORACLE`, or Ibis's DuckDB SQL for those written in
-    Ibis); DataFusion's for the rest, whose meaning sverify pins to Rust's
-    strings (`str`, the `regex` crate), which DataFusion and Polars use."""
-    if sql in DUCKDB_ORACLE:
-        source = PLANS.get(sql, sql)
-        if callable(source):
-            out = duckdb_ibis(con, source(ibis.table(R, name="r")))
-        else:
-            out = duckdb_sql(con, source)
+    """DuckDB's rows of `sql`: its own SQL (`ORACLE_SQL`), or Ibis's DuckDB
+    SQL for the queries written in Ibis."""
+    source = ORACLE_SQL.get(sql) or PLANS.get(sql, sql)
+    if callable(source):
+        out = duckdb_ibis(con, source(ibis.table(R, name="r")))
     else:
-        source = PLANS.get(sql, sql)
-        if callable(source):
-            source = ibis.to_sql(source(ibis.table(R, name="r")), dialect="datafusion")
-        out = canonical_doubles(collect(con._datafusion_session.sql(source)))
+        out = duckdb_sql(con, source)
     return [tuple(x.values()) for x in out.to_pylist()]
 
 
@@ -106,6 +105,8 @@ def plan_of(con, sql: str) -> str:
 )
 @given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
 def test_string_semantics_match_the_oracle(sql, rows):
+    if sql in ORACLE_SQL:
+        rows = [r for r in rows if not ends_in_escape(r[1])]
     con = connect()
     con.create("r", R, rows)
     expected = oracle(con, sql)
@@ -130,9 +131,10 @@ PLANS[BLACK_BOXES[1]] = lambda r: r.select(
 )
 @given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
 def test_engines_match_the_oracle(engine, sql, rows):
+    """The engines give Lean's rows, or DuckDB's for Lean's black boxes."""
     con = connect()
     con.create("r", R, rows)
-    expected = canonical(oracle(con, sql))
+    expected = canonical(oracle(con, sql)) if sql in BLACK_BOXES else lean_rows(con, sql, rows)
     plan = written_plan(plan_of(con, sql))
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
     if engine == "duckdb" and sql == BLACK_BOXES[0] and non_ascii:
@@ -167,8 +169,8 @@ def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
     assert lean_values(json.dumps(ascii_rows)) == [("ABC" if "upper" in sql else "abc",)]
 
 
-#: Edge cases of #49: combining marks, which `reverse` moves (DataFusion
-#: reverses characters, not grapheme clusters).
+#: Edge cases of #49: combining marks, which `reverse` moves (Rust reverses
+#: characters, DuckDB grapheme clusters).
 marked = st.one_of(st.none(), st.text(alphabet="ab %\u0301é", max_size=6))
 counts = st.one_of(st.none(), st.integers(-2, 3))
 #: Engines that compute these as Rust does on ASCII text only raise on others.
@@ -196,11 +198,17 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(marked, marked, counts), max_size=6))
-def test_repeat_reverse_replace_match_datafusion(sql, rows):
+def test_repeat_reverse_replace_match_the_reference(sql, rows):
+    """Polars and DuckDB give Lean's rows. DuckDB is the oracle of `replace`
+    with a pattern; its own `repeat`, `reverse`, `ascii` and `levenshtein`
+    count bytes or grapheme clusters, and its `replace` of an empty pattern
+    returns the string unchanged, so there Lean, the reference, stands alone
+    (#1138)."""
     con = connect()
     con.create("r", R, rows)
-    expected = canonical(oracle(con, sql))
-    assert lean_rows(con, sql, rows) == expected
+    expected = lean_rows(con, sql, rows)
+    if sql == REPLACE:
+        assert canonical(oracle(con, sql)) == expected
     plan = written_plan(plan_of(con, sql))
     assert (
         canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist()) == expected
@@ -228,17 +236,19 @@ folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
     max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(folded, folded, st.none()), max_size=6))
-def test_ilike_matches_datafusion(rows):
+def test_ilike_matches_the_reference(rows):
+    """On ASCII text Polars and DuckDB give Lean's rows. Lean evaluates no
+    case folding beyond ASCII and DuckDB's differs from the `regex` crate's,
+    so on other text Polars runs with no oracle (#1138)."""
     con = connect()
     con.create("r", R, rows)
-    expected = canonical(oracle(con, ILIKE))
     plan = written_plan(plan_of(con, ILIKE))
-    assert (
-        canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist()) == expected
-    )
+    polars = canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist())
     ascii = all(v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
-    if ascii:
-        assert lean_rows(con, ILIKE, rows) == expected
+    if not ascii:
+        return
+    expected = lean_rows(con, ILIKE, rows)
+    assert polars == expected
     try:
         got = run_plan(con, plan, "duckdb")
     except Exception as e:  # noqa: BLE001 - DuckDB's error type
@@ -248,15 +258,13 @@ def test_ilike_matches_datafusion(rows):
 
 
 def test_repeat_beyond_two_gigabytes_fails_everywhere():
-    """`Text.repeatFits`: DataFusion fails on a result of more than 2³¹ - 1
-    bytes, and so do the plans Lean writes; `repeat` of a constant string
-    by a bounded count is proved not to."""
+    """`Text.repeatFits`: the plans Lean writes fail on a result of more than
+    2³¹ - 1 bytes; `repeat` of a constant string by a bounded count is proved
+    not to."""
     con = connect()
     rows = [("é", "", 2**30)]
     con.create("r", R, rows)
     sql = "SELECT repeat(s, a) AS r FROM r"
-    with pytest.raises(Exception, match="string size overflow on repeat"):
-        collect(con._datafusion_session.sql(sql))
     plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     with pytest.raises(Exception, match="repeat beyond 2\\^31 - 1 bytes"):
         run_plan(con, plan, "duckdb")
@@ -273,7 +281,7 @@ def test_repeat_beyond_two_gigabytes_fails_everywhere():
 
 def test_translate_is_refused():
     """`translate` is not modelled: engines differ on what a character is
-    (DataFusion translates grapheme clusters: `translate('e\u0301e', 'e',
+    (DataFusion's translates grapheme clusters: `translate('e\u0301e', 'e',
     'x')` is `'e\u0301x'`)."""
     with pytest.raises(ValueError, match="translate is not modelled yet"):
         sv.verify(T.select(x=T.name.translate("e", "x")))
@@ -296,11 +304,9 @@ def test_patterns_said_to_compile_do(pattern):
         return
     con = connect()
     put_table(con, "t", pa.table({"name": ["abc"], "n": [1]}))
-    collect(
-        con._datafusion_session.sql(
-            ibis.to_sql(T.filter(T.name.re_search(pattern)), dialect="datafusion")
-        )
-    )
+    expr = T.filter(T.name.re_search(pattern))
+    duckdb_ibis(con, expr)
+    run_plan(con, written_plan(to_substrait_json(expr)), "polars")
 
 
 def test_regex_checks():

@@ -1074,7 +1074,7 @@ print(sv.group(report, totals).refresh())  # paid is refreshed and written once
 ```
 
 The engine is chosen at refresh time: `"duckdb"` (the default, in memory),
-`"polars"`, `"datafusion"`, `"spark"` or a Spark session. The nodes keep their
+`"polars"`, `"spark"`, a Spark session, or the optional `"datafusion"`. The nodes keep their
 state while the process runs; a stored node's table is its durable state.
 
 A job that refreshes every minute logs `summary()`, one line per node, and

@@ -1,11 +1,11 @@
-"""ASOF joins on DataFusion, built from operators Lean verifies.
+"""ASOF joins, built from operators Lean verifies.
 
 Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 `sverify.engines` and `sverify.errors`; it may change in any release.
 
-DataFusion has no ASOF join, and Ibis's `asof_join` compiles to DuckDB's
-syntax. `asof_join` here is a range join plus `ROW_NUMBER`, which DataFusion
-runs and Lean checks like any other plan:
+Ibis's `asof_join` compiles to DuckDB's syntax. `asof_join` here is a range
+join plus `ROW_NUMBER`, which every engine runs and Lean checks like any
+other plan:
 
 1. join each left row with the right rows of the same `by` values whose `on`
    is at or before the left row's, at most `tolerance` earlier;

@@ -107,7 +107,7 @@ def test_on_unproved_warn_warns_with_the_report(tmp_path) -> None:
 def test_the_engines_are_duckdb_polars_and_spark() -> None:
     assert typing.get_args(engine_module.Engine) == ("duckdb", "polars", "spark")
     assert ENGINES == ("duckdb", "polars")
-    # DataFusion is experimental: a connection still takes it.
+    # DataFusion is an optional engine: a connection still takes it.
     assert sv.connect("datafusion").engine == "datafusion"  # type: ignore[arg-type]
     with pytest.raises(ValueError, match=r"expected one of \('duckdb', 'polars'\)"):
         sv.connect("sqlite")  # type: ignore[arg-type]

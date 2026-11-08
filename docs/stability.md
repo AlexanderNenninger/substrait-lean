@@ -167,7 +167,7 @@ by a route that the checker justifies against it
 | Polars, streaming | `engine="polars"` | | `"polars"` | `Rel.polars_sound` | yes |
 | Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Rel.spark_sound` | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | planned ([#851](https://github.com/AlexanderNenninger/substrait-lean/issues/851)) | | the written SQL |
-| DataFusion | `engine="datafusion"`, the `datafusion` extra, `run_substrait_json` | | | | no: experimental |
+| DataFusion | `engine="datafusion"`, the `datafusion` extra, `run_substrait_json` | | | | no: an optional engine |
 
 `sverify.engines.Engine` names the engines in the promise. The engine
 versions each profile describes, the class of every option on each engine

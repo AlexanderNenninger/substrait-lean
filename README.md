@@ -226,7 +226,7 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe golden` | Golden tests: CLI output on every plan in `tests/fixtures` |
 | `poe test` | The fast Python tests on 2 workers: no `slow` tests, a tenth of the Hypothesis examples (see `python/tests/conftest.py`) |
 | `poe test-all` | Every Python test with the full Hypothesis counts, on every core, as `qa` and CI run them |
-| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`). CI runs one job per backend, and three for `core`. |
+| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`). CI runs one job per backend, three for `core`, and DataFusion's weekly. |
 | `poe notebooks` | Checks the tour notebooks and runs each one headless |
 | `poe docs`, `poe docs_preview` | Builds the API reference site into `python/great-docs/_site` (or serves it locally), with the examples and the ledgers, which `poe docs_pages` writes from `docs/examples.md` and the JSON first. Needs [Quarto](https://quarto.org) and `uv sync --group docs`; not part of `qa` |
 
