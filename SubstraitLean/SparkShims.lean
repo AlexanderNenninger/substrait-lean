@@ -11,24 +11,26 @@ the reference raises (the error side), it writes nothing. This module states
 what Spark does for each, as its facts record it
 (`characterization/spark/facts/`), and proves once, per shim, that the
 shimmed expression gives the reference's value. The lemmas are named as the
-shims of `Profile.spark.obs` (`EngineTables.lean`): `Spark.<name>`.
+shims of `Profile.spark.obs` (`EngineTables.lean`): `Spark.<name>`, or, for a
+shim another engine writes the same way, `Shim.<name>` (`SubstraitLean/Shims.lean`).
 
-**Trusted**: the model of Spark's own functions below (`Spark.bin`,
-`Spark.sortWith`, the `DECIMAL(38,0)` sum), each from its fact.
+**Trusted**: the model of Spark's own functions (`Spark.bin` below; the sort
+`Shim.sortWith`, the `DECIMAL(38,0)` sum `Shim.sumEmptyNull`), each from its
+fact.
 
 * `int_sum_decimal` (spark-sum-int): Spark adds a `BIGINT` `SUM` in `BIGINT`
   and, under ANSI, raises as soon as a partial sum leaves 64 bits, which
   depends on the order of the rows. The writer sums `DECIMAL(38,0)` values
   and checks the total: no partial sum of fewer than 10¹⁸ 64-bit values
   leaves 38 digits, in any order (`Spark.partial_sums_fit`), so the decimal
-  sum is the exact total, the reference's `SUM`.
+  sum is the exact total, the reference's `SUM` (`Shim.sum_empty_null`).
 * `int_avg_decimal` (spark-avg-int): Spark's `avg` of integers is a double.
   The writer divides the exact decimal sum by the count with `div`, which
-  truncates: the reference's `AVG` of integers.
+  truncates: the reference's `AVG` of integers (`Shim.avg_trunc`).
 * `null_order` (spark-null-order): Spark puts NULLs first in an ascending
-  key; the writer states the placement on every key.
+  key; the writer states the placement on every key (`Shim.null_order`).
 * `one_zero` (spark-zero-sign, spark-zero-order): `-0.0` as `0.0` where a
-  result's zero is observed (`Dialect.canon`).
+  result's zero is observed (`Dialect.canon`, `Shim.one_zero`).
 * `decimal_negate_sub` (spark-decimal-negate, SP-1): Spark's `-x` rounds a
   decimal past 34 significant digits; the writer negates as `0 - x` there,
   exact where its type keeps the scale, and refuses the rest.
@@ -75,56 +77,6 @@ theorem partial_sums_fit {vs : List Int} (hv : ∀ x ∈ vs, inI64 x = true)
   have h3 : ws.length * 2 ^ 63 < 10 ^ 18 * 2 ^ 63 := Nat.mul_lt_mul_of_pos_right (by omega) (by decide)
   have h4 : (10 : Nat) ^ 18 * 2 ^ 63 < 10 ^ 38 := by decide
   omega
-
-/-- `int_sum_decimal`: the exact sum (the `DECIMAL(38,0)` one), NULL for no
-values. The range check the writer adds raises where the reference's
-overflow issue does. -/
-def intSumDecimal (vs : List Int) : Value := if vs.length = 0 then .null else .int vs.sum
-
-/-- **`Spark.int_sum_decimal`**: the shimmed `SUM` is the reference's
-(`AggFn.sum`). -/
-theorem int_sum_decimal (vs : List Int) : intSumDecimal vs = AggFn.sum.apply (vs.map .int) :=
-  Polars.sum_empty_null vs
-
-/-- `int_avg_decimal`: the exact sum truncated by the count (Spark's `div`
-truncates, spark-int-divide), NULL for no values. -/
-def intAvgDecimal (vs : List Int) : Value :=
-  if vs.length = 0 then .null else .int (vs.sum.tdiv vs.length)
-
-/-- **`Spark.int_avg_decimal`**: the shimmed `AVG` of integers is the
-reference's (`AggFn.iavg`). -/
-theorem int_avg_decimal (vs : List Int) : intAvgDecimal vs = AggFn.iavg.apply (vs.map .int) := by
-  rw [← Polars.avg_int_declared]
-  unfold intAvgDecimal Polars.avgIntDeclared
-  split
-  · rfl
-  · rename_i h
-    rw [Polars.int_div_trunc _ (by omega)]
-
-/-! ## Sorts and zeros -/
-
-/-- Spark's placement of NULLs for a key as the writer states it: as the key
-states, and last for an `UNSPECIFIED` key (D8). Unstated, Spark puts NULLs
-first in an ascending key and last in a descending one (spark-null-order). -/
-def nullsLast (k : SortKey) : Bool := Polars.nullsLast k
-
-/-- Spark's sort comparator for keys with `NULLS FIRST` or `NULLS LAST`
-written: NULLs as written, the values by `Value.le` (NaN greatest,
-spark-nan-order). -/
-def sortWith (ks : List (SortKey × Bool)) : Row → Row → Bool := Polars.sortWith ks
-
-/-- **`Spark.null_order`**: with each key's placement written, Spark orders
-rows as the reference (`sortLe`). -/
-theorem null_order (ks : List SortKey) : sortWith (ks.map fun k => (k, nullsLast k)) = sortLe ks :=
-  Polars.null_order ks
-
-/-- `one_zero`: `Dialect.canon`, `-0.0` as `0.0`. -/
-def oneZero (c : Int) : Int := Polars.oneZero c
-
-/-- **`Spark.one_zero`**: the shim is `canon` on every code but the negative
-NaN, which Spark keeps (spark-nan-sign: `nan_kind` refines up to `canon`). -/
-theorem one_zero {c : Int} (h : c ≠ FloatCode.negNan) : oneZero c = FloatCode.canon c :=
-  Polars.one_zero h
 
 /-! ## Decimals: `-x` past 34 digits (SP-1) -/
 

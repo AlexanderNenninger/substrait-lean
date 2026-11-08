@@ -46,8 +46,8 @@ contract's preconditions.
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `LoweringDuckDB.lean`, `LoweringDuckDB/On/Guards.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `Obligations.lean` |
-| Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` lemma per shim | `PolarsShims.lean` |
-| Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` lemma per shim | `SparkShims.lean` |
+| Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `PolarsShims.lean`, `Shims.lean` |
+| Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `SparkShims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `SubstraitProfile.lean` |
@@ -180,8 +180,9 @@ other pages link here.
 - The models of the engines' own functions, and that each engine matches
   its profile: `Impl.Faithful` (`Guards.lean`) for the functions the SQL
   calls unguarded, `Profile.duckdb` (`DuckDBProfile.lean`, `EngineTables.lean`),
-  `Profile.polars` and `Polars.*` (`PolarsProfile.lean`, `PolarsShims.lean`)
-  and `Profile.spark` and `Spark.*` (`SparkProfile.lean`, `SparkShims.lean`),
+  `Profile.polars` and `Polars.*` (`PolarsProfile.lean`, `PolarsShims.lean`),
+  `Profile.spark` and `Spark.*` (`SparkProfile.lean`, `SparkShims.lean`), and
+  the shared shims' models `Shim.*` for each engine that writes them (`Shims.lean`),
   each from the engine's characterization facts
   (`characterization/<engine>/facts/`, [how they are judged](../characterization/README.md)).
   DuckDB's own tests are replayed and fuzzed against the model; the profiles
@@ -358,6 +359,7 @@ generators, then the trusted reading and writing.
 | `DuckDBProfile.lean` | `Profile.duckdb` under DuckDB's settings, as the SQL printer writes it, and `Rel.duckdb_sound` |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |
+| `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
 | `PolarsShims.lean` | The Polars shims, proved against a model of Polars's functions |
 | `PolarsProfile.lean` | `Profile.polars`, the semantics under `semantics="polars"` |
 | `SparkShims.lean` | The Spark shims, proved against a model of Spark under ANSI |

@@ -541,9 +541,13 @@ def test_an_untaken_branch_neither_raises_nor_leaks(case):
 @needs_repo
 def test_every_shim_and_guard_is_a_lean_theorem():
     """#444: each shim and guard is proved once, as `Polars.<name>` in
-    `SubstraitLean/PolarsShims.lean`; the Polars rows of the option table
-    name those theorems (a `run_cmd` there checks the rows' names)."""
-    lean = (ROOT / "SubstraitLean" / "PolarsShims.lean").read_text()
+    `SubstraitLean/PolarsShims.lean`, or as `Shim.<name>` in
+    `SubstraitLean/Shims.lean` where another engine writes it the same way;
+    the Polars rows of the option table name those theorems (a `run_cmd`
+    there checks the rows' names)."""
+    lean = "".join(
+        (ROOT / "SubstraitLean" / f).read_text() for f in ("PolarsShims.lean", "Shims.lean")
+    )
     names = [s.name for s in shims.SHIMS] + [g.flag for g in shims.GUARDS]
     missing = [n for n in names if f"theorem {n} " not in lean]
     assert missing == []

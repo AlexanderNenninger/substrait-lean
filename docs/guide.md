@@ -608,7 +608,7 @@ print(report)
 # semantics: reference
 # evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #241)
 # evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
-# evidence: spark shim, proved by Spark.int_sum_decimal on spark's model (facts spark-sum-int, spark-exec-parallel)
+# evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)
 # known about the output:
 #   rows: at most 1,000,000,000,000
 # ...
