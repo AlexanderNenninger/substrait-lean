@@ -119,6 +119,8 @@ dev = [
     "pyiceberg[sql-sqlite]>=0.12.0",
     "pyrefly>=1.4.0",
     "pytest>=9.2.0",
+    # Line and branch coverage (`poe test-cov`, #750).
+    "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.17.3",
     "snowflake-connector-python<5",
@@ -134,6 +136,16 @@ override-dependencies = ["sqlglot~=30.22.0"]
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:The 'future.infer_string' option is deprecated"]
+
+[tool.coverage.run]
+# What `poe test-cov` measures (#750): the package and the dev tools, with
+# branches, also in the Python subprocesses the tests start.
+source = ["sverify", "sverify_dev"]
+branch = true
+patch = ["subprocess"]
+
+[tool.coverage.report]
+skip_empty = true
 
 [tool.ruff]
 line-length = 100
@@ -206,6 +218,11 @@ env = { PYTEST_XDIST_AUTO_NUM_WORKERS.default = "2", SVERIFY_PROFILE.default = "
 help = "Every Python test with full Hypothesis counts, on every core (as CI and qa run them)"
 cmd = "pytest -n auto --dist worksteal"
 env = { SVERIFY_PROFILE.default = "ci" }
+
+[tool.poe.tasks.test-cov]
+help = "`test-all` with line and branch coverage of sverify and sverify_dev (#750); the JSON report goes to $COV_JSON"
+cmd = "pytest -n auto --dist worksteal --cov --cov-report=term:skip-covered --cov-report=json:${COV_JSON}"
+env = { SVERIFY_PROFILE.default = "ci", COV_JSON.default = "coverage.json" }
 
 [tool.poe.tasks.test-chaos]
 help = "Crash injection into pipeline execution (tests/chaos), streamed to a ledger and summarised; not in qa or CI, run it on homelab"
