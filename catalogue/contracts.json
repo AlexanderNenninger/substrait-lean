@@ -555,20 +555,38 @@
   "having-sum": {
     "engines": {
       "duckdb": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       },
       "polars": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
       },
       "spark": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       }
     },
     "pattern": "having",
@@ -577,20 +595,38 @@
   "having-sum-approx": {
     "engines": {
       "duckdb": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       },
       "polars": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
       },
       "spark": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       }
     },
     "pattern": "having",
@@ -599,20 +635,39 @@
   "having-sum-bound": {
     "engines": {
       "duckdb": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's float_overflow",
+          "row tested: agg.fsum's nan_creation",
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       },
       "polars": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "robust only by the engine's facts (#1045)",
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
       },
       "spark": {
-        "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; state a precondition that keeps the values away from it, or compare exact columns"
+        "causes": [
+          "row tested: agg.fsum's rounding",
+          "row tested: cmp's nan_equality",
+          "row tested: cmp's nan_order"
+        ],
+        "class": "shim",
+        "outcome": "tested"
       }
     },
     "pattern": "having",
