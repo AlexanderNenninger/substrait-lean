@@ -1,22 +1,22 @@
 """`date_part` and `date_trunc`.
 
 * Lean's semantics (`SubstraitLean/Time.lean`) agrees with DuckDB, also for
-  timestamps before 1970, at the ends of the years `chrono` represents (where
-  `date_part` becomes NULL) and of DataFusion's nanosecond range.
-* Truncating to a week, month, quarter or year outside that range is reported
-  as an error, and DataFusion running the plan fails only where an error was
-  reported.
-* Polars and DuckDB, which run the plan Lean writes, agree with both, and
-  fail where DataFusion does.
+  timestamps before 1970 and at the ends of the reference's timestamps,
+  0001-01-01 to 9999-12-31 (D32).
+* `date_part` and truncating to a week, month, quarter or year outside that
+  range are reported as errors, and DataFusion running the plan fails only
+  where an error was reported.
+* Polars and DuckDB, which run the plan Lean writes, agree with Lean, and
+  raise outside the range.
 * Contracts use that years and truncations grow with the timestamp.
 * Dates: adding days and months (clamped to the end of a shorter month),
   parts and truncation give Lean's rows on Polars and DuckDB, and fail
-  outside the dates chrono computes; Ibis's date operations that
+  outside the reference's dates; Ibis's date operations that
   DataFusion's own SQL cannot run agree with Python's calendar.
 * Times of day (`CAST(ts AS TIME)`, clock parts) and `strftime` (chrono's
-  formats) give Lean's rows on Polars and DuckDB within the years chrono
-  represents, Lean's agree with Python's calendar in years 1000 to 9999, and
-  they fail outside chrono's years.
+  formats) give Lean's rows on Polars and DuckDB within the reference's
+  timestamps, Lean's agree with Python's calendar, and they fail outside
+  them.
 * Time-based windows mean what Polars' `rolling_sum_by` and
   `group_by_dynamic` compute.
 """
@@ -42,13 +42,15 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
+from sverify.errors import UnsupportedError
 from sverify.ibis_substrait import Unsupported, to_substrait, to_substrait_json
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 
 MIN, MAX = -(2**63), 2**63 - 1
-#: DataFusion's nanosecond range, and the years `chrono` represents.
+#: The reference's timestamps, 0001-01-01 to 9999-12-31 (`Time.tsMin`,
+#: `Time.tsMax`, D32), and DataFusion's nanoseconds, which are inside them.
+TS_MIN, TS_MAX = -62135596800000000, 253402300799999999
 NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
-PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
 DAY = 86_400_000_000
 
 PARTS = [
@@ -121,10 +123,10 @@ edges = st.sampled_from(
         1,
         MIN,
         MAX,
-        PART_MIN - 1,
-        PART_MIN,
-        PART_MAX,
-        PART_MAX + 1,
+        TS_MIN - 1,
+        TS_MIN,
+        TS_MAX,
+        TS_MAX + 1,
         NS_MIN,
         NS_MAX,
         951782400000005,
@@ -132,15 +134,21 @@ edges = st.sampled_from(
         1700000000123456,
     ]
 )
-anywhere = st.one_of(edges, st.integers(MIN, MAX), st.integers(-400 * 365 * DAY, 400 * 365 * DAY))
+#: Timestamps a source can hold: the reference's 0001 to 9999 (D32); a read of
+#: one outside fails (`test_timestamps_outside_the_range_fail_the_read`).
+anywhere = st.one_of(
+    edges.filter(lambda v: TS_MIN <= v <= TS_MAX),
+    st.integers(TS_MIN, TS_MAX),
+    st.integers(-400 * 365 * DAY, 400 * 365 * DAY),
+)
 
 
 @settings(max_examples=40, deadline=None)
 @given(values=st.lists(st.one_of(st.none(), anywhere), max_size=8))
 def test_date_part_matches_duckdb(values):
-    # Outside chrono's years, Lean reports an overflow (`test_times_outside_chrono_fail`);
-    # DuckDB computes there.
-    values = [v for v in values if v is None or PART_MIN <= v <= PART_MAX]
+    # Outside the reference's timestamps, Lean reports an overflow
+    # (`test_times_outside_the_range_fail`); DuckDB computes there.
+    values = [v for v in values if v is None or TS_MIN <= v <= TS_MAX]
     sql = "SELECT " + ", ".join(f"date_part('{p}', ts) AS {p}" for p in PARTS) + " FROM r"
     got, expected = lean_and_duckdb(sql, values)
     assert canonical(got) == canonical(expected)
@@ -160,7 +168,7 @@ def test_date_trunc_matches_duckdb_where_no_issue(unit, values):
     # DuckDB reads ±(2⁶³ - 1) as the timestamps ±infinity, which it does not
     # truncate (#240).
     calendar = unit in ("week", "month", "quarter", "year")
-    lo, hi = (NS_MIN + 400 * DAY, NS_MAX) if calendar else (MIN + DAY, MAX - 1)
+    lo, hi = (TS_MIN, TS_MAX) if calendar else (MIN + DAY, MAX - 1)
     values = [v for v in values if v is None or lo <= v <= hi]
     got, expected = lean_and_duckdb(sql, values)
     assert canonical(got) == canonical(expected)
@@ -168,19 +176,93 @@ def test_date_trunc_matches_duckdb_where_no_issue(unit, values):
         assert canonical(rows) == canonical(expected), engine
 
 
-@pytest.mark.parametrize("unit", ["week", "month", "quarter", "year"])
-@pytest.mark.parametrize("ts", [NS_MAX + 1, NS_MIN - 1, NS_MIN + 1, MIN])
-def test_calendar_truncation_outside_nanoseconds_fails(unit, ts):
-    """`Issue.overflow`: where DataFusion fails (or computes garbage), the
-    engines raise. (`NS_MIN + 1` is 1677-09-21 00:12, after its truncations.)"""
-    sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
-    with pytest.raises(polars_engine.Overflow):
-        engines(sql, [ts])
+#: D32's probe points, each at 23:59:59.999999: the ends of the reference's
+#: timestamps, leap days (1900 is not a leap year), and both sides of the
+#: Gregorian switch, which the proleptic calendar does not skip. The facts
+#: `<engine>-calendar-range` record the same rows on DuckDB, Polars and Spark.
+D32_POINTS: dict[str, int | None] = {
+    "0001-01-01": -62135510400000001,
+    "0004-02-29": -62035804800000001,
+    "1582-10-04": -12220156800000001,
+    "1582-10-15": -12219206400000001,
+    "1600-02-29": -11670912000000001,
+    "1900-02-28": -2203891200000001,
+    "1900-03-01": -2203804800000001,
+    "2000-02-29": 951868799999999,
+    "9999-12-31": 253402300799999999,
+}
+
+
+def test_d32_probe_points():
+    """At D32's probe points, Lean, DuckDB and Polars give the same calendar
+    parts and truncations: 0001-01-01 is a Monday, its own week; the week of
+    9999-12-31 starts 9999-12-27, in ISO week 52."""
+    values = list(D32_POINTS.values())
+    sql = (
+        "SELECT "
+        + ", ".join(f"date_trunc('{u}', ts) AS t_{u}" for u in ("week", "month", "quarter", "year"))
+        + ", "
+        + ", ".join(
+            f"date_part('{p}', ts) AS {p}"
+            for p in ("year", "quarter", "month", "week", "day", "dow", "doy")
+        )
+        + " FROM r"
+    )
+    got, expected = lean_and_duckdb(sql, values)
+    assert canonical(got) == canonical(expected)
+    for engine, rows in engines(sql, values).items():
+        assert canonical(rows) == canonical(expected), engine
+    days = 86_400_000_000
+    first, last = got[0], got[-1]
+    assert first[:4] == (TS_MIN,) * 4 and first[4:] == (1, 1, 1, 1, 1, 1, 1)
+    assert last[0] == TS_MAX + 1 - 5 * days and last[4:] == (9999, 4, 12, 52, 31, 5, 365)
+
+
+@pytest.mark.parametrize("ts", [TS_MAX + 1, TS_MIN - 1, MIN])
+def test_timestamps_outside_the_range_fail_the_read(ts):
+    """A TIMESTAMP of the reference lies in 0001 to 9999 by its type (D32):
+    a source value outside it fails the read, naming the column."""
     con = connect()
-    put_table(con, "r", pa.table({"ts": pa.array([ts], pa.timestamp("us"))}))
-    if ts >= DUCKDB_MIN:
-        with pytest.raises(duckdb.Error, match="date_trunc"):
-            run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "duckdb")
+    with pytest.raises(
+        UnsupportedError, match=r"ts holds timestamps outside 0001–9999 \(1, e\.g\. "
+    ):
+        put_table(con, "r", pa.table({"ts": pa.array([ts, 0], pa.timestamp("us"))}))
+    with pytest.raises(UnsupportedError, match=r"d holds dates outside 0001–9999 \(2, e\.g\. "):
+        put_table(
+            con,
+            "r",
+            pa.table({"d": pa.array([DAY_MAX + 1, DAY_MIN - 1, 0], pa.int32()).cast(pa.date32())}),
+        )
+
+
+def test_a_scan_outside_the_range_fails_the_read(tmp_path):
+    """A table read where it lies (`Scan`): its Parquet statistics discharge
+    the range where they cover it, and one range predicate decides it
+    otherwise (D32)."""
+    import pyarrow.parquet as pq
+
+    from sverify._scan import Scan
+
+    ok, bad = tmp_path / "ok.parquet", tmp_path / "bad.parquet"
+    schema = pa.schema([("d", pa.date32())])
+    pq.write_table(pa.table({"d": pa.array([0, DAY_MAX], pa.int32()).cast(pa.date32())}), ok)
+    pq.write_table(pa.table({"d": pa.array([0, DAY_MAX + 1], pa.int32()).cast(pa.date32())}), bad)
+    con = connect()
+    con.put("ok", Scan(files=(str(ok),), schema=schema))
+    assert con.rows("ok") == [(date(1970, 1, 1),), (date(9999, 12, 31),)]
+    with pytest.raises(
+        UnsupportedError, match=r"d holds dates outside 0001–9999 \(1, e\.g\. 10000-01-01\)"
+    ):
+        con.put("bad", Scan(files=(str(bad),), schema=schema))
+    assert "bad" not in con._tables
+
+
+def test_calendar_truncation_of_a_computed_timestamp_outside_the_range_fails():
+    """`Issue.overflow`: a computed timestamp past 9999-12-31 raises when it
+    is truncated (D32); a column read is in range by its type."""
+    sql = "SELECT date_trunc('month', ts + INTERVAL 2 DAY) AS x FROM r"
+    with pytest.raises(polars_engine.Overflow):
+        engines(sql, [TS_MAX - DAY])
 
 
 T = ibis.table({"ts": "timestamp", "n": "int64"}, name="t")
@@ -198,10 +280,19 @@ SINCE_2000 = T.ts.between(datetime(2000, 1, 1), datetime(2100, 1, 1))
 @pytest.mark.parametrize(
     ("label", "expr", "errs", "warns"),
     [
-        ("year", T.select(y=T.ts.year()), [], []),
-        ("hour, unbounded", T.select(h=T.ts.truncate("h")), ["overflow"], []),
+        # A column read lies in 0001 to 9999 by its type (D32).
+        ("year, column read", T.select(y=T.ts.year()), [], []),
+        ("year, bounded", T.filter(SINCE_2000).select(y=T.ts.year()), [], []),
+        ("hour, column read", T.select(h=T.ts.truncate("h")), [], []),
         ("hour, bounded", T.filter(SINCE_2000).select(h=T.ts.truncate("h")), [], []),
-        ("month, unbounded", T.select(m=T.ts.truncate("M")), ["overflow"], []),
+        ("month, column read", T.select(m=T.ts.truncate("M")), [], []),
+        # A computed timestamp may leave it, so truncating it may raise.
+        (
+            "month, computed",
+            T.select(m=(T.ts + ibis.interval(days=1)).truncate("M")),
+            ["overflow"],
+            [],
+        ),
         ("month, bounded", T.filter(SINCE_2000).select(m=T.ts.truncate("M")), [], []),
         ("week, bounded", T.filter(SINCE_2000).select(w=T.ts.truncate("W")), [], []),
     ],
@@ -221,9 +312,13 @@ def test_years_and_truncations_grow_with_the_timestamp():
     assert report.facts["y"] == "the integer 2024"
 
 
-def test_parts_outside_chrono_may_be_null():
-    report = sv.verify(T.select(y=T.ts.year()), ensures=[_.y.notnull()])
-    assert not report.proved
+def test_parts_of_a_column_read_are_not_null():
+    """A timestamp column lies in 0001 to 9999 by its type, where `date_part`
+    is total (D32), so a part of a non-NULL column is not NULL."""
+    report = sv.verify(
+        T.select(y=T.ts.year()), requires={"t": [_.ts.notnull()]}, ensures=[_.y.notnull()]
+    )
+    assert report.proved, str(report)
 
 
 #: Pipelines over `t(ts)`, on timestamps including the extremes.
@@ -236,8 +331,18 @@ PIPELINES = [
 ]
 
 
+#: DataFusion refuses calendar truncation (upstream/bugs/DF-17.json): only the
+#: last pipeline, a truncation to a day, runs there.
+DF_PIPELINES = [
+    pytest.param(i, marks=pytest.mark.skip(reason="DF-17: calendar truncation refused"))
+    if i < len(PIPELINES) - 1
+    else i
+    for i in range(len(PIPELINES))
+]
+
+
 @pytest.mark.backend("datafusion")
-@pytest.mark.parametrize("i", range(len(PIPELINES)))
+@pytest.mark.parametrize("i", DF_PIPELINES)
 @settings(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
@@ -265,11 +370,8 @@ def test_datafusion_fails_only_where_reported(i, values):
 # --------------------------------------------------------------------------
 # Dates: arithmetic with days and months, parts and truncation
 
-#: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
-#: within DataFusion's nanoseconds (`Time.nsDayMin`, `Time.nsDayMax`).
 #: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`, #251).
 DAY_MIN, DAY_MAX = -719162, 2932896
-NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
 
 #: Date arithmetic and parts, in Ibis: Lean gets the Ibis producer's plan
 #: and DataFusion runs Ibis's SQL. (DuckDB's SQL types `DATE + INTERVAL` as
@@ -343,10 +445,9 @@ def test_date_arithmetic(values):
 
 
 @settings(max_examples=30, deadline=None)
-@given(values=st.lists(st.one_of(st.none(), st.integers(NS_DAY_MIN + 400, NS_DAY_MAX)), max_size=8))
+@given(values=st.lists(st.one_of(st.none(), st.integers(DAY_MIN, DAY_MAX)), max_size=8))
 def test_date_trunc_of_dates(values):
-    """Within DataFusion's nanoseconds, where it truncates dates correctly;
-    Polars and DuckDB give Lean's rows."""
+    """Within the reference's dates, Polars and DuckDB give Lean's rows."""
     runs = date_runs(TRUNC_EXPR, values)
     expected = canonical(runs.pop("lean"))
     for engine, rows in runs.items():
@@ -359,15 +460,12 @@ def test_date_trunc_of_dates(values):
         (R_DATES.d + ibis.interval(days=1), DAY_MAX),
         (R_DATES.d - ibis.interval(days=1), DAY_MIN),
         (R_DATES.d + ibis.interval(months=1), DAY_MAX - 10),
-        (R_DATES.d + ibis.interval(days=1), DAY_MAX + 5),
-        (R_DATES.d.truncate("M"), NS_DAY_MAX + 1),
-        (R_DATES.d.truncate("D"), NS_DAY_MIN - 1),
     ],
 )
 def test_dates_outside_the_range_fail(x, d):
     """`rangeIssue`: date arithmetic that leaves the reference's dates (#251),
-    and `date_trunc` outside DataFusion's nanoseconds: the checker reports an
-    error and the engines raise."""
+    and `date_trunc` outside them (D32): the checker reports an error and the
+    engines raise."""
     con = connect()
     put_table(con, "r", pa.table({"d": pa.array([d], pa.int32()).cast(pa.date32())}))
     expr = R_DATES.select(x=x)
@@ -475,10 +573,8 @@ def tod_runs(
     return {"lean": lean_values(json.dumps(plan))} | {e: runs[e]() for e in engines}
 
 
-#: Within chrono's years, and DuckDB's.
-chrono = st.one_of(
-    edges.filter(lambda v: PART_MIN <= v <= PART_MAX), st.integers(PART_MIN, PART_MAX)
-)
+#: Within the reference's timestamps (D32).
+in_range = st.one_of(edges.filter(lambda v: TS_MIN <= v <= TS_MAX), st.integers(TS_MIN, TS_MAX))
 
 
 def python_tod(v: int) -> tuple:
@@ -496,11 +592,11 @@ FOUR_DIGITS = (
 
 
 @settings(max_examples=40, deadline=None)
-@given(values=st.lists(st.one_of(st.none(), chrono), max_size=8))
+@given(values=st.lists(st.one_of(st.none(), in_range), max_size=8))
 def test_times_of_day_and_formats_match_the_reference(values):
-    """`CAST(ts AS TIME)`, `to_char` (chrono's `%Y`: four digits, a sign
-    outside 0 to 9999) and clock parts of a time: Polars and DuckDB give
-    Lean's rows, and Lean's are Python's in years 1000 to 9999."""
+    """`CAST(ts AS TIME)`, `to_char` (`%Y` in four digits) and clock parts of
+    a time: Polars and DuckDB give Lean's rows, and Lean's are Python's in
+    years 1000 to 9999."""
     runs = tod_runs(TOD_EXPR, values)
     expected = runs.pop("lean")
     for engine, rows in runs.items():
@@ -523,7 +619,7 @@ TIME_UNITS = {"h": 3_600_000_000, "m": 60_000_000, "s": 1_000_000, "ms": 1_000}
 
 @pytest.mark.backend("duckdb")
 @settings(max_examples=40, deadline=None)
-@given(values=st.lists(st.one_of(st.none(), chrono), max_size=8))
+@given(values=st.lists(st.one_of(st.none(), in_range), max_size=8))
 def test_time_arithmetic_wraps_around_midnight(values):
     """#507: a time of day plus an interval wraps around midnight, both ways,
     and truncation floors it, in Lean as in DuckDB (`duckdb-time-plus-interval`)."""
@@ -561,10 +657,14 @@ def test_time_arithmetic_outside_the_model_is_refused():
     assert code != 0 and "months" in out + err
 
 
-@pytest.mark.parametrize("t", [R_TS.ts.time(), R_TS.ts.strftime("%Y")])
-def test_times_outside_chrono_fail(t):
+EARLIER = R_TS.ts - ibis.interval(days=1)
+
+
+@pytest.mark.parametrize("t", [EARLIER.time(), EARLIER.strftime("%Y")])
+def test_times_outside_the_range_fail(t):
+    """A computed timestamp before 0001-01-01 raises in a calendar function."""
     con = connect()
-    put_table(con, "r", pa.table({"ts": pa.array([PART_MIN - 1], pa.timestamp("us"))}))
+    put_table(con, "r", pa.table({"ts": pa.array([TS_MIN], pa.timestamp("us"))}))
     expr = R_TS.select(t=t)
     report = sv.verify(expr, on_inferred="off")
     assert "overflow" in [i.kind for i in report.errors]

@@ -37,7 +37,7 @@ from test_sql_snowflake import (
     fixture_plan,
     run_differential,
 )
-from test_time import DAY, MAX, MIN, NS_MAX, NS_MIN, PARTS, UNITS, anywhere
+from test_time import D32_POINTS, DAY, MAX, MIN, PARTS, TS_MAX, TS_MIN, UNITS, anywhere
 
 pytestmark = pytest.mark.backend("spark")
 
@@ -288,8 +288,24 @@ def spark_rows(exprs: list[str], values: list[int | None]) -> list[tuple]:
 @settings(max_examples=15, deadline=None, suppress_health_check=list(HealthCheck))
 @given(values=st.lists(st.one_of(st.none(), anywhere), min_size=1, max_size=8))
 def test_date_part_matches_lean(spark, values):
+    # Within the reference's timestamps: outside them the plan raises (D32).
+    values = [v for v in values if v is None or TS_MIN <= v <= TS_MAX] or [None]
     sql = "SELECT " + ", ".join(f"date_part('{p}', ts) AS {p}" for p in PARTS) + " FROM r"
     got = spark_rows([SPARK.date_part(p, "ts") for p in PARTS], values)
+    assert canonical(got) == canonical(polars_rows(sql, values))
+
+
+def test_d32_probe_points(spark):
+    """D32's probe points (`test_time.D32_POINTS`): Spark's parts and
+    truncations are Lean's, as `spark-calendar-range` records."""
+    values = list(D32_POINTS.values())
+    for unit in ("week", "month", "quarter", "year"):
+        sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
+        got = spark_rows([as_micros(SPARK.date_trunc(unit, "ts"))], values)
+        assert canonical(got) == canonical(polars_rows(sql, values)), unit
+    parts = ["year", "quarter", "month", "week", "day", "dow", "doy"]
+    sql = "SELECT " + ", ".join(f"date_part('{p}', ts) AS {p}" for p in parts) + " FROM r"
+    got = spark_rows([SPARK.date_part(p, "ts") for p in parts], values)
     assert canonical(got) == canonical(polars_rows(sql, values))
 
 
@@ -299,7 +315,7 @@ def test_date_trunc_matches_lean(spark, values):
     # Where Lean reports no issue (as in `test_time`).
     for unit in UNITS:
         calendar = unit in ("week", "month", "quarter", "year")
-        lo, hi = (NS_MIN + 400 * DAY, NS_MAX) if calendar else (MIN + DAY, MAX)
+        lo, hi = (TS_MIN, TS_MAX) if calendar else (MIN + DAY, MAX)
         vs = [v for v in values if v is None or lo <= v <= hi] or [None]
         sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
         got = spark_rows([as_micros(SPARK.date_trunc(unit, "ts"))], vs)

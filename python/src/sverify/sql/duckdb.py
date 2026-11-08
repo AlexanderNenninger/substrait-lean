@@ -26,10 +26,10 @@ the generated lowering's template, proved in Lean (`lowered`,
 
 Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
-proleptic calendar with a year 0. DuckDB's timestamps reach beyond the years
-chrono represents, so `date_part` is NULL outside them, as in Lean, and date
-arithmetic raises outside them, where DataFusion fails. Adding months clamps
-to the end of the month, as `Time.addMonths` does. The
+proleptic calendar with a year 0. DuckDB's timestamps reach beyond the
+reference's (0001-01-01 to 9999-12-31, D32), so the writer raises outside them
+before `date_part`, truncation or date arithmetic. Adding months clamps to the
+end of the month, as `Time.addMonths` does. The
 timestamp 2⁶³ - 1 µs is DuckDB's `infinity` (and its range starts in 290309
 BC), which `date_trunc` leaves as it is.
 """
@@ -39,9 +39,6 @@ from dataclasses import dataclass
 
 from sverify.black_box import BlackBox
 from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind, Lst
-
-#: The timestamps chrono represents (`Time.partMin`, `Time.partMax`).
-PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
 
 
 @dataclass(frozen=True)
@@ -253,14 +250,10 @@ class DuckDBDialect(Dialect):
         return row.duckdb.format(v)
 
     def date_part(self, part: str, ts: str) -> str:
-        us = f"epoch_us({ts})"
-        inside = f"{us} BETWEEN {self.int_lit(PART_MIN)} AND {self.int_lit(PART_MAX)}"
-        value = self.cast(f"date_part({self.str_lit(part)}, {ts})", "int")
-        return f"(CASE WHEN {inside} THEN {value} END)"
+        return self.cast(f"date_part({self.str_lit(part)}, {ts})", "int")
 
     def day_part(self, part: str, d: str) -> str:
-        # A DATE's own parts, which are its midnight's: no cast, and no
-        # second range check (chrono's days are `PART_MIN` to `PART_MAX`).
+        # A DATE's own parts, which are its midnight's: no cast.
         if part in ("hour", "minute", "second", "millisecond", "microsecond"):
             return super().day_part(part, d)
         return self.cast(f"date_part({self.str_lit(part)}, {d})", "int")

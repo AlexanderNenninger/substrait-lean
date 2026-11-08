@@ -86,7 +86,7 @@ contract's preconditions.
 | Rewrites from contract facts and keys keep the result | `eval` | `Rel.optimize_sound` | `Semantic.lean` |
 | A double `SUM` or `AVG` is within the reported `epsilon` | the reals (`float-bounds/`) | `StdModel.epsilon_sum_cr`, `StdModel.epsilon_avg_cr` (against the reference's correctly rounded value, D25), `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
 | Sharded double sums are near the sequential sum | the reals (`float-bounds/`) | `StdModel.sharded_near`, `StdModel.sharded_avg_near` | `float-bounds/FloatBounds/Shard.lean` |
-| A group's double sum, in any order an engine adds, is within `(γₙ + u) · Σ(\|xᵢ\| + tiny)` of the reference's; a group passing the engine-computed check `\|fl(v − t)\| > fl(cₙ · fl(A + n · tiny))` is farther than twice that from `t`, so every evaluation of its sum lies on the reference's side of `t` | the reals (`float-bounds/`) | `StdModel.epsilon_group`, `StdModel.mag_le_absSummed`, `StdModel.check_sound`, `margin_sound`, `StdModel.margin_check` | `float-bounds/FloatBounds/Margin.lean` |
+| A group's double sum, in any order an engine adds, is within `(γₙ + u) · Σ(\|xᵢ\| + tiny)` of the reference's; a group passing the engine-computed check `\|fl(v − t)\| > fl(cₙ · fl(A + n · tiny))` is farther than twice that from `t`, so every evaluation of its sum lies on the reference's side of `t` | the reals (`float-bounds/`) | `StdModel.epsilon_group`, `StdModel.mag_le_absSummed`, `StdModel.check_sound`, `margin_sound`, `StdModel.margin_check`, `StdModel.epsilon_group_avg`, `StdModel.check_sound_avg`, `StdModel.margin_check_avg` | `float-bounds/FloatBounds/Margin.lean` |
 | A sink's refreshes, with crashes, late writes of crashed processes, lost acknowledgements, racing writers, other applications' commits and deploys, never apply a change to a table it was not computed from, and the sink's record names its table. They assume only that the state is reachable (`Reachable`), for a durable source and writers deciding as `Refresh.next` (`tests/test_refresh_next.py`) | the refresh protocol | `Refresh.no_corruption`, `Refresh.record_describes_table` | `Refresh.lean` |
 
 `Examples.lean` prints the axioms of the main theorems with
@@ -214,6 +214,17 @@ other pages link here.
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside D16. Raising only where the reference may is a separate claim
   (`Rel.duckdb_refines`' second part), outside this chain.
+
+  Beside D16, the margin check of a threshold filter on a double `SUM` or
+  `AVG` (#929, `Rel.marginCheck`): that the plan it writes computes, per group,
+  the test `StdModel.margin_check` is about, and that the check and the plan
+  read one snapshot. `Report.run` makes the snapshot a condition of the run
+  (`Report.check_margins`): every input the check reads is an Arrow table, a
+  table DuckDB holds (`Resident`), or a Delta or Iceberg table pinned to one
+  version (`Scan`, `name@vN`). An input of another kind, which may change
+  between the two reads, warns, and refuses the run under the deterministic
+  profile (`reproducible=`). `tests/test_margin.py` runs the check against
+  its formula in Python's doubles.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
@@ -289,6 +300,7 @@ generators, then the trusted reading and writing.
 | Module | Job |
 |---|---|
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
+| `DataFusion.lean` | DataFusion's writer: its refusals and join rewrite, a tier-3 engine (trusted) |
 | `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
 | `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
 | `Contracts/Transfer.lean` | Abstract expression evaluation: `UnFn.abs`, `BinFn.abs`, `Expr.abs` |
@@ -336,6 +348,7 @@ generators, then the trusted reading and writing.
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
 | `EngineSound.lean` | What an engine's model is sound for (#900): `Engine.Sound` per engine, `Engine.contract_sound` on the model's rows, and `Engine.contract_sound_runs` on the actual output under the transfer check |
+| `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
