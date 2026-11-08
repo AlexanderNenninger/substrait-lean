@@ -369,9 +369,11 @@ parser reads, and the report says `"profile": "polars"`. What is proved:
 
 On the routes: a plan proved under `Profile.polars` runs on Polars by
 `native`, where `polars_engine` runs Polars's `//` and `%` for the stated
-calls and the translation's shims elsewhere. DuckDB, DataFusion and Spark
-refuse a stated `FLOOR` before they run (`sverify._support`), and the
-transfer check fails on `division_type`. The re-check route targets the
+calls and the translation's shims elsewhere. The SQL writer computes a
+stated `FLOOR` on every dialect from the truncating operations, as
+`Expr.floorDivOf` and `Expr.floorModOf` do, so the written plan runs on
+DuckDB, Spark and Snowflake too; the route to DuckDB is refused by the
+transfer check, which fails on `division_type`. The re-check route targets the
 profile too: `--contract` with `"profile": "polars"` proves the reference
 plan again, its unstated `//` and `%` being the reference's `TRUNCATE`,
 which the translation shims. Tested, and trusted: that Polars computes
