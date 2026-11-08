@@ -98,8 +98,8 @@ inductive Issue where
   `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`
   outside `[-1, 1]`, `atan2(0, 0)`, `logb` to a base that is not positive or
   is 1, a shift count outside `0`–`63`, a `substring` offset outside
-  `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336: the
-  reference's `substring_range`, a limit DuckDB shares). The reference raises (Substrait's
+  `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336,
+  where DuckDB raises too). The reference raises (Substrait's
   `on_domain_error` = ERROR); DataFusion gives NaN, ±∞ or a wrapped shift
   instead, which an error allows (a refinement, epic #185). -/
   | domain
