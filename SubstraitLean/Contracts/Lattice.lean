@@ -1048,4 +1048,58 @@ theorem mapAbs₂_top_sound {tbl : NumKind → NumKind → Option NumKind} {g : 
       simp only [mapAbs₂] at hc'
       split at hc' <;> simp_all)
 
+/-! ### Membership up to `canon` (D31)
+
+The analysis bounds a double by its canonical code, so `-0.0` and `0.0`, and
+the two NaNs, are in the same abstract values, in lists and structs too. -/
+
+theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by
+  simp only [Value.canonV]
+theorem Value.canonV_list (vs : List Value) : (Value.list vs).canonV = .list (vs.map Value.canonV) := by
+  simp only [Value.canonV]
+theorem Value.canonV_struct (vs : List Value) : (Value.struct vs).canonV = .struct (vs.map Value.canonV) := by
+  simp only [Value.canonV]
+
+mutual
+theorem AVal.memR_canonV (a : AVal) : ∀ v : Value, a.MemR v.canonV ↔ a.MemR v
+  | .float c => by
+    rw [Value.canonV_float]
+    show a.MemNum .float (FloatCode.canon c) ↔ a.MemNum .float c
+    unfold AVal.MemNum
+    rw [NumKind.norm_float, NumKind.norm_float, FloatCode.canon_idem]
+  | .list vs => by
+    rw [Value.canonV_list]
+    simp only [AVal.MemR, List.length_map]
+    cases a.elems with
+    | none => exact Iff.rfl
+    | some e => simp only []; rw [AVal.memAll_canonV e vs]
+  | .struct vs => by
+    rw [Value.canonV_struct]
+    simp only [AVal.MemR]
+    cases a.fields with
+    | none => exact Iff.rfl
+    | some fs => simp only []; rw [AVal.memFields_canonV fs vs]
+  | .null | .bool _ | .int _ | .date _ | .ts _ | .tod _ | .dec _ _ | .str _ => by
+    simp only [Value.canonV]
+theorem AVal.memAll_canonV (e : AVal) : ∀ vs : List Value, AVal.MemAll e (vs.map Value.canonV) ↔ AVal.MemAll e vs
+  | [] => Iff.rfl
+  | v :: vs => by
+    simp only [List.map_cons, AVal.MemAll]; rw [AVal.memR_canonV e v, AVal.memAll_canonV e vs]
+theorem AVal.memFields_canonV : ∀ (fs : List AVal) (vs : List Value),
+    AVal.MemFields fs (vs.map Value.canonV) ↔ AVal.MemFields fs vs
+  | [], [] => Iff.rfl
+  | f :: fs, v :: vs => by
+    simp only [List.map_cons, AVal.MemFields]; rw [AVal.memR_canonV f v, AVal.memFields_canonV fs vs]
+  | [], _ :: _ | _ :: _, [] => by simp [AVal.MemFields]
+end
+
+
+theorem Value.canonV_eq_null {v : Value} : v.canonV = .null ↔ v = .null := by
+  cases v <;> simp [Value.canonV]
+
+theorem AVal.mem_canonV {a : AVal} {v : Value} : a.Mem v.canonV ↔ a.Mem v := AVal.memR_canonV a v
+
+theorem AVal.mem_of_canonV_eq {a : AVal} {v w : Value} (h : v.canonV = w.canonV) (hw : a.Mem w) :
+    a.Mem v := AVal.mem_canonV.mp (h ▸ AVal.mem_canonV.mpr hw)
+
 end Substrait

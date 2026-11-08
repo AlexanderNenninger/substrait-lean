@@ -173,7 +173,9 @@ def refineCard (env : List AVal) (i : Nat) (w : Value) (f : Int → Bound → Bo
 its code within `-c` and `c`, inclusive unless `strict`. -/
 def refineAbs (env : List AVal) (i : Nat) (w : Value) (strict : Bool) : List AVal :=
   match w with
-  | .float c => refineCol env i
+  | .float c =>
+    let c := FloatCode.canon c
+    refineCol env i
       (·.nonNullNum .float (·.meet (if strict then ⟨some (-c + 1), some (c - 1)⟩ else ⟨some (-c), some c⟩)))
   | _ => env
 
@@ -402,17 +404,22 @@ theorem not_isNull {v : Value} (h : (UnFn.apply .not (UnFn.apply .isNull v)).isT
     v ≠ .null := by
   cases v <;> simp_all [UnFn.apply, Value.isTrue]
 
-/-- SQL `v = w` is TRUE only when both are the same non-NULL value. -/
+theorem Value.canonV_val (k : NumKind) (i : Int) : (k.val i).canonV = k.val (k.norm i) := by
+  cases k <;> simp only [NumKind.val, Value.canonV, NumKind.norm_float, NumKind.norm_int,
+    NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
+
+/-- SQL `v = w` is TRUE only when both are one non-NULL value up to `canon`
+(`-0.0 = 0.0`, D31). -/
 theorem eq_true_same {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) :
-    v = w ∧ v ≠ .null := by
+    v.canonV = w.canonV ∧ v ≠ .null := by
   cases hv : v.numOf? with
   | some p =>
     obtain ⟨k, i⟩ := p
     rw [Value.numOf?_some hv] at h ⊢
     obtain ⟨x, rfl, h⟩ := cmp_num' (.inl rfl) h
     rw [BinFn.eq_vals] at h
-    have : i = x := by by_cases hx : i = x <;> simp_all
-    subst this; exact ⟨rfl, NumKind.val_ne_null _ _⟩
+    have : k.norm i = k.norm x := by by_cases hx : k.norm i = k.norm x <;> simp_all
+    exact ⟨by rw [Value.canonV_val, Value.canonV_val, this], NumKind.val_ne_null _ _⟩
   | none =>
     cases hw : w.numOf? with
     | some q =>
@@ -420,12 +427,16 @@ theorem eq_true_same {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) :
       rw [Value.numOf?_some hw, BinFn.cmp_other_num (.inl rfl) k' j hv] at h; cases h
     | none =>
       cases v <;> cases w <;> simp only [Value.numOf?, reduceCtorEq] at hv hw <;>
-        simp [BinFn.apply, Value.isTrue] at h ⊢
+        simp [BinFn.apply, Value.isTrue, Value.canonV] at h ⊢
       all_goals
         rename_i x y
-        by_cases hxy : x = y
-        · simp [hxy]
-        · simp [hxy] at h
+        first
+        | (by_cases hxy : x = y
+           · simp [hxy]
+           · simp [hxy] at h)
+        | (by_cases hxy : x.map Value.canonV = y.map Value.canonV
+           · simp [hxy]
+           · simp [hxy] at h)
 
 /-- `<` with a NULL side is never TRUE, nor is its negation; by `rfl` on each
 value, without unfolding `BinFn.apply` under `simp`. -/
@@ -539,45 +550,63 @@ theorem allMatch_true {v : Value} {p : Value → Value}
       · exact ih h.2 x hx
   all_goals simp [HoFn.apply, Value.isTrue] at h
 
+/-- `-x` of a negative canonical code is its code negation (D31). -/
+theorem canon_negI_of_neg {a : Int} (ha : FloatCode.canon a < 0) :
+    FloatCode.canon (FloatCode.negI a) = -FloatCode.canon a := by
+  rw [FloatCode.canon_negI_neg]
+  have h0 : FloatCode.negZero = -(2 * (FloatCode.maxMag : Int) + 6) := fp64.negZero_eq
+  have h1 : FloatCode.negNan = -(2 * (FloatCode.maxMag : Int) + 5) := fp64.negNan_eq
+  apply fp64.canon_eq_self
+  show -FloatCode.canon a ≠ FloatCode.negZero ∧ -FloatCode.canon a ≠ FloatCode.negNan
+  constructor <;> omega
+
 theorem absF_lt {v : Value} {c : Int}
     (h : (BinFn.apply .lt (if (BinFn.apply .lt v (.float 0)).isTrue then UnFn.apply .fneg v else v)
-      (.float c)).isTrue = true) : ∃ a, v = .float a ∧ -c < a ∧ a < c := by
+      (.float c)).isTrue = true) :
+    ∃ a, v = .float a ∧ -FloatCode.canon c < FloatCode.canon a ∧ FloatCode.canon a < FloatCode.canon c := by
   cases v
   case float a =>
     refine ⟨a, rfl, ?_⟩
     have e := BinFn.lt_vals .float .float a 0
     simp only [NumKind.val] at e
-    by_cases ha : a < 0
-    · have e2 := BinFn.lt_vals .float .float (-a) c
+    rw [NumKind.norm_float, NumKind.norm_float, FloatCode.canon_zero] at e
+    by_cases ha : FloatCode.canon a < 0
+    · have e2 := BinFn.lt_vals .float .float (FloatCode.negI a) c
       simp only [NumKind.val] at e2
-      simp [e, ha, UnFn.apply, FloatCode.neg, e2] at h; omega
+      rw [NumKind.norm_float, NumKind.norm_float, canon_negI_of_neg ha] at e2
+      simp [e, ha, UnFn.apply, e2] at h; omega
     · have e2 := BinFn.lt_vals .float .float a c
       simp only [NumKind.val] at e2
+      rw [NumKind.norm_float, NumKind.norm_float] at e2
       simp [e, ha, e2] at h; omega
   all_goals simp [BinFn.apply, Value.numPair, Value.isTrue] at h
 
 theorem absF_le {v : Value} {c : Int}
     (h : (UnFn.apply .not (BinFn.apply .lt (.float c)
       (if (BinFn.apply .lt v (.float 0)).isTrue then UnFn.apply .fneg v else v))).isTrue = true) :
-    ∃ a, v = .float a ∧ -c ≤ a ∧ a ≤ c := by
+    ∃ a, v = .float a ∧ -FloatCode.canon c ≤ FloatCode.canon a ∧ FloatCode.canon a ≤ FloatCode.canon c := by
   cases v
   case float a =>
     refine ⟨a, rfl, ?_⟩
     have e := BinFn.lt_vals .float .float a 0
     simp only [NumKind.val] at e
-    by_cases ha : a < 0
-    · have e2 := BinFn.lt_vals .float .float c (-a)
+    rw [NumKind.norm_float, NumKind.norm_float, FloatCode.canon_zero] at e
+    by_cases ha : FloatCode.canon a < 0
+    · have e2 := BinFn.lt_vals .float .float c (FloatCode.negI a)
       simp only [NumKind.val] at e2
-      simp [e, ha, UnFn.apply, FloatCode.neg, e2] at h; omega
+      rw [NumKind.norm_float, NumKind.norm_float, canon_negI_of_neg ha] at e2
+      simp [e, ha, UnFn.apply, e2] at h; omega
     · have e2 := BinFn.lt_vals .float .float c a
       simp only [NumKind.val] at e2
+      rw [NumKind.norm_float, NumKind.norm_float] at e2
       simp [e, ha, e2, UnFn.apply] at h; omega
   all_goals simp [BinFn.apply, Value.numPair, Value.isTrue, UnFn.apply] at h
 
 theorem refineAbs_sound {env : List AVal} {row : Row} {i : Nat} {w : Value} {strict : Bool}
     (h : EnvMem env row)
     (hw : ∀ c, w = .float c → ∃ a, row.getD i .null = .float a ∧
-      (if strict then -c < a ∧ a < c else -c ≤ a ∧ a ≤ c)) :
+      (if strict then -FloatCode.canon c < FloatCode.canon a ∧ FloatCode.canon a < FloatCode.canon c
+       else -FloatCode.canon c ≤ FloatCode.canon a ∧ FloatCode.canon a ≤ FloatCode.canon c)) :
     EnvMem (refineAbs env i w strict) row := by
   unfold refineAbs
   split
@@ -587,6 +616,7 @@ theorem refineAbs_sound {env : List AVal} {row : Row} {i : Nat} {w : Value} {str
     have hm := h i
     rw [ha] at hm ⊢
     refine nonNullNum_mem (k := .float) hm fun b hmb => Bound.mem_meet hmb ?_
+    rw [NumKind.norm_float]
     cases strict <;> simp only [Bool.false_eq_true, ↓reduceIte] at hb ⊢ <;>
       exact ⟨fun l hl => by cases hl; omega, fun u hu => by cases hu; omega⟩
   · exact h
@@ -645,12 +675,17 @@ theorem Expr.refineL_sound' (env : List AVal) (e : Expr) : ∀ {row : Row}, EnvM
     obtain ⟨hv, hn⟩ := eq_true_same (by simpa [eval] using ht)
     rw [← List.getD_eq_getElem?_getD, ← List.getD_eq_getElem?_getD] at hv
     rw [← List.getD_eq_getElem?_getD] at hn
+    -- Equal up to `canon` (D31): the abstract values of both sides hold both.
+    have hn' : row.getD j .null ≠ .null := fun e => by
+      rw [e, show Value.null.canonV = .null by simp [Value.canonV]] at hv
+      exact hn (Value.canonV_eq_null.mp hv)
     have hi := h i
     have hj := h j
-    have h₁ := refineCol_sound (f := (·.meetEq aj)) h (AVal.meetEq_mem hi (hv ▸ hj) hn)
+    have h₁ := refineCol_sound (f := (·.meetEq aj)) h
+      (AVal.meetEq_mem hi (AVal.mem_of_canonV_eq hv hj) hn)
     refine refineCol_sound h₁ ?_
     have hj' := h₁ j
-    exact AVal.meetEq_mem hj' (hv ▸ hi) (hv ▸ hn)
+    exact AVal.meetEq_mem hj' (AVal.mem_of_canonV_eq hv.symm hi) hn'
   case case11 env i w =>
     refine refineNum_sound h fun k c hw => ?_
     rw [Value.numOf?_some hw] at ht

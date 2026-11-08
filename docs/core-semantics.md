@@ -1857,8 +1857,8 @@ no flush to zero, checked by a differential probe; an engine without it gets
 a shim or a refusal.
 
 The reference observes these results through its own zero and NaN rules
-(ONE_ZERO, #89; `on_division_by_zero`), so its values are unchanged; a
-profile with IEEE `zero_sign` sees the signed result.
+(ONE_ZERO, #89; `on_division_by_zero`); a profile with IEEE `zero_sign` sees
+the signed result. (Corrected 2026-11-09: see below.)
 
 In the model (`core/Sverify/Core/FloatArith.lean`): every finite double is an
 integer multiple of 2⁻¹⁰⁷⁴, so the exact sum, difference and product are
@@ -1867,9 +1867,9 @@ two. `ofExactDiv` rounds each, as it rounds D25's sums, to the nearest
 multiple of `ulp = 2^max(e−52, −1074)` with ties by that multiple's parity,
 and to `±∞` at `|q| ≥ 2¹⁰²⁴ · (1 − 2⁻⁵⁴)`. `addI`, `subI`, `mulI` and `divI` are
 IEEE 754's operations on every code, `-0.0` and the negative NaN included.
-The reference has one zero and one NaN (`zero_sign` `ONE_ZERO`, #89), so its
-`fadd`, `fsub`, `fmul` and `fdiv` are these followed by `canon`, and on
-finite operands they are the rounded exact result (`fadd_fin` …).
+The reference's `fadd`, `fsub`, `fmul` and `fdiv` are these operations on the
+raw values, and on finite operands they are the rounded exact result up to the
+sign of a zero (`fadd_fin` …, stated on `canon` of the result).
 
 Consequences:
 
@@ -1893,6 +1893,43 @@ or `x · y` was provable, and the checker trusted eight axioms for them. The
 exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
+
+**Correction, 2026-11-09** (approved by the maintainer, via the theory advisor):
+"The reference is IEEE on the full float code set, signed zeros and signed
+NaNs included; `canon` applies only at identity boundaries; the reference
+raises or leaves the result open where engines disagree."
+
+- Values stay raw. A read gives the stored double, and every scalar function
+  of doubles, arithmetic, negation, `%`, rounding and the libm functions,
+  runs on the raw value and gives IEEE's result, `-0.0` included:
+  `0.0 * -1.0` is `-0.0`, `-(0.0)` is `-0.0`, `sqrt(-0.0)` is `-0.0`,
+  `-4.0 % 2.0` is `-0.0`, `atan2(-0.0, -1.0)` is `-π`. There is no `canon`
+  after a scalar operation. A NaN an operation produces is the NaN code (its
+  sign stays open, as above).
+- Under `zero_sign` = `ONE_ZERO` and `nan_kind` = `ONE_NAN`, `canon` applies
+  at the identity boundaries: `=` and `<` (lists and structs element by
+  element), and the keys of `DISTINCT`, `GROUP BY`, joins and window
+  partitions. `-0.0 = 0.0` and `-NaN = NaN` are true. A profile with IEEE
+  zeros applies it nowhere.
+- Where the engines agree on `-0.0`, the reference gives their value:
+  `CAST(-0.0 AS BIGINT)` and `CAST(-0.0 AS DECIMAL)` are `0`, `sqrt(-0.0)` is
+  `-0.0`, `-0.0` is finite. Domains read one zero: `ln(-0.0)` raises as
+  `ln(0.0)` does, `atan2(-0.0, 0.0)` as `atan2(0.0, 0.0)`. Where they
+  disagree, the reference raises: `x / -0.0` and `x % -0.0` raise as
+  `x / 0.0` does (DuckDB gives `-∞`, Spark under ANSI raises).
+- In the model: `FloatCode.ofFloat` and `toFloat` keep `-0.0` (`ofParts`),
+  `fmod` gives a zero the dividend's sign, casts and `FMath.inDomain` read
+  `canon c`, `fneg` is `negI`. The contract analysis bounds a double by its
+  canonical code (`NumKind.norm`); a function's soundness holds up to `canon`
+  (`Value.CanonEq`), and the functions of native doubles, whose abstractions
+  bound nothing, by their shape alone (`Value.ShapeEq`, `mapAbs_top_sound`).
+
+Why: the reference must compute what the engines compute on a stored or
+computed `-0.0`. Canonicalising reads or results instead is unsound: `atan2`
+tells the zeros apart, and a `-0.0` made mid-plan (`0.0 * -1.0`) escapes a
+canonicalising read. The engines normalise exactly at the identity
+boundaries (Spark's `NormalizeFloatingNumbers`, DuckDB's hashing, Polars's
+grouping; their facts).
 
 ### D32. Calendar functions work on the reference's timestamps, 0001 to 9999
 
