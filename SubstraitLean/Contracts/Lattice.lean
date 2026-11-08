@@ -293,24 +293,39 @@ def floatsOnly : NumKind → NumKind → Option NumKind
   | .float, .float => some .float
   | _, _ => none
 
-/-- The set of values a column may hold. -/
+/-- The set of values a column may hold, by kind (#925): NULL, numbers of a
+kind in an interval, booleans, strings, lists whose elements one abstract
+value describes, and structs whose fields a list of them does. Every field
+has a default that admits nothing of its kind, so a literal names only what
+it admits. -/
 structure AVal where
   /-- may be NULL -/
-  null : Bool
-  /-- may be an integer, within this interval -/
-  int : Option Bound
+  null : Bool := false
+  /-- may be a number, its integer within this interval -/
+  int : Option Bound := none
   /-- may be TRUE -/
-  tt : Bool
+  tt : Bool := false
   /-- may be FALSE -/
-  ff : Bool
+  ff : Bool := false
   /-- may be a string -/
-  str : Bool
+  str : Bool := false
   /-- if `some l`, every string is in `l` (#708): the values of a status or a
   tag. At most `strCap` of them; past that, `none`. -/
-  strs : Option (List String)
+  strs : Option (List String) := none
   /-- if `some k`, every number is of kind `k` (#923); `none`, of any kind. -/
-  nk : Option NumKind
-  deriving Repr, BEq
+  nk : Option NumKind := none
+  /-- may be a list -/
+  list : Bool := false
+  /-- if `some e`, every element of a list is in `e`; `none`, any value. -/
+  elems : Option AVal := none
+  /-- every list's length is in this interval -/
+  card : Bound := Bound.top
+  /-- may be a struct -/
+  struct : Bool := false
+  /-- if `some fs`, a struct has a field for each of `fs`, in `fs`; `none`,
+  any fields. -/
+  fields : Option (List AVal) := none
+  deriving Repr, BEq, Inhabited
 
 /-- The most strings an abstract value lists (#708); more, and any string may be. -/
 def strCap : Nat := 64
@@ -319,7 +334,9 @@ def strCap : Nat := 64
 def AVal.MemNum (a : AVal) (k : NumKind) (i : Int) : Prop :=
   ∃ b, a.int = some b ∧ b.Mem i ∧ a.nk.all (· == k) = true
 
-def AVal.Mem (a : AVal) : Value → Prop
+mutual
+/-- `AVal.Mem`, by recursion on the value. -/
+def AVal.MemR (a : AVal) : Value → Prop
   | .null => a.null = true
   -- A number by its integer, where `a` allows its kind (#923).
   | .int i => a.MemNum .int i
@@ -328,13 +345,37 @@ def AVal.Mem (a : AVal) : Value → Prop
   | .ts i => a.MemNum .ts i
   | .tod i => a.MemNum .tod i
   | .dec s i => a.MemNum (.dec s) i
-  | .bool true => a.tt = true
-  | .bool false => a.ff = true
+  -- `cond`, not a match on the boolean: `simp` rewrites it where the
+  -- boolean is not a literal (`a.Mem (.bool (s == t))`).
+  | .bool b => cond b a.tt a.ff = true
   | .str s => (a.str && a.strs.all (·.contains s)) = true
-  -- The abstraction does not look into lists: a list is a member where the
-  -- booleans and strings are. Functions of one type give NULL on the others,
-  -- so each abstraction covers a list as it covers a value of another type.
-  | .list _ | .struct _ => a.tt = true ∧ a.ff = true ∧ a.str = true
+  | .list vs => a.list = true ∧ a.card.Mem vs.length ∧
+      (match a.elems with | some e => AVal.MemAll e vs | none => True)
+  | .struct vs => a.struct = true ∧
+      (match a.fields with | some fs => AVal.MemFields fs vs | none => True)
+
+/-- Every value of `vs` is in `e`. -/
+def AVal.MemAll (e : AVal) : List Value → Prop
+  | [] => True
+  | v :: vs => e.MemR v ∧ AVal.MemAll e vs
+
+/-- `vs` has a value for each of `fs`, in it. -/
+def AVal.MemFields : List AVal → List Value → Prop
+  | [], [] => True
+  | f :: fs, v :: vs => f.MemR v ∧ AVal.MemFields fs vs
+  | _, _ => False
+end
+
+/-- `v` is one of the values `a` describes, by its constructor (#925). Not
+recursive itself, so that unification compares two memberships by their
+arguments. -/
+def AVal.Mem (a : AVal) (v : Value) : Prop := a.MemR v
+
+attribute [simp] AVal.MemR AVal.MemAll AVal.MemFields
+
+theorem AVal.memAll_iff {e : AVal} : ∀ {vs : List Value}, AVal.MemAll e vs ↔ ∀ v ∈ vs, e.Mem v
+  | [] => by simp
+  | v :: vs => by simp [AVal.Mem, AVal.memAll_iff (vs := vs)]
 
 theorem AVal.memInt_intro {a : AVal} {b : Bound} {i : Int} (hb : a.int = some b)
     (hk : a.nk = some .int) (hi : b.Mem i) : a.Mem (.int i) :=
@@ -355,25 +396,30 @@ theorem AVal.within_memNum {lo hi i : Int} {a : AVal} {k : NumKind} (h : a.withi
 theorem AVal.within_mem {lo hi i : Int} {a : AVal} (h : a.within lo hi = true)
     (hm : a.Mem (.int i)) : between lo hi i = true := AVal.within_memNum h hm
 
-def AVal.top : AVal := ⟨true, some Bound.top, true, true, true, none, none⟩
-def AVal.bot : AVal := ⟨false, none, false, false, false, none, none⟩
+def AVal.top : AVal :=
+  { null := true, int := some Bound.top, tt := true, ff := true, str := true, list := true,
+    struct := true }
+def AVal.bot : AVal := {}
 
 /-- A number of kind `k` in `b`, maybe NULL. -/
-def AVal.num (null : Bool) (b : Bound) (k : NumKind) : AVal :=
-  ⟨null, some b, false, false, false, none, some k⟩
+def AVal.num (null : Bool) (b : Bound) (k : NumKind) : AVal := { null, int := some b, nk := some k }
+
+/-- What a list's elements may be: `elems`, or any value. -/
+def AVal.elemsOf (a : AVal) : AVal := a.elems.getD AVal.top
 
 def AVal.ofValue : Value → AVal
-  | .null => ⟨true, none, false, false, false, none, none⟩
+  | .null => { null := true }
   | .int i => .num false (.exact i) .int
   | .float i => .num false (.exact i) .float
   | .date i => .num false (.exact i) .date
   | .ts i => .num false (.exact i) .ts
   | .tod i => .num false (.exact i) .tod
   | .dec s i => .num false (.exact i) (.dec s)
-  | .bool true => ⟨false, none, true, false, false, none, none⟩
-  | .bool false => ⟨false, none, false, true, false, none, none⟩
-  | .str s => ⟨false, none, false, false, true, some [s], none⟩
-  | .list _ | .struct _ => ⟨false, none, true, true, true, none, none⟩
+  | .bool true => { tt := true }
+  | .bool false => { ff := true }
+  | .str s => { str := true, strs := some [s] }
+  | .list vs => { list := true, card := .exact vs.length }
+  | .struct _ => { struct := true }
 
 def joinInt : Option Bound → Option Bound → Option Bound
   | some x, some y => some (x.join y)
@@ -394,20 +440,82 @@ def joinStrs (a b : AVal) : Option (List String) :=
 def joinNk (a b : AVal) : Option NumKind :=
   if a.int.isNone then b.nk else if b.int.isNone then a.nk else if a.nk = b.nk then a.nk else none
 
-def AVal.join (a b : AVal) : AVal :=
-  ⟨a.null || b.null, joinInt a.int b.int, a.tt || b.tt, a.ff || b.ff, a.str || b.str, joinStrs a b,
-    joinNk a b⟩
+mutual
+/-- The values of either side. A side that holds no list (no struct) adds
+nothing to the elements and lengths (fields). -/
+def AVal.join : AVal → AVal → AVal
+  | a@⟨_, _, _, _, _, _, _, l, e, c, st, fs⟩, b =>
+    { null := a.null || b.null, int := joinInt a.int b.int, tt := a.tt || b.tt,
+      ff := a.ff || b.ff, str := a.str || b.str, strs := joinStrs a b, nk := joinNk a b,
+      list := l || b.list,
+      elems := if !l then b.elems else if !b.list then e else AVal.joinE e b.elems,
+      card := if !l then b.card else if !b.list then c else c.join b.card,
+      struct := st || b.struct,
+      fields := if !st then b.fields else if !b.struct then fs else AVal.joinF fs b.fields }
+  termination_by structural a => a
 
+/-- Both elements' descriptions joined; any value where one is. -/
+def AVal.joinE : Option AVal → Option AVal → Option AVal
+  | some x, some y => some (x.join y)
+  | _, _ => none
+  termination_by structural x => x
+
+/-- Both fields' descriptions joined, field by field; any fields where one
+is, or where they differ in number. -/
+def AVal.joinF : Option (List AVal) → Option (List AVal) → Option (List AVal)
+  | some xs, some ys => AVal.joinL xs ys
+  | _, _ => none
+  termination_by structural x => x
+
+def AVal.joinL : List AVal → List AVal → Option (List AVal)
+  | [], [] => some []
+  | x :: xs, y :: ys => (AVal.joinL xs ys).map (x.join y :: ·)
+  | _, _ => none
+  termination_by structural x => x
+end
+
+section
+variable (a b : AVal)
+@[simp] theorem AVal.join_null : (a.join b).null = (a.null || b.null) := by cases a; rfl
+@[simp] theorem AVal.join_int : (a.join b).int = joinInt a.int b.int := by cases a; rfl
+@[simp] theorem AVal.join_tt : (a.join b).tt = (a.tt || b.tt) := by cases a; rfl
+@[simp] theorem AVal.join_ff : (a.join b).ff = (a.ff || b.ff) := by cases a; rfl
+@[simp] theorem AVal.join_str : (a.join b).str = (a.str || b.str) := by cases a; rfl
+@[simp] theorem AVal.join_strs : (a.join b).strs = joinStrs a b := by cases a; rfl
+@[simp] theorem AVal.join_nk : (a.join b).nk = joinNk a b := by cases a; rfl
+@[simp] theorem AVal.join_list : (a.join b).list = (a.list || b.list) := by cases a; rfl
+@[simp] theorem AVal.join_elems : (a.join b).elems =
+    if !a.list then b.elems else if !b.list then a.elems else AVal.joinE a.elems b.elems := by
+  cases a; rfl
+@[simp] theorem AVal.join_card : (a.join b).card =
+    if !a.list then b.card else if !b.list then a.card else a.card.join b.card := by
+  cases a; rfl
+@[simp] theorem AVal.join_struct : (a.join b).struct = (a.struct || b.struct) := by cases a; rfl
+@[simp] theorem AVal.join_fields : (a.join b).fields =
+    if !a.struct then b.fields else if !b.struct then a.fields else AVal.joinF a.fields b.fields := by
+  cases a; rfl
+end
+
+/-- May be a list or a struct. -/
+def AVal.nested (a : AVal) : Bool := a.list || a.struct
+/-- Admits numbers and NULL only: no booleans, strings, lists or structs. -/
+def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str && !a.nested
 /-- May be something other than a (non-NULL) integer. -/
-def AVal.nonInt (a : AVal) : Bool := a.null || a.tt || a.ff || a.str
+def AVal.nonInt (a : AVal) : Bool := a.null || a.tt || a.ff || a.str || a.nested
 /-- May be something other than a (non-NULL) number of kind `k`: a function of
 `k` gives NULL there (#923). -/
 def AVal.nonNum (k : NumKind) (a : AVal) : Bool := a.nonInt || (a.int.isSome && a.nk != some k)
 /-- May be something other than a (non-NULL) boolean. -/
-def AVal.nonBool (a : AVal) : Bool := a.null || a.int.isSome || a.str
+def AVal.nonBool (a : AVal) : Bool := a.null || a.int.isSome || a.str || a.nested
+/-- May be something other than a (non-NULL) list: a function of lists gives
+NULL there. -/
+def AVal.nonList (a : AVal) : Bool := a.null || a.int.isSome || a.tt || a.ff || a.str || a.struct
+/-- May be something other than a (non-NULL) struct. -/
+def AVal.nonStruct (a : AVal) : Bool := a.null || a.int.isSome || a.tt || a.ff || a.str || a.list
 
 /-- Certainly TRUE: the only value a satisfied condition can have. -/
-def AVal.certainlyTrue (a : AVal) : Bool := !a.null && a.int.isNone && !a.ff && !a.str
+def AVal.certainlyTrue (a : AVal) : Bool :=
+  !a.null && a.int.isNone && !a.ff && !a.str && !a.nested
 
 /-- A number of another kind than `k` is a case of `nonNum k`. -/
 theorem AVal.nonNum_of_memNum {a : AVal} {k k' : NumKind} {i : Int} (hm : a.MemNum k' i)
@@ -429,13 +537,27 @@ theorem AVal.memNum_kind {a : AVal} {k k' : NumKind} {i : Int} (hm : a.MemNum k'
 
 theorem AVal.mem_top : ∀ v, AVal.top.Mem v
   | .null | .bool true | .bool false | .str _ => rfl
-  | .list _ | .struct _ => by simp [AVal.Mem, AVal.top]
+  | .list _ | .struct _ => by simp [AVal.Mem, AVal.top, Bound.mem_top]
   | .int i | .float i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_top i, rfl⟩
+
+/-- A list in `a` has its elements in `a.elemsOf`. -/
+theorem AVal.mem_list {a : AVal} {vs : List Value} :
+    a.Mem (.list vs) ↔ a.list = true ∧ a.card.Mem vs.length ∧ ∀ v ∈ vs, a.elemsOf.Mem v := by
+  cases he : a.elems with
+  | some e =>
+    have : a.Mem (.list vs) ↔ a.list = true ∧ a.card.Mem vs.length ∧ AVal.MemAll e vs := by
+      simp only [AVal.Mem, AVal.MemR, he]
+    rw [this, AVal.memAll_iff, AVal.elemsOf, he]; rfl
+  | none =>
+    have : a.Mem (.list vs) ↔ a.list = true ∧ a.card.Mem vs.length ∧ True := by
+      simp only [AVal.Mem, AVal.MemR, he]
+    rw [this, AVal.elemsOf, he]; simp [AVal.mem_top]
 
 theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
   | .null | .bool true | .bool false => rfl
   | .str s => by simp [AVal.Mem, AVal.ofValue]
-  | .list _ | .struct _ => by simp [AVal.Mem, AVal.ofValue]
+  | .list _ => by simp [AVal.Mem, AVal.ofValue, Bound.mem_exact]
+  | .struct _ => by simp [AVal.Mem, AVal.ofValue]
   | .int i | .float i | .date i | .ts i | .tod i | .dec _ i =>
     ⟨_, rfl, Bound.mem_exact i, by simp [AVal.ofValue, AVal.num]⟩
 
@@ -462,8 +584,8 @@ theorem AVal.memNum_join_left {a b : AVal} {k : NumKind} {i : Int} (h : a.MemNum
       · exact hn
       · rfl
   cases hb : b.int with
-  | none => exact ⟨x, by simp [AVal.join, hx, hb, joinInt], hm, hk⟩
-  | some y => exact ⟨x.join y, by simp [AVal.join, hx, hb, joinInt], Bound.mem_join_left hm, hk⟩
+  | none => exact ⟨x, by simp [hx, hb, joinInt], hm, by simpa using hk⟩
+  | some y => exact ⟨x.join y, by simp [hx, hb, joinInt], Bound.mem_join_left hm, by simpa using hk⟩
 
 theorem AVal.memNum_join_right {a b : AVal} {k : NumKind} {i : Int} (h : b.MemNum k i) :
     (a.join b).MemNum k i := by
@@ -477,53 +599,123 @@ theorem AVal.memNum_join_right {a b : AVal} {k : NumKind} {i : Int} (h : b.MemNu
       · rename_i he; rw [he]; exact hn
       · rfl
   cases ha : a.int with
-  | none => exact ⟨y, by simp [AVal.join, hy, ha, joinInt], hm, hk⟩
-  | some x => exact ⟨x.join y, by simp [AVal.join, hy, ha, joinInt], Bound.mem_join_right hm, hk⟩
+  | none => exact ⟨y, by simp [hy, ha, joinInt], hm, by simpa using hk⟩
+  | some x => exact ⟨x.join y, by simp [hy, ha, joinInt], Bound.mem_join_right hm, by simpa using hk⟩
 
+mutual
 theorem AVal.mem_join_left {a b : AVal} : ∀ {v}, a.Mem v → (a.join b).Mem v
   | .str _, h => by
-      simp only [AVal.Mem, AVal.join, Bool.and_eq_true, Bool.or_eq_true] at h ⊢
+      simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at h
+      simp only [AVal.Mem, AVal.MemR, AVal.join_str, AVal.join_strs, Bool.and_eq_true, Bool.or_eq_true]
       exact ⟨.inl h.1, joinStrs_left h.1 h.2⟩
   | .null, h | .bool true, h | .bool false, h => by
-      simp_all [AVal.Mem, AVal.join]
-  | .list _, h | .struct _, h => by
-      simp only [AVal.Mem, AVal.join] at *
-      exact ⟨by simp [h.1], by simp [h.2.1], by simp [h.2.2]⟩
+      simp_all [AVal.Mem]
+  | .list vs, ⟨hl, hc, he⟩ => by
+      refine ⟨by simp [hl], ?_, ?_⟩
+      · cases hb : b.list <;> simp [hl, hb, hc, Bound.mem_join_left hc]
+      · cases hb : b.list
+        · simpa [hl, hb] using he
+        · simp only [AVal.join_elems, hl, hb, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+          cases hA : a.elems <;> cases hB : b.elems <;> simp only [hA, AVal.joinE] at he ⊢
+          exact AVal.memAll_join_left he
+  | .struct vs, ⟨hs, hf⟩ => by
+      refine ⟨by simp [hs], ?_⟩
+      cases hb : b.struct
+      · simpa [hs, hb] using hf
+      · simp only [AVal.join_fields, hs, hb, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+        cases hA : a.fields <;> cases hB : b.fields <;> simp only [hA, AVal.joinF] at hf ⊢
+        cases hj : AVal.joinL _ _ with
+        | none => trivial
+        | some zs => exact AVal.memFields_join_left hf hj
   | .int _, h | .float _, h | .date _, h | .ts _, h | .tod _, h | .dec _ _, h =>
       AVal.memNum_join_left h
 
+theorem AVal.memAll_join_left {x y : AVal} : ∀ {vs}, AVal.MemAll x vs → AVal.MemAll (x.join y) vs
+  | [], _ => trivial
+  | _ :: _, ⟨h, hs⟩ => ⟨AVal.mem_join_left h, AVal.memAll_join_left hs⟩
+
+theorem AVal.memFields_join_left {xs ys zs : List AVal} : ∀ {vs}, AVal.MemFields xs vs →
+    AVal.joinL xs ys = some zs → AVal.MemFields zs vs
+  | [], h, hj => by
+      cases xs <;> cases ys <;> simp_all [AVal.MemFields, AVal.joinL]
+  | v :: vs, h, hj => by
+      match xs, ys, h, hj with
+      | x :: xs, y :: ys, ⟨hx, hxs⟩, hj =>
+        simp only [AVal.joinL, Option.map_eq_some_iff] at hj
+        obtain ⟨zs', hz, rfl⟩ := hj
+        exact ⟨AVal.mem_join_left hx, AVal.memFields_join_left hxs hz⟩
+      | [], _, h, _ => exact h.elim
+      | _ :: _, [], _, hj => simp [AVal.joinL] at hj
+end
+
+mutual
 theorem AVal.mem_join_right {a b : AVal} : ∀ {v}, b.Mem v → (a.join b).Mem v
   | .str _, h => by
-      simp only [AVal.Mem, AVal.join, Bool.and_eq_true, Bool.or_eq_true] at h ⊢
+      simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at h
+      simp only [AVal.Mem, AVal.MemR, AVal.join_str, AVal.join_strs, Bool.and_eq_true, Bool.or_eq_true]
       exact ⟨.inr h.1, joinStrs_right h.1 h.2⟩
   | .null, h | .bool true, h | .bool false, h => by
-      simp_all [AVal.Mem, AVal.join]
-  | .list _, h | .struct _, h => by
-      simp only [AVal.Mem, AVal.join] at *
-      exact ⟨by simp [h.1], by simp [h.2.1], by simp [h.2.2]⟩
+      simp_all [AVal.Mem]
+  | .list vs, ⟨hl, hc, he⟩ => by
+      refine ⟨by simp [hl], ?_, ?_⟩
+      · cases ha : a.list <;> simp [hl, ha, hc, Bound.mem_join_right hc]
+      · cases ha : a.list
+        · simpa [hl, ha] using he
+        · simp only [AVal.join_elems, hl, ha, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+          cases hA : a.elems <;> cases hB : b.elems <;> simp only [hB, AVal.joinE] at he ⊢
+          exact AVal.memAll_join_right he
+  | .struct vs, ⟨hs, hf⟩ => by
+      refine ⟨by simp [hs], ?_⟩
+      cases ha : a.struct
+      · simpa [hs, ha] using hf
+      · simp only [AVal.join_fields, hs, ha, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+        cases hA : a.fields <;> cases hB : b.fields <;> simp only [hB, AVal.joinF] at hf ⊢
+        cases hj : AVal.joinL _ _ with
+        | none => trivial
+        | some zs => exact AVal.memFields_join_right hf hj
   | .int _, h | .float _, h | .date _, h | .ts _, h | .tod _, h | .dec _ _, h =>
       AVal.memNum_join_right h
 
+theorem AVal.memAll_join_right {x y : AVal} : ∀ {vs}, AVal.MemAll y vs → AVal.MemAll (x.join y) vs
+  | [], _ => trivial
+  | _ :: _, ⟨h, hs⟩ => ⟨AVal.mem_join_right h, AVal.memAll_join_right hs⟩
+
+theorem AVal.memFields_join_right {xs ys zs : List AVal} : ∀ {vs}, AVal.MemFields ys vs →
+    AVal.joinL xs ys = some zs → AVal.MemFields zs vs
+  | [], h, hj => by
+      cases xs <;> cases ys <;> simp_all [AVal.MemFields, AVal.joinL]
+  | v :: vs, h, hj => by
+      match xs, ys, h, hj with
+      | x :: xs, y :: ys, ⟨hy, hys⟩, hj =>
+        simp only [AVal.joinL, Option.map_eq_some_iff] at hj
+        obtain ⟨zs', hz, rfl⟩ := hj
+        exact ⟨AVal.mem_join_right hy, AVal.memFields_join_right hys hz⟩
+      | _, [], h, _ => exact h.elim
+      | [], _ :: _, _, hj => simp [AVal.joinL] at hj
+end
+
 theorem AVal.certainlyTrue_mem {a : AVal} {v : Value} (hc : a.certainlyTrue = true)
     (hm : a.Mem v) : v = .bool true := by
-  simp only [AVal.certainlyTrue, Bool.and_eq_true, Bool.not_eq_true',
-    Option.isNone_iff_eq_none] at hc
-  obtain ⟨⟨⟨hn, hi⟩, hf⟩, hs⟩ := hc
+  simp only [AVal.certainlyTrue, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+    Option.isNone_iff_eq_none, Bool.or_eq_false_iff] at hc
+  obtain ⟨⟨⟨⟨hn, hi⟩, hf⟩, hs⟩, hl, hst⟩ := hc
   match v, hm with
   | .null, hm => simp_all [AVal.Mem]
   | .int _, ⟨_, hb, _⟩ | .float _, ⟨_, hb, _⟩ | .date _, ⟨_, hb, _⟩ | .ts _, ⟨_, hb, _⟩
   | .tod _, ⟨_, hb, _⟩ | .dec _ _, ⟨_, hb, _⟩ => simp_all
   | .bool true, _ => rfl
   | .bool false, hm => simp_all [AVal.Mem]
-  | .str _, hm | .list _, hm | .struct _, hm => simp_all [AVal.Mem]
+  | .str _, hm => simp_all [AVal.Mem]
+  | .list _, hm | .struct _, hm => simp_all [AVal.Mem]
 
-/-- Shapes of a value, for case analysis in the binary soundness proofs. -/
+/-- Shapes of a value, for case analysis in the binary soundness proofs. A
+list or a struct is one case: functions of scalars give NULL on both. -/
 theorem AVal.mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
     (v = .null ∧ a.null = true) ∨
     (∃ k i b, v = k.val i ∧ a.int = some b ∧ b.Mem i ∧ a.nk.all (· == k) = true) ∨
     (v = .bool true ∧ a.tt = true) ∨ (v = .bool false ∧ a.ff = true) ∨
     (∃ s, v = .str s ∧ a.str = true ∧ a.strs.all (·.contains s) = true) ∨
-    (∃ vs, (v = .list vs ∨ v = .struct vs) ∧ a.tt = true ∧ a.ff = true ∧ a.str = true) := by
+    (∃ vs, (v = .list vs ∨ v = .struct vs) ∧ a.nested = true) := by
   match v, h with
   | .null, h => exact .inl ⟨rfl, h⟩
   | .int i, ⟨b, hb, hm, hk⟩ => exact .inr (.inl ⟨.int, i, b, rfl, hb, hm, hk⟩)
@@ -535,10 +727,11 @@ theorem AVal.mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
   | .bool true, h => exact .inr (.inr (.inl ⟨rfl, h⟩))
   | .bool false, h => exact .inr (.inr (.inr (.inl ⟨rfl, h⟩)))
   | .str s, h =>
-      simp only [AVal.Mem, Bool.and_eq_true] at h
+      simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at h
       exact .inr (.inr (.inr (.inr (.inl ⟨s, rfl, h⟩))))
-  | .list vs, h => exact .inr (.inr (.inr (.inr (.inr ⟨vs, .inl rfl, h⟩))))
-  | .struct vs, h => exact .inr (.inr (.inr (.inr (.inr ⟨vs, .inr rfl, h⟩))))
+  | .list vs, h => exact .inr (.inr (.inr (.inr (.inr ⟨vs, .inl rfl, by simp [AVal.nested, h.1]⟩))))
+  | .struct vs, h =>
+      exact .inr (.inr (.inr (.inr (.inr ⟨vs, .inr rfl, by simp [AVal.nested, h.1]⟩))))
 
 /-- `mem_cases h with i b hb hi` splits `h : a.Mem v` into its six cases and
 substitutes `v`: `hn` (NULL), a number `k.val i` of kind `k` with
@@ -608,10 +801,13 @@ theorem AVal.ok_of_memNum {a : AVal} {ok : NumKind → Bool} {k : NumKind} {b : 
     subst hk; exact hn.2
 
 /-- The abstraction of `Value.mapP`: `bf` of the interval, the kind mapped,
-NULL where the argument may be of another kind or `extra` says `g` may fail. -/
-def mapAbs (ok : NumKind → Bool) (kout : NumKind → NumKind) (bf : Bound → Bound)
+NULL where the argument may be of another kind or `extra` says `g` may fail.
+Irreducible, as is `mapAbs₂`, so that unification matches a function's
+abstraction (`UnFn.abs`) with it by its arguments: it does not try them first
+for a definition that is a structure instance. -/
+@[irreducible] def mapAbs (ok : NumKind → Bool) (kout : NumKind → NumKind) (bf : Bound → Bound)
     (extra : Option Bound → Bool) (a : AVal) : AVal :=
-  ⟨a.nonNumP ok || extra a.int, a.int.map bf, false, false, false, none, a.nk.map kout⟩
+  { null := a.nonNumP ok || extra a.int, int := a.int.map bf, nk := a.nk.map kout }
 
 theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Option Int}
     {bf : Bound → Bound} {extra : Option Bound → Bool} {f : UnFn}
@@ -656,12 +852,12 @@ def outKind (tbl : NumKind → NumKind → Option NumKind) (a b : AVal) : Option
 /-- The abstraction of `Value.mapP₂`: `bf` of the intervals, of the table's
 kind, NULL where an argument may be of another kind or `extra` says `g` may
 fail. -/
-def mapAbs₂ (tbl : NumKind → NumKind → Option NumKind) (bf : Bound → Bound → Bound)
+@[irreducible] def mapAbs₂ (tbl : NumKind → NumKind → Option NumKind) (bf : Bound → Bound → Bound)
     (extra : Option Bound → Option Bound → Bool) (a b : AVal) : AVal :=
-  ⟨a.nonInt || b.nonInt || extra a.int b.int ||
+  { null := a.nonInt || b.nonInt || extra a.int b.int ||
       (a.int.isSome && b.int.isSome && (outKind tbl a b).isNone),
-   (match a.int, b.int with | some x, some y => some (bf x y) | _, _ => none),
-   false, false, false, none, outKind tbl a b⟩
+    int := (match a.int, b.int with | some x, some y => some (bf x y) | _, _ => none),
+    nk := outKind tbl a b }
 
 theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int → Int → Option Int}
     {bf : Bound → Bound → Bound} {extra : Option Bound → Option Bound → Bool} {f : BinFn}
