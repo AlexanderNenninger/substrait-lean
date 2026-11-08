@@ -131,3 +131,28 @@ def test_a_group_with_no_values_is_not_flagged():
     r = sv.verify(HAVING, requires={"orders": [_.amount.isnull() | (_.amount >= 0)]})
     assert r.run(c, "duckdb").to_pylist() == [{"customer_id": 2, "total": 5000.0}]
     assert "n ≥ 1" in " ".join(r._margin_checks[0]["conditions"])
+
+
+def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
+    """The check and the plan read their inputs twice: an Arrow table, a
+    resident table or a Delta/Iceberg scan at one version reads the same rows;
+    a file scan without a version warns, and the deterministic profile
+    refuses it."""
+    import pyarrow.parquet as pq
+
+    from sverify._scan import Scan
+
+    rows = pa.table({"customer_id": [1, 2], "amount": [600.0, 5000.0]})
+    path = tmp_path / "orders.parquet"
+    pq.write_table(rows, path)
+    c = sv.connect()
+    c.put("orders", Scan((str(path),), rows.schema, None, None, "orders.parquet"))
+    with pytest.warns(InferredWarning, match="not pinned to one version"):
+        assert having.run(c, "duckdb").to_pylist() == [{"customer_id": 2, "total": 5000.0}]
+    with pytest.raises(PreconditionError, match="not pinned to one version"):
+        having.run(c, "duckdb", reproducible=sv.equivalent())
+    # The same files at a version: no warning.
+    c.put("orders", Scan((str(path),), rows.schema, None, None, "orders@v3"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", InferredWarning)
+        having.run(c, "duckdb")

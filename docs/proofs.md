@@ -128,13 +128,6 @@ other pages link here.
   `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
-- The margin check of a threshold filter on a double `SUM` (#929,
-  `Rel.marginCheck`): that the plan it writes computes, per group, the test
-  `StdModel.margin_check` is about, and that `Report.run` runs it on the same
-  inputs as the plan, the same snapshot. Within a run both read the
-  connection's tables, as `check_inputs` does; a source that changes between
-  the check and the plan (a live table) breaks it. `tests/test_margin.py`
-  runs the check against its formula in Python's doubles.
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
   they call the checkers and print JSON. On the Python side, the glue of
   incremental views (change tables, consolidation, merge).
@@ -206,6 +199,17 @@ other pages link here.
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside D16. Raising only where the reference may is a separate claim
   (`Rel.duckdb_refines`' second part), outside this chain.
+
+  Beside D16, the margin check of a threshold filter on a double `SUM` or
+  `AVG` (#929, `Rel.marginCheck`): that the plan it writes computes, per group,
+  the test `StdModel.margin_check` is about, and that the check and the plan
+  read one snapshot. `Report.run` makes the snapshot a condition of the run
+  (`Report.check_margins`): every input the check reads is an Arrow table, a
+  table DuckDB holds (`Resident`), or a Delta or Iceberg table pinned to one
+  version (`Scan`, `name@vN`). An input of another kind, which may change
+  between the two reads, warns, and refuses the run under the deterministic
+  profile (`reproducible=`). `tests/test_margin.py` runs the check against
+  its formula in Python's doubles.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
