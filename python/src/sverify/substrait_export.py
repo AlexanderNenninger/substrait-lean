@@ -1748,7 +1748,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         _windows_total=out.get("windows_total", out["deterministic"]),
         _tie_places=tie_places(out),
         issues=[
-            Issue(i["kind"], i["expr"], i["error"])
+            Issue(i["kind"], i["expr"], i["error"], assumed=i.get("assumed", False))
             for i in out["issues"]
             if i["error"] and i["kind"] not in ("SUM overflow", "overflow to infinity")
         ],

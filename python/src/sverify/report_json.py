@@ -204,7 +204,9 @@ def assumed_json(i: Issue) -> Json:
     return out
 
 
-def issue(d: Mapping[str, Any]) -> Issue:
+def issue(d: Mapping[str, Any], assumed: bool = False) -> Issue:
+    """An issue as `issue_json` or `assumed_json` wrote it: `assumed` for
+    the report's `"assumed"` list."""
     from sverify.report import Issue, _needed
 
     p = d.get("properties") or {}
@@ -222,6 +224,7 @@ def issue(d: Mapping[str, Any]) -> Issue:
         needs=[
             _needed(t, lab, "sql") for t, labs in suggested(p.get("needs")).items() for lab in labs
         ],
+        assumed=assumed,
     )
 
 
@@ -446,7 +449,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         issues=issues,
         _inferred=inferred,
         _implied=dict(d.get("implied") or {}),
-        assumed=[issue(i) for i in d.get("assumed", [])],
+        assumed=[issue(i, assumed=True) for i in d.get("assumed", [])],
         _params=list(d.get("params", [])),
         _hints=list(dict.fromkeys(i.hint for i in issues if i.hint)),
         _rewrites=list(d.get("rewrites", [])),

@@ -719,7 +719,9 @@ def _cited(facts: Sequence[str] | None) -> str:
 
 def verdict(report: Report, engine: str) -> Mapping[str, Any] | None:
     """The checker's verdict on the report's plan on `engine` (`"engines"`,
-    `SubstraitLean/Realize.lean`); None where it gives none."""
+    `SubstraitLean/Realize.lean`); None where it gives none. An engine
+    without a profile in the checker has one too (`"profile": false`): the
+    translation's tests stand for the plan."""
     return (report._engines or {}).get(engine)
 
 
@@ -753,11 +755,6 @@ def realization(
     from sverify.observation import from_json
 
     if verdict is None:
-        if engine not in (_options_json().get("profiles") or {}):
-            # An engine without a profile in the checker (DataFusion, an
-            # installed one): no option has a row, so the translation's tests
-            # stand for the plan (`_engines.translations()`).
-            return Realized("exact", "tested", (), [])
         return Realized(
             "refused",
             None,
@@ -907,7 +904,7 @@ def floats_on(report: Report) -> dict[str, list[str]]:
     looser = replace(observation, floats="plan")
     out: dict[str, list[str]] = {}
     for e in translations():
-        if (v := verdict(report, e)) is None:
+        if (v := verdict(report, e)) is None or v.get("profile") is False:
             continue
         asked = realization(e, v, observation, report._epsilon)
         base = realization(e, v, looser, report._epsilon)
@@ -926,20 +923,19 @@ def evidence_on(report: Report) -> dict[str, Realized]:
     seen, held = observed(report)
     out: dict[str, Realized] = {}
     for e in translations():
-        if (v := verdict(report, e)) is None:
+        if (v := verdict(report, e)) is None or v.get("profile") is False:
             continue
         got = realization(e, v, seen, report._epsilon, held)
-        out[e] = got._replace(evidence=translated_evidence(report, e, got))
+        out[e] = got._replace(evidence=translated_evidence(v, got))
     return out
 
 
-def translated_evidence(report: Report, engine: str, got: Realized) -> Evidence | None:
-    """The evidence of a translated route: `got`'s, and tested where a
-    postcondition holds on the engine only by its facts (`_robust_tested`)
-    or only on the reference's orders (`_allowed_tested`)."""
-    if got.evidence == "proved" and (_robust_tested(report, engine) or _allowed_tested(report)):
-        return "tested"
-    return got.evidence
+def translated_evidence(v: Mapping[str, Any], got: Realized) -> Evidence | None:
+    """The evidence of a translated route: `got`'s, and tested where the
+    checker says a translated run rests on a test (`"tested_because"`: a
+    postcondition that holds on the engine's doubles by its facts, or on the
+    reference's orders only)."""
+    return "tested" if got.evidence == "proved" and v.get("tested_because") else got.evidence
 
 
 def _all_proved(epsilon: Mapping[str, Any] | None) -> bool:
@@ -982,34 +978,6 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
             if col in doubles:
                 held.setdefault(col, c.label)
     return replace(report.observation, bound=None), held
-
-
-def _robust_tested(report: Report, engine: str) -> bool:
-    """Does a postcondition run unheld on `engine` (`CheckedCondition.robust`)
-    where that rests on the engine's facts, not on a theorem (its sums are
-    Kahan's, whose sign `TreeSum.sign` does not cover, #1045)?"""
-    if report.observation.floats != "plan":
-        return False
-    return any(
-        c.proved
-        and not c.approx
-        and getattr(c, "robust", False)
-        and engine not in getattr(c, "robust_on", ())
-        for c in report.ensures
-    )
-
-
-def _allowed_tested(report: Report) -> bool:
-    """Is a postcondition proved on every order of the reference but not on
-    every result it allows (`CheckedCondition.allowed`, `postAllowed`): one
-    that reads an open measure (`VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`,
-    `QUANTILE_CONT`, a double `SUM` or `AVG` in another order)? Under the
-    plan's bound a run holds the columns it reads (`observed`); under another
-    observation the engine's value is only tested (#1071). The checker
-    reports `allowed` for the postconditions it reports `ignores` for."""
-    if report.observation.floats == "plan":
-        return False
-    return any(c.proved and not c.allowed and c.checker_ignores is not None for c in report.ensures)
 
 
 # -- the re-check -------------------------------------------------------------
@@ -1406,7 +1374,8 @@ def choose(
                 rerun_evidence=rerun_evidence,
             )
         seen, held = observed(report)
-        got = realization(e, verdict(report, e), seen, report._epsilon, held)
+        v = verdict(report, e)
+        got = realization(e, v, seen, report._epsilon, held)
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
@@ -1423,7 +1392,7 @@ def choose(
             tuple(notes),
             (),
             got.cls,
-            translated_evidence(report, e, got),
+            translated_evidence(v or {}, got),
             got.shims,
             reproducible,
             rerun_evidence,

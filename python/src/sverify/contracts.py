@@ -169,7 +169,6 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     UnprovedReason,
     UnverifiedRunError,
     VerificationError,
-    _assumable,
     _assumption,
     _cause,
     _labels_by_table,
@@ -877,7 +876,7 @@ def infer_bounds(
     infer: bool = True,
     inputs: Collection[str] | None = None,
     semantics: Semantics = "reference",
-    on_inferred: OnInferred = "ignore",
+    on_inferred: OnInferred,
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred (#244).
 
@@ -1151,8 +1150,8 @@ def _infer_bounds(
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
     # runs: the row caps (#219) and the bounds do not rule them out.
-    report.assumed = [i for i in report.issues if _assumable(i)]
-    report.issues = [i for i in report.issues if not _assumable(i)]
+    report.assumed = [i for i in report.issues if i.assumed]
+    report.issues = [i for i in report.issues if not i.assumed]
     return report
 
 
@@ -1525,8 +1524,16 @@ def _verify_once(
             "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
             "sql": isinstance(transform, str),
         }
-    if semantics in _profile_requests():
+    if semantics != "reference":
+        # The profile decides which issues are errors (an overflow to ±∞ is
+        # the reference's alone, #575) and, for those beyond DuckDB's lift,
+        # the report's profile (`underProfile`).
         contract["profile"] = semantics
+    # The engines a route may reach: the checker gives each a verdict, those
+    # without a profile of their own too (#1166).
+    from sverify.routes import translations
+
+    contract["engines"] = sorted(translations())
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
         raise checker_failed("--contract", stderr)
@@ -1626,13 +1633,7 @@ def _verify_once(
     def show(e: str) -> str:
         return shown(e) or e
 
-    raw_issues = [
-        i
-        for i in out["issues"]
-        # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
-        # semantics allows it, as DuckDB gives ±∞.
-        if semantics == "reference" or i["kind"] != INFINITE
-    ]
+    raw_issues = out["issues"]
     report = Report(
         semantics=semantics,
         _dialect=dialect,
@@ -1792,7 +1793,11 @@ def _issues(
             groups.setdefault((kind, key), []).append(i)
     out = []
     for (kind, expr), members in groups.items():
-        error = any(i["error"] for i in members) or kind == INFINITE
+        # An assumed issue is ruled out by a precondition as an error is
+        # (`Issue.assumed`): inferred, and checked on the data while the job
+        # runs where the bounds do not prove it.
+        assumed = any(i.get("assumed", False) for i in members)
+        error = any(i["error"] for i in members) or assumed
         constant = any(i.get("constant", False) for i in members)
         bound = _merged_bound([i["bound"] for i in members])
         if constant:
@@ -1833,9 +1838,6 @@ def _issues(
             Issue(
                 kind,
                 expr,
-                # Lean keeps the IEEE value of an overflow to ±∞ (#575), and
-                # a report counts it as a `SUM` overflow: assumed with
-                # `infer`, an error without.
                 error,
                 text,
                 column(expr) if kind == "SUM overflow" else None,
@@ -1849,6 +1851,7 @@ def _issues(
                 else [],
                 hint_needs={t: list(cs) for t, cs in code.items()} if error else {},
                 unconfirmed=fallback,
+                assumed=assumed,
             )
         )
     return out
