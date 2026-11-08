@@ -154,8 +154,8 @@ def engineJson (es : List EngineProfile) (E : EngineProfile) (ds : List Dep) (re
     ("class_basis", toJson "computed"),
     ("evidence", toJson (if planProved ds rows then "proved" else "tested")),
     ("rows", toJson rows.length),
-    ("without_row", Json.arr ((ds.filter fun d => !(rows.any (·.1.option == d.option &&
-      ·.1.group == d.group))).map fun d => Json.mkObj (where_ d)).toArray),
+    ("without_row", Json.arr ((ds.filter fun d => !(rows.any fun (d', _) =>
+      d'.option == d.option && d'.group == d.group)).map fun d => Json.mkObj (where_ d)).toArray),
     ("theorems", toJson theorems), ("facts", toJson facts),
     ("issues", toJson (rows.filterMap fun (_, r) => r.evidence.issue?).eraseDups),
     ("guard_free_theorem", toJson (guardFreeTheorems.lookup E.name)),

@@ -104,3 +104,19 @@ def test_the_checker_s_transfer_is_its_own_check() -> None:
     assert engines["polars"]["transfer"]["duckdb"]["ok"] is False
     failed = {f["option"] for f in engines["polars"]["transfer"]["duckdb"]["failures"]}
     assert "division_type" in failed
+
+
+def test_the_verdict_says_what_it_rests_on() -> None:
+    """The class and the sort are computed, not proved (#900); the guard-free
+    theorem is named per engine; an option without a row makes the evidence
+    tested, and the block names it."""
+    report = sv.verify(CASES["int division"][0], requires=BOUNDED)
+    engines = report._engines or {}
+    assert report._sorted is False
+    for e, v in engines.items():
+        assert v["class_basis"] == "computed", e
+        assert isinstance(v["issues"], list) and isinstance(v["without_row"], list), e
+        if v["without_row"]:
+            assert v["evidence"] == "tested", e
+    assert engines["polars"]["guard_free_theorem"] == "Rel.polars_sound"
+    assert engines["duckdb"]["guard_free_theorem"] is None
