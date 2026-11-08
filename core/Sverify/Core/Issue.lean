@@ -127,7 +127,7 @@ def UnFn.issue : UnFn → Value → Option Issue
   -- A black box that may raise, where it does (#325).
   | .bbox n, v => if BlackBox.raisesOn n [v] then some .domain else none
   | .neg, .int i => wrapIf (-i)
-  | .ftoi, .float c => match FloatCode.toInt? c with
+  | .ftoi, .float c => match FloatCode.toInt? (FloatCode.canon c) with
     | some x => if inI64 x then none else some .badCast
     | none => some .badCast
   | .narrow n, .int i => if fitsBits n i then none else some .badCast
@@ -153,7 +153,8 @@ def UnFn.issue : UnFn → Value → Option Issue
     | some i => if fitsDigits p i then none else some .overflow
     | none => none
   -- NaN and ±∞ have no decimal.
-  | .ftod s, .float c => if (FloatCode.toDecimal? c s).isSome then none else some .badCast
+  | .ftod s, .float c =>
+    if (FloatCode.toDecimal? (FloatCode.canon c) s).isSome then none else some .badCast
   | .raise _, _ => some .raised
   | _, _ => none
 
@@ -170,9 +171,10 @@ def nanCase : BinFn → Int → Int → Bool
       (a == FloatCode.negInf && b == FloatCode.posInf)
   | .fsub, a, b => (a == FloatCode.posInf && b == FloatCode.posInf) ||
       (a == FloatCode.negInf && b == FloatCode.negInf)
-  | .fmul, a, b => (a == 0 && isInfCode b) || (isInfCode a && b == 0)
+  | .fmul, a, b => ((a == 0 || a == FloatCode.negZero) && isInfCode b) ||
+      (isInfCode a && (b == 0 || b == FloatCode.negZero))
   | .fdiv, a, b => isInfCode a && isInfCode b
-  | .fmod, a, b => isInfCode a && b != FloatCode.nan
+  | .fmod, a, b => isInfCode a && b != FloatCode.nan && b != FloatCode.negNan
   | .fpow, a, b => decide (FloatCode.negInf < a) && decide (a < 0) &&
       decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) && FloatCode.floor b != b
   | _, _, _ => false
@@ -231,14 +233,17 @@ def BinFn.makesInf : BinFn → Bool
 def BinFn.infIssue (f : BinFn) (v w : Value) : Option Issue :=
   match v, w, f.apply v w with
   | .float a, .float b, .float r =>
-    if f.makesInf && isFiniteCode a && isFiniteCode b && isInfCode r then some .infinite else none
+    if f.makesInf && isFiniteCode (FloatCode.canon a) && isFiniteCode (FloatCode.canon b) && isInfCode r then
+      some .infinite
+    else none
   | _, _, _ => none
 
 /-- `exp` of a finite double whose result is `±∞` (#575): the other
 elementary functions of a finite double are finite, or a domain error. -/
 def UnFn.infIssue (f : UnFn) (v : Value) : Option Issue :=
   match f, v, f.apply v with
-  | .fmath .exp, .float a, .float r => if isFiniteCode a && isInfCode r then some .infinite else none
+  | .fmath .exp, .float a, .float r =>
+    if isFiniteCode (FloatCode.canon a) && isInfCode r then some .infinite else none
   | _, _, _ => none
 
 /-- The issue of a call: the error first, else an overflow to `±∞`. -/

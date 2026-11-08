@@ -396,11 +396,12 @@ def UnFn.apply : UnFn → Value → Value
   | .fceil, .float c => .float (FloatCode.ceil c)
   | .fround, .float c => .float (FloatCode.round c)
   | .froundTo d, .float c => .float (FloatCode.roundTo d c)
-  | .ftoi, .float c => match FloatCode.toInt? c with
+  -- Casts read one zero (D31): `CAST(-0.0 AS BIGINT)` is `0`.
+  | .ftoi, .float c => match FloatCode.toInt? (FloatCode.canon c) with
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
-  | .ftoiOrNull, .float c => match FloatCode.toInt? c with
+  | .ftoiOrNull, .float c => match FloatCode.toInt? (FloatCode.canon c) with
     | some i => if fitsBits 64 i then .int i else .null
     | none => .null
   | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
@@ -453,7 +454,7 @@ def UnFn.apply : UnFn → Value → Value
   | .dtrunc k, v => match v.unscaled? with
     | some i => .int (i.tdiv (10 ^ k))
     | none => .null
-  | .ftod s, .float c => match FloatCode.toDecimal? c s with
+  | .ftod s, .float c => match FloatCode.toDecimal? (FloatCode.canon c) s with
     | some m => .int m
     | none => .null
   | .dtof s, v => match v.unscaled? with

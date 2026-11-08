@@ -80,7 +80,9 @@ def FMath.inDomain (f : FMath) (c : Int) : Bool :=
 
 /-- The function of the double with code `c`; `none` outside its domain. -/
 def FMath.apply (f : FMath) (c : Int) : Option Int :=
-  if f.inDomain c then some (FloatCode.ofFloat (f.eval (FloatCode.toFloat c))) else none
+  -- The domain of `-0.0` is `0.0`'s, of the negative NaN the NaN's (D31);
+  -- the value is IEEE's on the raw double (`sqrt(-0.0)` is `-0.0`).
+  if f.inDomain (FloatCode.canon c) then some (FloatCode.ofFloat (f.eval (FloatCode.toFloat c))) else none
 
 #guard FMath.apply .sqrt (FloatCode.ofFloat 4.0) == some (FloatCode.ofFloat 2.0)
 #guard FMath.apply .sqrt (FloatCode.ofFloat (-1.0)) == none

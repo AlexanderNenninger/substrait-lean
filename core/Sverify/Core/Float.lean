@@ -45,6 +45,11 @@ abbrev nan : Int := fp64.nan
 
 theorem maxMag_def : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := fp64_maxMag
 
+/-- The code of a sign and a magnitude: `ofMag`, and `-0.0` for a negative
+zero (D31: IEEE on the full code set). -/
+def ofParts (negative : Bool) (mag : Nat) : Int :=
+  if negative ∧ mag = 0 then fp64.negZero else ofMag negative mag
+
 /-- The code of a native double. -/
 def ofFloat (f : Float) : Int :=
   let bits : Nat := f.toBits.toNat
@@ -54,10 +59,13 @@ def ofFloat (f : Float) : Int :=
   let mag : Nat :=
     if e == 2047 then (if m == 0 then infMag else nanMag)
     else if e == 0 then m else (2 ^ 52 + m) * 2 ^ (e - 1)
-  ofMag negative mag
+  -- `-0.0` keeps its sign (D31: the reference is IEEE on the full code set);
+  -- a NaN is the NaN, whatever its sign (an operation's NaN sign is open).
+  ofParts negative mag
 
 /-- The native double for a code (exact for every code `ofFloat` produces). -/
 def toFloat (c : Int) : Float :=
+  if c = fp64.negZero then Float.ofBits 0x8000000000000000 else
   let sign : Nat := if c < 0 then 1 else 0
   let mag := (c.natAbs - 1) / 2
   let bits :=
@@ -561,9 +569,9 @@ def avgTolScaled (n Bs : Nat) : Nat :=
 
 def isNan (c : Int) : Bool := c == nan
 
--- One zero and one NaN: `-0.0` and a negative NaN (as x86 computes `0/0`)
--- have the codes of `0.0` and NaN, and negation keeps zero.
-#guard ofFloat (Float.ofBits 0x8000000000000000) == 0 && ofFloat 0.0 == 0
+-- IEEE on the full code set (D31): `-0.0` keeps its code; a NaN of either
+-- sign (as x86 computes `0/0`) is the NaN, an operation's NaN sign being open.
+#guard ofFloat (Float.ofBits 0x8000000000000000) == fp64.negZero && ofFloat 0.0 == 0
 #guard ofFloat (Float.ofBits 0xFFF8000000000000) == nan && ofFloat (0.0 / 0.0) == nan
 #guard neg (ofFloat 0.0) == 0 && neg (ofFloat 1.5) == ofFloat (-1.5)
 -- `ROUND(x, d)` as DuckDB gives it (#335), at ordinary and extreme digits.
@@ -576,10 +584,10 @@ def isNan (c : Int) : Bool := c == nan
 #guard roundTo (-308) (ofFloat 1.5e308) == ofFloat 1.5e308 && roundTo (-308) (ofFloat 5e307) == ofFloat 1e308
 #guard roundTo (-308) (ofFloat (-1.5e308)) == ofFloat (-1.5e308) && roundTo (-309) (ofFloat 1.5e308) == 0
 #guard roundTo (-3) posInf == posInf && roundTo 3 nan == nan
-#guard ofFloat (-1.0 * 0.0) == 0 && negInf < ofFloat (-1.0) && ofFloat 5e-324 > 0 && posInf < nan
+#guard ofFloat (-1.0 * 0.0) == fp64.negZero && negInf < ofFloat (-1.0) && ofFloat 5e-324 > 0 && posInf < nan
 
 /-- `(-1)^s · m · 2⁻¹⁰⁷⁴` for a finite code, as `(negative, m)`. -/
-def finiteParts (c : Int) : Bool × Nat := (c < 0, (c.natAbs - 1) / 2)
+def finiteParts (c : Int) : Bool × Nat := if c = fp64.negZero then (true, 0) else (c < 0, (c.natAbs - 1) / 2)
 
 /-- `fmod(a, b)`, the remainder of doubles in C and IEEE 754, which DuckDB,
 DataFusion and Spark compute for `%`: `a - b · trunc(a / b)`, with the sign of
@@ -593,13 +601,14 @@ def fmod (a b : Int) : Int :=
   let mb := (finiteParts b).2
   if infMag ≤ ma ∨ nanMag ≤ mb ∨ mb = 0 then nan
   else if mb = infMag then a
-  else ofMag negative (ma % mb)
+  -- The result has the dividend's sign, a zero included (IEEE: `-4 % 2` is `-0.0`).
+  else ofParts negative (ma % mb)
 
 #guard fmod (ofFloat 7.5) (ofFloat 2.0) == ofFloat 1.5
 #guard fmod (ofFloat (-7.5)) (ofFloat 2.0) == ofFloat (-1.5)
 #guard fmod (ofFloat 7.5) (ofFloat (-2.0)) == ofFloat 1.5
 -- `-0.0` in IEEE; the model's one zero.
-#guard fmod (ofFloat (-4.0)) (ofFloat 2.0) == 0 && fmod 0 (ofFloat 2.0) == 0
+#guard fmod (ofFloat (-4.0)) (ofFloat 2.0) == fp64.negZero && fmod 0 (ofFloat 2.0) == 0
 #guard fmod (ofFloat 7.5) 0 == nan && fmod 0 0 == nan && fmod nan (ofFloat 2.0) == nan
 #guard fmod posInf (ofFloat 2.0) == nan && fmod negInf (ofFloat 2.0) == nan
 #guard fmod (ofFloat 7.5) posInf == ofFloat 7.5 && fmod (ofFloat (-7.5)) negInf == ofFloat (-7.5)
@@ -615,13 +624,12 @@ def fmod (a b : Int) : Int :=
 /-! ### One zero and one NaN: `canon` (#444 step 1b)
 
 `-0.0` and the negative NaN have codes outside `[-∞, NaN]`
-(`FloatFormat.negZero`, `negNan`), which the reference never produces. Every
-operation here commutes with `canon` on the reference's codes: their results
-are reference codes, which `canon` fixes. Operations elsewhere build their
-results from `ofFloat`, `ofMag`, `ofInt` or their inputs, so the same holds
-of them (`canon_ofFloat`). Negation is the exception the parser already
-handles: code negation sends NaN to the negative NaN, and `canon` of it is
-the parser's `CASE WHEN x = NaN THEN x ELSE -x END` (`canon_neg`). -/
+(`FloatFormat.negZero`, `negNan`). The reference is IEEE on the full code set
+(D31): scalar operations run on raw values and may give `-0.0`
+(`ofFloat_cases`), and `zero_sign` = `ONE_ZERO` and `nan_kind` = `ONE_NAN`
+apply `canon` only at identity boundaries (`=`, `<`, keys). Code negation
+sends NaN to the negative NaN; `canon` of it is the parser's
+`CASE WHEN x = NaN THEN x ELSE -x END` (`canon_neg`). -/
 
 abbrev negZero : Int := fp64.negZero
 abbrev negNan : Int := fp64.negNan
@@ -642,47 +650,23 @@ theorem isRef_nan : IsRef nan :=
   have := fp64.posInf_lt_nan; have := fp64.negInf_lt_zero; have := fp64.zero_lt_posInf
   ⟨by show fp64.negInf ≤ fp64.nan; omega, Int.le_refl _⟩
 
-/-- A result built from a native double is a reference code. -/
-theorem canon_ofFloat (f : Float) : canon (ofFloat f) = ofFloat f := fp64.canon_ofMag _ _
+/-- A result built from a native double is `-0.0` or a reference code. -/
+theorem ofParts_cases (negative : Bool) (mag : Nat) :
+    ofParts negative mag = negZero ∨ canon (ofParts negative mag) = ofParts negative mag := by
+  unfold ofParts; split
+  · exact .inl rfl
+  · exact .inr (fp64.canon_ofMag _ _)
+
+theorem ofFloat_cases (f : Float) : ofFloat f = negZero ∨ canon (ofFloat f) = ofFloat f :=
+  ofParts_cases _ _
 
 theorem canon_finite (c : Int) : canon (finite c) = finite c := fp64.canon_finite c
 
 theorem canon_of_bounds {c : Int} (h : negInf < c ∧ c < posInf) : canon c = c :=
   canon_of_isRef (isRef_of_bounds h)
 
-theorem lift₂_canon (op : Float → Float → Float) {a b : Int} (ha : IsRef a) (hb : IsRef b) :
-    lift₂ op (canon a) (canon b) = canon (lift₂ op a b) := by
-  rw [canon_of_isRef ha, canon_of_isRef hb]; exact (canon_ofFloat _).symm
-
 theorem canon_zero : canon 0 = 0 :=
   canon_of_bounds ⟨fp64.negInf_lt_zero, fp64.zero_lt_posInf⟩
-
-theorem roundTo_canon (d : Int) {c : Int} (h : IsRef c) : roundTo d (canon c) = canon (roundTo d c) := by
-  rw [canon_of_isRef h]
-  unfold roundTo; dsimp only
-  split <;> (try split) <;> (try split) <;> (try split) <;>
-    first
-    | exact (canon_of_isRef h).symm
-    | exact canon_zero.symm
-    | exact (canon_ofFloat _).symm
-
-/-- Rounding a canonical code keeps it canonical (D31). -/
-theorem canon_roundTo (d : Int) {c : Int} (h : canon c = c) : canon (roundTo d c) = roundTo d c := by
-  unfold roundTo; dsimp only
-  split <;> (try split) <;> (try split) <;> (try split) <;>
-    first
-    | exact h
-    | exact canon_zero
-    | exact canon_ofFloat _
-
-/-- `fmod` of a canonical dividend is canonical (D31). -/
-theorem canon_fmod {a : Int} (h : canon a = a) (b : Int) : canon (fmod a b) = fmod a b := by
-  unfold fmod; dsimp only
-  split
-  · exact canon_of_isRef isRef_nan
-  · split
-    · exact h
-    · exact fp64.canon_ofMag _ _
 
 theorem finite_canon {c : Int} (h : IsRef c) : finite (canon c) = canon (finite c) := by
   rw [canon_of_isRef h, canon_finite]
@@ -704,16 +688,6 @@ theorem canon_neg {c : Int} (h : IsRef c) : canon (neg c) = if c = nan then nan 
     omega
 
 theorem neg_canon {c : Int} (h : IsRef c) : neg (canon c) = neg c := by rw [canon_of_isRef h]
-
-theorem fmod_canon {a b : Int} (ha : IsRef a) (hb : IsRef b) :
-    fmod (canon a) (canon b) = canon (fmod a b) := by
-  rw [canon_of_isRef ha, canon_of_isRef hb]
-  unfold fmod; dsimp only
-  split
-  · exact (canon_of_isRef isRef_nan).symm
-  · split
-    · exact (canon_of_isRef ha).symm
-    · exact (fp64.canon_ofMag _ _).symm
 
 /-- `CAST(x AS DECIMAL(_, s))` of a double with native floats (the model's is
 `toDecimal?`, `core/Sverify/Core/Conversions.lean`), as the decimal's unscaled integer:
