@@ -597,7 +597,8 @@ OBSERVATIONS: list[Observation] = [
        "df(x=[-1, -86400000000, 86400000001, -7, 7, -9223372036854775808, None]).select("
        "(pl.col('x').cast(pl.Int128) % 86400000000).alias('day'),"
        " (pl.col('x').cast(pl.Int128) % 5).alias('five'),"
-       " (pl.col('x').cast(pl.Int128) - (pl.col('x').cast(pl.Int128) - 3) % 10).alias('bin')).rows()"),
+       " (pl.col('x').cast(pl.Int128) - (pl.col('x').cast(pl.Int128) - 3) % 10)"
+       ".alias('bin')).rows()"),
     _o("list-len", "nested",
        "df(x=[[1, 2], [], None, [None], [1, None, 3]]).select(pl.col('x').list.len()"
        ".cast(pl.Int64)).to_series().to_list()"),
