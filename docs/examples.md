@@ -242,11 +242,13 @@ print(totals.refresh(engine="polars", route="auto"))
 # sums:
 #   route on polars: ...
 # ...
-#   view sums: 1 touched group(s) recomputed
+#   view sums: readings@v1
 #   wrote sums from readings@v1: merge v2, 1 row(s) written, 1 deleted
 ```
 
-The second refresh recomputes only the group the insert touched. A result
+The second refresh adds the insert to its group's exact sum and rounds it
+once, without reading the input
+([`LinearAgg.fsum_no_drift`](../SubstraitLean/IncrementalFloat.lean)). A result
 not determined up to row order, such as a `LIMIT` over ties, is refused by
 every sink.
 
