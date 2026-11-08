@@ -156,7 +156,7 @@ def refineCol (env : List AVal) (i : Nat) (f : AVal → AVal) : List AVal :=
 narrowed by `f` of `w`'s integer. -/
 def refineNum (env : List AVal) (i : Nat) (w : Value) (f : Int → Bound → Bound) : List AVal :=
   match w.numOf? with
-  | some (k, c) => refineCol env i (·.nonNullNum k (f c))
+  | some (k, c) => refineCol env i (·.nonNullNum k (f (k.norm c)))
   | none => env
 
 /-- A non-NULL list of `a`'s, its elements in `e` and its length in `card` (#925). -/
@@ -308,18 +308,18 @@ theorem cmp_num' {f : BinFn} (hf : f = .eq ∨ f = .lt) {w : Value} {k : NumKind
       · cases h
 
 theorem lt_num_right {v : Value} {k : NumKind} {c : Int}
-    (h : (BinFn.apply .lt v (k.val c)).isTrue = true) : ∃ x, v = k.val x ∧ x < c := by
+    (h : (BinFn.apply .lt v (k.val c)).isTrue = true) : ∃ x, v = k.val x ∧ k.norm x < k.norm c := by
   obtain ⟨x, rfl, h⟩ := cmp_num (.inr rfl) h
   rw [BinFn.lt_vals] at h; exact ⟨x, rfl, by simpa using h⟩
 
 theorem lt_num_left {w : Value} {k : NumKind} {c : Int}
-    (h : (BinFn.apply .lt (k.val c) w).isTrue = true) : ∃ x, w = k.val x ∧ c < x := by
+    (h : (BinFn.apply .lt (k.val c) w).isTrue = true) : ∃ x, w = k.val x ∧ k.norm c < k.norm x := by
   obtain ⟨x, rfl, h⟩ := cmp_num' (.inr rfl) h
   rw [BinFn.lt_vals] at h; exact ⟨x, rfl, by simpa using h⟩
 
 theorem not_lt_num_right {v : Value} {k : NumKind} {c : Int}
     (h : (UnFn.apply .not (BinFn.apply .lt v (k.val c))).isTrue = true) :
-    ∃ x, v = k.val x ∧ c ≤ x := by
+    ∃ x, v = k.val x ∧ k.norm c ≤ k.norm x := by
   cases hv : v.numOf? with
   | none => rw [BinFn.cmp_other_num (.inr rfl) k c hv] at h; cases h
   | some p =>
@@ -327,13 +327,13 @@ theorem not_lt_num_right {v : Value} {k : NumKind} {c : Int}
     rw [Value.numOf?_some hv] at h ⊢
     rw [BinFn.lt_vals] at h
     split at h
-    · subst_vars; refine ⟨x, rfl, ?_⟩
-      by_cases hx : x < c <;> simp_all [UnFn.apply, Value.isTrue] <;> omega
+    · rename_i hkk; subst k'; refine ⟨x, rfl, ?_⟩
+      by_cases hx : k.norm x < k.norm c <;> simp_all [UnFn.apply, Value.isTrue] <;> omega
     · cases h
 
 theorem not_lt_num_left {w : Value} {k : NumKind} {c : Int}
     (h : (UnFn.apply .not (BinFn.apply .lt (k.val c) w)).isTrue = true) :
-    ∃ x, w = k.val x ∧ x ≤ c := by
+    ∃ x, w = k.val x ∧ k.norm x ≤ k.norm c := by
   cases hw : w.numOf? with
   | none => rw [BinFn.cmp_num_other (.inr rfl) k c hw] at h; cases h
   | some p =>
@@ -341,16 +341,16 @@ theorem not_lt_num_left {w : Value} {k : NumKind} {c : Int}
     rw [Value.numOf?_some hw] at h ⊢
     rw [BinFn.lt_vals] at h
     split at h
-    · subst_vars; refine ⟨x, rfl, ?_⟩
-      by_cases hx : c < x <;> simp_all [UnFn.apply, Value.isTrue] <;> omega
+    · rename_i hkk; subst k'; refine ⟨x, rfl, ?_⟩
+      by_cases hx : k.norm c < k.norm x <;> simp_all [UnFn.apply, Value.isTrue] <;> omega
     · cases h
 
+/-- `v = c` is TRUE: `v` is a number of `c`'s kind with `c`'s canonical code. -/
 theorem eq_num {v : Value} {k : NumKind} {c : Int}
-    (h : (BinFn.apply .eq v (k.val c)).isTrue = true) : v = k.val c := by
+    (h : (BinFn.apply .eq v (k.val c)).isTrue = true) : ∃ x, v = k.val x ∧ k.norm x = k.norm c := by
   obtain ⟨x, rfl, h⟩ := cmp_num (.inl rfl) h
   rw [BinFn.eq_vals] at h
-  have : x = c := by by_cases hx : x = c <;> simp_all
-  rw [this]
+  exact ⟨x, rfl, by by_cases hx : k.norm x = k.norm c <;> simp_all⟩
 
 theorem not_eq_num {v : Value} {k : NumKind} {c : Int}
     (h : (UnFn.apply .not (BinFn.apply .eq v (k.val c))).isTrue = true) : ∃ x, v = k.val x := by
@@ -441,7 +441,7 @@ theorem nonNullOrd_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : v.isOrd = true
   | _ => simp_all [Value.isOrd, AVal.nonNullOrd, AVal.Mem, AVal.MemNum]
 
 theorem nonNullNum_mem {a : AVal} {k : NumKind} {x : Int} {f : Bound → Bound} (h : a.Mem (k.val x))
-    (hf : ∀ b, b.Mem x → (f b).Mem x) : (a.nonNullNum k f).Mem (k.val x) := by
+    (hf : ∀ b, b.Mem (k.norm x) → (f b).Mem (k.norm x)) : (a.nonNullNum k f).Mem (k.val x) := by
   obtain ⟨b, hb, hm, _⟩ := AVal.mem_val.mp h
   rw [AVal.mem_val]
   exact ⟨f b, by simp [AVal.nonNullNum, hb], hf b hm, by simp [AVal.nonNullNum]⟩
@@ -450,7 +450,8 @@ theorem nonNullNum_mem {a : AVal} {k : NumKind} {x : Int} {f : Bound → Bound} 
 integer `f` keeps. -/
 theorem refineNum_sound {env : List AVal} {row : Row} {i : Nat} {w : Value}
     {f : Int → Bound → Bound} (h : EnvMem env row)
-    (hw : ∀ k c, w.numOf? = some (k, c) → ∃ x, row.getD i .null = k.val x ∧ ∀ b, b.Mem x → (f c b).Mem x) :
+    (hw : ∀ k c, w.numOf? = some (k, c) → ∃ x, row.getD i .null = k.val x ∧
+      ∀ b, b.Mem (k.norm x) → (f (k.norm c) b).Mem (k.norm x)) :
     EnvMem (refineNum env i w f) row := by
   unfold refineNum
   split
@@ -556,8 +557,8 @@ theorem Expr.refineL_sound' (env : List AVal) (e : Expr) : ∀ {row : Row}, EnvM
   case case8 env i w =>
     refine refineNum_sound h fun k c hw => ?_
     rw [Value.numOf?_some hw] at ht
-    have hx := eq_num (by simpa [eval, List.getD_eq_getElem?_getD] using ht)
-    exact ⟨c, hx, fun _ _ => Bound.mem_exact c⟩
+    obtain ⟨x, hx, hxc⟩ := eq_num (by simpa [eval, List.getD_eq_getElem?_getD] using ht)
+    exact ⟨x, hx, fun _ _ => hxc ▸ Bound.mem_exact _⟩
   case case9 env i =>
     have hn : row.getD i .null ≠ .null := by
       simpa [List.getD_eq_getElem?_getD] using not_isNull (by simpa [eval] using ht)
@@ -630,13 +631,13 @@ theorem Expr.refineL_sound' (env : List AVal) (e : Expr) : ∀ {row : Row}, EnvM
     subst hw
     obtain ⟨x, hx, hk⟩ := lt_num_right (k := .int) (by simpa [eval, List.getD_eq_getElem?_getD, NumKind.val] using ht)
     obtain ⟨vs, hv, rfl⟩ := card_of_int hx
-    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atMost hb (by omega)⟩
+    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atMost hb (by simp only [NumKind.norm_int] at *; omega)⟩
   case case21 env w i =>
     refine refineCard_sound h fun c hw => ?_
     subst hw
     obtain ⟨x, hx, hk⟩ := lt_num_left (k := .int) (by simpa [eval, List.getD_eq_getElem?_getD, NumKind.val] using ht)
     obtain ⟨vs, hv, rfl⟩ := card_of_int hx
-    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atLeast hb (by omega)⟩
+    exact ⟨vs, by simpa [List.getD_eq_getElem?_getD] using hv, fun b hb => Bound.mem_atLeast hb (by simp only [NumKind.norm_int] at *; omega)⟩
   case case22 env i w =>
     refine refineCard_sound h fun c hw => ?_
     subst hw
@@ -704,9 +705,9 @@ inductive Cstr where
 def Cstr.Holds : Cstr → Value → Prop
   | .null, v => v = .null
   | .notNull, v => v ≠ .null
-  | .numIn k b true, v => ∃ j, v = k.val j ∧ b.Mem j
-  | .numIn k b false, v => ∀ j, v = k.val j → b.Mem j
-  | .ne k c, v => ∀ j, v = k.val j → j ≠ c
+  | .numIn k b true, v => ∃ j, v = k.val j ∧ b.Mem (k.norm j)
+  | .numIn k b false, v => ∀ j, v = k.val j → b.Mem (k.norm j)
+  | .ne k c, v => ∀ j, v = k.val j → k.norm j ≠ c
   | .strIn l true, v => ∃ s, v = .str s ∧ s ∈ l
   | .strIn l false, v => ∀ s, v = .str s → s ∈ l
   | .strNe k, v => ∀ s, v = .str s → s ≠ k
@@ -714,7 +715,7 @@ def Cstr.Holds : Cstr → Value → Prop
 /-- A constraint on `s` from a comparison with the literal `w`, if a number. -/
 def numCstr (s : Expr) (w : Value) (f : NumKind → Int → Cstr) : Option (Expr × Cstr) :=
   match w.numOf? with
-  | some (k, c) => some (s, f k c)
+  | some (k, c) => some (s, f k (k.norm c))
   | none => none
 
 /-- What `c` being TRUE (`pos`) or not TRUE says about its subject. -/
@@ -756,8 +757,9 @@ one on `v`. -/
 def Cstr.neg (kf : NumKind) : Cstr → Option Cstr
   | .null => some .null
   | .notNull => none
-  | .numIn k b strict => if k = kf then some (.numIn k b.neg strict) else none
-  | .ne k c => if k = kf then some (.ne k (-c)) else none
+  -- Integers only: `-NaN` is the NaN (D31), which no negated bound states.
+  | .numIn k b strict => if k = kf ∧ kf = .int then some (.numIn k b.neg strict) else none
+  | .ne k c => if k = kf ∧ kf = .int then some (.ne k (-c)) else none
   | .strIn _ _ | .strNe _ => none
 
 theorem Value.isTrue_bool (b : Bool) : (Value.bool b).isTrue = b := by cases b <;> rfl
@@ -770,41 +772,41 @@ theorem Bound.mem_lohi {l h : Option Int} {x : Int} (hl : ∀ a, l = some a → 
 /-- A comparison with a number that is not TRUE says nothing of other values,
 and of a number of its kind that the comparison does not hold. -/
 theorem lt_false_right {v : Value} {k : NumKind} {c : Int}
-    (h : (BinFn.apply .lt v (k.val c)).isTrue = false) : ∀ j, v = k.val j → c ≤ j := by
+    (h : (BinFn.apply .lt v (k.val c)).isTrue = false) : ∀ j, v = k.val j → k.norm c ≤ k.norm j := by
   rintro j rfl; rw [BinFn.lt_vals] at h; simp at h; omega
 
 theorem lt_false_left {w : Value} {k : NumKind} {c : Int}
-    (h : (BinFn.apply .lt (k.val c) w).isTrue = false) : ∀ j, w = k.val j → j ≤ c := by
+    (h : (BinFn.apply .lt (k.val c) w).isTrue = false) : ∀ j, w = k.val j → k.norm j ≤ k.norm c := by
   rintro j rfl; rw [BinFn.lt_vals] at h; simp at h; omega
 
 theorem not_lt_false_right {v : Value} {k : NumKind} {c : Int}
     (h : (UnFn.apply .not (BinFn.apply .lt v (k.val c))).isTrue = false) :
-    ∀ j, v = k.val j → j ≤ c - 1 := by
+    ∀ j, v = k.val j → k.norm j ≤ k.norm c - 1 := by
   rintro j rfl; rw [BinFn.lt_vals] at h
-  by_cases hj : j < c <;> simp_all [UnFn.apply] <;> omega
+  by_cases hj : k.norm j < k.norm c <;> simp_all [UnFn.apply] <;> omega
 
 theorem not_lt_false_left {w : Value} {k : NumKind} {c : Int}
     (h : (UnFn.apply .not (BinFn.apply .lt (k.val c) w)).isTrue = false) :
-    ∀ j, w = k.val j → c + 1 ≤ j := by
+    ∀ j, w = k.val j → k.norm c + 1 ≤ k.norm j := by
   rintro j rfl; rw [BinFn.lt_vals] at h
-  by_cases hj : c < j <;> simp_all [UnFn.apply] <;> omega
+  by_cases hj : k.norm c < k.norm j <;> simp_all [UnFn.apply] <;> omega
 
 theorem eq_false_num {v : Value} {k : NumKind} {c : Int}
-    (h : (BinFn.apply .eq v (k.val c)).isTrue = false) : ∀ j, v = k.val j → j ≠ c := by
-  rintro j rfl; rw [BinFn.eq_vals] at h; intro hj; subst hj; simp at h
+    (h : (BinFn.apply .eq v (k.val c)).isTrue = false) : ∀ j, v = k.val j → k.norm j ≠ k.norm c := by
+  rintro j rfl; rw [BinFn.eq_vals] at h; intro hj; simp [hj] at h
 
 theorem not_eq_false_num {v : Value} {k : NumKind} {c : Int}
     (h : (UnFn.apply .not (BinFn.apply .eq v (k.val c))).isTrue = false) :
-    ∀ j, v = k.val j → (Bound.exact c).Mem j := by
+    ∀ j, v = k.val j → (Bound.exact (k.norm c)).Mem (k.norm j) := by
   rintro j rfl; rw [BinFn.eq_vals] at h
-  have : j = c := by
-    by_cases hj : j = c
+  have : k.norm j = k.norm c := by
+    by_cases hj : k.norm j = k.norm c
     · exact hj
     · simp [UnFn.apply, hj] at h
-  subst this; exact Bound.mem_exact j
+  rw [this]; exact Bound.mem_exact _
 
 theorem numCstr_eq {s s' : Expr} {w : Value} {f : NumKind → Int → Cstr} {k : Cstr}
-    (h : numCstr s w f = some (s', k)) : ∃ kk c, w = kk.val c ∧ s' = s ∧ k = f kk c := by
+    (h : numCstr s w f = some (s', k)) : ∃ kk c, w = kk.val c ∧ s' = s ∧ k = f kk (kk.norm c) := by
   unfold numCstr at h
   split at h
   · rename_i kk c hw
@@ -847,14 +849,15 @@ theorem Expr.cstr_sound {pos : Bool} {c s : Expr} {k : Cstr} {row : Row}
   · obtain ⟨x, rfl, hx⟩ := not_lt_num_left ht
     exact ⟨x, rfl, Bound.mem_lohi (fun a ha => by cases ha) (fun b hb => by cases hb; omega)⟩
   · exact eq_false_num ht
-  · exact ⟨cc, eq_num ht, Bound.mem_exact cc⟩
+  · obtain ⟨x, hx, hxc⟩ := eq_num ht
+    exact ⟨x, hx, hxc ▸ Bound.mem_exact _⟩
   · exact not_eq_false_num ht
   · obtain ⟨x, hx⟩ := not_eq_num ht
     intro j hj; rw [hx] at hj
     have hxj : x = j := by cases kk <;> simp_all [NumKind.val]
     subst hxj
-    intro hc; subst hc
-    rw [hx, BinFn.eq_vals] at ht; simp [UnFn.apply] at ht
+    intro hc
+    rw [hx, BinFn.eq_vals] at ht; simp [UnFn.apply, hc] at ht
 
 theorem Cstr.apply_sound {k : Cstr} {a : AVal} {v : Value} (hh : k.Holds v) (ha : a.Mem v) :
     (k.apply a).Mem v := by
@@ -894,35 +897,36 @@ theorem Cstr.apply_sound {k : Cstr} {a : AVal} {v : Value} (hh : k.Holds v) (ha 
 theorem Cstr.neg_sound {k k' : Cstr} {f : UnFn} {kf : NumKind}
     (hf : (f = .neg ∧ kf = .int) ∨ (f = .fneg ∧ kf = .float)) {v : Value}
     (hk' : k.neg kf = some k') (hk : k.Holds v) : k'.Holds (f.apply v) := by
-  rcases hf with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;>
-  match k, k', hk' with
-  | .null, _, rfl => simp_all [Cstr.Holds, UnFn.apply]
-  | .numIn kk b strict, k', h =>
-      simp only [Cstr.neg] at h
-      split at h
-      · rename_i hkk; subst hkk
-        simp only [Option.some.injEq] at h; subst h
-        cases strict
-        · intro j hj
+  rcases hf with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+  · match k, k', hk' with
+    | .null, _, rfl => simp_all [Cstr.Holds, UnFn.apply]
+    | .numIn kk b strict, k', h =>
+        simp only [Cstr.neg] at h
+        split at h
+        · rename_i hkk; obtain ⟨hkk, -⟩ := hkk; subst hkk
+          simp only [Option.some.injEq] at h; subst h
+          cases strict
+          · intro j hj
+            simp only [Cstr.Holds] at hk
+            cases v <;> simp only [UnFn.apply, NumKind.val, reduceCtorEq, Value.int.injEq] at hj
+            rename_i i; subst hj; simpa using Bound.mem_neg (hk i rfl)
+          · obtain ⟨j, rfl, hj⟩ := hk
+            exact ⟨-j, by simp [UnFn.apply, NumKind.val], by simpa using Bound.mem_neg hj⟩
+        · cases h
+    | .ne kk c, k', h =>
+        simp only [Cstr.neg] at h
+        split at h
+        · rename_i hkk; obtain ⟨hkk, -⟩ := hkk; subst hkk
+          simp only [Option.some.injEq] at h; subst h
+          intro j hj
           simp only [Cstr.Holds] at hk
-          cases v <;> simp only [UnFn.apply, NumKind.val, reduceCtorEq, Value.int.injEq,
-            Value.float.injEq] at hj
-          all_goals (rename_i i; subst hj; simpa [FloatCode.neg] using Bound.mem_neg (hk i rfl))
-        · obtain ⟨j, rfl, hj⟩ := hk
-          exact ⟨-j, by simp [UnFn.apply, FloatCode.neg, NumKind.val], Bound.mem_neg hj⟩
-      · cases h
-  | .ne kk c, k', h =>
-      simp only [Cstr.neg] at h
-      split at h
-      · rename_i hkk; subst hkk
-        simp only [Option.some.injEq] at h; subst h
-        intro j hj
-        simp only [Cstr.Holds] at hk
-        cases v <;> simp only [UnFn.apply, NumKind.val, reduceCtorEq, Value.int.injEq,
-          Value.float.injEq] at hj
-        all_goals (rename_i i; subst hj; have := hk i rfl; simp [FloatCode.neg]; omega)
-      · cases h
-  | .notNull, _, h | .strIn _ _, _, h | .strNe _, _, h => simp [Cstr.neg] at h
+          cases v <;> simp only [UnFn.apply, NumKind.val, reduceCtorEq, Value.int.injEq] at hj
+          rename_i i; subst hj; have := hk i rfl; simp only [NumKind.norm_int] at *; omega
+        · cases h
+    | .notNull, _, h | .strIn _ _, _, h | .strNe _, _, h => simp [Cstr.neg] at h
+  · -- `-x` of doubles keeps only `IS NULL` (`Cstr.neg`).
+    cases k <;> simp [Cstr.neg] at hk'
+    subst hk'; simp_all [Cstr.Holds, UnFn.apply]
 
 /-- Constraints known to hold on the current row, each on the value of an
 expression (the conditions of the enclosing `CASE` branches and `OR`s). -/
