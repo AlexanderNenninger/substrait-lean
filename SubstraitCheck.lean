@@ -236,23 +236,9 @@ def writeDataFusion (plan : Plan) : IO UInt32 := do
   IO.println (DataFusion.writePlan plan).compress
   return 0
 
-open Lean (Json toJson) in
-/-- A `--contract` report under the profile the request names (`"profile"`).
-Under the reference it is the report as it is. Under Substrait, the
-reference's proof carries over when the transfer check passes on the
-transformation: Substrait allows only behaviours the reference allows at every
-option it meets (`Rel.transfer_of_transferB`). Where it does not, no
-postcondition or key is proved under Substrait, and `"transfer"` names the
-options. Under Polars's profile the report is the reference's of the plan as
-parsed: a plan states Polars's choices (`division_type: FLOOR`), which the
-parser reads as their templates, and `Polars.elaborate_eq` proves that
-evaluating those under the reference is evaluating the calls under
-`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). Under Spark's it is the reference's
-report: `Profile.spark` evaluates as the reference (`Profile.spark_eval`,
-`SubstraitLean/SparkProfile.lean`); so does any engine of `es` marked
-`asReference`, an out-of-tree one among them. DuckDB's profile is
-reached through its lift (`semantics="duckdb"`); its requests get the
-reference's report, which says so. -/
+section
+open Lean (Json toJson)
+
 /-- Does the request's observation (`"observation"`: the components it
 coarsens, whether doubles compare under the plan's bound) cover `q`, the
 observation an engine's row realises an option up to? Each component `q`
@@ -314,6 +300,25 @@ def transferTo (name : String) (X : ProfileTable) (plan : Parse.Plan) (report : 
       (Json.mkObj [("from", "reference"), ("ok", false), ("failures", Json.arr rows.toArray)]),
       false)
 
+end
+
+open Lean (Json toJson) in
+/-- A `--contract` report under the profile the request names (`"profile"`).
+Under the reference it is the report as it is. Under Substrait, the
+reference's proof carries over when the transfer check passes on the
+transformation: Substrait allows only behaviours the reference allows at every
+option it meets (`Rel.transfer_of_transferB`). Where it does not, no
+postcondition or key is proved under Substrait, and `"transfer"` names the
+options. Under Polars's profile the report is the reference's of the plan as
+parsed: a plan states Polars's choices (`division_type: FLOOR`), which the
+parser reads as their templates, and `Polars.elaborate_eq` proves that
+evaluating those under the reference is evaluating the calls under
+`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). Under Spark's it is the reference's
+report: `Profile.spark` evaluates as the reference (`Profile.spark_eval`,
+`SubstraitLean/SparkProfile.lean`); so does any engine of `es` marked
+`asReference`, an out-of-tree one among them. DuckDB's profile is
+reached through its lift (`semantics="duckdb"`); its requests get the
+reference's report, which says so. -/
 def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : Bool) :
     Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"
