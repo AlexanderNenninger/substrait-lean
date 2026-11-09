@@ -120,7 +120,7 @@ def _check_datafusion_plan(plan: dict) -> None:
             if isinstance(f, dict) and fname == "round" and len(f.get("arguments", [])) == 2:
                 # DataFusion's `round(x · 10ᵈ) / 10ᵈ` is not DuckDB's (#335).
                 raise sql.Unsupported(
-                    "round(x, d) is DuckDB's (#335, upstream/bugs/DF-25.json) and not yet "
+                    "round(x, d) is DuckDB's (upstream/bugs/DF-25.json) and not yet "
                     "supported on DataFusion; " + DUCKDB_ONLY
                 )
             if isinstance(f, dict) and fname == "substring":
