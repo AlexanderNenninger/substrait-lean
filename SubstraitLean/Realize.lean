@@ -239,7 +239,8 @@ def unprofiledJson : Json := Json.mkObj [
 value as a number or as `{"value", "proved"}`, `"proved"` as one flag or one
 per kind, `"proved_on"` naming the engines a statistic's bound is proved on
 (D30). `epsBounds` reads them into one shape, per engine where one is named:
-`{"bounds": {kind: {"value", "proved"}}, "unbounded", "why"}`. -/
+`{"bounds": {kind: {"value", "proved"}}, "unbounded", "why"}`, with a group's
+own bound (`"per_group"`, `"theorem"`, #929) where the checker gives one. -/
 
 /-- The kinds of bound a tolerance compares (`sv.within`). -/
 def epsKinds : List String := ["abs", "rel", "ulps"]
@@ -265,8 +266,11 @@ def epsBounds (engine : Option String) (eps : Json) : Json :=
       | _ => none
     | _ => none
   let named := epsKinds.any fun k => (eps.getObjVal? k).isOk
-  Json.mkObj [("bounds", Json.mkObj bounds), ("unbounded", toJson (named && bounds.isEmpty)),
-    ("why", (eps.getObjVal? "why").toOption.getD .null)]
+  -- A group's own bound (#929, no row cap) and the theorem behind it pass through.
+  let extra := ["per_group", "theorem"].filterMap fun k =>
+    (eps.getObjVal? k).toOption.map (k, ·)
+  Json.mkObj ([("bounds", Json.mkObj bounds), ("unbounded", toJson (named && bounds.isEmpty)),
+    ("why", (eps.getObjVal? "why").toOption.getD .null)] ++ extra)
 
 /-- Every column's `ε` of `Epsilon.epsilon`'s answer, normalised (`epsBounds`). -/
 def epsilonBounds (engine : Option String) (eps : Json) : Json :=

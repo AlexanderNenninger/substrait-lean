@@ -126,9 +126,14 @@ def test_the_plan_bound_level() -> None:
     assert sv.equivalent().refines(plan)
     assert not plan.refines(sv.equivalent())
     assert not plan.refines(sv.equivalent(floats=sv.within(rel=1e-9)))
-    resolved = routes._resolve(plan, {"m": {"abs": 1e-10, "rel": 1e-13}, "k": {}})
+    # Each column's `ε` as the checker normalises it (`Realize.epsBounds`).
+    bounds = {"abs": {"value": 1e-10, "proved": False}, "rel": {"value": 1e-13, "proved": False}}
+    m = {"bounds": bounds, "unbounded": False, "why": None}
+    k = {"bounds": {}, "unbounded": False, "why": None}
+    resolved = routes._resolve(plan, {"m": m, "k": k})
     assert resolved.floats == sv.within(abs=1e-10, rel=1e-13)
-    assert routes._resolve(plan, {"m": {"abs": None}}).floats == "plan"
+    unbounded = {"m": {"bounds": {}, "unbounded": True, "why": None}}
+    assert routes._resolve(plan, unbounded).floats == "plan"
 
 
 # -- inferred preconditions ---------------------------------------------------
