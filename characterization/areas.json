@@ -34,6 +34,7 @@
         {"id": "nan_kind", "kind": "option", "question": "Does a NaN's sign (or payload) survive and show."},
         {"id": "zero_sign", "kind": "option", "question": "`-0.0` in arithmetic, comparison, sorting and grouping."},
         {"id": "round_zero_sign", "kind": "option", "question": "Which zero `round` and `ceil` give a negative value that rounds to zero: `-0.0` or `+0.0`."},
+        {"id": "pow_one_inf", "kind": "option", "question": "`power(±1, ±∞)` and `power(1, NaN)`: C's `pow` gives 1, IEEE 754's `powr` and Java's `StrictMath.pow` NaN (D40)."},
         {"id": "fp32", "kind": "option", "question": "Single-precision arithmetic and its conversions."}
       ]
     },

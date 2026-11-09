@@ -61,6 +61,7 @@ def Profile.sparkExtras : List (Functions.Ctor × String) :=
   FMath.all.map (fun g => (.un (.fmath g), "on_domain_error")) ++
     [(.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"), (.bin .fmul, "nan_creation"),
      (.bin .fdiv, "nan_creation"), (.bin .fmod, "nan_creation"), (.bin .fpow, "on_domain_error"),
+     (.bin .fpow, "pow_one_inf"), (.un .ffloor, "float_to_int"), (.un .fceil, "float_to_int"),
      (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range")]
 
 theorem Profile.spark_extras :
@@ -327,7 +328,13 @@ theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := b
             (by cases g <;> exact extraAt_of_all Profile.spark_extras (by decide)) ?_
           simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc]
         · cases hs
-      all_goals ((try split at hs) <;> cases hs <;> cases h)
+      -- `floor` and `ceil`: NaN is `0` (`float_to_int`), or they overflow.
+      case h_2 | h_3 =>
+        split at hs
+        · exact callExtra_of_at (o := "float_to_int") (extraAt_of_all Profile.spark_extras (by decide))
+            (by simp [optionScope])
+        · split at hs <;> cases hs; cases h
+      all_goals cases hs
   · simp only [Profile.spark] at h
     cases hs : sparkBin f v w with
     | none => rw [hs] at h; exact .inl (raiseIf_ok h)
@@ -370,21 +377,45 @@ theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := b
           · rename_i hn' hn
             exact .inr (dom (by simp [BinFn.issue, nanIssue, hn, Bool.not_eq_true _ |>.mp hn'])
               (extraAt_of_all Profile.spark_extras (by decide)))
-          · cases hs
+          · split at hs
+            · rename_i hp
+              exact .inr (callExtra_of_at (o := "pow_one_inf")
+                (extraAt_of_all Profile.spark_extras (by decide)) (by simp [optionScope, hp]))
+            · cases hs
       case h_8 | h_9 =>
         split at hs
         · cases hs
         · exact .inr (callExtra_of_at (o := "shift_range") (extraAt_of_all Profile.spark_extras (by decide)) (by simp [optionScope]))
       case h_10 => cases hs
 
-/-- **Spark's functions are faithful where they do not raise**: wherever the
-reference reports no issue, Spark gives the reference's value or raises
-(IEEE division by a zero, `floor` of `±∞`), and `okImpl` then takes the
-reference's. Every value of its own is where the reference raises. -/
-theorem Profile.spark_okImpl_faithful : Profile.spark.okImpl.Faithful := by
+/-- **Spark as the writer writes it is within its table**: the reference's
+functions where the writer shims or refuses (`Profile.sparkWritten`), Spark's
+elsewhere (`Profile.spark_withinOk`). -/
+theorem Profile.sparkWritten_withinOk : Profile.sparkWritten.WithinOk Profile.spark.table := by
+  refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
+  · simp only [Profile.sparkWritten] at h
+    split at h
+    · exact .inl (raiseIf_ok h)
+    · exact Profile.spark_withinOk.1 f v w h
+  · simp only [Profile.sparkWritten] at h
+    split at h
+    · exact .inl (raiseIf_ok h)
+    · exact Profile.spark_withinOk.2 f v w x h
+
+/-- **Spark as the writer writes it is faithful where it does not raise**:
+wherever the reference reports no issue, the written plan gives the
+reference's value or raises (IEEE division by a zero, `floor` past 64 bits),
+and `okImpl` then takes the reference's. Spark's own values there (`floor`
+of NaN, `power(1, ∞)`) are the writer's to shim or refuse
+(`Profile.sparkWritten`); every other value of its own is where the
+reference raises. -/
+theorem Profile.sparkWritten_okImpl_faithful : Profile.sparkWritten.okImpl.Faithful := by
   refine ⟨fun f v h => ?_, fun f v w h => ?_⟩
-  · show (match Profile.spark.un f v with | .ok w => w | .error _ => f.apply v) = f.apply v
-    simp only [Profile.spark, Profile.reference, h, raiseIf]
+  · show (match Profile.sparkWritten.un f v with | .ok w => w | .error _ => f.apply v) = f.apply v
+    by_cases hw : f.sparkWritten = true
+    · simp [Profile.sparkWritten, hw, Profile.reference, h, raiseIf]
+    simp only [Profile.sparkWritten, hw, Bool.false_eq_true, ↓reduceIte, Profile.spark,
+      Profile.reference, h, raiseIf]
     cases hs : sparkUn f v with
     | none => rfl
     | some o =>
@@ -395,9 +426,14 @@ theorem Profile.spark_okImpl_faithful : Profile.spark.okImpl.Faithful := by
         split at hs
         · rename_i hc; simp [UnFn.issue, domainIssue, hc] at h
         · cases hs
-      all_goals (try split at hs) <;> cases hs <;> rfl
-  · show (match Profile.spark.bin f v w with | .ok x => x | .error _ => f.apply v w) = f.apply v w
-    simp only [Profile.spark, Profile.reference, h, raiseIf]
+      case h_2 | h_3 => simp [UnFn.sparkWritten] at hw
+      all_goals cases hs
+  · show (match Profile.sparkWritten.bin f v w with | .ok x => x | .error _ => f.apply v w) =
+      f.apply v w
+    by_cases hw : f.sparkWritten = true
+    · simp [Profile.sparkWritten, hw, Profile.reference, h, raiseIf]
+    simp only [Profile.sparkWritten, hw, Bool.false_eq_true, ↓reduceIte, Profile.spark,
+      Profile.reference, h, raiseIf]
     cases hs : sparkBin f v w with
     | none => rfl
     | some o =>
@@ -419,30 +455,23 @@ theorem Profile.spark_okImpl_faithful : Profile.spark.okImpl.Faithful := by
               simp only [nanCase, Bool.or_eq_true] at hn ⊢; exact .inl hn
             cases hs; simp only [BinFn.apply, fdiv_of_nanCase_ieee this]
           · cases hs
-      case h_7 a b =>
-        simp only [sparkPow] at hs
-        split at hs
-        · rename_i hn; simp [BinFn.issue, hn] at h
-        · split at hs
-          · rename_i hn' hn
-            simp [BinFn.issue, nanIssue, hn, Bool.not_eq_true _ |>.mp hn'] at h
-          · cases hs
+      case h_7 => simp [BinFn.sparkWritten] at hw
       case h_8 | h_9 =>
         split at hs
         · cases hs
         · rename_i hr; simp [BinFn.issue, domainIssue, BitOp.apply, hr] at h
       case h_10 => cases hs
 
-/-- Spark under ANSI: its profile's functions where they do not raise
-(`Profile.spark`), its own choices. -/
+/-- Spark under ANSI, as the writer writes it: its profile's functions where
+they do not raise (`Profile.sparkWritten`), its own choices. -/
 def Engine.spark : Engine where
   name := "spark"
   profile := Profile.spark
   table := Profile.spark.table
   obs := Profile.spark.obs
   lower := some
-  impl := Profile.spark.okImpl
-  within := Profile.okImpl_within Profile.spark_withinOk
+  impl := Profile.sparkWritten.okImpl
+  within := Profile.okImpl_within Profile.sparkWritten_withinOk
 
 -- No engine's certificate is empty: each but the reference has rows that
 -- are not theorems (so `Refines` is a real hypothesis, which `#print axioms`

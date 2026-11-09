@@ -17,7 +17,7 @@ computes with `E`'s functions are a result the reference allows for `r`
 * `Engine.polars_sound`, `Engine.spark_sound`: under `Engine.GuardFreeSide`,
   guard elimination's hypotheses (`Rel.guardFree_sound`), with the engine's
   functions faithful where the reference reports no issue
-  (`Polars.written_faithful`, `Profile.spark_okImpl_faithful`). Its plan part
+  (`Polars.written_faithful`, `Profile.sparkWritten_okImpl_faithful`). Its plan part
   (`Engine.GuardFreePlan`) is decidable; its data part
   (`Engine.GuardFreeData`) states preconditions on the catalog, as `hK` does,
   with the size hypothesis (`Rel.Small`).
@@ -89,11 +89,11 @@ theorem Engine.polars_sound : Engine.polars.Sound Engine.GuardFreeSide := by
 
 /-- Spark: its profile's functions where they do not raise give the
 reference's value wherever the reference reports no issue
-(`Profile.spark_okImpl_faithful`), so guard elimination applies. -/
+(`Profile.sparkWritten_okImpl_faithful`), so guard elimination applies. -/
 theorem Engine.spark_sound : Engine.spark.Sound Engine.GuardFreeSide := by
   intro cat r r' hl _ ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
   cases hl
-  exact Rel.guardFree_allowed hcat hA hF hT hwf hsmall hs hm Profile.spark_okImpl_faithful
+  exact Rel.guardFree_allowed hcat hA hF hT hwf hsmall hs hm Profile.sparkWritten_okImpl_faithful
 
 /-! ## Within the engine's table -/
 

@@ -65,6 +65,7 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
             Option("on_domain_error", "on_domain_error", ("NAN", "NULL", "ERROR"),
                    (("NAN", "duckdb-R15-math-domain"),)),
             Option("on_log_zero", "on_log_zero", ("NAN", "ERROR", "MINUS_INFINITY")),
+            Option("pow_one_inf", None, ("ONE", "NAN"), (("NAN", "spark-math-domain"),)),
             Option("shift_range", None, ("ERROR", "ZERO", "DROP_BITS"),
                    (("ERROR", "duckdb-R15-shift-left"), ("ZERO", "duckdb-R15-shift-right"))),
             Option("negative_start", "negative_start",
@@ -88,7 +89,7 @@ GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "int.bit": (),
         "int.shift": ("shift_range",),
-        "fp.elem": ("rounding", "on_domain_error"),
+        "fp.elem": ("rounding", "on_domain_error", "pow_one_inf"),
         "fp.log": ("rounding", "on_domain_error", "on_log_zero"),
         "str.sub": ("negative_start", "substring_range", "string_positions"),
         "str.match": ("case_sensitivity", "string_positions"),
@@ -107,6 +108,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "rounding"): _asked("TIE_TO_EVEN"),
                 (None, "on_domain_error"): _asked("ERROR"),  # #215
                 (None, "on_log_zero"): _asked("ERROR"),
+                (None, "pow_one_inf"): Choice(("ONE",)),  # D40
                 (None, "shift_range"): Choice(("DROP_BITS",)),
                 (None, "negative_start"): _asked("WRAP_FROM_END", "LEFT_OF_BEGINNING"),  # #209
                 (None, "substring_range"): Choice(("ERROR",)),  # #336
@@ -121,6 +123,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "rounding"): Choice(("TIE_TO_EVEN",)),
                 (None, "on_domain_error"): Choice(("NAN",)),  # duckdb-R15-math-domain
                 (None, "on_log_zero"): Choice(("MINUS_INFINITY",)),
+                (None, "pow_one_inf"): Choice(("ONE",)),  # duckdb-pow-one-inf
                 (None, "shift_range"): Choice(("ERROR", "ZERO")),  # R15-shift-*
                 (None, "negative_start"): Choice(("WRAP_FROM_END",)),  # duckdb-R13
                 (None, "substring_range"): Choice(("ERROR",)),  # duckdb-substring-range

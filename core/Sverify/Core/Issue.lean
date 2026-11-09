@@ -221,6 +221,12 @@ def negInfPow (a b : Int) : Bool :=
   decide (a = FloatCode.negInf) && decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) &&
     FloatCode.floor b != b
 
+/-- `power(±1, ±∞)` or `power(1, NaN)`: `1` by C's `pow`, NaN by IEEE 754's
+`powr` and Java's `StrictMath.pow` (`pow_one_inf`, D40). -/
+def powOneInf (a b : Int) : Bool :=
+  ((FloatCode.canon a == FloatCode.one || FloatCode.canon a == FloatCode.negOne) && isInfCode b) ||
+    (FloatCode.canon a == FloatCode.one && FloatCode.canon b == FloatCode.nan)
+
 def BinFn.issue : BinFn → Value → Value → Option Issue
   | .bbox2 n, v, w => if BlackBox.raisesOn n [v, w] then some .domain else none
   -- Integers, and timestamps, times of day and dates moved by an interval.

@@ -27,11 +27,13 @@ Where Spark differs, by its facts:
   the reference's `eval`.
 * `<<` and `>>` take the count modulo 64 (spark-int-shift), where the
   reference raises outside `[0, 64)`.
+* `power(±1, ±∞)` and `power(1, NaN)` are NaN (`StrictMath.pow`), where C's
+  `pow` gives `1` (`pow_one_inf`, D40); `floor` and `ceil` of NaN are `0`, a
+  `BIGINT` (`float_to_int`). The writer refuses double `power` and passes NaN
+  through `floor` and `ceil` (`Profile.sparkWritten`).
 
-Not stated yet, pending a decision on the options they need (each outside
-every option's scope as the core stands): `power(±1, ±∞)` and `power(1, NaN)`
-are NaN (`StrictMath.pow`), where the reference gives `1`; `floor` and `ceil`
-of NaN are `0`; `atan2` reads `-0.0` as `0.0` (`atan2(-0.0, -1)` is `π`).
+Not stated yet: `atan2` reads `-0.0` as `0.0` (`atan2(-0.0, -1)` is `π`),
+pending a decision on `zero_sign`'s scope.
 
 Integer arithmetic, `div` and `%` raise where the reference raises
 (spark-int-arith, spark-int-divide, spark-int-modulus): no diff. Functions
@@ -49,7 +51,10 @@ reference: `(-∞) ^ y` for a finite `y` that is not an integer is `+∞` for
 NaN; the reference raises on both. -/
 def sparkPow (a b : Int) : Option Outcome :=
   if negInfPow a b then some (.ok (.float (if 0 < b then FloatCode.posInf else 0)))
-  else if nanCase .fpow a b then some (.ok (.float FloatCode.nan)) else none
+  else if nanCase .fpow a b then some (.ok (.float FloatCode.nan))
+  -- `power(±1, ±∞)` and `power(1, NaN)`: NaN, where C's `pow` gives `1`
+  -- (`pow_one_inf` = `NAN`, D40).
+  else if powOneInf a b then some (.ok (.float FloatCode.nan)) else none
 
 /-- **Spark's binary functions** on non-NULL arguments where they differ from
 the reference (`none`: as the reference). Doubles: IEEE's NaN where the
@@ -87,10 +92,12 @@ raise `ARITHMETIC_OVERFLOW`, as their `BIGINT` result overflows. -/
 def sparkUn : UnFn → Value → Option Outcome
   | .fmath f, .float x =>
     if f.apply x = none then some (.ok (if f.sparkNull then .null else .float FloatCode.nan)) else none
-  -- `±∞`, and a value whose floor or ceiling leaves 64 bits (no double
-  -- strictly between `2⁶³ - 1` and `2⁶³`).
+  -- A `BIGINT` (`float_to_int`): NaN is `0`; `±∞`, and a value whose floor
+  -- or ceiling leaves 64 bits (no double strictly between `2⁶³ - 1` and
+  -- `2⁶³`), overflow.
   | .ffloor, .float x | .fceil, .float x =>
-    if isInfCode x ∨ (FloatCode.ofInt (2 ^ 63) ≤ x ∧ x < FloatCode.posInf) ∨
+    if FloatCode.canon x = FloatCode.nan then some (.ok (.float 0))
+    else if isInfCode x ∨ (FloatCode.ofInt (2 ^ 63) ≤ x ∧ x < FloatCode.posInf) ∨
         (FloatCode.negInf < x ∧ x < FloatCode.ofInt (-(2 ^ 63)))
     then some (.error .overflow) else none
   | _, _ => none
@@ -100,5 +107,25 @@ against the reference (`sparkBin`, `sparkUn`). -/
 def Profile.spark : Profile where
   un f v := (sparkUn f v).getD (Profile.reference.un f v)
   bin f v w := (sparkBin f v w).getD (Profile.reference.bin f v w)
+
+/-- `floor` and `ceil`, which the writer computes as the reference does
+(`sverify_spark.dialect`: NaN, `±∞` and doubles of `2⁵²` and more pass
+through, the rest through `BIGINT` and back). -/
+def UnFn.sparkWritten : UnFn → Bool
+  | .ffloor | .fceil => true
+  | _ => false
+
+/-- `power` of doubles, which the writer refuses (Spark's `POWER` is within an
+ulp of C's, spark-elem-rounding): a plan with it does not run on Spark. -/
+def BinFn.sparkWritten : BinFn → Bool
+  | .fpow => true
+  | _ => false
+
+/-- Spark's profile with the functions of `UnFn.sparkWritten` and
+`BinFn.sparkWritten` as the writer writes them: the reference's. What a plan
+written for Spark computes there (`Engine.spark`). -/
+def Profile.sparkWritten : Profile where
+  un f := if f.sparkWritten then Profile.reference.un f else Profile.spark.un f
+  bin f := if f.sparkWritten then Profile.reference.bin f else Profile.spark.bin f
 
 end Substrait

@@ -6,12 +6,20 @@
   "verdict": "a `BIGINT`, not a double: no `-0.0`, no NaN or ±inf; the writer casts back to a double",
   "area": "doubles",
   "options": [
-    "round_zero_sign"
+    "round_zero_sign",
+    "float_to_int"
   ],
   "rows": [
     {
       "group": "fp.floor",
       "option": "round_zero_sign",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.floor",
+      "option": "float_to_int",
       "types": [
         "fp64"
       ]

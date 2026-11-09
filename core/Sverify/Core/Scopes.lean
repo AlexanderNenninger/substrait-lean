@@ -126,6 +126,10 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "zero_sign" => Value.anyZero args || r.hasZero
   -- The reference's result is a zero (`round(-0.4)`, `ceil(-0.4)`).
   | "round_zero_sign" => r.hasZero
+  -- `power` of `±1` to `±∞`, or of `1` to NaN (D40).
+  | "pow_one_inf" => match c, args with
+    | .bin .fpow, [.float a, .float b] => powOneInf a b
+    | _, _ => false
   | "nan_equality" => Value.anyNaN args
   | "nan_order" => Value.anyNaN args
   | "nan_kind" => Value.anyNaN args || r.hasNaN
@@ -183,7 +187,7 @@ theorem optionApplies_of_scope {o : String} {c : Ctor} {args : List Value}
 def scopedOptions : List String :=
   ["overflow", "on_division_by_zero", "division_type", "min_mod_neg_one", "shift_range",
    "decimal_rescale", "rounding", "on_domain_error", "on_log_zero", "nan_creation", "zero_sign",
-   "round_zero_sign", "nan_equality", "nan_order", "nan_kind", "negative_start", "substring_range",
+   "round_zero_sign", "pow_one_inf", "nan_equality", "nan_order", "nan_kind", "negative_start", "substring_range",
    "case_sensitivity", "char_set", "null_handling", "date_range", "time_interval_months",
    "list_null_order", "sum_order", "stat_algo", "window_sum_algo", "stat_degenerate",
    "avg_int_result", "quantile_interp", "tie_pick", "tie_order", "null_order", "clustered",
