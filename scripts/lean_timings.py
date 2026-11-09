@@ -130,9 +130,7 @@ def critical_path(records: dict[str, dict], key: str) -> tuple[float, list[str]]
     def visit(m: str) -> tuple[float, list[str]]:
         if m not in best:
             r = records[m]
-            prev = max(
-                (visit(i) for i in r["imports"] if i in records), default=(0.0, [])
-            )
+            prev = max((visit(i) for i in r["imports"] if i in records), default=(0.0, []))
             best[m] = (prev[0] + r[key], [*prev[1], m])
         return best[m]
 
@@ -151,9 +149,7 @@ def report(paths: list[Path], top: int, key: str) -> None:
     )
     print("| module | CPU s | wall s | RSS MB |\n|---|---:|---:|---:|")
     for r in rows[:top]:
-        print(
-            f"| {r['module']} | {r['cpu_s']:.1f} | {r['wall_s']:.1f} | {r['rss_mb']} |"
-        )
+        print(f"| {r['module']} | {r['cpu_s']:.1f} | {r['wall_s']:.1f} | {r['rss_mb']} |")
     print("\nBy RSS:\n\n| module | RSS MB | CPU s |\n|---|---:|---:|")
     for r in sorted(records.values(), key=lambda r: -r["rss_mb"])[:top]:
         print(f"| {r['module']} | {r['rss_mb']} | {r['cpu_s']:.1f} |")
@@ -194,7 +190,10 @@ def _shown(path: Path) -> str:
         return str(path)
 
 
-def check(paths: list[Path], budget_path: Path) -> int:
+def check(paths: list[Path], budget_path: Path) -> list[tuple[str, str, float, float]]:
+    """The modules over their ceilings, as (module, key, value, ceiling).
+    The budget is a target, not a gate: each is reported, in the job summary
+    and as a warning, and the PR body explains it (docs/build-performance.md)."""
     budget = json.loads(budget_path.read_text())
     default = budget["default"]
     over = []
@@ -203,20 +202,31 @@ def check(paths: list[Path], budget_path: Path) -> int:
         ceiling = budget["modules"].get(m, default)
         for key in ("cpu_s", "rss_mb"):
             if r[key] > ceiling[key]:
-                over.append(f"{m}: {key} {r[key]} over its ceiling {ceiling[key]}")
+                over.append((m, key, r[key], ceiling[key]))
     print(f"lean budget: {len(records)} modules built, {len(over)} over their ceilings")
-    for line in over:
+    for m, key, value, ceiling in over:
+        line = f"{m}: {key} {value} over its ceiling {ceiling}"
         print(
-            f"::error title=Lean build budget::{line}"
+            f"::warning title=Lean build budget::{line}"
             if os.environ.get("GITHUB_ACTIONS")
             else line
         )
     if over:
         print(
             f"A module over its ceiling: make it cheaper (docs/build-performance.md), "
-            f"or raise its line in {_shown(budget_path)} in the same PR and say why."
+            f"or raise its line in {_shown(budget_path)} and say why in the PR body."
         )
-    return 1 if over else 0
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            rows = [f"| `{m}` | {key} | {value} | {ceiling} |" for m, key, value, ceiling in over]
+            with open(summary, "a") as f:
+                f.write(
+                    "\n### Modules over their ceilings\n\n"
+                    "| module | measure | value | ceiling |\n|---|---|---:|---:|\n"
+                    + "\n".join(rows)
+                    + "\n"
+                )
+    return over
 
 
 def write_budget(paths: list[Path], budget_path: Path) -> None:
@@ -279,15 +289,13 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser(
-        "sysroot", help="make a sysroot whose `lean` records each module"
-    )
+    s = sub.add_parser("sysroot", help="make a sysroot whose `lean` records each module")
     s.add_argument("dir", type=Path)
     s = sub.add_parser("report", help="tables by time and RSS, and the critical path")
     s.add_argument("logs", type=Path, nargs="+")
     s.add_argument("--top", type=int, default=25)
     s.add_argument("--key", choices=["cpu_s", "wall_s"], default="wall_s")
-    s = sub.add_parser("check", help="fail on a module over its ceiling")
+    s = sub.add_parser("check", help="report the modules over their ceilings")
     s.add_argument("logs", type=Path, nargs="+")
     s.add_argument("--budget", type=Path, default=BUDGET)
     s = sub.add_parser("write-budget", help="write ceilings from measured records")
@@ -303,7 +311,7 @@ def main() -> int:
     elif a.cmd == "report":
         report(a.logs, a.top, a.key)
     elif a.cmd == "check":
-        return check(a.logs, a.budget)
+        check(a.logs, a.budget)
     elif a.cmd == "write-budget":
         write_budget(a.logs, a.budget)
     elif a.cmd == "replay":

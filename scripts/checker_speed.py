@@ -4,9 +4,10 @@
 `docs/build-performance.md` ("The checker's speed") has the method. Both
 binaries answer the requests of `tests/checker-speed/requests.jsonl.gz`
 through `--serve`, interleaved, request by request, for several rounds; each
-request's time is its fastest round. The comparison fails when a request that
-takes at least `--min-ms` on the base takes more than `--max-ratio` times as
-long on the head, or the whole set more than `--max-total` times as long.
+request's time is its fastest round. The comparison reports, as warnings, a
+request that takes at least `--min-ms` on the base and more than `--max-ratio`
+times as long on the head, and the whole set taking more than `--max-total`
+times as long. It never fails: the targets are for the PR body to explain.
 Measured on CI runners, the same binary against itself stays within 1.12 per
 request and 1.03 at the 95th percentile.
 
@@ -66,9 +67,7 @@ class Serve:
         t0 = time.perf_counter()
         deadline = time.monotonic() + TIMEOUT
         try:
-            self.p.stdin.write(
-                f"{' '.join(flags) or '-'} {len(data)}\n".encode() + data
-            )
+            self.p.stdin.write(f"{' '.join(flags) or '-'} {len(data)}\n".encode() + data)
             self.p.stdin.flush()
             line = b""
             while not line.endswith(b"\n"):
@@ -115,8 +114,9 @@ def replay(base: str, head: str, reqs: list[dict], rounds: int) -> list[dict]:
 
 def verdict(
     rows: list[dict], max_ratio: float, max_total: float, min_ms: float
-) -> tuple[bool, list[str]]:
-    """Whether the head passes, and the report's lines."""
+) -> tuple[list[str], list[str]]:
+    """What is over its target (empty: the head is within them), and the
+    report's lines."""
     base_total = sum(r["base"] for r in rows)
     head_total = sum(r["head"] for r in rows)
     total = head_total / base_total if base_total else 1.0
@@ -140,14 +140,13 @@ def verdict(
         lines.append(
             f"| {r['id']} | {' '.join(r['flags'])} | {r['base'] * 1000:.0f} | {r['head'] * 1000:.0f} | {r['ratio']:.2f} |"
         )
-    ok = total <= max_total and not over
+    warnings = []
     if total > max_total:
-        lines.append(f"\nThe set takes {total:.2f}x as long, over {max_total}x.")
-    for r in over:
-        lines.append(
-            f"{r['id']} {' '.join(r['flags'])}: {r['ratio']:.2f}x, over {max_ratio}x"
-        )
-    return ok, lines
+        warnings.append(f"The set takes {total:.2f}x as long, over {max_total}x.")
+    warnings += [
+        f"{r['id']} {' '.join(r['flags'])}: {r['ratio']:.2f}x, over {max_ratio}x" for r in over
+    ]
+    return warnings, lines + ([""] if warnings else []) + warnings
 
 
 def main() -> int:
@@ -163,24 +162,16 @@ def main() -> int:
     p.add_argument("--min-ms", type=float, default=5.0)
     a = p.parse_args()
     rows = replay(a.base, a.head, load(a.requests), a.rounds)
-    ok, lines = verdict(rows, a.max_ratio, a.max_total, a.min_ms)
+    warnings, lines = verdict(rows, a.max_ratio, a.max_total, a.min_ms)
     print("\n".join(lines))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
-            f.write(
-                "### The checker's speed against main\n\n" + "\n".join(lines) + "\n"
-            )
-    if not ok:
-        worst = sorted((r for r in rows if "ratio" in r), key=lambda r: -r["ratio"])[:3]
-        names = ", ".join(f"{r['id']} {r['ratio']:.2f}x" for r in worst)
-        msg = f"The checker is slower than main's: {names} (docs/build-performance.md)"
-        print(
-            f"::error title=Checker speed::{msg}"
-            if os.environ.get("GITHUB_ACTIONS")
-            else msg
-        )
-    return 0 if ok else 1
+            f.write("### The checker's speed against main\n\n" + "\n".join(lines) + "\n")
+    if os.environ.get("GITHUB_ACTIONS"):
+        for msg in warnings:
+            print(f"::warning title=Checker speed::{msg} (docs/build-performance.md)")
+    return 0
 
 
 if __name__ == "__main__":

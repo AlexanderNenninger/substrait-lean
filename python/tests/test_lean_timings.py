@@ -52,7 +52,7 @@ def test_critical_path_is_the_longest_import_chain(timings, tmp_path):
     assert (length, chain) == (17, ["A", "C", "D"])
 
 
-def test_check_names_the_module_over_its_ceiling(timings, tmp_path, capsys):
+def test_check_reports_the_module_over_its_ceiling(timings, tmp_path, capsys):
     budget = tmp_path / "b.json"
     budget.write_text(
         json.dumps(
@@ -63,9 +63,9 @@ def test_check_names_the_module_over_its_ceiling(timings, tmp_path, capsys):
         )
     )
     ok = _write(tmp_path / "ok.jsonl", [_record("A", cpu=19), _record("New", cpu=59)])
-    assert timings.check([ok], budget) == 0
+    assert timings.check([ok], budget) == []
     slow = _write(tmp_path / "slow.jsonl", [_record("A", cpu=21), _record("New", rss=4000)])
-    assert timings.check([slow], budget) == 1
+    assert timings.check([slow], budget) == [("A", "cpu_s", 21, 20), ("New", "rss_mb", 4000, 3072)]
     out = capsys.readouterr().out
     assert "A: cpu_s 21 over its ceiling 20" in out
     assert "New: rss_mb 4000 over its ceiling 3072" in out
