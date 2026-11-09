@@ -64,6 +64,9 @@ open Substrait Parse
 
 namespace Substrait.Checker
 
+/-- Were the generated entries' proofs checked in this build (`--build`)? -/
+def generatedChecked : Bool := generated_checked%
+
 /-- The version of what the checker prints and reads, which `sverify` checks
 at startup (`sverify.engine.PROTOCOL`): bump both when the output of a mode
 changes shape (a JSON field added, renamed or dropped, a new mode), so that a
@@ -300,7 +303,7 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
         -- The margin checks of threshold filters on double sums (#929).
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
-        let engines := (Realize.enginesJson es j rowsExact report robust).toOption.getD []
+        let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
         let base := report.json |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
@@ -408,6 +411,11 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
   | ["--version"] => do
     IO.println s!"substrait-check protocol {protocol}"
     return 0
+  -- Whether this build checked the generated entries' proofs (`check_generated`):
+  -- without it, the theorems over them rest on `sorryAx` (docs/trusted-base.md).
+  | ["--build"] => do
+    IO.println s!"generated proofs {if generatedChecked then "checked" else "unchecked"}"
+    return 0
   | ["--lift-cache"] => do
     -- A new SubstraitLean/LiftCache.lean from this build's tables (#268).
     IO.print Lift.cacheSource
@@ -465,7 +473,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

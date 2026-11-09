@@ -63,6 +63,10 @@ from sverify.observation import Observation, Within
 #: The table the combining plan reads the shards' results from.
 PARTIALS = "__partials"
 
+#: The engine `run_sharded` runs the shards on, through its plugin's
+#: `run_tables`.
+SHARD_ENGINE = "polars"
+
 FloatOrder = Literal["exact", "any"]
 
 
@@ -543,8 +547,12 @@ def run_sharded(
             name unknown columns; or a row's τ exceeds the tolerance
             `reproducible` states.
     """
-    from sverify import polars_engine
+    from sverify import profiles
 
+    plugin = profiles.find(SHARD_ENGINE)
+    run_tables = plugin.run_tables if plugin is not None else None
+    if run_tables is None:
+        raise ImportError(f"run_sharded runs on {SHARD_ENGINE}: install sverify[{SHARD_ENGINE}]")
     floats = _floats(reproducible, float_order)
 
     if not shards:
@@ -564,12 +572,12 @@ def run_sharded(
         check_unique(pieces, unique)
 
     def run(shard: Mapping[str, pa.Table]) -> pa.Table:
-        return polars_engine.run(s.partial, {**common, **shard})
+        return run_tables(s.partial, {**common, **shard})
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         parts = list(pool.map(run, shards))
     partials = pa.concat_tables(parts)
-    result = polars_engine.run(s.combine, {PARTIALS: partials})
+    result = run_tables(s.combine, {PARTIALS: partials})
     if not tolerance and not isinstance(floats, Within):
         return result
     out = tolerances(s, partials, result)

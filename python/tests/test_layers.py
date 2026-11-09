@@ -32,7 +32,6 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_engines",
             "_support",
             "plan_json",
-            "_polars_shims",
             "_duckdb",
             "_scan",
             "_decimals",
@@ -48,7 +47,7 @@ LAYERS: list[tuple[str, list[str]]] = [
     ("frontends", ["ibis_substrait", "sql_lift"]),
     (
         "writers and engines",
-        ["sql", "duckdb_engine", "polars_engine", "spark_engine", "datafusion_engine"],
+        ["sql", "duckdb_engine", "spark_engine", "datafusion_engine"],
     ),
     ("checker", ["engine", "_engine_settings", "_builtin"]),
     ("conditions", ["observation", "counterexample", "conditions", "_quarantine"]),

@@ -1990,7 +1990,7 @@ one guard outside it:
 | engine | inside 0001 to 9999 | outside | type the writer pins |
 |---|---|---|---|
 | DuckDB | native ([duckdb-calendar-range](../characterization/duckdb/facts/duckdb-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP` (µs) |
-| Polars | native ([polars-calendar-range](../characterization/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
+| Polars | native ([polars-calendar-range](../engines/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
 | Spark | native ([spark-calendar-range](../characterization/spark/facts/spark-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP_NTZ`, session time zone UTC |
 | Snowflake | reachable by a shim, probe pending: parts in year 1 are right and sverify truncates weeks itself (private facts); month, quarter and year truncation at the ends is not recorded | computes (years 0 to 302024); the SQL guards | `TIMESTAMP_NTZ` |
 | DataFusion | refused: it truncates and bins in nanoseconds ([DF-17](../upstream/bugs/DF-17.json)) | — | — |

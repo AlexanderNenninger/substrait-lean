@@ -1,0 +1,162 @@
+{
+  "id": "polars-cast-string",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Casts from and to strings",
+  "verdict": "strict parsing; shortest round-trip for doubles; no string → bool or date",
+  "area": "casts",
+  "options": [
+    "cast_parsing",
+    "cast_formatting",
+    "cast_failure"
+  ],
+  "rows": [
+    {"option": "cast_failure", "types": ["any"]}
+  ],
+  "constructs": [
+    "cast"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "Text to an integer accepts an optional sign and digits only (` 2`, `3.0`, `1e2`, `0x10` fail); text to a double accepts `nan`, `inf`, `-Infinity`, `.5`, `5.` and rounds `1e400` to inf. Failures raise with `strict=True` and are NULL with `strict=False`.",
+    "A double becomes its shortest round-trip text, with an exponent at 1e16 (`1e+16`) and at 1e-7 (`1e-7`), without one at 1e15 and 1e-5, `-0.0`, `inf` and `NaN`. Booleans become `true` and `false`; integers and doubles become booleans by `!= 0` (NaN is true).",
+    "Text to `Boolean` or to `Date` is refused (`InvalidOperationError`); `str.to_date` parses dates.",
+    "The docs are silent on the text forms that parse, how a double prints and text to `Boolean` being refused: a docs gap.",
+    "No upstream test pins the rejected forms, `nan`/`inf` parsing or the double's text format; they may change between versions."
+  ],
+  "reference": "Casts to and from strings follow the reference's `cast` rules; `cast_failure` as stated.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-string-to-int"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-string-to-double"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-double-to-string"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-bool"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-string-to-bool"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-string-to-date"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-string-to-int"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-string-to-double"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-double-to-string"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-bool"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-string-to-bool"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-string-to-date"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/cast/binary_to.rs#L20-L68",
+          "note": "integers: atoi_simd::parse::<_, true, true> (0.18.1), sign and digits; doubles: fast_float2::parse (0.2.4)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/cast/binview_to.rs#L66-L84",
+          "note": "unparsable text becomes NULL; strict mode raises on the new NULLs"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/cast/primitive_to.rs#L64-L86",
+          "note": "double to text: zmij 1.0.23 shortest round-trip"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/cast/boolean_to.rs#L39-L43",
+          "note": "Boolean to text: true/false (the doc comments at L38 and mod.rs L379 say 1/0)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/cast/mod.rs#L555-L601",
+          "note": "text to Date bails (removed in 2.0); number to Boolean is != 0; no text arm for Boolean, so it bails"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/releases/upgrade/2/",
+          "note": "'Remove casts from string to temporal types': cast(pl.Date) of text raises, use str.to_date (docs/source/releases/upgrade/2.md L1357-L1390)"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.cast.html",
+          "note": "states strict/non-strict only; silent on accepted text formats, float text format and text to Boolean"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_cast.py#L39-L88",
+          "note": "test_leading_plus_zero_int/uint/float: sign and leading zeros accepted, '-.5', '0.', '+.5' parse; eager Series.cast (in-memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_temporal.py#L2676-L2698",
+          "note": "test_string_to_temporal_cast_unsupported: text to Date/Datetime/Time raises InvalidOperationError (in-memory)"
+        }
+      ]
+    }
+  ]
+}

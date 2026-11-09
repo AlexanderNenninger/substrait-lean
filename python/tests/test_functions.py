@@ -15,6 +15,15 @@ from sverify._engines import DIALECTS as SQL_DIALECTS
 from sverify.engine import checker_path
 from sverify.sql_lift import PROFILES
 
+
+def _facts():
+    """`sverify_dev.facts`, which needs jsonschema: the repository's tests
+    import it where they use it (the wheel's tests skip those)."""
+    from sverify_dev import facts
+
+    return facts
+
+
 ROOT = Path(__file__).resolve().parents[2]
 DIALECTS = {"", *SQL_DIALECTS}
 
@@ -119,7 +128,7 @@ def test_engine_tables(engine: str) -> None:
     rows = tables["observations"][engine]
     for r in rows:
         for fact in (r["row"]["evidence"] or {}).get("tested", []):
-            doc = ROOT / "characterization" / engine / "facts" / f"{fact}.json"
+            doc = _facts().facts_dir(engine) / f"{fact}.json"
             assert doc.exists(), fact
             assert json.loads(doc.read_text())["engine_version"].removeprefix("py-") == version
     for t in tables["tools"]:
@@ -134,7 +143,7 @@ def test_lean_facts_exist() -> None:
     assert facts
     for fact in facts:
         engine = fact.split("-")[0]
-        assert (ROOT / "characterization" / engine / "facts" / f"{fact}.json").exists(), fact
+        assert (_facts().facts_dir(engine) / f"{fact}.json").exists(), fact
 
 
 def test_strings_complete() -> None:
@@ -173,7 +182,7 @@ def test_groups_and_options() -> None:
         assert {b for b, _ in o.extra} <= set(o.core), o.id
         for _, fact in o.extra:
             engine = fact.split("-")[0]
-            assert (ROOT / "characterization" / engine / "facts" / f"{fact}.json").exists()
+            assert (_facts().facts_dir(engine) / f"{fact}.json").exists()
 
 
 @pytest.mark.parametrize("profile", sorted(fns.CHOICES))

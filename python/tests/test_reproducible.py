@@ -61,7 +61,17 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
     exact values does not."""
     _tables(monkeypatch, {"floats": {"bound": "plan"}})
     report = _float_sum(con)
-    report._epsilon = {"total": {"abs": 1e-3, "rel": 1e-10, "proved": {"abs": True}}}
+    # The plan's `ε` as the checker normalises it (`Realize.epsBounds`).
+    report._epsilon = {
+        "total": {
+            "bounds": {
+                "abs": {"value": 1e-3, "proved": True},
+                "rel": {"value": 1e-10, "proved": False},
+            },
+            "unbounded": False,
+            "why": None,
+        }
+    }
     ok = routes.choose(report, "polars", reproducible=sv.equivalent(floats=sv.within(abs=1e-2)))
     assert ok.kind == "translated" and ok.rerun_evidence == "proved"
     assert (

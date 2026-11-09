@@ -23,12 +23,12 @@ import ibis
 import pytest
 
 import sverify as sv
-from sverify import polars_engine
 from sverify.contracts import decode_double
 from sverify.engine import connect, run_plan, written_plan
 from sverify.engines import ENGINES
 from sverify.ibis_substrait import to_substrait, to_substrait_json
 from sverify.testing import duckdb_ibis, inline_tables, lean_values
+from sverify_polars import engine as polars_engine
 
 X = ibis.table(
     {

@@ -1,0 +1,94 @@
+{
+  "id": "polars-reverse",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`str.reverse` reverses grapheme clusters",
+  "verdict": "graphemes, where the reference reverses code points",
+  "area": "strings",
+  "options": [
+    "char_set"
+  ],
+  "constructs": [
+    "str.reverse"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "`str.reverse` reverses extended grapheme clusters (`unicode_reverse`): a letter keeps its combining accent (`e\\u0301x` becomes `xe\\u0301`) and a flag's two regional indicators stay together. It agrees with the reference on ASCII and on precomposed text.",
+  "reference": "`reverse` reverses the code points (`String.toList.reverse`), so a combining accent moves to the other side of its letter.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "String.str.reverse()"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "reverse-graphemes"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/reverse.rs#L1-L9"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "String.str.reverse()"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "reverse-graphemes"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.str.reverse.html",
+          "note": "example: 'man\\u0303ana' reverses to 'anañam', the combining tilde stays on its n"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/string/test_string.py#L2164-L2181",
+          "note": "test_string_reverse: 'man\\u0303ana' → 'anan\\u0303am' (grapheme clusters, in-memory)"
+        }
+      ]
+    }
+  ]
+}

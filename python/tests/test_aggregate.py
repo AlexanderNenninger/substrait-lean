@@ -23,7 +23,6 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify import polars_engine
 from sverify.contracts import decode_double
 from sverify.engine import (
     collect,
@@ -37,6 +36,7 @@ from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 from sverify_dev.examples import orders
+from sverify_polars import engine as polars_engine
 
 T = ibis.schema({"a": "int64", "b": "int64", "s": "string"})
 F = ibis.schema({"k": "int64", "x": "float64"})

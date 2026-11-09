@@ -1,0 +1,121 @@
+{
+  "id": "polars-exec-engine",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Engine choice: a lazy `collect()` runs on the streaming engine by default",
+  "verdict": "`auto` is streaming for lazy queries, in memory for eager ones; four switches change it",
+  "area": "execution",
+  "options": [
+    "settings"
+  ],
+  "constructs": [
+    "LazyFrame.collect",
+    "Config.set_engine_affinity"
+  ],
+  "settings": {
+    "engine": ["in-memory", "streaming"],
+    "POLARS_ENGINE_AFFINITY": "auto",
+    "POLARS_FORCE_STREAMING": "unset",
+    "POLARS_AUTO_STREAMING": "unset",
+    "POLARS_MAX_THREADS": "the host's core count"
+  },
+  "description": [
+    "`collect(engine=\"auto\")`, the default, uses the engine set by `Config.set_engine_affinity` or `POLARS_ENGINE_AFFINITY`, and otherwise the streaming engine (docstring at py-2.1.0). The Rust side resolves `Engine::Auto` to the in-memory engine only for eager operations and to streaming for every lazy query (`polars-lazy/src/frame/mod.rs`); eager `DataFrame` methods always run in memory (`_eager_engine`). With `engine=\"streaming\"` there is no whole-query fallback: `collect_with_engine` runs `polars_stream::run_query` and returns its error. The fallback is per node: the lowering hands operations it cannot stream to the in-memory engine inside the streaming plan (polars-exec-streaming-fallback). The only whole-query switch is `POLARS_AUTO_STREAMING=1`, which tries streaming first for a non-streaming engine.",
+    "sverify targets the streaming engine (#605 pins `collect(engine=\"streaming\")`), so the settings that matter are those that move a query off it: `POLARS_ENGINE_AFFINITY` and `Config.set_engine_affinity` no longer apply to an explicit engine, while `POLARS_FORCE_STREAMING` only forces streaming. The risk is the per-node fallback: a node run in memory takes the in-memory engine's algorithms (its float sums, its row order) on a materialized frame. The probes behind polars-sum-float, polars-var-std, polars-cov and polars-mean-float called eager `DataFrame` methods, which run in memory, and need rerunning under `engine=\"streaming\"`.",
+    "Switches that change the engine: `Config.set_engine_affinity(name)`, which writes `POLARS_ENGINE_AFFINITY`; `Config.set_engine_affinity(Engine object)`, which clears the variable and keeps the engine in a Python-side override; `POLARS_FORCE_STREAMING=1`, which forces streaming whatever the affinity; `POLARS_AUTO_STREAMING=1`, which tries streaming first for a non-streaming engine. `POLARS_MAX_THREADS`, read once at import, sets the thread pool. `pl.Config`'s other settings change display only.",
+    "Next round: probe the engine-dependent facts under `engine=\"streaming\"`, and the result of `collect()` with each switch.",
+    "The docs are silent on `POLARS_FORCE_STREAMING` and `POLARS_AUTO_STREAMING`: a docs gap.",
+    "No upstream test pins that a lazy `collect()` with `engine=\"auto\"` and no affinity runs the streaming engine; it may change between versions."
+  ],
+  "reference": "The reference has no engine choice. A profile's facts hold under the settings they record (`sverify._engine_settings`, #444); the Polars row accepts the affinity `auto` and `in-memory`.",
+  "status": "open",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/lazyframe/api/polars.LazyFrame.collect.html"
+        },
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/config.html"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/lazyframe/frame.py#L2099-L2110",
+          "note": "auto: the affinity, otherwise streaming"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-lazy/src/frame/mod.rs#L636-L656",
+          "note": "Engine::Auto: in memory if eager, else streaming; POLARS_FORCE_STREAMING, POLARS_AUTO_STREAMING"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/lazyframe/engine_config.py#L64-L101",
+          "note": "eager operations in memory; an Engine-object override beats the variable"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/config.py#L1590-L1606",
+          "note": "set_engine_affinity writes or clears POLARS_ENGINE_AFFINITY"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-config/src/lib.rs#L29-L40",
+          "note": "POLARS_MAX_THREADS, POLARS_ENGINE_AFFINITY defaults"
+        },
+        {
+          "file": "engines/polars/src/sverify_polars/engine.py",
+          "note": "collect calls lf.collect with no engine"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-lazy/src/frame/mod.rs#L634-L700",
+          "note": "collect_with_engine: Streaming runs polars_stream::run_query, no whole-query fallback"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/physical_plan/mod.rs#L265-L273",
+          "note": "InMemoryMap: per-node fallback to the in-memory engine"
+        }
+      ],
+      "notes": "Corrects round 1's 'a query the streaming engine cannot run falls back to the in-memory engine': the fallback is per node, inside the streaming plan."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_engine.py#L141-L155",
+          "note": "affinity streaming makes auto streaming, an explicit engine wins; eager operations always in memory (Python-side selection)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_engine.py#L106-L127",
+          "note": "test_select_engine: auto is passed to Rust unresolved; no upstream test pins that Rust resolves a lazy auto to streaming, or POLARS_FORCE_STREAMING"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/user-guide/concepts/streaming/",
+          "note": "engine='streaming'; POLARS_FORCE_STREAMING and POLARS_AUTO_STREAMING are undocumented"
+        }
+      ]
+    }
+  ]
+}

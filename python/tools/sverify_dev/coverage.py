@@ -109,12 +109,12 @@ MEMTABLES = {_M.name: _M.data.to_pyarrow(M.schema())}
 
 def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
     """Why `engine` refuses the plan of a verified case, or None if it runs it."""
-    from sverify import polars_engine
     from sverify.sql import Unsupported as Untranslatable
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.duckdb import DUCKDB
     from sverify.sql.snowflake import SNOWFLAKE
     from sverify.sql.spark import SPARK
+    from sverify_polars import engine as polars_engine
 
     dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
     plan = json.loads(written_plan(to_substrait_json(c.build())))

@@ -46,7 +46,6 @@ from hypothesis import HealthCheck, find, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 
-from sverify import polars_engine
 from sverify.contracts import verify
 from sverify.engine import (
     ENGINES,
@@ -59,6 +58,7 @@ from sverify.engine import (
 )
 from sverify.sql import core as sql_core
 from sverify.testing import EPOCH, duckdb_sql, inline_tables, lean_values
+from sverify_polars import engine as polars_engine
 
 INT, DOUBLE, STRING, BOOL, TS = "int", "double", "string", "bool", "ts"
 SQL_TYPES = {INT: "BIGINT", DOUBLE: "DOUBLE", STRING: "VARCHAR", BOOL: "BOOLEAN", TS: "TIMESTAMP"}

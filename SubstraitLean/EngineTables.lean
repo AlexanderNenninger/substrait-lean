@@ -6,7 +6,7 @@ import SubstraitLean.SubstraitProfile
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
 
 DuckDB's, Polars's and Spark's choices and observation rows, from their facts
-(`characterization/duckdb/facts/`, `characterization/polars/facts/`,
+(`characterization/duckdb/facts/`, `engines/polars/facts/`,
 `characterization/spark/facts/`), pinned to
 the versions those were probed at (D14). The rows cover the prototype slice:
 integer `+ - × /` and `%`, `SUM` and `AVG` of integers and doubles, double
@@ -462,7 +462,7 @@ def Profile.spark.obs : ObsTable := [
 
 /-- The engine profiles of this repository, DuckDB under its default
 settings. Each one's shims are named as its rows name them; Polars's are
-`python/src/sverify/_polars_shims.py`'s `SHIMS` (named as their lemmas
+`engines/polars/src/sverify_polars/shims.py`'s `SHIMS` (named as their lemmas
 `Polars.<name>`), which `tests/test_realizability.py` checks against these. -/
 def builtinEngines : List EngineProfile := [
   { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
@@ -485,17 +485,29 @@ def builtinEngines : List EngineProfile := [
       ("Dialect.canon", .expression), ("null_order", .argument), ("sort on the keys", .sort),
       ("decimal_negate_sub", .expression)] }]
 
-/-- **Every DuckDB setting refines the core.** -/
-theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
+/-! Each table's test against the core (`ProfileTable.leB`), decided once in
+the kernel: the refinements below and `builtinEngines_leCore` both use it. -/
+
+theorem Profile.duckdb_leB (s : DuckDBSettings) :
+    (Profile.duckdb.table s).leB Profile.core.table = true := by
   obtain ⟨e, i⟩ := s
-  apply ProfileTable.le_of_leB
   cases e <;> cases i <;> decide +kernel
 
+theorem Profile.polars_leB : Profile.polars.table.leB Profile.core.table = true := by
+  decide +kernel
+
+theorem Profile.spark_leB : Profile.spark.table.leB Profile.core.table = true := by
+  decide +kernel
+
+/-- **Every DuckDB setting refines the core.** -/
+theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table :=
+  ProfileTable.le_of_leB (Profile.duckdb_leB s)
+
 theorem Profile.polars_le_core : Profile.polars.table.Le Profile.core.table :=
-  ProfileTable.le_of_leB (by decide +kernel)
+  ProfileTable.le_of_leB Profile.polars_leB
 
 theorem Profile.spark_le_core : Profile.spark.table.Le Profile.core.table :=
-  ProfileTable.le_of_leB (by decide +kernel)
+  ProfileTable.le_of_leB Profile.spark_leB
 
 /-- `Allowed_duckdb ⊆ Allowed_core`, for every setting. -/
 theorem Rel.allowed_duckdb_core (s : DuckDBSettings) {cat : Catalog} {r : Rel} {out : Relation}

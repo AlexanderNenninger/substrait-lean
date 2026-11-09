@@ -2,7 +2,8 @@
 `sverify.profiles` in sverify's metadata (`pyproject.toml`), as a package
 from outside registers one (#1189). Each module states one engine's
 `ProfilePlugin` and imports nothing heavy: the engine's code loads when a
-plan runs on it.
+plan runs on it. An engine that is a package of its own registers from its
+own metadata instead (Polars: `engines/polars/`, `sverify_polars`).
 
 Internal: not part of sverify's public API.
 """

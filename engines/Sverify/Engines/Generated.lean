@@ -52,6 +52,19 @@ syntax (name := generatedEntries) "generated_entries" : command
 @[command_elab generatedEntries] def elabGeneratedEntries : CommandElab := fun _ => do
   unless ← checked do
     modifyScope fun s => { s with opts := s.opts.setBool `warn.sorry false }
+  -- Record whether this module's entries were checked (`checkedIn`), for the
+  -- checker's `--build`.
+  let name := mkIdent (`_root_ ++ `Substrait.Generated.checkedIn ++ (← getMainModule))
+  elabCommand (← `(command| def $name : Bool := $(quote (← checked))))
+
+/-- Were the proofs of every generated module this build imports checked
+(`check_generated`)? The conjunction of the `checkedIn` each one records
+(`generated_entries`), found when this term elaborates. -/
+elab "generated_checked%" : term => do
+  let names := (← getEnv).constants.map₁.toList.filterMap fun (n, _) =>
+    if (`Substrait.Generated.checkedIn).isPrefixOf n then some n else none
+  if names.isEmpty then throwError "generated_checked%: no generated module is imported"
+  return names.foldl (fun acc n => mkApp2 (mkConst ``and) acc (mkConst n)) (mkConst ``true)
 
 /-- Fail in a search run with `check_generated` off: a search must check
 every proof it finds. -/

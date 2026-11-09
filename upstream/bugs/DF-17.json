@@ -11,7 +11,7 @@
   "handling": "The reference follows DataFusion here (`core/Sverify/Core/Time.lean`): calendar functions are defined within ±2⁶³ ns on every engine. A proposal to use 0001–9999 and refuse only on DataFusion is under review.",
   "files": [
     "core/Sverify/Core/Time.lean",
-    "python/src/sverify/polars_engine.py",
+    "engines/polars/src/sverify_polars/engine.py",
     "python/src/sverify/sql/core/_base.py"
   ],
   "checked": [

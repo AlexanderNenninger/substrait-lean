@@ -20,12 +20,12 @@
     "`pl.LazyFrame({\"x\": [49.0, 0.0, 1e-300] * 2000})` with the same select and `collect(engine=\"streaming\")` gives the same rows as the 3-row frame. The full script is `repros/PL-3.py` in the reports folder."
   ],
   "handling": "sverify does not work around it yet. The Polars profile must widen `fp.div` (`rounding`, `nan_creation`) and `fp.mod` (`division_type`) for a literal divisor, or shim them, for example by dividing two columns.",
-  "found_by": "characterizing Polars against the formalization (characterization/polars/facts, round 2 source reading of the arithmetic kernels, then a manual repro)",
+  "found_by": "characterizing Polars against the formalization (engines/polars/facts, round 2 source reading of the arithmetic kernels, then a manual repro)",
   "files": [
-    "characterization/polars/facts/polars-double-scalar-divisor.json",
-    "characterization/polars/facts/polars-double-divide.json",
-    "characterization/polars/facts/polars-double-modulus.json",
-    "characterization/polars/facts/polars-fp-ieee.json"
+    "engines/polars/facts/polars-double-scalar-divisor.json",
+    "engines/polars/facts/polars-double-divide.json",
+    "engines/polars/facts/polars-double-modulus.json",
+    "engines/polars/facts/polars-fp-ieee.json"
   ],
   "facts": [
     "polars-double-scalar-divisor",

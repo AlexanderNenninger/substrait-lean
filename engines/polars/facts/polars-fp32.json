@@ -1,0 +1,106 @@
+{
+  "id": "polars-fp32",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`Float32` arithmetic stays in `Float32`, and pulls in a double literal",
+  "verdict": "native single precision; `Float32 + 0.1` is `Float32`",
+  "area": "doubles",
+  "options": [
+    "fp32",
+    "implicit_casts"
+  ],
+  "rows": [
+    {"option": "fp32", "types": ["fp32"]}
+  ],
+  "constructs": [
+    "+",
+    "sum",
+    "mean"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "Arithmetic on `Float32` is single precision (`3e38 + 3e38` is inf, `16777216 + 1` is 16777216), and `sum` and `mean` of `Float32` are `Float32`. `sum` adds in `Float32` on both engines; the streaming `mean` sums in `f64` and rounds the quotient to `Float32` once (polars-mean-float-streaming). A Python float or int literal takes the column's type, so `Float32 + 0.1` adds 0.1 rounded to a float. Casts between the formats round to nearest (polars-cast-to-double).",
+    "The docs are silent on a literal taking a `Float32` column's type: a docs gap.",
+    "No upstream test pins single-precision overflow or rounding (`3e38 + 3e38`, `16777216 + 1`); they may change between versions."
+  ],
+  "reference": "`fp32` arithmetic is refused in every profile until #417's stage 3.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "fp32-arith"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "fp32-arith"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L124-L126",
+          "note": "the f32 kernels"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/utils/supertype.rs#L519-L520",
+          "note": "a dynamic int or float literal takes a float column's type"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L40-L47",
+          "note": "SumCast: f32 sums as f32"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mean.rs#L30-L52",
+          "note": "streaming mean of Float32: f64 sum, quotient cast to f32"
+        }
+      ],
+      "notes": "Added to the description: the streaming `mean` of `Float32` sums in `f64` (reduce/mean.rs#L30-L52); the result type stays `Float32`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/datatypes/test_datatypes.py#L296-L315",
+          "note": "literals with a Float32 column stay Float32 (lazy, both engines)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L1307-L1319",
+          "note": "Float32 / 2 stays Float32"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    417
+  ]
+}

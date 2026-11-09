@@ -1,0 +1,114 @@
+{
+  "id": "polars-int-true-divide",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `/`: a division of doubles",
+  "verdict": "`Int64 / Int64` is `Float64`; `/ 0` is ±inf or NaN; a literal divisor multiplies by its reciprocal",
+  "area": "integers",
+  "options": [
+    "implicit_casts",
+    "on_division_by_zero"
+  ],
+  "constructs": [
+    "/",
+    "truediv"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`/` on integers casts both operands to `Float64` and divides: `7 / 2` is 3.5, `x / 0` is ±inf, `0 / 0` is NaN. Integers above 2⁵³ round on the way.",
+    "The cast happens before the division (binary.rs#L151-L158), so the float kernels run, and a literal or one-row divisor multiplies by its reciprocal (polars-double-scalar-divisor, PL-3): on a frame of two rows or more `49 / 49` is 0.9999999999999999 and `5 / 3` is 1.6666666666666665, and so is `x / x.max()` for `x = 49`.",
+    "The docs are silent on the rounding above 2⁵³: a docs gap. The `truediv` docs call the division IEEE 754, which the reciprocal contradicts: PL-8.",
+    "No upstream test pins quotients above 2⁵³ or an inexact quotient by a literal; they may change between versions."
+  ],
+  "reference": "Substrait's `divide` on integers returns the integer type and truncates. A plan that divides integers to a double casts first, and the double division's options apply (polars-double-divide).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "int-true-divide"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L214-L226"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "int-true-divide"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/binary.rs#L151-L158",
+          "note": "integer / integer: both cast to Float64, then the float kernel; signed.rs's prim_true_div is not on this route"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L109-L119",
+          "note": "a length-1 divisor multiplies by its reciprocal"
+        }
+      ],
+      "notes": "Corrected the route: an earlier check cited `prim_true_div` of signed.rs, which `Expr /` does not reach. binary.rs#L151-L158 casts both sides to Float64 first, so a literal divisor takes the float reciprocal kernel; added to the description and the verdict."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'a': [49, 5, 0]}).select(pl.col('a') / 49, pl.col('a') / 3, pl.col('a') / 0)",
+          "observed": "49/49 = 0.9999999999999999, 5/3 = 1.6666666666666665, 49/0 = inf, 0/0 = nan (Polars 2.1.0, macOS arm64)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L190-L196",
+          "note": "UInt8 1 / 0 = inf, 0 / 0 = NaN (eager and lazy, both engines; slow)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/series/test_series.py#L1218-L1229",
+          "note": "[1, 2] / 2 = [0.5, 1.0] (eager)"
+        }
+      ]
+    }
+  ]
+}

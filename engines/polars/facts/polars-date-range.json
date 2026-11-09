@@ -1,0 +1,149 @@
+{
+  "id": "polars-date-range",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Dates past 9999 and before year 1; out-of-range days panic",
+  "verdict": "no `date_range` limit; `Int32` days beyond chrono's range panic",
+  "area": "temporal",
+  "options": [
+    "date_range",
+    "raise_set"
+  ],
+  "rows": [
+    {"group": "time.arith", "option": "date_range", "types": ["date", "timestamp", "timestamp_tz"]}
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "dt.offset_by",
+    "cast"
+  ],
+  "settings": {
+    "engine": [
+      "streaming",
+      "in-memory"
+    ]
+  },
+  "description": [
+    "Date arithmetic is not limited to 0001-01-01 … 9999-12-31: one day before 0001-01-01 is 0000-12-31 and one after 9999-12-31 is +10000-01-01; timestamps (microseconds) reach year 12736 and beyond.",
+    "A date is an `Int32` of days, wider than chrono's `NaiveDate` (about ±262 000 years). Casting such a day count to `Date` succeeds, `dt.year()` of it is NULL, and turning it into text or a Python value panics (`PanicException: out-of-range date`, PL-2).",
+    "A `Datetime` with a time zone adds a `Duration` on its physical `Int64` (UTC) and keeps the zone, the same addition as a naive timestamp, so it has no `date_range` limit either: Europe/Berlin 9999-12-31 12:00 plus a day is +10000-01-01 12:00 CET, and 0001-01-01 12:00 minus a day is 0000-12-31 12:00 LMT. `dt.offset_by` with months works in local time and crosses both bounds the same way.",
+    "The docs are silent on chrono's range and the panic: a docs gap.",
+    "No upstream test pins the panic (PL-2) or 0000-12-31; it may change between versions."
+  ],
+  "reference": "`date_range`: date arithmetic raises outside 0001-01-01 … 9999-12-31 (#251).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "date-range"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "date-physical-range"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "timestamp-range"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-arrow/src/temporal_conversions.rs#L43-L47"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (temporal)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/series/implementations/datetime.rs#L107-L139",
+          "note": "`Datetime(tu, tz)` ± `Duration`: `Int64` arithmetic, then `into_datetime(tu, tz)`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/utils/supertype.rs#L393-L405",
+          "note": "`Duration` with a zoned or naive `Datetime`: the `Datetime`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-time/src/offset_by.rs#L30-L63",
+          "note": "`offset_by` on a zoned `Datetime` adds through `Duration::add` with the zone"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (temporal)",
+      "evidence": [
+        {
+          "note": "Datetime('us', 'Europe/Berlin') column [9999-12-31 12:00, 0001-01-01 12:00]: + pl.duration(days=1) gives years 10000 and 1, - pl.duration(days=1) years 9999 and 0, dt.offset_by('1mo') +10000-01-31 and 0001-02-01, dt.offset_by('-1mo') 9999-11-30 and 0000-12-01, on both engines"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/series/implementations/date.rs#L102-L134",
+          "note": "Date ± Duration: cast to Datetime(us), Int64 arithmetic, cast back; no range check"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-time/src/chunkedarray/kernels.rs#L38-L53",
+          "note": "to_temporal_unit: date32_to_datetime_opt, None becomes NULL (date_to_year at L106-L112)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/temporal/date.rs#L35-L49",
+          "note": "Date to text calls the panicking date32_to_date"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Date.html",
+          "note": "a 32-bit signed integer of days since 1970-01-01; silent on chrono's range and the panic (docs gap)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/namespaces/temporal/test_datetime.py#L1570-L1580",
+          "note": "test_out_of_range_date_year_11991: cast(-96465659 → Date).dt.year() is None (in-memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/series/test_item.py#L44-L48",
+          "note": "date(9999,12,31).offset_by('1d') builds a date past 9999; item() raises Python's ValueError (Python >= 3.14 only)"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    251
+  ]
+}
