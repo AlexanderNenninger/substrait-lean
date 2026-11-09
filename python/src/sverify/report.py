@@ -24,7 +24,7 @@ import ibis
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _hooks
+from sverify import _decimals, _deprecated, _engines, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._unsupported import SverifyError, SverifyWarning
@@ -1422,7 +1422,8 @@ class Report:
         if needed := len(self.needs):
             out.append(n(needed, "precondition") + " needed")
         if self._transfer:
-            out.append(n(len(self._transfer), "option") + " where Substrait allows more")
+            title = _engines.title(self.semantics)
+            out.append(n(len(self._transfer), "option") + f" where {title} allows more")
         if self.floats_unmet:
             out.append("no engine's doubles meet the observation")
         return out or ["see the report"]

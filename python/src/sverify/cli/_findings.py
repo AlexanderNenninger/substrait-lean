@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sverify import _engines
 from sverify.cli import _explain
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ def of(c: Checked) -> list[dict[str, Any]]:
         extra = {"hint": i.hint} if i.hint else {}
         out.append(_finding(c, _explain.code_of(i.kind), f"may fail: {i.message}", **extra))
     if r._transfer:
-        text = f"Substrait allows more at {len(r._transfer)} option(s)"
+        text = f"{_engines.title(r.semantics)} allows more at {len(r._transfer)} option(s)"
         out.append(_finding(c, "transfer", text))
     if r.floats_unmet:
         out.append(_finding(c, "floats", r.floats_unmet))

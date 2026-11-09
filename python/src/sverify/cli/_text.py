@@ -81,7 +81,10 @@ def summary(report: Report, sources: Collection[str] | None = None) -> dict[str,
     not_proved += [f"{n.table} needs {plain(n.label)} ({_needed_why(n)})" for n in report.needs]
     not_proved += [f"may fail: {i.message}" for i in report.errors]
     if report._transfer:
-        not_proved.append(f"Substrait allows more at {len(report._transfer)} option(s)")
+        from sverify import _engines
+
+        title = _engines.title(report.semantics)
+        not_proved.append(f"{title} allows more at {len(report._transfer)} option(s)")
     if report.floats_unmet:
         not_proved.append(f"doubles: {report.floats_unmet}")
     return {"guarantees": guarantees, "checks": checks, "not_proved": not_proved}

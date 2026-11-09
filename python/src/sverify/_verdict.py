@@ -70,7 +70,9 @@ def verdict(
         _engines=out.get("engines"),
         _sorted=out.get("sorted"),
         _contract=dict(request),
-        _transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
+        # Under a profile the checker carries the reference's proof to
+        # (`transferTo`): where it does not, the reads that fail.
+        _transfer=(out.get("transfer") or {}).get("failures") if semantics != "reference" else None,
         **context,
     )
 
