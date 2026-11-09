@@ -623,6 +623,8 @@ def guardsTac (unfold natives extra : Array Name) (unary : Bool) (agree? : Optio
   let names ← simpArgs #[``nanIssue, ``domainIssue, ``rangeIssue, ``wrapIf, ``wrapNum]
   `(tactic| first
     | (intros; trivial)
+    -- A template that never raises (`round` below zero on DuckDB): no guard.
+    | (intros; exact Substrait.Expr.guardsAt_of_noGuards _ rfl)
     | ($intro:tactic
        refine Substrait.Expr.GuardsAt.one rfl $ag ?_ ?_ ?_ (Substrait.Expr.guardsAt_of_noGuards _ rfl)
        · simp [$pre,*, Substrait.Outcome.err?, bind, Except.bind]
