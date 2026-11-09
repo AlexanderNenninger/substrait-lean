@@ -18,8 +18,8 @@ row (`unique(*by, on)`, from `ROW_NUMBER` keys and the join's key analysis,
 `Rel.keys_sound`), `on_right <= on` and `on - on_right <= tolerance`
 (`contract_sound`); `tests/test_asof.py` proves the three. The ranking is only
 determined when no two right rows tie: without a key on `(*by, on)` on the
-right side these guarantees still hold for every pick of the tied rows
-(D24), and the report is not `deterministic`.
+right side these guarantees still hold for every pick of the tied rows,
+and the report is not `deterministic`.
 """
 
 from collections.abc import Sequence
@@ -62,7 +62,7 @@ def asof_join(
             Ibis interval, or a number for numeric time columns). Default
             None: no limit. The join computes `on - tolerance`, which
             overflows at the type's smallest value; a contract infers the
-            lower bound on the left `on` column that rules it out (#244).
+            lower bound on the left `on` column that rules it out.
         key: Columns that identify left rows. Default: `by` and `on`.
         how: `"left"` (the default) keeps left rows without a match, with
             NULLs; `"inner"` drops them.
