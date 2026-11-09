@@ -69,6 +69,7 @@ theorem Profile.spark_extras :
   decide
 
 
+variable [Boxes.Ambient]
 /-- **DuckDB's functions are within its table**, with IEEE operations on:
 each value `duckBin` and `duckUn` change is in the scope of an option the
 table allows another behaviour (D34): a domain error's NaN, a zero divisor's

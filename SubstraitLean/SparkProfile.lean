@@ -102,6 +102,7 @@ def sparkUn : UnFn → Value → Option Outcome
     then some (.error .overflow) else none
   | _, _ => none
 
+variable [Boxes.Ambient]
 /-- **Spark's profile**: what Spark 4.3.0 computes under ANSI, as a diff
 against the reference (`sparkBin`, `sparkUn`). -/
 def Profile.spark : Profile where
