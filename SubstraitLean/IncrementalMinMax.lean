@@ -20,9 +20,10 @@ values and the values a batch inserts is the `MIN` of the two `MIN`s
 
 * `done_merge`: the merged state of two bags finishes to the aggregate's row
   of their union, for `COUNT`, `SUM`, `MIN` and `MAX`.
-* `extreme_maintained`: after a batch, the aggregate is the old rows of the
-  groups it does not touch, the aggregate of the new input's rows in the
-  groups it deletes from, and the merged state of the others. This is what
+* `extreme_maintained`: after a batch, the old rows of the groups it does
+  not touch, the aggregate of the new input's rows in the groups it deletes
+  from, and the merged state of the others are an aggregate the reference
+  allows (one key of each class of keys, D31). This is what
   `sverify._linear` computes.
 
 ## Exact `AVG`
@@ -121,80 +122,82 @@ theorem done_merge {gs : List Expr} {m : Measure} (hm : Kept m) {sc : Option Nat
 
 variable {gs : List Expr} {ms : List Measure}
 
-/-- An aggregate splits by any predicate `p` of the group key. -/
-theorem aggregate_split (hg : gs ≠ []) (p : Row → Bool) (rows : Relation) :
-    (aggregateEval gs ms rows).Perm
-      (aggregateEval gs ms (rows.filter fun r => p (groupKey gs r)) ++
-        aggregateEval gs ms (rows.filter fun r => !p (groupKey gs r))) :=
-  (List.filter_append_perm (fun o => p (o.take gs.length)) _).symm.trans
-    ((Retention.aggregateEval_filter_key hg ms p rows).append
-      (Retention.aggregateEval_filter_key hg ms (fun k => !p k) rows))
-
-/-- The aggregate of a bag whose groups are `ks`, listed once each, is the
-groups' rows in that order. -/
-theorem aggregate_keys (hg : gs ≠ []) {rows : Relation} {ks : List Row} (hnd : ks.Nodup)
-    (hks : ∀ k, k ∈ ks ↔ k ∈ rows.map (groupKey gs)) :
-    (aggregateEval gs ms rows).Perm
-      (ks.map fun k => k ++ ms.map (·.eval (groupRows gs rows k))) := by
-  have hge : gs.isEmpty = false := by simpa using hg
-  simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte]
-  exact List.Perm.map _ ((List.perm_ext_iff_of_nodup (nodup_dedup _) hnd).mpr fun k => by
-    rw [mem_dedup, hks])
-
 /-- **Maintaining `COUNT`, `SUM`, `MIN` and `MAX` per group.** A batch
-deletes `dels` and inserts `ins`, touching only groups in `K`, and deletes
-only from groups in `D`. Then the aggregate after the batch is
+deletes `dels` and inserts `ins`, touching only classes of keys in `K`, and
+deletes only from classes in `D`. Then an output the reference allows after
+the batch is
 
-* the old aggregate's rows of the groups outside `K`,
+* the rows of an old output the reference allows of the groups outside `K`,
 * the aggregate of the new input's rows in the groups in `K` and `D`
   (recomputed), and
-* for the groups in `K` but not `D` that have rows (`ks`), the merged state
-  of the old rows and the inserted ones. -/
+* for one key of each class in `K` but not `D` that has rows (`ks`), the
+  merged state of the old rows and the inserted ones. -/
 theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {sc : Measure → Option Nat}
     {rows dels ins : Relation} (hsc : ∀ m ∈ ms, ArgScale (sc m) m (rows ++ ins))
-    {K D : Row → Bool} (hT : TouchedGroups.Touches gs K dels ins)
-    (hD : ∀ r ∈ dels, D (groupKey gs r) = true) {ks : List Row} (hnd : ks.Nodup)
-    (hks : ∀ k, k ∈ ks ↔ K k = true ∧ D k = false ∧
-      0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k (ZSet.lift ins)) :
-    (aggregateEval gs ms (applyBatch rows dels ins)).Perm
-      ((aggregateEval gs ms rows).filter (fun o => !K (o.take gs.length)) ++
+    {K D : Row → Bool} (hKc : RespectsCanon K) (hDc : RespectsCanon D)
+    (hT : TouchedGroups.Touches gs K dels ins)
+    (hD : ∀ r ∈ dels, D (groupKey gs r) = true) {old : Relation} (hold : aggAllowed gs ms rows old)
+    {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon)
+    (hpos : ∀ k ∈ ks, K k = true ∧ D k = false ∧
+      0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k (ZSet.lift ins))
+    (hcov : ∀ k, K k = true → D k = false →
+      0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k (ZSet.lift ins) → ∃ k' ∈ ks, k'.canon = k.canon) :
+    aggAllowed gs ms (applyBatch rows dels ins)
+      (old.filter (fun o => !K (o.take gs.length)) ++
         (aggregateEval gs ms ((applyBatch rows dels ins).filter
           fun r => K (groupKey gs r) && D (groupKey gs r)) ++
         ks.map fun k => k ++ ms.map fun m =>
           done m (sc m) (merge m (st gs m rows k) (st gs m ins k)))) := by
-  refine (TouchedGroups.touched_sound hg hT).trans (List.Perm.append_left _ ?_)
+  have hge : gs.isEmpty = false := by simpa using hg
   let new := applyBatch rows dels ins
-  refine (aggregate_split hg D (new.filter fun r => K (groupKey gs r))).trans ?_
-  simp only [List.filter_filter]
-  refine List.Perm.append (.of_eq (by congr 1; exact List.filter_congr fun r _ => Bool.and_comm ..))
-    ?_
-  -- The groups the batch only inserts into: old rows and inserted ones.
-  let q : Row → Bool := fun r => K (groupKey gs r) && !D (groupKey gs r)
-  have hx : new.filter (fun r => !D (groupKey gs r) && K (groupKey gs r)) = (rows ++ ins).filter q := by
-    have hq : (fun r => !D (groupKey gs r) && K (groupKey gs r)) = q :=
-      funext fun r => Bool.and_comm ..
-    rw [hq]
-    simp only [new, applyBatch, List.filter_append]
-    congr 1
-    exact filter_foldl_erase dels rows fun d hd => by simp [q, hD d hd]
-  rw [hx]
-  have hkeys : ∀ k, k ∈ ks ↔ k ∈ ((rows ++ ins).filter q).map (groupKey gs) := by
-    intro k
-    rw [hks, ← rowsIn_append, ← lift_append, ← mem_keys_iff, mem_dedup]
-    simp only [List.mem_map, List.mem_filter, q, Bool.and_eq_true, Bool.not_eq_true']
-    constructor
-    · rintro ⟨hk, hd, r, hr, rfl⟩; exact ⟨r, ⟨hr, hk, hd⟩, rfl⟩
-    · rintro ⟨r, ⟨hr, hk, hd⟩, rfl⟩; exact ⟨hk, hd, r, hr, rfl⟩
-  refine (aggregate_keys hg hnd hkeys).trans (.of_eq (List.map_congr_left fun k hk => ?_))
-  obtain ⟨hK, hD', -⟩ := (hks k).mp hk
-  have hg' : groupRows gs ((rows ++ ins).filter q) k = groupRows gs (rows ++ ins) k := by
-    simp only [groupRows, List.filter_filter]
-    exact List.filter_congr fun r _ => by
-      by_cases he : groupKey gs r = k
-      · simp [he, q, hK, hD']
-      · simp [he]
-  rw [hg']
-  exact congrArg (k ++ ·) (List.map_congr_left fun m hm => (done_merge (hms m hm) (hsc m hm) k).symm)
+  have hnK : RespectsCanon fun k => !K k := fun k k' he => by simp only [hKc k k' he]
+  refine aggAllowed_append hg hnK ?_ ?_
+  · -- The untouched groups: their rows are as they were.
+    have hu := TouchedGroups.filter_untouched (q := fun r => K (groupKey gs r)) (rows := rows) hT
+    rw [hu]
+    exact aggAllowed_filter_key hg hnK hold
+  · -- The touched groups, split by `D`.
+    have e : ∀ q : Row → Bool, (new.filter fun r => !!K (groupKey gs r)).filter q =
+        new.filter fun r => K (groupKey gs r) && q r := fun q => by
+      rw [List.filter_filter]; exact List.filter_congr fun r _ => by simp [Bool.and_comm]
+    refine aggAllowed_append hg hDc ?_ ?_
+    · rw [e]
+      exact aggregateEval_allowed gs ms _
+    · -- The groups the batch only inserts into: old rows and inserted ones.
+      let q : Row → Bool := fun r => K (groupKey gs r) && !D (groupKey gs r)
+      have hx : new.filter (fun r => K (groupKey gs r) && !D (groupKey gs r)) =
+          (rows ++ ins).filter q := by
+        simp only [new, applyBatch, List.filter_append]
+        congr 1
+        exact filter_foldl_erase dels rows fun d hd => by simp [q, hD d hd]
+      rw [e, hx]
+      have hq : ∀ k, K k = true → D k = false → ∀ r, (groupKey gs r).canon = k.canon → q r = true :=
+        fun k hK hD' r he => by simp [q, hKc _ _ he, hDc _ _ he, hK, hD']
+      unfold aggAllowed
+      simp only [hge, Bool.false_eq_true, ↓reduceIte]
+      refine ⟨ks, ⟨hks, fun k hk => ?_, fun x hx' => ?_⟩, forall₂_map_self ks fun k hk => ⟨_, rfl, ?_⟩⟩
+      · obtain ⟨hK, hD', hp⟩ := hpos k hk
+        rw [← rowsIn_append, ← lift_append] at hp
+        obtain ⟨r, hr, he⟩ := rowsIn_lift_pos.mp hp
+        exact ⟨_, List.mem_map_of_mem (List.mem_filter.mpr ⟨hr, hq k hK hD' r he⟩), he.symm⟩
+      · obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hx'
+        obtain ⟨hr, hqr⟩ := List.mem_filter.mp hr
+        simp only [q, Bool.and_eq_true, Bool.not_eq_true'] at hqr
+        refine hcov _ hqr.1 hqr.2 ?_
+        rw [← rowsIn_append, ← lift_append]
+        exact rowsIn_lift_pos.mpr ⟨r, hr, rfl⟩
+      · obtain ⟨hK, hD', -⟩ := hpos k hk
+        have hg' : groupRows gs ((rows ++ ins).filter q) k = groupRows gs (rows ++ ins) k := by
+          simp only [groupRows, List.filter_filter]
+          exact List.filter_congr fun r _ => by
+            by_cases he : ((groupKey gs r).canon == k.canon) = true
+            · simp [he, hq k hK hD' r (by simpa using he)]
+            · simp [he]
+        rw [hg']
+        rw [show (ms.map fun m => done m (sc m) (merge m (st gs m rows k) (st gs m ins k))) =
+          ms.map (·.eval (groupRows gs (rows ++ ins) k)) from
+          List.map_congr_left fun m hm => done_merge (hms m hm) (hsc m hm) k]
+        exact forall₂_map_self ms fun m _ => Measure.eval_allowed m _
 
 /-! ## Exact `AVG` -/
 

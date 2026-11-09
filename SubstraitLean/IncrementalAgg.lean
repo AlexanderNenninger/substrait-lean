@@ -408,6 +408,91 @@ theorem aggregate_state (hg : gs ≠ []) {st : Measure → LinState}
     rw [rowsIn_congr hz]
     exact rowsIn_lift_pos.mpr ⟨r, hr, rfl⟩
 
+/-- A group's rows on rows filtered by a predicate of the key that holds on
+the group's class are the group's rows. -/
+theorem groupRows_filter_key {p : Row → Bool} (hp : RespectsCanon p) {k : Row} (hk : p k = true)
+    (rows : Relation) : groupRows gs (rows.filter fun r => p (groupKey gs r)) k = groupRows gs rows k := by
+  simp only [groupRows, List.filter_filter]
+  exact List.filter_congr fun r _ => by
+    by_cases he : ((groupKey gs r).canon == k.canon) = true
+    · rw [hp _ _ (by simpa using he), hk]; simp [he]
+    · simp [he]
+
+/-- The keys of an output the reference allows have the keys' length. -/
+theorem aggAllowed_key_length {ks : List Row} {rows : Relation}
+    (h : IsReps Row.canon (rows.map (groupKey gs)) ks) {k : Row} (hk : k ∈ ks) :
+    k.length = gs.length := by
+  obtain ⟨_, hy, he⟩ := h.class_mem hk
+  obtain ⟨r, -, rfl⟩ := List.mem_map.mp hy
+  rw [Row.length_of_canon he]; simp [groupKey]
+
+/-- **An allowed aggregate restricted to some classes of keys** is an allowed
+aggregate of those classes' rows. -/
+theorem aggAllowed_filter_key (hg : gs ≠ []) {p : Row → Bool} (hp : RespectsCanon p)
+    {rows out : Relation} (h : aggAllowed gs ms rows out) :
+    aggAllowed gs ms (rows.filter fun r => p (groupKey gs r))
+      (out.filter fun o => p (o.take gs.length)) := by
+  have hge : gs.isEmpty = false := by simpa using hg
+  unfold aggAllowed at h ⊢
+  simp only [hge, Bool.false_eq_true, ↓reduceIte] at h ⊢
+  obtain ⟨ks, hr, hf⟩ := h
+  have hpk : ∀ k ∈ ks.filter p, p k = true := fun k hk => (List.mem_filter.mp hk).2
+  refine ⟨ks.filter p, ⟨hr.1.sublist List.filter_sublist, fun k hk => ?_, fun x hx => ?_⟩, ?_⟩
+  · obtain ⟨_, hy, he⟩ := hr.class_mem (List.mem_filter.mp hk).1
+    obtain ⟨r, hr', rfl⟩ := List.mem_map.mp hy
+    have : p (groupKey gs r) = true := by rw [← hp _ _ he]; exact hpk k hk
+    exact ⟨_, List.mem_map_of_mem (List.mem_filter.mpr ⟨hr', this⟩), he⟩
+  · obtain ⟨r, hr', rfl⟩ := List.mem_map.mp hx
+    have hpr := (List.mem_filter.mp hr').2
+    obtain ⟨y, hy, he⟩ := hr.2.2 _ (List.mem_map_of_mem (List.mem_filter.mp hr').1)
+    have : p y = true := by rw [hp _ _ he]; exact hpr
+    exact ⟨y, List.mem_filter.mpr ⟨hy, this⟩, he⟩
+  · have hf1 := hf.imp_mem fun k hk o h => And.intro h (aggAllowed_key_length hr hk)
+    have hf2 := hf1.filter (p := p) (p' := fun o => p (o.take gs.length))
+      fun k o ⟨⟨vs, ho, _⟩, hl⟩ => by rw [ho, ← hl, List.take_left]
+    exact hf2.imp_mem fun k hk o ⟨⟨vs, ho, hv⟩, _⟩ =>
+      ⟨vs, ho, by rwa [groupRows_filter_key hp (hpk k hk)]⟩
+
+/-- **Allowed aggregates of two sets of classes of keys** make an allowed
+aggregate of their union. -/
+theorem aggAllowed_append (hg : gs ≠ []) {p : Row → Bool} (hp : RespectsCanon p)
+    {rows A B : Relation} (hA : aggAllowed gs ms (rows.filter fun r => p (groupKey gs r)) A)
+    (hB : aggAllowed gs ms (rows.filter fun r => !p (groupKey gs r)) B) :
+    aggAllowed gs ms rows (A ++ B) := by
+  have hge : gs.isEmpty = false := by simpa using hg
+  have hnp : RespectsCanon fun k => !p k := fun k k' he => by simp only [hp k k' he]
+  unfold aggAllowed at hA hB ⊢
+  simp only [hge, Bool.false_eq_true, ↓reduceIte] at hA hB ⊢
+  obtain ⟨ka, hra, hfa⟩ := hA
+  obtain ⟨kb, hrb, hfb⟩ := hB
+  -- A key's class decides the predicate.
+  have side : ∀ {q : Row → Bool}, RespectsCanon q → ∀ {ks : List Row},
+      IsReps Row.canon ((rows.filter fun r => q (groupKey gs r)).map (groupKey gs)) ks →
+        ∀ k ∈ ks, q k = true ∧ ∃ y ∈ rows.map (groupKey gs), k.canon = y.canon := by
+    intro q hq ks h k hk
+    obtain ⟨_, hy, he⟩ := h.class_mem hk
+    obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hy
+    exact ⟨by rw [hq _ _ he]; exact (List.mem_filter.mp hr).2,
+      _, List.mem_map_of_mem (List.mem_filter.mp hr).1, he⟩
+  refine ⟨ka ++ kb, ⟨?_, fun x hx => ?_, fun x hx => ?_⟩, Forall2.append ?_ ?_⟩
+  · refine List.pairwise_append.mpr ⟨hra.1, hrb.1, fun a ha b hb he => ?_⟩
+    have h1 := (side hp hra a ha).1
+    have h2 := (side hnp hrb b hb).1
+    rw [hp a b he] at h1; rw [h1] at h2; exact Bool.false_ne_true h2
+  · rcases List.mem_append.mp hx with hx | hx
+    · exact (side hp hra x hx).2
+    · exact (side hnp hrb x hx).2
+  · obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hx
+    cases hpr : p (groupKey gs r)
+    · obtain ⟨y, hy, he⟩ := hrb.2.2 _ (List.mem_map_of_mem (List.mem_filter.mpr ⟨hr, by simp [hpr]⟩))
+      exact ⟨y, List.mem_append_right _ hy, he⟩
+    · obtain ⟨y, hy, he⟩ := hra.2.2 _ (List.mem_map_of_mem (List.mem_filter.mpr ⟨hr, hpr⟩))
+      exact ⟨y, List.mem_append_left _ hy, he⟩
+  · exact hfa.imp_mem fun k hk o ⟨vs, ho, hv⟩ =>
+      ⟨vs, ho, by rwa [groupRows_filter_key hp (side hp hra k hk).1] at hv⟩
+  · exact hfb.imp_mem fun k hk o ⟨vs, ho, hv⟩ =>
+      ⟨vs, ho, by rwa [groupRows_filter_key hnp (side hnp hrb k hk).1] at hv⟩
+
 /-- **Maintaining `COUNT` and `SUM` per group.** A batch changes the input
 bag from `rows` to `rows'` by a change `Δ` (with the right weights), and
 every row of `Δ` has a group key in `K`, a set of classes of keys. Then the
@@ -419,7 +504,7 @@ theorem aggregate_maintained (hg : gs ≠ []) {st : Measure → LinState}
     (hst : ∀ m ∈ ms, (st m).Sound m) {rows rows' : Relation}
     (hgood' : ∀ m ∈ ms, (st m).Good m rows') {Δ : ZSet}
     (hΔ : ∀ r, (ZSet.lift rows ++ Δ).weight r = (ZSet.lift rows').weight r)
-    {K : Row → Bool} (hKc : ∀ k k' : Row, k.canon = k'.canon → K k = K k')
+    {K : Row → Bool} (hKc : RespectsCanon K)
     (hK : ∀ x ∈ Δ, K (groupKey gs x.1) = true) {old : Relation} (hold : aggAllowed gs ms rows old)
     {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon)
     (hpos : ∀ k ∈ ks, K k = true ∧ 0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k Δ)
@@ -552,7 +637,7 @@ change's is positive, are a `DISTINCT` of `rows'` the reference allows: a
 class is emitted when its count leaves 0 and retracted when it returns to 0. -/
 theorem distinct_maintained {rows rows' : Relation} {Δ : ZSet}
     (hΔ : ∀ r, (ZSet.lift rows ++ Δ).weight r = (ZSet.lift rows').weight r)
-    {K : Row → Bool} (hKc : ∀ k k' : Row, k.canon = k'.canon → K k = K k')
+    {K : Row → Bool} (hKc : RespectsCanon K)
     (hK : ∀ x ∈ Δ, K x.1 = true) {old : Relation} (hold : IsReps Row.canon rows old)
     {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon)
     (hpos : ∀ k ∈ ks, K k = true ∧ 0 < classIn k (ZSet.lift rows) + classIn k Δ)
