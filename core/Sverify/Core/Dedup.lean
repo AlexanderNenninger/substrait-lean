@@ -168,4 +168,149 @@ theorem dedup_filter_map {f : α → β} {p : α → Bool} {q : β → Bool} :
 
 end
 
+
+/-! ## Classes and their representatives
+
+`DISTINCT`, `GROUP BY` and `COUNT(DISTINCT)` tell values apart up to a
+canonical form `c` (`Value.canonV`: `-0.0` is `0.0`, D31). The deterministic
+eval keeps one member of each class, the least in a total order `le` on raw
+values, so the member depends only on which values occur and not on their
+order; the reference leaves it open (`Rel.Allowed`). -/
+
+section
+
+variable {α : Type}
+
+/-- What `classRep` needs of `le`: a total order. -/
+structure RawOrder (le : α → α → Bool) : Prop where
+  total : ∀ a b, le a b = true ∨ le b a = true
+  trans : ∀ a b c, le a b = true → le b c = true → le a c = true
+  antisymm : ∀ a b, le a b = true → le b a = true → a = b
+
+/-- The least of `x` and the members of `l` with `x`'s canonical form. -/
+def classRep [DecidableEq α] (c : α → α) (le : α → α → Bool) (l : List α) (x : α) : α :=
+  (l.filter (c · == c x)).foldl (fun a b => if le a b then a else b) x
+
+/-- One member of each class of `l`, in the order of first occurrence. -/
+def canonReps [DecidableEq α] (c : α → α) (le : α → α → Bool) (l : List α) : List α :=
+  dedup (l.map (classRep c le l))
+
+theorem foldlMin_mem (le : α → α → Bool) : ∀ (x : α) (l : List α),
+    l.foldl (fun a b => if le a b then a else b) x ∈ x :: l
+  | x, [] => List.mem_cons_self
+  | x, y :: l => by
+    have ih := foldlMin_mem le (if le x y then x else y) l
+    simp only [List.foldl_cons] at ih ⊢
+    rcases List.mem_cons.mp ih with h | h
+    · rw [h]; cases le x y <;> simp
+    · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ h)
+
+theorem foldlMin_le {le : α → α → Bool} (h : RawOrder le) : ∀ (x : α) (l : List α),
+    ∀ y ∈ x :: l, le (l.foldl (fun a b => if le a b then a else b) x) y = true
+  | x, [], y, hy => by
+    rw [List.mem_singleton.mp hy]; exact (h.total x x).elim id id
+  | x, z :: l, y, hy => by
+    have ih := foldlMin_le h (if le x z then x else z) l
+    simp only [List.foldl_cons] at ih ⊢
+    have hrefl : ∀ a, le a a = true := fun a => (h.total a a).elim id id
+    have hm := ih _ List.mem_cons_self
+    have hx : le (if le x z then x else z) x = true := by
+      cases hxz : le x z
+      · exact (h.total x z).resolve_left (by simp [hxz])
+      · exact hrefl x
+    have hz : le (if le x z then x else z) z = true := by
+      cases hxz : le x z
+      · exact hrefl z
+      · exact hxz
+    simp only [List.mem_cons] at hy
+    rcases hy with rfl | rfl | hy
+    · exact h.trans _ _ _ hm hx
+    · exact h.trans _ _ _ hm hz
+    · exact ih y (List.mem_cons_of_mem _ hy)
+
+variable [DecidableEq α] {c : α → α} {le : α → α → Bool}
+
+theorem classRep_mem' (l : List α) (x : α) : classRep c le l x ∈ x :: l.filter (c · == c x) :=
+  foldlMin_mem le x _
+
+theorem classRep_mem {l : List α} {x : α} (hx : x ∈ l) : classRep c le l x ∈ l := by
+  rcases List.mem_cons.mp (classRep_mem' (c := c) (le := le) l x) with h | h
+  · rw [h]; exact hx
+  · exact (List.mem_filter.mp h).1
+
+theorem classRep_canon (l : List α) (x : α) : c (classRep c le l x) = c x := by
+  rcases List.mem_cons.mp (classRep_mem' (c := c) (le := le) l x) with h | h
+  · rw [h]
+  · simpa using (List.mem_filter.mp h).2
+
+theorem classRep_least (h : RawOrder le) {l : List α} {x y : α} (hy : y ∈ l) (hc : c y = c x) :
+    le (classRep c le l x) y = true :=
+  foldlMin_le h x _ y (List.mem_cons_of_mem _ (List.mem_filter.mpr ⟨hy, by simp [hc]⟩))
+
+/-- Members of one class have one representative. -/
+theorem classRep_eq (h : RawOrder le) {l : List α} {x y : α} (hx : x ∈ l) (hy : y ∈ l)
+    (hc : c x = c y) : classRep c le l x = classRep c le l y :=
+  h.antisymm _ _
+    (classRep_least h (classRep_mem hy) (by rw [classRep_canon (c := c), hc]))
+    (classRep_least h (classRep_mem hx) (by rw [classRep_canon (c := c), hc]))
+
+theorem classRep_self {l : List α} {x : α} (hx : x ∈ l)
+    (hinj : ∀ y ∈ l, c y = c x → y = x) : classRep c le l x = x := by
+  have hm := classRep_mem (c := c) (le := le) hx
+  exact hinj _ hm (classRep_canon l x)
+
+/-- The representative depends only on which members occur. -/
+theorem classRep_perm (h : RawOrder le) {l l' : List α} (hp : l.Perm l') {x : α} (hx : x ∈ l) :
+    classRep c le l x = classRep c le l' x :=
+  h.antisymm _ _
+    (classRep_least h (hp.mem_iff.mpr (classRep_mem (hp.mem_iff.mp hx))) (classRep_canon _ _))
+    (classRep_least h (hp.mem_iff.mp (classRep_mem hx)) (classRep_canon _ _))
+
+theorem mem_canonReps {l : List α} {k : α} :
+    k ∈ canonReps c le l ↔ ∃ x ∈ l, classRep c le l x = k := by
+  simp only [canonReps, mem_dedup, List.mem_map]
+
+theorem canonReps_sub {l : List α} {k : α} (hk : k ∈ canonReps c le l) : k ∈ l := by
+  obtain ⟨x, hx, rfl⟩ := mem_canonReps.mp hk; exact classRep_mem hx
+
+theorem canonReps_canon {l : List α} {k : α} (hk : k ∈ canonReps c le l) : ∃ x ∈ l, c k = c x := by
+  obtain ⟨x, hx, rfl⟩ := mem_canonReps.mp hk; exact ⟨x, hx, classRep_canon _ _⟩
+
+/-- Every member has its class's representative among the representatives. -/
+theorem classRep_mem_canonReps {l : List α} {x : α} (hx : x ∈ l) :
+    classRep c le l x ∈ canonReps c le l :=
+  mem_canonReps.mpr ⟨x, hx, rfl⟩
+
+/-- The representatives lie in different classes. -/
+theorem canonReps_pairwise (h : RawOrder le) (l : List α) :
+    (canonReps c le l).Pairwise fun a b => c a ≠ c b := by
+  refine (dedup_pairwise _).imp_of_mem fun {a b} ha hb hne hc => hne ?_
+  obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp ha)
+  obtain ⟨y, hy, rfl⟩ := List.mem_map.mp (mem_dedup.mp hb)
+  rw [classRep_canon (c := c), classRep_canon (c := c)] at hc
+  exact classRep_eq h hx hy hc
+
+theorem canonReps_length_le (l : List α) : (canonReps c le l).length ≤ l.length := by
+  simpa [canonReps] using dedup_length_le (l.map (classRep c le l))
+
+theorem canonReps_nodup (l : List α) : (canonReps c le l).Nodup := nodup_dedup _
+
+theorem canonReps_perm (h : RawOrder le) {l l' : List α} (hp : l.Perm l') :
+    (canonReps c le l).Perm (canonReps c le l') :=
+  dedup_perm_of_mem fun k => by
+    simp only [List.mem_map]
+    constructor
+    · rintro ⟨x, hx, rfl⟩; exact ⟨x, hp.mem_iff.mp hx, (classRep_perm h hp hx).symm⟩
+    · rintro ⟨x, hx, rfl⟩; exact ⟨x, hp.mem_iff.mpr hx, classRep_perm h hp (hp.mem_iff.mpr hx)⟩
+
+/-- Without two members of one class, the representatives are `dedup`'s. -/
+theorem canonReps_of_inj {l : List α} (hinj : ∀ x ∈ l, ∀ y ∈ l, c x = c y → x = y) :
+    canonReps c le l = dedup l := by
+  unfold canonReps
+  have : l.map (classRep c le l) = l.map id :=
+    List.map_congr_left fun x hx => classRep_self hx fun y hy hc => hinj y hy x hx hc
+  rw [this, List.map_id]
+
+end
+
 end Substrait

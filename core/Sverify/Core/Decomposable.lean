@@ -251,7 +251,7 @@ def Measure.vals (m : Measure) (rows : Relation) : List Value :=
   ((m.kept rows).map m.arg.eval).filter (· != .null)
 
 theorem Measure.inputs_eq (m : Measure) (rows : Relation) :
-    m.inputs rows = if m.distinct then dedup (m.vals rows) else m.vals rows := rfl
+    m.inputs rows = if m.distinct then distinctVals (m.vals rows) else m.vals rows := rfl
 
 theorem Measure.kept_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
     (m.kept xs).Perm (m.kept ys) := by
@@ -293,7 +293,7 @@ theorem Measure.eval_perm {m : Measure} (hm : m.orderFree = true) {xs ys : Relat
   simp only [inputs_eq]
   refine AggFn.apply_perm_of_orderFree hm ?_
   split
-  · exact dedup_perm_of_mem fun _ => (m.vals_perm h).mem_iff
+  · exact canonReps_perm Value.leRaw_rawOrder (m.vals_perm h)
   · exact m.vals_perm h
 
 end Substrait

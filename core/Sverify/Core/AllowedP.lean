@@ -147,7 +147,7 @@ def aggAllowedP (t : ProfileTable) (I : Impl) (gs : List Expr) (ms : List Measur
   if gs.isEmpty then ∃ vs, out = [vs] ∧ Forall2 (fun m v => m.AllowedP t I rows v) ms vs
   else Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
       Forall2 (fun m v => m.AllowedP t I (groupRows gs rows k I) v) ms vs)
-    (dedup (rows.map fun row => groupKey gs row I)) out
+    (distinctRows (rows.map fun row => groupKey gs row I)) out
 
 /-! ## Windows -/
 
@@ -241,7 +241,7 @@ def Rel.AllowedI (t : ProfileTable) (I : Impl) (cat : Catalog) : Rel → Relatio
   | .semi a b anti on, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
       out.Perm (x.filter fun row => hasMatch on y row I != anti)
   | .orderBy r keys, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm i ∧ SortedP t keys out
-  | .distinct r, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm (dedup i)
+  | .distinct r, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm (distinctRows i)
   | .aggregate r gs ms, out => ∃ i, r.AllowedI t I cat i ∧ ∃ o, out.Perm o ∧
       aggAllowedP t I gs ms i o
   | .unnest r c, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm (i.flatMap (unnestRow c))

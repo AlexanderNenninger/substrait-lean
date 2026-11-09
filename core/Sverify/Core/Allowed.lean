@@ -95,7 +95,7 @@ def aggAllowed (gs : List Expr) (ms : List Measure) (rows out : Relation) : Prop
   if gs.isEmpty then ∃ vs, out = [vs] ∧ Forall2 (fun m v => m.Allowed rows v) ms vs
   else Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
       Forall2 (fun m v => m.Allowed (groupRows gs rows k) v) ms vs)
-    (dedup (rows.map (groupKey gs))) out
+    (distinctRows (rows.map (groupKey gs))) out
 
 theorem aggregateEval_allowed (gs : List Expr) (ms : List Measure) (rows : Relation) :
     aggAllowed gs ms rows (aggregateEval gs ms rows) := by
@@ -166,7 +166,7 @@ def Rel.Allowed (cat : Catalog) : Rel → Relation → Prop
       out.Perm (x.filter fun row => hasMatch on y row != anti)
   -- The input sorted, ties and a clustered key's groups in any order.
   | .orderBy r keys, out => ∃ i, r.Allowed cat i ∧ out.Perm i ∧ SortAllowed keys out
-  | .distinct r, out => ∃ i, r.Allowed cat i ∧ out.Perm (dedup i)
+  | .distinct r, out => ∃ i, r.Allowed cat i ∧ out.Perm (distinctRows i)
   | .aggregate r gs ms, out => ∃ i, r.Allowed cat i ∧ ∃ o, out.Perm o ∧ aggAllowed gs ms i o
   | .unnest r c, out => ∃ i, r.Allowed cat i ∧ out.Perm (i.flatMap (unnestRow c))
 

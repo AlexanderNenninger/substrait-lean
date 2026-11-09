@@ -1,4 +1,5 @@
 import Sverify.Core.Expr
+import Sverify.Core.Dedup
 
 /-!
 # Orders on values and rows
@@ -440,5 +441,30 @@ theorem sortLe_antisymm : ∀ {ks : List SortKey} {x y : Row},
       obtain ⟨h₁, h₂, h₃, h₄⟩ := lexLe_antisymm hxy hyx
       simp only [List.map_cons, List.cons.injEq]
       exact ⟨SortKey.le_antisymm h₁ h₂, sortLe_antisymm h₃ h₄⟩
+
+
+/-! ## Identity up to canonical codes
+
+`DISTINCT`, `GROUP BY` and `COUNT(DISTINCT)` tell values and rows apart up to
+`Value.canonV` (D31) and keep the raw-least member of each class
+(`canonReps`). -/
+
+theorem Value.leRaw_rawOrder : RawOrder Value.leRaw :=
+  ⟨Value.leRaw_total, Value.leRaw_trans, fun _ _ => Value.leRaw_antisymm⟩
+
+/-- A row with its doubles canonical. -/
+def Row.canon (r : Row) : Row := r.map Value.canonV
+
+/-- Rows in the raw order of their values, lexicographically. -/
+def Row.leRaw (a b : Row) : Bool := Value.leListRaw a b
+
+theorem Row.leRaw_rawOrder : RawOrder Row.leRaw :=
+  ⟨Value.leListRaw_total, Value.leListRaw_trans, fun _ _ => Value.leListRaw_antisymm⟩
+
+/-- `DISTINCT` of values, up to canonical codes. -/
+def distinctVals (vs : List Value) : List Value := canonReps Value.canonV Value.leRaw vs
+
+/-- `DISTINCT` of rows, up to canonical codes. -/
+def distinctRows (rows : Relation) : Relation := canonReps Row.canon Row.leRaw rows
 
 end Substrait

@@ -62,7 +62,7 @@ def aggOrderAllowed (gs : List Expr) (ms : List Measure) (rows out : Relation) :
   if gs.isEmpty then ∃ vs, out = [vs] ∧ Forall2 (fun m v => m.OrderAllowed rows v) ms vs
   else Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
       Forall2 (fun m v => m.OrderAllowed (groupRows gs rows k) v) ms vs)
-    (dedup (rows.map (groupKey gs))) out
+    (distinctRows (rows.map (groupKey gs))) out
 
 theorem aggregateEval_orderAllowed (gs : List Expr) (ms : List Measure) (rows : Relation) :
     aggOrderAllowed gs ms rows (aggregateEval gs ms rows) := by
@@ -87,7 +87,7 @@ theorem mem_aggOrderAllowed {gs : List Expr} {ms : List Measure} {rows out : Rel
     exact ⟨[], row, rows, by simp, hv, fun _ hy => hy, .inl ⟨List.isEmpty_iff.mp hg, rfl⟩,
       fun hne => absurd (List.isEmpty_iff.mp hg) hne, Nat.le_refl _⟩
   · obtain ⟨k, hk, vs, rfl, hv⟩ := Forall2.mem_right h hr
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     refine ⟨_, vs, _, rfl, hv, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩,
       fun _ => List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩),
       List.length_filter_le _ _⟩
@@ -122,7 +122,7 @@ def Rel.OrderAllowed (cat : Catalog) : Rel → Relation → Prop
       out.Perm (x.filter fun row => hasMatch on y row != anti)
   -- The input sorted, ties and a clustered key's groups in any order.
   | .orderBy r keys, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm i ∧ SortAllowed keys out
-  | .distinct r, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm (dedup i)
+  | .distinct r, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm (distinctRows i)
   | .aggregate r gs ms, out => ∃ i, r.OrderAllowed cat i ∧ ∃ o, out.Perm o ∧
       aggOrderAllowed gs ms i o
   | .unnest r c, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm (i.flatMap (unnestRow c))
@@ -209,7 +209,7 @@ theorem Rel.orderAllowed_arity {cat : Catalog} (hcat : cat.WF) :
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
     orderAllowed_arity hcat hwf.1 hi row (h.mem_iff.mp hr)
   | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
-    orderAllowed_arity hcat (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
+    orderAllowed_arity hcat (r := r) hwf hi row (canonReps_sub (h.mem_iff.mp hr))
   | .aggregate _ gs ms, _, _, ⟨_, _, _, h, ho⟩, row, hr => by
     obtain ⟨k, vs, _, rfl, hv, _, hk, _⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
     have hkl : k.length = gs.length := by

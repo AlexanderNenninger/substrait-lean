@@ -970,8 +970,8 @@ theorem Rel.kinds_sound {cat : Catalog} {tk : String → List Kind} (hcat : cat.
     exact kinds_sound hcat hk (r := r) hwf.1 h row hr
   | .distinct r, ks, hwf, h, row, hr => by
     simp only [inferKinds] at h
-    simp only [eval, mem_dedup] at hr
-    exact kinds_sound hcat hk (r := r) hwf h row hr
+    simp only [eval] at hr
+    exact kinds_sound hcat hk (r := r) hwf h row (canonReps_sub hr)
   | .unionAll a b, ks, hwf, h, row, hr => by
     simp only [inferKinds, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ka, ha, kb, hb, rfl⟩ := h

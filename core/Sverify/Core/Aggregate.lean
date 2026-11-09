@@ -124,10 +124,11 @@ def Measure.kept (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : Relat
   | some c => rows.filter fun row => (c.eval row I).isTrue
 
 /-- The values a measure aggregates: its argument on the kept rows, without
-NULLs, and without repetitions for `DISTINCT`. -/
+NULLs, and without repetitions for `DISTINCT` (up to canonical codes,
+`distinctVals`). -/
 def Measure.inputs (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : List Value :=
   let vs := ((m.kept rows I).map fun row => m.arg.eval row I).filter (· != .null)
-  if m.distinct then dedup vs else vs
+  if m.distinct then distinctVals vs else vs
 
 /-- The sum of the integers among `vs`, and of the unscaled values of its
 decimals (a column has one scale). -/
@@ -470,21 +471,22 @@ theorem Measure.eval_eq {m : Measure} (h : m.fn.sorts = false) (rows : Relation)
 
 def groupKey (gs : List Expr) (row : Row) (I : Impl := Impl.lean) : Row := gs.map (·.eval row I)
 
-/-- The rows of the group with key `k`. -/
+/-- The rows of the group with key `k`: keys are equal up to canonical codes
+(D31). -/
 def groupRows (gs : List Expr) (rows : Relation) (k : Row) (I : Impl := Impl.lean) : Relation :=
-  rows.filter fun row => groupKey gs row I == k
+  rows.filter fun row => (groupKey gs row I).canon == k.canon
 
 /-- `GROUP BY gs` with the measures `ms`, the functions of `I` (Lean's by
 default) in the keys and the measures' arguments. -/
 def aggregateEval (gs : List Expr) (ms : List Measure) (rows : Relation)
     (I : Impl := Impl.lean) : Relation :=
   if gs.isEmpty then [ms.map (·.eval rows I)]
-  else (dedup (rows.map fun row => groupKey gs row I)).map fun k =>
+  else (distinctRows (rows.map fun row => groupKey gs row I)).map fun k =>
     k ++ ms.map (·.eval (groupRows gs rows k I) I)
 
 /-- The groups, one per output row. -/
 def aggGroups (gs : List Expr) (rows : Relation) : List Relation :=
-  if gs.isEmpty then [rows] else (dedup (rows.map (groupKey gs))).map (groupRows gs rows)
+  if gs.isEmpty then [rows] else (distinctRows (rows.map (groupKey gs))).map (groupRows gs rows)
 
 /-! ## Lemmas -/
 
@@ -502,7 +504,7 @@ theorem Measure.mem_inputs {m : Measure} {rows : Relation} {v : Value} (h : v �
     v ≠ .null ∧ ∃ row ∈ rows, m.arg.eval row = v := by
   have h' : v ∈ ((m.kept rows).map m.arg.eval).filter (· != .null) := by
     unfold inputs at h; split at h
-    · exact mem_dedup.mp h
+    · exact canonReps_sub h
     · exact h
   simp only [List.mem_filter, List.mem_map, bne_iff_ne, ne_eq] at h'
   obtain ⟨⟨row, hrow, rfl⟩, hn⟩ := h'
@@ -753,13 +755,19 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
 theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=
   Value.le_val .int
 
-/-- Two measures of the same argument and filter aggregate the same values
-(`DISTINCT` drops only repetitions). -/
-theorem Measure.mem_inputs_iff {m m' : Measure} (ha : m.arg = m'.arg) (hf : m.filter = m'.filter)
-    (rows : Relation) (v : Value) : v ∈ m.inputs rows ↔ v ∈ m'.inputs rows := by
+/-- Two measures of the same argument and filter aggregate the same values,
+up to canonical codes (`DISTINCT` keeps one member of each class). -/
+theorem Measure.mem_inputs_canon {m m' : Measure} (ha : m.arg = m'.arg) (hf : m.filter = m'.filter)
+    {rows : Relation} {v : Value} (hv : v ∈ m.inputs rows) :
+    ∃ w ∈ m'.inputs rows, w.canonV = v.canonV := by
   have hk : m.kept rows = m'.kept rows := by simp only [Measure.kept, hf]
-  simp only [Measure.inputs, hk, ha]
-  split <;> split <;> simp [mem_dedup]
+  have hv' : v ∈ ((m'.kept rows).map m'.arg.eval).filter (· != .null) := by
+    unfold Measure.inputs at hv; rw [hk, ha] at hv; split at hv
+    · exact canonReps_sub hv
+    · exact hv
+  unfold Measure.inputs; split
+  · exact ⟨_, classRep_mem_canonReps hv', classRep_canon _ _⟩
+  · exact ⟨v, hv', rfl⟩
 
 theorem mem_aggregateEval {gs : List Expr} {ms : List Measure} {rows : Relation} {row : Row}
     (h : row ∈ aggregateEval gs ms rows) :
@@ -772,7 +780,7 @@ theorem mem_aggregateEval {gs : List Expr} {ms : List Measure} {rows : Relation}
     exact ⟨[], rows, by simp [h], fun _ hy => hy, .inl ⟨List.isEmpty_iff.mp hg, rfl⟩⟩
   · simp only [List.mem_map] at h
     obtain ⟨k, hk, rfl⟩ := h
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     exact ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩⟩
 
 /-- `mem_aggregateEval`, and with a grouping, the group has a row. -/
@@ -788,7 +796,7 @@ theorem mem_aggregateEval_nonempty {gs : List Expr} {ms : List Measure} {rows : 
       fun hne => absurd (List.isEmpty_iff.mp hg) hne⟩
   · simp only [List.mem_map] at h
     obtain ⟨k, hk, rfl⟩ := h
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     refine ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩, fun _ => ?_⟩
     exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
 
@@ -806,7 +814,7 @@ theorem mem_aggregateEval_len {gs : List Expr} {ms : List Measure} {rows : Relat
       fun hne => absurd (List.isEmpty_iff.mp hg) hne, Nat.le_refl _⟩
   · simp only [List.mem_map] at h
     obtain ⟨k, hk, rfl⟩ := h
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     refine ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩, fun _ => ?_,
       List.length_filter_le _ _⟩
     exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
@@ -828,7 +836,7 @@ theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
   have hf : (((m.kept rows).map m.arg.eval).filter (· != .null)).length ≤ rows.length :=
     Nat.le_trans (List.length_filter_le _ _) (by simpa using hk)
   unfold Measure.inputs; split
-  · exact Nat.le_trans (dedup_length_le _) hf
+  · exact Nat.le_trans (canonReps_length_le _) hf
   · exact hf
 
 theorem aggregateEval_length {gs : List Expr} {ms : List Measure} {rows : Relation} {row : Row}

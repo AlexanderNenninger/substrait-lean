@@ -240,7 +240,7 @@ theorem aggAllowed_near {gs : List Expr} {ms : List Measure} {rows out : Relatio
     refine Forall2.lift (fun k hk row ⟨vs, he, hv⟩ => ?_) h
     obtain ⟨vs', hv', e⟩ := measures_near (g := gs.length) (grp := groupRows gs rows k) hms ms 0 vs
       hidx hv
-    obtain ⟨x, -, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, -, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     refine ⟨groupKey gs x ++ vs', ⟨vs', rfl, hv'⟩, ?_⟩
     rw [he]
     exact Row.EquivFrom.append_left hc _ (i := 0) (by simpa [groupKey] using e)
