@@ -196,7 +196,8 @@ theorem Profile.duckdbWritten_faithful (s : DuckDBSettings) (hs : s.ieeeOps = tr
         cases f <;> simp only [duckBin, BinFn.duckdbWritten, BinFn.onFloats, Bool.false_eq_true,
           ite_true, ite_false] at hw ⊢ <;>
           (try split) <;> (try split) <;> (try split) <;>
-          simp_all [BinFn.issue, nanIssue, domainIssue, BitOp.apply, atan2?] <;> omega
+          simp_all [BinFn.issue, nanIssue, domainIssue, BitOp.apply, atan2?, FloatCode.canon_zero] <;>
+          first | omega | (split at h <;> simp at h)
 
 /-- **A verified plan runs correctly on DuckDB.** When `Rel.mayIssues` reports
 nothing but integer `SUM`s that may wrap (which keep their check), on every
