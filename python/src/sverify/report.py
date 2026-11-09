@@ -700,7 +700,7 @@ class Report:
 
         Args:
             dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
-                or one of `sverify.engines.DUCKDB`, `SNOWFLAKE` and `SPARK`.
+                or a `Dialect` (`sverify.sql.dialect_of`).
 
         Returns:
             One SQL query, reading the plan's tables by the names it was

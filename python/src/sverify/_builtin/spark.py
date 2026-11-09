@@ -19,6 +19,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from sverify._unsupported import ISSUE_271, RANGE_GUARD
 from sverify.profiles import ProfilePlugin, Setting
 
 #: The settings Spark's profile assumes.
@@ -168,4 +169,13 @@ PLUGIN = ProfilePlugin(
     modules=("pyspark",),
     read_settings=_read_settings,
     dialect=_dialect,
+    refuses={
+        "sverify_raise": (
+            "Spark's SQL of the date guards exhausts its JVM's heap (a date from columns "
+            "is 38 KB of nested CASEs)",
+            ISSUE_271,
+        )
+    },
+    guards=(RANGE_GUARD,),
+    shim_text={"null_order": "NULLs sorted as the reference sorts them"},
 )

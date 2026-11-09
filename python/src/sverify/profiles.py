@@ -143,6 +143,19 @@ class ProfilePlugin:
     """The `sverify.sql.Dialect` that `to_sql` writes for it."""
     title: str = ""
     """The engine's name as prose writes it (`"DuckDB"`); empty: `engine`."""
+    functions: frozenset[str] = frozenset()
+    """The functions it runs that not every engine runs, by plan name
+    (`sverify._support`): a function some engine lists here runs only on the
+    engines that list it; any other runs everywhere."""
+    window_functions: frozenset[str] = frozenset()
+    """The same over a window, where fewer engines run a function than as an
+    aggregate."""
+    refuses: Mapping[str, tuple[str, str]] = field(default_factory=dict)
+    """The functions it refuses with a reason of their own: by plan name, the
+    reason and what tracks it (an issue or an upstream bug)."""
+    guards: tuple[str, ...] = ()
+    """The guards that raise (`sverify_raise`) its dialect writes, by the start
+    of their message, beside the ones it runs as functions."""
     run_tables: TablesRunner | None = None
     """Runs a plan in Lean's written form over Arrow tables by name:
     `run_tables(plan_json, tables, *, guard_free=False, finite=True)`.

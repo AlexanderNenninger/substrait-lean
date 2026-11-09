@@ -27,7 +27,7 @@ ACCEPTED: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.local)
 SUPPORTED: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if not p.optional)
 #: The dialects `to_sql` writes.
 DIALECTS: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.dialect)
-#: Every engine sverify names: a row of `_support.SUPPORT` names only these.
+#: Every engine sverify names: each plugin's.
 NAMED: frozenset[str] = frozenset(_FOUND)
 #: The modules each engine needs.
 MODULES: Mapping[str, tuple[str, ...]] = {e: p.modules for e, p in _FOUND.items()}
