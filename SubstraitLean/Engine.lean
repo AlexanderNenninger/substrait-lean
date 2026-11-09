@@ -62,6 +62,7 @@ def Profile.sparkExtras : List (Functions.Ctor × String) :=
     [(.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"), (.bin .fmul, "nan_creation"),
      (.bin .fdiv, "nan_creation"), (.bin .fmod, "nan_creation"), (.bin .fpow, "on_domain_error"),
      (.bin .fpow, "pow_one_inf"), (.un .ffloor, "float_to_int"), (.un .fceil, "float_to_int"),
+     (.bin .fatan2, "on_domain_error"), (.bin .fatan2, "zero_sign"),
      (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range")]
 
 theorem Profile.spark_extras :
@@ -99,7 +100,7 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
           split at hd
           · rename_i hc
             refine callExtra_of_at (o := "round_zero_sign") (extraAt_of_all (Profile.duckdb_extras _) (by decide)) ?_
-            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero, hc.2]
+            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero, FloatCode.isZeroCode, hc.2]
           · cases hd
     | _ => exact .inl (raiseIf_ok h)
   · -- Each deviation, with the option whose scope it is in.
@@ -382,11 +383,21 @@ theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := b
               exact .inr (callExtra_of_at (o := "pow_one_inf")
                 (extraAt_of_all Profile.spark_extras (by decide)) (by simp [optionScope, hp]))
             · cases hs
-      case h_8 | h_9 =>
+      case h_8 a b =>
+        split at hs
+        · rename_i hz
+          exact .inr (dom (by simp [BinFn.issue, domainIssue, atan2?, hz.1, hz.2]) (extraAt_of_all Profile.spark_extras (by decide)))
+        · split at hs
+          · rename_i hz
+            refine .inr (callExtra_of_at (o := "zero_sign") (extraAt_of_all Profile.spark_extras (by decide)) ?_)
+            rcases hz with rfl | rfl <;>
+              simp [optionScope, Value.anyZero, Value.hasZero, FloatCode.isZeroCode]
+          · cases hs
+      case h_9 | h_10 =>
         split at hs
         · cases hs
         · exact .inr (callExtra_of_at (o := "shift_range") (extraAt_of_all Profile.spark_extras (by decide)) (by simp [optionScope]))
-      case h_10 => cases hs
+      case h_11 => cases hs
 
 /-- **Spark as the writer writes it is within its table**: the reference's
 functions where the writer shims or refuses (`Profile.sparkWritten`), Spark's
@@ -455,12 +466,12 @@ theorem Profile.sparkWritten_okImpl_faithful : Profile.sparkWritten.okImpl.Faith
               simp only [nanCase, Bool.or_eq_true] at hn ⊢; exact .inl hn
             cases hs; simp only [BinFn.apply, fdiv_of_nanCase_ieee this]
           · cases hs
-      case h_7 => simp [BinFn.sparkWritten] at hw
-      case h_8 | h_9 =>
+      case h_7 | h_8 => simp [BinFn.sparkWritten] at hw
+      case h_9 | h_10 =>
         split at hs
         · cases hs
         · rename_i hr; simp [BinFn.issue, domainIssue, BitOp.apply, hr] at h
-      case h_10 => cases hs
+      case h_11 => cases hs
 
 /-- Spark under ANSI, as the writer writes it: its profile's functions where
 they do not raise (`Profile.sparkWritten`), its own choices. -/

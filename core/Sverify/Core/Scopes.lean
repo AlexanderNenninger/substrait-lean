@@ -38,10 +38,10 @@ def Value.anyNaN : List Value → Bool
 end
 
 mutual
-/-- The double zero, here or inside a list or a struct: where an engine's
-`-0.0` may arise or matter. -/
+/-- A double zero, `0.0` or `-0.0` (`FloatCode.isZeroCode`), here or inside
+a list or a struct: where an engine's `-0.0` may arise or matter. -/
 def Value.hasZero : Value → Bool
-  | .float c => c == 0
+  | .float c => FloatCode.isZeroCode c
   | .list vs | .struct vs => Value.anyZero vs
   | _ => false
 

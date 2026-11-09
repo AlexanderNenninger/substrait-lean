@@ -409,8 +409,8 @@ a `"profile": "spark"` request gets the reference's report, labelled
 `"reference"`, with `"pending": "spark"`. `power(±1, ±∞)` is NaN on Spark
 (`pow_one_inf`, D40) and `floor` and `ceil` of NaN are `0` (`float_to_int`);
 the writer refuses double `power` and passes NaN through `floor` and `ceil`
-(`Profile.sparkWritten`). `atan2` reading `-0.0` as `0.0` is not in the
-profile yet. Once the checker reports under the profile, a plan proved
+(`Profile.sparkWritten`). `atan2` reads `-0.0` as `0.0` (`zero_sign`), and
+the writer refuses double `atan2`. Once the checker reports under the profile, a plan proved
 under it runs on Spark by `native`, and on DuckDB by `transfer` where
 DuckDB's choices are within Spark's at every option the proof depends on.
 What is proved
