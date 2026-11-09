@@ -1068,15 +1068,6 @@ end
 
 /-! ## Contracts -/
 
-/-- Substitute expressions for field references. -/
-def Expr.subst (cols : List Expr) : Expr → Expr
-  | .lit v => .lit v
-  | .field i => cols.getD i (.lit .null)
-  | .un f a => .un f (a.subst cols)
-  | .bin f a b => .bin f (a.subst cols) (b.subst cols)
-  | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
-  | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
-
 theorem getD_map_eval (cols : List Expr) (row : Row) (i : Nat) :
     (cols.map (·.eval row)).getD i .null = (cols.getD i (.lit .null)).eval row := by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
