@@ -123,21 +123,18 @@ theorem Lowering.pow2Chain_eval (s : DuckDBSettings) (x y : Value) (ks : List Na
   | nil => cases y <;> simp [Lowering.pow2Chain, Expr.evalP]
   | cons k ks ih =>
     simp only [Lowering.pow2Chain, List.foldr_cons] at ih ⊢
-    simp only [Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind]
-    rw [ih]
+    simp only [Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+      Lowering.duck_eq, ih]
     cases y with
     | int b =>
-      simp only [Profile.duckdb, duckBin, BinFn.onFloats, Option.getD, Profile.reference, raiseIf, BinFn.issue,
-        BinFn.apply]
       by_cases h : b = (k : Int)
       · subst h
-        simp [Value.isTrue, bind, Except.bind]
+        simp [BinFn.apply, Value.isTrue]
       · by_cases h0 : 0 ≤ b
         · have hk : b.toNat ≠ k := by omega
-          simp [h, h0, hk, Value.isTrue, bind, Except.bind]
-        · simp [h, h0, Value.isTrue, bind, Except.bind]
-    | _ => simp only [Profile.duckdb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.numPair,
-        Value.isTrue, Outcome.ok_bind, Bool.false_eq_true, ite_false]
+          simp [BinFn.apply, h, h0, hk, Value.isTrue]
+        · simp [BinFn.apply, h, h0, Value.isTrue]
+    | _ => simp [BinFn.apply, Value.numPair, Value.isTrue]
 
 /-- `<<` for DuckDB: a shift outside `0`–`63` raises; otherwise `x · 2ʸ`
 (`Lowering.pow2Chain`) wrapped around at 64 bits in 128-bit arithmetic, as
@@ -166,15 +163,14 @@ theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :
   case int a =>
     cases y
     case int b =>
+      simp only [Profile.reference, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
+        domainIssue]
       by_cases h0 : b < 0
-      · simp [h0, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
-          domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
+      · simp [h0, raiseIf, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
       · by_cases h1 : b < 64
         · have hb : 0 ≤ b := by omega
-          simp [h0, h1, hb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
-          domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError, Lowering.tmod_add_tmod]
-        · simp [h0, h1, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isNum, Lowering.shl_apply,
-          domainIssue, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
+          simp [h0, h1, hb, raiseIf, Value.isTrue, and3, or3, Outcome.Agree, Lowering.tmod_add_tmod]
+        · simp [h0, h1, raiseIf, Value.isTrue, and3, or3, Outcome.Agree, Issue.isError]
     all_goals rfl
   all_goals (cases y <;> rfl)
 
