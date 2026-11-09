@@ -67,9 +67,9 @@ from sverify.conditions import (
 
 Semantics = str
 """The profile a check is under: sverify's reference semantics (the
-default), DuckDB's (#411), whose SQL also means what DuckDB computes, or an
-installed engine's profile (`ProfilePlugin.profile`): Polars's or Spark's
-(#739), Substrait's own, as its extension YAMLs state it (#444).
+default), DuckDB's, whose SQL also means what DuckDB computes, or an
+installed engine's profile (`ProfilePlugin.profile`): Polars's or Spark's,
+or Substrait's own, as its extension YAMLs state it.
 `sverify.contracts.semantics_names` lists them."""
 
 
@@ -115,7 +115,7 @@ UnprovedReason = Literal[
 
 @dataclass(frozen=True)
 class TiePlace:
-    """A place where the plan leaves the order of ties open (D24): a window,
+    """A place where the plan leaves the order of ties open: a window,
     an ordered aggregate (`first`, `group_concat`, …) or a `LIMIT` whose
     order is not total on the input's keys."""
 
@@ -176,7 +176,7 @@ def _pinned(table: Any) -> bool:
 
 class InferredWarning(SverifyWarning):
     """A precondition sverify inferred is assumed (`on_inferred="warn"`), or a
-    margin check flagged groups a run kept (#929).
+    margin check flagged groups a run kept.
 
     Attributes:
         report: The `Report` whose `inferred` preconditions are assumed.
@@ -273,8 +273,8 @@ class Issue:
     declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
     "domain error", "SUM overflow" (a `SUM` leaving its type: 64 bits for
     integers, the result's precision for decimals), or "overflow to infinity"
-    (an operation on finite doubles, or their `SUM` or `AVG`, giving `±∞`,
-    #575)."""
+    (an operation on finite doubles, or their `SUM` or `AVG`, giving
+    `±∞`)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
@@ -291,12 +291,12 @@ class Issue:
     hint (the base table's column where it is passed on unchanged). None if
     `expr` is not a single column."""
     constant: bool = False
-    """The operation reads no column and raises (#609, D21): DuckDB evaluates
+    """The operation reads no column and raises: DuckDB evaluates
     such a constant when it plans the query, so the plan raises on any data,
     and no precondition rules it out (`CONSTANT_HINT`)."""
     under_and_or: bool = False
     """The operation sits inside an operand of an `AND` or `OR`, which
-    evaluates both operands (#604, D19): a guard in the other operand does
+    evaluates both operands: a guard in the other operand does
     not keep it from raising. The report suggests a `CASE` (`AND_OR_HINT`)."""
     _labels: tuple[str, ...] = field(default=(), repr=False, compare=False)
     """The preconditions that rule it out, as labels, where the inference
@@ -312,14 +312,14 @@ class Issue:
     hint_needs: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     """The preconditions per input table that `hint` proposes, as code; a
     hint is shown only where a proof with them rules the issue out
-    (`_confirm_hints`, #688)."""
+    (`_confirm_hints`)."""
     unconfirmed: str | None = field(default=None, repr=False, compare=False)
     """The hint to show instead where a proof does not confirm `hint`."""
     assumed: bool = False
     """Assumed not to happen, and checked on the data while the job runs
     (`Issue.assumed` in `SubstraitLean/Issue.lean`, as the checker reports
     it): a `SUM` that may leave its type, or an operation on finite doubles
-    that may give `±∞` (#575)."""
+    that may give `±∞`."""
 
     @property
     def suggested(self) -> dict[str, tuple[str, ...]]:
@@ -379,8 +379,8 @@ class Report:
     """False when rows may tie in the ORDER BY of a window or of an ordered
     aggregate (`first`, `last`, `group_concat`; without an `order_by` every
     row ties), or when a `LIMIT` takes rows that tie in its `ORDER BY`, or
-    has none. The engine then picks an order, and a rerun may pick another
-    (D10). The postconditions are proved for every order (D24); the
+    has none. The engine then picks an order, and a rerun may pick another.
+    The postconditions are proved for every order; the
     deterministic profile (`run(reproducible=sv.equivalent())`, a sink's
     `reproducible=`) refuses such a plan and names `tie_places`."""
     _windows_total: bool = field(default=True, repr=False)
@@ -426,8 +426,8 @@ class Report:
     assumed: list[Issue] = field(default_factory=list)
     """The `SUM`s assumed to fit their type in every group (64 bits for
     integers, the result's precision for decimals), and the operations on
-    finite doubles assumed to stay finite (#575): those the inputs' row caps
-    (`max_rows`, #219) and the values' range do not prove to fit. The job
+    finite doubles assumed to stay finite: those the inputs' row caps
+    (`max_rows`) and the values' range do not prove to fit. The job
     checks each at run time, on the data, and raises where one fails. The
     proof holds under these assumptions (`Rel.noIssue_of_assumedHold`). With
     `on_inferred="off"` they are errors instead."""
@@ -452,17 +452,16 @@ class Report:
     semantics: Semantics = "reference"
     """The profile the report is under (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
-    computes (#411); `"polars"`; `"spark"` (#739); or `"substrait"`, Substrait's own
-    (#444)."""
+    computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
     internal_plan: str | None = field(default=None, repr=False, compare=False)
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
-    `params` bound and the SQL lifted with `semantics`. `run` runs it (#461)."""
+    `params` bound and the SQL lifted with `semantics`. `run` runs it."""
     observation: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
-    """What the result's consumer observes (`sv.equivalent` in `ensures`,
-    #444). When `ensures` names none: rows as a multiset, doubles within the
+    """What the result's consumer observes (`sv.equivalent` in `ensures`).
+    When `ensures` names none: rows as a multiset, doubles within the
     plan's bound (`floats="plan"`, printed with the bound, `epsilon`) and
     other values exact, the same as `sv.equivalent(floats="plan")`. Under
     the plan's bound a run holds the double columns a postcondition reads
@@ -484,8 +483,8 @@ class Report:
     option-wise transfer check then takes every option of every group the
     plan calls."""
     routes: dict[str, Route] = field(default_factory=dict, repr=False, compare=False)
-    """The route each engine ran the plan by (`run(..., route=...)`, D13),
-    by engine name."""
+    """The route each engine ran the plan by (`run(..., route=...)`), by
+    engine name."""
     _contract: dict | None = field(default=None, repr=False, compare=False)
     """The request the checker proved, for a check under another profile."""
     _transfer: list[dict] | None = field(default=None, repr=False, compare=False)
@@ -557,8 +556,8 @@ class Report:
     reports its own (`StageRefresh.preconditions`)."""
 
     def to_json(self, indent: int | None = None) -> str:
-        """The report as a versioned JSON document, for CI jobs and tools
-        (#736), in the format of `sverify/schemas/report.schema.json`:
+        """The report as a versioned JSON document, for CI jobs and tools,
+        in the format of `sverify/schemas/report.schema.json`:
         `format` (1), the verdict, each postcondition with its status and
         `reason`, the runtime errors and assumptions, `needs`, the facts on
         each output column, the routes engines ran the plan by, and the rest
@@ -597,7 +596,7 @@ class Report:
     @staticmethod
     def from_substrait(data: str | bytes | Mapping[str, Any]) -> Report:
         """Read a plan `to_substrait` exported, and prove its contract again
-        with the checker (#664).
+        with the checker.
 
         The plan goes to the checker as it was exported, pinned options,
         shims and all, with the preconditions and postconditions it
@@ -643,7 +642,7 @@ class Report:
         shims: Literal["apply", "annotate", "refuse"] = "apply",
     ) -> str | bytes:
         """The verified plan for any conforming Substrait consumer, with its
-        contract as metadata (#664).
+        contract as metadata.
 
         Every function call names its YAML's URN, its compound name and its
         output type (Substrait 0.106). Every option the proof depends on
@@ -776,7 +775,7 @@ class Report:
         """Check the preconditions (`requires`, the inferred bounds among
         them) and the `SUM`s assumed to fit (`assumed`) on the tables of
         `con`, before anything runs: a batch that breaks one is refused
-        with the precondition as the message (#444, goal 1).
+        with the precondition as the message.
 
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
@@ -842,7 +841,7 @@ class Report:
         deterministic: bool | None = None,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
-        `con`, so the result is the one the report is about (#461).
+        `con`, so the result is the one the report is about.
 
         The plan reads the tables by the names it was verified with, and
         runs on `engine` as `sverify.engines.run` runs a plan, with the
@@ -856,7 +855,7 @@ class Report:
         metadata.
 
         The run first chooses how the proof reaches the engine
-        (`sverify.routes.choose`, #444): `"auto"` takes the plan natively
+        (`sverify.routes.choose`): `"auto"` takes the plan natively
         where it was verified under the engine's profile, through the
         reference's translation where it was verified under the reference,
         by the option-wise transfer check, or by a re-check under the
@@ -868,7 +867,7 @@ class Report:
 
         Args:
             con: The connection whose tables the plan reads (`sv.connect()`).
-            engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
+            engine: `"duckdb"`, `"polars"`, `"spark"`, the optional `"datafusion"`, or a
                 Spark session. Default: the connection's engine.
             route: `"auto"` (the default) chooses a route; `"native"`,
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or
@@ -876,15 +875,15 @@ class Report:
                 `"translated"`).
             unverified: Run a plan that is not proved, without a route.
                 Default False: such a plan is refused.
-            reproducible: What a rerun must reproduce (D20): the
+            reproducible: What a rerun must reproduce: the
                 engine's run-to-run variation must refine it, as a sink's
                 `reproducible=` states it; `sv.equivalent()` asks for the
-                same rows and bits (D10). Default None: determinism is only
+                same rows and bits. Default None: determinism is only
                 reported (`deterministic`).
             check_requires: Check the preconditions (`requires`, the
                 inferred bounds among them) and the assumed `SUM`s on the
                 tables of `con` before the run, and refuse a batch that
-                breaks one (`check_inputs`, #444 goal 1, #604), as
+                breaks one (`check_inputs`), as
                 `transform(check_requires=)` does on bound inputs. Default
                 True. False skips the check, for a caller that has made it
                 already: the report's guarantee then holds only on data that
@@ -1010,7 +1009,7 @@ class Report:
         self, con: Connection, engine: Any, target: str, deterministic: bool = False
     ) -> int:
         """Run the margin checks of the plan's threshold filters on double
-        sums (#929, `Rel.marginCheck`) on `engine`, on the tables of `con`
+        sums (`Rel.marginCheck`) on `engine`, on the tables of `con`
         the plan reads too, and count the groups they flag: those whose sum
         lies within its bound's margin of the threshold, where the engine may
         keep other groups than the reference.
@@ -1359,7 +1358,7 @@ class Report:
     ) -> Route:
         """The route by which `run` would take the plan to `engine`, and the
         plan's class there, without running it: the route `report.routes`
-        records after a run (D13).
+        records after a run.
 
         Args:
             engine: The engine's name (`"duckdb"`, `"polars"`, …) or a Spark
@@ -1629,7 +1628,7 @@ class VerificationError(SverifyError):
 
 
 def error_text(report: Report) -> str:
-    """A `VerificationError`'s message (#687): what is missing, counted, and
+    """A `VerificationError`'s message: what is missing, counted, and
     one line per finding with its hint, each hint once; `e.report` has the
     full report."""
     lines = [f"{', '.join(report._counts())} (e.report has the details)"]
@@ -1658,7 +1657,7 @@ def error_text(report: Report) -> str:
 
 
 class UnverifiedRunError(VerificationError, RouteError):
-    """A run or refresh of a plan that is not proved, refused (#690).
+    """A run or refresh of a plan that is not proved, refused.
 
     Import it from `sverify.errors`. It is a `VerificationError`, so
     `except VerificationError` catches every "not proved", and a
@@ -1698,7 +1697,7 @@ _MICROSECOND = timedelta(microseconds=1)
 
 def render_fact(abstract: dict, dtype: Any) -> str | None:
     """Describe a column's abstract value for doubles, decimals (their unscaled
-    integers, #250), timestamps, dates and intervals (microseconds); None
+    integers), timestamps, dates and intervals (microseconds); None
     keeps Lean's own description."""
     rng = abstract.get("int")
     span: tuple[int, int] | None = None
