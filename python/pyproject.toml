@@ -71,6 +71,7 @@ sverify = "sverify.pytest_plugin"
 duckdb = "sverify._builtin.duckdb:PLUGIN"
 datafusion = "sverify._builtin.datafusion:PLUGIN"
 snowflake = "sverify._builtin.snowflake:PLUGIN"
+substrait = "sverify._builtin.substrait:PLUGIN"
 
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
