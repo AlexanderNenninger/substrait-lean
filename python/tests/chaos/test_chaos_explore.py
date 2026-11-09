@@ -22,6 +22,7 @@ from pathlib import Path
 from hypothesis import HealthCheck, assume, given, note, settings
 from hypothesis import strategies as st
 
+import sverify._builtin.duckdb
 import sverify._state
 import sverify.incremental
 from _faults import POINTS_BY_KIND, Faults
@@ -69,7 +70,8 @@ class Commit:
 
     def __init__(self, m):
         self.inside = self.applied = self.partial = False
-        commit, apply = sverify.incremental.Pipeline._commit, sverify._state.DuckDBStore.apply
+        commit = sverify.incremental.Pipeline._commit
+        apply = sverify._builtin.duckdb.DuckDBStore.apply
 
         def _commit(pipe, pending):
             self.inside, self.applied = True, False
@@ -87,7 +89,7 @@ class Commit:
             return out
 
         m.setattr(sverify.incremental.Pipeline, "_commit", _commit)
-        m.setattr(sverify._state.DuckDBStore, "apply", _apply)
+        m.setattr(sverify._builtin.duckdb.DuckDBStore, "apply", _apply)
 
 
 def run(world: World, rounds, commit: Commit) -> None:

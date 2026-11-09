@@ -57,7 +57,10 @@ POINTS: dict[str, tuple[str, str]] = {
     # The engine.
     "engine.run": ("sverify.incremental.run_plan", "the engine running a plan"),
     # The pipeline's own state, in the process.
-    "state.apply": ("sverify._state.DuckDBStore.apply", "updating DuckDB-held state in place"),
+    "state.apply": (
+        "sverify._builtin.duckdb.DuckDBStore.apply",
+        "updating DuckDB-held state in place",
+    ),
     "state.put": ("sverify.incremental.put_table", "replacing a table of the pipeline"),
     "state.merge": ("sverify._state.Merger.__call__", "adding up weighted state"),
     # What the sink records: the contract, with the epoch and the cursors.

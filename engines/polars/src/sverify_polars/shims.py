@@ -62,7 +62,7 @@ class Guard:
 
 
 SHIMS: tuple[Shim, ...] = (
-    Shim("null_order", "null_order", "as the key states; NULLS_LAST for UNSPECIFIED (D8)",
+    Shim("null_order", "null_order", "as the key states; NULLS_LAST for UNSPECIFIED",
          "NULLS_FIRST in both directions", "polars-null-order", "argument"),
     Shim("tie_order", "tie_order", "ANY; Rel.eval keeps input order",
          "undocumented without maintain_order", "polars-sort-stability", "argument"),

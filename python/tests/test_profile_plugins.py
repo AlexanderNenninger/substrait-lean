@@ -17,12 +17,21 @@ from ibis import _
 
 import sverify as sv
 from sverify import _checker, _engine_settings, profiles, routes
+from sverify._arrow_state import ArrowOps
 from sverify.engines import to_sql, written_plan
 from sverify.profiles import ProfilePlugin, Setting
 from sverify.routes import EngineSettingsError, EngineVersionError
 
+
+class DummyStore(ArrowOps):
+    """The dummy engine's store (`ProfilePlugin.store`): where an engine
+    keeps its incremental views' state, as its own handles. An engine that
+    runs only one-shot plans has none."""
+
+
 DUMMY = ProfilePlugin(
     engine="dummy",
+    store=DummyStore,
     profile=True,  # It has no checker of its own here: the tests use sverify's.
     versions=("1.2.0",),
     translation="the dummy writer, proved (DummyEngine.dummy_sound)",
@@ -162,3 +171,18 @@ def test_a_plugin_with_a_checker_has_a_profile(tmp_path: Path) -> None:
     private = ProfilePlugin("dummy", ("1.2.0",), checker=mine)
     assert profiles._merged([public, private]).verifiable
     assert profiles._merged([private, public]).verifiable
+
+
+def test_the_state_store_is_the_engine_s(installed: None) -> None:
+    """The engine a view runs on keeps its state: its plugin's store
+    (`ProfilePlugin.store`, #1189). sverify has none of its own, and an
+    engine without one runs no incremental view."""
+    from sverify._builtin.duckdb import DuckDBStore
+    from sverify._state import Store, store_for
+
+    assert isinstance(store_for("dummy"), DummyStore)
+    assert isinstance(store_for("duckdb"), DuckDBStore)
+    with pytest.raises(TypeError):
+        Store()  # type: ignore[abstract]
+    with pytest.raises(ValueError, match=r"'snowflake' keeps no pipeline state"):
+        store_for("snowflake")

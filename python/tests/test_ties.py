@@ -134,7 +134,7 @@ def test_the_reference_proves_every_order_and_runs_natively() -> None:
     assert report.proved and not report.deterministic
     r = routes.choose(report, "duckdb")
     assert not r.refused
-    assert any("ties stay open (D24)" in w for w in r.warnings)
+    assert any("ties stay open:" in w for w in r.warnings)
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])

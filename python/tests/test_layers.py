@@ -39,6 +39,8 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_checker",
             "_lean_eval",
             "_weighted",
+            "_store",
+            "_arrow_state",
             "_hooks",
             "_pipe",
             "profiles",

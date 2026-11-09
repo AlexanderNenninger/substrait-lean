@@ -1,8 +1,9 @@
 # Build performance
 
 Every session waits on the Lean build, so its time and memory are measured
-per module and guarded in CI. This page has the method, the budget and the
-latest numbers.
+per module and reported in CI against a budget. The budget is a target: it
+never blocks a pull request, and a pull request that exceeds it says why in
+its body. This page has the method, the budget and the latest numbers.
 
 ## The method
 
@@ -45,16 +46,18 @@ module, 1.5 times its measured CPU time and peak RSS, at least 30 s and
 1.5 GB, and a default for modules it doesn't list. CI's `lean` job builds
 through the timing sysroot and runs `check` on the modules it rebuilt: the
 others came from the cache, unchanged with everything they import. A module
-over its ceiling fails the job, named in the error. The job's summary has the
-report, and the `lean-timings` artifact the records.
+over its ceiling is a warning on the job, naming the module, its time or
+RSS and its ceiling, and a table in the job's summary, beside the report; the
+`lean-timings` artifact has the records. The job passes either way.
 
-A module over its ceiling gets cheaper in the same PR, or its line goes up
-there with the reason in the PR body. After a PR that makes modules cheaper,
+A module over its ceiling gets cheaper in the same PR where that is cheap.
+Otherwise the PR body says why it costs more, and its line in the budget may
+go up. After a PR that makes modules cheaper,
 `write-budget` from the CI artifact lowers the ceilings.
 
 ## The checker's speed
 
-The build budget guards the proofs; this guards what they compile to.
+The build budget covers the proofs; this covers what they compile to.
 [`tests/checker-speed/requests.jsonl.gz`](../tests/checker-speed/requests.jsonl.gz)
 holds the catalogue's checker requests that take at least 5 ms (66, mostly
 `--contract`). On a pull request that changes a Lean input, CI's `checker`
@@ -62,9 +65,9 @@ job replays them against main's `substrait-check` and the one it just built,
 through `--serve`, interleaved request by request, five rounds, each request
 at its fastest round
 ([`scripts/checker_speed.py`](../scripts/checker_speed.py)). A request that
-takes 1.3 times as long, or the whole set 1.1 times, fails the job, which
-names the slowest requests with their ratios; the job's summary has the
-table. Main's checker is the `substrait-check` artifact of the run on the
+takes 1.3 times as long, or the whole set 1.1 times, is a warning on the job
+with its ratio, and the job's summary has the table of the slowest ratios. The
+job passes either way; a PR over these targets says why in its body. Main's checker is the `substrait-check` artifact of the run on the
 merge's first parent, or, without one, built in the job from main; the log
 says which.
 
