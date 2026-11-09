@@ -159,6 +159,19 @@ theorem DuckDBSQL.ref_itof_null : Profile.reference.un .itof .null = .ok .null :
 theorem FloatCode.ofInt_ne_nan (i : Int) : FloatCode.ofInt i ≠ FloatCode.nan := by
   have := FloatCode.ofInt_bounds i; have := FloatCode.posInf_lt_nan; omega
 
+/-- Division of or by either NaN code is the NaN. -/
+theorem DuckDBSQL.fdiv_nan_r (a : Int) : FloatCode.fdiv a FloatCode.nan = FloatCode.nan := by
+  simp only [FloatCode.fdiv, FloatCode.divI, FloatCode.isNanCode_nans, Bool.or_true, ite_true]
+
+theorem DuckDBSQL.fdiv_negNan_r (a : Int) : FloatCode.fdiv a FloatCode.negNan = FloatCode.nan := by
+  simp only [FloatCode.fdiv, FloatCode.divI, FloatCode.isNanCode_nans, Bool.or_true, ite_true]
+
+theorem DuckDBSQL.fdiv_nan_l (b : Int) : FloatCode.fdiv FloatCode.nan b = FloatCode.nan := by
+  simp only [FloatCode.fdiv, FloatCode.divI, FloatCode.isNanCode_nans, Bool.true_or, ite_true]
+
+theorem DuckDBSQL.fdiv_negNan_l (b : Int) : FloatCode.fdiv FloatCode.negNan b = FloatCode.nan := by
+  simp only [FloatCode.fdiv, FloatCode.divI, FloatCode.isNanCode_nans, Bool.true_or, ite_true]
+
 theorem DuckDBSQL.ref_fdiv_float (a b : Int) :
     Profile.reference.bin .fdiv (.float a) (.float b) =
       if FloatCode.canon b = 0 then .error .divByZero else if nanCase .fdiv a b then .error .domain
@@ -489,15 +502,17 @@ theorem DuckDBSQL.ofInt_zero : FloatCode.ofInt 0 = 0 := by
 theorem DuckDBSQL.ofInt_pos (i : Int) : (0 < FloatCode.ofInt i) = (0 < i) := by
   have h0 := DuckDBSQL.ofInt_zero
   apply propext; constructor
-  · intro h; by_contra h'
-    have := FloatCode.ofInt_mono (show i ≤ 0 by omega); omega
+  · intro h
+    if hi : 0 < i then exact hi
+    else have := FloatCode.ofInt_mono (show i ≤ 0 by omega); omega
   · intro h
     have := FloatCode.ofInt_mono (show 0 ≤ i by omega)
     have := FloatCode.ofInt_ne_zero (show i ≠ 0 by omega); omega
 
 theorem DuckDBSQL.ofInt_eq_zero (i : Int) : (FloatCode.ofInt i = 0) = (i = 0) := by
   apply propext; constructor
-  · intro h; by_contra h'; exact FloatCode.ofInt_ne_zero h' h
+  · intro h
+    if hi : i = 0 then exact hi else exact absurd h (FloatCode.ofInt_ne_zero hi)
   · rintro rfl; exact DuckDBSQL.ofInt_zero
 
 theorem DuckDBSQL.ref_fdivIeee_float (a b : Int) :

@@ -48,7 +48,7 @@ def table() -> Mapping[str, Json]:
 #: DuckDB's operators for the model's functions a template calls.
 _BINARY = {
     "eq": "=", "lt": "<", "and": "AND", "or": "OR",
-    "fadd": "+", "fsub": "-", "fmul": "*", "fdiv": "/", "fmod": "%", "imod": "%",
+    "fadd": "+", "fsub": "-", "fmul": "*", "fdiv": "/", "fdivIeee": "/", "fmod": "%", "imod": "%",
     "bit:bitwise_and": "&", "bit:bitwise_or": "|",
     "bit:bitwise_shift_left": "<<", "bit:bitwise_shift_right": ">>",
 }  # fmt: skip
