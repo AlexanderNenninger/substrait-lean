@@ -38,7 +38,8 @@ def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List 
       a.detPlan cat A F K && b.detPlan cat A F K
   | .window r part sort fns =>
       r.detPlan cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-        fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part))
+        fns.all (WinFn.tieFree sort) ||
+        ((List.range (r.arity cat)).all (· ∈ part) && (r.aeval cat A F .none).all AVal.noDoubles))
   | .aggregate r _ ms => r.detPlan cat A F K && ms.all (·.orderFree)
 
 theorem crossRows_perm {xs xs' ys ys' : Relation} (hx : xs.Perm xs') (hy : ys.Perm ys') :
@@ -88,8 +89,12 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
       simp only [List.all_eq_true, decide_eq_true_eq] at hsub
       exact window_tiebreak ((keys_sound hcat hA hF hK hwf.1 k hk).superset hsub) hp hsort
     · exact window_tieFree hf hp hsort
-    · simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
-      exact Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc hp
+    · obtain ⟨hc, hnd⟩ := hc
+      simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
+      refine Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc (fun x hx => ?_) hp
+      exact Row.canon_of_env (Rel.aeval_sound hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
+        (by simp) x hx) (by simpa using hnd)
+        (by rw [Rel.aeval_length hwf.1, Rel.eval_arity hcat hwf.1 x hx])
   | .semi a b _ on, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
     simp only [detPlan, Bool.and_eq_true] at hd
     have hx' := allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx
