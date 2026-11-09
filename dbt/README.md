@@ -14,15 +14,14 @@ more. A test it proves can be left out of `dbt build`: it rests on
 under `semantics="duckdb"` ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proofs.md)).
 
 It reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
-other engines ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
-The design is in [#177](https://github.com/AlexanderNenninger/substrait-lean/issues/177).
+other engines, which don't run every function DuckDB does yet
+([the issue that tracks them](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 
 ## Installation
 
 Sverify-dbt is published with sverify, at the same version, from
 [substrait-lean](https://github.com/AlexanderNenninger/substrait-lean)'s
-releases on
-([#732](https://github.com/AlexanderNenninger/substrait-lean/issues/732)):
+releases on:
 
 ```bash
 pip install sverify-dbt dbt-duckdb
@@ -164,8 +163,7 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   `source`.
 - Sverify tracks a column's strings while they are few (up to 64), from
   constants, `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and
-  `UNION ALL`, which proves `accepted_values` there
-  ([#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708));
+  `UNION ALL`, which proves `accepted_values` there;
   what is inside a string (`LIKE`, lengths) is not tracked
   ([the guide](../docs/guide.md#contracts)).
 - Python models, and models whose inputs have no column types, are refused.
