@@ -13,7 +13,7 @@ partition, a file, a worker's slice); every other table is broadcast, a copy
 on each shard. `split` asks `substrait-check --shard` for the plan each shard
 runs and the plan that combines their results, or raises `NotShardable` with
 the reason. Lean proves the combined result is the plan's result on all the
-data (`Rel.shardSplit_sound` in `SubstraitLean/Partition.lean`). A linear
+data (`Rel.shardSplit_sound` in `analysis/Sverify/Analysis/Partition.lean`). A linear
 plan runs on every shard and the results are concatenated (`Split.mode`
 `"linear"`); an aggregate runs in two phases, each shard aggregating by the
 grouping keys and the combining plan aggregating the partial rows again
@@ -255,7 +255,7 @@ def shard_avg_tol_scaled(n: int, m: int, k: int, a: int) -> int:
 
 
 def shard_tol_cr(a: int) -> int:
-    """`FloatCode.shardTolCR` (`SubstraitLean/Partition.lean`): the bound of a
+    """`FloatCode.shardTolCR` (`analysis/Sverify/Analysis/Partition.lean`): the bound of a
     split double `SUM` that Lean computes (each shard's exact sum rounded
     once, then the partials'), scaled: `a / 2⁵⁰`."""
     return a // 2**50

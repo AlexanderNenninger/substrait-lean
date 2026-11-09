@@ -1037,10 +1037,352 @@
    "result": "fp64",
    "construct": "atan(DOUBLE)",
    "args": ["fp64"]},
-  {"semantics": "duckdb",
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then":
+       {"ifThen":
+        {"ifs":
+         [{"then": {"literal": {"fp64": "inf"}},
+           "if":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 30,
+             "arguments":
+             [{"value": {"literal": {"fp64": 0}}},
+              {"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 1}}}}}]}}}],
+         "else": {"literal": {"fp64": 0}}}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 34,
+         "arguments":
+         [{"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 34,
+             "arguments":
+             [{"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 29,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 0}}}}},
+                  {"value": {"literal": {"fp64": "-inf"}}}]}}},
+              {"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 34,
+                 "arguments":
+                 [{"value":
+                   {"scalarFunction":
+                    {"outputType":
+                     {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                     "options": [],
+                     "functionReference": 36,
+                     "arguments":
+                     [{"value":
+                       {"scalarFunction":
+                        {"outputType":
+                         {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                         "options": [],
+                         "functionReference": 33,
+                         "arguments":
+                         [{"value":
+                           {"selection":
+                            {"rootReference": {},
+                             "directReference":
+                             {"structField": {"field": 1}}}}}]}}}]}}},
+                  {"value":
+                   {"scalarFunction":
+                    {"outputType":
+                     {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                     "options": [],
+                     "functionReference": 36,
+                     "arguments":
+                     [{"value":
+                       {"scalarFunction":
+                        {"outputType":
+                         {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                         "options": [],
+                         "functionReference": 35,
+                         "arguments":
+                         [{"value":
+                           {"scalarFunction":
+                            {"outputType":
+                             {"boolean":
+                              {"nullability": "NULLABILITY_NULLABLE"}},
+                             "options": [],
+                             "functionReference": 29,
+                             "arguments":
+                             [{"value":
+                               {"selection":
+                                {"rootReference": {},
+                                 "directReference":
+                                 {"structField": {"field": 1}}}}},
+                              {"value": {"literal": {"fp64": "inf"}}}]}}},
+                          {"value":
+                           {"scalarFunction":
+                            {"outputType":
+                             {"boolean":
+                              {"nullability": "NULLABILITY_NULLABLE"}},
+                             "options": [],
+                             "functionReference": 29,
+                             "arguments":
+                             [{"value":
+                               {"selection":
+                                {"rootReference": {},
+                                 "directReference":
+                                 {"structField": {"field": 1}}}}},
+                              {"value":
+                               {"literal":
+                                {"fp64": "-inf"}}}]}}}]}}}]}}}]}}}]}}},
+          {"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 36,
+             "arguments":
+             [{"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 29,
+                 "arguments":
+                 [{"value":
+                   {"scalarFunction":
+                    {"outputType":
+                     {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+                     "options": [],
+                     "functionReference": 28,
+                     "arguments":
+                     [{"value":
+                       {"selection":
+                        {"rootReference": {},
+                         "directReference":
+                         {"structField": {"field": 1}}}}}]}}},
+                  {"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference":
+                     {"structField": {"field": 1}}}}}]}}}]}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"fp64": "nan"}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 34,
+           "arguments":
+           [{"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 34,
+               "arguments":
+               [{"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 36,
+                   "arguments":
+                   [{"value":
+                     {"scalarFunction":
+                      {"outputType":
+                       {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                       "options": [],
+                       "functionReference": 33,
+                       "arguments":
+                       [{"value":
+                         {"selection":
+                          {"rootReference": {},
+                           "directReference":
+                           {"structField": {"field": 0}}}}}]}}}]}}},
+                {"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 36,
+                   "arguments":
+                   [{"value":
+                     {"scalarFunction":
+                      {"outputType":
+                       {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                       "options": [],
+                       "functionReference": 35,
+                       "arguments":
+                       [{"value":
+                         {"scalarFunction":
+                          {"outputType":
+                           {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                           "options": [],
+                           "functionReference": 29,
+                           "arguments":
+                           [{"value":
+                             {"selection":
+                              {"rootReference": {},
+                               "directReference":
+                               {"structField": {"field": 0}}}}},
+                            {"value": {"literal": {"fp64": "inf"}}}]}}},
+                        {"value":
+                         {"scalarFunction":
+                          {"outputType":
+                           {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                           "options": [],
+                           "functionReference": 29,
+                           "arguments":
+                           [{"value":
+                             {"selection":
+                              {"rootReference": {},
+                               "directReference":
+                               {"structField": {"field": 0}}}}},
+                            {"value":
+                             {"literal": {"fp64": "-inf"}}}]}}}]}}}]}}},
+                {"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 30,
+                   "arguments":
+                   [{"value":
+                     {"selection":
+                      {"rootReference": {},
+                       "directReference": {"structField": {"field": 0}}}}},
+                    {"value": {"literal": {"fp64": 0}}}]}}}]}}},
+            {"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 34,
+               "arguments":
+               [{"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 36,
+                   "arguments":
+                   [{"value":
+                     {"scalarFunction":
+                      {"outputType":
+                       {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                       "options": [],
+                       "functionReference": 33,
+                       "arguments":
+                       [{"value":
+                         {"selection":
+                          {"rootReference": {},
+                           "directReference":
+                           {"structField": {"field": 1}}}}}]}}}]}}},
+                {"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 36,
+                   "arguments":
+                   [{"value":
+                     {"scalarFunction":
+                      {"outputType":
+                       {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                       "options": [],
+                       "functionReference": 35,
+                       "arguments":
+                       [{"value":
+                         {"scalarFunction":
+                          {"outputType":
+                           {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                           "options": [],
+                           "functionReference": 29,
+                           "arguments":
+                           [{"value":
+                             {"selection":
+                              {"rootReference": {},
+                               "directReference":
+                               {"structField": {"field": 1}}}}},
+                            {"value": {"literal": {"fp64": "inf"}}}]}}},
+                        {"value":
+                         {"scalarFunction":
+                          {"outputType":
+                           {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                           "options": [],
+                           "functionReference": 29,
+                           "arguments":
+                           [{"value":
+                             {"selection":
+                              {"rootReference": {},
+                               "directReference":
+                               {"structField": {"field": 1}}}}},
+                            {"value":
+                             {"literal": {"fp64": "-inf"}}}]}}}]}}}]}}},
+                {"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 36,
+                   "arguments":
+                   [{"value":
+                     {"scalarFunction":
+                      {"outputType":
+                       {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                       "options": [],
+                       "functionReference": 29,
+                       "arguments":
+                       [{"value":
+                         {"scalarFunction":
+                          {"outputType":
+                           {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+                           "options": [],
+                           "functionReference": 28,
+                           "arguments":
+                           [{"value":
+                             {"selection":
+                              {"rootReference": {},
+                               "directReference":
+                               {"structField": {"field": 1}}}}}]}}},
+                        {"value":
+                         {"selection":
+                          {"rootReference": {},
+                           "directReference":
+                           {"structField": {"field": 1}}}}}]}}}]}}}]}}}]}}}],
+       "else":
+       {"scalarFunction":
+        {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 8,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 1}}}}}]}}}}}},
+   "semantics": "duckdb",
    "result": "fp64",
-   "refused":
-   "DuckDB's power of -0.0 depends on the zero's sign, which the model's lift cannot state yet (D39); use semantics='reference'",
    "construct": "power(DOUBLE, DOUBLE)",
    "args": ["fp64", "fp64"]},
   {"template":

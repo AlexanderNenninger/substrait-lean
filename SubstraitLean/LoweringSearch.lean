@@ -259,7 +259,6 @@ def posInfT : Tm := namedFloat FloatCode.posInf (Lean.mkConst ``FloatCode.posInf
 def negInfT : Tm := namedFloat FloatCode.negInf (Lean.mkConst ``FloatCode.negInf) "'-inf'"
 def nanT : Tm := namedFloat FloatCode.nan (Lean.mkConst ``FloatCode.nan) "'nan'"
 
-def ffloorFn : Tm → Tm := .un .ffloor (Lean.mkConst ``UnFn.ffloor)
 
 /-- The elementary function as a Lean term. -/
 def fmathTerm (f : FMath) : Lean.Expr :=
