@@ -345,6 +345,13 @@ theorem Measure.mem_vals {m : Measure} {rows : Relation} {v : Value} (h : v ∈ 
   · exact hrow
   · exact (List.mem_filter.mp hrow).1
 
+theorem Measure.inputs_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
+    (m.inputs xs).Perm (m.inputs ys) := by
+  simp only [inputs_eq]
+  split
+  · exact canonReps_perm Value.leRaw_rawOrder (m.vals_perm h)
+  · exact m.vals_perm h
+
 theorem Measure.eval_perm {m : Measure} (hm : m.orderFree = true) {xs ys : Relation}
     (h : xs.Perm ys) : m.eval xs = m.eval ys := by
   rw [eval_eq (AggFn.ne_collect_of_orderFree hm), eval_eq (AggFn.ne_collect_of_orderFree hm)]
