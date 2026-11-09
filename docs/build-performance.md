@@ -52,6 +52,38 @@ A module over its ceiling gets cheaper in the same PR, or its line goes up
 there with the reason in the PR body. After a PR that makes modules cheaper,
 `write-budget` from the CI artifact lowers the ceilings.
 
+## The checker's speed
+
+The build budget guards the proofs; this guards what they compile to.
+[`tests/checker-speed/requests.jsonl.gz`](../tests/checker-speed/requests.jsonl.gz)
+holds the catalogue's checker requests that take at least 5 ms (66, mostly
+`--contract`). On a pull request that changes a Lean input, CI's `checker`
+job replays them against main's `substrait-check` and the one it just built,
+through `--serve`, interleaved request by request, five rounds, each request
+at its fastest round
+([`scripts/checker_speed.py`](../scripts/checker_speed.py)). A request that
+takes 1.3 times as long, or the whole set 1.1 times, fails the job, which
+names the slowest requests with their ratios; the job's summary has the
+table. Main's checker is the `substrait-check` artifact of the run on the
+merge's first parent, or, without one, built in the job from main; the log
+says which.
+
+```bash
+python3 scripts/checker_speed.py BASE_CHECKER HEAD_CHECKER
+uv run python -m sverify_dev.checker_requests --checker .lake/build/bin/substrait-check
+```
+
+The second command records the requests again from a probe of the
+catalogue, when the catalogue or the request format changes.
+
+The thresholds come from the noise on GitHub's runners, measured with the
+same binary under two names: within one job a request's ratio stays within
+1.12 (1.03 at the 95th percentile), while across runners the same binary's
+times differ by up to 1.42, which rules out absolute per-request ceilings.
+The regression this was made for, #1088's split of the contract check
+([#1330](https://github.com/AlexanderNenninger/substrait-lean/pull/1330)), made the set 2.0 times as slow and tpcds-q27 5.6
+times.
+
 ## Patterns that cost
 
 - `simp` or `decide` unfolding a large constant. `canon`'s `2^2045`
