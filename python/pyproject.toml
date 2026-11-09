@@ -70,6 +70,7 @@ duckdb = "sverify._builtin.duckdb:PLUGIN"
 spark = "sverify._builtin.spark:PLUGIN"
 datafusion = "sverify._builtin.datafusion:PLUGIN"
 snowflake = "sverify._builtin.snowflake:PLUGIN"
+substrait = "sverify._builtin.substrait:PLUGIN"
 
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"

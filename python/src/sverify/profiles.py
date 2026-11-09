@@ -153,11 +153,27 @@ class ProfilePlugin:
     guard_free_theorem: str = ""
     """The theorem that covers `run_tables(..., guard_free=True)`, as the
     checker names it (`"guard_free_theorem"`); empty: no guard-free run."""
+    profile: bool | None = None
+    """The checker has the engine's profile, and a plan may be verified under
+    it (`verify(semantics=engine)`): a `--contract` request names it
+    (`"profile"`). Unset, it is whether the plugin brings a checker of its
+    own (`checker`), which holds its profile: a profile from outside sverify
+    needs nothing more (`verifiable`). sverify's own engines say it, since
+    they use sverify's checker. False for an engine that only runs plans or
+    writes SQL."""
     fallbacks: Callable[[Mapping[str, Any], Mapping[str, Any]], Sequence[str]] | None = None
     """The nodes of a plan (Lean's written form, parsed) the engine would run
     outside its chosen executor over these tables (Polars's in-memory nodes
     of a streaming plan). A route records them; `streaming="require"`
     refuses a plan with any. None: the engine has one executor."""
+
+    @property
+    def verifiable(self) -> bool:
+        """Whether a plan may be verified under the engine's profile:
+        `profile`, or, unset, whether the plugin brings a checker. Read
+        here, not stored, so two entry points of one engine merge `profile`
+        as unset (`plugins`)."""
+        return self.profile if self.profile is not None else self.checker is not None
 
 
 def _merged(found: list[ProfilePlugin]) -> ProfilePlugin:
@@ -182,6 +198,7 @@ def _merged(found: list[ProfilePlugin]) -> ProfilePlugin:
                 )
         out = replace(out, **changes)
     return out
+
 
 
 class ProfilePluginWarning(SverifyWarning):

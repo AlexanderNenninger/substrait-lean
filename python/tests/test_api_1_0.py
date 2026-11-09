@@ -4,7 +4,6 @@
 environment variables. Each renamed released name warns for one release."""
 
 import re
-import typing
 import warnings
 
 import ibis
@@ -105,7 +104,10 @@ def test_on_unproved_warn_warns_with_the_report(tmp_path) -> None:
 
 
 def test_the_engines_are_duckdb_polars_and_spark() -> None:
-    assert typing.get_args(engine_module.Engine) == ("duckdb", "polars", "spark")
+    from sverify import profiles
+
+    runs = {e for e, p in profiles.plugins().items() if p.runner and not p.optional}
+    assert runs == {"duckdb", "polars", "spark"}
     assert ENGINES == ("duckdb", "polars")
     # DataFusion is an optional engine: a connection still takes it.
     assert sv.connect("datafusion").engine == "datafusion"  # type: ignore[arg-type]
