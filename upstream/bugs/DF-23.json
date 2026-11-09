@@ -4,12 +4,9 @@
   "status_note": "not a bug: DataFusion's `substr` follows PostgreSQL, where a start below 1 is left of the beginning (Substrait's `negative_start` = `LEFT_OF_BEGINNING`).",
   "summary": "`substr(s, start, n)` with a negative `start` counts from left of the first character, where the reference (and DuckDB) count a negative start from the end.",
   "repro": "`select substr('hello', -1, 3)` gives `'h'` (51.0.0 and 55.0.0); DuckDB gives `'o'`.",
-  "handling": "`_check_datafusion_plan` refuses a `substring` whose start may be negative unless the plan asks for `LEFT_OF_BEGINNING` (#209).",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "issues": [
     209
-  ],
-  "files": [
-    "python/src/sverify/engine.py"
   ],
   "checked": [
     {

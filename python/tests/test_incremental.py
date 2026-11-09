@@ -16,13 +16,13 @@ from hypothesis import strategies as st
 
 import sverify as sv
 from _pipelines import connect_with, doubled, paid
-from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
+from sverify.engines import ENGINES
 from sverify.errors import NotIncrementalError
 from sverify.incremental import IncrementalView, Pipeline
 from sverify.io import Changes
 from sverify_dev.examples import PIPELINES, UNSUPPORTED
 
-# Plain SQL goes through the same route as Ibis (both reach DataFusion as SQL);
+# Plain SQL goes through the same route as Ibis ;
 # one query keeps that entry point covered.
 SQL_QUERY = "select o.id, c.city from orders o, customers c where o.amount > 20"
 

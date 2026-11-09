@@ -6,7 +6,7 @@
   "status_note": "filed [#27059](https://github.com/apache/datafusion/issues/27059), open; consumer fix PR [#27072](https://github.com/apache/datafusion/pull/27072) open. Reproduces on 55.0.0 and main",
   "summary": "The Substrait consumer doesn't know Substrait's `shift_left`/`shift_right`.",
   "repro": "a plan calling them, run through `from_substrait_plan`",
-  "handling": "DataFusion refuses those plans",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "found_by": "#215",
   "prs": [
     215

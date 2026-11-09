@@ -13,7 +13,7 @@ from sverify.io import Changes, StaticSource
 
 ORDERS = pa.schema([("id", pa.int64()), ("cust", pa.string()), ("amount", pa.int64())])
 CUSTOMERS = pa.schema([("cust", pa.string()), ("tier", pa.int64())])
-ENGINES = ["duckdb", "polars", "datafusion"]
+ENGINES = ["duckdb", "polars"]
 
 
 def table(schema: pa.Schema, rows) -> pa.Table:

@@ -22,8 +22,7 @@ from _pipelines import (
 )
 from sverify import nodes
 from sverify.contracts import label, violations
-from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
-from sverify.engines import delta_plans
+from sverify.engines import ENGINES, delta_plans
 from sverify.errors import (
     CompositionError,
     PostconditionError,
@@ -300,7 +299,7 @@ def test_a_recompute_or_a_schema_change_shows_the_full_report(tmp_path):
 # -- engines and results ------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars", "datafusion"])
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_the_engine_is_chosen_at_refresh(tmp_path, engine, monkeypatch):
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     node = doubled(paid(orders))

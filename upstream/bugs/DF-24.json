@@ -4,10 +4,7 @@
   "status_note": "not a bug: a typing choice. SQL leaves `AVG`'s result type to the implementation (PostgreSQL gives `numeric`, DuckDB a `DOUBLE`), and DataFusion gives `Float64`.",
   "summary": "`AVG` of integers is a double; the reference's `AggFn.iavg` has an integer result.",
   "repro": "`select arrow_typeof(avg(v)) from (values (1), (2)) t(v)` gives `Float64` (51.0.0 and 55.0.0).",
-  "handling": "`_check_datafusion_plan` refuses an `avg` with an integer result.",
-  "files": [
-    "python/src/sverify/engine.py"
-  ],
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "checked": [
     {
       "checked_at": "2026-11-08",

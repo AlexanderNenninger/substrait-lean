@@ -28,7 +28,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         metavar="NAMES",
         help="comma-separated engines for the sv_engine fixture "
-        "(duckdb, polars, datafusion, spark); default: every installed engine",
+        "(duckdb, polars, spark); default: every installed engine",
     )
 
 

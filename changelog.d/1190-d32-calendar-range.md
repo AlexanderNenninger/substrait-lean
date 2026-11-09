@@ -11,5 +11,3 @@
   calendar function; a column read needs no guard or precondition.
 - A `date_bin` origin outside 0001 to 9999 is refused when the plan is
   checked.
-- DataFusion refuses calendar truncation and `date_bin`
-  (`upstream/bugs/DF-17.json`).

@@ -23,9 +23,7 @@ shards of some of its tables (see `SubstraitLean/ShardCheck.lean`), or say
 why it cannot be split.
 
 `substrait-check --write plan.json`: print the plan in Lean's written form
-(the plan `Rel.eval` runs, as Substrait JSON). `--write-datafusion`: the same
-plan for DataFusion to run, compensating for where its semantics differ
-(`SubstraitLean/DataFusion.lean`); it does not parse back to the same `Rel`.
+(the plan `Rel.eval` runs, as Substrait JSON).
 
 `substrait-check --lowering-coverage`: print how each construct is lowered to
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
@@ -226,16 +224,6 @@ def write (plan : Plan) : IO UInt32 := do
   IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names).compress
   return 0
 
-/-- `--write-datafusion`: the plan as DataFusion runs it
-(`SubstraitLean/DataFusion.lean`), or the reason it does not get it. -/
-def writeDataFusion (plan : Plan) : IO UInt32 := do
-  if let some msg := DataFusion.refusal plan then
-    IO.eprintln s!"error: {msg}"; return 1
-  if let some (code, msg) := checkPlan plan then
-    IO.eprintln msg; return code
-  IO.println (DataFusion.writePlan plan).compress
-  return 0
-
 open Lean (Json toJson) in
 /-- A `--contract` report under the profile the request names (`"profile"`).
 Under the reference it is the report as it is. Under Substrait, the
@@ -327,7 +315,6 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
     | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
     | "--write" => pure write
-    | "--write-datafusion" => pure writeDataFusion
     | "--outcomes" => pure (outcomes Profile.reference)
     -- Internal stopgap; converges to `semantics="duckdb"` (#1288).
     | "--outcomes-duckdb-stopgap" => pure (outcomes (Profile.duckdb {}))
@@ -466,14 +453,14 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     return 0
   | [path] => runOn es "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes",
+    if ["--delta", "--contract", "--write", "--shard", "--outcomes",
         "--outcomes-duckdb-stopgap", "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
       return ← runOn es flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

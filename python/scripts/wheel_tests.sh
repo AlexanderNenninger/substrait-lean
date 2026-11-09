@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the tests as the Wheels workflow does: from a copy of python/tests and
 # python/tools outside the repository, against an install with the wheel's
-# runtime extras (`all` and the experimental `datafusion`) and the test
+# runtime extras (`all`) and the test
 # dependencies listed here, nothing else. Tests
 # that read repository files must carry `needs_repo` (tests/_repo.py); a
 # test that imports a package missing below fails here.
@@ -25,10 +25,10 @@ engines=(polars spark)
 install=() python=() select=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wheel) install+=(--with "sverify[all,datafusion] @ file://$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
+    --wheel) install+=(--with "sverify[all] @ file://$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
     --engine-wheel) install+=(--with "$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
     --editable)
-      install+=(--with-editable "$(cd "$2" && pwd)[all,datafusion]")
+      install+=(--with-editable "$(cd "$2" && pwd)[all]")
       for e in "${engines[@]}"; do install+=(--with-editable "$here/../engines/$e"); done
       shift 2 ;;
     --fast) export SVERIFY_PROFILE=dev; select=(-m "not slow"); shift ;;

@@ -242,7 +242,6 @@ the guard. The modules below it import it as
 | Module | Job |
 |---|---|
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
-| `DataFusion.lean` | DataFusion's writer: its refusals and join rewrite, a tier-3 engine (trusted) |
 | `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
 | `AnalysisCongr.lean` | The analyses read only the catalog's arities: `Rel.facts_congr`, `Rel.aeval_congr`, `Rel.keys_congr`, `Rel.keyedWindows_congr`, for `check_proved_sound` |
 | `Semantic.lean` | Rewrites justified by contract facts and keys |

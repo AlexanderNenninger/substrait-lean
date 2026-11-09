@@ -65,7 +65,7 @@ def test_sv_engine_runs_once_per_engine(pytester):
     pytester.makepyfile(
         """
         def test_engine(sv_engine):
-            assert sv_engine in ("duckdb", "polars", "datafusion")
+            assert sv_engine in ("duckdb", "polars")
         """
     )
     result = pytester.runpytest_subprocess("-v")

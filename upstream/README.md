@@ -1,8 +1,8 @@
 # Upstream bugs
 
 Bugs and surprising behaviours that sverify found in the projects it builds
-on: SQLGlot, the engines (DuckDB, Polars, DataFusion, Spark), Ibis, delta-rs
-and Substrait's tooling. We file them upstream in batches, so each one
+on: SQLGlot, the engines (DuckDB, Polars, Spark), Ibis, delta-rs and
+Substrait's tooling, and DataFusion, which it ran until it was dropped. We file them upstream in batches, so each one
 records enough to file it: the version, a minimal reproduction, and how
 sverify works around it today.
 
@@ -50,9 +50,8 @@ pyspark 4.3.0, ibis-framework 12.0.0, deltalake 1.6.6) or checked against
 Substrait's main; its last `checked` entry says what. A `confirmed` bug has a
 one-line `title`.
 
-DataFusion is a backend only since #211. Bugs in its Substrait producer and
-SQL planner (most `DF` entries, found on DataFusion 51) no longer affect
-sverify's results, and they are worth reporting.
+Sverify no longer runs DataFusion. The `DF` entries, found on DataFusion 51,
+are the record of its bugs, and they are worth reporting.
 
 The documents are the record. `REPORT.md`, generated from them on
 `main`, lists the bugs to report and counts each class (report, filed,

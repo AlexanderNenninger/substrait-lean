@@ -8,13 +8,9 @@
     "The Substrait plan (Lean's `--write`) of `select [k, x][2] from a` fails: `This feature is not implemented: Direct reference with types other than StructField is not supported` (51.0.0 and 55.0.0).",
     "`select cardinality(make_array())` gives NULL on 51.0.0, `0` on 55.0.0."
   ],
-  "handling": "`--write-datafusion` refuses struct fields, list elements, `cardinality` and lambdas (`Expr.nestedAccess`, #94).",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "issues": [
     94
-  ],
-  "files": [
-    "SubstraitLean/Write.lean",
-    "SubstraitCheck.lean"
   ],
   "checked": [
     {

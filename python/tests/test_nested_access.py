@@ -4,7 +4,7 @@ The reference rules (decided on #94, from Substrait's spec and the backends):
 a list element is zero-based, negative from the end and NULL out of range
 (Substrait's `ListElement`); `cardinality` counts NULL elements and is NULL
 for a NULL list; a NULL struct's fields are NULL. Polars runs them; the SQL
-engines and DataFusion refuse them for now.
+engines refuse them for now.
 """
 
 import json
@@ -110,7 +110,6 @@ def test_a_field_outside_the_struct_is_refused(con):
     ("engine", "message"),
     [
         ("duckdb", "struct columns have no SQL form yet"),
-        ("datafusion", "DataFusion does not run struct fields"),
     ],
 )
 def test_other_engines_refuse(con, engine, message):

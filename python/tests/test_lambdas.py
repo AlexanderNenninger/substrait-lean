@@ -5,7 +5,7 @@ A lambda's body reads its parameter and the enclosing row (D28,
 `docs/core-semantics.md`); Ibis writes closed lambdas only, and Polars runs
 only those. Ibis's `contains(v)` is `any_match(l, x -> x IS NOT DISTINCT FROM v)` (decided
 on #94: Polars' meaning, within the spec), so `v` is a constant. Polars runs
-them; the SQL engines and DataFusion refuse them.
+them; the SQL engines refuse them.
 """
 
 import json
@@ -113,10 +113,7 @@ def test_lambdas_are_closed(con, make, message):
         plan_json(con, t.select(x=make(t)))
 
 
-@pytest.mark.parametrize(
-    ("engine", "message"),
-    [("duckdb", "lambdas have no SQL form yet"), ("datafusion", "DataFusion does not run")],
-)
+@pytest.mark.parametrize(("engine", "message"), [("duckdb", "lambdas have no SQL form yet")])
 def test_other_engines_refuse(con, engine, message):
     t = con.table("t")
     w = written_plan(plan_json(con, t.select(x=t.l.contains(1))))

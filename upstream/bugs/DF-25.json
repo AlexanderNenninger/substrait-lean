@@ -4,12 +4,9 @@
   "status_note": "not a bug: a different rounding rule. DataFusion rounds `x · 10ᵈ` as a double; DuckDB rounds the decimal digits of `x` (#335).",
   "summary": "`round(x, d)` of a double computes `round(x · 10ᵈ) / 10ᵈ`, which differs from DuckDB's `round` where `x · 10ᵈ` is inexact.",
   "repro": "`select round(1.005, 2)` gives `1.0` (51.0.0 and 55.0.0); DuckDB gives `1.01`.",
-  "handling": "`_check_datafusion_plan` refuses `round(x, d)` (#335).",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "issues": [
     335
-  ],
-  "files": [
-    "python/src/sverify/engine.py"
   ],
   "checked": [
     {
