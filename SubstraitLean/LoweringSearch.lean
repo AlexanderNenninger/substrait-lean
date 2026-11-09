@@ -387,10 +387,16 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
     | (simp only [$u,*]; done)
     | (simp only [$u,*]; (repeat' split) <;> simp_all [$u,*])))
 
+/-- The template tactic's split on the arguments' kinds: one goal per
+constructor of each argument. -/
+def templateCases (unary : Bool) : TermElabM (TSyntax `tactic) :=
+  if unary then `(tactic| (rename_i x; cases x))
+  else `(tactic| (rename_i x y; cases x <;> cases y))
+
 /-- The tactic for a template: evaluate the guard's functions (`natives`, the
 engine's, and the reference's, and the lemmas `extra`), split on the
-arguments' kinds and on the comparisons the template and the profile make,
-and compute. -/
+arguments' kinds (`templateCases`) and on the comparisons the template and
+the profile make, and compute. -/
 def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : Array Name := #[]) :
     TermElabM Syntax := do
   let preNames := pre2 ++ #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
@@ -412,8 +418,17 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     #[`hP, `hN, `hQ, `hO, `hM].mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
   let ref := ref ++ eqs
   let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree] ++ fin2)) ++ eqs
-  let cases ← if unary then `(tactic| (rename_i x; cases x))
-    else `(tactic| (rename_i x y; cases x <;> cases y))
+  -- The profile and the reference unfold in stages on each goal the split
+  -- leaves, the goal only: the profiles, then the issues, then the
+  -- functions. One `simp` with all of them at once spends about 3 s a goal
+  -- on `BinFn.apply`'s and `BinFn.issue`'s equations, and `On.Doubles` has
+  -- 21 such goals per theorem (#923's 11 kinds; docs/build-performance.md).
+  -- On the goal only: at `*` they would rewrite `hP`, `hN`, … away before
+  -- the issues bring the special codes back.
+  let stage1 ← simpArgs (unfold ++ #[``Profile.reference, ``raiseIf])
+  let stage2 ← simpArgs #[``BinFn.issue, ``UnFn.issue]
+  let stage3 ← simpArgs #[``BinFn.apply]
+  let cases ← templateCases unary
   let codes := #[(``FloatCode.posInf, `cP, `hP), (``FloatCode.negInf, `cN, `hN),
     (``FloatCode.nan, `cQ, `hQ), (``FloatCode.one, `cO, `hO), (``FloatCode.negOne, `cM, `hM)]
   let gens ← codes.mapM fun (c, v, h) =>
@@ -433,7 +448,10 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
     all_goals first
       | exact Outcome.agree_refl _
-      | (simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
+      | (simp (config := { failIfUnchanged := false, decide := true }) only [$stage1,*]
+         simp (config := { failIfUnchanged := false, decide := true }) only [$stage2,*]
+         simp (config := { failIfUnchanged := false, decide := true }) only [$stage3,*]
+         simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
          iterate 10
            all_goals try
              lowering_split_decide <;>
@@ -492,8 +510,7 @@ def guardsTac (unfold natives extra : Array Name) (unary : Bool) (agree? : Optio
     ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
     ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul] ++ natives)
   let issueFn := mkIdent (if unary then ``UnFn.issue else ``BinFn.issue)
-  let cases ← if unary then `(tactic| (rename_i x; cases x))
-    else `(tactic| (rename_i x y; cases x <;> cases y))
+  let cases ← templateCases unary
   let ag ← if unary then `(($(mkIdent agree) _)) else `(($(mkIdent agree) _ _))
   let names ← simpArgs #[``nanIssue, ``domainIssue, ``rangeIssue, ``wrapIf, ``wrapNum]
   `(tactic| first
