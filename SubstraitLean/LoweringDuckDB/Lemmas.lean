@@ -182,6 +182,7 @@ def Lowering.shlTemplate : Expr :=
     (.ifThen (.un (.isNum .int) (.field 0))
       (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64)))) (.lit .null))
 
+omit [Boxes.Ambient] in
 /-- The template reads both arguments, for the entry's strictness. -/
 theorem Lowering.shlTemplate_must : 0 ∈ Lowering.shlTemplate.must ∧ 1 ∈ Lowering.shlTemplate.must := by
   simp [Expr.must, Lowering.shlTemplate]
@@ -197,10 +198,12 @@ def Lowering.zeroTemplate (f : UnFn) : Expr :=
 def Lowering.froundTemplate : Expr := Lowering.zeroTemplate .fround
 def Lowering.fceilTemplate : Expr := Lowering.zeroTemplate .fceil
 
+omit [Boxes.Ambient] in
 /-- The templates read their argument, for the entries' strictness. -/
 theorem Lowering.froundTemplate_must : 0 ∈ Lowering.froundTemplate.must := by
   simp [Expr.must, Lowering.froundTemplate, Lowering.zeroTemplate]
 
+omit [Boxes.Ambient] in
 theorem Lowering.fceilTemplate_must : 0 ∈ Lowering.fceilTemplate.must := by
   simp [Expr.must, Lowering.fceilTemplate, Lowering.zeroTemplate]
 

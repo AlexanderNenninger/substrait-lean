@@ -113,6 +113,7 @@ def LeastInv (c : α → α) (le : α → α → Bool) (m : Std.HashMap α α) (
   ∀ k, (m[k]? = none → ∀ y ∈ s, c y ≠ k) ∧
     ∀ z, m[k]? = some z → z ∈ s ∧ c z = k ∧ ∀ y ∈ s, c y = k → le z y = true
 
+omit [Boxes.Ambient] in
 theorem LeastInv.step (h : RawOrder le) {m : Std.HashMap α α} {s : List α}
     (hm : LeastInv c le m s) (y : α) : LeastInv c le (leastStep c le m y) (s ++ [y]) := by
   have hrefl : ∀ a, le a a = true := fun a => (h.total a a).elim id id
@@ -157,6 +158,7 @@ theorem LeastInv.step (h : RawOrder le) {m : Std.HashMap α α} {s : List α}
       · exact hl w hw hcw
       · rw [List.mem_singleton.mp hw] at hcw; exact absurd hcw hk
 
+omit [Boxes.Ambient] in
 theorem LeastInv.foldl (h : RawOrder le) : ∀ (r : List α) {m : Std.HashMap α α} {s : List α},
     LeastInv c le m s → LeastInv c le (r.foldl (leastStep c le) m) (s ++ r)
   | [], _, _, hm => by simpa using hm
@@ -164,6 +166,7 @@ theorem LeastInv.foldl (h : RawOrder le) : ∀ (r : List α) {m : Std.HashMap α
     have := LeastInv.foldl h r (hm.step h y)
     simpa [List.foldl_cons, List.append_assoc] using this
 
+omit [Boxes.Ambient] in
 /-- `leastBy` gives each member's `classRep`. -/
 theorem leastBy_getD (h : RawOrder le) {l : List α} {x : α} (hx : x ∈ l) :
     (leastBy c le l).getD (c x) x = classRep c le l x := by
@@ -184,6 +187,7 @@ def canonRepsH (c : α → α) (le : α → α → Bool) (l : List α) : List α
   let m := leastBy c le l
   dedupH (l.map fun x => m.getD (c x) x)
 
+omit [Boxes.Ambient] in
 theorem canonRepsH_eq (h : RawOrder le) (l : List α) : canonRepsH c le l = canonReps c le l := by
   simp only [canonRepsH, dedupH_eq, canonReps]
   congr 1
@@ -396,6 +400,7 @@ theorem eqKey_sound {x y : Row} {a b : Expr} {l r : Expr} (hk : eqKey x.length a
 def EqKey.Holds (x y : Row) (k : EqKey) : Prop :=
   (k.left.eval x).canonV = (k.right.eval y).canonV ∧ (k.strict = true → k.left.eval x ≠ .null)
 
+omit [Boxes.Ambient] in
 theorem Value.canonV_null {v : Value} : v.canonV = .null ↔ v = .null := by
   cases v <;> simp [Value.canonV]
 

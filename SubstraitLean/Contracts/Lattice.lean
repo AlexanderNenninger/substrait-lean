@@ -881,6 +881,7 @@ def Value.CanonEq (x y : Value) : Prop :=
 /-- Two values that are equal, or two numbers of one kind. -/
 def Value.ShapeEq (x y : Value) : Prop := x = y ∨ ∃ (k : NumKind) (c c' : Int), x = k.val c ∧ y = k.val c'
 
+omit [Boxes.Ambient] in
 theorem Value.ShapeEq.trans {x y z : Value} (h : x.ShapeEq y) (h' : y.ShapeEq z) : x.ShapeEq z := by
   rcases h with rfl | ⟨k, c, c', rfl, rfl⟩
   · exact h'
@@ -889,6 +890,7 @@ theorem Value.ShapeEq.trans {x y z : Value} (h : x.ShapeEq y) (h' : y.ShapeEq z)
     · obtain ⟨rfl, rfl⟩ := NumKind.val_inj₂ e
       exact .inr ⟨k, c, d', rfl, rfl⟩
 
+omit [Boxes.Ambient] in
 /-- `a` holds a double by its canonical code (`NumKind.norm`). -/
 theorem AVal.mem_of_canonEq {a : AVal} {x y : Value} (h : x.CanonEq y) (hy : a.Mem y) : a.Mem x := by
   rcases h with rfl | ⟨c, c', rfl, rfl, hc⟩
@@ -899,6 +901,7 @@ theorem AVal.mem_of_canonEq {a : AVal} {x y : Value} (h : x.CanonEq y) (hy : a.M
     refine ⟨b, hb, ?_, hk⟩
     rw [NumKind.norm_float] at hm ⊢; rw [hc]; exact hm
 
+omit [Boxes.Ambient] in
 /-- Where `a` bounds no number, any number of `a`'s kinds is in it. -/
 theorem AVal.mem_of_shapeEq {a : AVal} {x y : Value} (h : x.ShapeEq y) (hy : a.Mem y)
     (htop : ∀ b, a.int = some b → b = Bound.top) : a.Mem x := by
@@ -907,6 +910,7 @@ theorem AVal.mem_of_shapeEq {a : AVal} {x y : Value} (h : x.ShapeEq y) (hy : a.M
   · obtain ⟨b, hb, _, hk⟩ := AVal.mem_val.mp hy
     exact AVal.mem_val.mpr ⟨b, hb, (htop b hb) ▸ Bound.mem_top _, hk⟩
 
+omit [Boxes.Ambient] in
 /-- `mapAbs` holds `mapP`'s values. -/
 theorem mapAbs_mem {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Option Int}
     {bf : Bound → Bound} {extra : Option Bound → Bool}
@@ -957,6 +961,7 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
     (mapAbs ok kout bf extra a).Mem (f.apply v) :=
   AVal.mem_of_canonEq (hf v) (mapAbs_mem hb hn h hc)
 
+omit [Boxes.Ambient] in
 /-- **A function whose abstraction bounds no double** is sound where it agrees
 with `mapP` in shape only (`Value.ShapeEq`: NULL where it is NULL, a double
 where it is a double). The functions of native doubles (`ROUND(x, d)`, the
@@ -1010,6 +1015,7 @@ fail. -/
     int := (match a.int, b.int with | some x, some y => some (bf x y) | _, _ => none),
     nk := outKind tbl a b }
 
+omit [Boxes.Ambient] in
 theorem mapAbs₂_mem {tbl : NumKind → NumKind → Option NumKind} {g : Int → Int → Option Int}
     {bf : Bound → Bound → Bound} {extra : Option Bound → Option Bound → Bool}
     (hb : ∀ x y i j r, x.Mem i → y.Mem j → g i j = some r → (bf x y).Mem r)
@@ -1070,6 +1076,7 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
   AVal.mem_of_canonEq (hf v w)
     (mapAbs₂_mem hb (fun x y _ _ _ _ _ _ hi hj hg => hn x y _ _ hi hj hg) ha hb' hc)
 
+omit [Boxes.Ambient] in
 theorem mapP₂_shapeEq (tbl : NumKind → NumKind → Option NumKind) (g : Int → Int → Option Int) (v w : Value) :
     (Value.mapP₂ tbl g v w).ShapeEq (Value.mapP₂ tbl (fun i j => (g i j).map fun _ => 0) v w) := by
   unfold Value.mapP₂
@@ -1114,6 +1121,9 @@ The analysis bounds a double by its canonical code, so `-0.0` and `0.0`, and
 the two NaNs, are in the same abstract values, in lists and structs too. -/
 
 
+section
+omit [Boxes.Ambient]
+
 mutual
 theorem AVal.memR_canonV (a : AVal) : ∀ v : Value, a.MemR v.canonV ↔ a.MemR v
   | .float c => by
@@ -1147,12 +1157,17 @@ theorem AVal.memFields_canonV : ∀ (fs : List AVal) (vs : List Value),
   | [], _ :: _ | _ :: _, [] => by simp [AVal.MemFields]
 end
 
+end
 
+
+omit [Boxes.Ambient] in
 theorem Value.canonV_eq_null {v : Value} : v.canonV = .null ↔ v = .null := by
   cases v <;> simp [Value.canonV]
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_canonV {a : AVal} {v : Value} : a.Mem v.canonV ↔ a.Mem v := AVal.memR_canonV a v
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_of_canonV_eq {a : AVal} {v w : Value} (h : v.canonV = w.canonV) (hw : a.Mem w) :
     a.Mem v := AVal.mem_canonV.mp (h ▸ AVal.mem_canonV.mpr hw)
 

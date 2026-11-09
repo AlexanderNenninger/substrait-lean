@@ -303,19 +303,25 @@ theorem FloatCode.negInf_eq_neg_posInf : FloatCode.negInf = -FloatCode.posInf :=
 /-! The codes of `-0.0` and the negative NaN, below `-∞` (D31), and the
 canonical values of the special codes, for the generated proofs. -/
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negZero_lt_negNan : FloatCode.negZero < FloatCode.negNan := by
   rw [FloatCode.negZero_eq', FloatCode.negNan_eq']; omega
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negNan_lt_negInf : FloatCode.negNan < FloatCode.negInf := by
   rw [FloatCode.negNan_eq', FloatCode.negInf_eq]; omega
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_negZero' : FloatCode.canon FloatCode.negZero = 0 := fp64.canon_negZero
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_negNan' : FloatCode.canon FloatCode.negNan = FloatCode.nan := fp64.canon_negNan
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_nan : FloatCode.canon FloatCode.nan = FloatCode.nan :=
   FloatCode.canon_of_isRef FloatCode.isRef_nan
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
   FloatCode.canon_of_bounds ⟨by
     have := FloatCode.negInf_lt_negOne
@@ -323,19 +329,23 @@ theorem FloatCode.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
     have := FloatCode.zero_lt_one
     omega, FloatCode.one_lt_posInf⟩
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_negOne : FloatCode.canon FloatCode.negOne = FloatCode.negOne :=
   FloatCode.canon_of_bounds ⟨FloatCode.negInf_lt_negOne, by
     have := FloatCode.negOne_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
 
+omit [Boxes.Ambient] in
 /-- The finite codes next to `±∞` are canonical. -/
 theorem FloatCode.canon_negInf_succ : FloatCode.canon (FloatCode.negInf + 1) = FloatCode.negInf + 1 :=
   FloatCode.canon_of_bounds ⟨by omega, by
     have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_posInf_pred : FloatCode.canon (FloatCode.posInf - 1) = FloatCode.posInf - 1 :=
   FloatCode.canon_of_bounds ⟨by
     have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega, by omega⟩
 
+omit [Boxes.Ambient] in
 /-- `floor` keeps `-0.0` and the negative NaN: their magnitudes are beyond the
 finite ones. -/
 theorem FloatCode.floor_negZero : FloatCode.floor FloatCode.negZero = FloatCode.negZero := by
@@ -345,6 +355,7 @@ theorem FloatCode.floor_negZero : FloatCode.floor FloatCode.negZero = FloatCode.
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.floor_negNan : FloatCode.floor FloatCode.negNan = FloatCode.negNan := by
   have h := FloatCode.negNan_eq'
   unfold FloatCode.floor FloatCode.onMag
@@ -352,6 +363,7 @@ theorem FloatCode.floor_negNan : FloatCode.floor FloatCode.negNan = FloatCode.ne
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.round_negZero : FloatCode.round FloatCode.negZero = FloatCode.negZero := by
   have h := FloatCode.negZero_eq'
   unfold FloatCode.round FloatCode.onMag
@@ -359,6 +371,7 @@ theorem FloatCode.round_negZero : FloatCode.round FloatCode.negZero = FloatCode.
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.negNan := by
   have h := FloatCode.negNan_eq'
   unfold FloatCode.round FloatCode.onMag
@@ -366,6 +379,7 @@ theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.ne
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.ceil_negZero : FloatCode.ceil FloatCode.negZero = FloatCode.negZero := by
   have h := FloatCode.negZero_eq'
   unfold FloatCode.ceil FloatCode.onMag
@@ -373,6 +387,7 @@ theorem FloatCode.ceil_negZero : FloatCode.ceil FloatCode.negZero = FloatCode.ne
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.ceil_negNan : FloatCode.ceil FloatCode.negNan = FloatCode.negNan := by
   have h := FloatCode.negNan_eq'
   unfold FloatCode.ceil FloatCode.onMag
@@ -385,6 +400,7 @@ def Value.isDouble : Value → Bool
   | .float _ => true
   | _ => false
 
+omit [Boxes.Ambient] in
 /-- A value is not a double, `-0.0`, the negative NaN, or a double equal to its
 canonical code: the cases of a generated proof's argument, each double's with
 its canonical code (a canonical one apart from the other two, with a canonical
@@ -429,6 +445,7 @@ theorem BinFn.apply_lt_nondouble_r {x : Value} (hx : x.isDouble = false) (c : In
     BinFn.apply .lt (.float c) x = .null := by
   cases x <;> first | rfl | simp [Value.isDouble] at hx
 
+omit [Boxes.Ambient] in
 theorem Value.isNum_float_nondouble {x : Value} (hx : x.isDouble = false) :
     x.isNum .float = false := by
   cases x <;> first | rfl | simp [Value.isDouble] at hx

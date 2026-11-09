@@ -161,12 +161,10 @@ def Measure.tolOut (t : Tol) (mask : Nat → Bool) (env : List AVal) (N : Option
     | _, _ => none
   | _, _ => none
 
-omit [Boxes.Ambient] in
 theorem Forall2.mem_left {α β : Type} {R : α → β → Prop} {l : List α} {l' : List β}
     (h : Forall2 R l l') {a : α} (ha : a ∈ l) : ∃ b ∈ l', R a b :=
   Forall2.mem_right (Forall2.flip h) ha
 
-omit [Boxes.Ambient] in
 theorem scaled_natAbs_le {lo hi c : Int} (h1 : lo ≤ c) (h2 : c ≤ hi) :
     (scaled c).natAbs ≤ magOf lo hi := by
   have a := scaled_mono h1; have b := scaled_mono h2
@@ -174,7 +172,6 @@ theorem scaled_natAbs_le {lo hi c : Int} (h1 : lo ≤ c) (h2 : c ≤ hi) :
   generalize scaled lo = x at *; generalize scaled hi = y at *; generalize scaled c = z at *
   omega
 
-omit [Boxes.Ambient] in
 theorem exactSum_natAbs_le_mul {B : Nat} :
     ∀ {vs : List Value}, (∀ c, Value.float c ∈ vs → (scaled (canon c)).natAbs ≤ B) →
       (exactSum vs).natAbs ≤ vs.length * B
@@ -190,6 +187,7 @@ theorem exactSum_natAbs_le_mul {B : Nat} :
     simp only [List.length_cons, Nat.succ_mul]
     omega
 
+variable [Boxes.Ambient]
 omit [Boxes.Ambient] in
 theorem ulpDiv_mono {v w : Int} (n : Nat) (h : v.natAbs ≤ w.natAbs) : ulpDiv v n ≤ ulpDiv w n :=
   Nat.pow_le_pow_right (by decide) (gridExp_mono n h)
@@ -326,6 +324,7 @@ theorem Measure.sum_facts {t : Tol} {m : Measure} {env : List AVal}
       obtain ⟨v, -, h⟩ := hpairs.mem_right hc
       have := (h.2.2 c rfl).2; omega
 
+omit [Boxes.Ambient] in
 theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) : IsRef c := by
   have h1 := fp64.posInf_lt_nan; have h2 := fp64.negInf_lt_zero; have h3 := fp64.zero_lt_posInf
   have hp : IsRef fp64.posInf := ⟨by omega, by omega⟩
@@ -340,12 +339,14 @@ theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) 
   · cases h; exact hn
   · cases h
 
+omit [Boxes.Ambient] in
 theorem floatSumCR_isRef (vs : List Value) : IsRef (floatSumCR vs) := by
   unfold floatSumCR
   cases h : nonFinite vs with
   | none => exact isRef_ofExactDiv _ _
   | some c => exact nonFinite_isRef h
 
+omit [Boxes.Ambient] in
 theorem floatAvgCR_isRef (vs : List Value) : IsRef (floatAvgCR vs) := by
   unfold floatAvgCR
   cases h : nonFinite vs with

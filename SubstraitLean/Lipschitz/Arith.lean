@@ -225,6 +225,7 @@ theorem fadd_near {e M : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin a₁) (f
   simp only [List.length_cons, List.length_nil] at hc
   omega
 
+omit [Boxes.Ambient] in
 theorem fsub_eq_fadd {a b : Int} (ha : IsFin a) (hb : IsFin b) :
     canon (fsub a b) = canon (fadd a (-b)) := by
   rw [fsub_fin ha hb, fadd_fin ha (IsFin.neg hb), scaled_neg', Int.sub_eq_add_neg]
@@ -773,6 +774,7 @@ theorem foldl_max_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a �
     exact foldl_max_bounds (by rw [Int.max_def]; split <;> omega) (by rw [Int.max_def]; split <;> omega)
       fun y hy => h y (List.mem_cons_of_mem _ hy)
 
+omit [Boxes.Ambient] in
 /-- `MIN` of doubles: a member whose canonical code is the least canonical code. -/
 theorem pickFold_min_float (x : Int) : ∀ cs : List Int, ∃ y,
     pickFold (fun a b => !a.leT b) (.float x) (cs.map .float) = .float y ∧
@@ -792,6 +794,7 @@ theorem pickFold_min_float (x : Int) : ∀ cs : List Int, ∃ y,
     obtain ⟨y, hy, hyc⟩ := pickFold_min_float z cs
     exact ⟨y, hstep ▸ hy, by rw [hyc, hzc]; rfl⟩
 
+omit [Boxes.Ambient] in
 /-- `MAX` of doubles: a member whose canonical code is the greatest canonical code. -/
 theorem pickFold_max_float (x : Int) : ∀ cs : List Int, ∃ y,
     pickFold (fun a b => !a.geT b) (.float x) (cs.map .float) = .float y ∧
@@ -811,6 +814,7 @@ theorem pickFold_max_float (x : Int) : ∀ cs : List Int, ∃ y,
     obtain ⟨y, hy, hyc⟩ := pickFold_max_float z cs
     exact ⟨y, hstep ▸ hy, by rw [hyc, hzc]; rfl⟩
 
+omit [Boxes.Ambient] in
 /-- Values paired as doubles within `e` canonical codes: two lists of codes. -/
 theorem Forall2.floats {e : Nat} {lo hi : Int} :
     ∀ {vs ws : List Value}, Forall2 (fun v w => ∃ a b, v = .float a ∧ w = .float b ∧

@@ -123,6 +123,7 @@ def Fact.classSafe : Fact → Bool
   | .holds e => e.canonSafe
   | _ => true
 
+omit [Boxes.Ambient] in
 /-- A number of kind `k` up to `canonV` is a number of kind `k` with the same
 normal form. -/
 theorem NumKind.val_of_canonV {k : NumKind} {v : Value} {a : Int}

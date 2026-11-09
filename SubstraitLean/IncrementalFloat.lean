@@ -175,6 +175,7 @@ def pairCount (p : Int → Bool) (v : Value) : Int :=
 omit [Boxes.Ambient] in
 theorem foldr_add_eq_sum (xs : List Int) : xs.foldr (· + ·) 0 = xs.sum := rfl
 
+omit [Boxes.Ambient] in
 theorem scaledSum_floatsOf : ∀ vs : List Value,
     scaledSum ((floatsOf vs).map canon) = (vs.map exactOf).sum
   | [] => rfl
@@ -182,6 +183,7 @@ theorem scaledSum_floatsOf : ∀ vs : List Value,
     have ih := scaledSum_floatsOf vs
     cases v <;> simp_all [floatsOf, scaledSum, exactOf, foldr_add_eq_sum]
 
+omit [Boxes.Ambient] in
 theorem sqSumOf_floatsOf : ∀ vs : List Value,
     sqSumOf ((floatsOf vs).map canon) = (vs.map sqOf).sum
   | [] => rfl

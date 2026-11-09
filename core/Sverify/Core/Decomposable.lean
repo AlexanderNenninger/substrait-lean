@@ -21,6 +21,7 @@ theorem intSum_append : ∀ (vs ws : List Value), intSum (vs ++ ws) = intSum vs 
   | v :: vs, ws => by
     rw [List.cons_append, intSum_cons, intSum_cons, intSum_append vs ws]; omega
 
+omit [Boxes.Ambient] in
 theorem IsLeast.unique {α : Type} {le : α → α → Bool} (anti : ∀ a b, le a b = true → le b a = true → a = b)
     {m m' : α} {l : List α} (h : IsLeast le m l) (h' : IsLeast le m' l) : m = m' :=
   anti _ _ (h.2 _ h'.1) (h'.2 _ h.1)
@@ -41,6 +42,7 @@ theorem minMaxLe_antisymm (max : Bool) (a b : Value) (h : minMaxLe max a b = tru
   · exact Value.leT_antisymm h h'
   · exact Value.geT_antisymm h h'
 
+omit [Boxes.Ambient] in
 /-- Within a tied class, `minMaxLe` is the raw order. -/
 theorem minMaxLe_of_canon (max : Bool) {a b : Value} (h : a.canonV = b.canonV) :
     minMaxLe max a b = Value.leRaw a b := by

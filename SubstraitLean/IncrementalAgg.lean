@@ -369,6 +369,7 @@ theorem rowsIn_lift_pos {gs : List Expr} {rows : Relation} {k : Row} :
   rw [rowsIn_lift, groupRows, Int.natCast_pos, List.length_pos_iff_exists_mem]
   simp only [List.mem_filter, beq_iff_eq]
 
+omit [Boxes.Ambient] in
 /-- A bag's weight of a row is the row's count. -/
 theorem weight_lift_count (r : Row) : ∀ rows : Relation, (ZSet.lift rows).weight r = rows.count r
   | [] => by simp [ZSet.lift, WSet.weight_nil]
@@ -613,18 +614,22 @@ the output the canonical row of each class with a positive count: what
 /-- The weight of the rows in `k`'s class. -/
 def classIn (k : Row) (z : ZSet) : Int := ZSet.lin (fun r => ind (r.canon == k.canon) 1) z
 
+omit [Boxes.Ambient] in
 theorem classIn_append (k : Row) (a b : ZSet) : classIn k (a ++ b) = classIn k a + classIn k b :=
   ZSet.lin_append _ _ _
 
+omit [Boxes.Ambient] in
 theorem classIn_congr {z z' : ZSet} (h : ∀ r, z.weight r = z'.weight r) (k : Row) :
     classIn k z = classIn k z' := ZSet.lin_congr _ h
 
+omit [Boxes.Ambient] in
 /-- A class has rows exactly when one of the bag's rows is in it. -/
 theorem classIn_lift_pos {rows : Relation} {k : Row} :
     0 < classIn k (ZSet.lift rows) ↔ ∃ r ∈ rows, r.canon = k.canon := by
   rw [classIn, lin_lift, sum_ind_one, Int.natCast_pos, List.length_pos_iff_exists_mem]
   simp only [List.mem_filter, beq_iff_eq]
 
+omit [Boxes.Ambient] in
 /-- **`DISTINCT` from a count per class**: on a Z-set `z` with the weights of
 the bag `rows`, one row of each class whose count is positive is a
 `DISTINCT` of `rows` the reference allows. -/

@@ -353,12 +353,14 @@ theorem RowsPer.sublist {k : List Nat} {n : Nat} {rows rows' : Relation} (h : Ro
     (hs : rows'.Sublist rows) : RowsPer k n rows' := fun v =>
   Nat.le_trans (hs.filter _).length_le (h v)
 
+omit [Boxes.Ambient] in
 /-- Distinct rows drawn from `rows` have no more rows per key. -/
 theorem RowsPer.of_nodup_subset {k : List Nat} {n : Nat} {rows rows' : Relation} (h : RowsPer k n rows)
     (hn : rows'.Nodup) (hs : ∀ x ∈ rows', x ∈ rows) : RowsPer k n rows' := fun v =>
   Nat.le_trans (List.Nodup.length_le_of_subset (hn.filter _) fun x hx =>
     List.mem_filter.mpr ⟨hs x (List.mem_filter.mp hx).1, (List.mem_filter.mp hx).2⟩) (h v)
 
+omit [Boxes.Ambient] in
 theorem RowsPer.perm {k : List Nat} {n : Nat} {rows rows' : Relation} (h : RowsPer k n rows)
     (hp : rows'.Perm rows) : RowsPer k n rows' := fun v => by
   rw [(hp.filter _).length_eq]; exact h v

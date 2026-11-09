@@ -735,6 +735,7 @@ theorem Value.le_refl (a : Value) : a.le a = true := by
 def IsLeast {α : Type} (le : α → α → Bool) (m : α) (l : List α) : Prop :=
   m ∈ l ∧ ∀ w ∈ l, le m w = true
 
+omit [Boxes.Ambient] in
 theorem pickFold_least {le : Value → Value → Bool} (hle : TotalPre le) :
     ∀ (v : Value) (vs : List Value), IsLeast le (pickFold (fun a b => !le a b) v vs) (v :: vs)
   | v, [] => ⟨by simp [pickFold], fun w hw => by simp at hw; subst hw; exact hle.refl _⟩
@@ -764,10 +765,12 @@ theorem pickFold_least {le : Value → Value → Bool} (hle : TotalPre le) :
       · exact hl _ (by simp)
       · exact hl x (by simp [hx])
 
+omit [Boxes.Ambient] in
 theorem pickFold_min_le (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
     (pickFold (fun a b => !a.leT b) v vs).le x = true := fun x hx =>
   Value.le_of_leT ((pickFold_least Value.leT_totalPre v vs).2 x hx)
 
+omit [Boxes.Ambient] in
 theorem pickFold_max_ge (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
     x.le (pickFold (fun a b => !a.geT b) v vs) = true := fun x hx =>
   Value.le_of_geT ((pickFold_least Value.geT_totalPre v vs).2 x hx)
@@ -822,6 +825,7 @@ theorem AggFn.Picks.eq {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs
         rcases hf with rfl | rfl <;> exact pickFold_mem _ _ _
       exact hlone _ hmem v hc
 
+omit [Boxes.Ambient] in
 theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=
   Value.le_val .int
 

@@ -229,6 +229,7 @@ theorem Measure.allowedP_congr {t : ProfileTable} {I J : Impl} {m : Measure}
     (h : Impl.AgreeOn m.ctors I J) : m.AllowedP t I = m.AllowedP t J := by
   funext rows v; simp only [Measure.AllowedP, Measure.inputsI_congr h]
 
+omit [Boxes.Ambient] in
 theorem forall₂_congr_mem {α β : Type} {R S : α → β → Prop} {l : List α} {l' : List β}
     (h : ∀ a ∈ l, ∀ b, R a b ↔ S a b) : Forall2 R l l' ↔ Forall2 S l l' :=
   ⟨Forall2.imp_mem fun a ha b => (h a ha b).mp, Forall2.imp_mem fun a ha b => (h a ha b).mpr⟩

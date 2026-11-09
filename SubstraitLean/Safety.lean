@@ -213,6 +213,7 @@ def BinFn.mayNan (f : BinFn) (aa ab : AVal) : Bool :=
   | .fpow => aa.negFinite && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
   | _ => false
 
+omit [Boxes.Ambient] in
 theorem AVal.has_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i) :
     a.has (k.norm i) = true := by
   obtain ⟨b, hb, hm, -⟩ := h
@@ -221,18 +222,22 @@ theorem AVal.has_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i) :
     decide_eq_true_eq]
   exact ⟨fun l hl => hm.1 l hl, fun u hu => hm.2 u hu⟩
 
+omit [Boxes.Ambient] in
 theorem AVal.has_of_memFloat {a : AVal} {i : Int} (h : a.Mem (.float i)) :
     a.has (FloatCode.canon i) = true :=
   AVal.has_of_mem h
 
+omit [Boxes.Ambient] in
 theorem AVal.has_posInf_of_mem {a : AVal} (h : a.Mem (.float FloatCode.posInf)) :
     a.has FloatCode.posInf = true := by
   have := AVal.has_of_memFloat h; rwa [FloatCode.canon_posInf] at this
 
+omit [Boxes.Ambient] in
 theorem AVal.has_negInf_of_mem {a : AVal} (h : a.Mem (.float FloatCode.negInf)) :
     a.has FloatCode.negInf = true := by
   have := AVal.has_of_memFloat h; rwa [FloatCode.canon_negInf] at this
 
+omit [Boxes.Ambient] in
 theorem AVal.negFinite_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i)
     (h1 : FloatCode.negInf < k.norm i) (h2 : k.norm i < 0) : a.negFinite = true := by
   obtain ⟨b, hb, hm, -⟩ := h
@@ -578,6 +583,7 @@ def BinFn.mayNanBy (f : BinFn) (pa pb : Int → Bool) : Bool :=
   | .fmod => inf pa
   | _ => true
 
+omit [Boxes.Ambient] in
 /-- The predicates read canonical codes, as the analysis does: `-0.0` is
 `0.0` there. -/
 theorem BinFn.mayNanBy_sound {f : BinFn} {pa pb : Int → Bool} {a b : Int}

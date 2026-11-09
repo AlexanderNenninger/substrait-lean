@@ -205,11 +205,13 @@ read with one zero. -/
 def maxNanGreatest (vs : List Int) (r : Value) : Value :=
   if vs.any (fun x => decide (canon x = nan)) then .float nan else canonV r
 
+omit [Boxes.Ambient] in
 /-- `Value.le` of two canonical doubles compares their codes. -/
 theorem le_canon_float {a b : Int} (h : (Value.float (canon a)).le (.float (canon b)) = true) :
     canon a ≤ canon b := by
   rw [Value.le_float, canon_idem, canon_idem] at h; exact of_decide_eq_true h
 
+omit [Boxes.Ambient] in
 theorem map_canon_cons (v : Int) (vs : List Int) :
     (Value.float (canon v) :: vs.map fun c => Value.float (canon c)) =
       (v :: vs).map fun c => Value.float (canon c) := rfl

@@ -530,6 +530,7 @@ theorem arith_sound {tbl : NumKind → NumKind → Option NumKind} {op : Bound �
     (fun _ _ _ _ _ _ hr => by cases hr) ha hb
     (fun k k' ko i j _ htb hr => by cases hr; exact hc k k' ko i j htb)
 
+omit [Boxes.Ambient] in
 /-- The functions of two doubles give canonical codes (D31). -/
 theorem floatsOnly_out {f : Int → Int → Int}
     (h : ∀ a b, FloatCode.canon (f (FloatCode.canon a) (FloatCode.canon b)) =
@@ -812,6 +813,7 @@ theorem pickAbs_int_right {both : Bound → Bound → Bound} {a b : AVal} {y : B
     ∃ c, (pickAbs both a b).int = some c ∧ c.Mem r := by
   simp only [pickAbs, hn, hy, ↓reduceIte]; exact joinInt_mem_right (joinInt_mem_left ⟨y, rfl, hr⟩)
 
+omit [Boxes.Ambient] in
 theorem Value.ltB_vals (k : NumKind) (i j : Int) :
     Value.ltB (k.val i) (k.val j) = decide (k.norm i < k.norm j) := by
   cases k <;> first | rfl | simp [Value.ltB, NumKind.val, Value.numPair] <;> rfl
@@ -1540,10 +1542,12 @@ theorem Value.eq_true_of_isTrue {v : Value} (h : v.isTrue = true) : v = .bool tr
 def EnvMem (env : List AVal) (row : Row) : Prop :=
   ∀ i, (env.getD i AVal.top).Mem (row.getD i .null)
 
+omit [Boxes.Ambient] in
 /-- Abstract values read rows up to canonical codes. -/
 theorem EnvMem.of_canon {env : List AVal} {x y : Row} (h : EnvMem env y) (he : x.canon = y.canon) :
     EnvMem env x := fun i => AVal.mem_of_canonV_eq (getD_canonV_of_canon he i) (h i)
 
+omit [Boxes.Ambient] in
 /-- A lambda's body reads its parameter in front of the row (D28). -/
 theorem EnvMem.cons {env : List AVal} {row : Row} {e : AVal} {x : Value} (hx : e.Mem x)
     (h : EnvMem env row) : EnvMem (e :: env) (x :: row)

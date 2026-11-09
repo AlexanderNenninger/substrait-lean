@@ -101,6 +101,7 @@ def Expr.eqCols : Expr → List (Nat × Nat)
       | _, _ => []
   | _ => []
 
+variable [Boxes.Ambient]
 theorem add_int_congr {x y : Value} {c : Int} (h : x.canonV = y.canonV) :
     BinFn.apply .add x (.int c) = BinFn.apply .add y (.int c) := by
   cases x <;> cases y <;> simp_all [BinFn.apply, Value.canonV]
@@ -457,6 +458,7 @@ values alone. -/
 def AVal.noDoubles (a : AVal) : Bool :=
   !a.list && !a.struct && (a.int.isNone || a.nk.any (· != .float))
 
+omit [Boxes.Ambient] in
 theorem AVal.canonV_of_noDoubles {a : AVal} {v : Value} (h : a.noDoubles = true) (hm : a.Mem v) :
     v.canonV = v := by
   simp only [AVal.noDoubles, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true,
@@ -472,6 +474,7 @@ theorem AVal.canonV_of_noDoubles {a : AVal} {v : Value} (h : a.noDoubles = true)
   | struct vs => exact absurd hm.1 (by simp [hs])
   | _ => simp [Value.canonV]
 
+omit [Boxes.Ambient] in
 /-- Rows that an environment without doubles describes are canonical. -/
 theorem Row.canon_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
     (h : env.all AVal.noDoubles = true) (hl : row.length = env.length) : row.canon = row := by
@@ -484,6 +487,7 @@ theorem Row.canon_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
   rw [he, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h₂] at this
   simpa using AVal.canonV_of_noDoubles (List.all_eq_true.mp h _ (List.getElem_mem _)) this
 
+omit [Boxes.Ambient] in
 /-- A value of an abstract value without doubles is alone in its class. -/
 theorem AVal.lone_of_noDoubles {a : AVal} {v : Value} (h : a.noDoubles = true) (hm : a.Mem v) :
     v.Lone := by
@@ -498,6 +502,7 @@ theorem AVal.lone_of_noDoubles {a : AVal} {v : Value} (h : a.noDoubles = true) (
   · exact absurd hm.1 (by simp [hl])
   · exact absurd hm.1 (by simp [hs])
 
+omit [Boxes.Ambient] in
 /-- A row of an environment without doubles is alone in its class. -/
 theorem Row.lone_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
     (h : env.all AVal.noDoubles = true) (hl : row.length = env.length) : row.Lone := by
@@ -509,6 +514,7 @@ theorem Row.lone_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
   rw [he, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi] at this
   exact AVal.lone_of_noDoubles (List.all_eq_true.mp h _ (List.getElem_mem _)) (by simpa using this)
 
+omit [Boxes.Ambient] in
 theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (ha : a.Mem v)
     (hb : b.Mem w) : v ≠ w := by
   rintro rfl
@@ -785,6 +791,7 @@ theorem windowRows_rowNumber_key {part : List Nat} {fns : List WinFn} {n t : Nat
         List.length_nil, and_true, Value.canonV] at hrn
       omega
 
+omit [Boxes.Ambient] in
 /-- All the columns of a row are the row, canonical. -/
 theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n) x = x.canon := by
   subst h
@@ -794,6 +801,7 @@ theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n
   simp only [List.length_map, List.length_range] at h₁
   simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h₁]
 
+omit [Boxes.Ambient] in
 theorem keyOf_range_append {k rest : Row} : keyOf (List.range k.length) (k ++ rest) = k.canon := by
   unfold keyOf Row.canon
   apply List.ext_getElem (by simp)
@@ -844,6 +852,7 @@ theorem aggOrderAllowed_key {gs : List Expr} {ms : List Measure} {rows out : Rel
     rw [← List.pairwise_map, hmap hl h, List.pairwise_map]
     exact hks.1
 
+omit [Boxes.Ambient] in
 theorem KeyOn.eq_of_keyOf {k : List Nat} : ∀ {rows : Relation}, KeyOn k rows →
     ∀ {x y : Row}, x ∈ rows → y ∈ rows → keyOf k x = keyOf k y → x = y
   | [], _, _, _, hx, _, _ => by simp at hx
@@ -857,6 +866,7 @@ theorem KeyOn.eq_of_keyOf {k : List Nat} : ∀ {rows : Relation}, KeyOn k rows �
       · exact absurd he.symm (h.1 x hx)
       · exact KeyOn.eq_of_keyOf h.2 hx hy he
 
+omit [Boxes.Ambient] in
 /-- A key holds on any list of distinct rows drawn from the rows. -/
 theorem KeyOn.of_subset {k : List Nat} {rows l : Relation} (h : KeyOn k rows)
     (hsub : ∀ x ∈ l, x ∈ rows) (hl : l.Nodup) : KeyOn k l :=

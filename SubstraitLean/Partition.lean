@@ -363,6 +363,7 @@ theorem flatten_map_filter {α β : Type} (l : List α) (p : α → Bool) (f : �
     · simp [hp, ih]
     · simp [hp, ih, h a (by simpa using hp)]
 
+omit [Boxes.Ambient] in
 /-- A lawful `==` is `decide` of `=` (rows have two, from `List` and from
 `DecidableEq`). -/
 theorem beq_decide {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (a b : α) :
@@ -1658,6 +1659,7 @@ def fabsExpr (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float 0))) (.un .f
 (`<` reads canonical codes, `-` is IEEE's, so `-0.0` stays). -/
 def fabsCode (c : Int) : Int := if FloatCode.canon c < 0 then FloatCode.negI c else c
 
+omit [Boxes.Ambient] in
 /-- On finite codes, `fabsCode` is the magnitude's code. -/
 theorem fabsCode_fin {c : Int} (hc : FloatCode.IsFin c) :
     fabsCode c = if c < 0 then -c else c := by
@@ -1671,6 +1673,7 @@ theorem fabsCode_fin {c : Int} (hc : FloatCode.IsFin c) :
     unfold FloatCode.negI; split <;> (try split) <;> omega
   · simp only [hneg, ↓reduceIte]
 
+omit [Boxes.Ambient] in
 theorem canon_fabsCode {c : Int} (hc : FloatCode.IsFin c) : FloatCode.canon (fabsCode c) = fabsCode c := by
   rw [fabsCode_fin hc]
   have := FloatCode.negInf_eq; have := FloatCode.posInf_eq
@@ -1799,6 +1802,7 @@ theorem exactSum_append (a b : List Value) : exactSum (a ++ b) = exactSum a + ex
   | nil => simp [exactSum]
   | cons v a ih => cases v <;> simp [exactSum, ih] <;> omega
 
+omit [Boxes.Ambient] in
 theorem exactSum_natAbs_le {cs : List Int} (hf : ∀ c ∈ cs, FloatCode.canon c = c) :
     (exactSum (cs.map .float)).natAbs ≤ absExact cs := by
   induction cs with
@@ -1827,6 +1831,7 @@ theorem floatSumCR_of_le {cs : List Int} (h : ∀ c ∈ cs, (FloatCode.scaled c)
     have hfc := isFin_of_scaled_le (c := c) (by have := h c hc; omega)
     rwa [FloatCode.canon_of_bounds hfc], Option.getD_none]
 
+omit [Boxes.Ambient] in
 theorem scaled_fabsCode {c : Int} (hf : FloatCode.IsFin c) :
     FloatCode.scaled (fabsCode c) = (FloatCode.scaled c).natAbs := by
   rw [fabsCode_fin hf]

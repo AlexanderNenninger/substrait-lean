@@ -419,6 +419,7 @@ theorem not_isNull {v : Value} (h : (UnFn.apply .not (UnFn.apply .isNull v)).isT
     v ≠ .null := by
   cases v <;> simp_all [UnFn.apply, Value.isTrue]
 
+omit [Boxes.Ambient] in
 theorem Value.canonV_val (k : NumKind) (i : Int) : (k.val i).canonV = k.val (k.norm i) := by
   cases k <;> simp only [NumKind.val, Value.canonV, NumKind.norm_float, NumKind.norm_int,
     NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
@@ -571,6 +572,7 @@ theorem allMatch_true {v : Value} {p : Value → Value}
       · exact ih h.2 x hx
   all_goals simp [HoFn.apply, Value.isTrue] at h
 
+omit [Boxes.Ambient] in
 /-- `-x` of a negative canonical code is its code negation (D31). -/
 theorem canon_negI_of_neg {a : Int} (ha : FloatCode.canon a < 0) :
     FloatCode.canon (FloatCode.negI a) = -FloatCode.canon a := by

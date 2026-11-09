@@ -22,6 +22,8 @@ generated_entries
 
 open Substrait
 
+variable [Boxes.Ambient]
+
 local macro "native_tac" : tactic => `(tactic| lowering_native [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow, Substrait.atan2?, Substrait.logb?])
 local macro "un_tac" : tactic =>
   `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow, Substrait.atan2?, Substrait.logb?] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]

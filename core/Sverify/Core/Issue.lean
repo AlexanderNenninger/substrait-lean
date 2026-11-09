@@ -185,6 +185,7 @@ def nanCase : BinFn → Int → Int → Bool
 
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
+omit [Boxes.Ambient] in
 /-- Where IEEE division's NaN case holds (`∞ / ∞`, `0 / 0`), IEEE division
 gives the NaN itself: an engine computing IEEE's `/` needs no option there. -/
 theorem fdiv_of_nanCase_ieee {a b : Int} (h : nanCase .fdivIeee a b = true) :

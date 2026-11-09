@@ -572,17 +572,24 @@ def NumKind.norm : NumKind → Int → Int
   | .float, i => FloatCode.canon i
   | _, i => i
 
+omit [Boxes.Ambient] in
 /-- `norm` of a double, for `rw`: `simp` would unfold `canon`'s constants. -/
 theorem NumKind.norm_float (i : Int) : NumKind.float.norm i = FloatCode.canon i := rfl
 
+omit [Boxes.Ambient] in
 theorem NumKind.norm_zero : ∀ k : NumKind, k.norm 0 = 0
   | .float => FloatCode.canon_zero
   | .int | .date | .ts | .tod | .dec _ => rfl
 
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_int (i : Int) : NumKind.int.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_date (i : Int) : NumKind.date.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_ts (i : Int) : NumKind.ts.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_tod (i : Int) : NumKind.tod.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_dec (s : Nat) (i : Int) : (NumKind.dec s).norm i = i := rfl
 
 /-- A value with its doubles canonical, in lists and structs too: `-0.0` is
@@ -594,13 +601,17 @@ def Value.canonV : Value → Value
   | .struct vs => .struct (vs.map Value.canonV)
   | v => v
 
+omit [Boxes.Ambient] in
 theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by
   simp only [Value.canonV]
+omit [Boxes.Ambient] in
 theorem Value.canonV_list (vs : List Value) : (Value.list vs).canonV = .list (vs.map Value.canonV) := by
   simp only [Value.canonV]
+omit [Boxes.Ambient] in
 theorem Value.canonV_struct (vs : List Value) : (Value.struct vs).canonV = .struct (vs.map Value.canonV) := by
   simp only [Value.canonV]
 
+omit [Boxes.Ambient] in
 /-- `canonV` keeps a value's kind, so two values compare as numbers exactly
 when their canonical values do. -/
 theorem Value.numPair_canonV_isNone (a b : Value) :
