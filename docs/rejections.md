@@ -54,11 +54,11 @@ below the division guards it.
 
 Under `semantics="duckdb"`, `"polars"` or `"spark"` the plan is checked
 against what that engine does ([Verifying: the two paths](verifying.md)).
-An engine's profile differs from the reference only where its facts record
-a difference: DuckDB's on the doubles and integers where DuckDB was probed
-to differ, Polars's on integer `//` and `%`, which floor. Spark's profile
-evaluates as the reference does, so it raises in the same places.
-Elsewhere the same cases raise, and the same preconditions rule them out.
+Under an engine's profile, a plan is rejected where that engine raises, as
+its facts record, and the same preconditions rule each case out. Where the
+facts record a value the reference would raise on, the profile gives that
+value: DuckDB's profile follows DuckDB's probed behaviour on doubles and
+integers, and Polars's floors integer `//` and `%`.
 
 ## Reading a refusal
 
