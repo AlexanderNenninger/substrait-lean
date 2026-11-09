@@ -86,6 +86,7 @@ theorem Expr.raises_of_eager {p : Profile} {row : Row} :
       · exact raises_of_eager h hs
     simp only [RaisesOn, evalP]; exact Outcome.bind_error hl
 
+variable [Boxes.Ambient]
 theorem Expr.evalI_subst {I : Impl} (σ : List Expr) (row : Row) :
     ∀ e : Expr, (e.subst σ).eval row I = e.eval (σ.map (·.eval row I)) I
   | .lit _ => rfl
@@ -245,6 +246,7 @@ def Rel.bindStep (n : Nat) (es : List Expr) : Option (List Expr × List Expr) :=
     some (ss, es')
   else none
 
+omit [Boxes.Ambient] in
 theorem Rel.bindStep_spec {n : Nat} {es ss es' : List Expr} (h : Rel.bindStep n es = some (ss, es')) :
     es'.map (·.subst (bindSubst n ss)) = es ∧ ∀ s ∈ ss, ∃ e ∈ es, s ∈ e.eager := by
   unfold Rel.bindStep at h
@@ -274,6 +276,7 @@ def Rel.fuseEmit (r : Rel) (m : List Nat) : Rel :=
   | .emit r' m₁ => if m.all (· < m₁.length) then .emit r' (m.map (m₁.getD · 0)) else .emit r m
   | _ => .emit r m
 
+omit [Boxes.Ambient] in
 theorem fuseEmit_row {m₁ m : List Nat} (h : m.all (· < m₁.length) = true) (row : Row) :
     m.map ((m₁.map (row.getD · .null)).getD · .null) = (m.map (m₁.getD · 0)).map (row.getD · .null) := by
   rw [List.map_map]
@@ -300,6 +303,7 @@ theorem Rel.raises_fuseEmit {p : Profile} {cat : Catalog} (r : Rel) (m : List Na
   · split <;> simp [Raises]
   · exact Iff.rfl
 
+omit [Boxes.Ambient] in
 theorem Rel.arity_fuseEmit {cat : Catalog} (r : Rel) (m : List Nat) :
     (Rel.fuseEmit r m).arity cat = m.length := by
   unfold fuseEmit
@@ -320,6 +324,7 @@ def Rel.bindProject (n : Nat) : Nat → Rel → List Expr → Rel
 
 /-! ### The rows of one step -/
 
+omit [Boxes.Ambient] in
 theorem range_map_getD {row : Row} {n : Nat} (h : row.length = n) :
     (List.range n).map (row.getD · .null) = row := by
   subst h
@@ -333,6 +338,7 @@ theorem bindSubst_evalI {I : Impl} {row : Row} {n : Nat} (h : row.length = n) (s
   congr 1
   exact range_map_getD h
 
+omit [Boxes.Ambient] in
 /-- Reading the emit's columns from the row the step computes. -/
 theorem bindEmit_getD {row xs ys : Row} {n : Nat} (h : row.length = n) :
     (bindEmit n xs.length ys.length).map ((row ++ xs ++ ys).getD · .null) = row ++ ys := by
@@ -490,6 +496,7 @@ theorem Rel.evalI_arity {I : Impl} {cat : Catalog} (hcat : cat.WF) :
 
 /-! ### A projection, step by step -/
 
+omit [Boxes.Ambient] in
 theorem Rel.arity_bindProject {cat : Catalog} :
     ∀ (fuel : Nat) {n : Nat} {r : Rel} {es : List Expr}, r.arity cat = n →
       (Rel.bindProject n fuel r es).arity cat = n + es.length
@@ -576,6 +583,7 @@ theorem Expr.evalI_append {I : Impl} {e : Expr} {n : Nat} {row : Row} (extra : R
     congr 1; funext x
     exact ihb (row := x :: row) he.2 (by simp [hlen])
 
+omit [Boxes.Ambient] in
 theorem Expr.evalP_append {p : Profile} {e : Expr} {n : Nat} {row : Row} (extra : Row)
     (he : e.refsLt n) (hlen : row.length = n) :
     e.evalP p (row ++ extra) = e.evalP p row := by
@@ -674,6 +682,7 @@ theorem PulledFrom.evalI {I : Impl} {g : Row → Row} {rows : Relation} {m' m : 
     | (rw [hsort, hin _ hsorted])
     | (rw [hin _ hsub])
 
+omit [Boxes.Ambient] in
 theorem AllPulled.map_eq {α β γ : Type} {R : α → β → Prop} {f : α → γ} {g : β → γ}
     (h : ∀ a b, R a b → f a = g b) : ∀ {as : List α} {bs : List β}, AllPulled R as bs →
       as.map f = bs.map g
@@ -681,6 +690,7 @@ theorem AllPulled.map_eq {α β γ : Type} {R : α → β → Prop} {f : α → 
   | _ :: _, _ :: _, ⟨hab, hr⟩ => by simp [h _ _ hab, AllPulled.map_eq h hr]
   | [], _ :: _, h' | _ :: _, [], h' => h'.elim
 
+omit [Boxes.Ambient] in
 theorem AllPulled.map_eq_mem {α β γ : Type} {R : α → β → Prop} {f : α → γ} {g : β → γ} :
     ∀ {as : List α} {bs : List β}, AllPulled R as bs → (∀ a b, R a b → b ∈ bs → f a = g b) →
       as.map f = bs.map g
@@ -690,6 +700,7 @@ theorem AllPulled.map_eq_mem {α β γ : Type} {R : α → β → Prop} {f : α 
       AllPulled.map_eq_mem hr fun a b hr' hb => h a b hr' (by simp [hb])]
   | [], _ :: _, h', _ | _ :: _, [], h', _ => h'.elim
 
+omit [Boxes.Ambient] in
 theorem AllPulled.mem_left {α β : Type} {R : α → β → Prop} :
     ∀ {as : List α} {bs : List β}, AllPulled R as bs → ∀ a ∈ as, ∃ b ∈ bs, R a b
   | [], [], _, _, h => by simp at h
@@ -701,6 +712,7 @@ theorem AllPulled.mem_left {α β : Type} {R : α → β → Prop} :
       exact ⟨b, by simp [hb], hr'⟩
   | [], _ :: _, h', _, _ | _ :: _, [], h', _, _ => h'.elim
 
+omit [Boxes.Ambient] in
 theorem AllPulled.mem_right {α β : Type} {R : α → β → Prop} :
     ∀ {as : List α} {bs : List β}, AllPulled R as bs → ∀ b ∈ bs, ∃ a ∈ as, R a b
   | [], [], _, _, h => by simp at h
@@ -747,6 +759,7 @@ def Rel.pullArgs (n fuel : Nat) (r : Rel) (gs : List Expr) (ms : List Measure) :
     .aggregate (Rel.bindProject n fuel r (ms.map (·.arg))) gs (pullMeasures n ms)
   else .aggregate r gs ms
 
+omit [Boxes.Ambient] in
 theorem pullArgs_sorts {n : Nat} {ms : List Measure} (h : ms.all (·.sort.all (·.col < n)) = true) :
     ∀ m ∈ ms, ∀ k ∈ m.sort, k.col < n := fun m hm k hk => by
   have := List.all_eq_true.mp (List.all_eq_true.mp h m hm) k hk
@@ -769,6 +782,7 @@ theorem Rel.evalI_pullArgs {I : Impl} {cat : Catalog} {n fuel : Nat} {r : Rel} {
       (fun m hm => ⟨(hms m hm).2, pullArgs_sorts h.1 m hm⟩) hp
   · rfl
 
+omit [Boxes.Ambient] in
 /-- The expressions of a measure that can raise: its argument and filter. -/
 theorem Measure.raises_exprs {p : Profile} {row : Row} (m : Measure) :
     (∃ e ∈ m.exprs, e.RaisesOn p row) ↔ m.arg.RaisesOn p row ∨ ∃ c ∈ m.filter, c.RaisesOn p row := by
@@ -784,6 +798,7 @@ theorem Measure.raises_exprs {p : Profile} {row : Row} (m : Measure) :
     · exact ⟨_, List.mem_cons_self .., h⟩
     · exact ⟨c, List.mem_cons_of_mem _ (List.mem_append_left _ (by simpa using hc)), h⟩
 
+omit [Boxes.Ambient] in
 theorem pullMeasures_arg : ∀ {base : Nat} {ms : List Measure}, ∀ m ∈ pullMeasures base ms,
     ∃ j, m.arg = .field j
   | _, [], _, h => by simp [pullMeasures] at h
@@ -880,14 +895,17 @@ def Rel.bindArgs (cat : Catalog) : Rel → Rel
   | .aggregate r gs ms => Rel.pullArgs (r.arity cat) bindFuel (r.bindArgs cat) gs ms
   | .unnest r c => .unnest (r.bindArgs cat) c
 
+omit [Boxes.Ambient] in
 theorem pullMeasures_length : ∀ {base : Nat} {ms : List Measure}, (pullMeasures base ms).length = ms.length
   | _, [] => rfl
   | _, _ :: _ => by simp [pullMeasures, pullMeasures_length]
 
+omit [Boxes.Ambient] in
 theorem Rel.arity_pullArgs {cat : Catalog} {n fuel : Nat} {r : Rel} {gs : List Expr} {ms : List Measure} :
     (Rel.pullArgs n fuel r gs ms).arity cat = gs.length + ms.length := by
   unfold pullArgs; split <;> simp [arity, pullMeasures_length]
 
+omit [Boxes.Ambient] in
 theorem Rel.arity_bindArgs {cat : Catalog} : ∀ r : Rel, (r.bindArgs cat).arity cat = r.arity cat
   | .read _ | .values _ _ => rfl
   | .aggregate _ _ _ => by simp only [bindArgs, arity_pullArgs, arity]
@@ -966,6 +984,7 @@ theorem Rel.raises_bindArgs {p : Profile} {cat : Catalog} (hcat : cat.WF) :
     simp only [bindArgs, Raises, raises_bindArgs hcat hwf.1, raises_bindArgs hcat hwf.2.1,
       evalI_bindArgs hcat hwf.1, evalI_bindArgs hcat hwf.2.1]
 
+omit [Boxes.Ambient] in
 /-- The pass reads the catalog's arities only (`Rel.arity_congr`). -/
 theorem Rel.bindArgs_congr {c₁ c₂ : Catalog} (h : ∀ t, (c₁ t).arity = (c₂ t).arity) :
     ∀ r : Rel, r.bindArgs c₁ = r.bindArgs c₂

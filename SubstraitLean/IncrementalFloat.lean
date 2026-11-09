@@ -102,6 +102,7 @@ theorem nonFinite_eq (vs : List Value) :
     show (fun c : Int => decide (c ≤ negInf)) = isNegInfCode from rfl, h1, h2, h3]
   simp only [decide_eq_true_eq]
 
+variable [Boxes.Ambient]
 /-- **The exact state finishes to `SUM` and `AVG` of doubles.** -/
 theorem floatState_sound {m : Measure} (hf : m.fn = .fsum ∨ m.fn = .avg)
     (hd : m.distinct = false) : (floatState (m.fn == .avg)).Sound m := by
@@ -169,20 +170,24 @@ def pairFeat (f : Int × Int → Int) (v : Value) : Int := ((pairOf v).map f).ge
 def pairCount (p : Int → Bool) (v : Value) : Int :=
   pairFeat (fun q => (if p q.1 then 1 else 0) + (if p q.2 then 1 else 0)) v
 
+omit [Boxes.Ambient] in
 theorem foldr_add_eq_sum (xs : List Int) : xs.foldr (· + ·) 0 = xs.sum := rfl
 
+omit [Boxes.Ambient] in
 theorem scaledSum_floatsOf : ∀ vs : List Value, scaledSum (floatsOf vs) = (vs.map exactOf).sum
   | [] => rfl
   | v :: vs => by
     have ih := scaledSum_floatsOf vs
     cases v <;> simp_all [floatsOf, scaledSum, exactOf, foldr_add_eq_sum]
 
+omit [Boxes.Ambient] in
 theorem sqSumOf_floatsOf : ∀ vs : List Value, sqSumOf (floatsOf vs) = (vs.map sqOf).sum
   | [] => rfl
   | v :: vs => by
     have ih := sqSumOf_floatsOf vs
     cases v <;> simp_all [floatsOf, sqSumOf, sqOf, foldr_add_eq_sum]
 
+omit [Boxes.Ambient] in
 theorem floatsOf_length : ∀ {vs : List Value}, (∀ v ∈ vs, ∃ c, v = .float c) →
     (floatsOf vs).length = vs.length
   | [], _ => rfl
@@ -191,10 +196,12 @@ theorem floatsOf_length : ∀ {vs : List Value}, (∀ v ∈ vs, ∃ c, v = .floa
     have := floatsOf_length fun w hw => h w (List.mem_cons_of_mem _ hw)
     simp_all [floatsOf]
 
+omit [Boxes.Ambient] in
 theorem pairsOf_eq (vs : List Value) : pairsOf vs = vs.filterMap pairOf := by
   unfold pairsOf
   congr 1
 
+omit [Boxes.Ambient] in
 /-- A sum over the pairs is the sum of its feature over the values. -/
 theorem pairs_sum (f : Int × Int → Int) : ∀ vs : List Value,
     ((pairsOf vs).map f).sum = (vs.map (pairFeat f)).sum
@@ -205,6 +212,7 @@ theorem pairs_sum (f : Int × Int → Int) : ∀ vs : List Value,
     simp only [List.filterMap_cons, List.map_cons, List.sum_cons, pairFeat]
     cases pairOf v <;> simp [ih]
 
+omit [Boxes.Ambient] in
 theorem pairs_length : ∀ vs : List Value,
     ((pairsOf vs).length : Int) = (vs.map (pairFeat fun _ => 1)).sum
   | [] => rfl
@@ -214,6 +222,7 @@ theorem pairs_length : ∀ vs : List Value,
     simp only [List.filterMap_cons, List.map_cons, List.sum_cons, pairFeat]
     cases pairOf v <;> simp [ih] <;> omega
 
+omit [Boxes.Ambient] in
 theorem pairCodes_count (p : Int → Bool) : ∀ ps : List (Int × Int),
     ((pairCodes ps).map (codeCount p)).sum =
       (ps.map fun q => (if p q.1 then 1 else 0) + (if p q.2 then 1 else 0)).sum
@@ -224,6 +233,7 @@ theorem pairCodes_count (p : Int → Bool) : ∀ ps : List (Int × Int),
       List.map_nil, List.sum_cons, List.sum_nil, codeCount] at this ⊢
     rw [this]; omega
 
+omit [Boxes.Ambient] in
 theorem nonFinite_pairs (vs : List Value) :
     nonFinite (pairCodes (pairsOf vs)) = nonFiniteOf ((vs.map (pairCount isNanCode)).sum)
       ((vs.map (pairCount isPosInfCode)).sum) ((vs.map (pairCount isNegInfCode)).sum) := by
@@ -303,26 +313,32 @@ def corrState : LinState where
         let mg := min (sqrtMag (c.natAbs * c.natAbs * 2 ^ 2148) (nx * ny).toNat) (2 ^ 1074)
         .float (if c < 0 then -posCode mg else posCode mg)
 
+omit [Boxes.Ambient] in
 theorem sum_map_one {α : Type} : ∀ xs : List α, (xs.map fun _ => (1 : Int)).sum = xs.length
   | [] => rfl
   | _ :: xs => by rw [List.map_cons, List.sum_cons, sum_map_one xs, List.length_cons]; omega
 
+omit [Boxes.Ambient] in
 theorem scaledSum_fst (ps : List (Int × Int)) :
     scaledSum (ps.map (·.1)) = (ps.map fun q => scaled q.1).sum := by
   simp [scaledSum, List.map_map, Function.comp_def, foldr_add_eq_sum]
 
+omit [Boxes.Ambient] in
 theorem scaledSum_snd (ps : List (Int × Int)) :
     scaledSum (ps.map (·.2)) = (ps.map fun q => scaled q.2).sum := by
   simp [scaledSum, List.map_map, Function.comp_def, foldr_add_eq_sum]
 
+omit [Boxes.Ambient] in
 theorem sqSumOf_fst (ps : List (Int × Int)) :
     sqSumOf (ps.map (·.1)) = (ps.map fun q => scaled q.1 * scaled q.1).sum := by
   simp [sqSumOf, List.map_map, Function.comp_def, foldr_add_eq_sum]
 
+omit [Boxes.Ambient] in
 theorem sqSumOf_snd (ps : List (Int × Int)) :
     sqSumOf (ps.map (·.2)) = (ps.map fun q => scaled q.2 * scaled q.2).sum := by
   simp [sqSumOf, List.map_map, Function.comp_def, foldr_add_eq_sum]
 
+omit [Boxes.Ambient] in
 theorem prodSumOf_eq (ps : List (Int × Int)) :
     prodSumOf ps = (ps.map fun q => scaled q.1 * scaled q.2).sum := rfl
 

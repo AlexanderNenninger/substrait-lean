@@ -41,6 +41,7 @@ structure Knowledge where
   /-- At most this many rows. -/
   rows : Option Nat := none
 
+variable [Boxes.Ambient]
 /-- The rows fit the knowledge. -/
 def Knowledge.Mem (k : Knowledge) (rows : Relation) : Prop :=
   (∀ row ∈ rows, EnvMem k.cols row) ∧ (∀ row ∈ rows, FactsHold k.facts row) ∧

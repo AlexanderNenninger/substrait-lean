@@ -30,6 +30,7 @@ theorem Rel.facts_congr (h : ∀ t, (c t).arity = (cat t).arity) (F : String →
   | .join a b ty _ => by
       cases ty <;> simp only [facts, facts_congr h F T a, facts_congr h F T b, arity_congr h a]
 
+variable [Boxes.Ambient]
 theorem Rel.aeval_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (T : WindowKeys) (sz : Bool) :
     ∀ r : Rel, r.aeval c A F T sz = r.aeval cat A F T sz ∧

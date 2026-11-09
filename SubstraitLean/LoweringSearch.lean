@@ -1,6 +1,7 @@
 import Lean
 import SubstraitLean.LoweringHint
 import Sverify.Engines.Generated
+import SubstraitLean.DuckDBBoxes
 
 /-!
 # The lowering generator (#241)
@@ -361,6 +362,8 @@ def sampleCtor (c : Name) : TermElabM (Option Lean.Expr) := do
       | none => return none
     return some (mkAppN (Lean.mkConst c) args)
 
+-- The generator searches DuckDB's lowering: DuckDB's black boxes (#1189).
+open scoped Substrait.DuckDB
 /-- The construct's reference outcome on a row of arguments, and the construct
 applied to expressions, for the closed instance `e` (a `UnFn` if `unary`). -/
 def sampleFns (e : Lean.Expr) (unary : Bool) :

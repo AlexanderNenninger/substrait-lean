@@ -18,6 +18,7 @@ open Substrait
 local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
+open scoped Substrait.DuckDB
 theorem Substrait.liftDuckDB.avgBigint_agree : ∀ (vs : List Substrait.Value),
   (∀ (v : Substrait.Value),
       v ∈ vs → Substrait.DuckType.Has (Substrait.DuckAgg.arg Substrait.DuckAgg.avgBigint) v) →

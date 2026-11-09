@@ -16,6 +16,7 @@ DuckDB has no function for `UnFn.fit`: its profile computes it as the
 reference does, but the SQL printer has nothing to print, so every template
 must avoid it (`excluding`). These lemmas let the proofs compute it. -/
 
+variable [Boxes.Ambient]
 theorem Lowering.ref_fit (m : OverflowMode) (w : IntWidth) (x : Value) :
     Profile.reference.un (.fit m w) x = .ok (UnFn.apply (.fit m w) x) := by
   cases x <;> rfl

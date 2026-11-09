@@ -127,6 +127,7 @@ def eqPair (n : Nat) : Expr → Option (Nat × Nat)
     if i < n ∧ n ≤ j then some (i, j - n) else if j < n ∧ n ≤ i then some (j, i - n) else none
   | _ => none
 
+variable [Boxes.Ambient]
 /-- Does every left row of `a ⟕ b ON on` have a match, by a foreign key? -/
 def Rel.fkMatch (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (R : ForeignKeys) (a b : Rel) (on : Expr) : Bool :=
@@ -424,6 +425,7 @@ theorem Measure.eval_dropDistinct {ks : List (List Nat)} {rows : Relation}
     · simp at hc
   · rfl
 
+omit [Boxes.Ambient] in
 theorem Measure.refsLt_dropDistinct {ks : List (List Nat)} {n : Nat} {m : Measure}
     (h : m.refsLt n) : (m.dropDistinct ks).refsLt n := by
   unfold dropDistinct; split <;> exact h
@@ -450,6 +452,7 @@ def CoverOk (cat : Catalog) (r : Rel) : Prop :=
   ∀ {j t p}, r.cover cat j = some (t, p) → ∀ y ∈ (cat t).rows, y.getD p .null ≠ .null →
     ∃ z ∈ r.eval cat, z.getD j .null = y.getD p .null
 
+omit [Boxes.Ambient] in
 theorem getD_replicate_null (k j : Nat) : (List.replicate k Value.null).getD j .null = .null := by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_replicate]
   split <;> rfl
@@ -692,6 +695,7 @@ theorem filter_leftJoin {A B : Relation} {on c : Expr} {k : Nat}
       simp [h x (by simp)]
     · rfl
 
+omit [Boxes.Ambient] in
 theorem EnvMem.nullRow (n : Nat) : EnvMem (nullRow n) (List.replicate n .null) := by
   intro j
   rw [getD_replicate_null]
@@ -700,6 +704,7 @@ theorem EnvMem.nullRow (n : Nat) : EnvMem (nullRow n) (List.replicate n .null) :
 
 /-! ### Join elimination -/
 
+omit [Boxes.Ambient] in
 /-- A list whose elements are pairwise "different" under the empty relation has
 at most one element. -/
 theorem eq_nil_or_singleton {α : Type} : ∀ {l : List α}, l.Pairwise (fun _ _ => False) →
@@ -708,6 +713,7 @@ theorem eq_nil_or_singleton {α : Type} : ∀ {l : List α}, l.Pairwise (fun _ _
   | [a], _ => .inr ⟨a, rfl⟩
   | _ :: b :: _, h => by simp at h; exact absurd rfl (h.1 b).1
 
+omit [Boxes.Ambient] in
 /-- Each left row with exactly one output row extending it. -/
 theorem flatMap_single {A : Relation} {G : Row → Relation}
     (h : ∀ x ∈ A, ∃ w, G x = [x ++ w]) :
@@ -723,6 +729,7 @@ theorem flatMap_single {A : Relation} {G : Row → Relation}
   · obtain ⟨w, hw⟩ := h x hx
     exact ⟨w, by simp [hw]⟩
 
+omit [Boxes.Ambient] in
 /-- Rows that agree on the sort columns sort alike. -/
 theorem sortLe_congr {ks : List SortKey} {x x' y y' : Row}
     (hx : ∀ k ∈ ks, x'.getD k.col .null = x.getD k.col .null)
@@ -808,12 +815,15 @@ theorem Measure.eval_min_const {e : Expr} {grp : Relation} {x : Row} (hx : x ∈
     rw [has] at hall ⊢
     exact hall _ (pickFold_mem _ a as)
 
+omit [Boxes.Ambient] in
 theorem FD.of_key {k : List Nat} {rows : Relation} (h : KeyOn k rows) (c : Nat) : FD k c rows :=
   fun _ hx _ hy he => by rw [KeyOn.eq_of_keyOf h hx hy he]
 
+omit [Boxes.Ambient] in
 theorem FD.mono {k : List Nat} {c : Nat} {rows rows' : Relation} (hsub : ∀ x ∈ rows', x ∈ rows)
     (h : FD k c rows) : FD k c rows' := fun x hx y hy => h x (hsub x hx) y (hsub y hy)
 
+omit [Boxes.Ambient] in
 theorem keyFds_sound {ks : List (List Nat)} {n : Nat} {rows : Relation} (h : ∀ k ∈ ks, KeyOn k rows) :
     ∀ fd ∈ keyFds ks n, FD fd.1 fd.2 rows := by
   intro fd hfd
@@ -821,6 +831,7 @@ theorem keyFds_sound {ks : List (List Nat)} {n : Nat} {rows : Relation} (h : ∀
   obtain ⟨k, hk, c, _, rfl⟩ := hfd
   exact FD.of_key (h k hk) c
 
+omit [Boxes.Ambient] in
 /-- Columns that agree on every row determine each other. -/
 theorem FD.of_eq {i j : Nat} {rows : Relation}
     (h : ∀ x ∈ rows, ∀ y ∈ rows, x.getD i .null = y.getD i .null → x.getD j .null = y.getD j .null) :
@@ -834,6 +845,7 @@ theorem eqFds_sound {c : Expr} {rows : Relation} (ht : ∀ x ∈ rows, (c.eval x
   · exact FD.of_eq fun x hx y hy => (Expr.eqCols_det (ht x hx) (ht y hy) p hp).1
   · exact FD.of_eq fun x hx y hy => (Expr.eqCols_det (ht x hx) (ht y hy) p hp).2
 
+omit [Boxes.Ambient] in
 /-- A dependency of the left rows holds on rows extending them. -/
 theorem FD.left {rows A : Relation} {n : Nat} (hA : ∀ x ∈ A, x.length = n)
     (hrows : ∀ r ∈ rows, ∃ x ∈ A, ∃ w, r = x ++ w) {fd : List Nat × Nat}
@@ -846,6 +858,7 @@ theorem FD.left {rows A : Relation} {n : Nat} (hA : ∀ x ∈ A, x.length = n)
   rw [getD_append_left' (by rw [hA x hx]; exact hr.2), getD_append_left' (by rw [hA y hy]; exact hr.2)]
   exact h x hx y hy he
 
+omit [Boxes.Ambient] in
 /-- A dependency of the right rows holds, shifted, on rows extending them. -/
 theorem FD.right {rows B : Relation} {n : Nat}
     (hrows : ∀ r ∈ rows, ∃ x w, x.length = n ∧ w ∈ B ∧ r = x ++ w) {fd : List Nat × Nat}
@@ -864,6 +877,7 @@ theorem FD.right {rows B : Relation} {n : Nat}
   rw [g1, g2]
   exact h w hw v hv he
 
+omit [Boxes.Ambient] in
 theorem fdClosure_sound {fds : List (List Nat × Nat)} {rows : Relation}
     (h : ∀ fd ∈ fds, FD fd.1 fd.2 rows) {x y : Row} (hx : x ∈ rows) (hy : y ∈ rows) :
     ∀ (fuel : Nat) (X : List Nat), (∀ i ∈ X, x.getD i .null = y.getD i .null) →
@@ -876,10 +890,12 @@ theorem fdClosure_sound {fds : List (List Nat × Nat)} {rows : Relation}
       obtain ⟨fd, ⟨hfd, hsub⟩, rfl⟩ := hi
       exact h fd hfd x hx y hy (List.map_inj_left.mpr fun c hc => hX c (hsub c hc))
 
+omit [Boxes.Ambient] in
 theorem emitPos?_spec {m : List Nat} {x p : Nat} (h : emitPos? m x = some p) : m[p]? = some x := by
   have := List.find?_some h
   simpa using this
 
+omit [Boxes.Ambient] in
 theorem getD_emit {m : List Nat} {y : Row} {p x : Nat} (h : m[p]? = some x) :
     (m.map (y.getD · .null)).getD p .null = y.getD x .null := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]
@@ -891,6 +907,7 @@ theorem Expr.eval_congr_allFields {p : Nat → Bool} {r r' : Row}
     (he : e.allFields p = true) : e.eval r = e.eval r' :=
   Expr.eval_congr (row := r') (row' := r) h he
 
+omit [Boxes.Ambient] in
 theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.refsLt m) :
     ∀ e : Expr, (e.subst cols).refsLt m
   | .lit _ => trivial
@@ -908,6 +925,7 @@ theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.r
       · show 0 < m + 1; omega
       · exact Expr.refsLt_shift 0 (hc c' hc'')) b⟩
 
+omit [Boxes.Ambient] in
 theorem gpos_spec {gs : List Expr} {c q : Nat} (h : gpos gs c = some q) : gs[q]? = some (.field c) := by
   simpa using List.find?_some h
 
@@ -950,6 +968,7 @@ theorem aggregateEval_filter {gs : List Expr} {ms : List Measure} {A : Relation}
     · simp [he]
   rw [hgr]
 
+omit [Boxes.Ambient] in
 /-- Each left row with at most one partner. -/
 theorem flatMap_opt {A : Relation} {M : Row → Relation}
     (h : ∀ x ∈ A, M x = [] ∨ ∃ w, M x = [x ++ w]) :

@@ -30,10 +30,12 @@ open Retention (applyBatch filter_foldl_erase)
 
 variable {gs : List Expr} {ms : List Measure}
 
+variable [Boxes.Ambient]
 /-- Every row the batch deletes or inserts has a key in `K`. -/
 def Touches (gs : List Expr) (K : Row → Bool) (dels ins : Relation) : Prop :=
   ∀ r ∈ dels ++ ins, K (groupKey gs r) = true
 
+omit [Boxes.Ambient] in
 /-- The rows a batch does not change, by a predicate `q` true on every row
 it deletes or inserts, are as they were. -/
 theorem filter_untouched {q : Row → Bool} {rows dels ins : Relation}

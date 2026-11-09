@@ -233,6 +233,7 @@ def unprofiledJson : Json := Json.mkObj [
   ("shims", Json.arr #[]), ("observed", Json.arr #[]), ("problems", Json.arr #[]),
   ("transfer", Json.mkObj [])]
 
+variable [Boxes.Ambient]
 /-- `"engines"` and `"sorted"` of a `--contract` request, given its
 `"rows_exact"` (`Epsilon.rowsExactByEngine`), its report and `"robust"`
 (`EngineRobust.robust`). An engine the request names (`"engines"`) without a

@@ -248,6 +248,7 @@ theorem Rel.mapExprs_id : ∀ r : Rel, r.mapExprs id = r
     congr 1
     exact (List.map_congr_left fun m _ => Measure.mapExpr_id m).trans (List.map_id ms)
 
+variable [Boxes.Ambient]
 /-- Where the reference does not raise, its functions give `Rel.eval`'s rows. -/
 theorem Rel.evalI_reference {cat : Catalog} {r : Rel} (h : ¬r.Raises Profile.reference cat) :
     r.eval cat Profile.reference.impl = r.eval cat := by
@@ -255,6 +256,7 @@ theorem Rel.evalI_reference {cat : Catalog} {r : Rel} (h : ¬r.Raises Profile.re
   rw [Rel.mapExprs_id] at this
   exact this h
 
+omit [Boxes.Ambient] in
 theorem Measure.mem_mapExpr_exprs {f : Expr → Expr} (hf : ∀ i, f (.field i) = .field i)
     {m : Measure} {e' : Expr} (h : e' ∈ (m.mapExpr f).exprs) : ∃ e ∈ m.exprs, f e = e' := by
   rw [Measure.mapExpr_exprs] at h

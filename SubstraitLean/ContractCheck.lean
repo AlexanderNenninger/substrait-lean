@@ -434,6 +434,7 @@ def foreignKeys (j : Json) : ForeignKeys := fun t =>
       pure ((← c.getNat?.toOption), (← s.getStr?.toOption), (← p.getNat?.toOption))
     | _ => none
 
+variable [Boxes.Ambient]
 /-- The predicates `r` implies on each base table it reads (`Rel.need` from
 the root), as column bounds, one list per abstract row; tables where an
 abstract row bounds no column are left out (their predicate is TRUE). -/
@@ -986,6 +987,7 @@ proved to the contract theorem on the data's catalog, through
 the inputs is `KnowledgeEnv.ofSpec`'s) and the analyses' congruence in the
 catalog's arities (`AnalysisCongr.lean`). -/
 
+omit [Boxes.Ambient] in
 theorem lookup_map_self {β : Type} (f : String → β) (t : String) :
     ∀ l : List String, (l.map fun x => (x, f x)).lookup t = if t ∈ l then some (f t) else none
   | [] => rfl
@@ -996,6 +998,7 @@ theorem lookup_map_self {β : Type} (f : String → β) (t : String) :
     · have : (t == x) = false := by simpa using h
       simp [this, h, lookup_map_self f t l]
 
+omit [Boxes.Ambient] in
 /-- The description of the inputs `check` computes once per table is
 `KnowledgeEnv.ofSpec`'s. -/
 theorem Request.kenv_eq (R : Request) :
@@ -1004,6 +1007,7 @@ theorem Request.kenv_eq (R : Request) :
   simp only [Request.kenv, KnowledgeEnv.ofSpec, lookup_map_self]
   split <;> rfl
 
+omit [Boxes.Ambient] in
 theorem Request.resultsOf_all (q : Plan) (env : List AVal)
     (h : ∀ e ∈ Request.ensureResults.resultsOf q env, e.2.1 = true) :
     env.all AVal.certainlyTrue = true := by

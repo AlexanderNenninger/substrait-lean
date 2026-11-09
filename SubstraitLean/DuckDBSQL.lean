@@ -136,6 +136,7 @@ theorem FloatCode.ofInt_ne_negInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.ne
 
 /-! Lemmas the generated proofs compute with (`generate_lift … using`). -/
 
+variable [Boxes.Ambient]
 theorem DuckDBSQL.ref_itof (i : Int) :
     Profile.reference.un .itof (.int i) = .ok (.float (FloatCode.ofInt i)) := rfl
 
@@ -149,6 +150,7 @@ theorem DuckDBSQL.ref_fmath_null (f : FMath) : Profile.reference.un (.fmath f) .
 
 theorem DuckDBSQL.ref_itof_null : Profile.reference.un .itof .null = .ok .null := rfl
 
+omit [Boxes.Ambient] in
 theorem FloatCode.ofInt_ne_nan (i : Int) : FloatCode.ofInt i ≠ FloatCode.nan := by
   have := FloatCode.ofInt_bounds i; have := FloatCode.posInf_lt_nan; omega
 
@@ -220,6 +222,7 @@ theorem DuckDBSQL.ref_ffloor_float (c : Int) :
     Profile.reference.un .ffloor (.float c) = .ok (.float (FloatCode.floor c)) := rfl
 theorem DuckDBSQL.ref_ffloor_null : Profile.reference.un .ffloor .null = .ok .null := rfl
 
+omit [Boxes.Ambient] in
 /-- A `SUM` of integers is an integer (`sumOf`). -/
 theorem DuckDBSQL.sumOf_int_vals {vs : List Value} (h : ∀ v ∈ vs, ∃ i, v = .int i) :
     sumOf vs = .int (intSum vs) := by
@@ -243,6 +246,7 @@ theorem DuckDBSQL.apply_eq_null_r (x : Value) : BinFn.apply .eq x .null = .null 
 theorem DuckDBSQL.apply_lt_null_l (y : Value) : BinFn.apply .lt .null y = .null := by cases y <;> rfl
 theorem DuckDBSQL.apply_lt_null_r (x : Value) : BinFn.apply .lt x .null = .null := by cases x <;> rfl
 
+omit [Boxes.Ambient] in
 theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α) :
     (if p ∨ q then a else b) = if p then a else if q then a else b := by
   by_cases hp : p <;> by_cases hq : q <;> simp [hp, hq]
@@ -257,6 +261,7 @@ theorem DuckDBSQL.duck_fdiv_float (a b : Int) :
     simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, nanIssue,
       BinFn.apply, hb, hn, Issue.isError]
 
+omit [Boxes.Ambient] in
 /-- `fmod` of an infinite dividend is NaN, whatever the divisor. -/
 theorem DuckDBSQL.fmod_of_inf {a : Int} (b : Int) (h : isInfCode a = true) :
     FloatCode.fmod a b = FloatCode.nan := by

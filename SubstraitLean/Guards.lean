@@ -45,6 +45,7 @@ namespace Substrait
 
 /-! ## Expressions -/
 
+variable [Boxes.Ambient]
 /-- Agrees with Lean wherever Lean reports no issue. -/
 def Impl.Faithful (I : Impl) : Prop :=
   (∀ f v, f.issue v = none → I.un f v = f.apply v) ∧
@@ -135,6 +136,7 @@ theorem BinFn.issue_ne_infinite (f : BinFn) (v w : Value) : f.issue v w ≠ some
   unfold BinFn.issue wrapNum wrapIf rangeIssue domainIssue nanIssue
   split <;> (repeat' split) <;> simp
 
+omit [Boxes.Ambient] in
 /-- A call whose only issue is assumed (`Issue.assumed`: an overflow to `±∞`)
 has no error issue: the engine's function agrees with Lean's there. -/
 theorem issue_none_of_assumed {o i : Option Issue} {k : Issue} (h : o.or i = some k)
@@ -388,6 +390,7 @@ theorem Rel.mem_loose {cat : Catalog} :
       looseExact_mem hs.2]
     exact ⟨x, mem_loose hs.1 x hx, mem_leftJoinRow.mp h⟩
 
+omit [Boxes.Ambient] in
 theorem Rel.looseExact_sub : ∀ {r : Rel}, r.looseExact = true → r.looseSub = true
   | .read _, _ | .values _ _, _ => rfl
   | .fetch _ _ _, h | .window _ _ _ _, h | .aggregate _ _ _, h => h
@@ -593,10 +596,12 @@ def Rel.marks (cat : Catalog) (A : String → List AVal) (F : String → List Fa
         (fun e => (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty)
       then [0] else []) [r.marks cat A F T u]
 
+omit [Boxes.Ambient] in
 theorem contains_zero_ite {c : Bool} (h : (if c = true then [0] else ([] : List Nat)).contains 0 = true) :
     c = true := by
   cases c <;> simp_all
 
+omit [Boxes.Ambient] in
 theorem ite_eq_right_of {α : Type} {c : Prop} [Decidable c] {a b : α} (h : c → a = b) :
     (if c then a else b) = b := by
   split
@@ -609,6 +614,7 @@ theorem Expr.evalIf_eq {I : Impl} {u : Bool} {row : Row} {e : Expr}
   | false => rfl
   | true => exact h rfl
 
+omit [Boxes.Ambient] in
 theorem mapIdx_eq_map {α β : Type} {l : List α} {f : Nat → α → β} {g : α → β}
     (h : ∀ i (hi : i < l.length), f i l[i] = g l[i]) : l.mapIdx f = l.map g := by
   apply List.ext_getElem (by simp)
@@ -616,6 +622,7 @@ theorem mapIdx_eq_map {α β : Type} {l : List α} {f : Nat → α → β} {g : 
   simp only [List.getElem_mapIdx, List.getElem_map]
   exact h i (by simpa using h1)
 
+omit [Boxes.Ambient] in
 theorem okSlots_mem {es : List Expr} {ok : Expr → Bool} {i : Nat} (hi : i < es.length)
     (h : i ∈ okSlots es ok) : ok es[i] = true := by
   simp only [okSlots, List.mem_filter, List.getElem?_eq_getElem hi] at h
@@ -650,6 +657,7 @@ theorem Expr.evalI_of_safe_cond {a b : Rel} (ha : a.WF cat) (hb : b.WF cat) (hsa
     have := condIssue_sound hcat hA hF hT ha hb hsa hsb hx hy hp
     simp [List.isEmpty_iff.mp he] at this)
 
+omit [Boxes.Ambient] in
 theorem Rel.loose_if_wf {u : Bool} {r : Rel} (h : r.WF cat) :
     (if u then r.loose else r).WF cat := by
   cases u

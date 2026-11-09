@@ -747,6 +747,8 @@ theorem AvgOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo h
 
 /-! ## The check's columns, row by row -/
 
+variable [Boxes.Ambient]
+
 /-- On a group's row, the check's margin column is `marginCode`. -/
 theorem marginExpr_eval {row : Row} {s : Nat} {avg : Bool} {n : Nat} {a : Int}
     (hn : row.getD (s + 1) .null = .int n) (ha : row.getD (s + 2) .null = .float a) :
@@ -783,7 +785,7 @@ theorem marginFlag_eval {row : Row} {k s : Nat} {n : Nat} {d m : Int} (hk : row.
   generalize hb2 : decide (m < neg d) = b2 at h
   generalize hb3 : decide ((2 : Int) ^ 32 < n) = b3 at h
   have hk : (b1 || b2) = true ∧ b3 = false := by
-    revert h; cases b1 <;> cases b2 <;> cases b3 <;> decide
+    revert h; cases b1 <;> cases b2 <;> cases b3 <;> simp [or3, and3, UnFn.apply, Value.isTrue]
   obtain ⟨k1, k2⟩ := hk
   subst hb1 hb2 hb3
   simp only [Bool.or_eq_true, decide_eq_true_eq, decide_eq_false_iff_not] at k1 k2

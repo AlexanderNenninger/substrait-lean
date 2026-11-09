@@ -67,6 +67,7 @@ theorem Sharding.prune {S : String → Bool} {K : String → Option (List Nat)} 
   keyLen c hc := hs.keyLen c (List.mem_filter.mp hc).1
   keyDisj := hs.keyDisj.sublist List.filter_sublist
 
+variable [Boxes.Ambient]
 /-- **Reading only the files not pruned.** A plan linear in the sharded
 tables gives, up to order, the union of its results on the shards kept, when
 every shard dropped holds no rows of a sharded table. -/
@@ -87,6 +88,7 @@ def fileEnv (cols : List (Option ColStats)) : List AVal :=
     | some s => s.aval
     | none => AVal.top
 
+omit [Boxes.Ambient] in
 theorem fileEnv_mem {cols : List (Option ColStats)} {row : Row}
     (h : ∀ i (s : ColStats), cols[i]? = some (some s) → s.aval.Mem (row.getD i .null)) :
     EnvMem (fileEnv cols) row := fun i => by
@@ -140,6 +142,7 @@ takes Delta's double maxima). -/
 def DoubleStats.colStats (s : DoubleStats) : ColStats :=
   ⟨s.lo, if s.nans = some 0 then s.hi else none, s.nulls, none⟩
 
+omit [Boxes.Ambient] in
 /-- **NaN and the bounds (#36).** The bounds `sverify.io` takes from a
 double column's statistics are correct: NaN is above the minimum, and the
 maximum is kept only where no NaN can exceed it. -/
@@ -173,6 +176,7 @@ theorem DoubleStats.colStats_correct {s : DoubleStats} {c : Nat} {rows : Relatio
 
 /-! ## Strings: bounds that may be prefixes -/
 
+omit [Boxes.Ambient] in
 theorem take_le_self : ∀ (l : List Char) (n : Nat), l.take n ≤ l
   | [], n => by simp
   | a :: l, 0 => by simp
@@ -180,6 +184,7 @@ theorem take_le_self : ∀ (l : List Char) (n : Nat), l.take n ≤ l
       simp only [List.take_succ_cons]
       exact List.cons_le_cons_iff.mpr (.inr ⟨rfl, take_le_self l n⟩)
 
+omit [Boxes.Ambient] in
 theorem take_mono : ∀ {a b : List Char} (n : Nat), a ≤ b → a.take n ≤ b.take n
   | [], b, n, _ => by simp
   | x :: a, [], n, h => by simp at h
@@ -224,6 +229,7 @@ def StrStats.mayLt (s : StrStats) (k : String) : Bool :=
   | some l => decide (l.toList < k.toList)
   | none => true
 
+omit [Boxes.Ambient] in
 theorem StrStats.mayGe_sound {s : StrStats} {x k : String} (hs : s.Correct (.str x))
     (h : k.toList ≤ x.toList) : s.mayGe k = true := by
   unfold mayGe
@@ -232,6 +238,7 @@ theorem StrStats.mayGe_sound {s : StrStats} {x k : String} (hs : s.Correct (.str
   | some m =>
       exact decide_eq_true (List.le_trans (take_mono _ h) ((hs x rfl).2 m hh))
 
+omit [Boxes.Ambient] in
 theorem StrStats.mayLe_sound {s : StrStats} {x k : String} (hs : s.Correct (.str x))
     (h : x.toList ≤ k.toList) : s.mayLe k = true := by
   unfold mayLe
@@ -239,6 +246,7 @@ theorem StrStats.mayLe_sound {s : StrStats} {x k : String} (hs : s.Correct (.str
   | none => rfl
   | some l => exact decide_eq_true (List.le_trans ((hs x rfl).1 l hl) h)
 
+omit [Boxes.Ambient] in
 theorem StrStats.mayLt_sound {s : StrStats} {x k : String} (hs : s.Correct (.str x))
     (h : x.toList < k.toList) : s.mayLt k = true := by
   unfold mayLt
@@ -271,6 +279,7 @@ def StrStats.mayTrue (bs : Nat → Option StrStats) : Expr → Bool
   | .bin .or a b => mayTrue bs a || mayTrue bs b
   | e => strCmp bs e
 
+omit [Boxes.Ambient] in
 theorem strAt_sound {bs : Nat → Option StrStats} {row : Row}
     (hb : ∀ i s, bs i = some s → s.Correct (row.getD i .null)) {i : Nat} {f : StrStats → Bool}
     (h : ∀ s, s.Correct (row.getD i .null) → f s = true) : strAt bs i f = true := by
@@ -279,6 +288,7 @@ theorem strAt_sound {bs : Nat → Option StrStats} {row : Row}
   | none => rfl
   | some s => exact h s (hb i s hs)
 
+omit [Boxes.Ambient] in
 theorem isTrue_bool (b : Bool) : (Value.bool b).isTrue = b := by cases b <;> rfl
 
 theorem eq_str_isTrue {v : Value} {k : String} (h : (BinFn.apply .eq v (.str k)).isTrue = true) :
@@ -307,6 +317,7 @@ theorem not_str_lt_isTrue {v : Value} {k : String}
     ∃ x, v = .str x ∧ ¬k < x := by
   cases v <;> simp only [BinFn.apply, UnFn.apply, isTrue_bool] at h <;> simp_all [Value.isTrue]
 
+omit [Boxes.Ambient] in
 theorem string_not_lt {a b : String} (h : ¬a < b) : b.toList ≤ a.toList :=
   List.not_lt.mp fun h' => h (String.lt_iff.mpr h')
 

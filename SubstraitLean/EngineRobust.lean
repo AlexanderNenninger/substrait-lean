@@ -132,6 +132,7 @@ def postOver (tr : Rel) (n : Nat) : Rel → Option (List Expr)
   | .emit r m => (postOver tr n r).map fun cs => m.map (cs.getD · (.lit .null))
   | r => if r == tr then some ((List.range n).map .field) else none
 
+variable [Boxes.Ambient]
 /-- `"robust"` of a `--contract` request: per postcondition, in the order of
 `"ensures"`, `{"robust": …, "proved_on": […]}`: whether it is certainly TRUE
 over the values every engine may give (`engineVal`), and the engines where

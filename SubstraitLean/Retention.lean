@@ -88,6 +88,7 @@ theorem final_mono {W wm wm' b : Int} (h : wm ≤ wm') (hf : final W wm b = true
 
 /-! ## Aggregates restricted to some groups -/
 
+variable [Boxes.Ambient]
 theorem groupKey_length (gs : List Expr) (row : Row) : (groupKey gs row).length = gs.length := by
   simp [groupKey]
 
@@ -131,6 +132,7 @@ def applyBatch (rows dels ins : Relation) : Relation := dels.foldl List.erase ro
 def Admissible (ts : Row → Int) (wm : Int) (dels ins : Relation) : Prop :=
   ∀ r ∈ dels ++ ins, wm ≤ ts r
 
+omit [Boxes.Ambient] in
 theorem filter_erase_of_false {p : Row → Bool} {a : Row} (ha : p a = false) :
     ∀ l : Relation, (l.erase a).filter p = l.filter p
   | [] => rfl
@@ -141,6 +143,7 @@ theorem filter_erase_of_false {p : Row → Bool} {a : Row} (ha : p a = false) :
       simp only [List.erase_cons, this, Bool.false_eq_true, ↓reduceIte, List.filter_cons]
       rw [filter_erase_of_false ha xs]
 
+omit [Boxes.Ambient] in
 theorem filter_foldl_erase {p : Row → Bool} :
     ∀ (dels : Relation) (rows : Relation), (∀ d ∈ dels, p d = false) →
       (dels.foldl List.erase rows).filter p = rows.filter p
@@ -150,6 +153,7 @@ theorem filter_foldl_erase {p : Row → Bool} :
     rw [filter_foldl_erase ds _ fun x hx => h x (.tail _ hx),
       filter_erase_of_false (h d (.head _))]
 
+omit [Boxes.Ambient] in
 /-- An admissible batch leaves the rows before the watermark as they were. -/
 theorem early_unchanged {ts : Row → Int} {wm : Int} {rows dels ins : Relation}
     (h : Admissible ts wm dels ins) :
@@ -235,6 +239,7 @@ theorem final_stable (hg : gs ≠ []) (hW : 0 < W) (ht : Tumbling gs ts bucketOf
 
 /-! ## Expiries: the source's own retention -/
 
+omit [Boxes.Ambient] in
 theorem foldl_erase_erase (d : Row) :
     ∀ (ds rows : Relation), ds.foldl List.erase (rows.erase d) = (ds.foldl List.erase rows).erase d
   | [], _ => rfl
@@ -242,6 +247,7 @@ theorem foldl_erase_erase (d : Row) :
     simp only [List.foldl_cons]
     rw [List.erase_comm d x, foldl_erase_erase d xs]
 
+omit [Boxes.Ambient] in
 /-- On the rows in `p`, deletes act as the deletes in `p` alone. -/
 theorem filter_foldl_erase_filter {p : Row → Bool} :
     ∀ (dels rows : Relation),
@@ -294,6 +300,7 @@ theorem expiry_sound (hg : gs ≠ []) (hW : 0 < W) (ht : Tumbling gs ts bucketOf
 
 /-! ## How many buckets are open -/
 
+omit [Boxes.Ambient] in
 theorem nodup_map_on {α β : Type} {f : α → β} :
     ∀ {l : List α}, (∀ a ∈ l, ∀ b ∈ l, f a = f b → a = b) → l.Nodup → (l.map f).Nodup
   | [], _, _ => List.nodup_nil
@@ -304,6 +311,7 @@ theorem nodup_map_on {α β : Type} {f : α → β} :
     obtain ⟨y, hy, he⟩ := List.mem_map.mp hm
     exact hn.1 (h y (.tail _ hy) x (.head _) he ▸ hy)
 
+omit [Boxes.Ambient] in
 theorem nodup_nat_length_le : ∀ {l : List Nat} (N : Nat), l.Nodup → (∀ i ∈ l, i < N) →
     l.length ≤ N
   | [], _, _, _ => Nat.zero_le _
@@ -319,6 +327,7 @@ theorem nodup_nat_length_le : ∀ {l : List Nat} (N : Nat), l.Nodup → (∀ i �
     · rw [List.length_erase_of_mem hm] at ih; omega
     · rw [List.erase_of_not_mem hm] at ih; omega
 
+omit [Boxes.Ambient] in
 /-- **The open buckets are bounded**: with every row's time at most `M` and
 lateness `L ≥ 0`, the distinct buckets `floorTo W t` (of a time `t ≤ M`) that
 are not final at the watermark `M - L` are at most `⌈L / W⌉ + 1`, written
@@ -362,6 +371,7 @@ theorem open_buckets_le₀ {W M L : Int} (hW : 0 < W) (hL : 0 ≤ L) {bs : List 
   have h0 : 0 ≤ (L + W - 1) / W := Int.ediv_nonneg (by omega) (Int.le_of_lt hW)
   omega
 
+omit [Boxes.Ambient] in
 /-- `open_buckets_le₀` for buckets counted from any origin `o`. -/
 theorem open_buckets_le {W M L o : Int} (hW : 0 < W) (hL : 0 ≤ L) {bs : List Int}
     (hn : bs.Nodup) (hb : ∀ b ∈ bs, ∃ t ≤ M, b = bucket W.toNat o t)

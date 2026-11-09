@@ -55,6 +55,7 @@ def tieRuns (le : Row → Row → Bool) : List Row → List (List Row)
     | (y :: ys) :: rest => if le x y && le y x then (x :: y :: ys) :: rest else [x] :: (y :: ys) :: rest
     | _ => [[x]]
 
+variable [Boxes.Ambient]
 /-- The kept rows of a group in the measure's order, in classes of rows that
 tie, each mapped to its non-NULL arguments; empty classes dropped. -/
 def Measure.classes (m : Measure) (grp : Relation) : List (List Value) :=

@@ -1,5 +1,6 @@
 import SubstraitLean.Parse
 import SubstraitLean.Weighted
+import SubstraitLean.DuckDBBoxes
 
 /-!
 # Writing `Rel` back out as Substrait JSON
@@ -33,15 +34,24 @@ serves integers, doubles, dates and timestamps. -/
 def declaredOf (rows : List Functions.FnRow) : List (Nat × String) :=
   (rows.map fun r => (r.anchor, r.name)).eraseDups
 
+/-- The functions of the function table, area by area: no black box. -/
+def fnAreas : List (List (Nat × String) × Nat) :=
+  Functions.areas.map fun (_, rows, lo) => (declaredOf rows, lo)
+
+/-- Every function-table row's `(anchor, name)` is among `fnAreas`. -/
+theorem fnAreas_rows : Functions.all.all fun r =>
+    (fnAreas.flatMap (·.1)).contains (r.anchor, r.name) := by
+  decide +kernel
+
+variable [Boxes.Ambient]
+
 /-- Black boxes (#325), scalar and aggregate: anchors 700–799, in the order of
-`core/Sverify/Core/BlackBox.lean`'s table, under its URN (`BlackBox.blackBoxUrn`). -/
+the black-box catalogue in scope, under its URN (`BlackBox.blackBoxUrn`). -/
 def blackBoxFns : List (Nat × String) :=
-  (BlackBox.scalars.map (·.name) ++ BlackBox.aggregates.map (·.name)).zipIdx.map
-    fun (n, i) => (700 + i, n)
+  Boxes.Ambient.boxes.names.zipIdx.map fun (n, i) => (700 + i, n)
 
 /-- Each area's functions and the range its new anchors come from. -/
-def areas : List (List (Nat × String) × Nat) :=
-  Functions.areas.map (fun (_, rows, lo) => (declaredOf rows, lo)) ++ [(blackBoxFns, 700)]
+def areas : List (List (Nat × String) × Nat) := fnAreas ++ [(blackBoxFns, 700)]
 
 /-- Every declared `(anchor, Substrait name)`, area by area, once each (`add`
 is core's and temporal's). -/
@@ -50,13 +60,24 @@ def declared : List (Nat × String) := (areas.flatMap (·.1)).eraseDups
 /-- `(anchor, Substrait name)` for every function the writer can emit, by anchor. -/
 def functions : List (Nat × String) := declared.mergeSort fun a b => a.1 ≤ b.1
 
-example : (declared.map (·.1)).Nodup := by decide +kernel
-example : (declared.map (·.2)).Nodup := by decide +kernel
-example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
+-- With DuckDB's black boxes: each anchor and name once, each in its area's range.
+omit [Boxes.Ambient] in
+example : ((@declared DuckDB.boxes).map (·.1)).Nodup := by decide +kernel
+omit [Boxes.Ambient] in
+example : ((@declared DuckDB.boxes).map (·.2)).Nodup := by decide +kernel
+omit [Boxes.Ambient] in
+example : (@areas DuckDB.boxes).all fun (fs, lo) =>
+    fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
   decide +kernel
 
 theorem declared_rows : Functions.all.all fun r => declared.contains (r.anchor, r.name) := by
-  decide +kernel
+  have h0 := fnAreas_rows
+  simp only [List.all_eq_true] at h0 ⊢
+  intro r hr
+  have h := h0 r hr
+  simp only [List.contains_iff_mem, declared, List.mem_eraseDups, areas,
+    List.flatMap_append, List.mem_append] at h ⊢
+  exact .inl h
 
 /-- A row's anchor is declared. -/
 theorem row_declared {r : Functions.FnRow} (h : r ∈ Functions.all) :

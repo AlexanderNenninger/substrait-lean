@@ -133,6 +133,7 @@ def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
     if s.ieeeOps ∧ f.apply x = none then some (.ok (.float (duckElementary f x))) else none
   | _, _ => none
 
+variable [Boxes.Ambient]
 /-- **DuckDB's profile**, as a diff against the reference (`duckBin`,
 `duckUn`): what DuckDB 2.0 computes under the settings `s`, as probed
 (`sverify_dev.probe`). Functions not probed are taken to be the reference's. -/

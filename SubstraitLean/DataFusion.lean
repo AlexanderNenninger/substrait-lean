@@ -25,6 +25,7 @@ namespace Substrait.DataFusion
 
 open Write (relKinds)
 
+variable [Boxes.Ambient]
 /-- Does the plan take a `MIN` or `MAX` of doubles (#371)? DataFusion's
 grouped ones compare like IEEE 754 from `±f64::MAX` (a group of `+∞` has
 `MIN` `f64::MAX`, and NaN is skipped; DF-15). Expires when DF-15 is fixed

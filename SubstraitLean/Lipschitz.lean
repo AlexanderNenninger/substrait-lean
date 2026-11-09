@@ -64,6 +64,7 @@ open FloatCode
 
 /-! ## The fold and its theorem -/
 
+variable [Boxes.Ambient]
 /-- **The tolerance of a plan's output**, when each source `s` is within
 `T s` of the reference's: the table of #929 on its constant-`1` rows. `none`
 where the plan compares a tolerated column (a filter, join or semi-join
@@ -247,15 +248,18 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
 
 /-! ## The triangle rule and pipelines -/
 
+omit [Boxes.Ambient] in
 theorem Tol.le_add_left (t₁ t₂ : Tol) (c : Nat) : OLe (t₁ c) (t₁.add t₂ c) := by
   unfold Tol.add; cases t₁ c <;> cases t₂ c <;> simp [OLe]
 
+omit [Boxes.Ambient] in
 theorem Tol.le_add_right (t₁ t₂ : Tol) (c : Nat) : OLe (t₂ c) (t₁.add t₂ c) := by
   unfold Tol.add; cases t₁ c <;> cases t₂ c <;> simp [OLe]
 
 /-- The context of `t` with every column a double. -/
 def Tol.dctx (t : Tol) : ObsCtx := ObsCtx.ofTol (fun _ => .double) t
 
+omit [Boxes.Ambient] in
 /-- **Cells add along a chain.** -/
 theorem Tol.cell_trans {t₁ t₂ : Tol} {i : Nat} {v w z : Value} (h₁ : t₁.Cell i v w)
     (h₂ : t₂.Cell i w z) : (t₁.add t₂).Cell i v z := by
@@ -283,10 +287,12 @@ theorem Tol.cell_trans {t₁ t₂ : Tol} {i : Nat} {v w z : Value} (h₁ : t₁.
       exact Value.Equiv.transfer (c := (t₁.add t₂).dctx) (c' := (t₁.add t₂).ctx)
         (by simp [Tol.ctx, Tol.dctx, ObsCtx.ofTol, Tol.kind, hadd]) (fun _ _ _ x => x) hs v z d₃
 
+omit [Boxes.Ambient] in
 theorem Tol.rows_trans {t₁ t₂ : Tol} {x y z : Row} (h₁ : t₁.Rows x y) (h₂ : t₂.Rows y z) :
     (t₁.add t₂).Rows x z :=
   ⟨h₁.1.trans h₂.1, fun j => Tol.cell_trans (h₁.2 j) (h₂.2 j)⟩
 
+omit [Boxes.Ambient] in
 /-- **The triangle rule**: tolerances add along a chain of results. -/
 theorem Relation.NearT.add {t₁ t₂ : Tol} {a b d : Relation} (h₁ : Relation.NearT t₁ a b)
     (h₂ : Relation.NearT t₂ b d) : Relation.NearT (t₁.add t₂) a d := by
@@ -296,12 +302,14 @@ theorem Relation.NearT.add {t₁ t₂ : Tol} {a b d : Relation} (h₁ : Relation
   exact ⟨m, Forall2.trans (R := t₁.Rows) (S := t₂.Rows) (T := (t₁.add t₂).Rows)
     (fun _ _ _ r s => Tol.rows_trans r s) f₁ fm, hm.symm.trans hq⟩
 
+omit [Boxes.Ambient] in
 theorem Relation.NearT.symm {t : Tol} {a b : Relation} (h : Relation.NearT t a b) :
     Relation.NearT t b a := by
   obtain ⟨p, f, hp⟩ := h
   obtain ⟨m, hm, fm⟩ := Forall2.perm hp (f.flip.imp fun _ _ r => (⟨r.1.symm, fun j => Tol.cell_symm (r.2 j)⟩ : t.Rows _ _))
   exact ⟨m, fm, hm.symm⟩
 
+omit [Boxes.Ambient] in
 /-- `NearT` gives `Relation.Near` under the plan's own column kinds, as long
 as they call every tolerated column a double. -/
 theorem Relation.NearT.near {t : Tol} {kind : Nat → ColKind}
@@ -371,46 +379,56 @@ def Relation.NearL1 (t : Tol) (a b : Relation) : Prop :=
 section
 variable {t t' t₁ t₂ : Tol}
 
+omit [Boxes.Ambient] in
 theorem Tol.Le.refl (t : Tol) : t.Le t := fun _ => OLe.refl _
 
+omit [Boxes.Ambient] in
 theorem Tol.Le.trans {t₃ : Tol} (h₁ : t₁.Le t₂) (h₂ : t₂.Le t₃) : t₁.Le t₃ := fun c => by
   have a := h₁ c; have b := h₂ c
   revert a b; cases t₁ c <;> cases t₂ c <;> cases t₃ c <;> simp [OLe] <;> omega
 
+omit [Boxes.Ambient] in
 theorem Tol.exact_add (t : Tol) : (Tol.exact.add t).Le t := fun c => by
   simp only [Tol.add, Tol.exact]; cases t c <;> simp [OLe]
 
+omit [Boxes.Ambient] in
 /-- Budgets in a different order. -/
 theorem Tol.add_swap (a b r : Tol) : (a.add (b.add r)).Le (b.add (a.add r)) := fun c => by
   simp only [Tol.add]; cases a c <;> cases b c <;> cases r c <;> simp [OLe] <;> omega
 
+omit [Boxes.Ambient] in
 theorem Tol.add_mono {a b a' b' : Tol} (ha : a.Le a') (hb : b.Le b') : (a.add b).Le (a'.add b') :=
   fun c => by
     have x := ha c; have y := hb c
     revert x y; simp only [Tol.add]
     cases a c <;> cases b c <;> cases a' c <;> cases b' c <;> simp [OLe] <;> omega
 
+omit [Boxes.Ambient] in
 /-- Two chains' budgets, pair by pair. -/
 theorem Tol.add_four (a b c d : Tol) : ((a.add c).add (b.add d)).Le ((a.add b).add (c.add d)) :=
   fun k => by
     simp only [Tol.add]; cases a k <;> cases b k <;> cases c k <;> cases d k <;> simp [OLe] <;> omega
 
+omit [Boxes.Ambient] in
 theorem PairsWithin.mono : ∀ {a p : List Row} {t t' : Tol}, PairsWithin a p t → t.Le t' →
     PairsWithin a p t'
   | [], [], _, _, _, _ => trivial
   | _ :: _, _ :: _, _, _, ⟨tr, rest, r, h, le⟩, ht => ⟨tr, rest, r, h, le.trans ht⟩
   | [], _ :: _, _, _, h, _ | _ :: _, [], _, _, h, _ => h.elim
 
+omit [Boxes.Ambient] in
 theorem PairsWithin.refl : ∀ (a : List Row) (t : Tol), PairsWithin a a t
   | [], _ => trivial
   | x :: xs, t => ⟨Tol.exact, t, Tol.rows_refl _ x, PairsWithin.refl xs t, Tol.exact_add t⟩
 
+omit [Boxes.Ambient] in
 theorem PairsWithin.symm : ∀ {a p : List Row} {t : Tol}, PairsWithin a p t → PairsWithin p a t
   | [], [], _, _ => trivial
   | _ :: _, _ :: _, _, ⟨tr, rest, r, h, le⟩ =>
     ⟨tr, rest, ⟨r.1.symm, fun j => Tol.cell_symm (r.2 j)⟩, PairsWithin.symm h, le⟩
   | [], _ :: _, _, h | _ :: _, [], _, h => h.elim
 
+omit [Boxes.Ambient] in
 /-- A permutation of the left side carries over to the right. -/
 theorem PairsWithin.perm {a a' : List Row} (hp : a.Perm a') :
     ∀ {p : List Row} {t : Tol}, PairsWithin a p t → ∃ p', p.Perm p' ∧ PairsWithin a' p' t := by
@@ -439,6 +457,7 @@ theorem PairsWithin.perm {a a' : List Row} (hp : a.Perm a') :
     obtain ⟨q₂, hq₂, h₂⟩ := ih₂ h₁
     exact ⟨q₂, hq₁.trans hq₂, h₂⟩
 
+omit [Boxes.Ambient] in
 theorem PairsWithin.trans : ∀ {a b d : List Row} {t₁ t₂ : Tol}, PairsWithin a b t₁ →
     PairsWithin b d t₂ → PairsWithin a d (t₁.add t₂)
   | [], [], [], _, _, _, _ => trivial
@@ -448,14 +467,17 @@ theorem PairsWithin.trans : ∀ {a b d : List Row} {t₁ t₂ : Tol}, PairsWithi
   | [], [], _ :: _, _, _, _, h | _ :: _, _ :: _, [], _, _, _, h => h.elim
   | [], _ :: _, _, _, _, h, _ | _ :: _, [], _, _, _, h, _ => h.elim
 
+omit [Boxes.Ambient] in
 theorem Relation.NearL1.refl (t : Tol) (a : Relation) : Relation.NearL1 t a a :=
   ⟨a, PairsWithin.refl a t, .refl a⟩
 
+omit [Boxes.Ambient] in
 theorem Relation.NearL1.symm {a b : Relation} (h : Relation.NearL1 t a b) : Relation.NearL1 t b a := by
   obtain ⟨p, hw, hp⟩ := h
   obtain ⟨q, hq, h'⟩ := PairsWithin.perm hp hw.symm
   exact ⟨q, h', hq.symm⟩
 
+omit [Boxes.Ambient] in
 /-- **The triangle rule in `M₁`**: budgets add along a chain of results. -/
 theorem Relation.NearL1.add {a b d : Relation} (h₁ : Relation.NearL1 t₁ a b)
     (h₂ : Relation.NearL1 t₂ b d) : Relation.NearL1 (t₁.add t₂) a d := by
@@ -464,6 +486,7 @@ theorem Relation.NearL1.add {a b d : Relation} (h₁ : Relation.NearL1 t₁ a b)
   obtain ⟨q', hq', w₂'⟩ := PairsWithin.perm hp.symm w₂
   exact ⟨q', w₁.trans w₂', hq'.symm.trans hq⟩
 
+omit [Boxes.Ambient] in
 theorem Relation.NearL1.mono (ht : t.Le t') {a b : Relation} (h : Relation.NearL1 t a b) :
     Relation.NearL1 t' a b :=
   let ⟨p, w, hp⟩ := h; ⟨p, w.mono ht, hp⟩
@@ -480,22 +503,22 @@ private def exCols (r : Rel) : Option (List (Option Nat)) :=
   (r.tol exCat (fun _ => ⟨[], [], [], none⟩) exT).map fun t => (List.range 4).map t
 
 -- Pass-through and emit carry the tolerance; an exact filter keeps it.
-#guard exCols (.emit (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 5)))) [2, 0]) ==
+#guard letI := Boxes.Ambient.none; exCols (.emit (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 5)))) [2, 0]) ==
   some [some 8, none, none, none]
 -- A filter on the tolerated column is refused (#568, `rows_exact`).
-#guard exCols (.filter (.read "t") (.bin .lt (.field 2) (.lit (.int 5)))) == none
+#guard letI := Boxes.Ambient.none; exCols (.filter (.read "t") (.bin .lt (.field 2) (.lit (.int 5)))) == none
 -- A projection: the column passes through, an expression of exact columns is exact.
-#guard exCols (.project (.read "t") [.field 2, .bin .add (.field 0) (.field 1)]) ==
+#guard letI := Boxes.Ambient.none; exCols (.project (.read "t") [.field 2, .bin .add (.field 0) (.field 1)]) ==
   some [none, none, some 8, some 8]
 -- `UNION ALL` takes the larger tolerance, a cross shifts the right side's.
-#guard exCols (.unionAll (.read "t") (.emit (.read "t") [2, 2, 2])) == some [some 8, some 8, some 8, none]
-#guard exCols (.cross (.read "t") (.read "t")) == some [none, none, some 8, none]
+#guard letI := Boxes.Ambient.none; exCols (.unionAll (.read "t") (.emit (.read "t") [2, 2, 2])) == some [some 8, some 8, some 8, none]
+#guard letI := Boxes.Ambient.none; exCols (.cross (.read "t") (.read "t")) == some [none, none, some 8, none]
 -- `COUNT` grouped by an exact column is exact; grouping by the double is refused.
-#guard exCols (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .lit (.int 1) }]) ==
+#guard letI := Boxes.Ambient.none; exCols (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .lit (.int 1) }]) ==
   some [none, none, none, none]
-#guard exCols (.aggregate (.read "t") [.field 2] [{ fn := .count, arg := .lit (.int 1) }]) == none
+#guard letI := Boxes.Ambient.none; exCols (.aggregate (.read "t") [.field 2] [{ fn := .count, arg := .lit (.int 1) }]) == none
 -- `FETCH` reads an order the multiset observation does not fix.
-#guard exCols (.fetch (.read "t") 0 (some 1)) == none
+#guard letI := Boxes.Ambient.none; exCols (.fetch (.read "t") 0 (some 1)) == none
 
 /-- The table's knowledge: at most 1000 rows, the double in `[-10⁶, 10⁶]`. -/
 private def exK : KnowledgeEnv := fun _ =>
@@ -506,26 +529,26 @@ private def exSum (r : Rel) : Option (List Bool) :=
   (r.tol exCat exK exT).map fun t => (List.range 4).map fun c => (t c).isSome
 
 -- `SUM` and `AVG` of the tolerated double, grouped by an exact column, are tolerated.
-#guard exSum (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }, { fn := .avg, arg := .field 2 }]) ==
+#guard letI := Boxes.Ambient.none; exSum (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }, { fn := .avg, arg := .field 2 }]) ==
   some [false, true, true, false]
 -- Without a range for the double, or of a `DISTINCT` or a computed argument, refused.
-#guard exCols (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }]) == none
-#guard exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2, distinct := true }]) == none
-#guard exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .un .fneg (.field 2) }]) == none
+#guard letI := Boxes.Ambient.none; exCols (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }]) == none
+#guard letI := Boxes.Ambient.none; exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2, distinct := true }]) == none
+#guard letI := Boxes.Ambient.none; exSum (.aggregate (.read "t") [] [{ fn := .fsum, arg := .un .fneg (.field 2) }]) == none
 -- `MIN` and `MAX` of the double, of doubles only in a range of reference codes, carry its tolerance.
-#guard exSum (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }, { fn := .max, arg := .field 2 }]) ==
+#guard letI := Boxes.Ambient.none; exSum (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }, { fn := .max, arg := .field 2 }]) ==
   some [true, true, false, false]
-#guard exCols (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }]) == none
+#guard letI := Boxes.Ambient.none; exCols (.aggregate (.read "t") [] [{ fn := .min, arg := .field 2 }]) == none
 
 -- The arithmetic rows (D31): `x + x`, `2 · x`, `x / 4` of the tolerated double are tolerated,
 -- and so is a `SUM` over a computed column; a product with an exact column of no range is refused.
-#guard exSum (.project (.read "t") [.bin .fadd (.field 2) (.field 2), .bin .fmul (.lit (.float (FloatCode.ofFloat 2.0))) (.field 2)]) ==
+#guard letI := Boxes.Ambient.none; exSum (.project (.read "t") [.bin .fadd (.field 2) (.field 2), .bin .fmul (.lit (.float (FloatCode.ofFloat 2.0))) (.field 2)]) ==
   some [false, false, true, true]
-#guard exSum (.project (.read "t") [.bin .fdiv (.field 2) (.lit (.float (FloatCode.ofFloat 4.0)))]) ==
+#guard letI := Boxes.Ambient.none; exSum (.project (.read "t") [.bin .fdiv (.field 2) (.lit (.float (FloatCode.ofFloat 4.0)))]) ==
   some [false, false, true, true]
-#guard exSum (.aggregate (.project (.read "t") [.bin .fmul (.lit (.float (FloatCode.ofFloat 2.0))) (.field 2)]) []
+#guard letI := Boxes.Ambient.none; exSum (.aggregate (.project (.read "t") [.bin .fmul (.lit (.float (FloatCode.ofFloat 2.0))) (.field 2)]) []
   [{ fn := .fsum, arg := .field 3 }]) == some [true, false, false, false]
-#guard exSum (.project (.read "t") [.bin .fmul (.field 0) (.field 2)]) == none
+#guard letI := Boxes.Ambient.none; exSum (.project (.read "t") [.bin .fmul (.field 0) (.field 2)]) == none
 
 /-- As `exK`, with the first column a double in `[1, 100]`, clear of zero. -/
 private def exK2 : KnowledgeEnv := fun _ =>
@@ -536,8 +559,8 @@ private def exSum2 (r : Rel) : Option (List Bool) :=
   (r.tol exCat exK2 exT).map fun t => (List.range 4).map fun c => (t c).isSome
 
 -- `x / y` with `y`'s range clear of zero is tolerated; a divisor whose range holds zero is refused.
-#guard exSum2 (.project (.read "t") [.bin .fdiv (.field 2) (.field 0)]) == some [false, false, true, true]
-#guard exSum2 (.project (.read "t") [.bin .fdiv (.field 0) (.field 2)]) == none
+#guard letI := Boxes.Ambient.none; exSum2 (.project (.read "t") [.bin .fdiv (.field 2) (.field 0)]) == some [false, false, true, true]
+#guard letI := Boxes.Ambient.none; exSum2 (.project (.read "t") [.bin .fdiv (.field 0) (.field 2)]) == none
 
 private def tie : Tol := fun c => if c = 0 then some 2 else none
 

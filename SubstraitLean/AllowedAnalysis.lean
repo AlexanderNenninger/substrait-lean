@@ -23,6 +23,7 @@ namespace Substrait
 
 /-! ## Plans without choices -/
 
+variable [Boxes.Ambient]
 /-- Does `r` leave the engine no choice but the order of its rows? No
 `FETCH` (which rows come first), each window's ties broken alike
 (`Rel.windowsTotal`'s checks), and aggregates that are functions of their
@@ -41,6 +42,7 @@ def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List 
         fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part))
   | .aggregate r _ ms => r.detPlan cat A F K && ms.all (·.orderFree)
 
+omit [Boxes.Ambient] in
 theorem crossRows_perm {xs xs' ys ys' : Relation} (hx : xs.Perm xs') (hy : ys.Perm ys') :
     (crossRows xs ys).Perm (crossRows xs' ys') :=
   (crossRows_perm_right hy).trans (hx.flatMap_right _)
@@ -189,6 +191,7 @@ theorem postExpr_eval {n : Nat} {es : List Expr} {x : Row} (hx : x.length = n) (
       List.getElem?_map, List.getD_eq_getElem?_getD]
     cases es[j - n]? <;> rfl
 
+omit [Boxes.Ambient] in
 theorem postExpr_narrow (n : Nat) (es : List Expr) (sh : Nat → Option Shift) (j : Nat) :
     postExpr n (es.map (·.narrow sh)) j = (postExpr n es j).narrow sh := by
   unfold postExpr
@@ -197,6 +200,7 @@ theorem postExpr_narrow (n : Nat) (es : List Expr) (sh : Nat → Option Shift) (
   · simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
     cases es[j - n]? <;> simp [Expr.narrow, Expr.narrowCmp, Expr.cmp?]
 
+omit [Boxes.Ambient] in
 theorem Row.EquivFrom.length_eq {q : Obs} {ctx : ObsCtx} :
     ∀ {i : Nat} {r r' : Row}, Row.EquivFrom q ctx i r r' → r.length = r'.length
   | _, [], [], _ => rfl

@@ -50,6 +50,8 @@ A function without an entry fails the build, and `L.coverage` lists it.
 
 namespace Substrait
 
+-- The generator searches DuckDB's lift: DuckDB's black boxes (#1189).
+open scoped Substrait.DuckDB
 /-- A lift entry: the Substrait expression, as JSON over the arguments (field
 references `0`, `1`, …), what the parser reads it as, and the proof that this
 means what DuckDB's function means. -/

@@ -120,6 +120,7 @@ theorem keyOf_append {k : List Nat} {x : Row} (y : Row) (h : ∀ i ∈ k, i < x.
   List.map_congr_left fun i hi => by
     simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (h i hi)]
 
+variable [Boxes.Ambient]
 theorem leftJoinRow_prefix {on : Expr} {n : Nat} {ys : Relation} {x row : Row}
     (h : row ∈ leftJoinRow on n ys x) : ∃ z, row = x ++ z := by
   unfold leftJoinRow at h
@@ -132,6 +133,7 @@ theorem leftJoinRow_prefix {on : Expr} {n : Nat} {ys : Relation} {x row : Row}
 
 /-! ## Plans depend only on the tables they read -/
 
+omit [Boxes.Ambient] in
 theorem Rel.arity_congr {c cat : Catalog} (h : ∀ t, (c t).arity = (cat t).arity) :
     ∀ r : Rel, r.arity c = r.arity cat
   | .read t => h t
@@ -329,6 +331,7 @@ theorem combineMeasures_eval {k : Nat} {ms : List Measure} {i : Nat} (hi : i < m
   unfold Measure.eval
   split <;> simp_all [combineMeasures, Measure.inputs, Measure.kept, Expr.eval]
 
+omit [Boxes.Ambient] in
 theorem filter_beq_nodup {α : Type} [BEq α] [LawfulBEq α] {l : List α} (h : l.Pairwise (· ≠ ·))
     (k : α) : l.filter (· == k) = if k ∈ l then [k] else [] := by
   induction l with
@@ -343,12 +346,14 @@ theorem filter_beq_nodup {α : Type} [BEq α] [LawfulBEq α] {l : List α} (h : 
     · have : (a == k) = false := by simpa using hak
       simp only [this, Bool.false_eq_true, ↓reduceIte, List.mem_cons, Ne.symm hak, false_or]
 
+omit [Boxes.Ambient] in
 theorem flatMap_ite_singleton {α β : Type} (l : List α) (p : α → Prop) [DecidablePred p] (f : α → β) :
     l.flatMap (fun a => if p a then [f a] else []) = (l.filter fun a => decide (p a)).map f := by
   induction l with
   | nil => rfl
   | cons a l ih => by_cases h : p a <;> simp [h, ih]
 
+omit [Boxes.Ambient] in
 theorem flatten_map_filter {α β : Type} (l : List α) (p : α → Bool) (f : α → List β)
     (h : ∀ a, p a = false → f a = []) : (l.map f).flatten = ((l.filter p).map f).flatten := by
   induction l with
@@ -461,10 +466,12 @@ def copyPos (n : Nat) (es : List Expr) (c : Nat) : Nat :=
   | some i => n + i
   | none => c
 
+omit [Boxes.Ambient] in
 theorem getD_append_lt {x y : Row} {i : Nat} (h : i < x.length) :
     (x ++ y).getD i .null = x.getD i .null := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_append_left h]
 
+omit [Boxes.Ambient] in
 theorem getD_append_len {x y : Row} (j : Nat) : (x ++ y).getD (x.length + j) .null = y.getD j .null := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_append_right]
 
@@ -479,6 +486,7 @@ def Expr.eqFields : Expr → List (Nat × Nat)
     else []
   | _ => []
 
+omit [Boxes.Ambient] in
 theorem Value.isTrue_iff {v : Value} : v.isTrue = true ↔ v = .bool true := by
   cases v with
   | bool b => cases b <;> simp [Value.isTrue]
@@ -522,6 +530,7 @@ def coCond (la lb : Bool) (ka kb : Option (List Nat)) (n : Nat) (on : Expr) : Bo
         on.eqFields.contains (i, n + j) || on.eqFields.contains (n + j, i)
     | _, _ => false
 
+omit [Boxes.Ambient] in
 theorem coCond_linear {la lb : Bool} {ka kb : Option (List Nat)} {n : Nat} {on : Expr}
     (h : coCond la lb ka kb n on = true) : la = true ∧ lb = true := by
   simp only [coCond, Bool.and_eq_true] at h
@@ -556,6 +565,7 @@ theorem coCond_keys {la lb : Bool} {ka kb : List Nat} {n : Nat} {on : Expr}
 
 /-! ### Rows of different shards that never match -/
 
+omit [Boxes.Ambient] in
 theorem cross_filter_diag {α : Type} {p : Row → Bool} (f g : α → Relation) : ∀ {L : List α},
     L.Pairwise (fun c c' => (∀ x ∈ f c, ∀ y ∈ g c', p (x ++ y) = false) ∧
       (∀ x ∈ f c', ∀ y ∈ g c, p (x ++ y) = false)) →
@@ -587,6 +597,7 @@ theorem cross_filter_diag {α : Type} {p : Row → Bool} (f g : α → Relation)
       exact this.trans (cross_filter_diag f g h.2)
     exact p₁.append p₂
 
+omit [Boxes.Ambient] in
 /-- Row by row, where each row's result only sees the rows of `ys` it matches. -/
 theorem flatMap_rowwise {α : Type} {m : Row → Row → Bool} (f g : α → Relation)
     (G : Relation → Row → Relation)
@@ -607,6 +618,7 @@ theorem flatMap_rowwise {α : Type} {m : Row → Row → Bool} (f g : α → Rel
         obtain ⟨c', hc', hx⟩ := List.mem_flatMap.mp hx
         exact (h.1 c' hc').2 x hx y hy).2
 
+omit [Boxes.Ambient] in
 theorem filter_rowwise {α : Type} {m : Row → Row → Bool} (f g : α → Relation)
     (P : Relation → Row → Bool)
     (hP : ∀ x ys zs, (∀ y ∈ zs, m x y = false) → P (ys ++ zs) x = P ys x ∧ P (zs ++ ys) x = P ys x) :
@@ -668,6 +680,7 @@ theorem hasMatch_perm {on : Expr} {ys ys' : Relation} (x : Row) (h : ys.Perm ys'
 
 /-! ### Windows over parts with no partition in common -/
 
+omit [Boxes.Ambient] in
 /-- `x`'s partition-mates in parts with no partition in common: those of its part. -/
 theorem filter_flatten_single {p : Row → Row → Bool} (hrefl : ∀ x, p x x = true)
     (hsym : ∀ x y, p x y = true → p y x = true) : ∀ {L : List Relation},
@@ -737,12 +750,14 @@ theorem windowEval_sharded {part : List Nat} {sort : List SortKey} {fns : List W
   exact .of_eq (flatMap_congr fun c hc => List.map_congr_left fun x hx => by
     simp only [winRow, hpart c hc x (List.mem_mergeSort.mp hx)])
 
+omit [Boxes.Ambient] in
 theorem keyOf_eq_of_samePart {part kc : List Nat} {a b : Row} (hkc : ∀ c ∈ kc, c ∈ part)
     (h : samePart part a b = true) : keyOf kc a = keyOf kc b := by
   simp only [samePart, decide_eq_true_eq, List.map_inj_left] at h
   simp only [keyOf, List.map_inj_left]
   exact fun c hc => h c (hkc c hc)
 
+omit [Boxes.Ambient] in
 theorem Rel.wf_congr {c cat : Catalog} (h : ∀ t, (c t).arity = (cat t).arity) :
     ∀ {r : Rel}, r.WF cat → r.WF c
   | .read _, _ => trivial
@@ -854,6 +869,7 @@ def KeyFrom (S : String → Bool) (K : String → Option (List Nat)) (c : Catalo
   (∀ i ∈ kc, i < row.length) ∧
     ∃ t kt, S t = true ∧ K t = some kt ∧ ∃ x ∈ (c t).rows, keyOf kc row = keyOf kt x
 
+omit [Boxes.Ambient] in
 theorem KeyFrom.append {S : String → Bool} {K : String → Option (List Nat)} {c : Catalog}
     {kc : List Nat} {x : Row} (h : KeyFrom S K c kc x) (y : Row) : KeyFrom S K c kc (x ++ y) := by
   obtain ⟨hl, t, kt, h₁, h₂, x', hx', he⟩ := h
@@ -1190,6 +1206,7 @@ def Measure.twoPhase (kc : Option (List Nat)) (m : Measure) : Bool :=
     | some [c] => m.arg == .field c
     | _ => false)
 
+omit [Boxes.Ambient] in
 theorem Measure.fnDecomposable_of_twoPhase {kc : Option (List Nat)} {m : Measure}
     (h : m.twoPhase kc = true) : m.fn.decomposable = true := by
   simp only [twoPhase, Bool.or_eq_true, Bool.and_eq_true] at h
@@ -1262,6 +1279,7 @@ def IntArgs.ofTypes (cat : Catalog) (A : String → List AVal) : IntArgs := fun 
   let a := e.absD (r.aeval cat A (fun _ => []) WindowKeys.none) []
   a.intsOnly && a.nk == some .int
 
+omit [Boxes.Ambient] in
 theorem AVal.intOrNull_of_mem {a : AVal} {v : Value} (h : a.Mem v) (hi : a.intsOnly = true)
     (hk : a.nk = some .int) : v.intOrNull = true := by
   simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
@@ -1285,11 +1303,13 @@ theorem IntArgs.ofTypes_sound {cat : Catalog} (hcat : cat.WF) {A : String → Li
   exact AVal.intOrNull_of_mem
     (Expr.absD_sound hm (by simp [FactsHold]) (by simp [KsHold]) e) h.1 (by simpa using h.2)
 
+omit [Boxes.Ambient] in
 theorem ediv_mean_between {lo hi s n : Int} (hn : 0 < n) (h₁ : n * lo ≤ s) (h₂ : s ≤ n * hi) :
     lo ≤ s / n ∧ s / n ≤ hi :=
   ⟨Int.le_ediv_of_mul_le hn (by rw [Int.mul_comm]; exact h₁),
     Int.ediv_le_of_le_mul hn (by rw [Int.mul_comm]; exact h₂)⟩
 
+omit [Boxes.Ambient] in
 /-- A truncated mean lies between the bounds of the values. -/
 theorem tdiv_mean_between {lo hi s n : Int} (hn : 0 < n) (h₁ : n * lo ≤ s) (h₂ : s ≤ n * hi) :
     lo ≤ s.tdiv n ∧ s.tdiv n ≤ hi := by
@@ -1301,6 +1321,7 @@ theorem tdiv_mean_between {lo hi s n : Int} (hn : 0 < n) (h₁ : n * lo ≤ s) (
       (by rw [Int.mul_neg]; omega) (by rw [Int.mul_neg]; omega)
     omega
 
+omit [Boxes.Ambient] in
 theorem intSum_between {lo hi : Int} : ∀ {vs : List Value},
     (∀ v ∈ vs, ∃ i, v = .int i ∧ lo ≤ i ∧ i ≤ hi) →
       (vs.length : Int) * lo ≤ intSum vs ∧ intSum vs ≤ (vs.length : Int) * hi
@@ -1311,6 +1332,7 @@ theorem intSum_between {lo hi : Int} : ∀ {vs : List Value},
     simp only [intSum, List.length_cons, Int.natCast_add, Int.natCast_one, Int.add_mul, Int.one_mul]
     omega
 
+omit [Boxes.Ambient] in
 /-- Of integers, the truncated mean needs no clamping. -/
 theorem clampInts_mean {vs : List Value} (h : ∀ v ∈ vs, ∃ i, v = .int i) (hne : vs ≠ []) :
     clampInts vs ((intSum vs).tdiv vs.length) = (intSum vs).tdiv vs.length := by
@@ -1379,6 +1401,7 @@ theorem algCombine_eval (k : Nat) (ms : List Measure) (input : Rel) (C : Catalog
   simp only [algCombine, Rel.eval, List.map_map]
   rfl
 
+omit [Boxes.Ambient] in
 /-- A `SUM` of integers is an integer. -/
 theorem sumOf_ints {vs : List Value} (h : ∀ v ∈ vs, ∃ i, v = .int i) :
     sumOf vs = .int (intSum vs) := by
@@ -1419,6 +1442,7 @@ theorem Measure.final_eval {m : Measure} (hm : m.fn = .iavg) {rows : Relation}
     simp only [BinFn.apply]
     rw [ite_eq_right_of_eq_false _ _ (eq_false (by simp; omega)), clampInts_mean hi (List.cons_ne_nil _ _)]
 
+omit [Boxes.Ambient] in
 theorem filterMap_getD_take {α β : Type} (f : α → Option β) (l : List α) {i : Nat}
     (hi : i < l.length) {b : β} (hb : f l[i] = some b) (d : β) :
     (l.filterMap f).getD ((l.take i).filterMap f).length d = b := by
@@ -1428,6 +1452,7 @@ theorem filterMap_getD_take {α β : Type} (f : α → Option β) (l : List α) 
   rw [hl]
   simp [List.getD_eq_getElem?_getD]
 
+omit [Boxes.Ambient] in
 theorem algParts_length_ge (ms : List Measure) : ms.length ≤ (algParts ms).length := by
   simp [algParts]
 
@@ -1488,6 +1513,7 @@ def Measure.algebraic (I : IntArgs) (r : Rel) (kc : Option (List Nat)) (m : Meas
     I r m.arg && m.part.twoPhase kc && ({ m with fn := .count } : Measure).twoPhase kc
   else m.twoPhase kc
 
+omit [Boxes.Ambient] in
 theorem algParts_twoPhase {I : IntArgs} {r : Rel} {kc : Option (List Nat)} {ms : List Measure}
     (h : ∀ m ∈ ms, m.algebraic I r kc = true) : ∀ p ∈ algParts ms, p.twoPhase kc = true := by
   intro p hp
@@ -1664,13 +1690,16 @@ roundings add `|S| / 2⁵³` each. `As` is within `T / 2⁵³` of `T`. -/
 /-- `Σ |x|` of the codes, scaled. -/
 def absExact (cs : List Int) : Nat := (cs.map fun c => (FloatCode.scaled c).natAbs).sum
 
+omit [Boxes.Ambient] in
 theorem absExact_append (a b : List Int) : absExact (a ++ b) = absExact a + absExact b := by
   simp [absExact, List.sum_append]
 
+omit [Boxes.Ambient] in
 theorem absExact_flatten : ∀ L : List (List Int), absExact L.flatten = (L.map absExact).sum
   | [] => rfl
   | l :: L => by simp [absExact_append, absExact_flatten L]
 
+omit [Boxes.Ambient] in
 theorem absExact_perm {a b : List Int} (h : a.Perm b) : absExact a = absExact b := by
   induction h with
   | nil => rfl
@@ -1678,6 +1707,7 @@ theorem absExact_perm {a b : List Int} (h : a.Perm b) : absExact a = absExact b 
   | swap x y l => simp only [absExact, List.map_cons, List.sum_cons]; omega
   | trans _ _ ih1 ih2 => exact ih1.trans ih2
 
+omit [Boxes.Ambient] in
 theorem absExact_le {cs : List Int} {Bs : Nat} (h : ∀ c ∈ cs, (FloatCode.scaled c).natAbs ≤ Bs) :
     absExact cs ≤ cs.length * Bs := by
   induction cs with
@@ -1688,11 +1718,13 @@ theorem absExact_le {cs : List Int} {Bs : Nat} (h : ∀ c ∈ cs, (FloatCode.sca
     simp only [absExact, List.map_cons, List.sum_cons, List.length_cons] at this ⊢
     rw [Nat.succ_mul]; omega
 
+omit [Boxes.Ambient] in
 theorem exactSum_append (a b : List Value) : exactSum (a ++ b) = exactSum a + exactSum b := by
   induction a with
   | nil => simp [exactSum]
   | cons v a ih => cases v <;> simp [exactSum, ih] <;> omega
 
+omit [Boxes.Ambient] in
 theorem exactSum_natAbs_le (cs : List Int) : (exactSum (cs.map .float)).natAbs ≤ absExact cs := by
   induction cs with
   | nil => simp [exactSum, absExact]
@@ -1700,12 +1732,14 @@ theorem exactSum_natAbs_le (cs : List Int) : (exactSum (cs.map .float)).natAbs �
     simp only [absExact, List.map_cons, List.sum_cons, exactSum, FloatCode.exact] at ih ⊢
     omega
 
+omit [Boxes.Ambient] in
 theorem isFin_of_scaled_le {c : Int} (h : (FloatCode.scaled c).natAbs ≤ FloatCode.maxMag) :
     FloatCode.IsFin c := by
   have := FloatCode.posInf_eq; have := FloatCode.negInf_eq
   unfold FloatCode.scaled at h; unfold FloatCode.IsFin
   split at h <;> omega
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- Codes of scaled magnitude at most `2²⁰⁹⁶` add up to their exact sum,
 rounded once. -/
@@ -1715,10 +1749,12 @@ theorem floatSumCR_of_le {cs : List Int} (h : ∀ c ∈ cs, (FloatCode.scaled c)
   simp only [floatSumCR, nonFinite_of_fin fun c hc => isFin_of_scaled_le (by
     have := h c hc; omega), Option.getD_none]
 
+omit [Boxes.Ambient] in
 theorem scaled_fabsCode (c : Int) : FloatCode.scaled (fabsCode c) = (FloatCode.scaled c).natAbs := by
   by_cases hc : c < 0 <;> simp only [fabsCode, FloatCode.neg, hc, ↓reduceIte] <;>
     unfold FloatCode.scaled <;> split <;> omega
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- The shards' exact sums against their rounded ones: within `T / 2⁵³`. -/
 theorem partials_near {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096)
@@ -1745,6 +1781,7 @@ theorem partials_near {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode
       · exact hfin
       · exact ih2 l' hl'
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- `As` against `T`: `(2⁵³ − 1) T ≤ 2⁵³ As`. -/
 theorem absTotal_ge {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096)
@@ -1777,6 +1814,7 @@ theorem absTotal_ge {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.s
     rw [hA]
     omega
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- **A split double `SUM` (D25)**: `k` shards of the codes `ws`, each rounded
 once, then rounded once more, are within `shardTolCR As` of `ws` rounded
@@ -1822,6 +1860,7 @@ theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
   unfold FloatCode.shardTolCR
   omega
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- The scaled value of an integer's exact code. -/
 theorem scaled_exactCode (n : Nat) : FloatCode.scaled (FloatCode.exactCode n) = n * 2 ^ 1074 := by
@@ -1832,6 +1871,7 @@ theorem scaled_exactCode (n : Nat) : FloatCode.scaled (FloatCode.exactCode n) = 
   · simp only [show (n : Int) ≠ 0 by omega, show ¬ (n : Int) < 0 by omega, ↓reduceIte]
     split <;> omega
 
+omit [Boxes.Ambient] in
 /-- `2⁵¹ |Q n K − R K| ≤ 2 |R| K + 2⁵⁰ n K` without the scale `K`. -/
 theorem cancel_scale {Q Rs K : Int} {n : Nat} (hK : 0 < K)
     (h : 2 ^ 51 * (Q * (n * K) - Rs * K).natAbs ≤
@@ -1846,6 +1886,7 @@ theorem cancel_scale {Q Rs K : Int} {n : Nat} (hK : 0 < K)
   rw [e2, ← Nat.mul_assoc] at h
   exact Nat.le_of_mul_le_mul_right h (by omega)
 
+omit [Boxes.Ambient] in
 /-- The arithmetic of `twoPhaseAvg_near`: the native quotient `Q`, the
 reference's mean `C`, the rounded partials' sum `Rs`, their exact sum `P`, the
 exact sum `S` and `Σ |x| = T`, all scaled, against `As`. -/
@@ -1870,6 +1911,7 @@ theorem avg_arith {P S Rs Q C : Int} {n X T As : Nat}
   have := (Nat.le_div_iff_mul_le hD).2 hlt
   omega
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- **A split double `AVG` (D25)**: the split sum divided natively by the
 count is within `shardAvgTolCR n As` of the mean of `ws` rounded once. -/
@@ -1974,6 +2016,7 @@ def Value.Near (τ : Nat) : Value → Value → Prop
   | .float a, .float b => (FloatCode.scaled a - FloatCode.scaled b).natAbs ≤ τ
   | a, b => a = b
 
+omit [Boxes.Ambient] in
 theorem length_le_flatten : ∀ {L : List (List Int)}, (∀ l ∈ L, l ≠ []) → L.length ≤ L.flatten.length
   | [], _ => by simp
   | l :: L, h => by
@@ -1982,6 +2025,7 @@ theorem length_le_flatten : ∀ {L : List (List Int)}, (∀ l ∈ L, l ≠ []) �
     simp only [List.length_cons, List.flatten_cons, List.length_append]
     omega
 
+omit [Boxes.Ambient] in
 theorem flatten_filter_ne_nil {α : Type} : ∀ L : List (List α),
     (L.filter fun l => !l.isEmpty).flatten = L.flatten
   | [] => rfl
@@ -2035,6 +2079,7 @@ theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {Bs : Nat}
     rw [hwc] at h ⊢
     simpa [AggFn.apply, Value.Near, twoPhaseSum] using h
 
+omit [Boxes.Ambient] in
 theorem floatsOf_flatten (L : List (List Value)) : floatsOf L.flatten = (L.map floatsOf).flatten :=
   List.filterMap_flatten ..
 
@@ -2214,6 +2259,7 @@ def absValue : Value → Value
   | .float c => .float (fabsCode c)
   | v => v
 
+omit [Boxes.Ambient] in
 theorem filter_map_absValue : ∀ vs : List Value,
     (vs.map absValue).filter (· != .null) = (vs.filter (· != .null)).map absValue
   | [] => rfl
@@ -2376,6 +2422,7 @@ theorem Rel.shardSplit_sound {S : String → Bool} {K : String → Option (List 
 
 /-! ## 64-bit partial sums -/
 
+omit [Boxes.Ambient] in
 theorem intSum_flatten_split {L : List (List Value)} {vs : List Value} (hvs : vs ∈ L) :
     ∃ s t : List (List Value), (s ⊆ L ∧ t ⊆ L) ∧
       intSum L.flatten = intSum s.flatten + intSum vs + intSum t.flatten := by
@@ -2384,6 +2431,7 @@ theorem intSum_flatten_split {L : List (List Value)} {vs : List Value} (hvs : vs
   simp only [List.flatten_append, List.flatten_cons, intSum_append]
   omega
 
+omit [Boxes.Ambient] in
 /-- **No spurious overflow**: when no value is negative (or none is
 positive), every partial sum lies between 0 and the total, so it fits in 64
 bits whenever the total does. -/

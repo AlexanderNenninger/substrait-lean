@@ -148,6 +148,7 @@ theorem fdiv_isRef (a b : Int) : IsRef (fdiv a b) := by
         exact isRef_canon_of (by simp))
     | exact isRef_canon_of (.inr (.inr (.inr (.inr (.inr ⟨_, _, rfl⟩)))))
 
+variable [Boxes.Ambient]
 /-- D31's operations give a double only on two doubles. Reduced by `cases`
 on the constructors, which `simp [BinFn.apply]` over every pair took 1.4 s
 to do. -/
@@ -181,6 +182,7 @@ theorem Expr.refCol_sound {mask : Nat → Bool} {e : Expr} (he : e.refCol mask =
     · exact fdiv_apply_float hc
   | _ => simp [Expr.refCol] at he
 
+omit [Boxes.Ambient] in
 theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) : IsRef c := by
   have h1 := fp64.posInf_lt_nan; have h2 := fp64.negInf_lt_zero; have h3 := fp64.zero_lt_posInf
   have hp : IsRef fp64.posInf := ⟨by omega, by omega⟩
@@ -195,12 +197,14 @@ theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) 
   · cases h; exact hn
   · cases h
 
+omit [Boxes.Ambient] in
 theorem floatSumCR_isRef (vs : List Value) : IsRef (floatSumCR vs) := by
   unfold floatSumCR
   cases h : nonFinite vs with
   | none => exact isRef_ofExactDiv _ _
   | some c => exact nonFinite_isRef h
 
+omit [Boxes.Ambient] in
 theorem floatAvgCR_isRef (vs : List Value) : IsRef (floatAvgCR vs) := by
   unfold floatAvgCR
   cases h : nonFinite vs with
@@ -369,10 +373,12 @@ def Measure.tolOut (t : Tol) (mask : Nat → Bool) (env : List AVal) (N : Option
     | _, _ => none
   | _, _ => none
 
+omit [Boxes.Ambient] in
 theorem Forall2.mem_left {α β : Type} {R : α → β → Prop} {l : List α} {l' : List β}
     (h : Forall2 R l l') {a : α} (ha : a ∈ l) : ∃ b ∈ l', R a b :=
   Forall2.mem_right (Forall2.flip h) ha
 
+omit [Boxes.Ambient] in
 theorem scaled_natAbs_le {lo hi c : Int} (h1 : lo ≤ c) (h2 : c ≤ hi) :
     (scaled c).natAbs ≤ magOf lo hi := by
   have a := scaled_mono h1; have b := scaled_mono h2
@@ -380,6 +386,7 @@ theorem scaled_natAbs_le {lo hi c : Int} (h1 : lo ≤ c) (h2 : c ≤ hi) :
   generalize scaled lo = x at *; generalize scaled hi = y at *; generalize scaled c = z at *
   omega
 
+omit [Boxes.Ambient] in
 theorem exactSum_natAbs_le_mul {B : Nat} :
     ∀ {vs : List Value}, (∀ c, Value.float c ∈ vs → (scaled c).natAbs ≤ B) →
       (exactSum vs).natAbs ≤ vs.length * B
@@ -395,9 +402,11 @@ theorem exactSum_natAbs_le_mul {B : Nat} :
     simp only [List.length_cons, Nat.succ_mul]
     omega
 
+omit [Boxes.Ambient] in
 theorem ulpDiv_mono {v w : Int} (n : Nat) (h : v.natAbs ≤ w.natAbs) : ulpDiv v n ≤ ulpDiv w n :=
   Nat.pow_le_pow_right (by decide) (gridExp_mono n h)
 
+omit [Boxes.Ambient] in
 /-- The ulp of a mean is at most the ulp of a bound on its values. -/
 theorem ulpDiv_le_of_mean {S : Int} {n B : Nat} (h : S.natAbs ≤ n * B) :
     ulpDiv S n ≤ ulpDiv (B : Int) 1 := by
@@ -412,6 +421,7 @@ theorem ulpDiv_le_of_mean {S : Int} {n B : Nat} (h : S.natAbs ≤ n * B) :
   simp only [Int.natAbs_natCast, Nat.div_one]
   omega
 
+omit [Boxes.Ambient] in
 theorem Tol.cell_float {t : Tol} {j e : Nat} (hj : t j = some e) {a b : Int}
     (h : (fp64.canon a - fp64.canon b).natAbs ≤ e) : t.Cell j (.float a) (.float b) := by
   show IntEquiv nearObs t.ctx j a b
@@ -419,6 +429,7 @@ theorem Tol.cell_float {t : Tol} {j e : Nat} (hj : t j = some e) {a b : Int}
     Tol.near]
   exact h
 
+omit [Boxes.Ambient] in
 theorem Tol.cell_float_iff {e : Nat} {a b : Int} :
     (Tol.all e).Cell 0 (.float a) (.float b) ↔ (fp64.canon a - fp64.canon b).natAbs ≤ e := by
   show IntEquiv nearObs (Tol.all e).ctx 0 a b ↔ _
@@ -447,6 +458,7 @@ theorem Measure.inputs_cells {t : Tol} {m : Measure} {e : Nat} (hd : m.distinct 
   simp only [hd, Bool.false_eq_true, ite_false]
   exact hn
 
+omit [Boxes.Ambient] in
 /-- One pair of a `SUM`'s values: the engine's a reference code, the
 reference's in `[lo, hi]`, within `e` after `canon`. Then both are finite,
 within `e` as codes, and the engine's magnitude at most `M + e`. -/
@@ -546,6 +558,7 @@ theorem Measure.eval_refOut {m : Measure} (hm : m.refOut = true) (rows : Relatio
     cases hfn : m.fn <;> simp only [hfn, Bool.false_eq_true] at hm <;> rw [hfn] at h <;>
       cases hi : m.inputs rows <;> rw [hi] at h <;> simp [AggFn.apply] at h
 
+omit [Boxes.Ambient] in
 theorem Tol.cell_of_codeNear {tm : Tol} {j B B' : Nat} (hj : tm j = some B') (hB : B ≤ B')
     {v w : Value} (hv : v = .null ∨ ∃ a, v = .float a ∧ IsRef a)
     (hw : w = .null ∨ ∃ b, w = .float b ∧ IsRef b) (h : CodeNear B v w) : tm.Cell j v w := by
@@ -641,6 +654,7 @@ theorem Measure.tolOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N
 /-- The tolerance of a list of measure outputs. -/
 def Tol.ofOuts (os : List (Option (Option Nat))) : Tol := fun k => (os.getD k none).getD none
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 theorem Measure.tolOut_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {o : Option Nat} (h : m.tolOut t mask env N = some o) : m.orderFree = true := by
@@ -655,6 +669,7 @@ theorem Measure.tolOut_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVa
        repeat' (split at h)
        all_goals simp_all)
 
+omit [Boxes.Ambient] in
 theorem Tol.cell_float_iff' {t : Tol} {k ε : Nat} (h : t k = some ε) {a b : Int}
     (hc : t.Cell k (.float a) (.float b)) : (fp64.canon a - fp64.canon b).natAbs ≤ ε := by
   have : IntEquiv nearObs t.ctx k a b := hc

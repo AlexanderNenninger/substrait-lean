@@ -51,6 +51,7 @@ namespace LinearAgg
 `DISTINCT`. (`FILTER` is allowed, and `ORDER BY` changes nothing.) -/
 def Linear (m : Measure) : Prop := (m.fn = .count ∨ m.fn = .sum) ∧ m.distinct = false
 
+variable [Boxes.Ambient]
 /-- The row passes the measure's `FILTER`. -/
 def keeps (m : Measure) (row : Row) : Bool :=
   match m.filter with
@@ -110,6 +111,7 @@ an integer otherwise. A kind-checked plan has it (`ArgScale.of_kindT`). -/
 def ArgScale (sc : Option Nat) (m : Measure) (rows : Relation) : Prop :=
   m.fn = .sum → ∀ row ∈ rows, (m.arg.eval row).hasKind (scaleKind sc) = true
 
+omit [Boxes.Ambient] in
 theorem hasKind_dec_scale {p s : Nat} {v : Value} (h : v.hasKind (.dec p s) = true) :
     v.hasKind (.dec 38 s) = true := by
   cases v <;> simp_all [Value.hasKind]
@@ -205,6 +207,7 @@ theorem outRow_congr {gs : List Expr} {ms : List Measure} {st : Measure → LinS
 theorem rowsIn_congr {gs : List Expr} {z z' : ZSet} (h : ∀ r, z.weight r = z'.weight r)
     (k : Row) : rowsIn gs k z = rowsIn gs k z' := ZSet.lin_congr _ h
 
+omit [Boxes.Ambient] in
 /-- A functional that vanishes on every row of `z` is 0 on it. -/
 theorem lin_zero {g : Row → Int} {z : ZSet} (h : ∀ x ∈ z, g x.1 = 0) : ZSet.lin g z = 0 := by
   induction z with
@@ -216,12 +219,14 @@ theorem lin_zero {g : Row → Int} {z : ZSet} (h : ∀ x ∈ z, g x.1 = 0) : ZSe
 
 /-! ## On bags -/
 
+omit [Boxes.Ambient] in
 theorem lin_lift (g : Row → Int) (rows : Relation) :
     ZSet.lin g (ZSet.lift rows) = (rows.map g).sum := by
   induction rows with
   | nil => rfl
   | cons a rows ih => simp only [ZSet.lift, List.map_cons] at ih ⊢; rw [ZSet.lin_cons, ih]; simp
 
+omit [Boxes.Ambient] in
 theorem sum_ind_one (p : Row → Bool) (rows : Relation) :
     (rows.map fun r => ind (p r) 1).sum = (rows.filter p).length := by
   induction rows with
@@ -231,6 +236,7 @@ theorem sum_ind_one (p : Row → Bool) (rows : Relation) :
       simp only [List.map_cons, List.sum_cons, ih, List.filter_cons, ind]
       split <;> simp <;> omega
 
+omit [Boxes.Ambient] in
 theorem sum_ind (p : Row → Bool) (f : Row → Int) (rows : Relation) :
     (rows.map fun r => ind (p r) (f r)).sum = ((rows.filter p).map f).sum := by
   induction rows with
@@ -240,11 +246,13 @@ theorem sum_ind (p : Row → Bool) (f : Row → Int) (rows : Relation) :
       simp only [List.map_cons, List.sum_cons, ih, List.filter_cons, ind]
       split <;> simp
 
+omit [Boxes.Ambient] in
 theorem intSum_eq (vs : List Value) : intSum vs = (vs.map intOf).sum := by
   induction vs with
   | nil => rfl
   | cons v vs ih => cases v <;> simp [intSum, intOf, ih]
 
+omit [Boxes.Ambient] in
 /-- A `SUM` of non-NULL values of one kind, an integer or a decimal of scale
 `sc`: that kind's number of their sum. -/
 theorem sumOf_of_scale {sc : Option Nat} {v : Value} {vs : List Value}
@@ -290,6 +298,7 @@ theorem rowsIn_lift (gs : List Expr) (rows : Relation) (k : Row) :
     rowsIn gs k (ZSet.lift rows) = (groupRows gs rows k).length := by
   rw [rowsIn, lin_lift, sum_ind_one]; rfl
 
+omit [Boxes.Ambient] in
 theorem sum_one : ∀ vs : List Value, (vs.map fun _ => (1 : Int)).sum = vs.length
   | [] => rfl
   | _ :: vs => by rw [List.map_cons, List.sum_cons, sum_one vs, List.length_cons]; omega
@@ -445,6 +454,7 @@ where
 
 /-! ## `DISTINCT` -/
 
+omit [Boxes.Ambient] in
 theorem weight_lift_nonneg : ∀ (rows : Relation) (k : Row), 0 ≤ (ZSet.lift rows).weight k
   | [], _ => by simp [ZSet.lift, WSet.weight_nil]
   | a :: rows, k => by
@@ -453,6 +463,7 @@ theorem weight_lift_nonneg : ∀ (rows : Relation) (k : Row), 0 ≤ (ZSet.lift r
       rw [WSet.weight_cons]
       split <;> omega
 
+omit [Boxes.Ambient] in
 theorem weight_lift_pos {rows : Relation} {k : Row} :
     0 < (ZSet.lift rows).weight k ↔ k ∈ rows := by
   induction rows with
@@ -468,6 +479,7 @@ theorem weight_lift_pos {rows : Relation} {k : Row} :
         · intro h'; exact Or.inr (ih.mp (by omega))
         · intro h'; have := ih.mpr (h'.resolve_left (Ne.symm h)); omega
 
+omit [Boxes.Ambient] in
 /-- **`DISTINCT` from a count per row**: on a Z-set `z` with the weights of
 the bag `rows`, `DISTINCT` of `rows` is the rows whose count is positive. -/
 theorem distinct_state {rows : Relation} {z : ZSet}
@@ -476,6 +488,7 @@ theorem distinct_state {rows : Relation} {z : ZSet}
   (List.perm_ext_iff_of_nodup (nodup_dedup _) hnd).mpr fun k => by
     rw [mem_dedup, hks, hz, weight_lift_pos]
 
+omit [Boxes.Ambient] in
 /-- **Maintaining `DISTINCT`.** A batch changes the input bag from `rows`
 to `rows'` by `Δ` (with the right weights), and every row of `Δ` is in `K`.
 Then `DISTINCT` of `rows'` is the old output's rows outside `K` and the rows

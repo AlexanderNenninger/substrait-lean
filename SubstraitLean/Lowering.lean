@@ -98,6 +98,7 @@ A template's guard is built from comparisons and NULL tests, which never
 raise in the reference; `UnFn.raise` always does. The generator rewrites a
 template with these before it splits cases. -/
 
+variable [Boxes.Ambient]
 theorem Lowering.ref_isNum (k : NumKind) (x : Value) :
     Profile.reference.un (.isNum k) x = .ok (.bool (x.isNum k)) := by
   cases x <;> rfl
@@ -134,6 +135,7 @@ theorem Lowering.ref_and (x y : Value) : Profile.reference.bin .and x y = .ok (a
 theorem Lowering.ref_or (x y : Value) : Profile.reference.bin .or x y = .ok (or3 x y) := by
   cases x <;> cases y <;> rfl
 
+omit [Boxes.Ambient] in
 theorem Lowering.beq_int (a b : Int) : (a == b) = decide (a = b) := rfl
 
 /-- 128-bit arithmetic (decimals' `+`, `-`, `×` on unscaled integers, and `%`
@@ -151,6 +153,7 @@ theorem Lowering.ref_imod_int (a b : Int) (hb : b ≠ 0) :
     Profile.reference.bin .imod (.int a) (.int b) = .ok (.int (a.tmod b)) := by
   simp [Profile.reference, raiseIf, BinFn.issue, BinFn.apply, hb]
 
+omit [Boxes.Ambient] in
 /-- Wrapping around in truncating arithmetic (`%` of SQL, `Int.tmod`): adding
 the modulus to a remainder makes it non-negative, so a second remainder is the
 floored one. The wrap schema (`overflow` = `SILENT`) rests on it (#241). -/
@@ -190,6 +193,7 @@ theorem Lowering.apply_ffloor_struct (vs : List Value) : UnFn.apply .ffloor (.st
 
 /-! `<<` and `>>` as the templates compute them (`LoweringSearch.duckdbSchemas`). -/
 
+omit [Boxes.Ambient] in
 theorem Lowering.shl_toInt (a : Int) (n : Nat) (h : n < 64) :
     (BitVec.ofInt 64 a <<< n).toInt = Int.bmod (a * 2 ^ n) (2 ^ 64) := by
   rw [BitVec.shiftLeft_eq_mul_twoPow, BitVec.toInt_mul]
@@ -207,11 +211,13 @@ theorem Lowering.shl_toInt (a : Int) (n : Nat) (h : n < 64) :
     rw [show ((2:Nat):Int) = 2 from rfl, e, Int.add_mul_bmod_self_left]
   · rfl
 
+omit [Boxes.Ambient] in
 theorem Lowering.bmod_fit (x : Int) : Int.bmod x (2 ^ 64) = (x + 2 ^ 63) % 2 ^ 64 - 2 ^ 63 := by
   rw [Int.bmod_def]
   simp only [Int.natCast_pow, Int.cast_ofNat_Int]
   split <;> omega
 
+omit [Boxes.Ambient] in
 /-- A left shift wraps `a · 2ᵇ` around at 64 bits. -/
 -- The conditions as the templates' guards compare (`b < 0`, `b < 64`), so
 -- that the proofs' case splits decide them.
@@ -228,6 +234,7 @@ theorem Lowering.shl_apply (a b : Int) : BitOp.apply .shl a b =
       rw [Lowering.shl_toInt a b.toNat (by omega), Lowering.bmod_fit]
     · simp only [h1, and_false, h0, ite_false]
 
+omit [Boxes.Ambient] in
 theorem Lowering.shr_apply (a b : Int) : BitOp.apply .shr a b =
     if b < 0 then none
     else if b < 64 then some ((BitVec.ofInt 64 a).sshiftRight b.toNat).toInt else none := by
@@ -301,6 +308,7 @@ def Expr.keepGuards (keep : String → Bool) : Expr → Expr
     | some m => if keep m then .ifThen c t (e.keepGuards keep) else e.keepGuards keep
     | none => .ifThen c t (e.keepGuards keep)
 
+omit [Boxes.Ambient] in
 theorem Expr.keepGuards_all : ∀ t : Expr, t.keepGuards (fun _ => true) = t
   | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => rfl
   | .ifThen c t e => by
@@ -325,6 +333,7 @@ def Expr.GuardsAt (p : Profile) (keep : String → Bool) (i : Option Issue) (xs 
      | none => True) ∧
     ∀ w, c.evalP p xs = .ok w → w.isTrue = false → e.GuardsAt p keep i xs
 
+omit [Boxes.Ambient] in
 theorem Expr.guardsAt_all {p : Profile} {i : Option Issue} {xs : Row} :
     ∀ t : Expr, t.GuardsAt p (fun _ => true) i xs
   | .lit _ | .field _ | .un _ _ | .bin _ _ _ | .hof _ _ _ => trivial
@@ -332,6 +341,7 @@ theorem Expr.guardsAt_all {p : Profile} {i : Option Issue} {xs : Row} :
     refine ⟨?_, fun _ _ _ => guardsAt_all e⟩
     cases t.raiseMsg? <;> simp
 
+omit [Boxes.Ambient] in
 /-- **Dropping exact guards keeps the outcome** on arguments whose issue, if
 any, is kept. -/
 theorem Expr.keepGuards_agree {p : Profile} {keep : String → Bool} {i : Option Issue} {xs : Row}
@@ -418,6 +428,7 @@ def Expr.noGuards : Expr → Bool
   | .ifThen _ t e => t.raiseMsg?.isNone && e.noGuards
   | _ => true
 
+omit [Boxes.Ambient] in
 theorem Expr.guardsAt_of_noGuards {p : Profile} {keep : String → Bool} {i : Option Issue}
     {xs : Row} : ∀ t : Expr, t.noGuards = true → t.GuardsAt p keep i xs
   | .lit _, _ | .field _, _ | .un _ _, _ | .bin _ _ _, _ | .hof _ _ _, _ => trivial
@@ -426,6 +437,7 @@ theorem Expr.guardsAt_of_noGuards {p : Profile} {keep : String → Bool} {i : Op
     refine ⟨?_, fun _ _ _ => guardsAt_of_noGuards e h.2⟩
     simp only [h.1]
 
+omit [Boxes.Ambient] in
 /-- Where every issue the reference reports is named `m`, it raises only
 with an issue named `m`. -/
 theorem Outcome.raises_named {i : Option Issue} {v : Value} {m : String}
@@ -434,6 +446,7 @@ theorem Outcome.raises_named {i : Option Issue} {v : Value} {m : String}
   | none => simp [raiseIf, Outcome.err?]
   | some k => intro _; simp [hn k rfl]
 
+omit [Boxes.Ambient] in
 /-- **One guard, from the template's agreement**: in `CASE WHEN c THEN raise(m)
 ELSE e END`, with no guard in `e`, the guard is exact where it evaluates and
 every issue the reference raises with is named `m`. Where it is true, the

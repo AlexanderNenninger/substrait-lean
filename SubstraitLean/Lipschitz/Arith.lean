@@ -38,6 +38,7 @@ def Expr.atom? (t : Tol) (mask : Nat → Bool) (env : List AVal) : Expr → Opti
   | .lit (.float c) => if decide (negInf < c) && decide (c < posInf) then some (0, c, c) else none
   | _ => none
 
+variable [Boxes.Ambient]
 /-- An operand's values on two paired rows: both NULL, or two finite doubles
 within its tolerance, the reference's in its range. -/
 theorem Expr.atom?_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : Expr}
@@ -119,6 +120,7 @@ theorem Expr.atom?_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : 
       · cases h
   | _ => simp [Expr.atom?] at h
 
+omit [Boxes.Ambient] in
 /-- Two roundings by `n` of exact values `N₁`, `N₂`: within their distance
 divided by `n`, both ulps and the codes' slack. -/
 theorem round_pair {N₁ N₂ : Int} {n : Nat} (hn : 0 < n) (f₁ : IsFin (ofExactDiv N₁ n))
@@ -160,12 +162,15 @@ theorem round_pair {N₁ N₂ : Int} {n : Nat} (hn : 0 < n) (f₁ : IsFin (ofExa
   rw [this] at t2
   omega
 
+omit [Boxes.Ambient] in
 theorem scaled_neg' (c : Int) : scaled (-c) = -scaled c := by
   unfold scaled; split <;> split <;> omega
 
+omit [Boxes.Ambient] in
 theorem IsFin.neg {c : Int} (h : IsFin c) : IsFin (-c) := by
   have := posInf_eq; have := negInf_eq; obtain ⟨h1, h2⟩ := h; exact ⟨by omega, by omega⟩
 
+omit [Boxes.Ambient] in
 /-- An engine operand's magnitude: the reference's range's, plus its
 tolerance. -/
 theorem atom_mag {e : Nat} {lo hi a b : Int} (hab : (a - b).natAbs ≤ e) (hb1 : lo ≤ b) (hb2 : b ≤ hi) :
@@ -177,6 +182,7 @@ theorem atom_mag {e : Nat} {lo hi a b : Int} (hab : (a - b).natAbs ≤ e) (hb1 :
   rw [Int.sub_add_cancel] at this
   omega
 
+omit [Boxes.Ambient] in
 theorem fadd_eq_sumCR {a b : Int} (ha : IsFin a) (hb : IsFin b) :
     fadd a b = floatSumCR [.float a, .float b] := by
   have hf : FinCodes [.float a, .float b] := fun c hc => by
@@ -185,6 +191,7 @@ theorem fadd_eq_sumCR {a b : Int} (ha : IsFin a) (hb : IsFin b) :
   rw [fadd_fin ha hb]
   simp [floatSumCR, nonFinite_of_finCodes hf, exactSum]
 
+omit [Boxes.Ambient] in
 /-- **`x + y`**: two finite operands within `e` codes each, of magnitudes at
 most `M` together: within `2 (e + 1)` codes and both roundings. -/
 theorem fadd_near {e M : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin a₁) (f₂ : IsFin a₂) (g₁ : IsFin b₁)
@@ -211,9 +218,11 @@ theorem fadd_near {e M : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin a₁) (f
   simp only [List.length_cons, List.length_nil] at hc
   omega
 
+omit [Boxes.Ambient] in
 theorem fsub_eq_fadd {a b : Int} (ha : IsFin a) (hb : IsFin b) : fsub a b = fadd a (-b) := by
   rw [fsub_fin ha hb, fadd_fin ha (IsFin.neg hb), scaled_neg', Int.sub_eq_add_neg]
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 3200 in
 /-- **`x · y`**: the exact products within `(Mx (ey + 1) + My (ex + 1)) / 2`,
 then both roundings. -/
@@ -260,6 +269,7 @@ theorem fmul_near {ex ey Mx My : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin 
     Nat.div_le_div_right (by omega)
   omega
 
+omit [Boxes.Ambient] in
 /-- `a ≤ n · ⌈a / n⌉`. -/
 theorem le_mul_ceilDiv {a n : Nat} (hn : 0 < n) : a ≤ n * ((a + n - 1) / n) := by
   have := Nat.div_add_mod (a + n - 1) n
@@ -267,6 +277,7 @@ theorem le_mul_ceilDiv {a n : Nat} (hn : 0 < n) : a ≤ n * ((a + n - 1) / n) :=
   rw [Nat.mul_comm] at *
   omega
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 3200 in
 /-- **`x / c`** for a finite non-zero literal `c`: one division by `|c|` on
 both sides. -/
@@ -321,6 +332,7 @@ def clearOfZero? (lo hi : Int) (e : Nat) : Option Nat :=
   else if scaled (hi + e) < 0 then some (-scaled (hi + e)).toNat
   else none
 
+omit [Boxes.Ambient] in
 theorem clearOfZero?_sound {lo hi : Int} {e m : Nat} (h : clearOfZero? lo hi e = some m) :
     ClearOfZero lo hi e m := by
   unfold clearOfZero? at h
@@ -330,6 +342,7 @@ theorem clearOfZero?_sound {lo hi : Int} {e m : Nat} (h : clearOfZero? lo hi e =
   · simp only [Option.some.injEq] at h; subst h; refine ⟨by omega, .inr (by omega)⟩
   · cases h
 
+omit [Boxes.Ambient] in
 /-- Two codes in a range clear of zero: the same sign, magnitudes at least `m`. -/
 theorem ClearOfZero.pair {lo hi : Int} {e m : Nat} (hz : ClearOfZero lo hi e m) {a b : Int}
     (ha₁ : lo - e ≤ a) (ha₂ : a ≤ hi + e) (hb₁ : lo - e ≤ b) (hb₂ : b ≤ hi + e) :
@@ -339,6 +352,7 @@ theorem ClearOfZero.pair {lo hi : Int} {e m : Nat} (hz : ClearOfZero lo hi e m) 
   · have := scaled_mono ha₁; have := scaled_mono hb₁; omega
   · have := scaled_mono ha₂; have := scaled_mono hb₂; omega
 
+omit [Boxes.Ambient] in
 /-- **Two roundings by different divisors**: `ofExactDiv N₁ n₁` and
 `ofExactDiv N₂ n₂` within the distance of `N₁ / n₁` and `N₂ / n₂`, both
 ulps and the codes' slack. `round_pair` is the case `n₁ = n₂`. -/
@@ -395,12 +409,14 @@ theorem round_pair₂ {N₁ N₂ : Int} {n₁ n₂ : Nat} (h₁ : 0 < n₁) (h�
   rw [this] at t2
   omega
 
+omit [Boxes.Ambient] in
 /-- `⌈X / P⌉ ≤ c` when `X ≤ P c`. -/
 theorem ceilDiv_le_of {X P c : Nat} (hP : 0 < P) (h : X ≤ P * c) : (X + P - 1) / P ≤ c := by
   have : (X + P - 1) / P < c + 1 := by
     rw [Nat.div_lt_iff_lt_mul hP, Nat.succ_mul, Nat.mul_comm c P]; omega
   omega
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 3200 in
 /-- **`x / y`** with `y`'s range clear of zero (`ClearOfZero`): the exact
 quotients' distance over `n₁ n₂ ≥ m²`, then both roundings. `Mx`, `My` are the
@@ -701,6 +717,7 @@ def Measure.outTol (t : Tol) (mask : Nat → Bool) (env : List AVal) (N : Option
     (m : Measure) : Option (Option Nat) :=
   (m.tolOut t mask env N).or (m.minMaxOut t mask env)
 
+omit [Boxes.Ambient] in
 theorem foldl_min_near {e : Nat} :
     ∀ {a b : Int} {xs ys : List Int}, (a - b).natAbs ≤ e →
       Forall2 (fun x y => (x - y).natAbs ≤ e) xs ys → (xs.foldl min a - ys.foldl min b).natAbs ≤ e
@@ -710,6 +727,7 @@ theorem foldl_min_near {e : Nat} :
     refine foldl_min_near ?_ t
     rw [Int.min_def, Int.min_def]; split <;> split <;> omega
 
+omit [Boxes.Ambient] in
 theorem foldl_max_near {e : Nat} :
     ∀ {a b : Int} {xs ys : List Int}, (a - b).natAbs ≤ e →
       Forall2 (fun x y => (x - y).natAbs ≤ e) xs ys → (xs.foldl max a - ys.foldl max b).natAbs ≤ e
@@ -719,6 +737,7 @@ theorem foldl_max_near {e : Nat} :
     refine foldl_max_near ?_ t
     rw [Int.max_def, Int.max_def]; split <;> split <;> omega
 
+omit [Boxes.Ambient] in
 theorem foldl_min_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a → a ≤ U →
     (∀ x ∈ xs, L ≤ x ∧ x ≤ U) → L ≤ xs.foldl min a ∧ xs.foldl min a ≤ U
   | _, [], h1, h2, _ => ⟨h1, h2⟩
@@ -728,6 +747,7 @@ theorem foldl_min_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a �
     exact foldl_min_bounds (by rw [Int.min_def]; split <;> omega) (by rw [Int.min_def]; split <;> omega)
       fun y hy => h y (List.mem_cons_of_mem _ hy)
 
+omit [Boxes.Ambient] in
 theorem foldl_max_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a → a ≤ U →
     (∀ x ∈ xs, L ≤ x ∧ x ≤ U) → L ≤ xs.foldl max a ∧ xs.foldl max a ≤ U
   | _, [], h1, h2, _ => ⟨h1, h2⟩
@@ -737,6 +757,7 @@ theorem foldl_max_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a �
     exact foldl_max_bounds (by rw [Int.max_def]; split <;> omega) (by rw [Int.max_def]; split <;> omega)
       fun y hy => h y (List.mem_cons_of_mem _ hy)
 
+omit [Boxes.Ambient] in
 theorem pickFold_min_float (x : Int) :
     ∀ cs : List Int, pickFold (fun a b => !a.le b) (.float x) (cs.map .float) = .float (cs.foldl min x)
   | [] => rfl
@@ -748,6 +769,7 @@ theorem pickFold_min_float (x : Int) :
       rw [Int.min_def]; by_cases h : x ≤ c <;> simp [h]
     rw [this, pickFold_min_float (min x c) cs, List.foldl_cons]
 
+omit [Boxes.Ambient] in
 theorem pickFold_max_float (x : Int) :
     ∀ cs : List Int, pickFold (fun a b => !b.le a) (.float x) (cs.map .float) = .float (cs.foldl max x)
   | [] => rfl
@@ -759,6 +781,7 @@ theorem pickFold_max_float (x : Int) :
       rw [Int.max_def]; by_cases h : c ≤ x <;> by_cases h' : x ≤ c <;> simp [h, h'] <;> omega
     rw [this, pickFold_max_float (max x c) cs, List.foldl_cons]
 
+omit [Boxes.Ambient] in
 /-- Values paired as doubles within `e` codes: two lists of codes. -/
 theorem Forall2.floats {e : Nat} {lo hi : Int} :
     ∀ {vs ws : List Value}, Forall2 (fun v w => ∃ a b, v = .float a ∧ w = .float b ∧
@@ -880,6 +903,7 @@ theorem Measure.outTol_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N
     rw [h1] at h; simp only [Option.none_or] at h
     exact Measure.minMaxOut_cell h f henv hR hj
 
+omit [Boxes.Ambient] in
 theorem Measure.outTol_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {o : Option Nat} (h : m.outTol t mask env N = some o) : m.orderFree = true := by
   unfold Measure.outTol at h
@@ -943,6 +967,7 @@ theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask 
     · exact fun n hn => Nat.le_trans (List.length_filter_le _ _) (hN n hn)
     · exact hR.mono fun row h => (List.mem_filter.1 h).1
 
+omit [Boxes.Ambient] in
 /-- The engine's catalog is well-formed when its tables are within a
 tolerance of the reference's well-formed ones, with the same arities. -/
 theorem Catalog.wf_of_near {cat cat' : Catalog} (hcat : cat.WF)

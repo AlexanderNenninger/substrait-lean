@@ -230,13 +230,14 @@ def bbAccepts (t : BlackBox.Ty) (k : Kind) : Bool :=
     | .atom => k == .int || k == .str || k == .bool
     | t => k == bbKind t
 
+variable [Boxes.Ambient]
 /-- The result kind of the scalar black box `name`. -/
 def bbScalarKind (name : String) : Kind :=
-  ((BlackBox.scalar? name).map (bbKind ·.result)).getD .other
+  ((Boxes.Ambient.boxes.scalar? name).map (bbKind ·.result)).getD .other
 
 /-- The result kind of the aggregate black box `name`. -/
 def bbAggKind (name : String) : Kind :=
-  ((BlackBox.aggregate? name).map (bbKind ·.result)).getD .other
+  ((Boxes.Ambient.boxes.aggregate? name).map (bbKind ·.result)).getD .other
 
 def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
@@ -920,19 +921,19 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
         throw s!"{name}: argument of kind {repr k} where the signature says an interval"
     | _, _ => pure ()
 
-#guard (checkArgKinds "add:date_iday" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
-#guard (checkArgKinds "add" [.timeTz] [.field 0, .lit (.int 86400000000)]).toBool == false
-#guard (checkArgKinds "add" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
-#guard (checkArgKinds "lt:date_date" [.date] [.field 0, .field 0]).toBool
-#guard (checkArgKinds "lt:date_pts" [.date] [.field 0, .lit (.int 0)]).toBool == false
-#guard (checkArgKinds "lt" [.date, .time] [.field 0, .field 1]).toBool == false
-#guard (checkArgKinds "lt" [.time] [.field 0, .bin .sub (.lit (.int 9)) (.lit (.int 1))]).toBool
-#guard (checkArgKinds "add:pts_iday" [.time] [.field 0, .lit (.int 1)]).toBool
-#guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
-#guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
-#guard (checkArgKinds "concat" [.int] [.field 0, .lit (.str "a")]).toBool == false
-#guard (checkArgKinds "substring" [.str, .int] [.field 0, .field 1]).toBool
-#guard (checkArgKinds "or" [.bool, .int] [.field 0, .field 1]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "add:date_iday" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "add" [.timeTz] [.field 0, .lit (.int 86400000000)]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "add" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "lt:date_date" [.date] [.field 0, .field 0]).toBool
+#guard letI := Boxes.Ambient.none; (checkArgKinds "lt:date_pts" [.date] [.field 0, .lit (.int 0)]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "lt" [.date, .time] [.field 0, .field 1]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "lt" [.time] [.field 0, .bin .sub (.lit (.int 9)) (.lit (.int 1))]).toBool
+#guard letI := Boxes.Ambient.none; (checkArgKinds "add:pts_iday" [.time] [.field 0, .lit (.int 1)]).toBool
+#guard letI := Boxes.Ambient.none; (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "concat" [.int] [.field 0, .lit (.str "a")]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "substring" [.str, .int] [.field 0, .field 1]).toBool
+#guard letI := Boxes.Ambient.none; (checkArgKinds "or" [.bool, .int] [.field 0, .field 1]).toBool == false
 
 /-! ## Eager conditionals
 
@@ -1730,7 +1731,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let body ← parseExpr fns (elem :: cols) (64 :: bits) (← openBody 0 (← field lam "body"))
       return .hof hf l body
     -- A black box (#325): its row's arguments, written as itself.
-    if let some bb := BlackBox.scalar? (baseName name) then
+    if let some bb := Boxes.Ambient.boxes.scalar? (baseName name) then
       let parsed ← argJs.mapM (parseExpr fns cols bits)
       if parsed.length != bb.args.length then
         throw s!"{bb.name} takes {bb.args.length} argument(s)"
@@ -2244,7 +2245,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "covar_pop", _ => pure (.cov false, arg)
     | "corr", _ => pure (.corr, arg)
     -- A black box (#325): NULLs skipped, its row's `empty` without values.
-    | n, _ => match BlackBox.aggregate? n with
+    | n, _ => match Boxes.Ambient.boxes.aggregate? n with
       | some bb =>
         -- Integers become doubles, as DuckDB converts them (#326).
         if bb.arg == .double && k == .int then pure (.bbox bb.name, .un .itof arg)
@@ -2913,12 +2914,14 @@ def Plan.tableKinds (p : Plan) (t : String) : List Kind :=
   | some (_, s) => schemaKinds s
   | none => []
 
+omit [Boxes.Ambient] in
 /-- The schema-only catalog has no rows, so they have any kinds. -/
 theorem Plan.catalog_hasKinds (p : Plan) : p.catalog.HasKinds p.tableKinds := by
   intro t row h
   simp only [catalog] at h
   split at h <;> simp at h
 
+omit [Boxes.Ambient] in
 theorem Plan.catalog_wf (p : Plan) : p.catalog.WF := by
   intro t row h
   simp only [catalog] at h

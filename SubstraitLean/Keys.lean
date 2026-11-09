@@ -81,6 +81,7 @@ def Expr.eqCols : Expr → List (Nat × Nat)
       | _, _ => []
   | _ => []
 
+variable [Boxes.Ambient]
 theorem Expr.linTerm_congr {t : Expr} {i : Nat} {c : Int} {r r' : Row}
     (h : t.linTerm = some (i, c)) (hi : r.getD i .null = r'.getD i .null) :
     t.eval r = t.eval r' := by
@@ -167,6 +168,7 @@ def emitKey (m : List Nat) : List Nat → Option (List Nat)
       let k' ← emitKey m k
       return p :: k'
 
+omit [Boxes.Ambient] in
 theorem emitKey_keyOf {m : List Nat} {row : Row} :
     ∀ {k k' : List Nat}, emitKey m k = some k' →
       keyOf k' (m.map (row.getD · .null)) = keyOf k row
@@ -186,6 +188,7 @@ def variants (σ : Nat → List Nat) : List Nat → List (List Nat)
     let rest := variants σ k
     (σ c).flatMap fun p => rest.map (p :: ·)
 
+omit [Boxes.Ambient] in
 theorem variants_keyOf {σ : Nat → List Nat} {row row' : Row} :
     ∀ {k k' : List Nat}, (∀ c ∈ k, ∀ p ∈ σ c, row'.getD p .null = row.getD c .null) →
       k' ∈ variants σ k → keyOf k' row' = keyOf k row
@@ -197,6 +200,7 @@ theorem variants_keyOf {σ : Nat → List Nat} {row row' : Row} :
       exact ⟨hσ c (by simp) p hp,
         variants_keyOf (fun c' hc' => hσ c' (by simp [hc'])) hk''⟩
 
+omit [Boxes.Ambient] in
 /-- `variants` for substitutes that are injective rather than equal: rows
 that agree on a variant agree on the original key. -/
 theorem variants_inj {σ : Nat → List Nat} {r₁ r₂ r₁' r₂' : Row} :
@@ -246,6 +250,7 @@ theorem KeyOn.eqVariants {e : Expr} {k k' : List Nat} {rows : Relation} (hk : Ke
 /-- Every value is a (non-NULL) integer. -/
 def AVal.intOnly (a : AVal) : Bool := !a.null && a.intsOnly && a.nk == some .int
 
+omit [Boxes.Ambient] in
 theorem AVal.intOnly_mem {a : AVal} {v : Value} (h : a.intOnly = true) (hm : a.Mem v) :
     ∃ y, v = .int y := by
   simp only [AVal.intOnly, AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
@@ -359,6 +364,7 @@ def Bound.disjoint (x y : Bound) : Bool :=
   (match x.hi, y.lo with | some h, some l => decide (h < l) | _, _ => false) ||
   (match y.hi, x.lo with | some h, some l => decide (h < l) | _, _ => false)
 
+omit [Boxes.Ambient] in
 theorem Bound.disjoint_ne {x y : Bound} {i j : Int} (h : x.disjoint y = true) (hi : x.Mem i)
     (hj : y.Mem j) : i ≠ j := by
   obtain ⟨xl, xh⟩ := x
@@ -372,6 +378,7 @@ def strsDisjoint (a b : AVal) : Bool :=
   | some l, some m => !l.any m.contains
   | _, _ => false
 
+omit [Boxes.Ambient] in
 theorem strsDisjoint_false {a b : AVal} {s : String} (h : strsDisjoint a b = true)
     (ha : a.strs.all (·.contains s) = true) (hb : b.strs.all (·.contains s) = true) : False := by
   unfold strsDisjoint at h
@@ -383,6 +390,7 @@ def AVal.disjoint (a b : AVal) : Bool :=
   (match a.int, b.int with | some x, some y => x.disjoint y | _, _ => true) &&
   (!(a.str && b.str) || strsDisjoint a b) && !(a.list && b.list) && !(a.struct && b.struct)
 
+omit [Boxes.Ambient] in
 theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (ha : a.Mem v)
     (hb : b.Mem w) : v ≠ w := by
   rintro rfl
@@ -504,9 +512,11 @@ def Rel.keysLane (cat : Catalog) (A : String → List AVal) (F : String → List
     (K : String → List (List Nat)) (r : Rel) : List (List Nat) :=
   (r.laneK cat A F K).2
 
+omit [Boxes.Ambient] in
 @[csimp] theorem Rel.keys_csimp : @Rel.keys = @Rel.keysLane := by
-  funext cat A F K r; simp only [Rel.keysLane, Rel.laneK_eq]
+  funext _ cat A F K r; simp only [Rel.keysLane, Rel.laneK_eq]
 
+omit [Boxes.Ambient] in
 theorem crossRows_key {A B : Relation} {n : Nat} {ka kb : List Nat}
     (hA : ∀ x ∈ A, x.length = n) (hka : ∀ c ∈ ka, c < n)
     (hkA : KeyOn ka A) (hkB : KeyOn kb B) :
@@ -574,6 +584,7 @@ theorem left_join_key {A B : Relation} {n m : Nat} {on : Expr} {ka kb : List Nat
   · refine List.Pairwise.imp_of_mem (fun {x x'} hx hx' hne r hr s hs heq => hne ?_) hkA
     rwa [hprefix x hx r hr, hprefix x' hx' s hs] at heq
 
+omit [Boxes.Ambient] in
 /-- Join outputs come in one block per left row `x`, each row extending `x`:
 a left key plus a key within each block is a key. -/
 theorem flatMap_key {A : Relation} {ka kR : List Nat} {f : Row → Relation} (hkA : KeyOn ka A)
@@ -623,6 +634,7 @@ theorem mem_windowRows_ext {part : List Nat} {fns : List WinFn} :
       · obtain ⟨b₀, x, a, rfl, rfl⟩ := mem_windowRows_ext h
         exact ⟨y :: b₀, x, a, rfl, by simp⟩
 
+omit [Boxes.Ambient] in
 theorem keyOf_window {part : List Nat} {fns : List WinFn} {n t : Nat} {x : Row}
     {g : WinFn → Value} (hx : x.length = n) (hpart : ∀ i ∈ part, i < n)
     (ht : fns[t]? = some WinFn.rowNumber) :
@@ -655,6 +667,7 @@ theorem windowRows_rowNumber_key {part : List Nat} {fns : List WinFn} {n t : Nat
         List.length_nil, and_true] at hrn
       omega
 
+omit [Boxes.Ambient] in
 /-- All the columns of a row are the row. -/
 theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n) x = x := by
   subst h
@@ -662,6 +675,7 @@ theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n
   intro i h₁ h₂
   simp [keyOf, List.getD, List.getElem?_eq_getElem h₂]
 
+omit [Boxes.Ambient] in
 theorem keyOf_range_append {k rest : Row} : keyOf (List.range k.length) (k ++ rest) = k := by
   apply List.ext_getElem (by simp [keyOf])
   intro i h₁ h₂
@@ -913,6 +927,7 @@ row at most one partner, so it has at most as many rows as its left side
 (a left join keeps a row without partners as one row). Row bounds (#219) use
 this where a product of the sides would be far too large. -/
 
+omit [Boxes.Ambient] in
 theorem length_flatMap_le {α β : Type} {f : α → List β} {k : Nat} :
     ∀ {l : List α}, (∀ x ∈ l, (f x).length ≤ k) → (l.flatMap f).length ≤ l.length * k
   | [], _ => by simp
@@ -922,6 +937,7 @@ theorem length_flatMap_le {α β : Type} {f : α → List β} {k : Nat} :
     simp only [List.flatMap_cons, List.length_append, List.length_cons, Nat.succ_mul]
     omega
 
+omit [Boxes.Ambient] in
 theorem length_le_one_of_pairwise_false {α : Type} :
     ∀ {l : List α}, l.Pairwise (fun _ _ => False) → l.length ≤ 1
   | [], _ | [_], _ => by simp
@@ -1034,6 +1050,7 @@ theorem splitAt_eq {x : Row} : ∀ {B A : List Row}, x ∉ B → splitAt x (B ++
       have hyx : (y != x) = true := bne_iff_ne.mpr (Ne.symm h.1)
       simp [hyx, this]
 
+variable [Boxes.Ambient]
 theorem WinFn.value_filter (part : List Nat) (b a : List Row) (x : Row) (f : WinFn) :
     f.value part b a x = f.value part (b.filter (samePart part x)) (a.filter (samePart part x)) x := by
   cases f <;> simp [WinFn.value, List.filter_filter]
@@ -1130,6 +1147,7 @@ private theorem Measure.eval_perm_bag {m : Measure} (hf : m.fn = .count ∨ m.fn
       | nil => rw [hi'] at hp; exact absurd hp.length_eq (by simp)
       | cons w ws => rw [hi'] at hp; simp only [AggFn.apply, sumOf_perm hp]
 
+omit [Boxes.Ambient] in
 /-- The frame of the whole partition. -/
 theorem Frame.rows_all {fr : Frame} (hlo : fr.lo = .unboundedPreceding)
     (hhi : fr.hi = .unboundedFollowing) (sort : List SortKey) (pb : List Row) (x : Row)
@@ -1327,12 +1345,14 @@ def occurrences : List Row → List Row → List (Row × Nat × Nat)
   | _, [] => []
   | pre, x :: l => (x, pre.count x, l.count x) :: occurrences (pre ++ [x]) l
 
+omit [Boxes.Ambient] in
 theorem occurrences_congr {pre pre' : List Row} (h : pre.Perm pre') :
     ∀ l, occurrences pre l = occurrences pre' l
   | [] => rfl
   | x :: l => by
     simp only [occurrences, h.count_eq x, occurrences_congr (h.append_right [x]) l]
 
+omit [Boxes.Ambient] in
 theorem occurrences_perm {l l' : List Row} (h : l.Perm l') :
     ∀ pre, (occurrences pre l).Perm (occurrences pre l') := by
   induction h with
@@ -1493,6 +1513,7 @@ end Substrait
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 /-- The window-key oracle for strict window facts, from derived keys. -/
 def Rel.keyedWindows (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : WindowKeys := fun r part sort =>

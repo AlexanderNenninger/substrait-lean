@@ -89,6 +89,7 @@ def _root_.Substrait.Value.InCalendar : Value → Prop
   | .ts t => Time.tsMin ≤ t ∧ t ≤ Time.tsMax
   | _ => True
 
+variable [Boxes.Ambient]
 /-- `date_part` raises nothing on the reference's values: calendar functions
 are total on them (D32). -/
 theorem UnFn.datePart_issue_of_inCalendar (p : Time.DatePart) {v : Value}
@@ -99,6 +100,7 @@ theorem UnFn.dayPart_issue_of_inCalendar (p : Time.DatePart) {v : Value}
     (h : v.InCalendar) : (UnFn.dayPart p).issue v = none := by
   cases v <;> simp_all [Value.InCalendar, UnFn.issue, rangeIssue, between]
 
+omit [Boxes.Ambient] in
 theorem rangeIssue_sound {lo hi x y : Int} {aa ar : AVal} {k : Issue} {kx ky : NumKind}
     (ha : aa.MemNum kx x) (hr : ar.MemNum ky y) (hk : rangeIssue lo hi x y = some k) : k ∈ rangeMay lo hi aa ar := by
   simp only [rangeIssue] at hk
@@ -203,6 +205,7 @@ def BinFn.mayNan (f : BinFn) (aa ab : AVal) : Bool :=
   | .fpow => aa.negFinite && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
   | _ => false
 
+omit [Boxes.Ambient] in
 theorem AVal.has_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i) : a.has i = true := by
   obtain ⟨b, hb, hm, -⟩ := h
   obtain ⟨bl, bh⟩ := b
@@ -210,9 +213,11 @@ theorem AVal.has_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i) : 
     decide_eq_true_eq]
   exact ⟨fun l hl => hm.1 l hl, fun u hu => hm.2 u hu⟩
 
+omit [Boxes.Ambient] in
 theorem AVal.has_of_memFloat {a : AVal} {i : Int} (h : a.Mem (.float i)) : a.has i = true :=
   AVal.has_of_mem h
 
+omit [Boxes.Ambient] in
 theorem AVal.negFinite_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i)
     (h1 : FloatCode.negInf < i) (h2 : i < 0) : a.negFinite = true := by
   obtain ⟨b, hb, hm, -⟩ := h
@@ -221,6 +226,7 @@ theorem AVal.negFinite_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k
     decide_eq_true_eq]
   exact ⟨fun l hl => by have := hm.1 l hl; omega, fun u hu => by have := hm.2 u hu; omega⟩
 
+omit [Boxes.Ambient] in
 /-- An IEEE NaN case of the inputs is one `BinFn.mayNan` reports. -/
 theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (.float a))
     (hb : ab.Mem (.float b)) (h : nanCase f a b = true) : BinFn.mayNan f aa ab = true := by
@@ -264,6 +270,7 @@ exponent is not a constant integer. -/
 def mayNegInfPow (aa ab : AVal) : Bool :=
   aa.has FloatCode.negInf && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
 
+omit [Boxes.Ambient] in
 theorem mayNegInfPow_sound {aa ab : AVal} {a b : Int} (ha : aa.Mem (.float a))
     (hb : ab.Mem (.float b)) (h : negInfPow a b = true) : mayNegInfPow aa ab = true := by
   simp only [negInfPow, Bool.and_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq] at h
@@ -337,6 +344,7 @@ def BinFn.divKind : BinFn → NumKind
 def AVal.mayFinite (a : AVal) : Bool :=
   a.int.any fun b => b.lo.all (· < FloatCode.posInf) && b.hi.all (FloatCode.negInf < ·)
 
+omit [Boxes.Ambient] in
 theorem AVal.mayFinite_of_mem {a : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i)
     (hf : isFiniteCode i = true) : a.mayFinite = true := by
   obtain ⟨b, hb, hm, -⟩ := h
@@ -419,6 +427,7 @@ theorem BinFn.finiteResult_false (f : BinFn) {aa ab : AVal} {a b r : Int}
     rcases hinf with rfl | rfl <;> omega
   · rfl
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 1100 in
 theorem expFinite_false {aa : AVal} {a r : Int} (ha : aa.Mem (.float a))
     (hfin : isFiniteCode a = true) (hr : FMath.apply .exp a = some r) (hinf : isInfCode r = true) :
@@ -507,6 +516,7 @@ def BinFn.mayNanBy (f : BinFn) (pa pb : Int → Bool) : Bool :=
   | .fmod => inf pa
   | _ => true
 
+omit [Boxes.Ambient] in
 theorem BinFn.mayNanBy_sound {f : BinFn} {pa pb : Int → Bool} {a b : Int} (ha : pa a = true)
     (hb : pb b = true) (h : nanCase f a b = true) : f.mayNanBy pa pb = true := by
   cases f <;> simp only [nanCase, Bool.false_eq_true] at h <;>
@@ -618,6 +628,7 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
 -- `∞ · 0` as a `CASE`, whose `ELSE` branch has no domain error; the bare product
 -- has one. (Both may overflow to `±∞`, an assumed issue of its own.)
 #guard
+  letI := Boxes.Ambient.none
   let dbl : AVal := { int := some Bound.top, nk := some .float }
   let a := Expr.field 0
   let b := Expr.field 1
@@ -829,6 +840,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     · have hr' := hr; simp only [UnFn.apply] at hr'
       exact rangeIssue_sound ha hr' hk
 
+omit [Boxes.Ambient] in
 theorem repeatMay_sound {sz : Option Nat} {ab : AVal} {s : String} {n : Int}
     (hb : ab.Mem (.int n)) (hsz : ∀ m, sz = some m → s.utf8ByteSize = m)
     (hk : Text.repeatFits s n = false) : Issue.overflow ∈ repeatMay sz ab := by
@@ -864,6 +876,7 @@ theorem repeatMay_sound {sz : Option Nat} {ab : AVal} {s : String} {n : Int}
       omega
   · simp
 
+omit [Boxes.Ambient] in
 theorem substrSafe_sound {n : Option Nat} {ab : AVal} {a : Int} (hb : ab.Mem (.int a))
     (hs : substrSafe n ab = true) : Text.substrInRange a n = true := by
   simp only [substrSafe, Bool.and_eq_true] at hs
@@ -1236,6 +1249,7 @@ def Rel.loose : Rel → Rel
   -- lists are empty (DataFusion's optimizer does): the loose rows are both.
   | .unnest r c => .unionAll (.unnest r.loose c) r.loose
 
+omit [Boxes.Ambient] in
 theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.arity cat
   | .read _ | .values _ _ | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
   | .filter r _ => by simp [loose, arity, loose_arity cat r]
@@ -1249,6 +1263,7 @@ theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.ari
   | .orderBy r _ | .distinct r => by simp [loose, arity, loose_arity cat r]
   | .unnest r _ => by simp [loose, arity, loose_arity cat r]
 
+omit [Boxes.Ambient] in
 theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF cat
   | .read _, h | .values _ _, h | .fetch _ _ _, h | .window _ _ _ _, h | .aggregate _ _ _, h => h
   | .filter r _, h => loose_wf (r := r) h.1
@@ -1432,6 +1447,7 @@ theorem length_le_of_mem_aggGroups {gs : List Expr} {rows grp : Relation}
   · obtain ⟨k, _, rfl⟩ := List.mem_map.1 hg
     exact List.length_filter_le _ _
 
+omit [Boxes.Ambient] in
 theorem intSum_bound (M : Int) (hM : 0 ≤ M) : ∀ vs : List Value,
     (∀ v ∈ vs, ∀ i, v.unscaled? = some i → -M ≤ i ∧ i ≤ M) →
       -(M * vs.length) ≤ intSum vs ∧ intSum vs ≤ M * vs.length
@@ -1468,6 +1484,7 @@ def Measure.sumMax (m : Measure) : Int :=
   | some q => 10 ^ q - 1
   | none => maxI64
 
+omit [Boxes.Ambient] in
 theorem Measure.sumMax_nonneg (m : Measure) : 0 ≤ m.sumMax := by
   unfold Measure.sumMax
   cases m.sumDigits with
@@ -1476,6 +1493,7 @@ theorem Measure.sumMax_nonneg (m : Measure) : 0 ≤ m.sumMax := by
     simp only; omega
   | none => simp only; decide
 
+omit [Boxes.Ambient] in
 theorem Measure.sumOk_of_le {m : Measure} {i : Int} (h1 : -m.sumMax ≤ i) (h2 : i ≤ m.sumMax) :
     m.sumOk i = true := by
   unfold Measure.sumMax at h1 h2
@@ -1916,9 +1934,9 @@ def Rel.constIssues (r : Rel) : List (Issue × Expr) :=
 
 -- `1 // 0 = 1` in a later `WHEN` raises whatever the first condition says;
 -- a constant without an error is nothing.
-#guard (Expr.ifThen (.bin .lt (.lit (.int 0)) (.field 0)) (.lit (.int 1))
+#guard letI := Boxes.Ambient.none; (Expr.ifThen (.bin .lt (.lit (.int 0)) (.field 0)) (.lit (.int 1))
   (.ifThen (.bin .eq (.bin .idiv (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)))
     (.lit (.int 2)) (.lit .null))).constIssues.eraseDups.map (·.1) == [.divByZero]
-#guard (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
+#guard letI := Boxes.Ambient.none; (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
 
 end Substrait

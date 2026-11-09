@@ -58,6 +58,7 @@ structure St where
   s : Int
   e : Value
 
+variable [Boxes.Ambient]
 /-- Measure `m`'s state in group `k` of the bag `rows`. -/
 def st (gs : List Expr) (m : Measure) (rows : Relation) (k : Row) : St :=
   ⟨valuesIn gs m k (ZSet.lift rows), sumIn gs m k (ZSet.lift rows), m.eval (groupRows gs rows k)⟩
@@ -71,6 +72,7 @@ def merge (m : Measure) (a b : St) : St :=
 def done (m : Measure) (sc : Option Nat) (x : St) : Value :=
   if extreme m then x.e else finish m sc x.n x.s
 
+omit [Boxes.Ambient] in
 theorem lift_append (a b : Relation) : ZSet.lift (a ++ b) = ZSet.lift a ++ ZSet.lift b :=
   List.map_append
 
@@ -198,6 +200,7 @@ theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {sc : M
 
 /-! ## Exact `AVG` -/
 
+omit [Boxes.Ambient] in
 /-- **A projection of a maintained aggregate is maintained.** If the
 aggregate after a batch is the old rows outside `K` and some rows `L`, then
 any map of its rows that keeps the keys (a projection that finishes an

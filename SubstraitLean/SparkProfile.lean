@@ -31,6 +31,7 @@ with `semantics="spark"` runs on Spark natively, and Spark's choices
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 /-- **Spark's profile**: the reference's functions, raising where it raises. -/
 def Profile.spark : Profile := Profile.reference
 

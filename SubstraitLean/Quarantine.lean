@@ -23,6 +23,7 @@ the two on random batches.
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 /-- The rows on which every condition of `pre` is TRUE. -/
 def passRows (pre : List Expr) (rows : Relation) : Relation :=
   rows.filter fun row => pre.all fun e => (e.eval row).isTrue
@@ -37,6 +38,7 @@ theorem passRows_pre {pre : List Expr} {rows : Relation} :
 def singletons (k : List Nat) (rows : Relation) : Relation :=
   rows.filter fun row => rows.countP (fun s => keyOf k s == keyOf k row) == 1
 
+omit [Boxes.Ambient] in
 theorem singletons_key {k : List Nat} {rows : Relation} : KeyOn k (singletons k rows) := by
   unfold KeyOn
   rw [List.pairwise_iff_forall_sublist]
@@ -55,6 +57,7 @@ for each key in `keys` in turn, those whose key occurs once. -/
 def kept (pre : List Expr) (keys : List (List Nat)) (rows : Relation) : Relation :=
   keys.foldl (fun acc k => singletons k acc) (passRows pre rows)
 
+omit [Boxes.Ambient] in
 theorem foldl_singletons_sublist :
     ∀ (keys : List (List Nat)) (rows : Relation),
       (keys.foldl (fun acc k => singletons k acc) rows).Sublist rows
@@ -71,6 +74,7 @@ theorem kept_pre {pre : List Expr} {keys : List (List Nat)} {rows : Relation} :
     ∀ row ∈ kept pre keys rows, ∀ e ∈ pre, (e.eval row).isTrue = true :=
   fun row h => passRows_pre row ((foldl_singletons_sublist keys _).subset h)
 
+omit [Boxes.Ambient] in
 theorem foldl_singletons_key :
     ∀ (keys : List (List Nat)) (rows : Relation), ∀ k ∈ keys,
       KeyOn k (keys.foldl (fun acc k => singletons k acc) rows)
