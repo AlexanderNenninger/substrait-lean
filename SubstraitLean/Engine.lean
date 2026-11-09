@@ -41,12 +41,19 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
       | some o =>
         right
         cases f <;> simp only [duckUn, reduceCtorEq] at hd
-        rename_i g
-        split at hd
-        · rename_i hc
-          refine callExtra_of_at (o := "on_domain_error") (by cases e <;> cases g <;> decide) ?_
-          simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
-        · cases hd
+        case fmath g =>
+          split at hd
+          · rename_i hc
+            refine callExtra_of_at (o := "on_domain_error") (by cases e <;> cases g <;> decide) ?_
+            simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
+          · cases hd
+        -- IEEE's `-0.0` where the reference's result is a zero (`round_zero_sign`).
+        case fround | fceil =>
+          split at hd
+          · rename_i hc
+            refine callExtra_of_at (o := "round_zero_sign") (by cases e <;> decide) ?_
+            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero, hc.2]
+          · cases hd
     | _ => exact .inl (raiseIf_ok h)
   · -- Each deviation, with the option whose scope it is in.
     have hfl : ∀ {a b : Int}, f.onFloats = true →

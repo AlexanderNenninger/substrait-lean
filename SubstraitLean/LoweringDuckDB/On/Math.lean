@@ -31,6 +31,64 @@ local macro "bin_tac" : tactic =>
     [Substrait.Lowering.ref_fit, Substrait.Lowering.apply_fit_int, Substrait.Lowering.apply_fit_null, Substrait.Lowering.apply_fit_bool, Substrait.Lowering.apply_fit_str, Substrait.Lowering.apply_fit_list, Substrait.Lowering.apply_fit_struct, Substrait.Lowering.apply_fit_float, Substrait.Lowering.apply_fit_date, Substrait.Lowering.apply_fit_ts, Substrait.Lowering.apply_fit_tod, Substrait.Lowering.apply_fit_dec, Substrait.IntWidth.fit, Substrait.IntWidth.lo, Substrait.IntWidth.hi, Substrait.IntWidth.half, Substrait.IntWidth.modulus, Substrait.Lowering.tmod_add_tmod, Substrait.Profile.duckdb_imod_pos, Substrait.Lowering.duck_imod_pos, Substrait.Lowering.duck_dadd, Substrait.Lowering.duck_dsub, Substrait.Lowering.shl_apply, Substrait.Lowering.shr_apply, Int.reduceToNat, Nat.reducePow, Substrait.Lowering.apply_ffloor_int, Substrait.Lowering.apply_ffloor_null, Substrait.Lowering.apply_ffloor_bool, Substrait.Lowering.apply_ffloor_str, Substrait.Lowering.apply_ffloor_list, Substrait.Lowering.apply_ffloor_float, Substrait.Lowering.apply_ffloor_date, Substrait.Lowering.apply_ffloor_ts, Substrait.Lowering.apply_ffloor_tod, Substrait.Lowering.apply_ffloor_dec, Substrait.Lowering.apply_ffloor_struct, Substrait.Lowering.pow2Chain_eval, List.mem_range])
 
 set_option maxHeartbeats 3200000 in
+theorem Substrait.duckdbOn.fceil_agree : ∀ (x : Substrait.Value),
+  Substrait.Outcome.Agree
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
+      (Substrait.Expr.ifThen
+        (Substrait.Expr.bin Substrait.BinFn.and
+          (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+            (Substrait.Expr.lit (Substrait.Value.float 0)))
+          (Substrait.Expr.bin Substrait.BinFn.eq
+            (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0))
+            (Substrait.Expr.lit (Substrait.Value.float 0))))
+        (Substrait.Expr.lit (Substrait.Value.float 0))
+        (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0))))
+    (Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.fceil x) := by
+  un_tac
+
+abbrev Substrait.duckdbOn.fceil : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.fceil :=
+  ⟨Substrait.Expr.ifThen
+  (Substrait.Expr.bin Substrait.BinFn.and
+    (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+      (Substrait.Expr.lit (Substrait.Value.float 0)))
+    (Substrait.Expr.bin Substrait.BinFn.eq
+      (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0))
+      (Substrait.Expr.lit (Substrait.Value.float 0))))
+  (Substrait.Expr.lit (Substrait.Value.float 0))
+  (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fceil_agree⟩
+
+set_option maxHeartbeats 3200000 in
+theorem Substrait.duckdbOn.fround_agree : ∀ (x : Substrait.Value),
+  Substrait.Outcome.Agree
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
+      (Substrait.Expr.ifThen
+        (Substrait.Expr.bin Substrait.BinFn.and
+          (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+            (Substrait.Expr.lit (Substrait.Value.float 0)))
+          (Substrait.Expr.bin Substrait.BinFn.eq
+            (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0))
+            (Substrait.Expr.lit (Substrait.Value.float 0))))
+        (Substrait.Expr.lit (Substrait.Value.float 0))
+        (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0))))
+    (Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.fround x) := by
+  un_tac
+
+abbrev Substrait.duckdbOn.fround : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.fround :=
+  ⟨Substrait.Expr.ifThen
+  (Substrait.Expr.bin Substrait.BinFn.and
+    (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+      (Substrait.Expr.lit (Substrait.Value.float 0)))
+    (Substrait.Expr.bin Substrait.BinFn.eq
+      (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0))
+      (Substrait.Expr.lit (Substrait.Value.float 0))))
+  (Substrait.Expr.lit (Substrait.Value.float 0))
+  (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fround_agree⟩
+
+set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fmath_sqrt_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP

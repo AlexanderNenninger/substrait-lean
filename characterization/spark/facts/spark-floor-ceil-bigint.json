@@ -1,0 +1,56 @@
+{
+  "id": "spark-floor-ceil-bigint",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`floor` and `ceil` of a double return a `BIGINT`",
+  "verdict": "a `BIGINT`, not a double: no `-0.0`, no NaN or ±inf; the writer casts back to a double",
+  "area": "doubles",
+  "options": [
+    "round_zero_sign"
+  ],
+  "rows": [
+    {
+      "group": "fp.floor",
+      "option": "round_zero_sign",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "floor",
+    "ceil"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true
+    ]
+  },
+  "description": "`floor(x)` and `ceil(x)` of a `DOUBLE` return a `BIGINT` (`typeof(ceil(CAST(-0.4 AS DOUBLE)))` is `bigint`), so a negative value above `-1` has a `ceil` of `0` without a sign, and `CAST(ceil(-0.4) AS DOUBLE)` is `+0.0`. The other engines return a double: DuckDB and Polars give IEEE's `-0.0` there (duckdb-R15-round, polars-round). NaN, ±inf and values past 64 bits are spark-round's (SP-5).",
+  "reference": "`floor` and `ceil` are doubles to doubles (`UnFn.ffloor`, `UnFn.fceil`); the sign of a zero result is `round_zero_sign`, which the reference leaves open (`eval` gives `+0.0`). Spark's writer casts the `BIGINT` back to a double for doubles below `2⁵²` and keeps the others (`sverify.sql.spark`, `whole`), which gives the reference's `+0.0`.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-09",
+      "method": "probe",
+      "checked_by": "canon PR session (claude/canon-congruence), Spark 4.3.0 local session (sverify.spark_engine.session), Python 3.12 in python/.venv",
+      "evidence": [
+        {
+          "sql": "SELECT typeof(round(CAST(-0.4 AS DOUBLE))), typeof(ceil(CAST(-0.4 AS DOUBLE)))",
+          "observed": "double, bigint"
+        },
+        {
+          "sql": "SELECT ceil(x), CAST(ceil(x) AS DOUBLE) FROM VALUES (CAST(-0.4 AS DOUBLE)), (CAST(-0.04 AS DOUBLE)), (CAST(-0.6 AS DOUBLE)) AS t(x)",
+          "observed": "(0, 0.0), (0, 0.0), (0, 0.0); every 0.0 has a positive sign bit"
+        }
+      ],
+      "notes": [
+        "spark.sql.ansi.enabled true. Recorded apart from spark-round, which also says that `floor` and `ceil` return `BIGINT`, so that the type and the zero's sign stay two findings (theory advisor, 2026-11-09)."
+      ]
+    }
+  ],
+  "issues": [
+    271
+  ]
+}

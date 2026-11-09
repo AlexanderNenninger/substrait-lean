@@ -53,7 +53,9 @@ def zeroGuard (ks : List NumKind) (k : NumKind) (e : Tm) : Tm :=
   and `m = 2^w`.
 * An elementary function raises outside its domain (`FMath.inDomain`), where
   DuckDB gives NaN or `-∞`: `CASE WHEN x < lo OR (hi < x AND x <> NaN) THEN
-  error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`. -/
+  error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`.
+* `round` and `ceil` give `0.0` for a negative value that rounds to zero, where
+  DuckDB gives IEEE's `-0.0` (`round_zero_sign`). -/
 def schema? : UnFn → Option Tm
   | .fit .silent w =>
     let h := w.half
@@ -86,6 +88,13 @@ def schema? : UnFn → Option Tm
       | none, some b => some b
       | none, none => none
     g.map fun g => .ite g (.raise "domain error" x) (.self [x])
+  -- A negative value that rounds to zero is `0.0` (`zero_sign`), where
+  -- DuckDB gives IEEE's `-0.0` (`round_zero_sign`): `CASE WHEN x < 0 AND f(x) = 0 THEN 0.0
+  -- ELSE f(x) END`. `-0.0` itself stays.
+  | .fround | .fceil =>
+    let x := Tm.field 0
+    let zero := Tm.lit (.float 0)
+    some (.ite (andFn (ltFn x zero) (eqFn (.self [x]) zero)) zero (.self [x]))
   | _ => none
 
 /-- **DuckDB's binary schemas** (#242), for its IEEE operations:

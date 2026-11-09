@@ -130,6 +130,11 @@ logarithm of zero (R15). -/
 def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
   | .fmath f, x =>
     if s.ieeeOps ∧ f.apply x = none then some (.ok (.float (duckElementary f x))) else none
+  -- A negative value that rounds to zero is IEEE's `-0.0` (`round(-0.4)`,
+  -- `ceil(-0.4)`; duckdb-R15-round), where the reference gives `0.0`: the
+  -- `round_zero_sign` option, which the reference leaves open.
+  | .fround, x => if x < 0 ∧ FloatCode.round x = 0 then some (.ok (.float FloatCode.negZero)) else none
+  | .fceil, x => if x < 0 ∧ FloatCode.ceil x = 0 then some (.ok (.float FloatCode.negZero)) else none
   | _, _ => none
 
 /-- **DuckDB's profile**, as a diff against the reference (`duckBin`,
@@ -163,10 +168,16 @@ def BinFn.duckdbWritten : BinFn → Bool
   | .imod | .bit .shl => true
   | _ => false
 
-/-- DuckDB's profile with the functions of `BinFn.duckdbWritten` as the SQL
-printer writes them: the reference's. -/
+/-- `round` and `ceil`, whose IEEE `-0.0` the SQL printer makes `0.0`
+(`Dialect.canon`, `round_zero_sign`). -/
+def UnFn.duckdbWritten : UnFn → Bool
+  | .fround | .fceil => true
+  | _ => false
+
+/-- DuckDB's profile with the functions of `BinFn.duckdbWritten` and
+`UnFn.duckdbWritten` as the SQL printer writes them: the reference's. -/
 def Profile.duckdbWritten (s : DuckDBSettings) : Profile where
-  un := (Profile.duckdb s).un
+  un f := if f.duckdbWritten then Profile.reference.un f else (Profile.duckdb s).un f
   bin f := if f.duckdbWritten then Profile.reference.bin f else (Profile.duckdb s).bin f
 
 /-- **DuckDB, as the SQL printer writes it, agrees with the reference
@@ -180,9 +191,14 @@ theorem Profile.duckdbWritten_faithful (s : DuckDBSettings) (hs : s.ieeeOps = tr
   · have hr := Profile.reference_faithful.1 f v h
     simp only [Profile.impl, Profile.duckdbWritten, Profile.duckdb] at hr ⊢
     split
-    · rename_i x
-      cases f <;> simp only [duckUn] <;> (try split) <;> simp_all [UnFn.issue, domainIssue]
     · exact hr
+    · rename_i hw
+      simp only []
+      split
+      · rename_i x
+        cases f <;> simp only [duckUn, UnFn.duckdbWritten] at hw ⊢ <;> (try split) <;>
+          simp_all [UnFn.issue, domainIssue]
+      · exact hr
   · have hr := Profile.reference_faithful.2 f v w h
     simp only [Profile.impl, Profile.duckdbWritten] at hr ⊢
     split

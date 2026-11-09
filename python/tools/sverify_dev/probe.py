@@ -216,9 +216,17 @@ def _plan(p: Probe, rows: Sequence[Sequence[Any]], option: str | None) -> str:
         return json.dumps(pj.plan(c, pj.project_rel(rel, len(p.args), [e]), ["r"]))
 
 
-def lean_outcomes(p: Probe, rows: Sequence[Sequence[Any]], option: str | None) -> list[Outcome]:
-    """Lean's outcome of `p` with `option` on each row, or a refusal for all."""
-    code, out, err = run_checker(("--outcomes",), _plan(p, rows, option))
+def lean_outcomes(
+    p: Probe, rows: Sequence[Sequence[Any]], option: str | None, semantics: str = "reference"
+) -> list[Outcome]:
+    """Lean's outcome of `p` with `option` on each row under `semantics`
+    (the reference's profile, or DuckDB's), or a refusal for all. DuckDB's is
+    the checker's internal stopgap, until `semantics="duckdb"` runs
+    engine to engine (#1288)."""
+    if semantics not in ("reference", "duckdb"):
+        raise ValueError(f"no outcomes under {semantics!r}")
+    flag = "--outcomes" if semantics == "reference" else "--outcomes-duckdb-stopgap"
+    code, out, err = run_checker((flag,), _plan(p, rows, option))
     if code != 0:
         why = ((err or out).strip().splitlines() or ["?"])[-1]
         return [("refused", why)] * len(rows)

@@ -424,7 +424,7 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
   let valNames := #[``Value.isNum, ``Value.numPair, ``and3, ``or3, ``BinFn.apply,
     ``Value.isTrue,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.not_true, ``Bool.not_false,
-    ``Option.getD_some, ``Option.all_some, ``Option.all_none]
+    ``Option.getD_some, ``Option.getD_none, ``Option.all_some, ``Option.all_none]
   let pre ← simpArgs preNames
   let vals ← simpArgs (preNames ++ valNames)
   -- Then the profile and the reference, and everything again.
@@ -432,21 +432,33 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     ``Lowering.beq_int, ``UnFn.issue, ``BinFn.issue])
   -- Unfolding brings the special codes back: rewrite them to the variables.
   let eqs : Array (TSyntax ``Lean.Parser.Tactic.simpLemma) ←
-    (#[`hP, `hN, `hQ, `hO, `hM, `hZ, `hY, `g1, `g2, `g3, `g4, `g5, `g6, `g7, `g8, `g9, `g10, `g11, `g12, `hcx, `hfx] ++
+    (#[`hP, `hN, `hQ, `hO, `hM, `hZ, `hY, `g1, `g2, `g3, `g4, `g5, `g6, `g7, `g8, `g9, `g10, `g11, `g12, `g13, `g14, `g15, `g16, `hcx, `hfx] ++
       (if unary then #[] else #[`hcy, `hfy])).mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
-  let ref := ref ++ eqs
-  let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree] ++ fin2)) ++ eqs
+  -- A unary template's split leaves a profile's `Option` and the reference's
+  -- binds (`round` below zero on DuckDB, `duckUn`).
+  let late := if unary then #[``Outcome.ok_bind, ``Option.getD_some, ``Option.getD_none,
+    ``BinFn.apply] else #[]
+  let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree] ++ late ++ fin2)) ++
+    eqs
   -- The profile and the reference unfold in stages on each goal the split
   -- leaves, the goal only: the profiles, then the issues, then the
   -- functions. One `simp` with all of them at once spends about 3 s a goal
-  -- on `BinFn.apply`'s and `BinFn.issue`'s equations, and `On.Doubles` has
+  -- on `BinFn.apply`'s and `BinFn.issue`'s equations, and `On.Arith` has
   -- 21 such goals per theorem (#923's 11 kinds; docs/build-performance.md).
   -- On the goal only: at `*` they would rewrite `hP`, `hN`, … away before
   -- the issues bring the special codes back.
   let stage1 ← simpArgs (unfold ++ #[``Profile.reference, ``raiseIf])
   let stage2 ← simpArgs #[``BinFn.issue, ``UnFn.issue]
-  let stage3 ← simpArgs #[``BinFn.apply]
+  let stage3 ← simpArgs #[``BinFn.apply, ``UnFn.apply]
   let cases ← templateCases unary
+  -- The reference with the codes' equations and facts: at `*` for a binary
+  -- template; on the goal only for a unary one, whose facts (`g6`, `hcx`, …)
+  -- the final `simp_all` needs after a split (`round` below zero on DuckDB):
+  -- at `*` they rewrite themselves to `True`.
+  let refStep ← if unary then
+      `(tactic| simp (config := { failIfUnchanged := false, decide := true }) only [$(ref ++ eqs),*])
+    else
+      `(tactic| simp (config := { failIfUnchanged := false, decide := true }) only [$(ref ++ eqs),*] at *)
   let codes := #[(``FloatCode.posInf, `cP, `hP), (``FloatCode.negInf, `cN, `hN),
     (``FloatCode.nan, `cQ, `hQ), (``FloatCode.one, `cO, `hO), (``FloatCode.negOne, `cM, `hM),
     (``FloatCode.negZero, `cZ, `hZ), (``FloatCode.negNan, `cY, `hY)]
@@ -476,6 +488,10 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     have $(mkIdent `g10) := FloatCode.canon_posInf_pred
     have $(mkIdent `g11) := FloatCode.floor_negZero
     have $(mkIdent `g12) := FloatCode.floor_negNan
+    have $(mkIdent `g13) := FloatCode.round_negZero
+    have $(mkIdent `g14) := FloatCode.round_negNan
+    have $(mkIdent `g15) := FloatCode.ceil_negZero
+    have $(mkIdent `g16) := FloatCode.ceil_negNan
     $[$gens]*
     intros
     simp (config := { decide := true }) only [$pre,*]
@@ -485,11 +501,11 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
       | (simp (config := { failIfUnchanged := false, decide := true }) only [$stage1,*]
          simp (config := { failIfUnchanged := false, decide := true }) only [$stage2,*]
          simp (config := { failIfUnchanged := false, decide := true }) only [$stage3,*]
-         simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
+         $refStep:tactic
          iterate 10
            all_goals try
              lowering_split_decide <;>
-               simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false]
+               simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false, Option.getD_some, Option.getD_none, Outcome.ok_bind]
          all_goals (repeat' split)
          all_goals first
            | (simp_all [$fin,*]; done)
@@ -513,11 +529,14 @@ def ppSource (e : Lean.Expr) : MetaM String := do
   return fmt.pretty 100
 
 /-- The generated module a construct's entry goes to: entries of an area
-check in parallel, and a change rebuilds its area only. -/
+check in parallel, and a change rebuilds its area only. The doubles' entries
+are two areas, the arithmetic and the powers, so that neither module's peak
+memory nears its ceiling (`scripts/lean-budget.json`). -/
 def areaOf (c : Name) : String :=
   match c.componentsRev.head!.toString with
-  | "fmath" => "Math"
-  | "fadd" | "fsub" | "fmul" | "fdiv" | "fdivIeee" | "fmod" | "fpow" | "fatan2" | "flogb" => "Doubles"
+  | "fmath" | "fround" | "fceil" => "Math"
+  | "fadd" | "fsub" | "fmul" | "fdiv" | "fdivIeee" | "fmod" => "Arith"
+  | "fpow" | "fatan2" | "flogb" => "Powers"
   | "idiv" | "imod" | "fit" | "ipow" => "Integers"
   | "bit" => "Bits"
   | _ => "Other"
@@ -687,7 +706,7 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
     -- The plain call is tried as a candidate for an instance (`fmath .atan`):
     -- its constructor as a whole is not native.
     -- Guards compare with constants of the construct's kind (#923).
-    let kind : NumKind := if ["Doubles", "Math"].contains (areaOf k.ctor) then .float else .int
+    let kind : NumKind := if ["Arith", "Powers", "Math"].contains (areaOf k.ctor) then .float else .int
     let cands := if k.args.isEmpty then (candidates kind n msg).drop 1 else candidates kind n msg
     let searched := cands.filter (fun c => !excluded || !c.hasSelf) ++
       (if unary then chains (harvest ref rows) else [])

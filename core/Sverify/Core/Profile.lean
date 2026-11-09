@@ -335,15 +335,45 @@ theorem FloatCode.floor_negNan : FloatCode.floor FloatCode.negNan = FloatCode.ne
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+theorem FloatCode.round_negZero : FloatCode.round FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.round FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.round FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.ceil_negZero : FloatCode.ceil FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.ceil FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.ceil_negNan : FloatCode.ceil FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.ceil FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
 /-- A value is not a double, `-0.0`, the negative NaN, or a double equal to its
 canonical code: the cases of a generated proof's argument, each double's with
 its canonical code (a canonical one apart from the other two, with a canonical
-`floor`). -/
+`floor`, `round` and `ceil`). -/
 theorem Value.float_cases (x : Value) : (∀ c, x ≠ .float c) ∨
     (x = .float FloatCode.negZero ∧ FloatCode.canon FloatCode.negZero = 0) ∨
     (x = .float FloatCode.negNan ∧ FloatCode.canon FloatCode.negNan = FloatCode.nan) ∨
     ∃ c, x = .float c ∧ FloatCode.canon c = c ∧ c ≠ FloatCode.negZero ∧ c ≠ FloatCode.negNan ∧
-      FloatCode.canon (FloatCode.floor c) = FloatCode.floor c := by
+      (FloatCode.canon (FloatCode.floor c) = FloatCode.floor c ∧
+        FloatCode.canon (FloatCode.round c) = FloatCode.round c ∧
+        FloatCode.canon (FloatCode.ceil c) = FloatCode.ceil c) := by
   cases x with
   | float c =>
     by_cases h : c = FloatCode.negZero
@@ -353,7 +383,8 @@ theorem Value.float_cases (x : Value) : (∀ c, x ≠ .float c) ∨
       · have e0 : ¬ c = fp64.negZero := h
         have e1 : ¬ c = fp64.negNan := h'
         have hc : FloatCode.canon c = c := by simp [FloatCode.canon, FloatFormat.canon, e0, e1]
-        exact .inr (.inr (.inr ⟨c, rfl, hc, h, h', FloatCode.canon_floor hc⟩))
+        exact .inr (.inr (.inr ⟨c, rfl, hc, h, h',
+          FloatCode.canon_floor hc, FloatCode.canon_round hc, FloatCode.canon_ceil hc⟩))
   | _ => exact .inl fun _ h => by cases h
 
 /-! ## Agreeing outcomes -/

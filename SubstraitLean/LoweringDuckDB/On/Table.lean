@@ -11,7 +11,8 @@ import Init.Data.List.Nat.Range
 import SubstraitLean.LoweringDuckDB.On.Native
 import SubstraitLean.LoweringDuckDB.On.Math
 import SubstraitLean.LoweringDuckDB.On.Integers
-import SubstraitLean.LoweringDuckDB.On.Doubles
+import SubstraitLean.LoweringDuckDB.On.Arith
+import SubstraitLean.LoweringDuckDB.On.Powers
 import SubstraitLean.LoweringDuckDB.On.Bits
 
 /-!
@@ -162,8 +163,8 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.itof", "native", 0),
   ("UnFn.fneg", "native", 0),
   ("UnFn.ffloor", "native", 0),
-  ("UnFn.fceil", "native", 0),
-  ("UnFn.fround", "native", 0),
+  ("UnFn.fceil", "hand-written schema: CASE WHEN (#0 < 0 AND fceil(#0) = 0) THEN 0 ELSE fceil(#0) END", 0),
+  ("UnFn.fround", "hand-written schema: CASE WHEN (#0 < 0 AND fround(#0) = 0) THEN 0 ELSE fround(#0) END", 0),
   ("UnFn.froundTo", "native", 0),
   ("UnFn.ftoi", "native", 0),
   ("UnFn.narrow", "native", 0),

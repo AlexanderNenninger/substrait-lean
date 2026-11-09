@@ -53,6 +53,7 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "round_zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
@@ -95,6 +96,10 @@ def Profile.duckdb.obs : ObsTable := [
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
     shim := some "Dialect.canon" }).tracking 241),
+  -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
+  -- exactly after `Dialect.canon`.
+  (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R15-round",
+    "duckdb-R15-round-digits"] with shim := some "Dialect.canon" }).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["duckdb-signbit"]).tracking 241),
   (none, "nan_order", (ObsRow.native ["duckdb-arg-min-nulls"]).tracking 241),
   (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).tracking 241),
@@ -176,6 +181,7 @@ def Profile.polars.table : ProfileTable where
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "round_zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     -- `min` and `max` skip NaN unless every value is NaN (polars-min-max-nan).
@@ -236,6 +242,9 @@ def Profile.polars.obs : ObsTable := [
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
     with shim := some "one_zero" }).proved "Shim.one_zero"),
+  -- `round` and `ceil` emit IEEE's `-0.0`; the shim `one_zero` makes it exact.
+  (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-round",
+    "polars-round-digits"] with shim := some "one_zero" }).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 271),
@@ -347,6 +356,7 @@ def Profile.spark.table : ProfileTable where
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "round_zero_sign", .oneOf ["POSITIVE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
@@ -398,6 +408,9 @@ def Profile.spark.obs : ObsTable := [
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"] with
     shim := some "Dialect.canon" }).proved "Shim.one_zero"),
+  -- `round` emits `+0.0` through a decimal; `ceil` is a `BIGINT`, which the
+  -- written plan casts back to a double.
+  (none, "round_zero_sign", (ObsRow.native ["spark-round", "spark-floor-ceil-bigint"]).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),

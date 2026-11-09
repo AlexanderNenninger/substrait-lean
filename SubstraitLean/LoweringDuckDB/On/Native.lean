@@ -95,28 +95,6 @@ abbrev Substrait.duckdbOn.ffloor : Substrait.UnEntry (Substrait.Profile.duckdb (
   Substrait.UnEntry.native Substrait.UnFn.ffloor
   (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.ffloor_native)
 
-theorem Substrait.duckdbOn.fceil_native : ∀ (x : Substrait.Value),
-  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.UnFn.fceil x =
-    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.fceil x := by
-  native_tac
-
-abbrev Substrait.duckdbOn.fceil : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.UnFn.fceil :=
-  Substrait.UnEntry.native Substrait.UnFn.fceil
-  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.fceil_native)
-
-theorem Substrait.duckdbOn.fround_native : ∀ (x : Substrait.Value),
-  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.UnFn.fround x =
-    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.fround x := by
-  native_tac
-
-abbrev Substrait.duckdbOn.fround : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.UnFn.fround :=
-  Substrait.UnEntry.native Substrait.UnFn.fround
-  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.fround_native)
-
 theorem Substrait.duckdbOn.froundTo_native : ∀ (d : Int) (x : Substrait.Value),
   Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       (Substrait.UnFn.froundTo d) x =

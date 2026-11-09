@@ -38,6 +38,38 @@ local macro "guards_bin_tac " a:ident : tactic =>
     [Substrait.Lowering.ref_fit, Substrait.Lowering.apply_fit_int, Substrait.Lowering.apply_fit_null, Substrait.Lowering.apply_fit_bool, Substrait.Lowering.apply_fit_str, Substrait.Lowering.apply_fit_list, Substrait.Lowering.apply_fit_struct, Substrait.Lowering.apply_fit_float, Substrait.Lowering.apply_fit_date, Substrait.Lowering.apply_fit_ts, Substrait.Lowering.apply_fit_tod, Substrait.Lowering.apply_fit_dec, Substrait.IntWidth.fit, Substrait.IntWidth.lo, Substrait.IntWidth.hi, Substrait.IntWidth.half, Substrait.IntWidth.modulus, Substrait.Lowering.tmod_add_tmod, Substrait.Profile.duckdb_imod_pos, Substrait.Lowering.duck_imod_pos, Substrait.Lowering.duck_dadd, Substrait.Lowering.duck_dsub, Substrait.Lowering.shl_apply, Substrait.Lowering.shr_apply, Int.reduceToNat, Nat.reducePow, Substrait.Lowering.apply_ffloor_int, Substrait.Lowering.apply_ffloor_null, Substrait.Lowering.apply_ffloor_bool, Substrait.Lowering.apply_ffloor_str, Substrait.Lowering.apply_ffloor_list, Substrait.Lowering.apply_ffloor_float, Substrait.Lowering.apply_ffloor_date, Substrait.Lowering.apply_ffloor_ts, Substrait.Lowering.apply_ffloor_tod, Substrait.Lowering.apply_ffloor_dec, Substrait.Lowering.apply_ffloor_struct, Substrait.Lowering.pow2Chain_eval, List.mem_range] agree $a)
 
 set_option maxHeartbeats 1600000 in
+theorem Substrait.duckdbOn.fceil_guards : ∀ (x : Substrait.Value),
+  Substrait.Expr.GuardsAt
+    (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.fceil x) [x]
+    (Substrait.Expr.ifThen
+      (Substrait.Expr.bin Substrait.BinFn.and
+        (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+          (Substrait.Expr.lit (Substrait.Value.float 0)))
+        (Substrait.Expr.bin Substrait.BinFn.eq
+          (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0))
+          (Substrait.Expr.lit (Substrait.Value.float 0))))
+      (Substrait.Expr.lit (Substrait.Value.float 0))
+      (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0))) := by
+  guards_un_tac Substrait.duckdbOn.fceil_agree
+
+set_option maxHeartbeats 1600000 in
+theorem Substrait.duckdbOn.fround_guards : ∀ (x : Substrait.Value),
+  Substrait.Expr.GuardsAt
+    (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.fround x) [x]
+    (Substrait.Expr.ifThen
+      (Substrait.Expr.bin Substrait.BinFn.and
+        (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
+          (Substrait.Expr.lit (Substrait.Value.float 0)))
+        (Substrait.Expr.bin Substrait.BinFn.eq
+          (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0))
+          (Substrait.Expr.lit (Substrait.Value.float 0))))
+      (Substrait.Expr.lit (Substrait.Value.float 0))
+      (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0))) := by
+  guards_un_tac Substrait.duckdbOn.fround_agree
+
+set_option maxHeartbeats 1600000 in
 theorem Substrait.duckdbOn.fmath_sqrt_guards : ∀ (x : Substrait.Value),
   Substrait.Expr.GuardsAt
     (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
@@ -689,8 +721,8 @@ theorem Substrait.duckdbOn.guardsUn : ∀ f : Substrait.UnFn,
     | Substrait.UnFn.itof  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.fneg  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.ffloor  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
-    | Substrait.UnFn.fceil  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
-    | Substrait.UnFn.fround  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.fceil  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.fceil_guards⟩
+    | Substrait.UnFn.fround  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.fround_guards⟩
     | Substrait.UnFn.froundTo _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.ftoi  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.narrow _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩

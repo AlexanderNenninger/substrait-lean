@@ -277,6 +277,7 @@ the first column are the names the tables below use.
 | `on_log_zero` | `NAN`, `ERROR`, `MINUS_INFINITY` | the three | `ERROR` | `MINUS_INFINITY` (R15-math-domain) |
 | `nan_creation` (sverify's: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `fmod(±∞, y)`, a `SUM` of `+∞` and `−∞`) | `NAN`, raise | IEEE: NaN | raise (#257) | `NAN` ([R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json), [R15-double-modulus](../characterization/duckdb/facts/duckdb-R15-double-modulus.json), [nonfinite-aggregates](../characterization/duckdb/facts/duckdb-nonfinite-aggregates.json)) |
 | `zero_sign` (sverify's) | `IEEE` (two zeros), `ONE_ZERO` | IEEE; grouping and order of `-0.0` unspecified | `ONE_ZERO` (#89, an override) | `IEEE` in arithmetic (`1.0 / -0.0 = -∞`) and kept through a sort, where `-0.0` and `0.0` are peers; the written plan canonicalises (`Dialect.canon`, [R14](../characterization/duckdb/facts/duckdb-R14.json)) |
+| `round_zero_sign` (sverify's: which zero `round` and `ceil` give a negative value that rounds to zero) | `ANY`, `IEEE` (`-0.0`), `POSITIVE` (`+0.0`) | unspecified | `ANY`, observed up to `canon`; `eval` gives `+0.0` | `IEEE` (`round(-0.4)` is `-0.0`, [R15-round](../characterization/duckdb/facts/duckdb-R15-round.json)); the written plan canonicalises (`Dialect.canon`). Polars too; Spark gives `+0.0` ([spark-round](../characterization/spark/facts/spark-round.json)), and its `ceil` is a `BIGINT` ([spark-floor-ceil-bigint](../characterization/spark/facts/spark-floor-ceil-bigint.json)) |
 | `nan_equality` (sverify's for `=`, grouping, `DISTINCT`, joins; Substrait's for `index_in`) | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | IEEE `=` (NaN unequal); `index_in` takes the option | `NAN_IS_NAN` (#89, an override) | `NAN_IS_NAN`, either sign ([nan-equality](../characterization/duckdb/facts/duckdb-nan-equality.json)) |
 | `nan_order` (sverify's: sort, `MIN`, `MAX`, `<`) | `GREATEST`, `UNORDERED` | IEEE comparisons (`NaN < x` false) | `GREATEST`, above `+∞` | `GREATEST` ([arg-min-nulls](../characterization/duckdb/facts/duckdb-arg-min-nulls.json), [quantile-disc](../characterization/duckdb/facts/duckdb-quantile-disc.json)) |
 | `nan_kind` (sverify's: a NaN's sign and payload) | `IEEE`, `ONE_NAN` | IEEE | `ONE_NAN` | the sign survives (`signbit(-'nan')` is TRUE, [signbit](../characterization/duckdb/facts/duckdb-signbit.json)) |
@@ -341,8 +342,8 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
 | core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error` |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
-| core | `fp.round` | `round` | `rounding` |
-| core | `fp.floor` | `floor`, `ceil` | none |
+| core | `fp.round` | `round` | `rounding`, `round_zero_sign` |
+| core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`) |
 | core | `cmp` | `equal`, `lt`, `greatest`, `least`, `nanvl`, `is_null`, `not`, `and`, `or` | `nan_equality`, `nan_order`, `zero_sign` (doubles only) |
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
@@ -2053,6 +2054,7 @@ never narrower; one not pinned down yet is every call.
 | `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` of `+∞` and `−∞` |
 | `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
 | `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
+| `round_zero_sign` | the reference result is a zero (`round(-0.4)`, `ceil(-0.4)`) |
 | `nan_equality`, `nan_order` | an argument is NaN, or holds one |
 | `nan_kind` | an argument or the reference result is NaN |
 | `on_domain_error`, `on_log_zero`, `substring_range`, `cast_failure`, `date_range` | the reference reports the issue at the call (a domain error, a failed cast, a date out of range) |
