@@ -650,6 +650,17 @@ theorem isRef_nan : IsRef nan :=
   have := fp64.posInf_lt_nan; have := fp64.negInf_lt_zero; have := fp64.zero_lt_posInf
   ⟨by show fp64.negInf ≤ fp64.nan; omega, Int.le_refl _⟩
 
+theorem isRef_posInf : IsRef posInf :=
+  have := fp64.posInf_lt_nan; have := fp64.negInf_lt_zero; have := fp64.zero_lt_posInf
+  ⟨by show fp64.negInf ≤ fp64.posInf; omega, by show fp64.posInf ≤ fp64.nan; omega⟩
+
+theorem isRef_negInf : IsRef negInf :=
+  have := fp64.posInf_lt_nan; have := fp64.negInf_lt_zero; have := fp64.zero_lt_posInf
+  ⟨Int.le_refl _, by show fp64.negInf ≤ fp64.nan; omega⟩
+
+theorem canon_posInf : canon posInf = posInf := canon_of_isRef isRef_posInf
+theorem canon_negInf : canon negInf = negInf := canon_of_isRef isRef_negInf
+
 /-- A result built from a native double is `-0.0` or a reference code. -/
 theorem ofParts_cases (negative : Bool) (mag : Nat) :
     ofParts negative mag = negZero ∨ canon (ofParts negative mag) = ofParts negative mag := by

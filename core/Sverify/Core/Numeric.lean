@@ -138,6 +138,23 @@ def logb? (x b : Int) : Option Int :=
     some (FloatCode.lift₂ (fun x b => Float.log x / Float.log b) x b)
   else none
 
+/-- Whether `atan2?` and `logb?` are defined reads only canonical codes. -/
+theorem atan2?_isSome_canon (y x : Int) :
+    (atan2? (FloatCode.canon y) (FloatCode.canon x)).isSome = (atan2? y x).isSome := by
+  unfold atan2?
+  simp only [FloatCode.canon_idem]
+  split
+  · rfl
+  · simp only [Option.isSome_some]
+
+theorem logb?_isSome_canon (x b : Int) :
+    (logb? (FloatCode.canon x) (FloatCode.canon b)).isSome = (logb? x b).isSome := by
+  unfold logb?
+  simp only [FloatCode.canon_idem]
+  split
+  · simp only [Option.isSome_some]
+  · rfl
+
 #guard atan2? 0 0 == none && atan2? 0 FloatCode.negOne == some (FloatCode.ofFloat 3.141592653589793)
 #guard logb? (FloatCode.ofFloat 8.0) (FloatCode.ofFloat 2.0) == some (FloatCode.ofFloat 3.0)
 #guard logb? 0 (FloatCode.ofFloat 2.0) == none && logb? FloatCode.one FloatCode.one == none
