@@ -205,9 +205,10 @@ jobs:
         with:
           name: dist-sdist
           path: dist/*.tar.gz
-      # `engine-*`, not `dist-*`: `publish` takes it with the others, and
-      # refuses the tag until each engine project has a trusted publisher
-      # (`vars.PUBLISH_ENGINES`, the release skill's "Engine packages").
+      # `engine-*`, not `dist-*`: `publish-engines` uploads it from the
+      # engine's own environment, and `publish` refuses the tag until each
+      # engine project has a trusted publisher (`vars.PUBLISH_ENGINES`, the
+      # release skill's "Engine packages").
       - if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -411,13 +412,34 @@ jobs:
           pattern: dist-*
           path: dist
           merge-multiple: true
-      # The engine packages, which PyPI's trusted publishers take
-      # (`vars.PUBLISH_ENGINES`; the release skill's "Engine packages").
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  # Each engine package (#1189) goes out after sverify, from an environment of
+  # its own: PyPI takes one pending trusted publisher per repository,
+  # workflow and environment, so each project has its own (`pypi-<engine>`,
+  # the release skill's "Engine packages"). `publish` checked the version, the
+  # pins and `vars.PUBLISH_ENGINES`.
+  publish-engines:
+    if: startsWith(github.ref, 'refs/tags/v') && !needs.nightly.outputs.version
+    needs: [nightly, build, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        # One entry per engine package with an `engine-<engine>` artifact.
+        engine: [polars]
+    runs-on: ubuntu-latest
+    environment: pypi-${{ matrix.engine }}
+    permissions:
+      id-token: write
+    steps:
+      - name: Check the engine packages can be published
+        env:
+          PUBLISH_ENGINES: ${{ vars.PUBLISH_ENGINES }}
+        run: test "$PUBLISH_ENGINES" = true
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: engine-*
+          name: engine-${{ matrix.engine }}
           path: dist
-          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   # molab opens notebooks straight from GitHub, so the README's links point at
@@ -426,8 +448,9 @@ jobs:
   # release, never force-pushed. On a tag it runs after `publish`; by hand,
   # with `notebooks: <version>`, it republishes a release.
   publish-notebooks:
-    needs: publish
-    if: ${{ !cancelled() && (needs.publish.result == 'success' || inputs.notebooks) }}
+    # The notebooks install sverify's extras, so the engine packages too.
+    needs: [publish, publish-engines]
+    if: ${{ !cancelled() && ((needs.publish.result == 'success' && needs.publish-engines.result == 'success') || inputs.notebooks) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
