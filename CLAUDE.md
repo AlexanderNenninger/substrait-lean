@@ -280,9 +280,9 @@ The `prove-lean` skill has the workflow. The rules:
 
 ## Engines
 
-DuckDB, Polars, Spark and Snowflake are the 1.0 engines. DataFusion is an
-optional engine and never a reference: Lean's model is the reference, and
-DuckDB is the default oracle where tests compare against an engine.
+DuckDB, Polars, Spark and Snowflake are the 1.0 engines; sverify no longer
+supports DataFusion. Lean's model is the reference, and DuckDB is the
+default oracle where tests compare against an engine.
 Snowflake's facts are private (the `engine-fact` skill says where).
 
 ## Skills
