@@ -1,4 +1,4 @@
-import SubstraitLean.Lowering
+import Sverify.Engines.Lowering
 
 /-!
 # Known lowerings: the generator's cache (#241, #242)

@@ -1,6 +1,6 @@
 import Sverify.Core.Profile
 import Sverify.Core.Order
-import SubstraitLean.EngineTables
+import Sverify.Polars.Tables
 import Sverify.Analysis.Guards
 import Sverify.Engines.Shims
 
@@ -586,11 +586,6 @@ def written : Impl := ⟨UnFn.apply, bin⟩
 the reference wherever the reference reports no issue. Its own values
 elsewhere (a wrapped integer, NULL for a zero divisor, NaN, `±∞`) are on the
 error side, where a verified plan does not go. -/
-theorem nanCase_issue {f : BinFn} {a b : Int} (hn : nanCase f a b = true) :
-    f.issue (.float a) (.float b) ≠ none := by
-  cases f <;> simp only [nanCase, Bool.false_eq_true] at hn <;>
-    simp only [BinFn.issue, nanIssue, nanCase] at * <;> (try split) <;> simp_all
-
 theorem written_faithful : written.Faithful := by
   refine ⟨fun _ _ _ => rfl, fun f v w h => ?_⟩
   show bin f v w = f.apply v w

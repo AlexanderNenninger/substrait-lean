@@ -1236,41 +1236,6 @@ def divByZeroMode : List Json → String := optionPref "on_division_by_zero" "ER
 /-- `division_type`; `TRUNCATE` when the plan omits it. -/
 def divisionTypeMode : List Json → String := optionPref "division_type" "TRUNCATE"
 
-/-- `a // b` of integers with `division_type` = `FLOOR` (Polars's `//`,
-`SubstraitLean/PolarsProfile.lean`), in the reference's truncating
-operations: with the signs apart, `(a + 1) / b - 1` for `a < 0 < b` and
-`(a - 1) / b - 1` for `b < 0 < a`, so that no step overflows; otherwise the
-truncated quotient. Each condition compares one argument with zero, `a`
-first, so that the range analysis refines both branches and the arguments
-are read in order. `Write` recognizes the shape and writes the call back. -/
-def _root_.Substrait.Expr.floorDivOf (a b : Expr) : Expr :=
-  .ifThen (.bin .lt a (.lit (.int 0)))
-    (.ifThen (.bin .lt (.lit (.int 0)) b)
-      (.bin .add (.bin .idiv (.bin .add a (.lit (.int 1))) b) (.lit (.int (-1))))
-      (.bin .idiv a b))
-    (.ifThen (.bin .lt b (.lit (.int 0)))
-      (.ifThen (.bin .lt (.lit (.int 0)) a)
-        (.bin .add (.bin .idiv (.bin .sub a (.lit (.int 1))) b) (.lit (.int (-1))))
-        (.bin .idiv a b))
-      (.bin .idiv a b))
-
-/-- `a % b` of integers with `division_type` = `FLOOR` (Polars's `%`): the
-remainder takes the divisor's sign. With the signs apart it is
-`(b - 1) - (-1 - a) % b` for `a < 0 < b` and `(a - 1) % b + (b + 1)` for
-`b < 0 < a`, each a remainder of a dividend that is not negative, so that the
-range analysis sees that no step overflows; otherwise the truncated
-remainder. -/
-def _root_.Substrait.Expr.floorModOf (a b : Expr) : Expr :=
-  .ifThen (.bin .lt a (.lit (.int 0)))
-    (.ifThen (.bin .lt (.lit (.int 0)) b)
-      (.bin .sub (.bin .sub b (.lit (.int 1))) (.bin .imod (.bin .sub (.lit (.int (-1))) a) b))
-      (.bin .imod a b))
-    (.ifThen (.bin .lt b (.lit (.int 0)))
-      (.ifThen (.bin .lt (.lit (.int 0)) a)
-        (.bin .add (.bin .imod (.bin .sub a (.lit (.int 1))) b) (.bin .add b (.lit (.int 1))))
-        (.bin .imod a b))
-      (.bin .imod a b))
-
 /-- `a / b` (`div`, which raises on a zero divisor) under `on_division_by_zero`
 = `mode`. Other than `ERROR`, the mode is a `CASE` on the divisor:
 
@@ -1913,7 +1878,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     else
       let mode := divByZeroMode (← arrD f "options")
       -- `division_type` = `FLOOR`: Polars's `//` and `%`, in the reference's
-      -- operations (`SubstraitLean/PolarsProfile.lean`).
+      -- operations (`engines/polars/Sverify/Polars/Profile.lean`).
       let floor := divisionTypeMode (← arrD f "options") == "FLOOR"
       let call ← match baseName name, args with
         | "divide", [a, b] =>

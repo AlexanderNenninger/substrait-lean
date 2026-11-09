@@ -1,4 +1,5 @@
-"""The Lean packages' layers (#1189): the core, the analysis, engines-common.
+"""The Lean packages' layers (#1189): the core, the analysis, engines-common,
+and the engines' own packages (Polars's, Spark's).
 
 Each layer is a Lake package of its own, rooted at a prefix of its own under
 the `Sverify` umbrella, and imports only the layers below it. The standalone
@@ -24,6 +25,8 @@ LAYERS = {
     "core": ("sverify-core", "Sverify.Core", []),
     "analysis": ("sverify-analysis", "Sverify.Analysis", ["core"]),
     "engines": ("sverify-engines", "Sverify.Engines", ["core", "analysis"]),
+    "engines/polars": ("sverify-polars", "Sverify.Polars", ["core", "analysis", "engines"]),
+    "engines/spark": ("sverify-spark", "Sverify.Spark", ["core", "analysis", "engines"]),
 }
 
 
@@ -50,7 +53,8 @@ def test_lakefile(layer):
     # Never a library rooted at the umbrella alone: it would claim every layer's modules.
     assert all(r != "Sverify" for r in lib["roots"])
     requires = {r["name"]: r["path"] for r in conf.get("require", [])}
-    assert requires == {LAYERS[b][0]: f"../{b}" for b in below}
+    up = "../" * len(Path(layer).parts)
+    assert requires == {LAYERS[b][0]: f"{up}{b}" for b in below}
 
 
 @pytest.mark.parametrize("layer", LAYERS)

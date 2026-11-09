@@ -1,6 +1,5 @@
-import SubstraitLean.Lowering
-import SubstraitLean.PolarsShims
-import SubstraitLean.Parse
+import Sverify.Engines.Lowering
+import Sverify.Polars.Shims
 
 /-!
 # Polars as a profile (#444)
@@ -20,7 +19,7 @@ elsewhere. Per option (D21, `docs/engine-profiles.md`, "Polars as a profile"):
   verified plan never reaches them, so Polars's own values there need no
   shim, and the profile is tighter than the engine (D21).
 * Every other option is the reference's: there, the translation to Polars
-  keeps its written arguments and shims (`PolarsShims.lean`).
+  keeps its written arguments and shims (`Polars/Shims.lean`).
 
 A plan states the choice it makes: integer `divide` and `modulus` with
 `division_type: FLOOR`, which the parser reads as `Expr.floorDivOf` and
@@ -34,7 +33,7 @@ What is proved here:
 * `Profile.polars`, an evaluable `Profile`: its `//` and `%` are the
   templates under the reference, and on 64-bit integers they are Polars's
   (`Polars.floorDiv`, `Polars.floorMod`, the trusted model of
-  `PolarsShims.lean`): `Profile.polars_idiv`, `Profile.polars_imod`. A zero
+  `Polars/Shims.lean`): `Profile.polars_idiv`, `Profile.polars_imod`. A zero
   divisor raises (`Profile.polars_zero_divisor`).
 * `Polars.elaborate_eq`: evaluating an expression under `Profile.polars` is
   evaluating its elaboration (`Polars.elaborate`: each `//` and `%` replaced by
@@ -133,16 +132,23 @@ theorem inI64_iff (x : Int) : inI64 x = true ↔ -2 ^ 63 ≤ x ∧ x ≤ 2 ^ 63 
 theorem ref_add_int (x y : Int) (h1 : -2 ^ 63 ≤ x + y) (h2 : x + y ≤ 2 ^ 63 - 1) :
     Profile.reference.bin .add (.int x) (.int y) = .ok (.int (x + y)) := by
   have h : inI64 (x + y) = true := (inI64_iff _).mpr ⟨h1, h2⟩
-  simp [Profile.reference, raiseIf, BinFn.issue, wrapNum, Value.numOf?, wrapIf, h, BinFn.apply]
+  have ha : BinFn.apply .add (.int x) (.int y) = .int (x + y) := rfl
+  show raiseIf (BinFn.issue .add (.int x) (.int y)) (BinFn.apply .add (.int x) (.int y)) = _
+  simp [raiseIf, BinFn.issue, wrapNum, Value.numOf?, wrapIf, h, ha]
 
 theorem ref_sub_int (x y : Int) (h1 : -2 ^ 63 ≤ x - y) (h2 : x - y ≤ 2 ^ 63 - 1) :
     Profile.reference.bin .sub (.int x) (.int y) = .ok (.int (x - y)) := by
   have h : inI64 (x - y) = true := (inI64_iff _).mpr ⟨h1, h2⟩
-  simp [Profile.reference, raiseIf, BinFn.issue, wrapNum, Value.numOf?, wrapIf, h, BinFn.apply]
+  have ha : BinFn.apply .sub (.int x) (.int y) = .int (x - y) := rfl
+  show raiseIf (BinFn.issue .sub (.int x) (.int y)) (BinFn.apply .sub (.int x) (.int y)) = _
+  simp [raiseIf, BinFn.issue, wrapNum, Value.numOf?, wrapIf, h, ha]
 
 theorem ref_idiv_int (x y : Int) (h0 : y ≠ 0) (h : inI64 (x.tdiv y) = true) :
     Profile.reference.bin .idiv (.int x) (.int y) = .ok (.int (x.tdiv y)) := by
-  simp [Profile.reference, raiseIf, BinFn.issue, h0, h, BinFn.apply]
+  have ha : BinFn.apply .idiv (.int x) (.int y) = .int (x.tdiv y) := by
+    simp only [BinFn.apply.eq_def]; simp [h0]
+  show raiseIf (BinFn.issue .idiv (.int x) (.int y)) (BinFn.apply .idiv (.int x) (.int y)) = _
+  simp [raiseIf, BinFn.issue, h0, h, ha]
 
 theorem ref_lt_int (x y : Int) :
     Profile.reference.bin .lt (.int x) (.int y) = .ok (.bool (decide (x < y))) := by

@@ -5,7 +5,7 @@ What Polars does at each of the core's options
 JSON document each in [facts/](./), in the format of
 [fact.schema.json](../../../characterization/fact.schema.json) (`python -m sverify_dev.facts` checks
 them). They are the evidence `Profile.polars`
-(`SubstraitLean/PolarsProfile.lean`, the profile
+(`engines/polars/Sverify/Polars/Profile.lean`, the profile
 `verify(semantics="polars")` checks under; [Polars as a
 profile](../../../docs/engine-profiles.md#polars-as-a-profile)) and its row of the
 realizability table are built from.

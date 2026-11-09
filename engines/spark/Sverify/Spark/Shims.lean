@@ -1,4 +1,7 @@
-import SubstraitLean.PolarsShims
+import Sverify.Core.Profile
+import Sverify.Core.Order
+import Sverify.Analysis.Guards
+import Sverify.Engines.Shims
 
 /-!
 # The reference on Spark: the shims, proved (#739)
@@ -178,7 +181,7 @@ theorem written_faithful : written.Faithful := by
     have : nanCase f a b = false := by
       cases hn : nanCase f a b
       · rfl
-      · exact absurd h (Polars.nanCase_issue hn)
+      · exact absurd h (nanCase_issue hn)
     simp [this]
   · rfl
 

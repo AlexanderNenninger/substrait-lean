@@ -151,7 +151,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   records each construct's template for the regeneration, which tries it first. `substrait-check --lowering-table` exports the
   templates, and `sverify.sql.lowering`, a small interpreter in the trusted path,
   writes them as DuckDB SQL: the DuckDB printer asks it first (`Dialect.lowered`),
-  so the guards in DuckDB's SQL are the proved ones. `SubstraitLean/Lowering.lean` proves once that
+  so the guards in DuckDB's SQL are the proved ones. `engines/Sverify/Engines/Lowering.lean` proves once that
   lowering with any such table is correct: `Lowering.lower_correct` (the
   lowered expression, under the engine's profile, has the reference's
   outcome, the same value or an error), and `Lowering.lowerRel_sound` for
@@ -304,7 +304,7 @@ So 15 of Polars's differences cost a proved plan nothing, 7 cost a
 written argument, and the 23 run-time shims left each implement a value the
 reference chose.
 
-`SubstraitLean/PolarsShims.lean` proves them, each
+`engines/polars/Sverify/Polars/Shims.lean` proves them, each
 shim of `engines/polars/src/sverify_polars/shims.py` once, as `Polars.<name>`,
 against a model of Polars's own functions taken from its facts (the trusted
 part, as `Profile.duckdb` is for DuckDB):
@@ -333,7 +333,7 @@ The Polars rows of `--options` name these theorems as their evidence. The
 
 ### Polars as a profile
 
-`Profile.polars` ([PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean))
+`Profile.polars` ([Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean))
 is the profile `verify(semantics="polars")` checks under, and the one
 `--contract` takes with `"profile": "polars"`. It is an evaluable `Profile`,
 as `Profile.duckdb` is, and it takes Polars's choice option by option:
@@ -357,7 +357,7 @@ parser reads, and the report says `"profile": "polars"`. What is proved:
 
 - `Profile.polars_idiv`, `Profile.polars_imod`: on 64-bit integers the
   templates are Polars's `//` and `%` (`Polars.floorDiv`, `Polars.floorMod`,
-  the trusted model of `PolarsShims.lean`); `Profile.polars_zero_divisor`:
+  the trusted model of `Polars/Shims.lean`); `Profile.polars_zero_divisor`:
   a zero divisor raises.
 - `Polars.elaborate_eq`: evaluating an expression under `Profile.polars` is
   evaluating its elaboration, each `//` and `%` replaced by its template,
@@ -382,7 +382,7 @@ translation writes the stated calls as Polars's operators.
 
 ### Spark as a profile
 
-`Profile.spark` ([SparkProfile.lean](../SubstraitLean/SparkProfile.lean)) is
+`Profile.spark` ([Spark/Profile.lean](../engines/spark/Sverify/Spark/Profile.lean)) is
 what Spark computes, from its facts: the reference's functions with Spark's
 own values where they differ (`sparkBin`, `sparkUn`), as DuckDB's profile is
 built. `Engine.spark` runs them where they do not raise, and each value of
@@ -414,7 +414,7 @@ the writer refuses double `atan2`. Once the checker reports under the profile, a
 under it runs on Spark by `native`, and on DuckDB by `transfer` where
 DuckDB's choices are within Spark's at every option the proof depends on.
 What is proved
-([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
+([Spark/Shims.lean](../engines/spark/Sverify/Spark/Shims.lean)):
 
 - `Shim.sum_empty_null`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
   on Spark raises as soon as a partial sum leaves 64 bits, which depends on

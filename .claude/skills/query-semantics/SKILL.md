@@ -13,7 +13,7 @@ Both live in `.claude/skills/query-semantics/`. The terms (reference, profile, o
 
 Answer per profile, never just "Lean vs engine":
 
-- Profiles. The reference (`semantics="reference"`, strict: raises where engines disagree) is what plans are verified under by default. `semantics="duckdb"` verifies DuckDB's SQL as DuckDB computes it, `semantics="polars"` an Ibis expression as Polars computes it, `semantics="spark"` one as Spark 4.3.0 computes it under ANSI mode (`SubstraitLean/SparkProfile.lean`, `Engine.spark_sound`; until #1288 the report is the reference's with ±inf allowed, labelled `"reference"` with a `ProfilePendingWarning`, and runs on Spark through its translation), and `semantics="substrait"` under Substrait's own loose semantics. Say which of these verify the query.
+- Profiles. The reference (`semantics="reference"`, strict: raises where engines disagree) is what plans are verified under by default. `semantics="duckdb"` verifies DuckDB's SQL as DuckDB computes it, `semantics="polars"` an Ibis expression as Polars computes it, `semantics="spark"` one as Spark 4.3.0 computes it under ANSI mode (`engines/spark/Sverify/Spark/Profile.lean`, `Engine.spark_sound`; until #1288 the report is the reference's with ±inf allowed, labelled `"reference"` with a `ProfilePendingWarning`, and runs on Spark through its translation), and `semantics="substrait"` under Substrait's own loose semantics. Say which of these verify the query.
 - Preconditions. Name what `sv.verify` inferred (`requires … (inferred)`, `assumes: … stays finite`). `Report.run` checks them on the data before a routed run.
 - Route and class (`sverify.routes.choose`, D13, D15), per engine with a profile (DuckDB, Polars, Spark): route `native`, `translated`, `transfer` or `recheck`, or refused with the reason; class `exact`, `observed`, `shim` or `refused`, the worst over the options the proof depends on. The tables are in [docs/guide.md](../../../docs/guide.md#routes-classes-and-profiles). An `observed` option needs a postcondition whose observation it refines (`sv.equivalent(...)`, D11, D18), or the row's shim; say which. What a rerun must reproduce is a second observation (D20, #613).
 - Facts. Cite the engine facts the class rests on, with evidence level and status, and any ledger entry.
@@ -102,7 +102,7 @@ Polars runs on its streaming engine, as sverify does (#605), with sverify's flag
 
 ## Troubleshooting
 
-- `this checker has no Profile.polars to check under yet`: the checker predates `Profile.polars` (`SubstraitLean/PolarsProfile.lean`); rebuild it. The reference's route still applies.
+- `this checker has no Profile.polars to check under yet`: the checker predates `Profile.polars` (`engines/polars/Sverify/Polars/Profile.lean`); rebuild it. The reference's route still applies.
 - `CheckerVersionError` or `FileNotFoundError` for `_bin/substrait-check`: set `SVERIFY_CHECKER` (above).
 - `memtable() got an unexpected keyword argument 'name'`: the probe uses `ibis.memtable` for native Ibis runs; keep it that way.
 - `Relations no longer have fetchone()`: DuckDB 2.0; use `.fetchall()` or `.fetch_arrow_table()`.

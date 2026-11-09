@@ -1,4 +1,4 @@
-import SubstraitLean.ProfileImpl
+import Sverify.Analysis.ProfileImpl
 
 /-!
 # Lowerings: a table of proved templates (#241)

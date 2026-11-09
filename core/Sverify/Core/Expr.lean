@@ -906,6 +906,41 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
   | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
 
+/-- `a // b` of integers with `division_type` = `FLOOR` (Polars's `//`,
+`engines/polars/Sverify/Polars/Profile.lean`), in the reference's truncating
+operations: with the signs apart, `(a + 1) / b - 1` for `a < 0 < b` and
+`(a - 1) / b - 1` for `b < 0 < a`, so that no step overflows; otherwise the
+truncated quotient. Each condition compares one argument with zero, `a`
+first, so that the range analysis refines both branches and the arguments
+are read in order. `Write` recognizes the shape and writes the call back. -/
+def Expr.floorDivOf (a b : Expr) : Expr :=
+  .ifThen (.bin .lt a (.lit (.int 0)))
+    (.ifThen (.bin .lt (.lit (.int 0)) b)
+      (.bin .add (.bin .idiv (.bin .add a (.lit (.int 1))) b) (.lit (.int (-1))))
+      (.bin .idiv a b))
+    (.ifThen (.bin .lt b (.lit (.int 0)))
+      (.ifThen (.bin .lt (.lit (.int 0)) a)
+        (.bin .add (.bin .idiv (.bin .sub a (.lit (.int 1))) b) (.lit (.int (-1))))
+        (.bin .idiv a b))
+      (.bin .idiv a b))
+
+/-- `a % b` of integers with `division_type` = `FLOOR` (Polars's `%`): the
+remainder takes the divisor's sign. With the signs apart it is
+`(b - 1) - (-1 - a) % b` for `a < 0 < b` and `(a - 1) % b + (b + 1)` for
+`b < 0 < a`, each a remainder of a dividend that is not negative, so that the
+range analysis sees that no step overflows; otherwise the truncated
+remainder. -/
+def Expr.floorModOf (a b : Expr) : Expr :=
+  .ifThen (.bin .lt a (.lit (.int 0)))
+    (.ifThen (.bin .lt (.lit (.int 0)) b)
+      (.bin .sub (.bin .sub b (.lit (.int 1))) (.bin .imod (.bin .sub (.lit (.int (-1))) a) b))
+      (.bin .imod a b))
+    (.ifThen (.bin .lt b (.lit (.int 0)))
+      (.ifThen (.bin .lt (.lit (.int 0)) a)
+        (.bin .add (.bin .imod (.bin .sub a (.lit (.int 1))) b) (.bin .add b (.lit (.int 1))))
+        (.bin .imod a b))
+      (.bin .imod a b))
+
 omit [Boxes.Ambient] in
 /-- A shifted field on a row with a column inserted at its position. -/
 theorem getD_shift_insert (w : Value) (i : Nat) (xa rest : Row) :

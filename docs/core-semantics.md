@@ -833,7 +833,7 @@ automatic and costs checker time, and where it fails the plan is refused on
 few plans verify there ([Terminology](#terminology)). Translations are linear
 in the number of engines: one per engine, from the reference.
 
-For the second way, `Engine.contract_sound` (`SubstraitLean/EngineSound.lean`)
+For the second way, `Engine.contract_sound` (`engines/Sverify/Engines/Sound.lean`)
 is the theorem: unless the translated plan raises, the rows the engine's
 model computes for it (DuckDB's, Polars's, Spark's or the reference's) are a
 result the reference allows (`Engine.Sound`), and the contract holds on them.

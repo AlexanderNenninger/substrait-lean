@@ -472,7 +472,7 @@ def Profile.reference.table : ProfileTable where
     (some "fp.div", "on_division_by_zero", .asked ["ERROR", "IEEE", "NULL", "LIMIT"] ["ERROR"]),
     -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
     -- `TRUNCATE`. Integer `//` and `%` floor when the plan asks (`FLOOR`,
-    -- Polars's, `Expr.floorDivOf`, `SubstraitLean/PolarsProfile.lean`); the
+    -- Polars's, `Expr.floorDivOf`, `engines/polars/Sverify/Polars/Profile.lean`); the
     -- remainder of doubles does not (#209 R3).
     (none, "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
     (some "int.div", "division_type", .asked ["TRUNCATE", "FLOOR"] ["TRUNCATE"]),

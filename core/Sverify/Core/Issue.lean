@@ -295,6 +295,13 @@ def UnFn.issueAll (f : UnFn) (v : Value) : Option Issue := (f.issue v).or (f.inf
 
 def BinFn.issueAll (f : BinFn) (v w : Value) : Option Issue := (f.issue v w).or (f.infIssue v w)
 
+/-- Where a NaN case holds (`∞ - ∞`, `0 · ∞`, `∞ / ∞`, …), the reference
+reports an issue: an engine's own NaN there is on the error side. -/
+theorem nanCase_issue {f : BinFn} {a b : Int} (hn : nanCase f a b = true) :
+    f.issue (.float a) (.float b) ≠ none := by
+  cases f <;> simp only [nanCase, Bool.false_eq_true] at hn <;>
+    simp only [BinFn.issue, nanIssue, nanCase] at * <;> (try split) <;> simp_all
+
 theorem UnFn.infIssue_eq {f : UnFn} {v : Value} {k : Issue} (h : f.infIssue v = some k) :
     k = .infinite := by
   unfold UnFn.infIssue at h; split at h <;> (try split at h) <;> simp_all

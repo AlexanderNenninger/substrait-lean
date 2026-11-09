@@ -18,7 +18,7 @@ raises where the reference does, or `MIN % -1` and `<<` as the reference
 computes them; elsewhere the native function.
 
 Its correctness (`Lowering.duckdb_exact`, `Rel.duckdb_shim_sound`) follows
-from the generic theorems of `SubstraitLean/Lowering.lean`. `duckdbOn.coverage`
+from the generic theorems of `engines/Sverify/Engines/Lowering.lean`. `duckdbOn.coverage`
 lists how each construct is lowered; the golden test
 `tests/lowering/duckdb.expected` records them (`substrait-check
 --lowering-coverage`), so a change to the generator's output shows in review.
