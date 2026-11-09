@@ -293,7 +293,7 @@ theorem Measure.sum_factsL1 {t : Tol} {m : Measure} {mask : Nat → Bool} {env :
       (exactSum (m.inputs g')).natAbs ≤ (m.inputs g').length * (magOf lo hi + e) ∧
       (m.inputs g).length ≤ N ∧ (m.inputs g').length ≤ N := by
   obtain ⟨-, hv, hw, hS, hS', hl, hl'⟩ :=
-    Measure.sum_facts harg hti hcr hd hf hmask hlo hhi (w.forall2 hle) henv hN hR
+    Measure.sum_facts harg hti hcr hd hf hlo hhi (w.forall2 hle) henv hN
   refine ⟨?_, hv, hw, hS, hS', hl, hl'⟩
   have hD : tg.val i ≤ e := by have := hle.val i; simpa [Tol.val, hti] using this
   have hP : ∀ v ∈ m.inputs g, ∀ c, v = .float c → IsRef c := by

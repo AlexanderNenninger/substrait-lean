@@ -23,7 +23,7 @@ follows the columns that keep it: copies of source columns, and `SUM` and
 
 /-- The columns `mask` names hold reference codes. -/
 def Relation.RefOn (mask : Nat → Bool) (rows : Relation) : Prop :=
-  ∀ row ∈ rows, ∀ j c, mask j = true → row.getD j .null = .float c → IsRef c
+  ∀ row ∈ rows, ∀ j c, mask j = true → row.getD j .null = .float c → IsRef (canon c)
 
 /-- Every double of `rows` is a reference code. -/
 def Relation.RefCodes (rows : Relation) : Prop := Relation.RefOn (fun _ => true) rows
@@ -75,9 +75,9 @@ theorem Relation.RefOn.mono {mask : Nat → Bool} {a b : Relation} (h : Relation
     (hs : ∀ row ∈ b, row ∈ a) : Relation.RefOn mask b := fun row hr => h row (hs row hr)
 
 theorem RefOn.cat {n : Nat} {ma mb : Nat → Bool} {x y : Row} (hx : x.length = n)
-    (ha : ∀ j c, ma j = true → x.getD j .null = .float c → IsRef c)
-    (hb : ∀ j c, mb j = true → y.getD j .null = .float c → IsRef c) :
-    ∀ j c, maskCat n ma mb j = true → (x ++ y).getD j .null = .float c → IsRef c := by
+    (ha : ∀ j c, ma j = true → x.getD j .null = .float c → IsRef (canon c))
+    (hb : ∀ j c, mb j = true → y.getD j .null = .float c → IsRef (canon c)) :
+    ∀ j c, maskCat n ma mb j = true → (x ++ y).getD j .null = .float c → IsRef (canon c) := by
   intro j c hm hc
   rw [getD_append_split, hx] at hc
   by_cases hj : j < n
@@ -108,7 +108,7 @@ theorem zeroOf_cases (b : Bool) : FloatCode.zeroOf b = 0 ∨ FloatCode.zeroOf b 
 theorem infOf_cases (b : Bool) : FloatCode.infOf b = posInf ∨ FloatCode.infOf b = negInf := by
   cases b <;> simp [FloatCode.infOf]
 
-theorem fadd_isRef (a b : Int) : IsRef (fadd a b) := by
+theorem fadd_isRef (a b : Int) : IsRef (canon (fadd a b)) := by
   unfold fadd addI
   dsimp only
   repeat' split
@@ -122,9 +122,9 @@ theorem fadd_isRef (a b : Int) : IsRef (fadd a b) := by
         rw [h] <;> exact isRef_canon_of (by simp))
     | exact isRef_canon_of (.inr (.inr (.inr (.inr (.inr ⟨_, _, rfl⟩)))))
 
-theorem fsub_isRef (a b : Int) : IsRef (fsub a b) := fadd_isRef a (negI b)
+theorem fsub_isRef (a b : Int) : IsRef (canon (fsub a b)) := fadd_isRef a (negI b)
 
-theorem fmul_isRef (a b : Int) : IsRef (fmul a b) := by
+theorem fmul_isRef (a b : Int) : IsRef (canon (fmul a b)) := by
   unfold fmul mulI
   dsimp only
   repeat' split
@@ -136,7 +136,7 @@ theorem fmul_isRef (a b : Int) : IsRef (fmul a b) := by
         exact isRef_canon_of (by simp))
     | exact isRef_canon_of (.inr (.inr (.inr (.inr (.inr ⟨_, _, rfl⟩)))))
 
-theorem fdiv_isRef (a b : Int) : IsRef (fdiv a b) := by
+theorem fdiv_isRef (a b : Int) : IsRef (canon (fdiv a b)) := by
   unfold fdiv divI
   dsimp only
   repeat' split
@@ -152,24 +152,24 @@ theorem fdiv_isRef (a b : Int) : IsRef (fdiv a b) := by
 on the constructors, which `simp [BinFn.apply]` over every pair took 1.4 s
 to do. -/
 theorem fadd_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fadd va vb = .float c) :
-    IsRef c := by
+    IsRef (canon c) := by
   cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fadd_isRef _ _) | cases h
 
 theorem fsub_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fsub va vb = .float c) :
-    IsRef c := by
+    IsRef (canon c) := by
   cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fsub_isRef _ _) | cases h
 
 theorem fmul_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fmul va vb = .float c) :
-    IsRef c := by
+    IsRef (canon c) := by
   cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fmul_isRef _ _) | cases h
 
 theorem fdiv_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fdiv va vb = .float c) :
-    IsRef c := by
+    IsRef (canon c) := by
   cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fdiv_isRef _ _) | cases h
 
 theorem Expr.refCol_sound {mask : Nat → Bool} {e : Expr} (he : e.refCol mask = true) {row : Row}
-    (h : ∀ j c, mask j = true → row.getD j .null = .float c → IsRef c) {c : Int}
-    (hc : e.eval row = .float c) : IsRef c := by
+    (h : ∀ j c, mask j = true → row.getD j .null = .float c → IsRef (canon c)) {c : Int}
+    (hc : e.eval row = .float c) : IsRef (canon c) := by
   cases e with
   | field i => exact h i c he hc
   | bin f a b =>
@@ -226,7 +226,7 @@ theorem Rel.refOn {cat : Catalog} (hcat : cat.WF) (hR : ∀ s, (cat s).rows.RefC
   | .values _ _, _ | .window .., _ | .unnest .., _ => fun _ _ _ _ h => by simp [Rel.refCols] at h
   | .filter r _, hwf => (Rel.refOn hcat hR hwf.1).mono fun _ h => (List.mem_filter.1 h).1
   | .orderBy r _, hwf => (Rel.refOn hcat hR hwf.1).mono fun _ h => (List.mergeSort_perm _ _).mem_iff.1 h
-  | .distinct r, hwf => (Rel.refOn hcat hR (r := r) hwf).mono fun _ h => mem_dedup.1 h
+  | .distinct r, hwf => (Rel.refOn hcat hR (r := r) hwf).mono fun _ h => canonReps_sub h
   | .fetch r _ cnt, hwf => (Rel.refOn hcat hR (r := r) hwf).mono fun _ h => by
     simp only [Rel.eval] at h
     cases cnt with
@@ -291,7 +291,7 @@ theorem Rel.refOn {cat : Catalog} (hcat : cat.WF) (hR : ∀ s, (cat s).rows.RefC
   | .aggregate r gs ms, hwf => fun row hr j c hm hc => by
     have hI := Rel.refOn hcat hR hwf.1
     have hms : ∀ (g : Relation) k c', (ms[k]?).any Measure.refOut = true →
-        (ms.map (·.eval g)).getD k .null = .float c' → IsRef c' := by
+        (ms.map (·.eval g)).getD k .null = .float c' → IsRef (canon c') := by
       intro g k c' hk h'
       simp only [List.getD_eq_getElem?_getD, List.getElem?_map] at h'
       cases he : ms[k]? with
@@ -299,7 +299,8 @@ theorem Rel.refOn {cat : Catalog} (hcat : cat.WF) (hR : ∀ s, (cat s).rows.RefC
       | some m =>
         simp only [he, Option.any_some] at hk
         simp only [he, Option.map_some, Option.getD_some] at h'
-        exact Measure.refOut_sound hk g h'
+        have := Measure.refOut_sound hk g h'
+        rwa [canon_of_isRef this]
     simp only [Rel.eval, aggregateEval] at hr
     split at hr
     · rename_i hg
@@ -309,7 +310,7 @@ theorem Rel.refOn {cat : Catalog} (hcat : cat.WF) (hR : ∀ s, (cat s).rows.RefC
       exact hms _ j c hm hc
     · simp only [List.mem_map] at hr
       obtain ⟨k, hk, rfl⟩ := hr
-      obtain ⟨x, hx, rfl⟩ := List.mem_map.1 (mem_dedup.1 hk)
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.1 (canonReps_sub hk)
       refine RefOn.cat (by simp [groupKey]) ?_ (hms _) j c hm hc
       intro i c' hi h'
       simp only [groupKey, List.getD_eq_getElem?_getD, List.getElem?_map] at h'
@@ -381,7 +382,7 @@ theorem scaled_natAbs_le {lo hi c : Int} (h1 : lo ≤ c) (h2 : c ≤ hi) :
   omega
 
 theorem exactSum_natAbs_le_mul {B : Nat} :
-    ∀ {vs : List Value}, (∀ c, Value.float c ∈ vs → (scaled c).natAbs ≤ B) →
+    ∀ {vs : List Value}, (∀ c, Value.float c ∈ vs → (scaled (canon c)).natAbs ≤ B) →
       (exactSum vs).natAbs ≤ vs.length * B
   | [], _ => by simp [exactSum]
   | v :: vs, h => by
@@ -451,26 +452,25 @@ theorem Measure.inputs_cells {t : Tol} {m : Measure} {e : Nat} (hd : m.distinct 
 reference's in `[lo, hi]`, within `e` after `canon`. Then both are finite,
 within `e` as codes, and the engine's magnitude at most `M + e`. -/
 theorem pair_near {e : Nat} {lo hi : Int} (hlo : negInf < lo - e) (hhi : hi + e < posInf)
-    {v w : Value} (hc : (Tol.all e).Cell 0 v w) (hv : ∀ c, v = .float c → IsRef c)
-    (hw : ∀ c, w = .float c → lo ≤ c ∧ c ≤ hi) :
-    CodeNear e v w ∧ (∀ c, v = .float c → IsFin c ∧ (scaled c).natAbs ≤ magOf lo hi + e) ∧
-      (∀ c, w = .float c → IsFin c ∧ (scaled c).natAbs ≤ magOf lo hi) := by
+    {v w : Value} (hc : (Tol.all e).Cell 0 v w)
+    (hw : ∀ c, w = .float c → lo ≤ canon c ∧ canon c ≤ hi) :
+    CodeNear e v w ∧
+      (∀ c, v = .float c → IsFin (canon c) ∧ (scaled (canon c)).natAbs ≤ magOf lo hi + e) ∧
+      (∀ c, w = .float c → IsFin (canon c) ∧ (scaled (canon c)).natAbs ≤ magOf lo hi) := by
   cases w with
   | float b =>
     cases v with
     | float a =>
       obtain ⟨hb1, hb2⟩ := hw b rfl
-      have fb : IsFin b := ⟨by omega, by omega⟩
-      have h := Tol.cell_float_iff.1 hc
-      rw [show fp64.canon a = a from canon_of_isRef (hv a rfl),
-        show fp64.canon b = b from canon_of_isRef (isRef_of_bounds fb)] at h
-      have fa : IsFin a := ⟨by omega, by omega⟩
-      have hs := scaled_sub_le a b
+      have fb : IsFin (canon b) := ⟨by omega, by omega⟩
+      have h : (canon a - canon b).natAbs ≤ e := Tol.cell_float_iff.1 hc
+      have fa : IsFin (canon a) := ⟨by omega, by omega⟩
+      have hs := scaled_sub_le (canon a) (canon b)
       have hmb := scaled_natAbs_le hb1 hb2
       refine ⟨h, fun c hc' => ?_, fun c hc' => ?_⟩
       · cases hc'
         refine ⟨fa, ?_⟩
-        have := Int.natAbs_add_le (scaled a - scaled b) (scaled b)
+        have := Int.natAbs_add_le (scaled (canon a) - scaled (canon b)) (scaled (canon b))
         rw [Int.sub_add_cancel] at this
         omega
       · cases hc'; exact ⟨fb, hmb⟩
@@ -484,12 +484,12 @@ theorem pair_near {e : Nat} {lo hi : Int} (hlo : negInf < lo - e) (hhi : hi + e 
 
 /-- A `SUM`'s or `AVG`'s inputs on two groups within `t`: paired within `e`,
 finite, of bounded magnitude, at most `N` of them. -/
-theorem Measure.sum_facts {t : Tol} {m : Measure} {mask : Nat → Bool} {env : List AVal}
+theorem Measure.sum_facts {t : Tol} {m : Measure} {env : List AVal}
     {i e N : Nat} {lo hi : Int} (harg : m.arg = .field i) (hti : t i = some e)
     (hcr : colRange env i = some (lo, hi)) (hd : m.distinct = false)
-    (hf : m.filter.all (fun c => t.exactOn c.cols) = true) (hmask : mask i = true)
+    (hf : m.filter.all (fun c => t.exactOn c.cols) = true)
     (hlo : negInf < lo - e) (hhi : hi + e < posInf) {g g' : Relation} (f : Forall2 t.Rows g g')
-    (henv : ∀ row ∈ g', EnvMem env row) (hN : g'.length ≤ N) (hR : Relation.RefOn mask g) :
+    (henv : ∀ row ∈ g', EnvMem env row) (hN : g'.length ≤ N) :
     Forall2 (CodeNear e) (m.inputs g) (m.inputs g') ∧ FinCodes (m.inputs g) ∧
       FinCodes (m.inputs g') ∧
       (exactSum (m.inputs g)).natAbs ≤ (m.inputs g).length * (magOf lo hi + e) ∧
@@ -498,12 +498,7 @@ theorem Measure.sum_facts {t : Tol} {m : Measure} {mask : Nat → Bool} {env : L
   have ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e) :=
     ⟨some e, by simp [harg, Expr.tol?, hti], by simp [OLe]⟩
   have hcells := Measure.inputs_cells hd hf ha f
-  have hP : ∀ v ∈ m.inputs g, ∀ c, v = .float c → IsRef c := by
-    intro v hv c hc
-    obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hv
-    rw [harg] at hc
-    exact hR row hr i c hmask hc
-  have hQ : ∀ w ∈ m.inputs g', ∀ c, w = .float c → lo ≤ c ∧ c ≤ hi := by
+  have hQ : ∀ w ∈ m.inputs g', ∀ c, w = .float c → lo ≤ canon c ∧ canon c ≤ hi := by
     intro w hw c hc
     obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hw
     rw [harg] at hc
@@ -519,7 +514,8 @@ theorem Measure.sum_facts {t : Tol} {m : Measure} {mask : Nat → Bool} {env : L
       rw [hint] at hb; cases hb
       exact ⟨hbm.1 _ rfl, hbm.2 _ rfl⟩
     · cases hcr
-  have hpairs := (hcells.and_mem hP hQ).imp fun v w ⟨h, pv, qw⟩ => pair_near hlo hhi h pv qw
+  have hpairs := (hcells.and_mem (P := fun _ => True) (fun _ _ => trivial) hQ).imp
+    fun v w ⟨h, _, qw⟩ => pair_near hlo hhi h qw
   have hlen := hcells.length_eq
   have hl' := Nat.le_trans (Measure.inputs_length_le m g') hN
   refine ⟨hpairs.imp fun _ _ h => h.1, fun c hc => ?_, fun c hc => ?_, ?_, ?_, by omega, hl'⟩
@@ -553,9 +549,7 @@ theorem Tol.cell_of_codeNear {tm : Tol} {j B B' : Nat} (hj : tm j = some B') (hB
   · exact Tol.cell_null _ _
   · exact absurd rfl (h.2 b)
   · exact absurd rfl (h.1 a)
-  · refine Tol.cell_float hj ?_
-    rw [show fp64.canon a = a from canon_of_isRef ra, show fp64.canon b = b from canon_of_isRef rb]
-    exact Nat.le_trans h hB
+  · exact Tol.cell_float hj (Nat.le_trans h hB)
 
 set_option exponentiation.threshold 2100 in
 /-- **A measure's output on two groups within `t` is within its output
@@ -563,7 +557,7 @@ tolerance.** -/
 theorem Measure.tolOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {o : Option Nat} (h : m.tolOut t mask env N = some o) {g g' : Relation}
     (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
-    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) {tm : Tol} {j : Nat}
+    (hN : ∀ n, N = some n → g'.length ≤ n) {tm : Tol} {j : Nat}
     (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
   unfold Measure.tolOut at h
   by_cases hok : m.tolOk t = true
@@ -589,7 +583,7 @@ theorem Measure.tolOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N
             simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq] at hc
             obtain ⟨⟨⟨⟨⟨hd, hf⟩, hmask⟩, hlo⟩, hhi⟩, hbig⟩ := hc
             obtain ⟨hp, hv, hw, hS, hS', hl, hl'⟩ :=
-              Measure.sum_facts harg hti hcr hd hf hmask hlo hhi f henv (hN n rfl) hR
+              Measure.sum_facts harg hti hcr hd hf hlo hhi f henv (hN n rfl)
             have ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e) :=
               ⟨some e, by simp [harg, Expr.tol?, hti], by simp [OLe]⟩
             have hlen := hp.length_eq

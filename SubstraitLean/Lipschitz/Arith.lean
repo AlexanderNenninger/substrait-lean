@@ -875,7 +875,7 @@ theorem Measure.outTol_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N
   cases h1 : m.tolOut t mask env N with
   | some o' =>
     rw [h1] at h; simp only [Option.some_or, Option.some.injEq] at h; subst h
-    exact Measure.tolOut_cell h1 f henv hN hR hj
+    exact Measure.tolOut_cell h1 f henv hN hj
   | none =>
     rw [h1] at h; simp only [Option.none_or] at h
     exact Measure.minMaxOut_cell h f henv hR hj

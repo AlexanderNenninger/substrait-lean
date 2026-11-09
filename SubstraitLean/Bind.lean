@@ -416,9 +416,9 @@ theorem aggregateEvalI_length {I : Impl} {gs : List Expr} {ms : List Measure} {r
   · rename_i hg
     simp only [List.mem_singleton] at h; subst h
     simp [List.isEmpty_iff.mp hg]
-  · simp only [List.mem_map, mem_dedup] at h
+  · simp only [List.mem_map] at h
     obtain ⟨k, hk, rfl⟩ := h
-    obtain ⟨x, _, rfl⟩ := hk
+    obtain ⟨x, _, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     simp [groupKey]
 
 /-- **`Rel.eval cat I` has the plan's arity**, as `Rel.eval_arity`, with any functions. -/
