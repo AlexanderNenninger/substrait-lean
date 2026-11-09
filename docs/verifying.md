@@ -52,9 +52,10 @@ engine's profile, and `semantics="substrait"` under Substrait's:
   open wherever they say nothing; the report names the options where
   Substrait allows more than the reference.
 
-Spark's profile evaluates as the reference does, so under
-`semantics="spark"` the proof is the reference's; the route to Spark is
-`native`.
+Spark's profile is Spark's own. Until the checker reports under it
+([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
+`semantics="spark"` gives the reference's report with a
+`ProfilePendingWarning`, and the route to Spark is `translated`.
 
 `sv.sql` is DuckDB-dialect SQL, verified under the reference like
 everything else; `semantics="duckdb"` on a `sv.sql` reads that node as

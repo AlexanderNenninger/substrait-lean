@@ -119,9 +119,11 @@ def test_written_floor_raises(report: sv.Report, engine: str) -> None:
 
 
 def test_routes_from_polars(report: sv.Report) -> None:
-    """Native on Polars; on Spark the checker proves the plan again; refused
-    on DuckDB by the transfer check, with the reason."""
+    """Native on Polars; refused on Spark until the checker reports under
+    Spark's profile (#1288), naming the reference as the way; refused on
+    DuckDB by the transfer check, with the reason."""
     assert routes.choose(report, "polars").kind == "native"
-    assert routes.choose(report, "spark").kind == "recheck"
+    s = routes.choose(report, "spark")
+    assert s.refused and "semantics='reference'" in s.reason, s
     r = routes.choose(report, "duckdb")
     assert r.refused and "division_type: polars gives FLOOR" in r.reason, r

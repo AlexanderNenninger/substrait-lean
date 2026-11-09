@@ -26,6 +26,7 @@ from ibis import _
 import sverify as sv
 from _pipelines import make_orders, paid
 from sverify import _engine_settings, routes
+from sverify.errors import ProfilePendingWarning
 from sverify.routes import EngineSettingsError, EngineVersionError, EngineVersionWarning
 from sverify_spark.dialect import SPARK_CONF
 
@@ -44,17 +45,19 @@ def tables() -> dict:
 
 @pytest.fixture(scope="module")
 def report() -> sv.Report:
-    """A group-by verified under Spark's profile."""
+    """A group-by verified with `semantics="spark"`: until the checker reports
+    under Spark's own profile (#1288), the reference's report, which says so."""
     con = sv.connect()
     con.create("t", SCHEMA, [])
     t = con.table("t")
-    r = sv.verify(
-        t.group_by("k").aggregate(s=t.i.sum(), m=t.x.max(), n=t.i.count()),
-        requires={"t": [_.i.between(-(10**15), 10**15)]},
-        ensures=[_.n >= 0],
-        semantics="spark",
-    )
-    assert r.proved and r.semantics == "spark", str(r)
+    with pytest.warns(ProfilePendingWarning, match="#1288"):
+        r = sv.verify(
+            t.group_by("k").aggregate(s=t.i.sum(), m=t.x.max(), n=t.i.count()),
+            requires={"t": [_.i.between(-(10**15), 10**15)]},
+            ensures=[_.n >= 0],
+            semantics="spark",
+        )
+    assert r.proved and r.semantics == "reference", str(r)
     return r
 
 
@@ -94,14 +97,11 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
     assert rows[(None, "overflow")]["theorem"] == "Rel.spark_sound"
 
 
-def test_semantics_spark_runs_natively_on_spark(report: sv.Report) -> None:
+def test_semantics_spark_reaches_spark_as_the_reference_does(report: sv.Report) -> None:
+    # The reference's report reaches Spark through its translation and shims
+    # (`Engine.spark_sound`) until a report under Spark's profile (#1288).
     route = routes.choose(report, "spark")
-    assert (route.kind, route.cls) == ("native", "exact"), route
-    # The checker's transfer check reads only the options that apply to each
-    # call (D34): the integer SUM does not read `avg_int_result`, where
-    # DuckDB's choice differs, so the plan transfers to DuckDB (#1200).
-    route = routes.choose(report, "duckdb", "transfer")
-    assert (route.kind, route.cls) == ("transfer", "exact"), route
+    assert (route.kind, route.cls) == ("translated", "shim"), route
 
 
 def test_the_reference_reaches_spark_with_its_shims() -> None:
@@ -162,7 +162,7 @@ def test_native_run(spark, report: sv.Report) -> None:
         "t", SCHEMA, [("a", 1, 1.5), ("a", 4, -0.0), ("b", -7, None), ("b", 3, float("nan"))]
     )
     out = report.run(con, "spark")
-    assert report.routes["spark"].kind == "native"
+    assert report.routes["spark"].kind == "translated"
     got = {r["k"]: (r["s"], r["m"], r["n"]) for r in out.to_pylist()}
     # NaN is the greatest double (spark-nan-order).
     assert got.pop("b")[::2] == (-4, 2) and got == {"a": (5, 1.5, 2)}
@@ -195,7 +195,6 @@ def test_refresh_on_spark(spark, tmp_path) -> None:
     @sv.transform(
         requires={"t": [_.amount >= 0, _.amount < 1_000_000_000]},
         ensures=[_.total >= 0],
-        semantics="spark",
     )
     def totals(t):
         return t.group_by("customer").aggregate(total=t.amount.sum())
@@ -204,7 +203,7 @@ def test_refresh_on_spark(spark, tmp_path) -> None:
     node = totals(paid(orders)).write(sv.io.DeltaSink(str(tmp_path / "totals")))
     out = node.refresh(engine="spark")
     route = out["totals"].route
-    assert route is not None and (route.kind, route.engine) == ("native", "spark")
+    assert route is not None and (route.kind, route.engine) == ("translated", "spark")
     rows = DeltaTable(str(tmp_path / "totals")).to_pyarrow_table().to_pylist()
     assert sorted((r["customer"], r["total"]) for r in rows) == [("ada", 12), ("bob", 2)]
 

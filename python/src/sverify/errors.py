@@ -71,6 +71,9 @@ Warnings:
   although its contract is not proved; `.report` has the details.
 * `InferredWarning`: an inferred precondition is assumed
   (`on_inferred="warn"`); `.report` has the details.
+* `ProfilePendingWarning`: `verify` was asked for an engine's own profile
+  the checker has no report under yet (#1288); the report is the
+  reference's.
 * `ProfilePluginWarning`: an entry point of `sverify.profiles` did not load
   a `ProfilePlugin`, and is skipped.
 
@@ -87,6 +90,7 @@ from sverify.contracts import (
     InferredWarning,
     PostconditionError,
     PreconditionError,
+    ProfilePendingWarning,
     UnprovedWarning,
     UnverifiedRunError,
     VerificationError,
@@ -147,6 +151,7 @@ __all__ = [
     "SecretError",
     "SqlError",
     "SverifyError",
+    "ProfilePendingWarning",
     "ProfilePluginWarning",
     "SverifyWarning",
     "UnprovedWarning",

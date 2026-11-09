@@ -952,6 +952,12 @@ def infer_bounds(
 OnUnproved = Literal["error", "check", "warn"]
 
 
+class ProfilePendingWarning(SverifyWarning):
+    """`verify` was asked for an engine's own profile (`semantics="spark"`)
+    that the checker has no report under yet (#1288): the report is the
+    reference's, and says so (`Report.semantics` is `"reference"`)."""
+
+
 class UnprovedWarning(SverifyWarning):
     """A transform with `on_unproved="warn"` is built although its contract
     is not proved; its refreshes run unverified (`UnverifiedRunWarning`).
@@ -1537,7 +1543,17 @@ def _verify_once(
     if code not in (0, 4):
         raise checker_failed("--contract", stderr)
     out = json.loads(stdout)
-    if semantics in _profile_requests() and out.get("profile") != semantics:
+    if semantics in _profile_requests() and out.get("pending") == semantics:
+        # The engine's profile is its own, with no report under it yet
+        # (#1288): the reference's report, labelled as such.
+        warnings.warn(
+            f'semantics="{semantics}": the checker has no report under {semantics}\'s own '
+            "profile yet (#1288); this report is the reference's",
+            ProfilePendingWarning,
+            stacklevel=3,
+        )
+        semantics = "reference"
+    elif semantics in _profile_requests() and out.get("profile") != semantics:
         raise ValueError(
             f'the checker in use has no profile "{semantics}": install the package that '
             "registers it (sverify.profiles), or set SVERIFY_CHECKER to a checker built with it"

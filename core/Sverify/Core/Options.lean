@@ -76,6 +76,10 @@ def options : List OptionSpec := [
   -- are one: an engine can identify them and still emit either.
   { id := "round_zero_sign", substrait := none, core := ["ANY", "IEEE", "POSITIVE"],
     extra := [("IEEE", "duckdb-R15-round"), ("POSITIVE", "spark-round")] },
+  -- `power(±1, ±∞)` and `power(1, NaN)`: C's `pow` gives `1`, Java's
+  -- `StrictMath.pow` NaN (IEEE 754's `pow` against its `powr`, D40).
+  { id := "pow_one_inf", substrait := none, core := ["ONE", "NAN"],
+    extra := [("NAN", "spark-math-domain")] },
   -- Substrait's for `index_in`, which the model does not have; sverify's for
   -- `=`, grouping, `DISTINCT` and joins.
   { id := "nan_equality", substrait := none, core := ["NAN_IS_NAN", "NAN_IS_NOT_NAN"] },
@@ -491,6 +495,8 @@ def Profile.reference.table : ProfileTable where
     (none, "zero_sign", .oneOf ["ONE_ZERO"]),
     -- Either zero; `eval` gives `+0.0`.
     (none, "round_zero_sign", .oneOf ["ANY"]),
+    -- C's `pow`: `1` (D40).
+    (none, "pow_one_inf", .oneOf ["ONE"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_kind", .oneOf ["ONE_NAN"]),
