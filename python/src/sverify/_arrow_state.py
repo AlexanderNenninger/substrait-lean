@@ -12,6 +12,7 @@ plugin names its own (`ProfilePlugin.store`).
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 import pyarrow as pa
 
@@ -20,7 +21,7 @@ from sverify._state import State, Store, arrow_of, by_keys
 from sverify._weighted import expanded, has_negative, negated, weighted
 
 
-class ArrowOps(Store):
+class ArrowOps(Store[Any]):
     """A `Store` whose state is an Arrow table in the Python process."""
 
     keep = False

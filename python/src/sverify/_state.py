@@ -32,13 +32,13 @@ from typing import Any
 
 import pyarrow as pa
 
-from sverify._scan import Native, Resident
+from sverify._scan import Native
 from sverify._weighted import WEIGHT, consolidated
 
 type State = Any
-"""A weighted table as the engine holds it (an Arrow table, a table DuckDB
-holds, a frame or a cluster's table): opaque to sverify, which passes it
-between the engine's store and its runner."""
+"""A weighted table as the engine holds it: its store's handle (`Store`'s
+`S`), opaque to sverify, which passes it between the engine's store and its
+runner."""
 
 _A, _B = "$merge_a", "$merge_b"
 
@@ -109,31 +109,38 @@ class Merger:
         return merged
 
 
-class Store(ABC):
+class Store[S](ABC):
     """Where a view keeps its state: the contract an engine's plugin meets to
-    run incremental pipelines (`ProfilePlugin.store`, #1189). The state is
-    the engine's own handle (`State`), opaque to sverify: a store takes and
-    gives back its handles, so the state stays where the engine keeps it.
-    An engine that runs only one-shot plans has none.
+    run incremental pipelines (`ProfilePlugin.store`, #1189). An engine that
+    runs only one-shot plans has none.
+
+    `S` is the engine's own handle on a weighted table (`Resident` for a
+    table DuckDB holds, an Arrow table for an interim store, a cluster-side
+    DataFrame for Spark's), opaque to sverify. The invariant: state stays a
+    handle. The operations take and give back handles, so the state stays
+    where the engine keeps it; only answers cross into concrete data (a
+    count, whether a weight is negative, how many buckets were retired, a
+    bounded set of violating keys), and the rows a sink writes at the end.
 
     `keep`: whether merges leave their result where the engine holds it."""
 
     keep = False
 
     @abstractmethod
-    def weighted(self, rows: pa.Table | Resident, weight: int = 1) -> State:
-        """`rows` with the weight `weight` on every row."""
+    def weighted(self, rows: S, weight: int = 1) -> S:
+        """`rows` (a batch the engine read) with the weight `weight` on
+        every row."""
 
     @abstractmethod
-    def negated(self, z: State) -> State:
+    def negated(self, z: S) -> S:
         """`z` with every weight negated."""
 
     @abstractmethod
-    def expanded(self, z: State) -> State:
+    def expanded(self, z: S) -> S:
         """Each row as many times as its weight."""
 
     @abstractmethod
-    def has_negative(self, z: State) -> bool:
+    def has_negative(self, z: S) -> bool:
         """Does a row of `z` have a negative weight?"""
 
     @abstractmethod
@@ -142,12 +149,12 @@ class Store(ABC):
         before `cutoff` (`sverify._retention`); returns how many buckets."""
 
     @abstractmethod
-    def with_keys(self, z: State, columns: Sequence[str], keys: pa.Table) -> State:
+    def with_keys(self, z: S, columns: Sequence[str], keys: S) -> S:
         """The rows of `z` whose `columns` equal a row of `keys` (the same
         number of columns, in order), NULLs equal."""
 
     @abstractmethod
-    def without_keys(self, z: State, columns: Sequence[str], keys: pa.Table) -> State:
+    def without_keys(self, z: S, columns: Sequence[str], keys: S) -> S:
         """The rows of `z` whose `columns` equal no row of `keys`: the rows
         `with_keys` leaves out."""
 
@@ -178,7 +185,7 @@ def by_keys(
     return state.take(hits.column("__row"))
 
 
-def store_for(engine: object) -> Store:
+def store_for(engine: object) -> Store[Any]:
     """The store of the engine a view's plans run on (`ProfilePlugin.store`).
 
     Raises:

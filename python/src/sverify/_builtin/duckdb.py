@@ -171,6 +171,7 @@ def _dialect() -> Any:
 
 
 class DuckDBStore(ArrowOps):
+    # Its handle: a table DuckDB holds (`Resident`), or an Arrow batch read in.
     """The state as a table DuckDB holds (`Resident`): merges leave their
     result in DuckDB, and the view's rows are a DuckDB view of it.
 
