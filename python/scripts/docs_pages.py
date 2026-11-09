@@ -610,6 +610,11 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
             "Under the reference or under an engine's profile",
         ),
         (
+            "docs/report.md",
+            "The Report and the trust path",
+            "What a report holds, and what each claim rests on",
+        ),
+        (
             "docs/rejections.md",
             "The rejection set",
             "Where the reference raises, and the precondition that lifts each",
