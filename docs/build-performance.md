@@ -52,6 +52,18 @@ A module over its ceiling gets cheaper in the same PR, or its line goes up
 there with the reason in the PR body. After a PR that makes modules cheaper,
 `write-budget` from the CI artifact lowers the ceilings.
 
+## CI's shards
+
+CI splits the `core` tests three ways (`SVERIFY_SHARD`) and oracle A's
+replay four ways (`--shard`). [`python/tests/shards.json`](../python/tests/shards.json)
+and [`oracle_shards.json`](../python/tools/sverify_dev/oracle_shards.json)
+assign each test of at least 0.05 s, and each replayed file, to a shard,
+longest first to the least loaded, from durations a CI run recorded
+(`SVERIFY_TEST_TIMINGS`, `SVERIFY_SLT_TIMINGS`); anything they don't list
+keeps the old rule, a hash of the node id or every `n`th file. When the
+shards drift apart, record a run with those variables set and run
+`python -m sverify_dev.shard_durations --tests … --slt …`.
+
 ## Patterns that cost
 
 - `simp` or `decide` unfolding a large constant. `canon`'s `2^2045`

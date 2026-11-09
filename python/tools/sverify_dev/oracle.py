@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -129,12 +130,28 @@ EXCLUDED: dict[str, str] = {
 }
 
 
+#: The benchmarks' name in the replay's timings: shard 1 runs them.
+BENCHMARKS_TIMING = "<benchmarks>"
+
+#: The shard of each replayed file, balanced by CI's recorded replay times
+#: (`sverify_dev.shard_durations`).
+SHARDS = Path(__file__).with_name("oracle_shards.json")
+
+
 def shard(files: Sequence[str], spec: str | None) -> list[str]:
-    """The `i/n` shard of `files` (1-based): every `n`th from the `i`th."""
+    """The `i/n` shard of `files` (1-based): `oracle_shards.json`'s files of
+    shard `i`, and of the files it doesn't list every `n`th from the `i`th."""
     if not spec:
         return list(files)
     i, n = (int(x) for x in spec.split("/"))
-    return list(files[i - 1 :: n])
+    try:
+        table = json.loads(SHARDS.read_text())
+    except (OSError, ValueError):
+        table = {}
+    known: dict[str, int] = table.get("shard", {}) if table.get("n") == n else {}
+    rest = [f for f in files if f not in known]
+    mine = {f for f in rest[i - 1 :: n]}
+    return [f for f in files if known.get(f) == i or f in mine]
 
 
 def check_replay(files: int, jobs: int, spec: str | None = None) -> tuple[list[str], list[str]]:
@@ -179,7 +196,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     worse: list[str] = []
     better: list[str] = []
     if not args.shard or args.shard.startswith("1/"):
+        start = time.monotonic()
         worse, better = check_benchmarks(args.write)
+        slt.record_time(BENCHMARKS_TIMING, time.monotonic() - start)
     if not args.write:
         w, b = check_replay(args.files, args.jobs, args.shard)
         worse, better = worse + w, better + b
