@@ -106,7 +106,8 @@ theorem SumOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo h
       Nat.le_trans hineq (Nat.mul_le_mul_right _ hF)
     rw [Nat.mul_comm] at this
     exact Nat.le_of_mul_le_mul_left this hD
-  have ⟨s1, s2⟩ := exactSum_bounds hb'
+  have ⟨s1, s2⟩ := exactSum_bounds (cs := cs) (lo := lo) (hi := hi) fun x hx => by
+    rw [FloatCode.canon_of_bounds (hr x hx).1]; exact hb' x hx
   have l1 := min_le_mul (lo := lo) hn1 hN
   have l2 := mul_le_max (hi := hi) hn1 hN
   unfold sumLo sumHi

@@ -73,9 +73,11 @@ def Functions.Ctor.issue : Ctor → List Value → Option Issue
   | .bin f, [v, w] => f.issueAll v w
   | _, _ => none
 
-/-- A zero divisor. -/
+/-- A zero divisor: an integer `0`, or a double `0.0` or `-0.0`, where the
+reference raises (D31). -/
 def divisorZero : List Value → Bool
-  | [_, .int 0] | [_, .float 0] => true
+  | [_, .int 0] => true
+  | [_, .float c] => FloatCode.canon c == 0
   | _ => false
 
 /-- A quotient of operands of opposite signs with a remainder: where
@@ -114,13 +116,16 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   -- `∞ / ∞`, `fmod(±∞, y)` (`nanCase`), `0 / 0`, `fmod(x, 0)`, a `SUM` of
   -- `+∞` and `−∞`.
   | "nan_creation" => match c, args with
-    | .bin f, [.float a, .float b] => nanCase f a b || (f == .fmod && b == 0) ||
-        (f == .fdiv && a == 0 && b == 0)
+    -- Zeros by their canonical codes: `-0.0` is a zero too (D31).
+    | .bin f, [.float a, .float b] => nanCase f a b || (f == .fmod && FloatCode.canon b == 0) ||
+        (f == .fdiv && FloatCode.canon a == 0 && FloatCode.canon b == 0)
     | .agg _, vs => !Value.anyNaN vs && vs.any (· == .float FloatCode.posInf) &&
         vs.any (· == .float FloatCode.negInf)
     | _, _ => false
   -- A zero argument or a zero result (underflow, `x − x`, a sum rounding to zero).
   | "zero_sign" => Value.anyZero args || r.hasZero
+  -- The reference's result is a zero (`round(-0.4)`, `ceil(-0.4)`).
+  | "round_zero_sign" => r.hasZero
   | "nan_equality" => Value.anyNaN args
   | "nan_order" => Value.anyNaN args
   | "nan_kind" => Value.anyNaN args || r.hasNaN
@@ -178,7 +183,7 @@ theorem optionApplies_of_scope {o : String} {c : Ctor} {args : List Value}
 def scopedOptions : List String :=
   ["overflow", "on_division_by_zero", "division_type", "min_mod_neg_one", "shift_range",
    "decimal_rescale", "rounding", "on_domain_error", "on_log_zero", "nan_creation", "zero_sign",
-   "nan_equality", "nan_order", "nan_kind", "negative_start", "substring_range",
+   "round_zero_sign", "nan_equality", "nan_order", "nan_kind", "negative_start", "substring_range",
    "case_sensitivity", "char_set", "null_handling", "date_range", "time_interval_months",
    "list_null_order", "sum_order", "stat_algo", "window_sum_algo", "stat_degenerate",
    "avg_int_result", "quantile_interp", "tie_pick", "tie_order", "null_order", "clustered",

@@ -70,6 +70,12 @@ def options : List OptionSpec := [
     extra := [("NAN", "duckdb-R15-double-arith")] },
   { id := "zero_sign", substrait := none, core := ["IEEE", "ONE_ZERO"],
     extra := [("IEEE", "duckdb-R14")] },
+  -- Which zero a negative double that rounds to zero is (`round(-0.4)`,
+  -- `ceil(-0.4)`): IEEE's `-0.0`, or `+0.0` (Spark's `round` goes through a
+  -- decimal). Another axis than `zero_sign`, which says where the two zeros
+  -- are one: an engine can identify them and still emit either.
+  { id := "round_zero_sign", substrait := none, core := ["ANY", "IEEE", "POSITIVE"],
+    extra := [("IEEE", "duckdb-R15-round"), ("POSITIVE", "spark-round")] },
   -- Substrait's for `index_in`, which the model does not have; sverify's for
   -- `=`, grouping, `DISTINCT` and joins.
   { id := "nan_equality", substrait := none, core := ["NAN_IS_NAN", "NAN_IS_NOT_NAN"] },
@@ -483,6 +489,8 @@ def Profile.reference.table : ProfileTable where
     (none, "nan_creation", .oneOf ["ERROR"]),
     -- One zero and one NaN, equal to itself and above `+∞` (#89).
     (none, "zero_sign", .oneOf ["ONE_ZERO"]),
+    -- Either zero; `eval` gives `+0.0`.
+    (none, "round_zero_sign", .oneOf ["ANY"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_kind", .oneOf ["ONE_NAN"]),
