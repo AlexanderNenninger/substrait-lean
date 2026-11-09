@@ -52,8 +52,8 @@ def negInf : Int := F.ofMag true F.infMag
 def nan : Int := F.ofMag false F.nanMag
 
 /-- A code strictly between `-∞` and `+∞`: other codes become the largest
-finite value of their sign. -/
-def finite (c : Int) : Int :=
+finite value of their sign. Inlined, as `canon`. -/
+@[inline] def finite (c : Int) : Int :=
   if F.posInf ≤ c then F.ofMag false F.maxMag else if c ≤ F.negInf then F.ofMag true F.maxMag else c
 
 /-- The code of an integer that is a value of the format exactly (`|i| ≤ 2ᵖ`). -/
@@ -123,12 +123,14 @@ def IsRef (c : Int) : Prop := F.negInf ≤ c ∧ c ≤ F.nan
 
 instance (c : Int) : Decidable (F.IsRef c) := inferInstanceAs (Decidable (_ ∧ _))
 
-/-- One zero and one NaN: `-0.0` becomes `+0.0`, the negative NaN the NaN. -/
-def canon (c : Int) : Int := if c = F.negZero then 0 else if c = F.negNan then F.nan else c
+/-- One zero and one NaN: `-0.0` becomes `+0.0`, the negative NaN the NaN.
+Inlined, so that a call at a format (`fp64`) compares with that format's
+codes as closed terms the compiler computes once, not `2 ^ 1075` per call. -/
+@[inline] def canon (c : Int) : Int := if c = F.negZero then 0 else if c = F.negNan then F.nan else c
 
 /-- The order of the full set: twice the code for the others, `-0.0` right
-below `+0.0` and the negative NaN right below the NaN. -/
-def key (c : Int) : Int := if c = F.negZero then -1 else if c = F.negNan then 2 * F.nan - 1 else 2 * c
+below `+0.0` and the negative NaN right below the NaN. Inlined, as `canon`. -/
+@[inline] def key (c : Int) : Int := if c = F.negZero then -1 else if c = F.negNan then 2 * F.nan - 1 else 2 * c
 
 theorem negNan_eq : F.negNan = -(2 * F.maxMag + 5) := by rw [negNan, nan_eq]
 
