@@ -4432,7 +4432,7 @@ wheels = [
 
 [[package]]
 name = "sverify"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
@@ -4566,7 +4566,7 @@ docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 
 [[package]]
 name = "sverify-duckdb"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "../engines/duckdb" }
 dependencies = [
     { name = "sverify" },
@@ -4586,7 +4586,7 @@ provides-extras = ["run"]
 
 [[package]]
 name = "sverify-polars"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "../engines/polars" }
 dependencies = [
     { name = "sverify" },
@@ -4608,7 +4608,7 @@ provides-extras = ["run"]
 
 [[package]]
 name = "sverify-spark"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "../engines/spark" }
 dependencies = [
     { name = "sverify" },
