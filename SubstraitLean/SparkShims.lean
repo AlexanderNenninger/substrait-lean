@@ -1,4 +1,4 @@
-import SubstraitLean.PolarsShims
+import Sverify.Polars.Shims
 
 /-!
 # The reference on Spark: the shims, proved (#739)

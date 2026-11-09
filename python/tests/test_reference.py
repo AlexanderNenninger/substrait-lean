@@ -376,7 +376,7 @@ def test_integer_division_by_zero_may_ask_for_null(op):
 def test_modulus_takes_an_explicit_truncate(division_type, expected):
     """`modulus`'s remainder takes the dividend's sign, `division_type` =
     TRUNCATE, which a plan may also state; with FLOOR it takes the divisor's,
-    as Polars's does (`Profile.polars`, `SubstraitLean/PolarsProfile.lean`)."""
+    as Polars's does (`Profile.polars`, `engines/polars/Sverify/Polars/Profile.lean`)."""
     con = connect()
     put_table(con, "i", pa.table({"a": pa.array([-7, 7], pa.int64())}))
     plan = json.loads(substrait_json(con, "SELECT a % 2 AS m FROM i"))

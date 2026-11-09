@@ -7,7 +7,7 @@ import Sverify.Engines.Sound
 `Engine.Sound` and guard elimination's side condition are engines-common
 (`engines/Sverify/Engines/Sound.lean`), with `Engine.reference_sound` and
 the contract theorems; Polars's is `Engine.polars_sound`
-(`SubstraitLean/PolarsEngine.lean`). Here:
+(`engines/polars/Sverify/Polars/Engine.lean`). Here:
 
 * `Engine.duckdb_sound`: DuckDB at its default settings, through its lowering
   (`Rel.eval_okImpl`, then `Rel.duckdb_shim_allowed`).

@@ -1378,7 +1378,7 @@ class Exprs:
 
     def floor_divide(self, name: str, a: Val, b: Val) -> Val:
         """Integer `//` or `%` with `division_type` = `FLOOR`: Polars's own,
-        with no shim (`Profile.polars`, `SubstraitLean/PolarsProfile.lean`).
+        with no shim (`Profile.polars`, `engines/polars/Sverify/Polars/Profile.lean`).
         A zero divisor and `MIN // -1` raise, as under `Profile.polars`; the
         guards check them."""
         if unify(a.dtype, b.dtype, name) not in (pl.Int64, pl.Null):

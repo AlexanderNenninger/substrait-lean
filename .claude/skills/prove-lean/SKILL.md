@@ -38,7 +38,7 @@ description: Work on sverify's Lean model and proofs (SubstraitLean/): state and
   recorded in `docs/core-semantics.md`.
 - Shims: each comes with a soundness lemma against the reference (or its
   `Allowed` set), named after the engine and the shim, beside the profile's
-  other shims (`PolarsShims.lean`, `SparkShims.lean`).
+  other shims (`Polars/Shims.lean`, `SparkShims.lean`).
 
 ## Building
 

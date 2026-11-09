@@ -102,7 +102,7 @@ Polars runs on its streaming engine, as sverify does (#605), with sverify's flag
 
 ## Troubleshooting
 
-- `this checker has no Profile.polars to check under yet`: the checker predates `Profile.polars` (`SubstraitLean/PolarsProfile.lean`); rebuild it. The reference's route still applies.
+- `this checker has no Profile.polars to check under yet`: the checker predates `Profile.polars` (`engines/polars/Sverify/Polars/Profile.lean`); rebuild it. The reference's route still applies.
 - `CheckerVersionError` or `FileNotFoundError` for `_bin/substrait-check`: set `SVERIFY_CHECKER` (above).
 - `memtable() got an unexpected keyword argument 'name'`: the probe uses `ibis.memtable` for native Ibis runs; keep it that way.
 - `Relations no longer have fetchone()`: DuckDB 2.0; use `.fetchall()` or `.fetch_arrow_table()`.

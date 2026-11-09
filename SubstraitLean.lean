@@ -91,10 +91,10 @@ import SubstraitLean.Lipschitz
 import SubstraitLean.LipschitzL1
 import SubstraitLean.EngineTables
 import Sverify.Engines.Shims
-import SubstraitLean.PolarsShims
-import SubstraitLean.PolarsProfile
-import SubstraitLean.PolarsTables
-import SubstraitLean.PolarsEngine
+import Sverify.Polars.Shims
+import Sverify.Polars.Profile
+import Sverify.Polars.Tables
+import Sverify.Polars.Engine
 import SubstraitLean.SparkShims
 import SubstraitLean.SparkProfile
 import SubstraitLean.SubstraitProfile

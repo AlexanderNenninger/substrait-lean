@@ -20,7 +20,8 @@ The directory holds the whole engine package:
   for `Profile.polars` ([facts/README.md](facts/README.md));
 - `probes/`: the probes' recordings the facts cite;
 - `tests/`: its tests, which run in sverify's test session
-  (`python/pyproject.toml`'s `testpaths`).
-
-Its Lean half, the profile and its shims, is in the root Lean package for now
-(`SubstraitLean/PolarsProfile.lean`, `PolarsShims.lean`).
+  (`python/pyproject.toml`'s `testpaths`);
+- `Sverify/Polars/` and `lakefile.toml`: its Lean half, the Lake package
+  `sverify-polars`: the choice table, the shims and their lemmas,
+  `Profile.polars` and the `Engine` value, on the core, the analysis and
+  engines-common alone ([docs/proofs.md](../../docs/proofs.md)).

@@ -171,7 +171,7 @@ def fractional_power_of_negative(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     whole number: the reference's domain error for `power`. Polars computes
     `x ** 0.5` as `sqrt(x)`, NaN for `-inf` (IEEE's `pow` gives `+inf`), so
     the guard covers that input too (`Polars.fractional_power_of_negative`,
-    `SubstraitLean/PolarsShims.lean`)."""
+    `engines/polars/Sverify/Polars/Shims.lean`)."""
     return (x < 0.0) & y.is_finite() & (y.floor() != y)
 
 

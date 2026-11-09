@@ -1,6 +1,6 @@
 import SubstraitLean.Obligations
 import SubstraitLean.SparkShims
-import SubstraitLean.PolarsEngine
+import Sverify.Polars.Engine
 import SubstraitLean.SparkProfile
 import Sverify.Engines.Engine
 import SubstraitLean.EngineTables
@@ -10,7 +10,7 @@ import SubstraitLean.EngineTables
 
 DuckDB's and Spark's `Engine` values (the structure is engines-common,
 `engines/Sverify/Engines/Engine.lean`; Polars's is
-`SubstraitLean/PolarsEngine.lean`), with the proofs that their functions are
+`engines/polars/Sverify/Polars/Engine.lean`), with the proofs that their functions are
 within their tables:
 
 * `Engine.spark` takes its profile's functions where they do not raise

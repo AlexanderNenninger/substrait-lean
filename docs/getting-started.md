@@ -192,7 +192,7 @@ print(declared.routes["polars"])
 
 SQL's `//` truncates under the reference and Polars's integer division floors,
 so the translation writes a shim, proved in Lean
-(`SubstraitLean/PolarsShims.lean`). Ibis's `//` is `FloorDivide` and floors under
+(`engines/polars/Sverify/Polars/Shims.lean`). Ibis's `//` is `FloorDivide` and floors under
 every semantics, and its `%` truncates under the reference
 ([the table](tasks.md#integer-division-in-ibis-and-sql)).
 The [realizability table](realizability.md) lists every option's class on
@@ -383,7 +383,7 @@ one, which Substrait could close with an option, are on the
 `semantics="polars"` checks a plan under what Polars does: its integer `//`
 and `%` floor, so `-7 % 2` is `1`. The plan states `division_type: FLOOR`,
 which the checker reads as Polars's remainder (`Profile.polars_imod` in
-[PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean)), and Polars runs
+[Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean)), and Polars runs
 its own `%` with no shim (route `native`). A postcondition that holds only
 of the floored remainder is proved:
 
