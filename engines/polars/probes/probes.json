@@ -1,0 +1,4191 @@
+{
+ "polars": "2.1.0",
+ "probes": [
+  {
+   "construct": "Int8 + Int8",
+   "function": "add",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 127]",
+       "polars": "ok -128",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-1, -128]",
+       "polars": "ok 127",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 127]",
+       "polars": "ok -127",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, -128]",
+       "polars": "ok 126",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 127]",
+       "polars": "ok -128",
+       "lean": "ok 127"
+      },
+      {
+       "row": "[-1, -128]",
+       "polars": "ok 127",
+       "lean": "ok -128"
+      },
+      {
+       "row": "[2, 127]",
+       "polars": "ok -127",
+       "lean": "ok 127"
+      },
+      {
+       "row": "[-2, -128]",
+       "polars": "ok 126",
+       "lean": "ok -128"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int8 - Int8",
+   "function": "subtract",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -128]",
+       "polars": "ok -128",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[1, -128]",
+       "polars": "ok -127",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -128]",
+       "polars": "ok -126",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 127]",
+       "polars": "ok 127",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -128]",
+       "polars": "ok -128",
+       "lean": "ok 127"
+      },
+      {
+       "row": "[1, -128]",
+       "polars": "ok -127",
+       "lean": "ok 127"
+      },
+      {
+       "row": "[2, -128]",
+       "polars": "ok -126",
+       "lean": "ok 127"
+      },
+      {
+       "row": "[-2, 127]",
+       "polars": "ok 127",
+       "lean": "ok -128"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int8 * Int8",
+   "function": "multiply",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -128]",
+       "polars": "ok -128",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 127]",
+       "polars": "ok -2",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -128]",
+       "polars": "ok 0",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 127]",
+       "polars": "ok 2",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 20,
+     "examples": [
+      {
+       "row": "[-1, -128]",
+       "polars": "ok -128",
+       "lean": "ok 127"
+      },
+      {
+       "row": "[2, 127]",
+       "polars": "ok -2",
+       "lean": "ok 127"
+      },
+      {
+       "row": "[2, -128]",
+       "polars": "ok 0",
+       "lean": "ok -128"
+      },
+      {
+       "row": "[-2, 127]",
+       "polars": "ok 2",
+       "lean": "ok -128"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "-Int8",
+   "function": "negate",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-128]",
+       "polars": "ok -128",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-128]",
+       "polars": "ok -128",
+       "lean": "ok 127"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int8.abs()",
+   "function": "abs",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-128]",
+       "polars": "ok -128",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int8 // Int8",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 37,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 27,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -128]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int8 % Int8",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 36,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -128]",
+       "polars": "ok -127",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int8.mod(Int8)",
+   "function": "modulus",
+   "option": "division_type",
+   "fixed": {
+    "on_division_by_zero": "NULL"
+   },
+   "rows": 121,
+   "matching": [
+    "FLOOR"
+   ],
+   "candidates": {
+    "TRUNCATE": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -128]",
+       "polars": "ok -127",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    },
+    "FLOOR": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int16 + Int16",
+   "function": "add",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 32767]",
+       "polars": "ok -32768",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-1, -32768]",
+       "polars": "ok 32767",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 32767]",
+       "polars": "ok -32767",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, -32768]",
+       "polars": "ok 32766",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 32767]",
+       "polars": "ok -32768",
+       "lean": "ok 32767"
+      },
+      {
+       "row": "[-1, -32768]",
+       "polars": "ok 32767",
+       "lean": "ok -32768"
+      },
+      {
+       "row": "[2, 32767]",
+       "polars": "ok -32767",
+       "lean": "ok 32767"
+      },
+      {
+       "row": "[-2, -32768]",
+       "polars": "ok 32766",
+       "lean": "ok -32768"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int16 - Int16",
+   "function": "subtract",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -32768]",
+       "polars": "ok -32768",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[1, -32768]",
+       "polars": "ok -32767",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -32768]",
+       "polars": "ok -32766",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 32767]",
+       "polars": "ok 32767",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -32768]",
+       "polars": "ok -32768",
+       "lean": "ok 32767"
+      },
+      {
+       "row": "[1, -32768]",
+       "polars": "ok -32767",
+       "lean": "ok 32767"
+      },
+      {
+       "row": "[2, -32768]",
+       "polars": "ok -32766",
+       "lean": "ok 32767"
+      },
+      {
+       "row": "[-2, 32767]",
+       "polars": "ok 32767",
+       "lean": "ok -32768"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int16 * Int16",
+   "function": "multiply",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -32768]",
+       "polars": "ok -32768",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 32767]",
+       "polars": "ok -2",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -32768]",
+       "polars": "ok 0",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 32767]",
+       "polars": "ok 2",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 20,
+     "examples": [
+      {
+       "row": "[-1, -32768]",
+       "polars": "ok -32768",
+       "lean": "ok 32767"
+      },
+      {
+       "row": "[2, 32767]",
+       "polars": "ok -2",
+       "lean": "ok 32767"
+      },
+      {
+       "row": "[2, -32768]",
+       "polars": "ok 0",
+       "lean": "ok -32768"
+      },
+      {
+       "row": "[-2, 32767]",
+       "polars": "ok 2",
+       "lean": "ok -32768"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "-Int16",
+   "function": "negate",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-32768]",
+       "polars": "ok -32768",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-32768]",
+       "polars": "ok -32768",
+       "lean": "ok 32767"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int16.abs()",
+   "function": "abs",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-32768]",
+       "polars": "ok -32768",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int16 // Int16",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 36,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -32768]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int16 % Int16",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 35,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -32768]",
+       "polars": "ok -32767",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int16.mod(Int16)",
+   "function": "modulus",
+   "option": "division_type",
+   "fixed": {
+    "on_division_by_zero": "NULL"
+   },
+   "rows": 121,
+   "matching": [
+    "FLOOR"
+   ],
+   "candidates": {
+    "TRUNCATE": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -32768]",
+       "polars": "ok -32767",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    },
+    "FLOOR": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int32 + Int32",
+   "function": "add",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 2147483647]",
+       "polars": "ok -2147483648",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-1, -2147483648]",
+       "polars": "ok 2147483647",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 2147483647]",
+       "polars": "ok -2147483647",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, -2147483648]",
+       "polars": "ok 2147483646",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 2147483647]",
+       "polars": "ok -2147483648",
+       "lean": "ok 2147483647"
+      },
+      {
+       "row": "[-1, -2147483648]",
+       "polars": "ok 2147483647",
+       "lean": "ok -2147483648"
+      },
+      {
+       "row": "[2, 2147483647]",
+       "polars": "ok -2147483647",
+       "lean": "ok 2147483647"
+      },
+      {
+       "row": "[-2, -2147483648]",
+       "polars": "ok 2147483646",
+       "lean": "ok -2147483648"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int32 - Int32",
+   "function": "subtract",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -2147483648]",
+       "polars": "ok -2147483648",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[1, -2147483648]",
+       "polars": "ok -2147483647",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -2147483648]",
+       "polars": "ok -2147483646",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 2147483647]",
+       "polars": "ok 2147483647",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -2147483648]",
+       "polars": "ok -2147483648",
+       "lean": "ok 2147483647"
+      },
+      {
+       "row": "[1, -2147483648]",
+       "polars": "ok -2147483647",
+       "lean": "ok 2147483647"
+      },
+      {
+       "row": "[2, -2147483648]",
+       "polars": "ok -2147483646",
+       "lean": "ok 2147483647"
+      },
+      {
+       "row": "[-2, 2147483647]",
+       "polars": "ok 2147483647",
+       "lean": "ok -2147483648"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int32 * Int32",
+   "function": "multiply",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -2147483648]",
+       "polars": "ok -2147483648",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 2147483647]",
+       "polars": "ok -2",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -2147483648]",
+       "polars": "ok 0",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 2147483647]",
+       "polars": "ok 2",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 20,
+     "examples": [
+      {
+       "row": "[-1, -2147483648]",
+       "polars": "ok -2147483648",
+       "lean": "ok 2147483647"
+      },
+      {
+       "row": "[2, 2147483647]",
+       "polars": "ok -2",
+       "lean": "ok 2147483647"
+      },
+      {
+       "row": "[2, -2147483648]",
+       "polars": "ok 0",
+       "lean": "ok -2147483648"
+      },
+      {
+       "row": "[-2, 2147483647]",
+       "polars": "ok 2",
+       "lean": "ok -2147483648"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "-Int32",
+   "function": "negate",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-2147483648]",
+       "polars": "ok -2147483648",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-2147483648]",
+       "polars": "ok -2147483648",
+       "lean": "ok 2147483647"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int32.abs()",
+   "function": "abs",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-2147483648]",
+       "polars": "ok -2147483648",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int32 // Int32",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 37,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 27,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -2147483648]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int32 % Int32",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 36,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -2147483648]",
+       "polars": "ok -2147483647",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int32.mod(Int32)",
+   "function": "modulus",
+   "option": "division_type",
+   "fixed": {
+    "on_division_by_zero": "NULL"
+   },
+   "rows": 121,
+   "matching": [
+    "FLOOR"
+   ],
+   "candidates": {
+    "TRUNCATE": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -2147483648]",
+       "polars": "ok -2147483647",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    },
+    "FLOOR": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64 + Int64",
+   "function": "add",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "polars": "ok -9223372036854775808",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "polars": "ok 9223372036854775807",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "polars": "ok -9223372036854775807",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "polars": "ok 9223372036854775806",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "polars": "ok -9223372036854775808",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "polars": "ok 9223372036854775807",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "polars": "ok -9223372036854775807",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "polars": "ok 9223372036854775806",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int64 - Int64",
+   "function": "subtract",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "polars": "ok -9223372036854775808",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "polars": "ok -9223372036854775807",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "polars": "ok -9223372036854775806",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "polars": "ok 9223372036854775807",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "polars": "ok -9223372036854775808",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "polars": "ok -9223372036854775807",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "polars": "ok -9223372036854775806",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "polars": "ok 9223372036854775807",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int64 * Int64",
+   "function": "multiply",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "polars": "ok -9223372036854775808",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "polars": "ok -2",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "polars": "ok 0",
+       "lean": "error Substrait.Issue.wraps"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "polars": "ok 2",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 20,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "polars": "ok -9223372036854775808",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "polars": "ok -2",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "polars": "ok 0",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "polars": "ok 2",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "-Int64",
+   "function": "negate",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "SILENT"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "polars": "ok -9223372036854775808",
+       "lean": "error Substrait.Issue.wraps"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 0,
+     "examples": []
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "polars": "ok -9223372036854775808",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int64.abs()",
+   "function": "abs",
+   "option": "overflow",
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "polars": "ok -9223372036854775808",
+       "lean": "error Substrait.Issue.overflow"
+      }
+     ]
+    },
+    "SILENT": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SILENT] is not supported (the model does [ERROR])"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0]",
+       "polars": "ok 0",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[-1]",
+       "polars": "ok 1",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      },
+      {
+       "row": "[2]",
+       "polars": "ok 2",
+       "lean": "refused error: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int64 // Int64",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 36,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok -1",
+       "lean": "ok 0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int64 % Int64",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 35,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "polars": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "polars": "ok -9223372036854775807",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Int64.mod(Int64)",
+   "function": "modulus",
+   "option": "division_type",
+   "fixed": {
+    "on_division_by_zero": "NULL"
+   },
+   "rows": 121,
+   "matching": [
+    "FLOOR"
+   ],
+   "candidates": {
+    "TRUNCATE": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[1, -2]",
+       "polars": "ok -1",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -7]",
+       "polars": "ok -6",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "polars": "ok -9223372036854775807",
+       "lean": "ok 1"
+      },
+      {
+       "row": "[-1, 2]",
+       "polars": "ok 1",
+       "lean": "ok -1"
+      }
+     ]
+    },
+    "FLOOR": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64 + Float64",
+   "function": "add",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, -inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64 - Float64",
+   "function": "subtract",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64 * Float64",
+   "function": "multiply",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0, inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 0.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, 0.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64 / Float64",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "polars": "ok inf",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "polars": "ok inf",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "polars": "ok -inf",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "IEEE": {
+     "differ": 5,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 14,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "polars": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "polars": "ok inf",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "polars": "ok inf",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "polars": "ok -inf",
+       "lean": "ok None"
+      }
+     ]
+    },
+    "LIMIT": {
+     "differ": 5,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "polars": "ok nan",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[inf, inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64 % Float64",
+   "function": "modulus",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 66,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.0, inf]",
+       "polars": "ok nan",
+       "lean": "ok 0.0"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "polars": "ok nan",
+       "lean": "ok 0.0"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64 ** Float64",
+   "function": "power",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 9,
+     "examples": [
+      {
+       "row": "[-1.0, 0.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0, 2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0, -2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5, 0.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.floor()",
+   "function": "floor",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.ceil()",
+   "function": "ceil",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.round()",
+   "function": "round",
+   "option": "rounding",
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "TIE_TO_EVEN": {
+     "differ": 12,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "polars": "ok 0.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      },
+      {
+       "row": "[0.5]",
+       "polars": "ok 0.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      },
+      {
+       "row": "[1.0]",
+       "polars": "ok 1.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      },
+      {
+       "row": "[-1.0]",
+       "polars": "ok -1.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      }
+     ]
+    },
+    "TIE_AWAY_FROM_ZERO": {
+     "differ": 3,
+     "examples": [
+      {
+       "row": "[0.5]",
+       "polars": "ok 0.0",
+       "lean": "ok 1.0"
+      },
+      {
+       "row": "[2.5]",
+       "polars": "ok 2.0",
+       "lean": "ok 3.0"
+      },
+      {
+       "row": "[-2.5]",
+       "polars": "ok -2.0",
+       "lean": "ok -3.0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.round(mode='half_away_from_zero')",
+   "function": "round",
+   "option": "rounding",
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "TIE_AWAY_FROM_ZERO"
+   ],
+   "candidates": {
+    "TIE_TO_EVEN": {
+     "differ": 12,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "polars": "ok 0.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      },
+      {
+       "row": "[0.5]",
+       "polars": "ok 1.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      },
+      {
+       "row": "[1.0]",
+       "polars": "ok 1.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      },
+      {
+       "row": "[-1.0]",
+       "polars": "ok -1.0",
+       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+      }
+     ]
+    },
+    "TIE_AWAY_FROM_ZERO": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.round(1)",
+   "function": "round",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.round(2)",
+   "function": "round",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.round(16)",
+   "function": "round",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.round(308)",
+   "function": "round",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.round(309)",
+   "function": "round",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.round(400)",
+   "function": "round",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.sqrt()",
+   "function": "sqrt",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 3,
+     "examples": [
+      {
+       "row": "[-1.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.exp()",
+   "function": "exp",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.log()",
+   "function": "ln",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "polars": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.log10()",
+   "function": "log10",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "polars": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0.5]",
+       "polars": "ok -0.30102999566398114",
+       "lean": "ok -0.3010299956639812"
+      },
+      {
+       "row": "[-1.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.sin()",
+   "function": "sin",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.cos()",
+   "function": "cos",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.tan()",
+   "function": "tan",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.arcsin()",
+   "function": "asin",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[7.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[1e+308]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.arccos()",
+   "function": "acos",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[7.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[1e+308]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64.arctan()",
+   "function": "atan",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.log(2)",
+   "function": "log2",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 5,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "polars": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[1e+308]",
+       "polars": "ok 1023.1538532253077",
+       "lean": "ok 1023.1538532253076"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "pl.arctan2(Float64, Float64)",
+   "function": "atan2",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "polars": "ok 0.0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "Float64 == Float64",
+   "function": "equal",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64 < Float64",
+   "function": "lt",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Float64.is_null()",
+   "function": "is_null",
+   "option": null,
+   "fixed": {},
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64.is_null()",
+   "function": "is_null",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.is_null()",
+   "function": "is_null",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64 & Int64",
+   "function": "bitwise_and",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64 | Int64",
+   "function": "bitwise_or",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "Int64 ^ Int64",
+   "function": "bitwise_xor",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "pl.max_horizontal(Float64, Float64)",
+   "function": "greatest",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 20,
+     "examples": [
+      {
+       "row": "[0.0, nan]",
+       "polars": "ok 0.0",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[0.5, nan]",
+       "polars": "ok 0.5",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[1.0, nan]",
+       "polars": "ok 1.0",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[-1.0, nan]",
+       "polars": "ok -1.0",
+       "lean": "ok nan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "pl.min_horizontal(Float64, Float64)",
+   "function": "least",
+   "option": null,
+   "fixed": {},
+   "rows": 144,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.to_uppercase()",
+   "function": "upper",
+   "option": null,
+   "fixed": {},
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.to_lowercase()",
+   "function": "lower",
+   "option": null,
+   "fixed": {},
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.len_chars()",
+   "function": "character_length",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.reverse()",
+   "function": "reverse",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.strip_chars(' ')",
+   "function": "btrim",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "pl.concat_str(String, String)",
+   "function": "str_concat",
+   "option": null,
+   "fixed": {},
+   "rows": 121,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.starts_with('a')",
+   "function": "starts_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.starts_with('')",
+   "function": "starts_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.ends_with('a')",
+   "function": "ends_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.ends_with('')",
+   "function": "ends_with",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.find('a', literal=True)",
+   "function": "strpos",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok 0"
+      },
+      {
+       "row": "['a']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.find('b', literal=True)",
+   "function": "strpos",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok 0"
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok 0"
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok 1",
+       "lean": "ok 2"
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok 1",
+       "lean": "ok 2"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.find('', literal=True)",
+   "function": "strpos",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['a']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok 0",
+       "lean": "ok 1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('a', 'xy', literal=True)",
+   "function": "replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(0, 2)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(1, 2)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(-2, 5)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(-10, 3)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.slice(5, 1)",
+   "function": "substring",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('^(a+)(b)?', 2)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 8,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['aaa']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a\\nb']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('(a|ab)(c|bcd)?', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 3,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['h\u00e9llo']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['\u00df']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('(a*)*', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('x(?:a)(y)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 9,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['ab']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['abc']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('.$', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.extract('(b)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 7,
+     "examples": [
+      {
+       "row": "['']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['a']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['aaa']",
+       "polars": "ok None",
+       "lean": "ok "
+      },
+      {
+       "row": "['xay']",
+       "polars": "ok None",
+       "lean": "ok "
+      }
+     ]
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('a+', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('b*', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "String.str.replace_all('$', '!')",
+   "function": "regexp_replace",
+   "option": null,
+   "fixed": {},
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "construct": "int-sum-types",
+   "area": "integers",
+   "code": "{t: (str(df(x=([1], t)).select(pl.col('x').sum()).dtypes[0]), df(x=([2**(b-1)-1, 1], t)).select(pl.col('x').sum()).item()) for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+   "observed": "{Int8: ('Int64', 128), Int16: ('Int64', 32768), Int32: ('Int32', -2147483648), Int64: ('Int64', -9223372036854775808)}"
+  },
+  {
+   "construct": "int-sum-grouped",
+   "area": "integers",
+   "code": "[df(g=[1, 1], x=([2**(b-1)-1, 1], t)).group_by('g').agg(pl.col('x').sum()).item(0, 'x') for t, b in [(pl.Int8, 8), (pl.Int32, 32), (pl.Int64, 64)]]",
+   "observed": "[128, -2147483648, -9223372036854775808]"
+  },
+  {
+   "construct": "int-sum-empty",
+   "area": "integers",
+   "code": "[df(x=([None, None], pl.Int64)).select(pl.col('x').sum()).item(), df(x=([], pl.Int64)).select(pl.col('x').sum()).item(), df(g=[1], x=([None], pl.Int64)).group_by('g').agg(pl.col('x').sum()).item(0, 'x'), df(x=([], pl.Int64)).select(pl.col('x').product()).item()]",
+   "observed": "[0, 0, 0, 1]"
+  },
+  {
+   "construct": "int-mean",
+   "area": "integers",
+   "code": "(df(x=[2**62, 2**62, 1]).select(pl.col('x').mean()).item(), str(df(x=[1, 2]).select(pl.col('x').mean()).dtypes[0]), df(x=([None], pl.Int64)).select(pl.col('x').mean()).item(), df(x=[1, 2]).select(pl.col('x').median()).item())",
+   "observed": "(3.0744573456182584e+18, 'Float64', None, 1.5)"
+  },
+  {
+   "construct": "int-true-divide",
+   "area": "integers",
+   "code": "df(a=[7, -7, 0, 1], b=[2, 0, 0, 3]).select(pl.col('a') / pl.col('b')).to_series().to_list()",
+   "observed": "[3.5, -inf, nan, 0.3333333333333333]"
+  },
+  {
+   "construct": "int-pow",
+   "area": "integers",
+   "code": "(df(x=[2, 3, -2]).select(pl.col('x') ** 63).to_series().to_list(), str(df(x=([2], pl.Int32)).select(pl.col('x') ** pl.col('x')).dtypes[0]))",
+   "observed": "([-9223372036854775808, -3237885987332494933, -9223372036854775808], 'Int32')"
+  },
+  {
+   "construct": "int-pow-negative",
+   "area": "integers",
+   "code": "df(x=[2]).select(pl.col('x') ** -1).item()",
+   "observed": "error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]"
+  },
+  {
+   "construct": "int-shift",
+   "area": "integers",
+   "code": "[m for m in dir(pl.Expr) if 'shift' in m and 'bit' in m]",
+   "observed": "[]"
+  },
+  {
+   "construct": "zero-sign-arith",
+   "area": "doubles",
+   "code": "df(z=[-0.0, 0.0]).select((1.0 / pl.col('z')).alias('inv'), (-pl.col('z')).alias('neg'), (pl.col('z') * -1.0).alias('mul'), pl.col('z').sqrt().alias('sqrt')).rows()",
+   "observed": "[(-inf, 0.0, 0.0, -0.0), (inf, -0.0, -0.0, 0.0)]"
+  },
+  {
+   "construct": "nan-sign-negate",
+   "area": "doubles",
+   "code": "[bits(v) for v in df(z=[nan]).select(-pl.col('z'), pl.col('z').abs().alias('abs'), (-pl.col('z')).sqrt().alias('sqrt')).row(0)]",
+   "observed": "['0xfff8000000000000', '0x7ff8000000000000', '0xfff8000000000000']"
+  },
+  {
+   "construct": "double-floordiv",
+   "area": "doubles",
+   "code": "df(a=[7.0, -7.0, 1.0, inf, 5.0], b=[2.0, 2.0, 0.0, 2.0, inf]).select(pl.col('a') // pl.col('b')).to_series().to_list()",
+   "observed": "[3.0, -4.0, inf, inf, 0.0]"
+  },
+  {
+   "construct": "double-modulus-sign",
+   "area": "doubles",
+   "code": "df(a=[5.5, -5.5, 5.5, -5.5, 5.0, -5.0], b=[2.0, 2.0, -2.0, -2.0, inf, inf]).select(pl.col('a') % pl.col('b')).to_series().to_list()",
+   "observed": "[1.5, 0.5, -0.5, -1.5, nan, nan]"
+  },
+  {
+   "construct": "round-digits-negative",
+   "area": "doubles",
+   "code": "df(x=[123.0]).select(pl.col('x').round(-1)).item()",
+   "observed": "error OverflowError: number too small to fit in target type"
+  },
+  {
+   "construct": "round-digits-ties",
+   "area": "doubles",
+   "code": "{d: df(x=[0.125, 0.375, 2.675, 1.005, 0.285]).select(pl.col('x').round(d)).to_series().to_list() for d in (1, 2)}",
+   "observed": "{1: [0.1, 0.4, 2.7, 1.0, 0.3], 2: [0.12, 0.38, 2.68, 1.0, 0.28]}"
+  },
+  {
+   "construct": "round-default-mode",
+   "area": "doubles",
+   "code": "df(x=[0.5, 1.5, 2.5, -0.5, -2.5]).select(pl.col('x').round()).to_series().to_list()",
+   "observed": "[0.0, 2.0, 2.0, -0.0, -2.0]"
+  },
+  {
+   "construct": "float-sum-nonfinite",
+   "area": "doubles",
+   "code": "df(x=[inf, -inf, 1.0]).select(pl.col('x').sum().alias('sum'), pl.col('x').mean().alias('mean'), pl.col('x').std().alias('std')).rows()",
+   "observed": "[(nan, nan, nan)]"
+  },
+  {
+   "construct": "float-std-inf",
+   "area": "aggregates",
+   "code": "df(x=[inf, 1.0]).select(pl.col('x').std().alias('std'), pl.col('x').var().alias('var')).rows()",
+   "observed": "[(nan, nan)]"
+  },
+  {
+   "construct": "float-sum-empty",
+   "area": "aggregates",
+   "code": "[df(x=([], pl.Float64)).select(pl.col('x').sum()).item(), df(x=([None], pl.Float64)).select(pl.col('x').sum()).item(), df(x=([], pl.Float64)).select(pl.col('x').mean()).item()]",
+   "observed": "[0.0, 0.0, None]"
+  },
+  {
+   "construct": "var-one-value",
+   "area": "aggregates",
+   "code": "df(x=[1.0]).select(pl.col('x').var().alias('samp'), pl.col('x').var(ddof=0).alias('pop'), pl.col('x').std().alias('std')).rows()",
+   "observed": "[(None, 0.0, None)]"
+  },
+  {
+   "construct": "corr-degenerate",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 1.0], y=[1.0, 2.0]).select(pl.corr('x', 'y').alias('const'), pl.corr(pl.col('x').head(1), pl.col('y').head(1)).alias('one'), pl.corr(pl.col('x').head(0), pl.col('y').head(0)).alias('none')).rows()",
+   "observed": "[(nan, nan, nan)]"
+  },
+  {
+   "construct": "quantile-methods",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 2.0, 3.0, 4.0]).select(*(pl.col('x').quantile(0.4, m).alias(m) for m in ['nearest', 'lower', 'higher', 'midpoint', 'linear', 'equiprobable'])).rows()",
+   "observed": "[(2.0, 2.0, 3.0, 2.5, 2.2, 2.0)]"
+  },
+  {
+   "construct": "quantile-default",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 2.0, 3.0, 4.0]).select(pl.col('x').quantile(0.4)).item()",
+   "observed": "2.0"
+  },
+  {
+   "construct": "decimal-result-types",
+   "area": "decimals",
+   "code": "[str(t) for t in df(x=['1.25']).select((pl.col('x').cast(pl.Decimal(10, 2)) * pl.col('x').cast(pl.Decimal(5, 1))).alias('mul'), (pl.col('x').cast(pl.Decimal(10, 2)) + pl.col('x').cast(pl.Decimal(5, 1))).alias('add'), (pl.col('x').cast(pl.Decimal(10, 2)) / pl.col('x').cast(pl.Decimal(5, 1))).alias('div'), pl.col('x').cast(pl.Decimal(5, 2)).sum().alias('sum')).dtypes]",
+   "observed": "['Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)']"
+  },
+  {
+   "construct": "decimal-rounding",
+   "area": "decimals",
+   "code": "{'mul': df(x=['0.05', '0.15', '-0.05']).select(pl.col('x').cast(pl.Decimal(10, 2)) * pl.lit('0.5').cast(pl.Decimal(10, 1))).to_series().to_list(), 'div': df(x=['1.00', '3.00', '-1.00']).select(pl.col('x').cast(pl.Decimal(10, 2)) / pl.lit('8').cast(pl.Decimal(10, 0))).to_series().to_list(), 'rescale': df(x=['1.050', '1.150', '-1.050', '1.051']).select(pl.col('x').cast(pl.Decimal(10, 3)).cast(pl.Decimal(10, 1))).to_series().to_list(), 'from_double': df(x=[0.625, 0.375, -0.625, 0.135]).select(pl.col('x').cast(pl.Decimal(10, 2))).to_series().to_list()}",
+   "observed": "{'mul': [Decimal('0.02'), Decimal('0.08'), Decimal('-0.02')], 'div': [Decimal('0.12'), Decimal('0.38'), Decimal('-0.12')], 'rescale': [Decimal('1.0'), Decimal('1.2'), Decimal('-1.0'), Decimal('1.1')], 'from_double': [Decimal('0.62'), Decimal('0.38'), Decimal('-0.62'), Decimal('0.14')]}"
+  },
+  {
+   "construct": "decimal-overflow",
+   "area": "decimals",
+   "code": "df(x=['9999.99']).select(pl.col('x').cast(pl.Decimal(6, 2)) * pl.lit(1000).cast(pl.Decimal(6, 0))).item()",
+   "observed": "Decimal('9999990.00')"
+  },
+  {
+   "construct": "decimal-precision-38",
+   "area": "decimals",
+   "code": "df(x=['9' * 36 + '.99']).select(pl.col('x').cast(pl.Decimal(38, 2)) * pl.lit(10).cast(pl.Decimal(2, 0))).item()",
+   "observed": "error ComputeError: overflow in decimal multiplication: result doesn't fit Decimal(38, 2)"
+  },
+  {
+   "construct": "decimal-divide-by-zero",
+   "area": "decimals",
+   "code": "df(x=['1.00']).select(pl.col('x').cast(pl.Decimal(6, 2)) / pl.lit(0).cast(pl.Decimal(6, 0))).item()",
+   "observed": "error ComputeError: division by zero Decimal"
+  },
+  {
+   "construct": "decimal-mean",
+   "area": "decimals",
+   "code": "(df(x=['1.00', '2.01']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).item(), str(df(x=['1.00']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).dtypes[0]))",
+   "observed": "(1.505, 'Float64')"
+  },
+  {
+   "construct": "decimal-compare",
+   "area": "decimals",
+   "code": "df(a=['12.35', '1.25', '-0.05'], b=['12.350', '1.300', '-0.051']).select((pl.col('a').cast(pl.Decimal(10, 2)) == pl.col('b').cast(pl.Decimal(7, 3))).alias('eq'), (pl.col('a').cast(pl.Decimal(10, 2)) < pl.col('b').cast(pl.Decimal(7, 3))).alias('lt'), (pl.col('a').cast(pl.Decimal(10, 2)) > 1).alias('gt_int')).rows()",
+   "observed": "[(True, False, True), (False, True, True), (False, False, False)]"
+  },
+  {
+   "construct": "decimal-sum-empty",
+   "area": "decimals",
+   "code": "[df(x=([], pl.Decimal(10, 2))).select(pl.col('x').sum()).item(), df(x=([None], pl.Decimal(10, 2))).select(pl.col('x').sum()).item(), df(x=([None], pl.Decimal(10, 2))).select(pl.col('x').min()).item()]",
+   "observed": "[Decimal('0.00'), Decimal('0.00'), None]"
+  },
+  {
+   "construct": "decimal-from-double",
+   "area": "decimals",
+   "code": "df(x=[0.625, 0.125, -2.675, 0.145, 2.5, -0.375]).select(pl.col('x').cast(pl.Decimal(10, 2))).to_series().to_list()",
+   "observed": "[Decimal('0.62'), Decimal('0.12'), Decimal('-2.68'), Decimal('0.14'), Decimal('2.50'), Decimal('-0.38')]"
+  },
+  {
+   "construct": "decimal-to-double",
+   "area": "decimals",
+   "code": "(lambda xs: [a == float(s) for a, s in zip(df(x=xs).select(pl.col('x').cast(pl.Decimal(38, 20)).cast(pl.Float64)).to_series().to_list(), xs)])(['543007.68781425681384350086', '1288396.15827294170993372848', '-7165545601.899863454715675712', '9549712200552491.230505250722', '0.1'])",
+   "observed": "[True, True, True, True, True]"
+  },
+  {
+   "construct": "decimal-narrow-precision",
+   "area": "decimals",
+   "code": "[df(x=['123.45']).select(pl.col('x').cast(pl.Decimal(10, 2)).cast(pl.Decimal(4, 2), strict=False)).item(), attempt(lambda: df(x=['123.45']).select(pl.col('x').cast(pl.Decimal(10, 2)).cast(pl.Decimal(4, 2))).item())]",
+   "observed": "[None, \"error InvalidOperationError: conversion from `decimal[10,2]` to `decimal[4,2]` failed in column 'x' for 1 out of 1 values: [123.45]\"]"
+  },
+  {
+   "construct": "decimal-unscaled",
+   "area": "decimals",
+   "code": "df(x=['1.25', '-1.35', None]).select(pl.col('x').cast(pl.Decimal(10, 2)).to_physical()).to_series().to_list()",
+   "observed": "[125, -135, None]"
+  },
+  {
+   "construct": "int128-wrap",
+   "area": "integers",
+   "code": "df(x=([2**126, -(2**126)], pl.Int128)).select(pl.col('x') * 2).to_series().to_list()",
+   "observed": "[-170141183460469231731687303715884105728, -170141183460469231731687303715884105728]"
+  },
+  {
+   "construct": "nan-compare",
+   "area": "doubles",
+   "code": "df(a=[nan, nan, 1.0, inf, 0.0, None], b=[nan, 1.0, nan, nan, -0.0, None]).select((pl.col('a') == pl.col('b')).alias('eq'), (pl.col('a') < pl.col('b')).alias('lt'), (pl.col('a') > pl.col('b')).alias('gt'), pl.col('a').eq_missing(pl.col('b')).alias('eqm')).rows()",
+   "observed": "[(True, False, False, True), (False, False, True, False), (False, True, False, False), (False, True, False, False), (True, False, False, True), (None, None, None, True)]"
+  },
+  {
+   "construct": "nan-is-in",
+   "area": "doubles",
+   "code": "df(a=[nan, 1.0, None]).select(pl.col('a').is_in([nan])).to_series().to_list()",
+   "observed": "[True, False, None]"
+  },
+  {
+   "construct": "sort-doubles",
+   "area": "relations",
+   "code": "{f'{d=} {n=}': df(x=[1.0, nan, None, -inf, inf, 0.0, -1.0]).sort('x', descending=d, nulls_last=n)['x'].to_list() for d in (False, True) for n in (False, True)}",
+   "observed": "{'d=False n=False': [None, -inf, -1.0, 0.0, 1.0, inf, nan], 'd=False n=True': [-inf, -1.0, 0.0, 1.0, inf, nan, None], 'd=True n=False': [None, nan, inf, 1.0, 0.0, -1.0, -inf], 'd=True n=True': [nan, inf, 1.0, 0.0, -1.0, -inf, None]}"
+  },
+  {
+   "construct": "sort-zero-sign",
+   "area": "relations",
+   "code": "df(x=[0.0, -0.0, 0.0, -0.0], i=[0, 1, 2, 3]).sort('x', maintain_order=True).rows()",
+   "observed": "[(0.0, 0), (-0.0, 1), (0.0, 2), (-0.0, 3)]"
+  },
+  {
+   "construct": "sort-null-default",
+   "area": "relations",
+   "code": "[df(x=[2, None, 1]).sort('x', descending=d)['x'].to_list() for d in (False, True)]",
+   "observed": "[[None, 1, 2], [None, 2, 1]]"
+  },
+  {
+   "construct": "sort-strings-bools",
+   "area": "relations",
+   "code": "(df(s=['b', 'B', 'a', '\u00e9', 'Z', '', None]).sort('s')['s'].to_list(), df(s=[True, None, False]).sort('s')['s'].to_list())",
+   "observed": "([None, '', 'B', 'Z', 'a', 'b', '\u00e9'], [None, False, True])"
+  },
+  {
+   "construct": "sort-stable",
+   "area": "relations",
+   "code": "[df(k=[i % 7 for i in range(200_000)], i=range(200_000)).lazy().sort('k', maintain_order=m).collect(engine=e).select((pl.col('i').diff().over('k') < 0).any()).item() for m in (False, True) for e in ('in-memory', 'streaming')]",
+   "observed": "[False, False, False, False]"
+  },
+  {
+   "construct": "min-max-nan",
+   "area": "aggregates",
+   "code": "df(x=[1.0, nan, None, -inf, inf]).select(pl.col('x').min().alias('min'), pl.col('x').max().alias('max'), pl.col('x').nan_min().alias('nan_min'), pl.col('x').nan_max().alias('nan_max'), pl.col('x').arg_max().alias('arg_max'), pl.col('x').sort().last().alias('sort_last')).rows()",
+   "observed": "[(-inf, inf, nan, nan, 4, nan)]"
+  },
+  {
+   "construct": "min-max-only-nan",
+   "area": "aggregates",
+   "code": "df(x=[nan, None]).select(pl.col('x').min().alias('min'), pl.col('x').max().alias('max')).rows()",
+   "observed": "[(nan, nan)]"
+  },
+  {
+   "construct": "median-nan",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 2.0, nan]).select(pl.col('x').median().alias('median'), pl.col('x').quantile(0.5, 'lower').alias('lower')).rows()",
+   "observed": "[(2.0, 2.0)]"
+  },
+  {
+   "construct": "group-nan-zero",
+   "area": "relations",
+   "code": "df(x=[1.0, nan, None, nan, 0.0, -0.0, None]).group_by('x', maintain_order=True).agg(pl.len()).rows()",
+   "observed": "[(1.0, 1), (nan, 2), (None, 2), (0.0, 2)]"
+  },
+  {
+   "construct": "unique-nan-zero",
+   "area": "relations",
+   "code": "(df(x=[nan, 0.0, -0.0, nan, None, None]).unique(maintain_order=True)['x'].to_list(), df(x=[nan, 0.0, -0.0, nan, None]).select(pl.col('x').n_unique()).item())",
+   "observed": "([nan, 0.0, None], 3)"
+  },
+  {
+   "construct": "join-nan-zero-null",
+   "area": "relations",
+   "code": "[df(x=[nan, 0.0, -0.0, None]).join(df(x=[nan, 0.0, None], y=[1, 2, 3]), on='x', nulls_equal=n).sort('y').rows() for n in (False, True)]",
+   "observed": "[[(nan, 1), (0.0, 2), (-0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]"
+  },
+  {
+   "construct": "int-float-compare",
+   "area": "doubles",
+   "code": "df(i=[2**53 + 1], f=[2.0**53]).select((pl.col('i') == pl.col('f')).alias('eq'), (pl.col('i') > pl.col('f')).alias('gt')).rows()",
+   "observed": "[(True, False)]"
+  },
+  {
+   "construct": "kleene",
+   "area": "relations",
+   "code": "df(a=[True, False, None, None], b=[None, None, None, True]).select((pl.col('a') & pl.col('b')).alias('and'), (pl.col('a') | pl.col('b')).alias('or'), (~pl.col('a')).alias('not')).rows()",
+   "observed": "[(None, True, False), (False, None, True), (None, None, None), (None, True, None)]"
+  },
+  {
+   "construct": "any-all-nulls",
+   "area": "aggregates",
+   "code": "df(x=[True, None]).select(pl.col('x').all().alias('all'), pl.col('x').all(ignore_nulls=False).alias('all_kleene'), pl.col('x').any(ignore_nulls=False).alias('any_kleene')).rows()",
+   "observed": "[(True, None, True)]"
+  },
+  {
+   "construct": "count-nulls",
+   "area": "aggregates",
+   "code": "df(x=[1, None, None]).select(pl.col('x').count().alias('count'), pl.col('x').len().alias('len'), pl.col('x').null_count().alias('nulls')).rows()",
+   "observed": "[(1, 3, 2)]"
+  },
+  {
+   "construct": "aggregates-empty",
+   "area": "aggregates",
+   "code": "df(x=([None, None], pl.Int64)).select(pl.col('x').min().alias('min'), pl.col('x').first().alias('first'), pl.col('x').count().alias('count'), pl.col('x').mode().alias('mode').implode()).rows()",
+   "observed": "[(None, None, 0, [None])]"
+  },
+  {
+   "construct": "first-last",
+   "area": "aggregates",
+   "code": "df(g=[1, 1, 1, 2], x=[None, 3, None, 4]).group_by('g', maintain_order=True).agg(pl.col('x').first().alias('first'), pl.col('x').last().alias('last'), pl.col('x').first(ignore_nulls=True).alias('first_nn'), pl.col('x').last(ignore_nulls=True).alias('last_nn')).rows()",
+   "observed": "[(1, None, None, 3, 3), (2, 4, 4, 4, 4)]"
+  },
+  {
+   "construct": "first-input-order",
+   "area": "aggregates",
+   "code": "[df(k=[i % 10 for i in range(200_000)], i=range(200_000)).lazy().group_by('k').agg(pl.col('i').first().alias('f'), pl.col('i').min().alias('m'), pl.col('i').last().alias('l'), pl.col('i').max().alias('M'), pl.col('i').alias('all')).collect(engine=e).select(((pl.col('f') == pl.col('m')) & (pl.col('l') == pl.col('M')) & (pl.col('all').list.eval(pl.element().diff().drop_nulls().min() > 0).list.first())).all()).item() for e in ('in-memory', 'streaming')]",
+   "observed": "[True, True]"
+  },
+  {
+   "construct": "arg-min-max-ties",
+   "area": "aggregates",
+   "code": "df(x=[1, 3, 3, 1]).select(pl.col('x').arg_max().alias('arg_max'), pl.col('x').arg_min().alias('arg_min')).rows()",
+   "observed": "[(1, 0)]"
+  },
+  {
+   "construct": "mode-ties",
+   "area": "aggregates",
+   "code": "df(x=[3, 1, 2, 2, 1, 3]).select(pl.col('x').mode().sort()).to_series().to_list()",
+   "observed": "[1, 2, 3]"
+  },
+  {
+   "construct": "string-agg",
+   "area": "aggregates",
+   "code": "df(g=[1, 1, 1], x=['a', None, 'b']).group_by('g').agg(pl.col('x').str.join(',')).item(0, 'x')",
+   "observed": "'a,b'"
+  },
+  {
+   "construct": "top-k-ties",
+   "area": "relations",
+   "code": "df(x=[1, 1, 1, 0], i=[0, 1, 2, 3]).top_k(2, by='x').sort('i').rows()",
+   "observed": "[(1, 0), (1, 1)]"
+  },
+  {
+   "construct": "rank-methods",
+   "area": "windows",
+   "code": "df(x=[2, 1, 2, None]).select(*(pl.col('x').rank(m).alias(m) for m in ['average', 'min', 'max', 'dense', 'ordinal'])).rows()",
+   "observed": "[(2.5, 2, 3, 2, 2), (1.0, 1, 1, 1, 1), (2.5, 2, 3, 2, 3), (None, None, None, None, None)]"
+  },
+  {
+   "construct": "rank-descending-nan",
+   "area": "windows",
+   "code": "df(x=[2.0, nan, 1.0, None]).select(pl.col('x').rank('min').alias('asc'), pl.col('x').rank('min', descending=True).alias('desc')).rows()",
+   "observed": "[(2, 2), (3, 1), (1, 3), (None, None)]"
+  },
+  {
+   "construct": "window-lag-first",
+   "area": "windows",
+   "code": "df(g=[1, 1, 2], x=[3, 1, 2]).select(pl.col('x').first().over('g').alias('first'), pl.col('x').shift(1).over('g').alias('lag'), pl.col('x').cum_sum().over('g').alias('cum')).rows()",
+   "observed": "[(3, None, 3), (3, 3, 4), (2, None, 2)]"
+  },
+  {
+   "construct": "slice",
+   "area": "strings",
+   "code": "{f'{o},{n}': df(s=['hello', 'h\u00e9llo', '', None]).select(pl.col('s').str.slice(o, n)).to_series().to_list() for o, n in [(0, 2), (1, 2), (-2, None), (-2, 5), (-10, 3), (-10, 7), (10, 2), (2, None)]}",
+   "observed": "{'0,2': ['he', 'h\u00e9', '', None], '1,2': ['el', '\u00e9l', '', None], '-2,None': ['lo', 'lo', '', None], '-2,5': ['lo', 'lo', '', None], '-10,3': ['', '', '', None], '-10,7': ['he', 'h\u00e9', '', None], '10,2': ['', '', '', None], '2,None': ['llo', 'llo', '', None]}"
+  },
+  {
+   "construct": "slice-negative-length",
+   "area": "strings",
+   "code": "df(s=['hello']).select(pl.col('s').str.slice(0, -1)).item()",
+   "observed": "error InvalidOperationError: conversion from `i32` to `u64` failed in column 'literal' for 1 out of 1 values: [-1]"
+  },
+  {
+   "construct": "find-bytes",
+   "area": "strings",
+   "code": "df(s=['h\u00e9llo', 'hello', 'xyz', '']).select(pl.col('s').str.find('l', literal=True).alias('find'), pl.col('s').str.find('', literal=True).alias('empty')).rows()",
+   "observed": "[(3, 0), (2, 0), (None, 0), (None, 0)]"
+  },
+  {
+   "construct": "len-chars-bytes",
+   "area": "strings",
+   "code": "df(s=['h\u00e9llo', '\u00df', 'e\u0301', '']).select(pl.col('s').str.len_chars().alias('chars'), pl.col('s').str.len_bytes().alias('bytes')).rows()",
+   "observed": "[(5, 6), (1, 2), (2, 3), (0, 0)]"
+  },
+  {
+   "construct": "case-unicode",
+   "area": "strings",
+   "code": "df(s=['stra\u00dfe', '\u01c5ungla', '\u0130', '\u03a3\u0391\u03a3']).select(pl.col('s').str.to_uppercase().alias('up'), pl.col('s').str.to_lowercase().alias('low')).rows()",
+   "observed": "[('STRASSE', 'stra\u00dfe'), ('\u01c4UNGLA', '\u01c6ungla'), ('\u0130', 'i\u0307'), ('\u03a3\u0391\u03a3', '\u03c3\u03b1\u03c2')]"
+  },
+  {
+   "construct": "reverse-graphemes",
+   "area": "strings",
+   "code": "[ascii(v) for v in df(s=['e\u0301x', '\ud83c\udde9\ud83c\uddeaa', 'abc']).select(pl.col('s').str.reverse()).to_series().to_list()]",
+   "observed": "[\"'xe\\\\u0301'\", \"'a\\\\U0001f1e9\\\\U0001f1ea'\", \"'cba'\"]"
+  },
+  {
+   "construct": "strip-whitespace",
+   "area": "strings",
+   "code": "[ascii(v) for v in df(s=[' \\t a \\n', '\u00a0b\u2003', 'xxaxx']).select(pl.col('s').str.strip_chars()).to_series().to_list()]",
+   "observed": "[\"'a'\", \"'b'\", \"'xxaxx'\"]"
+  },
+  {
+   "construct": "concat-nulls",
+   "area": "strings",
+   "code": "df(a=['x', None], b=['y', 'z']).select(pl.concat_str('a', 'b').alias('concat'), pl.concat_str('a', 'b', ignore_nulls=True).alias('ignore'), (pl.col('a') + pl.col('b')).alias('plus')).rows()",
+   "observed": "[('xy', 'xy', 'xy'), (None, 'z', None)]"
+  },
+  {
+   "construct": "regex-syntax",
+   "area": "strings",
+   "code": "{p: attempt(lambda: df(s=['ab', '\u0663', '\u00e9']).select(pl.col('s').str.contains(p)).to_series().to_list()) for p in ['a(?=b)', r'(a)\\1', r'^\\d$', r'^\\w$', '(?i)AB', '^[[:alpha:]]+$']}",
+   "observed": "{'a(?=b)': 'error ComputeError: regex error: regex parse error:', '(a)\\\\1': 'error ComputeError: regex error: regex parse error:', '^\\\\d$': [False, True, False], '^\\\\w$': [False, True, True], '(?i)AB': [True, False, False], '^[[:alpha:]]+$': [True, False, False]}"
+  },
+  {
+   "construct": "regex-invalid",
+   "area": "strings",
+   "code": "df(s=['a']).select(pl.col('s').str.contains('(')).item()",
+   "observed": "error ComputeError: regex error: regex parse error:"
+  },
+  {
+   "construct": "regex-replace-refs",
+   "area": "strings",
+   "code": "df(s=['aab']).select(pl.col('s').str.replace_all('(a+)', '<$1>').alias('dollar'), pl.col('s').str.replace_all('(a+)', r'<\\1>').alias('backslash'), pl.col('s').str.replace_all('(a+)', '<${1}x>').alias('braces'), pl.col('s').str.replace('a', 'x').alias('first')).rows()",
+   "observed": "[('<aa>b', '<\\\\1>b', '<aax>b', 'xab')]"
+  },
+  {
+   "construct": "regex-extract-nomatch",
+   "area": "strings",
+   "code": "df(s=['xay', 'b', None]).select(pl.col('s').str.extract('(a)', 1).alias('g1'), pl.col('s').str.extract('(a)?b', 1).alias('unset')).rows()",
+   "observed": "[('a', None), (None, None), (None, None)]"
+  },
+  {
+   "construct": "string-functions-missing",
+   "area": "strings",
+   "code": "[n for n in ['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike'] if not hasattr(pl.Expr.str, n)]",
+   "observed": "['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike']"
+  },
+  {
+   "construct": "date-month-arith",
+   "area": "temporal",
+   "code": "df(x=[dt.date(2024, 1, 31), dt.date(2024, 2, 29), dt.date(2023, 3, 31)]).select(pl.col('x').dt.offset_by('1mo').alias('+1mo'), pl.col('x').dt.offset_by('-1mo').alias('-1mo'), pl.col('x').dt.offset_by('1y').alias('+1y')).rows()",
+   "observed": "[(datetime.date(2024, 2, 29), datetime.date(2023, 12, 31), datetime.date(2025, 1, 31)), (datetime.date(2024, 3, 29), datetime.date(2024, 1, 29), datetime.date(2025, 2, 28)), (datetime.date(2023, 4, 30), datetime.date(2023, 2, 28), datetime.date(2024, 3, 31))]"
+  },
+  {
+   "construct": "date-range",
+   "area": "temporal",
+   "code": "df(x=[dt.date(1, 1, 1), dt.date(9999, 12, 31)]).select((pl.col('x') + pl.duration(days=d)).cast(pl.String).alias(str(d)) for d in [-1, 1]).rows()",
+   "observed": "[('0000-12-31', '0001-01-02'), ('9999-12-30', '+10000-01-01')]"
+  },
+  {
+   "construct": "date-physical-range",
+   "area": "temporal",
+   "code": "df(x=([2**31 - 1], pl.Int32)).select(pl.col('x').cast(pl.Date).cast(pl.String)).item()",
+   "observed": "error PanicException: out-of-range date"
+  },
+  {
+   "construct": "timestamp-range",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(9999, 1, 1)]).select((pl.col('x') + pl.duration(days=10**6)).cast(pl.String)).item()",
+   "observed": "'+12736-11-28 00:00:00.000000'"
+  },
+  {
+   "construct": "timestamp-unit",
+   "area": "temporal",
+   "code": "(str(df(x=[dt.datetime(2024, 1, 1)]).dtypes[0]), attempt(lambda: df(x=[dt.datetime(2262, 4, 12)]).select(pl.col('x').cast(pl.Datetime('ns'))).item()))",
+   "observed": "(\"Datetime(time_unit='us', time_zone=None)\", \"error InvalidOperationError: conversion from `datetime[\u03bcs]` to `datetime[ns]` failed in column 'x' for 1 out of 1 values: [2262-04-12 00:00:00]\")"
+  },
+  {
+   "construct": "date-parts",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 12, 30, 1, 2, 3, 456789), dt.datetime(2021, 1, 3)]).select(pl.col('x').dt.year().alias('year'), pl.col('x').dt.iso_year().alias('iso_year'), pl.col('x').dt.week().alias('week'), pl.col('x').dt.weekday().alias('weekday'), pl.col('x').dt.ordinal_day().alias('doy'), pl.col('x').dt.quarter().alias('q'), pl.col('x').dt.millisecond().alias('ms'), pl.col('x').dt.microsecond().alias('us'), pl.col('x').dt.epoch('s').alias('epoch')).rows()",
+   "observed": "[(2024, 2025, 1, 1, 365, 4, 456, 456789, 1735520523), (2021, 2020, 53, 7, 3, 1, 0, 0, 1609632000)]"
+  },
+  {
+   "construct": "before-epoch",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(1969, 12, 31, 23, 59, 59, 500000)]).select(pl.col('x').dt.truncate('1s').alias('trunc'), pl.col('x').dt.epoch('s').alias('epoch'), pl.col('x').dt.second().alias('second'), pl.col('x').dt.microsecond().alias('us')).rows()",
+   "observed": "[(datetime.datetime(1969, 12, 31, 23, 59, 59), -1, 59, 500000)]"
+  },
+  {
+   "construct": "truncate-units",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 12, 31, 13, 7, 3), dt.datetime(2021, 1, 3)]).select(*(pl.col('x').dt.truncate(u).alias(u) for u in ['1w', '1mo', '1q', '1y', '15m'])).rows()",
+   "observed": "[(datetime.datetime(2024, 12, 30, 0, 0), datetime.datetime(2024, 12, 1, 0, 0), datetime.datetime(2024, 10, 1, 0, 0), datetime.datetime(2024, 1, 1, 0, 0), datetime.datetime(2024, 12, 31, 13, 0)), (datetime.datetime(2020, 12, 28, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 3, 0, 0))]"
+  },
+  {
+   "construct": "date-diff",
+   "area": "temporal",
+   "code": "df(a=[dt.date(2024, 3, 1)], b=[dt.date(2024, 1, 31)]).select((pl.col('a') - pl.col('b')).alias('diff'), (pl.col('a') - pl.col('b')).dt.total_days().alias('days')).rows()",
+   "observed": "[(datetime.timedelta(days=30), 30)]"
+  },
+  {
+   "construct": "date-physical-diff",
+   "area": "temporal",
+   "code": "df(a=[dt.date(1, 1, 1), dt.date(9999, 12, 31), dt.date(1969, 12, 31), None], b=[dt.date(9999, 12, 31), dt.date(1, 1, 1), dt.date(1970, 1, 1), dt.date(2000, 1, 1)]).select((pl.col('a').to_physical().cast(pl.Int64) - pl.col('b').to_physical().cast(pl.Int64)).alias('d')).to_series().to_list()",
+   "observed": "[-3652058, 3652058, -1, None]"
+  },
+  {
+   "construct": "int128-remainder",
+   "area": "integers",
+   "code": "df(x=[-1, -86400000000, 86400000001, -7, 7, -9223372036854775808, None]).select((pl.col('x').cast(pl.Int128) % 86400000000).alias('day'), (pl.col('x').cast(pl.Int128) % 5).alias('five'), (pl.col('x').cast(pl.Int128) - (pl.col('x').cast(pl.Int128) - 3) % 10).alias('bin')).rows()",
+   "observed": "[(86399999999, 4, -7), (0, 0, -86400000007), (1, 1, 86399999993), (86399999993, 3, -7), (7, 2, 3), (71945224192, 2, -9223372036854775817), (None, None, None)]"
+  },
+  {
+   "construct": "list-len",
+   "area": "nested",
+   "code": "df(x=[[1, 2], [], None, [None], [1, None, 3]]).select(pl.col('x').list.len().cast(pl.Int64)).to_series().to_list()",
+   "observed": "[2, 0, None, 1, 3]"
+  },
+  {
+   "construct": "int-to-time",
+   "area": "temporal",
+   "code": "df(x=[0, 1000, 86399999999000, None]).select(pl.col('x').cast(pl.Time).alias('t'), pl.col('x').cast(pl.Time).to_physical().alias('ns')).rows()",
+   "observed": "[(datetime.time(0, 0), 0), (datetime.time(0, 0, 0, 1), 1000), (datetime.time(23, 59, 59, 999999), 86399999999000), (None, None)]"
+  },
+  {
+   "construct": "strftime",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 1, 5, 3, 4, 5, 600000)]).select(pl.col('x').dt.strftime('%Y-%m-%d %H:%M:%S%.f %j %a %U %V')).item()",
+   "observed": "'2024-01-05 03:04:05.600 005 Fri 00 01'"
+  },
+  {
+   "construct": "time-plus-duration",
+   "area": "temporal",
+   "code": "df(x=[dt.time(23, 0)]).select(pl.col('x') + pl.duration(hours=2)).item()",
+   "observed": "error SchemaError: failed to determine supertype of time and duration[\u03bcs]"
+  },
+  {
+   "construct": "tz-nonexistent",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 3, 31, 2, 30)]).select(pl.col('x').dt.replace_time_zone('Europe/Berlin')).item()",
+   "observed": "error ComputeError: datetime '2024-03-31 02:30:00' is non-existent in time zone 'Europe/Berlin'. You may be able to use `non_existent='null'` to return `null` in this case."
+  },
+  {
+   "construct": "str-to-date",
+   "area": "temporal",
+   "code": "(df(x=['2024-02-30', '2024-2-3', '2024-02-03']).select(pl.col('x').str.to_date('%Y-%m-%d', strict=False)).to_series().to_list(), df(x=['2024-02-30']).select(pl.col('x').str.to_date('%Y-%m-%d')).item())",
+   "observed": "error InvalidOperationError: conversion from `str` to `date` failed in column 'x' for 1 out of 1 values: [\"2024-02-30\"]"
+  },
+  {
+   "construct": "cast-double-to-int",
+   "area": "casts",
+   "code": "{str(t): df(x=[2.5, -2.5, 2.7, -2.7, 127.9, 128.0, 1e19, inf, nan, None]).select(pl.col('x').cast(t, strict=False)).to_series().to_list() for t in [pl.Int8, pl.Int64]}",
+   "observed": "{'Int8': [2, -2, 2, -2, 127, None, None, None, None, None], 'Int64': [2, -2, 2, -2, 127, 128, None, None, None, None]}"
+  },
+  {
+   "construct": "cast-double-to-int-strict",
+   "area": "casts",
+   "code": "df(x=[1e19]).select(pl.col('x').cast(pl.Int64)).item()",
+   "observed": "error InvalidOperationError: conversion from `f64` to `i64` failed in column 'x' for 1 out of 1 values: [1.0000e19]"
+  },
+  {
+   "construct": "cast-double-to-int-wrap",
+   "area": "casts",
+   "code": "df(x=[1e19, -1e19, inf, nan, 300.0, -129.0]).select(pl.col('x').cast(pl.Int8, wrap_numerical=True)).to_series().to_list()",
+   "observed": "[127, -128, 127, 0, 127, -128]"
+  },
+  {
+   "construct": "cast-int-narrow",
+   "area": "casts",
+   "code": "(df(x=[300, -129, 127]).select(pl.col('x').cast(pl.Int8, strict=False)).to_series().to_list(), df(x=[300, -129, 127]).select(pl.col('x').cast(pl.Int8, wrap_numerical=True)).to_series().to_list())",
+   "observed": "([None, None, 127], [44, 127, 127])"
+  },
+  {
+   "construct": "cast-int-narrow-strict",
+   "area": "casts",
+   "code": "df(x=[300]).select(pl.col('x').cast(pl.Int8)).item()",
+   "observed": "error InvalidOperationError: conversion from `i64` to `i8` failed in column 'x' for 1 out of 1 values: [300]"
+  },
+  {
+   "construct": "cast-int-to-double",
+   "area": "casts",
+   "code": "df(x=[2**53 + 1, 2**63 - 1]).select(pl.col('x').cast(pl.Float64)).to_series().to_list()",
+   "observed": "[9007199254740992.0, 9.223372036854776e+18]"
+  },
+  {
+   "construct": "cast-double-to-float",
+   "area": "casts",
+   "code": "df(x=[1e300, 1e-50, 0.1]).select(pl.col('x').cast(pl.Float32)).to_series().to_list()",
+   "observed": "[inf, 0.0, 0.10000000149011612]"
+  },
+  {
+   "construct": "cast-decimal-to-int",
+   "area": "casts",
+   "code": "df(x=['2.5', '-2.5', '2.7']).select(pl.col('x').cast(pl.Decimal(10, 1)).cast(pl.Int64)).to_series().to_list()",
+   "observed": "[2, -2, 2]"
+  },
+  {
+   "construct": "cast-int-to-decimal-overflow",
+   "area": "casts",
+   "code": "(df(x=[300, 1234]).select(pl.col('x').cast(pl.Decimal(5, 2), strict=False)).to_series().to_list(), df(x=[1234]).select(pl.col('x').cast(pl.Decimal(5, 2))).item())",
+   "observed": "error InvalidOperationError: conversion from `i64` to `decimal[5,2]` failed in column 'x' for 1 out of 1 values: [1234]"
+  },
+  {
+   "construct": "cast-string-to-int",
+   "area": "casts",
+   "code": "df(x=['1', ' 2', '3.0', '-0', '+5', '9223372036854775808', '1e2', '', '0x10']).select(pl.col('x').cast(pl.Int64, strict=False)).to_series().to_list()",
+   "observed": "[1, None, None, 0, 5, None, None, None, None]"
+  },
+  {
+   "construct": "cast-string-to-double",
+   "area": "casts",
+   "code": "df(x=['1.5', ' 2', 'nan', 'inf', '-Infinity', '1e400', '.5', '5.', '-0', 'abc']).select(pl.col('x').cast(pl.Float64, strict=False)).to_series().to_list()",
+   "observed": "[1.5, None, nan, inf, -inf, inf, 0.5, 5.0, -0.0, None]"
+  },
+  {
+   "construct": "cast-double-to-string",
+   "area": "casts",
+   "code": "df(x=[0.1, 1e21, 1e-7, 1e-5, 1.0, -0.0, inf, nan, 1e15, 1e16, 123456789012345680.0]).select(pl.col('x').cast(pl.String)).to_series().to_list()",
+   "observed": "['0.1', '1e+21', '1e-7', '0.00001', '1.0', '-0.0', 'inf', 'NaN', '1000000000000000.0', '1e+16', '1.2345678901234568e+17']"
+  },
+  {
+   "construct": "cast-bool",
+   "area": "casts",
+   "code": "(df(x=[0, 2, -1]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(), df(x=[0.0, -0.0, nan]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(), df(x=[True, False]).select(pl.col('x').cast(pl.String)).to_series().to_list())",
+   "observed": "([False, True, True], [False, False, True], ['true', 'false'])"
+  },
+  {
+   "construct": "cast-string-to-bool",
+   "area": "casts",
+   "code": "df(x=['true']).select(pl.col('x').cast(pl.Boolean)).item()",
+   "observed": "error InvalidOperationError: casting from Utf8View to Boolean not supported"
+  },
+  {
+   "construct": "cast-string-to-date",
+   "area": "casts",
+   "code": "df(x=['2024-01-01']).select(pl.col('x').cast(pl.Date)).item()",
+   "observed": "error InvalidOperationError: casting from string to date is not supported."
+  },
+  {
+   "construct": "list-sort",
+   "area": "nested",
+   "code": "[df(l=[[1, None], [1, 3], [1], [], None, [None], [1, 2]]).sort('l', descending=d)['l'].to_list() for d in (False, True)]",
+   "observed": "[[None, [], [None], [1], [1, None], [1, 2], [1, 3]], [None, [1, 3], [1, 2], [1, None], [1], [None], []]]"
+  },
+  {
+   "construct": "list-compare",
+   "area": "nested",
+   "code": "df(a=[[1, None]], b=[[1, 3]]).select(pl.col('a') < pl.col('b')).item()",
+   "observed": "error InvalidOperationError: cannot perform '<' comparison between series 'a' of dtype: list[i64] and series 'b' of dtype: list[i64]"
+  },
+  {
+   "construct": "list-min",
+   "area": "nested",
+   "code": "df(l=[[1], [2]]).select(pl.col('l').min()).item()",
+   "observed": "error InvalidOperationError: `min` operation not supported for dtype `list[i64]`"
+  },
+  {
+   "construct": "list-equality",
+   "area": "nested",
+   "code": "df(a=[[1, None], [None], []], b=[[1, None], [None], None]).select((pl.col('a') == pl.col('b')).alias('eq'), pl.col('a').eq_missing(pl.col('b')).alias('eqm')).rows()",
+   "observed": "[(True, True), (True, True), (None, False)]"
+  },
+  {
+   "construct": "list-get",
+   "area": "nested",
+   "code": "(df(l=[[1, 2, 3], [], None]).select(pl.col('l').list.get(0, null_on_oob=True).alias('0'), pl.col('l').list.get(-1, null_on_oob=True).alias('-1'), pl.col('l').list.get(5, null_on_oob=True).alias('5')).rows(), attempt(lambda: df(l=[[1, 2, 3]]).select(pl.col('l').list.get(5)).item()))",
+   "observed": "([(1, 3, None), (None, None, None), (None, None, None)], 'error ComputeError: get index is out of bounds')"
+  },
+  {
+   "construct": "struct-equality",
+   "area": "nested",
+   "code": "df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, {'a': None, 'b': None}, None]).select((pl.col('s') == pl.col('s').shift(1)).alias('eq')).to_series().to_list()",
+   "observed": "[None, True, False, None]"
+  },
+  {
+   "construct": "struct-group-sort",
+   "area": "nested",
+   "code": "(df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, None]).group_by('s', maintain_order=True).len().rows(), df(s=[{'a': 2, 'b': 1}, {'a': 1, 'b': None}, {'a': 1, 'b': 0}, {'a': None, 'b': 0}]).sort('s')['s'].to_list())",
+   "observed": "([({'a': 1, 'b': None}, 2), (None, 1)], [{'a': None, 'b': 0}, {'a': 1, 'b': None}, {'a': 1, 'b': 0}, {'a': 2, 'b': 1}])"
+  },
+  {
+   "construct": "explode",
+   "area": "nested",
+   "code": "(df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]]).explode('l').rows(), df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]]).explode('l', empty_as_null=False, keep_nulls=False).rows())",
+   "observed": "([(1, 1), (1, 2), (3, None), (4, None)], [(1, 1), (1, 2), (4, None)])"
+  },
+  {
+   "construct": "set-operations",
+   "area": "relations",
+   "code": "{k: v.rows() for k, v in {'union_all': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])]), 'union': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])]).unique(maintain_order=True), 'semi': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi'), 'intersect': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi', nulls_equal=True).unique(maintain_order=True), 'anti': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti'), 'except': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti', nulls_equal=True).unique(maintain_order=True)}.items()}",
+   "observed": "{'union_all': [(1,), (1,), (2,), (None,), (None,), (1,), (None,), (3,)], 'union': [(1,), (2,), (None,), (3,)], 'semi': [(1,), (1,)], 'intersect': [(1,), (None,)], 'anti': [(2,), (None,), (None,)], 'except': [(2,)]}"
+  },
+  {
+   "construct": "clustered",
+   "area": "relations",
+   "code": "df(k=[2, 1, 2, 1], i=[0, 1, 2, 3]).sort('k', maintain_order=True).rows()",
+   "observed": "[(1, 1), (1, 3), (2, 0), (2, 2)]"
+  },
+  {
+   "construct": "substring-huge",
+   "area": "strings",
+   "code": "df(s=['abc']).select(pl.col('s').str.slice(2**40, 2**40).alias('far'), pl.col('s').str.slice(-2**40, 2**41).alias('wide')).rows()",
+   "observed": "[('', 'abc')]"
+  },
+  {
+   "construct": "fp32-arith",
+   "area": "doubles",
+   "code": "(df(a=([1.0, 3e38, 16777216.0], pl.Float32)).select(pl.col('a') + pl.col('a'), (pl.col('a') + 1).alias('plus1')).rows(), [str(t) for t in df(a=([0.1], pl.Float32)).select(pl.col('a') + 0.1, (pl.col('a') + 1).alias('i'), pl.col('a').sum().alias('s'), pl.col('a').mean().alias('m')).dtypes])",
+   "observed": "([(2.0, 2.0), (inf, 3.0000000054977558e+38), (33554432.0, 16777216.0)], ['Float32', 'Float32', 'Float32', 'Float32'])"
+  },
+  {
+   "construct": "implicit-casts",
+   "area": "frontend",
+   "code": "([str(t) for t in df(a=([1], pl.Int32), b=[1]).select(pl.col('a') + pl.col('b'), (pl.col('a') + 1).alias('lit'), (pl.col('a') + 2**40).alias('big'), (pl.col('a') + 1.5).alias('f'), (pl.col('a').cast(pl.UInt64) + pl.col('b')).alias('u')).dtypes], attempt(lambda: df(a=[1]).select(pl.col('a') + pl.lit('x')).item()))",
+   "observed": "(['Int64', 'Int32', 'Int64', 'Float64', 'Int128'], 'error InvalidOperationError: arithmetic on dtypes i64 and str is not allowed (lhs: column \\'a\\', rhs: expression `\"x\"`); try an explicit cast first')"
+  },
+  {
+   "construct": "literal-types",
+   "area": "frontend",
+   "code": "[str(t) for t in pl.select(pl.lit(1), pl.lit(2**40).alias('b'), pl.lit(2**63).alias('c'), pl.lit(2**64).alias('d'), pl.lit(1.5).alias('e'), pl.lit('x').alias('f'), pl.lit(None).alias('g'), pl.lit(True).alias('h'), pl.lit(Decimal('1.25')).alias('i')).dtypes]",
+   "observed": "['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)']"
+  },
+  {
+   "construct": "type-names",
+   "area": "frontend",
+   "code": "[str(t) for t in [pl.Int8, pl.UInt64, pl.Int128, pl.Float32, pl.String, pl.Binary, pl.Boolean, pl.Date, pl.Time, pl.Datetime('us'), pl.Duration('us'), pl.Decimal(10, 2), pl.List(pl.Int64), pl.Array(pl.Int64, 2), pl.Struct({'a': pl.Int64}), pl.Null, pl.Categorical]]",
+   "observed": "['Int8', 'UInt64', 'Int128', 'Float32', 'String', 'Binary', 'Boolean', 'Date', 'Time', \"Datetime(time_unit='us', time_zone=None)\", \"Duration(time_unit='us')\", 'Decimal(precision=10, scale=2)', 'List(Int64)', 'Array(Int64, shape=(2,))', \"Struct({'a': Int64})\", 'Null', 'Categorical']"
+  },
+  {
+   "construct": "io-functions",
+   "area": "io",
+   "code": "([n for n in dir(pl) if n.startswith('scan_')], [n for n in dir(pl.DataFrame) if n.startswith('write_')], [n for n in dir(pl.LazyFrame) if n.startswith('sink_')], hasattr(pl, 'Catalog'), [p for p in ('storage_options', 'credential_provider') if p in __import__('inspect').signature(pl.scan_parquet).parameters])",
+   "observed": "(['scan_arrow_c_stream', 'scan_csv', 'scan_delta', 'scan_external_reader', 'scan_iceberg', 'scan_ipc', 'scan_lance', 'scan_lines', 'scan_ndjson', 'scan_parquet', 'scan_pyarrow_dataset'], ['write_avro', 'write_clipboard', 'write_csv', 'write_database', 'write_delta', 'write_excel', 'write_iceberg', 'write_ipc', 'write_ipc_stream', 'write_json', 'write_ndjson', 'write_parquet'], ['sink_batches', 'sink_csv', 'sink_delta', 'sink_iceberg', 'sink_ipc', 'sink_ndjson', 'sink_parquet'], True, ['storage_options', 'credential_provider'])"
+  }
+ ]
+}

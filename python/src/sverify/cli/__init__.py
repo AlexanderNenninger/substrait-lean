@@ -1,5 +1,5 @@
 """The `sverify` command: check, fix and run a pipeline's file from a shell,
-a CI job or an agent (#744).
+a CI job or an agent.
 
     sverify check pipelines/orders.py            # prove every transform and node
     sverify check pipelines/orders.py:paid       # one node (or transform)
@@ -35,8 +35,8 @@ error, 3 unsupported or refused, 4 time or memory budget exceeded, 5 a
 refresh committed with rows quarantined or held a node, 6 error.
 A `refresh` that exits 5 prints `Refresh.alert()`'s text after the
 summary; its JSON's `status` says `"quarantined"` or `"held"`, with
-`"outcome"` and `"alert"` (#184). Rows of your data, the quarantine's
-`examples` and the alert's tables, appear only with `--examples` (#887).
+`"outcome"` and `"alert"`. Rows of your data, the quarantine's
+`examples` and the alert's tables, appear only with `--examples`.
 
 * `main` runs the command with given arguments and returns its exit code.
 * `discover` imports a file the way `check` does and returns a `Discovery`:

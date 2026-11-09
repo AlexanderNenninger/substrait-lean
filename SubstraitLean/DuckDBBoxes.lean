@@ -366,9 +366,10 @@ theorem base64_str (s : String) : ∃ t, callScalar .duckdb "base64" [.str s] = 
   generalize Scalar.call _ _ = v at h
   cases v <;> simp_all [ok, Ty.has, Law.holds, Boxes.duckdb, DuckDB.scalarRows, DuckDB.fn]
 
-/-- `entropy` over values is a double at least `+0.0`. -/
+/-- `entropy` over values is a double at least `+0.0`, by its canonical code
+(`-0.0` is `+0.0`, D31). -/
 theorem entropy_nonneg {vs : List Value} (hne : vs ≠ []) :
-    ∃ c, callAgg .duckdb "entropy" vs = .float c ∧ 0 ≤ c := by
+    ∃ c, callAgg .duckdb "entropy" vs = .float c ∧ 0 ≤ FloatCode.canon c := by
   have hf : Boxes.duckdb.aggregate? "entropy" = some (Boxes.duckdb.aggregates.head (by decide)) :=
     rfl
   have h := Aggregate.call_ok_of_wf Boxes.duckdb_wf (aggregate?_mem hf) hne

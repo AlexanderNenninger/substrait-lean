@@ -43,11 +43,10 @@ variable [Boxes.Ambient]
 within its tolerance, the reference's in its range. -/
 theorem Expr.atom?_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : Expr}
     {ε : Nat} {lo hi : Int} (h : e.atom? t mask env = some (ε, lo, hi)) {x y : Row}
-    (r : t.Rows x y) (hx : ∀ j c, mask j = true → x.getD j .null = .float c → IsRef c)
-    (hy : EnvMem env y) :
+    (r : t.Rows x y) (hy : EnvMem env y) :
     (e.eval x = .null ∧ e.eval y = .null) ∨
-      ∃ a b, e.eval x = .float a ∧ e.eval y = .float b ∧ (a - b).natAbs ≤ ε ∧ lo ≤ b ∧ b ≤ hi ∧
-        IsFin a ∧ IsFin b := by
+      ∃ a b, e.eval x = .float a ∧ e.eval y = .float b ∧ (canon a - canon b).natAbs ≤ ε ∧
+        lo ≤ canon b ∧ canon b ≤ hi ∧ IsFin (canon a) ∧ IsFin (canon b) := by
   cases e with
   | lit v =>
     cases v with
@@ -57,7 +56,10 @@ theorem Expr.atom?_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : 
       · rename_i hc
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl, rfl⟩ := h
-        exact .inr ⟨c, c, rfl, rfl, by simp, Int.le_refl _, Int.le_refl _, hc, hc⟩
+        have hcc : canon c = c := canon_of_bounds hc
+        exact .inr ⟨c, c, rfl, rfl, by rw [hcc]; simp, by rw [hcc]; exact Int.le_refl _,
+          by rw [hcc]; exact Int.le_refl _,
+          by rw [hcc]; exact hc, by rw [hcc]; exact hc⟩
       · cases h
     | _ => simp [Expr.atom?] at h
   | field k =>
@@ -93,21 +95,19 @@ theorem Expr.atom?_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : 
             simp only [Option.some.injEq, Prod.mk.injEq] at hcr
             obtain ⟨rfl, rfl⟩ := hcr
             rw [hint] at hb; cases hb
-            have hb1 := hbm.1 _ rfl; have hb2 := hbm.2 _ rfl
-            have fb : IsFin b := ⟨by omega, by omega⟩
+            have hb1 : lo'' ≤ canon b := hbm.1 _ rfl
+            have hb2 : canon b ≤ hi'' := hbm.2 _ rfl
+            have fb : IsFin (canon b) := ⟨by omega, by omega⟩
             cases hxv : x.getD k .null with
             | float a =>
               rw [hxv] at hcell
-              have ha := hx k a hm hxv
-              have hab : (a - b).natAbs ≤ (t k).getD 0 := by
+              have hab : (canon a - canon b).natAbs ≤ (t k).getD 0 := by
                 cases htk : t k with
                 | none =>
                   have := (Tol.cell_none htk).1 hcell
                   cases this; simp
                 | some ε =>
                   have hn := Tol.cell_float_iff' htk hcell
-                  rw [show fp64.canon a = a from canon_of_isRef ha,
-                    show fp64.canon b = b from canon_of_isRef (isRef_of_bounds fb)] at hn
                   simpa using hn
               exact ⟨a, b, rfl, rfl, hab, hb1, hb2, ⟨by omega, by omega⟩, fb⟩
             | _ => all_goals (rw [hxv] at hcell; exact hcell.elim)
@@ -184,12 +184,14 @@ theorem atom_mag {e : Nat} {lo hi a b : Int} (hab : (a - b).natAbs ≤ e) (hb1 :
 
 omit [Boxes.Ambient] in
 theorem fadd_eq_sumCR {a b : Int} (ha : IsFin a) (hb : IsFin b) :
-    fadd a b = floatSumCR [.float a, .float b] := by
+    canon (fadd a b) = floatSumCR [.float a, .float b] := by
   have hf : FinCodes [.float a, .float b] := fun c hc => by
     simp only [List.mem_cons, Value.float.injEq, List.not_mem_nil, or_false] at hc
-    rcases hc with rfl | rfl <;> assumption
+    rcases hc with rfl | rfl
+    · rw [canon_of_bounds ha]; exact ha
+    · rw [canon_of_bounds hb]; exact hb
   rw [fadd_fin ha hb]
-  simp [floatSumCR, nonFinite_of_finCodes hf, exactSum]
+  simp [floatSumCR, nonFinite_of_finCodes hf, exactSum, canon_of_bounds ha, canon_of_bounds hb]
 
 omit [Boxes.Ambient] in
 /-- **`x + y`**: two finite operands within `e` codes each, of magnitudes at
@@ -198,28 +200,33 @@ theorem fadd_near {e M : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin a₁) (f
     (g₂ : IsFin b₂) (h₁ : (a₁ - b₁).natAbs ≤ e) (h₂ : (a₂ - b₂).natAbs ≤ e)
     (hM : (scaled a₁).natAbs + (scaled a₂).natAbs ≤ M) (hM' : (scaled b₁).natAbs + (scaled b₂).natAbs ≤ M)
     (hbig : M ≤ 2 ^ 2097) :
-    (fadd a₁ a₂ - fadd b₁ b₂).natAbs ≤ 2 * (e + 1) + 2 * ulpDiv (M : Int) 1 + 4 := by
+    (canon (fadd a₁ a₂) - canon (fadd b₁ b₂)).natAbs ≤ 2 * (e + 1) + 2 * ulpDiv (M : Int) 1 + 4 := by
   rw [fadd_eq_sumCR f₁ f₂, fadd_eq_sumCR g₁ g₂]
   have hfin : ∀ {x y : Int}, IsFin x → IsFin y → FinCodes [.float x, .float y] := fun hx hy c hc => by
     simp only [List.mem_cons, Value.float.injEq, List.not_mem_nil, or_false] at hc
-    rcases hc with rfl | rfl <;> assumption
-  have hS : ∀ {x y : Int}, (exactSum [.float x, .float y]).natAbs ≤ (scaled x).natAbs + (scaled y).natAbs :=
-    fun {x y} => by simpa [exactSum] using Int.natAbs_add_le (scaled x) (scaled y)
-  have hfS : ∀ {x y : Int}, (scaled x).natAbs + (scaled y).natAbs ≤ M →
-      IsFin (ofExact (exactSum [.float x, .float y])) := fun {x y} h =>
-    ofExactDiv_fin (n := 1) (by omega) (by have := hS (x := x) (y := y); omega)
-  have hc := floatSumCR_near (e := e) (.cons (show CodeNear e (.float a₁) (.float b₁) from h₁)
-    (.cons (show CodeNear e (.float a₂) (.float b₂) from h₂) .nil)) (hfin f₁ f₂) (hfin g₁ g₂)
-    (hfS hM) (hfS hM')
+    rcases hc with rfl | rfl
+    · rw [canon_of_bounds hx]; exact hx
+    · rw [canon_of_bounds hy]; exact hy
+  have hS : ∀ {x y : Int}, IsFin x → IsFin y →
+      (exactSum [.float x, .float y]).natAbs ≤ (scaled x).natAbs + (scaled y).natAbs :=
+    fun {x y} hx hy => by
+      simpa [exactSum, canon_of_bounds hx, canon_of_bounds hy] using Int.natAbs_add_le (scaled x) (scaled y)
+  have hfS : ∀ {x y : Int}, IsFin x → IsFin y → (scaled x).natAbs + (scaled y).natAbs ≤ M →
+      IsFin (ofExact (exactSum [.float x, .float y])) := fun {x y} hx hy h =>
+    ofExactDiv_fin (n := 1) (by omega) (by have := hS hx hy; omega)
+  have hcn : ∀ {x y : Int}, IsFin x → IsFin y → (x - y).natAbs ≤ e → CodeNear e (.float x) (.float y) :=
+    fun hx hy h => by show (canon _ - canon _).natAbs ≤ e; rw [canon_of_bounds hx, canon_of_bounds hy]; exact h
+  have hc := floatSumCR_near (e := e) (.cons (hcn f₁ g₁ h₁) (.cons (hcn f₂ g₂ h₂) .nil))
+    (hfin f₁ f₂) (hfin g₁ g₂) (hfS f₁ f₂ hM) (hfS g₁ g₂ hM')
   have u₁ := ulpDiv_mono (v := exactSum [.float a₁, .float a₂]) (w := (M : Int)) 1
-    (by rw [Int.natAbs_natCast]; exact Nat.le_trans hS hM)
+    (by rw [Int.natAbs_natCast]; exact Nat.le_trans (hS f₁ f₂) hM)
   have u₂ := ulpDiv_mono (v := exactSum [.float b₁, .float b₂]) (w := (M : Int)) 1
-    (by rw [Int.natAbs_natCast]; exact Nat.le_trans hS hM')
+    (by rw [Int.natAbs_natCast]; exact Nat.le_trans (hS g₁ g₂) hM')
   simp only [List.length_cons, List.length_nil] at hc
   omega
 
-omit [Boxes.Ambient] in
-theorem fsub_eq_fadd {a b : Int} (ha : IsFin a) (hb : IsFin b) : fsub a b = fadd a (-b) := by
+theorem fsub_eq_fadd {a b : Int} (ha : IsFin a) (hb : IsFin b) :
+    canon (fsub a b) = canon (fadd a (-b)) := by
   rw [fsub_fin ha hb, fadd_fin ha (IsFin.neg hb), scaled_neg', Int.sub_eq_add_neg]
 
 omit [Boxes.Ambient] in
@@ -230,7 +237,7 @@ theorem fmul_near {ex ey Mx My : Nat} {a₁ a₂ b₁ b₂ : Int} (f₁ : IsFin 
     (g₁ : IsFin b₁) (g₂ : IsFin b₂) (h₁ : (a₁ - b₁).natAbs ≤ ex) (h₂ : (a₂ - b₂).natAbs ≤ ey)
     (ma₁ : (scaled a₁).natAbs ≤ Mx) (ma₂ : (scaled a₂).natAbs ≤ My)
     (mb₁ : (scaled b₁).natAbs ≤ Mx) (mb₂ : (scaled b₂).natAbs ≤ My) (hbig : Mx * My ≤ 2 ^ 3171) :
-    (fmul a₁ a₂ - fmul b₁ b₂).natAbs ≤
+    (canon (fmul a₁ a₂) - canon (fmul b₁ b₂)).natAbs ≤
       4 + 2 * ulpDiv ((Mx * My : Nat) : Int) unitK + (Mx * (ey + 1) + My * (ex + 1) + unitK - 1) / unitK := by
   rw [fmul_fin f₁ f₂, fmul_fin g₁ g₂]
   have hK : 0 < unitK := Nat.two_pow_pos _
@@ -285,7 +292,7 @@ theorem fdiv_lit_near {e Mx : Nat} {a b c : Int} (fa : IsFin a) (fb : IsFin b) (
     (hc0 : scaled c ≠ 0) (h : (a - b).natAbs ≤ e) (ma : (scaled a).natAbs ≤ Mx)
     (mb : (scaled b).natAbs ≤ Mx)
     (hbig : (Mx * unitK + (scaled c).natAbs - 1) / (scaled c).natAbs ≤ 2 ^ 2097) :
-    (fdiv a c - fdiv b c).natAbs ≤
+    (canon (fdiv a c) - canon (fdiv b c)).natAbs ≤
       4 + 2 * ulpDiv (((Mx * unitK + (scaled c).natAbs - 1) / (scaled c).natAbs : Nat) : Int) 1 +
         (unitK * (e + 1) + (scaled c).natAbs - 1) / (scaled c).natAbs := by
   rw [fdiv_fin fa fc hc0, fdiv_fin fb fc hc0]
@@ -426,7 +433,7 @@ theorem fdiv_near {ex ey Mx My m : Nat} {lo hi a₁ a₂ b₁ b₂ : Int} (f₁ 
     (ma₁ : (scaled a₁).natAbs ≤ Mx + ex) (mb₁ : (scaled b₁).natAbs ≤ Mx) (mb₂ : (scaled b₂).natAbs ≤ My)
     (hz : ClearOfZero lo hi ey m) (ha₂ : lo - ey ≤ a₂ ∧ a₂ ≤ hi + ey) (hb₂ : lo ≤ b₂ ∧ b₂ ≤ hi)
     (hbig : ((Mx + ex) * unitK + m - 1) / m ≤ 2 ^ 2097) :
-    (fdiv a₁ a₂ - fdiv b₁ b₂).natAbs ≤
+    (canon (fdiv a₁ a₂) - canon (fdiv b₁ b₂)).natAbs ≤
       4 + 2 * ulpDiv ((((Mx + ex) * unitK + m - 1) / m : Nat) : Int) 1 +
         (unitK * (My * (ex + 1) + Mx * (ey + 1)) + m * m - 1) / (m * m) := by
   obtain ⟨hsign, hma, hmb⟩ := hz.pair (a := a₂) (b := b₂) ha₂.1 ha₂.2 (by have := hb₂.1; omega)
@@ -556,10 +563,10 @@ set_option exponentiation.threshold 3200 in
 /-- **The arithmetic rows are sound**: on paired rows, both NULL, or two
 reference codes within the row's bound. -/
 theorem Expr.arithTol_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : Expr} {B : Nat}
-    (h : e.arithTol t mask env = some B) {x y : Row} (r : t.Rows x y)
-    (hx : ∀ j c, mask j = true → x.getD j .null = .float c → IsRef c) (hy : EnvMem env y) :
+    (h : e.arithTol t mask env = some B) {x y : Row} (r : t.Rows x y) (hy : EnvMem env y) :
     (e.eval x = .null ∧ e.eval y = .null) ∨
-      ∃ a b, e.eval x = .float a ∧ e.eval y = .float b ∧ (a - b).natAbs ≤ B ∧ IsRef a ∧ IsRef b := by
+      ∃ a b, e.eval x = .float a ∧ e.eval y = .float b ∧ (canon a - canon b).natAbs ≤ B ∧
+        IsRef (canon a) ∧ IsRef (canon b) := by
   cases e with
   | bin f x' y' =>
     simp only [Expr.arithTol] at h
@@ -575,29 +582,31 @@ theorem Expr.arithTol_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e
     have hf : f = .fadd ∨ f = .fsub ∨ f = .fmul ∨ f = .fdiv := by
       cases f <;> simp_all
     simp only [Expr.eval]
-    rcases Expr.atom?_sound hax r hx hy with ⟨n₁, n₁'⟩ | ⟨a₁, b₁, ea₁, eb₁, d₁, l₁, u₁, fa₁, fb₁⟩
+    rcases Expr.atom?_sound hax r hy with ⟨n₁, n₁'⟩ | ⟨a₁, b₁, ea₁, eb₁, d₁, l₁, u₁, fa₁, fb₁⟩
     · left; rw [n₁, n₁', binFloat_null_l f hf, binFloat_null_l f hf]; exact ⟨rfl, rfl⟩
-    rcases Expr.atom?_sound hay r hx hy with ⟨n₂, n₂'⟩ | ⟨a₂, b₂, ea₂, eb₂, d₂, l₂, u₂, fa₂, fb₂⟩
+    rcases Expr.atom?_sound hay r hy with ⟨n₂, n₂'⟩ | ⟨a₂, b₂, ea₂, eb₂, d₂, l₂, u₂, fa₂, fb₂⟩
     · left; rw [n₂, n₂', binFloat_null_r f hf, binFloat_null_r f hf]; exact ⟨rfl, rfl⟩
     right
     rw [ea₁, eb₁, ea₂, eb₂]
+    -- The operations read their operands up to `canon` (`fadd_canon` …).
     obtain ⟨ma₁, mb₁⟩ := atom_mag d₁ l₁ u₁
     obtain ⟨ma₂, mb₂⟩ := atom_mag d₂ l₂ u₂
     rcases hf with rfl | rfl | rfl | rfl
     · simp only at h; split at h
       · rename_i hbig
         simp only [Option.some.injEq] at h; subst h
-        refine ⟨_, _, rfl, rfl, fadd_near fa₁ fa₂ fb₁ fb₂ (Nat.le_trans d₁ (Nat.le_max_left _ _))
-          (Nat.le_trans d₂ (Nat.le_max_right _ _)) (by omega) (by omega) hbig, fadd_isRef _ _,
-          fadd_isRef _ _⟩
+        refine ⟨_, _, rfl, rfl, ?_, fadd_isRef _ _, fadd_isRef _ _⟩
+        rw [← fadd_canon a₁ a₂, ← fadd_canon b₁ b₂]
+        exact fadd_near fa₁ fa₂ fb₁ fb₂ (Nat.le_trans d₁ (Nat.le_max_left _ _))
+          (Nat.le_trans d₂ (Nat.le_max_right _ _)) (by omega) (by omega) hbig
       · cases h
     · simp only at h; split at h
       · rename_i hbig
         simp only [Option.some.injEq] at h; subst h
         refine ⟨_, _, rfl, rfl, ?_, fsub_isRef _ _, fsub_isRef _ _⟩
-        rw [fsub_eq_fadd fa₁ fa₂, fsub_eq_fadd fb₁ fb₂]
-        have : (-a₂ - -b₂).natAbs = (a₂ - b₂).natAbs := by
-          rw [show -a₂ - -b₂ = -(a₂ - b₂) by omega, Int.natAbs_neg]
+        rw [← fsub_canon a₁ a₂, ← fsub_canon b₁ b₂, fsub_eq_fadd fa₁ fa₂, fsub_eq_fadd fb₁ fb₂]
+        have : (-canon a₂ - -canon b₂).natAbs = (canon a₂ - canon b₂).natAbs := by
+          rw [show -canon a₂ - -canon b₂ = -(canon a₂ - canon b₂) by omega, Int.natAbs_neg]
         refine fadd_near fa₁ (IsFin.neg fa₂) fb₁ (IsFin.neg fb₂)
           (Nat.le_trans d₁ (Nat.le_max_left _ _)) (by rw [this]; exact Nat.le_trans d₂ (Nat.le_max_right _ _))
           ?_ ?_ hbig
@@ -607,8 +616,9 @@ theorem Expr.arithTol_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e
     · simp only at h; split at h
       · rename_i hbig
         simp only [Option.some.injEq] at h; subst h
-        exact ⟨_, _, rfl, rfl, fmul_near fa₁ fa₂ fb₁ fb₂ d₁ d₂ ma₁ ma₂ (by omega) (by omega) hbig,
-          fmul_isRef _ _, fmul_isRef _ _⟩
+        refine ⟨_, _, rfl, rfl, ?_, fmul_isRef _ _, fmul_isRef _ _⟩
+        rw [← fmul_canon a₁ a₂, ← fmul_canon b₁ b₂]
+        exact fmul_near fa₁ fa₂ fb₁ fb₂ d₁ d₂ ma₁ ma₂ (by omega) (by omega) hbig
       · cases h
     · simp only at h
       cases y' with
@@ -620,10 +630,16 @@ theorem Expr.arithTol_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e
           · rename_i hc
             simp only [Option.some.injEq] at h; subst h
             -- The literal is the same on both sides.
-            simp only [Expr.eval] at ea₂ eb₂
-            cases ea₂; cases eb₂
-            exact ⟨_, _, rfl, rfl, fdiv_lit_near fa₁ fb₁ fa₂ hc.1 d₁ ma₁ (by omega) hc.2,
-              fdiv_isRef _ _, fdiv_isRef _ _⟩
+            simp only [Expr.eval, Value.float.injEq] at ea₂ eb₂
+            have hfc : IsFin c := by
+              simp only [Expr.atom?, Bool.and_eq_true, decide_eq_true_eq] at hay
+              split at hay
+              · assumption
+              · cases hay
+            have hcc : canon c = c := canon_of_bounds hfc
+            refine ⟨_, _, rfl, rfl, ?_, fdiv_isRef _ _, fdiv_isRef _ _⟩
+            rw [← ea₂, ← eb₂, hcc, ← fdiv_canon_left a₁, ← fdiv_canon_left b₁]
+            exact fdiv_lit_near fa₁ fb₁ hfc hc.1 d₁ ma₁ (by omega) hc.2
           · cases h
         | _ => simp [Expr.atom?] at hay
       | _ =>
@@ -636,8 +652,10 @@ theorem Expr.arithTol_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e
             split at h
             · rename_i hbig
               simp only [Option.some.injEq] at h; subst h
-              exact ⟨_, _, rfl, rfl, fdiv_near fa₁ fa₂ fb₁ fb₂ d₁ d₂ ma₁ mb₁ mb₂ (clearOfZero?_sound hcz)
-                ⟨by omega, by omega⟩ ⟨l₂, u₂⟩ hbig, fdiv_isRef _ _, fdiv_isRef _ _⟩
+              refine ⟨_, _, rfl, rfl, ?_, fdiv_isRef _ _, fdiv_isRef _ _⟩
+              rw [← fdiv_canon_left a₁, ← fdiv_canon_left b₁]
+              exact fdiv_near fa₁ fa₂ fb₁ fb₂ d₁ d₂ ma₁ mb₁ mb₂ (clearOfZero?_sound hcz)
+                ⟨by omega, by omega⟩ ⟨l₂, u₂⟩ hbig
             · cases h
   | _ => simp [Expr.arithTol] at h
 
@@ -647,7 +665,7 @@ def Expr.tolA (t : Tol) (mask : Nat → Bool) (env : List AVal) (e : Expr) : Opt
 
 theorem Expr.tolA_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : Expr}
     {o : Option Nat} (he : e.tolA t mask env = some o) {x y : Row} (h : t.Rows x y)
-    (hx : ∀ j c, mask j = true → x.getD j .null = .float c → IsRef c) (hy : EnvMem env y)
+    (hy : EnvMem env y)
     {t' : Tol} {j : Nat} (ho : OLe o (t' j)) : t'.Cell j (e.eval x) (e.eval y) := by
   unfold Expr.tolA at he
   cases h1 : e.tol? t with
@@ -661,12 +679,10 @@ theorem Expr.tolA_sound {t : Tol} {mask : Nat → Bool} {env : List AVal} {e : E
     | none => rw [htj] at ho; exact ho.elim
     | some B' =>
       rw [htj] at ho
-      rcases Expr.arithTol_sound hB h hx hy with ⟨n, n'⟩ | ⟨a, b, ea, eb, d, ra, rb⟩
+      rcases Expr.arithTol_sound hB h hy with ⟨n, n'⟩ | ⟨a, b, ea, eb, d, -, -⟩
       · rw [n, n']; exact Tol.cell_null _ _
       · rw [ea, eb]
-        refine Tol.cell_float htj ?_
-        rw [show fp64.canon a = a from canon_of_isRef ra, show fp64.canon b = b from canon_of_isRef rb]
-        exact Nat.le_trans d ho
+        exact Tol.cell_float htj (Nat.le_trans d ho)
 
 /-- The tolerances of a projection's expressions. -/
 def Tol.exprsA (t : Tol) (mask : Nat → Bool) (env : List AVal) (es : List Expr) : Tol := fun k =>
@@ -676,7 +692,7 @@ def Tol.exprsA (t : Tol) (mask : Nat → Bool) (env : List AVal) (es : List Expr
 
 theorem Tol.rows_exprsA {t : Tol} {mask : Nat → Bool} {env : List AVal} {es : List Expr}
     (hes : es.all (fun e => (e.tolA t mask env).isSome) = true) {x y : Row} (h : t.Rows x y)
-    (hx : ∀ j c, mask j = true → x.getD j .null = .float c → IsRef c) (hy : EnvMem env y) :
+    (hy : EnvMem env y) :
     (Tol.exprsA t mask env es).Rows (es.map (·.eval x)) (es.map (·.eval y)) := by
   refine ⟨by simp, fun k => ?_⟩
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
@@ -686,7 +702,7 @@ theorem Tol.rows_exprsA {t : Tol} {mask : Nat → Bool} {env : List AVal} {es : 
     simp only [Option.map_some, Option.getD_some]
     have hs := List.all_eq_true.1 hes e (List.mem_of_getElem? hk)
     obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 hs
-    exact Expr.tolA_sound ho h hx hy (by simp [Tol.exprsA, hk, ho, OLe.refl])
+    exact Expr.tolA_sound ho h hy (by simp [Tol.exprsA, hk, ho, OLe.refl])
 
 /-! ### The `MIN` and `MAX` rows (#929 step 2)
 
@@ -757,51 +773,62 @@ theorem foldl_max_bounds {L U : Int} : ∀ {a : Int} {xs : List Int}, L ≤ a �
     exact foldl_max_bounds (by rw [Int.max_def]; split <;> omega) (by rw [Int.max_def]; split <;> omega)
       fun y hy => h y (List.mem_cons_of_mem _ hy)
 
-omit [Boxes.Ambient] in
-theorem pickFold_min_float (x : Int) :
-    ∀ cs : List Int, pickFold (fun a b => !a.le b) (.float x) (cs.map .float) = .float (cs.foldl min x)
-  | [] => rfl
+/-- `MIN` of doubles: a member whose canonical code is the least canonical code. -/
+theorem pickFold_min_float (x : Int) : ∀ cs : List Int, ∃ y,
+    pickFold (fun a b => !a.leT b) (.float x) (cs.map .float) = .float y ∧
+      canon y = (cs.map canon).foldl min (canon x)
+  | [] => ⟨x, rfl, rfl⟩
   | c :: cs => by
-    have : pickFold (fun a b => !a.le b) (.float x) ((c :: cs).map .float) =
-        pickFold (fun a b => !a.le b) (.float (min x c)) (cs.map .float) := by
-      simp only [pickFold, List.map_cons, List.foldl_cons, Value.le_def, Value.leScalar]
-      congr 1
-      rw [Int.min_def]; by_cases h : x ≤ c <;> simp [h]
-    rw [this, pickFold_min_float (min x c) cs, List.foldl_cons]
+    obtain ⟨z, hz, hzc⟩ : ∃ z, (if (!(Value.float x).leT (.float c)) = true then Value.float c
+        else .float x) = .float z ∧ canon z = min (canon x) (canon c) := by
+      cases hl : (Value.float x).leT (.float c)
+      · have := mt (Value.leT_float x c).mpr (by simp [hl])
+        exact ⟨c, by simp, by rw [Int.min_def]; split <;> omega⟩
+      · have := (Value.leT_float x c).mp hl
+        exact ⟨x, by simp, by rw [Int.min_def]; split <;> omega⟩
+    have hstep : pickFold (fun a b => !a.leT b) (.float x) ((c :: cs).map .float) =
+        pickFold (fun a b => !a.leT b) (.float z) (cs.map .float) := by
+      simp only [pickFold, List.map_cons, List.foldl_cons]; rw [hz]
+    obtain ⟨y, hy, hyc⟩ := pickFold_min_float z cs
+    exact ⟨y, hstep ▸ hy, by rw [hyc, hzc]; rfl⟩
 
-omit [Boxes.Ambient] in
-theorem pickFold_max_float (x : Int) :
-    ∀ cs : List Int, pickFold (fun a b => !b.le a) (.float x) (cs.map .float) = .float (cs.foldl max x)
-  | [] => rfl
+/-- `MAX` of doubles: a member whose canonical code is the greatest canonical code. -/
+theorem pickFold_max_float (x : Int) : ∀ cs : List Int, ∃ y,
+    pickFold (fun a b => !a.geT b) (.float x) (cs.map .float) = .float y ∧
+      canon y = (cs.map canon).foldl max (canon x)
+  | [] => ⟨x, rfl, rfl⟩
   | c :: cs => by
-    have : pickFold (fun a b => !b.le a) (.float x) ((c :: cs).map .float) =
-        pickFold (fun a b => !b.le a) (.float (max x c)) (cs.map .float) := by
-      simp only [pickFold, List.map_cons, List.foldl_cons, Value.le_def, Value.leScalar]
-      congr 1
-      rw [Int.max_def]; by_cases h : c ≤ x <;> by_cases h' : x ≤ c <;> simp [h, h'] <;> omega
-    rw [this, pickFold_max_float (max x c) cs, List.foldl_cons]
+    obtain ⟨z, hz, hzc⟩ : ∃ z, (if (!(Value.float x).geT (.float c)) = true then Value.float c
+        else .float x) = .float z ∧ canon z = max (canon x) (canon c) := by
+      cases hl : (Value.float x).geT (.float c)
+      · have := mt (Value.geT_float x c).mpr (by simp [hl])
+        exact ⟨c, by simp, by rw [Int.max_def]; split <;> omega⟩
+      · have := (Value.geT_float x c).mp hl
+        exact ⟨x, by simp, by rw [Int.max_def]; split <;> omega⟩
+    have hstep : pickFold (fun a b => !a.geT b) (.float x) ((c :: cs).map .float) =
+        pickFold (fun a b => !a.geT b) (.float z) (cs.map .float) := by
+      simp only [pickFold, List.map_cons, List.foldl_cons]; rw [hz]
+    obtain ⟨y, hy, hyc⟩ := pickFold_max_float z cs
+    exact ⟨y, hstep ▸ hy, by rw [hyc, hzc]; rfl⟩
 
-omit [Boxes.Ambient] in
-/-- Values paired as doubles within `e` codes: two lists of codes. -/
+/-- Values paired as doubles within `e` canonical codes: two lists of codes. -/
 theorem Forall2.floats {e : Nat} {lo hi : Int} :
     ∀ {vs ws : List Value}, Forall2 (fun v w => ∃ a b, v = .float a ∧ w = .float b ∧
-      (a - b).natAbs ≤ e ∧ IsRef a ∧ lo ≤ b ∧ b ≤ hi) vs ws →
-      ∃ as bs, vs = as.map .float ∧ ws = bs.map .float ∧
-        Forall2 (fun x y => (x - y).natAbs ≤ e) as bs ∧ (∀ a ∈ as, IsRef a) ∧ ∀ b ∈ bs, lo ≤ b ∧ b ≤ hi
-  | [], [], .nil => ⟨[], [], rfl, rfl, .nil, by simp, by simp⟩
-  | _, _, .cons ⟨a, b, rfl, rfl, h, ra, hb1, hb2⟩ t => by
-    obtain ⟨as, bs, rfl, rfl, f, has, hbs⟩ := Forall2.floats t
-    refine ⟨a :: as, b :: bs, rfl, rfl, .cons h f, fun x hx => ?_, fun x hx => ?_⟩
-    · rcases List.mem_cons.1 hx with rfl | hx
-      · exact ra
-      · exact has x hx
-    · rcases List.mem_cons.1 hx with rfl | hx
-      · exact ⟨hb1, hb2⟩
-      · exact hbs x hx
+      (canon a - canon b).natAbs ≤ e ∧ lo ≤ canon b ∧ canon b ≤ hi) vs ws →
+      ∃ as bs : List Int, vs = as.map .float ∧ ws = bs.map .float ∧
+        Forall2 (fun x y : Int => (x - y).natAbs ≤ e) (as.map canon) (bs.map canon) ∧
+        ∀ b ∈ bs, lo ≤ canon b ∧ canon b ≤ hi
+  | [], [], .nil => ⟨[], [], rfl, rfl, .nil, by simp⟩
+  | _, _, .cons ⟨a, b, rfl, rfl, h, hb1, hb2⟩ t => by
+    obtain ⟨as, bs, rfl, rfl, f, hbs⟩ := Forall2.floats t
+    refine ⟨a :: as, b :: bs, rfl, rfl, .cons h f, fun x hx => ?_⟩
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact ⟨hb1, hb2⟩
+    · exact hbs x hx
 
 theorem Measure.minMaxOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {m : Measure}
     {o : Option Nat} (h : m.minMaxOut t mask env = some o) {g g' : Relation}
-    (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row) (hR : Relation.RefOn mask g)
+    (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
     {tm : Tol} {j : Nat} (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
   unfold Measure.minMaxOut at h
   -- The shape: `MIN` or `MAX` of `field i`.
@@ -829,12 +856,7 @@ theorem Measure.minMaxOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal}
   have ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e) :=
     ⟨some e, by simp [harg, Expr.tol?, hti], by simp [OLe]⟩
   have hcells := Measure.inputs_cells hd hf ha f
-  have hP : ∀ v ∈ m.inputs g, ∀ c, v = .float c → IsRef c := by
-    intro v hv c hc
-    obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hv
-    rw [harg] at hc
-    exact hR row hr i c hmask hc
-  have hQ : ∀ w ∈ m.inputs g', ∃ b, w = .float b ∧ lo ≤ b ∧ b ≤ hi := by
+  have hQ : ∀ w ∈ m.inputs g', ∃ b, w = .float b ∧ lo ≤ canon b ∧ canon b ≤ hi := by
     intro w hw
     obtain ⟨hn, row, hr, rfl⟩ := Measure.mem_inputs hw
     have hm := henv row hr i
@@ -849,59 +871,56 @@ theorem Measure.minMaxOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal}
       rw [hint] at hb; cases hb
       exact ⟨hbm.1 _ rfl, hbm.2 _ rfl⟩
     · cases hcr
-  have hpairs := (hcells.and_mem hP hQ).imp (S := fun v w => ∃ a b, v = .float a ∧ w = .float b ∧
-      (a - b).natAbs ≤ e ∧ IsRef a ∧ lo ≤ b ∧ b ≤ hi) fun v w hx => by
-    obtain ⟨hcell, pv, b, rfl, hb1, hb2⟩ := hx
+  have hpairs := (hcells.and_mem (P := fun _ => True) (fun _ _ => trivial) hQ).imp
+      (S := fun v w => ∃ a b, v = .float a ∧ w = .float b ∧
+        (canon a - canon b).natAbs ≤ e ∧ lo ≤ canon b ∧ canon b ≤ hi) fun v w hx => by
+    obtain ⟨hcell, -, b, rfl, hb1, hb2⟩ := hx
     cases v with
-    | float a =>
-      have ra := pv a rfl
-      have rb : IsRef b := ⟨(show negInf ≤ b by omega), (show b ≤ nan by omega)⟩
-      have hn := Tol.cell_float_iff.1 hcell
-      rw [show fp64.canon a = a from canon_of_isRef ra, show fp64.canon b = b from canon_of_isRef rb] at hn
-      exact ⟨a, b, rfl, rfl, hn, ra, hb1, hb2⟩
+    | float a => exact ⟨a, b, rfl, rfl, Tol.cell_float_iff.1 hcell, hb1, hb2⟩
     | _ => exact hcell.elim
-  obtain ⟨as, bs, has, hbs, fab, ras, rbs⟩ := Forall2.floats hpairs
+  obtain ⟨as, bs, has, hbs, fab, -⟩ := Forall2.floats hpairs
   rw [Measure.eval_eq hs, Measure.eval_eq hs, has, hbs]
-  have hL : ∀ a ∈ as, negInf ≤ a ∧ a ≤ nan := fun a h => ras a h
-  have hL' : ∀ b ∈ bs, negInf ≤ b ∧ b ≤ nan := fun b h => by have := rbs b h; omega
-  cases fab with
-  | nil => rcases hfn with hf | hf <;> rw [hf] <;> exact Tol.cell_null _ _
-  | cons hab fab' =>
-    rename_i a b as' bs'
-    have ba := hL a (List.mem_cons_self ..)
-    have bb := hL' b (List.mem_cons_self ..)
-    have hL1 : ∀ x ∈ as', negInf ≤ x ∧ x ≤ nan := fun x h => hL x (List.mem_cons_of_mem _ h)
-    have hL2 : ∀ x ∈ bs', negInf ≤ x ∧ x ≤ nan := fun x h => hL' x (List.mem_cons_of_mem _ h)
+  cases as with
+  | nil =>
+    cases bs with
+    | nil => rcases hfn with hf | hf <;> rw [hf] <;> exact Tol.cell_null _ _
+    | cons => cases fab
+  | cons a as' =>
+    cases bs with
+    | nil => cases fab
+    | cons b bs' =>
+    cases fab with
+    | cons hab fab' =>
     rcases hfn with hf | hf <;> rw [hf] <;>
       simp only [List.map_cons, AggFn.apply]
-    · rw [pickFold_min_float, pickFold_min_float]
-      have r1 := foldl_min_bounds ba.1 ba.2 hL1
-      have r2 := foldl_min_bounds bb.1 bb.2 hL2
+    · obtain ⟨y₁, e₁, c₁⟩ := pickFold_min_float a as'
+      obtain ⟨y₂, e₂, c₂⟩ := pickFold_min_float b bs'
+      rw [e₁, e₂]
       refine Tol.cell_float hj ?_
-      rw [show fp64.canon (as'.foldl min a) = _ from canon_of_isRef r1,
-        show fp64.canon (bs'.foldl min b) = _ from canon_of_isRef r2]
+      show (canon y₁ - canon y₂).natAbs ≤ e
+      rw [c₁, c₂]
       exact foldl_min_near hab fab'
-    · rw [pickFold_max_float, pickFold_max_float]
-      have r1 := foldl_max_bounds ba.1 ba.2 hL1
-      have r2 := foldl_max_bounds bb.1 bb.2 hL2
+    · obtain ⟨y₁, e₁, c₁⟩ := pickFold_max_float a as'
+      obtain ⟨y₂, e₂, c₂⟩ := pickFold_max_float b bs'
+      rw [e₁, e₂]
       refine Tol.cell_float hj ?_
-      rw [show fp64.canon (as'.foldl max a) = _ from canon_of_isRef r1,
-        show fp64.canon (bs'.foldl max b) = _ from canon_of_isRef r2]
+      show (canon y₁ - canon y₂).natAbs ≤ e
+      rw [c₁, c₂]
       exact foldl_max_near hab fab'
 
 theorem Measure.outTol_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {o : Option Nat} (h : m.outTol t mask env N = some o) {g g' : Relation}
     (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
-    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) {tm : Tol} {j : Nat}
+    (hN : ∀ n, N = some n → g'.length ≤ n) {tm : Tol} {j : Nat}
     (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
   unfold Measure.outTol at h
   cases h1 : m.tolOut t mask env N with
   | some o' =>
     rw [h1] at h; simp only [Option.some_or, Option.some.injEq] at h; subst h
-    exact Measure.tolOut_cell h1 f henv hN hR hj
+    exact Measure.tolOut_cell h1 f henv hN hj
   | none =>
     rw [h1] at h; simp only [Option.none_or] at h
-    exact Measure.minMaxOut_cell h f henv hR hj
+    exact Measure.minMaxOut_cell h f henv hj
 
 omit [Boxes.Ambient] in
 theorem Measure.outTol_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
@@ -921,7 +940,7 @@ theorem Measure.outTol_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVa
 theorem measures_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {ms : List Measure} (hos : (ms.map (·.outTol t mask env N)).all Option.isSome = true)
     {g g' : Relation} (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
-    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) :
+    (hN : ∀ n, N = some n → g'.length ≤ n) :
     (Tol.ofOuts (ms.map (·.outTol t mask env N))).Rows (ms.map (·.eval g)) (ms.map (·.eval g')) := by
   refine ⟨by simp, fun j => ?_⟩
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
@@ -932,7 +951,7 @@ theorem measures_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Opt
     have hm : m ∈ ms := List.mem_of_getElem? hj
     obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1
       (List.all_eq_true.1 hos _ (List.mem_map_of_mem (f := (·.outTol t mask env N)) hm))
-    exact Measure.outTol_cell ho f henv hN hR
+    exact Measure.outTol_cell ho f henv hN
       (by simp [Tol.ofOuts, List.getD_eq_getElem?_getD, List.getElem?_map, hj, ho])
 
 /-- **`GROUP BY` on exact keys with measures the fold bounds**: the groups
@@ -941,7 +960,7 @@ theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask 
     {env : List AVal} {N : Option Nat} (hg : gs.all (fun g => t.exactOn g.cols) = true)
     (hos : (ms.map (·.outTol t mask env N)).all Option.isSome = true) {a p : Relation}
     (f : Forall2 t.Rows a p) (henv : ∀ row ∈ p, EnvMem env row)
-    (hN : ∀ n, N = some n → p.length ≤ n) (hR : Relation.RefOn mask a) :
+    (hN : ∀ n, N = some n → p.length ≤ n) :
     Forall2 (Tol.cat gs.length Tol.exact (Tol.ofOuts (ms.map (·.outTol t mask env N)))).Rows
       (aggregateEval gs ms a) (aggregateEval gs ms p) := by
   have hkey : ∀ x y, t.Rows x y → groupKey gs x = groupKey gs y := fun x y r =>
@@ -952,30 +971,20 @@ theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask 
     have h0 : gs.length = 0 := by simpa using he
     refine .cons ?_ .nil
     have := Tol.rows_append (n := 0) (t := Tol.exact) (x := []) (x' := []) (Tol.rows_refl _ _)
-      (measures_rows hos f henv hN hR) rfl
+      (measures_rows hos f henv hN) rfl
     rw [h0]; simpa using this
   · rw [f.map_eq hkey]
-    have hl : Forall2 (fun k k' => k = k' ∧ k ∈ dedup (p.map (groupKey gs)))
-        (dedup (p.map (groupKey gs))) (dedup (p.map (groupKey gs))) := Forall2.refl fun k hk => ⟨rfl, hk⟩
+    have hl : Forall2 (fun k k' => k = k' ∧ k ∈ distinctRows (p.map (groupKey gs)))
+        (distinctRows (p.map (groupKey gs))) (distinctRows (p.map (groupKey gs))) :=
+      Forall2.refl fun k hk => ⟨rfl, hk⟩
     refine hl.map fun k k' ⟨hkk, hk⟩ => ?_
     subst hkk
-    obtain ⟨y, -, rfl⟩ := List.mem_map.1 (mem_dedup.1 hk)
+    obtain ⟨y, -, rfl⟩ := List.mem_map.1 (canonReps_sub hk)
     have fg : Forall2 t.Rows (groupRows gs a (groupKey gs y)) (groupRows gs p (groupKey gs y)) :=
-      f.filter fun x y' r => by rw [hkey x y' r]
-    refine Tol.rows_append (Tol.rows_refl _ _) (measures_rows hos fg ?_ ?_ ?_) (by simp [groupKey])
+      f.filter fun x y' r => by simp only [hkey x y' r]
+    refine Tol.rows_append (Tol.rows_refl _ _) (measures_rows hos fg ?_ ?_) (by simp [groupKey])
     · exact fun row h => henv row (List.mem_filter.1 h).1
     · exact fun n hn => Nat.le_trans (List.length_filter_le _ _) (hN n hn)
-    · exact hR.mono fun row h => (List.mem_filter.1 h).1
-
-omit [Boxes.Ambient] in
-/-- The engine's catalog is well-formed when its tables are within a
-tolerance of the reference's well-formed ones, with the same arities. -/
-theorem Catalog.wf_of_near {cat cat' : Catalog} (hcat : cat.WF)
-    (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
-    (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows) : cat'.WF := fun s row hr => by
-  obtain ⟨p, fp, hp⟩ := hT s
-  obtain ⟨y, hy, rxy⟩ := fp.mem_left hr
-  rw [rxy.1, hcat s y (hp.mem_iff.1 hy), ha]
 
 /-- **A bound on a plan's rows** from the knowledge of its sources: `Rel.maxRows`
 with each table's own cap (`Knowledge.rows`). A `SUM`'s group is at most its
@@ -1009,7 +1018,7 @@ theorem Rel.rowsK_sound {cat : Catalog} {K : KnowledgeEnv} (hK : K.Sound cat) :
     exact Rel.rowsK_sound hK (r := r) h
   | .distinct r, _, h => by
     simp only [Rel.rowsK] at h
-    exact Nat.le_trans (dedup_length_le _) (Rel.rowsK_sound hK (r := r) h)
+    exact Nat.le_trans (canonReps_length_le _) (Rel.rowsK_sound hK (r := r) h)
   | .fetch r _ cnt, n, h => by
     simp only [Rel.eval]
     cases cnt with

@@ -5,8 +5,8 @@ import SubstraitLean.SparkShims
 
 `Profile.spark` is the semantics a plan verified with
 `verify(semantics="spark")` is checked under: what Spark 4.3.0 computes under
-`sverify.sql.spark.SPARK_CONF` (ANSI mode on), as its facts record it
-(`characterization/spark/facts/`), on the options where sverify models
+`sverify_spark.dialect.SPARK_CONF` (ANSI mode on), as its facts record it
+(`engines/spark/facts/`), on the options where sverify models
 Spark's own choice, and the reference elsewhere (D21, `docs/engine-profiles.md`,
 "Spark as a profile"):
 

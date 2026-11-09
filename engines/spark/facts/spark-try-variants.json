@@ -1,0 +1,163 @@
+{
+  "id": "spark-try-variants",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`try_*` functions give NULL for their own errors only",
+  "verdict": "`try_cast`, `try_add`, `try_divide`, `try_sum`, … : NULL on their errors, in both modes",
+  "area": "execution",
+  "options": [
+    "try_variants"
+  ],
+  "constructs": [
+    "try_cast",
+    "try_add",
+    "try_subtract",
+    "try_multiply",
+    "try_divide",
+    "try_mod",
+    "try_sum",
+    "try_avg",
+    "try_element_at",
+    "try_to_number",
+    "try_to_timestamp",
+    "try_to_date"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`try_cast`, `try_add`, `try_subtract`, `try_multiply`, `try_divide`, `try_mod`, `try_sum`, `try_avg`, `try_element_at`, `try_to_number`, `try_to_timestamp` and `try_to_date` return NULL where their raising form raises (overflow, a zero divisor, malformed text, an index out of range), whatever `spark.sql.ansi.enabled` says. `try_avg` of `BIGINT` sums in double and never overflows. Two exceptions raise anyway: `try_element_at(a, 0)` raises `INVALID_INDEX_OF_ZERO` in both modes, as `element_at` does, and `try_to_timestamp` with a pattern Spark 3.0 changed raises `INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION` (a `SparkUpgradeException`).",
+    "They cover only their own operation: `try_cast(regexp_extract('a', '(', 0) AS INT)` still raises the pattern's error, and `try_divide(1, 0) + (1 div 0)` still raises under ANSI from the `div`. There is no `TRY(expr)` that covers a whole expression in SQL."
+  ],
+  "reference": "Substrait's cast has `failure_behavior: RETURN_NULL`; the reference honours it on DuckDB only, and other engines refuse it until #271. `try_cast` is Spark's `RETURN_NULL`.",
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-ansi-compliance.md#L374-L394",
+          "note": "Useful Functions for ANSI Mode: the `try_*` functions"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "try-variants"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "try-aggregates"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "try-still-raises"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "try-regex-still-raises"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "try-cast-string-parsing"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "try-cast-numeric"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_arithmetic.sql.out#L10-L15",
+          "note": "`try_add(2147483647, 1)` is NULL, an `int`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/try_arithmetic.sql.out#L10-L15",
+          "note": "the same with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_arithmetic.sql.out#L330-L335",
+          "note": "`try_divide(1, 0)` is NULL, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_cast.sql.out#L34-L39",
+          "note": "`TRY_CAST('abc' AS int)` is NULL, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_aggregates.sql.out#L34-L39",
+          "note": "`try_sum` of 9223372036854775807 and 1 is NULL, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_aggregates.sql.out#L242-L247",
+          "note": "`try_avg` of 9223372036854775807 and 1 is about 4.61E18, a `double`: no overflow"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_element_at.sql.out#L30-L35",
+          "note": "`try_element_at(array(1, 2, 3), 4)` is NULL, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_datetime_functions.sql.out#L18-L23",
+          "note": "`try_to_timestamp('2016-12-31 abc')` is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_arithmetic.sql.out#L58-L79",
+          "note": "`try_add(1, (2147483647 + 1))` raises `ARITHMETIC_OVERFLOW` from the inner `+`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_aggregates.sql.out#L82-L101",
+          "note": "`try_sum(col / 0)` raises `DIVIDE_BY_ZERO` from the `/`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_element_at.sql.out#L2-L11",
+          "note": "`try_element_at(array(1, 2, 3), 0)` raises `INVALID_INDEX_OF_ZERO` under ANSI"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/try_element_at.sql.out#L2-L11",
+          "note": "and without it"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/try_datetime_functions.sql.out#L42-L56",
+          "note": "`try_to_timestamp('22 05 2020 Friday', 'dd MM yyyy EEEEEE')` raises `INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/fuzz.json",
+          "note": "try_variants[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 7200 of 7200 results as the fact says.",
+        "try_variants[0]: 300 rows, `try_add(a, b)`, `try_subtract(a, b)`, `try_multiply(a, b)`, `try_mod(a, b)`, `try_divide(a, b)`, `try_cast(s AS INT)`, 7200 of 7200 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    }
+  ],
+  "issues": [
+    271
+  ]
+}

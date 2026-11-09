@@ -20,7 +20,7 @@ open scoped Substrait.DuckDB
 local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.castBigintDouble_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.bigint x →
     Substrait.Outcome.Agree

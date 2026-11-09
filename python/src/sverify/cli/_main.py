@@ -153,7 +153,7 @@ class Check:
         return str(self.d.path)
 
     def credential_uses(self) -> list[tuple[str, Any]]:
-        """Per node variable, the credentials its refresh uses (#778), each
+        """Per node variable, the credentials its refresh uses, each
         table and credential once."""
         if self._uses is None:
             self._uses = []
@@ -552,7 +552,9 @@ def parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     r.add_argument("target", help="file.py:<node>")
-    r.add_argument("--engine", default="duckdb", help="duckdb (the default), polars or spark")
+    r.add_argument(
+        "--engine", default=None, help="duckdb, polars or spark (default: the default engine)"
+    )
     r.add_argument("--audit", action="store_true", help="compare every batch with recomputation")
     r.add_argument(
         "--lineage",

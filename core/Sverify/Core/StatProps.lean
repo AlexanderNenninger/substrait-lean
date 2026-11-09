@@ -156,8 +156,8 @@ variable [Boxes.Ambient]
 /-- `VAR_*` / `STDDEV_*` of `vs` may give `v`. -/
 def varStat (sample sqrt : Bool) (vs : List Value) (v : Value) : Prop :=
   if vs = [] ∨ (sample = true ∧ vs.length = 1) then v = .null
-  else if allInts vs ∧ fits (floatsOf vs) = true then
-    ∃ c, v = .float c ∧ varProps sample sqrt (floatsOf vs) c
+  else if allInts vs ∧ fits ((floatsOf vs).map FloatCode.canon) = true then
+    ∃ c, v = .float c ∧ varProps sample sqrt ((floatsOf vs).map FloatCode.canon) c
   else v = (AggFn.var sample sqrt).apply vs
 
 /-- `COVAR_*` of `vs` may give `v`. -/
@@ -211,26 +211,27 @@ omit [Boxes.Ambient] in
 set_option exponentiation.threshold 2100 in
 /-- A NaN's code is past `fits`'s range. -/
 private theorem not_fits_of_nan {vs : List Value} {c : Int} (hc : .float c ∈ vs)
-    (hn : FloatCode.nan ≤ c) : fits (floatsOf vs) = false := by
+    (hn : FloatCode.nan ≤ FloatCode.canon c) : fits ((floatsOf vs).map FloatCode.canon) = false := by
   have hM : 2 ^ 1472 < FloatCode.maxMag := by
     rw [FloatCode.maxMag_def]
     exact Nat.lt_of_lt_of_le (Nat.pow_lt_pow_right (by decide) (by decide))
       (Nat.le_mul_of_pos_left _ (by decide))
   have hnan := nan_eq
-  have hs : ¬ (FloatCode.scaled c).natAbs ≤ 2 ^ 1472 := by
+  have hs : ¬ (FloatCode.scaled (FloatCode.canon c)).natAbs ≤ 2 ^ 1472 := by
+    generalize FloatCode.canon c = c' at hn ⊢
     unfold FloatCode.scaled
     generalize (2 : Nat) ^ 1472 = A at hM ⊢
     generalize FloatCode.maxMag = M at hM hnan
     split <;> omega
   simp only [fits, Bool.and_eq_false_iff, List.all_eq_false]
-  exact .inr ⟨c, mem_floatsOf.mpr hc, by simpa using hs⟩
+  exact .inr ⟨FloatCode.canon c, List.mem_map.mpr ⟨c, mem_floatsOf.mpr hc, rfl⟩, by simpa using hs⟩
 
 /-- **The NaN guard is sound for `VAR_*` and `STDDEV_*`.** If the engine's
 `body` meets `varStat` on finite values, the guarded expression meets it on
 every input without an infinity (where the written plan raises, #257). -/
 theorem nanGuard_varStat {sample sqrt : Bool} {vs : List Value} {body : Value}
-    (hfin : (∀ c ∈ floatsOf vs, FloatCode.IsFin c) → varStat sample sqrt vs body)
-    (hinf : ∀ c ∈ floatsOf vs, ¬ FloatCode.IsFin c → FloatCode.nan ≤ c) :
+    (hfin : (∀ c ∈ floatsOf vs, FloatCode.IsFin (FloatCode.canon c)) → varStat sample sqrt vs body)
+    (hinf : ∀ c ∈ floatsOf vs, ¬ FloatCode.IsFin (FloatCode.canon c) → FloatCode.nan ≤ FloatCode.canon c) :
     varStat sample sqrt vs (nanGuard sample vs body) := by
   unfold nanGuard
   by_cases hd : vs = [] ∨ (sample = true ∧ vs.length = 1)
@@ -239,7 +240,7 @@ theorem nanGuard_varStat {sample sqrt : Bool} {vs : List Value} {body : Value}
   · obtain ⟨w, hw, hp⟩ := List.any_eq_true.mp ha
     cases w with
     | float c =>
-      have hn : FloatCode.nan ≤ c := by simpa using hp
+      have hn : FloatCode.nan ≤ FloatCode.canon c := by simpa using hp
       have hnf : nonFinite vs = some FloatCode.nan := by simp [nonFinite, ha]
       have hs : (sample && vs.length == 1) = false := by
         cases sample <;> simp_all

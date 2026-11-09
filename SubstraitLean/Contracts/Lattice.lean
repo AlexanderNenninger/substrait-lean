@@ -353,7 +353,7 @@ def strCap : Nat := 64
 
 /-- `i` is a number of kind `k` that `a` holds. -/
 def AVal.MemNum (a : AVal) (k : NumKind) (i : Int) : Prop :=
-  ∃ b, a.int = some b ∧ b.Mem i ∧ a.nk.all (· == k) = true
+  ∃ b, a.int = some b ∧ b.Mem (k.norm i) ∧ a.nk.all (· == k) = true
 
 mutual
 /-- `AVal.Mem`, by recursion on the value. -/
@@ -413,7 +413,7 @@ def AVal.within (lo hi : Int) (a : AVal) : Bool := a.int.all (·.within lo hi)
 
 omit [Boxes.Ambient] in
 theorem AVal.within_memNum {lo hi i : Int} {a : AVal} {k : NumKind} (h : a.within lo hi = true)
-    (hm : a.MemNum k i) : between lo hi i = true := by
+    (hm : a.MemNum k i) : between lo hi (k.norm i) = true := by
   obtain ⟨b, hb, hi, _⟩ := hm
   simp only [AVal.within, hb, Option.all_some] at h
   exact Bound.within_mem h hi
@@ -436,7 +436,7 @@ def AVal.elemsOf (a : AVal) : AVal := a.elems.getD AVal.top
 def AVal.ofValue : Value → AVal
   | .null => { null := true }
   | .int i => .num false (.exact i) .int
-  | .float i => .num false (.exact i) .float
+  | .float i => .num false (.exact (FloatCode.canon i)) .float
   | .date i => .num false (.exact i) .date
   | .ts i => .num false (.exact i) .ts
   | .tod i => .num false (.exact i) .tod
@@ -579,7 +579,8 @@ omit [Boxes.Ambient] in
 theorem AVal.mem_top : ∀ v, AVal.top.Mem v
   | .null | .bool true | .bool false | .str _ => rfl
   | .list _ | .struct _ => by simp [AVal.Mem, AVal.top, Bound.mem_top]
-  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_top i, rfl⟩
+  | .int i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_top i, rfl⟩
+  | .float i => ⟨_, rfl, Bound.mem_top _, rfl⟩
 
 omit [Boxes.Ambient] in
 /-- A list in `a` has its elements in `a.elemsOf`. -/
@@ -601,8 +602,9 @@ theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
   | .str s => by simp [AVal.Mem, AVal.ofValue]
   | .list _ => by simp [AVal.Mem, AVal.ofValue, Bound.mem_exact]
   | .struct _ => by simp [AVal.Mem, AVal.ofValue]
-  | .int i | .float i | .date i | .ts i | .tod i | .dec _ i =>
+  | .int i | .date i | .ts i | .tod i | .dec _ i =>
     ⟨_, rfl, Bound.mem_exact i, by simp [AVal.ofValue, AVal.num]⟩
+  | .float i => ⟨_, rfl, Bound.mem_exact _, by simp [AVal.ofValue, AVal.num]⟩
 
 omit [Boxes.Ambient] in
 theorem joinStrs_left {a b : AVal} {s : String} (ha : a.str = true)
@@ -771,7 +773,7 @@ omit [Boxes.Ambient] in
 list or a struct is one case: functions of scalars give NULL on both. -/
 theorem AVal.mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
     (v = .null ∧ a.null = true) ∨
-    (∃ k i b, v = k.val i ∧ a.int = some b ∧ b.Mem i ∧ a.nk.all (· == k) = true) ∨
+    (∃ k i b, v = k.val i ∧ a.int = some b ∧ b.Mem (k.norm i) ∧ a.nk.all (· == k) = true) ∨
     (v = .bool true ∧ a.tt = true) ∨ (v = .bool false ∧ a.ff = true) ∨
     (∃ s, v = .str s ∧ a.str = true ∧ a.strs.all (·.contains s) = true) ∨
     (∃ vs, (v = .list vs ∨ v = .struct vs) ∧ a.nested = true) := by
@@ -829,7 +831,8 @@ its result's kind; a number of another kind gives NULL. `mapAbs` and
 def Value.mapP (ok : NumKind → Bool) (kout : NumKind → NumKind) (g : Int → Option Int)
     (v : Value) : Value :=
   match v.numOf? with
-  | some (k, c) => if ok k then (match g c with | some r => (kout k).val r | none => .null) else .null
+  | some (k, c) =>
+    if ok k then (match g (k.norm c) with | some r => (kout k).val r | none => .null) else .null
   | none => .null
 
 /-- A function of two numbers: `g` on numbers of kinds `tbl` takes, of the
@@ -838,7 +841,7 @@ def Value.mapP₂ (tbl : NumKind → NumKind → Option NumKind) (g : Int → In
     (v w : Value) : Value :=
   match v.numOf?, w.numOf? with
   | some (k, x), some (k', y) =>
-    match tbl k k', g x y with
+    match tbl k k', g (k.norm x) (k'.norm y) with
     | some ko, some r => ko.val r
     | _, _ => .null
   | _, _ => .null
@@ -869,13 +872,50 @@ for a definition that is a structure instance. -/
     (extra : Option Bound → Bool) (a : AVal) : AVal :=
   { null := a.nonNumP ok || extra a.int, int := a.int.map bf, nk := a.nk.map kout }
 
-theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Option Int}
-    {bf : Bound → Bound} {extra : Option Bound → Bool} {f : UnFn}
-    (hf : ∀ v, f.apply v = Value.mapP ok kout g v)
+/-- Two values that are equal, or two doubles of one canonical code: an
+operation on raw doubles and its abstraction on canonical ones agree up to
+`canon` (D31). -/
+def Value.CanonEq (x y : Value) : Prop :=
+  x = y ∨ ∃ c c', x = .float c ∧ y = .float c' ∧ FloatCode.canon c = FloatCode.canon c'
+
+/-- Two values that are equal, or two numbers of one kind. -/
+def Value.ShapeEq (x y : Value) : Prop := x = y ∨ ∃ (k : NumKind) (c c' : Int), x = k.val c ∧ y = k.val c'
+
+theorem Value.ShapeEq.trans {x y z : Value} (h : x.ShapeEq y) (h' : y.ShapeEq z) : x.ShapeEq z := by
+  rcases h with rfl | ⟨k, c, c', rfl, rfl⟩
+  · exact h'
+  · rcases h' with rfl | ⟨k', d, d', e, rfl⟩
+    · exact .inr ⟨k, c, c', rfl, rfl⟩
+    · obtain ⟨rfl, rfl⟩ := NumKind.val_inj₂ e
+      exact .inr ⟨k, c, d', rfl, rfl⟩
+
+/-- `a` holds a double by its canonical code (`NumKind.norm`). -/
+theorem AVal.mem_of_canonEq {a : AVal} {x y : Value} (h : x.CanonEq y) (hy : a.Mem y) : a.Mem x := by
+  rcases h with rfl | ⟨c, c', rfl, rfl, hc⟩
+  · exact hy
+  · have hy' : a.MemNum .float c' := hy
+    obtain ⟨b, hb, hm, hk⟩ := hy'
+    show a.MemNum .float c
+    refine ⟨b, hb, ?_, hk⟩
+    rw [NumKind.norm_float] at hm ⊢; rw [hc]; exact hm
+
+/-- Where `a` bounds no number, any number of `a`'s kinds is in it. -/
+theorem AVal.mem_of_shapeEq {a : AVal} {x y : Value} (h : x.ShapeEq y) (hy : a.Mem y)
+    (htop : ∀ b, a.int = some b → b = Bound.top) : a.Mem x := by
+  rcases h with rfl | ⟨k, c, c', rfl, rfl⟩
+  · exact hy
+  · obtain ⟨b, hb, _, hk⟩ := AVal.mem_val.mp hy
+    exact AVal.mem_val.mpr ⟨b, hb, (htop b hb) ▸ Bound.mem_top _, hk⟩
+
+/-- `mapAbs` holds `mapP`'s values. -/
+theorem mapAbs_mem {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Option Int}
+    {bf : Bound → Bound} {extra : Option Bound → Bool}
     (hb : ∀ b i r, b.Mem i → g i = some r → (bf b).Mem r)
     (hn : ∀ b i, b.Mem i → g i = none → extra (some b) = true)
-    {a : AVal} {v : Value} (h : a.Mem v) : (mapAbs ok kout bf extra a).Mem (f.apply v) := by
-  rw [hf]
+    {a : AVal} {v : Value} (h : a.Mem v)
+    (hc : ∀ k i r, ok k = true → g (k.norm i) = some r → (kout k).norm r = r := by
+      intro k _ _ hk _; cases k <;> first | rfl | exact absurd hk (by decide)) :
+    (mapAbs ok kout bf extra a).Mem (Value.mapP ok kout g v) := by
   mem_cases h with i b hb' hi
   · simp [Value.mapP, Value.numOf?, mapAbs, AVal.Mem, AVal.nonNumP, AVal.nonInt, hn]
   · simp only [Value.mapP, NumKind.numOf?_val]
@@ -888,11 +928,11 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
       · rw [AVal.ok_of_memNum hb' hk hn'] at hok; cases hok
       · rfl
     · simp only [↓reduceIte]
-      cases hg : g i with
+      cases hg : g (k.norm i) with
       | some r =>
         simp only []
         rw [AVal.mem_val]
-        refine ⟨bf b, by simp [mapAbs, hb'], hb b i r hi hg, ?_⟩
+        refine ⟨bf b, by simp [mapAbs, hb'], by rw [hc k i r hok hg]; exact hb b _ r hi hg, ?_⟩
         cases hnk : a.nk with
         | none => simp [mapAbs, hnk]
         | some k' =>
@@ -900,8 +940,59 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
           subst hk; simp [mapAbs, hnk]
       | none =>
         show (mapAbs ok kout bf extra a).null = true
-        simp [mapAbs, hb', hn b i hi hg]
-  all_goals simp_all [Value.mapP, Value.numOf?, mapAbs, AVal.Mem, AVal.nonNumP, AVal.nonInt]
+        simp [mapAbs, hb', hn b _ hi hg]
+  all_goals (clear hc; simp_all [Value.mapP, Value.numOf?, mapAbs, AVal.Mem, AVal.nonNumP, AVal.nonInt])
+
+/-- **A function of one number is sound by its abstraction** where it agrees
+with `mapP` up to `canon` (`Value.CanonEq`): it runs on raw doubles, `mapP`
+on canonical ones (D31). -/
+theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Option Int}
+    {bf : Bound → Bound} {extra : Option Bound → Bool} {f : UnFn}
+    (hf : ∀ v, (f.apply v).CanonEq (Value.mapP ok kout g v))
+    (hb : ∀ b i r, b.Mem i → g i = some r → (bf b).Mem r)
+    (hn : ∀ b i, b.Mem i → g i = none → extra (some b) = true)
+    {a : AVal} {v : Value} (h : a.Mem v)
+    (hc : ∀ k i r, ok k = true → g (k.norm i) = some r → (kout k).norm r = r := by
+      intro k _ _ hk _; cases k <;> first | rfl | exact absurd hk (by decide)) :
+    (mapAbs ok kout bf extra a).Mem (f.apply v) :=
+  AVal.mem_of_canonEq (hf v) (mapAbs_mem hb hn h hc)
+
+/-- **A function whose abstraction bounds no double** is sound where it agrees
+with `mapP` in shape only (`Value.ShapeEq`: NULL where it is NULL, a double
+where it is a double). The functions of native doubles (`ROUND(x, d)`, the
+elementary functions, `power`, `atan2`, `log`) need it: their values on
+`-0.0` are the native library's, which the kernel cannot compute, and an
+abstraction that bounds them by `Bound.top` claims nothing about them. -/
+theorem mapP_shapeEq (ok : NumKind → Bool) (kout : NumKind → NumKind) (g : Int → Option Int) (v : Value) :
+    (Value.mapP ok kout g v).ShapeEq (Value.mapP ok kout (fun i => (g i).map fun _ => 0) v) := by
+  unfold Value.mapP
+  cases v.numOf? with
+  | none => exact .inl rfl
+  | some p =>
+    obtain ⟨k, c⟩ := p
+    simp only []
+    split
+    · cases g (k.norm c) with
+      | none => exact .inl rfl
+      | some r => exact .inr ⟨kout k, r, 0, rfl, rfl⟩
+    · exact .inl rfl
+
+theorem mapAbs_top_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Option Int}
+    {extra : Option Bound → Bool} {f : UnFn}
+    (hf : ∀ v, (f.apply v).ShapeEq (Value.mapP ok kout g v))
+    (hn : ∀ b i, b.Mem i → g i = none → extra (some b) = true)
+    {a : AVal} {v : Value} (h : a.Mem v) :
+    (mapAbs ok kout (fun _ => Bound.top) extra a).Mem (f.apply v) :=
+  AVal.mem_of_shapeEq ((hf v).trans (mapP_shapeEq ok kout g v))
+    (mapAbs_mem (g := fun i => (g i).map fun _ => 0) (fun _ _ _ _ _ => Bound.mem_top _)
+      (fun b i hi hn' => hn b i hi (by cases hg : g i <;> simp_all))
+      h (fun k i r _ hr => by
+        cases hg : g (k.norm i) <;> simp only [hg, Option.map_none, Option.map_some,
+          reduceCtorEq, Option.some.injEq] at hr
+        subst hr; cases kout k <;> first | rfl | exact FloatCode.canon_zero))
+    (fun b hb => by
+      simp only [mapAbs] at hb
+      obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp hb; rfl)
 
 /-- The kind of a function of two numbers of kinds `a.nk` and `b.nk`. -/
 def outKind (tbl : NumKind → NumKind → Option NumKind) (a b : AVal) : Option NumKind :=
@@ -919,20 +1010,22 @@ fail. -/
     int := (match a.int, b.int with | some x, some y => some (bf x y) | _, _ => none),
     nk := outKind tbl a b }
 
-theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int → Int → Option Int}
-    {bf : Bound → Bound → Bound} {extra : Option Bound → Option Bound → Bool} {f : BinFn}
-    (hf : ∀ v w, f.apply v w = Value.mapP₂ tbl g v w)
+theorem mapAbs₂_mem {tbl : NumKind → NumKind → Option NumKind} {g : Int → Int → Option Int}
+    {bf : Bound → Bound → Bound} {extra : Option Bound → Option Bound → Bool}
     (hb : ∀ x y i j r, x.Mem i → y.Mem j → g i j = some r → (bf x y).Mem r)
-    (hn : ∀ x y i j, x.Mem i → y.Mem j → g i j = none → extra (some x) (some y) = true)
-    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb' : b.Mem w) :
-    (mapAbs₂ tbl bf extra a b).Mem (f.apply v w) := by
-  rw [hf]
+    (hn : ∀ x y (k k' ko : NumKind) i j, tbl k k' = some ko → x.Mem (k.norm i) → y.Mem (k'.norm j) →
+      g (k.norm i) (k'.norm j) = none → extra (some x) (some y) = true)
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb' : b.Mem w)
+    (hc : ∀ k k' ko i j r, tbl k k' = some ko → g (k.norm i) (k'.norm j) = some r → ko.norm r = r := by
+      intro k k' ko _ _ _ h _
+      cases ko <;> first | rfl | (cases k <;> cases k' <;> cases h)) :
+    (mapAbs₂ tbl bf extra a b).Mem (Value.mapP₂ tbl g v w) := by
   mem_cases₂ ha hb'
   case inr.inl.inr.inl =>
     simp only [Value.mapP₂, NumKind.numOf?_val]
     cases hout : outKind tbl a b with
     | none =>
-      cases htb : tbl k k' <;> cases hg : g i j <;> simp only []
+      cases htb : tbl k k' <;> cases hg : g (k.norm i) (k'.norm j) <;> simp only []
       · show (mapAbs₂ tbl bf extra a b).null = true
         simp [mapAbs₂, hx, hy, hout]
       · show (mapAbs₂ tbl bf extra a b).null = true
@@ -941,7 +1034,8 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
         simp [mapAbs₂, hx, hy, hout]
       · rename_i ko r
         rw [AVal.mem_val]
-        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], hb x y i j r hi hj hg, by simp [mapAbs₂, hout]⟩
+        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], by rw [hc k k' ko i j r htb hg]; exact hb x y _ _ r hi hj hg,
+          by simp [mapAbs₂, hout]⟩
     | some ko =>
       have hko : tbl k k' = some ko := by
         unfold outKind at hout
@@ -951,14 +1045,115 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
         simp only [hkb, Option.all_some, beq_iff_eq] at hk'
         subst hk hk'; exact hout
       simp only [hko]
-      cases hg : g i j with
+      cases hg : g (k.norm i) (k'.norm j) with
       | some r =>
         simp only []
         rw [AVal.mem_val]
-        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], hb x y i j r hi hj hg, by simp [mapAbs₂, hout]⟩
+        exact ⟨bf x y, by simp [mapAbs₂, hx, hy], by rw [hc k k' ko i j r hko hg]; exact hb x y _ _ r hi hj hg,
+          by simp [mapAbs₂, hout]⟩
       | none =>
         show (mapAbs₂ tbl bf extra a b).null = true
-        simp [mapAbs₂, hx, hy, hn x y i j hi hj hg]
-  all_goals simp_all [Value.mapP₂, Value.numOf?, mapAbs₂, AVal.Mem, AVal.nonInt]
+        simp [mapAbs₂, hx, hy, hn x y k k' ko i j hko hi hj hg]
+  all_goals (clear hc; simp_all [Value.mapP₂, Value.numOf?, mapAbs₂, AVal.Mem, AVal.nonInt])
+
+/-- `mapAbs_sound` for a function of two numbers. -/
+theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int → Int → Option Int}
+    {bf : Bound → Bound → Bound} {extra : Option Bound → Option Bound → Bool} {f : BinFn}
+    (hf : ∀ v w, (f.apply v w).CanonEq (Value.mapP₂ tbl g v w))
+    (hb : ∀ x y i j r, x.Mem i → y.Mem j → g i j = some r → (bf x y).Mem r)
+    (hn : ∀ x y i j, x.Mem i → y.Mem j → g i j = none → extra (some x) (some y) = true)
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb' : b.Mem w)
+    (hc : ∀ k k' ko i j r, tbl k k' = some ko → g (k.norm i) (k'.norm j) = some r → ko.norm r = r := by
+      intro k k' ko _ _ _ h _
+      cases ko <;> first | rfl | (cases k <;> cases k' <;> cases h)) :
+    (mapAbs₂ tbl bf extra a b).Mem (f.apply v w) :=
+  AVal.mem_of_canonEq (hf v w)
+    (mapAbs₂_mem hb (fun x y _ _ _ _ _ _ hi hj hg => hn x y _ _ hi hj hg) ha hb' hc)
+
+theorem mapP₂_shapeEq (tbl : NumKind → NumKind → Option NumKind) (g : Int → Int → Option Int) (v w : Value) :
+    (Value.mapP₂ tbl g v w).ShapeEq (Value.mapP₂ tbl (fun i j => (g i j).map fun _ => 0) v w) := by
+  unfold Value.mapP₂
+  cases v.numOf? with
+  | none => exact .inl rfl
+  | some p =>
+    cases w.numOf? with
+    | none => exact .inl rfl
+    | some q =>
+      obtain ⟨k, c⟩ := p; obtain ⟨k', d⟩ := q
+      simp only []
+      cases tbl k k' with
+      | none => cases g (k.norm c) (k'.norm d) <;> exact .inl rfl
+      | some ko =>
+        cases g (k.norm c) (k'.norm d) with
+        | none => exact .inl rfl
+        | some r => exact .inr ⟨ko, r, 0, rfl, rfl⟩
+
+/-- `mapAbs_top_sound` for a function of two numbers. -/
+theorem mapAbs₂_top_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int → Int → Option Int}
+    {extra : Option Bound → Option Bound → Bool} {f : BinFn}
+    (hf : ∀ v w, (f.apply v w).ShapeEq (Value.mapP₂ tbl g v w))
+    (hn : ∀ x y (k k' ko : NumKind) i j, tbl k k' = some ko → x.Mem (k.norm i) → y.Mem (k'.norm j) →
+      g (k.norm i) (k'.norm j) = none → extra (some x) (some y) = true)
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb' : b.Mem w) :
+    (mapAbs₂ tbl (fun _ _ => Bound.top) extra a b).Mem (f.apply v w) :=
+  AVal.mem_of_shapeEq ((hf v w).trans (mapP₂_shapeEq tbl g v w))
+    (mapAbs₂_mem (g := fun i j => (g i j).map fun _ => 0) (fun _ _ _ _ _ _ _ _ => Bound.mem_top _)
+      (fun x y k k' ko i j htb hi hj hn' => hn x y k k' ko i j htb hi hj
+        (by cases hg : g (k.norm i) (k'.norm j) <;> simp_all))
+      ha hb' (fun k k' ko i j r _ hr => by
+        cases hg : g (k.norm i) (k'.norm j) <;> simp only [hg, Option.map_none, Option.map_some,
+          reduceCtorEq, Option.some.injEq] at hr
+        subst hr; cases ko <;> first | rfl | exact FloatCode.canon_zero))
+    (fun c hc' => by
+      simp only [mapAbs₂] at hc'
+      split at hc' <;> simp_all)
+
+/-! ### Membership up to `canon` (D31)
+
+The analysis bounds a double by its canonical code, so `-0.0` and `0.0`, and
+the two NaNs, are in the same abstract values, in lists and structs too. -/
+
+
+mutual
+theorem AVal.memR_canonV (a : AVal) : ∀ v : Value, a.MemR v.canonV ↔ a.MemR v
+  | .float c => by
+    rw [Value.canonV_float]
+    show a.MemNum .float (FloatCode.canon c) ↔ a.MemNum .float c
+    unfold AVal.MemNum
+    rw [NumKind.norm_float, NumKind.norm_float, FloatCode.canon_idem]
+  | .list vs => by
+    rw [Value.canonV_list]
+    simp only [AVal.MemR, List.length_map]
+    cases a.elems with
+    | none => exact Iff.rfl
+    | some e => simp only []; rw [AVal.memAll_canonV e vs]
+  | .struct vs => by
+    rw [Value.canonV_struct]
+    simp only [AVal.MemR]
+    cases a.fields with
+    | none => exact Iff.rfl
+    | some fs => simp only []; rw [AVal.memFields_canonV fs vs]
+  | .null | .bool _ | .int _ | .date _ | .ts _ | .tod _ | .dec _ _ | .str _ => by
+    simp only [Value.canonV]
+theorem AVal.memAll_canonV (e : AVal) : ∀ vs : List Value, AVal.MemAll e (vs.map Value.canonV) ↔ AVal.MemAll e vs
+  | [] => Iff.rfl
+  | v :: vs => by
+    simp only [List.map_cons, AVal.MemAll]; rw [AVal.memR_canonV e v, AVal.memAll_canonV e vs]
+theorem AVal.memFields_canonV : ∀ (fs : List AVal) (vs : List Value),
+    AVal.MemFields fs (vs.map Value.canonV) ↔ AVal.MemFields fs vs
+  | [], [] => Iff.rfl
+  | f :: fs, v :: vs => by
+    simp only [List.map_cons, AVal.MemFields]; rw [AVal.memR_canonV f v, AVal.memFields_canonV fs vs]
+  | [], _ :: _ | _ :: _, [] => by simp [AVal.MemFields]
+end
+
+
+theorem Value.canonV_eq_null {v : Value} : v.canonV = .null ↔ v = .null := by
+  cases v <;> simp [Value.canonV]
+
+theorem AVal.mem_canonV {a : AVal} {v : Value} : a.Mem v.canonV ↔ a.Mem v := AVal.memR_canonV a v
+
+theorem AVal.mem_of_canonV_eq {a : AVal} {v w : Value} (h : v.canonV = w.canonV) (hw : a.Mem w) :
+    a.Mem v := AVal.mem_canonV.mp (h ▸ AVal.mem_canonV.mpr hw)
 
 end Substrait

@@ -65,7 +65,7 @@ def binName : BinFn → String
   | .eq => "eq" | .lt => "lt" | .and => "and" | .or => "or"
   | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .imod => "imod" | .idiv => "idiv"
   | .fadd => "fadd" | .fsub => "fsub" | .fmul => "fmul" | .fdiv => "fdiv" | .fmod => "fmod"
-  | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
+  | .fdivIeee => "fdivIeee" | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
   | f => reprStr f
 
 /-- A literal: a double by its code (`core/Sverify/Core/Float.lean`). -/

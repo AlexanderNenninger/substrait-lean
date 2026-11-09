@@ -21,7 +21,7 @@ writes a change as position delete files and data files of the new rows,
 one commit the size of the change. In a partitioned table, it reads only
 the data files of the partitions the deleted rows fall in, each delete file
 carries the partition of the data file it applies to, and the new rows go to
-one data file per partition (#466).
+one data file per partition.
 """
 
 from __future__ import annotations
@@ -1137,7 +1137,7 @@ class IcebergSink(_TableSink[Table]):
 
     The first write creates the table with `location`, the partition fields
     of `partition_by` and the table `properties` beside the sink's own, in
-    one commit (#468). A catalog without a default location, such as Unity
+    one commit. A catalog without a default location, such as Unity
     Catalog's Iceberg REST catalog on a schema without a managed storage
     root, needs `location`. They only apply to a table the sink creates: an
     overwrite keeps the table's location, spec and properties, and a sink on
@@ -1187,7 +1187,7 @@ class IcebergSink(_TableSink[Table]):
         min_snapshots: The newest snapshots of the table's history an
             expiry keeps, however old. Default: 1.
         reproducible: What a rerun of a state must reproduce
-            (`sv.equivalent(...)`, #444 D20). Default: rows as a multiset,
+            (`sv.equivalent(...)`). Default: rows as a multiset,
             doubles within the plan's bound (`sv.equivalent(floats="plan")`),
             other values exact; `sv.equivalent()` asks for the same bits.
 

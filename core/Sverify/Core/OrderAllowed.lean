@@ -28,7 +28,7 @@ measure that sorts its rows (`FIRST`, `LAST`, `STRING_AGG`, `collect`,
 others `Measure.eval`'s value. -/
 def Measure.OrderAllowed (m : Measure) (rows : Relation) (v : Value) : Prop :=
   ∃ s, s.Perm rows ∧ s.Pairwise (sortLe m.sort · · = true) ∧
-    v = if m.fn.sorts then m.eval s else m.eval rows
+    if m.fn.sorts then v = m.eval s else m.fn.Picks (m.inputs rows) v
 
 omit [Boxes.Ambient] in
 theorem mergeSort_sorted (sort : List SortKey) (rows : Relation) :
@@ -47,40 +47,41 @@ theorem Measure.eval_orderAllowed (m : Measure) (rows : Relation) :
   split
   · next h => rw [Measure.eval_sorts h, Measure.eval_sorts h,
       mergeSort_eq_of_sorted (mergeSort_sorted _ _)]
-  · rfl
+  · next h => rw [Measure.eval_eq (by simpa using h)]; exact AggFn.picks_apply _ _
 
-/-- Each value is `Measure.eval`'s over some order of the rows, and over the
-rows themselves where the measure does not sort them. -/
+/-- A measure that sorts its rows gives `Measure.eval`'s value over some
+order of them; the others give their value over the rows, or for `MIN` and
+`MAX` another member of its class (`AggFn.Picks`). -/
 theorem Measure.OrderAllowed.eval {m : Measure} {rows : Relation} {v : Value}
     (h : m.OrderAllowed rows v) :
-    ∃ s, s.Perm rows ∧ v = m.eval s ∧ (m.fn.sorts = false → v = m.eval rows) := by
-  obtain ⟨s, hp, _, rfl⟩ := h
-  split
-  · next hs => exact ⟨s, hp, rfl, fun h => by rw [hs] at h; cases h⟩
-  · exact ⟨rows, .refl _, rfl, fun _ => rfl⟩
+    ∃ s, s.Perm rows ∧ (m.fn.sorts = true → v = m.eval s) ∧
+      (m.fn.sorts = false → m.fn.Picks (m.inputs rows) v) := by
+  obtain ⟨s, hp, _, h⟩ := h
+  split at h
+  · next hs => exact ⟨s, hp, fun _ => h, fun h' => by rw [hs] at h'; cases h'⟩
+  · next hs => exact ⟨s, hp, fun h' => absurd h' hs, fun _ => h⟩
 
 /-- What an aggregate's output may be for some order of each group's rows:
 `aggAllowed` with `Measure.OrderAllowed`. -/
 def aggOrderAllowed (gs : List Expr) (ms : List Measure) (rows out : Relation) : Prop :=
   if gs.isEmpty then ∃ vs, out = [vs] ∧ Forall2 (fun m v => m.OrderAllowed rows v) ms vs
-  else Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
-      Forall2 (fun m v => m.OrderAllowed (groupRows gs rows k) v) ms vs)
-    (dedup (rows.map (groupKey gs))) out
+  else ∃ ks, IsReps Row.canon (rows.map (groupKey gs)) ks ∧ Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
+      Forall2 (fun m v => m.OrderAllowed (groupRows gs rows k) v) ms vs) ks out
 
 theorem aggregateEval_orderAllowed (gs : List Expr) (ms : List Measure) (rows : Relation) :
     aggOrderAllowed gs ms rows (aggregateEval gs ms rows) := by
   unfold aggOrderAllowed aggregateEval
   split
   · exact ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_orderAllowed m rows⟩
-  · exact forall₂_map_self _ fun k _ =>
-      ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_orderAllowed m _⟩
+  · exact ⟨_, canonReps_isReps Row.leRaw_rawOrder _, forall₂_map_self _ fun k _ =>
+      ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_orderAllowed m _⟩⟩
 
 /-- A row of an aggregate's output: a group key and the measures' values over
 the group's rows, in some order of them. -/
 theorem mem_aggOrderAllowed {gs : List Expr} {ms : List Measure} {rows out : Relation}
     {row : Row} (h : aggOrderAllowed gs ms rows out) (hr : row ∈ out) :
     ∃ k vs grp, row = k ++ vs ∧ Forall2 (fun m v => m.OrderAllowed grp v) ms vs ∧
-      (∀ y ∈ grp, y ∈ rows) ∧ ((gs = [] ∧ k = []) ∨ ∃ x ∈ rows, k = groupKey gs x) ∧
+      (∀ y ∈ grp, y ∈ rows) ∧ ((gs = [] ∧ k = []) ∨ ∃ x ∈ rows, k.canon = (groupKey gs x).canon) ∧
       (gs ≠ [] → grp ≠ []) ∧ grp.length ≤ rows.length := by
   unfold aggOrderAllowed at h
   split at h
@@ -89,10 +90,12 @@ theorem mem_aggOrderAllowed {gs : List Expr} {ms : List Measure} {rows out : Rel
     rw [List.mem_singleton] at hr; subst hr
     exact ⟨[], row, rows, by simp, hv, fun _ hy => hy, .inl ⟨List.isEmpty_iff.mp hg, rfl⟩,
       fun hne => absurd (List.isEmpty_iff.mp hg) hne, Nat.le_refl _⟩
-  · obtain ⟨k, hk, vs, rfl, hv⟩ := Forall2.mem_right h hr
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
-    refine ⟨_, vs, _, rfl, hv, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩,
-      fun _ => List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩),
+  · obtain ⟨ks, hks, h⟩ := h
+    obtain ⟨k, hk, vs, rfl, hv⟩ := Forall2.mem_right h hr
+    obtain ⟨_, hy, he⟩ := hks.class_mem hk
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hy
+    refine ⟨_, vs, _, rfl, hv, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, he⟩,
+      fun _ => List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp [he]⟩),
       List.length_filter_le _ _⟩
 
 /-! ## Plans -/
@@ -125,7 +128,7 @@ def Rel.OrderAllowed (cat : Catalog) : Rel → Relation → Prop
       out.Perm (x.filter fun row => hasMatch on y row != anti)
   -- The input sorted, ties and a clustered key's groups in any order.
   | .orderBy r keys, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm i ∧ SortAllowed keys out
-  | .distinct r, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm (dedup i)
+  | .distinct r, out => ∃ i, r.OrderAllowed cat i ∧ ∃ d, IsReps Row.canon i d ∧ out.Perm d
   | .aggregate r gs ms, out => ∃ i, r.OrderAllowed cat i ∧ ∃ o, out.Perm o ∧
       aggOrderAllowed gs ms i o
   | .unnest r c, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm (i.flatMap (unnestRow c))
@@ -143,7 +146,8 @@ theorem Rel.eval_orderAllowed (cat : Catalog) : ∀ r : Rel, r.OrderAllowed cat 
       mergeSort_sorted sort _, .refl _⟩
   | .orderBy r keys => ⟨_, eval_orderAllowed cat r, List.mergeSort_perm _ _,
       .of_sorted (mergeSort_sorted keys _)⟩
-  | .distinct r | .unnest r _ => ⟨_, eval_orderAllowed cat r, .refl _⟩
+  | .distinct r => ⟨_, eval_orderAllowed cat r, _, canonReps_isReps Row.leRaw_rawOrder _, .refl _⟩
+  | .unnest r _ => ⟨_, eval_orderAllowed cat r, .refl _⟩
   | .aggregate r gs ms => ⟨_, eval_orderAllowed cat r, _, .refl _,
       aggregateEval_orderAllowed gs ms _⟩
 
@@ -211,12 +215,15 @@ theorem Rel.orderAllowed_arity {cat : Catalog} (hcat : cat.WF) :
     orderAllowed_arity hcat hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
     orderAllowed_arity hcat hwf.1 hi row (h.mem_iff.mp hr)
-  | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
-    orderAllowed_arity hcat (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
+  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr => by
+    obtain ⟨y, hy, he⟩ := hd.class_mem (h.mem_iff.mp hr)
+    rw [Row.length_of_canon he]; exact orderAllowed_arity hcat (r := r) hwf hi y hy
   | .aggregate _ gs ms, _, _, ⟨_, _, _, h, ho⟩, row, hr => by
     obtain ⟨k, vs, _, rfl, hv, _, hk, _⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
     have hkl : k.length = gs.length := by
-      rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
+      rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, he⟩
+      · rfl
+      · rw [Row.length_of_canon he]; simp [groupKey]
     simp [arity, hkl, ← hv.length_eq]
   | .unnest r _, hwf, _, ⟨i, hi, h⟩, row, hr => by
     obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)

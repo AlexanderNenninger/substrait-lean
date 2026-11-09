@@ -8,9 +8,10 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, substrait_json, to_sql, written_plan
+from sverify.engines import substrait_json, to_sql, written_plan
 from sverify.errors import RouteError, UnverifiedRunError
 from sverify.io import StaticSource
+from sverify.sql import dialect_of
 
 SCHEMA = ibis.schema({"id": "int64", "amount": "int64"})
 
@@ -34,16 +35,16 @@ def test_report_to_sql_is_what_run_runs():
     report = _report()
     sql = report.to_sql()
     assert report.internal_plan is not None
-    assert sql == to_sql(written_plan(report.internal_plan), DUCKDB)
+    assert sql == to_sql(written_plan(report.internal_plan), "duckdb")
     db = duckdb.connect()
     db.register("orders", pa.table({"id": [1, 2], "amount": [30, 5]}))
     assert db.sql(sql).fetchall() == [(1, 30)]
 
 
-@pytest.mark.parametrize(("name", "dialect"), [("snowflake", SNOWFLAKE), ("spark", SPARK)])
-def test_report_to_sql_takes_a_name_or_a_dialect(name, dialect):
+@pytest.mark.parametrize("name", ["snowflake", "spark"])
+def test_report_to_sql_takes_a_name_or_a_dialect(name):
     report = _report()
-    assert report.to_sql(name) == report.to_sql(dialect)
+    assert report.to_sql(name) == report.to_sql(dialect_of(name))
 
 
 def test_report_to_sql_refuses_an_unknown_dialect():
@@ -80,8 +81,8 @@ def test_node_to_sql_is_the_stage_refresh_runs():
         return orders.filter(orders.amount > 10)
 
     node = orders.pipe(big)
-    assert node.to_sql() == to_sql(node.internal_plan, DUCKDB)
-    assert node.to_sql("spark") == to_sql(node.internal_plan, SPARK)
+    assert node.to_sql() == to_sql(node.internal_plan, "duckdb")
+    assert node.to_sql("spark") == to_sql(node.internal_plan, "spark")
     node.refresh()
     assert node.to_arrow().to_pylist() == [{"id": 1, "amount": 30}]
 
@@ -135,15 +136,10 @@ def test_substrait_json_defaults_to_the_reference():
     assert substrait_json(con, sql) == substrait_json(con, sql, "reference")
 
 
-def test_run_spark_is_deprecated(monkeypatch):
-    spark_engine = pytest.importorskip("sverify.spark_engine")
-    from sverify.engines import run_spark
-
-    calls = []
-    monkeypatch.setattr(spark_engine, "run", lambda *a, **k: calls.append((a, k)))
-    with pytest.warns(DeprecationWarning, match=r"run\(con, plan, 'spark'\).*sv\.unique"):
-        run_spark("{}", {})
-    assert calls == [(("{}", {}, None), {"deterministic": False})]
+def test_run_spark_is_gone():
+    """`run_spark`, deprecated since 0.5, is gone (#1288): `run(con, plan, "spark")`."""
+    with pytest.raises(AttributeError):
+        sv.engines.run_spark  # noqa: B018
 
 
 def test_rows_and_tables_column_by_column():

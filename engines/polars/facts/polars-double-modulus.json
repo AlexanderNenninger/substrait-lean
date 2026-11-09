@@ -1,0 +1,184 @@
+{
+  "id": "polars-double-modulus",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Double `%`: `x - y·floor(x / y)`",
+  "verdict": "floor remainder; NaN for `x % 0` and for finite `x % ±inf`",
+  "area": "doubles",
+  "options": [
+    "division_type",
+    "on_division_by_zero",
+    "nan_creation",
+    "zero_sign"
+  ],
+  "rows": [
+    {"group": "fp.mod", "option": "division_type", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]},
+    {"group": "fp.mod", "option": "division_type", "types": ["fp32"], "evidence": "engine_test"},
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"},
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
+    {"group": "fp.mod", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "source"}
+  ],
+  "constructs": [
+    "%",
+    "//"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`%` on doubles computes `x - y * floor(x / y)`: the remainder has the divisor's sign (`5.5 % -2` is -0.5), `x % 0` is NaN, and a finite `x % ±inf` is NaN too (`x / inf` is 0, and `inf * 0` is NaN), where C's `fmod` and Python's `%` give `x`. The formula also loses the exactness of `fmod` for large quotients.",
+    "`//` on doubles is `floor(x / y)`.",
+    "A zero remainder is always 0.0: `x - y * q` with equal terms is +0.0 under round to nearest, and for `x = -0.0` the product `y * q` is -0.0, so `-0.0 % y` is 0.0 too (`fmod` gives -0.0 for `-4 % 2` and `-0.0 % y`).",
+    "The docs are silent on `%` of doubles (the floored remainder, `x % 0`, `x % ±inf`): a docs gap.",
+    "No upstream test pins `x % ±inf`; it may change between versions."
+  ],
+  "reference": "`modulus` on doubles (sverify's `sverify_fmod`): the truncated remainder (`fmod`), with a zero divisor an error as on integers, and `fmod(x, ±inf) = x`. 60 of the 144 rows differ.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64 % Float64"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "double-modulus-sign"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "double-floordiv"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L33-L43"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L41-L43",
+          "note": "Column by column: `l - r * (l / r).floor()`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L96-L103",
+          "note": "A literal divisor: `x - rhs * (x * (1 / rhs)).floor()`; a literal dividend: `lhs - x * (lhs / x).floor()`."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/float.rs#L124-L126"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L11-L22"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/arithmetic/numeric.rs#L105-L163",
+          "note": "`+ - * // %` on two ChunkedArrays: equal lengths take the array kernel, a length-1 side the scalar kernel."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/arity.rs#L894-L942"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/column/mod.rs#L1816-L1839",
+          "note": "A literal is a scalar column, passed to the operation as a one-value Series."
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/expression.rs#L10-L38",
+          "note": "The streaming engine evaluates each expression with polars-expr's `PhysicalExpr` on every morsel, so it runs the same kernels."
+        }
+      ],
+      "notes": [
+        "`impl_float_arith_kernel!` is one macro instantiated for `pf16`, `f32` and `f64`, so `Float32` and `Float64` run the same operations. The streaming engine evaluates expressions through polars-expr on each morsel (`StreamExpr` in crates/polars-stream/src/expression.rs), so it shares these kernels with the in-memory engine. So the floor remainder, NaN for a zero divisor and NaN for a finite `x % ±inf` hold for `Float32` as the `Float64` probes show.",
+        "With a literal divisor on a frame of two rows or more, the kernel multiplies by the reciprocal: where `x * (1 / y)` rounds below an integer that `x / y` reaches, the floor is one less and the remainder is `y` itself (`49.0 % 49.0` is 49.0), and a subnormal divisor makes the reciprocal infinite. That path is polars-double-scalar-divisor.",
+        "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L198-L218",
+          "note": "`test_list_arithmetic_values`, `Float32`: 1 // 0 is inf, 1 % 0 NaN, 1 / 0 inf, 0 // 0 NaN, 0 % 0 NaN, 0 / 0 NaN"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L153-L172",
+          "note": "`test_list_arithmetic_values`, `Float32` (picked so nothing upcasts to `Float64`): 7 // 3 is 2, -5 % 3 is 1, 2 / 128 is 0.015625"
+        }
+      ],
+      "notes": [
+        "Pins the `Float32` floor remainder (-5 % 3 is 1, the divisor's sign) and NaN for a zero divisor (`1 % 0`, `0 % 0`). The test runs each case on one-row operands and, through `BROADCAST_SERIES_COMBINATIONS`, with the left side broadcast to three rows against a one-row right side, which takes the reciprocal-divisor kernel (PL-3); `EXEC_OP_COMBINATIONS` runs it on `Series` (in memory) and as a lazy `select` with `collect()`. These inputs give the same results on the IEEE and the reciprocal path. Marked `slow`, which CI still runs. No test checks the sign of a zero remainder, so `zero_sign` stays at the source.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.mod.html",
+          "note": "silent on float semantics (floored remainder, x % 0, x % inf)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L6797-L6825"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_numeric.py#L777-L829",
+          "note": "SQL % truncates (-7.5 % 2 = -1.5); the comment says the expression API floors instead (eager, in memory). No upstream test of x % ±inf"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L4-L5",
+          "note": "source comment: the same division / modulo combination as Python"
+        }
+      ],
+      "notes": "From the reverse pass's check of PL-1, which this fact records."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "no upstream test of x % ±inf at py-2.1.0; test_list.py#L169-L170 and #L210-L217 pin only finite and zero divisors"
+        }
+      ],
+      "notes": "From the reverse pass's check of PL-1, which this fact records."
+    }
+  ]
+}

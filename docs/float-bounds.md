@@ -1,10 +1,9 @@
 # Float error bounds
 
 Doubles round. Sverify models them exactly where it can (comparisons, `MIN`,
-`MAX`), computes `+ − × ÷` as the exact result rounded once ([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once)),
+`MAX`), computes `+ − × ÷` as the exact result rounded once ([double arithmetic](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once)),
 and computes `pow`, `log` and the other libm functions with Lean's native
-`Float`. Epic #85
-adds proved error bounds for the aggregates that add up doubles: `SUM`,
+`Float`. Proved error bounds cover the aggregates that add up doubles: `SUM`,
 `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`. This note records the model,
 where the proofs live, and what each bound says.
 
@@ -17,10 +16,10 @@ toolchain pin are unchanged. CI's `float-bounds` job builds the package with
 Mathlib's prebuilt oleans; `poe prove-floats` does the same locally. It is
 not part of `poe qa`, because of the Mathlib download.
 
-The core used the bound formulas as trusted facts, next to its other trust in
-native `Float` (`core/Sverify/Core/Float.lean`), and cross-references them to the
-proofs here. Since D31 it proves the arithmetic ones itself
-(`core/Sverify/Core/FloatArith.lean`); `FloatCode.exp_fin` stays a trusted fact.
+The core cross-references the bound formulas to the proofs here and proves
+the arithmetic ones itself (`core/Sverify/Core/FloatArith.lean`);
+`FloatCode.exp_fin` stays a trusted fact, next to its other trust in native
+`Float` (`core/Sverify/Core/Float.lean`).
 
 ## The model of rounding
 
@@ -38,7 +37,7 @@ Rounding also keeps the sign of a result, as rounding to nearest does.
 `γ n = n·u / (1 − n·u)` bounds the relative error of `n` roundings.
 
 [`Link.lean`](../float-bounds/FloatBounds/Link.lean) states the trusted link to
-Lean's `Float` (stage 2): `NativeLink` says that addition, subtraction,
+Lean's `Float`: `NativeLink` says that addition, subtraction,
 multiplication, division and square root of finite doubles round as one
 `StdModel` does, and give a finite double when the exact result is at most the
 largest finite double. This is IEEE 754 binary64 with round to nearest. Like
@@ -56,8 +55,8 @@ lemmas about that model.
 
 | Theorem | Bound |
 |---|---|
-| `sum_error` (stage 3) | `\|Σ̃ xs − Σ xs\| ≤ γ n · mag xs` |
-| `sharded_error` (stage 4) | `k` shards of at most `m` values, added in two phases: `γ (m + k) · (mag xs + k · tiny)` |
+| `sum_error` | `\|Σ̃ xs − Σ xs\| ≤ γ n · mag xs` |
+| `sharded_error` | `k` shards of at most `m` values, added in two phases: `γ (m + k) · (mag xs + k · tiny)` |
 | `avg_error` | the mean: `γ (n + 2) · mag xs / n` |
 | `sharded_avg_error` | the sharded mean: `γ (m + k + 2) · (mag xs + k · tiny) / n` |
 | `sum_error_of_bound`, `avg_error_of_bound` | with every `\|xᵢ\| ≤ B`: `γ n · n · (B + tiny)` and `γ (n + 2) · (B + tiny)` |
@@ -66,8 +65,8 @@ Each assumes that no partial result overflows, as a condition on the exact
 values, `(1 + γ) · mag xs ≤ maxFinite`. With `sum_error`, `sharded_error`
 bounds how far a sharded sum is from the sequential one.
 
-[`Core.lean`](../float-bounds/FloatBounds/Core.lean) proves the two facts the
-contract checker trusts, in the integer form it uses (a value `x` scaled to
+[`Core.lean`](../float-bounds/FloatBounds/Core.lean) proves the bounds of the
+sequential sum in the integer form the contract checker uses (a value `x` scaled to
 `x · 2¹⁰⁷⁴`): `core_sum` and `core_avg`. A sum of `n ≤ N` values in
 `[lo, hi]`, with `N ≤ 2³²` and `|x| ≤ 2⁴⁰⁰`, lies in
 `[min(lo, N·lo) − τ, max(hi, N·hi) + τ]`, and their mean in
@@ -76,14 +75,14 @@ contract checker trusts, in the integer form it uses (a value `x` scaled to
 decoding of codes with more than 53 significant bits (`Decoded`). `core_sign`
 keeps signs exact: a `SUM` or `AVG` of values `≥ 0` is `≥ 0`.
 
-## Sharded `SUM` and `AVG` (stage 5)
+## Sharded `SUM` and `AVG`
 
 `--shard` with `float_order="any"`, and `sverify.engines.run_sharded` with a
 `reproducible=` that accepts a tolerance on doubles, add each
 shard's doubles, then the partial sums (`floatPartial`, `floatCombine` in
 `SubstraitLean/Partition.lean`), where the reference adds all of them in one
 pass. [`Shard.lean`](../float-bounds/FloatBounds/Shard.lean) bounds the
-difference from what the partial rows report ([#428](https://github.com/AlexanderNenninger/substrait-lean/issues/428)):
+difference from what the partial rows report:
 
 | Theorem | Bound |
 |---|---|
@@ -91,14 +90,14 @@ difference from what the partial rows report ([#428](https://github.com/Alexande
 | `sharded_avg_near` | the same for the means: `(γ (m + k + 2) + γ (n + 2)) · (mag xs + k · tiny) / n` |
 | `mag_le_absSum`, `mag_flatten_le` | the shards' rounded `SUM(\|x\|)`s, adding up to `A`, bound the magnitude: `(1 − γ m) · mag xs ≤ A + n · tiny` |
 | `shardTol_le`, `shardAvgTol_le` | both bounds with `mag xs ≤ (A + n · tiny) / (1 − γ m)`, scaled by `2¹⁰⁷⁴` and rounded up: `shardTolScaled n m k As`, `shardAvgTolScaled` |
-| `core_shard_sum`, `core_shard_avg` | the facts the core trusts, for codes of magnitude at most `Bs` with `n ≤ 2³²` and `n (Bs + 2·2⁵²) ≤ 2²⁰⁹⁶` |
+| `core_shard_sum`, `core_shard_avg` | the same in the core's integer form, for codes of magnitude at most `Bs` with `n ≤ 2³²` and `n (Bs + 2·2⁵²) ≤ 2²⁰⁹⁶` |
 | `sharded_near_of_bound`, `sharded_avg_near_of_bound` | before running, with at most `N` values, each `\|x\| ≤ B`, in at most `k` shards: `(γ (N + k) + γ N) · (N (B + tiny) + k · tiny)` and `(γ (N + k + 2) + γ (N + 2)) · (B + tiny + k · tiny)` |
 
 Each shard reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split double,
 after the columns `floatCombine` reads (`floatBoundParts`). The counts give
 `n`, `m` and `k`, the `SUM(|x|)`s give `A`, and the `MAX(|x|)`s show the
-values far from overflow. These bound an engine's own two-phase sum. Since
-D25 the core proves Lean's own split on integers, without axioms
+values far from overflow. These bound an engine's own two-phase sum. The
+core proves Lean's own split on integers, without axioms
 (`twoPhaseSum_near`, `twoPhaseAvg_near` in `Partition.lean`, the mean with
 `FloatCode.div_scaled_err` for its division), and `floatSplit_sum` and
 `floatSplit_avg` apply them to a group's shards:
@@ -153,14 +152,14 @@ results from any co-moment within `E` of `C`:
 
 The contract checker uses `floatSumCR_mem`, `floatAvgCR_mem` and
 `floatSumCR_sign` (`core/Sverify/Core/FloatExact.lean`), theorems about the
-reference's correctly rounded sum (D25), with the tolerances
-`FloatCode.sumTolScaled` and `avgTolScaled` defined there as here. Before D25
-they were axioms about the sequential sum, proved here as `core_sum`,
-`core_avg` and `core_sign`. They cost a few integer operations per measure.
+reference's correctly rounded sum, with the tolerances
+`FloatCode.sumTolScaled` and `avgTolScaled` defined there as here.
+`core_sum`, `core_avg` and `core_sign` prove the same bounds here for the
+sequential sum. They cost a few integer operations per measure.
 
 - Signs are exact: a `SUM` or `AVG` of doubles `≥ 0` is `≥ 0`, and of
   doubles `≤ 0` is `≤ 0`.
-- D25 rounds the exact sum or mean once, and rounding is monotone, so an
+- The reference rounds the exact sum or mean once, and rounding is monotone, so an
   `AVG` of finite doubles in `[lo, hi]` lies in `[lo, hi]` rounded, which is
   `[lo, hi]` itself where `lo` and `hi` are doubles: the mean of `cpu` in
   `[0, 100]` is in `[0, 100]` (`crBound`, `crBound_sound`,
@@ -168,12 +167,12 @@ they were axioms about the sequential sum, proved here as `core_sum`,
 - A `SUM` needs one. `sv.max_rows(n)` in `requires` caps an input
   and is checked on the data (`COUNT(*) <= n`), or proved from the record
   counts of a Delta or Iceberg table's files. The same cap proves integer
-  `SUM`s fit 64 bits ([Row caps](guide.md#row-caps)). The checker reads capped
+  `SUM`s fit 64 bits ([Row caps](tasks.md#row-caps)). The checker reads capped
   tables through a `FETCH` of `n` rows (`Rel.capReads`), which keeps their
   rows (`Rel.capReads_eval`), and bounds every relation's rows from it
   (`Rel.maxRows`, `Rel.maxRows_sound`). With a cap `n`, a `SUM` of doubles
   in `[lo, hi]` lies in `[min(lo, n·lo), max(hi, n·hi)]` rounded once.
-- #85's tolerances hold too: with a cap `n ≤ 2³²` and an input interval
+- The sequential sum's tolerances hold too: with a cap `n ≤ 2³²` and an input interval
   `[lo, hi]` within `2⁴⁰⁰`, a `SUM` lies in `[min(lo, n·lo) − τ, max(hi, n·hi) + τ]`
   and an `AVG` in `[lo − τ', hi + τ']` (`floatSumCR_mem`, `floatAvgCR_mem`).
   Rounded once, the result lies inside them, so they add nothing.
@@ -191,10 +190,10 @@ they were axioms about the sequential sum, proved here as `core_sum`,
 - `sv.approx(cond, rel=1e-6)` relaxes each comparison of a column with a
   number `k` in `cond` by `rel · max(1, |k|)`, for a bound that is not a
   double or an engine whose order of additions differs from the reference
-  ([The engines' orders](#the-engines-orders-and-epsilon-444)). A report
+  ([The engines' orders](#the-engines-orders-and-epsilon)). A report
   hints at it when an exact claim fails only by rounding.
 
-The homelab metrics rollup states its contract this way:
+A metrics rollup states its contract this way:
 
 ```python
 @sv.transform(
@@ -203,7 +202,9 @@ The homelab metrics rollup states its contract this way:
 )
 ```
 
-## The engines' orders and `epsilon` (#444)
+<a id="the-engines-orders-and-epsilon-444"></a>
+
+## The engines' orders and `epsilon`
 
 An engine may add a double `SUM` in another order than the reference, so a
 contract's double `SUM` or `AVG` is `observed`: within a per-plan `ε` of a
@@ -216,7 +217,7 @@ order the engine profiles allow (`sum_order`):
 |---|---|---|
 | `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of rounded additions in any order (`FloatSums`, `core/Sverify/Core/AllowedP.lean`) | `Rnd.Tree.error`, `TreeSum.tree` ([`Tree.lean`](../float-bounds/FloatBounds/Tree.lean)) |
 | `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` ([duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json)) | `TreeSum.const` |
-| `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../characterization/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
+| `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../engines/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
 
 Each is within `γ n · Σ (|xᵢ| + tiny)` of the exact sum, the sequential
 sum's bound, for `n ≤ 2³²` doubles. For a tree, an error grows with the
@@ -226,12 +227,12 @@ second adds at most `2u |x| + 3u · tiny + 14 u² A` to the error of `s − c`,
 and the first two steps are exact or nearly so, which keeps `n = 3` within
 `γ 3`. So two results of any of these orders are within twice the core's
 tolerance of each other, and one of them is within the tolerance plus `u` of
-the reference's correctly rounded sum (D25), which `"epsilon"` reports:
+the reference's correctly rounded sum, which `"epsilon"` reports:
 
 | Theorem | `"epsilon"` |
 |---|---|
 | `epsilon_sum`, `epsilon_avg` | two engine orders: `2 · sumTolScaled N Bs`, `2 · avgTolScaled N Bs`, scaled by `2¹⁰⁷⁴` |
-| `epsilon_sum_cr`, `epsilon_avg_cr` | `"abs"`, an engine order against the reference (D25): `sumTolScaled N Bs + u · N · Bs`, `avgTolScaled N Bs + u · Bs` |
+| `epsilon_sum_cr`, `epsilon_avg_cr` | `"abs"`, an engine order against the reference: `sumTolScaled N Bs + u · N · Bs`, `avgTolScaled N Bs + u · Bs` |
 | `epsilon_sum_rel` | `"rel"` of a `SUM` of values of one sign: `2γ/(1 − γ)`, `γ = γ n` |
 | `epsilon_avg_rel` | `"rel"` of an `AVG` of values of one sign whose mean is at least `2⁻¹⁰²²` in magnitude: `γ = γ (n + 2)` |
 
@@ -250,10 +251,10 @@ filter and groups are the same values on every engine. A route that rests on
 a proved bound has evidence `proved`, and the `sum_order` rows of DuckDB and
 Polars cite `StdModel.epsilon_sum` ([realizability](realizability.md)).
 
-### Against the correctly rounded sum (D25)
+### Against the correctly rounded sum
 
-Under [D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)
-the reference's `SUM` of doubles is the exact sum of the values rounded once,
+The reference's `SUM` of doubles is the exact sum of the values rounded once
+([float aggregates](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
 and its `AVG` the exact mean rounded once (`floatSumCR`, `floatAvgCR`,
 [`FloatExact.lean`](../core/Sverify/Core/FloatExact.lean)). The core computes
 them on integers, since every finite double is a multiple of `2⁻¹⁰⁷⁴`, and
@@ -261,8 +262,7 @@ proves without axioms that the result is the nearest double
 (`FloatCode.ofExactDiv_within`), within `u` of the exact value relatively
 (`FloatCode.ofExact_rel`), monotone, and a function of the multiset
 (`floatSumCR_perm`). `floatSumCR_mem`, `floatAvgCR_mem` and `floatSumCR_sign`
-state the checker's bounds, which were axioms of the sequential sum before
-D25, as theorems of it.
+state the checker's bounds as theorems of it.
 
 An engine's result is then within its order's bound of the exact sum plus
 `u` of it:
@@ -281,7 +281,7 @@ of it. `test_duckdb_is_within_the_bound_of_the_correctly_rounded_sum`
 ### Through arithmetic
 
 `"epsilon_by_engine"` carries each column's `ε` through the double arithmetic
-between the aggregates and the output (#568, forward mode).
+between the aggregates and the output (forward mode).
 [`Propagate.lean`](../float-bounds/FloatBounds/Propagate.lean) proves the
 rules: the reference rounds the exact result `z` of its inputs once, the
 engine rounds `z'` of its own, and `StdModel.transfer` adds the two roundings
@@ -303,7 +303,7 @@ do not meet (`rule_threshold`): a filter, `CASE` condition, grouping key or
 sort key on it keeps the same rows on both sides. Where they meet, the rows
 may differ, and no column's bound below or after it is marked proved.
 
-A comparison whose ranges meet can still be decided on the data (#929).
+A comparison whose ranges meet can still be decided on the data.
 [`Margin.lean`](../float-bounds/FloatBounds/Margin.lean) bounds a group's
 sum against the reference's from its own row count `n` and `Σ |xᵢ|`, in any
 order an engine adds: `(γₙ + u) · Σ(|xᵢ| + tiny)` (`StdModel.epsilon_group`).
@@ -350,14 +350,14 @@ functions stay tested. The checker evaluates the formulas in
 doubles; every term is nonnegative, so each rounding is relative, and a
 factor `1 + 2⁻⁴⁰` covers them.
 
-### One operation's bounds and overflow (#582)
+### One operation's bounds and overflow
 
 The checker bounds a double `+`, `-`, `*` and `/` from its inputs' bounds
 (`faddBound`, `fmulBound`, `fdivBound` in `SubstraitLean/Contracts.lean`), so
 chains such as `(a + b) * c` have bounds, and a result the bounds keep below
 the largest double needs no "stays finite" precondition on the data
-(`BinFn.mayInf`). The core trusted one fact per operation on scaled values
-until D31, which proves all but `exp_fin` in `FloatArith.lean`;
+(`BinFn.mayInf`). The core states one fact per operation on scaled values
+and proves all but `exp_fin` in `FloatArith.lean`;
 [`Arith.lean`](../float-bounds/FloatBounds/Arith.lean) proves each for native
 doubles decoded within `2u` of the codes' values:
 
@@ -375,21 +375,20 @@ up to `1`.
 The error term alone would let the bound of `x * y`, `x + y` or `x / y` of
 non-negative doubles dip below `0`. Rounding keeps the sign
 (`StdModel.nonneg`), so the last row raises those bounds to `0`
-(`faddBoundS` …, #441): a revenue `SUM(qty * price)` of non-negative factors
+(`faddBoundS` …): a revenue `SUM(qty * price)` of non-negative factors
 is proved at least `0`.
 
 ## The generic properties of statistical aggregates
 
 An engine's `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` have the generic
 properties (`StatProps`, [reference
-semantics](reference-semantics.md#statistical-aggregates)); since
-[D30](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)
-the reference's own value is the exact moments rounded once, within half an
+semantics](reference-semantics.md#statistical-aggregates)), and the
+reference's own value is the exact moments rounded once
+([statistical aggregates](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)), within half an
 ulp of the exact value, so an engine is within these bounds plus that of it
-(`Epsilon.statEps`). Before D30 the reference allowed any such result, and
-three trusted facts (`varOf_props`, `covOf_props`, `corrOf_props`, retired by
-D30) gave Lean's native two-pass results the properties.
-[`CoreKappa.lean`](../float-bounds/FloatBounds/CoreKappa.lean) proves them:
+(`Epsilon.statEps`).
+[`CoreKappa.lean`](../float-bounds/FloatBounds/CoreKappa.lean) proves the
+properties of Lean's native two-pass results:
 `core_var_k`, `core_cov_k` and `core_corr_k` for two-pass on the decoded
 doubles, and `core_stddev` with `sd_mono` for the deviation. Decoding moves a
 co-moment by `2u (√(S_xx Q'_y) + √(S_yy Q'_x)) + 4u² √(Q'_x Q'_y)`
@@ -398,8 +397,8 @@ the constants rounded up to cover DuckDB's algorithm and the final division;
 for `CORR` one witness `R` stands for all the square roots, which keeps the
 statement small.
 
-The earlier generic bound, `128 n² u B²` with `B = max |xᵢ|`
-([`CoreStats.lean`](../float-bounds/FloatBounds/CoreStats.lean)), did not
+The generic bound, `128 n² u B²` with `B = max |xᵢ|`
+([`CoreStats.lean`](../float-bounds/FloatBounds/CoreStats.lean)), does not
 scale with the spread. For a variance it is about `128 · n · u · B²`: far
 below the last digit that matters for CPU percentages (`B = 100`), and
 `1.4 · 10⁴` for `10⁶` values near `10⁶` that vary by about `1` (timestamps in
@@ -448,7 +447,7 @@ parallel one's about `1.6 · 10⁻²`, and two-pass's about `10⁻⁶`, against 
 variance of `1`.
 
 
-DuckDB's own results have the properties the reference allows (#444):
+DuckDB's own results have the properties the reference allows:
 [`Chan.lean`](../float-bounds/FloatBounds/Chan.lean) and
 [`ChanCorr.lean`](../float-bounds/FloatBounds/ChanCorr.lean) prove them for
 Welford's update with Chan's merge in any tree, as DuckDB computes them:
@@ -459,8 +458,8 @@ Welford's update with Chan's merge in any tree, as DuckDB computes them:
 | `core_var_chan` | `VAR_*` is `≥ 0` and within `varTol` (`STDDEV_*` follows by `core_stddev`) |
 | `core_cov_chan` | `COVAR_*` is within `covTol` |
 | `corr_duck_le`, `core_corr_chan` | DuckDB's `CORR`, `COVAR_POP / (STDDEV_POP_x · STDDEV_POP_y)` from three states, is at most `1 + 3E/L + 8u` |
-| `epsilon_var_cr` | `"abs"` of a `VAR_*` against the reference (D30): `varTol + u · abs(S / d)` |
-| `epsilon_cov_cr` | `"abs"` of a `COVAR_*` against the reference (D30): `covTol + u · abs(C / d)` |
+| `epsilon_var_cr` | `"abs"` of a `VAR_*` against the reference: `varTol + u · abs(S / d)` |
+| `epsilon_cov_cr` | `"abs"` of a `COVAR_*` against the reference: `covTol + u · abs(C / d)` |
 
 `vEval_nonneg` needs two facts of IEEE rounding beyond the standard model:
 rounding is monotone (`StdModel.Mono`), and doubles are multiples of `2⁻¹⁰⁷⁴`
@@ -470,14 +469,14 @@ DuckDB's and Spark's `stat_algo` rows cite `core_var_chan` ([realizability](real
 Polars's algorithms (a reassociated two-pass per block, Schubert and Gertz's
 merge) are not proved, and its row stays tested.
 
-`Epsilon.statEps` reports these bounds per column (#918): a `VAR_*`'s and a
+`Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a
 `COVAR_*`'s are `epsilon_var_cr` and `epsilon_cov_cr` for ranges `[-B, B]`
 (a pair's two sides each, `BinFn.pair`) and the row cap `n`, proved on the
 engines `statsProvedOn` names (`"proved_on"`: DuckDB and Spark) and tested on
 the others. A `STDDEV_*`'s goes through the square root, not mechanised.
 `CORR` has none: its error grows as a side's variance shrinks, and ranges
 give no lower bound on a variance. Snowflake's textbook formula on values
-shifted by their group's mean is the corrected two-pass algorithm (#1023);
+shifted by their group's mean is the corrected two-pass algorithm;
 the shift keeps the reference's value (`momentNum_shift`), and its bound is
 recorded privately.
 

@@ -9,6 +9,15 @@ from pathlib import Path
 
 import pytest
 
+
+def _facts():
+    """`sverify_dev.facts`, which needs jsonschema: the repository's tests
+    import it where they use it (the wheel's tests skip those)."""
+    from sverify_dev import facts
+
+    return facts
+
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "python" / "scripts" / "docs_pages.py"
 
@@ -42,7 +51,7 @@ def test_every_entry_has_an_anchor(pages):
     text = "\n".join(pages.values())
     anchors = set(re.findall(r"\{#([A-Za-z0-9_.-]+)\}", text))
     assert _ids("upstream/bugs/*.json") <= anchors
-    assert _ids("characterization/*/facts/*.json") <= anchors
+    assert {f["id"] for f in _facts().load().values()} <= anchors
 
 
 def test_links_between_pages_resolve(pages):
@@ -105,9 +114,9 @@ def test_the_map_lists_every_page_once():
             assert (ROOT / "docs" / target).resolve().exists(), target
 
 
-def test_the_examples_page_is_docs_examples(pages):
+def test_the_examples_page_is_getting_started(pages):
     page = pages["examples/examples.md"]
-    assert page.startswith('---\ntitle: "Examples"')
+    assert page.startswith('---\ntitle: "Getting started"')
     assert "## 8. Substrait's own semantics" in page
 
 
@@ -116,7 +125,7 @@ def test_the_index_has_one_short_row_per_entry(pages):
     no entry's Markdown (an unbalanced backtick, a `|`) can break it."""
     index = pages["ledgers/index.qmd"]
     rows = re.findall(r"^<tr><td><a href=\"[^\"]+#([^\"]+)\">", index, re.M)
-    ids = _ids("upstream/bugs/*.json") | _ids("characterization/*/facts/*.json")
+    ids = _ids("upstream/bugs/*.json") | {f["id"] for f in _facts().load().values()}
     assert sorted(rows) == sorted(ids)
     for cell in re.findall(r"<td>([^<]*)</td>", index):
         assert len(cell) <= 200, cell

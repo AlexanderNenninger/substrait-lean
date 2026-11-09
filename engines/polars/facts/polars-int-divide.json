@@ -1,0 +1,168 @@
+{
+  "id": "polars-int-divide",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer `//` floors, `truncdiv` truncates; NULL for a zero divisor",
+  "verdict": "`//` floors, `truncdiv` truncates; `x // 0` is NULL; `MIN // -1` wraps",
+  "area": "integers",
+  "options": [
+    "division_type",
+    "on_division_by_zero",
+    "overflow"
+  ],
+  "rows": [
+    {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "division_type", "types": ["i8", "i16", "i32", "i64"]}
+  ],
+  "constructs": [
+    "//",
+    "floordiv",
+    "truncdiv"
+  ],
+  "settings": {"engine": ["in-memory", "streaming"]},
+  "description": [
+    "`//` on integers is floor division (`wrapping_floor_div_mod`): `-7 // 2` is -4, `1 // -2` is -1. A zero divisor gives NULL (the result's validity masks it), and `MIN // -1` wraps to `MIN`.",
+    "`Expr.truncdiv` divides rounding toward zero (`Operator::TruncDivide`, the kernel `prim_wrapping_trunc_div`), on both engines: `-7 truncdiv 2` is -3. It shares the rest with `//`: a zero divisor gives NULL and `MIN truncdiv -1` wraps to `MIN`. The result type is that of `//`.",
+    "So sverify could translate Substrait's integer `divide` to `truncdiv` in place of its floor-division shim (`int_div_trunc` in `_polars_shims.py`), keeping the guards for a zero divisor and `MIN / -1`. `/` on integers is a division of doubles (polars-int-true-divide).",
+    "The docs are silent on a zero divisor giving NULL and on `MIN // -1` wrapping: a docs gap."
+  ],
+  "reference": "`divide` on integers truncates toward zero, with `on_division_by_zero: ERROR` when the plan omits it (`NULL` when asked) and `overflow: ERROR` at `MIN / -1`. Polars's `//` differs on every quotient of operands of opposite signs that is not exact (26 of the 121 rows of the `NULL` candidate).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Int8 // Int8"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Int16 // Int16"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Int32 // Int32"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Int64 // Int64"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/arithmetic/signed.rs#L34-L57"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L247-L259",
+          "note": "`test_truncdiv_int`: `Int8` `a.truncdiv(b)` of 7, -7, 7, -7, -128, -128, 5, NULL by 2, 2, -2, -2, 2, -1, 0, 1 is 3, -3, -3, 3, -64, -128, NULL, NULL (lazy `collect()`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L262-L269",
+          "note": "`test_truncdiv_signed_min`: `Int64` MIN truncdiv 2 and 3 truncate toward zero"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L6756-L6795",
+          "note": "`Expr.truncdiv`: divides, rounding toward zero; engine support in-memory, streaming, distributed; same result type as `floordiv`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/expr/test_literal.py#L142-L188",
+          "note": "`test_floordiv_mod`: `//` and `%` of `Int8` and `Int32` literals, a zero divisor gives NULL (eager, in memory)"
+        }
+      ],
+      "notes": [
+        "Contradicts the description's second paragraph: Polars 2.1.0 has a truncating integer division in Python, `Expr.truncdiv` (`Operator::TruncDivide`), on both engines. Its tests pin truncation toward zero, `MIN truncdiv -1` wrapping to `MIN` and NULL for a zero divisor, which matches Substrait's `divide` on integers except for the overflow and division-by-zero options. The description is left as it is for review.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "sql": "pl.LazyFrame({'a': [7, -7, 7, -7, -128, 5, None], 'b': [2, 2, -2, -2, -1, 0, 1]}, schema={'a': pl.Int8, 'b': pl.Int8}).select(pl.col('a').truncdiv(pl.col('b')), pl.col('a').truncdiv(2).alias('lit')).collect(engine=e).rows() for e in ('in-memory', 'streaming')",
+          "observed": "both engines: [(3, 3), (-3, -3), (-3, 3), (3, -3), (-128, -64), (None, 2), (None, None)]"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L247-L269",
+          "note": "`test_truncdiv_int` and `test_truncdiv_signed_min`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L6756-L6795",
+          "note": "`Expr.truncdiv`"
+        }
+      ],
+      "notes": [
+        "Corrected the description, title, verdict, constructs and settings. Round 1 said the Python API has no truncating integer division; Polars 2.1.0 has `Expr.truncdiv` (`Operator::TruncDivide`), documented for in-memory, streaming and distributed, and its tests (`test_truncdiv_int`, `test_truncdiv_signed_min`, round 3) pin truncation toward zero, `MIN truncdiv -1` wrapping to `MIN` and NULL for a zero divisor. The repro above confirms both engines, with a column and a literal divisor. The rows are unchanged: `//` and `truncdiv` share the overflow and division-by-zero behaviour.",
+        "Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/expressions/binary.rs#L160-L186",
+          "note": "FloorDivide/TruncDivide dispatch to floor_div_series/trunc_div_series"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/int_divide.rs#L32-L98"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L39-L68",
+          "note": "wrapping_div then -1 on a nonzero remainder of the other sign"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.truncdiv.html",
+          "note": "states floordiv rounds down by contrast; silent on a zero divisor (NULL) and MIN // -1"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/floor_divmod.rs#L86-L109",
+          "note": "#[test] test_signed_wrapping_div_mod: all i8 pairs, floored and wrapped (-128 // -1 = -128)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L121-L122",
+          "note": "Int8 -5 // 3 = -2 (eager and lazy, both engines; slow)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L238-L243",
+          "note": "Int32 // 5 matches numpy's floor (eager)"
+        }
+      ]
+    }
+  ]
+}

@@ -258,7 +258,7 @@ def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   | .imod => (Kind.modK a.toKind b.toKind).map .kind
   | .eq | .lt => need (Kind.comparable a.toKind b.toKind) (.kind .bool)
   | .and | .or => need (a.okK .bool && b.okK .bool) (.kind .bool)
-  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb =>
     need (num Kind.isFloat) (.kind .float)
   | .idiv | .ipow | .bit _ => need (num Kind.isInt) (.kind .int)
   | .concat | .trim _ _ => need (a.okK .str && b.okK .str) (.kind .str)
@@ -451,7 +451,7 @@ has one kind; `other` for the rest. -/
 def BinFn.out : BinFn → Kind
   | .eq | .lt | .and | .or | .startsWith | .endsWith | .like | .ilike | .listFn .contains => .bool
   | .concat | .substr _ _ | .trim _ _ | .strRepeat => .str
-  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb => .float
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb => .float
   | .strpos | .levenshtein | .idiv | .ipow | .bit _ | .dateDiff | .dadd | .dsub | .dmul | .ddiv
   | .listFn .position => .int
   | .dateAdd => .date
@@ -998,8 +998,8 @@ theorem Rel.kinds_sound {cat : Catalog} {tk : String → List Kind} (hcat : cat.
     exact kinds_sound hcat hk (r := r) hwf.1 h row hr
   | .distinct r, ks, hwf, h, row, hr => by
     simp only [inferKinds] at h
-    simp only [eval, mem_dedup] at hr
-    exact kinds_sound hcat hk (r := r) hwf h row hr
+    simp only [eval] at hr
+    exact kinds_sound hcat hk (r := r) hwf h row (canonReps_sub hr)
   | .unionAll a b, ks, hwf, h, row, hr => by
     simp only [inferKinds, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ka, ha, kb, hb, rfl⟩ := h

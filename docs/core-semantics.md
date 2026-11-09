@@ -289,6 +289,7 @@ the first column are the names the tables below use.
 | `on_log_zero` | `NAN`, `ERROR`, `MINUS_INFINITY` | the three | `ERROR` | `MINUS_INFINITY` (R15-math-domain) |
 | `nan_creation` (sverify's: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `fmod(±∞, y)`, a `SUM` of `+∞` and `−∞`) | `NAN`, raise | IEEE: NaN | raise (#257) | `NAN` ([R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json), [R15-double-modulus](../characterization/duckdb/facts/duckdb-R15-double-modulus.json), [nonfinite-aggregates](../characterization/duckdb/facts/duckdb-nonfinite-aggregates.json)) |
 | `zero_sign` (sverify's) | `IEEE` (two zeros), `ONE_ZERO` | IEEE; grouping and order of `-0.0` unspecified | `ONE_ZERO` (#89, an override) | `IEEE` in arithmetic (`1.0 / -0.0 = -∞`) and kept through a sort, where `-0.0` and `0.0` are peers; the written plan canonicalises (`Dialect.canon`, [R14](../characterization/duckdb/facts/duckdb-R14.json)) |
+| `round_zero_sign` (sverify's: which zero `round` and `ceil` give a negative value that rounds to zero) | `ANY`, `IEEE` (`-0.0`), `POSITIVE` (`+0.0`) | unspecified | `ANY`, observed up to `canon`; `eval` gives `+0.0` | `IEEE` (`round(-0.4)` is `-0.0`, [R15-round](../characterization/duckdb/facts/duckdb-R15-round.json)); the written plan canonicalises (`Dialect.canon`). Polars too; Spark gives `+0.0` ([spark-round](../engines/spark/facts/spark-round.json)), and its `ceil` is a `BIGINT` ([spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json)) |
 | `nan_equality` (sverify's for `=`, grouping, `DISTINCT`, joins; Substrait's for `index_in`) | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | IEEE `=` (NaN unequal); `index_in` takes the option | `NAN_IS_NAN` (#89, an override) | `NAN_IS_NAN`, either sign ([nan-equality](../characterization/duckdb/facts/duckdb-nan-equality.json)) |
 | `nan_order` (sverify's: sort, `MIN`, `MAX`, `<`) | `GREATEST`, `UNORDERED` | IEEE comparisons (`NaN < x` false) | `GREATEST`, above `+∞` | `GREATEST` ([arg-min-nulls](../characterization/duckdb/facts/duckdb-arg-min-nulls.json), [quantile-disc](../characterization/duckdb/facts/duckdb-quantile-disc.json)) |
 | `nan_kind` (sverify's: a NaN's sign and payload) | `IEEE`, `ONE_NAN` | IEEE | `ONE_NAN` | the sign survives (`signbit(-'nan')` is TRUE, [signbit](../characterization/duckdb/facts/duckdb-signbit.json)) |
@@ -353,8 +354,8 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
 | core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error` |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
-| core | `fp.round` | `round` | `rounding` |
-| core | `fp.floor` | `floor`, `ceil` | none |
+| core | `fp.round` | `round` | `rounding`, `round_zero_sign` |
+| core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`) |
 | core | `cmp` | `equal`, `lt`, `greatest`, `least`, `nanvl`, `is_null`, `not`, `and`, `or` | `nan_equality`, `nan_order`, `zero_sign` (doubles only) |
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
@@ -747,6 +748,7 @@ is a choice that accepts every value the plan states.
 | `on_log_zero` | all others | `NAN`, `ERROR`, `MINUS_INFINITY` | `ERROR` | raise |
 | `nan_creation` | all others | `NAN`, `ERROR` | `ERROR` | raise |
 | `zero_sign` | all others | `IEEE` | `ONE_ZERO` | choose |
+| `round_zero_sign` | all others | `ANY`, `IEEE`, `POSITIVE` | `ANY` | leave open |
 | `nan_equality` | all others | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
 | `nan_equality` | `cmp` | `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
 | `nan_order` | all others | `GREATEST`, `UNORDERED`, `IGNORED` | `GREATEST` | choose |
@@ -1869,8 +1871,8 @@ no flush to zero, checked by a differential probe; an engine without it gets
 a shim or a refusal.
 
 The reference observes these results through its own zero and NaN rules
-(ONE_ZERO, #89; `on_division_by_zero`), so its values are unchanged; a
-profile with IEEE `zero_sign` sees the signed result.
+(ONE_ZERO, #89; `on_division_by_zero`); a profile with IEEE `zero_sign` sees
+the signed result. (Corrected 2026-11-09: see below.)
 
 In the model (`core/Sverify/Core/FloatArith.lean`): every finite double is an
 integer multiple of 2⁻¹⁰⁷⁴, so the exact sum, difference and product are
@@ -1879,9 +1881,9 @@ two. `ofExactDiv` rounds each, as it rounds D25's sums, to the nearest
 multiple of `ulp = 2^max(e−52, −1074)` with ties by that multiple's parity,
 and to `±∞` at `|q| ≥ 2¹⁰²⁴ · (1 − 2⁻⁵⁴)`. `addI`, `subI`, `mulI` and `divI` are
 IEEE 754's operations on every code, `-0.0` and the negative NaN included.
-The reference has one zero and one NaN (`zero_sign` `ONE_ZERO`, #89), so its
-`fadd`, `fsub`, `fmul` and `fdiv` are these followed by `canon`, and on
-finite operands they are the rounded exact result (`fadd_fin` …).
+The reference's `fadd`, `fsub`, `fmul` and `fdiv` are these operations on the
+raw values, and on finite operands they are the rounded exact result up to the
+sign of a zero (`fadd_fin` …, stated on `canon` of the result).
 
 Consequences:
 
@@ -1905,6 +1907,60 @@ or `x · y` was provable, and the checker trusted eight axioms for them. The
 exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
+
+**Correction, 2026-11-09** (approved by the maintainer, via the theory advisor):
+"The reference is IEEE on the full float code set, signed zeros and signed
+NaNs included; `canon` applies only at identity boundaries; the reference
+raises or leaves the result open where engines disagree."
+
+- Values stay raw. A read gives the stored double, and every scalar function
+  of doubles, arithmetic, negation, `%`, rounding and the libm functions,
+  runs on the raw value and gives IEEE's result, `-0.0` included:
+  `0.0 * -1.0` is `-0.0`, `-(0.0)` is `-0.0`, `sqrt(-0.0)` is `-0.0`,
+  `-4.0 % 2.0` is `-0.0`, `atan2(-0.0, -1.0)` is `-π`. There is no `canon`
+  after a scalar operation. A NaN an operation produces is the NaN code (its
+  sign stays open, as above).
+- Under `zero_sign` = `ONE_ZERO` and `nan_kind` = `ONE_NAN`, `canon` applies
+  at the identity boundaries: `=` and `<` (lists and structs element by
+  element), and the keys of `DISTINCT`, `GROUP BY`, joins and window
+  partitions. `-0.0 = 0.0` and `-NaN = NaN` are true. A profile with IEEE
+  zeros applies it nowhere.
+- Where the engines agree on `-0.0`, the reference gives their value:
+  `CAST(-0.0 AS BIGINT)` and `CAST(-0.0 AS DECIMAL)` are `0`, `sqrt(-0.0)` is
+  `-0.0`, `-0.0` is finite. Domains read one zero: `ln(-0.0)` raises as
+  `ln(0.0)` does, `atan2(-0.0, 0.0)` as `atan2(0.0, 0.0)`. Where they
+  disagree, the reference raises: `x / -0.0` and `x % -0.0` raise as
+  `x / 0.0` does (DuckDB gives `-∞`, Spark under ANSI raises).
+- In the model: `FloatCode.ofFloat` and `toFloat` keep `-0.0` (`ofParts`),
+  `fmod` gives a zero the dividend's sign, casts and `FMath.inDomain` read
+  `canon c`, `fneg` is `negI`. The contract analysis bounds a double by its
+  canonical code (`NumKind.norm`); a function's soundness holds up to `canon`
+  (`Value.CanonEq`), and the functions of native doubles, whose abstractions
+  bound nothing, by their shape alone (`Value.ShapeEq`, `mapAbs_top_sound`).
+- `ORDER BY` is an identity boundary too: it sorts by a total preorder on
+  canonical values, and rows tied on it may come in any order (`Allowed`).
+- Where a class has several members, a `DISTINCT` row, a `GROUP BY` key and
+  a `MIN` or `MAX` may be any member of the class present in the input, or
+  the class's canonical value (`IsReps`, `AggFn.Picks`). Spark and DuckDB
+  emit the canonical value, so a group of `-0.0`s comes out as `+0.0`;
+  Polars emits a present member. `Rel.eval` keeps one admitted value, the
+  raw-least member. Where the keys and arguments hold no doubles, each class
+  has one member and the output is unique (`aggAllowed_eq`, `Rel.detPlan`'s
+  `noDoubles` guards). A whole condition can tell the members apart
+  (`atan2`), so a `DISTINCT` keeps the facts with one value on a class: the
+  comparisons of numbers, and conditions `Expr.canonSafe` admits
+  (`Fact.classSafe`).
+- Incremental maintenance keeps its state per class and emits the class's
+  canonical key: the maintained output of `GROUP BY` and `DISTINCT` is one
+  the reference allows (`LinearAgg.aggregate_maintained`,
+  `distinct_maintained`, `ExtremeAgg.extreme_maintained`).
+
+Why: the reference must compute what the engines compute on a stored or
+computed `-0.0`. Canonicalising reads or results instead is unsound: `atan2`
+tells the zeros apart, and a `-0.0` made mid-plan (`0.0 * -1.0`) escapes a
+canonicalising read. The engines normalise exactly at the identity
+boundaries (Spark's `NormalizeFloatingNumbers`, DuckDB's hashing, Polars's
+grouping; their facts).
 
 ### D32. Calendar functions work on the reference's timestamps, 0001 to 9999
 
@@ -1947,8 +2003,8 @@ one guard outside it:
 | engine | inside 0001 to 9999 | outside | type the writer pins |
 |---|---|---|---|
 | DuckDB | native ([duckdb-calendar-range](../characterization/duckdb/facts/duckdb-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP` (µs) |
-| Polars | native ([polars-calendar-range](../characterization/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
-| Spark | native ([spark-calendar-range](../characterization/spark/facts/spark-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP_NTZ`, session time zone UTC |
+| Polars | native ([polars-calendar-range](../engines/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
+| Spark | native ([spark-calendar-range](../engines/spark/facts/spark-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP_NTZ`, session time zone UTC |
 | Snowflake | reachable by a shim, probe pending: parts in year 1 are right and sverify truncates weeks itself (private facts); month, quarter and year truncation at the ends is not recorded | computes (years 0 to 302024); the SQL guards | `TIMESTAMP_NTZ` |
 | DataFusion | refused: it truncates and bins in nanoseconds ([DF-17](../upstream/bugs/DF-17.json)) | — | — |
 
@@ -2011,6 +2067,7 @@ never narrower; one not pinned down yet is every call.
 | `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` of `+∞` and `−∞` |
 | `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
 | `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
+| `round_zero_sign` | the reference result is a zero (`round(-0.4)`, `ceil(-0.4)`) |
 | `nan_equality`, `nan_order` | an argument is NaN, or holds one |
 | `nan_kind` | an argument or the reference result is NaN |
 | `on_domain_error`, `on_log_zero`, `substring_range`, `cast_failure`, `date_range` | the reference reports the issue at the call (a domain error, a failed cast, a date out of range) |
@@ -2113,7 +2170,9 @@ result is NaN is an issue (`Issue.domain`, `nan_creation = ERROR`), which
 `verify` rules out or checks on the data; on the rows a precondition
 excludes, `Rel.eval` keeps IEEE's value (NaN), as it keeps ±∞ under #575.
 Under a verification profile that sets `nan_creation = NAN`, no issue fires
-and the value is NaN.
+and the value is NaN. A plan that asks for IEEE division by zero (D39) makes
+`0 / 0` such a NaN creation too: it raises under the reference, and only a
+profile with `nan_creation = NAN` (DuckDB's) gives the NaN.
 
 Why: with no NaN in the inputs (`~_.v.isnan()` in `requires`), there is
 none in the outputs. Engines give NaN, NULL or an error there, and a plan
@@ -2138,3 +2197,30 @@ Why: with no NaN and no `±∞` in the inputs, there is none in the outputs,
 and every floating result has a usable bound. Substrait's YAMLs leave the
 overflow unspecified ([ST-9](../upstream/bugs/ST-9.json)), and the
 precondition rarely bites real queries (D21).
+
+
+### D39. Division by zero has an IEEE value
+
+Decided 2026-11-09 (theory advisor), within D31's correction.
+
+`on_division_by_zero` gains the value `IEEE`. With it, `x / y` is IEEE 754's
+quotient on the raw codes (`BinFn.fdivIeee`): by `0.0` or `-0.0` it is `±∞`
+with the sign of the dividend XOR the sign of the divisor. It reads the
+divisor's raw sign as a scalar operation does (D31), with no comparison of
+`y` with zero. `0 / 0` and `±∞ / ±∞` create a NaN, so they raise under D37
+(`nanCase`); only a profile with `nan_creation = NAN` gives the NaN, as
+DuckDB's run profile does. An overflow of finite operands to `±∞` raises as
+D38 says; a quotient by zero is the option's value, not an overflow
+(`BinFn.infIssue`). The reference keeps `ERROR` and D37 unchanged: a portable plan raises at
+any zero divisor and creates no NaN. DuckDB's IEEE operations are this
+division, so the lift of DuckDB's `/` with `semantics="duckdb"` writes the
+option, with `0 / 0` and `±∞ / ±∞` as NaN, as DuckDB gives them
+(`DuckDBSQL.fdiv_of_canon_zero`). A Substrait plan spells it as
+`divide` with the option, which the parser reads as `fdivIeee`.
+
+Why: DuckDB gives `1.0 / -0.0 = -∞` (duckdb-float-signs). With one zero at
+comparisons (D31), no expression of comparisons can tell the divisor's sign,
+so the reference could not state DuckDB's division, and the lift had to
+refuse `/` and everything built on it (`round(x, d)`). A dedicated operation
+exposes `FloatCode.fdiv`, which is IEEE on every code already, and no other
+expression gains access to the sign of a zero.

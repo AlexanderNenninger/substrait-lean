@@ -47,7 +47,7 @@ from typing import Any
 import ibis
 import pyarrow as pa
 import sverify.engine as eng
-from sverify import polars_engine
+from sverify_polars import engine as polars_engine
 from sverify.sql import Unsupported, parse_plan
 from sverify.sql import to_sql as plan_sql
 from sverify.sql.core import Emit, Fetch, Filter, OrderBy, Project, Window, kinds
@@ -327,7 +327,7 @@ def lean(plan: str, tables: dict[str, pa.Table]) -> tuple[str, str, Rows | None]
 def backends(
     con: eng.Connection, written: str, tables: dict[str, pa.Table], spark: bool
 ) -> dict[str, tuple[str, Rows | None]]:
-    from sverify import polars_engine
+    from sverify_polars import engine as polars_engine
     from sverify.sql.snowflake import SNOWFLAKE
 
     out: dict[str, tuple[str, Rows | None]] = {}
@@ -340,7 +340,7 @@ def backends(
             out[engine] = (failed(e), None)
     if spark:
         try:
-            from sverify import spark_engine
+            from sverify_spark import engine as spark_engine
 
             out["spark"] = ("ran", positional(spark_engine.run(written, tables)))
         except Unsupported as e:
@@ -380,7 +380,7 @@ def native_sql(con: eng.Connection, sql: str, tables: dict[str, pa.Table], spark
     attempt("polars", lambda: native_polars(ctx.execute(sql)).to_arrow())
     attempt("datafusion", lambda: con.datafusion.sql(sql).to_arrow_table())
     if spark:
-        from sverify import spark_engine
+        from sverify_spark import engine as spark_engine
 
         def run_spark():
             spark_engine.put_tables(tables)

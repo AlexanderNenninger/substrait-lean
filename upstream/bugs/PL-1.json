@@ -10,7 +10,7 @@
   "handling": "No Polars profile yet; the characterization records it (polars-double-modulus). A writer for the reference's `fmod` would not use `%` for doubles.",
   "found_by": "the Polars characterization (sverify_dev.probe_polars, `Float64 % Float64`)",
   "files": [
-    "characterization/polars/probes.json"
+    "engines/polars/probes/probes.json"
   ],
   "facts": [
     "polars-double-modulus"

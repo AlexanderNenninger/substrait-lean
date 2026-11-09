@@ -60,6 +60,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis import _
 
+from sverify import _engines, profiles
 from sverify.engine import (
     Connection,
     canonical,
@@ -73,6 +74,19 @@ from sverify.engine import (
 from sverify.ibis_substrait import Unsupported
 
 ROOT = Path(__file__).resolve().parents[3] / "catalogue"
+
+#: The engines the catalogue runs each verified plan on: those a `Connection`
+#: runs plans on, the default one (DuckDB, whose own rows are the reference)
+#: last.
+RUNS = tuple(sorted(_engines.LOCAL, key=lambda e: profiles.plugins()[e].default))
+#: The engines it writes each verified plan's SQL for, without running it: the
+#: dialects of engines that run no plans here.
+WRITES = tuple(e for e in _engines.DIALECTS if profiles.plugins()[e].runner is None)
+#: The engines of a query's status, in the tables' order.
+ENGINES = RUNS + WRITES
+#: INDEX.md's letter for each engine a query runs on: N for DuckDB running the
+#: query itself, then each engine's initial.
+LETTERS = (("N", "native"), *((_engines.title(e)[0], e) for e in ENGINES))
 
 Profile = Literal["native", "double"]
 
@@ -508,23 +522,22 @@ def probe_engines(
     DuckDB's own rows rightly differ (`lean`, for the pitfalls `why`), rows
     that differ from them are compared with Lean's own instead
     (`lean_reference`, or `lean_choices` where ties are open):
-    `runs (Lean's rows: why)` if they agree. Snowflake is `sql` or `sql (tie_free)`
-    (SQL written and parsed with sqlglot, not run) or `refused: …`."""
+    `runs (Lean's rows: why)` if they agree. An engine of `WRITES` (Snowflake)
+    is `sql` or `sql (tie_free)` (SQL written and parsed with sqlglot, not
+    run) or `refused: …`."""
     import sqlglot
 
-    from sverify import polars_engine
-    from sverify.sql import Unsupported as Untranslatable
+    from sverify.errors import UnsupportedError
     from sverify.sql import parse_plan
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.core import Fetch, Window, order_matters
-    from sverify.sql.snowflake import SNOWFLAKE
 
     out: dict[str, str] = {}
     results: dict[str, list[tuple]] = {}
-    for engine in ("polars", "duckdb"):
+    for engine in RUNS:
         try:
             results[engine] = _rows(run_plan(con, plan, engine))  # pyrefly: ignore
-        except (polars_engine.Unsupported, Untranslatable) as e:
+        except UnsupportedError as e:
             out[engine] = f"refused: {_first_line(e)}"
         except Exception as e:  # noqa: BLE001 - runtime errors of either engine
             out[engine] = f"error: {_first_line(e)}"
@@ -539,13 +552,14 @@ def probe_engines(
         if reference is None or has(root, (Fetch, Window)):
             # "The first n rows" of an unsorted input, and ROW_NUMBER or LAG
             # over ties, differ between engines (the synthetic data has ties);
-            # Polars and DuckDB both follow Rel.eval's order, so they must agree.
+            # the engines all follow Rel.eval's order, so they must agree.
             assert root is not None
-            other = results.get("duckdb" if engine == "polars" else "polars")
-            ok = other is None or (
+            ok = all(
                 _normalized(got) == _normalized(other)
                 if order_matters(root)
                 else _canonical(got) == _canonical(other)
+                for name, other in results.items()
+                if name != engine
             )
         else:
             ok = _canonical(got) == _canonical(reference)
@@ -563,18 +577,20 @@ def probe_engines(
                     out[engine] = f"runs (Lean's rows: {why})"
                     continue
         out[engine] = "runs" if ok else "differs"
-    try:
-        text = plan_sql(json.loads(plan), SNOWFLAKE)
-        out["snowflake"] = "sql"
-    except Untranslatable as e:
+    for engine in WRITES:
+        dialect = profiles.plugins()[engine].dialect()  # pyrefly: ignore[not-callable]
         try:
-            text = plan_sql(json.loads(plan), SNOWFLAKE, deterministic=True)
-            out["snowflake"] = "sql (tie_free)"
-        except Untranslatable:
-            text = None
-            out["snowflake"] = f"refused: {_first_line(e)}"
-    if text is not None:
-        sqlglot.parse_one(text, read="snowflake")
+            text = plan_sql(json.loads(plan), dialect)
+            out[engine] = "sql"
+        except UnsupportedError as e:
+            try:
+                text = plan_sql(json.loads(plan), dialect, deterministic=True)
+                out[engine] = "sql (tie_free)"
+            except UnsupportedError:
+                text = None
+                out[engine] = f"refused: {_first_line(e)}"
+        if text is not None:
+            sqlglot.parse_one(text, read=engine)
     return dict(sorted(out.items()))
 
 
@@ -638,7 +654,7 @@ def probe_profile(
     except ValueError as e:
         # `--write` refuses what no engine runs yet (decimals, #27).
         detail = _first_line(e).split("rejects the plan: ")[-1].strip("[]'\"")
-        engines = dict.fromkeys(("polars", "duckdb", "snowflake"), f"refused: {detail}")
+        engines = dict.fromkeys(ENGINES, f"refused: {detail}")
     result: dict[str, Any] = {
         "checker": "verified",
         "incremental": "incremental: yes" in out,
@@ -855,12 +871,7 @@ def index(queries: list[Query], features: dict[str, Feature], status: dict[str, 
             mark = SYMBOL[s["checker"]]
             if s["checker"] != "verified" and e["checker"] == "verified":
                 mark += " *(dbl)*"
-            engines = "".join(
-                letter
-                for letter, name in (("N", "native"), ("P", "polars"), ("D", "duckdb"),
-                                     ("S", "snowflake"))
-                if runs_on(s, name)
-            )  # fmt: skip
+            engines = "".join(letter for letter, name in LETTERS if runs_on(s, name))
             blocked = ", ".join(f"`{f}`" for f in missing(q, features, s))
             title = f"[{q.title}]({q.source['url']})"
             lines.append(f"| {q.id} | {title} | {mark} | {engines or '—'} | {blocked} |")
@@ -895,10 +906,11 @@ def stats(
     """The tables of FINDINGS.md: status per suite, feature frequency, gaps
     ranked by the queries they block, engine refusals, pitfall frequency."""
     n = len(queries)
-    out = ["### Status per suite", "",
-           "| suite | queries | verified | as DOUBLE only | rejected | upstream "
-           "| DuckDB runs the SQL | Polars | DuckDB | Snowflake SQL |",
-           "|---|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
+    columns = ["suite", "queries", "verified", "as DOUBLE only", "rejected", "upstream",
+               "DuckDB runs the SQL",
+               *(_engines.title(e) + (" SQL" if e in WRITES else "") for e in ENGINES)]  # fmt: skip
+    out = ["### Status per suite", "", "| " + " | ".join(columns) + " |",
+           "|" + "---|" * len(columns)]  # fmt: skip
 
     def row(name: str, qs: list[Query]) -> str:
         st = [status[q.id] for q in qs]
@@ -906,9 +918,7 @@ def stats(
         dbl = sum(s["checker"] != "verified" and effective(s)["checker"] == "verified" for s in st)
         rej = sum(effective(s)["checker"] == "rejected" for s in st)
         up = sum(effective(s)["checker"] in ("upstream", "none") for s in st)
-        engines = [
-            sum(runs_on(s, e) for s in st) for e in ("native", "polars", "duckdb", "snowflake")
-        ]
+        engines = [sum(runs_on(s, e) for s in st) for e in ("native", *ENGINES)]
         return (
             f"| {name} | {len(qs)} | {ver} | {dbl} | {rej} | {up} | "
             + " | ".join(map(str, engines))

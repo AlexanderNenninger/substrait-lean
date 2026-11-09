@@ -606,14 +606,27 @@ def perGroupJson (avg : Bool) : Json := Json.mkObj [("abs", Json.null),
 doubles. -/
 def epsJson (e : Float) : Json := upJsonZ (e * (1.0 + Float.scaleB 1.0 (-40)))
 
-/-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
-output column, how far the engine's value may be from one the reference
-allows, `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}` (`null`:
-not bounded). `rel` is `abs` over the least magnitude the reference's value
-may have, where its range leaves out zero: a difference of nearly equal
-values loses it, as cancellation loses relative accuracy. -/
-def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Json := do
-  let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
+/-- What `epsilonByEngine`, `rowsExactByEngine`, `marginChecksJson` and
+`epsilon` start from: a request's transformation (`tj`, `plan`), the tables'
+arities (`cat`), each table's columns and facts under its preconditions (`A`,
+`F`), the row caps, the plan with its reads capped (`root`) and the window
+keys (`T`). -/
+structure Inputs where
+  tj : Json
+  plan : Plan
+  cat : Catalog
+  A : String → List AVal
+  F : String → List Fact
+  caps : String → Option Nat
+  root : Rel
+  T : WindowKeys
+
+/-- A request's `Inputs`, or `none` without a transformation. Each table's
+columns and facts are computed once, as data: the analyses read them at every
+read of every engine's pass, and computed there each read would parse the
+table's schema again. -/
+def inputs? (input : Json) : Except String (Option Inputs) := do
+  let some tj := (input.getObjVal? "transform").toOption | return none
   let plan ← parseJsonPlan tj
   let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
     parseJsonPlan
@@ -626,11 +639,27 @@ def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Jso
     | none => []
   let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
   let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  let A := fun t => tableEnv (schemas t) (preOf t)
-  let F := fun t => (preOf t).flatMap Expr.factsOf
+  let byTable := (tables.map (·.1) |>.eraseDups).map fun t =>
+    (t, tableEnv (schemas t) (preOf t), (preOf t).flatMap Expr.factsOf)
+  let A : String → List AVal := fun t => match byTable.find? (·.1 == t) with
+    | some (_, a, _) => a
+    | none => tableEnv (schemas t) (preOf t)
+  let F : String → List Fact := fun t => match byTable.find? (·.1 == t) with
+    | some (_, _, f) => f
+    | none => (preOf t).flatMap Expr.factsOf
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
   let T := Rel.keyedWindows cat A F (fun _ => [])
+  return some ⟨tj, plan, cat, A, F, caps, root, T⟩
+
+/-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
+output column, how far the engine's value may be from one the reference
+allows, `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}` (`null`:
+not bounded). `rel` is `abs` over the least magnitude the reference's value
+may have, where its range leaves out zero: a difference of nearly equal
+values loses it, as cancellation loses relative accuracy. -/
+def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Json := do
+  let some ⟨tj, plan, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
   let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
   let names := if plan.names.length == kinds.length then plan.names
     else (List.range kinds.length).map (s!"#{·}")
@@ -662,24 +691,7 @@ def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Jso
 keeps the same rows and groups under each column's `ε` (`rowsExact`). Where
 it may not, a route needs a shim or a precondition on the threshold. -/
 def rowsExactByEngine (es : List EngineProfile) (input : Json) : Except String Json := do
-  let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
-  let plan ← parseJsonPlan tj
-  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
-    parseJsonPlan
-  let tables : Tables := (plan :: requires).flatMap (·.tables)
-  let cat : Catalog := fun t => match tables.lookup t with
-    | some (n, _) => ⟨n, []⟩
-    | none => ⟨0, []⟩
-  let schemas : String → List AVal := fun t => match tables.lookup t with
-    | some (_, s) => schemaEnv s
-    | none => []
-  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
-  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  let A := fun t => tableEnv (schemas t) (preOf t)
-  let F := fun t => (preOf t).flatMap Expr.factsOf
-  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
-  let root := plan.root.capReads caps
-  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let some ⟨_, _, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
   return Json.mkObj <| es.map fun e => (e.name, toJson (rowsExact es e.name cat A F T root))
 
 /-- `"margin_checks"` of a `--contract` request (#929): the margin check of
@@ -687,23 +699,7 @@ each threshold filter on a double `SUM` that no static bound decides, as a
 plan of its own (`Rel.marginCheck`), with the column it reads. `Report.run`
 runs each on the engine before the plan and counts the groups it flags. -/
 def marginChecksJson (es : List EngineProfile) (input : Json) : Except String Json := do
-  let some tj := (input.getObjVal? "transform").toOption | return Json.arr #[]
-  let plan ← parseJsonPlan tj
-  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
-    parseJsonPlan
-  let tables : Tables := (plan :: requires).flatMap (·.tables)
-  let cat : Catalog := fun t => match tables.lookup t with
-    | some (n, _) => ⟨n, []⟩
-    | none => ⟨0, []⟩
-  let schemas : String → List AVal := fun t => match tables.lookup t with
-    | some (_, s) => schemaEnv s
-    | none => []
-  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
-  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  let A := fun t => tableEnv (schemas t) (preOf t)
-  let F := fun t => (preOf t).flatMap Expr.factsOf
-  let T := Rel.keyedWindows cat A F (fun _ => [])
-  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  let some ⟨_, plan, cat, A, F, caps, _, T⟩ ← inputs? input | return Json.arr #[]
   -- The filters no static bound decides on some engine, judged on the plan
   -- with its reads capped (`Rel.capReads`); the check reads the data as it is.
   let rec sites : Rel → List (Rel × MarginSite)
@@ -865,24 +861,7 @@ reads, on every engine, the same values in the same rows and groups as the
 reference (`colEps`), in a plan without single-precision columns, where
 every engine's `sum_order` is a proved order (`ordersProved`). -/
 def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
-  let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
-  let plan ← parseJsonPlan tj
-  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
-    parseJsonPlan
-  let tables : Tables := (plan :: requires).flatMap (·.tables)
-  let cat : Catalog := fun t => match tables.lookup t with
-    | some (n, _) => ⟨n, []⟩
-    | none => ⟨0, []⟩
-  let schemas : String → List AVal := fun t => match tables.lookup t with
-    | some (_, s) => schemaEnv s
-    | none => []
-  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
-  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  let A := fun t => tableEnv (schemas t) (preOf t)
-  let F := fun t => (preOf t).flatMap Expr.factsOf
-  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
-  let root := plan.root.capReads caps
-  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let some ⟨tj, plan, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
   let wins := winSrcs es cat root
   let winNames := if plan.names.length == wins.length then plan.names
     else (List.range wins.length).map (s!"#{·}")

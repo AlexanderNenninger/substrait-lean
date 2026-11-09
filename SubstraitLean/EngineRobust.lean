@@ -89,11 +89,13 @@ def engineVal (t : Nat) (sign : Bool) (a : AVal) : AVal :=
   { a with int := a.int.map fun b => if sign then (widen t b).meet (signHull b) else widen t b }
 
 /-- **The engine's value is in `AVal.engine`**: NULL where the reference's
-is, else within `t` of it and, where `sign`, of the sign Lean gave it. -/
+is, else within `t` of it and, where `sign`, of the sign Lean gave it, by
+canonical codes (D31). -/
 theorem engineVal_mem {a : AVal} {t : Nat} {sign : Bool} {r v : Int} (hr : a.Mem (.float r))
-    (hv : (FloatCode.scaled v - FloatCode.scaled r).natAbs ≤ t)
+    (hv : (FloatCode.scaled (FloatCode.canon v) - FloatCode.scaled (FloatCode.canon r)).natAbs ≤ t)
     (hs : sign = true → ∀ b, a.int = some b →
-      (∀ l, b.lo = some l → 0 ≤ l → 0 ≤ v) ∧ (∀ h, b.hi = some h → h ≤ 0 → v ≤ 0)) :
+      (∀ l, b.lo = some l → 0 ≤ l → 0 ≤ FloatCode.canon v) ∧
+        (∀ h, b.hi = some h → h ≤ 0 → FloatCode.canon v ≤ 0)) :
     (engineVal t sign a).Mem (.float v) := by
   obtain ⟨b, hb, hm, hk⟩ := hr
   refine ⟨if sign then (widen t b).meet (signHull b) else widen t b, ?_, ?_, hk⟩

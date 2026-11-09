@@ -27,11 +27,11 @@ namespace Substrait
 namespace TouchedFrames
 
 /-- `v` lies `start` to `stop` after `u` (numbers of one kind), or is `u`
-(anything else). -/
+(anything else), up to canonical codes as `RANGE` frames read them (D31). -/
 def spanVal (start stop : Int) (a b : Value) : Bool :=
-  match a.numPair b with
+  match a.canonV.numPair b.canonV with
   | some (u, v) => decide (u + start ≤ v ∧ v ≤ u + stop)
-  | none => decide (a = b)
+  | none => decide (a.canonV = b.canonV)
 
 /-- `y`'s value of the key `k` lies in `x`'s span `[start, stop]`. -/
 def inSpan (k : SortKey) (start stop : Int) (x y : Row) : Bool :=
@@ -64,7 +64,7 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
     (hh : (if b = 0 then sortLe [k] y x else rangeTo k b x y) = true) :
     inSpan k s e x y = true := by
   have hxy : sortLe [k] x y = true → sortLe [k] y x = true →
-      x.getD k.col .null = y.getD k.col .null := fun h₁ h₂ => by
+      (x.getD k.col .null).canonV = (y.getD k.col .null).canonV := fun h₁ h₂ => by
     simpa using sortLe_antisymm h₁ h₂
   have hrx : sortLe [k] x y = true → k.nullRank (x.getD k.col .null) ≤ k.nullRank (y.getD k.col .null) :=
     fun h => by
@@ -74,16 +74,16 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
     fun h => by
       rw [sortLe_single] at h
       simpa [natLe] using lexLe_left h
-  have hix : ∀ p q, (x.getD k.col .null).numPair (y.getD k.col .null) = some (p, q) →
+  have hix : ∀ p q, (x.getD k.col .null).canonV.numPair (y.getD k.col .null).canonV = some (p, q) →
       sortLe [k] x y = true → p ≤ q := fun p q hpq h => by
     rw [sortLe_single] at h
     obtain ⟨nk, hu, hv⟩ := Value.numPair_some hpq
-    simpa [hk] using SortKey.le_val h hu hv
-  have hiy : ∀ p q, (x.getD k.col .null).numPair (y.getD k.col .null) = some (p, q) →
+    simpa [hk] using SortKey.le_val_canon h hu hv
+  have hiy : ∀ p q, (x.getD k.col .null).canonV.numPair (y.getD k.col .null).canonV = some (p, q) →
       sortLe [k] y x = true → q ≤ p := fun p q hpq h => by
     rw [sortLe_single] at h
     obtain ⟨nk, hu, hv⟩ := Value.numPair_some hpq
-    simpa [hk] using SortKey.le_val h hv hu
+    simpa [hk] using SortKey.le_val_canon h hv hu
   unfold inSpan spanVal
   unfold rangeFrom at hl
   unfold rangeTo at hh
@@ -91,15 +91,15 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
   generalize hv : y.getD k.col .null = v at *
   by_cases ha : a = 0 <;> by_cases hb : b = 0 <;> simp only [ha, hb, ↓reduceIte] at hl hh
   · have := hxy hl hh
-    subst this
-    cases hp : u.numPair u with
+    rw [this]
+    cases hp : v.canonV.numPair v.canonV with
     | none => simp
     | some p =>
       obtain ⟨p1, p2⟩ := p
       have := Value.numPair_self hp
       simp only [decide_eq_true_eq]; omega
   all_goals
-    cases hp : u.numPair v with
+    cases hp : u.canonV.numPair v.canonV with
     | some p =>
       obtain ⟨p1, p2⟩ := p
       simp only [hp, hk, Bool.false_eq_true, ↓reduceIte, decide_eq_true_eq] at hl hh ⊢
@@ -109,7 +109,13 @@ theorem bounds_span {k : SortKey} (hk : k.desc = false) {s e a b : Int} (hsa : s
         | (have := hiy p1 p2 hp hh; omega)
         | (have := hix p1 p2 hp hl; have := hiy p1 p2 hp hh; omega)
     | none =>
+      have hp' : u.numPair v = none := by
+        have := Value.numPair_canonV_isNone u v
+        rw [hp] at this
+        exact Option.isNone_iff_eq_none.mp this.symm
       simp only [hp] at hl hh ⊢
+      clear hix hiy hxy hp
+      suffices huv : u = v by subst huv; simp
       cases u <;> cases v <;> simp_all [SortKey.nullRank] <;>
         (try (cases hn : k.firstNulls <;> simp_all)) <;> omega
 
@@ -336,7 +342,7 @@ theorem inside_of_near {x y : Row} (h : near part k s e x y = true)
   have h3 := hc.2
   generalize x.getD k.col .null = u at *
   generalize y.getD k.col .null = v at *
-  cases u <;> cases v <;> simp_all [spanVal] <;> omega
+  cases u <;> cases v <;> simp_all [spanVal, Value.canonV] <;> omega
 
 omit [Boxes.Ambient] in
 theorem inside_of_changed (hs : s ≤ 0) (he : 0 ≤ e) {y : Row}
@@ -367,7 +373,7 @@ theorem mem_narrowed (hs : s ≤ 0) (he : 0 ≤ e) {rows : Relation} {x y : Row}
     have h3 := hx.2
     generalize x.getD k.col .null = u at *
     generalize y.getD k.col .null = v at *
-    cases u <;> cases v <;> simp_all [spanVal] <;> omega
+    cases u <;> cases v <;> simp_all [spanVal, Value.canonV] <;> omega
 
 omit [Boxes.Ambient] in
 /-- `inside` reads columns of the input row, which the output row keeps. -/
@@ -376,7 +382,7 @@ theorem inside_append {x : Row} (l : Row) (hw : ∀ i ∈ k.col :: part, i < x.l
   have hg : ∀ i ∈ k.col :: part, (x ++ l).getD i .null = x.getD i .null := fun i hi => by
     simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (hw i hi)]
   have hkey : keyOf part (x ++ l) = keyOf part x :=
-    List.map_congr_left fun i hi => hg i (List.mem_cons_of_mem _ hi)
+    List.map_congr_left fun i hi => by rw [hg i (List.mem_cons_of_mem _ hi)]
   simp only [inside, timeIn, hkey, hg k.col (List.mem_cons_self ..)]
 
 theorem inside_outRow {rows : Relation} {x : Row} (hw : ∀ i ∈ k.col :: part, i < x.length) :

@@ -33,6 +33,7 @@
         {"id": "nan_order", "kind": "option", "question": "Where NaN sorts, and how `MIN`, `MAX`, `<`, `greatest` treat it."},
         {"id": "nan_kind", "kind": "option", "question": "Does a NaN's sign (or payload) survive and show."},
         {"id": "zero_sign", "kind": "option", "question": "`-0.0` in arithmetic, comparison, sorting and grouping."},
+        {"id": "round_zero_sign", "kind": "option", "question": "Which zero `round` and `ceil` give a negative value that rounds to zero: `-0.0` or `+0.0`."},
         {"id": "fp32", "kind": "option", "question": "Single-precision arithmetic and its conversions."}
       ]
     },

@@ -89,6 +89,8 @@ def Profile.substrait.table : ProfileTable where
     -- with a sign; `equal` is IEEE's `==`, and NaN compares with nothing.
     -- Grouping, joins and sorts say nothing of NaN or `-0.0` (ST-4).
     (none, "zero_sign", .oneOf ["IEEE"]),
+    -- `round` and `ceil` say nothing of a zero's sign.
+    (none, "round_zero_sign", openAt "round_zero_sign"),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_equality", openAt "nan_equality"),
     (some "cmp", "nan_equality", .oneOf ["NAN_IS_NOT_NAN"]),

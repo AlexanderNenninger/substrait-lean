@@ -11,14 +11,14 @@
     "The core's `decimal_rescale` option allows `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` and `TRUNCATE` (docs/core-semantics.md); the reference rounds half away from zero. Decimal division is refused in every profile until #27.",
     "Could be expressed as: a `rounding` option on the decimal functions and casts, with the values of `round`'s."
   ],
-  "found_by": "the Polars characterization (sverify_dev.probe_polars, characterization/polars/probes.json)",
+  "found_by": "the Polars characterization (sverify_dev.probe_polars, engines/polars/probes/probes.json)",
   "issues": [
     27,
     444
   ],
   "files": [
     "docs/core-semantics.md",
-    "characterization/polars/probes.json"
+    "engines/polars/probes/probes.json"
   ],
   "facts": [
     "polars-decimal-arith",

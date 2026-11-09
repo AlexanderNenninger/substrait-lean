@@ -1,4 +1,5 @@
 import Sverify.Core.Value
+import Sverify.Core.Float
 import Sverify.Core.Reflect
 
 /-!
@@ -108,9 +109,12 @@ inductive Law where
 some may be? -/
 def Law.holds (set : Bool) : Law → Value → Bool
   | .nonNull, v => !set || v != .null
-  | .atLeast k, .int i | .atLeast k, .float i | .atLeast k, .date i | .atLeast k, .ts i
+  -- A double by its canonical code (D31).
+  | .atLeast k, .float i => decide (k ≤ FloatCode.canon i)
+  | .atLeast k, .int i | .atLeast k, .date i | .atLeast k, .ts i
   | .atLeast k, .tod i | .atLeast k, .dec _ i => decide (k ≤ i)
-  | .atMost k, .int i | .atMost k, .float i | .atMost k, .date i | .atMost k, .ts i
+  | .atMost k, .float i => decide (FloatCode.canon i ≤ k)
+  | .atMost k, .int i | .atMost k, .date i | .atMost k, .ts i
   | .atMost k, .tod i | .atMost k, .dec _ i => decide (i ≤ k)
   | _, _ => true
 

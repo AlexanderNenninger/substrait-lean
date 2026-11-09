@@ -11,9 +11,9 @@ holds the order (`LAYERS`) and fails on an import against it.
 
 | Layer | Modules | Job |
 |---|---|---|
-| base | `_meta`, `_deprecated`, `_duration`, `_stages`, `_cursor`, `_unsupported`, `_plan_read`, `_user_text`, `_functions`, `black_box`, `_engines`, `_support`, `plan_json`, `_decimals`, `_polars_shims`, `_duckdb`, `_scan`, `_proof_cache`, `_checker`, `_lean_eval`, `_weighted`, `_hooks`, `_pipe`, `profiles` | The version and the checker protocol, deprecated names, durations, timings, cursors as JSON, errors, the engines the plugins name, the function tables, the plan JSON both frontends write, the reference's decimal types, running `substrait-check`, its cache of proofs and Lean's evaluation of plans, weighted row counts, the hooks, `Pipeable`, the plugin interface engines register through |
+| base | `_meta`, `_deprecated`, `_duration`, `_stages`, `_cursor`, `_unsupported`, `_plan_read`, `_user_text`, `_functions`, `black_box`, `_engines`, `_support`, `plan_json`, `_decimals`, `_duckdb`, `_scan`, `_proof_cache`, `_checker`, `_lean_eval`, `_weighted`, `_store`, `_arrow_state`, `_hooks`, `_pipe`, `profiles` | The version and the checker protocol, deprecated names, durations, timings, cursors as JSON, errors, the engines the plugins name, the function tables, the plan JSON both frontends write, the reference's decimal types, running `substrait-check`, its cache of proofs and Lean's evaluation of plans, weighted row counts, the state store contract and its interim Arrow operations, the hooks, `Pipeable`, the plugin interface engines register through |
 | frontends | `ibis_substrait`, `sql_lift` | Ibis expressions and DuckDB SQL to Substrait plans |
-| writers and engines | `sql`, `duckdb_engine`, `polars_engine`, `spark_engine`, `datafusion_engine` | The SQL dialects and the engines that run a written plan |
+| writers and engines | `sql`, `duckdb_engine`, `datafusion_engine` | The SQL dialects and the engines that run a written plan; Polars and Spark are packages of their own (`engines/polars/`, `engines/spark/`) |
 | checker | `engine`, `_engine_settings`, `_builtin` | Connections, `plan_json`, `run_plan`, delta plans, the engines' settings, sverify's own engines as plugins |
 | conditions | `observation`, `counterexample`, `conditions`, `_quarantine` | The table conditions and their checks on data, what a result is observed up to, the counterexample search, the rows a source sets aside |
 | report | `routes`, `report`, `_verdict`, `report_json`, `substrait_export`, `_substrait_shims` | What a proof found (`Report`, `Issue`, the errors that carry a report), the one report of a checker answer (`verdict`), the routes a plan runs by, the report as JSON and as Substrait |
@@ -54,7 +54,7 @@ some constructs the same way. Each such reading has one home
 
 | Construct | Home | Read by |
 |---|---|---|
-| Decimal types of `+`, `-`, `×`, `SUM`, `AVG` (`Parse.decimalCall`) | `_decimals` | `ibis_substrait/_base.py`, `sql/core/_base.py`, `polars_engine.py`, `_linear.py`, `report.py` |
+| Decimal types of `+`, `-`, `×`, `SUM`, `AVG` (`Parse.decimalCall`) | `_decimals` | `ibis_substrait/_base.py`, `sql/core/_base.py`, `sverify_polars/engine.py`, `_linear.py`, `report.py` |
 | The common type of decimals (`CASE`, `COALESCE`, `IN`) | `_decimals.common` | `ibis_substrait/_base.py`, `sql_lift/_base.py` |
 | `BETWEEN`, as `x >= lo AND x <= hi` | `plan_json.between` | `ibis_substrait/core.py`, `ibis_substrait/temporal.py`, `sql_lift/core.py` |
 | `IN` lists, and an integer range as `BETWEEN` ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)) | `plan_json.in_values`, `plan_json.int_range` | `ibis_substrait/core.py`, `sql_lift/core.py` |

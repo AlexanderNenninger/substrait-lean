@@ -15,7 +15,7 @@
   ],
   "files": [
     "python/tools/sverify_dev/probe_statistics.py",
-    "characterization/polars/facts/polars-var-std-streaming.json"
+    "engines/polars/facts/polars-var-std-streaming.json"
   ],
   "facts": [
     "polars-var-std-streaming"

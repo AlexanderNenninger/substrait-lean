@@ -176,6 +176,7 @@ def samples : List Value :=
   [.null, .bool true, .bool false, .int 0, .int 1, .int (-1), .int 2, .int (-2), .int 7,
    .int (-7), .int (-(2 ^ 63)), .int (2 ^ 63 - 1), .float 0, .float 1, .float (-1),
    .float FloatCode.nan, .float FloatCode.posInf, .float FloatCode.negInf,
+   .float FloatCode.negZero, .float FloatCode.negNan,
    .float (FloatCode.ofFloat 1.5), .float (FloatCode.ofFloat (-2.5)), .date 0, .ts 0, .tod 0,
    .dec 2 150, .str "", .str "a", .list [], .list [.int 1], .struct []]
 
@@ -390,35 +391,131 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
     | (simp only [$u,*]; done)
     | (simp only [$u,*]; (repeat' split) <;> simp_all [$u,*])))
 
-/-- The tactic for a template: evaluate the guard's functions (`natives`, the
-engine's, and the reference's, and the lemmas `extra`), split on the
-arguments' kinds and on the comparisons the template and the profile make,
-and compute. -/
-def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : Array Name := #[]) :
-    TermElabM Syntax := do
-  let preNames := pre2 ++ #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
+/-- One argument's split for `templateCases` (`Value.double_cases`): a value
+that is not a double, kept whole (`d`: `x.isDouble = false`), `-0.0`, the
+negative NaN, or a canonical double (`h`, `f`: its canonical code's facts).
+Each branch names all three, `True` where it has none. -/
+syntax "split4 " ident ident ident ident : tactic
+macro_rules
+  | `(tactic| split4 $x $h $f $d) => `(tactic|
+      (rcases Value.double_cases $x with $d:ident | ⟨hx, $h:ident⟩ | ⟨hx, $h:ident⟩ |
+          ⟨c, hx, $h:ident, hz, hn, $f:ident⟩ <;>
+        first
+          -- The canonical double (the only branch with `hz`), then the special ones.
+          | (subst hx; revert hz; intro hz; have $d:ident : True := trivial)
+          | (subst hx; have $f:ident : True := trivial; have $d:ident : True := trivial)
+          | (have $h:ident : True := trivial; have $f:ident : True := trivial)))
+
+/-- A value kept whole (`split4`'s first branch) split into its constructors,
+for a goal that reads more of it than `templateTac`'s lemmas give (a function
+of integers, `fpow`'s `floor`); a double's branch is impossible. -/
+syntax "split_whole " ident ident : tactic
+macro_rules
+  | `(tactic| split_whole $x $d) => `(tactic|
+      (try (cases $x:ident <;> (try simp only [Value.isDouble, Bool.true_eq_false] at $d:ident))))
+
+/-- The lemmas that evaluate an expression over a row of arguments with the
+reference's guard functions: the first simp set of `templateTac` and
+`guardsTac`. -/
+def evalNames : Array Name :=
+  #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``Lowering.ref_isNum, ``Lowering.ref_isNull, ``Lowering.ref_not,
     ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
-    ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul,
-    ``Lowering.ref_imod_int] ++ natives ++ extra
+    ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul]
+
+/-- The template tactic's split on the arguments: four ways each
+(`split4`), so that a double's comparisons, which read `canon c`, compute
+(D31), and any other value stays whole; a function of doubles is the
+reference's on it (`Lowering.duck_bin_nondouble_l`, …), and `templateTac`
+splits it further only where a goal needs it (`split_whole`). `plain`: one
+split of the whole value at once, for `guardsTac`'s issues. The names are unhygienic:
+`templateTac`'s simp sets name them. -/
+def splitArgs (unary : Bool) (plain : Bool := false) : TermElabM (TSyntax `tactic) := do
+  let (x, y) := (mkIdent `x, mkIdent `y)
+  -- `plain`: every constructor too, the whole value split at once.
+  let sx ← if plain then
+      `(tactic| (split4 $x $(mkIdent `hcx) $(mkIdent `hfx) $(mkIdent `hxx) <;>
+        split_whole $x $(mkIdent `hxx)))
+    else `(tactic| split4 $x $(mkIdent `hcx) $(mkIdent `hfx) $(mkIdent `hxx))
+  if unary then return sx
+  let sy ← if plain then
+      `(tactic| (split4 $y $(mkIdent `hcy) $(mkIdent `hfy) $(mkIdent `hyy) <;>
+        split_whole $y $(mkIdent `hyy)))
+    else `(tactic| split4 $y $(mkIdent `hcy) $(mkIdent `hfy) $(mkIdent `hyy))
+  `(tactic| ($sx:tactic <;> $sy:tactic))
+
+/-- `splitArgs` on the last arguments introduced, named `x` and `y`. -/
+def templateCases (unary : Bool) (plain : Bool := false) : TermElabM (TSyntax `tactic) := do
+  let s ← splitArgs unary plain
+  if unary then `(tactic| (rename_i $(mkIdent `x):ident; $s:tactic))
+  else `(tactic| (rename_i $(mkIdent `x):ident $(mkIdent `y):ident; $s:tactic))
+
+/-- The tactic for a template: evaluate the guard's functions (`natives`, the
+engine's, and the reference's, and the lemmas `extra`), split on the
+arguments' kinds (`templateCases`) and on the comparisons the template and
+the profile make, and compute. -/
+def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : Array Name := #[])
+    (staged : Bool := true) (plain : Bool := false) :
+    TermElabM Syntax := do
+  let preNames := pre2 ++ evalNames ++ #[``Lowering.ref_imod_int] ++ natives ++ extra
   let valNames := #[``Value.isNum, ``Value.numPair, ``and3, ``or3, ``BinFn.apply,
     ``Value.isTrue,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.not_true, ``Bool.not_false,
-    ``Option.getD_some, ``Option.all_some, ``Option.all_none]
+    ``Option.getD_some, ``Option.getD_none, ``Option.all_some, ``Option.all_none]
   let pre ← simpArgs preNames
-  let vals ← simpArgs (preNames ++ valNames)
+  -- The whole values' hypotheses, for the lemmas on them (`isDouble`).
+  let wholes : Array (TSyntax ``Lean.Parser.Tactic.simpLemma) ←
+    (if unary then #[`hxx] else #[`hxx, `hyy]).mapM fun h =>
+      `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
+  let vals := (← simpArgs (preNames ++ valNames)) ++ wholes
+  -- First without `BinFn.apply`, so that the lemmas on a whole value
+  -- (`BinFn.apply_eq_nondouble_l`, …) rewrite before its match unfolds.
+  let preW := pre ++ wholes
   -- Then the profile and the reference, and everything again.
   let ref ← simpArgs (preNames ++ valNames ++ unfold ++ #[``Profile.reference, ``raiseIf,
     ``Lowering.beq_int, ``UnFn.issue, ``BinFn.issue])
   -- Unfolding brings the special codes back: rewrite them to the variables.
   let eqs : Array (TSyntax ``Lean.Parser.Tactic.simpLemma) ←
-    #[`hP, `hN, `hQ, `hO, `hM].mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
-  let ref := ref ++ eqs
-  let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree] ++ fin2)) ++ eqs
-  let cases ← if unary then `(tactic| (rename_i x; cases x))
-    else `(tactic| (rename_i x y; cases x <;> cases y))
+    (#[`hP, `hN, `hQ, `hO, `hM, `hZ, `hY, `g1, `g2, `g3, `g4, `g5, `g6, `g7, `g8, `g9, `g10, `g11, `g12, `g13, `g14, `g15, `g16, `hcx, `hfx] ++
+      (if unary then #[] else #[`hcy, `hfy])).mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
+  -- A unary template's split leaves a profile's `Option` and the reference's
+  -- binds (`round` below zero on DuckDB, `duckUn`).
+  let late := if unary then #[``Outcome.ok_bind, ``Option.getD_some, ``Option.getD_none,
+    ``BinFn.apply] else #[]
+  let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree] ++ late ++ fin2)) ++
+    eqs
+  -- The profile and the reference unfold in stages on each goal the split
+  -- leaves, the goal only: the profiles, then the issues, then the
+  -- functions. One `simp` with all of them at once spends about 3 s a goal
+  -- on `BinFn.apply`'s and `BinFn.issue`'s equations, and `On.Arith` has
+  -- 21 such goals per theorem (#923's 11 kinds; docs/build-performance.md).
+  -- On the goal only: at `*` they would rewrite `hP`, `hN`, … away before
+  -- the issues bring the special codes back. `guardsTac`'s goals gain
+  -- nothing from the stages (`staged := false`).
+  let stage1 ← simpArgs (unfold ++ #[``Profile.reference, ``raiseIf])
+  let stage2 ← simpArgs #[``BinFn.issue, ``UnFn.issue]
+  let stage3 ← simpArgs #[``BinFn.apply, ``UnFn.apply]
+  let stages ← if staged then
+      `(tactic| (simp (config := { failIfUnchanged := false, decide := true }) only [$stage1,*]
+                 simp (config := { failIfUnchanged := false, decide := true }) only [$stage2,*]
+                 simp (config := { failIfUnchanged := false, decide := true }) only [$stage3,*]))
+    else `(tactic| skip)
+  -- `plain` (`guardsTac`'s goals, no `Outcome.Agree` to close a whole
+  -- value's): every constructor at once.
+  let cases ← templateCases unary plain
+  let wholeSplit ← if unary then `(tactic| split_whole $(mkIdent `x) $(mkIdent `hxx))
+    else `(tactic| (split_whole $(mkIdent `x) $(mkIdent `hxx); all_goals split_whole $(mkIdent `y) $(mkIdent `hyy)))
+  -- The reference with the codes' equations and facts: at `*` for a binary
+  -- template; on the goal only for a unary one, whose facts (`g6`, `hcx`, …)
+  -- the final `simp_all` needs after a split (`round` below zero on DuckDB):
+  -- at `*` they rewrite themselves to `True`.
+  let refStep ← if unary then
+      `(tactic| simp (config := { failIfUnchanged := false, decide := true }) only [$(ref ++ eqs),*])
+    else
+      `(tactic| simp (config := { failIfUnchanged := false, decide := true }) only [$(ref ++ eqs),*] at *)
   let codes := #[(``FloatCode.posInf, `cP, `hP), (``FloatCode.negInf, `cN, `hN),
-    (``FloatCode.nan, `cQ, `hQ), (``FloatCode.one, `cO, `hO), (``FloatCode.negOne, `cM, `hM)]
+    (``FloatCode.nan, `cQ, `hQ), (``FloatCode.one, `cO, `hO), (``FloatCode.negOne, `cM, `hM),
+    (``FloatCode.negZero, `cZ, `hZ), (``FloatCode.negNan, `cY, `hY)]
   let gens ← codes.mapM fun (c, v, h) =>
     `(tactic| generalize $(mkIdent h):ident : $(mkIdent c):ident = $(mkIdent v):ident at *)
   `(tactic| (
@@ -430,22 +527,47 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     have $(mkIdent `f3) := FloatCode.zero_lt_one
     have $(mkIdent `f4) := FloatCode.one_lt_posInf
     have $(mkIdent `f5) := FloatCode.posInf_lt_nan
+    -- `-0.0` and the negative NaN below `-∞`, and the canonical codes.
+    have $(mkIdent `f6) := FloatCode.negZero_lt_negNan
+    have $(mkIdent `f7) := FloatCode.negNan_lt_negInf
+    have $(mkIdent `g1) := FloatCode.canon_posInf
+    have $(mkIdent `g2) := FloatCode.canon_negInf
+    have $(mkIdent `g3) := FloatCode.canon_nan
+    have $(mkIdent `g4) := FloatCode.canon_one
+    have $(mkIdent `g5) := FloatCode.canon_negOne
+    have $(mkIdent `g6) := FloatCode.canon_negZero'
+    have $(mkIdent `g7) := FloatCode.canon_negNan'
+    have $(mkIdent `g8) := FloatCode.canon_zero
+    have $(mkIdent `g9) := FloatCode.canon_negInf_succ
+    have $(mkIdent `g10) := FloatCode.canon_posInf_pred
+    have $(mkIdent `g11) := FloatCode.floor_negZero
+    have $(mkIdent `g12) := FloatCode.floor_negNan
+    have $(mkIdent `g13) := FloatCode.round_negZero
+    have $(mkIdent `g14) := FloatCode.round_negNan
+    have $(mkIdent `g15) := FloatCode.ceil_negZero
+    have $(mkIdent `g16) := FloatCode.ceil_negNan
     $[$gens]*
     intros
     simp (config := { decide := true }) only [$pre,*]
-    $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
+    $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$preW,*]
+    all_goals simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
     all_goals first
       | exact Outcome.agree_refl _
-      | (simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
-         iterate 10
-           all_goals try
-             lowering_split_decide <;>
-               simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false]
-         all_goals (repeat' split)
+      | ($wholeSplit:tactic
+         all_goals simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
          all_goals first
-           | (simp_all [$fin,*]; done)
-           | (simp_all [$fin,*] <;> omega)
-           | omega)))
+           | exact Outcome.agree_refl _
+           | ($stages:tactic
+              $refStep:tactic
+              iterate 10
+                all_goals try
+                  lowering_split_decide <;>
+                    simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false, Option.getD_some, Option.getD_none, Outcome.ok_bind]
+              all_goals (repeat' split)
+              all_goals first
+                | (simp_all [$fin,*]; done)
+                | (simp_all [$fin,*] <;> omega)
+                | omega))))
 
 /-! ## Generated source
 
@@ -464,11 +586,14 @@ def ppSource (e : Lean.Expr) : MetaM String := do
   return fmt.pretty 100
 
 /-- The generated module a construct's entry goes to: entries of an area
-check in parallel, and a change rebuilds its area only. -/
+check in parallel, and a change rebuilds its area only. The doubles' entries
+are two areas, the arithmetic and the powers, so that neither module's peak
+memory nears its ceiling (`scripts/lean-budget.json`). -/
 def areaOf (c : Name) : String :=
   match c.componentsRev.head!.toString with
-  | "fmath" => "Math"
-  | "fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb" => "Doubles"
+  | "fmath" | "fround" | "fceil" => "Math"
+  | "fadd" | "fsub" | "fmul" | "fdiv" | "fdivIeee" | "fmod" => "Arith"
+  | "fpow" | "fatan2" | "flogb" => "Powers"
   | "idiv" | "imod" | "fit" | "ipow" => "Integers"
   | "bit" => "Bits"
   | _ => "Other"
@@ -484,24 +609,26 @@ def guardsTac (unfold natives extra : Array Name) (unary : Bool) (agree? : Optio
     TermElabM Syntax := do
   let t ← templateTac unfold natives extra unary
     #[``Expr.GuardsAt, ``Expr.raiseMsg?, ``Outcome.FiresOnly, ``Option.map]
-    #[``Issue.name, ``Option.map, ``Outcome.FiresOnly]
+    #[``Issue.name, ``Option.map, ``Outcome.FiresOnly] (staged := false) (plain := true)
   let general : TSyntax `tactic := ⟨t⟩
   let some agree := agree? | `(tactic| first | (intros; trivial) | $general:tactic)
   -- One guard, from the entry's agreement (`Expr.GuardsAt.one`): where it is
   -- true the template raises, so the reference does, with the guard's issue
   -- if all of the function's issues have its name.
-  let pre ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``Lowering.ref_isNum, ``Lowering.ref_isNull, ``Lowering.ref_not,
-    ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
-    ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul] ++ natives)
+  let pre ← simpArgs (evalNames ++ natives)
   let issueFn := mkIdent (if unary then ``UnFn.issue else ``BinFn.issue)
-  let cases ← if unary then `(tactic| (rename_i x; cases x))
-    else `(tactic| (rename_i x y; cases x <;> cases y))
+  -- The arguments named at `intro`: `rename_i` would name the issue's
+  -- `k` and `h`, which the `refine` below introduces after them.
+  let cases ← splitArgs unary (plain := true)
+  let intro ← if unary then `(tactic| intro $(mkIdent `x):ident)
+    else `(tactic| intro $(mkIdent `x):ident $(mkIdent `y):ident)
   let ag ← if unary then `(($(mkIdent agree) _)) else `(($(mkIdent agree) _ _))
   let names ← simpArgs #[``nanIssue, ``domainIssue, ``rangeIssue, ``wrapIf, ``wrapNum]
   `(tactic| first
     | (intros; trivial)
-    | (intros
+    -- A template that never raises (`round` below zero on DuckDB): no guard.
+    | (intros; exact Substrait.Expr.guardsAt_of_noGuards _ rfl)
+    | ($intro:tactic
        refine Substrait.Expr.GuardsAt.one rfl $ag ?_ ?_ ?_ (Substrait.Expr.guardsAt_of_noGuards _ rfl)
        · simp [$pre,*, Substrait.Outcome.err?, bind, Except.bind]
        · refine Substrait.Outcome.raises_named fun k h => ?_
@@ -639,7 +766,7 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
     -- The plain call is tried as a candidate for an instance (`fmath .atan`):
     -- its constructor as a whole is not native.
     -- Guards compare with constants of the construct's kind (#923).
-    let kind : NumKind := if ["Doubles", "Math"].contains (areaOf k.ctor) then .float else .int
+    let kind : NumKind := if ["Arith", "Powers", "Math"].contains (areaOf k.ctor) then .float else .int
     let cands := if k.args.isEmpty then (candidates kind n msg).drop 1 else candidates kind n msg
     let searched := cands.filter (fun c => !excluded || !c.hasSelf) ++
       (if unary then chains (harvest ref rows) else [])
@@ -668,14 +795,17 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       let mustE ← mkAppM ``Expr.must #[tmpl]
       let mem (i : Nat) := mkAppM ``Membership.mem #[mustE, toExpr i]
       let strictTy ← if unary then mem 0 else mkAppM ``And #[← mem 0, ← mem 1]
-      -- A hand-written template is unfolded by name: DuckDB's `<<`
-      -- (`SubstraitLean/LoweringDuckDB/Lemmas.lean`), which this module does not import.
-      let named := tmpl.find? (·.isConstOf `Substrait.Lowering.shlTemplate) |>.isSome
-      -- A plain name, resolved where the tactic runs: the quotation's hygiene
-      -- cannot see a constant this module does not import.
-      let shl := mkIdent `Substrait.Lowering.shlTemplate
-      let strictTac ← if named then `(tactic| simp [Substrait.Expr.must, $shl:ident])
-        else `(tactic| simp [Substrait.Expr.must])
+      -- A hand-written template comes with its strictness, by name: `T_must`
+      -- for a template written as the constant `T` (DuckDB's `<<`, `round`
+      -- and `ceil`, `SubstraitLean/LoweringDuckDB/Lemmas.lean`, which this
+      -- module does not import).
+      let env ← getEnv
+      let named : Option Name := tmpl.constName?.bind fun c =>
+        let m := c.appendAfter "_must"
+        if env.contains m then some m else none
+      let strictTac ← match named with
+        | some m => `(tactic| exact $(mkIdent m))
+        | none => `(tactic| simp [Substrait.Expr.must])
       let some strict ← prove strictTy strictTac | return none
       let entry ← mkAppM (if unary then ``UnEntry.mk else ``BinEntry.mk)
         #[tmpl, strict, mkAppN (Lean.mkConst agreeName) ps]
@@ -713,11 +843,12 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       if let some out := sink then
         unless ps.isEmpty do throwError "{k.label}: a template with parameters cannot be written out"
         let proof := if byHand then s!"intros; apply {hand}" else if unary then "un_tac" else "bin_tac"
-        let strictSrc := if named then "simp [Substrait.Expr.must, Substrait.Lowering.shlTemplate]"
-          else "simp [Substrait.Expr.must]"
+        let strictSrc := match named with
+          | some m => s!"exact {m}"
+          | none => "simp [Substrait.Expr.must]"
         out.modify (·.push (areaOf k.ctor,
           -- A proof gets the budget the search gave it.
-          (if byHand then "" else if written then "set_option maxHeartbeats 1600000 in\n"
+          (if byHand then "" else if written then "set_option maxHeartbeats 3200000 in\n"
             else "set_option maxHeartbeats 800000 in\n") ++
           s!"theorem {agreeName} : {← ppSource agreeTy} := by\n  {proof}\n\n" ++
           s!"abbrev {tbl ++ k.short} : {← ppSource entryTy} :=\n" ++
@@ -734,11 +865,12 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       | some h => all.filter (fun (c, w) => shownOf c w == h) ++ all.filter (fun (c, w) => shownOf c w != h)
       | none => all
     for (cand, written) in order do
-      -- A binary template splits on 11 kinds of each argument (#923): a
-      -- candidate that passes the samples gets four times the default, a
-      -- hand-written schema, one proof rather than one of many, eight.
+      -- A binary template splits on 13 kinds of each argument (#923, a
+      -- double three ways): a candidate that passes the samples gets four
+      -- times the default, a hand-written schema, one proof rather than one
+      -- of many and the heaviest guards (`fpow`'s), sixteen.
       let budget (ctx : Core.Context) :=
-        { ctx with maxHeartbeats := ctx.maxHeartbeats * (if written then 8 else 4) }
+        { ctx with maxHeartbeats := ctx.maxHeartbeats * (if written then 16 else 4) }
       let how ← tryCatchRuntimeEx
         (withTheReader Core.Context budget (withCurrHeartbeats (attempt cand written)))
         fun _ => pure none

@@ -84,7 +84,7 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
         r = routes.row(engine, d.get("group"), d["option"])
         if r is not None and r.get("evidence") == "tested":
             causes.append(f"row tested: {routes._where(d.get('group'), d['option'])}")
-    if any(routes._unbounded(e) for e in (report._epsilon or {}).values()):
+    if any(e["unbounded"] for e in (report._epsilon or {}).values()):
         causes.append("no bound on the doubles (a SUM or AVG without sv.max_rows)")
     if route.bound_proved is False:
         causes.append("tolerance bound not proved")
@@ -98,9 +98,10 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
     return sorted(set(causes))
 
 
-#: A list of engine fact ids in a reason, "(duckdb-var-stddev, duckdb-covar)":
-#: it changes with every characterization PR, and the outcome does not.
-FACTS = re.compile(r" \((?:(?:duckdb|polars|spark|snowflake|datafusion)-[\w-]+(?:, )?)+\)")
+#: A list of engine fact ids in a reason, "(duckdb-var-stddev, duckdb-covar)",
+#: each named after its engine: it changes with every characterization PR,
+#: and the outcome does not.
+FACTS = re.compile(rf" \((?:(?:{'|'.join(sorted(_engines.NAMED))})-[\w-]+(?:, )?)+\)")
 
 
 def census_case(c: Case, schemas: dict[str, Any]) -> dict[str, Any]:

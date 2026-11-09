@@ -32,15 +32,23 @@ values (`Measure.orderFree`: `COUNT`, `SUM`, `AVG` of doubles too (D25),
 def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
-  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _
   | .unnest r _ => r.detPlan cat A F K
+  -- `DISTINCT` keeps any member of a class of rows (D31): none to choose
+  -- without doubles.
+  | .distinct r => r.detPlan cat A F K && (r.aeval cat A F .none).all AVal.noDoubles
   | .fetch _ _ _ => false
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.detPlan cat A F K && b.detPlan cat A F K
   | .window r part sort fns =>
       r.detPlan cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-        fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part))
-  | .aggregate r _ ms => r.detPlan cat A F K && ms.all (·.orderFree)
+        fns.all (WinFn.tieFree sort) ||
+        ((List.range (r.arity cat)).all (· ∈ part) && (r.aeval cat A F .none).all AVal.noDoubles))
+  -- Keys and `MIN`/`MAX` keep any member of a class: none to choose without
+  -- doubles.
+  | .aggregate r gs ms => r.detPlan cat A F K && ms.all (·.orderFree) &&
+      gs.all (fun g => (g.abs (r.aeval cat A F .none)).noDoubles) &&
+      ms.all (fun m => !(m.fn matches .min | .max) || (m.arg.abs (r.aeval cat A F .none)).noDoubles)
 
 omit [Boxes.Ambient] in
 theorem crossRows_perm {xs xs' ys ys' : Relation} (hx : xs.Perm xs') (hy : ys.Perm ys') :
@@ -90,8 +98,12 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
       simp only [List.all_eq_true, decide_eq_true_eq] at hsub
       exact window_tiebreak ((keys_sound hcat hA hF hK hwf.1 k hk).superset hsub) hp hsort
     · exact window_tieFree hf hp hsort
-    · simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
-      exact Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc hp
+    · obtain ⟨hc, hnd⟩ := hc
+      simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
+      refine Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc (fun x hx => ?_) hp
+      exact Row.canon_of_env (Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
+        (fun h => by cases h) x hx) (by simpa using hnd)
+        (by rw [Rel.aeval_length hwf.1, Rel.eval_arity hcat hwf.1 x hx])
   | .semi a b _ on, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
     simp only [detPlan, Bool.and_eq_true] at hd
     have hx' := allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx
@@ -102,14 +114,35 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
   | .orderBy r _, hwf, hd, _, ⟨i, hi, h, _⟩ =>
     h.trans ((allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).trans
       (List.mergeSort_perm _ _).symm)
-  | .distinct r, hwf, hd, _, ⟨i, hi, h⟩ => by
-    have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf hd hi
-    exact h.trans (dedup_perm_of_mem fun y => hp.mem_iff)
+  | .distinct r, hwf, hd, _, ⟨i, hi, d, hdr, h⟩ => by
+    simp only [detPlan, Bool.and_eq_true] at hd
+    have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf hd.1 hi
+    -- Rows without doubles are alone in their classes.
+    have hlone : ∀ x ∈ r.eval cat, x.Lone := fun x hx =>
+      Row.lone_of_env (Rel.aeval_sound (sz := false) (r := r) hcat hA hF (WindowKeys.none_soundAll cat) hwf
+        (fun h => by cases h) x hx) hd.2
+        (by rw [Rel.aeval_length (r := r) hwf, Rel.eval_arity hcat (r := r) hwf x hx])
+    refine h.trans ((hdr.perm_dedup fun x hx => hlone x (hp.mem_iff.mp hx)).trans ?_)
+    simp only [eval, distinctRows]
+    rw [canonReps_of_inj fun x hx y hy he => hlone y hy x he]
+    exact dedup_perm_of_mem fun _ => hp.mem_iff
   | .aggregate r gs ms, hwf, hd, _, ⟨i, hi, o, h, ho⟩ => by
     simp only [detPlan, Bool.and_eq_true, List.all_eq_true] at hd
-    have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd.1 hi
-    rw [aggAllowed_eq hd.2 ho] at h
-    exact h.trans (aggregateEval_perm hd.2 hp)
+    obtain ⟨⟨⟨hd1, hof⟩, hgs⟩, hmm⟩ := hd
+    have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd1 hi
+    have henv : ∀ x ∈ i, EnvMem (r.aeval cat A F .none) x := fun x hx =>
+      Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
+        (fun h => by cases h) x (hp.mem_iff.mp hx)
+    have hk : ∀ x ∈ i, (groupKey gs x).Lone := fun x hx => by
+      refine Row.lone_of_forall fun v hv => ?_
+      obtain ⟨g, hg, rfl⟩ := List.mem_map.mp hv
+      exact AVal.lone_of_noDoubles (hgs g hg) (Expr.abs_sound (henv x hx) g)
+    have ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ x ∈ i,
+        (m.arg.eval x).Lone := fun m hm hf x hx => by
+      have := hmm m hm
+      rcases hf with hf | hf <;> simp only [hf, Bool.not_true, Bool.false_or] at this <;>
+        exact AVal.lone_of_noDoubles this (Expr.abs_sound (henv x hx) m.arg)
+    exact h.trans ((aggAllowed_eq hof hk ha ho).trans (aggregateEval_perm hof hp))
   | .unnest r _, hwf, hd, _, ⟨i, hi, h⟩ =>
     h.trans ((allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).flatMap_right _)
 

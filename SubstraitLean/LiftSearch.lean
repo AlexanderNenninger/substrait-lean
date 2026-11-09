@@ -289,7 +289,7 @@ def sampleValues : DuckType → List Value
       .float (FloatCode.ofFloat 2), .float (FloatCode.ofFloat (-0.5)), .float (FloatCode.ofFloat 1),
       .float (FloatCode.ofFloat (-1)), .float (FloatCode.ofFloat (-1.5)), .float (FloatCode.ofFloat 3.5),
       .float FloatCode.nan,
-      .float FloatCode.posInf, .float FloatCode.negInf]
+      .float FloatCode.posInf, .float FloatCode.negInf, .float FloatCode.negZero, .float FloatCode.negNan]
 
 def sampleRows : List DuckType → List Row
   | [] => [[]]
@@ -462,6 +462,12 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
 
 /-! ## Proving and emitting -/
 
+/-- The special codes' values, which `omega` needs for `canon`'s cases. -/
+macro "lift_codes" : tactic => `(tactic| (
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := DuckDBSQL.negOne_eq))
+
+set_option hygiene false in
 /-- The proof tactic: split on the arguments' kinds (dropping those outside
 their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
@@ -471,8 +477,10 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.duck_fsub_float, ``DuckDBSQL.duck_fmul_float, ``DuckDBSQL.duck_fpow_float,
     ``DuckDBSQL.duck_fmath_float, ``DuckDBSQL.duck_bin_null_l, ``DuckDBSQL.duck_bin_null_r,
     ``DuckDBSQL.duck_un_null, ``DuckDBSQL.duck_itof, ``duckElementary, ``FMath.isLog, ``duckSign,
-    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
-    ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
+    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
+    ``DuckDBSQL.ref_fdivIeee_float, ``DuckDBSQL.ref_fdivIeee_null_l, ``DuckDBSQL.ref_fdivIeee_null_r,
+    ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero, ``DuckDBSQL.ofInt_zero, ``DuckDBSQL.ofInt_pos, ``DuckDBSQL.ofInt_eq_zero, ``DuckDBSQL.fdiv_nan_r, ``DuckDBSQL.fdiv_negNan_r,
+    ``DuckDBSQL.fdiv_nan_l, ``DuckDBSQL.fdiv_negNan_l, ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
     ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
     ``DuckDBSQL.apply_lt_null_l, ``DuckDBSQL.apply_lt_null_r, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_greatest, ``Lowering.ref_least,
@@ -483,39 +491,52 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.ref_fmul_float, ``DuckDBSQL.ref_fadd_null_l, ``DuckDBSQL.ref_fadd_null_r,
     ``DuckDBSQL.ref_fsub_null_l, ``DuckDBSQL.ref_fsub_null_r, ``DuckDBSQL.ref_fmul_null_l,
     ``DuckDBSQL.ref_fmul_null_r,
-    ``DuckDBSQL.ite_or, ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
+    ``DuckDBSQL.ite_or, ``FloatCode.canon_zero, ``FloatCode.canon_posInf, ``FloatCode.canon_negInf,
+    ``DuckDBSQL.canon_of_has, ``DuckDBSQL.canon_negZero, ``DuckDBSQL.canon_negNan, ``DuckDBSQL.canon_nan, ``DuckDBSQL.canon_one, ``DuckDBSQL.canon_negOne,
+    ``DuckDBSQL.zero_ne_negZero, ``DuckDBSQL.negZero_ne_zero, ``DuckDBSQL.zero_ne_negNan, ``DuckDBSQL.negNan_ne_zero, ``DuckDBSQL.posInf_ne_negZero, ``DuckDBSQL.negZero_ne_posInf, ``DuckDBSQL.posInf_ne_negNan, ``DuckDBSQL.negNan_ne_posInf, ``DuckDBSQL.negInf_ne_negZero, ``DuckDBSQL.negZero_ne_negInf, ``DuckDBSQL.negInf_ne_negNan, ``DuckDBSQL.negNan_ne_negInf, ``DuckDBSQL.nan_ne_negZero, ``DuckDBSQL.negZero_ne_nan, ``DuckDBSQL.nan_ne_negNan, ``DuckDBSQL.negNan_ne_nan, ``DuckDBSQL.one_ne_negZero, ``DuckDBSQL.negZero_ne_one, ``DuckDBSQL.one_ne_negNan, ``DuckDBSQL.negNan_ne_one, ``DuckDBSQL.negOne_ne_negZero, ``DuckDBSQL.negZero_ne_negOne, ``DuckDBSQL.negOne_ne_negNan, ``DuckDBSQL.negNan_ne_negOne, ``FloatCode.canon_ofInt, ``FloatCode.canon_idem,
+    ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
     ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_float,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
     ``Bool.and_false, ``Bool.false_and, ``Bool.or_true, ``Bool.true_and] ++ extra)
-  let fin ← simpArgs (#[``Outcome.Agree, ``Issue.isError] ++ extra)
+  let fin ← simpArgs (#[``Outcome.Agree, ``Issue.isError, ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero] ++ extra)
+  -- A double is canonical, `-0.0` or the negative NaN: three cases.
   let intro ← if n == 1 then `(tactic| (intro x hx; cases x <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx))
     else `(tactic| (intro x y hx hy; cases x <;> cases y <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx hy))
+  -- A double is canonical, `-0.0` or the negative NaN: three cases each (the
+  -- names are the intro's: `hygiene` is off for this definition).
+  let split3 ← if n == 1 then `(tactic| (all_goals try rcases hx with hx | rfl | rfl))
+    else `(tactic| (all_goals try rcases hx with hx | rfl | rfl; all_goals try rcases hy with hy | rfl | rfl))
   let cheap ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``DuckFn.eval, ``DuckFn.meaning, ``DuckFn.evalOwn, ``Semantics.profile,
     ``DuckDBSQL.ref_itof]
   `(tactic| (
     $intro:tactic
+    $split3:tactic
     all_goals try (simp only [$cheap,*]; exact Outcome.agree_refl _)
     all_goals have := FloatCode.negInf_lt_zero
     all_goals have := FloatCode.zero_lt_posInf
     all_goals have := FloatCode.posInf_lt_nan
     all_goals have := FloatCode.one_lt_posInf
     all_goals have := FloatCode.zero_lt_one
-    all_goals simp (config := { failIfUnchanged := false }) only [$ev,*, Int.reduceEq, Int.reduceLT,
+    -- `*`: the arguments' cases discharge `canon_of_has`.
+    all_goals simp (config := { failIfUnchanged := false }) only [$ev,*, *, Int.reduceEq, Int.reduceLT,
       Int.reduceLE, Int.reduceNeg, Int.reduceAdd, Int.reduceSub, Nat.reduceEqDiff, decide_true,
       decide_false, Bool.not_true, Bool.not_false]
     iterate 16
       all_goals try
         lowering_split_decide <;>
-          simp (config := { failIfUnchanged := false }) only [$(mkIdent `hd):ident, $ev,*,
+          simp (config := { failIfUnchanged := false }) only [$(mkIdent `hd):ident, $ev,*, *,
             Int.reduceEq, Int.reduceLT, Int.reduceLE, Int.reduceNeg, decide_true, decide_false,
             Bool.not_true, Bool.not_false]
     all_goals (repeat' split)
+    -- The special codes' values, for `omega` alone: as rewrite rules they
+    -- would expand the constants into their numerals.
     all_goals first
       | (simp_all [$fin,*]; done)
-      | (simp_all [$fin,*] <;> omega)
-      | omega))
+      | (lift_codes; omega)
+      | (simp_all [Outcome.Agree, Issue.isError] <;> (lift_codes; omega))
+      | (simp_all [$fin,*] <;> (lift_codes; omega))))
 
 /-- The generated module a function's entry goes to (`writing`): entries of an
 area check in parallel, each in a process of its own. -/
@@ -577,7 +598,7 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
     if let some out := sink then
       out.modify (·.push (areaOf k.ctor,
         -- The check elaborates the statement too: twice the search's budget.
-        "set_option maxHeartbeats 400000 in\n" ++
+        "set_option maxHeartbeats 800000 in\n" ++
         s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_tac{n}\n\n" ++
         s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource entryTy} :=\n" ++
         s!"  ⟨{repr j.compress}, {← LoweringSearch.ppSource tmpl},\n" ++
@@ -668,7 +689,7 @@ def aggTac (_defs : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
     ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r, ``AggFn.apply, ``nanCase, ``isInfCode,
-    ``Substrait.Expr.evalP,
+    ``Substrait.Expr.evalP, ``FloatCode.canon_ofInt,
     ``Lowering.beq_int, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
     ``Bool.and_false, ``Bool.false_and, ``Outcome.Agree, ``List.length_cons, ``Lowering.ref_eq,

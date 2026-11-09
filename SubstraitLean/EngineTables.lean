@@ -6,8 +6,8 @@ import SubstraitLean.SubstraitProfile
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
 
 DuckDB's, Polars's and Spark's choices and observation rows, from their facts
-(`characterization/duckdb/facts/`, `characterization/polars/facts/`,
-`characterization/spark/facts/`), pinned to
+(`characterization/duckdb/facts/`, `engines/polars/facts/`,
+`engines/spark/facts/`), pinned to
 the versions those were probed at (D14). The rows cover the prototype slice:
 integer `+ - × /` and `%`, `SUM` and `AVG` of integers and doubles, double
 arithmetic, and an `ORDER BY`'s NULL order, clustering and ties, with what
@@ -53,6 +53,7 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "round_zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
@@ -95,6 +96,10 @@ def Profile.duckdb.obs : ObsTable := [
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
     shim := some "Dialect.canon" }).tracking 241),
+  -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
+  -- exactly after `Dialect.canon`.
+  (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R15-round",
+    "duckdb-R15-round-digits"] with shim := some "Dialect.canon" }).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["duckdb-signbit"]).tracking 241),
   (none, "nan_order", (ObsRow.native ["duckdb-arg-min-nulls"]).tracking 241),
   (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).tracking 241),
@@ -176,6 +181,7 @@ def Profile.polars.table : ProfileTable where
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "round_zero_sign", .oneOf ["IEEE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     -- `min` and `max` skip NaN unless every value is NaN (polars-min-max-nan).
@@ -236,6 +242,9 @@ def Profile.polars.obs : ObsTable := [
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
     with shim := some "one_zero" }).proved "Shim.one_zero"),
+  -- `round` and `ceil` emit IEEE's `-0.0`; the shim `one_zero` makes it exact.
+  (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-round",
+    "polars-round-digits"] with shim := some "one_zero" }).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 271),
@@ -320,7 +329,7 @@ def Profile.polars.obs : ObsTable := [
 
 /-! ## Spark -/
 
-/-- Spark 4.3.0 under `sverify.sql.spark.SPARK_CONF`: ANSI mode on, `TIMESTAMP`
+/-- Spark 4.3.0 under `sverify_spark.dialect.SPARK_CONF`: ANSI mode on, `TIMESTAMP`
 as `TIMESTAMP_NTZ`, the session time zone UTC (spark-exec-settings). -/
 def Profile.spark.table : ProfileTable where
   name := "spark"
@@ -347,6 +356,7 @@ def Profile.spark.table : ProfileTable where
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "round_zero_sign", .oneOf ["POSITIVE"]),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
@@ -398,6 +408,9 @@ def Profile.spark.obs : ObsTable := [
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"] with
     shim := some "Dialect.canon" }).proved "Shim.one_zero"),
+  -- `round` emits `+0.0` through a decimal; `ceil` is a `BIGINT`, which the
+  -- written plan casts back to a double.
+  (none, "round_zero_sign", (ObsRow.native ["spark-round", "spark-floor-ceil-bigint"]).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),
@@ -449,7 +462,7 @@ def Profile.spark.obs : ObsTable := [
 
 /-- The engine profiles of this repository, DuckDB under its default
 settings. Each one's shims are named as its rows name them; Polars's are
-`python/src/sverify/_polars_shims.py`'s `SHIMS` (named as their lemmas
+`engines/polars/src/sverify_polars/shims.py`'s `SHIMS` (named as their lemmas
 `Polars.<name>`), which `tests/test_realizability.py` checks against these. -/
 def builtinEngines : List EngineProfile := [
   { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
@@ -472,17 +485,29 @@ def builtinEngines : List EngineProfile := [
       ("Dialect.canon", .expression), ("null_order", .argument), ("sort on the keys", .sort),
       ("decimal_negate_sub", .expression)] }]
 
-/-- **Every DuckDB setting refines the core.** -/
-theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
+/-! Each table's test against the core (`ProfileTable.leB`), decided once in
+the kernel: the refinements below and `builtinEngines_leCore` both use it. -/
+
+theorem Profile.duckdb_leB (s : DuckDBSettings) :
+    (Profile.duckdb.table s).leB Profile.core.table = true := by
   obtain ⟨e, i⟩ := s
-  apply ProfileTable.le_of_leB
   cases e <;> cases i <;> decide +kernel
 
+theorem Profile.polars_leB : Profile.polars.table.leB Profile.core.table = true := by
+  decide +kernel
+
+theorem Profile.spark_leB : Profile.spark.table.leB Profile.core.table = true := by
+  decide +kernel
+
+/-- **Every DuckDB setting refines the core.** -/
+theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table :=
+  ProfileTable.le_of_leB (Profile.duckdb_leB s)
+
 theorem Profile.polars_le_core : Profile.polars.table.Le Profile.core.table :=
-  ProfileTable.le_of_leB (by decide +kernel)
+  ProfileTable.le_of_leB Profile.polars_leB
 
 theorem Profile.spark_le_core : Profile.spark.table.Le Profile.core.table :=
-  ProfileTable.le_of_leB (by decide +kernel)
+  ProfileTable.le_of_leB Profile.spark_leB
 
 variable [Boxes.Ambient]
 /-- `Allowed_duckdb ⊆ Allowed_core`, for every setting. -/

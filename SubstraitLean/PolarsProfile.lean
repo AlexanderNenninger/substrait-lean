@@ -7,7 +7,7 @@ import SubstraitLean.Parse
 
 `Profile.polars` is the semantics a plan verified with
 `verify(semantics="polars")` is checked under: what Polars 2.1.0's streaming
-engine computes, as its facts record it (`characterization/polars/facts/`),
+engine computes, as its facts record it (`engines/polars/facts/`),
 on the options where sverify models Polars's own choice, and the reference
 elsewhere. Per option (D21, `docs/engine-profiles.md`, "Polars as a profile"):
 

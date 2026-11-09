@@ -36,13 +36,14 @@ variable [Boxes.Ambient]
 
 theorem Measure.OrderAllowed.allowed {m : Measure} {rows : Relation} {v : Value}
     (h : m.OrderAllowed rows v) : m.Allowed rows v := by
-  obtain ⟨s, hp, hs, rfl⟩ := h
-  split
+  obtain ⟨s, hp, hs, h⟩ := h
+  split at h
   · next hsorts =>
+    subst h
     refine ⟨s, hp, fun _ => hs, ?_⟩
     rw [Measure.eval_sorts hsorts, mergeSort_eq_of_sorted hs]
     exact AggFn.apply_allowed _ _
-  · exact Measure.eval_allowed m rows
+  · exact ⟨rows, .refl _, fun h' => absurd h' ‹_›, AggFn.allowed_of_picks h⟩
 
 theorem aggOrderAllowed_allowed {gs : List Expr} {ms : List Measure} {rows out : Relation}
     (h : aggOrderAllowed gs ms rows out) : aggAllowed gs ms rows out := by
@@ -54,7 +55,8 @@ theorem aggOrderAllowed_allowed {gs : List Expr} {ms : List Measure} {rows out :
   · next hg => obtain ⟨vs, rfl, hv⟩ := h; simp only [hg, ite_true]; exact ⟨vs, rfl, hm hv⟩
   · next hg =>
     simp only [hg, Bool.false_eq_true, ite_false]
-    exact Forall2.weaken (fun _ _ ⟨vs, he, hv⟩ => ⟨vs, he, hm hv⟩) h
+    obtain ⟨ks, hks, h⟩ := h
+    exact ⟨ks, hks, Forall2.weaken (fun _ _ ⟨vs, he, hv⟩ => ⟨vs, he, hm hv⟩) h⟩
 
 /-! ## Plans -/
 

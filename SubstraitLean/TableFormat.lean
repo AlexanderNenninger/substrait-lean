@@ -318,7 +318,7 @@ least minimum and the greatest maximum. -/
 theorem stats_bounds {a : AVal} {lo hi : Int} {v : Value}
     (hnull : a.null = false) (hint : a.int = some ⟨some lo, some hi⟩)
     (hb : a.intsOnly = true) (hm : a.Mem v) :
-    ∃ (k : NumKind) (i : Int), v = k.val i ∧ lo ≤ i ∧ i ≤ hi := by
+    ∃ (k : NumKind) (i : Int), v = k.val i ∧ lo ≤ k.norm i ∧ k.norm i ≤ hi := by
   simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
     Bool.or_eq_false_iff] at hb
   rcases AVal.mem_cases hm with ⟨_, hn⟩ | ⟨k, i, b, rfl, hb', hmem, -⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |
@@ -337,7 +337,7 @@ maximum where NaN may occur). With NULLs this is the fact
 description (`Expr.refine` of `IS NULL` and of `OR`). -/
 theorem stats_fact {a : AVal} {b : Bound} {v : Value}
     (hint : a.int = some b) (hb : a.intsOnly = true) (hm : a.Mem v) :
-    (v = .null ∧ a.null = true) ∨ ∃ (k : NumKind) (i : Int), v = k.val i ∧ b.Mem i := by
+    (v = .null ∧ a.null = true) ∨ ∃ (k : NumKind) (i : Int), v = k.val i ∧ b.Mem (k.norm i) := by
   simp only [AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
     Bool.or_eq_false_iff] at hb
   rcases AVal.mem_cases hm with ⟨rfl, hn⟩ | ⟨k, i, b', rfl, hb', hmem, -⟩ | ⟨_, ht⟩ | ⟨_, hf⟩ |

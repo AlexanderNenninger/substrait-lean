@@ -106,19 +106,18 @@ def sql_size(sql: str, read: str) -> tuple[int, int]:
 
 def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
     """The written SQL's size in each dialect that writes the plan."""
+    from sverify import _engines, profiles
     from sverify.engine import written_plan
     from sverify.sql import Unsupported
     from sverify.sql import to_sql as plan_sql
-    from sverify.sql.duckdb import DUCKDB
-    from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
 
     in_nodes = plan_nodes(json.loads(plan_json))
     try:
         plan = json.loads(written_plan(plan_json))
     except ValueError:
         return  # the checker or `--write` refuses it (decimals, #27)
-    for name, dialect in (("duckdb", DUCKDB), ("snowflake", SNOWFLAKE), ("spark", SPARK)):
+    for name in _engines.DIALECTS:
+        dialect = profiles.plugins()[name].dialect()  # pyrefly: ignore[not-callable]
         try:
             sql = plan_sql(plan, dialect)
         except Unsupported:

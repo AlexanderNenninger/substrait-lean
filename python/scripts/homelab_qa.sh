@@ -6,14 +6,15 @@
 #
 #   ssh homelab 'bash -s -- [--wait] <branch> [poe task ...]' < python/scripts/homelab_qa.sh
 #
-# The script refuses to start while the box is busy (CLAUDE.md, "homelab"):
-# another run's /tmp/substrait-lean-* directory with a live process in it, a
-# 1-minute load above 8, or less than 6 GB available. It exits 75 and says
-# why; with `--wait` it checks again every minute until the box is free (at
-# most HOMELAB_QA_WAIT_MAX seconds, 3 hours by default). A directory no
-# process uses is a crashed run's leftover: it gets a warning and is ignored.
-# The chaos run (prefix `substrait-chaos`, below) is exempt from the run and
-# load checks.
+# The script refuses to start while the box is loaded (CLAUDE.md, "homelab"):
+# a 1-minute load above 8, or less than 6 GB available. It exits 75 and says
+# why; with `--wait` it checks again every minute until the load allows (at
+# most HOMELAB_QA_WAIT_MAX seconds, 3 hours by default). Other runs may be
+# going: several run side by side while load and memory allow, each under its
+# memory cap, and the script names those it starts beside. A
+# /tmp/substrait-lean-* directory no process uses is a crashed run's
+# leftover: it gets a warning. The chaos run (prefix `substrait-chaos`,
+# below) is exempt from the load check.
 #
 # The poe tasks default to `qa`. Each run clones into its own
 # /tmp/<prefix>-<uuid>, which is deleted at exit, also on failure, and the
@@ -84,7 +85,7 @@ waited=0
 
 # `busy`: why the box can't take a run now, on stdout; nothing if it can.
 busy() {
-  local d p cwd pids born age load available_kb
+  local load available_kb
   available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
   if [ "$available_kb" -lt "$min_available_kb" ]; then
     echo "only $((available_kb / 1024)) MB available, under 6 GB"
@@ -94,6 +95,12 @@ busy() {
   if awk -v l="$load" -v m="$max_load" 'BEGIN { exit !(l > m) }'; then
     echo "1-minute load $load, over $max_load"
   fi
+}
+
+# `others`: the runs going beside this one, and crashed runs' leftovers, on
+# stderr.
+others() {
+  local d p cwd pids born age
   for d in /tmp/substrait-lean-*; do
     [ -d "$d" ] || continue
     # The processes working in it: their working directory is inside it.
@@ -106,9 +113,9 @@ busy() {
     [ "$born" -gt 0 ] || born=$(stat -c %Y "$d")
     age=$(( ($(date +%s) - born) / 60 ))
     if [ -n "$pids" ]; then
-      echo "another run in $d, started $age min ago, PIDs $pids"
-    elif [ "$waited" -eq 0 ]; then
-      echo "homelab_qa: WARNING: $d ($age min old) has no process in it: a crashed run's leftover, ignored" >&2
+      echo "homelab_qa: beside another run in $d, started $age min ago, PIDs $pids" >&2
+    else
+      echo "homelab_qa: WARNING: $d ($age min old) has no process in it: a crashed run's leftover" >&2
     fi
   done
 }
@@ -127,6 +134,7 @@ while reason=$(busy) && [ -n "$reason" ]; do
   sleep 60
   waited=$((waited + 60))
 done
+others
 
 id=$(uuidgen)
 dir=/tmp/$prefix-$id

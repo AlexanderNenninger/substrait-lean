@@ -26,9 +26,9 @@ from sverify.engine import checker_path, connect, run_checker, run_plan, written
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql import Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
-from sverify.sql.spark import SPARK
 from sverify.sql_lift import lift
 from sverify_dev.lift import check, duckdb_result
+from sverify_spark.dialect import SPARK
 
 pytestmark = pytest.mark.backend("duckdb")
 

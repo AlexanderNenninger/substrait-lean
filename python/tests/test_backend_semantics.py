@@ -21,8 +21,9 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify import duckdb_engine, polars_engine
+from sverify import duckdb_engine
 from sverify.engine import connect, put_table, read_tables, substrait_json, written_plan
+from sverify_polars import engine as polars_engine
 
 
 def ints(**cols: list) -> pa.Table:

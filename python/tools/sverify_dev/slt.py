@@ -893,8 +893,8 @@ class Replay:
             lean_ok = outcome(None, res.reason, ordered)
 
         # DuckDB on the plan Lean writes.
-        from sverify import polars_engine
         from sverify.sql import core as sql_core
+        from sverify_polars import engine as polars_engine
 
         refusals = (polars_engine.Unsupported, sql_core.Unsupported)
 

@@ -58,28 +58,29 @@ theorem untouched_unchanged {K : Row → Bool} {rows dels ins : Relation}
 /-- **Touched-group recompute is sound**: the aggregate after a batch is the
 rows of the groups it does not touch, from before the batch, and the
 aggregate of the new input rows whose keys it touches. -/
-theorem touched_sound (hg : gs ≠ []) {K : Row → Bool} {rows dels ins : Relation}
-    (h : Touches gs K dels ins) :
+theorem touched_sound (hg : gs ≠ []) {K : Row → Bool} (hK : RespectsCanon K)
+    {rows dels ins : Relation} (h : Touches gs K dels ins) :
     (aggregateEval gs ms (applyBatch rows dels ins)).Perm
       ((aggregateEval gs ms rows).filter (fun o => !K (o.take gs.length)) ++
         aggregateEval gs ms ((applyBatch rows dels ins).filter fun r => K (groupKey gs r))) := by
   refine (List.filter_append_perm (fun o => !K (o.take gs.length)) _).symm.trans
     (List.Perm.append ?_ ?_)
-  · refine (Retention.aggregateEval_filter_key hg ms (fun k => !K k) _).trans ?_
+  · have hK' : RespectsCanon fun k => !K k := fun k k' he => by simp only [hK k k' he]
+    refine (Retention.aggregateEval_filter_key hg ms (fun k => !K k) _ hK').trans ?_
     rw [untouched_unchanged h]
-    exact (Retention.aggregateEval_filter_key hg ms (fun k => !K k) rows).symm
-  · simpa using Retention.aggregateEval_filter_key hg ms K (applyBatch rows dels ins)
+    exact (Retention.aggregateEval_filter_key hg ms (fun k => !K k) rows hK').symm
+  · simpa using Retention.aggregateEval_filter_key hg ms K (applyBatch rows dels ins) hK
 
 /-- `touched_sound` for `Rel.eval`: when the input `r` goes from `rows` to
 `applyBatch rows dels ins` and the batch touches only keys in `K`. -/
 theorem touched_eval (hg : gs ≠ []) {r : Rel} {cat cat' : Catalog} {K : Row → Bool}
-    {dels ins : Relation} (hr : r.eval cat' = applyBatch (r.eval cat) dels ins)
+    (hK : RespectsCanon K) {dels ins : Relation} (hr : r.eval cat' = applyBatch (r.eval cat) dels ins)
     (h : Touches gs K dels ins) :
     ((Rel.aggregate r gs ms).eval cat').Perm
       (((Rel.aggregate r gs ms).eval cat).filter (fun o => !K (o.take gs.length)) ++
         aggregateEval gs ms ((r.eval cat').filter fun x => K (groupKey gs x))) := by
   simp only [Rel.eval, hr]
-  exact touched_sound hg h
+  exact touched_sound hg hK h
 
 /-! ## Windows: touched partitions -/
 

@@ -105,11 +105,7 @@ reference:
       - engines.Connection
       - name: engines.Dialect
         members: [name, guards, finite, decimals]
-      - engines.DUCKDB
-      - engines.SNOWFLAKE
-      - engines.SPARK
       - engines.UnsupportedError
-      - engines.SPARK_CONF
       - engines.run_sharded
 
   - title: ASOF joins
@@ -159,7 +155,7 @@ reference:
 
   - title: Standards
     desc: >
-      Contracts in the Open Data Contract Standard (`sverify.odcs`, #791):
+      Contracts in the Open Data Contract Standard (`sverify.odcs`):
       a node's contract written as ODCS, and ODCS contracts read as
       conditions.
     contents:
@@ -173,7 +169,7 @@ reference:
   - title: Lineage
     desc: >
       OpenLineage run events from `refresh`, and upstream events read back
-      (`sverify.openlineage`, #792).
+      (`sverify.openlineage`).
     contents:
       - openlineage.Lineage
       - openlineage.read
@@ -233,14 +229,14 @@ skill:
 
 # Pages beyond the API reference, written before each build by
 # `scripts/docs_pages.py` (`poe docs` runs it) into directories git ignores:
-# the usage examples (`docs/examples.md`); the reference pages (what a plan
-# means, what 1.x keeps, what 1.0 covers) and the design pages of `docs/`,
-# by the kinds `docs/README.md` maps; and the ledgers, rendered from their
+# the on-ramp (`docs/getting-started.md`, at `examples/examples.html`); the reference pages (what a plan
+# means, what 1.x keeps) and the design pages of `docs/`, by the kinds
+# `docs/README.md` maps, without the pages for contributors; and the ledgers, rendered from their
 # JSON (`upstream/bugs/`, `characterization/<engine>/facts/`,
 # `characterization/areas.json`, `docs/realizability.md`). Quarto's search
 # indexes every entry by its heading.
 sections:
-  - title: Examples
+  - title: Getting started
     dir: examples
   - title: Semantics
     dir: semantics

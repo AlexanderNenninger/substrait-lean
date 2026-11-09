@@ -6,7 +6,7 @@ Great Docs renders the directories `python/examples/`, `python/semantics/`,
 written here, at build time, and ignored by git (CLAUDE.md, "Generated
 files"):
 
-- `examples/`: `docs/examples.md`;
+- `examples/`: `docs/getting-started.md`, as `examples/examples.md`;
 - `semantics/` and `design/`: the reference and design pages of `docs/`
   (`DOC_SECTIONS`), with GitHub's heading anchors. Links between pages the
   site has stay on the site; links to other files of the repository point at
@@ -73,10 +73,16 @@ def md(text: str | list[str]) -> str:
     of paragraphs."""
     if not isinstance(text, str):
         return "\n\n".join(md(p) for p in text)
-    parts = re.split(r"(`[^`]*`)", text)
+    parts = re.split(r"(```.*?```|`[^`]*`)", text, flags=re.S)
     for i in range(0, len(parts), 2):
         parts[i] = parts[i].replace("$", r"\$").replace("@", r"\@")
     return "".join(parts)
+
+
+def item(text: str) -> str:
+    """A paragraph as a list item: its later lines indented under the bullet,
+    so a fenced code block in it stays inside the item."""
+    return "- " + md(text).replace("\n", "\n  ")
 
 
 def cell(text: str | list[str]) -> str:
@@ -236,9 +242,9 @@ def bug_entry(bug: dict, facts: Mapping[str, str]) -> str:
     out += ["::: {.ledger-meta}", "; ".join(meta) + ".", ":::", ""]
     out += [md(p) + "\n" for p in _paragraphs(bug["summary"])]
     if repro := _paragraphs(bug.get("repro")):
-        out += ["Reproduction:", ""] + [f"- {md(p)}" for p in repro] + [""]
+        out += ["Reproduction:", ""] + [item(p) for p in repro] + [""]
     if handling := _paragraphs(bug.get("handling")):
-        out += ["How sverify handles it:", ""] + [f"- {md(p)}" for p in handling] + [""]
+        out += ["How sverify handles it:", ""] + [item(p) for p in handling] + [""]
     out += [f"Status: {md(bug['status_note'])}", ""]
     refs = []
     if bug.get("facts"):
@@ -271,7 +277,9 @@ def _pr(p: Any) -> str:
 
 
 def load_facts(root: Path) -> dict[str, dict]:
-    docs = [_load(p) for p in sorted(root.glob("characterization/*/facts/*.json"))]
+    from sverify_dev import facts
+
+    docs = [_load(p) for p in sorted(facts.load(root / "characterization"))]
     return {d["id"]: d for d in sorted(docs, key=lambda d: (d["engine"], d["area"], d["id"]))}
 
 
@@ -581,17 +589,27 @@ def _short(text: str, n: int = 200) -> str:
 
 #: The pages of `docs/` the site renders, by section (a directory of the site,
 #: `sections:` in `great-docs.yml`), in order: the reference (what a plan
-#: means, what 1.x keeps, what 1.0 covers) and the design (how and why).
-#: `docs/README.md` maps every page to its kind.
+#: means, what 1.x keeps) and the design (how and why). The pages for
+#: contributors (the decision log, the proof map, the coverage targets, the
+#: layers) stay off the site; links to them go to GitHub. `docs/README.md` maps
+#: every page to its kind.
 DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
     "semantics": [
         ("docs/reference-semantics.md", "Reference semantics", "What a plan means, row by row"),
         ("docs/stability.md", "Stability in 1.x", "The formats, proofs, API and engines 1.x keeps"),
-        ("docs/coverage-targets.md", "Coverage targets", "The constructs 1.0 covers, by area"),
     ],
     "design": [
+        (
+            "docs/core-and-profiles.md",
+            "The core and the profiles",
+            "The abstract machine, and the profiles that narrow it",
+        ),
+        (
+            "docs/verifying.md",
+            "Verifying: the two paths",
+            "Under the reference or under an engine's profile",
+        ),
         ("docs/how-it-works.md", "How it works", "The checker, incremental views and the engines"),
-        ("docs/core-semantics.md", "The loose core", "Profiles, translations and the decisions"),
         (
             "docs/engine-profiles.md",
             "Engine profiles",
@@ -605,16 +623,10 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
         ),
         ("docs/nested-values.md", "Nested values", "Lists, structs and lambdas in the model"),
         (
-            "docs/proofs.md",
-            "A map of the proofs",
-            "Each guarantee, its theorem and what is trusted",
-        ),
-        (
             "docs/trusted-base.md",
             "The trusted base",
             "What a result rests on that the kernel does not check",
         ),
-        ("docs/layers.md", "Layers", "The layers of the Python package"),
         ("docs/prior-work.md", "Prior work", "The work sverify builds on, and related tools"),
     ],
 }
@@ -623,7 +635,7 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
 def site_names() -> dict[str, tuple[str, str]]:
     """Each file of the repository the site renders: its section and page name."""
     names = {
-        "docs/examples.md": ("examples", "examples"),
+        "docs/getting-started.md": ("examples", "examples"),
         "docs/realizability.md": ("ledgers", "realizability"),
     }
     for section, pages in DOC_SECTIONS.items():
@@ -690,10 +702,10 @@ def write(out: Path, root: Path = ROOT) -> None:
         front("Realizability", "How a plan verified under the reference runs on each engine") + text
     )
 
-    source = root / "docs/examples.md"
+    source = root / "docs/getting-started.md"
     text = rewrite_links(strip_title(source.read_text()), source, relative(local, "examples"))
     (examples / "examples.md").write_text(
-        front("Examples", "Sverify's features in ten short examples, each a step up", True) + text
+        front("Getting started", "From the install to a proved plan, in ten steps", True) + text
     )
 
     for section, pages in DOC_SECTIONS.items():

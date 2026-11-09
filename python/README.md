@@ -1,5 +1,8 @@
 # sverify
 
+> Sverify is a working prototype. Its Lean proofs, its checker and its Python
+> code still need a human audit before anyone relies on their results.
+
 Sverify proves a data pipeline's contracts before it runs, takes the proof to
 [DuckDB](https://duckdb.org), [Polars](https://pola.rs) and
 [Spark](https://spark.apache.org) by a route that says what carries over,
@@ -26,7 +29,7 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   postcondition states (a float tolerance is one), or exact or observed
   after a proved shim. Where no route
   applies, the plan is refused with the reason
-  ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB,
+  ([routes and classes](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)). DuckDB,
   Polars and Spark are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
 * Postconditions say what the result's consumer observes. By default,
@@ -40,8 +43,8 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-Ten [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md), from a first contract to
-Substrait's own semantics, show each of these in a few lines.
+[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes in ten steps from a first contract to
+Substrait's own semantics, each feature in a few lines.
 
 We aim to make sverify an assistant that makes data engineering more joyful: fewer
 3 a.m. pages, fewer surprises between engines, more trust in the tables you
@@ -68,12 +71,12 @@ and Snowflake SQL. [Engines](https://github.com/AlexanderNenninger/substrait-lea
 says which are in the 1.x promise, with their profiles and translations;
 DataFusion is an optional engine, outside it, and the `all` extra leaves it out.
 
-Polars refuses what only DuckDB runs so far, with "see #271": the functions
+Polars refuses what only DuckDB runs so far, with a message that links
+[the issue that tracks it](https://github.com/AlexanderNenninger/substrait-lean/issues/271): the functions
 that [`SUPPORT` and `WINDOW_SUPPORT`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/_support.py)
 list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `first`, `last`,
 `string_agg`, `median`, the quantiles, `mode`, `arg_min`, `arg_max`, the covariances,
-`corr`, and variances over a window), the black boxes, and `MIN` and `MAX` of doubles
-([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)).
+`corr`, and variances over a window), the black boxes, and `MIN` and `MAX` of doubles.
 
 ```bash
 pip install sverify                # or: uv add sverify
@@ -82,7 +85,13 @@ pip install 'sverify[all]'         # with every engine in the 1.x promise and bo
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
 `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
-`flight`, `testing`, `odcs`, `openlineage`, or `all`, and the optional engine `datafusion`. Wheels bundle the checker as a small native binary for Linux (x86_64,
+`flight`, `testing`, `odcs`, `openlineage`, or `all`, and the optional engine `datafusion`.
+The `polars` and `spark` extras install the engine packages `sverify-polars`
+and `sverify-spark` with their runtimes; either package alone
+(`pip install sverify-spark`) verifies under its engine's semantics and
+writes its SQL without the runtime. Sverify finds every installed engine
+through its plugin (`sverify.profiles.ProfilePlugin`, the entry-point group
+`sverify.profiles`). Wheels bundle the checker as a small native binary for Linux (x86_64,
 aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
 builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
 starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
@@ -93,7 +102,7 @@ Each night, when `main` has changed, the
 `<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
 
 ```bash
-uv add "sverify>=0.4.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
+uv add "sverify>=0.8.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 pip install --pre sverify --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 ```
 
@@ -178,7 +187,7 @@ except VerificationError as e:
 #     would hold with `(_.amount >= 5)` in the requires of 'orders'
 ```
 
-The [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md) go on from here: SQL, inferred
+[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes on from here: SQL, inferred
 preconditions, routes and their classes, tolerances for doubles,
 reproducible sinks, engine profiles and Substrait's own semantics.
 
@@ -240,8 +249,7 @@ Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
 through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
 the default) or DuckDB's (`semantics="duckdb"`), for a subset of
-SQL so far ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/239),
-[#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)).
+SQL so far ([what the SQL lift reads](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md)).
 
 ## Workflows
 
@@ -266,7 +274,7 @@ adds three guides, to contracts, to pipelines and engines, and to running it in 
 
 ```python
 import ibis
-from sverify.engines import SNOWFLAKE, to_sql  # also DUCKDB, SPARK
+from sverify.engines import to_sql
 from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
 
 sv.verify(
@@ -274,7 +282,7 @@ sv.verify(
     tables={"orders": ibis.table({"id": "int64", "amount": "int64"}, name="orders")},
     ensures=["amount > 0"],
 )  # SQL, checked; returns the report
-to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.UnsupportedError
+to_sql(big.internal_plan, "snowflake")  # or "duckdb", "spark"; or sverify.engines.UnsupportedError
 
 # p = DeltaSource("s3://.../orders").pipe(paid).write(DeltaSink("s3://.../paid"))  # stored
 # r = p.pipe(revenue, regions=regions).write(DeltaSink("s3://.../revenue"))
@@ -300,7 +308,7 @@ to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Uns
   are maintained from the changes. Another aggregate recomputes only the
   groups a batch touches, and a window only the partitions it touches;
   anything else is recomputed and diffed
-  ([what refresh maintains](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+  ([what refresh maintains](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#nodes-composing-storing-refreshing)).
 * `sverify.io` has Delta, Iceberg and in-memory sources and sinks, and
   base classes for your own: a `Source` implements `read(since)`
   (`from_query`, `from_frame` and `from_files` build one), a `Sink`
@@ -322,7 +330,7 @@ Refused for now: correlated scalar subqueries, unbound parameters
 `sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
 marks ✗. The repository has
-[a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md), [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md),
+[a how-to page](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), [getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md),
 the Ibis coverage table in its README, and
 [what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 
@@ -330,7 +338,7 @@ the Ibis coverage table in its README, and
 
 * `SVERIFY_CHECKER`: path to a `substrait-check` binary that replaces the
   bundled one, for example your own `lake build`. The guide lists every
-  variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#environment-variables)).
+  variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#environment-variables)).
 * DataFusion is an optional engine, outside the 1.x promise, and not in the `all`
   extra. It is pinned to 51, because Ibis 12's DataFusion backend doesn't
   connect to later versions.

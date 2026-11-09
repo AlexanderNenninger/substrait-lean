@@ -1,78 +1,58 @@
-"""What makes checks faster (#825): the search skipped for conditions only
-ties leave open, the checker's `--rows` mode, and the benchmark's report."""
+"""The checker-speed guard's verdict (`scripts/checker_speed.py`)."""
 
-from __future__ import annotations
+import gzip
+import importlib.util
+import json
 
-import ibis
-from ibis import _
+import pytest
 
-import sverify as sv
-from sverify import _stages
-from sverify.ibis_substrait import to_substrait_json
-from sverify.testing import _checked, parse_rows
-from sverify_dev import bench
+from _repo import ROOT, needs_repo
 
-T = ibis.table({"g": "int64", "x": "int64"}, name="t")
-LAGGED = T.mutate(prev=_.x.lag().over(ibis.window(group_by="g", order_by="x")))
-STRICT = _.prev.isnull() | (_.x > _.prev)
-NOT_NULL = [_.g.notnull(), _.x.notnull()]
+pytestmark = needs_repo
 
 
-def test_a_condition_only_ties_leave_open_skips_the_search() -> None:
-    with _stages.timing() as t:
-        report = sv.verify(
-            LAGGED, requires={"t": NOT_NULL}, ensures=[STRICT, _.prev.isnull() | (_.x >= _.prev)]
-        )
-    strict, weak = report.ensures
-    assert not strict.proved and strict.ties
-    assert strict.reason == "ties"
-    assert "tie" in strict.why
-    assert strict.counterexample is None
-    assert t.calls["counterexamples"] == 0
-    assert weak.proved and not weak.ties
+@pytest.fixture(scope="module")
+def speed():
+    spec = importlib.util.spec_from_file_location(
+        "checker_speed", ROOT / "scripts" / "checker_speed.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_a_key_that_breaks_the_ties_proves_it() -> None:
-    report = sv.verify(LAGGED, requires={"t": [*NOT_NULL, sv.unique("g", "x")]}, ensures=[STRICT])
-    assert report.proved
-
-
-def test_other_unproved_conditions_are_searched() -> None:
-    with _stages.timing() as t:
-        report = sv.verify(T, ensures=[_.x > 0])
-    (c,) = report.ensures
-    assert not c.ties and c.reason == "may_be_false"
-    assert c.counterexample is not None
-    assert t.calls["counterexamples"] == 1
-
-
-def test_rows_mode_gives_the_rows_of_the_full_check() -> None:
-    values = ibis.memtable({"g": [1, 1, 2], "x": [3, 3, 5]})
-    q = values.mutate(prev=_.x.lag().over(ibis.window(group_by="g", order_by="x")))
-    plan = to_substrait_json(q)
-    full = _checked(plan)
-    rows = _checked(plan, ("--rows",))
-    assert "roundtrip" in full and "roundtrip" not in rows
-    assert parse_rows(rows, doubles=True) == parse_rows(full, doubles=True)
-
-
-def _results(cold: float, warm: float) -> dict:
-    run = lambda s: bench.Run(s, {"lift": 0.0, "checker": s, "other": 0.0})  # noqa: E731
+def _row(name, base_ms, head_ms, same=True):
     return {
-        "catalogue": {"a": {"cold": run(cold), "warm": run(warm)}},
-        "cli": {"cold": run(1.0), "warm": run(0.5)},
+        "id": name,
+        "flags": ["--contract"],
+        "base": base_ms / 1000,
+        "head": head_ms / 1000,
+        "base_answer": "0:a",
+        "head_answer": "0:a" if same else "0:b",
     }
 
 
-def test_the_report_names_the_slowest_stage() -> None:
-    text = bench.report(_results(1.5, 0.1))
-    assert "| a | 1.50 | 0.10 |" in text and text.rstrip().endswith("|")
-    assert "checker |" in text
+def test_noise_passes(speed):
+    warnings, _ = speed.verdict(
+        [_row("q1", 100, 105), _row("q2", 50, 48), _row("q3", 2, 9)], 1.3, 1.1, 5.0
+    )
+    assert warnings == []  # q3 is under 5 ms on the base: its ratio isn't judged
 
 
-def test_budgets() -> None:
-    assert bench.over_budget(_results(1.5, 0.1)) == []
-    over = bench.over_budget(_results(40.0, 2.0))
-    assert any(o.startswith("slowest cold") for o in over)
-    assert any(o.startswith("slowest warm") for o in over)
-    assert any(o.startswith("typical cold") for o in over)
+def test_a_slow_request_is_named(speed):
+    warnings, lines = speed.verdict([_row("q1", 100, 101), _row("q27", 98, 552)], 1.3, 1.1, 5.0)
+    assert any(w.startswith("q27 --contract: 5.63x") for w in warnings)
+    assert set(warnings) <= set(lines)
+
+
+def test_a_slow_set_is_named(speed):
+    warnings, _ = speed.verdict([_row(f"q{i}", 100, 115) for i in range(5)], 1.3, 1.1, 5.0)
+    assert warnings == ["The set takes 1.15x as long, over 1.1x."]
+
+
+def test_the_requests_file_reads(speed):
+    reqs = speed.load(speed.REQUESTS)
+    assert reqs and all({"id", "flags", "stdin"} <= r.keys() for r in reqs)
+    with gzip.open(speed.REQUESTS, "rt") as f:
+        assert json.loads(f.readline())["stdin"]

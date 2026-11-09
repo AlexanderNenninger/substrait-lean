@@ -26,8 +26,8 @@ budget from its sources' (`Rel.tol1`) and proves it (`Rel.plan_nearL1`):
   each group the whole tolerance and a `SUM` multiplies it by the group's
   rows.
 
-The engine's sources hold reference codes (`hR`), as in `Rel.plan_near`: a
-`SUM` reads `-0.0`'s code as `-∞`. Arithmetic stays exact or refused here
+As in `Rel.plan_near`, distances are between canonical codes, and the
+engine's sources need no condition. Arithmetic stays exact or refused here
 for now; `M∞` has its rows.
 -/
 
@@ -285,28 +285,23 @@ theorem Measure.inputs_cellsL1 {t : Tol} {m : Measure} {i : Nat} (harg : m.arg =
 
 /-- A `SUM`'s or `AVG`'s inputs on two matched groups in `M₁`: paired within
 the group's budget, and the facts of `Measure.sum_facts`. -/
-theorem Measure.sum_factsL1 {t : Tol} {m : Measure} {mask : Nat → Bool} {env : List AVal}
+theorem Measure.sum_factsL1 {t : Tol} {m : Measure} {env : List AVal}
     {i e N : Nat} {lo hi : Int} (harg : m.arg = .field i) (hti : t i = some e)
     (hcr : colRange env i = some (lo, hi)) (hd : m.distinct = false)
-    (hf : m.filter.all (fun c => t.exactOn c.cols) = true) (hmask : mask i = true)
+    (hf : m.filter.all (fun c => t.exactOn c.cols) = true)
     (hlo : negInf < lo - e) (hhi : hi + e < posInf) {g g' : Relation} {tg : Tol}
     (w : PairsWithin g g' tg) (hle : tg.Le t)
-    (henv : ∀ row ∈ g', EnvMem env row) (hN : g'.length ≤ N) (hR : Relation.RefOn mask g) :
+    (henv : ∀ row ∈ g', EnvMem env row) (hN : g'.length ≤ N) :
     ListL1 CodeNear (m.inputs g) (m.inputs g') (tg.val i) ∧ FinCodes (m.inputs g) ∧
       FinCodes (m.inputs g') ∧
       (exactSum (m.inputs g)).natAbs ≤ (m.inputs g).length * (magOf lo hi + e) ∧
       (exactSum (m.inputs g')).natAbs ≤ (m.inputs g').length * (magOf lo hi + e) ∧
       (m.inputs g).length ≤ N ∧ (m.inputs g').length ≤ N := by
   obtain ⟨-, hv, hw, hS, hS', hl, hl'⟩ :=
-    Measure.sum_facts harg hti hcr hd hf hmask hlo hhi (w.forall2 hle) henv hN hR
+    Measure.sum_facts harg hti hcr hd hf hlo hhi (w.forall2 hle) henv hN
   refine ⟨?_, hv, hw, hS, hS', hl, hl'⟩
   have hD : tg.val i ≤ e := by have := hle.val i; simpa [Tol.val, hti] using this
-  have hP : ∀ v ∈ m.inputs g, ∀ c, v = .float c → IsRef c := by
-    intro v hv c hc
-    obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hv
-    rw [harg] at hc
-    exact hR row hr i c hmask hc
-  have hQ : ∀ w ∈ m.inputs g', ∀ c, w = .float c → lo ≤ c ∧ c ≤ hi := by
+  have hQ : ∀ w ∈ m.inputs g', ∀ c, w = .float c → lo ≤ canon c ∧ canon c ≤ hi := by
     intro w hw c hc
     obtain ⟨-, row, hr, rfl⟩ := Measure.mem_inputs hw
     rw [harg] at hc
@@ -323,7 +318,7 @@ theorem Measure.sum_factsL1 {t : Tol} {m : Measure} {mask : Nat → Bool} {env :
       exact ⟨hbm.1 _ rfl, hbm.2 _ rfl⟩
     · cases hcr
   exact (Measure.inputs_cellsL1 harg hd hf w hle).imp
-    (fun d v w hd' hv' hw' h => (pair_near (by omega) (by omega) h (hP v hv') (hQ w hw')).1)
+    (fun d v w hd' hv' hw' h => (pair_near (by omega) (by omega) h (hQ w hw')).1)
     (Nat.le_trans (Nat.le_refl _) hD) (fun _ h => h) (fun _ h => h)
 
 omit [Boxes.Ambient] in
@@ -355,7 +350,9 @@ theorem Measure.fsum_nearL1 {m : Measure} {D : Nat} (hfn : m.fn = .fsum) {g g' :
   | cons v vs =>
     cases I' with
     | nil => exact hn.elim
-    | cons w ws => exact floatSumCR_nearL1 hn hv hw rv rw'
+    | cons w ws =>
+      have := floatSumCR_nearL1 hn hv hw rv rw'
+      simp only [AggFn.apply, CodeNear, canon_floatSumCR]; exact this
 
 theorem Measure.avg_nearL1 {m : Measure} {D : Nat} (hfn : m.fn = .avg) {g g' : Relation}
     (hn : ListL1 CodeNear (m.inputs g) (m.inputs g') D) (hv : FinCodes (m.inputs g))
@@ -376,7 +373,9 @@ theorem Measure.avg_nearL1 {m : Measure} {D : Nat} (hfn : m.fn = .avg) {g g' : R
   | cons v vs =>
     cases I' with
     | nil => exact hn.elim
-    | cons w ws => exact floatAvgCR_nearL1 hn hv hw rv rw'
+    | cons w ws =>
+      have := floatAvgCR_nearL1 hn hv hw rv rw'
+      simp only [AggFn.apply, CodeNear, canon_floatAvgCR]; exact this
 
 /-- A `SUM`'s cost per row in `M₁`, beyond its column's budget: one code per
 value and the rounding of both sides. -/
@@ -448,7 +447,7 @@ budget in its column plus its cost per row. -/
 theorem Measure.l1_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {i c : Nat} (h : m.l1 t mask env N = some (some (i, c))) {g g' : Relation}
     {tg : Tol} (w : PairsWithin g g' tg) (hle : tg.Le t) (henv : ∀ row ∈ g', EnvMem env row)
-    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) :
+    (hN : ∀ n, N = some n → g'.length ≤ n) :
     CodeNear (tg.val i + g'.length * c) (m.eval g) (m.eval g') := by
   unfold Measure.l1 at h
   by_cases hok : m.tolOk t = true
@@ -472,9 +471,9 @@ theorem Measure.l1_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : O
           split at h
           · rename_i hc
             simp only [Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq] at hc
-            obtain ⟨⟨⟨⟨⟨hd, hf⟩, hmask⟩, hlo⟩, hhi⟩, hbig⟩ := hc
+            obtain ⟨⟨⟨⟨⟨hd, hf⟩, -⟩, hlo⟩, hhi⟩, hbig⟩ := hc
             obtain ⟨hp, hv, hw, hS, hS', hl, hl'⟩ :=
-              Measure.sum_factsL1 harg htj hcr hd hf hmask hlo hhi w hle henv (hN n rfl) hR
+              Measure.sum_factsL1 harg htj hcr hd hf hlo hhi w hle henv (hN n rfl)
             have hlen := hp.length_eq
             have hs : m.fn.sorts = false := by
               cases hfn : m.fn <;> simp only [hfn, reduceCtorEq] at h <;> rfl
@@ -545,8 +544,7 @@ def Tol.ofL1 (ls : List (Option (Option (Nat × Nat)))) (tg : Tol) (n : Nat) : T
 theorem measures_rowsL1 {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {ms : List Measure} (hls : (ms.map (·.l1 t mask env N)).all Option.isSome = true)
     {g g' : Relation} {tg : Tol} (w : PairsWithin g g' tg) (hle : tg.Le t)
-    (henv : ∀ row ∈ g', EnvMem env row) (hN : ∀ n, N = some n → g'.length ≤ n)
-    (hR : Relation.RefOn mask g) :
+    (henv : ∀ row ∈ g', EnvMem env row) (hN : ∀ n, N = some n → g'.length ≤ n) :
     (Tol.ofL1 (ms.map (·.l1 t mask env N)) tg g'.length).Rows (ms.map (·.eval g))
       (ms.map (·.eval g')) := by
   refine ⟨by simp, fun j => ?_⟩
@@ -576,7 +574,7 @@ theorem measures_rowsL1 {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : O
         repeat' (split at ho)
         all_goals simp_all [Measure.refOut]
       exact Tol.cell_of_codeNear hk (Nat.le_refl _) (Measure.eval_refOut hro g)
-        (Measure.eval_refOut hro g') (Measure.l1_cell ho w hle henv hN hR)
+        (Measure.eval_refOut hro g') (Measure.l1_cell ho w hle henv hN)
 
 end
 
@@ -727,7 +725,7 @@ theorem aggregateEval_nearL1 {t : Tol} {gs : List Expr} {ms : List Measure} {mas
     {env : List AVal} {N : Option Nat} (hg : gs.all (fun g => t.exactOn g.cols) = true)
     (hls : (ms.map (·.l1 t mask env N)).all Option.isSome = true) {a p : Relation}
     (w : PairsWithin a p t) (henv : ∀ row ∈ p, EnvMem env row)
-    (hN : ∀ n, N = some n → p.length ≤ n) (hR : Relation.RefOn mask a) :
+    (hN : ∀ n, N = some n → p.length ≤ n) :
     PairsWithin (aggregateEval gs ms a) (aggregateEval gs ms p)
       (Tol.cat gs.length Tol.exact (Tol.ofL1 (ms.map (·.l1 t mask env N)) t (N.getD 0))) := by
   have hkey : ∀ (tr : Tol) (x y : Row), tr.Le t → tr.Rows x y → groupKey gs x = groupKey gs y :=
@@ -749,7 +747,7 @@ theorem aggregateEval_nearL1 {t : Tol} {gs : List Expr} {ms : List Measure} {mas
   · rename_i he
     have h0 : gs.length = 0 := by simpa using he
     have hr := Tol.rows_append (n := 0) (t := Tol.exact) (x := []) (x' := []) (Tol.rows_refl _ _)
-      (measures_rowsL1 hls w (Tol.Le.refl _) henv hN hR) rfl
+      (measures_rowsL1 hls w (Tol.Le.refl _) henv hN) rfl
     simp only [List.nil_append] at hr
     rw [h0]
     refine ⟨_, Tol.exact, hr, trivial, (Tol.add_exact _).trans
@@ -760,19 +758,27 @@ theorem aggregateEval_nearL1 {t : Tol} {gs : List Expr} {ms : List Measure} {mas
       exact Nat.add_le_add_left (Nat.mul_le_mul_right _ (hent k i c hk)) _
     · exact OLe.refl _
   · rw [(w.forall2 (Tol.Le.refl t)).map_eq fun x y r => hkey t x y (Tol.Le.refl _) r]
-    have hks : ∀ y ∈ p, groupKey gs y ∈ dedup (p.map (groupKey gs)) :=
-      fun y hy => mem_dedup.2 (List.mem_map_of_mem hy)
-    obtain ⟨ts, hw, hl, hs⟩ := w.groups hkey (nodup_dedup _) (Tol.Le.refl _) hks
-    have hcnt := sum_filter_length (key := groupKey gs) (nodup_dedup (p.map (groupKey gs))) hks
+    -- Groups are classes of canonical keys: pair them up by the keys' canonical forms.
+    have hnd : ((distinctRows (p.map (groupKey gs))).map Row.canon).Nodup :=
+      List.nodup_iff_pairwise_ne.mpr (List.pairwise_map.mpr (canonReps_pairwise Row.leRaw_rawOrder _))
+    have hks : ∀ y ∈ p, (groupKey gs y).canon ∈ (distinctRows (p.map (groupKey gs))).map Row.canon :=
+      fun y hy => List.mem_map.2 ⟨_, classRep_mem_canonReps (List.mem_map_of_mem hy), classRep_canon _ _⟩
+    have hkey' : ∀ (tr : Tol) (x y : Row), tr.Le t → tr.Rows x y →
+        (groupKey gs x).canon = (groupKey gs y).canon := fun tr x y hle r => by rw [hkey tr x y hle r]
+    obtain ⟨ts₀, hw, hl, hs⟩ := w.groups hkey' hnd (Tol.Le.refl _) hks
+    have hcnt := sum_filter_length (key := fun x => (groupKey gs x).canon) hnd hks
+    simp only [List.map_map] at hs hcnt
+    let ts : Row → Tol := fun k => ts₀ k.canon
+    replace hw : ∀ k, PairsWithin (groupRows gs a k) (groupRows gs p k) (ts k) := fun k => hw _
+    replace hl : ∀ k, (ts k).Le t := fun k => hl _
     refine PairsWithin.of_map (O := fun k => Tol.cat gs.length Tol.exact
       (Tol.ofL1 (ms.map (·.l1 t mask env N)) (ts k) (groupRows gs p k).length))
       (fun k hk => ?_) (fun c => ?_)
-    · obtain ⟨y, -, rfl⟩ := List.mem_map.1 (mem_dedup.1 hk)
-      refine Tol.rows_append (Tol.rows_refl _ _) (measures_rowsL1 hls (hw _) (hl _) ?_ ?_ ?_)
+    · obtain ⟨y, -, rfl⟩ := List.mem_map.1 (canonReps_sub hk)
+      refine Tol.rows_append (Tol.rows_refl _ _) (measures_rowsL1 hls (hw _) (hl _) ?_ ?_)
         (by simp [groupKey])
       · exact fun row h => henv row (List.mem_filter.1 h).1
       · exact fun n hn => Nat.le_trans (List.length_filter_le _ _) (hN n hn)
-      · exact hR.mono fun row h => (List.mem_filter.1 h).1
     · by_cases hc : c < gs.length
       · left; intro k _; simp [Tol.cat, hc, Tol.exact]
       · cases hlc : (ms.map (·.l1 t mask env N)).getD (c - gs.length) none with
@@ -782,16 +788,16 @@ theorem aggregateEval_nearL1 {t : Tol} {gs : List Expr} {ms : List Measure} {mas
             obtain ⟨i, cc⟩ := ic
             right
             refine ⟨t.val i + N.getD 0 * cc, by simp only [Tol.cat, hc, ↓reduceIte, Tol.ofL1, hlc], ?_⟩
-            have e : ((dedup (p.map (groupKey gs))).map fun k => (Tol.cat gs.length Tol.exact
+            have e : ((distinctRows (p.map (groupKey gs))).map fun k => (Tol.cat gs.length Tol.exact
                 (Tol.ofL1 (ms.map (·.l1 t mask env N)) (ts k) (groupRows gs p k).length)).val c) =
-                (dedup (p.map (groupKey gs))).map fun k =>
+                (distinctRows (p.map (groupKey gs))).map fun k =>
                   (ts k).val i + (groupRows gs p k).length * cc :=
               List.map_congr_left fun k _ => by
                 simp only [Tol.val, Tol.cat, hc, ↓reduceIte, Tol.ofL1, hlc, Option.getD_some]
             rw [e, sum_map_add', sum_map_mul_const]
             have h1 := hs i
             have h2 := hent _ i cc hlc
-            have h3 : ((dedup (p.map (groupKey gs))).map fun k => (groupRows gs p k).length).sum =
+            have h3 : ((distinctRows (p.map (groupKey gs))).map fun k => (groupRows gs p k).length).sum =
                 p.length := hcnt
             rw [h3]
             exact Nat.add_le_add h1 (Nat.mul_le_mul_right _ h2)
@@ -837,8 +843,7 @@ reference's, budgets summed over matched rows, give a result within
 `Rel.tol1 cat K T r` of the reference's. -/
 theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     (hK : K.Sound cat) (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
-    (hT : ∀ s, Relation.NearL1 (T s) (cat' s).rows (cat s).rows)
-    (hR : ∀ s, (cat' s).rows.RefCodes) :
+    (hT : ∀ s, Relation.NearL1 (T s) (cat' s).rows (cat s).rows) :
     ∀ {r : Rel} {t : Tol}, r.WF cat → r.tol1 cat K T = some t →
       Relation.NearL1 t (r.eval cat') (r.eval cat)
   | .read s, t, _, h => by
@@ -851,7 +856,7 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     split at h
     · rename_i hc
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hr
+      obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hr
       exact ⟨_, w.filter (Q := fun _ => True) (fun tr x y hle rxy _ => by
           rw [Expr.eval_rows (Tol.exactOn_of_le hle hc) rxy]) (Tol.Le.refl _) (fun _ _ => trivial),
         hp.filter _⟩
@@ -862,7 +867,7 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     split at h
     · rename_i hes
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hr
+      obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hr
       have hlen : ∀ y ∈ p, y.length = r.arity cat := fun y hy =>
         Rel.eval_arity hcat hwf.1 y (hp.mem_iff.1 hy)
       exact ⟨_, w.map (Q := fun y => y.length = r.arity cat)
@@ -872,7 +877,7 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
   | .emit r m, t, hwf, h => by
     simp only [Rel.tol1, Option.map_eq_some_iff] at h
     obtain ⟨t0, hr, rfl⟩ := h
-    obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hr
+    obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hr
     refine ⟨_, w.map (Q := fun _ => True) (fun tr x y _ rxy _ => ?_) (Tol.Le.refl _)
       (fun _ _ => trivial), hp.map _⟩
     have e : Tol.pull (fun j => m[j]?) tr = tr.emit m := by
@@ -881,8 +886,8 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
   | .cross a b, t, hwf, h => by
     simp only [Rel.tol1, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, na, hna, nb, hnb, rfl⟩ := h
-    obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hta
-    obtain ⟨q, wb, hq⟩ := plan_nearL1 hcat hK ha hT hR hwf.2 htb
+    obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hta
+    obtain ⟨q, wb, hq⟩ := plan_nearL1 hcat hK ha hT hwf.2 htb
     have hlen : ∀ y ∈ p, y.length = a.arity cat := fun y hy =>
       Rel.eval_arity hcat hwf.1 y (hp.mem_iff.1 hy)
     have la : (a.eval cat').length ≤ na := by
@@ -897,8 +902,8 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     split at h
     · rename_i hon
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hta
-      obtain ⟨q, wb, hq⟩ := plan_nearL1 hcat hK ha hT hR hwf.2.1 htb
+      obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hta
+      obtain ⟨q, wb, hq⟩ := plan_nearL1 hcat hK ha hT hwf.2.1 htb
       have hlen : ∀ y ∈ p, y.length = a.arity cat := fun y hy =>
         Rel.eval_arity hcat hwf.1 y (hp.mem_iff.1 hy)
       have la : (a.eval cat').length ≤ na := by
@@ -916,8 +921,8 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
   | .unionAll a b, t, hwf, h => by
     simp only [Rel.tol1, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, rfl⟩ := h
-    obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hta
-    obtain ⟨q, wb, hq⟩ := plan_nearL1 hcat hK ha hT hR hwf.2.1 htb
+    obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hta
+    obtain ⟨q, wb, hq⟩ := plan_nearL1 hcat hK ha hT hwf.2.1 htb
     exact ⟨_, wa.append wb, hp.append hq⟩
   | .semi a b anti on, t, hwf, h => by
     simp only [Rel.tol1, Option.bind_eq_some_iff] at h
@@ -925,8 +930,8 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     split at h
     · rename_i hon
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hta
-      obtain ⟨q, fq, hq⟩ := (plan_nearL1 hcat hK ha hT hR hwf.2.1 htb).nearT
+      obtain ⟨p, wa, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hta
+      obtain ⟨q, fq, hq⟩ := (plan_nearL1 hcat hK ha hT hwf.2.1 htb).nearT
       have hlen : ∀ y ∈ p, y.length = a.arity cat := fun y hy =>
         Rel.eval_arity hcat hwf.1 y (hp.mem_iff.1 hy)
       refine ⟨_, wa.filter (Q := fun y => y.length = a.arity cat) (fun tr x y hle rxy hy => ?_)
@@ -938,7 +943,7 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     · exact absurd h (by simp)
   | .orderBy r _, t, hwf, h => by
     simp only [Rel.tol1] at h
-    obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 h
+    obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 h
     obtain ⟨p', hpp, w'⟩ := PairsWithin.perm (List.mergeSort_perm _ _).symm w
     exact ⟨p', w', hpp.symm.trans (hp.trans (List.mergeSort_perm _ _).symm)⟩
   | .distinct r, t, hwf, h => by
@@ -948,10 +953,10 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     · rename_i he
       simp only [Option.some.injEq] at h; subst h
       have hw : r.WF cat := hwf
-      obtain ⟨p, fp, hp⟩ := (plan_nearL1 hcat hK ha hT hR hw hr).nearT.forall2_mem (Rel.eval_arity hcat hw)
+      obtain ⟨p, fp, hp⟩ := (plan_nearL1 hcat hK ha hT hw hr).nearT.forall2_mem (Rel.eval_arity hcat hw)
       have : r.eval cat' = p := Forall2.eq (fp.imp fun x y rxy => Tol.rows_eq he rxy.1 rxy.2)
       simp only [Rel.eval, this]
-      exact ⟨_, PairsWithin.refl _ _, dedup_perm_of_mem fun z => hp.mem_iff⟩
+      exact ⟨_, PairsWithin.refl _ _, canonReps_perm Row.leRaw_rawOrder hp⟩
     · exact absurd h (by simp)
   | .aggregate r gs ms, t, hwf, h => by
     simp only [Rel.tol1, Option.bind_eq_some_iff] at h
@@ -960,7 +965,7 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     · rename_i hok
       simp only [Bool.and_eq_true] at hok
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hR hwf.1 hr
+      obtain ⟨p, w, hp⟩ := plan_nearL1 hcat hK ha hT hwf.1 hr
       have hof : ∀ m ∈ ms, m.orderFree = true := fun m hm => by
         obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1
           (List.all_eq_true.1 hok.2 _ (List.mem_map_of_mem hm))
@@ -969,11 +974,8 @@ theorem Rel.plan_nearL1 {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
         (Rel.analyse_sound hcat hK hwf.1 (sz := false) (by simp)).1 row (hp.mem_iff.1 h')
       have hN : ∀ n, r.rowsK K = some n → p.length ≤ n := fun n hn => by
         rw [hp.length_eq]; exact Rel.rowsK_sound hK hn
-      have hcat' := Catalog.wf_of_near hcat ha fun s => (hT s).nearT
-      have hR' : Relation.RefOn (r.refCols cat) (r.eval cat') := by
-        rw [← Rel.refCols_congr ha r]; exact Rel.refOn hcat' hR (Rel.wf_congr ha hwf.1)
       simp only [Rel.eval]
-      exact ⟨_, aggregateEval_nearL1 hok.1 hok.2 w henv hN hR', aggregateEval_perm hof hp⟩
+      exact ⟨_, aggregateEval_nearL1 hok.1 hok.2 w henv hN, aggregateEval_perm hof hp⟩
     · exact absurd h (by simp)
 
 /-! ## Examples

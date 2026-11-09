@@ -233,13 +233,72 @@ def unprofiledJson : Json := Json.mkObj [
   ("shims", Json.arr #[]), ("observed", Json.arr #[]), ("problems", Json.arr #[]),
   ("transfer", Json.mkObj [])]
 
-variable [Boxes.Ambient]
+/-! ### Each column's `ε`, normalised (#1166)
+
+`Epsilon.epsilon` writes a double column's bound in several shapes: a kind's
+value as a number or as `{"value", "proved"}`, `"proved"` as one flag or one
+per kind, `"proved_on"` naming the engines a statistic's bound is proved on
+(D30). `epsBounds` reads them into one shape, per engine where one is named:
+`{"bounds": {kind: {"value", "proved"}}, "unbounded", "why"}`, with a group's
+own bound (`"per_group"`, `"theorem"`, #929) where the checker gives one. -/
+
+/-- The kinds of bound a tolerance compares (`sv.within`). -/
+def epsKinds : List String := ["abs", "rel", "ulps"]
+
+/-- A column's `ε`, normalised; `proved` per kind, on `engine` where given (a
+bound with `"proved_on"` is proved there only). -/
+def epsBounds (engine : Option String) (eps : Json) : Json :=
+  let flag (k : String) : Bool :=
+    match eps.getObjVal? "proved" with
+    | .ok (.bool b) => b
+    | .ok j => (j.getObjValAs? Bool k).toOption.getD false
+    | .error _ => false
+  let on : Option (List String) := (eps.getObjValAs? (List String) "proved_on").toOption
+  let provedAt (k : String) : Bool := match engine, on with
+    | some e, some es => if k == "abs" then es.contains e else flag k
+    | _, _ => flag k
+  let bounds := epsKinds.filterMap fun k =>
+    match eps.getObjVal? k with
+    | .ok (.num n) => some (k, Json.mkObj [("value", .num n), ("proved", toJson (provedAt k))])
+    | .ok j@(.obj _) => match j.getObjVal? "value" with
+      | .ok (.num n) => some (k, Json.mkObj [("value", .num n),
+          ("proved", toJson ((j.getObjValAs? Bool "proved").toOption.getD (provedAt k)))])
+      | _ => none
+    | _ => none
+  let named := epsKinds.any fun k => (eps.getObjVal? k).isOk
+  -- A group's own bound (#929, no row cap) and the theorem behind it pass through.
+  let extra := ["per_group", "theorem"].filterMap fun k =>
+    (eps.getObjVal? k).toOption.map (k, ·)
+  Json.mkObj ([("bounds", Json.mkObj bounds), ("unbounded", toJson (named && bounds.isEmpty)),
+    ("why", (eps.getObjVal? "why").toOption.getD .null)] ++ extra)
+
+/-- Every column's `ε` of `Epsilon.epsilon`'s answer, normalised (`epsBounds`). -/
+def epsilonBounds (engine : Option String) (eps : Json) : Json :=
+  match eps with
+  | .obj kvs => Json.mkObj (kvs.toList.map fun (c, e) => (c, epsBounds engine e))
+  | _ => Json.mkObj []
+
+-- A column the checker names no finite bound for is unbounded; a statistic's
+-- bound is proved only on the engines `"proved_on"` names.
+#guard epsBounds none (Json.mkObj [("abs", .null), ("why", toJson "no cap")]) ==
+  Json.mkObj [("bounds", Json.mkObj []), ("unbounded", toJson true), ("why", toJson "no cap")]
+#guard epsBounds (some "spark") (Json.mkObj [("abs", toJson (0.5 : Float)),
+    ("proved", Json.mkObj [("abs", toJson true)]), ("proved_on", toJson ["duckdb"])]) ==
+  Json.mkObj [("bounds", Json.mkObj [("abs", Json.mkObj [("value", toJson (0.5 : Float)),
+    ("proved", toJson false)])]), ("unbounded", toJson false), ("why", .null)]
+-- `"proved"` as one flag, and a kind's value with its own flag.
+#guard epsBounds none (Json.mkObj [("abs", toJson (2.0 : Float)), ("proved", toJson true),
+    ("rel", Json.mkObj [("value", toJson (0.5 : Float)), ("proved", toJson false)])]) ==
+  Json.mkObj [("bounds", Json.mkObj [("abs", Json.mkObj [("value", toJson (2.0 : Float)),
+    ("proved", toJson true)]), ("rel", Json.mkObj [("value", toJson (0.5 : Float)),
+    ("proved", toJson false)])]), ("unbounded", toJson false), ("why", .null)]
+
 /-- `"engines"` and `"sorted"` of a `--contract` request, given its
 `"rows_exact"` (`Epsilon.rowsExactByEngine`), its report and `"robust"`
 (`EngineRobust.robust`). An engine the request names (`"engines"`) without a
 profile here gets `unprofiledJson`. -/
 def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
-    (rep : ContractCheck.Report) (robust : Json) :
+    (rep : ContractCheck.Report) (robust : Json) (eps : Json) :
     Except String (List (String × Json)) := do
   let some reads ← Epsilon.dependsReads input | return []
   let some tj := (input.getObjVal? "transform").toOption | return []
@@ -253,13 +312,16 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
     let v := engineJson es E ds all (exact E.name)
     let proved := (v.getObjValAs? String "evidence").toOption == some "proved"
     (E.name, v.setObjVal! "profile" (toJson true)
+      |>.setObjVal! "epsilon" (epsilonBounds (some E.name) eps)
       |>.setObjVal! "tested_because" (toJson because)
       |>.setObjVal! "translated_evidence"
         (toJson (if proved && because.isEmpty then "proved" else "tested")))
   let named : List String :=
     ((input.getObjValAs? (Array String) "engines").toOption.getD #[]).toList
-  let others := named.eraseDups.filter (fun n => !es.any (·.name == n)) |>.map (·, unprofiledJson)
+  let others := named.eraseDups.filter (fun n => !es.any (·.name == n)) |>.map fun n =>
+    (n, unprofiledJson.setObjVal! "epsilon" (epsilonBounds (some n) eps))
   return [("engines", Json.mkObj (profiled ++ others)),
+    ("epsilon_bounds", epsilonBounds none eps),
     ("sorted", toJson (sortedRoot plan.root)), ("sorted_basis", toJson "computed")]
 
 end Substrait.Realize

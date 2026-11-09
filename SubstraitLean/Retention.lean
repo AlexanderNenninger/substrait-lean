@@ -95,7 +95,7 @@ theorem groupKey_length (gs : List Expr) (row : Row) : (groupKey gs row).length 
 /-- **Groups are independent**: the output rows of an aggregate whose group
 key satisfies `p` are the aggregate of the input rows whose key does. -/
 theorem aggregateEval_filter_key {gs : List Expr} (hg : gs ≠ []) (ms : List Measure)
-    (p : Row → Bool) (rows : Relation) :
+    (p : Row → Bool) (rows : Relation) (hp : RespectsCanon p) :
     ((aggregateEval gs ms rows).filter fun out => p (out.take gs.length)).Perm
       (aggregateEval gs ms (rows.filter fun r => p (groupKey gs r))) := by
   have hge : gs.isEmpty = false := by simpa using hg
@@ -105,7 +105,7 @@ theorem aggregateEval_filter_key {gs : List Expr} (hg : gs ≠ []) (ms : List Me
       (rows.map (groupKey gs)).filter p := by
     rw [List.filter_map]; rfl
   rw [hkeys]
-  refine List.Perm.trans ?_ ((dedup_filter_perm p _).map _).symm
+  refine List.Perm.trans ?_ ((canonReps_filter_perm (c := Row.canon) (le := Row.leRaw) hp _).map _).symm
   refine .of_eq ?_
   rw [List.filter_congr (p := (fun out : Row => p (out.take gs.length)) ∘
       (fun k => k ++ ms.map (·.eval (groupRows gs rows k)))) (q := p) ?_]
@@ -116,11 +116,11 @@ theorem aggregateEval_filter_key {gs : List Expr} (hg : gs ≠ []) (ms : List Me
     congr 1
     simp only [groupRows, List.filter_filter]
     refine List.filter_congr fun r _ => ?_
-    by_cases he : groupKey gs r = k
-    · subst he; simp [hpk]
+    by_cases he : (groupKey gs r).canon = k.canon
+    · simp [he, hp _ _ he, hpk]
     · simp [he]
   · intro k hk
-    obtain ⟨r, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨r, _, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     simp [List.take_left' (groupKey_length gs r)]
 
 /-! ## Batches that respect the lateness -/
@@ -175,12 +175,13 @@ variable {gs : List Expr} {ms : List Measure} {ts : Row → Int} {bucketOf : Row
 /-- The output rows of the final buckets (`keep = true`), or of the open ones. -/
 def rowsOf (gs : List Expr) (bucketOf : Row → Int) (W wm : Int) (keep : Bool)
     (out : Relation) : Relation :=
-  out.filter fun o => final W wm (bucketOf (o.take gs.length)) == keep
+  out.filter fun o => final W wm (bucketOf (Row.canon (o.take gs.length))) == keep
 
 /-- The bucket of every input row is the `W`-wide bucket of its time,
-counted from `o` (`date_bin`, or `date_trunc` by `trunc_eq_bucket`). -/
+counted from `o` (`date_bin`, or `date_trunc` by `trunc_eq_bucket`). A group's
+bucket is read from its key up to canonical codes, as groups are (D31). -/
 def Tumbling (gs : List Expr) (ts : Row → Int) (bucketOf : Row → Int) (W o : Int) : Prop :=
-  ∀ r, bucketOf (groupKey gs r) = bucket W.toNat o (ts r)
+  ∀ r, bucketOf (groupKey gs r).canon = bucket W.toNat o (ts r)
 
 /-- **The delta of a final bucket is empty**: under the lateness
 precondition, the aggregate's rows for the buckets that are final at the
@@ -189,9 +190,10 @@ theorem final_unchanged (hg : gs ≠ []) (hW : 0 < W) (ht : Tumbling gs ts bucke
     {rows dels ins : Relation} (h : Admissible ts wm dels ins) :
     (rowsOf gs bucketOf W wm true (aggregateEval gs ms (applyBatch rows dels ins))).Perm
       (rowsOf gs bucketOf W wm true (aggregateEval gs ms rows)) := by
-  let p : Row → Bool := fun k => final W wm (bucketOf k) == true
-  refine (aggregateEval_filter_key hg ms p _).trans
-    (List.Perm.trans (.of_eq ?_) (aggregateEval_filter_key hg ms p rows).symm)
+  let p : Row → Bool := fun k => final W wm (bucketOf k.canon) == true
+  have hp : RespectsCanon p := fun k k' h => by simp only [p, h]
+  refine (aggregateEval_filter_key hg ms p _ hp).trans
+    (List.Perm.trans (.of_eq ?_) (aggregateEval_filter_key hg ms p rows hp).symm)
   -- A row of a final bucket is before the watermark.
   have hq : ∀ r, p (groupKey gs r) = true → decide (ts r < wm) = true := fun r hr => by
     simp only [p, final, ht r, beq_iff_eq, decide_eq_true_eq] at hr
@@ -218,7 +220,7 @@ theorem retention_sound (hg : gs ≠ []) (hW : 0 < W) (ht : Tumbling gs ts bucke
   refine List.Perm.trans ?_ ((final_unchanged (ms := ms) hg hW ht h).append_right _)
   unfold rowsOf
   refine List.Perm.trans (List.filter_append_perm
-    (fun o => final W wm (bucketOf (o.take gs.length)) == true) _).symm (.of_eq ?_)
+    (fun o => final W wm (bucketOf (Row.canon (o.take gs.length))) == true) _).symm (.of_eq ?_)
   congr 1
 
 /-- **Final stays final**: over a stream of batches, each admissible at its
@@ -265,11 +267,11 @@ theorem filter_foldl_erase_filter {p : Row → Bool} :
 were: the open rows after a batch that also deletes `expired` are those
 after the batch without them. -/
 theorem open_unchanged_by_expiry (hg : gs ≠ []) {rows expired dels ins : Relation}
-    (he : ∀ e ∈ expired, final W wm (bucketOf (groupKey gs e)) = true) :
+    (he : ∀ e ∈ expired, final W wm (bucketOf (groupKey gs e).canon) = true) :
     (rowsOf gs bucketOf W wm false
         (aggregateEval gs ms (applyBatch rows (expired ++ dels) ins))).Perm
       (rowsOf gs bucketOf W wm false (aggregateEval gs ms (applyBatch rows dels ins))) := by
-  let p : Row → Bool := fun k => final W wm (bucketOf k) == false
+  let p : Row → Bool := fun k => final W wm (bucketOf k.canon) == false
   let q : Row → Bool := fun r => p (groupKey gs r)
   have hq : expired.filter q = [] :=
     List.filter_eq_nil_iff.mpr fun e he' => by simp [q, p, he e he']
@@ -278,8 +280,9 @@ theorem open_unchanged_by_expiry (hg : gs ≠ []) {rows expired dels ins : Relat
     simp only [applyBatch, List.filter_append]
     rw [filter_foldl_erase_filter (expired ++ dels), List.filter_append, hq, List.nil_append,
       ← filter_foldl_erase_filter]
-  exact (aggregateEval_filter_key hg ms p _).trans
-    (List.Perm.trans (.of_eq (by rw [key])) (aggregateEval_filter_key hg ms p _).symm)
+  have hp : RespectsCanon p := fun k k' h => by simp only [p, h]
+  exact (aggregateEval_filter_key hg ms p _ hp).trans
+    (List.Perm.trans (.of_eq (by rw [key])) (aggregateEval_filter_key hg ms p _ hp).symm)
 
 /-- **Expiries are sound**: a batch admissible but for `expired`, deletes of
 rows in final buckets (a source's retention, such as a Flight log's floor
@@ -291,7 +294,7 @@ final at an earlier watermark, which stay final (`final_mono`), so the
 argument repeats batch by batch. -/
 theorem expiry_sound (hg : gs ≠ []) (hW : 0 < W) (ht : Tumbling gs ts bucketOf W o)
     {rows expired dels ins : Relation} (h : Admissible ts wm dels ins)
-    (he : ∀ e ∈ expired, final W wm (bucketOf (groupKey gs e)) = true) :
+    (he : ∀ e ∈ expired, final W wm (bucketOf (groupKey gs e).canon) = true) :
     (aggregateEval gs ms (applyBatch rows dels ins)).Perm
       (rowsOf gs bucketOf W wm true (aggregateEval gs ms rows) ++
         rowsOf gs bucketOf W wm false

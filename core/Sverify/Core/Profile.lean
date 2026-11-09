@@ -300,6 +300,139 @@ omit [Boxes.Ambient] in
 theorem FloatCode.negInf_eq_neg_posInf : FloatCode.negInf = -FloatCode.posInf := by
   rw [FloatCode.negInf_eq, FloatCode.posInf_eq]
 
+/-! The codes of `-0.0` and the negative NaN, below `-∞` (D31), and the
+canonical values of the special codes, for the generated proofs. -/
+
+theorem FloatCode.negZero_lt_negNan : FloatCode.negZero < FloatCode.negNan := by
+  rw [FloatCode.negZero_eq', FloatCode.negNan_eq']; omega
+
+theorem FloatCode.negNan_lt_negInf : FloatCode.negNan < FloatCode.negInf := by
+  rw [FloatCode.negNan_eq', FloatCode.negInf_eq]; omega
+
+theorem FloatCode.canon_negZero' : FloatCode.canon FloatCode.negZero = 0 := fp64.canon_negZero
+
+theorem FloatCode.canon_negNan' : FloatCode.canon FloatCode.negNan = FloatCode.nan := fp64.canon_negNan
+
+theorem FloatCode.canon_nan : FloatCode.canon FloatCode.nan = FloatCode.nan :=
+  FloatCode.canon_of_isRef FloatCode.isRef_nan
+
+theorem FloatCode.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
+  FloatCode.canon_of_bounds ⟨by
+    have := FloatCode.negInf_lt_negOne
+    have := FloatCode.negOne_lt_zero
+    have := FloatCode.zero_lt_one
+    omega, FloatCode.one_lt_posInf⟩
+
+theorem FloatCode.canon_negOne : FloatCode.canon FloatCode.negOne = FloatCode.negOne :=
+  FloatCode.canon_of_bounds ⟨FloatCode.negInf_lt_negOne, by
+    have := FloatCode.negOne_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
+
+/-- The finite codes next to `±∞` are canonical. -/
+theorem FloatCode.canon_negInf_succ : FloatCode.canon (FloatCode.negInf + 1) = FloatCode.negInf + 1 :=
+  FloatCode.canon_of_bounds ⟨by omega, by
+    have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
+
+theorem FloatCode.canon_posInf_pred : FloatCode.canon (FloatCode.posInf - 1) = FloatCode.posInf - 1 :=
+  FloatCode.canon_of_bounds ⟨by
+    have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega, by omega⟩
+
+/-- `floor` keeps `-0.0` and the negative NaN: their magnitudes are beyond the
+finite ones. -/
+theorem FloatCode.floor_negZero : FloatCode.floor FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.floor FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.floor_negNan : FloatCode.floor FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.floor FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.round_negZero : FloatCode.round FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.round FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.round FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.ceil_negZero : FloatCode.ceil FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.ceil FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.ceil_negNan : FloatCode.ceil FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.ceil FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+/-- Is the value a double? -/
+def Value.isDouble : Value → Bool
+  | .float _ => true
+  | _ => false
+
+/-- A value is not a double, `-0.0`, the negative NaN, or a double equal to its
+canonical code: the cases of a generated proof's argument, each double's with
+its canonical code (a canonical one apart from the other two, with a canonical
+`floor`, `round` and `ceil`). A function of doubles is the reference's on any
+other value, which its proof keeps whole. -/
+theorem Value.double_cases (x : Value) : x.isDouble = false ∨
+    (x = .float FloatCode.negZero ∧ FloatCode.canon FloatCode.negZero = 0) ∨
+    (x = .float FloatCode.negNan ∧ FloatCode.canon FloatCode.negNan = FloatCode.nan) ∨
+    ∃ c, x = .float c ∧ FloatCode.canon c = c ∧ c ≠ FloatCode.negZero ∧ c ≠ FloatCode.negNan ∧
+      (FloatCode.canon (FloatCode.floor c) = FloatCode.floor c ∧
+        FloatCode.canon (FloatCode.round c) = FloatCode.round c ∧
+        FloatCode.canon (FloatCode.ceil c) = FloatCode.ceil c) := by
+  cases x with
+  | float c =>
+    by_cases h : c = FloatCode.negZero
+    · exact .inr (.inl ⟨by rw [h], FloatCode.canon_negZero'⟩)
+    · by_cases h' : c = FloatCode.negNan
+      · exact .inr (.inr (.inl ⟨by rw [h'], FloatCode.canon_negNan'⟩))
+      · have e0 : ¬ c = fp64.negZero := h
+        have e1 : ¬ c = fp64.negNan := h'
+        have hc : FloatCode.canon c = c := by simp [FloatCode.canon, FloatFormat.canon, e0, e1]
+        exact .inr (.inr (.inr ⟨c, rfl, hc, h, h',
+          FloatCode.canon_floor hc, FloatCode.canon_round hc, FloatCode.canon_ceil hc⟩))
+  | _ => exact .inl rfl
+
+/-! A value that is not a double compares with a double as NULL, and is no
+double: the generated proofs' lemmas for an argument they do not split. -/
+
+theorem BinFn.apply_eq_nondouble_l {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .eq x (.float c) = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem BinFn.apply_eq_nondouble_r {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .eq (.float c) x = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem BinFn.apply_lt_nondouble_l {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .lt x (.float c) = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem BinFn.apply_lt_nondouble_r {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .lt (.float c) x = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem Value.isNum_float_nondouble {x : Value} (hx : x.isDouble = false) :
+    x.isNum .float = false := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
 /-! ## Agreeing outcomes -/
 
 omit [Boxes.Ambient] in

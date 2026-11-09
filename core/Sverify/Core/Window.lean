@@ -67,8 +67,9 @@ def FrameBound.offset : FrameBound → Option Int
 `d = 0`: not before `x`'s peers). -/
 def rangeFrom (k : SortKey) (d : Int) (x y : Row) : Bool :=
   -- Two numbers of one kind (`Value.numPair`, #923): a timestamp key and an
-  -- interval offset in its units.
-  match (x.getD k.col .null).numPair (y.getD k.col .null) with
+  -- interval offset in its units. The sort key is read up to canonical codes,
+  -- as `ORDER BY` reads it (D31).
+  match (x.getD k.col .null).canonV.numPair (y.getD k.col .null).canonV with
   | some (vx, vy) => if k.desc then decide (vy ≤ vx - d) else decide (vx + d ≤ vy)
   | none => match x.getD k.col .null, y.getD k.col .null with
     | .null, .null => true
@@ -76,7 +77,7 @@ def rangeFrom (k : SortKey) (d : Int) (x y : Row) : Bool :=
 
 /-- `y` comes at or before the point `d` units after `x` on the key `k`. -/
 def rangeTo (k : SortKey) (d : Int) (x y : Row) : Bool :=
-  match (x.getD k.col .null).numPair (y.getD k.col .null) with
+  match (x.getD k.col .null).canonV.numPair (y.getD k.col .null).canonV with
   | some (vx, vy) => if k.desc then decide (vx - d ≤ vy) else decide (vy ≤ vx + d)
   | none => match x.getD k.col .null, y.getD k.col .null with
     | .null, .null => true
@@ -171,9 +172,10 @@ def WinFn.refsLt (n : Nat) : WinFn → Bool
   | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ => decide (c < n)
   | .agg m _ _ => m.arg.refsLtB n && m.filter.all (·.refsLtB n)
 
-/-- Same partition: equal on every partition column (NULLs are equal). -/
+/-- Same partition: equal on every partition column up to canonical codes
+(NULLs are equal; partition keys are an identity boundary, D31). -/
 def samePart (part : List Nat) (x y : Row) : Bool :=
-  decide (part.map (x.getD · .null) = part.map (y.getD · .null))
+  decide (part.map (fun c => (x.getD c .null).canonV) = part.map (fun c => (y.getD c .null).canonV))
 
 /-- Ties with `x` on every sort key. -/
 def peer (sort : List SortKey) (x y : Row) : Bool := sortLe sort y x && sortLe sort x y

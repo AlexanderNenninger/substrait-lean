@@ -179,11 +179,6 @@ theorem Relation.NearT_iff {t : Tol} {a b : Relation} :
 namespace Forall2
 variable {α β γ δ : Type}
 
-theorem append {R : α → β → Prop} : ∀ {a : List α} {b : List β} {a' : List α} {b' : List β},
-    Forall2 R a b → Forall2 R a' b' → Forall2 R (a ++ a') (b ++ b')
-  | _, _, _, _, .nil, h => h
-  | _, _, _, _, .cons r t, h => .cons r (append t h)
-
 theorem map {R : α → β → Prop} {S : γ → δ → Prop} {f : α → γ} {g : β → δ}
     (h : ∀ a b, R a b → S (f a) (g b)) : ∀ {l : List α} {l' : List β}, Forall2 R l l' →
       Forall2 S (l.map f) (l'.map g)
@@ -194,15 +189,6 @@ theorem map_eq {R : α → β → Prop} {f : α → γ} {g : β → γ} (h : ∀
     ∀ {l : List α} {l' : List β}, Forall2 R l l' → l.map f = l'.map g
   | _, _, .nil => rfl
   | _, _, .cons r t => by simp [h _ _ r, map_eq h t]
-
-theorem filter {R : α → β → Prop} {p : α → Bool} {p' : β → Bool} (h : ∀ a b, R a b → p a = p' b) :
-    ∀ {l : List α} {l' : List β}, Forall2 R l l' → Forall2 R (l.filter p) (l'.filter p')
-  | _, _, .nil => .nil
-  | _, _, .cons (a := a) (b := b) r t => by
-    simp only [List.filter_cons, h a b r]
-    split
-    · exact .cons r (filter h t)
-    · exact filter h t
 
 theorem flatMap {R : α → β → Prop} {S : γ → δ → Prop} {f : α → List γ} {g : β → List δ}
     (h : ∀ a b, R a b → Forall2 S (f a) (g b)) : ∀ {l : List α} {l' : List β}, Forall2 R l l' →
@@ -492,13 +478,11 @@ theorem Tol.cell_null_iff {e : Nat} {v w : Value} (h : (Tol.all e).Cell 0 v w) :
 
 omit [Boxes.Ambient] in
 /-- Two finite doubles in a cell within `e` codes are within `e` codes. -/
-theorem Tol.cell_codeNear {e : Nat} {v w : Value} (h : (Tol.all e).Cell 0 v w)
-    (hv : ∀ c, v = .float c → IsFin c) (hw : ∀ c, w = .float c → IsFin c) : CodeNear e v w := by
+theorem Tol.cell_codeNear {e : Nat} {v w : Value} (h : (Tol.all e).Cell 0 v w) :
+    CodeNear e v w := by
   cases v <;> cases w
   case float.float a b =>
     change (Tol.all e).near 0 (fp64.canon a) (fp64.canon b) at h
-    rw [show fp64.canon a = a from canon_of_bounds (hv a rfl),
-      show fp64.canon b = b from canon_of_bounds (hw b rfl)] at h
     exact h
   all_goals first
     | exact h.elim | exact ⟨fun _ h => (nomatch h), fun _ h => (nomatch h)⟩
@@ -509,8 +493,7 @@ within `t`: the argument within `e`, the filter on exact columns, no
 theorem Measure.inputs_near {t : Tol} {m : Measure} {e : Nat} (hd : m.distinct = false)
     (hf : m.filter.all (fun c => t.exactOn c.cols) = true)
     (ha : ∃ o, m.arg.tol? t = some o ∧ OLe o (some e)) {g g' : Relation}
-    (f : Forall2 t.Rows g g') (hv : FinCodes (m.inputs g)) (hw : FinCodes (m.inputs g')) :
-    Forall2 (CodeNear e) (m.inputs g) (m.inputs g') := by
+    (f : Forall2 t.Rows g g') : Forall2 (CodeNear e) (m.inputs g) (m.inputs g') := by
   obtain ⟨o, ho, hle⟩ := ha
   have hk : Forall2 t.Rows (m.kept g) (m.kept g') := by
     unfold Measure.kept
@@ -524,11 +507,9 @@ theorem Measure.inputs_near {t : Tol} {m : Measure} {e : Nat} (hd : m.distinct =
     hk.map (f := fun row => m.arg.eval row) (g := fun row => m.arg.eval row)
       fun x y r => Expr.tol?_sound ho r (t' := Tol.all e) (j := 0) hle
   have hn := hm.filter (p := (· != .null)) (p' := (· != .null)) fun v w h => Tol.cell_null_iff h
-  unfold Measure.inputs at hv hw ⊢
-  simp only [hd, Bool.false_eq_true, ite_false] at hv hw ⊢
-  exact (hn.and_mem (P := fun v => ∀ c, v = .float c → IsFin c) (Q := fun w => ∀ c, w = .float c → IsFin c)
-    (fun v hv' c hc => hv c (hc ▸ hv')) (fun w hw' c hc => hw c (hc ▸ hw'))).imp
-    fun v w ⟨h, pv, pw⟩ => Tol.cell_codeNear h pv pw
+  unfold Measure.inputs
+  simp only [hd, Bool.false_eq_true, ite_false]
+  exact hn.imp fun _ _ h => Tol.cell_codeNear h
 
 /-- **A `SUM` of a tolerated column** on groups within `t`: the two values
 are within `g·(e + 1) + ulp + ulp' + 4` codes, `g` the values added. -/
@@ -539,7 +520,7 @@ theorem Measure.fsum_near {t : Tol} {m : Measure} {e : Nat} (hfn : m.fn = .fsum)
     (rv : IsFin (ofExact (exactSum (m.inputs g)))) (rw' : IsFin (ofExact (exactSum (m.inputs g')))) :
     CodeNear ((m.inputs g).length * (e + 1) + ulpDiv (exactSum (m.inputs g)) 1 +
       ulpDiv (exactSum (m.inputs g')) 1 + 4) (m.eval g) (m.eval g') := by
-  have hn := Measure.inputs_near hd hf ha f hv hw
+  have hn := Measure.inputs_near hd hf ha f
   have hs : m.fn.sorts = false := by rw [hfn]; rfl
   rw [Measure.eval_eq hs, Measure.eval_eq hs, hfn]
   generalize m.inputs g = I at *
@@ -551,7 +532,9 @@ theorem Measure.fsum_near {t : Tol} {m : Measure} {e : Nat} (hfn : m.fn = .fsum)
   | cons v vs =>
     cases I' with
     | nil => cases hn
-    | cons w ws => exact floatSumCR_near hn hv hw rv rw'
+    | cons w ws =>
+      have := floatSumCR_near hn hv hw rv rw'
+      simp only [AggFn.apply, CodeNear, canon_floatSumCR]; exact this
 
 /-- **An `AVG` of a tolerated column** on groups within `t`: the two values
 are within `(e + 1) + ulp + ulp' + 4` codes. -/
@@ -563,7 +546,7 @@ theorem Measure.avg_near {t : Tol} {m : Measure} {e : Nat} (hfn : m.fn = .avg)
     (rw' : IsFin (ofExactDiv (exactSum (m.inputs g')) (m.inputs g').length)) :
     CodeNear ((e + 1) + ulpDiv (exactSum (m.inputs g)) (m.inputs g).length +
       ulpDiv (exactSum (m.inputs g')) (m.inputs g').length + 4) (m.eval g) (m.eval g') := by
-  have hn := Measure.inputs_near hd hf ha f hv hw
+  have hn := Measure.inputs_near hd hf ha f
   have hs : m.fn.sorts = false := by rw [hfn]; rfl
   rw [Measure.eval_eq hs, Measure.eval_eq hs, hfn]
   generalize m.inputs g = I at *
@@ -575,6 +558,8 @@ theorem Measure.avg_near {t : Tol} {m : Measure} {e : Nat} (hfn : m.fn = .avg)
   | cons v vs =>
     cases I' with
     | nil => cases hn
-    | cons w ws => exact floatAvgCR_near hn hv hw rv rw'
+    | cons w ws =>
+      have := floatAvgCR_near hn hv hw rv rw'
+      simp only [AggFn.apply, CodeNear, canon_floatAvgCR]; exact this
 
 end Substrait

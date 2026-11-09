@@ -1,0 +1,35 @@
+{
+  "id": "spark-bigint-to-double",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`CAST(BIGINT AS DOUBLE)` rounds to nearest, ties to even",
+  "verdict": "native",
+  "area": "casts",
+  "constructs": [
+    "CAST(BIGINT AS DOUBLE)"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      "true",
+      "false"
+    ]
+  },
+  "description": "A BIGINT past 2⁵³ casts to the nearest double, ties to even: 2⁵³+1 gives 2⁵³, 2⁵³+3 gives 2⁵³+4, and `MIN` and `MAX` give ∓2⁶³; NULL stays NULL.",
+  "reference": "`UnFn.itof`: `FloatCode.ofInt`, the nearest double, ties to even.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "bigint-to-double"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
+    }
+  ]
+}

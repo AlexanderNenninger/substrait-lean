@@ -7,10 +7,10 @@ import Sverify.Engines.Shims
 # The reference on Polars: the shims, proved (#444)
 
 The translation from the reference to Polars 2.1.0 writes one small shim per
-value choice Polars makes differently (`python/src/sverify/_polars_shims.py`,
+value choice Polars makes differently (`engines/polars/src/sverify_polars/shims.py`,
 its `SHIMS`), and checks the preconditions it cannot drop on the data (its
 `GUARDS`). This module states what Polars does natively for each of them, as
-its facts record it (`characterization/polars/facts/`), and proves once, per
+its facts record it (`engines/polars/facts/`), and proves once, per
 shim, that the shimmed expression gives the reference's value. The lemmas are
 named as the Python shims: `Polars.<name>`, or `Shim.<name>` for one another
 engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`,
@@ -205,7 +205,11 @@ read with one zero. -/
 def maxNanGreatest (vs : List Int) (r : Value) : Value :=
   if vs.any (fun x => decide (canon x = nan)) then .float nan else canonV r
 
-omit [Boxes.Ambient] in
+/-- `Value.le` of two canonical doubles compares their codes. -/
+theorem le_canon_float {a b : Int} (h : (Value.float (canon a)).le (.float (canon b)) = true) :
+    canon a ≤ canon b := by
+  rw [Value.le_float, canon_idem, canon_idem] at h; exact of_decide_eq_true h
+
 theorem map_canon_cons (v : Int) (vs : List Int) :
     (Value.float (canon v) :: vs.map fun c => Value.float (canon c)) =
       (v :: vs).map fun c => Value.float (canon c) := rfl
@@ -220,13 +224,13 @@ theorem min_ignore_nan {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleCod
   | cons v vs =>
     obtain ⟨c, hc, rfl, hle⟩ := h
     simp only [List.map_cons, AggFn.apply]
-    have hmem := pickFold_mem (fun a b => !a.le b) (.float (canon v)) (vs.map fun c => .float (canon c))
+    have hmem := pickFold_mem (fun a b => !a.leT b) (.float (canon v)) (vs.map fun c => .float (canon c))
     have hlo := pickFold_min_le (.float (canon v)) (vs.map fun c => .float (canon c))
-    generalize pickFold (fun a b => !a.le b) (.float (canon v)) (vs.map fun c => .float (canon c)) = m
+    generalize pickFold (fun a b => !a.leT b) (.float (canon v)) (vs.map fun c => .float (canon c)) = m
       at hmem hlo ⊢
     rw [map_canon_cons] at hmem hlo
     obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hmem
-    have h1 : canon y ≤ canon c := (Value.le_val .float).mp (hlo _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
+    have h1 : canon y ≤ canon c := le_canon_float (hlo _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
     have h2 : canon c ≤ canon y := by
       by_cases hn : canon y = nan
       · rw [hn]; exact canon_le_nan (hv c hc)
@@ -245,9 +249,9 @@ theorem max_nan_greatest {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleC
   | cons v vs =>
     obtain ⟨c, hc, rfl, hge⟩ := h
     simp only [List.map_cons, AggFn.apply]
-    have hmem := pickFold_mem (fun a b => !b.le a) (.float (canon v)) (vs.map fun c => .float (canon c))
+    have hmem := pickFold_mem (fun a b => !a.geT b) (.float (canon v)) (vs.map fun c => .float (canon c))
     have hhi := pickFold_max_ge (.float (canon v)) (vs.map fun c => .float (canon c))
-    generalize pickFold (fun a b => !b.le a) (.float (canon v)) (vs.map fun c => .float (canon c)) = m
+    generalize pickFold (fun a b => !a.geT b) (.float (canon v)) (vs.map fun c => .float (canon c)) = m
       at hmem hhi ⊢
     rw [map_canon_cons] at hmem hhi
     obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hmem
@@ -255,7 +259,7 @@ theorem max_nan_greatest {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleC
     split
     · rename_i hany
       obtain ⟨z, hz, hzn⟩ := List.any_eq_true.mp hany
-      have h1 : canon z ≤ canon y := (Value.le_val .float).mp (hhi _ (List.mem_map.mpr ⟨z, hz, rfl⟩))
+      have h1 : canon z ≤ canon y := le_canon_float (hhi _ (List.mem_map.mpr ⟨z, hz, rfl⟩))
       have h2 := canon_le_nan (hv y hy)
       have hzn : canon z = nan := of_decide_eq_true hzn
       show Value.float nan = Value.float (canon y)
@@ -263,7 +267,7 @@ theorem max_nan_greatest {vs : List Int} {r : Value} (hv : ∀ x ∈ vs, DoubleC
     · rename_i hnone
       have hy' : canon y ≠ nan := fun e =>
         hnone (List.any_eq_true.mpr ⟨y, hy, decide_eq_true e⟩)
-      have h1 : canon c ≤ canon y := (Value.le_val .float).mp (hhi _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
+      have h1 : canon c ≤ canon y := le_canon_float (hhi _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
       have h2 := hge y hy hy'
       show Value.float (canon c) = Value.float (canon y)
       rw [Int.le_antisymm h1 h2]

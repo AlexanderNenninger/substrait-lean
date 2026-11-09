@@ -1,0 +1,75 @@
+{
+  "id": "polars-nested-equality",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Lists and structs: NULL elements and fields compare equal",
+  "verdict": "structural equality, NULL inside equals NULL",
+  "area": "nested",
+  "options": [
+    "struct_equality"
+  ],
+  "constructs": [
+    "==",
+    "group_by",
+    "sort"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`==` on lists and on structs treats a NULL element or field as equal to NULL: `[1, NULL] == [1, NULL]` and `{a: 1, b: NULL} == {a: 1, b: NULL}` are true; a NULL list or struct gives NULL (`eq_missing` makes it equal). Grouping puts equal structs together.",
+    "Structs sort field by field, a NULL field first."
+  ],
+  "reference": "Equality is structural, and list equality treats NULLs as equal, as grouping does (reference-semantics.md, \"Equality for grouping\" and Nested).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "list-equality"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "struct-equality"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "struct-group-sort"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "list-equality"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "struct-equality"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "struct-group-sort"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    }
+  ]
+}

@@ -217,11 +217,9 @@ def _(dt, pa, tables):
     import polars as pl
 
     import sverify as sv
-    from sverify import duckdb_engine, polars_engine
+    from sverify import duckdb_engine
     from sverify.engine import put_table, read_tables, run_checker
     from sverify.engines import (
-        SNOWFLAKE,
-        SPARK,
         UnsupportedError,
         substrait_json,
         written_plan,
@@ -230,6 +228,8 @@ def _(dt, pa, tables):
     from sverify.engines import to_sql as plan_sql
     from sverify.incremental import arrow_rows
     from sverify.testing import inline_tables, lean_values
+    from sverify_polars import engine as polars_engine
+    from sverify_spark.dialect import SPARK
 
     con = sv.connect()
     duck = duckdb.connect()
@@ -317,7 +317,9 @@ def _(dt, pa, tables):
 
         def run(self) -> "E":
             o = self.out
-            o["df"] = attempt(lambda: positional(con._datafusion_session.sql(self.sql).to_arrow_table()))[0]
+            o["df"] = attempt(
+                lambda: positional(con._datafusion_session.sql(self.sql).to_arrow_table())
+            )[0]
             duck_sql = self.sql if self.duck == "same" else self.duck
             o["duck"] = attempt(lambda: duck.sql(duck_sql).fetchall())[0] if duck_sql else None
             with warnings.catch_warnings():
@@ -373,7 +375,7 @@ def _(dt, pa, tables):
                 for run in (polars_engine.run, duckdb_engine.run)
             )
             o["sv"] = [("Polars", pt), ("DuckDB", dt_)]
-            o["sql"] = [("Snowflake", generated(wp, SNOWFLAKE)), ("Spark", generated(wp, SPARK))]
+            o["sql"] = [("Snowflake", generated(wp, "snowflake")), ("Spark", generated(wp, SPARK))]
             # The translators agree when both fail or both give the same rows.
             o["sv_agree"] = pv == dv or (pv[:1] == dv[:1] == ("error",))
             return self

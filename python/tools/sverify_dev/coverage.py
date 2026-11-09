@@ -62,7 +62,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from sverify import _engines
+from sverify import _engines, profiles
 from sverify.engine import run_checker, written_plan
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
@@ -107,24 +107,27 @@ _M: Any = M.op()
 MEMTABLES = {_M.name: _M.data.to_pyarrow(M.schema())}
 
 
-def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
-    """Why `engine` refuses the plan of a verified case, or None if it runs it."""
-    from sverify import polars_engine
-    from sverify.sql import Unsupported as Untranslatable
-    from sverify.sql import to_sql as plan_sql
-    from sverify.sql.duckdb import DUCKDB
-    from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
+def written(c: Case) -> str:
+    """The plan of a verified case, in Lean's written form."""
+    return written_plan(to_substrait_json(c.build()))
 
-    dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
-    plan = json.loads(written_plan(to_substrait_json(c.build())))
+
+def refusal(plan: str, engine: str, tie_free: bool = False) -> str | None:
+    """Why `engine` refuses a verified case's plan (`written`), or None if it
+    runs it: its SQL dialect writes the plan, or else its runner over tables
+    runs it on empty tables (`ProfilePlugin.dialect`, `run_tables`)."""
+    from sverify.errors import UnsupportedError
+    from sverify.sql import to_sql as plan_sql
+
+    plugin = profiles.plugins()[engine]
     try:
-        if engine == "polars":
-            tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in TABLES}
-            polars_engine.run(plan, tables)
+        if plugin.dialect is not None:
+            plan_sql(json.loads(plan), plugin.dialect(), deterministic=tie_free)
         else:
-            plan_sql(plan, dialects[engine], deterministic=tie_free)
-    except (polars_engine.Unsupported, Untranslatable) as e:
+            assert plugin.run_tables is not None, engine
+            tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in TABLES}
+            plugin.run_tables(plan, tables)
+    except UnsupportedError as e:
         return str(e)
     return None
 
@@ -151,7 +154,8 @@ def check(c: Case) -> Result:
     code, stdout, stderr = run_checker((), plan)
     out = stdout + stderr
     if code == 0:
-        refused = {e: why for e in ENGINES if (why := refusal(c, e)) is not None}
+        plan = written_plan(plan)
+        refused = {e: why for e in ENGINES if (why := refusal(plan, e)) is not None}
         return Result(c, "verified", "incremental: yes" in out, "", refused)
     lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]
     return Result(c, "rejected", False, (lines or [out.strip()])[-1], {})

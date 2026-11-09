@@ -55,6 +55,15 @@ count.
 typecheck, golden tests and every Python test (`poe test-all`). It is slow on
 this laptop.
 
+Lean build time and memory have a per-module target, and checker speed is
+compared against main. CI reports a module over its target, or a slower
+checker, as a warning and never fails on it: the PR body explains the cost
+and a follow-up removes it. `docs/build-performance.md` has the method.
+
+Run expensive tasks through the drivers in `~/Projects/agentic-tools/drivers`
+(`capacity`, `local-run`, `lean-check`, `homelab-qa`, `homelab-run`, its
+README); they apply the capacity rules below.
+
 Locally, run `poe test`: the fast set on 2 workers, without the `slow` tests
 and with a tenth of the Hypothesis examples (the `dev` profile,
 `python/tests/conftest.py`). Leave the full suite to CI or to homelab
@@ -119,7 +128,9 @@ pull requests wait on each other.
 Several agents often work at once, and together they have crashed the
 laptop. Start an expensive task (`poe qa`, `lake build`, the full pytest
 suite, notebook runs, wheel builds) only when the machine it runs on has
-spare capacity. This applies to the laptop as much as to `homelab`.
+spare capacity. This applies to the laptop as much as to `homelab`. Several
+builds and test runs may go at once on either machine while load and memory
+allow, each under its memory cap (`lean -M`, the scopes of `homelab_qa.sh`).
 
 - **Laptop** (10 cores, 16 GB RAM): check `uptime` and `memory_pressure | tail -1`.
   If the 1-minute load average is above 6, or free memory is below 30 %,
@@ -139,8 +150,8 @@ the package, and its build hook runs a full `lake build`. After such an
 edit, run tools through `python/.venv/bin/` directly, or check capacity
 first as for any build.
 
-Run one expensive task at a time per agent, never several in parallel.
-`poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
+Check the load again before each further expensive task, also one of your
+own beside another. `poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
 use `pytest -n auto`, which takes every core. On the laptop, run pytest
 directly with `-n 2` instead.
 
@@ -154,25 +165,29 @@ background, from the repository root:
 ssh homelab 'bash -s -- <branch>' < python/scripts/homelab_qa.sh
 ```
 
+The `homelab-qa` driver sends main's copy of this script, and `homelab-run`
+runs any other long job there (regens, bisects, profiles) in a capped
+`/tmp/substrait-lean-run-*` directory.
+
 The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
 under memory caps, and deletes the directory at exit. Its header documents
 its options. Several agents and the user's own services share the box, and
-two parallel runs once hung it. The script enforces the first two rules
-below: it refuses to start (exit 75, naming the run in the way and its PIDs)
-while another `/tmp/substrait-lean-*` directory has a live process in it,
-above a 1-minute load of 8, or with less than 6 GB available, and
-`--wait` (before the branch) waits for the box. Long jobs that don't go
+two uncapped runs once hung it. The script enforces the load rule below: it
+refuses to start (exit 75, with the reason) above a 1-minute load of 8 or
+with less than 6 GB available, and `--wait` (before the branch) waits until
+the load allows. It names the runs it starts beside. Long jobs that don't go
 through the script check by hand first:
 
 ```bash
 ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
 ```
 
-- **One run at a time.** A `/tmp/substrait-lean-*` directory means a run is
-  going. Long jobs that aren't QA (a replay, fuzzing, TLC) count too: give
-  them such a directory. The chaos run (the `chaos-run` skill) is the one
-  exception.
+- **Runs share the box while the load allows.** A `/tmp/substrait-lean-*`
+  directory means a run is going; several may, each under its memory cap.
+  Long jobs that aren't QA (a replay, fuzzing, TLC) get such a directory
+  too, so others can see them. The chaos run (the `chaos-run` skill) is
+  exempt from the load check.
 - **Don't start** above a 1-minute load of 8, or with less than 6 GB
   available. Cap workers with `PYTEST_XDIST_AUTO_NUM_WORKERS=2`, the
   script's default, and run under `nice -n 10`.
@@ -182,7 +197,7 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
   Stop a run by PID (SIGTERM to the script's bash), never `pkill -f` over
   `ssh`: the pattern matches the `ssh` command itself. A crashed session can
   leave a directory behind; if no process uses it, remove it (the script
-  warns about such a directory and ignores it).
+  warns about such a directory).
 
 ## Working beside other sessions
 
@@ -267,9 +282,9 @@ The `prove-lean` skill has the workflow. The rules:
 
 ## Engines
 
-DuckDB, Polars, Spark and Snowflake are the 1.0 engines. DataFusion is an
-optional engine and never a reference: Lean's model is the reference, and
-DuckDB is the default oracle where tests compare against an engine.
+DuckDB, Polars, Spark and Snowflake are the 1.0 engines; sverify no longer
+supports DataFusion. Lean's model is the reference, and DuckDB is the
+default oracle where tests compare against an engine.
 Snowflake's facts are private (the `engine-fact` skill says where).
 
 ## Skills

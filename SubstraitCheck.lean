@@ -64,6 +64,9 @@ open Substrait Parse
 
 namespace Substrait.Checker
 
+/-- Were the generated entries' proofs checked in this build (`--build`)? -/
+def generatedChecked : Bool := generated_checked%
+
 /-- The version of what the checker prints and reads, which `sverify` checks
 at startup (`sverify.engine.PROTOCOL`): bump both when the output of a mode
 changes shape (a JSON field added, renamed or dropped, a new mode), so that a
@@ -121,9 +124,12 @@ def valueJson : Value → Lean.Json
   | .list vs | .struct vs => .arr (vs.attach.map fun ⟨v, _⟩ => valueJson v).toArray
 
 /-- `--outcomes`: a `Project` over a `VALUES`, each row's expressions
-evaluated under the reference profile (`Expr.evalP`): the value, or the error
-it raises. One JSON list per row, for probing an engine's functions (#242). -/
-def outcomes (plan : Plan) : IO UInt32 := do
+evaluated under the profile `p` (`Expr.evalP`): the value, or the error it
+raises. One JSON list per row, for probing an engine's functions (#242).
+`--outcomes-duckdb-stopgap` evaluates under DuckDB's profile: an internal
+stopgap for one test, to be replaced by the `semantics="duckdb"`
+engine-to-engine path (#1288). No other engine gets one. -/
+def outcomes (p : Profile := Profile.reference) (plan : Plan) : IO UInt32 := do
   let rec body : Rel → Option (Relation × List Expr)
     | .emit r _ => body r
     | .project (.values _ rows) es => some (rows, es)
@@ -131,7 +137,7 @@ def outcomes (plan : Plan) : IO UInt32 := do
   let some (rows, es) := body plan.root
     | IO.eprintln "error: --outcomes needs a Project over a VALUES"; return 1
   for row in rows do
-    let outs := es.map fun e => match e.evalP Profile.reference row with
+    let outs := es.map fun e => match e.evalP p row with
       | .ok v => Lean.Json.mkObj [("ok", valueJson v)]
       | .error k => Lean.Json.mkObj [("error", toString (repr k))]
     IO.println (Lean.Json.arr outs.toArray).compress
@@ -298,7 +304,7 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
         -- The margin checks of threshold filters on double sums (#929).
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
-        let engines := (Realize.enginesJson es j rowsExact report robust).toOption.getD []
+        let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
         let base := report.json |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
@@ -323,7 +329,9 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
     | "--delta" => pure delta
     | "--write" => pure write
     | "--write-datafusion" => pure writeDataFusion
-    | "--outcomes" => pure outcomes
+    | "--outcomes" => pure (outcomes Profile.reference)
+    -- Internal stopgap; converges to `semantics="duckdb"` (#1288).
+    | "--outcomes-duckdb-stopgap" => pure (outcomes (Profile.duckdb {}))
     | "--dependencies" => pure fun plan => do
         -- The options the plan meets and the transfer check (#444).
         IO.println (plan.root.dependenciesJson es).compress
@@ -404,6 +412,11 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
   | ["--version"] => do
     IO.println s!"substrait-check protocol {protocol}"
     return 0
+  -- Whether this build checked the generated entries' proofs (`check_generated`):
+  -- without it, the theorems over them rest on `sorryAx` (docs/trusted-base.md).
+  | ["--build"] => do
+    IO.println s!"generated proofs {if generatedChecked then "checked" else "unchecked"}"
+    return 0
   | ["--lift-cache"] => do
     -- A new SubstraitLean/LiftCache.lean from this build's tables (#268).
     IO.print Lift.cacheSource
@@ -455,13 +468,13 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
   | [path] => runOn es "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes",
-        "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
+        "--outcomes-duckdb-stopgap", "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
       return ← runOn es flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

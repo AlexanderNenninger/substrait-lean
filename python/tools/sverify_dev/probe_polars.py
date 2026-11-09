@@ -2,7 +2,7 @@
 
 Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
 API. The Polars counterpart of `sverify_dev.probe` (#242), for the Polars
-characterization (`characterization/polars/`).
+characterization (`engines/polars/`).
 
 Two kinds of probe:
 
@@ -17,9 +17,9 @@ Two kinds of probe:
   `observed` value is recorded as it is.
 
 `python -m sverify_dev.probe_polars --write` writes
-`characterization/polars/probes.json`; the facts in
-`characterization/polars/facts/` cite its constructs, and
-`tests/test_probe_polars.py` checks it is current. Those run on the
+`engines/polars/probes/probes.json`; the facts in
+`engines/polars/facts/` cite its constructs, and
+`engines/polars/tests/test_probe_polars.py` checks it is current. Those run on the
 in-memory engine: eager `DataFrame` methods always do.
 
 `--diff` compares the streaming engine, which sverify targets (#605), with
@@ -56,7 +56,7 @@ from sverify_dev.probe import STRINGS, Outcome, Probe, encode_double, lean_outco
 
 Json = dict[str, Any]
 
-OUT = Path(__file__).resolve().parents[3] / "characterization" / "polars" / "probes.json"
+OUT = Path(__file__).resolve().parents[3] / "engines" / "polars" / "probes" / "probes.json"
 #: Where `--engine streaming --write` writes.
 OUT_STREAMING = OUT.with_name("probes-streaming.json")
 #: The engine probes and observations run on: `in-memory` or `streaming`.

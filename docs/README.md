@@ -1,17 +1,17 @@
 # A map of the docs
 
-Every page of sverify's docs is one of four kinds, and each kind has one job
-([#751](https://github.com/AlexanderNenninger/substrait-lean/issues/751)):
+Every page of sverify's docs is one of four kinds, and each kind has one job:
 
 - a tutorial teaches by doing, start to finish;
 - a how-to guide solves one task;
 - a reference states the facts, to look up;
 - an explanation says how and why.
 
-Each topic has one home, and the other pages link to it
-([#1016](https://github.com/AlexanderNenninger/substrait-lean/issues/1016)).
+Each topic has one home, and the other pages link to it.
 The [docs site](https://alexandernenninger.github.io/substrait-lean/) renders
-the pages marked "site", in the section named; the rest are read here.
+the pages marked "site", in the section named; the rest are read here. The
+pages for contributors, last, are records of the project's design: they keep
+its decision numbers and issue links, and the site leaves them out.
 `tests/test_docs_pages.py` checks that this map lists every page of `docs/`
 and every notebook once.
 
@@ -28,6 +28,7 @@ and every notebook once.
 
 | Page | Job |
 |---|---|
+| [getting-started.md](getting-started.md) | From the install to a proved plan, in ten steps; what goes wrong without a checker; how it works, in brief (on the site: Getting started) |
 | [notebooks/01_duplicate_payments.py](../notebooks/01_duplicate_payments.py) | A Delta pipeline that catches double charges |
 | [notebooks/02_sensor_alerts.py](../notebooks/02_sensor_alerts.py) | An Iceberg pipeline of sensor alerts: ties, NaN, windows |
 | [notebooks/03_orders_mart.py](../notebooks/03_orders_mart.py) | An orders mart: a point-in-time join, dbt's tests as a contract |
@@ -35,15 +36,16 @@ and every notebook once.
 | [notebooks/05_pipelines_and_engines.py](../notebooks/05_pipelines_and_engines.py) | Pipelines and engines: delta rules, quarantine, routes, doubles |
 | [notebooks/06_running_in_production.py](../notebooks/06_running_in_production.py) | Running it in production: the command in CI, tests, credentials, lineage, late rows |
 
-The notebooks run on molab from the `published` branch (CLAUDE.md,
-"Notebooks on molab").
+The notebooks run on molab from the `published` branch, which follows the
+release on PyPI.
 
 ## How-to
 
 | Page | Job | Site |
 |---|---|---|
-| [guide.md](guide.md) | Every task, one section each: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest ([#753](https://github.com/AlexanderNenninger/substrait-lean/issues/753) splits it) | |
-| [examples.md](examples.md) | Ten short examples, each a step up | Examples |
+| [tasks.md](tasks.md) | One section per task: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
+| [examples.md](examples.md) | Moved: a list of links to the steps of getting-started.md | |
+| [guide.md](guide.md) | Moved: each section links to its home in getting-started.md or tasks.md | |
 
 ## Reference
 
@@ -52,33 +54,41 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | [The API reference](https://alexandernenninger.github.io/substrait-lean/reference/) | Every public function and class, from the docstrings | Reference |
 | [reference-semantics.md](reference-semantics.md) | What a plan means, row by row, the Ibis frontend and how the model holds a plan | Semantics |
 | [stability.md](stability.md) | What 1.x keeps: the formats, the proofs, the API, the engines | Semantics |
-| [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area | Semantics |
 | [realizability.md](realizability.md) | Each engine's class on every option, generated | Ledgers |
-| [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit | |
 | The ledgers | Upstream bugs, spec gaps, engine facts, the checklist's coverage | Ledgers |
 
 ## Explanation
 
 | Page | Job | Site |
 |---|---|---|
+| [core-and-profiles.md](core-and-profiles.md) | The core, an abstract machine, and the profiles that narrow it: the reference, each engine's, Substrait's | Design |
+| [verifying.md](verifying.md) | Verifying under the reference or under an engine's profile, the routes each takes, and what the report says | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers, what is proved | Design |
-| [core-semantics.md](core-semantics.md) | The loose core, which does a superset of operations, the profiles that refine it, translations, the decisions D1 onwards | Design |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
-| [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per module | Design |
 | [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
-| [layers.md](layers.md) | The layers of the Python package | Design |
 | [prior-work.md](prior-work.md) | The work sverify builds on, and related tools | Design |
+
+## For contributors
+
+| Page | Job |
+|---|---|
+| [core-semantics.md](core-semantics.md) | The loose core, which does a superset of operations, the profiles that refine it, translations, and the decision log |
+| [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per Lean module |
+| [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area, with where each stands |
+| [layers.md](layers.md) | The layers of the Python package |
+| [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit |
+| [build-performance.md](build-performance.md) | The Lean build's time and memory per module, how they are measured, and the budget CI checks |
 
 ## Where each topic lives
 
 | Topic | Home |
 |---|---|
 | Which engines sverify supports | [stability.md, Engines](stability.md#engines) |
-| What refresh maintains incrementally | [guide.md, Nodes](guide.md#nodes-composing-storing-refreshing) |
-| Routes and classes, for users | [guide.md, Routes, classes and profiles](guide.md#routes-classes-and-profiles) |
+| What refresh maintains incrementally | [tasks.md, Nodes](tasks.md#nodes-composing-storing-refreshing) |
+| Routes and classes, for users | [tasks.md, Routes, classes and profiles](tasks.md#routes-classes-and-profiles) |
 | What a plan means | [reference-semantics.md](reference-semantics.md) |
 | What an Ibis expression means | [reference-semantics.md, The Ibis frontend](reference-semantics.md#the-ibis-frontend) |
 | How engine facts are judged | [characterization/README.md](../characterization/README.md) |
@@ -86,6 +96,7 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | Profiles, options, soundness, decisions | [core-semantics.md](core-semantics.md) |
 | What is proved | [proofs.md](proofs.md) |
 | What is trusted | [trusted-base.md](trusted-base.md) |
+| The Lean build's time and memory, and its budget | [build-performance.md](build-performance.md) |
 | How each feature is taught, and each refusal's exit | [teaching.md](teaching.md) |
 | Float error bounds | [float-bounds.md](float-bounds.md) |
 | The refresh protocol, model-checked | [models/refresh/README.md](../models/refresh/README.md) |

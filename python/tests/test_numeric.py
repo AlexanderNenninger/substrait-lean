@@ -354,18 +354,27 @@ def test_round_to_digits_is_duckdbs(xs, d):
     p = probe.Probe("round({0}, {1})", "round", ("float64",), "float64", constants=((d, "int64"),))
     rows = [(x,) for x in xs]
     native = duckdb.connect()
-    assert probe.lean_outcomes(p, rows, None) == [probe.duckdb_outcome(native, p, r) for r in rows]
+    # Bit for bit under DuckDB's semantics: a negative value that rounds to
+    # zero is its `-0.0` (`round_zero_sign`, which the reference leaves open).
+    assert probe.lean_outcomes(p, rows, None, semantics="duckdb") == [
+        probe.duckdb_outcome(native, p, r) for r in rows
+    ]
     con = connect()
     con.create("r", F, rows)
     plan = written_plan(
         json.dumps(lift(f"SELECT round(f, {d}) AS x FROM r", {"r": F}, "duckdb").plan)
     )
     sql = f"SELECT round(x, ({d})::INT) FROM (SELECT unnest(?::DOUBLE[]) AS x)"
-    code = probe.encode_double
-    want = [("ok", None if v is None else code(v)) for (v,) in native.execute(sql, [xs]).fetchall()]
+
+    # The written plan's `round` is the reference's (`Dialect.canon`): DuckDB's
+    # up to the sign of a zero, the observation `round_zero_sign` is open under.
+    def code(v: float | None) -> int | None:
+        return None if v is None else probe.encode_double(0.0 if v == 0 else v)
+
+    want = [("ok", code(v)) for (v,) in native.execute(sql, [xs]).fetchall()]
     for engine in ("duckdb", "polars"):
         got = [r["x"] for r in run_plan(con, plan, engine).to_pylist()]
-        assert [("ok", None if v is None else code(v)) for v in got] == want, engine
+        assert [("ok", code(v)) for v in got] == want, engine
 
 
 # #58: TRY_CAST gives NULL where CAST raises, and is then no error: a double

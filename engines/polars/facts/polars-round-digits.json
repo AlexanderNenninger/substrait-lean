@@ -1,0 +1,178 @@
+{
+  "id": "polars-round-digits",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`round(d)`: `op(x · 10ᵈ) / 10ᵈ`, no negative `d`",
+  "verdict": "matches the reference on the edge cases; `d < 0` refused",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+  ],
+  "constructs": [
+    "round"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`round(d)` multiplies by `10ᵈ`, rounds (half to even unless `mode` says otherwise) and divides back; from `d = 300` it splits the multiplier into powers of 2 and 5, from `d = 326` it returns the input, and a non-finite intermediate returns the input. The two roundings make ties of the decimal text round either way: `round(2.675, 2)` is 2.68 though the double is below 2.675, and `round(0.285, 2)` is 0.28.",
+    "A negative `d` is refused by the Python API (`OverflowError`, `decimals` is a `u32`).",
+    "The `round` docs say the `half_` modes round to the nearest rounded value, which `round(2.675, 2) = 2.68` contradicts: PL-9. The docs are silent on a negative `decimals` and on `d ≥ 326` returning the input: a docs gap.",
+    "No upstream test pins this; it may change between versions.",
+    "A negative value that rounds to zero keeps its sign: `round(-0.04, 1)` is `-0.0`."
+  ],
+  "reference": "`round` to `d` digits (#335), `TIE_AWAY_FROM_ZERO`, with negative digits. On the probe's edge cases at `d` = 1, 2, 16, 308, 309, 400 Polars and the reference agree.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.round(1)"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.round(2)"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.round(16)"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.round(308)"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.round(309)"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.round(400)"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "round-digits-ties"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "round-digits-negative"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "session brave-borg-41f7cc",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L100-L136"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Float64.round(1)"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Float64.round(2)"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Float64.round(16)"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Float64.round(308)"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Float64.round(309)"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Float64.round(400)"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "round-digits-ties"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "round-digits-negative"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://docs.pola.rs/api/python/stable/reference/expressions/api/polars.Expr.round.html",
+          "note": "'half_' strategies 'round all values to the nearest rounded value, only using the strategy to break ties when a value falls exactly between two rounded values' (SRC py-polars/src/polars/expr/expr.py L2001-L2025). Contradicted: round(2.675, 2) is 2.68 though the double 2.67499999999999982… is nearer 2.67. Drafted as a docs entry (PL-D2)."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_lazyframe.py#L558-L584",
+          "note": "`test_round`: lazy collect(), Float32/Float64, (1835.665, 2) expected 1835.67, (1.005, 2) 1.0, (1e-20, 20) 1e-20, rel_tol 1e-5. Py-2.1.0 returns 1835.66 for the default mode and the test passes on tolerance: it does not pin the x * 10^d rounding. No test for d >= 300."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {
+          "note": "pl.LazyFrame({'x': [2.675, 1835.665, 0.285, 1.005]}).select(e=pl.col('x').round(2), a=pl.col('x').round(2, mode='half_away_from_zero')).collect(engine=...) with POLARS_IDEAL_MORSEL_SIZE=64: in-memory and streaming both e [2.68, 1835.66, 0.28, 1.0], a [2.68, 1835.67, 0.28, 1.0]; Python round gives [2.67, 1835.66, 0.28, 1.0] (Polars 2.1.0, macOS arm64)."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-09",
+      "method": "probe",
+      "checked_by": "canon PR session (claude/canon-congruence), Python 3.12 in python/.venv",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'x': [-0.4, -0.04, -0.6]}).lazy().select(pl.col('x').round(0), pl.col('x').round(1), pl.col('x').ceil(), pl.col('x').floor()).collect(engine=...), engine 'in-memory' and 'streaming'",
+          "observed": "both engines: round(0) [-0.0, -0.0, -1.0], round(1) [-0.4, -0.0, -0.6], ceil [-0.0, -0.0, -0.0], floor [-1.0, -1.0, -1.0] (signs by math.copysign)"
+        }
+      ],
+      "notes": [
+        "Polars py-2.1.0. The sign of a zero result, for the round-to-zero sign option."
+      ]
+    }
+  ],
+  "issues": [
+    335
+  ]
+}

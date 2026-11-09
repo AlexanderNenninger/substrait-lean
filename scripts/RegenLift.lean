@@ -17,14 +17,15 @@ namespace Substrait
 -- DuckDB's black boxes (#1189).
 open scoped Substrait.DuckDB
 
--- The written entries' budget (`LiftSearch.lean`): the search proves at it too.
-set_option maxHeartbeats 400000 in
+-- The search's budget per candidate: the generated check's under DuckDB's
+-- semantics (`DOUBLE * DOUBLE` and `/` split nine double cases), half of it
+-- under the reference's.
+set_option maxHeartbeats 800000 in
 generate_lift liftDuckDB : Semantics.duckdb
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
   writing "SubstraitLean/LiftDuckDB/Duckdb"
 
--- The written entries' budget (`LiftSearch.lean`): the search proves at it too.
 set_option maxHeartbeats 400000 in
 generate_lift liftReference : Semantics.reference
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]

@@ -54,7 +54,7 @@ theorem Measure.Allowed.orderAllowed {m : Measure} (hm : m.closedB = true) {rows
   by_cases hs : m.fn.sorts = true
   · obtain ⟨s, hp, hsort, hv⟩ := h
     have key : ∀ f : AggFn, f.sorts = true → ∀ vs v, f.Allowed vs v → v = f.apply vs := by
-      intro f hf vs v h; cases f <;> simp_all [AggFn.sorts, AggFn.Allowed]
+      intro f hf vs v h; cases f <;> simp_all [AggFn.sorts, AggFn.Allowed, AggFn.Picks]
     refine ⟨s, hp, hsort hs, ?_⟩
     simp only [hs, ↓reduceIte]
     rw [Measure.eval_sorts hs, mergeSort_eq_of_sorted (hsort hs)]
@@ -62,7 +62,7 @@ theorem Measure.Allowed.orderAllowed {m : Measure} (hm : m.closedB = true) {rows
   · simp only [hs, Bool.false_or] at hm
     refine ⟨rows.mergeSort (sortLe m.sort), List.mergeSort_perm _ _, mergeSort_sorted _ _, ?_⟩
     simp only [hs, Bool.false_eq_true, ↓reduceIte]
-    exact Measure.allowed_eq hm h
+    exact Measure.allowed_picks hm h
 
 theorem forall2_closed_orderAllowed {grp : Relation} :
     ∀ {ms : List Measure} {vs : List Value}, (∀ m ∈ ms, m.closedB = true) →
@@ -83,7 +83,8 @@ theorem aggAllowed_orderAllowed {gs : List Expr} {ms : List Measure} {rows out :
     exact ⟨vs, rfl, forall2_closed_orderAllowed hms hv⟩
   · next hg =>
     simp only [hg, Bool.false_eq_true, ite_false]
-    exact Forall2.weaken (fun _ _ ⟨vs, he, hv⟩ => ⟨vs, he, forall2_closed_orderAllowed hms hv⟩) h
+    obtain ⟨ks, hks, h⟩ := h
+    exact ⟨ks, hks, Forall2.weaken (fun _ _ ⟨vs, he, hv⟩ => ⟨vs, he, forall2_closed_orderAllowed hms hv⟩) h⟩
 
 /-! ## Plans without open measures -/
 
@@ -174,7 +175,10 @@ theorem Measure.Allowed.near_eval {m : Measure} (ho : m.openB = true) {g j : Nat
     simp only [Measure.openB, Bool.or_eq_true, beq_iff_eq] at ho
     simp only [Measure.orderFree, AggFn.orderFree]
     rcases ho with h | h <;> simp [h]
-  rw [← Measure.allowed_eq hof h]
+  have hmm : m.fn ≠ .min ∧ m.fn ≠ .max := by
+    simp only [Measure.openB, Bool.or_eq_true, beq_iff_eq] at ho
+    rcases ho with h | h <;> simp [h]
+  rw [← Measure.allowed_eq hof hmm.1 hmm.2 h]
   exact Value.Equiv.refl (aggCtx_reflAt g ms) _
 
 /-- The measures of a group: their allowed values are, column by column,
@@ -241,13 +245,20 @@ theorem aggAllowed_near {gs : List Expr} {ms : List Measure} {rows out : Relatio
     · show Row.EquivFrom _ _ 0 vs' vs; simpa [hg0] using e
   · next hg =>
     simp only [hg, Bool.false_eq_true, ite_false]
-    refine Forall2.lift (fun k hk row ⟨vs, he, hv⟩ => ?_) h
-    obtain ⟨vs', hv', e⟩ := measures_near (g := gs.length) (grp := groupRows gs rows k) hms ms 0 vs
-      hidx hv
-    obtain ⟨x, -, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
-    refine ⟨groupKey gs x ++ vs', ⟨vs', rfl, hv'⟩, ?_⟩
-    rw [he]
-    exact Row.EquivFrom.append_left hc _ (i := 0) (by simpa [groupKey] using e)
+    obtain ⟨ks, hks, h⟩ := h
+    obtain ⟨out', h1, h2⟩ : ∃ out', Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
+        Forall2 (fun m v => m.OrderAllowed (groupRows gs rows k) v) ms vs) ks out' ∧
+        Forall2 (Row.Equiv Obs.plan (aggCtx gs.length ms)) out' out := by
+      refine Forall2.lift (fun k hk row ⟨vs, he, hv⟩ => ?_) h
+      obtain ⟨vs', hv', e⟩ := measures_near (g := gs.length) (grp := groupRows gs rows k) hms ms 0 vs
+        hidx hv
+      obtain ⟨_, hy, hkc⟩ := hks.class_mem hk
+      obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy
+      refine ⟨k ++ vs', ⟨vs', rfl, hv'⟩, ?_⟩
+      rw [he]
+      exact Row.EquivFrom.append_left hc _ (i := 0)
+        (by simpa [Row.length_of_canon hkc, groupKey] using e)
+    exact ⟨out', ⟨ks, hks, h1⟩, h2⟩
 
 /-- **An aggregate over a plan without open measures is safe**: its double
 `SUM`s and `AVG`s are equal to its orders' up to the order of their
