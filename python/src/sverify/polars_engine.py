@@ -702,6 +702,8 @@ def nan_case(name: str, x: pl.Expr, y: pl.Expr) -> pl.Expr:
         return ((x == 0.0) & y.is_infinite()) | (x.is_infinite() & (y == 0.0))
     if name == "divide":
         return x.is_infinite() & y.is_infinite()
+    if name == "divide_ieee":
+        return (x.is_infinite() & y.is_infinite()) | ((x == 0.0) & (y == 0.0))
     if name == "modulus":
         return x.is_infinite() & ~y.is_nan()
     # `power`: a negative base, finite or `-inf` (`negInfPow`: IEEE's `+inf`
@@ -1064,10 +1066,13 @@ class Exprs:
             arg_js = [a["value"] for a in f.get("arguments", [])]
             for o in f.get("options", []):
                 # Lean's written plans spell the other modes as a `CASE`
-                # (`Parse.divByZero`); this engine runs only those.
+                # (`Parse.divByZero`), but for IEEE division of doubles
+                # (`BinFn.fdivIeee`, D39), which is Polars's own `/`.
                 prefs = o.get("preference") or ["ERROR"]
                 if o.get("name") == "on_division_by_zero" and prefs[0] != "ERROR":
-                    raise Unsupported(f"on_division_by_zero = {prefs}")
+                    if prefs[0] != "IEEE" or name != "divide":
+                        raise Unsupported(f"on_division_by_zero = {prefs}")
+                    name = "divide_ieee"
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
@@ -1576,7 +1581,7 @@ class Exprs:
             else:
                 shifted = _rows(shift_left, pl.Int64, a, Val(n, pl.Int64))
             return self.domain(bad, shifted, pl.Int64, name, a, b)
-        floats = ("add", "subtract", "multiply", "divide", "modulus", "power")
+        floats = ("add", "subtract", "multiply", "divide", "divide_ieee", "modulus", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:
                 raise Unsupported(f"{name} of {ta} and {tb}")
@@ -1585,7 +1590,8 @@ class Exprs:
             # in-memory engine (polars-zero-sign), so a sum or difference can
             # be `-0.0` too.
             ops = {"add": canon(x + y), "subtract": canon(x - y), "multiply": canon(x * y),
-                   "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
+                   "divide": canon(fdiv(x, y)), "divide_ieee": canon(fdiv(x, y)),
+                   "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
             nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
             # `fmod` is exact: it never overflows (#575).
@@ -1593,16 +1599,19 @@ class Exprs:
                 issue(shims.makes_infinite(ops[name], x, y) & y.ne(0.0), InfiniteResult,
                       f"{name} overflows to infinity"),
             )  # fmt: skip
+            tiny = (
+                (issue(x.is_not_null() & subnormal_divisor(y), SubnormalDivisor,
+                       "divide by a subnormal double"),)
+                if name in ("divide", "divide_ieee") else ()
+            )  # fmt: skip
+            if name == "divide_ieee":
+                # IEEE division (D39): `±∞` by a zero, NaN for `0 / 0` too.
+                return Val(ops[name], pl.Float64, (*issues(a, b), *tiny, nan, *inf))
             if name not in ("divide", "modulus"):
                 return Val(ops[name], pl.Float64, (*issues(a, b), nan, *inf))
             # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
             # `NULL / 0.0` is NULL.
             zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
-            tiny = (
-                (issue(x.is_not_null() & subnormal_divisor(y), SubnormalDivisor,
-                       "divide by a subnormal double"),)
-                if name == "divide" else ()
-            )  # fmt: skip
             return Val(ops[name], pl.Float64, (*issues(a, b), zero, *tiny, nan, *inf))
         if name in ("add", "subtract") and ta == pl.Time:
             raise Unsupported("a time of day plus an interval is not yet supported on Polars")

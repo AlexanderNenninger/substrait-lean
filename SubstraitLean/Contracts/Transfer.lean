@@ -858,6 +858,13 @@ def fmulBoundS (x y : Bound) : Bound :=
 def fdivBoundS (x y : Bound) : Bound :=
   if x.nonneg && y.nonneg && fdivOk x y then (fdivBound x y).atLeast0 else fdivBound x y
 
+/-- Do `fdivBound`'s guards hold of two values' intervals? Then the divisor is
+neither zero nor NaN, and IEEE division (`BinFn.fdivIeee`, D39) is `fdiv`. -/
+def fdivIeeeOk (a b : AVal) : Bool :=
+  match a.int, b.int with
+  | some x, some y => fdivOk x y
+  | _, _ => false
+
 def BinFn.abs : BinFn → AVal → AVal → AVal
   | .bbox2 n, a, b => BlackBox.scalarAbs n (!a.null && !b.null)
   | .greatest, a, b => pickAbs Bound.greatest a b
@@ -881,7 +888,11 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .fsub, a, b => arith floatsOnly (faddBoundS true) a b
   | .fmul, a, b => arith floatsOnly fmulBoundS a b
   | .fdiv, a, b => arith floatsOnly fdivBoundS a b
-  | .fmod, a, b | .fpow, a, b | .fdivIeee, a, b => arith floatsOnly (fun _ _ => Bound.top) a b
+  -- By a divisor that may be `±0.0`, `±∞` of either sign.
+  | .fdivIeee, a, b =>
+    if fdivIeeeOk a b then arith floatsOnly fdivBoundS a b
+    else arith floatsOnly (fun _ _ => Bound.top) a b
+  | .fmod, a, b | .fpow, a, b => arith floatsOnly (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs intsOnly divBound a b
   | .imod, a, b => divAbs modNK modBound a b
   | .ipow, a, b => powAbs a b

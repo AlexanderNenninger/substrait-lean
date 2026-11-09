@@ -40,13 +40,17 @@ def test_integer_addition_raises_on_overflow():
 
 
 def test_double_division_is_ieee_but_for_nan():
-    # Under DuckDB's defaults, `/` by zero is IEEE; only `±inf / ±inf`, NaN
-    # in DuckDB and a domain error in the reference, differs.
+    # Under DuckDB's defaults, `/` by zero is IEEE; only the NaNs it creates,
+    # `±inf / ±inf` and `0 / 0`, NaN in DuckDB and a domain error in the
+    # reference (D39 under D37), differ.
     r = _verdict("{0} / {1}", ("float64", "float64"))
     assert r["matching"] == []
     ieee = r["candidates"]["IEEE"]
-    assert ieee["differ"] == 4
-    assert all("inf" in e["row"] and "nan" in e["duckdb"] for e in ieee["examples"])
+    assert ieee["differ"] == 5
+    assert all(
+        ("inf" in e["row"] or e["row"] == "[0.0, 0.0]") and "nan" in e["duckdb"]
+        for e in ieee["examples"]
+    )
 
 
 # The Wheels workflow runs these tests from `python/tests` alone: there the

@@ -1354,8 +1354,32 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     exact mapAbs₂_top_sound (g := fun i j => some (FloatCode.fmod i j))
       (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb
   case fdivIeee =>
-    exact mapAbs₂_top_sound (g := fun i j => some (FloatCode.fdiv i j))
-      (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb
+    show AVal.Mem (if fdivIeeeOk a b then _ else _) _
+    split
+    · -- Within `fdivOk`'s guards the divisor is canonical: IEEE division is `fdiv`.
+      rename_i hok
+      have heq : BinFn.apply .fdivIeee v w = BinFn.apply .fdiv v w := by
+        cases v <;> cases w <;> try rfl
+        rename_i i j
+        have hi : a.MemNum .float i := ha
+        have hj : b.MemNum .float j := hb
+        obtain ⟨x, hx, hxm, -⟩ := hi
+        obtain ⟨y, hy, hym, -⟩ := hj
+        simp only [fdivIeeeOk, hx, hy] at hok
+        rw [NumKind.norm_float] at hxm hym
+        obtain ⟨-, fj, sj, -⟩ := fdivOk_guard hxm hym hok
+        have hc : FloatCode.canon j = j := by
+          rcases FloatCode.canon_cases j with ⟨-, h0⟩ | ⟨-, hn⟩ | h
+          · rw [h0] at sj; exact absurd rfl sj
+          · rw [hn] at fj; exact absurd rfl fj.ne.1
+          · exact h
+        simp only [BinFn.apply, hc]
+      rw [heq]
+      exact arith_sound (f := fun i j => FloatCode.canon (FloatCode.fdiv i j)) fdivBoundS_mem
+        (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+        (floatsOnly_out (f := fun i j => FloatCode.canon (FloatCode.fdiv i j)) fun _ _ => FloatCode.canon_idem _)
+    · exact mapAbs₂_top_sound (g := fun i j => some (FloatCode.fdiv i j))
+        (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb
   case fpow =>
     exact mapAbs₂_top_sound (g := fun i j => some (FloatCode.lift₂ Float.pow i j))
       (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb
