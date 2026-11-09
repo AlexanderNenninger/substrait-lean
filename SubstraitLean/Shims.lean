@@ -217,7 +217,7 @@ def makesInfinite (y : Int) (xs : List Int) : Bool :=
 /-- **`Shim.makes_infinite`** (A4): an engine whose IEEE operations are the
 reference's (D31; `polars-ieee-arith-*`, spark-double-arith) flags a row
 exactly where the reference's overflow to `±∞` does (`BinFn.infIssue`). -/
-theorem makes_infinite (f : BinFn) (hf : f.makesInf = true) (a b : Int) :
+theorem makes_infinite (f : BinFn) (hf : f.makesInf = true) (hi : f ≠ .fdivIeee) (a b : Int) :
     makesInfinite (match (f.apply (.float a) (.float b)) with | .float r => r | _ => 0) [a, b] =
       (f.infIssue (.float a) (.float b)).isSome := by
   have hf' : f = .fadd ∨ f = .fsub ∨ f = .fmul ∨ f = .fdiv ∨ f = .fpow := by

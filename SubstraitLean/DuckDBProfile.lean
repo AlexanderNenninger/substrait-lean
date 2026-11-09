@@ -101,7 +101,7 @@ def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
   | .fdiv, a, b =>
     if FloatCode.canon b = 0 then some (if s.ieeeOps then .ok (.float (ieeeDivZero a b)) else duckZero s)
     else if nanCase .fdiv a b then some (.ok (.float FloatCode.nan)) else none
-  -- IEEE division (D39) is DuckDB's own `/`: NaN for `∞ / ∞` under any setting.
+  -- IEEE division (D39) is DuckDB's own `/`: NaN for `∞ / ∞` and `0 / 0`.
   | .fdivIeee, a, b => if nanCase .fdivIeee a b then some (.ok (.float FloatCode.nan)) else none
   | .fmod, a, b =>
     if FloatCode.canon b = 0 then some (if s.ieeeOps then .ok (.float FloatCode.nan) else duckZero s)

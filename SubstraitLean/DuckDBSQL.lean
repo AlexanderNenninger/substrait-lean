@@ -129,12 +129,8 @@ refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
   | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
       (they truncate) cannot state; use semantics='reference', or round() first"
-  -- `x / -0.0` is `±∞` by the signs of both operands (duckdb-float-signs),
-  -- which the reference's operations cannot state yet (D39).
-  | .duckdb, .divDouble => some "DuckDB divides by -0.0 to an infinity of the operands' \
-      joint sign, which the model cannot state yet (D39); use semantics='reference'"
-  -- `power(-0.0, y)` reads the zero's sign too (`pow(-0.0, -1)` is `-∞`): with
-  -- division, the follow-up of D39.
+  -- `power(-0.0, y)` reads the zero's sign (`pow(-0.0, -1)` is `-∞`), which the
+  -- reference's operations state only for division (D39).
   | .duckdb, .power => some "DuckDB's power of -0.0 depends on the zero's sign, which the \
       model's lift cannot state yet (D39); use semantics='reference'"
   | _, _ => none
@@ -433,6 +429,71 @@ theorem DuckDBSQL.negNan_ne_negOne : ¬ (FloatCode.negNan = FloatCode.negOne) :=
   have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
   have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
   omega
+
+/-- IEEE division by a zero (D39) is DuckDB's: `±∞` by the two signs, NaN for a
+zero or NaN dividend. -/
+theorem DuckDBSQL.fdiv_of_canon_zero {a b : Int} (hb : FloatCode.canon b = 0) :
+    FloatCode.fdiv a b = ieeeDivZero a b := by
+  have h1 := FloatCode.negZero_eq'; have h2 := FloatCode.negNan_eq'
+  have h3 : FloatCode.posInf = 2 * (FloatCode.maxMag : Int) + 3 := FloatCode.posInf_eq
+  have h4 : FloatCode.negInf = -(2 * (FloatCode.maxMag : Int) + 3) := FloatCode.negInf_eq
+  have h5 := DuckDBSQL.nan_eq
+  have hb' : b = 0 ∨ b = FloatCode.negZero := by
+    by_cases h : b = FloatCode.negZero
+    · exact .inr h
+    · by_cases h' : b = FloatCode.negNan
+      · subst h'; rw [DuckDBSQL.canon_negNan] at hb; omega
+      · left
+        have e0 : ¬ b = fp64.negZero := h
+        have e1 : ¬ b = fp64.negNan := h'
+        simpa [FloatCode.canon, FloatFormat.canon, e0, e1] using hb
+  have hca : ∀ c, FloatCode.canon c = 0 ↔ c = 0 ∨ c = FloatCode.negZero := fun c => by
+    constructor
+    · intro hc
+      by_cases h : c = FloatCode.negZero
+      · exact .inr h
+      · by_cases h' : c = FloatCode.negNan
+        · subst h'; rw [DuckDBSQL.canon_negNan] at hc; omega
+        · left
+          have e0 : ¬ c = fp64.negZero := h
+          have e1 : ¬ c = fp64.negNan := h'
+          simpa [FloatCode.canon, FloatFormat.canon, e0, e1] using hc
+    · rintro (rfl | rfl)
+      · exact FloatCode.canon_zero
+      · exact DuckDBSQL.canon_negZero
+  have hcn : ∀ c, FloatCode.canon c = FloatCode.nan ↔ c = FloatCode.nan ∨ c = FloatCode.negNan := fun c => by
+    constructor
+    · intro hc
+      by_cases h : c = FloatCode.negZero
+      · subst h; rw [DuckDBSQL.canon_negZero] at hc; omega
+      · by_cases h' : c = FloatCode.negNan
+        · exact .inr h'
+        · left
+          have e0 : ¬ c = fp64.negZero := h
+          have e1 : ¬ c = fp64.negNan := h'
+          simpa [FloatCode.canon, FloatFormat.canon, e0, e1] using hc
+    · rintro (rfl | rfl)
+      · exact DuckDBSQL.canon_nan
+      · exact DuckDBSQL.canon_negNan
+  unfold FloatCode.fdiv FloatCode.divI ieeeDivZero
+  simp only [hca, hcn, FloatCode.isZeroCode, FloatCode.isInfCode, FloatCode.isNanCode,
+    FloatCode.infOf, FloatCode.zeroOf, Bool.or_eq_true, beq_iff_eq]
+  rcases hb' with rfl | rfl <;>
+    simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_decide] <;>
+    (repeat' split) <;> first | rfl | omega | (simp_all <;> omega) | simp_all
+
+theorem DuckDBSQL.ofInt_zero : FloatCode.ofInt 0 = 0 := by
+  rw [FloatCode.ofInt_exact (by decide)]; simp [FloatCode.exactCode, FloatFormat.exactCode]
+
+theorem DuckDBSQL.ref_fdivIeee_float (a b : Int) :
+    Profile.reference.bin .fdivIeee (.float a) (.float b) =
+      if nanCase .fdivIeee a b then .error .domain else .ok (.float (FloatCode.fdiv a b)) := by
+  by_cases hn : nanCase .fdivIeee a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+theorem DuckDBSQL.ref_fdivIeee_null_l (y : Value) : Profile.reference.bin .fdivIeee .null y = .ok .null := by
+  cases y <;> rfl
+theorem DuckDBSQL.ref_fdivIeee_null_r (x : Value) : Profile.reference.bin .fdivIeee x .null = .ok .null := by
+  cases x <;> rfl
 
 theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α) :
     (if p ∨ q then a else b) = if p then a else if q then a else b := by

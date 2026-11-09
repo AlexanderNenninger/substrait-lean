@@ -475,8 +475,9 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.duck_fsub_float, ``DuckDBSQL.duck_fmul_float, ``DuckDBSQL.duck_fpow_float,
     ``DuckDBSQL.duck_fmath_float, ``DuckDBSQL.duck_bin_null_l, ``DuckDBSQL.duck_bin_null_r,
     ``DuckDBSQL.duck_un_null, ``DuckDBSQL.duck_itof, ``duckElementary, ``FMath.isLog, ``duckSign,
-    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
-    ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
+    ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
+    ``DuckDBSQL.ref_fdivIeee_float, ``DuckDBSQL.ref_fdivIeee_null_l, ``DuckDBSQL.ref_fdivIeee_null_r,
+    ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero, ``DuckDBSQL.ofInt_zero, ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
     ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
     ``DuckDBSQL.apply_lt_null_l, ``DuckDBSQL.apply_lt_null_r, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_greatest, ``Lowering.ref_least,
@@ -495,7 +496,7 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
     ``Bool.and_false, ``Bool.false_and, ``Bool.or_true, ``Bool.true_and] ++ extra)
-  let fin ← simpArgs (#[``Outcome.Agree, ``Issue.isError] ++ extra)
+  let fin ← simpArgs (#[``Outcome.Agree, ``Issue.isError, ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero] ++ extra)
   -- A double is canonical, `-0.0` or the negative NaN: three cases.
   let intro ← if n == 1 then `(tactic| (intro x hx; cases x <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx))
     else `(tactic| (intro x y hx hy; cases x <;> cases y <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx hy))

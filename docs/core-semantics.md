@@ -2155,7 +2155,9 @@ result is NaN is an issue (`Issue.domain`, `nan_creation = ERROR`), which
 `verify` rules out or checks on the data; on the rows a precondition
 excludes, `Rel.eval` keeps IEEE's value (NaN), as it keeps ±∞ under #575.
 Under a verification profile that sets `nan_creation = NAN`, no issue fires
-and the value is NaN.
+and the value is NaN. A plan that asks for IEEE division by zero (D39) makes
+`0 / 0` such a NaN creation too: it raises under the reference, and only a
+profile with `nan_creation = NAN` (DuckDB's) gives the NaN.
 
 Why: with no NaN in the inputs (`~_.v.isnan()` in `requires`), there is
 none in the outputs. Engines give NaN, NULL or an error there, and a plan
@@ -2180,3 +2182,30 @@ Why: with no NaN and no `±∞` in the inputs, there is none in the outputs,
 and every floating result has a usable bound. Substrait's YAMLs leave the
 overflow unspecified ([ST-9](../upstream/bugs/ST-9.json)), and the
 precondition rarely bites real queries (D21).
+
+
+### D39. Division by zero has an IEEE value
+
+Decided 2026-11-09 (theory advisor), within D31's correction.
+
+`on_division_by_zero` gains the value `IEEE`. With it, `x / y` is IEEE 754's
+quotient on the raw codes (`BinFn.fdivIeee`): by `0.0` or `-0.0` it is `±∞`
+with the sign of the dividend XOR the sign of the divisor. It reads the
+divisor's raw sign as a scalar operation does (D31), with no comparison of
+`y` with zero. `0 / 0` and `±∞ / ±∞` create a NaN, so they raise under D37
+(`nanCase`); only a profile with `nan_creation = NAN` gives the NaN, as
+DuckDB's run profile does. An overflow of finite operands to `±∞` raises as
+D38 says; a quotient by zero is the option's value, not an overflow
+(`BinFn.infIssue`). The reference keeps `ERROR` and D37 unchanged: a portable plan raises at
+any zero divisor and creates no NaN. DuckDB's IEEE operations are this
+division, so the lift of DuckDB's `/` with `semantics="duckdb"` writes the
+option, with `0 / 0` and `±∞ / ±∞` as NaN, as DuckDB gives them
+(`DuckDBSQL.fdiv_of_canon_zero`). A Substrait plan spells it as
+`divide` with the option, which the parser reads as `fdivIeee`.
+
+Why: DuckDB gives `1.0 / -0.0 = -∞` (duckdb-float-signs). With one zero at
+comparisons (D31), no expression of comparisons can tell the divisor's sign,
+so the reference could not state DuckDB's division, and the lift had to
+refuse `/` and everything built on it (`round(x, d)`). A dedicated operation
+exposes `FloatCode.fdiv`, which is IEEE on every code already, and no other
+expression gains access to the sign of a zero.

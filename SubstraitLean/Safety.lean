@@ -204,7 +204,8 @@ def BinFn.mayNan (f : BinFn) (aa ab : AVal) : Bool :=
   | .fsub => (aa.has FloatCode.posInf && ab.has FloatCode.posInf) ||
       (aa.has FloatCode.negInf && ab.has FloatCode.negInf)
   | .fmul => (aa.has 0 && inf ab) || (inf aa && ab.has 0)
-  | .fdiv | .fdivIeee => inf aa && inf ab
+  | .fdiv => inf aa && inf ab
+  | .fdivIeee => (inf aa && inf ab) || (aa.has 0 && ab.has 0)
   | .fmod => inf aa
   -- An integer exponent (`x ** 2`) is fine.
   | .fpow => aa.negFinite && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
@@ -279,9 +280,11 @@ theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (
   · obtain ⟨h1 | h1, h2 | h2⟩ := h
     all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
       by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
-  · obtain ⟨h1 | h1, h2 | h2⟩ := h
-    all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
-      by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
+  · rcases h with h | ⟨h1, h2⟩
+    · obtain ⟨h1 | h1, h2 | h2⟩ := h
+      all_goals exact .inl ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
+        by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
+    · exact .inr ⟨by rw [h1] at hA'; exact hA', by rw [h2] at hB'; exact hB'⟩
   · obtain ⟨h1 | h1, _⟩ := h
     · exact .inl (hAp h1)
     · exact .inr (hAn h1)
@@ -341,7 +344,7 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
     (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fdiv aa ab then [.domain] else [])
   | .fmod, aa, ab, _, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fmod aa ab then [.domain] else [])
-  -- IEEE by a zero (D39): only `±∞ / ±∞` raises.
+  -- IEEE by a zero (D39): only `±∞ / ±∞` and `0 / 0` raise (D37).
   | .fdivIeee, aa, ab, _, _, _ => if BinFn.mayNan .fdivIeee aa ab then [.domain] else []
   | .fadd, aa, ab, _, _, _ => if BinFn.mayNan .fadd aa ab then [.domain] else []
   | .fsub, aa, ab, _, _, _ => if BinFn.mayNan .fsub aa ab then [.domain] else []
@@ -525,8 +528,8 @@ theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} 
     split at hk
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
-      simp [BinFn.mayInf, hc.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.2, AVal.mayFinite_of_mem hb hc.1.2,
-        BinFn.finiteResult_false f ha hb heq hc.2]
+      simp [BinFn.mayInf, hc.1.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.1.2, AVal.mayFinite_of_mem hb hc.1.1.2,
+        BinFn.finiteResult_false f ha hb heq hc.1.2]
     · simp at hk
   · simp at hk
 
@@ -564,7 +567,8 @@ def BinFn.mayNanBy (f : BinFn) (pa pb : Int → Bool) : Bool :=
   | .fsub => (pa FloatCode.posInf && pb FloatCode.posInf) ||
       (pa FloatCode.negInf && pb FloatCode.negInf)
   | .fmul => (pa 0 && inf pb) || (inf pa && pb 0)
-  | .fdiv | .fdivIeee => inf pa && inf pb
+  | .fdiv => inf pa && inf pb
+  | .fdivIeee => (inf pa && inf pb) || (pa 0 && pb 0)
   | .fmod => inf pa
   | _ => true
 
@@ -607,9 +611,11 @@ theorem BinFn.mayNanBy_sound {f : BinFn} {pa pb : Int → Bool} {a b : Int}
   · obtain ⟨h1 | h1, h2 | h2⟩ := h
     all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
       by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
-  · obtain ⟨h1 | h1, h2 | h2⟩ := h
-    all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
-      by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
+  · rcases h with h | ⟨h1, h2⟩
+    · obtain ⟨h1 | h1, h2 | h2⟩ := h
+      all_goals exact .inl ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
+        by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
+    · exact .inr ⟨by rw [h1] at ha; exact ha, by rw [h2] at hb; exact hb⟩
   · obtain ⟨h1 | h1, _⟩ := h
     · exact .inl (hAp h1)
     · exact .inr (hAn h1)

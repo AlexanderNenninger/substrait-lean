@@ -173,7 +173,10 @@ def nanCase : BinFn → Int → Int → Bool
       (a == FloatCode.negInf && b == FloatCode.negInf)
   | .fmul, a, b => ((a == 0 || a == FloatCode.negZero) && isInfCode b) ||
       (isInfCode a && (b == 0 || b == FloatCode.negZero))
-  | .fdiv, a, b | .fdivIeee, a, b => isInfCode a && isInfCode b
+  | .fdiv, a, b => isInfCode a && isInfCode b
+  -- IEEE division (D39) also creates a NaN at `0 / 0`, which raises (D37).
+  | .fdivIeee, a, b => (isInfCode a && isInfCode b) ||
+      (FloatCode.canon a == 0 && FloatCode.canon b == 0)
   | .fmod, a, b => isInfCode a && b != FloatCode.nan && b != FloatCode.negNan
   | .fpow, a, b => decide (FloatCode.negInf < a) && decide (a < 0) &&
       decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) && FloatCode.floor b != b
@@ -204,7 +207,7 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   -- other options as a `CASE` around this (`Parse.divByZero`).
   | .fdiv, .float a, .float b =>
     if FloatCode.canon b = 0 then some .divByZero else nanIssue .fdiv a b
-  -- IEEE by a zero (D39); `±∞ / ±∞` raises as for `fdiv`.
+  -- IEEE by a zero (D39); `±∞ / ±∞` and `0 / 0` create a NaN and raise (D37).
   | .fdivIeee, .float a, .float b => nanIssue .fdivIeee a b
   | .fmod, .float a, .float b =>
     if FloatCode.canon b = 0 then some .divByZero else nanIssue .fmod a b
@@ -228,14 +231,16 @@ def isFiniteCode (c : Int) : Bool := decide (FloatCode.negInf < c) && decide (c 
 
 /-- The operations of doubles that may overflow to `±∞` (#575). -/
 def BinFn.makesInf : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fpow => true
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fpow => true
   | _ => false
 
 /-- An operation on finite doubles whose IEEE result is `±∞` (#575). -/
 def BinFn.infIssue (f : BinFn) (v w : Value) : Option Issue :=
   match v, w, f.apply v w with
   | .float a, .float b, .float r =>
-    if f.makesInf && isFiniteCode (FloatCode.canon a) && isFiniteCode (FloatCode.canon b) && isInfCode r then
+    -- IEEE division by a zero is `±∞` by the option's choice (D39), not an overflow.
+    if f.makesInf && isFiniteCode (FloatCode.canon a) && isFiniteCode (FloatCode.canon b) && isInfCode r &&
+        !(f == .fdivIeee && FloatCode.canon b == 0) then
       some .infinite
     else none
   | _, _, _ => none
