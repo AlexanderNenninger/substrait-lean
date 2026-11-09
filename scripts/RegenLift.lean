@@ -14,11 +14,14 @@ Not part of the library: `lake build` does not elaborate it.
 
 namespace Substrait
 
+-- The search's budget per candidate: half the generated check's.
+set_option maxHeartbeats 400000 in
 generate_lift liftDuckDB : Semantics.duckdb
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
   writing "SubstraitLean/LiftDuckDB/Duckdb"
 
+set_option maxHeartbeats 400000 in
 generate_lift liftReference : Semantics.reference
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache

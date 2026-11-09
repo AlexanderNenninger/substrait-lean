@@ -49,7 +49,8 @@ otherwise (`sqrt(-1)`, `asin(2)`, `sin(±∞)`). -/
 def duckElementary (f : FMath) (x : Int) : Int :=
   match f.apply x with
   | some r => r
-  | none => if f.isLog ∧ x = 0 then FloatCode.negInf else FloatCode.nan
+  -- C's `log(±0.0)` is `-∞` (D31: `-0.0` is a zero).
+  | none => if f.isLog ∧ FloatCode.canon x = 0 then FloatCode.negInf else FloatCode.nan
 
 /-- DuckDB's `power(-∞, y)` for a finite `y` that is not an integer
 (`negInfPow`): IEEE 754's `+∞` for `y > 0` and `0` for `y < 0`, under any

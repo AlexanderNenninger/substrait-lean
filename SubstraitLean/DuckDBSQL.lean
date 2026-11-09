@@ -46,7 +46,10 @@ inductive DuckType where
 /-- Values of the type: `NULL` or an integer; for a `DOUBLE`, a double, whose code is (`core/Sverify/Core/Float.lean`): between `-∞`'s and `+∞`'s, or NaN's. -/
 def DuckType.Has : DuckType → Value → Prop
   | _, .null => True
-  | .double, .float c => (FloatCode.negInf ≤ c ∧ c ≤ FloatCode.posInf) ∨ c = FloatCode.nan
+  -- Every double: `-0.0` and the negative NaN too, which a plan can make
+  -- (`0.0 * -1.0`) or a table hold (D31).
+  | .double, .float c => ((FloatCode.negInf ≤ c ∧ c ≤ FloatCode.posInf) ∨ c = FloatCode.nan) ∨
+      c = FloatCode.negZero ∨ c = FloatCode.negNan
   | .bigint, .int _ | .tinyint, .int _ => True
   | _, _ => False
 
@@ -126,6 +129,14 @@ refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
   | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
       (they truncate) cannot state; use semantics='reference', or round() first"
+  -- `x / -0.0` is `±∞` by the signs of both operands (duckdb-float-signs),
+  -- which the reference's operations cannot state yet (D39).
+  | .duckdb, .divDouble => some "DuckDB divides by -0.0 to an infinity of the operands' \
+      joint sign, which the model cannot state yet (D39); use semantics='reference'"
+  -- `power(-0.0, y)` reads the zero's sign too (`pow(-0.0, -1)` is `-∞`): with
+  -- division, the follow-up of D39.
+  | .duckdb, .power => some "DuckDB's power of -0.0 depends on the zero's sign, which the \
+      model's lift cannot state yet (D39); use semantics='reference'"
   | _, _ => none
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by
@@ -246,6 +257,182 @@ theorem DuckDBSQL.apply_eq_null_l (y : Value) : BinFn.apply .eq .null y = .null 
 theorem DuckDBSQL.apply_eq_null_r (x : Value) : BinFn.apply .eq x .null = .null := by cases x <;> rfl
 theorem DuckDBSQL.apply_lt_null_l (y : Value) : BinFn.apply .lt .null y = .null := by cases y <;> rfl
 theorem DuckDBSQL.apply_lt_null_r (x : Value) : BinFn.apply .lt x .null = .null := by cases x <;> rfl
+
+theorem DuckDBSQL.canon_nan : FloatCode.canon FloatCode.nan = FloatCode.nan :=
+  FloatCode.canon_of_isRef FloatCode.isRef_nan
+
+theorem DuckDBSQL.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
+  FloatCode.canon_of_bounds ⟨by have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_one; omega,
+    FloatCode.one_lt_posInf⟩
+
+theorem DuckDBSQL.canon_negOne : FloatCode.canon FloatCode.negOne = FloatCode.negOne :=
+  FloatCode.canon_of_bounds ⟨by
+    have := FloatCode.one_lt_posInf; have := FloatCode.zero_lt_one; have := FloatCode.negInf_eq
+    have := FloatCode.posInf_eq; show _ < -FloatCode.one; omega,
+    by have := FloatCode.zero_lt_one; have := FloatCode.zero_lt_posInf; show -FloatCode.one < _; omega⟩
+
+theorem DuckDBSQL.negOne_eq : FloatCode.negOne = -FloatCode.one := rfl
+
+/-- A double of `DuckType.double`'s range is canonical. -/
+theorem DuckDBSQL.canon_of_has {c : Int}
+    (h : (FloatCode.negInf ≤ c ∧ c ≤ FloatCode.posInf) ∨ c = FloatCode.nan) : FloatCode.canon c = c :=
+  FloatCode.canon_of_isRef (by
+    rcases h with ⟨h1, h2⟩ | rfl
+    · exact ⟨h1, Int.le_trans h2 (Int.le_of_lt FloatCode.posInf_lt_nan)⟩
+    · exact FloatCode.isRef_nan)
+
+theorem DuckDBSQL.canon_negZero : FloatCode.canon FloatCode.negZero = 0 := fp64.canon_negZero
+
+theorem DuckDBSQL.canon_negNan : FloatCode.canon FloatCode.negNan = FloatCode.nan := fp64.canon_negNan
+
+theorem DuckDBSQL.nan_eq : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+
+/-- The special codes against the other constants, for the lift's proofs:
+`decide` would compare their huge numerals. -/
+
+theorem DuckDBSQL.zero_ne_negZero : ¬ ((0 : Int) = FloatCode.negZero) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negZero_ne_zero : ¬ (FloatCode.negZero = (0 : Int)) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.zero_ne_negNan : ¬ ((0 : Int) = FloatCode.negNan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negNan_ne_zero : ¬ (FloatCode.negNan = (0 : Int)) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.posInf_ne_negZero : ¬ (FloatCode.posInf = FloatCode.negZero) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negZero_ne_posInf : ¬ (FloatCode.negZero = FloatCode.posInf) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.posInf_ne_negNan : ¬ (FloatCode.posInf = FloatCode.negNan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negNan_ne_posInf : ¬ (FloatCode.negNan = FloatCode.posInf) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negInf_ne_negZero : ¬ (FloatCode.negInf = FloatCode.negZero) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negZero_ne_negInf : ¬ (FloatCode.negZero = FloatCode.negInf) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negInf_ne_negNan : ¬ (FloatCode.negInf = FloatCode.negNan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negNan_ne_negInf : ¬ (FloatCode.negNan = FloatCode.negInf) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.nan_ne_negZero : ¬ (FloatCode.nan = FloatCode.negZero) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negZero_ne_nan : ¬ (FloatCode.negZero = FloatCode.nan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.nan_ne_negNan : ¬ (FloatCode.nan = FloatCode.negNan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negNan_ne_nan : ¬ (FloatCode.negNan = FloatCode.nan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.one_ne_negZero : ¬ (FloatCode.one = FloatCode.negZero) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negZero_ne_one : ¬ (FloatCode.negZero = FloatCode.one) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.one_ne_negNan : ¬ (FloatCode.one = FloatCode.negNan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negNan_ne_one : ¬ (FloatCode.negNan = FloatCode.one) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negOne_ne_negZero : ¬ (FloatCode.negOne = FloatCode.negZero) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negZero_ne_negOne : ¬ (FloatCode.negZero = FloatCode.negOne) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negOne_ne_negNan : ¬ (FloatCode.negOne = FloatCode.negNan) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
+
+theorem DuckDBSQL.negNan_ne_negOne : ¬ (FloatCode.negNan = FloatCode.negOne) := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega
 
 theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α) :
     (if p ∨ q then a else b) = if p then a else if q then a else b := by
@@ -368,13 +555,17 @@ def DuckFn.meaning : DuckFn → Option Expr
 same under both semantics, but for the reference's cast to `BIGINT`. -/
 def DuckFn.evalOwn : Semantics → DuckFn → List Value → Outcome
   | _, .signBigint, [.int a] => .ok (.int (duckSign a))
-  | _, .signDouble, [.float a] => .ok (.int (if a = FloatCode.nan then 0 else duckSign a))
+  -- `x > 0 ? 1 : x < 0 ? -1 : 0`: `-0.0` and every NaN give 0 (D31).
+  | _, .signDouble, [.float a] =>
+    .ok (.int (if FloatCode.canon a = FloatCode.nan then 0 else duckSign (FloatCode.canon a)))
   | _, .greatestBigint, [x, y] => .ok (match x, y with
     | .int a, .int b => .int (if a < b then b else a)
     | .null, v | v, .null => v
     | _, _ => .null)
+  -- Compared as DuckDB orders doubles, one zero and every NaN greatest, the
+  -- first argument kept among equals (duckdb-float-signs, D31).
   | _, .greatestDouble, [x, y] => .ok (match x, y with
-    | .float a, .float b => .float (if a < b then b else a)
+    | .float a, .float b => .float (if FloatCode.canon a < FloatCode.canon b then b else a)
     | .null, v | v, .null => v
     | _, _ => .null)
   | _, .leastBigint, [x, y] => .ok (match x, y with
@@ -382,7 +573,7 @@ def DuckFn.evalOwn : Semantics → DuckFn → List Value → Outcome
     | .null, v | v, .null => v
     | _, _ => .null)
   | _, .leastDouble, [x, y] => .ok (match x, y with
-    | .float a, .float b => .float (if b < a then b else a)
+    | .float a, .float b => .float (if FloatCode.canon b < FloatCode.canon a then b else a)
     | .null, v | v, .null => v
     | _, _ => .null)
   | .reference, .castDoubleBigint, [a] => Profile.reference.un .ftoi a
