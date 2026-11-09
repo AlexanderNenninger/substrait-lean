@@ -1,0 +1,81 @@
+{
+  "id": "polars-cum-sum-float",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`cum_sum` of doubles: one running `+=` in row order, in memory, streaming and per partition under `over`",
+  "verdict": "the value at row i is the values up to i added one at a time from 0.0, in row order; NULL rows skipped",
+  "area": "windows",
+  "options": [
+    "window_sum_algo"
+  ],
+  "rows": [
+    {
+      "group": "win.agg",
+      "option": "window_sum_algo",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "cum_sum",
+    "over"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`cum_sum` of a `Float64` column folds `det_sum` over the rows in order: one `f64` state, starting at 0.0 (`init.unwrap_or(T::Native::zero())`), and `*state += v` for each non-NULL value, whose row gets the new state; a NULL row gets NULL and leaves the state as it is (`v?`). There is no compensation and no reordering: the value at row `i` is the sequential sum of the values up to `i`, a sum in the `SEQUENTIAL` order.",
+    "On the streaming engine `cum_sum` is a `CumAggNode`: it receives the morsels serially, in order, runs the same kernel on each with the last non-NULL output of the previous one as its initial state (`cum_sum_with_init`), so the whole column is the one sequential fold.",
+    "Under `over(partition)` on the streaming engine, the `window` node gathers each partition's rows in input order (a stable counting sort on the partition id, `maintain_order: ordered_eval`) and evaluates the expression on each partition's contiguous slice, so each partition gets its own sequential fold from 0.0.",
+    "sverify's translation reads `cum_sum().over(partition)` of a frame's values (NULLs as 0.0, which adds nothing) at the frame's last row when the frame starts at the partition's first row (polars-window-agg): the frame's values added in frame order from 0.0, the sum `WinFn.valueIn`'s sequential reading gives."
+  ],
+  "reference": "A window `SUM` of doubles is a sum of the frame's values in an order the profile's `sum_order` allows (`WinFn.AllowedP`); the sequential order is one of Polars's (`SEQUENTIAL`), so the value is in `Allowed` (`window_sum_algo = RUNNING_ADD`, a sum of exactly the frame's rows).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "source-reading",
+      "checked_by": "session vigilant-brattain-703421 (native windows, #1266)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/cum_agg.rs#L30-L36",
+          "note": "`det_sum`: `*state += v?; Some(*state)`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/cum_agg.rs#L55-L76",
+          "note": "`cum_scan_numeric`: one state, the rows in order (reversed only for `reverse=True`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/cum_agg.rs#L223-L234",
+          "note": "`cum_sum_numeric`: the scan from `init`, 0 by default"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/cum_agg.rs#L61-L118",
+          "note": "`CumAggNode`: serial receive, `cum_sum_with_init` with the previous morsel's last non-NULL value as the state"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/window/evaluate.rs#L607-L715",
+          "note": "`evaluate_partition`: stable counting sort on the partition id, rows in input order (`ordered_eval`), the expression evaluated on each partition's slice"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "session vigilant-brattain-703421 (native windows, #1266)",
+      "evidence": [
+        {
+          "file": "engines/polars/tests/test_polars_windows.py",
+          "note": "test_native_windows_match_the_row_by_row_oracle: running double sums equal the former row-by-row loop's sequential sums"
+        }
+      ],
+      "notes": "`cum_sum` of `[1e16] + [1.0] * 1000 + [-1e16]`: last value 0.0 with `collect(engine='in-memory')`, `collect(engine='streaming')` under `POLARS_IDEAL_MORSEL_SIZE=4` (about 250 morsels), and `cum_sum().over('g')` with one partition, streaming. A sequential sum gives 0.0; a tree or a compensated sum gives 1000.0. Polars 2.1.0 (Python), macOS arm64."
+    }
+  ]
+}

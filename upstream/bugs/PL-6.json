@@ -15,8 +15,8 @@
     604
   ],
   "files": [
-    "characterization/polars/facts/polars-exec-cse-hoist.json",
-    "characterization/polars/probes-streaming.json",
+    "engines/polars/facts/polars-exec-cse-hoist.json",
+    "engines/polars/probes/probes-streaming.json",
     "python/tools/sverify_dev/probe_polars.py"
   ],
   "facts": [
@@ -29,7 +29,7 @@
       "against": {
         "polars": "2.1.0"
       },
-      "note": "Probe s-when-cse-lazy in characterization/polars/probes-streaming.json: raises with CSE on both engines, [(2, 3), (None, None)] without. Duplicate search (`gh issue list --repo pola-rs/polars --state all --search`) for \"CSE when then\", \"subexpression when then\", \"when then otherwise cse\", \"strict cast when then raise\" and \"cse error branch\": no matching issue (related: #30252 when/then PanicException, closed; #20305 CSE in group_by, open)."
+      "note": "Probe s-when-cse-lazy in engines/polars/probes/probes-streaming.json: raises with CSE on both engines, [(2, 3), (None, None)] without. Duplicate search (`gh issue list --repo pola-rs/polars --state all --search`) for \"CSE when then\", \"subexpression when then\", \"when then otherwise cse\", \"strict cast when then raise\" and \"cse error branch\": no matching issue (related: #30252 when/then PanicException, closed; #20305 CSE in group_by, open)."
     },
     {
       "checked_at": "2026-11-04",

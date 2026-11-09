@@ -19,8 +19,8 @@
     444
   ],
   "files": [
-    "characterization/polars/facts/polars-exec-when-eager.json",
-    "characterization/polars/facts/polars-exec-cse-hoist.json"
+    "engines/polars/facts/polars-exec-when-eager.json",
+    "engines/polars/facts/polars-exec-cse-hoist.json"
   ],
   "facts": [
     "polars-exec-when-eager",

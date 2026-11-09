@@ -4475,14 +4475,13 @@ dependencies = [
 all = [
     { name = "deltalake" },
     { name = "hypothesis" },
-    { name = "numpy" },
     { name = "openlineage-python" },
-    { name = "polars" },
     { name = "pyarrow" },
     { name = "pyiceberg", extra = ["pyarrow", "sql-sqlite"] },
     { name = "pyspark" },
     { name = "pytest" },
     { name = "pyyaml" },
+    { name = "sverify-polars" },
 ]
 datafusion = [
     { name = "datafusion" },
@@ -4503,8 +4502,7 @@ openlineage = [
     { name = "openlineage-python" },
 ]
 polars = [
-    { name = "numpy" },
-    { name = "polars" },
+    { name = "sverify-polars" },
 ]
 secrets-aws = [
     { name = "boto3" },
@@ -4562,9 +4560,7 @@ requires-dist = [
     { name = "hypothesis", marker = "extra == 'testing'", specifier = ">=6.170.14" },
     { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
     { name = "keyring", marker = "extra == 'secrets-keychain'", specifier = ">=25" },
-    { name = "numpy", marker = "extra == 'polars'", specifier = ">=2.5.4" },
     { name = "openlineage-python", marker = "extra == 'openlineage'", specifier = ">=1.55.0,<2" },
-    { name = "polars", marker = "extra == 'polars'", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
     { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
@@ -4574,6 +4570,7 @@ requires-dist = [
     { name = "sqlglot", specifier = "~=30.17.0" },
     { name = "substrait", specifier = ">=0.37.0" },
     { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
+    { name = "sverify-polars", marker = "extra == 'polars'", editable = "../engines/polars" },
 ]
 provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "secrets-aws", "secrets-gcp", "secrets-azure", "secrets-keychain", "all"]
 
@@ -4597,6 +4594,23 @@ dev = [
     { name = "sverify", extras = ["all", "datafusion"] },
 ]
 docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
+
+[[package]]
+name = "sverify-polars"
+version = "0.7.1"
+source = { editable = "../engines/polars" }
+dependencies = [
+    { name = "numpy" },
+    { name = "polars" },
+    { name = "sverify" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.5.4" },
+    { name = "polars", specifier = ">=2.1.0" },
+    { name = "sverify", editable = "." },
+]
 
 [[package]]
 name = "sympy"

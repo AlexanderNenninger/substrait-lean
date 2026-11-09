@@ -8,10 +8,19 @@ import pytest
 
 from _repo import needs_repo
 from _sql_lift import TABLES
-from sverify._polars_shims import SHIMS
 from sverify.engine import connect, run_plan, written_plan
 from sverify.sql_lift import lift
 from sverify_dev import realizability
+from sverify_polars.shims import SHIMS
+
+
+def _facts():
+    """`sverify_dev.facts`, which needs jsonschema: the repository's tests
+    import it where they use it (the wheel's tests skip those)."""
+    from sverify_dev import facts
+
+    return facts
+
 
 ROOT = realizability.ROOT
 
@@ -50,7 +59,7 @@ def _ids_exist(engine: str, ids: list[str]) -> list[str]:
             if not src.exists() or f"def {name}(" not in src.read_text():
                 missing.append(i)
         elif not any(
-            (ROOT / "characterization" / e / "facts" / f"{i}.json").exists()
+            (_facts().facts_dir(e) / f"{i}.json").exists()
             for e in (engine, "duckdb", "polars", "spark")
         ):
             missing.append(i)
@@ -103,7 +112,7 @@ def test_every_tested_row_names_its_issue_and_version(table):
             for i in r["facts"]:
                 if "::" in i:
                     continue
-                fact = ROOT / "characterization" / engine / "facts" / f"{i}.json"
+                fact = _facts().facts_dir(engine) / f"{i}.json"
                 if fact.exists():
                     v = json.loads(fact.read_text())["engine_version"]
                     assert v.removeprefix("py-") == e["version"], (engine, i, v)

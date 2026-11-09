@@ -26,6 +26,8 @@ from sverify.routes import _options_json
 from sverify.sql import DIALECTS
 
 BUILTIN = {"duckdb", "polars", "spark", "datafusion", "snowflake"}
+#: The built-in engines that are packages of their own (`engines/<engine>/`).
+PACKAGES = {"polars"}
 
 
 def _checker_profiles() -> dict[str, dict]:
@@ -65,8 +67,13 @@ def test_every_engine_a_plan_runs_on_has_a_translation() -> None:
 def test_sverify_registers_its_engines_in_its_metadata() -> None:
     """The built-in engines are entry points of sverify's own distribution:
     an installed wheel without them names no engine."""
-    ours = {ep.name for ep in entry_points(group=profiles.GROUP) if ep.value.startswith("sverify.")}
-    assert ours == BUILTIN
+    eps = entry_points(group=profiles.GROUP)
+    ours = {ep.name for ep in eps if ep.value.startswith("sverify.")}
+    assert ours == BUILTIN - PACKAGES
+    # An engine package registers from its own distribution (#1189).
+    for e in PACKAGES:
+        [ep] = [ep for ep in eps if ep.name == e]
+        assert ep.dist is not None and ep.dist.name == f"sverify-{e}", ep
 
 
 def test_without_the_entry_points_sverify_names_no_engine() -> None:
