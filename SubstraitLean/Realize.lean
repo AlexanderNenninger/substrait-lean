@@ -1,5 +1,5 @@
 import SubstraitLean.Epsilon
-import SubstraitLean.PolarsShims
+import Sverify.Polars.Shims
 
 /-!
 # How each engine realizes a plan (#1166, theme 3)

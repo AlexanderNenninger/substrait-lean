@@ -2,6 +2,7 @@
 /core/.lake
 /analysis/.lake
 /engines/.lake
+/engines/polars/.lake
 /float-bounds/.lake
 /python/.venv
 .hypothesis/

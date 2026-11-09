@@ -1,4 +1,4 @@
-"""`Profile.polars` (#444, `SubstraitLean/PolarsProfile.lean`): integer `//`
+"""`Profile.polars` (#444, `engines/polars/Sverify/Polars/Profile.lean`): integer `//`
 and `%` floor, as Polars's own do.
 
 Lean proves that the checker's reading of a call that states

@@ -1878,7 +1878,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     else
       let mode := divByZeroMode (← arrD f "options")
       -- `division_type` = `FLOOR`: Polars's `//` and `%`, in the reference's
-      -- operations (`SubstraitLean/PolarsProfile.lean`).
+      -- operations (`engines/polars/Sverify/Polars/Profile.lean`).
       let floor := divisionTypeMode (← arrD f "options") == "FLOOR"
       let call ← match baseName name, args with
         | "divide", [a, b] =>

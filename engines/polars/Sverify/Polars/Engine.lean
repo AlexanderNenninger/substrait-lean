@@ -1,5 +1,5 @@
-import SubstraitLean.PolarsProfile
-import SubstraitLean.PolarsTables
+import Sverify.Polars.Profile
+import Sverify.Polars.Tables
 import Sverify.Engines.Sound
 
 /-!

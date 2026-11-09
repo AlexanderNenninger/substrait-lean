@@ -93,7 +93,7 @@ def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
     r = routes.choose(duck, "polars", "transfer")
     assert r.refused and "gave no transfer check" in r.reason
     # `auto` goes on to the re-check, which the checker proves under
-    # `Profile.polars` (the plan states its options, `PolarsProfile.lean`).
+    # `Profile.polars` (the plan states its options, `Polars/Profile.lean`).
     auto = routes.choose(duck, "polars")
     assert (auto.kind, auto.profile) == ("recheck", "polars"), auto
 

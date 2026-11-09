@@ -333,11 +333,11 @@
    "cpu_s": 46,
    "rss_mb": 1830
   },
-  "SubstraitLean.PolarsProfile": {
+  "Sverify.Polars.Profile": {
    "cpu_s": 31,
    "rss_mb": 1536
   },
-  "SubstraitLean.PolarsShims": {
+  "Sverify.Polars.Shims": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

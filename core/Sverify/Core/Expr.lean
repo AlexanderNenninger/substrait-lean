@@ -907,7 +907,7 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
 
 /-- `a // b` of integers with `division_type` = `FLOOR` (Polars's `//`,
-`SubstraitLean/PolarsProfile.lean`), in the reference's truncating
+`engines/polars/Sverify/Polars/Profile.lean`), in the reference's truncating
 operations: with the signs apart, `(a + 1) / b - 1` for `a < 0 < b` and
 `(a - 1) / b - 1` for `b < 0 < a`, so that no step overflows; otherwise the
 truncated quotient. Each condition compares one argument with zero, `a`
