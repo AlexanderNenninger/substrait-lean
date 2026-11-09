@@ -253,30 +253,48 @@ report: `Profile.spark` evaluates as the reference (`Profile.spark_eval`,
 `asReference`, an out-of-tree one among them. DuckDB's profile is
 reached through its lift (`semantics="duckdb"`); its requests get the
 reference's report, which says so. -/
+/-- The reference's report carried to the profile table `X` (named `name`),
+engine to engine (#1189): a proof under the reference holds under `X` where,
+at every read of the plan, `X` allows only what the reference allows
+(`ProfileTable.leAtB`, the plan's stated preferences counted;
+`Rel.transfer_of_transferB`). Where it does not, the postconditions and keys
+are not proved, and `"transfer"` names each read, with what `X` and the
+reference allow. `passes` lets a read through that the request covers
+otherwise: none yet (#1189 R1b; the observation-aware rule is pending). -/
+def transferTo (name : String) (X : ProfileTable) (plan : Parse.Plan) (report : Json)
+    (proved : Bool) (passes : Read → Bool := fun _ => false) : Json × Bool :=
+  let P := Profile.reference.table
+  let failures := plan.root.reads.eraseDups.filter fun p => !X.leAtB P p && !passes p
+  let report := report.setObjVal! "profile" name
+  if failures.isEmpty then
+    (report.setObjVal! "transfer" (Json.mkObj [("from", "reference"), ("ok", true),
+      ("failures", Json.arr #[])]), proved)
+  else
+    let unprove (k : String) (r : Json) : Json :=
+      match r.getObjValAs? (Array Json) k with
+      | .ok xs => r.setObjVal! k (Json.arr (xs.map (·.setObjVal! "proved" false)))
+      | .error _ => r
+    let rows := failures.map fun (g, o, ps) => Json.mkObj [("group", toJson g),
+      ("option", toJson o), ("preferences", toJson ps), (name, toJson (X.allows g o ps)),
+      ("reference", toJson (P.allows g o ps))]
+    (unprove "keys" (unprove "ensures" report) |>.setObjVal! "transfer"
+      (Json.mkObj [("from", "reference"), ("ok", false), ("failures", Json.arr rows.toArray)]),
+      false)
+
 def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : Bool) :
     Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"
   if (engineNamed? es name).any (·.asReference) then
     return (report.setObjVal! "profile" name, proved)
-  unless name == "substrait" do return (report.setObjVal! "profile" "reference", proved)
+  -- Substrait's profile, and each engine's with a table of its own: the
+  -- reference's report where it carries over (`transferTo`).
+  let X? : Option ProfileTable :=
+    if name == "substrait" then some Profile.substrait.table
+    else (engineNamed? es name).map (·.table)
+  let some X := X? | return (report.setObjVal! "profile" "reference", proved)
   let tj ← j.getObjVal? "transform"
   let plan ← ContractCheck.parseJsonPlan tj
-  let P := Profile.reference.table
-  let S := Profile.substrait.table
-  let failures := plan.root.reads.eraseDups.filter fun p => !S.leAtB P p
-  let report := report.setObjVal! "profile" "substrait"
-  if failures.isEmpty then
-    return (report.setObjVal! "transfer" (Json.mkObj [("from", "reference"), ("ok", true),
-      ("failures", Json.arr #[])]), proved)
-  let unprove (k : String) (r : Json) : Json :=
-    match r.getObjValAs? (Array Json) k with
-    | .ok xs => r.setObjVal! k (Json.arr (xs.map (·.setObjVal! "proved" false)))
-    | .error _ => r
-  let rows := failures.map fun (g, o, ps) => Json.mkObj [("group", toJson g), ("option", toJson o),
-    ("preferences", toJson ps), ("substrait", toJson (S.allows g o ps)),
-    ("reference", toJson (P.allows g o ps))]
-  return (unprove "keys" (unprove "ensures" report) |>.setObjVal! "transfer"
-    (Json.mkObj [("from", "reference"), ("ok", false), ("failures", Json.arr rows.toArray)]), false)
+  return transferTo name X plan report proved
 
 /-- One request of `--serve`: the mode flag (empty for the default check)
 and the input text. -/
