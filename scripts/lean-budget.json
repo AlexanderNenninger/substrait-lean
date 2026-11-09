@@ -253,7 +253,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Lowering": {
+  "Sverify.Engines.Lowering": {
    "cpu_s": 86,
    "rss_mb": 1536
   },
@@ -345,7 +345,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.ProfileImpl": {
+  "Sverify.Analysis.ProfileImpl": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

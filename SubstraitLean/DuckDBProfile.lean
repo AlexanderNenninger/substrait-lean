@@ -1,5 +1,5 @@
 import SubstraitLean.DuckDBFunctions
-import SubstraitLean.ProfileImpl
+import Sverify.Analysis.ProfileImpl
 import Sverify.Analysis.Knowledge
 
 /-!

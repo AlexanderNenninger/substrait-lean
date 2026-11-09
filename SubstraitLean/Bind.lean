@@ -1,4 +1,4 @@
-import SubstraitLean.Lowering
+import Sverify.Engines.Lowering
 import Sverify.Analysis.Partition
 import SubstraitLean.Parse
 import Sverify.Core.AllowedP

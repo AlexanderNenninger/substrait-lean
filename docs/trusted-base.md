@@ -45,9 +45,9 @@ the project's one axiom (the trusted table below).
 | `Lowering.duckdb_exact` | Each generated lowering entry is exact | `LoweringDuckDB/On.lean` | propext, Classical.choice, Quot.sound |
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `LiftDuckDB/Duckdb.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings) | `EngineSound.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.polars_sound` | … on the model of Polars | `EngineSound.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.polars_sound` | … on the model of Polars | `PolarsEngine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark | `EngineSound.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `EngineSound.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
@@ -108,7 +108,7 @@ place, and what retires it.
   `Rel.Small` (`Rel.mayIssues_sound`, `Rel.guardFree_sound`,
   `Rel.duckdb_sound`, `Rel.polars_sound`, `Rel.spark_sound`, and the engine
   side conditions built on them, `Engine.GuardFreeData` in
-  `SubstraitLean/EngineSound.lean`); nothing checks it on the data, so
+  `engines/Sverify/Engines/Sound.lean`); nothing checks it on the data, so
   it is assumed of every run. With it, `ROW_NUMBER() - 1` and Ibis's
   `find` (`strpos - 1`) are proved not to overflow without a precondition, while
   `amount * 2` needs one, which sverify infers. It overrides Substrait
@@ -198,7 +198,7 @@ place, and what retires it.
   (`r'.eval cat E.impl`), unless it raises. The chain from there to the engine's actual
   result, in order:
   1. the Lean theorem, `Engine.contract_sound` with the engine's
-     `Engine.Sound` (`EngineSound.lean`); `Engine.polars_sound` and
+     `Engine.Sound` (`Sound.lean`); `Engine.polars_sound` and
      `Engine.spark_sound` also take `Engine.GuardFreeData`, preconditions on
      the catalog and the size hypothesis;
   2. the round trip: the SQL or Polars code written for the plan is

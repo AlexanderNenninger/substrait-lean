@@ -190,7 +190,7 @@ raise anywhere and still be correct. Partial correctness is what
 `Rel.duckdb_shim_sound` proves today for every lowered plan; for a plan
 proved to never raise the two agree (`Rel.duckdb_sound`).
 
-Amended (2026-11-08): `Engine.contract_sound` (`SubstraitLean/EngineSound.lean`,
+Amended (2026-11-08): `Engine.contract_sound` (`engines/Sverify/Engines/Sound.lean`,
 [#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)) proves
 a proved contract on the rows each engine's model computes for the
 translated plan, unless it raises, through each engine's `Engine.Sound`. That the engine's actual
