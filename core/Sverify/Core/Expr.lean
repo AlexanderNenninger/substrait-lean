@@ -589,6 +589,13 @@ theorem Value.canonV_list (vs : List Value) : (Value.list vs).canonV = .list (vs
 theorem Value.canonV_struct (vs : List Value) : (Value.struct vs).canonV = .struct (vs.map Value.canonV) := by
   simp only [Value.canonV]
 
+/-- `canonV` keeps a value's kind, so two values compare as numbers exactly
+when their canonical values do. -/
+theorem Value.numPair_canonV_isNone (a b : Value) :
+    (a.canonV.numPair b.canonV).isNone = (a.numPair b).isNone := by
+  cases a <;> cases b <;> simp only [Value.canonV, Value.numPair] <;> (try split) <;> rfl
+
+
 mutual
 /-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
 the codes of doubles and times) by value, strings by code point, `FALSE <

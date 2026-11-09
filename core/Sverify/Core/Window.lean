@@ -66,8 +66,9 @@ def FrameBound.offset : FrameBound → Option Int
 `d = 0`: not before `x`'s peers). -/
 def rangeFrom (k : SortKey) (d : Int) (x y : Row) : Bool :=
   -- Two numbers of one kind (`Value.numPair`, #923): a timestamp key and an
-  -- interval offset in its units.
-  match (x.getD k.col .null).numPair (y.getD k.col .null) with
+  -- interval offset in its units. The sort key is read up to canonical codes,
+  -- as `ORDER BY` reads it (D31).
+  match (x.getD k.col .null).canonV.numPair (y.getD k.col .null).canonV with
   | some (vx, vy) => if k.desc then decide (vy ≤ vx - d) else decide (vx + d ≤ vy)
   | none => match x.getD k.col .null, y.getD k.col .null with
     | .null, .null => true
@@ -75,7 +76,7 @@ def rangeFrom (k : SortKey) (d : Int) (x y : Row) : Bool :=
 
 /-- `y` comes at or before the point `d` units after `x` on the key `k`. -/
 def rangeTo (k : SortKey) (d : Int) (x y : Row) : Bool :=
-  match (x.getD k.col .null).numPair (y.getD k.col .null) with
+  match (x.getD k.col .null).canonV.numPair (y.getD k.col .null).canonV with
   | some (vx, vy) => if k.desc then decide (vx - d ≤ vy) else decide (vy ≤ vx + d)
   | none => match x.getD k.col .null, y.getD k.col .null with
     | .null, .null => true

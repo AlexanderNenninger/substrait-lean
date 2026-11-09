@@ -434,6 +434,26 @@ theorem SortKey.le_val {k : SortKey} {x y : Row} {nk : NumKind} {u v : Int} (h :
   · unfold SortKey.valLe at h
     cases hd : k.desc <;> simp_all [Value.le_val]
 
+theorem SortKey.nullRank_of_ne_null (k : SortKey) {a : Value} (h : a ≠ .null) :
+    k.nullRank a = if k.firstNulls then 1 else 0 := by
+  cases a <;> first | exact absurd rfl h | rfl
+
+/-- `SortKey.le_val` on the canonical values of the key (`RANGE` frames read
+them, D31). -/
+theorem SortKey.le_val_canon {k : SortKey} {x y : Row} {nk : NumKind} {u v : Int}
+    (h : k.le y x = true) (hy : (y.getD k.col .null).canonV = nk.val u)
+    (hx : (x.getD k.col .null).canonV = nk.val v) :
+    if k.desc then v ≤ u else u ≤ v := by
+  have hne : ∀ {a : Value} {i : Int}, a.canonV = nk.val i → a ≠ .null := fun he h0 => by
+    rw [h0] at he; cases nk <;> simp [Value.canonV, NumKind.val] at he
+  simp only [SortKey.le, lexLe, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
+  rw [SortKey.nullRank_of_ne_null k (hne hy), SortKey.nullRank_of_ne_null k (hne hx)] at h
+  rcases h with ⟨_, h | h⟩
+  · simp [natLe] at h
+  · unfold SortKey.valLe at h
+    cases hd : k.desc <;> simp only [hd, Bool.false_eq_true, ↓reduceIte, Value.le, hy, hx] at h ⊢ <;>
+      cases nk <;> simp_all [NumKind.val, Value.leRaw_def, Value.leScalar]
+
 /-- Rows in sort order, by the first key: for non-NULL integers (and
 timestamps, and float codes), ascending keys give `y ≤ x`. -/
 theorem SortKey.le_int {k : SortKey} {x y : Row} {u v : Int} (h : k.le y x = true)
