@@ -22,15 +22,15 @@ generated_entries
 
 open Substrait
 
-local macro "native_tac" : tactic => `(tactic| lowering_native [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow])
+local macro "native_tac" : tactic => `(tactic| lowering_native [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow, Substrait.atan2?, Substrait.logb?])
 local macro "un_tac" : tactic =>
-  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
+  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow, Substrait.atan2?, Substrait.logb?] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
     [Substrait.Lowering.ref_fit, Substrait.Lowering.apply_fit_int, Substrait.Lowering.apply_fit_null, Substrait.Lowering.apply_fit_bool, Substrait.Lowering.apply_fit_str, Substrait.Lowering.apply_fit_list, Substrait.Lowering.apply_fit_struct, Substrait.Lowering.apply_fit_float, Substrait.Lowering.apply_fit_date, Substrait.Lowering.apply_fit_ts, Substrait.Lowering.apply_fit_tod, Substrait.Lowering.apply_fit_dec, Substrait.IntWidth.fit, Substrait.IntWidth.lo, Substrait.IntWidth.hi, Substrait.IntWidth.half, Substrait.IntWidth.modulus, Substrait.Lowering.tmod_add_tmod, Substrait.Profile.duckdb_imod_pos, Substrait.Lowering.duck_imod_pos, Substrait.Lowering.duck_dadd, Substrait.Lowering.duck_dsub, Substrait.Lowering.shl_apply, Substrait.Lowering.shr_apply, Int.reduceToNat, Nat.reducePow, Substrait.Lowering.apply_ffloor_int, Substrait.Lowering.apply_ffloor_null, Substrait.Lowering.apply_ffloor_bool, Substrait.Lowering.apply_ffloor_str, Substrait.Lowering.apply_ffloor_list, Substrait.Lowering.apply_ffloor_float, Substrait.Lowering.apply_ffloor_date, Substrait.Lowering.apply_ffloor_ts, Substrait.Lowering.apply_ffloor_tod, Substrait.Lowering.apply_ffloor_dec, Substrait.Lowering.apply_ffloor_struct, Substrait.Lowering.pow2Chain_eval, List.mem_range] unary)
 local macro "bin_tac" : tactic =>
-  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
+  `(tactic| lowering_template [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow, Substrait.atan2?, Substrait.logb?] [Substrait.duckdbOn.not_native, Substrait.duckdbOn.isNull_native, Substrait.duckdbOn.ffloor_native, Substrait.duckdbOn.raise_native, Substrait.duckdbOn.isNum_native, Substrait.duckdbOn.eq_native, Substrait.duckdbOn.lt_native, Substrait.duckdbOn.and_native, Substrait.duckdbOn.or_native, Substrait.duckdbOn.dadd_native, Substrait.duckdbOn.dsub_native, Substrait.duckdbOn.dmul_native]
     [Substrait.Lowering.ref_fit, Substrait.Lowering.apply_fit_int, Substrait.Lowering.apply_fit_null, Substrait.Lowering.apply_fit_bool, Substrait.Lowering.apply_fit_str, Substrait.Lowering.apply_fit_list, Substrait.Lowering.apply_fit_struct, Substrait.Lowering.apply_fit_float, Substrait.Lowering.apply_fit_date, Substrait.Lowering.apply_fit_ts, Substrait.Lowering.apply_fit_tod, Substrait.Lowering.apply_fit_dec, Substrait.IntWidth.fit, Substrait.IntWidth.lo, Substrait.IntWidth.hi, Substrait.IntWidth.half, Substrait.IntWidth.modulus, Substrait.Lowering.tmod_add_tmod, Substrait.Profile.duckdb_imod_pos, Substrait.Lowering.duck_imod_pos, Substrait.Lowering.duck_dadd, Substrait.Lowering.duck_dsub, Substrait.Lowering.shl_apply, Substrait.Lowering.shr_apply, Int.reduceToNat, Nat.reducePow, Substrait.Lowering.apply_ffloor_int, Substrait.Lowering.apply_ffloor_null, Substrait.Lowering.apply_ffloor_bool, Substrait.Lowering.apply_ffloor_str, Substrait.Lowering.apply_ffloor_list, Substrait.Lowering.apply_ffloor_float, Substrait.Lowering.apply_ffloor_date, Substrait.Lowering.apply_ffloor_ts, Substrait.Lowering.apply_ffloor_tod, Substrait.Lowering.apply_ffloor_dec, Substrait.Lowering.apply_ffloor_struct, Substrait.Lowering.pow2Chain_eval, List.mem_range])
 
-set_option maxHeartbeats 1600000 in
+set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fit_silent_i8_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP
@@ -68,7 +68,7 @@ abbrev Substrait.duckdbOn.fit_silent_i8 : Substrait.UnEntry (Substrait.Profile.d
     (Substrait.Expr.lit (Substrait.Value.int 128)))
   (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_silent_i8_agree⟩
 
-set_option maxHeartbeats 1600000 in
+set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fit_silent_i16_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP
@@ -106,7 +106,7 @@ abbrev Substrait.duckdbOn.fit_silent_i16 : Substrait.UnEntry (Substrait.Profile.
     (Substrait.Expr.lit (Substrait.Value.int 32768)))
   (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_silent_i16_agree⟩
 
-set_option maxHeartbeats 1600000 in
+set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fit_silent_i32_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP
@@ -144,7 +144,7 @@ abbrev Substrait.duckdbOn.fit_silent_i32 : Substrait.UnEntry (Substrait.Profile.
     (Substrait.Expr.lit (Substrait.Value.int 2147483648)))
   (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_silent_i32_agree⟩
 
-set_option maxHeartbeats 1600000 in
+set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fit_silent_i64_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP
@@ -319,7 +319,7 @@ abbrev Substrait.duckdbOn.idiv : Substrait.BinEntry (Substrait.Profile.duckdb (S
   (Substrait.Expr.un (Substrait.UnFn.raise "division by zero") (Substrait.Expr.field 1))
   (Substrait.Expr.bin Substrait.BinFn.idiv (Substrait.Expr.field 0) (Substrait.Expr.field 1)), by simp [Substrait.Expr.must], Substrait.duckdbOn.idiv_agree⟩
 
-set_option maxHeartbeats 1600000 in
+set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.imod_agree : ∀ (x y : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP

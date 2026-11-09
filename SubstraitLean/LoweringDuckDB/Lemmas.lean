@@ -152,6 +152,10 @@ def Lowering.shlTemplate : Expr :=
     (.ifThen (.un (.isNum .int) (.field 0))
       (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64)))) (.lit .null))
 
+/-- The template reads both arguments, for the entry's strictness. -/
+theorem Lowering.shlTemplate_must : 0 ∈ Lowering.shlTemplate.must ∧ 1 ∈ Lowering.shlTemplate.must := by
+  simp [Expr.must, Lowering.shlTemplate]
+
 theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :
     (Lowering.shlTemplate.evalP (Profile.duckdb s) [x, y]).Agree
       (Profile.reference.bin (.bit .shl) x y) := by

@@ -20,7 +20,7 @@ namespace Substrait
 generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
   unfolding [Profile.duckdb, BinFn.onFloats, duckBin, duckUn, duckZero, duckShl, nanCase, isInfCode,
     FMath.inDomain, FMath.lo?, FMath.hi?, FMath.apply, domainIssue, nanIssue, negInfPow,
-    duckNegInfPow]
+    duckNegInfPow, atan2?, logb?]
   using [Lowering.ref_fit, Lowering.apply_fit_int, Lowering.apply_fit_null, Lowering.apply_fit_bool,
     Lowering.apply_fit_str, Lowering.apply_fit_list, Lowering.apply_fit_struct,
     Lowering.apply_fit_float, Lowering.apply_fit_date, Lowering.apply_fit_ts, Lowering.apply_fit_tod,

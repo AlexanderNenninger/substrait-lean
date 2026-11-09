@@ -26,6 +26,9 @@ def nanGuard : BinFn → Option Tm
   | .fmul => some (orFn (andFn (eqFn (.field 0) (.lit (.float 0))) (isInfT (.field 1)))
       (andFn (isInfT (.field 0)) (eqFn (.field 1) (.lit (.float 0)))))
   | .fdiv => some (andFn (isInfT (.field 0)) (isInfT (.field 1)))
+  -- IEEE division (D39): `0 / 0` too, either zero's sign.
+  | .fdivIeee => some (orFn (andFn (isInfT (.field 0)) (isInfT (.field 1)))
+      (andFn (eqFn (.field 0) (.lit (.float 0))) (eqFn (.field 1) (.lit (.float 0)))))
   | .fmod => some (andFn (isInfT (.field 0)) (notFn (eqFn (.field 1) nanT)))
   | .fpow => some (andFn (andFn (ltFn negInfT (.field 0)) (ltFn (.field 0) (.lit (.float 0))))
       (andFn (andFn (ltFn negInfT (.field 1)) (ltFn (.field 1) posInfT))

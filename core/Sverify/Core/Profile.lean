@@ -310,23 +310,50 @@ theorem FloatCode.canon_negOne : FloatCode.canon FloatCode.negOne = FloatCode.ne
   FloatCode.canon_of_bounds ⟨FloatCode.negInf_lt_negOne, by
     have := FloatCode.negOne_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
 
+/-- The finite codes next to `±∞` are canonical. -/
+theorem FloatCode.canon_negInf_succ : FloatCode.canon (FloatCode.negInf + 1) = FloatCode.negInf + 1 :=
+  FloatCode.canon_of_bounds ⟨by omega, by
+    have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
+
+theorem FloatCode.canon_posInf_pred : FloatCode.canon (FloatCode.posInf - 1) = FloatCode.posInf - 1 :=
+  FloatCode.canon_of_bounds ⟨by
+    have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega, by omega⟩
+
+/-- `floor` keeps `-0.0` and the negative NaN: their magnitudes are beyond the
+finite ones. -/
+theorem FloatCode.floor_negZero : FloatCode.floor FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.floor FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+theorem FloatCode.floor_negNan : FloatCode.floor FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.floor FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
 /-- A value is not a double, `-0.0`, the negative NaN, or a double equal to its
 canonical code: the cases of a generated proof's argument, each double's with
-its canonical code. -/
+its canonical code (a canonical one apart from the other two, with a canonical
+`floor`). -/
 theorem Value.float_cases (x : Value) : (∀ c, x ≠ .float c) ∨
     (x = .float FloatCode.negZero ∧ FloatCode.canon FloatCode.negZero = 0) ∨
     (x = .float FloatCode.negNan ∧ FloatCode.canon FloatCode.negNan = FloatCode.nan) ∨
-    ∃ c, x = .float c ∧ FloatCode.canon c = c := by
+    ∃ c, x = .float c ∧ FloatCode.canon c = c ∧ c ≠ FloatCode.negZero ∧ c ≠ FloatCode.negNan ∧
+      FloatCode.canon (FloatCode.floor c) = FloatCode.floor c := by
   cases x with
   | float c =>
     by_cases h : c = FloatCode.negZero
     · exact .inr (.inl ⟨by rw [h], FloatCode.canon_negZero'⟩)
     · by_cases h' : c = FloatCode.negNan
       · exact .inr (.inr (.inl ⟨by rw [h'], FloatCode.canon_negNan'⟩))
-      · refine .inr (.inr (.inr ⟨c, rfl, ?_⟩))
-        have e0 : ¬ c = fp64.negZero := h
+      · have e0 : ¬ c = fp64.negZero := h
         have e1 : ¬ c = fp64.negNan := h'
-        simp [FloatCode.canon, FloatFormat.canon, e0, e1]
+        have hc : FloatCode.canon c = c := by simp [FloatCode.canon, FloatFormat.canon, e0, e1]
+        exact .inr (.inr (.inr ⟨c, rfl, hc, h, h', FloatCode.canon_floor hc⟩))
   | _ => exact .inl fun _ h => by cases h
 
 /-! ## Agreeing outcomes -/

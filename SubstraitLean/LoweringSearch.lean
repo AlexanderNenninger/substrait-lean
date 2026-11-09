@@ -175,6 +175,7 @@ def samples : List Value :=
   [.null, .bool true, .bool false, .int 0, .int 1, .int (-1), .int 2, .int (-2), .int 7,
    .int (-7), .int (-(2 ^ 63)), .int (2 ^ 63 - 1), .float 0, .float 1, .float (-1),
    .float FloatCode.nan, .float FloatCode.posInf, .float FloatCode.negInf,
+   .float FloatCode.negZero, .float FloatCode.negNan,
    .float (FloatCode.ofFloat 1.5), .float (FloatCode.ofFloat (-2.5)), .date 0, .ts 0, .tod 0,
    .dec 2 150, .str "", .str "a", .list [], .list [.int 1], .struct []]
 
@@ -388,13 +389,16 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
     | (simp only [$u,*]; (repeat' split) <;> simp_all [$u,*])))
 
 /-- One argument's split for `templateCases`. -/
-syntax "split3 " ident ident : tactic
+syntax "split3 " ident ident ident : tactic
 macro_rules
-  | `(tactic| split3 $x $h) => `(tactic|
-      (rcases Value.float_cases $x with hx | ⟨hx, $h:ident⟩ | ⟨hx, $h:ident⟩ | ⟨c, hx, $h:ident⟩ <;>
+  | `(tactic| split3 $x $h $f) => `(tactic|
+      (rcases Value.float_cases $x with hx | ⟨hx, $h:ident⟩ | ⟨hx, $h:ident⟩ | ⟨c, hx, $h:ident, hz, hn, $f:ident⟩ <;>
         first
-          | subst hx
-          | (cases $x:ident <;> (try exact absurd rfl (hx _)) <;> have $h:ident : True := trivial)))
+          -- The canonical double (the only branch with `hz`), then the special ones.
+          | (subst hx; revert hz; intro hz)
+          | (subst hx; have $f:ident : True := trivial)
+          | (cases $x:ident <;> (try exact absurd rfl (hx _)) <;> have $h:ident : True := trivial <;>
+              have $f:ident : True := trivial)))
 
 /-- The template tactic's split on the arguments' kinds: one goal per
 constructor of each argument, and a double three ways (`Value.float_cases`):
@@ -402,8 +406,9 @@ constructor of each argument, and a double three ways (`Value.float_cases`):
 the comparisons, which read `canon c`, compute. -/
 def templateCases (unary : Bool) : TermElabM (TSyntax `tactic) :=
   -- `hcx`, `hcy` unhygienic: `templateTac`'s simp sets name them.
-  if unary then `(tactic| (rename_i x; split3 x $(mkIdent `hcx)))
-  else `(tactic| (rename_i x y; split3 x $(mkIdent `hcx) <;> split3 y $(mkIdent `hcy)))
+  if unary then `(tactic| (rename_i x; split3 x $(mkIdent `hcx) $(mkIdent `hfx)))
+  else `(tactic| (rename_i x y; split3 x $(mkIdent `hcx) $(mkIdent `hfx) <;>
+    split3 y $(mkIdent `hcy) $(mkIdent `hfy)))
 
 /-- The tactic for a template: evaluate the guard's functions (`natives`, the
 engine's, and the reference's, and the lemmas `extra`), split on the
@@ -427,8 +432,8 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     ``Lowering.beq_int, ``UnFn.issue, ``BinFn.issue])
   -- Unfolding brings the special codes back: rewrite them to the variables.
   let eqs : Array (TSyntax ``Lean.Parser.Tactic.simpLemma) ←
-    (#[`hP, `hN, `hQ, `hO, `hM, `hZ, `hY, `g1, `g2, `g3, `g4, `g5, `g6, `g7, `g8, `hcx] ++
-      (if unary then #[] else #[`hcy])).mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
+    (#[`hP, `hN, `hQ, `hO, `hM, `hZ, `hY, `g1, `g2, `g3, `g4, `g5, `g6, `g7, `g8, `g9, `g10, `g11, `g12, `hcx, `hfx] ++
+      (if unary then #[] else #[`hcy, `hfy])).mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
   let ref := ref ++ eqs
   let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree] ++ fin2)) ++ eqs
   -- The profile and the reference unfold in stages on each goal the split
@@ -467,6 +472,10 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     have $(mkIdent `g6) := FloatCode.canon_negZero'
     have $(mkIdent `g7) := FloatCode.canon_negNan'
     have $(mkIdent `g8) := FloatCode.canon_zero
+    have $(mkIdent `g9) := FloatCode.canon_negInf_succ
+    have $(mkIdent `g10) := FloatCode.canon_posInf_pred
+    have $(mkIdent `g11) := FloatCode.floor_negZero
+    have $(mkIdent `g12) := FloatCode.floor_negNan
     $[$gens]*
     intros
     simp (config := { decide := true }) only [$pre,*]
@@ -508,7 +517,7 @@ check in parallel, and a change rebuilds its area only. -/
 def areaOf (c : Name) : String :=
   match c.componentsRev.head!.toString with
   | "fmath" => "Math"
-  | "fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb" => "Doubles"
+  | "fadd" | "fsub" | "fmul" | "fdiv" | "fdivIeee" | "fmod" | "fpow" | "fatan2" | "flogb" => "Doubles"
   | "idiv" | "imod" | "fit" | "ipow" => "Integers"
   | "bit" => "Bits"
   | _ => "Other"
@@ -707,10 +716,11 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       let mustE ← mkAppM ``Expr.must #[tmpl]
       let mem (i : Nat) := mkAppM ``Membership.mem #[mustE, toExpr i]
       let strictTy ← if unary then mem 0 else mkAppM ``And #[← mem 0, ← mem 1]
-      -- A hand-written template is unfolded by name: DuckDB's `<<`
-      -- (`SubstraitLean/LoweringDuckDB/Lemmas.lean`), which this module does not import.
+      -- A hand-written template comes with its strictness, by name: DuckDB's
+      -- `<<` (`SubstraitLean/LoweringDuckDB/Lemmas.lean`), which this module
+      -- does not import.
       let named := tmpl.find? (·.isConstOf `Substrait.Lowering.shlTemplate) |>.isSome
-      let strictTac ← if named then `(tactic| simp [Substrait.Expr.must, Lowering.shlTemplate])
+      let strictTac ← if named then `(tactic| exact $(mkIdent `Substrait.Lowering.shlTemplate_must))
         else `(tactic| simp [Substrait.Expr.must])
       let some strict ← prove strictTy strictTac | return none
       let entry ← mkAppM (if unary then ``UnEntry.mk else ``BinEntry.mk)
@@ -749,11 +759,11 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       if let some out := sink then
         unless ps.isEmpty do throwError "{k.label}: a template with parameters cannot be written out"
         let proof := if byHand then s!"intros; apply {hand}" else if unary then "un_tac" else "bin_tac"
-        let strictSrc := if named then "simp [Substrait.Expr.must, Substrait.Lowering.shlTemplate]"
+        let strictSrc := if named then "exact Substrait.Lowering.shlTemplate_must"
           else "simp [Substrait.Expr.must]"
         out.modify (·.push (areaOf k.ctor,
           -- A proof gets the budget the search gave it.
-          (if byHand then "" else if written then "set_option maxHeartbeats 1600000 in\n"
+          (if byHand then "" else if written then "set_option maxHeartbeats 3200000 in\n"
             else "set_option maxHeartbeats 800000 in\n") ++
           s!"theorem {agreeName} : {← ppSource agreeTy} := by\n  {proof}\n\n" ++
           s!"abbrev {tbl ++ k.short} : {← ppSource entryTy} :=\n" ++
@@ -770,11 +780,12 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       | some h => all.filter (fun (c, w) => shownOf c w == h) ++ all.filter (fun (c, w) => shownOf c w != h)
       | none => all
     for (cand, written) in order do
-      -- A binary template splits on 11 kinds of each argument (#923): a
-      -- candidate that passes the samples gets four times the default, a
-      -- hand-written schema, one proof rather than one of many, eight.
+      -- A binary template splits on 13 kinds of each argument (#923, a
+      -- double three ways): a candidate that passes the samples gets four
+      -- times the default, a hand-written schema, one proof rather than one
+      -- of many and the heaviest guards (`fpow`'s), sixteen.
       let budget (ctx : Core.Context) :=
-        { ctx with maxHeartbeats := ctx.maxHeartbeats * (if written then 8 else 4) }
+        { ctx with maxHeartbeats := ctx.maxHeartbeats * (if written then 16 else 4) }
       let how ← tryCatchRuntimeEx
         (withTheReader Core.Context budget (withCurrHeartbeats (attempt cand written)))
         fun _ => pure none
