@@ -50,12 +50,13 @@ from sverify._scan import Native, Resident, Scan
 from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
 
-Engine = Literal["duckdb", "polars", "spark"]
-"""The engines sverify 1.x supports. A `Connection` runs plans on DuckDB and
-Polars; `sverify.engines.run` and `Node.refresh` also run them on Spark.
-`"datafusion"` is accepted where a `Connection` runs plans: an optional
-engine, outside the 1.x promise (`docs/stability.md`)."""
-ENGINES: tuple[Engine, ...] = _engines.LOCAL  # type: ignore[assignment] - names of `Engine`
+Engine = str
+"""An engine's name, as its plugin registers it (`sverify.profiles`):
+`"duckdb"`, `"polars"`, `"spark"`, and any installed one. A `Connection` runs
+plans on the local ones (`ENGINES`, and DataFusion, an optional engine outside
+the 1.x promise, `docs/stability.md`); `sverify.engines.run` and
+`Node.refresh` also run them on Spark."""
+ENGINES: tuple[Engine, ...] = _engines.LOCAL
 """The engines a `Connection` runs plans on: `"duckdb"` (the default) and
 `"polars"`. Loop over it to run a plan on each, as the tests do.
 `sverify.engines.run` also takes `"spark"` or a Spark session."""

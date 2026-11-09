@@ -153,6 +153,10 @@ class ProfilePlugin:
     guard_free_theorem: str = ""
     """The theorem that covers `run_tables(..., guard_free=True)`, as the
     checker names it (`"guard_free_theorem"`); empty: no guard-free run."""
+    profile: bool = False
+    """The checker has the engine's profile, and a plan may be verified under
+    it (`verify(semantics=engine)`): a `--contract` request names it
+    (`"profile"`). False for an engine that only runs plans or writes SQL."""
     fallbacks: Callable[[Mapping[str, Any], Mapping[str, Any]], Sequence[str]] | None = None
     """The nodes of a plan (Lean's written form, parsed) the engine would run
     outside its chosen executor over these tables (Polars's in-memory nodes

@@ -157,6 +157,7 @@ def _dialect() -> Any:
 PLUGIN = ProfilePlugin(
     "spark",
     title="Spark",
+    profile=True,
     translation="sverify's Spark SQL writer, with shims where Spark differs from the "
     "reference, proved against Spark's facts (Rel.spark_sound) and tested against "
     "the reference",

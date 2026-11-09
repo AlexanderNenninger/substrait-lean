@@ -78,7 +78,7 @@ from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Literal, get_args
+from typing import Any, Literal
 
 import ibis
 import ibis.expr.operations as ops
@@ -195,9 +195,10 @@ type Policies = dict[str, dict[str, set[Policy | None]]]
 states the condition (None: unset)."""
 
 
-#: The profiles the checker is asked for by name (`"profile"` in a
-#: `--contract` request): those beyond the reference and DuckDB's lift.
-_PROFILE_REQUESTS = frozenset(get_args(Semantics)) - {"reference", "duckdb"}
+#: The semantics a plan is verified under besides the installed profiles:
+#: the reference, and DuckDB's, reached through its SQL lift until the checker
+#: evaluates under DuckDB's run profile (#271, #1189).
+_LIFTED = ("reference", "duckdb")
 
 
 def _expr_semantics(transform: Transform) -> Semantics:
@@ -214,30 +215,29 @@ def _expr_semantics(transform: Transform) -> Semantics:
     return "duckdb" if sems == {"duckdb"} else "reference"
 
 
-def _outside_profiles() -> frozenset[str]:
-    """The installed profiles from outside sverify (`sverify.profiles`): the
-    plugins that carry their profile's versions. sverify's own profiles are
-    the checker's."""
+def _profile_requests() -> frozenset[str]:
+    """The profiles the checker is asked for by name (`"profile"` in a
+    `--contract` request): every installed engine's that has one
+    (`ProfilePlugin.profile`)."""
     from sverify import profiles
 
-    return frozenset(e for e, p in profiles.plugins().items() if p.versions)
+    return frozenset(e for e, p in profiles.plugins().items() if p.profile)
 
 
-def _profile_requests() -> frozenset[str]:
-    """`_PROFILE_REQUESTS`, with the installed profiles from outside sverify."""
-    return _PROFILE_REQUESTS | _outside_profiles()
+def semantics_names() -> tuple[str, ...]:
+    """The semantics `verify` takes: the reference, DuckDB's (through its
+    lift) and each installed profile."""
+    return (*_LIFTED, *sorted(_profile_requests() - set(_LIFTED)))
 
 
 def _checked_semantics(semantics: str) -> Semantics:
-    if semantics in _outside_profiles():
-        return semantics  # type: ignore[return-value]
-    if semantics not in get_args(Semantics):
-        named = ", ".join(map(repr, get_args(Semantics)))
+    if semantics not in semantics_names():
+        named = ", ".join(map(repr, semantics_names()))
         raise ValueError(
-            f"semantics must be one of {named} or an installed engine profile "
-            f"(sverify.profiles), not {semantics!r}"
+            f"semantics must be one of {named} (each installed engine profile, "
+            f"sverify.profiles), not {semantics!r}"
         )
-    return semantics  # type: ignore[return-value]
+    return semantics
 
 
 def _warning_text(error: VerificationError) -> str:
