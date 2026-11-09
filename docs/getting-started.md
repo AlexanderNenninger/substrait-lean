@@ -94,7 +94,7 @@ print(unit_prices.report)
 # ensures unique(id): proved
 ```
 
-The [guide](guide.md#contracts) has the rest of the report and what
+[How to](tasks.md#contracts) has the rest of the report and what
 happens when a postcondition doesn't follow.
 
 ## 2. SQL through `sv.verify`
@@ -195,7 +195,7 @@ SQL's `//` truncates under the reference and Polars's integer division floors,
 so the translation writes a shim, proved in Lean
 (`SubstraitLean/PolarsShims.lean`). Ibis's `//` is `FloorDivide` and floors under
 every semantics, and its `%` truncates under the reference
-([the table](guide.md#integer-division-in-ibis-and-sql)).
+([the table](tasks.md#integer-division-in-ibis-and-sql)).
 The [realizability table](realizability.md) lists every option's class on
 each engine.
 
@@ -463,7 +463,7 @@ except ExportError as e:
 `"apply"`, the default, rewrites the plan so that every conforming consumer
 gives the reference's result; `"annotate"` leaves the plan as written and
 ships the choice as an assumption; `"refuse"` refuses. The
-[guide](guide.md#exporting-to-substrait) lists what the export carries.
+[How to](tasks.md#exporting-to-substrait) lists what the export carries.
 
 ## Three complete jobs
 
@@ -495,7 +495,7 @@ The most common, and what sverify does about each:
 | Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
-| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, and DataFusion merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](guide.md#guards)); a constant that raises makes the whole plan raise |
+| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, and DataFusion merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](tasks.md#guards)); a constant that raises makes the whole plan raise |
 | NULL ordering | DataFusion, PostgreSQL and Snowflake put NULLs last ascending and first descending, DuckDB last both ways, Spark first ascending, a Polars sort first | every `ORDER BY` says where NULLs go |
 
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
@@ -505,14 +505,16 @@ against the model, and its section 8 checks DataFusion as a backend.
 
 ## How it works, in brief
 
+An overview, in four steps; [trusted-base.md](trusted-base.md) says
+exactly what is proved and what each result rests on.
+
 1. A transform's Ibis expression, or its SQL, becomes a Substrait plan:
    Ibis through a producer sverify ships, SQL through sverify's own lift.
 2. `substrait-check`, the checker written in Lean, reads the plan into its
    model of what a plan means (`Rel.eval`, under the reference semantics)
    and proves the contract, the absence of runtime errors and the plan's
    bound on doubles, or says why it can't. The theorems behind each claim
-   are kernel-checked; what they rest on beyond that is listed in
-   [trusted-base.md](trusted-base.md).
+   are checked by Lean's kernel.
 3. For a refresh, the checker derives a delta plan, proved equal to a full
    recompute (`Rel.delta_correct`), which runs on the inserts and deletes
    alone.
@@ -529,7 +531,7 @@ what a plan means, row by row.
 * The [tour](../README.md#the-tour): six notebooks, three complete jobs and
   three guides, to contracts, to pipelines and engines, and to running in
   production.
-* The [how-to guide](guide.md): one section per task, from the command line
+* [How to](tasks.md): one section per task, from the command line
   to credentials, OpenLineage and ODCS.
 * The [API reference](https://alexandernenninger.github.io/substrait-lean/reference/):
   every public function and class.

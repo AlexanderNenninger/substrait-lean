@@ -78,7 +78,7 @@ SQL string ─► SQLGlot lift ────────────────�
   steps, each a step up: contracts, SQL, inferred preconditions, routes,
   tolerances, reproducible sinks, engine profiles and Substrait's own
   semantics.
-* [docs/guide.md](docs/guide.md): one section per task, from contracts to
+* [docs/tasks.md](docs/tasks.md): one section per task, from contracts to
   Delta and Iceberg pipelines.
 * [docs/how-it-works.md](docs/how-it-works.md): the checker, incremental
   maintenance, the producers and engines, what is proved and what is trusted.
@@ -168,7 +168,7 @@ and Spark tables have no row order for FETCH or for the ties of a sort or a
 window. A `SUM` or `AVG` of doubles runs natively on every engine, within the
 plan's bound of the reference's correctly rounded sum
 ([D25](docs/core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)). See
-[Engines and SQL](docs/guide.md#engines-and-sql).
+[Engines and SQL](docs/tasks.md#engines-and-sql).
 
 ## Development
 

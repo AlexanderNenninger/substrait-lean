@@ -43,8 +43,9 @@ release on PyPI.
 
 | Page | Job | Site |
 |---|---|---|
-| [guide.md](guide.md) | One section per task: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
+| [tasks.md](tasks.md) | One section per task: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
 | [examples.md](examples.md) | Moved: a list of links to the steps of getting-started.md | |
+| [guide.md](guide.md) | Moved: each section links to its home in getting-started.md or tasks.md | |
 
 ## Reference
 
@@ -84,8 +85,8 @@ release on PyPI.
 | Topic | Home |
 |---|---|
 | Which engines sverify supports | [stability.md, Engines](stability.md#engines) |
-| What refresh maintains incrementally | [guide.md, Nodes](guide.md#nodes-composing-storing-refreshing) |
-| Routes and classes, for users | [guide.md, Routes, classes and profiles](guide.md#routes-classes-and-profiles) |
+| What refresh maintains incrementally | [tasks.md, Nodes](tasks.md#nodes-composing-storing-refreshing) |
+| Routes and classes, for users | [tasks.md, Routes, classes and profiles](tasks.md#routes-classes-and-profiles) |
 | What a plan means | [reference-semantics.md](reference-semantics.md) |
 | What an Ibis expression means | [reference-semantics.md, The Ibis frontend](reference-semantics.md#the-ibis-frontend) |
 | How engine facts are judged | [characterization/README.md](../characterization/README.md) |

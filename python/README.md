@@ -303,7 +303,7 @@ to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.Uns
   are maintained from the changes. Another aggregate recomputes only the
   groups a batch touches, and a window only the partitions it touches;
   anything else is recomputed and diffed
-  ([what refresh maintains](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+  ([what refresh maintains](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#nodes-composing-storing-refreshing)).
 * `sverify.io` has Delta, Iceberg and in-memory sources and sinks, and
   base classes for your own: a `Source` implements `read(since)`
   (`from_query`, `from_frame` and `from_files` build one), a `Sink`
@@ -325,7 +325,7 @@ Refused for now: correlated scalar subqueries, unbound parameters
 `sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
 marks ✗. The repository has
-[a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md), [getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md),
+[a how-to page](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), [getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md),
 the Ibis coverage table in its README, and
 [what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 
@@ -333,7 +333,7 @@ the Ibis coverage table in its README, and
 
 * `SVERIFY_CHECKER`: path to a `substrait-check` binary that replaces the
   bundled one, for example your own `lake build`. The guide lists every
-  variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#environment-variables)).
+  variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#environment-variables)).
 * DataFusion is an optional engine, outside the 1.x promise, and not in the `all`
   extra. It is pinned to 51, because Ibis 12's DataFusion backend doesn't
   connect to later versions.
