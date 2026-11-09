@@ -114,9 +114,9 @@ def test_the_map_lists_every_page_once():
             assert (ROOT / "docs" / target).resolve().exists(), target
 
 
-def test_the_examples_page_is_docs_examples(pages):
+def test_the_examples_page_is_getting_started(pages):
     page = pages["examples/examples.md"]
-    assert page.startswith('---\ntitle: "Examples"')
+    assert page.startswith('---\ntitle: "Getting started"')
     assert "## 8. Substrait's own semantics" in page
 
 

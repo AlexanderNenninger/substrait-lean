@@ -79,11 +79,12 @@ SQL string ─► SQLGlot lift ────────────────�
 
 ## Documents
 
-* [docs/guide.md](docs/guide.md): what sverify does and how to use it,
-  from contracts to Delta and Iceberg pipelines.
-* [docs/examples.md](docs/examples.md): ten short examples, each a step
-  up: contracts, SQL, inferred preconditions, routes, tolerances,
-  reproducible sinks, engine profiles and Substrait's own semantics.
+* [docs/getting-started.md](docs/getting-started.md): the install and ten
+  steps, each a step up: contracts, SQL, inferred preconditions, routes,
+  tolerances, reproducible sinks, engine profiles and Substrait's own
+  semantics.
+* [docs/tasks.md](docs/tasks.md): one section per task, from contracts to
+  Delta and Iceberg pipelines.
 * [docs/how-it-works.md](docs/how-it-works.md): the checker, incremental
   maintenance, the producers and engines, what is proved and what is trusted.
 * [docs/reference-semantics.md](docs/reference-semantics.md): what `Rel.eval`
@@ -177,7 +178,7 @@ and Spark tables have no row order for FETCH or for the ties of a sort or a
 window. A `SUM` or `AVG` of doubles runs natively on every engine, within the
 plan's bound of the reference's correctly rounded sum
 ([float-bounds.md](docs/float-bounds.md)). See
-[Engines and SQL](docs/guide.md#engines-and-sql).
+[Engines and SQL](docs/tasks.md#engines-and-sql).
 
 ## Development
 

@@ -78,7 +78,7 @@ which keep old readers and old data working:
   neither is used again.
 - The manifest, a `google.protobuf.Struct`, follows the rules of the JSON
   formats above. Its keys are in
-  [the guide](guide.md#exporting-to-substrait).
+  [the guide](tasks.md#exporting-to-substrait).
 - `sv.Report.from_substrait` reads every earlier 1.x export and proves its contract
   again; for an export of a proved plan the report is proved.
 
@@ -155,7 +155,7 @@ pages link here. The reference is Lean's reference profile
 ([reference semantics](reference-semantics.md)), one of the profiles that
 refine the core ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)), and an engine runs a plan
 by a route that the checker justifies against it
-([routes, classes and profiles](guide.md#routes-classes-and-profiles)).
+([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
 
 | Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Translation from the reference | In the 1.x promise |
 |---|---|---|---|---|---|
