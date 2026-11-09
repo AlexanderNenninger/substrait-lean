@@ -23,6 +23,8 @@ on:
       - engines/*/src/**
       - python/src/sverify/profiles.py
       - python/scripts/check_packages.py
+      - python/scripts/notebooks_from_wheels.py
+      - python/scripts/publish_notebooks.py
       - lean-toolchain
       - lakefile.lean
       - .github/workflows/wheels.yml
@@ -341,6 +343,67 @@ jobs:
           dbt --no-use-colors deps --project-dir shop --profiles-dir shop
           dbt --no-use-colors compile --project-dir shop --profiles-dir shop
           sverify-dbt check shop --selectors
+
+  # The tour notebooks as molab runs them, before a release: each header
+  # rewritten as `publish-notebooks` rewrites it (pinned to this version, no
+  # `../python` source), resolving sverify, the engine packages and
+  # sverify-dbt from this run's wheels (`notebooks_from_wheels.py`), and run
+  # in its own sandbox, one job per notebook. A missing extra fails here.
+  notebook-list:
+    needs: [nightly]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      notebooks: ${{ steps.list.outputs.notebooks }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          echo "notebooks=$(cd notebooks && ls [0-9]*.py | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+
+  notebooks-wheels:
+    needs: [nightly, build, build-dbt, notebook-list]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        notebook: ${{ fromJSON(needs.notebook-list.outputs.notebooks) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-ubuntu-latest
+          path: wheels/sverify
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
+          path: wheels/engines
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-dbt
+          path: wheels/dbt
+      - name: Pin the notebook to this run's wheels
+        env:
+          NOTEBOOK: ${{ matrix.notebook }}
+        run: |
+          python3 python/scripts/notebooks_from_wheels.py \
+            --wheels wheels/sverify wheels/engines wheels/dbt -- "notebooks/$NOTEBOOK"
+          sed -n '1,/^# \/\/\/$/p' "notebooks/$NOTEBOOK"
+      - name: Run it in its own sandbox
+        working-directory: notebooks
+        env:
+          NOTEBOOK: ${{ matrix.notebook }}
+        run: uvx marimo export html --sandbox "$NOTEBOOK" -o "$RUNNER_TEMP/${NOTEBOOK%.py}.html"
 
   # The wheel is tagged `py3-none-<platform>`, so it installs on every Python
   # from 3.12 on. Test the very wheel `build` made (no rebuild) on the newer
