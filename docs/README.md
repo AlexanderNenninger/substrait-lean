@@ -61,6 +61,7 @@ release on PyPI.
 
 | Page | Job | Site |
 |---|---|---|
+| [core-and-profiles.md](core-and-profiles.md) | The core, an abstract machine, and the profiles that narrow it: the reference, each engine's, Substrait's | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers, what is proved | Design |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |

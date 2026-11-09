@@ -599,6 +599,11 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
         ("docs/stability.md", "Stability in 1.x", "The formats, proofs, API and engines 1.x keeps"),
     ],
     "design": [
+        (
+            "docs/core-and-profiles.md",
+            "The core and the profiles",
+            "The abstract machine, and the profiles that narrow it",
+        ),
         ("docs/how-it-works.md", "How it works", "The checker, incremental views and the engines"),
         (
             "docs/engine-profiles.md",
