@@ -23,6 +23,7 @@ from typing import Any
 
 from sverify._unsupported import ISSUE_271, RANGE_GUARD
 from sverify.profiles import ProfilePlugin, Setting
+from sverify_spark.store import ArrowStore
 
 #: The settings Spark's profile assumes.
 SETTINGS: tuple[Setting, ...] = (
@@ -159,6 +160,7 @@ def _dialect() -> Any:
 
 PLUGIN = ProfilePlugin(
     "spark",
+    store=ArrowStore,
     title="Spark",
     profile=True,
     translation="sverify's Spark SQL writer, with shims where Spark differs from the "
