@@ -26,8 +26,10 @@ instead.
 
 - The verdict. `report.verdict` is the first line: `proved`, or
   `NOT proved:` and what is missing, counted. `report.proved` is true when
-  every postcondition holds, no runtime error is possible and no needed
-  precondition is missing.
+  every postcondition holds, under the observation where `ensures` states
+  one, no runtime error is possible, no needed precondition is missing, the
+  chosen tolerance is one some engine's doubles actually meet, and, under
+  `semantics="substrait"`, the reference's proof carries over.
 - The assumptions. `report.requires` lists the preconditions per input
   table, the ones you stated and the ones sverify inferred and assumed;
   `report.assumed` the `SUM`s assumed to fit their type, which the run
