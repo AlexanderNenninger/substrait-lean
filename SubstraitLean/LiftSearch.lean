@@ -510,8 +510,10 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.ref_itof]
   `(tactic| (
     $intro:tactic
-    $split3:tactic
+    -- A NULL argument stays whole: both sides are NULL before a double's
+    -- codes are split.
     all_goals try (simp only [$cheap,*]; exact Outcome.agree_refl _)
+    $split3:tactic
     all_goals have := FloatCode.negInf_lt_zero
     all_goals have := FloatCode.zero_lt_posInf
     all_goals have := FloatCode.posInf_lt_nan
