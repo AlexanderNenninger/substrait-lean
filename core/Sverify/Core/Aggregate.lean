@@ -18,7 +18,7 @@ and the others are NULL. Checked against DataFusion 51:
 
 * `SUM` of integers wraps around modulo 2⁶⁴; since wrapping addition is
   associative, the result is the true sum unless that leaves 64 bits.
-  `SUM` here is the true sum, and `SubstraitLean/Safety.lean` warns.
+  `SUM` here is the true sum, and `analysis/Sverify/Analysis/Safety.lean` warns.
 * `SUM` and `AVG` of doubles round, in an order DataFusion does not promise;
   here they add in list order with native floats. `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.
@@ -124,10 +124,11 @@ def Measure.kept (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : Relat
   | some c => rows.filter fun row => (c.eval row I).isTrue
 
 /-- The values a measure aggregates: its argument on the kept rows, without
-NULLs, and without repetitions for `DISTINCT`. -/
+NULLs, and without repetitions for `DISTINCT` (up to canonical codes,
+`distinctVals`). -/
 def Measure.inputs (m : Measure) (rows : Relation) (I : Impl := Impl.lean) : List Value :=
   let vs := ((m.kept rows I).map fun row => m.arg.eval row I).filter (· != .null)
-  if m.distinct then dedup vs else vs
+  if m.distinct then distinctVals vs else vs
 
 /-- The sum of the integers among `vs`, and of the unscaled values of its
 decimals (a column has one scale). -/
@@ -301,7 +302,8 @@ def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
     match nonFinite vs with
     | some _ => .float FloatCode.nan
     | none =>
-      let cs := floatsOf vs
+      -- The doubles by their canonical codes (D31).
+      let cs := (floatsOf vs).map FloatCode.canon
       let d := if sample then cs.length - 1 else cs.length
       let N := comomentNum cs
       if sqrt then .float (FloatCode.posCode (FloatCode.sqrtMag N.toNat (cs.length * d)))
@@ -309,7 +311,7 @@ def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
 
 /-- The pairs of doubles among `vs` (`BinFn.pair`'s lists). -/
 def pairsOf (vs : List Value) : List (Int × Int) :=
-  vs.filterMap fun | .list [.float a, .float b] => some (a, b) | _ => none
+  vs.filterMap fun | .list [.float a, .float b] => some (FloatCode.canon a, FloatCode.canon b) | _ => none
 
 /-- `COVAR_SAMP` / `COVAR_POP` of the pairs among `vs`, D30: the exact
 co-moment `C = Σxy − Σx·Σy/n` over `d`, rounded once; NULL without pairs
@@ -347,7 +349,8 @@ theorem pairsOf_perm {vs ws : List Value} (h : vs.Perm ws) : (pairsOf vs).Perm (
 /-- D30: a variance is a function of the multiset of values. -/
 theorem varOf_perm (sample sqrt : Bool) {vs ws : List Value} (h : vs.Perm ws) :
     varOf sample sqrt vs = varOf sample sqrt ws := by
-  have hi : (floatsOf vs).Perm (floatsOf ws) := h.filterMap _
+  have hi : ((floatsOf vs).map FloatCode.canon).Perm ((floatsOf ws).map FloatCode.canon) :=
+    (h.filterMap _).map _
   simp only [varOf, h.length_eq, nonFinite_perm h, comomentNum_perm hi, hi.length_eq]
 
 theorem covOf_perm (sample : Bool) {vs ws : List Value} (h : vs.Perm ws) :
@@ -366,8 +369,9 @@ theorem corrOf_perm {vs ws : List Value} (h : vs.Perm ws) : corrOf vs = corrOf w
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
 
-/-- The values in the order of `ORDER BY` (`Value.le`). -/
-def sortVals (vs : List Value) : List Value := vs.mergeSort fun a b => a.le b
+/-- The values in the order of `ORDER BY` (`Value.le`), tied doubles by
+their codes (`Value.leT`), so the order doesn't depend on the input's. -/
+def sortVals (vs : List Value) : List Value := vs.mergeSort fun a b => a.leT b
 
 /-- The 0-based position of `QUANTILE_DISC`'s value among `n` values in order,
 for `q = num / 10 ^ scale`: `⌈n·q⌉ − 1`, and the first for `n·q ≤ 1`. -/
@@ -391,18 +395,17 @@ def contNeighbours (num scale : Nat) (s : List Value) : Option (Int × Int × In
     (intAt s (p / d + 1)).map fun h =>
       (l, h, FloatCode.fdiv (FloatCode.ofInt (p % d)) (FloatCode.ofInt d))
 
-/-- `r` kept between `l` and `h`. -/
-def clampTo (l h r : Int) : Int := min (max r l) h
-
 /-- `l·(1 − w) + h·w` with native doubles, as DuckDB interpolates doubles,
-kept between `l` and `h`: rounding may leave them by an ulp. `−∞` with
-`+∞` gives NaN, which the clamp makes `+∞`; the reference raises there
-(`AggFn.makesNan`, #561), so no verified plan sees that value
+kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
+D31): rounding may leave them by an ulp. `−∞` with `+∞` gives NaN, which
+the clamp makes `+∞`; the reference raises there (`AggFn.makesNan`, #561),
+so no verified plan sees that value
 (`characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
 def interpolate (l h w : Int) : Int :=
-  clampTo l h (FloatCode.fadd
-    (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
-    (FloatCode.fmul h w))
+  let r := FloatCode.fadd (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
+    (FloatCode.fmul h w)
+  if FloatCode.canon r < FloatCode.canon l then l
+  else if FloatCode.canon h < FloatCode.canon r then h else r
 
 /-- `QUANTILE_CONT` of the doubles `s` in order. -/
 def contValue (num scale : Nat) (s : List Value) : Value :=
@@ -414,7 +417,8 @@ def contValue (num scale : Nat) (s : List Value) : Value :=
 neighbours, else a double between them. -/
 def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
   match contNeighbours num scale s with
-  | some (l, h, _) => ∃ c, v = .float c ∧ (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h))
+  | some (l, h, _) => ∃ c, v = .float c ∧
+      (c = l ∨ c = h ∨ (FloatCode.canon l ≤ FloatCode.canon c ∧ FloatCode.canon c ≤ FloatCode.canon h))
   | none => v = .null
 
 /-- The most frequent of `vs`, the first of those that tie. -/
@@ -434,8 +438,8 @@ def AggFn.apply : AggFn → List Value → Value
   | .var sample sqrt, vs => varOf sample sqrt vs
   | .cov sample, vs => covOf sample vs
   | .corr, vs => corrOf vs
-  | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
-  | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
+  | .min, v :: vs => pickFold (fun a b => !a.leT b) v vs
+  | .max, v :: vs => pickFold (fun a b => !a.geT b) v vs
   | .collect, vs => .list vs
   | .pick last, v :: vs => if last then (v :: vs).getLast (List.cons_ne_nil _ _) else v
   | .concat sep, vs => .str (sep.intercalate (vs.map fun | .str s => s | _ => ""))
@@ -467,21 +471,22 @@ theorem Measure.eval_eq {m : Measure} (h : m.fn.sorts = false) (rows : Relation)
 
 def groupKey (gs : List Expr) (row : Row) (I : Impl := Impl.lean) : Row := gs.map (·.eval row I)
 
-/-- The rows of the group with key `k`. -/
+/-- The rows of the group with key `k`: keys are equal up to canonical codes
+(D31). -/
 def groupRows (gs : List Expr) (rows : Relation) (k : Row) (I : Impl := Impl.lean) : Relation :=
-  rows.filter fun row => groupKey gs row I == k
+  rows.filter fun row => (groupKey gs row I).canon == k.canon
 
 /-- `GROUP BY gs` with the measures `ms`, the functions of `I` (Lean's by
 default) in the keys and the measures' arguments. -/
 def aggregateEval (gs : List Expr) (ms : List Measure) (rows : Relation)
     (I : Impl := Impl.lean) : Relation :=
   if gs.isEmpty then [ms.map (·.eval rows I)]
-  else (dedup (rows.map fun row => groupKey gs row I)).map fun k =>
+  else (distinctRows (rows.map fun row => groupKey gs row I)).map fun k =>
     k ++ ms.map (·.eval (groupRows gs rows k I) I)
 
 /-- The groups, one per output row. -/
 def aggGroups (gs : List Expr) (rows : Relation) : List Relation :=
-  if gs.isEmpty then [rows] else (dedup (rows.map (groupKey gs))).map (groupRows gs rows)
+  if gs.isEmpty then [rows] else (distinctRows (rows.map (groupKey gs))).map (groupRows gs rows)
 
 /-! ## Lemmas -/
 
@@ -499,7 +504,7 @@ theorem Measure.mem_inputs {m : Measure} {rows : Relation} {v : Value} (h : v �
     v ≠ .null ∧ ∃ row ∈ rows, m.arg.eval row = v := by
   have h' : v ∈ ((m.kept rows).map m.arg.eval).filter (· != .null) := by
     unfold inputs at h; split at h
-    · exact mem_dedup.mp h
+    · exact canonReps_sub h
     · exact h
   simp only [List.mem_filter, List.mem_map, bne_iff_ne, ne_eq] at h'
   obtain ⟨⟨row, hrow, rfl⟩, hn⟩ := h'
@@ -548,8 +553,17 @@ theorem contNeighbours_mem {num scale : Nat} {s : List Value} {l h w : Int}
         exact ⟨intAt_mem h1, intAt_mem h2⟩
 
 theorem interpolate_between (l h w : Int) :
-    interpolate l h w = h ∨ (l ≤ interpolate l h w ∧ interpolate l h w ≤ h) := by
-  unfold interpolate clampTo; omega
+    interpolate l h w = l ∨ interpolate l h w = h ∨
+      (FloatCode.canon l ≤ FloatCode.canon (interpolate l h w) ∧
+        FloatCode.canon (interpolate l h w) ≤ FloatCode.canon h) := by
+  unfold interpolate
+  generalize FloatCode.fadd _ _ = r
+  by_cases h1 : FloatCode.canon r < FloatCode.canon l
+  · exact .inl (by simp only [h1, ↓reduceIte])
+  · by_cases h2 : FloatCode.canon h < FloatCode.canon r
+    · exact .inr (.inl (by simp only [h1, h2, ↓reduceIte]))
+    · refine .inr (.inr ?_)
+      simp only [h1, h2, ↓reduceIte]; omega
 
 theorem contValue_allowed (num scale : Nat) (s : List Value) :
     contAllowed num scale s (contValue num scale s) := by
@@ -561,17 +575,17 @@ theorem contValue_allowed (num scale : Nat) (s : List Value) :
     dsimp only
     split
     · exact ⟨l, rfl, .inl rfl⟩
-    · exact ⟨_, rfl, (interpolate_between l h w).elim (fun e => .inr (.inl e)) (.inr ∘ .inr)⟩
+    · exact ⟨_, rfl, interpolate_between l h w⟩
 
 /-- `QUANTILE_CONT` gives NULL or a double between two of the values. -/
 theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
     (AggFn.quantile true num scale).apply vs = .null ∨ ∃ c l h,
       (AggFn.quantile true num scale).apply vs = .float c ∧ .float l ∈ vs ∧ .float h ∈ vs ∧
-        (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h)) := by
+        (c = l ∨ c = h ∨ (FloatCode.canon l ≤ FloatCode.canon c ∧ FloatCode.canon c ≤ FloatCode.canon h)) := by
   cases vs with
   | nil => exact .inl rfl
   | cons v vs =>
-    have hp := List.mergeSort_perm (v :: vs) (fun a b => a.le b)
+    have hp := List.mergeSort_perm (v :: vs) (fun a b => a.leT b)
     have ha := contValue_allowed num scale (sortVals (v :: vs))
     show contValue num scale (sortVals (v :: vs)) = .null ∨ ∃ c l h,
       contValue num scale (sortVals (v :: vs)) = .float c ∧ _
@@ -597,7 +611,7 @@ theorem AggFn.apply_disc (num scale : Nat) (vs : List Value) :
     cases h : (sortVals (v :: vs))[discIndex (v :: vs).length num scale]? with
     | none => exact .inl rfl
     | some w =>
-      exact .inr ((List.mergeSort_perm (v :: vs) (fun a b => a.le b)).mem_iff.mp
+      exact .inr ((List.mergeSort_perm (v :: vs) (fun a b => a.leT b)).mem_iff.mp
         (List.mem_of_getElem? h))
 
 /-- `MODE` gives one of the values (or NULL). -/
@@ -688,43 +702,46 @@ theorem AggFn.apply_iavg_between {vs : List Value} (hne : intsOf vs ≠ []) :
 theorem Value.le_refl (a : Value) : a.le a = true := by
   rcases Value.le_total a a with h | h <;> exact h
 
-theorem pickFold_min_le : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
-    (pickFold (fun a b => !a.le b) v vs).le x = true
-  | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
-  | v, w :: ws, x, hx => by
-    simp only [pickFold, List.foldl_cons]
-    have ih := pickFold_min_le (if !v.le w then w else v) ws
-    simp only [pickFold] at ih
-    have hacc : (if !v.le w then w else v).le v = true ∧ (if !v.le w then w else v).le w = true := by
-      cases h : v.le w
-      · simp only [Bool.not_false, ite_true]
-        exact ⟨(Value.le_total v w).resolve_left (by simp [h]), Value.le_refl _⟩
-      · simp only [Bool.not_true, Bool.false_eq_true, ite_false]; exact ⟨Value.le_refl _, h⟩
-    have hm := ih _ (List.mem_cons_self ..)
-    simp only [List.mem_cons] at hx
-    rcases hx with rfl | rfl | hx
-    · exact Value.le_trans _ _ _ hm hacc.1
-    · exact Value.le_trans _ _ _ hm hacc.2
-    · exact ih x (by simp [hx])
+/-- `m` is the least element of `l` in the order `le`. -/
+def IsLeast {α : Type} (le : α → α → Bool) (m : α) (l : List α) : Prop :=
+  m ∈ l ∧ ∀ w ∈ l, le m w = true
 
-theorem pickFold_max_ge : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
-    x.le (pickFold (fun a b => !b.le a) v vs) = true
-  | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
-  | v, w :: ws, x, hx => by
-    simp only [pickFold, List.foldl_cons]
-    have ih := pickFold_max_ge (if !w.le v then w else v) ws
-    simp only [pickFold] at ih
-    have hacc : v.le (if !w.le v then w else v) = true ∧ w.le (if !w.le v then w else v) = true := by
-      cases h : w.le v
-      · simp only [Bool.not_false, ite_true]
-        exact ⟨(Value.le_total w v).resolve_left (by simp [h]), Value.le_refl _⟩
-      · simp only [Bool.not_true, Bool.false_eq_true, ite_false]; exact ⟨Value.le_refl _, h⟩
-    have hm := ih _ (List.mem_cons_self ..)
-    simp only [List.mem_cons] at hx
-    rcases hx with rfl | rfl | hx
-    · exact Value.le_trans _ _ _ hacc.1 hm
-    · exact Value.le_trans _ _ _ hacc.2 hm
-    · exact ih x (by simp [hx])
+theorem pickFold_least {le : Value → Value → Bool} (hle : TotalPre le) :
+    ∀ (v : Value) (vs : List Value), IsLeast le (pickFold (fun a b => !le a b) v vs) (v :: vs)
+  | v, [] => ⟨by simp [pickFold], fun w hw => by simp at hw; subst hw; exact hle.refl _⟩
+  | v, w :: vs => by
+    show IsLeast le (pickFold (fun a b => !le a b) (if (!le v w) = true then w else v) vs) (v :: w :: vs)
+    by_cases hp : le v w = true
+    · simp only [hp, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+      obtain ⟨hm, hl⟩ := pickFold_least hle v vs
+      refine ⟨?_, fun x hx => ?_⟩
+      · rcases List.mem_cons.mp hm with h | h
+        · rw [h]; exact List.mem_cons_self
+        · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ h)
+      · simp only [List.mem_cons] at hx
+        rcases hx with rfl | rfl | hx
+        · exact hl _ (by simp)
+        · exact hle.trans _ _ _ (hl v (by simp)) hp
+        · exact hl x (by simp [hx])
+    · have hwv : le w v = true := by
+        have := hle.total v w; simp only [hp, Bool.false_or] at this; exact this
+      have hp' : le v w = false := by simpa using hp
+      simp only [hp', Bool.not_false, ↓reduceIte]
+      obtain ⟨hm, hl⟩ := pickFold_least hle w vs
+      refine ⟨List.mem_cons_of_mem _ hm, fun x hx => ?_⟩
+      simp only [List.mem_cons] at hx
+      rcases hx with rfl | rfl | hx
+      · exact hle.trans _ _ _ (hl w (by simp)) hwv
+      · exact hl _ (by simp)
+      · exact hl x (by simp [hx])
+
+theorem pickFold_min_le (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
+    (pickFold (fun a b => !a.leT b) v vs).le x = true := fun x hx =>
+  Value.le_of_leT ((pickFold_least Value.leT_totalPre v vs).2 x hx)
+
+theorem pickFold_max_ge (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
+    x.le (pickFold (fun a b => !a.geT b) v vs) = true := fun x hx =>
+  Value.le_of_geT ((pickFold_least Value.geT_totalPre v vs).2 x hx)
 
 /-- `MIN` of values is one of them, and at most each of them. -/
 theorem AggFn.apply_min {vs : List Value} {m : Value} (h : AggFn.min.apply vs = m) (hm : m ≠ .null) :
@@ -744,16 +761,54 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     simp only [apply] at h; subst h
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
-theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y := by
-  rw [Value.le_def]; simp [Value.leScalar]
+/-- What the reference allows an aggregate to give on `vs`: its value, or for
+`MIN` and `MAX` another value of the value's class (`-0.0` for `0.0`, the
+negative NaN for the NaN, D31): a member of `vs`, or the class's canonical
+value, which engines emit. `AggFn.apply` picks the raw-least member. -/
+def AggFn.Picks (f : AggFn) (vs : List Value) (v : Value) : Prop :=
+  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v.canonV = (f.apply vs).canonV ∧
+    (v ∈ vs ∨ v = (f.apply vs).canonV))
 
-/-- Two measures of the same argument and filter aggregate the same values
-(`DISTINCT` drops only repetitions). -/
-theorem Measure.mem_inputs_iff {m m' : Measure} (ha : m.arg = m'.arg) (hf : m.filter = m'.filter)
-    (rows : Relation) (v : Value) : v ∈ m.inputs rows ↔ v ∈ m'.inputs rows := by
+theorem AggFn.picks_apply (f : AggFn) (vs : List Value) : f.Picks vs (f.apply vs) := .inl rfl
+
+theorem AggFn.Picks.canon {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v) :
+    v.canonV = (f.apply vs).canonV := by
+  rcases h with rfl | ⟨-, h, -⟩
+  · rfl
+  · exact h
+
+/-- On values alone in their classes, `MIN` and `MAX` have one allowed
+value. -/
+theorem AggFn.Picks.eq {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v)
+    (hlone : ∀ w ∈ vs, w.Lone) : v = f.apply vs := by
+  rcases h with h | ⟨hf, hc, -⟩
+  · exact h
+  · cases vs with
+    | nil =>
+      have hn : (f.apply []) = .null := by rcases hf with rfl | rfl <;> rfl
+      rw [hn] at hc ⊢
+      exact Value.lone_of_ne (by simp) (by simp) (by simp) v hc
+    | cons w ws =>
+      have hmem : f.apply (w :: ws) ∈ w :: ws := by
+        rcases hf with rfl | rfl <;> exact pickFold_mem _ _ _
+      exact hlone _ hmem v hc
+
+theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=
+  Value.le_val .int
+
+/-- Two measures of the same argument and filter aggregate the same values,
+up to canonical codes (`DISTINCT` keeps one member of each class). -/
+theorem Measure.mem_inputs_canon {m m' : Measure} (ha : m.arg = m'.arg) (hf : m.filter = m'.filter)
+    {rows : Relation} {v : Value} (hv : v ∈ m.inputs rows) :
+    ∃ w ∈ m'.inputs rows, w.canonV = v.canonV := by
   have hk : m.kept rows = m'.kept rows := by simp only [Measure.kept, hf]
-  simp only [Measure.inputs, hk, ha]
-  split <;> split <;> simp [mem_dedup]
+  have hv' : v ∈ ((m'.kept rows).map m'.arg.eval).filter (· != .null) := by
+    unfold Measure.inputs at hv; rw [hk, ha] at hv; split at hv
+    · exact canonReps_sub hv
+    · exact hv
+  unfold Measure.inputs; split
+  · exact ⟨_, classRep_mem_canonReps hv', classRep_canon _ _⟩
+  · exact ⟨v, hv', rfl⟩
 
 theorem mem_aggregateEval {gs : List Expr} {ms : List Measure} {rows : Relation} {row : Row}
     (h : row ∈ aggregateEval gs ms rows) :
@@ -766,7 +821,7 @@ theorem mem_aggregateEval {gs : List Expr} {ms : List Measure} {rows : Relation}
     exact ⟨[], rows, by simp [h], fun _ hy => hy, .inl ⟨List.isEmpty_iff.mp hg, rfl⟩⟩
   · simp only [List.mem_map] at h
     obtain ⟨k, hk, rfl⟩ := h
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     exact ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩⟩
 
 /-- `mem_aggregateEval`, and with a grouping, the group has a row. -/
@@ -782,7 +837,7 @@ theorem mem_aggregateEval_nonempty {gs : List Expr} {ms : List Measure} {rows : 
       fun hne => absurd (List.isEmpty_iff.mp hg) hne⟩
   · simp only [List.mem_map] at h
     obtain ⟨k, hk, rfl⟩ := h
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     refine ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩, fun _ => ?_⟩
     exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
 
@@ -800,7 +855,7 @@ theorem mem_aggregateEval_len {gs : List Expr} {ms : List Measure} {rows : Relat
       fun hne => absurd (List.isEmpty_iff.mp hg) hne, Nat.le_refl _⟩
   · simp only [List.mem_map] at h
     obtain ⟨k, hk, rfl⟩ := h
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (canonReps_sub hk)
     refine ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩, fun _ => ?_,
       List.length_filter_le _ _⟩
     exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
@@ -822,7 +877,7 @@ theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
   have hf : (((m.kept rows).map m.arg.eval).filter (· != .null)).length ≤ rows.length :=
     Nat.le_trans (List.length_filter_le _ _) (by simpa using hk)
   unfold Measure.inputs; split
-  · exact Nat.le_trans (dedup_length_le _) hf
+  · exact Nat.le_trans (canonReps_length_le _) hf
   · exact hf
 
 theorem aggregateEval_length {gs : List Expr} {ms : List Measure} {rows : Relation} {row : Row}

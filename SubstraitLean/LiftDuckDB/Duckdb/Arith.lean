@@ -18,175 +18,100 @@ open Substrait
 local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.divInt_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.bigint x →
     Substrait.DuckType.Has Substrait.DuckType.bigint y →
       Substrait.Outcome.Agree
         (Substrait.Expr.evalP Substrait.Profile.reference [x, y]
           (Substrait.Expr.ifThen
-            (Substrait.Expr.un Substrait.UnFn.not
-              (Substrait.Expr.bin Substrait.BinFn.eq
-                (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))
-                (Substrait.Expr.lit (Substrait.Value.float 0))))
-            (Substrait.Expr.bin Substrait.BinFn.fdiv
+            (Substrait.Expr.bin Substrait.BinFn.and
+              (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                (Substrait.Expr.lit (Substrait.Value.int 0)))
+              (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                (Substrait.Expr.lit (Substrait.Value.int 0))))
+            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
+            (Substrait.Expr.bin Substrait.BinFn.fdivIeee
               (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-              (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))
-            (Substrait.Expr.ifThen
-              (Substrait.Expr.un Substrait.UnFn.isNull
-                (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))
-              (Substrait.Expr.lit Substrait.Value.null)
-              (Substrait.Expr.ifThen
-                (Substrait.Expr.un Substrait.UnFn.isNull
-                  (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)))
-                (Substrait.Expr.lit Substrait.Value.null)
-                (Substrait.Expr.ifThen
-                  (Substrait.Expr.bin Substrait.BinFn.eq
-                    (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
-                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
-                  (Substrait.Expr.ifThen
-                    (Substrait.Expr.bin Substrait.BinFn.lt
-                      (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-                      (Substrait.Expr.lit (Substrait.Value.float 0)))
-                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
-                    (Substrait.Expr.ifThen
-                      (Substrait.Expr.bin Substrait.BinFn.lt
-                        (Substrait.Expr.lit (Substrait.Value.float 0))
-                        (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)))
-                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
-                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))))))))
+              (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))))
         (Substrait.DuckFn.eval Substrait.Semantics.duckdb Substrait.DuckFn.divInt [x, y]) := by
   lift_tac2
 
 abbrev Substrait.liftDuckDB.divInt : Substrait.LiftEntry Substrait.Semantics.duckdb Substrait.DuckFn.divInt :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":2,\"options\":[{\"name\":\"on_division_by_zero\",\"preference\":[\"IEEE\"]}],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.ifThen
-  (Substrait.Expr.un Substrait.UnFn.not
-    (Substrait.Expr.bin Substrait.BinFn.eq
-      (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))
-      (Substrait.Expr.lit (Substrait.Value.float 0))))
-  (Substrait.Expr.bin Substrait.BinFn.fdiv
+  ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":2,\"options\":[{\"name\":\"on_division_by_zero\",\"preference\":[\"IEEE\"]}],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"i64\":0}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"i64\":0}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
+  (Substrait.Expr.bin Substrait.BinFn.and
+    (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+      (Substrait.Expr.lit (Substrait.Value.int 0)))
+    (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+      (Substrait.Expr.lit (Substrait.Value.int 0))))
+  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
+  (Substrait.Expr.bin Substrait.BinFn.fdivIeee
     (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-    (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))
-  (Substrait.Expr.ifThen
-    (Substrait.Expr.un Substrait.UnFn.isNull
-      (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))
-    (Substrait.Expr.lit Substrait.Value.null)
-    (Substrait.Expr.ifThen
-      (Substrait.Expr.un Substrait.UnFn.isNull
-        (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)))
-      (Substrait.Expr.lit Substrait.Value.null)
-      (Substrait.Expr.ifThen
-        (Substrait.Expr.bin Substrait.BinFn.eq
-          (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
-        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
-        (Substrait.Expr.ifThen
-          (Substrait.Expr.bin Substrait.BinFn.lt
-            (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-            (Substrait.Expr.lit (Substrait.Value.float 0)))
-          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
-          (Substrait.Expr.ifThen
-            (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
-              (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)))
-            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
-            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))),
+    (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.divInt_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.divInt)
   ((Lean.Json.parse (Substrait.liftDuckDB.divInt).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.divInt).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.divDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →
       Substrait.Outcome.Agree
         (Substrait.Expr.evalP Substrait.Profile.reference [x, y]
           (Substrait.Expr.ifThen
-            (Substrait.Expr.bin Substrait.BinFn.and
-              (Substrait.Expr.bin Substrait.BinFn.or
+            (Substrait.Expr.bin Substrait.BinFn.or
+              (Substrait.Expr.bin Substrait.BinFn.and
+                (Substrait.Expr.bin Substrait.BinFn.or
+                  (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
+                  (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+                (Substrait.Expr.bin Substrait.BinFn.or
+                  (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
+                  (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))
+              (Substrait.Expr.bin Substrait.BinFn.and
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
-                (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
-              (Substrait.Expr.bin Substrait.BinFn.or
+                  (Substrait.Expr.lit (Substrait.Value.float 0)))
                 (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
-                (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                  (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))
+                  (Substrait.Expr.lit (Substrait.Value.float 0)))))
             (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
-            (Substrait.Expr.ifThen
-              (Substrait.Expr.un Substrait.UnFn.not
-                (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-                  (Substrait.Expr.lit (Substrait.Value.float 0))))
-              (Substrait.Expr.bin Substrait.BinFn.fdiv (Substrait.Expr.field 0)
-                (Substrait.Expr.field 1))
-              (Substrait.Expr.ifThen
-                (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 1))
-                (Substrait.Expr.lit Substrait.Value.null)
-                (Substrait.Expr.ifThen
-                  (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 0))
-                  (Substrait.Expr.lit Substrait.Value.null)
-                  (Substrait.Expr.ifThen
-                    (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
-                    (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
-                    (Substrait.Expr.ifThen
-                      (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-                        (Substrait.Expr.lit (Substrait.Value.float 0)))
-                      (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
-                      (Substrait.Expr.ifThen
-                        (Substrait.Expr.bin Substrait.BinFn.lt
-                          (Substrait.Expr.lit (Substrait.Value.float 0)) (Substrait.Expr.field 0))
-                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
-                        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))))))
+            (Substrait.Expr.bin Substrait.BinFn.fdivIeee (Substrait.Expr.field 0)
+              (Substrait.Expr.field 1))))
         (Substrait.DuckFn.eval Substrait.Semantics.duckdb Substrait.DuckFn.divDouble [x, y]) := by
   lift_tac2
 
 abbrev Substrait.liftDuckDB.divDouble : Substrait.LiftEntry Substrait.Semantics.duckdb Substrait.DuckFn.divDouble :=
-  ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":2,\"options\":[{\"name\":\"on_division_by_zero\",\"preference\":[\"IEEE\"]}],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
-  (Substrait.Expr.bin Substrait.BinFn.and
-    (Substrait.Expr.bin Substrait.BinFn.or
+  ⟨"{\"ifThen\":{\"else\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":2,\"options\":[{\"name\":\"on_division_by_zero\",\"preference\":[\"IEEE\"]}],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":0}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":35,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}}", Substrait.Expr.ifThen
+  (Substrait.Expr.bin Substrait.BinFn.or
+    (Substrait.Expr.bin Substrait.BinFn.and
+      (Substrait.Expr.bin Substrait.BinFn.or
+        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
+        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
+      (Substrait.Expr.bin Substrait.BinFn.or
+        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
+        (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
+          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))
+    (Substrait.Expr.bin Substrait.BinFn.and
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
-      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))))
-    (Substrait.Expr.bin Substrait.BinFn.or
+        (Substrait.Expr.lit (Substrait.Value.float 0)))
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
-      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-        (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))))
+        (Substrait.Expr.lit (Substrait.Value.float 0)))))
   (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
-  (Substrait.Expr.ifThen
-    (Substrait.Expr.un Substrait.UnFn.not
-      (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
-        (Substrait.Expr.lit (Substrait.Value.float 0))))
-    (Substrait.Expr.bin Substrait.BinFn.fdiv (Substrait.Expr.field 0) (Substrait.Expr.field 1))
-    (Substrait.Expr.ifThen (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 1))
-      (Substrait.Expr.lit Substrait.Value.null)
-      (Substrait.Expr.ifThen (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 0))
-        (Substrait.Expr.lit Substrait.Value.null)
-        (Substrait.Expr.ifThen
-          (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))
-          (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
-          (Substrait.Expr.ifThen
-            (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.float 0)))
-            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
-            (Substrait.Expr.ifThen
-              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.float 0))
-                (Substrait.Expr.field 0))
-              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
-              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan)))))))),
+  (Substrait.Expr.bin Substrait.BinFn.fdivIeee (Substrait.Expr.field 0) (Substrait.Expr.field 1)),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.divDouble_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.divDouble)
   ((Lean.Json.parse (Substrait.liftDuckDB.divDouble).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.divDouble).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.modDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →
@@ -239,7 +164,7 @@ abbrev Substrait.liftDuckDB.modDouble : Substrait.LiftEntry Substrait.Semantics.
   ((Lean.Json.parse (Substrait.liftDuckDB.modDouble).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.modDouble).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 3200000 in
 theorem Substrait.liftDuckDB.power_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.DuckType.Has Substrait.DuckType.double y →

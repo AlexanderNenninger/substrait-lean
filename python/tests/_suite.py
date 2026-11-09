@@ -37,9 +37,10 @@ queries, long streams, replays), and every Spark test, which starts a JVM.
 test-chaos`). A run collects it only when its `-m` expression names
 `chaos`, so `poe test`, `poe test-all` and CI leave it out.
 
-`SVERIFY_SHARD=2/3` keeps the second of three shards of the selected tests,
-split by a hash of the node id (CI splits `core` this way); the shards
-together are the whole run.
+`SVERIFY_SHARD=2/3` keeps the second of three shards of the selected tests
+(CI splits `core` this way); the shards together are the whole run.
+`shards.json` assigns the tests CI has timed, balanced by their durations
+(`sverify_dev.shard_durations`); the others go by a hash of the node id.
 """
 
 import hashlib
@@ -162,6 +163,18 @@ def backend(item: pytest.Item) -> str:
     return "core"
 
 
+SHARDS = Path(__file__).with_name("shards.json")
+
+
+def _shard_table(n: int) -> dict[str, int]:
+    """`shards.json`'s shard of each test, when it splits `n` ways."""
+    try:
+        table = json.loads(SHARDS.read_text())
+    except (OSError, ValueError):
+        return {}
+    return table["shard"] if table.get("n") == n else {}
+
+
 def _shard(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Keep the shard `SVERIFY_SHARD` names (`i/n`, 1-based) of `items`."""
     spec = os.environ.get("SVERIFY_SHARD")
@@ -171,7 +184,13 @@ def _shard(config: pytest.Config, items: list[pytest.Item]) -> None:
     if not 1 <= i <= n:
         raise pytest.UsageError(f"SVERIFY_SHARD={spec}: expected i/n with 1 <= i <= n")
 
+    # The assignment `sverify_dev.shard_durations` balanced by CI's recorded
+    # durations; a test it doesn't list goes by a hash of its node id.
+    table = _shard_table(n)
+
     def shard(item: pytest.Item) -> int:
+        if (i := table.get(item.nodeid)) is not None:
+            return i
         return int(hashlib.sha256(item.nodeid.encode()).hexdigest(), 16) % n + 1
 
     keep = [item for item in items if shard(item) == i]
@@ -242,3 +261,12 @@ def _polars_plans_stream(monkeypatch: pytest.MonkeyPatch) -> None:
         return collect(lf)
 
     monkeypatch.setattr(polars_engine, "collect", checked)
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Append each test phase's duration to `$SVERIFY_TEST_TIMINGS`, if set:
+    what `sverify_dev.shard_durations` balances the shards by. Each xdist
+    worker appends its own lines."""
+    if path := os.environ.get("SVERIFY_TEST_TIMINGS"):
+        with open(path, "a") as f:
+            f.write(json.dumps({"test": report.nodeid, "s": round(report.duration, 4)}) + "\n")

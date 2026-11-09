@@ -266,7 +266,7 @@ def _sum_assumed(issue: Issue) -> str:
 @dataclass(frozen=True)
 class Issue:
     """Something that may go wrong when the transformation runs
-    (`Rel.mayIssues_sound` in `SubstraitLean/Safety.lean`)."""
+    (`Rel.mayIssues_sound` in `analysis/Sverify/Analysis/Safety.lean`)."""
 
     kind: str
     """"division by zero", "overflow" (an integer result that does not fit its

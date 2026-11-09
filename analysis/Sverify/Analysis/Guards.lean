@@ -1,4 +1,4 @@
-import SubstraitLean.Partition
+import Sverify.Analysis.Partition
 
 /-!
 # Guard elimination
@@ -306,16 +306,19 @@ def Rel.looseExact : Rel → Bool
   | .read _ | .values _ _ => true
   -- `loose` leaves these alone; their inputs must allow guard elimination too.
   | .fetch r _ _ | .window r _ _ _ | .aggregate r _ _ => r.looseSub
-  | .project r _ | .emit r _ | .orderBy r _ | .distinct r => r.looseExact
+  | .project r _ | .emit r _ | .orderBy r _ => r.looseExact
   | .cross a b | .unionAll a b | .join a b .left _ => a.looseExact && b.looseExact
-  | .filter _ _ | .join _ _ .inner _ | .semi _ _ _ _ | .unnest _ _ => false
+  -- `DISTINCT` keeps one member of each class of rows up to canonical codes
+  -- (D31), so as a set its rows can be fewer than its input's.
+  | .filter _ _ | .join _ _ .inner _ | .semi _ _ _ _ | .unnest _ _ | .distinct _ => false
 end
 
 theorem Rel.looseExact_mem {cat : Catalog} :
     ∀ {r : Rel}, r.looseExact = true → ∀ row, row ∈ r.loose.eval cat ↔ row ∈ r.eval cat
   | .read _, _, _ | .values _ _, _, _ | .fetch _ _ _, _, _ | .window _ _ _ _, _, _
   | .aggregate _ _ _, _, _ => .rfl
-  | .filter _ _, h, _ | .join _ _ .inner _, h, _ | .semi _ _ _ _, h, _ | .unnest _ _, h, _ => by
+  | .filter _ _, h, _ | .join _ _ .inner _, h, _ | .semi _ _ _ _, h, _ | .unnest _ _, h, _
+  | .distinct _, h, _ => by
     simp [looseExact] at h
   | .project r es, h, row => by
     simp only [loose, eval, List.mem_map]
@@ -327,8 +330,6 @@ theorem Rel.looseExact_mem {cat : Catalog} :
       fun ⟨x, hx, e⟩ => ⟨x, (looseExact_mem (r := r) h x).mpr hx, e⟩⟩
   | .orderBy r _, h, row => by
     simp only [loose, eval, List.mem_mergeSort]; exact looseExact_mem (r := r) h row
-  | .distinct r, h, row => by
-    simp only [loose, eval, mem_dedup]; exact looseExact_mem (r := r) h row
   | .cross a b, h, row => by
     simp only [looseExact, Bool.and_eq_true] at h
     simp only [loose, eval, mem_crossRows, looseExact_mem h.1, looseExact_mem h.2]
@@ -360,7 +361,7 @@ theorem Rel.mem_loose {cat : Catalog} :
   | .orderBy r _, hs, row, h => by
     simp only [eval, List.mem_mergeSort] at h; exact mem_loose (r := r) hs row h
   | .distinct r, hs, row, h => by
-    simp only [eval, mem_dedup] at h; exact mem_loose (r := r) hs row h
+    simp only [eval] at h; exact mem_loose (r := r) hs row (canonReps_sub h)
   | .cross a b, hs, row, h => by
     simp only [looseSub, Bool.and_eq_true] at hs
     simp only [eval, mem_crossRows] at h
@@ -392,7 +393,8 @@ theorem Rel.looseExact_sub : ∀ {r : Rel}, r.looseExact = true → r.looseSub =
   | .read _, _ | .values _ _, _ => rfl
   | .fetch _ _ _, h | .window _ _ _ _, h | .aggregate _ _ _, h => h
   | .filter _ _, h | .join _ _ .inner _, h | .semi _ _ _ _, h => by simp [looseExact] at h
-  | .project r _, h | .emit r _, h | .orderBy r _, h | .distinct r, h => looseExact_sub (r := r) h
+  | .project r _, h | .emit r _, h | .orderBy r _, h => looseExact_sub (r := r) h
+  | .distinct _, h => by simp [looseExact] at h
   | .cross a b, h | .unionAll a b, h => by
     simp only [looseExact, Bool.and_eq_true] at h
     simp only [looseSub, looseExact_sub h.1, looseExact_sub h.2, Bool.and_self]
@@ -556,7 +558,7 @@ def Rel.evalG (I : Impl) (cat : Catalog) : Marks → Rel → Relation
         (if m.slots.contains 0 then hasMatch on (b.evalG I cat (m.input 1)) x I
          else hasMatch on (b.evalG I cat (m.input 1)) x) != anti
   | m, .orderBy r keys => (r.evalG I cat (m.input 0)).mergeSort (sortLe keys)
-  | m, .distinct r => dedup (r.evalG I cat (m.input 0))
+  | m, .distinct r => distinctRows (r.evalG I cat (m.input 0))
   | m, .unnest r c => (r.evalG I cat (m.input 0)).flatMap (unnestRow c)
   | m, .aggregate r gs ms =>
       if m.slots.contains 0 then aggregateEval gs ms (r.evalG I cat (m.input 0)) I

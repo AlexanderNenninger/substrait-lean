@@ -26,10 +26,10 @@ def nanGuard : BinFn → Option Tm
   | .fmul => some (orFn (andFn (eqFn (.field 0) (.lit (.float 0))) (isInfT (.field 1)))
       (andFn (isInfT (.field 0)) (eqFn (.field 1) (.lit (.float 0)))))
   | .fdiv => some (andFn (isInfT (.field 0)) (isInfT (.field 1)))
+  -- IEEE division (D39): `0 / 0` too, either zero's sign.
+  | .fdivIeee => some (orFn (andFn (isInfT (.field 0)) (isInfT (.field 1)))
+      (andFn (eqFn (.field 0) (.lit (.float 0))) (eqFn (.field 1) (.lit (.float 0)))))
   | .fmod => some (andFn (isInfT (.field 0)) (notFn (eqFn (.field 1) nanT)))
-  | .fpow => some (andFn (andFn (ltFn negInfT (.field 0)) (ltFn (.field 0) (.lit (.float 0))))
-      (andFn (andFn (ltFn negInfT (.field 1)) (ltFn (.field 1) posInfT))
-        (notFn (eqFn (ffloorFn (.field 1)) (.field 1)))))
   | _ => none
 
 /-- `CASE WHEN x IS NOT NULL AND y = 0 THEN error ELSE e END`: a zero divisor
@@ -50,7 +50,9 @@ def zeroGuard (ks : List NumKind) (k : NumKind) (e : Tm) : Tm :=
   and `m = 2^w`.
 * An elementary function raises outside its domain (`FMath.inDomain`), where
   DuckDB gives NaN or `-∞`: `CASE WHEN x < lo OR (hi < x AND x <> NaN) THEN
-  error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`. -/
+  error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`.
+* `round` and `ceil` give `0.0` for a negative value that rounds to zero, where
+  DuckDB gives IEEE's `-0.0` (`round_zero_sign`). -/
 def schema? : UnFn → Option Tm
   | .fit .silent w =>
     let h := w.half
@@ -83,6 +85,13 @@ def schema? : UnFn → Option Tm
       | none, some b => some b
       | none, none => none
     g.map fun g => .ite g (.raise "domain error" x) (.self [x])
+  -- A negative value that rounds to zero is `0.0`, where DuckDB gives IEEE's
+  -- `-0.0` (`round_zero_sign`): `Lowering.zeroTemplate`, written and proved by
+  -- hand (`Lowering.fround_agree`), as the tactic's proof is slower.
+  | .fround => some (.expr Lowering.froundTemplate (Lean.mkConst ``Lowering.froundTemplate)
+      "round: 0.0 for a negative value that rounds to zero")
+  | .fceil => some (.expr Lowering.fceilTemplate (Lean.mkConst ``Lowering.fceilTemplate)
+      "ceil: 0.0 for a negative value that rounds to zero")
   | _ => none
 
 /-- **DuckDB's binary schemas** (#242), for its IEEE operations:
@@ -98,11 +107,11 @@ def schemaBin? (f : BinFn) : Option Tm :=
   match f with
   | .fdiv | .fmod => (nan self).map (zeroGuard [.float] .float)
   -- `(-∞) ^ y` for a finite `y` that is not an integer raises too
-  -- (`negInfPow`), where DuckDB gives `+∞` or `0`.
-  | .fpow => (nanGuard .fpow).map fun g =>
-    .ite (orFn g (andFn (eqFn (.field 0) negInfT) (andFn (andFn (ltFn negInfT (.field 1))
-      (ltFn (.field 1) posInfT)) (notFn (eqFn (ffloorFn (.field 1)) (.field 1))))))
-      (.raise "domain error" (.field 1)) self
+  -- (`negInfPow`), where DuckDB gives `+∞` or `0`: `Lowering.fpowTemplate`,
+  -- written and proved by hand (`Lowering.fpow_agree`), as the tactic's proof
+  -- is slower.
+  | .fpow => some (.expr Lowering.fpowTemplate (Lean.mkConst ``Lowering.fpowTemplate)
+      "CASE WHEN ((('-inf' < #0 AND #0 < 0) AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1))) OR (#0 = '-inf' AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1)))) THEN error('domain error', #1) ELSE fpow(#0, #1) END")
   | .imod => some (zeroGuard [.int, .tod] .int
       (.ite (andFn (eqFn (.field 1) (.lit (.int (-1)))) (isNumFn .int (.field 0))) (.lit (.int 0)) self))
   -- `<<` is `Lowering.shlTemplate`, written and proved by hand

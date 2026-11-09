@@ -1988,8 +1988,13 @@
      ]
     },
     "IEEE": {
-     "differ": 4,
+     "differ": 5,
      "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "polars": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
       {
        "row": "[inf, inf]",
        "polars": "ok nan",
@@ -2002,11 +2007,6 @@
       },
       {
        "row": "[-inf, inf]",
-       "polars": "ok nan",
-       "lean": "error Substrait.Issue.domain"
-      },
-      {
-       "row": "[-inf, -inf]",
        "polars": "ok nan",
        "lean": "error Substrait.Issue.domain"
       }
@@ -2073,7 +2073,7 @@
    "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 60,
+     "differ": 66,
      "examples": [
       {
        "row": "[0.0, 0.0]",

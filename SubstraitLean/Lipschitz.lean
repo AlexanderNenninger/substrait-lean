@@ -1,5 +1,5 @@
 import SubstraitLean.Lipschitz.Arith
-import SubstraitLean.AllowedAnalysis
+import Sverify.Analysis.AllowedAnalysis
 
 /-!
 # Tolerance composition along a plan (#929)
@@ -26,11 +26,10 @@ pipeline rule; its parts are `Lipschitz/Basic.lean` (cells, rows, matchings),
   windows read an order the multiset observation does not fix, and `UNNEST`
   is not in the table yet.
 * `Rel.plan_near`: **the theorem.** An engine's sources within `T` of the
-  reference's, of reference codes (`Relation.RefCodes`), give a result within
-  `Rel.tol cat K T r` of the reference's, `K` sound for the reference's
-  sources. `Rel.refCols` and `Rel.refOn` follow the columns that keep
-  reference codes: a `SUM` reads `-0.0`'s code as `-∞`, while the tolerance
-  takes `-0.0` for `+0.0`.
+  reference's give a result within `Rel.tol cat K T r` of the reference's,
+  `K` sound for the reference's sources. Distances are between canonical
+  codes, so the tolerance takes `-0.0` for `+0.0` and the sources' codes need
+  no condition.
 * `Relation.NearT.add`: the triangle rule, and `Rel.pipeline_near`, the
   pipeline rule `εₖ = Lₖ·εₖ₋₁ + rₖ`: a node's bound is the next node's
   source tolerance (`Triple.ε` of #929), and the node's own rounding `rₖ`
@@ -101,13 +100,10 @@ def Rel.tol (cat : Catalog) (K : KnowledgeEnv) (T : String → Tol) : Rel → Op
 /-- **`plan_near` (#929)**: an engine's sources within `T` of the
 reference's give a result within `Rel.tol cat K T r` of the reference's,
 rows as a multiset. `cat'` is the engine's catalog, with the reference's
-arities and reference codes (`Relation.RefCodes`, as Sverify reads an
-engine's values); the reference's catalog is well-formed, and `K` sound for
-it. -/
+arities; the reference's catalog is well-formed, and `K` sound for it. -/
 theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     (hK : K.Sound cat) (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
-    (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows)
-    (hR : ∀ s, (cat' s).rows.RefCodes) :
+    (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows) :
     ∀ {r : Rel} {t : Tol}, r.WF cat → r.tol cat K T = some t →
       Relation.NearT t (r.eval cat') (r.eval cat)
   | .read s, t, _, h => by
@@ -119,7 +115,7 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     obtain ⟨t0, hr, h⟩ := h
     split at h
     · simp only [Option.some.injEq] at h; subst h
-      exact (plan_near hcat hK ha hT hR hwf.1 hr).filter fun x y r => by rw [Expr.eval_rows (by assumption) r]
+      exact (plan_near hcat hK ha hT hwf.1 hr).filter fun x y r => by rw [Expr.eval_rows (by assumption) r]
     · exact absurd h (by simp)
   | .project r es, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
@@ -127,30 +123,24 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     split at h
     · rename_i hes
       simp only [Option.some.injEq] at h; subst h
-      have hcat' := Catalog.wf_of_near hcat ha hT
-      have hR' : Relation.RefOn (r.refCols cat) (r.eval cat') := by
-        rw [← Rel.refCols_congr ha r]; exact Rel.refOn hcat' hR (Rel.wf_congr ha hwf.1)
-      obtain ⟨p, fp, hp⟩ := (plan_near hcat hK ha hT hR hwf.1 hr).forall2_mem
+      obtain ⟨p, fp, hp⟩ := (plan_near hcat hK ha hT hwf.1 hr).forall2_mem
         (P := fun y => y.length = r.arity cat ∧ EnvMem (r.analyse cat K).cols y)
         fun y hy => ⟨Rel.eval_arity hcat hwf.1 y hy,
           (Rel.analyse_sound hcat hK hwf.1 (sz := false) (by simp)).1 y hy⟩
-      have fp2 := fp.and_mem (P := fun x => ∀ j c, r.refCols cat j = true →
-        x.getD j .null = .float c → IsRef c) (Q := fun _ => True) (fun x hx => hR' x hx)
-        (fun _ _ => trivial)
-      exact ⟨_, fp2.map (f := fun row => row ++ es.map (·.eval row))
+      exact ⟨_, fp.map (f := fun row => row ++ es.map (·.eval row))
         (g := fun row => row ++ es.map (·.eval row)) fun x y hxy =>
-          Tol.rows_append hxy.1.1 (Tol.rows_exprsA hes hxy.1.1 hxy.2.1 hxy.1.2.2) hxy.1.2.1,
+          Tol.rows_append hxy.1 (Tol.rows_exprsA hes hxy.1 hxy.2.2) hxy.2.1,
         hp.map _⟩
     · exact absurd h (by simp)
   | .emit r m, t, hwf, h => by
     simp only [Rel.tol, Option.map_eq_some_iff] at h
     obtain ⟨t0, hr, rfl⟩ := h
-    exact (plan_near hcat hK ha hT hR hwf.1 hr).map fun x y rxy => Tol.rows_emit rxy m
+    exact (plan_near hcat hK ha hT hwf.1 hr).map fun x y rxy => Tol.rows_emit rxy m
   | .cross a b, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, rfl⟩ := h
-    have hb := plan_near hcat hK ha hT hR hwf.2 htb
-    exact (plan_near hcat hK ha hT hR hwf.1 hta).bind_of (Rel.eval_arity hcat hwf.1) fun x y rxy hy =>
+    have hb := plan_near hcat hK ha hT hwf.2 htb
+    exact (plan_near hcat hK ha hT hwf.1 hta).bind_of (Rel.eval_arity hcat hwf.1) fun x y rxy hy =>
       hb.map fun u v ruv => Tol.rows_append rxy ruv hy
   | .join a b jt on, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
@@ -158,8 +148,8 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     split at h
     · rename_i hon
       simp only [Option.some.injEq] at h; subst h
-      have hA := plan_near hcat hK ha hT hR hwf.1 hta
-      have hb := plan_near hcat hK ha hT hR hwf.2.1 htb
+      have hA := plan_near hcat hK ha hT hwf.1 hta
+      have hb := plan_near hcat hK ha hT hwf.2.1 htb
       have hcross : ∀ x y, ta.Rows x y → y.length = a.arity cat →
           Relation.NearT (Tol.cat (a.arity cat) ta tb) ((b.eval cat').map (x ++ ·))
             ((b.eval cat).map (y ++ ·)) :=
@@ -192,16 +182,16 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
   | .unionAll a b, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, rfl⟩ := h
-    exact ((plan_near hcat hK ha hT hR hwf.1 hta).mono (Tol.le_max_left ta tb)).append
-      ((plan_near hcat hK ha hT hR hwf.2.1 htb).mono (Tol.le_max_right ta tb))
+    exact ((plan_near hcat hK ha hT hwf.1 hta).mono (Tol.le_max_left ta tb)).append
+      ((plan_near hcat hK ha hT hwf.2.1 htb).mono (Tol.le_max_right ta tb))
   | .semi a b anti on, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
     obtain ⟨ta, hta, tb, htb, h⟩ := h
     split at h
     · rename_i hon
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, fp, hp⟩ := plan_near hcat hK ha hT hR hwf.2.1 htb
-      refine (plan_near hcat hK ha hT hR hwf.1 hta).filter_of (Rel.eval_arity hcat hwf.1)
+      obtain ⟨p, fp, hp⟩ := plan_near hcat hK ha hT hwf.2.1 htb
+      refine (plan_near hcat hK ha hT hwf.1 hta).filter_of (Rel.eval_arity hcat hwf.1)
         fun x y rxy hy => ?_
       simp only [hasMatch]
       rw [fp.any_eq (p' := fun v => (on.eval (y ++ v)).isTrue) fun u v ruv => by
@@ -209,7 +199,7 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     · exact absurd h (by simp)
   | .orderBy r _, t, hwf, h => by
     simp only [Rel.tol] at h
-    exact ((plan_near hcat hK ha hT hR hwf.1 h).perm_left (List.mergeSort_perm _ _)).perm_right
+    exact ((plan_near hcat hK ha hT hwf.1 h).perm_left (List.mergeSort_perm _ _)).perm_right
       (List.mergeSort_perm _ _).symm
   | .distinct r, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
@@ -218,10 +208,10 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     · rename_i he
       simp only [Option.some.injEq] at h; subst h
       have hw : r.WF cat := hwf
-      obtain ⟨p, fp, hp⟩ := (plan_near hcat hK ha hT hR hw hr).forall2_mem (Rel.eval_arity hcat hw)
+      obtain ⟨p, fp, hp⟩ := (plan_near hcat hK ha hT hw hr).forall2_mem (Rel.eval_arity hcat hw)
       have : r.eval cat' = p := Forall2.eq (fp.imp fun x y rxy => Tol.rows_eq he rxy.1 rxy.2)
       simp only [Rel.eval, this]
-      exact .of_perm (dedup_perm_of_mem fun z => hp.mem_iff)
+      exact .of_perm (canonReps_perm Row.leRaw_rawOrder hp)
     · exact absurd h (by simp)
   | .aggregate r gs ms, t, hwf, h => by
     simp only [Rel.tol, Option.bind_eq_some_iff] at h
@@ -230,7 +220,7 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     · rename_i hok
       simp only [Bool.and_eq_true] at hok
       simp only [Option.some.injEq] at h; subst h
-      obtain ⟨p, fp, hp⟩ := plan_near hcat hK ha hT hR hwf.1 hr
+      obtain ⟨p, fp, hp⟩ := plan_near hcat hK ha hT hwf.1 hr
       have hof : ∀ m ∈ ms, m.orderFree = true := fun m hm => by
         obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 (List.all_eq_true.1 hok.2 _ (List.mem_map_of_mem hm))
         exact Measure.outTol_orderFree ho
@@ -238,11 +228,8 @@ theorem Rel.plan_near {cat cat' : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
         (Rel.analyse_sound hcat hK hwf.1 (sz := false) (by simp)).1 row (hp.mem_iff.1 h')
       have hN : ∀ n, r.rowsK K = some n → p.length ≤ n := fun n hn => by
         rw [hp.length_eq]; exact Rel.rowsK_sound hK hn
-      have hcat' := Catalog.wf_of_near hcat ha hT
-      have hR' : Relation.RefOn (r.refCols cat) (r.eval cat') := by
-        rw [← Rel.refCols_congr ha r]; exact Rel.refOn hcat' hR (Rel.wf_congr ha hwf.1)
       simp only [Rel.eval]
-      exact ⟨_, aggregateEval_near hok.1 hok.2 fp henv hN hR', aggregateEval_perm hof hp⟩
+      exact ⟨_, aggregateEval_near hok.1 hok.2 fp henv hN, aggregateEval_perm hof hp⟩
     · exact absurd h (by simp)
 
 /-! ## The triangle rule and pipelines -/
@@ -329,25 +316,19 @@ engine's inputs (its own rounding, `contract_sound_allowed`'s `ε`), is within
 theorem Rel.pipeline_near {cat cat' : Catalog} (hcat : cat.WF)
     (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
     (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows)
-    (hR : ∀ s, (cat' s).rows.RefCodes)
     {x : String} {n : Nat} {Eg Rg : Relation} {tg : Tol} (hg : Relation.NearT tg Eg Rg)
-    (hRg : ∀ row ∈ Rg, row.length = n) (hEg : Eg.RefCodes) {K : KnowledgeEnv}
+    (hRg : ∀ row ∈ Rg, row.length = n) {K : KnowledgeEnv}
     (hK : K.Sound (cat.bind x ⟨n, Rg⟩))
     {f : Rel} (hf : f.WF (cat.bind x ⟨n, Rg⟩)) {tf : Tol}
     (htf : f.tol (cat.bind x ⟨n, Rg⟩) K (fun s => if s = x then tg else T s) = some tf)
     {rf : Tol} {Ef : Relation} (hE : Relation.NearT rf Ef (f.eval (cat'.bind x ⟨n, Eg⟩))) :
     Relation.NearT (rf.add tf) Ef (f.eval (cat.bind x ⟨n, Rg⟩)) := by
-  refine hE.add (Rel.plan_near (Catalog.bind_wf hcat hRg) hK (fun s => ?_) (fun s => ?_)
-    (fun s => ?_) hf htf)
+  refine hE.add (Rel.plan_near (Catalog.bind_wf hcat hRg) hK (fun s => ?_) (fun s => ?_) hf htf)
   · unfold Catalog.bind; split <;> simp [ha]
   · unfold Catalog.bind
     by_cases h : s = x
     · simp only [h, ite_true]; exact hg
     · simp only [h, ite_false]; exact hT s
-  · unfold Catalog.bind
-    by_cases h : s = x
-    · simp only [h, ite_true]; exact hEg
-    · simp only [h, ite_false]; exact hR s
 
 /-! ## `M₁`: a budget summed over the matching -/
 

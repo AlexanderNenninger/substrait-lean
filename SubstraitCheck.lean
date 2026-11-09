@@ -121,9 +121,12 @@ def valueJson : Value → Lean.Json
   | .list vs | .struct vs => .arr (vs.attach.map fun ⟨v, _⟩ => valueJson v).toArray
 
 /-- `--outcomes`: a `Project` over a `VALUES`, each row's expressions
-evaluated under the reference profile (`Expr.evalP`): the value, or the error
-it raises. One JSON list per row, for probing an engine's functions (#242). -/
-def outcomes (plan : Plan) : IO UInt32 := do
+evaluated under the profile `p` (`Expr.evalP`): the value, or the error it
+raises. One JSON list per row, for probing an engine's functions (#242).
+`--outcomes-duckdb-stopgap` evaluates under DuckDB's profile: an internal
+stopgap for one test, to be replaced by the `semantics="duckdb"`
+engine-to-engine path (#1288). No other engine gets one. -/
+def outcomes (p : Profile := Profile.reference) (plan : Plan) : IO UInt32 := do
   let rec body : Rel → Option (Relation × List Expr)
     | .emit r _ => body r
     | .project (.values _ rows) es => some (rows, es)
@@ -131,7 +134,7 @@ def outcomes (plan : Plan) : IO UInt32 := do
   let some (rows, es) := body plan.root
     | IO.eprintln "error: --outcomes needs a Project over a VALUES"; return 1
   for row in rows do
-    let outs := es.map fun e => match e.evalP Profile.reference row with
+    let outs := es.map fun e => match e.evalP p row with
       | .ok v => Lean.Json.mkObj [("ok", valueJson v)]
       | .error k => Lean.Json.mkObj [("error", toString (repr k))]
     IO.println (Lean.Json.arr outs.toArray).compress
@@ -312,7 +315,9 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
     | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
     | "--write" => pure write
-    | "--outcomes" => pure outcomes
+    | "--outcomes" => pure (outcomes Profile.reference)
+    -- Internal stopgap; converges to `semantics="duckdb"` (#1288).
+    | "--outcomes-duckdb-stopgap" => pure (outcomes (Profile.duckdb {}))
     | "--dependencies" => pure fun plan => do
         -- The options the plan meets and the transfer check (#444).
         IO.println (plan.root.dependenciesJson es).compress
@@ -449,7 +454,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
   | [path] => runOn es "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--contract", "--write", "--shard", "--outcomes",
-        "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
+        "--outcomes-duckdb-stopgap", "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
       return ← runOn es flag (← IO.FS.readFile path)
     usage
   | _ => usage

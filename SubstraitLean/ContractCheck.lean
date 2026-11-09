@@ -1,19 +1,19 @@
-import SubstraitLean.Contracts
-import SubstraitLean.Safety
-import SubstraitLean.Guards
-import SubstraitLean.Keys
+import Sverify.Analysis.Contracts
+import Sverify.Analysis.Safety
+import Sverify.Analysis.Guards
+import Sverify.Analysis.Keys
 import SubstraitLean.Check
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Semantic
 import SubstraitLean.Write
 import SubstraitLean.Infer
-import SubstraitLean.Rows
-import SubstraitLean.Knowledge
+import Sverify.Analysis.Rows
+import Sverify.Analysis.Knowledge
 import SubstraitLean.Implied
 import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
-import SubstraitLean.AllowedAnalysis
+import Sverify.Analysis.AllowedAnalysis
 import SubstraitLean.AnalysisCongr
 
 /-!

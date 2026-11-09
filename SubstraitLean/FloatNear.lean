@@ -32,12 +32,12 @@ on one side only rounds to `±∞`. Both are named, not folded in. -/
 open FloatCode in
 /-- Every double among `vs` is finite (a canonical code: `-0.0`'s and the
 negative NaN's codes lie below `-∞`'s). -/
-def FinCodes (vs : List Value) : Prop := ∀ c, Value.float c ∈ vs → IsFin c
+def FinCodes (vs : List Value) : Prop := ∀ c, Value.float c ∈ vs → IsFin (canon c)
 
 /-- Two values within `e` codes: two doubles, or one value that is not a
 double. -/
 def CodeNear (e : Nat) : Value → Value → Prop
-  | .float a, .float b => (a - b).natAbs ≤ e
+  | .float a, .float b => (FloatCode.canon a - FloatCode.canon b).natAbs ≤ e
   | v, w => (∀ c, v ≠ .float c) ∧ ∀ c, w ≠ .float c
 
 namespace FloatCode
@@ -54,7 +54,7 @@ open FloatCode
 
 /-- A value's exact part of a sum. -/
 def exactOf : Value → Int
-  | .float c => scaled c
+  | .float c => scaled (canon c)
   | _ => 0
 
 theorem exactSum_cons (v : Value) (vs : List Value) : exactSum (v :: vs) = exactOf v + exactSum vs := by
@@ -64,7 +64,8 @@ theorem CodeNear.exactOf {e : Nat} {v w : Value} (h : CodeNear e v w) :
     2 * (exactOf v - exactOf w).natAbs ≤ e + 1 := by
   cases v <;> cases w
   case float.float a b =>
-    have := scaled_sub_le a b; simp only [CodeNear] at h; simp only [Substrait.exactOf]; omega
+    have := scaled_sub_le (canon a) (canon b); simp only [CodeNear] at h
+    simp only [Substrait.exactOf]; omega
   all_goals first
     | exact absurd rfl (h.1 _) | exact absurd rfl (h.2 _) | simp [Substrait.exactOf]
 
@@ -83,7 +84,7 @@ theorem nonFinite_of_finCodes {vs : List Value} (h : FinCodes vs) : nonFinite vs
     simp only [anyCode, List.any_eq_false]
     intro v hv
     cases v with
-    | float c => simp [hp c (h c hv)]
+    | float c => simp only [hp _ (h c hv)]; decide
     | _ => simp
   have := nan_eq; have := posInf_eq; have := negInf_eq
   unfold nonFinite

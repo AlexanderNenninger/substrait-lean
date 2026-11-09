@@ -89,11 +89,11 @@ class Dialect:
 
     name: str
     guards: bool = True
-    """Write the run-time checks of `SubstraitLean/Safety.lean`'s issues:
+    """Write the run-time checks of `analysis/Sverify/Analysis/Safety.lean`'s issues:
     64-bit overflow, division by zero, `date_trunc` out of range. Without them
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
-    `SubstraitLean/Guards.lean`). Integer `SUM` keeps its check."""
+    `analysis/Sverify/Analysis/Guards.lean`). Integer `SUM` keeps its check."""
     finite: bool = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
@@ -1024,8 +1024,8 @@ CoreUnOp = Literal[
     "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
-    "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
-    "idiv", "imod", "ipow", "fpow", "fatan2", "flogb", "bit", "pair", "greatest", "least",
+    "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fdivIeee",
+    "fmod", "idiv", "imod", "ipow", "fpow", "fatan2", "flogb", "bit", "pair", "greatest", "least",
     "black_box",
 ]  # fmt: skip
 
@@ -1525,8 +1525,8 @@ UN_KINDS: dict[str, FixedKind] = {
     "narrow": "int", "fit": "int", "itos": "str", **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
-    "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fmod": "float",
-    "fpow": "float", "idiv": "int", "imod": "int", "ipow": "int",
+    "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fdivIeee": "float",
+    "fmod": "float", "fpow": "float", "idiv": "int", "imod": "int", "ipow": "int",
     **_functions.kinds("core", un=False),
 }  # fmt: skip
 
@@ -1706,6 +1706,9 @@ def _nan_ruled_out(op: str, a: Expr, b: Expr) -> bool:
     match op:
         case "fadd" | "fsub" | "fdiv":
             return fa is not None or fb is not None
+        case "fdivIeee":
+            # A finite constant rules out `∞ / ∞`, a non-zero one `0 / 0` too.
+            return bool(fa) or bool(fb)
         case "fmul":
             return bool(fa) or bool(fb)
         case "fmod":
@@ -2357,6 +2360,9 @@ class _Parser:
                         for k, e in enumerate(parsed)
                     ]
                     mode = _div_by_zero_mode(v)
+                    if name == "divide" and len(parsed) == 2 and mode == "IEEE":
+                        # IEEE division (`BinFn.fdivIeee`, D39).
+                        return Bin("fdivIeee", parsed[0], parsed[1])
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                         op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
                         return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
@@ -4552,24 +4558,34 @@ class _Writer:
                 # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.
                 bad = f"({sa} IS NOT NULL AND ({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)}))"
                 return self.domain(sb, bad, sql, "int")
-            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" as op, left=a, right=b):
+            case Bin(
+                op="fadd" | "fsub" | "fmul" | "fdiv" | "fdivIeee" | "fmod" | "fpow" as op,
+                left=a,
+                right=b,
+            ):
                 f = {
                     "fadd": d.float_add,
                     "fsub": d.float_sub,
                     "fmul": d.float_mul,
                     "fdiv": d.float_div,
+                    "fdivIeee": d.float_div,
                     "fmod": d.float_mod,
                     "fpow": d.float_pow,
                 }[op]
                 sa, sb = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
                 # The operands that may be `±∞` or NaN: not a finite constant.
                 unknown = [x for x, e in ((sa, a), (sb, b)) if _float_lit(e) is None]
+                # IEEE's `±∞` by a zero is the option's value, no overflow
+                # (`BinFn.infIssue`).
+                by_zero_ok = (
+                    f"NOT {d.float_eq(sb, d.float_lit(0.0))} AND " if op == "fdivIeee" else ""
+                )
                 # Where an operand rules out a new NaN (a finite constant),
                 # the template's guard could not fire: the operator alone.
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
                 if not plain and (low := d.lowered(op, [sa, sb], "float")) is not None:
                     low = low if op in ("fadd", "fsub") else d.canon(low)
-                    return low if op == "fmod" else self.finite(low, unknown)
+                    return low if op == "fmod" else self.finite(low, unknown, by_zero_ok)
                 sql = f(sa, sb)
                 # A sum or difference of doubles other than -0.0 is never -0.0.
                 sql = sql if op in ("fadd", "fsub") else d.canon(sql)
@@ -4577,7 +4593,7 @@ class _Writer:
                     return sql
                 if op != "fmod":
                     # `fmod` is exact: it never overflows.
-                    sql = self.finite(sql, unknown)
+                    sql = self.finite(sql, unknown, by_zero_ok)
                 if not _nan_ruled_out(op, a, b):
                     sql = self.domain(sa, self.nan_case(op, sa, sb), sql)
                 if op != "fdiv":
@@ -4819,6 +4835,11 @@ class _Writer:
             )
         if op == "fdiv":
             return f"({d.is_inf(a)} AND {d.is_inf(b)})"
+        if op == "fdivIeee":
+            return (
+                f"(({d.is_inf(a)} AND {d.is_inf(b)}) OR "
+                f"({d.float_eq(a, zero)} AND {d.float_eq(b, zero)}))"
+            )
         if op == "fmod":
             return f"({d.is_inf(a)} AND NOT {d.is_nan(b)})"
         if op == "fpow":
@@ -4840,7 +4861,7 @@ class _Writer:
         cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
         return d.case_when(cond, d.raise_("overflow to infinity", dep or value, "float"), value)
 
-    def finite(self, sql: str, args: list[str]) -> str:
+    def finite(self, sql: str, args: list[str], unless: str = "") -> str:
         """`sql`, raising where its finite arguments `args` (those that are not
         finite constants) give `±∞`
         (`Issue.infinite`, #575): the reference's check on the data of the
@@ -4851,7 +4872,7 @@ class _Writer:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
         return d.case_when(
-            f"({fin}{d.is_inf(sql)})", d.raise_("overflow to infinity", sql, "float"), sql
+            f"({fin}{unless}{d.is_inf(sql)})", d.raise_("overflow to infinity", sql, "float"), sql
         )
 
     def domain(self, dep: str, bad: str, sql: str, kind: Kind = "float") -> str:

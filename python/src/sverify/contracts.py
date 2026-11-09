@@ -16,7 +16,7 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 Calling `doubled(orders)` builds the Ibis expression as usual. Before it is
 returned, `substrait-check --contract` tries to *prove* every postcondition
 from the preconditions, the column types and the transformation itself
-(`contract_sound` in `SubstraitLean/Contracts.lean`). An unproved
+(`contract_sound` in `analysis/Sverify/Analysis/Contracts.lean`). An unproved
 postcondition raises `VerificationError` that says what the checker could establish,
 unless `on_unproved` asks for a runtime check or a warning instead.
 
@@ -88,7 +88,7 @@ from ibis.common.graph import Node
 
 from sverify import _hooks, _pipe, _stages
 from sverify import observation as _observation
-from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, decode_double  # noqa: F401
+from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyWarning

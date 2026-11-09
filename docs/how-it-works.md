@@ -1,7 +1,7 @@
 # How it works
 
 How plans are checked, how the engines are made to agree, and exactly what
-is proved. The user-facing side is in [guide.md](guide.md); the map of the
+is proved. The user-facing side is in [getting-started.md](getting-started.md) and [tasks.md](tasks.md); the map of the
 proofs, with each Lean module's job and the theorems each guarantee rests
 on, is in [proofs.md](proofs.md).
 
@@ -77,7 +77,7 @@ rows (3):
 ```
 
 What it accepts is the model's fragment (`core/Sverify/Core/Rel.lean` lists the
-operators): the coverage table under [What is supported](../README.md#what-is-supported)
+operators): the coverage table under [What is supported](../README.md#ibis-coverage)
 probes it from the Ibis side, and the catalogue's
 [`features.toml`](../catalogue/features.toml) records it per feature. Function
 calls are matched by name in `extensions`, and anything else is rejected.
@@ -330,7 +330,7 @@ main ones.
 
 ### Contracts
 
-[Contracts.lean](../SubstraitLean/Contracts.lean) is an abstract interpreter
+[Contracts.lean](../analysis/Sverify/Analysis/Contracts.lean) is an abstract interpreter
 over `Rel`. Each column gets an `AVal`, a set of possible values: whether it can be NULL, an integer
 interval, possible booleans, and whether it can be a string, with the strings
 it can be when they are few: at most `strCap` (64) of them, past that any string.
@@ -368,7 +368,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   and `CASE`, `COALESCE` and `UNION ALL` join the sets (`AVal.strs`),
   so a filter `status <> 'cancelled'` over a source whose `status` is one of
   four strings proves `status IN ('placed', 'shipped', 'returned')`.
-* `Rel.keys_sound` ([Keys.lean](../SubstraitLean/Keys.lean)): derived keys hold. No two
+* `Rel.keys_sound` ([Keys.lean](../analysis/Sverify/Analysis/Keys.lean)): derived keys hold. No two
   output rows agree on them.
 * `Rel.optimize_sound` ([Semantic.lean](../SubstraitLean/Semantic.lean)): the
   rewrites a contract's keys and facts allow keep a plan's rows, on data that
@@ -391,7 +391,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   (`a.device = b.device`), for inner and left joins. A key of each branch of
   a `UNION ALL`, with a column whose values the branches cannot share (a
   constant tag, a `GROUPING` level), is a key of the union (`AVal.disjoint_ne`).
-* `window_tiebreak`, `Rel.window_deterministic` ([Keys.lean](../SubstraitLean/Keys.lean)):
+* `window_tiebreak`, `Rel.window_deterministic` ([Keys.lean](../analysis/Sverify/Analysis/Keys.lean)):
   when a window's partition and sort columns contain a key of its input, every
   arrangement of the input sorted by the window's keys gives the same rows as
   `Rel.eval`. So the proofs describe what an engine computes, however it breaks ties.
@@ -445,7 +445,7 @@ the JSON plumbing.
 
 ### Runtime errors
 
-[Safety.lean](../SubstraitLean/Safety.lean) proves that a transformation runs without
+[Safety.lean](../analysis/Sverify/Analysis/Safety.lean) proves that a transformation runs without
 runtime errors, or reports what may go wrong. `sverify` reports these as
 `may fail: …` (a `VerificationError` from `@sv.transform`). A `SUM` that
 may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
@@ -467,7 +467,7 @@ group (checked at run time: the job raises if it does not …)` (or
   (`Measure.sumOk`), is ruled out where the plan bounds a group's
   rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
   bounds each value (`Measure.sumFits`). Row caps on the inputs count too
-  ([Rows.lean](../SubstraitLean/Rows.lean)): a capped read is a `FETCH`
+  ([Rows.lean](../analysis/Sverify/Analysis/Rows.lean)): a capped read is a `FETCH`
   (`Rel.capReads`), and a join on a key of its right side is capped by its
   left side (`Rel.capJoins_eval`). Its `SUM`s are decided on the capped plan
   and every other issue on the plan as it is (`Rel.issuesCapped_sound`).
@@ -519,7 +519,7 @@ The linear fragment, `Rel.Incremental`, covers every operator except left,
 semi and anti joins, `DISTINCT`, aggregates, fetch and windows; semi and anti
 joins, `DISTINCT` and `COUNT`, `SUM`, `AVG`, `MIN` and `MAX` per group have
 delta rules of their own ([section 6 of the optimizations note](optimizations.md#6-incremental-maintenance);
-what refresh maintains is in [the guide](guide.md#nodes-composing-storing-refreshing)):
+what refresh maintains is in [the guide](tasks.md#nodes-composing-storing-refreshing)):
 
 * `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit, sort and union
   are linear (a sort only orders the bag), and cross and inner join use the bilinear rule

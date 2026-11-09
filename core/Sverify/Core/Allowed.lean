@@ -28,7 +28,7 @@ order of the rows. An engine's order of additions is a behaviour of its
 profile (`SumOrder`, `core/Sverify/Core/AllowedP.lean`), within #85's bound of it
 (`epsilon_sum_cr` in `float-bounds/`).
 
-For a plan without these choices (`Rel.detPlan`, `SubstraitLean/AllowedAnalysis.lean`),
+For a plan without these choices (`Rel.detPlan`, `analysis/Sverify/Analysis/AllowedAnalysis.lean`),
 every allowed result is `Rel.eval`'s up to the order of rows
 (`Rel.allowed_perm_eval`), so whatever is proved of `Rel.eval`'s rows holds
 of every allowed result. A rewrite is
@@ -50,21 +50,29 @@ def AggFn.Allowed (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
   -- A double between the two neighbours (#53).
   | .quantile true num scale => if vs = [] then v = .null else contAllowed num scale (sortVals vs) v
-  | _ => v = f.apply vs
+  -- `MIN` and `MAX`: any member of the value's class (D31).
+  | _ => f.Picks vs v
 
 theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.apply vs) := by
   cases f
   case quantile cont num scale =>
     cases cont
-    · rfl
+    · exact AggFn.picks_apply _ _
     · cases vs with
       | nil => rfl
       | cons v vs => simp only [Allowed, reduceCtorEq, ite_false]; exact contValue_allowed _ _ _
-  all_goals rfl
+  all_goals exact AggFn.picks_apply _ _
 
-/-- An aggregate that combines in two phases is a function of its values. -/
+theorem AggFn.allowed_of_picks {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v) :
+    f.Allowed vs v := by
+  rcases h' : h with h₁ | ⟨hf, _⟩
+  · rw [h₁]; exact AggFn.apply_allowed _ _
+  · rcases hf with rfl | rfl <;> exact h
+
+/-- An aggregate that combines in two phases gives its value, or for `MIN`
+and `MAX` another member of its class. -/
 theorem AggFn.allowed_iff {f : AggFn} (hf : f.orderFree = true) (vs : List Value) (v : Value) :
-    f.Allowed vs v ↔ v = f.apply vs := by
+    f.Allowed vs v ↔ f.Picks vs v := by
   cases f <;> simp_all [orderFree, decomposable, Allowed]
 
 /-- What a measure over a group's `rows` may give: its aggregate of the rows
@@ -81,62 +89,97 @@ theorem Measure.eval_allowed (m : Measure) (rows : Relation) : m.Allowed rows (m
   · refine ⟨rows, .refl _, fun h => absurd h hs, ?_⟩
     rw [Measure.eval_eq (by simpa using hs)]; exact AggFn.apply_allowed _ _
 
-/-- An order-free measure allows only its value. -/
-theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) {rows : Relation} {v : Value}
-    (h : m.Allowed rows v) : v = m.eval rows := by
+/-- An order-free measure allows its value, or for `MIN` and `MAX` another
+member of its class. -/
+theorem Measure.allowed_picks {m : Measure} (hm : m.orderFree = true) {rows : Relation}
+    {v : Value} (h : m.Allowed rows v) : m.fn.Picks (m.inputs rows) v := by
   obtain ⟨s, hs, _, hv⟩ := h
   rw [AggFn.allowed_iff hm] at hv
-  rw [hv, ← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm), Measure.eval_perm hm hs]
+  have hp := m.inputs_perm hs
+  have he : m.fn.apply (m.inputs s) = m.fn.apply (m.inputs rows) := by
+    rw [← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm),
+      ← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm), Measure.eval_perm hm hs]
+  rcases hv with hv | ⟨hf, hc, hm⟩
+  · exact .inl (hv.trans he)
+  · refine .inr ⟨hf, hc.trans (by rw [he]), ?_⟩
+    rcases hm with hm | hm
+    · exact .inl (hp.mem_iff.mp hm)
+    · exact .inr (hm.trans (by rw [he]))
+
+/-- An order-free measure other than `MIN` and `MAX` allows only its value. -/
+theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) (hmin : m.fn ≠ .min)
+    (hmax : m.fn ≠ .max) {rows : Relation} {v : Value} (h : m.Allowed rows v) : v = m.eval rows := by
+  rcases Measure.allowed_picks hm h with hv | ⟨hf, -⟩
+  · rw [hv, Measure.eval_eq (AggFn.ne_collect_of_orderFree hm)]
+  · rcases hf with hf | hf <;> contradiction
 
 /-- What an aggregate's output may be, for the input rows `rows` in this
 order: a row per group (in their order of first appearance), each measure
 one of its allowed values. -/
 def aggAllowed (gs : List Expr) (ms : List Measure) (rows out : Relation) : Prop :=
   if gs.isEmpty then ∃ vs, out = [vs] ∧ Forall2 (fun m v => m.Allowed rows v) ms vs
-  else Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
-      Forall2 (fun m v => m.Allowed (groupRows gs rows k) v) ms vs)
-    (dedup (rows.map (groupKey gs))) out
+  -- One key per class of keys, any member (D31): `groupRows` is the same for each.
+  else ∃ ks, IsReps Row.canon (rows.map (groupKey gs)) ks ∧ Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
+      Forall2 (fun m v => m.Allowed (groupRows gs rows k) v) ms vs) ks out
 
 theorem aggregateEval_allowed (gs : List Expr) (ms : List Measure) (rows : Relation) :
     aggAllowed gs ms rows (aggregateEval gs ms rows) := by
   unfold aggAllowed aggregateEval
   split
   · exact ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_allowed m rows⟩
-  · exact forall₂_map_self _ fun k _ =>
-      ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_allowed m _⟩
+  · exact ⟨_, canonReps_isReps Row.leRaw_rawOrder _, forall₂_map_self _ fun k _ =>
+      ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_allowed m _⟩⟩
 
+/-- **An aggregate of order-free measures allows only its rows**, in some
+order, where its keys and its measures' arguments are alone in their classes
+(no doubles): then there is no value to choose (D31). -/
 theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, m.orderFree = true)
-    {rows out : Relation} (h : aggAllowed gs ms rows out) : out = aggregateEval gs ms rows := by
-  have hvals : ∀ {rows : Relation} {vs : List Value},
-      Forall2 (fun m v => m.Allowed rows v) ms vs → vs = ms.map (·.eval rows) := by
-    intro rows vs hv
+    {rows out : Relation} (hk : ∀ r ∈ rows, (groupKey gs r).Lone)
+    (ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ r ∈ rows, (m.arg.eval r).Lone)
+    (h : aggAllowed gs ms rows out) : out.Perm (aggregateEval gs ms rows) := by
+  have hvals : ∀ {grp : Relation}, (∀ r ∈ grp, r ∈ rows) → ∀ {vs : List Value},
+      Forall2 (fun m v => m.Allowed grp v) ms vs → vs = ms.map (·.eval grp) := by
+    intro grp hg vs hv
     apply eq_map_of_forall₂
-    have : ∀ {ms' : List Measure}, (∀ m ∈ ms', m.orderFree = true) → ∀ {vs : List Value},
-        Forall2 (fun m v => m.Allowed rows v) ms' vs →
-          Forall2 (fun m v => v = m.eval rows) ms' vs := by
+    have : ∀ {ms' : List Measure}, (∀ m ∈ ms', m.orderFree = true ∧ m ∈ ms) → ∀ {vs : List Value},
+        Forall2 (fun m v => m.Allowed grp v) ms' vs →
+          Forall2 (fun m v => v = m.eval grp) ms' vs := by
       intro ms' hms' vs hv
       induction hv with
       | nil => exact .nil
       | cons hmv _ ih =>
-        exact .cons (Measure.allowed_eq (hms' _ (List.mem_cons_self ..)) hmv)
-          (ih fun m hm => hms' m (List.mem_cons_of_mem _ hm))
-    exact this hms hv
+        obtain ⟨hof, hmem⟩ := hms' _ List.mem_cons_self
+        have hp := Measure.allowed_picks hof hmv
+        refine .cons ?_ (ih fun m' hm' => hms' m' (List.mem_cons_of_mem _ hm'))
+        rw [Measure.eval_eq (AggFn.ne_collect_of_orderFree hof)]
+        rcases hp' : hp with h | ⟨hf, _⟩
+        · exact h
+        refine AggFn.Picks.eq hp fun w hw => ?_
+        obtain ⟨-, y, hy, rfl⟩ := Measure.mem_inputs hw
+        exact ha _ hmem hf y (hg y hy)
+    exact this (fun m hm => ⟨hms m hm, hm⟩) hv
   unfold aggAllowed at h; unfold aggregateEval
   split at h
-  · next hg => obtain ⟨vs, rfl, hv⟩ := h; rw [hvals hv]; simp [hg]
+  · next hg => obtain ⟨vs, rfl, hv⟩ := h; rw [hvals (fun _ h => h) hv]; simp [hg]
   · next hg =>
     simp only [hg, Bool.false_eq_true, ite_false]
-    apply eq_map_of_forall₂
-    have : ∀ {ks : List Row} {out : Relation}, Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
+    obtain ⟨ks, hks, h⟩ := h
+    have hrow : ∀ {ks : List Row} {out : Relation}, Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
         Forall2 (fun m v => m.Allowed (groupRows gs rows k) v) ms vs) ks out →
-        Forall2 (fun k row => row = k ++ ms.map (·.eval (groupRows gs rows k))) ks out := by
+        out = ks.map fun k => k ++ ms.map (·.eval (groupRows gs rows k)) := by
       intro ks out h
+      apply eq_map_of_forall₂
       induction h with
       | nil => exact .nil
       | cons hk _ ih =>
         obtain ⟨vs, rfl, hv⟩ := hk
-        exact .cons (by rw [hvals hv]) ih
-    exact this h
+        exact .cons (by rw [hvals (fun _ h => (List.mem_filter.mp h).1) hv]; rfl) ih
+    rw [hrow h]
+    -- Keys alone in their classes: the representatives are the keys, once each.
+    have hkl : ∀ k ∈ rows.map (groupKey gs), ∀ z, Row.canon z = Row.canon k → z = k := fun k hk' => by
+      obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hk'; exact hk r hr
+    refine List.Perm.map _ ((hks.perm_dedup hkl).trans ?_)
+    rw [distinctRows, canonReps_of_inj fun x hx y hy he => hkl y hy x he]
 
 /-! ## Plans -/
 
@@ -166,7 +209,8 @@ def Rel.Allowed (cat : Catalog) : Rel → Relation → Prop
       out.Perm (x.filter fun row => hasMatch on y row != anti)
   -- The input sorted, ties and a clustered key's groups in any order.
   | .orderBy r keys, out => ∃ i, r.Allowed cat i ∧ out.Perm i ∧ SortAllowed keys out
-  | .distinct r, out => ∃ i, r.Allowed cat i ∧ out.Perm (dedup i)
+  -- One member of each class of rows, any member (D31).
+  | .distinct r, out => ∃ i, r.Allowed cat i ∧ ∃ d, IsReps Row.canon i d ∧ out.Perm d
   | .aggregate r gs ms, out => ∃ i, r.Allowed cat i ∧ ∃ o, out.Perm o ∧ aggAllowed gs ms i o
   | .unnest r c, out => ∃ i, r.Allowed cat i ∧ out.Perm (i.flatMap (unnestRow c))
 
@@ -183,7 +227,8 @@ theorem Rel.eval_allowed (cat : Catalog) : ∀ r : Rel, r.Allowed cat (r.eval ca
       List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total _, .refl _⟩
   | .orderBy r keys => ⟨_, eval_allowed cat r, List.mergeSort_perm _ _, .of_sorted <|
       List.pairwise_mergeSort (sortLe_totalPre keys).trans (sortLe_totalPre keys).total _⟩
-  | .distinct r | .unnest r _ => ⟨_, eval_allowed cat r, .refl _⟩
+  | .distinct r => ⟨_, eval_allowed cat r, _, canonReps_isReps Row.leRaw_rawOrder _, .refl _⟩
+  | .unnest r _ => ⟨_, eval_allowed cat r, .refl _⟩
   | .aggregate r gs ms => ⟨_, eval_allowed cat r, _, .refl _, aggregateEval_allowed gs ms _⟩
 
 /-! ## Refinement -/
@@ -258,10 +303,11 @@ theorem Rel.unsorted_refinesBag_not_refines :
   have hs : ¬ SortAllowed [{ col := 0 }] [[.int 2], [.int 1]] := by
     rintro ⟨cmp, -, h⟩
     simp [sortLeWith, SortKey.leWith, SortKey.valWith, SortKey.valLe, lexLe, nullRankOf, natLe,
-      SortKey.firstNulls] at h
+      SortKey.firstNulls, Value.le, Value.canonV] at h
     revert h; decide +kernel
   refine ⟨Rel.refinesBag_iff.2 fun out ho => ⟨[[.int 1], [.int 2]], ⟨_, .refl _, .swap _ _ _,
-    .of_sorted (by decide +kernel)⟩, ho.trans (.swap _ _ _)⟩, fun h => hs ?_⟩
+    .of_sorted (by simp [sortLe, SortKey.le, SortKey.valLe, SortKey.nullRank, lexLe, natLe,
+      Value.le, Value.canonV, Value.leRaw_def, Value.leScalar])⟩, ho.trans (.swap _ _ _)⟩, fun h => hs ?_⟩
   obtain ⟨i, -, -, hsort⟩ := Rel.refines_iff.1 h _ (List.Perm.refl _)
   exact hsort
 

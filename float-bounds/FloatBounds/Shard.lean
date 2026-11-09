@@ -7,7 +7,7 @@ public import FloatBounds.Core
 
 `--shard` and `sverify.partition` with `float_order="any"` add each shard's
 doubles, then add the partial sums (`floatPartial`, `floatCombine` in
-`SubstraitLean/Partition.lean`). The reference adds all of them in one pass
+`analysis/Sverify/Analysis/Partition.lean`). The reference adds all of them in one pass
 (`floatSum`). This file bounds the difference, from what the shards report:
 
 * `sharded_near`, `sharded_avg_near`: the two-phase `SUM` (and `AVG`) of `k`
@@ -20,9 +20,9 @@ doubles, then add the partial sums (`floatPartial`, `floatCombine` in
   the rounded sums of `|x|`.
 * `shardTol_le`, `shardAvgTol_le`: that bound, scaled by `2¹⁰⁷⁴` and rounded
   up, is `shardTolScaled n m k As` (`shardAvgTolScaled`), a few operations on
-  natural numbers, defined the same way in `SubstraitLean/Partition.lean`.
+  natural numbers, defined the same way in `analysis/Sverify/Analysis/Partition.lean`.
 * `core_shard_sum`, `core_shard_avg`: the facts the core trusts
-  (`floatSum_twoPhase`, `floatAvg_twoPhase` in `SubstraitLean/Partition.lean`),
+  (`floatSum_twoPhase`, `floatAvg_twoPhase` in `analysis/Sverify/Analysis/Partition.lean`),
   for doubles decoded from codes (`Decoded`) of magnitude at most `Bs`, with
   `n (Bs + 2·2⁵²) ≤ 2²⁰⁹⁶`: far from overflow.
 -/

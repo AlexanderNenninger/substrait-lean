@@ -1,6 +1,6 @@
 import Sverify.Core.Ties
-import SubstraitLean.Rows
-import SubstraitLean.AllowedAnalysis
+import Sverify.Analysis.Rows
+import Sverify.Analysis.AllowedAnalysis
 
 /-!
 # What the analysis knows of a relation (#902)

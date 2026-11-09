@@ -7,7 +7,7 @@ What goes wrong when a function runs on a row (`Issue`, `UnFn.issue`,
 `BinFn.issue`, `Expr.issues`): where the reference raises, and an error
 allows any engine's answer. Which rows an engine evaluates an expression on,
 and the analysis that over-approximates the issues of a plan
-(`Rel.HasIssue`, `Rel.mayIssues`), are in `SubstraitLean/Safety.lean`.
+(`Rel.HasIssue`, `Rel.mayIssues`), are in `analysis/Sverify/Analysis/Safety.lean`.
 -/
 
 namespace Substrait
@@ -41,7 +41,7 @@ inductive Issue where
   a plan that may raise is not proved, unless the input's rows and the
   argument's range bound the sum (`Measure.sumFits`). Kept apart from
   `wraps` because it comes from a group's rows, not from one row:
-  `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
+  `analysis/Sverify/Analysis/Guards.lean` drops row-level checks, never this one. -/
   | sumWraps
   /-- An argument outside a function's domain (`core/Sverify/Core/Numeric.lean`):
   `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`
@@ -127,7 +127,7 @@ def UnFn.issue : UnFn → Value → Option Issue
   -- A black box that may raise, where it does (#325).
   | .bbox n, v => if BlackBox.raisesOn n [v] then some .domain else none
   | .neg, .int i => wrapIf (-i)
-  | .ftoi, .float c => match FloatCode.toInt? c with
+  | .ftoi, .float c => match FloatCode.toInt? (FloatCode.canon c) with
     | some x => if inI64 x then none else some .badCast
     | none => some .badCast
   | .narrow n, .int i => if fitsBits n i then none else some .badCast
@@ -153,7 +153,8 @@ def UnFn.issue : UnFn → Value → Option Issue
     | some i => if fitsDigits p i then none else some .overflow
     | none => none
   -- NaN and ±∞ have no decimal.
-  | .ftod s, .float c => if (FloatCode.toDecimal? c s).isSome then none else some .badCast
+  | .ftod s, .float c =>
+    if (FloatCode.toDecimal? (FloatCode.canon c) s).isSome then none else some .badCast
   | .raise _, _ => some .raised
   | _, _ => none
 
@@ -170,14 +171,47 @@ def nanCase : BinFn → Int → Int → Bool
       (a == FloatCode.negInf && b == FloatCode.posInf)
   | .fsub, a, b => (a == FloatCode.posInf && b == FloatCode.posInf) ||
       (a == FloatCode.negInf && b == FloatCode.negInf)
-  | .fmul, a, b => (a == 0 && isInfCode b) || (isInfCode a && b == 0)
+  | .fmul, a, b => ((a == 0 || a == FloatCode.negZero) && isInfCode b) ||
+      (isInfCode a && (b == 0 || b == FloatCode.negZero))
   | .fdiv, a, b => isInfCode a && isInfCode b
-  | .fmod, a, b => isInfCode a && b != FloatCode.nan
+  -- IEEE division (D39) also creates a NaN at `0 / 0`, which raises (D37).
+  | .fdivIeee, a, b => (isInfCode a && isInfCode b) ||
+      (FloatCode.canon a == 0 && FloatCode.canon b == 0)
+  | .fmod, a, b => isInfCode a && b != FloatCode.nan && b != FloatCode.negNan
   | .fpow, a, b => decide (FloatCode.negInf < a) && decide (a < 0) &&
       decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) && FloatCode.floor b != b
   | _, _, _ => false
 
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
+
+/-- Where IEEE division's NaN case holds (`∞ / ∞`, `0 / 0`), IEEE division
+gives the NaN itself: an engine computing IEEE's `/` needs no option there. -/
+theorem fdiv_of_nanCase_ieee {a b : Int} (h : nanCase .fdivIeee a b = true) :
+    FloatCode.fdiv a b = FloatCode.nan := by
+  have hP := FloatCode.posInf_eq; have hN := FloatCode.negInf_eq
+  have hZ := FloatCode.negZero_eq'; have hY := FloatCode.negNan_eq'
+  have hQ : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+  have hinf : ∀ c, isInfCode c = FloatCode.isInfCode c := fun _ => rfl
+  simp only [nanCase, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, hinf] at h
+  unfold FloatCode.fdiv FloatCode.divI
+  split
+  · rfl
+  rcases h with ⟨ha, hb⟩ | ⟨ha, hb⟩
+  · simp [ha, hb]
+  · have zero : ∀ {c : Int}, FloatCode.canon c = 0 →
+        FloatCode.isZeroCode c = true ∧ FloatCode.isInfCode c = false := by
+      intro c hc
+      have hz : c = 0 ∨ c = FloatCode.negZero := by
+        rcases FloatCode.canon_cases c with ⟨h', _⟩ | ⟨_, h'⟩ | h'
+        · exact .inr h'
+        · omega
+        · exact .inl (h'.symm.trans hc)
+      simp only [FloatCode.isZeroCode, FloatCode.isInfCode, Bool.or_eq_true, beq_iff_eq,
+        Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+      omega
+    obtain ⟨za, ia⟩ := zero ha
+    obtain ⟨zb, ib⟩ := zero hb
+    simp [za, zb, ia, ib]
 
 /-- `power(-∞, y)` for a finite `y` that is not an integer. IEEE 754 gives
 `+∞` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5`
@@ -197,11 +231,15 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .idiv, .int a, .int b =>
     if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
   | .imod, .int _, .int b | .imod, .tod _, .int b => if b = 0 then some .divByZero else none
-  -- A double divided by zero (the code of `0.0`): Substrait's
-  -- `on_division_by_zero` = ERROR. The parser writes the other options as a
-  -- `CASE` around this (`Parse.divByZero`).
-  | .fdiv, .float a, .float b => if b = 0 then some .divByZero else nanIssue .fdiv a b
-  | .fmod, .float a, .float b => if b = 0 then some .divByZero else nanIssue .fmod a b
+  -- A double divided by zero, `0.0` or `-0.0` (the one zero of `ONE_ZERO`,
+  -- D31): Substrait's `on_division_by_zero` = ERROR. The parser writes the
+  -- other options as a `CASE` around this (`Parse.divByZero`).
+  | .fdiv, .float a, .float b =>
+    if FloatCode.canon b = 0 then some .divByZero else nanIssue .fdiv a b
+  -- IEEE by a zero (D39); `±∞ / ±∞` and `0 / 0` create a NaN and raise (D37).
+  | .fdivIeee, .float a, .float b => nanIssue .fdivIeee a b
+  | .fmod, .float a, .float b =>
+    if FloatCode.canon b = 0 then some .divByZero else nanIssue .fmod a b
   | .fadd, .float a, .float b => nanIssue .fadd a b
   | .fsub, .float a, .float b => nanIssue .fsub a b
   | .fmul, .float a, .float b => nanIssue .fmul a b
@@ -222,21 +260,26 @@ def isFiniteCode (c : Int) : Bool := decide (FloatCode.negInf < c) && decide (c 
 
 /-- The operations of doubles that may overflow to `±∞` (#575). -/
 def BinFn.makesInf : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fpow => true
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fpow => true
   | _ => false
 
 /-- An operation on finite doubles whose IEEE result is `±∞` (#575). -/
 def BinFn.infIssue (f : BinFn) (v w : Value) : Option Issue :=
   match v, w, f.apply v w with
   | .float a, .float b, .float r =>
-    if f.makesInf && isFiniteCode a && isFiniteCode b && isInfCode r then some .infinite else none
+    -- IEEE division by a zero is `±∞` by the option's choice (D39), not an overflow.
+    if f.makesInf && isFiniteCode (FloatCode.canon a) && isFiniteCode (FloatCode.canon b) && isInfCode r &&
+        !(f == .fdivIeee && FloatCode.canon b == 0) then
+      some .infinite
+    else none
   | _, _, _ => none
 
 /-- `exp` of a finite double whose result is `±∞` (#575): the other
 elementary functions of a finite double are finite, or a domain error. -/
 def UnFn.infIssue (f : UnFn) (v : Value) : Option Issue :=
   match f, v, f.apply v with
-  | .fmath .exp, .float a, .float r => if isFiniteCode a && isInfCode r then some .infinite else none
+  | .fmath .exp, .float a, .float r =>
+    if isFiniteCode (FloatCode.canon a) && isInfCode r then some .infinite else none
   | _, _, _ => none
 
 /-- The issue of a call: the error first, else an overflow to `±∞`. -/

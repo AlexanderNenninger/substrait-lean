@@ -1,7 +1,7 @@
-import SubstraitLean.Weighted
+import Sverify.Analysis.Weighted
 import Sverify.Core.Decomposable
-import SubstraitLean.Safety
-import SubstraitLean.Keys
+import Sverify.Analysis.Safety
+import Sverify.Analysis.Keys
 
 /-!
 # Sharded evaluation
@@ -158,8 +158,10 @@ theorem Rel.eval_congr {c cat : Catalog} (ha : ∀ t, (c t).arity = (cat t).arit
       cases ty <;> simp only [eval, arity_congr ha b, eval_congr ha (r := a) (fun t ht => h t (.inl ht)),
         eval_congr ha (r := b) (fun t ht => h t (.inr ht))]
 
-/-- Rows of different parts give `e` different values. -/
-def ValDisjoint (e : Expr) (A B : Relation) : Prop := ∀ a ∈ A, ∀ b ∈ B, e.eval a ≠ e.eval b
+/-- Rows of different parts give `e` different values, up to canonical codes
+(`DISTINCT` tells values apart that way, D31). -/
+def ValDisjoint (e : Expr) (A B : Relation) : Prop :=
+  ∀ a ∈ A, ∀ b ∈ B, (e.eval a).canonV ≠ (e.eval b).canonV
 
 /-- What combining `m` needs of the parts: for `COUNT(DISTINCT x)` and
 `SUM(DISTINCT x)`, that no value of `x` is in two of them. -/
@@ -191,22 +193,18 @@ theorem Measure.combine_eval {m : Measure} (hm : m.fn.decomposable = true) {ss :
   rw [hmap, AggFn.combine_apply hm hL hnn]
   rw [eval_eq hc]
   by_cases hd : m.distinct = true
-  · have hdd : ss.map m.inputs = (ss.map m.vals).map dedup := by
+  · have hdd : ss.map m.inputs = (ss.map m.vals).map distinctVals := by
       simp [inputs_eq, hd, Function.comp_def]
     rw [hdd, inputs_eq]
     simp only [hd, ↓reduceIte]
     rw [vals_flatten]
-    have hmem : ∀ v, v ∈ ((ss.map m.vals).map dedup).flatten ↔ v ∈ dedup (ss.map m.vals).flatten := by
-      intro v
-      simp only [mem_dedup, List.mem_flatten, List.mem_map]
-      constructor
-      · rintro ⟨_, ⟨l, hl, rfl⟩, hv⟩; exact ⟨l, hl, mem_dedup.mp hv⟩
-      · rintro ⟨l, hl, hv⟩; exact ⟨_, ⟨l, hl, rfl⟩, mem_dedup.mpr hv⟩
     by_cases hmin : m.fn = .min
-    · exact AggFn.apply_minMax_mem (max := false) (by simp [hmin]) hmem
+    · rw [AggFn.apply_minMax_flatten_distinctVals (max := false) (by simp [hmin]),
+        AggFn.apply_minMax_distinctVals (max := false) (by simp [hmin])]
     by_cases hmax : m.fn = .max
-    · exact AggFn.apply_minMax_mem (max := true) (by simp [hmax]) hmem
-    refine AggFn.apply_perm hm (dedup_flatten_disjoint (List.pairwise_map.mpr
+    · rw [AggFn.apply_minMax_flatten_distinctVals (max := true) (by simp [hmax]),
+        AggFn.apply_minMax_distinctVals (max := true) (by simp [hmax])]
+    refine AggFn.apply_perm hm (canonReps_flatten_disjoint (List.pairwise_map.mpr
       ((hs hd hmin hmax).imp fun hab a ha b hb => ?_))).symm
     obtain ⟨_, x, hx, rfl⟩ := mem_vals ha
     obtain ⟨_, y, hy, rfl⟩ := mem_vals hb
@@ -228,37 +226,38 @@ theorem aggregateEval_perm {gs : List Expr} {ms : List Measure}
   unfold aggregateEval
   split
   · exact .of_eq (by rw [List.map_congr_left fun m hm => Measure.eval_perm (hms m hm) h])
-  · refine ((dedup_perm_of_mem fun k => ?_).map _).trans (.of_eq (List.map_congr_left fun k _ => ?_))
-    · simp only [List.mem_map]
-      exact ⟨fun ⟨x, hx, e⟩ => ⟨x, h.mem_iff.mp hx, e⟩, fun ⟨x, hx, e⟩ => ⟨x, h.mem_iff.mpr hx, e⟩⟩
+  · refine ((canonReps_perm Row.leRaw_rawOrder (h.map _)).map _).trans
+      (.of_eq (List.map_congr_left fun k _ => ?_))
     · congr 1
       exact List.map_congr_left fun m hm => Measure.eval_perm (hms m hm) (groupRows_perm h k)
 
 /-! ## Aggregates of parts with no group in common -/
 
 theorem aggregateEval_append_disjoint {gs : List Expr} {ms : List Measure} (hg : gs ≠ [])
-    {A B : Relation} (h : ∀ a ∈ A, ∀ b ∈ B, groupKey gs a ≠ groupKey gs b) :
+    {A B : Relation} (h : ∀ a ∈ A, ∀ b ∈ B, (groupKey gs a).canon ≠ (groupKey gs b).canon) :
     (aggregateEval gs ms (A ++ B)).Perm (aggregateEval gs ms A ++ aggregateEval gs ms B) := by
   have hge : gs.isEmpty = false := by simpa using hg
   simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte, List.map_append]
-  refine ((dedup_append_disjoint fun ka hka kb hkb => ?_).map _).trans (.of_eq ?_)
+  refine ((canonReps_append_disjoint fun ka hka kb hkb => ?_).map _).trans (.of_eq ?_)
   · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hka
     obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hkb
     exact h a ha b hb
   · rw [List.map_append]
     congr 1
     · refine List.map_congr_left fun k hk => ?_
-      obtain ⟨a, ha, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
-      have : groupRows gs B (groupKey gs a) = [] :=
+      obtain ⟨_, hx, hk⟩ := canonReps_canon hk
+      obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
+      have : groupRows gs B k = [] :=
         List.filter_eq_nil_iff.mpr fun b hb he =>
-          h a ha b hb (by simpa using he : groupKey gs b = groupKey gs a).symm
+          h a ha b hb (by rw [← hk]; exact (by simpa using he : (groupKey gs b).canon = k.canon).symm)
       simp only [groupRows, List.filter_append] at this ⊢
       rw [this, List.append_nil]
     · refine List.map_congr_left fun k hk => ?_
-      obtain ⟨b, hb, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
-      have : groupRows gs A (groupKey gs b) = [] :=
+      obtain ⟨_, hx, hk⟩ := canonReps_canon hk
+      obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hx
+      have : groupRows gs A k = [] :=
         List.filter_eq_nil_iff.mpr fun a ha he =>
-          h a ha b hb (by simpa using he : groupKey gs a = groupKey gs b)
+          h a ha b hb (by rw [← hk]; exact (by simpa using he : (groupKey gs a).canon = k.canon))
       simp only [groupRows, List.filter_append] at this ⊢
       rw [this, List.nil_append]
 
@@ -266,11 +265,11 @@ theorem aggregateEval_append_disjoint {gs : List Expr} {ms : List Measure} (hg :
 whole is aggregating each part, for every measure. -/
 theorem aggregateEval_flatten_disjoint {gs : List Expr} {ms : List Measure} (hg : gs ≠ []) :
     ∀ {ss : List Relation},
-      ss.Pairwise (fun A B => ∀ a ∈ A, ∀ b ∈ B, groupKey gs a ≠ groupKey gs b) →
+      ss.Pairwise (fun A B => ∀ a ∈ A, ∀ b ∈ B, (groupKey gs a).canon ≠ (groupKey gs b).canon) →
         (aggregateEval gs ms ss.flatten).Perm (ss.flatMap (aggregateEval gs ms))
   | [], _ => by
     have hge : gs.isEmpty = false := by simpa using hg
-    simp [aggregateEval, hge, dedup, dedupN]
+    simp [aggregateEval, hge, distinctRows, canonReps, dedup, dedupN]
   | s :: ss, h => by
     rw [List.pairwise_cons] at h
     simp only [List.flatten_cons, List.flatMap_cons]
@@ -279,18 +278,19 @@ theorem aggregateEval_flatten_disjoint {gs : List Expr} {ms : List Measure} (hg 
     obtain ⟨B, hB, hb⟩ := List.mem_flatten.mp hb
     exact h.1 B hB a ha b hb
 
-theorem groupKey_eq_mem : ∀ {gs : List Expr} {a b : Row}, groupKey gs a = groupKey gs b →
-    ∀ e ∈ gs, e.eval a = e.eval b
+theorem groupKey_eq_mem : ∀ {gs : List Expr} {a b : Row},
+    (groupKey gs a).canon = (groupKey gs b).canon → ∀ e ∈ gs, (e.eval a).canonV = (e.eval b).canonV
   | [], _, _, _, e, he => by simp at he
   | g :: gs, a, b, h, e, he => by
-    simp only [groupKey, List.map_cons, List.cons.injEq] at h
+    simp only [groupKey, Row.canon, List.map_cons, List.cons.injEq] at h
     simp only [List.mem_cons] at he
     rcases he with rfl | he
     · exact h.1
     · exact groupKey_eq_mem (gs := gs) h.2 e he
 
 theorem keyOf_eq_of_groupKey {gs : List Expr} {kc : List Nat} {a b : Row}
-    (hkc : ∀ c ∈ kc, gs.contains (.field c) = true) (h : groupKey gs a = groupKey gs b) :
+    (hkc : ∀ c ∈ kc, gs.contains (.field c) = true)
+    (h : (groupKey gs a).canon = (groupKey gs b).canon) :
     keyOf kc a = keyOf kc b :=
   List.map_congr_left fun c hc => by
     have := groupKey_eq_mem h (.field c) (by simpa using hkc c hc)
@@ -316,8 +316,8 @@ theorem groupKey_keyFields {key vals : Row} :
   exact List.take_left' rfl
 
 theorem length_of_mem_keys {gs : List Expr} {s : Relation} {k : Row}
-    (h : k ∈ dedup (s.map (groupKey gs))) : k.length = gs.length := by
-  obtain ⟨x, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp h)
+    (h : k ∈ distinctRows (s.map (groupKey gs))) : k.length = gs.length := by
+  obtain ⟨x, _, rfl⟩ := List.mem_map.mp (canonReps_sub h)
   exact groupKey_length gs x
 
 theorem combineMeasures_eval {k : Nat} {ms : List Measure} {i : Nat} (hi : i < ms.length)
@@ -358,30 +358,87 @@ theorem flatten_map_filter {α β : Type} (l : List α) (p : α → Bool) (f : �
     · simp [hp, ih]
     · simp [hp, ih, h a (by simpa using hp)]
 
-/-- One shard's partial row for the group `k`, if it has that group. -/
-theorem aggregateEval_filter_key {gs : List Expr} {ms : List Measure} (hg : gs ≠ []) (s : Relation)
-    (k : Row) :
-    (aggregateEval gs ms s).filter (fun row => groupKey (keyFields gs.length) row == k) =
-      if k ∈ s.map (groupKey gs) then [k ++ ms.map (·.eval (groupRows gs s k))] else [] := by
-  have hge : gs.isEmpty = false := by simpa using hg
-  simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte, List.filter_map]
-  rw [List.filter_congr (q := (· == k)) fun j hj => by
-    simp only [Function.comp_apply]
-    rw [← length_of_mem_keys hj, groupKey_keyFields]]
-  rw [filter_beq_nodup (dedup_pairwise _)]
-  by_cases hk : k ∈ s.map (groupKey gs) <;> simp [hk, mem_dedup]
+/-- A lawful `==` is `decide` of `=` (rows have two, from `List` and from
+`DecidableEq`). -/
+theorem beq_decide {α : Type} [BEq α] [LawfulBEq α] [DecidableEq α] (a b : α) :
+    (a == b) = decide (a = b) := by
+  by_cases h : a = b <;> simp [h]
+
+/-- Groups whose keys are equal up to canonical codes are one group. -/
+theorem groupRows_canon {gs : List Expr} {s : Relation} {j k : Row} (h : j.canon = k.canon) :
+    groupRows gs s j = groupRows gs s k := by
+  simp only [groupRows, h]
 
 theorem aggregateEval_keys {gs : List Expr} {ms : List Measure} (hg : gs ≠ []) (s : Relation) :
-    (aggregateEval gs ms s).map (groupKey (keyFields gs.length)) = dedup (s.map (groupKey gs)) := by
+    (aggregateEval gs ms s).map (groupKey (keyFields gs.length)) = distinctRows (s.map (groupKey gs)) := by
   have hge : gs.isEmpty = false := by simpa using hg
   simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte, List.map_map]
-  conv => rhs; rw [← List.map_id (dedup _)]
+  conv => rhs; rw [← List.map_id (distinctRows _)]
   exact List.map_congr_left fun j hj => by
     simp only [Function.comp_apply, id]
     rw [← length_of_mem_keys hj, groupKey_keyFields]
 
+theorem keys_flatMap {gs : List Expr} {ms : List Measure} (hg : gs ≠ []) :
+    ∀ ss : List Relation, (ss.flatMap (aggregateEval gs ms)).map (groupKey (keyFields gs.length)) =
+      ((ss.map (·.map (groupKey gs))).map (canonReps Row.canon Row.leRaw)).flatten
+  | [] => rfl
+  | s :: ss => by
+    simp only [List.flatMap_cons, List.map_append, aggregateEval_keys hg, keys_flatMap hg ss,
+      List.map_cons, List.flatten_cons]
+    rfl
+
+/-- One shard's partial values of measure `i` for the group `k`: its value
+if the shard has the group (up to canonical codes), else none. -/
+theorem shard_column {gs : List Expr} {ms : List Measure} (hg : gs ≠ []) (s : Relation) (k : Row)
+    {i : Nat} (hi : i < ms.length) :
+    ((aggregateEval gs ms s).filter
+        (fun row => (groupKey (keyFields gs.length) row).canon == k.canon)).map
+        (·.getD (gs.length + i) .null) =
+      if (s.map (groupKey gs)).any (fun x => x.canon == k.canon) then
+        [ms[i].eval (groupRows gs s k)] else [] := by
+  have hge : gs.isEmpty = false := by simpa using hg
+  simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte, List.filter_map]
+  rw [List.filter_congr (q := fun j => j.canon == k.canon) fun j hj => by
+    simp only [Function.comp_apply]
+    rw [← length_of_mem_keys hj, groupKey_keyFields]]
+  obtain ⟨r, hr⟩ := canonReps_filter_canon (c := Row.canon) Row.leRaw_rawOrder
+    (s.map (groupKey gs)) k
+  -- Both `==` on rows are lawful: the filters agree.
+  simp only [beq_decide] at hr ⊢
+  have hmemr : ∀ j ∈ (distinctRows (s.map (groupKey gs))).filter (fun j => j.canon == k.canon),
+      j.length = gs.length ∧ j.canon = k.canon := fun j hj => by
+    obtain ⟨hj, hc⟩ := List.mem_filter.mp hj
+    exact ⟨length_of_mem_keys hj, by simpa using hc⟩
+  simp only [beq_decide] at hmemr
+  unfold distinctRows at hmemr
+  unfold distinctRows
+  rw [hr] at hmemr ⊢
+  split
+  · obtain ⟨hl, hc⟩ := hmemr r (by simp_all)
+    simp only [List.map_cons, List.map_nil, List.cons.injEq, and_true]
+    rw [List.getD_eq_getElem?_getD, ← hl, List.getElem?_append_right (Nat.le_add_right _ _),
+      Nat.add_sub_cancel_left, List.getElem?_map, List.getElem?_eq_getElem hi, Option.map_some,
+      Option.getD_some, groupRows_canon hc]
+  · rfl
+
+theorem twoPhase_column {gs : List Expr} {ms : List Measure} (hg : gs ≠ []) (k : Row) {i : Nat}
+    (hi : i < ms.length) : ∀ ss : List Relation,
+    (groupRows (keyFields gs.length) (ss.flatMap (aggregateEval gs ms)) k).map
+        (·.getD (gs.length + i) .null) =
+      (ss.filter fun s => (s.map (groupKey gs)).any (fun x => x.canon == k.canon)).map
+        fun s => ms[i].eval (groupRows gs s k)
+  | [] => rfl
+  | s :: ss => by
+    have ih := twoPhase_column hg k hi ss
+    rw [groupRows] at ih ⊢
+    rw [List.flatMap_cons, List.filter_append, List.map_append, shard_column hg s k hi, ih,
+      List.filter_cons]
+    split <;> simp_all
+
 /-- **Two-phase aggregation**: aggregating each part, then combining the
-partial rows grouped by their keys, gives the aggregate of the whole. -/
+partial rows grouped by their keys, gives the aggregate of the whole. Each
+part keeps its own member of a class of keys; the combining phase keeps the
+least of those, which is the whole's (`canonReps_flatten_canonReps`). -/
 theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
     (hms : ∀ m ∈ ms, m.fn.decomposable = true) {ss : List Relation} (hne : ss ≠ [])
     (hs : ∀ m ∈ ms, m.SplitOk ss) :
@@ -411,33 +468,32 @@ theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
     have hge : gs.isEmpty = false := by simpa using hg
     rw [aggregateEval.eq_1 (keyFields gs.length), aggregateEval.eq_1 gs ms ss.flatten]
     simp only [hk, hge, Bool.false_eq_true, ↓reduceIte]
-    rw [show (ss.flatMap (aggregateEval gs ms)).map (groupKey (keyFields gs.length)) =
-        ss.flatMap fun s => dedup (s.map (groupKey gs)) by
-      rw [List.map_flatMap]; exact flatMap_congr fun s _ => aggregateEval_keys hg s]
-    refine ((dedup_perm_of_mem fun k => ?_).map _).trans (.of_eq (List.map_congr_left fun k hk => ?_))
-    · simp only [List.mem_flatMap, mem_dedup, List.mem_map, List.mem_flatten]
-      constructor
-      · rintro ⟨s, hs, x, hx, rfl⟩; exact ⟨x, ⟨s, hs, hx⟩, rfl⟩
-      · rintro ⟨x, ⟨s, hs, hx⟩, rfl⟩; exact ⟨s, hs, x, hx, rfl⟩
-    · -- The partial rows of group `k`: one from each shard that has it.
-      let p : Relation → Bool := fun s => decide (k ∈ s.map (groupKey gs))
+    rw [show distinctRows ((ss.flatMap (aggregateEval gs ms)).map (groupKey (keyFields gs.length))) =
+        canonReps Row.canon Row.leRaw ((ss.map (·.map (groupKey gs))).map
+          (canonReps Row.canon Row.leRaw)).flatten by rw [keys_flatMap hg]; rfl,
+      show distinctRows (ss.flatten.map (groupKey gs)) =
+        canonReps Row.canon Row.leRaw (ss.map (·.map (groupKey gs))).flatten by
+          rw [List.map_flatten]; rfl]
+    refine ((canonReps_flatten_canonReps Row.leRaw_rawOrder _).map _).trans
+      (.of_eq (List.map_congr_left fun k hk => ?_))
+    · rw [← List.map_flatten] at hk
       have hkl : k.length = gs.length := length_of_mem_keys hk
-      have hQ : groupRows (keyFields gs.length) (ss.flatMap (aggregateEval gs ms)) k =
-          (ss.filter p).map fun s => k ++ ms.map (·.eval (groupRows gs s k)) := by
-        simp only [groupRows, List.filter_flatMap]
-        rw [flatMap_congr fun s _ => aggregateEval_filter_key hg s k]
-        exact flatMap_ite_singleton _ (fun s : Relation => k ∈ s.map (groupKey gs)) _
+      -- The shards that have the group `k`.
+      let p : Relation → Bool := fun s => (s.map (groupKey gs)).any (fun x => x.canon == k.canon)
       have hG : groupRows gs ss.flatten k = ((ss.filter p).map (groupRows gs · k)).flatten := by
         simp only [groupRows, List.filter_flatten]
         refine flatten_map_filter _ p _ fun s hs => List.filter_eq_nil_iff.mpr fun x hx he => ?_
-        simp only [p, decide_eq_false_iff_not, List.mem_map, not_exists, not_and] at hs
-        exact hs x hx (by simpa using he)
+        simp only [p, List.any_eq_false, List.mem_map, forall_exists_index, and_imp,
+          forall_apply_eq_imp_iff₂] at hs
+        exact hs x hx he
       have hne' : (ss.filter p).map (groupRows gs · k) ≠ [] := by
-        obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
-        obtain ⟨s, hs, hxs⟩ := List.mem_flatten.mp hx
-        have : s ∈ ss.filter p := List.mem_filter.mpr ⟨hs, by simpa [p] using ⟨x, hxs, rfl⟩⟩
+        obtain ⟨x, hx, hxk⟩ := canonReps_canon hk
+        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
+        obtain ⟨s, hs, hys⟩ := List.mem_flatten.mp hy
+        have : s ∈ ss.filter p := List.mem_filter.mpr ⟨hs, List.any_eq_true.mpr
+          ⟨_, List.mem_map_of_mem hys, by simp [hxk]⟩⟩
         simpa using List.ne_nil_of_mem this
-      rw [hQ, hG]
+      rw [hG]
       congr 1
       refine List.ext_getElem (by simp [hlen]) fun i h₁ h₂ => ?_
       simp only [List.length_map] at h₂
@@ -445,12 +501,8 @@ theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
       rw [combineMeasures_eval h₂, ← Measure.combine_eval (hms _ (List.getElem_mem h₂)) hne'
         ((hs _ (List.getElem_mem h₂)).filter_map p (groupRows gs · k)
           fun _ _ hx => (List.mem_filter.mp hx).1),
-        List.map_map, List.map_map]
-      congr 2
-      refine List.map_congr_left fun s _ => ?_
-      simp only [Function.comp_apply, List.getD_eq_getElem?_getD, ← hkl,
-        List.getElem?_append_right (Nat.le_add_right _ _), Nat.add_sub_cancel_left,
-        List.getElem?_map, List.getElem?_eq_getElem h₂, Option.map_some, Option.getD_some]
+        twoPhase_column hg k h₂ ss, List.map_map]
+      rfl
 
 /-! ## Shards -/
 
@@ -484,13 +536,13 @@ theorem Value.isTrue_iff {v : Value} : v.isTrue = true ↔ v = .bool true := by
   | bool b => cases b <;> simp [Value.isTrue]
   | _ => simp [Value.isTrue]
 
-theorem eq_of_isTrue_eq {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) : v = w := by
-  rw [Value.isTrue_iff] at h
-  cases v <;> cases w <;> simp_all [BinFn.apply]
-  all_goals (split at h <;> simp_all)
+/-- SQL `=` is TRUE only on values equal up to canonical codes. -/
+theorem eq_of_isTrue_eq {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) :
+    v.canonV = w.canonV :=
+  (eq_true_same h).1
 
 theorem Expr.eqFields_sound {row : Row} : ∀ {e : Expr}, (e.eval row).isTrue = true →
-    ∀ p ∈ e.eqFields, row.getD p.1 .null = row.getD p.2 .null
+    ∀ p ∈ e.eqFields, (row.getD p.1 .null).canonV = (row.getD p.2 .null).canonV
   | .lit _, _, _, hp | .field _, _, _, hp | .un _ _, _, _, hp | .ifThen _ _ _, _, _, hp => by
     simp [eqFields] at hp
   | .bin f a b, h, p, hp => by
@@ -901,8 +953,8 @@ theorem Rel.keyRows {S : String → Bool} {K : String → Option (List Nat)} {T 
   | .distinct r, kc, hw, hl, hk, row, h => by
     simp only [linear, Bool.and_eq_true] at hl
     simp only [keyCols] at hk
-    simp only [eval, mem_dedup] at h
-    exact keyRows hs hc (r := r) hw hl.1 hk row h
+    simp only [eval] at h
+    exact keyRows hs hc (r := r) hw hl.1 hk row (canonReps_sub h)
   | .project r es, kc, hw, hl, hk, row, h => by
     simp only [linear] at hl
     simp only [keyCols, Option.map_eq_some_iff] at hk
@@ -934,7 +986,9 @@ theorem Rel.keyRows {S : String → Bool} {K : String → Option (List Nat)} {T 
       exact (hcol k hk).1
     · rw [← he]
       simp only [keyOf, List.map_map]
-      exact List.map_congr_left fun k hk => (hcol k hk).2
+      exact List.map_congr_left fun k hk => by
+        show Value.canonV (List.getD _ _ _) = _
+        rw [(hcol k hk).2]
   | .emit r m, kc, hw, hl, hk, row, h => by
     simp only [linear] at hl
     simp only [keyCols, Option.bind_eq_some_iff] at hk
@@ -1010,7 +1064,7 @@ theorem Rel.keyRows {S : String → Bool} {K : String → Option (List Nat)} {T 
     rw [keyOf_append _ hlen, ← he]
     have hm := hmap (.lit .null)
     calc keyOf kc (groupKey gs x)
-        = (kc.map (gs.getD · (.lit .null))).map (·.eval x) := by
+        = (kc.map (gs.getD · (.lit .null))).map (fun e => (e.eval x).canonV) := by
           simp only [keyOf, groupKey, List.map_map]
           exact List.map_congr_left fun p hp => by
             simp [List.getD_eq_getElem?_getD, List.getElem?_map,
@@ -1161,11 +1215,11 @@ theorem Rel.eval_sharded {S : String → Bool} {K : String → Option (List Nat)
       simp only [linear, Bool.and_eq_true, Option.isSome_iff_exists] at h
       obtain ⟨hl, kc, hk⟩ := h
       simp only [eval]
-      refine (dedup_perm_of_mem fun _ => (eval_sharded hs hT (r := r) hw hl).mem_iff).trans ?_
+      refine (canonReps_perm Row.leRaw_rawOrder (eval_sharded hs hT (r := r) hw hl)).trans ?_
       rw [flatMap_eq_flatten_map]
-      refine (dedup_flatten_disjoint ((hs.rows_disjoint (r := r) hw hl hk).imp
-        fun hab a ha b hb he => hab a ha b hb (by rw [he]))).trans (.of_eq ?_)
-      simp [flatMap_eq_flatten_map, Function.comp_def]
+      refine (canonReps_flatten_disjoint ((hs.rows_disjoint (r := r) hw hl hk).imp
+        fun hab a ha b hb he => hab a ha b hb (keyOf_eq_of_canon he))).trans (.of_eq ?_)
+      simp [flatMap_eq_flatten_map, Function.comp_def, distinctRows]
   | .aggregate r gs ms, hw, h => by
       simp only [linear] at h
       cases hk : r.keyCols S K T cat with
@@ -1211,7 +1265,7 @@ theorem Measure.splitOk_of_twoPhase {S : String → Bool} {K : String → Option
       exact (hs.rows_disjoint hw hl hk).imp fun hab a ha b hb he =>
         hab a ha b hb (by
           simp only [harg, Expr.eval] at he
-          show [a.getD c .null] = [b.getD c .null]
+          show [(a.getD c .null).canonV] = [(b.getD c .null).canonV]
           rw [he])
     · simp at hm
 
@@ -1574,8 +1628,28 @@ def floatPartial (m : Measure) : List Measure :=
 writes as `abs`. -/
 def fabsExpr (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float 0))) (.un .fneg e) e
 
-/-- `|x|` of a double's code. -/
-def fabsCode (c : Int) : Int := if c < 0 then FloatCode.neg c else c
+/-- `|x|` of a double's code, as `CASE WHEN x < 0 THEN -x ELSE x END` gives it
+(`<` reads canonical codes, `-` is IEEE's, so `-0.0` stays). -/
+def fabsCode (c : Int) : Int := if FloatCode.canon c < 0 then FloatCode.negI c else c
+
+/-- On finite codes, `fabsCode` is the magnitude's code. -/
+theorem fabsCode_fin {c : Int} (hc : FloatCode.IsFin c) :
+    fabsCode c = if c < 0 then -c else c := by
+  have hcc := FloatCode.canon_of_bounds hc
+  have := FloatCode.negInf_eq; have h0 : FloatCode.negZero = -(2 * (FloatCode.maxMag : Int) + 6) :=
+    FloatFormat.negZero_eq fp64
+  unfold FloatCode.IsFin at hc
+  unfold fabsCode; rw [hcc]
+  by_cases hneg : c < 0
+  · simp only [hneg, ↓reduceIte]
+    unfold FloatCode.negI; split <;> (try split) <;> omega
+  · simp only [hneg, ↓reduceIte]
+
+theorem canon_fabsCode {c : Int} (hc : FloatCode.IsFin c) : FloatCode.canon (fabsCode c) = fabsCode c := by
+  rw [fabsCode_fin hc]
+  have := FloatCode.negInf_eq; have := FloatCode.posInf_eq
+  unfold FloatCode.IsFin at hc
+  refine FloatCode.canon_of_bounds ⟨?_, ?_⟩ <;> split <;> omega
 
 /-- The partial measures that bound a split double `SUM`/`AVG`'s rounding:
 `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)`, under the measure's `FILTER`. The
@@ -1594,8 +1668,9 @@ def floatParts (ms : List Measure) : List Measure :=
 
 theorem fabsExpr_eval_float {e : Expr} {row : Row} {c : Int} (h : e.eval row = .float c) :
     (fabsExpr e).eval row = .float (fabsCode c) := by
-  by_cases hc : c < 0 <;>
-    simp [fabsExpr, fabsCode, Expr.eval, h, hc, BinFn.apply, UnFn.apply, Value.isTrue]
+  by_cases hc : FloatCode.canon c < 0 <;>
+    simp [fabsExpr, fabsCode, Expr.eval, h, hc, BinFn.apply, UnFn.apply, Value.isTrue,
+      FloatCode.canon_zero]
 
 theorem fabsExpr_eval_null {e : Expr} {row : Row} (h : e.eval row = .null) :
     (fabsExpr e).eval row = .null := by
@@ -1693,11 +1768,14 @@ theorem exactSum_append (a b : List Value) : exactSum (a ++ b) = exactSum a + ex
   | nil => simp [exactSum]
   | cons v a ih => cases v <;> simp [exactSum, ih] <;> omega
 
-theorem exactSum_natAbs_le (cs : List Int) : (exactSum (cs.map .float)).natAbs ≤ absExact cs := by
+theorem exactSum_natAbs_le {cs : List Int} (hf : ∀ c ∈ cs, FloatCode.canon c = c) :
+    (exactSum (cs.map .float)).natAbs ≤ absExact cs := by
   induction cs with
   | nil => simp [exactSum, absExact]
   | cons c cs ih =>
-    simp only [absExact, List.map_cons, List.sum_cons, exactSum, FloatCode.exact] at ih ⊢
+    have ih := ih fun x hx => hf x (List.mem_cons_of_mem _ hx)
+    simp only [absExact, List.map_cons, List.sum_cons, exactSum, FloatCode.exact,
+      hf c List.mem_cons_self] at ih ⊢
     omega
 
 theorem isFin_of_scaled_le {c : Int} (h : (FloatCode.scaled c).natAbs ≤ FloatCode.maxMag) :
@@ -1712,11 +1790,14 @@ rounded once. -/
 theorem floatSumCR_of_le {cs : List Int} (h : ∀ c ∈ cs, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096) :
     floatSumCR (cs.map .float) = FloatCode.ofExact (exactSum (cs.map .float)) := by
   have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
-  simp only [floatSumCR, nonFinite_of_fin fun c hc => isFin_of_scaled_le (by
-    have := h c hc; omega), Option.getD_none]
+  simp only [floatSumCR, nonFinite_of_fin fun c hc => by
+    have hfc := isFin_of_scaled_le (c := c) (by have := h c hc; omega)
+    rwa [FloatCode.canon_of_bounds hfc], Option.getD_none]
 
-theorem scaled_fabsCode (c : Int) : FloatCode.scaled (fabsCode c) = (FloatCode.scaled c).natAbs := by
-  by_cases hc : c < 0 <;> simp only [fabsCode, FloatCode.neg, hc, ↓reduceIte] <;>
+theorem scaled_fabsCode {c : Int} (hf : FloatCode.IsFin c) :
+    FloatCode.scaled (fabsCode c) = (FloatCode.scaled c).natAbs := by
+  rw [fabsCode_fin hf]
+  by_cases hc : c < 0 <;> simp only [hc, ↓reduceIte] <;>
     unfold FloatCode.scaled <;> split <;> omega
 
 set_option exponentiation.threshold 2100 in
@@ -1733,12 +1814,17 @@ theorem partials_near {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode
     rw [absExact_append] at hT
     have hl : ∀ c ∈ l, (FloatCode.scaled c).natAbs ≤ 2 ^ 2096 := fun c hc => h c (.inl hc)
     obtain ⟨ih1, ih2⟩ := ih (fun c hc => h c (.inr hc)) (by omega)
-    have hS := exactSum_natAbs_le l
+    have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
+    have hcl : ∀ c ∈ l, FloatCode.canon c = c := fun c hc =>
+      FloatCode.canon_of_bounds (isFin_of_scaled_le (by have := hl c hc; omega))
+    have hcL : ∀ c ∈ L.flatten, FloatCode.canon c = c := fun c hc =>
+      FloatCode.canon_of_bounds (isFin_of_scaled_le (by have := h c (.inr hc); omega))
+    have hS := exactSum_natAbs_le hcl
     obtain ⟨hfin, hrel⟩ := FloatCode.ofExact_rel (S := exactSum (l.map .float)) (by omega)
     rw [← floatSumCR_of_le hl] at hfin hrel
     refine ⟨?_, ?_⟩
     · simp only [List.map_cons, exactSum, List.flatten_cons, List.map_append, exactSum_append,
-        absExact_append, FloatCode.exact]
+        absExact_append, FloatCode.exact, FloatCode.canon_floatSumCR]
       omega
     · intro l' hl'
       rcases List.mem_cons.mp hl' with rfl | hl'
@@ -1756,16 +1842,21 @@ theorem absTotal_ge {L : List (List Int)} (h : ∀ c ∈ L.flatten, (FloatCode.s
     simp only [List.flatten_cons, List.mem_append] at h hT
     rw [absExact_append] at hT
     have ih' := ih (fun c hc => h c (.inr hc)) (by omega)
+    have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
+    have hfl : ∀ c ∈ l, FloatCode.IsFin c := fun c hc =>
+      isFin_of_scaled_le (by have := h c (.inl hc); omega)
     have hl : ∀ c ∈ l, (FloatCode.scaled (fabsCode c)).natAbs ≤ 2 ^ 2096 := fun c hc => by
-      rw [scaled_fabsCode]; have := h c (.inl hc); omega
+      rw [scaled_fabsCode (hfl c hc)]; have := h c (.inl hc); omega
     have hmap : (l.map fun c => Value.float (fabsCode c)) = (l.map fabsCode).map .float := by simp
     have he : exactSum ((l.map fabsCode).map .float) = absExact l := by
       clear hl hmap ih' ih h hT
       induction l with
       | nil => simp [exactSum, absExact]
       | cons c l ihl =>
-        simp only [List.map_cons, exactSum, FloatCode.exact, scaled_fabsCode, absExact,
-          List.sum_cons] at ihl ⊢
+        have ihl := ihl fun x hx => hfl x (List.mem_cons_of_mem _ hx)
+        have hc := hfl c List.mem_cons_self
+        simp only [List.map_cons, exactSum, FloatCode.exact, canon_fabsCode hc, scaled_fabsCode hc,
+          absExact, List.sum_cons] at ihl ⊢
         omega
     have hle : absExact l ≤ 2 ^ 2097 := by omega
     obtain ⟨-, hrel⟩ := FloatCode.ofExact_rel (S := (absExact l : Int))
@@ -1801,7 +1892,10 @@ theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
   have hAs := absTotal_ge hBL (by omega)
   have hSeq : exactSum (L.flatten.map .float) = exactSum (ws.map .float) :=
     (exactSum_perm (hp.map _)).symm
-  have hS := exactSum_natAbs_le ws
+  have hS := exactSum_natAbs_le (cs := ws) fun c hc => FloatCode.canon_of_bounds
+    (isFin_of_scaled_le (by
+      have := hBs c hc; have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
+      omega))
   -- The partials are finite: their list rounds its exact sum `P` once.
   have hR : twoPhaseSum L =
       FloatCode.ofExact (exactSum (L.map fun l => Value.float (floatSumCR (l.map .float)))) := by
@@ -1810,7 +1904,8 @@ theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
     rw [twoPhaseSum, this]
     show (nonFinite _).getD _ = _
     rw [nonFinite_of_fin (by
-      intro c hc; obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc; exact hfin l hl)]
+      intro c hc; obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc
+      rw [FloatCode.canon_floatSumCR]; exact hfin l hl)]
     rfl
   rw [hR, floatSumCR_of_le hBs]
   rw [hSeq, hTL] at hnear
@@ -1876,7 +1971,7 @@ count is within `shardAvgTolCR n As` of the mean of `ws` rounded once. -/
 theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne : ws ≠ [])
     (hp : ws.Perm L.flatten) (hB : ∀ c ∈ ws, (FloatCode.scaled c).natAbs ≤ Bs)
     (h32 : ws.length ≤ 2 ^ 32) (hov : ws.length * Bs ≤ 2 ^ 2096) :
-    (FloatCode.scaled (FloatCode.fdiv (twoPhaseSum L) (FloatCode.ofInt ws.length))
+    (FloatCode.scaled (FloatCode.canon (FloatCode.fdiv (twoPhaseSum L) (FloatCode.ofInt ws.length)))
         - FloatCode.scaled (floatAvgCR (ws.map .float))).natAbs
       ≤ FloatCode.shardAvgTolCR ws.length (absTotal L) := by
   have hn0 : 0 < ws.length := List.length_pos_iff.mpr hne
@@ -1892,7 +1987,10 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
   have hAs := absTotal_ge hBL (by omega)
   have hSeq : exactSum (L.flatten.map .float) = exactSum (ws.map .float) :=
     (exactSum_perm (hp.map _)).symm
-  have hS := exactSum_natAbs_le ws
+  have hS := exactSum_natAbs_le (cs := ws) fun c hc => FloatCode.canon_of_bounds
+    (isFin_of_scaled_le (by
+      have := hBs c hc; have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
+      omega))
   have hR : twoPhaseSum L =
       FloatCode.ofExact (exactSum (L.map fun l => Value.float (floatSumCR (l.map .float)))) := by
     have : L.map (fun l => Value.float (floatSumCR (l.map .float))) =
@@ -1900,12 +1998,14 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
     rw [twoPhaseSum, this]
     show (nonFinite _).getD _ = _
     rw [nonFinite_of_fin (by
-      intro c hc; obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc; exact hfin l hl)]
+      intro c hc; obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hc
+      rw [FloatCode.canon_floatSumCR]; exact hfin l hl)]
     rfl
   have hC : floatAvgCR (ws.map .float) = FloatCode.ofExactDiv (exactSum (ws.map .float)) ws.length := by
     have hm : 2 ^ 2096 ≤ FloatCode.maxMag := FloatCode.pow_le_maxMag (by omega)
-    simp only [floatAvgCR, nonFinite_of_fin fun c hc => isFin_of_scaled_le (by
-      have := hBs c hc; omega), Option.getD_none, List.length_map]
+    simp only [floatAvgCR, nonFinite_of_fin fun c hc => by
+      have hfc := isFin_of_scaled_le (c := c) (by have := hBs c hc; omega)
+      rwa [FloatCode.canon_of_bounds hfc], Option.getD_none, List.length_map]
   -- The count as a double is exact.
   have hcount : FloatCode.ofInt ws.length = FloatCode.exactCode ws.length :=
     FloatCode.ofInt_exact (by
@@ -1937,7 +2037,8 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
         _ ≤ 2 ^ 2097 * (ws.length * 2 ^ 1074) :=
             Nat.mul_le_mul_left _ (Nat.le_mul_of_pos_left _ hn0))
   rw [hsc, ← hKabs] at hdiv
-  generalize FloatCode.scaled (FloatCode.fdiv R (FloatCode.exactCode ws.length)) = Q at hdiv ⊢
+  generalize FloatCode.scaled (FloatCode.canon (FloatCode.fdiv R (FloatCode.exactCode ws.length))) = Q
+    at hdiv ⊢
   generalize FloatCode.scaled R = Rs at h1 hdiv hRle
   have hdiv' := cancel_scale hKpos hdiv
   -- The reference's mean, within half an ulp.
@@ -1971,7 +2072,8 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
 /-- Two results agree up to `τ` (scaled): two doubles within `τ`, anything
 else equal. -/
 def Value.Near (τ : Nat) : Value → Value → Prop
-  | .float a, .float b => (FloatCode.scaled a - FloatCode.scaled b).natAbs ≤ τ
+  | .float a, .float b =>
+    (FloatCode.scaled (FloatCode.canon a) - FloatCode.scaled (FloatCode.canon b)).natAbs ≤ τ
   | a, b => a = b
 
 theorem length_le_flatten : ∀ {L : List (List Int)}, (∀ l ∈ L, l ≠ []) → L.length ≤ L.flatten.length
@@ -2033,7 +2135,7 @@ theorem fsum_twoPhase_near {Ls : List (List Int)} {ws : List Int} {Bs : Nat}
     show Value.Near _ (AggFn.fsum.apply (L.map fun l => .float (floatSumCR (l.map .float)))) _
     rw [hLc] at h ⊢
     rw [hwc] at h ⊢
-    simpa [AggFn.apply, Value.Near, twoPhaseSum] using h
+    simpa [AggFn.apply, Value.Near, twoPhaseSum, FloatCode.canon_floatSumCR] using h
 
 theorem floatsOf_flatten (L : List (List Value)) : floatsOf L.flatten = (L.map floatsOf).flatten :=
   List.filterMap_flatten ..
@@ -2207,7 +2309,8 @@ theorem floatSplit_avg {m : Measure} (hf : m.fn = .avg) (hd : m.distinct = false
     obtain ⟨c, W', hwc⟩ := List.exists_cons_of_ne_nil hw0
     rw [hLc] at h ⊢
     rw [hwc] at h ⊢
-    simpa [AggFn.apply, BinFn.apply, UnFn.apply, Value.Near, twoPhaseSum] using h
+    simpa [AggFn.apply, BinFn.apply, UnFn.apply, Value.Near, twoPhaseSum, FloatCode.canon_ofInt,
+      FloatCode.canon_floatAvgCR] using h
 
 /-- `|v|` of a double's code; other values unchanged. -/
 def absValue : Value → Value

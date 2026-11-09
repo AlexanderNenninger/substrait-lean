@@ -4,8 +4,8 @@ error_on_division_by_zero=on	UnFn.neg	native
 error_on_division_by_zero=on	UnFn.itof	native
 error_on_division_by_zero=on	UnFn.fneg	native
 error_on_division_by_zero=on	UnFn.ffloor	native
-error_on_division_by_zero=on	UnFn.fceil	native
-error_on_division_by_zero=on	UnFn.fround	native
+error_on_division_by_zero=on	UnFn.fceil	hand-written schema: ceil: 0.0 for a negative value that rounds to zero
+error_on_division_by_zero=on	UnFn.fround	hand-written schema: round: 0.0 for a negative value that rounds to zero
 error_on_division_by_zero=on	UnFn.froundTo	native
 error_on_division_by_zero=on	UnFn.ftoi	native
 error_on_division_by_zero=on	UnFn.narrow	native
@@ -39,9 +39,9 @@ error_on_division_by_zero=on	UnFn.strftime	native
 error_on_division_by_zero=on	UnFn.bucket	native
 error_on_division_by_zero=on	UnFn.fmath .sqrt	hand-written schema: CASE WHEN #0 < lo(sqrt) THEN error('domain error', #0) ELSE fmath(#0) END
 error_on_division_by_zero=on	UnFn.fmath .exp	fmath(#0)
-error_on_division_by_zero=on	UnFn.fmath .ln	hand-written schema: CASE WHEN #0 < lo(ln) THEN error('domain error', #0) ELSE fmath(#0) END
-error_on_division_by_zero=on	UnFn.fmath .log10	hand-written schema: CASE WHEN #0 < lo(log10) THEN error('domain error', #0) ELSE fmath(#0) END
-error_on_division_by_zero=on	UnFn.fmath .log2	hand-written schema: CASE WHEN #0 < lo(log2) THEN error('domain error', #0) ELSE fmath(#0) END
+error_on_division_by_zero=on	UnFn.fmath .ln	CASE WHEN (#0 = 0 OR #0 < 0) THEN error('domain error', #0) ELSE fmath(#0) END
+error_on_division_by_zero=on	UnFn.fmath .log10	CASE WHEN (#0 = 0 OR #0 < 0) THEN error('domain error', #0) ELSE fmath(#0) END
+error_on_division_by_zero=on	UnFn.fmath .log2	CASE WHEN (#0 = 0 OR #0 < 0) THEN error('domain error', #0) ELSE fmath(#0) END
 error_on_division_by_zero=on	UnFn.fmath .sin	hand-written schema: CASE WHEN (#0 < lo(sin) OR (hi(sin) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
 error_on_division_by_zero=on	UnFn.fmath .cos	hand-written schema: CASE WHEN (#0 < lo(cos) OR (hi(cos) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
 error_on_division_by_zero=on	UnFn.fmath .tan	hand-written schema: CASE WHEN (#0 < lo(tan) OR (hi(tan) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
@@ -80,6 +80,7 @@ error_on_division_by_zero=on	BinFn.fadd	hand-written schema: CASE WHEN ((#0 = 'i
 error_on_division_by_zero=on	BinFn.fsub	hand-written schema: CASE WHEN ((#0 = 'inf' AND #1 = 'inf') OR (#0 = '-inf' AND #1 = '-inf')) THEN error('domain error', #1) ELSE fsub(#0, #1) END
 error_on_division_by_zero=on	BinFn.fmul	hand-written schema: CASE WHEN ((#0 = 0 AND (#1 = 'inf' OR #1 = '-inf')) OR ((#0 = 'inf' OR #0 = '-inf') AND #1 = 0)) THEN error('domain error', #1) ELSE fmul(#0, #1) END
 error_on_division_by_zero=on	BinFn.fdiv	hand-written schema: CASE WHEN (#0 IS NOT NULL AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN ((#0 = 'inf' OR #0 = '-inf') AND (#1 = 'inf' OR #1 = '-inf')) THEN error('domain error', #1) ELSE fdiv(#0, #1) END END
+error_on_division_by_zero=on	BinFn.fdivIeee	hand-written schema: CASE WHEN (((#0 = 'inf' OR #0 = '-inf') AND (#1 = 'inf' OR #1 = '-inf')) OR (#0 = 0 AND #1 = 0)) THEN error('domain error', #1) ELSE fdivIeee(#0, #1) END
 error_on_division_by_zero=on	BinFn.fmod	hand-written schema: CASE WHEN (#0 IS NOT NULL AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN ((#0 = 'inf' OR #0 = '-inf') AND NOT (#1 = 'nan')) THEN error('domain error', #1) ELSE fmod(#0, #1) END END
 error_on_division_by_zero=on	BinFn.idiv	CASE WHEN (#0 IS NOT NULL AND #0 IS NULL) THEN error('division by zero', #1) ELSE idiv(#0, #1) END
 error_on_division_by_zero=on	BinFn.imod	hand-written schema: CASE WHEN ((#0 IS NOT NULL OR #0 IS NOT NULL) AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN (#1 = -1 AND #0 IS NOT NULL) THEN 0 ELSE imod(#0, #1) END END

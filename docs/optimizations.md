@@ -4,10 +4,10 @@
 surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
-* guard elimination: `SubstraitLean/Guards.lean`, `Report.guard_free`,
+* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report.guard_free`,
   and `guards=False` in `sverify.engines.to_sql` (and in
   `sverify_polars.engine.run` and `duckdb_engine.run`);
-* sharded evaluation: `SubstraitLean/Partition.lean`,
+* sharded evaluation: `analysis/Sverify/Analysis/Partition.lean`,
   `substrait-check --shard` and `sverify.engines.run_sharded`
   (`sverify.partition`).
 
@@ -55,7 +55,7 @@ check. The Polars engine adds a `map_batches` flag check per operator and
 disables predicate pushdown. Most of these checks never fire on data that
 meets a contract.
 
-What is proved. `SubstraitLean/Guards.lean`:
+What is proved. `analysis/Sverify/Analysis/Guards.lean`:
 
 * `Impl` is an engine's own functions, without checks. `Impl.Faithful` is the
   trusted assumption: they agree with Lean wherever `UnFn.issue` and
@@ -138,7 +138,7 @@ then on one shard, as a Delta or Iceberg partition column (or a hash of it)
 guarantees. The question is when
 `eval q (D₁ ⊎ … ⊎ Dₙ) ~ eval q D₁ ⊎ … ⊎ eval q Dₙ`, or something close to it.
 
-Proved (`SubstraitLean/Partition.lean`, all without `sorry`):
+Proved (`analysis/Sverify/Analysis/Partition.lean`, all without `sorry`):
 
 * `Rel.eval_sharded`. A plan *linear* in `S` (`Rel.linear`) gives the union
   of its results on the shards, as bags. Linear means filters, projections,
@@ -438,7 +438,7 @@ syntactic equality, so it comes after the items above.
 A node's `refresh` maintains filters, projections, inner and cross joins and
 `UNION ALL` from the changes to their inputs, by delta rules Lean proves
 over Z-sets (`Rel.incremental_sound` in
-[`SubstraitLean/Incremental.lean`](../SubstraitLean/Incremental.lean)).
+[`analysis/Sverify/Analysis/Incremental.lean`](../analysis/Sverify/Analysis/Incremental.lean)).
 Further delta rules cover operators that are not linear: `COUNT` and
 integer `SUM` per group, and `DISTINCT`
 ([`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
@@ -462,10 +462,12 @@ when their row count leaves 0 and disappear when it returns to 0.
 `DISTINCT` is the same with every column a key and no measures: a count per
 row, and a row is in the view while its count is positive.
 
-Lean proves that the old state plus the state of the change finishes to the
-aggregate of the new input, against `Rel.eval`, with the groups that appear
+Lean proves that the old state plus the state of the change finishes to an
+aggregate of the new input the reference allows, with the groups that appear
 and disappear (`LinearAgg.aggregate_maintained`), and the same for
-`DISTINCT` (`LinearAgg.distinct_maintained`). The change only needs the
+`DISTINCT` (`LinearAgg.distinct_maintained`). The state keeps one row per
+class of keys equal up to `-0.0` and the NaN's sign, with any key of the
+class, as an engine's `GROUP BY` does. The change only needs the
 right weights, so a change feed that deletes and re-inserts a row is fine
 (`ChangeFeed`). The maintenance reads the change and the touched groups'
 state, never the view's input, where touched-group recompute
@@ -537,8 +539,8 @@ deleted extreme leaves no trace of the next one in the state, though. So
 the state keeps each `MIN` or `MAX` measure's extreme beside the counts and
 sums, and a batch merges the groups it only inserts into, and recomputes
 from the new input the groups it deletes from, a semi-join on their keys
-as touched-group recompute does. Lean proves the result is the aggregate of
-the new input, for any mix of `COUNT`, `SUM`, `MIN` and `MAX`
+as touched-group recompute does. Lean proves the result is an aggregate of
+the new input the reference allows, for any mix of `COUNT`, `SUM`, `MIN` and `MAX`
 (`ExtremeAgg.extreme_maintained`). A time-series rollup whose batches only
 insert never reads its input.
 

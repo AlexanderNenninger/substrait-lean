@@ -1,31 +1,5 @@
 {"lift":
  [{"template":
-   {"scalarFunction":
-    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
-     "options": [{"preference": ["IEEE"], "name": "on_division_by_zero"}],
-     "functionReference": 2,
-     "arguments":
-     [{"value":
-       {"cast":
-        {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
-         "input":
-         {"selection":
-          {"rootReference": {},
-           "directReference": {"structField": {"field": 0}}}},
-         "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
-      {"value":
-       {"cast":
-        {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
-         "input":
-         {"selection":
-          {"rootReference": {},
-           "directReference": {"structField": {"field": 1}}}},
-         "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}},
-   "semantics": "duckdb",
-   "result": "fp64",
-   "construct": "BIGINT / BIGINT",
-   "args": ["i64", "i64"]},
-  {"template":
    {"ifThen":
     {"ifs":
      [{"then": {"literal": {"fp64": "nan"}},
@@ -39,37 +13,133 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 35,
+             "functionReference": 29,
              "arguments":
              [{"value":
-               {"scalarFunction":
-                {"outputType":
-                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
-                 "options": [],
-                 "functionReference": 29,
-                 "arguments":
-                 [{"value":
-                   {"selection":
-                    {"rootReference": {},
-                     "directReference": {"structField": {"field": 0}}}}},
-                  {"value": {"literal": {"fp64": "inf"}}}]}}},
-              {"value":
-               {"scalarFunction":
-                {"outputType":
-                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
-                 "options": [],
-                 "functionReference": 29,
-                 "arguments":
-                 [{"value":
-                   {"selection":
-                    {"rootReference": {},
-                     "directReference": {"structField": {"field": 0}}}}},
-                  {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}},
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}},
+              {"value": {"literal": {"i64": 0}}}]}}},
           {"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 35,
+             "functionReference": 29,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 1}}}}},
+              {"value": {"literal": {"i64": 0}}}]}}}]}}}],
+     "else":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [{"preference": ["IEEE"], "name": "on_division_by_zero"}],
+       "functionReference": 2,
+       "arguments":
+       [{"value":
+         {"cast":
+          {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+           "input":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}},
+           "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
+        {"value":
+         {"cast":
+          {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+           "input":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 1}}}},
+           "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}}}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "BIGINT / BIGINT",
+   "args": ["i64", "i64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"fp64": "nan"}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 35,
+         "arguments":
+         [{"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 34,
+             "arguments":
+             [{"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 35,
+                 "arguments":
+                 [{"value":
+                   {"scalarFunction":
+                    {"outputType":
+                     {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                     "options": [],
+                     "functionReference": 29,
+                     "arguments":
+                     [{"value":
+                       {"selection":
+                        {"rootReference": {},
+                         "directReference": {"structField": {"field": 0}}}}},
+                      {"value": {"literal": {"fp64": "inf"}}}]}}},
+                  {"value":
+                   {"scalarFunction":
+                    {"outputType":
+                     {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                     "options": [],
+                     "functionReference": 29,
+                     "arguments":
+                     [{"value":
+                       {"selection":
+                        {"rootReference": {},
+                         "directReference": {"structField": {"field": 0}}}}},
+                      {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}},
+              {"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 35,
+                 "arguments":
+                 [{"value":
+                   {"scalarFunction":
+                    {"outputType":
+                     {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                     "options": [],
+                     "functionReference": 29,
+                     "arguments":
+                     [{"value":
+                       {"selection":
+                        {"rootReference": {},
+                         "directReference": {"structField": {"field": 1}}}}},
+                      {"value": {"literal": {"fp64": "inf"}}}]}}},
+                  {"value":
+                   {"scalarFunction":
+                    {"outputType":
+                     {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                     "options": [],
+                     "functionReference": 29,
+                     "arguments":
+                     [{"value":
+                       {"selection":
+                        {"rootReference": {},
+                         "directReference": {"structField": {"field": 1}}}}},
+                      {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}}]}}},
+          {"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 34,
              "arguments":
              [{"value":
                {"scalarFunction":
@@ -81,8 +151,8 @@
                  [{"value":
                    {"selection":
                     {"rootReference": {},
-                     "directReference": {"structField": {"field": 1}}}}},
-                  {"value": {"literal": {"fp64": "inf"}}}]}}},
+                     "directReference": {"structField": {"field": 0}}}}},
+                  {"value": {"literal": {"fp64": 0}}}]}}},
               {"value":
                {"scalarFunction":
                 {"outputType":
@@ -94,7 +164,7 @@
                    {"selection":
                     {"rootReference": {},
                      "directReference": {"structField": {"field": 1}}}}},
-                  {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}}]}}}],
+                  {"value": {"literal": {"fp64": 0}}}]}}}]}}}]}}}],
      "else":
      {"scalarFunction":
       {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},

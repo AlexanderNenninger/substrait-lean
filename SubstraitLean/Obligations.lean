@@ -111,6 +111,8 @@ Chan's merge, and `BETWEEN` a linear interpolation. -/
 def behaviourRefines : List (String × Behaviour × Behaviour × String) := [
   ("sum_order", "SEQUENTIAL", "ANY", "FloatSums: a sequential sum is one order of the additions"),
   ("tie_pick", "FIRST_READ", "ANY_ROW", "the first row read is a row of the tie"),
+  ("round_zero_sign", "IEEE", "ANY", "-0.0 is one of the zeros the reference leaves open (duckdb-R15-round, polars-round)"),
+  ("round_zero_sign", "POSITIVE", "ANY", "+0.0 is one of the zeros the reference leaves open (spark-round)"),
   ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)"),
   ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)"),
   ("quantile_interp", "LINEAR", "BETWEEN", "a linear interpolation lies between the neighbouring values (duckdb-quantile-cont-interpolation, polars-quantile)")]

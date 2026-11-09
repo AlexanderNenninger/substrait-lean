@@ -1,7 +1,7 @@
 import SubstraitLean.MarginCheck
 import SubstraitLean.SumBound
 import Sverify.Core.FloatArith
-import SubstraitLean.Partition
+import Sverify.Analysis.Partition
 
 /-!
 # The margin check is sound, in codes (#929)
@@ -42,6 +42,9 @@ theorem IsFin.neg' {c : Int} (h : IsFin c) : IsFin (-c) := by
   obtain ⟨h1, h2⟩ := h
   exact ⟨by omega, by omega⟩
 
+/-- A finite code is canonical. -/
+theorem fin_canon {c : Int} (h : IsFin c) : canon c = c := canon_of_bounds h
+
 theorem isFin_posCode {m : Nat} (h : m ≤ maxMag) : IsFin (posCode m) := by
   have := posInf_eq; have := negInf_eq
   rw [posCode_of_le h]
@@ -79,20 +82,20 @@ theorem ofInt_nat {n : Nat} (h : n ≤ 2 ^ 53) :
 
 theorem add_rel {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (h : (scaled a + scaled b).natAbs ≤ 2 ^ 2097) :
-    IsFin (fadd a b) ∧ 2 ^ 53 * (scaled (fadd a b) - (scaled a + scaled b)).natAbs ≤
+    IsFin (canon (fadd a b)) ∧ 2 ^ 53 * (scaled (canon (fadd a b)) - (scaled a + scaled b)).natAbs ≤
       (scaled a + scaled b).natAbs := by
   rw [fadd_fin ha hb]; exact ofExact_rel h
 
 theorem sub_rel {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (h : (scaled a - scaled b).natAbs ≤ 2 ^ 2097) :
-    IsFin (fsub a b) ∧ 2 ^ 53 * (scaled (fsub a b) - (scaled a - scaled b)).natAbs ≤
+    IsFin (canon (fsub a b)) ∧ 2 ^ 53 * (scaled (canon (fsub a b)) - (scaled a - scaled b)).natAbs ≤
       (scaled a - scaled b).natAbs := by
   rw [fsub_fin ha hb]; exact ofExact_rel h
 
 theorem mul_rel {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (h : (scaled a).natAbs * (scaled b).natAbs ≤ 2 ^ 3171) :
-    IsFin (fmul a b) ∧
-      2 ^ 53 * (2 ^ 1074 * scaled (fmul a b) - scaled a * scaled b).natAbs ≤
+    IsFin (canon (fmul a b)) ∧
+      2 ^ 53 * (2 ^ 1074 * scaled (canon (fmul a b)) - scaled a * scaled b).natAbs ≤
         (scaled a).natAbs * (scaled b).natAbs + 2 ^ 1074 * 2 ^ 52 := by
   have hv : (scaled a * scaled b).natAbs = (scaled a).natAbs * (scaled b).natAbs :=
     Int.natAbs_mul _ _
@@ -132,13 +135,15 @@ theorem scaled_absCode (c : Int) : scaled (absCode c) = (scaled c).natAbs := by
     have : 0 ≤ scaled c := by unfold scaled; split <;> omega
     omega
 
-theorem natAbs_exactSum_le (cs : List Int) :
+theorem natAbs_exactSum_le {cs : List Int} (hf : ∀ c ∈ cs, IsFin c) :
     (exactSum (cs.map .float)).natAbs ≤ scaledAbsSum (cs.map .float) := by
   induction cs with
   | nil => simp [exactSum, scaledAbsSum]
   | cons c cs ih =>
     simp only [List.map_cons, exactSum, scaledAbsSum, exact]
+    rw [fin_canon (hf c List.mem_cons_self)]
     have := Int.natAbs_add_le (scaled c) (exactSum (cs.map .float))
+    have := ih fun x hx => hf x (List.mem_cons_of_mem _ hx)
     omega
 
 theorem scaledAbsSum_abs (cs : List Int) :
@@ -150,14 +155,15 @@ theorem scaledAbsSum_abs (cs : List Int) :
     simp only [List.map_map] at ih ⊢
     rw [ih]
 
-theorem exactSum_abs (cs : List Int) :
+theorem exactSum_abs {cs : List Int} (hf : ∀ c ∈ cs, IsFin c) :
     exactSum ((cs.map absCode).map .float) = scaledAbsSum (cs.map .float) := by
   induction cs with
   | nil => rfl
   | cons c cs ih =>
-    simp only [List.map_cons, exactSum, scaledAbsSum, exact, scaled_absCode]
+    simp only [List.map_cons, exactSum, scaledAbsSum, exact]
+    rw [fin_canon (absCode_fin (hf c List.mem_cons_self)), scaled_absCode]
     simp only [List.map_map] at ih ⊢
-    rw [ih]; push_cast; rfl
+    rw [ih fun x hx => hf x (List.mem_cons_of_mem _ hx)]; push_cast; rfl
 
 /-- **A sum `SumOrder` allows is near the exact sum**: on `1 ≤ n ≤ 2³²`
 finite doubles whose `T = Σ|xᵢ| + n · 2⁻¹⁰²²` stays below half the largest
@@ -170,12 +176,12 @@ theorem SumOrder.near {b : Behaviour} {cs : List Int} {v : Int}
     IsFin v ∧ (scaled v - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤
       2 * (cs.length * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52)) +
         2 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) := by
-  have hS := natAbs_exactSum_le cs
+  have hS := natAbs_exactSum_le hf
   generalize hB : scaledAbsSum (cs.map .float) = B at hS hov ⊢
   generalize hT : B + cs.length * 2 ^ 52 = T at hov ⊢
   by_cases hb : b = "EXACT"
   · simp only [SumOrder, hb, ↓reduceIte] at h
-    rw [h, floatSumCR, nonFinite_of_fin hf, Option.getD_none]
+    rw [h, floatSumCR, nonFinite_of_fin (fun c hc => by rw [fin_canon (hf c hc)]; exact hf c hc), Option.getD_none]
     have hmax : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
     obtain ⟨hfin, he⟩ := ofExact_rel (S := exactSum (cs.map .float)) (by omega)
     refine ⟨hfin, ?_⟩
@@ -213,42 +219,50 @@ theorem SumOrder.near {b : Behaviour} {cs : List Int} {v : Int}
 
 theorem add_le {a b : Int} (ha : IsFin a) (hb : IsFin b) (h0 : 0 ≤ scaled a + scaled b)
     (h : scaled a + scaled b ≤ 2 ^ 2097) :
-    IsFin (fadd a b) ∧ (2 ^ 53 - 1) * (scaled a + scaled b) ≤ 2 ^ 53 * scaled (fadd a b) ∧
-      2 ^ 53 * scaled (fadd a b) ≤ (2 ^ 53 + 1) * (scaled a + scaled b) := by
+    IsFin (canon (fadd a b)) ∧ (2 ^ 53 - 1) * (scaled a + scaled b) ≤ 2 ^ 53 * scaled (canon (fadd a b)) ∧
+      2 ^ 53 * scaled (canon (fadd a b)) ≤ (2 ^ 53 + 1) * (scaled a + scaled b) := by
   obtain ⟨hf, he⟩ := add_rel ha hb (by omega)
   refine ⟨hf, ?_⟩
   generalize scaled a + scaled b = S at h0 h he
-  generalize scaled (fadd a b) = r at he
+  generalize scaled (canon (fadd a b)) = r at he
   omega
 
 theorem mul_le {a b : Int} (ha : IsFin a) (hb : IsFin b) (h0a : 0 ≤ scaled a) (h0b : 0 ≤ scaled b)
     (h : scaled a * scaled b ≤ 2 ^ 3171) :
-    IsFin (fmul a b) ∧
-      (2 ^ 53 - 1) * (scaled a * scaled b) - 2 ^ 1126 ≤ 2 ^ 53 * (2 ^ 1074 * scaled (fmul a b)) ∧
-      2 ^ 53 * (2 ^ 1074 * scaled (fmul a b)) ≤ (2 ^ 53 + 1) * (scaled a * scaled b) + 2 ^ 1126 := by
+    IsFin (canon (fmul a b)) ∧
+      (2 ^ 53 - 1) * (scaled a * scaled b) - 2 ^ 1126 ≤ 2 ^ 53 * (2 ^ 1074 * scaled (canon (fmul a b))) ∧
+      2 ^ 53 * (2 ^ 1074 * scaled (canon (fmul a b))) ≤ (2 ^ 53 + 1) * (scaled a * scaled b) + 2 ^ 1126 := by
   have hP : 0 ≤ scaled a * scaled b := Int.mul_nonneg h0a h0b
   obtain ⟨hf, he⟩ := mul_rel ha hb (by rw [← Int.natAbs_mul]; omega)
   refine ⟨hf, ?_⟩
   rw [← Int.natAbs_mul] at he
   generalize scaled a * scaled b = P at hP h he
-  generalize scaled (fmul a b) = r at he
+  generalize scaled (canon (fmul a b)) = r at he
   omega
 
 /-! ## The check -/
 
 /-- The margin `marginCount` computes for a group of `n` values whose
 `SUM(ABS(x))` is `a`: `fl(cₙ · fl(a + n · 2⁻¹⁰²²))`, divided by `n` first for
-an `AVG`, with `cₙ = fl(fl(fl(8 · n) + c₀) · 2⁻⁵³)`. -/
+an `AVG`, with `cₙ = fl(fl(fl(8 · n) + c₀) · 2⁻⁵³)`, in canonical codes: the
+operations read their operands up to `canon`, as comparisons do (D31). -/
 def marginCode (avg : Bool) (n : Nat) (a : Int) : Int :=
   let n' := ofInt n
-  let c := fmul (fadd (fmul marginEight n') (marginC0 avg)) marginUlp
-  let p := fadd a (fmul n' marginTiny)
-  fmul c (if avg then fdiv p n' else p)
+  let c := canon (fmul (canon (fadd (canon (fmul marginEight n')) (marginC0 avg))) marginUlp)
+  let p := canon (fadd a (canon (fmul n' marginTiny)))
+  canon (fmul c (if avg then canon (fdiv p n') else p))
 
 /-- The check passes on a group whose sum is `v`: the margin is below
-`|fl(v − t)|`, as `marginCount`'s `pass` compares. -/
+`|fl(v − t)|`, as `marginCount`'s `pass` compares, on canonical codes. -/
 def marginPass (avg : Bool) (n : Nat) (a v t : Int) : Prop :=
-  marginCode avg n a < fsub v t ∨ marginCode avg n a < -(fsub v t)
+  marginCode avg n a < canon (fsub v t) ∨ marginCode avg n a < canon (neg (canon (fsub v t)))
+
+/-- The check reads the sum up to `canon`. -/
+theorem marginPass_canon {avg : Bool} {n : Nat} {a v t : Int} (ht : IsFin t)
+    (h : marginPass avg n a v t) : marginPass avg n a (canon v) t := by
+  have e : canon (fsub (canon v) t) = canon (fsub v t) := by
+    have := fsub_canon v t; rwa [fin_canon ht] at this
+  unfold marginPass at h ⊢; rw [e]; exact h
 
 theorem posCode_const {m : Nat} (h : m ≤ 2 ^ 1080) : IsFin (posCode m) ∧ scaled (posCode m) = m := by
   have hm := maxMag_def
@@ -266,7 +280,14 @@ theorem marginUlp_eq : IsFin marginUlp ∧ scaled marginUlp = 2 ^ 1021 := posCod
 theorem marginTiny_eq : IsFin marginTiny ∧ scaled marginTiny = 2 ^ 52 := posCode_const (by omega)
 
 /-- `scaled m ≤ |scaled d|` when the check passes. -/
-theorem pass_le {m d : Int} (h : m < d ∨ m < -d) : scaled m ≤ (scaled d).natAbs := by
+theorem pass_le {m d : Int} (hd : IsFin d) (h : m < d ∨ m < canon (neg d)) :
+    scaled m ≤ (scaled d).natAbs := by
+  have hn : canon (neg d) = -d := by
+    have : posInf < nan := fp64.posInf_lt_nan; have := hd.2
+    rw [canon_neg (isRef_of_bounds hd)]; split
+    · omega
+    · rfl
+  rw [hn] at h
   rcases h with h | h
   · have := scaled_mono (Int.le_of_lt h); omega
   · have := scaled_mono (Int.le_of_lt h); rw [scaled_neg] at this; omega
@@ -293,14 +314,13 @@ theorem check_sum {v t a : Int} {n B : Nat} (hv : IsFin v) (ht : IsFin t) (ha : 
   obtain ⟨fT, sT⟩ := marginTiny_eq
   simp only [marginConst, Bool.false_eq_true, ↓reduceIte] at s16
   simp only [marginPass, marginCode, Bool.false_eq_true, ↓reduceIte] at hpass
-  generalize hc1 : fmul marginEight (ofInt n) = c1 at hpass
-  generalize hc2 : fadd c1 (marginC0 false) = c2 at hpass
-  generalize hc3 : fmul c2 marginUlp = c3 at hpass
-  generalize hq : fmul (ofInt n) marginTiny = q at hpass
-  generalize hp : fadd a q = p at hpass
-  generalize hmc : fmul c3 p = m at hpass
-  generalize hd : fsub v t = d at hpass
-  have hmd := pass_le hpass
+  generalize hc1 : canon (fmul marginEight (ofInt n)) = c1 at hpass
+  generalize hc2 : canon (fadd c1 (marginC0 false)) = c2 at hpass
+  generalize hc3 : canon (fmul c2 marginUlp) = c3 at hpass
+  generalize hq : canon (fmul (ofInt n) marginTiny) = q at hpass
+  generalize hp : canon (fadd a q) = p at hpass
+  generalize hmc : canon (fmul c3 p) = m at hpass
+  generalize hd : canon (fsub v t) = d at hpass
   -- `c₁ = fl(8 · n)`, `c₂ = fl(c₁ + 16)`, `c₃ = fl(c₂ · 2⁻⁵³)`.
   obtain ⟨f1, l1, u1⟩ := mul_le f8 fN (by omega) (by omega) (by rw [s8, sN]; omega)
   rw [hc1, s8, sN] at l1 u1; rw [hc1] at f1
@@ -341,8 +361,9 @@ theorem check_sum {v t a : Int} {n B : Nat} (hv : IsFin v) (ht : IsFin t) (ha : 
   generalize (n : Int) * scaled p = NP at hQ hNP
   -- `d = fl(v − t)`.
   by_cases hbig : (scaled v - scaled t).natAbs ≤ 2 ^ 2097
-  · obtain ⟨-, hd'⟩ := sub_rel hv ht hbig
-    rw [hd] at hd'
+  · obtain ⟨fd, hd'⟩ := sub_rel hv ht hbig
+    rw [hd] at fd hd'
+    have hmd := pass_le fd hpass
     omega
   · omega
 
@@ -376,7 +397,7 @@ theorem margin_sum {b₁ b₂ bA : Behaviour} {cs : List Int} {v₁ v₂ a t : I
   have hla : (cs.map absCode).length = cs.length := List.length_map _
   obtain ⟨fa, ea⟩ := SumOrder.near hA hfa (by rw [hla]; exact hn)
     (by rw [hla, scaledAbsSum_abs]; exact hov2)
-  rw [hla, scaledAbsSum_abs, exactSum_abs] at ea
+  rw [hla, scaledAbsSum_abs, exactSum_abs hf] at ea
   have hX := check_sum f1 ht fa hn1 hn hov ea hpass
   generalize scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52 = T at e1 e2 er hX
   generalize cs.length * T = W at e1 e2 er hX
@@ -392,8 +413,8 @@ theorem margin_sum {b₁ b₂ bA : Behaviour} {cs : List Int} {v₁ v₂ a t : I
 `2⁻⁵³ (|a| + n · 2⁻¹⁰²²)` of `a`. -/
 theorem div_n {a : Int} {n : Nat} (ha : IsFin a) (hn1 : 1 ≤ n) (hn : n ≤ 2 ^ 53)
     (h : (scaled a).natAbs ≤ 2 ^ 2097) :
-    IsFin (fdiv a (ofInt n)) ∧
-      2 ^ 53 * ((n : Int) * scaled (fdiv a (ofInt n)) - scaled a).natAbs ≤
+    IsFin (canon (fdiv a (ofInt n))) ∧
+      2 ^ 53 * ((n : Int) * scaled (canon (fdiv a (ofInt n))) - scaled a).natAbs ≤
         (scaled a).natAbs + n * 2 ^ 52 := by
   obtain ⟨fN, sN⟩ := ofInt_nat hn
   have hb0 : scaled (ofInt n) ≠ 0 := by rw [sN]; omega
@@ -406,15 +427,15 @@ theorem div_n {a : Int} {n : Nat} (ha : IsFin a) (hn1 : 1 ≤ n) (hn : n ≤ 2 ^
   obtain ⟨hf, he⟩ := div_parts ha fN hb0 (by rw [hbn]; exact hsz)
   refine ⟨hf, ?_⟩
   rw [hbn, sN] at he
-  have e : scaled (fdiv a (ofInt n)) * ((n : Int) * 2 ^ 1074) - scaled a * 2 ^ 1074 =
-      ((n : Int) * scaled (fdiv a (ofInt n)) - scaled a) * 2 ^ 1074 := by grind
+  have e : scaled (canon (fdiv a (ofInt n))) * ((n : Int) * 2 ^ 1074) - scaled a * 2 ^ 1074 =
+      ((n : Int) * scaled (canon (fdiv a (ofInt n))) - scaled a) * 2 ^ 1074 := by grind
   rw [e, Int.natAbs_mul] at he
   have hm := Nat.max_le.2 ⟨Nat.le_add_right ((scaled a).natAbs * 2 ^ 1074) (n * 2 ^ 1074 * 2 ^ 52),
     Nat.le_add_left (n * 2 ^ 1074 * 2 ^ 52) ((scaled a).natAbs * 2 ^ 1074)⟩
   have e2 : (scaled a).natAbs * 2 ^ 1074 + n * 2 ^ 1074 * 2 ^ 52 =
       ((scaled a).natAbs + n * 2 ^ 52) * 2 ^ 1074 := by grind
-  have e3 : 2 ^ 53 * (((n : Int) * scaled (fdiv a (ofInt n)) - scaled a).natAbs *
-      (2 ^ 1074 : Int).natAbs) = 2 ^ 53 * ((n : Int) * scaled (fdiv a (ofInt n)) - scaled a).natAbs *
+  have e3 : 2 ^ 53 * (((n : Int) * scaled (canon (fdiv a (ofInt n))) - scaled a).natAbs *
+      (2 ^ 1074 : Int).natAbs) = 2 ^ 53 * ((n : Int) * scaled (canon (fdiv a (ofInt n))) - scaled a).natAbs *
         2 ^ 1074 := by rw [show (2 ^ 1074 : Int).natAbs = 2 ^ 1074 from rfl, Nat.mul_assoc]
   rw [e3] at he
   have h4 := Nat.le_trans he hm
@@ -458,19 +479,20 @@ theorem AvgOrder.near {b : Behaviour} {cs : List Int} {v : Int}
     (h : AvgOrder b (cs.map .float) v) (hf : ∀ c ∈ cs, IsFin c) (hn1 : 1 ≤ cs.length)
     (hn : cs.length ≤ 2 ^ 32)
     (hov : 4 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤ maxMag) :
-    IsFin v ∧ ((cs.length : Int) * scaled v - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤
+    IsFin (canon v) ∧ ((cs.length : Int) * scaled (canon v) - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤
       2 * (cs.length * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52)) +
         4 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) := by
-  have hS := natAbs_exactSum_le cs
+  have hS := natAbs_exactSum_le hf
   have hnT : cs.length * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤
       2 ^ 32 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) := Nat.mul_le_mul_right _ hn
   have hmax : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
   by_cases hb : b = "EXACT"
   · simp only [AvgOrder, hb, ↓reduceIte] at h
-    rw [h, floatAvgCR, nonFinite_of_fin hf, Option.getD_none, List.length_map]
+    rw [h, floatAvgCR, nonFinite_of_fin (fun c hc => by rw [fin_canon (hf c hc)]; exact hf c hc), Option.getD_none, List.length_map]
     have hfin := ofExactDiv_fin (v := exactSum (cs.map .float)) (n := cs.length) (by omega)
       (Nat.le_trans (by omega) (Nat.le_mul_of_pos_left _ (by omega)))
     have he := ofExactDiv_err (by omega) hfin
+    rw [fin_canon hfin]
     refine ⟨hfin, ?_⟩
     have := Nat.max_le.2 ⟨Nat.le_add_right (exactSum (cs.map .float)).natAbs (cs.length * 2 ^ 52),
       Nat.le_add_left (cs.length * 2 ^ 52) (exactSum (cs.map .float)).natAbs⟩
@@ -563,15 +585,14 @@ theorem check_avg {v t a : Int} {n B : Nat} (hv : IsFin v) (ht : IsFin t) (ha : 
   obtain ⟨fT, sT⟩ := marginTiny_eq
   simp only [marginConst, ↓reduceIte] at s32
   simp only [marginPass, marginCode, ↓reduceIte] at hpass
-  generalize hc1 : fmul marginEight (ofInt n) = c1 at hpass
-  generalize hc2 : fadd c1 (marginC0 true) = c2 at hpass
-  generalize hc3 : fmul c2 marginUlp = c3 at hpass
-  generalize hq : fmul (ofInt n) marginTiny = q at hpass
-  generalize hp : fadd a q = p at hpass
-  generalize hy : fdiv p (ofInt n) = y at hpass
-  generalize hmc : fmul c3 y = m at hpass
-  generalize hd : fsub v t = d at hpass
-  have hmd := pass_le hpass
+  generalize hc1 : canon (fmul marginEight (ofInt n)) = c1 at hpass
+  generalize hc2 : canon (fadd c1 (marginC0 true)) = c2 at hpass
+  generalize hc3 : canon (fmul c2 marginUlp) = c3 at hpass
+  generalize hq : canon (fmul (ofInt n) marginTiny) = q at hpass
+  generalize hp : canon (fadd a q) = p at hpass
+  generalize hy : canon (fdiv p (ofInt n)) = y at hpass
+  generalize hmc : canon (fmul c3 y) = m at hpass
+  generalize hd : canon (fsub v t) = d at hpass
   -- `cₙ`, with `c₀ = 32`.
   obtain ⟨f1, l1, u1⟩ := mul_le f8 fN (by omega) (by omega) (by rw [s8, sN]; omega)
   rw [hc1, s8, sN] at l1 u1; rw [hc1] at f1
@@ -620,11 +641,12 @@ theorem check_avg {v t a : Int} {n B : Nat} (hv : IsFin v) (ht : IsFin t) (ha : 
   have a3 := Int.mul_le_mul_of_nonneg_right hc3lo hP3.1
   have a4 := Int.mul_le_mul_of_nonneg_left hc3hi nn
   have a5 := Int.mul_le_mul_of_nonneg_left hP2 nn
-  have a6 := Int.mul_le_mul_of_nonneg_left hmd nn
   -- `d = fl(v − t)`.
   by_cases hbig : (scaled v - scaled t).natAbs ≤ 2 ^ 2097
-  · obtain ⟨-, hd'⟩ := sub_rel hv ht hbig
-    rw [hd] at hd'
+  · obtain ⟨fd, hd'⟩ := sub_rel hv ht hbig
+    rw [hd] at fd hd'
+    have hmd := pass_le fd hpass
+    have a6 := Int.mul_le_mul_of_nonneg_left hmd nn
     have hX : 2 ^ 53 * ((scaled d).natAbs : Int) ≤ (2 ^ 53 + 1) * (scaled v - scaled t).natAbs := by
       omega
     have a7 := Int.mul_le_mul_of_nonneg_left hX nn
@@ -642,14 +664,15 @@ theorem check_avg {v t a : Int} {n B : Nat} (hv : IsFin v) (ht : IsFin t) (ha : 
 /-- **The margin check of an `AVG`, end to end, in codes** (#929): as
 `margin_sum`, for means: if the check of an `AVG` passes on one mean `v₁` an
 engine's `sum_order` allows, every mean `v₂` any `sum_order` allows and the
-reference's `floatAvgCR` lie strictly on one side of `t`. -/
+reference's `floatAvgCR` lie strictly on one side of `t`. A mean may round to
+`-0.0`, so it is read by its canonical code, as comparisons read it (D31). -/
 theorem margin_avg {b₁ b₂ bA : Behaviour} {cs : List Int} {v₁ v₂ a t : Int}
     (hf : ∀ c ∈ cs, IsFin c) (hne : cs ≠ []) (hn : cs.length ≤ 2 ^ 32)
     (hov : 4 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤ maxMag)
     (h₁ : AvgOrder b₁ (cs.map .float) v₁) (h₂ : AvgOrder b₂ (cs.map .float) v₂)
     (hA : SumOrder bA ((cs.map absCode).map .float) a) (ht : IsFin t)
     (hpass : marginPass true cs.length a v₁ t) :
-    (t < v₂ ∧ t < floatAvgCR (cs.map .float)) ∨ (v₂ < t ∧ floatAvgCR (cs.map .float) < t) := by
+    (t < canon v₂ ∧ t < floatAvgCR (cs.map .float)) ∨ (canon v₂ < t ∧ floatAvgCR (cs.map .float) < t) := by
   have hn1 : 1 ≤ cs.length := by
     cases cs with
     | nil => exact absurd rfl hne
@@ -659,6 +682,7 @@ theorem margin_avg {b₁ b₂ bA : Behaviour} {cs : List Int} {v₁ v₂ a t : I
   obtain ⟨f1, e1⟩ := AvgOrder.near h₁ hf hn1 hn hov
   obtain ⟨-, e2⟩ := AvgOrder.near h₂ hf hn1 hn hov
   obtain ⟨-, er⟩ := AvgOrder.near hr hf hn1 hn hov
+  rw [canon_floatAvgCR] at er
   have hfa : ∀ c ∈ cs.map absCode, IsFin c := by
     intro c hc
     obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hc
@@ -666,16 +690,16 @@ theorem margin_avg {b₁ b₂ bA : Behaviour} {cs : List Int} {v₁ v₂ a t : I
   have hla : (cs.map absCode).length = cs.length := List.length_map _
   obtain ⟨fa, ea⟩ := SumOrder.near hA hfa (by rw [hla]; exact hn)
     (by rw [hla, scaledAbsSum_abs]; exact hov2)
-  rw [hla, scaledAbsSum_abs, exactSum_abs] at ea
-  have hX := check_avg f1 ht fa hn1 hn hov ea hpass
+  rw [hla, scaledAbsSum_abs, exactSum_abs hf] at ea
+  have hX := check_avg f1 ht fa hn1 hn hov ea (marginPass_canon ht hpass)
   rw [Int.mul_sub] at hX
   generalize scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52 = T at e1 e2 er hX
   generalize cs.length * T = W at e1 e2 er hX
   generalize exactSum (cs.map .float) = S at e1 e2 er
   have hn0 : (0 : Int) ≤ cs.length := Int.natCast_nonneg _
   generalize (cs.length : Int) = n at e1 e2 er hX hn0
-  obtain ⟨A1, h1⟩ : ∃ z, n * scaled v₁ = z := ⟨_, rfl⟩
-  obtain ⟨A2, h2⟩ : ∃ z, n * scaled v₂ = z := ⟨_, rfl⟩
+  obtain ⟨A1, h1⟩ : ∃ z, n * scaled (canon v₁) = z := ⟨_, rfl⟩
+  obtain ⟨A2, h2⟩ : ∃ z, n * scaled (canon v₂) = z := ⟨_, rfl⟩
   obtain ⟨AR, h3⟩ : ∃ z, n * scaled (floatAvgCR (cs.map .float)) = z := ⟨_, rfl⟩
   obtain ⟨AT, h4⟩ : ∃ z, n * scaled t = z := ⟨_, rfl⟩
   rw [h1] at e1; rw [h2] at e2; rw [h3] at er; rw [h1, h4] at hX
@@ -702,12 +726,13 @@ def avgHi (lo hi : Int) : Int := hi + (rangeMag lo hi + 2 ^ 52 : Nat)
 /-- **The range of an engine's double `AVG`** (D35), for the abstract domain
 (#925): under every `sum_order` behaviour, the mean of `1 ≤ n ≤ N ≤ 2³²`
 finite doubles in `[lo, hi]` is finite and in `[avgLo lo hi, avgHi lo hi]`
-whenever `avgSafe` holds. The range is crude, as `SumOrder.bound`'s is. -/
+whenever `avgSafe` holds, read by its canonical code (a mean may round to
+`-0.0`). The range is crude, as `SumOrder.bound`'s is. -/
 theorem AvgOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo hi : Int}
     (h : AvgOrder b (cs.map .float) c) (hne : cs ≠ []) (hN : cs.length ≤ N)
     (h32 : N ≤ 2 ^ 32) (hr : ∀ x ∈ cs, IsFin x ∧ lo ≤ scaled x ∧ scaled x ≤ hi)
     (hsafe : avgSafe N lo hi = true) :
-    IsFin c ∧ avgLo lo hi ≤ scaled c ∧ scaled c ≤ avgHi lo hi := by
+    IsFin (canon c) ∧ avgLo lo hi ≤ scaled (canon c) ∧ scaled (canon c) ≤ avgHi lo hi := by
   have hb' : ∀ x ∈ cs, lo ≤ scaled x ∧ scaled x ≤ hi := fun x hx => (hr x hx).2
   have hA := scaledAbsSum_le hb'
   have hsafe' := of_decide_eq_true hsafe
@@ -721,13 +746,13 @@ theorem AvgOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo h
     Nat.mul_le_mul_right _ hN
   obtain ⟨hf, he⟩ := AvgOrder.near h (fun x hx => (hr x hx).1) hn1 (by omega) (by omega)
   refine ⟨hf, ?_⟩
-  have ⟨s1, s2⟩ := exactSum_bounds hb'
+  have ⟨s1, s2⟩ := exactSum_bounds (cs := cs) (lo := lo) (hi := hi) fun x hx => by rw [fin_canon (hr x hx).1]; exact hb' x hx
   have hnT : cs.length * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤
       2 ^ 32 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) := Nat.mul_le_mul_right _ (by omega)
   generalize scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52 = T at he hnT hR
   generalize cs.length * T = W at he hnT
-  have hd : ((cs.length : Int) * scaled c - exactSum (cs.map .float)).natAbs ≤ T := by
-    have : ((cs.length : Int) * scaled c - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤ T * 2 ^ 53 := by
+  have hd : ((cs.length : Int) * scaled (canon c) - exactSum (cs.map .float)).natAbs ≤ T := by
+    have : ((cs.length : Int) * scaled (canon c) - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤ T * 2 ^ 53 := by
       clear hRN hR s1 s2 hsafe' hsafe hA; omega
     exact Nat.le_of_mul_le_mul_right this (Nat.two_pow_pos _)
   have hn0 : (0 : Int) < cs.length := by omega
@@ -739,20 +764,43 @@ theorem AvgOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo h
   have eh : (cs.length : Int) * avgHi lo hi =
       cs.length * hi + (cs.length : Int) * ((rangeMag lo hi + 2 ^ 52 : Nat) : Int) := by
     unfold avgHi; rw [Int.mul_add]
-  have k1 : (cs.length : Int) * avgLo lo hi ≤ (cs.length : Int) * scaled c := by
+  have k1 : (cs.length : Int) * avgLo lo hi ≤ (cs.length : Int) * scaled (canon c) := by
     rw [el]; clear hRN hsafe' hsafe hA hnT he; omega
-  have k2 : (cs.length : Int) * scaled c ≤ (cs.length : Int) * avgHi lo hi := by
+  have k2 : (cs.length : Int) * scaled (canon c) ≤ (cs.length : Int) * avgHi lo hi := by
     rw [eh]; clear hRN hsafe' hsafe hA hnT he; omega
   exact ⟨Int.le_of_mul_le_mul_left k1 hn0, Int.le_of_mul_le_mul_left k2 hn0⟩
 
 /-! ## The check's columns, row by row -/
 
-/-- On a group's row, the check's margin column is `marginCode`. -/
+theorem fadd_congr {a b a' b' : Int} (ha : canon a = canon a') (hb : canon b = canon b') :
+    canon (fadd a b) = canon (fadd a' b') := by
+  rw [← fadd_canon a b, ← fadd_canon a' b', ha, hb]
+
+theorem fmul_congr {a b a' b' : Int} (ha : canon a = canon a') (hb : canon b = canon b') :
+    canon (fmul a b) = canon (fmul a' b') := by
+  rw [← fmul_canon a b, ← fmul_canon a' b', ha, hb]
+
+theorem fdiv_congr_left {a a' : Int} (b : Int) (ha : canon a = canon a') :
+    canon (fdiv a b) = canon (fdiv a' b) := by
+  rw [← fdiv_canon_left a b, ← fdiv_canon_left a' b, ha]
+
+/-- On a group's row, the check's margin column is `marginCode`, up to
+`canon`. -/
 theorem marginExpr_eval {row : Row} {s : Nat} {avg : Bool} {n : Nat} {a : Int}
     (hn : row.getD (s + 1) .null = .int n) (ha : row.getD (s + 2) .null = .float a) :
-    (marginExpr s avg).eval row = .float (marginCode avg n a) := by
-  cases avg <;> simp only [marginExpr, marginCode, Expr.eval, hn, ha, Bool.false_eq_true,
-    ↓reduceIte] <;> rfl
+    ∃ x, (marginExpr s avg).eval row = .float x ∧ canon x = marginCode avg n a := by
+  have hc : canon (fmul (fadd (fmul marginEight (ofInt n)) (marginC0 avg)) marginUlp) =
+      canon (canon (fmul (canon (fadd (canon (fmul marginEight (ofInt n))) (marginC0 avg))) marginUlp)) := by
+    rw [canon_idem]; refine fmul_congr ?_ rfl; rw [canon_idem]; exact fadd_congr (by rw [canon_idem]) rfl
+  have hp : canon (fadd a (fmul (ofInt n) marginTiny)) =
+      canon (canon (fadd a (canon (fmul (ofInt n) marginTiny)))) := by
+    rw [canon_idem]; exact fadd_congr rfl (by rw [canon_idem])
+  cases avg <;> simp only [marginExpr, Expr.eval, hn, ha, Bool.false_eq_true, ↓reduceIte] <;>
+    refine ⟨_, rfl, ?_⟩ <;> simp only [marginCode, Bool.false_eq_true, ↓reduceIte]
+  · exact fmul_congr hc hp
+  · refine fmul_congr hc ?_
+    rw [canon_ofInt, canon_idem]
+    exact fdiv_congr_left _ (by rw [hp, canon_idem])
 
 /-- On a group's row, the check's `v − t` column is `fsub v t`. -/
 theorem marginDiff_eval {row : Row} {s : Nat} {t : Expr} {v tc : Int}
@@ -766,7 +814,7 @@ means the margin is below `|fl(v − t)|` and `n ≤ 2³²`. -/
 theorem marginFlag_eval {row : Row} {k s : Nat} {n : Nat} {d m : Int} (hk : row.length = k)
     (hs : s + 1 < k) (hn : row.getD (s + 1) .null = .int n) (hn1 : 1 ≤ n)
     (h : ((marginFlag k s).eval (row ++ [.float d, .float m])).isTrue = false) :
-    (m < d ∨ m < -d) ∧ n ≤ 2 ^ 32 := by
+    (canon m < canon d ∨ canon m < canon (negI d)) ∧ n ≤ 2 ^ 32 := by
   have g1 : (row ++ [Value.float d, .float m]).getD (s + 1) .null = .int n := by
     rw [List.getD_eq_getElem?_getD] at hn ⊢
     rw [List.getElem?_append_left (by omega)]; exact hn
@@ -775,12 +823,13 @@ theorem marginFlag_eval {row : Row} {k s : Nat} {n : Nat} {d m : Int} (hk : row.
   have g3 : (row ++ [Value.float d, .float m]).getD (k + 1) .null = .float m := by
     rw [List.getD_eq_getElem?_getD, List.getElem?_append_right (by omega)]; simp [hk]
   simp only [marginFlag, Expr.eval, g1, g2, g3] at h
-  change (or3 (and3 (.bool !(decide ((n : Int) < 1))) (UnFn.apply .not (or3 (.bool (decide (m < d)))
-    (.bool (decide (m < neg d)))))) (.bool (decide ((2 : Int) ^ 32 < n)))).isTrue = false at h
+  change (or3 (and3 (.bool !(decide ((n : Int) < 1))) (UnFn.apply .not (or3
+    (.bool (decide (canon m < canon d))) (.bool (decide (canon m < canon (negI d)))))))
+    (.bool (decide ((2 : Int) ^ 32 < n)))).isTrue = false at h
   have h0 : decide ((n : Int) < 1) = false := by simp; omega
   rw [h0] at h
-  generalize hb1 : decide (m < d) = b1 at h
-  generalize hb2 : decide (m < neg d) = b2 at h
+  generalize hb1 : decide (canon m < canon d) = b1 at h
+  generalize hb2 : decide (canon m < canon (negI d)) = b2 at h
   generalize hb3 : decide ((2 : Int) ^ 32 < n) = b3 at h
   have hk : (b1 || b2) = true ∧ b3 = false := by
     revert h; cases b1 <;> cases b2 <;> cases b3 <;> decide
@@ -801,7 +850,12 @@ theorem margin_row {row : Row} {k s : Nat} {t : Expr} {v a tc : Int} {n : Nat} {
     (h : ((marginFlag k s).eval
       (row ++ [(marginDiff s t).eval row, (marginExpr s avg).eval row])).isTrue = false) :
     marginPass avg n a v tc ∧ n ≤ 2 ^ 32 := by
-  rw [marginDiff_eval hv ht, marginExpr_eval hn ha] at h
-  exact marginFlag_eval hk (by omega) hn hn1 h
+  obtain ⟨x, hx, hcx⟩ := marginExpr_eval (avg := avg) hn ha
+  rw [marginDiff_eval hv ht, hx] at h
+  obtain ⟨hp, hn32⟩ := marginFlag_eval hk (by omega) hn hn1 h
+  refine ⟨?_, hn32⟩
+  unfold marginPass
+  rw [← hcx, ← canon_negI_neg]
+  exact hp
 
 end Substrait

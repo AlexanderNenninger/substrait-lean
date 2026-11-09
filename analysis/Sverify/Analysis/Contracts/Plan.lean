@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts.Facts
+import Sverify.Analysis.Contracts.Facts
 
 /-!
 # Contracts: Plan
@@ -7,7 +7,7 @@ Abstract plan evaluation: row counts and float error bounds (#85), the
 `Rel.aeval` mutual, its one-pass form `Rel.lane` (#903) and the `@[csimp]`
 lemmas that run it.
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 
@@ -98,9 +98,9 @@ theorem Rel.maxRows_sound_all {cat : Catalog} :
     simp only [maxRows] at h; simp only [List.length_map]; exact maxRows_sound_all (r := r) h hi
   | .orderBy r _, _, h, _, ⟨i, hi, hp, _⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]; exact maxRows_sound_all (r := r) h hi
-  | .distinct r, _, h, _, ⟨i, hi, hp⟩ => by
+  | .distinct r, _, h, _, ⟨i, hi, _, hd, hp⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]
-    exact Nat.le_trans (dedup_length_le _) (maxRows_sound_all (r := r) h hi)
+    exact Nat.le_trans hd.length_le (maxRows_sound_all (r := r) h hi)
   | .semi r _ _ _, _, h, _, ⟨i, _, hi, _, hp⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]
     exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound_all (r := r) h hi)
@@ -152,8 +152,9 @@ theorem Rel.maxRows_sound_all {cat : Catalog} :
       obtain ⟨_, rfl, _⟩ := ho; exact Nat.le_refl _
     · rename_i hg
       simp only [hg, Bool.false_eq_true, ite_false] at ho
+      obtain ⟨ks, hks, ho⟩ := ho
       rw [← ho.length_eq]
-      exact Nat.le_trans (dedup_length_le _) (by simpa using maxRows_sound_all (r := r) h hi)
+      exact Nat.le_trans hks.length_le (by simpa using maxRows_sound_all (r := r) h hi)
   | .unnest _ _, _, h, _, _ => by simp [maxRows] at h
 
 theorem Rel.maxRows_sound {cat : Catalog} {r : Rel} {n : Nat} (h : r.maxRows = some n) :
@@ -229,7 +230,7 @@ def signBound (b : Bound) : Bound :=
    b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
 
 theorem signBound_sound {avg : Bool} {b : Bound} {cs : List Int}
-    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) :
+    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem (FloatCode.canon c)) :
     (signBound b).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
   obtain ⟨blo, bhi⟩ := b
   have hsign := floatSumCR_sign hne
@@ -274,7 +275,7 @@ def crBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
   | _, _ => Bound.top
 
 theorem crBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
-    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
+    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem (FloatCode.canon c)) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
     (crBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
   obtain ⟨blo, bhi⟩ := b
   rcases blo with _ | cl
@@ -284,10 +285,10 @@ theorem crBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List In
   simp only [crBound]
   split
   · rename_i hfin
-    have hfin' : ∀ c ∈ cs, FloatCode.IsFin c := fun c hc =>
+    have hfin' : ∀ c ∈ cs, FloatCode.IsFin (FloatCode.canon c) := fun c hc =>
       ⟨by have := (hb c hc).1 cl rfl; omega, by have := (hb c hc).2 ch rfl; omega⟩
-    have hsc : ∀ c ∈ cs, FloatCode.scaled cl ≤ FloatCode.scaled c ∧
-        FloatCode.scaled c ≤ FloatCode.scaled ch := fun c hc =>
+    have hsc : ∀ c ∈ cs, FloatCode.scaled cl ≤ FloatCode.scaled (FloatCode.canon c) ∧
+        FloatCode.scaled (FloatCode.canon c) ≤ FloatCode.scaled ch := fun c hc =>
       ⟨FloatCode.scaled_mono ((hb c hc).1 cl rfl), FloatCode.scaled_mono ((hb c hc).2 ch rfl)⟩
     have hk : 0 < cs.length := List.length_pos_iff.mpr hne
     have ⟨s1, s2⟩ := exactSum_bounds hsc
@@ -335,7 +336,7 @@ def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
   (signBound b).meet (crBound avg b rows)
 
 theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
-    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
+    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem (FloatCode.canon c)) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
     (floatBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) :=
   Bound.mem_meet (signBound_sound hne hb) (crBound_sound hne hb hrows)
 /-- A measure over rows described by `env` and `fs`: a count is a natural
@@ -532,8 +533,10 @@ def Rel.laneStep (cat : Catalog) (A : String → List AVal) (F : String → List
         l.env ++ fns.map (WinFn.abs sz l.env), [], l.rows⟩
   | .semi _ _ _ _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
-  | .orderBy _ _, l, _ | .distinct _, l, _ =>
+  | .orderBy _ _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
+  | .distinct _, l, _ =>
+      ⟨l.arity, l.facts.filter Fact.classSafe, l.env, [], l.rows⟩
   | .aggregate _ gs ms, l, _ =>
       ⟨gs.length + ms.length, aggFacts gs.length ms,
         gs.map (·.absD l.env l.facts) ++ ms.map fun m => Measure.abs l.env l.facts m (!gs.isEmpty) l.rows,

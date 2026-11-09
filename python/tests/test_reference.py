@@ -305,17 +305,26 @@ def test_double_division_by_zero_may_fail():
     ],
 )
 def test_double_division_options(dcon, mode, by_zero):
-    """IEEE, LIMIT and NULL are a `CASE` on the divisor, which every engine runs."""
+    """IEEE is IEEE division (D39), LIMIT and NULL a `CASE` on the divisor;
+    every engine runs them. IEEE's `0 / 0` creates a NaN, which raises in the
+    reference (D37) and is NaN on DuckDB and Polars."""
     plan = divide_plan(dcon, mode)
-    rows = {"d": DIV_ROWS}
     expected = nan_safe([(v,) for v in [*by_zero, None, 2.0]])
-    assert nan_safe(lean_values(json.dumps(inline_tables(json.loads(plan), rows)))) == expected
-    # Only `∞ / ∞`, which would be NaN (#257), and an overflow to `±∞`
-    # (#575): the dividend is not bounded.
+    nan_made = [mode == "IEEE" and r == (0.0, 0.0) for r in DIV_ROWS]
+    rows = [r for r, n in zip(DIV_ROWS, nan_made, strict=True) if not n]
+    want = [v for v, n in zip(expected, nan_made, strict=True) if not n]
+    assert nan_safe(lean_values(json.dumps(inline_tables(json.loads(plan), {"d": rows})))) == want
+    # Only `∞ / ∞` (and IEEE's `0 / 0`), which would be NaN (#257), and an
+    # overflow to `±∞` (#575): the dividend is not bounded.
     assert issues(plan) == ["domain error", "overflow to infinity"]
     written = written_plan(plan)
+    con = connect()
+    put_table(con, "d", pa.table({"x": [r[0] for r in rows], "y": [r[1] for r in rows]}))
     for engine in ("duckdb", "polars"):
-        assert nan_safe(arrow_rows(run_plan(dcon, written, engine))) == expected, engine
+        assert nan_safe(arrow_rows(run_plan(con, written, engine))) == want, engine
+        if any(nan_made):
+            with pytest.raises(Exception, match="domain error|make a NaN"):
+                run_plan(dcon, written, engine)
 
 
 @pytest.mark.parametrize("engine", PROFILED)

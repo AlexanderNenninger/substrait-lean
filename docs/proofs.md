@@ -65,7 +65,7 @@ contract's preconditions.
 | A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Equiv` | `Expr.robust_of_depends`, `Expr.robust_of_depends_canon`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | Sources within a tolerance give a result within the plan's fold of it (`Rel.tol`), node after node in a pipeline; tolerances add along a chain in one cell (`M∞`) and summed over the rows (`M₁`) | `Near` | `Rel.plan_near`, `Rel.pipeline_near`, `Relation.NearT.add`, `Relation.NearL1.add` | `Lipschitz.lean` |
 | Sources within an `M₁` budget give a result within the plan's `M₁` fold (`Rel.tol1`): a union adds budgets, a cross counts each side's once per row of the other, and a `SUM` or `AVG` grouped by exact keys takes its column's budget once plus a cost per input row (the groups' budgets sum within the input's) | `Near` | `Rel.plan_nearL1`, `PairsWithin.cross`, `PairsWithin.groups`, `aggregateEval_nearL1`, `Measure.l1_cell` | `LipschitzL1.lean` |
-| A `SUM` or `AVG` of a tolerated column is within the fold's bound, from the column's range and the input's rows in the sources' knowledge, and a `MIN` or `MAX` within its argument's; the engine's columns of reference codes are tracked | `Near` | `Measure.tolOut_cell`, `Measure.minMaxOut_cell`, `aggregateEval_near`, `Rel.refOn`, `Rel.rowsK_sound` | `Lipschitz/Measures.lean`, `Lipschitz/Arith.lean` |
+| A `SUM` or `AVG` of a tolerated column is within the fold's bound, from the column's range and the input's rows in the sources' knowledge, and a `MIN` or `MAX` within its argument's, on canonical codes | `Near` | `Measure.tolOut_cell`, `Measure.minMaxOut_cell`, `aggregateEval_near`, `Rel.rowsK_sound` | `Lipschitz/Measures.lean`, `Lipschitz/Arith.lean` |
 | `x ± y`, `x · y`, `x / c`, and `x / y` with `y`'s range clear of zero, of tolerated doubles (D31) are within the fold's bounds, from the operands' ranges in the sources' knowledge | `Near` | `Expr.arithTol_sound`, `Expr.tolA_sound`, `fadd_near`, `fmul_near`, `fdiv_lit_near`, `fdiv_near`, `round_pair₂` | `Lipschitz/Arith.lean` |
 | A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides; of values whose distances sum to `D`, within `D + g` or `D + 1` (`M₁`). Both from one bound on the exact sums | `Near` | `floatSumCR_of_exact`, `floatAvgCR_of_exact`, `floatSumCR_near`, `floatAvgCR_near`, `floatSumCR_nearL1`, `floatAvgCR_nearL1`, `Measure.fsum_near`, `Measure.avg_near` | `FloatNear.lean`, `Lipschitz/Basic.lean`, `LipschitzL1.lean` |
 | A result one profile allows, another allows too, option by option | `AllowedP` | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
@@ -77,9 +77,9 @@ contract's preconditions.
 | The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `zeval`, `eval` | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `zeval` | `Rel.weighted_eval` | `Weighted.lean` |
 | Union-free terms add up to the plan | `zeval` | `Rel.zeval_terms` | `Terms.lean` |
-| `COUNT`, `SUM` and `DISTINCT` are maintained from their state | `eval` | `aggregate_maintained`, `distinct_maintained` | `IncrementalAgg.lean` |
+| `COUNT`, `SUM` and `DISTINCT` are maintained from their state, one row per class of keys, as the reference allows | `Allowed` | `aggregate_maintained`, `distinct_maintained` | `IncrementalAgg.lean` |
 | `SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` and `CORR` of doubles are maintained exactly, with no drift over any batches | `eval` | `no_drift`, `floatState_sound`, `varState_sound`, `covState_sound`, `corrState_sound` | `IncrementalFloat.lean` |
-| `MIN`, `MAX` and exact `AVG` are maintained under inserts | `eval` | `extreme_maintained`, `finish_iavg` | `IncrementalMinMax.lean` |
+| `MIN`, `MAX` and exact `AVG` are maintained under inserts, as the reference allows | `Allowed` | `extreme_maintained`, `finish_iavg` | `IncrementalMinMax.lean` |
 | Semi and anti joins are maintained from a match count | `eval` | `semi_maintained` | `IncrementalSemi.lean` |
 | Recomputing only the touched groups or frames is exact | `eval` | `touched_sound`, `touched_window_sound`, `framed_sound` | `TouchedGroups.lean`, `TouchedFrames.lean` |
 | Dropping final time buckets from the state changes no result | `eval` | `retention_sound`, `expiry_sound` | `Retention.lean` |
@@ -163,11 +163,40 @@ runs that build as the guard. The modules below it import the core as
 | `AllowedNear.lean` | Allowed results close to an order's: every order of a double `SUM` or `AVG` among them |
 | `Profile.lean` | Engine profiles as outcomes per function; the reference is one |
 
+### The analysis: `analysis/Sverify/Analysis/`
+
+What `verify` proves of a plan under the core, with no engine in it, in the
+Lake package `sverify-analysis` (#1189, step 3b). It imports only the core:
+`lake build` in `analysis/` builds it on `core/` alone, and CI runs that build
+as the guard. Engines-common and the modules below import it as
+`Sverify.Analysis.*`.
+
+| Module | Job |
+|---|---|
+| `WSet.lean` | Relations with weights in any `K`, `Rel.evalK`, delta rules and delta plans over `K` |
+| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output |
+| `Weighted.lean` | Z-set plans as bag plans with a weight column |
+| `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
+| `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
+| `Contracts/Transfer.lean` | Abstract expression evaluation: `UnFn.abs`, `BinFn.abs`, `Expr.abs` |
+| `Contracts/TransferSound.lean` | Its soundness, `Expr.abs_sound` |
+| `Contracts/Refine.lean` | Refinement by filter conditions; `Expr.refine_sound` |
+| `Contracts/Facts.lean` | Relational facts through a plan; `Rel.facts_sound` |
+| `Contracts/Plan.lean` | Abstract plan evaluation: `Rel.maxRows`, `Rel.aeval` and its one pass, `Rel.lane` |
+| `Contracts/Sound.lean` | `Rel.aeval_sound`, `contract_sound` |
+| `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound` |
+| `Rows.lean` | Row caps that rule out `SUM` overflow |
+| `Keys.lean` | Derived keys and window tie-breaking |
+| `Partition.lean` | Sharded evaluation and two-phase aggregates |
+| `Guards.lean` | Guard elimination for the SQL writers |
+| `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
+| `AllowedAnalysis.lean` | What the analysis proves of the allowed results: plans without choices, row caps, postconditions on every allowed result |
+
 ### Engines-common: `engines/Sverify/Engines/`
 
 What every engine shares, in the Lake package `sverify-engines` (#1189). It
 imports only the core and the analysis (`analysis/`, the Lake package
-`sverify-analysis`, empty until #1189's step 3b moves the analysis into it):
+`sverify-analysis`):
 `lake build` in `engines/` builds it on those alone, and CI runs that build as
 the guard. The modules below it import it as
 `Sverify.Engines.*`.
@@ -198,9 +227,6 @@ the guard. The modules below it import it as
 
 | Module | Job |
 |---|---|
-| `WSet.lean` | Relations with weights in any `K`, `Rel.evalK`, delta rules and delta plans over `K` |
-| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output |
-| `Weighted.lean` | Z-set plans as bag plans with a weight column |
 | `Terms.lean` | Splitting a plan into union-free terms |
 | `IncrementalAgg.lean` | Delta rules for `COUNT`, `SUM` and `DISTINCT`, over a measure's linear state (`LinState`) |
 | `IncrementalFloat.lean` | The exact state of `SUM`, `AVG` and the statistical aggregates of doubles, and the no-drift theorem |
@@ -216,18 +242,7 @@ the guard. The modules below it import it as
 | Module | Job |
 |---|---|
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
-| `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
-| `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
-| `Contracts/Transfer.lean` | Abstract expression evaluation: `UnFn.abs`, `BinFn.abs`, `Expr.abs` |
-| `Contracts/TransferSound.lean` | Its soundness, `Expr.abs_sound` |
-| `Contracts/Refine.lean` | Refinement by filter conditions; `Expr.refine_sound` |
-| `Contracts/Facts.lean` | Relational facts through a plan; `Rel.facts_sound` |
-| `Contracts/Plan.lean` | Abstract plan evaluation: `Rel.maxRows`, `Rel.aeval` and its one pass, `Rel.lane` |
-| `Contracts/Sound.lean` | `Rel.aeval_sound`, `contract_sound` |
-| `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound` |
 | `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
-| `Rows.lean` | Row caps that rule out `SUM` overflow |
-| `Keys.lean` | Derived keys and window tie-breaking |
 | `AnalysisCongr.lean` | The analyses read only the catalog's arities: `Rel.facts_congr`, `Rel.aeval_congr`, `Rel.keys_congr`, `Rel.keyedWindows_congr`, for `check_proved_sound` |
 | `Semantic.lean` | Rewrites justified by contract facts and keys |
 | `Compose.lean` | Composing contracts across a pipeline |
@@ -239,7 +254,6 @@ the guard. The modules below it import it as
 
 | Module | Job |
 |---|---|
-| `Partition.lean` | Sharded evaluation and two-phase aggregates |
 | `Pruning.lean` | Skipping files and partitions by their statistics |
 | `TableFormat.lean` | Change feeds and file statistics of Delta and Iceberg |
 
@@ -247,11 +261,9 @@ the guard. The modules below it import it as
 
 | Module | Job |
 |---|---|
-| `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
-| `AllowedAnalysis.lean` | What the analysis proves of the allowed results: plans without choices, row caps, postconditions on every allowed result |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `Engine.lean` | DuckDB's, Polars's and Spark's `Engine` values (#900), with the proofs that their functions are within their tables (`Profile.duckdb_withinOk`, `Polars.written_within`) |
 | `EngineSound.lean` | What an engine's model is sound for (#900): `Engine.Sound` per engine, `Engine.contract_sound` on the model's rows, and `Engine.contract_sound_runs` on the actual output under the transfer check |
@@ -264,7 +276,6 @@ the guard. The modules below it import it as
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
 | `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`) |
 | `DuckDBProfile.lean` | `Profile.duckdb` under DuckDB's settings, as the SQL printer writes it, and `Rel.duckdb_sound` |
-| `Guards.lean` | Guard elimination for the SQL writers |
 | `EngineTables.lean` | DuckDB's, Polars's and Spark's choice tables and observation rows, refining the core; `builtinEngines`; the dependency and transfer reports over them |
 | `PolarsShims.lean` | The Polars shims, proved against a model of Polars's functions |
 | `PolarsProfile.lean` | `Profile.polars`, the semantics under `semantics="polars"` |

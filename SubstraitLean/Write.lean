@@ -1,5 +1,5 @@
 import SubstraitLean.Parse
-import SubstraitLean.Weighted
+import Sverify.Analysis.Weighted
 
 /-!
 # Writing `Rel` back out as Substrait JSON
@@ -636,6 +636,10 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     match f with
     | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
       call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b]
+    -- IEEE division (D39): `divide` with `on_division_by_zero` = `IEEE`.
+    | .fdivIeee =>
+      callOpt (BinFn.anchor .fdiv) [writeExpr cols .float a, writeExpr cols .float b]
+        "on_division_by_zero" "IEEE"
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.
       let (ka, kb) := sumKinds (f matches .sub) cols ctx a b

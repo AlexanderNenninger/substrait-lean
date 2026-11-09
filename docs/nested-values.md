@@ -46,7 +46,7 @@ booleans, strings, lists and structs. A list is described by its length
 goes by the value's constructor: `.list vs` is a member when `list` is set,
 `vs.length` is in `card` and every element is in `elems`, and `.struct vs`
 when `struct` is set and its fields are in `fields`, one each
-(`SubstraitLean/Contracts/Lattice.lean`). A function of scalars gives NULL
+(`analysis/Sverify/Analysis/Contracts/Lattice.lean`). A function of scalars gives NULL
 on a list or a struct, and every scalar abstraction says so through
 `nonInt`, `nonBool` and `nonStr`, which include `nested`.
 

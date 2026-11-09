@@ -1,5 +1,5 @@
 import SubstraitLean.TableFormat
-import SubstraitLean.Partition
+import Sverify.Analysis.Partition
 
 /-!
 # Pruning files and partitions (#81)
@@ -124,14 +124,17 @@ structure DoubleStats where
 
 /-- **Trusted:** what the writer's statistics mean for the column `c` of the
 file's rows. Every value is NULL, NaN, or a code within the bounds, and a NaN
-count of 0 means no NaN. A minimum is the code of a double, so at most NaN's
-code. -/
+count of 0 means no NaN. Writers compare doubles as IEEE numbers, so the
+bounds hold of canonical codes: `-0.0` is `0.0` (D31). A minimum is the code
+of a double, so at most NaN's code. -/
 structure DoubleStats.Correct (s : DoubleStats) (c : Nat) (rows : Relation) : Prop where
-  vals : ∀ row ∈ rows, row.getD c .null = .null ∨ row.getD c .null = .float FloatCode.nan ∨
-    ∃ x, row.getD c .null = .float x ∧ (∀ l, s.lo = some l → l ≤ x) ∧
-      (∀ h, s.hi = some h → x ≤ h)
+  vals : ∀ row ∈ rows, row.getD c .null = .null ∨
+    (∃ x, row.getD c .null = .float x ∧ FloatCode.canon x = FloatCode.nan) ∨
+    ∃ x, row.getD c .null = .float x ∧ (∀ l, s.lo = some l → l ≤ FloatCode.canon x) ∧
+      (∀ h, s.hi = some h → FloatCode.canon x ≤ h)
   nulls : s.nulls = some 0 → ∀ row ∈ rows, row.getD c .null ≠ .null
-  nans : s.nans = some 0 → ∀ row ∈ rows, row.getD c .null ≠ .float FloatCode.nan
+  nans : s.nans = some 0 → ∀ row ∈ rows, ∀ x, row.getD c .null = .float x →
+    FloatCode.canon x ≠ FloatCode.nan
   lo_le : ∀ l, s.lo = some l → l ≤ FloatCode.nan
 
 /-- The bounds `sverify.io` takes from a double column: the minimum, and the
@@ -157,12 +160,13 @@ theorem DoubleStats.colStats_correct {s : DoubleStats} {c : Nat} {rows : Relatio
         cases n with
         | zero => exact absurd hv (hnn hn row hr)
         | succ n => simp
-  · rw [hv]
+  · obtain ⟨x, hv, hx⟩ := hv
+    rw [hv]
     refine ⟨_, rfl, ⟨?_, ?_⟩, rfl⟩
-    · intro l hl; exact h.lo_le l hl
+    · intro l hl; rw [NumKind.norm_float, hx]; exact h.lo_le l hl
     · intro m hm
       split at hm
-      · rename_i h0; exact absurd hv (h.nans h0 row hr)
+      · rename_i h0; exact absurd hx (h.nans h0 row hr x hv)
       · cases hm
   · rw [hv]
     refine ⟨_, rfl, ⟨hlo, ?_⟩, rfl⟩

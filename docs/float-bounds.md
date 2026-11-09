@@ -41,7 +41,7 @@ Lean's `Float`: `NativeLink` says that addition, subtraction,
 multiplication, division and square root of finite doubles round as one
 `StdModel` does, and give a finite double when the exact result is at most the
 largest finite double. This is IEEE 754 binary64 with round to nearest. Like
-`Impl.Faithful` in `SubstraitLean/Guards.lean`, it is a hypothesis.
+`Impl.Faithful` in `analysis/Sverify/Analysis/Guards.lean`, it is a hypothesis.
 `native_sum_error` and `native_avg_error` apply the bounds below to a fold of
 native doubles, `xs.foldl (· + ·) 0`, which is what `floatSum` computes.
 Since Lean 4.35, `Float` has a logical model in the kernel
@@ -80,7 +80,7 @@ keeps signs exact: a `SUM` or `AVG` of values `≥ 0` is `≥ 0`.
 `--shard` with `float_order="any"`, and `sverify.engines.run_sharded` with a
 `reproducible=` that accepts a tolerance on doubles, add each
 shard's doubles, then the partial sums (`floatPartial`, `floatCombine` in
-`SubstraitLean/Partition.lean`), where the reference adds all of them in one
+`analysis/Sverify/Analysis/Partition.lean`), where the reference adds all of them in one
 pass. [`Shard.lean`](../float-bounds/FloatBounds/Shard.lean) bounds the
 difference from what the partial rows report:
 
@@ -167,7 +167,7 @@ sequential sum. They cost a few integer operations per measure.
 - A `SUM` needs one. `sv.max_rows(n)` in `requires` caps an input
   and is checked on the data (`COUNT(*) <= n`), or proved from the record
   counts of a Delta or Iceberg table's files. The same cap proves integer
-  `SUM`s fit 64 bits ([Row caps](guide.md#row-caps)). The checker reads capped
+  `SUM`s fit 64 bits ([Row caps](tasks.md#row-caps)). The checker reads capped
   tables through a `FETCH` of `n` rows (`Rel.capReads`), which keeps their
   rows (`Rel.capReads_eval`), and bounds every relation's rows from it
   (`Rel.maxRows`, `Rel.maxRows_sound`). With a cap `n`, a `SUM` of doubles
@@ -353,7 +353,7 @@ factor `1 + 2⁻⁴⁰` covers them.
 ### One operation's bounds and overflow
 
 The checker bounds a double `+`, `-`, `*` and `/` from its inputs' bounds
-(`faddBound`, `fmulBound`, `fdivBound` in `SubstraitLean/Contracts.lean`), so
+(`faddBound`, `fmulBound`, `fdivBound` in `analysis/Sverify/Analysis/Contracts.lean`), so
 chains such as `(a + b) * c` have bounds, and a result the bounds keep below
 the largest double needs no "stays finite" precondition on the data
 (`BinFn.mayInf`). The core states one fact per operation on scaled values

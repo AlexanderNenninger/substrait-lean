@@ -95,7 +95,7 @@ option"):
   where the original did not.
 
 In sverify, "may raise" is `verify`'s error issues (`Rel.mayIssues`,
-`SubstraitLean/Safety.lean`): on a row where an error issue fires,
+`analysis/Sverify/Analysis/Safety.lean`): on a row where an error issue fires,
 `Rel.eval`'s value is not the answer. So a finding is a deviation when
 `Rel.eval` and `verify` together disagree with the reference: either
 `Rel.eval` gives a different answer on a row where nothing may raise, or

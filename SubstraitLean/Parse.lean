@@ -1,5 +1,5 @@
 import Lean.Data.Json
-import SubstraitLean.Keys
+import Sverify.Analysis.Keys
 import Sverify.Core.Functions
 import Sverify.Core.Options
 import Sverify.Core.Kinds
@@ -279,8 +279,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fmod _ _
-  | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fdivIeee _ _
+  | .bin .fmod _ _ | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
   | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
@@ -467,7 +467,7 @@ def intBits (ty : Json) : Nat :=
 /-! ## Integer widths
 
 The model's integers are unbounded; 64-bit arithmetic wraps around in
-DataFusion, which `SubstraitLean/Safety.lean` reports. Narrower integers wrap
+DataFusion, which `analysis/Sverify/Analysis/Safety.lean` reports. Narrower integers wrap
 at their own width, so the parser tracks the width of integer expressions and
 marks arithmetic on narrower ones with `UnFn.wrap`. DataFusion computes at the
 widest operand type (`INT + BIGINT` is a `BIGINT`), and an integer literal has
@@ -936,7 +936,7 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 
 /-! ## Eager conditionals
 
-`Expr.ifThen` evaluates only the branch it takes (`SubstraitLean/Safety.lean`),
+`Expr.ifThen` evaluates only the branch it takes (`analysis/Sverify/Analysis/Safety.lean`),
 as DataFusion's `CASE` does. Two conditionals are eager in DataFusion, though:
 `COALESCE` evaluates all its arguments, and the simplifier rewrites a `CASE`
 with a boolean value into `AND`/`OR`, which evaluate both sides. The parser
@@ -978,7 +978,7 @@ consumer takes the first preference it supports. The reference's choices are
 `Profile.reference.table` (`core/Sverify/Core/Options.lean`, #444): an option is
 known for a call when its group takes it, and accepted when the reference's
 choice is one of its preferences. A choice may also accept behaviours that
-differ from the model's only on rows where `SubstraitLean/Safety.lean`
+differ from the model's only on rows where `analysis/Sverify/Analysis/Safety.lean`
 reports an error anyway (what `MIN / -1` gives); anything else is refused. -/
 
 /-- The group whose options a call of `base` takes (`Functions.groups`), on
@@ -1904,7 +1904,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         else e
       let mode := divByZeroMode (← arrD f "options")
       match baseName name, args with
-      | "divide", [a, b] => return divByZero mode true (.bin .fdiv) a b
+      -- `IEEE` reads both operands' raw signs (D39): one operation.
+      | "divide", [a, b] =>
+        return if mode == "IEEE" then .bin .fdivIeee a b else divByZero mode true (.bin .fdiv) a b
       | "modulus", [a, b] => return divByZero mode true (.bin .fmod) a b
       | _, _ => mkFloatCall (baseName name) args
     else
@@ -2018,7 +2020,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if k == .float && argBits bits input e == 32 then return e
       throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
     if target == .float && k == .int then return .un .itof e
-    -- Fails on NaN, ±∞ and out-of-range values (`SubstraitLean/Safety.lean`).
+    -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
     if target == .str && k == .int then return .un .itos e
     -- `FLOAT` to `DOUBLE`: exact, but kept, so that the written plan widens too.
@@ -2030,7 +2032,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- A DATE's midnight (#807), and a timestamp's microseconds (#809).
     if target == .time && k == .date then return .un .dateTime e
     if target == .int && k == .time && intBits (← field c "type") == 64 then return .un .epochUs e
-    -- Fails where the value does not fit (`SubstraitLean/Safety.lean`).
+    -- Fails where the value does not fit (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .int then
       let bits := intBits (← field c "type")
       -- Arithmetic already checked at a width that fits (the writer's
