@@ -97,9 +97,10 @@ OPTION_TYPES: dict[str, tuple[str, ...]] = {
 #: The group of a row at an option no function group takes (`null_order`),
 #: and of `RELATION_OPTIONS`.
 NO_GROUP = "-"
-#: Options of relations as well as of function groups: `tie_order` is also
-#: the order of a sort's ties.
-RELATION_OPTIONS = ("tie_order",)
+#: Options of relations or casts as well as of function groups: `tie_order`
+#: is also the order of a sort's ties, `float_to_int` a cast's conversion
+#: (and `floor`, `ceil` and `round` where they return a `BIGINT`, D40).
+RELATION_OPTIONS = ("tie_order", "float_to_int")
 
 Fact = dict[str, Any]
 

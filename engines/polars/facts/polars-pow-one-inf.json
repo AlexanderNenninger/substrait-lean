@@ -1,0 +1,46 @@
+{
+  "id": "polars-pow-one-inf",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`(±1) ** ±inf` and `1 ** NaN` are 1, C's `pow`",
+  "verdict": "as the reference (`pow_one_inf` = `ONE`)",
+  "area": "doubles",
+  "options": [
+    "pow_one_inf"
+  ],
+  "rows": [
+    {
+      "group": "fp.elem",
+      "option": "pow_one_inf",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "**",
+    "pow"
+  ],
+  "settings": {
+    "engine": [
+      "streaming"
+    ]
+  },
+  "description": "On doubles, `pl.col(\"a\").pow(pl.col(\"b\"))` gives 1.0 for `a = 1.0, b = ±inf`, `a = -1.0, b = ±inf` and `a = 1.0, b = NaN`, and for `a = NaN, b = 0.0`: Rust's `f64::powf`, C's `pow`.",
+  "reference": "`pow_one_inf` = `ONE` (D40), C's `pow`. Spark's `StrictMath.pow` gives NaN there (spark-math-domain).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-09",
+      "method": "probe",
+      "checked_by": "session lowerings-271-7950fd, polars Python 2.1.0, streaming engine",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'a': [1.0, 1.0, -1.0, -1.0, 1.0, nan], 'b': [inf, -inf, inf, -inf, nan, 0.0]}).lazy().select(pl.col('a').pow(pl.col('b'))).collect(engine='streaming')",
+          "observed": "[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]"
+        }
+      ]
+    }
+  ]
+}

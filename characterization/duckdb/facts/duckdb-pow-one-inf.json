@@ -1,0 +1,41 @@
+{
+  "id": "duckdb-pow-one-inf",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`power(±1, ±inf)` and `power(1, NaN)` are 1, C's `pow`",
+  "verdict": "as the reference (`pow_one_inf` = `ONE`)",
+  "area": "doubles",
+  "options": [
+    "pow_one_inf"
+  ],
+  "rows": [
+    {
+      "group": "fp.elem",
+      "option": "pow_one_inf",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "power"
+  ],
+  "settings": {},
+  "description": "`power(1.0, 'inf')`, `power(1.0, '-inf')`, `power(-1.0, 'inf')`, `power(-1.0, '-inf')` and `power(1.0, 'nan')` are 1.0, C's `pow` (IEEE 754's `pow`, not its `powr`); `power('nan', 0.0)` is 1.0 too.",
+  "reference": "`pow_one_inf` = `ONE` (D40): `power` is C's `pow` on the raw doubles (`FloatCode.lift₂ Float.pow`). Spark's `StrictMath.pow` gives NaN there (spark-math-domain).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-09",
+      "method": "probe",
+      "checked_by": "session lowerings-271-7950fd, duckdb Python 2.0.0",
+      "evidence": [
+        {
+          "sql": "SELECT power(1.0, 'inf'::DOUBLE), power(1.0, '-inf'::DOUBLE), power(-1.0, 'inf'::DOUBLE), power(-1.0, '-inf'::DOUBLE), power(1.0, 'nan'::DOUBLE), power('nan'::DOUBLE, 0.0)",
+          "observed": "1.0, 1.0, 1.0, 1.0, 1.0, 1.0"
+        }
+      ]
+    }
+  ]
+}
