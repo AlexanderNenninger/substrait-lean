@@ -8,7 +8,7 @@ public import Mathlib.Analysis.Complex.ExponentialBounds
 # One double operation, from the bounds on its inputs (#582)
 
 The checker bounds a double `a + b`, `a − b`, `a · b`, `a / b` and `exp a`
-from intervals of its inputs (`floatArith` in `SubstraitLean/Safety.lean`),
+from intervals of its inputs (`floatArith` in `analysis/Sverify/Analysis/Safety.lean`),
 and so rules out an overflow to `±∞` where the bounds do. The core trusts
 one fact per operation, on scaled codes (a double `x` is `x · 2¹⁰⁷⁴`); this
 file proves them for native doubles (`NativeLink`), with the doubles

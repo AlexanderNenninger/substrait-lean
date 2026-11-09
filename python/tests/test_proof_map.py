@@ -52,7 +52,13 @@ def _section(title: str) -> str:
 def test_every_module_has_a_line(module):
     base = next(
         d
-        for d in [CORE, ENGINES, ANALYSIS, ROOT / "float-bounds" / "FloatBounds", ROOT / "SubstraitLean"]
+        for d in [
+            CORE,
+            ENGINES,
+            ANALYSIS,
+            ROOT / "float-bounds" / "FloatBounds",
+            ROOT / "SubstraitLean",
+        ]
         if d in module.parents
     )
     rel = module.relative_to(base)
