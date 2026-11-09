@@ -17,6 +17,7 @@ the core (`Profile`, `Allowed`) does not.
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 theorem Profile.reference_faithful : Profile.reference.impl.Faithful :=
   ⟨fun f v h => by simp [Profile.impl, Profile.reference, raiseIf, h, Outcome.val],
    fun f v w h => by simp [Profile.impl, Profile.reference, raiseIf, h, Outcome.val]⟩

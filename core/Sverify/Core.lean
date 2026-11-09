@@ -35,7 +35,6 @@ import Sverify.Core.Text
 import Sverify.Core.Ties
 import Sverify.Core.Time
 import Sverify.Core.Value
-import Sverify.Core.VarcharCasts
 import Sverify.Core.Window
 
 /-! The core (#1189): the reference's semantics. It imports nothing but

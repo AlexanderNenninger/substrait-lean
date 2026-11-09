@@ -20,6 +20,7 @@ theorem EnvMem.append {e₁ e₂ : List AVal} {r₁ r₂ : Row} (h₁ : EnvMem e
   · rwa [List.getElem?_append_left hj, List.getElem?_append_left (hl ▸ hj)]
   · rwa [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega), hl]
 
+variable [Boxes.Ambient]
 theorem EnvMem.map {env : List AVal} {row : Row} (h : EnvMem env row) (es : List Expr) :
     EnvMem (es.map (·.abs env)) (es.map (·.eval row)) := by
   intro j
@@ -40,6 +41,7 @@ theorem EnvMem.mapF {env : List AVal} {fs : List Fact} {row : Row} (h : EnvMem e
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
   cases es[j]? <;> simp [AVal.mem_top, Expr.absF_sound h hfs]
 
+omit [Boxes.Ambient] in
 theorem EnvMem.emit {env : List AVal} {row : Row} (h : EnvMem env row) (m : List Nat) :
     EnvMem (m.map (env.getD · AVal.top)) (m.map (row.getD · .null)) := by
   intro j
@@ -48,6 +50,7 @@ theorem EnvMem.emit {env : List AVal} {row : Row} (h : EnvMem env row) (m : List
   have := h ‹Nat›
   simpa [getD_top_eq, List.getD_eq_getElem?_getD] using this
 
+omit [Boxes.Ambient] in
 theorem EnvMem.fit {env : List AVal} {row : Row} (h : EnvMem env row) (n : Nat) :
     EnvMem (fit n env) row := by
   intro j
@@ -56,11 +59,13 @@ theorem EnvMem.fit {env : List AVal} {row : Row} (h : EnvMem env row) (n : Nat) 
   · simpa [hj, getD_top_eq] using h j
   · simp [hj, AVal.mem_top]
 
+omit [Boxes.Ambient] in
 theorem EnvMem.replicate (n : Nat) (row : Row) : EnvMem (List.replicate n AVal.top) row := by
   intro j
   simp only [getD_top_eq, List.getElem?_replicate]
   split <;> simp [AVal.mem_top]
 
+omit [Boxes.Ambient] in
 /-- An element of a list in column `c` in its place, as `UNNEST` gives it (#925). -/
 theorem EnvMem.set_elem {env : List AVal} {row : Row} (h : EnvMem env row) {c : Nat}
     {vs : List Value} {v : Value} (hc : row.getD c .null = .list vs) (hv : v ∈ vs) :
@@ -83,6 +88,7 @@ theorem EnvMem.set_elem {env : List AVal} {row : Row} (h : EnvMem env row) {c : 
   · have := h j
     simpa [List.getD_eq_getElem?_getD, List.getElem?_set_ne hj] using this
 
+omit [Boxes.Ambient] in
 theorem EnvMem.nullable {env : List AVal} {row : Row} (h : EnvMem env row) :
     EnvMem (env.map AVal.nullable) row := by
   intro j
@@ -94,17 +100,20 @@ theorem EnvMem.nullable {env : List AVal} {row : Row} (h : EnvMem env row) :
     simp only [hj, Option.map_some, Option.getD_some] at this ⊢
     exact AVal.mem_nullable this
 
+omit [Boxes.Ambient] in
 theorem EnvMem.nulls (env : List AVal) (m : Nat) :
     EnvMem (env.map AVal.nullable) (List.replicate m .null) := by
   intro j
   simp only [List.getElem?_map, List.getD_eq_getElem?_getD, List.getElem?_replicate]
   cases env[j]? <;> split <;> simp [AVal.top, AVal.nullable, AVal.Mem]
 
+omit [Boxes.Ambient] in
 theorem sumOf_unscaled {vs : List Value} {x : Int} (h : (sumOf vs).unscaled? = some x) :
     x = intSum vs := by
   rcases sumOf_cases vs with ⟨_, _, e⟩ | ⟨_, e⟩ <;> rw [e] at h <;>
     simp_all [Value.unscaled?]
 
+omit [Boxes.Ambient] in
 theorem intSum_nonneg : ∀ {vs : List Value}, (∀ v ∈ vs, ∀ i, v.unscaled? = some i → 0 ≤ i) →
     0 ≤ intSum vs
   | [], _ => by simp [intSum]
@@ -115,6 +124,7 @@ theorem intSum_nonneg : ∀ {vs : List Value}, (∀ v ∈ vs, ∀ i, v.unscaled?
     | none => simp; omega
     | some i => have := h v (by simp) i hv; simp; omega
 
+omit [Boxes.Ambient] in
 theorem intSum_nonpos : ∀ {vs : List Value}, (∀ v ∈ vs, ∀ i, v.unscaled? = some i → i ≤ 0) →
     intSum vs ≤ 0
   | [], _ => by simp [intSum]
@@ -125,6 +135,7 @@ theorem intSum_nonpos : ∀ {vs : List Value}, (∀ v ∈ vs, ∀ i, v.unscaled?
     | none => simp; omega
     | some i => have := h v (by simp) i hv; simp; omega
 
+omit [Boxes.Ambient] in
 theorem sumBound_sound {b : Bound} {vs : List Value}
     (h : ∀ v ∈ vs, ∀ i, v.unscaled? = some i → b.Mem i) :
     (sumBound b).Mem (intSum vs) := by
@@ -146,6 +157,7 @@ theorem sumBound_sound {b : Bound} {vs : List Value}
       · cases hu; exact intSum_nonpos fun v hv i hi => by have := (h v hv i hi).2 h₀ hb; omega
       · cases hu
 
+omit [Boxes.Ambient] in
 theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
     (h : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i) :
     (sumBoundPos b).Mem (intSum (v :: vs)) := by
@@ -179,6 +191,7 @@ theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
         omega
       · cases hu
 
+omit [Boxes.Ambient] in
 theorem sumCap_sound {b : Bound} :
     ∀ {vs : List Value} {n : Nat}, (∀ v ∈ vs, ∀ i, v.unscaled? = some i → b.Mem i) →
       vs.length ≤ n → (sumCap b n).Mem (intSum vs)
@@ -227,12 +240,14 @@ theorem sumCap_sound {b : Bound} :
       | some i => have := (h v (by simp) i hv).2 h₀ hb; simp only [Option.getD_some]; omega
       | none => simp only [Option.getD_none]; omega
 
+omit [Boxes.Ambient] in
 /-- An integer or a decimal `a` holds is in `a`'s interval. -/
 theorem AVal.mem_unscaled {a : AVal} {v : Value} {i : Int} {b : Bound} (hm : a.Mem v)
     (ha : a.int = some b) (hv : v.unscaled? = some i) : b.Mem i := by
   cases v <;> simp only [Value.unscaled?, Option.some.injEq, reduceCtorEq] at hv <;> subst hv <;>
     obtain ⟨b', hb', hm', -⟩ := hm <;> rw [ha] at hb' <;> cases hb' <;> exact hm'
 
+omit [Boxes.Ambient] in
 theorem AVal.kindOnly_mem {a : AVal} {k : NumKind} (ho : a.kindOnly k = true) {v : Value}
     (hm : a.Mem v) (hn : v ≠ .null) : ∃ i b, v = k.val i ∧ a.int = some b ∧ b.Mem (k.norm i) := by
   simp only [AVal.kindOnly, AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at ho
@@ -244,6 +259,7 @@ theorem AVal.kindOnly_mem {a : AVal} {k : NumKind} (ho : a.kindOnly k = true) {v
     exact ⟨i, b, rfl, hb, hi⟩
   all_goals simp_all
 
+omit [Boxes.Ambient] in
 theorem AVal.unscaledOnly_mem {a : AVal} (ho : a.unscaledOnly = true) {v : Value} (hm : a.Mem v)
     (hn : v ≠ .null) : ∃ i b, v.unscaled? = some i ∧ a.int = some b ∧ b.Mem i := by
   simp only [AVal.unscaledOnly, AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at ho
@@ -267,11 +283,13 @@ theorem AVal.unscaledOnly_mem {a : AVal} (ho : a.unscaledOnly = true) {v : Value
       cases k' <;> simp_all [NumKind.val]
   all_goals simp_all
 
+omit [Boxes.Ambient] in
 theorem AVal.dec_kind {a : AVal} {k : NumKind} {s : Nat} {x : Int} (hk : a.nk = some k)
     (hm : a.Mem (.dec s x)) : k = .dec s := by
   obtain ⟨_, _, _, h⟩ := hm
   rw [hk] at h; simpa using h
 
+omit [Boxes.Ambient] in
 /-- A `SUM` is an integer, or a decimal of its inputs' scale (`sumOf`). -/
 theorem sumOf_mem {a : AVal} {vs : List Value} {n : Bool} {B : Bound} (hne : vs ≠ [])
     (hall : ∀ w ∈ vs, a.Mem w ∧ w ≠ .null) (hB : B.Mem (intSum vs)) :
@@ -313,6 +331,7 @@ theorem sumOf_mem {a : AVal} {vs : List Value} {n : Bool} {B : Bound} (hne : vs 
     | _ => exact hnone (by simp [sumKind, hnk])
 
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_between {b : Bound} {l h r : Int} (hl : b.Mem l) (hh : b.Mem h) (hlr : l ≤ r)
     (hrh : r ≤ h) : b.Mem r :=
   ⟨fun x hx => Int.le_trans (hl.1 x hx) hlr, fun x hx => Int.le_trans hrh (hh.2 x hx)⟩
@@ -597,6 +616,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
         · exact Bound.mem_between hlb hhb (by rwa [NumKind.norm_float, NumKind.norm_float])
             (by rwa [NumKind.norm_float, NumKind.norm_float])
 
+omit [Boxes.Ambient] in
 theorem intSum_bounds {b : Bound} :
     ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w.unscaled? = some i ∧ b.Mem i) →
       (∀ l, b.lo = some l → vs.length * l ≤ intSum vs) ∧

@@ -181,6 +181,7 @@ theorem Impl.AgreeOn.sub {cs ds : List Ctor} {I J : Impl} (h : Impl.AgreeOn ds I
     (hs : ∀ c ∈ cs, c ∈ ds) : Impl.AgreeOn cs I J :=
   ⟨fun f hf => h.1 f (hs _ hf), fun f hf => h.2 f (hs _ hf)⟩
 
+variable [Boxes.Ambient]
 theorem Expr.evalI_congr {I J : Impl} : ∀ {e : Expr}, Impl.AgreeOn e.ctors I J →
     ∀ row, e.eval row I = e.eval row J
   | .lit _, _, _ | .field _, _, _ => rfl
@@ -228,6 +229,7 @@ theorem Measure.allowedP_congr {t : ProfileTable} {I J : Impl} {m : Measure}
     (h : Impl.AgreeOn m.ctors I J) : m.AllowedP t I = m.AllowedP t J := by
   funext rows v; simp only [Measure.AllowedP, Measure.inputsI_congr h]
 
+omit [Boxes.Ambient] in
 theorem forall₂_congr_mem {α β : Type} {R S : α → β → Prop} {l : List α} {l' : List β}
     (h : ∀ a ∈ l, ∀ b, R a b ↔ S a b) : Forall2 R l l' ↔ Forall2 S l l' :=
   ⟨Forall2.imp_mem fun a ha b => (h a ha b).mp, Forall2.imp_mem fun a ha b => (h a ha b).mpr⟩
@@ -315,6 +317,7 @@ def orderPairs : List (String × Behaviour × Behaviour) :=
 /-- `b ⊑ b'` at the option `o`. -/
 def behaviourLe (o b b' : String) : Bool := b == b' || orderPairs.contains (o, b, b')
 
+omit [Boxes.Ambient] in
 theorem behaviourLe_eq {o b b' : String} (ho : o ∉ aggInterpreted) (h : behaviourLe o b b' = true) :
     b = b' := by
   simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem] at h
@@ -325,6 +328,7 @@ theorem behaviourLe_eq {o b b' : String} (ho : o ∉ aggInterpreted) (h : behavi
     simp only [aggInterpreted, List.mem_cons, List.not_mem_nil, or_false]
     rcases h with ⟨rfl, _⟩ | ⟨rfl, _⟩ | ⟨rfl, _⟩ | ⟨rfl, _⟩ <;> simp
 
+omit [Boxes.Ambient] in
 theorem SumOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = true) {vs : List Value}
     {c : Int} (hs : SumOrder b vs c) : SumOrder b' vs c := by
   simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
@@ -337,6 +341,7 @@ theorem SumOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = tru
   · simpa [SumOrder] using hs
   all_goals simp at h
 
+omit [Boxes.Ambient] in
 theorem AvgOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = true) {vs : List Value}
     {c : Int} (hs : AvgOrder b vs c) : AvgOrder b' vs c := by
   by_cases e : b = b'
@@ -359,6 +364,7 @@ theorem StatAlgo.mono {b b' : Behaviour} (h : behaviourLe "stat_algo" b b' = tru
   · exact hs
   all_goals first | simp at h | simpa [StatAlgo] using hs
 
+omit [Boxes.Ambient] in
 theorem QuantInterp.mono {b b' : Behaviour} (h : behaviourLe "quantile_interp" b b' = true)
     {num scale : Nat} {vs : List Value} {v : Value} (hs : QuantInterp b num scale vs v) :
     QuantInterp b' num scale vs v := by
@@ -378,6 +384,7 @@ behaviour `t` allows is below one `u` allows. -/
 def ProfileTable.LeAt (t u : ProfileTable) (p : Read) : Prop :=
   ∀ b, b ∈ t.allows p.1 p.2.1 p.2.2 → ∃ b' ∈ u.allows p.1 p.2.1 p.2.2, behaviourLe p.2.1 b b' = true
 
+omit [Boxes.Ambient] in
 /-- At an option `AllowedP` does not interpret, `LeAt` is inclusion. -/
 theorem ProfileTable.LeAt.mem {t u : ProfileTable} {p : Read} (h : t.LeAt u p)
     (ho : p.2.1 ∉ aggInterpreted) {b : Behaviour} (hb : b ∈ t.allows p.1 p.2.1 p.2.2) :
@@ -472,6 +479,7 @@ theorem windowRowsP.monoOn {part : List Nat} {fns : List WinFn}
     ⟨vs, rest, he, Forall2.imp_mem (fun f hf _ => WinFn.AllowedP.monoOn fun p hp =>
       h p (List.mem_flatMap.mpr ⟨f, hf, hp⟩)) hv, windowRowsP.monoOn h hr⟩
 
+omit [Boxes.Ambient] in
 theorem SortedP.monoOn {keys : List SortKey} (h : ∀ p ∈ sortReads keys, t.LeAt u p)
     {out : Relation} : SortedP t keys out → SortedP u keys out := fun ⟨cmp, hc, nfs, hn, hcl, hs⟩ =>
   ⟨cmp, hc, nfs,
@@ -553,6 +561,7 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
 def ProfileTable.leAtB (t u : ProfileTable) (p : Read) : Bool :=
   (t.allows p.1 p.2.1 p.2.2).all fun b => (u.allows p.1 p.2.1 p.2.2).any (behaviourLe p.2.1 b ·)
 
+omit [Boxes.Ambient] in
 theorem ProfileTable.leAt_of_leAtB {t u : ProfileTable} {p : Read}
     (h : t.leAtB u p = true) : t.LeAt u p := fun b hb => by
   simp only [leAtB, List.all_eq_true, List.any_eq_true] at h

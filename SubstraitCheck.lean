@@ -83,6 +83,7 @@ def checkPlan (plan : Plan) : Option (UInt32 × String) :=
   else if (plan.root.inferKinds cat plan.tableKinds).isNone then some (2, "well-kinded: no")
   else none
 
+variable [Boxes.Ambient]
 def delta (plan : Plan) : IO UInt32 := do
   if let some (code, msg) := checkPlan plan then
     IO.eprintln msg; return code
@@ -382,12 +383,12 @@ def blackBoxJson : Lean.Json :=
     | .atLeast k => Lean.Json.arr #["at_least", Lean.toJson k]
     | .atMost k => Lean.Json.arr #["at_most", Lean.toJson k]
   let laws (ls : List BlackBox.Law) := Lean.Json.arr (ls.map law).toArray
-  Lean.Json.arr ((BlackBox.scalars.map fun f => obj [
+  Lean.Json.arr ((Boxes.Ambient.boxes.scalars.map fun f => obj [
       ("name", f.name), ("kind", "scalar"), ("anchor", Lean.toJson (Write.bbAnchor f.name)),
       ("args", Lean.Json.arr (f.args.map ty).toArray), ("result", ty f.result),
       ("strict", Lean.toJson f.strict), ("raises", Lean.toJson (f.raises == .sometimes)),
       ("laws", laws f.laws)]) ++
-    (BlackBox.aggregates.map fun f => obj [
+    (Boxes.Ambient.boxes.aggregates.map fun f => obj [
       ("name", f.name), ("kind", "aggregate"), ("anchor", Lean.toJson (Write.bbAnchor f.name)),
       ("raises", Lean.toJson (f.raises == .sometimes)),
       ("args", Lean.Json.arr #[ty f.arg]), ("result", ty f.result),

@@ -22,6 +22,7 @@ additions, overflow to `±∞` on the way included, is `sum_order`'s
 the correctly rounded sum. -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 open Functions (Ctor)
 

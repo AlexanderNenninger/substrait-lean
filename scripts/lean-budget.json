@@ -425,6 +425,10 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
+  "SubstraitLean.VarcharCasts": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
   "Sverify.Analysis.WSet": {
    "cpu_s": 30,
    "rss_mb": 1536
@@ -582,10 +586,6 @@
    "rss_mb": 1536
   },
   "Sverify.Core.Value": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Core.VarcharCasts": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

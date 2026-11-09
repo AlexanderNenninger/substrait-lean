@@ -31,6 +31,7 @@ caps each read of a table with a `max_rows` precondition with a `FETCH`
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 /-- Each join that determines a key of its right side, wrapped in a `FETCH`
 of as many rows as `Rel.maxRows` bounds its left side by. -/
 def Rel.capJoins (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
@@ -170,6 +171,7 @@ end
 section
 variable {cat : Catalog} {caps : String → Option Nat}
 
+omit [Boxes.Ambient] in
 theorem Rel.capReads_wf : ∀ {r : Rel}, r.WF cat → (r.capReads caps).WF cat
   | .read t, h => by unfold capReads; split <;> trivial
   | .values _ _, h => h
@@ -204,13 +206,16 @@ end
 
 /-! ## `SUM`s of the plan are `SUM`s of the capped plan -/
 
+omit [Boxes.Ambient] in
 theorem sumWraps_ne_domain {e e' : Expr} (h : ((Issue.sumWraps, e) : Issue × Expr) = (.domain, e')) :
     False := by simp only [Prod.mk.injEq, reduceCtorEq, false_and] at h
 
+omit [Boxes.Ambient] in
 theorem sumWraps_ne_infinite {e e' : Expr}
     (h : ((Issue.sumWraps, e) : Issue × Expr) = (.infinite, e')) :
     False := by simp only [Prod.mk.injEq, reduceCtorEq, false_and] at h
 
+omit [Boxes.Ambient] in
 /-- Capping reads commutes with loosening: `FETCH` stops `Rel.loose`. -/
 theorem Rel.capReads_loose (caps : String → Option Nat) :
     ∀ r : Rel, (r.capReads caps).loose = r.loose.capReads caps
@@ -343,20 +348,24 @@ fits when `n · m` does (`Rel.sumsPer`). -/
 def RowsPer (k : List Nat) (n : Nat) (rows : Relation) : Prop :=
   ∀ v : List Value, (rows.filter fun row => decide (keyOf k row = v)).length ≤ n
 
+omit [Boxes.Ambient] in
 theorem RowsPer.sublist {k : List Nat} {n : Nat} {rows rows' : Relation} (h : RowsPer k n rows)
     (hs : rows'.Sublist rows) : RowsPer k n rows' := fun v =>
   Nat.le_trans (hs.filter _).length_le (h v)
 
+omit [Boxes.Ambient] in
 /-- Distinct rows drawn from `rows` have no more rows per key. -/
 theorem RowsPer.of_nodup_subset {k : List Nat} {n : Nat} {rows rows' : Relation} (h : RowsPer k n rows)
     (hn : rows'.Nodup) (hs : ∀ x ∈ rows', x ∈ rows) : RowsPer k n rows' := fun v =>
   Nat.le_trans (List.Nodup.length_le_of_subset (hn.filter _) fun x hx =>
     List.mem_filter.mpr ⟨hs x (List.mem_filter.mp hx).1, (List.mem_filter.mp hx).2⟩) (h v)
 
+omit [Boxes.Ambient] in
 theorem RowsPer.perm {k : List Nat} {n : Nat} {rows rows' : Relation} (h : RowsPer k n rows)
     (hp : rows'.Perm rows) : RowsPer k n rows' := fun v => by
   rw [(hp.filter _).length_eq]; exact h v
 
+omit [Boxes.Ambient] in
 /-- A key bounds the rows per key by 1. -/
 theorem RowsPer.of_keyOn {k : List Nat} : ∀ {rows : Relation}, KeyOn k rows → RowsPer k 1 rows
   | [], _, v => by simp
@@ -374,6 +383,7 @@ theorem RowsPer.of_keyOn {k : List Nat} : ∀ {rows : Relation}, KeyOn k rows �
       simp [hz]
     · exact ih
 
+omit [Boxes.Ambient] in
 /-- Rows that map to rows with the same key: as many per key. -/
 theorem RowsPer.map {k k' : List Nat} {n : Nat} {rows : Relation} {f : Row → Row}
     (h : RowsPer k n rows) (hf : ∀ x ∈ rows, keyOf k' (f x) = keyOf k x) :
@@ -384,10 +394,12 @@ theorem RowsPer.map {k k' : List Nat} {n : Nat} {rows : Relation} {f : Row → R
     List.filter_congr fun x hx => by simp only [Function.comp, hf x hx]
   rw [this]; exact h v
 
+omit [Boxes.Ambient] in
 theorem RowsPer.append {k : List Nat} {m n : Nat} {xs ys : Relation} (hx : RowsPer k m xs)
     (hy : RowsPer k n ys) : RowsPer k (m + n) (xs ++ ys) := fun v => by
   rw [List.filter_append, List.length_append]; exact Nat.add_le_add (hx v) (hy v)
 
+omit [Boxes.Ambient] in
 /-- A `flatMap` that gives each row at most one row, and none to the rows
 `q` rejects, has at most as many rows as `q` accepts. -/
 theorem length_flatMap_le_filter {g : Row → Relation} {q : Row → Bool} :
@@ -403,6 +415,7 @@ theorem length_flatMap_le_filter {g : Row → Relation} {q : Row → Bool} :
     · simp only [hx.2 hq, List.length_nil, Nat.zero_add, Bool.false_eq_true, ↓reduceIte]; exact ih
     · simp only [↓reduceIte, List.length_cons]; omega
 
+omit [Boxes.Ambient] in
 /-- Rows each with at most one partner (a join on a key of its right side)
 keep the left side's bounds on its columns. -/
 theorem RowsPer.flatMap_prefix {k : List Nat} {n a : Nat} {xs : Relation} {g : Row → Relation}
@@ -432,6 +445,7 @@ def leastOf : List Nat → Option Nat
     | some m => min n m
     | none => n)
 
+omit [Boxes.Ambient] in
 theorem le_leastOf {L : Nat} : ∀ {ns : List Nat} {n : Nat}, (∀ m ∈ ns, L ≤ m) →
     leastOf ns = some n → L ≤ n
   | [], _, _, h => by simp [leastOf] at h
@@ -597,6 +611,7 @@ theorem sublist_of_mem_aggGroups {gs : List Expr} {rows grp : Relation}
   · obtain ⟨k, _, rfl⟩ := List.mem_map.1 hg
     exact List.filter_sublist
 
+omit [Boxes.Ambient] in
 theorem length_le_of_rowsPer {k : List Nat} {n : Nat} {rows grp : Relation}
     (h : RowsPer k n rows) (hs : grp.Sublist rows) (heq : ∀ y ∈ grp, ∀ z ∈ grp, keyOf k y = keyOf k z) :
     grp.length ≤ n := by

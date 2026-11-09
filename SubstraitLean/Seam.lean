@@ -106,6 +106,7 @@ theorem SemBy.eq_iff_of_permInv {α : Type} {op : Relation → α} (hop : PermIn
 
 /-! ## Measures -/
 
+variable [Boxes.Ambient]
 /-- The value a measure gives over one enumeration of its group's rows: its
 aggregate of the enumeration where it sorts, of the rows as they come
 otherwise. -/

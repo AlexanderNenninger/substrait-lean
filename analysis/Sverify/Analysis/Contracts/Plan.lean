@@ -84,6 +84,7 @@ theorem length_crossRows (xs ys : Relation) : (crossRows xs ys).length = xs.leng
     simp only [crossRows, List.flatMap_cons, List.length_append, List.length_map] at ih ⊢
     rw [ih, List.length_cons, Nat.add_mul, Nat.one_mul]; omega
 
+variable [Boxes.Ambient]
 /-- **Row bounds hold on every order**, `Rel.eval`'s among them. -/
 theorem Rel.maxRows_sound_all {cat : Catalog} :
     ∀ {r : Rel} {n : Nat}, r.maxRows = some n → ∀ {out : Relation}, r.OrderAllowed cat out →
@@ -183,6 +184,7 @@ def Rel.capReads (caps : String → Option Nat) : Rel → Rel
   | .aggregate r gs ms => .aggregate (r.capReads caps) gs ms
   | .unnest r c => .unnest (r.capReads caps) c
 
+omit [Boxes.Ambient] in
 theorem Rel.capReads_arity (caps : String → Option Nat) (cat : Catalog) :
     ∀ r : Rel, (r.capReads caps).arity cat = r.arity cat
   | .read t => by unfold capReads; split <;> rfl
@@ -229,6 +231,7 @@ def signBound (b : Bound) : Bound :=
   ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
    b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
 
+omit [Boxes.Ambient] in
 theorem signBound_sound {avg : Bool} {b : Bound} {cs : List Int}
     (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem (FloatCode.canon c)) :
     (signBound b).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
@@ -274,6 +277,7 @@ def crBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
     else Bound.top
   | _, _ => Bound.top
 
+omit [Boxes.Ambient] in
 theorem crBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
     (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem (FloatCode.canon c)) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
     (crBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) := by
@@ -335,6 +339,7 @@ it. -/
 def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
   (signBound b).meet (crBound avg b rows)
 
+omit [Boxes.Ambient] in
 theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
     (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem (FloatCode.canon c)) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
     (floatBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) :=
@@ -579,11 +584,13 @@ def Rel.ratioPartLane (cat : Catalog) (A : String → List AVal) (F : String →
     (T : WindowKeys) (sz : Bool := false) (r : Rel) : List Fact :=
   (r.lane cat A F T sz).ratio
 
+omit [Boxes.Ambient] in
 @[csimp] theorem Rel.aeval_csimp : @Rel.aeval = @Rel.aevalLane := by
-  funext cat A F T sz r; simp only [Rel.aevalLane, Rel.lane_eq]
+  funext _ cat A F T sz r; simp only [Rel.aevalLane, Rel.lane_eq]
 
+omit [Boxes.Ambient] in
 @[csimp] theorem Rel.ratioPart_csimp : @Rel.ratioPart = @Rel.ratioPartLane := by
-  funext cat A F T sz r; simp only [Rel.ratioPartLane, Rel.lane_eq]
+  funext _ cat A F T sz r; simp only [Rel.ratioPartLane, Rel.lane_eq]
 
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} {sz : Bool} :

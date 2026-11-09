@@ -10,6 +10,7 @@ kind (#923).
 Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Integer intervals -/
 
@@ -32,18 +33,21 @@ def Bound.allLe (b : Bound) (h : Int) : Bool := b.hi.any (· ≤ h)
 the casts, the integer and decimal widths and the time ranges. -/
 def Bound.within (lo hi : Int) (b : Bound) : Bool := b.allGe lo && b.allLe hi
 
+omit [Boxes.Ambient] in
 theorem Bound.allGe_le {b : Bound} {l i : Int} (h : b.allGe l = true) (hi : b.Mem i) : l ≤ i := by
   obtain ⟨bl, bh⟩ := b
   simp only [Bound.allGe, Option.any_eq_true, decide_eq_true_eq] at h
   obtain ⟨l', rfl, hl⟩ := h
   have := hi.1 l' rfl; omega
 
+omit [Boxes.Ambient] in
 theorem Bound.le_allLe {b : Bound} {h i : Int} (hb : b.allLe h = true) (hi : b.Mem i) : i ≤ h := by
   obtain ⟨bl, bh⟩ := b
   simp only [Bound.allLe, Option.any_eq_true, decide_eq_true_eq] at hb
   obtain ⟨h', rfl, hh⟩ := hb
   have := hi.2 h' rfl; omega
 
+omit [Boxes.Ambient] in
 theorem Bound.within_mem {lo hi i : Int} {b : Bound} (h : b.within lo hi = true) (hm : b.Mem i) :
     between lo hi i = true := by
   simp only [Bound.within, Bool.and_eq_true] at h
@@ -107,11 +111,14 @@ def Bound.atMost (b : Bound) (k : Int) : Bound :=
 def Bound.atLeast (b : Bound) (k : Int) : Bound :=
   ⟨some (match b.lo with | some l => max l k | none => k), b.hi⟩
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_top (i : Int) : Bound.top.Mem i := by simp [Bound.Mem, Bound.top]
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_exact (i : Int) : (Bound.exact i).Mem i := by
   simp [Bound.Mem, Bound.exact]
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_join_left {a b : Bound} {i : Int} (h : a.Mem i) : (a.join b).Mem i := by
   obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
   simp only [Bound.Mem, Bound.join] at *
@@ -119,6 +126,7 @@ theorem Bound.mem_join_left {a b : Bound} {i : Int} (h : a.Mem i) : (a.join b).M
   · intro l hl; cases al <;> cases bl <;> simp_all [lift2] <;> subst hl <;> omega
   · intro u hu; cases ah <;> cases bh <;> simp_all [lift2] <;> subst hu <;> omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_join_right {a b : Bound} {i : Int} (h : b.Mem i) : (a.join b).Mem i := by
   obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
   simp only [Bound.Mem, Bound.join] at *
@@ -126,6 +134,7 @@ theorem Bound.mem_join_right {a b : Bound} {i : Int} (h : b.Mem i) : (a.join b).
   · intro l hl; cases al <;> cases bl <;> simp_all [lift2] <;> subst hl <;> omega
   · intro u hu; cases ah <;> cases bh <;> simp_all [lift2] <;> subst hu <;> omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_greatest {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     (a.greatest b).Mem (if x < y then y else x) := by
   obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
@@ -141,6 +150,7 @@ theorem Bound.mem_greatest {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem 
     cases ah <;> cases bh <;> simp only [lift2, Option.some.injEq, reduceCtorEq] at hu
     subst hu; have := hah _ rfl; have := hbh _ rfl; split <;> omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_least {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     (a.least b).Mem (if y < x then y else x) := by
   obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
@@ -157,6 +167,7 @@ theorem Bound.mem_least {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) 
             | (subst hu; have := hah _ rfl; split <;> omega)
             | (subst hu; have := hbh _ rfl; split <;> omega)
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_add {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     (a.add b).Mem (x + y) := by
   obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
@@ -165,6 +176,7 @@ theorem Bound.mem_add {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
   · intro l hl; cases al <;> cases bl <;> simp_all [lift2] <;> omega
   · intro u hu; cases ah <;> cases bh <;> simp_all [lift2] <;> omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_neg {a : Bound} {x : Int} (ha : a.Mem x) : a.neg.Mem (-x) := by
   obtain ⟨al, ah⟩ := a
   simp only [Bound.Mem, Bound.neg] at *
@@ -172,10 +184,12 @@ theorem Bound.mem_neg {a : Bound} {x : Int} (ha : a.Mem x) : a.neg.Mem (-x) := b
   · intro l hl; cases ah <;> simp_all <;> omega
   · intro u hu; cases al <;> simp_all <;> omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_sub {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     (a.sub b).Mem (x - y) := by
   rw [Int.sub_eq_add_neg]; exact Bound.mem_add ha (Bound.mem_neg hb)
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_scale {b : Bound} {x : Int} (k : Int) (hb : b.Mem x) :
     (b.scale k).Mem (k * x) := by
   obtain ⟨hl, hh⟩ := hb
@@ -196,12 +210,14 @@ theorem Bound.mem_scale {b : Bound} {x : Int} (k : Int) (hb : b.Mem x) :
     · obtain ⟨l0, h0, rfl⟩ := Option.map_eq_some_iff.mp h
       exact Int.mul_le_mul_of_nonpos_left (by omega) (hl l0 h0)
 
+omit [Boxes.Ambient] in
 theorem Bound.point_mem {b : Bound} {k x : Int} (hp : b.point = some k) (hb : b.Mem x) : x = k := by
   obtain ⟨bl, bh⟩ := b
   cases bl <;> cases bh <;> simp [Bound.point] at hp
   simp [Bound.Mem] at hb
   omega
 
+omit [Boxes.Ambient] in
 /-- `x * y` lies between the products of `x`'s bounds with `y`. -/
 theorem mul_between {l h x : Int} (hl : l ≤ x) (hh : x ≤ h) (y : Int) :
     min (l * y) (h * y) ≤ x * y ∧ x * y ≤ max (l * y) (h * y) := by
@@ -213,6 +229,7 @@ theorem mul_between {l h x : Int} (hl : l ≤ x) (hh : x ≤ h) (y : Int) :
     have := Int.mul_le_mul_of_nonpos_right hh hy
     omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_corners {al ah bl bh x y : Int} (hx : al ≤ x ∧ x ≤ ah) (hy : bl ≤ y ∧ y ≤ bh) :
     (Bound.corners al ah bl bh).Mem (x * y) := by
   have h1 := mul_between hx.1 hx.2 y
@@ -225,6 +242,7 @@ theorem Bound.mem_corners {al ah bl bh x y : Int} (hx : al ≤ x ∧ x ≤ ah) (
   · rintro _ rfl; omega
   · rintro _ rfl; omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_mul {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     (a.mul b).Mem (x * y) := by
   unfold Bound.mul
@@ -241,6 +259,7 @@ theorem Bound.mem_mul {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     | none, _, _, _ | some _, none, _, _ | some _, some _, none, _ | some _, some _, some _, none =>
       exact Bound.mem_top _
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_atMost {b : Bound} {x k : Int} (hb : b.Mem x) (hk : x ≤ k) :
     (b.atMost k).Mem x := by
   obtain ⟨bl, bh⟩ := b
@@ -248,6 +267,7 @@ theorem Bound.mem_atMost {b : Bound} {x k : Int} (hb : b.Mem x) (hk : x ≤ k) :
   refine ⟨hb.1, ?_⟩
   intro u hu; cases bh <;> simp_all <;> omega
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_atLeast {b : Bound} {x k : Int} (hb : b.Mem x) (hk : k ≤ x) :
     (b.atLeast k).Mem x := by
   obtain ⟨bl, bh⟩ := b
@@ -263,6 +283,7 @@ def Bound.meet (a b : Bound) : Bound :=
     | none, y => y
   ⟨pick max a.lo b.lo, pick min a.hi b.hi⟩
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_meet {a b : Bound} {i : Int} (ha : a.Mem i) (hb : b.Mem i) : (a.meet b).Mem i := by
   obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
   simp only [Bound.Mem, Bound.meet] at *
@@ -373,26 +394,31 @@ def AVal.Mem (a : AVal) (v : Value) : Prop := a.MemR v
 
 attribute [simp] AVal.MemR AVal.MemAll AVal.MemFields
 
+omit [Boxes.Ambient] in
 theorem AVal.memAll_iff {e : AVal} : ∀ {vs : List Value}, AVal.MemAll e vs ↔ ∀ v ∈ vs, e.Mem v
   | [] => by simp
   | v :: vs => by simp [AVal.Mem, AVal.memAll_iff (vs := vs)]
 
+omit [Boxes.Ambient] in
 theorem AVal.memInt_intro {a : AVal} {b : Bound} {i : Int} (hb : a.int = some b)
     (hk : a.nk = some .int) (hi : b.Mem i) : a.Mem (.int i) :=
   ⟨b, hb, hi, by simp [hk]⟩
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_val {a : AVal} {k : NumKind} {i : Int} : a.Mem (k.val i) ↔ a.MemNum k i := by
   cases k <;> rfl
 
 /-- Every integer `a` describes is in `[lo, hi]`. -/
 def AVal.within (lo hi : Int) (a : AVal) : Bool := a.int.all (·.within lo hi)
 
+omit [Boxes.Ambient] in
 theorem AVal.within_memNum {lo hi i : Int} {a : AVal} {k : NumKind} (h : a.within lo hi = true)
     (hm : a.MemNum k i) : between lo hi (k.norm i) = true := by
   obtain ⟨b, hb, hi, _⟩ := hm
   simp only [AVal.within, hb, Option.all_some] at h
   exact Bound.within_mem h hi
 
+omit [Boxes.Ambient] in
 theorem AVal.within_mem {lo hi i : Int} {a : AVal} (h : a.within lo hi = true)
     (hm : a.Mem (.int i)) : between lo hi i = true := AVal.within_memNum h hm
 
@@ -476,21 +502,33 @@ end
 
 section
 variable (a b : AVal)
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_null : (a.join b).null = (a.null || b.null) := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_int : (a.join b).int = joinInt a.int b.int := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_tt : (a.join b).tt = (a.tt || b.tt) := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_ff : (a.join b).ff = (a.ff || b.ff) := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_str : (a.join b).str = (a.str || b.str) := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_strs : (a.join b).strs = joinStrs a b := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_nk : (a.join b).nk = joinNk a b := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_list : (a.join b).list = (a.list || b.list) := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_elems : (a.join b).elems =
     if !a.list then b.elems else if !b.list then a.elems else AVal.joinE a.elems b.elems := by
   cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_card : (a.join b).card =
     if !a.list then b.card else if !b.list then a.card else a.card.join b.card := by
   cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_struct : (a.join b).struct = (a.struct || b.struct) := by cases a; rfl
+omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_fields : (a.join b).fields =
     if !a.struct then b.fields else if !b.struct then a.fields else AVal.joinF a.fields b.fields := by
   cases a; rfl
@@ -517,6 +555,7 @@ def AVal.nonStruct (a : AVal) : Bool := a.null || a.int.isSome || a.tt || a.ff |
 def AVal.certainlyTrue (a : AVal) : Bool :=
   !a.null && a.int.isNone && !a.ff && !a.str && !a.nested
 
+omit [Boxes.Ambient] in
 /-- A number of another kind than `k` is a case of `nonNum k`. -/
 theorem AVal.nonNum_of_memNum {a : AVal} {k k' : NumKind} {i : Int} (hm : a.MemNum k' i)
     (hk : k' ≠ k) : a.nonNum k = true := by
@@ -529,18 +568,21 @@ theorem AVal.nonNum_of_memNum {a : AVal} {k k' : NumKind} {i : Int} (hm : a.MemN
   simp only [Option.all_some, beq_iff_eq] at hn
   exact hk hn.symm
 
+omit [Boxes.Ambient] in
 theorem AVal.memNum_kind {a : AVal} {k k' : NumKind} {i : Int} (hm : a.MemNum k' i)
     (hk : a.nonNum k = false) : k' = k := by
   if h : k' = k then exact h else
   rw [AVal.nonNum_of_memNum hm h] at hk
   exact Bool.noConfusion hk
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_top : ∀ v, AVal.top.Mem v
   | .null | .bool true | .bool false | .str _ => rfl
   | .list _ | .struct _ => by simp [AVal.Mem, AVal.top, Bound.mem_top]
   | .int i | .date i | .ts i | .tod i | .dec _ i => ⟨_, rfl, Bound.mem_top i, rfl⟩
   | .float i => ⟨_, rfl, Bound.mem_top _, rfl⟩
 
+omit [Boxes.Ambient] in
 /-- A list in `a` has its elements in `a.elemsOf`. -/
 theorem AVal.mem_list {a : AVal} {vs : List Value} :
     a.Mem (.list vs) ↔ a.list = true ∧ a.card.Mem vs.length ∧ ∀ v ∈ vs, a.elemsOf.Mem v := by
@@ -554,6 +596,7 @@ theorem AVal.mem_list {a : AVal} {vs : List Value} :
       simp only [AVal.Mem, AVal.MemR, he]
     rw [this, AVal.elemsOf, he]; simp [AVal.mem_top]
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
   | .null | .bool true | .bool false => rfl
   | .str s => by simp [AVal.Mem, AVal.ofValue]
@@ -563,18 +606,21 @@ theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
     ⟨_, rfl, Bound.mem_exact i, by simp [AVal.ofValue, AVal.num]⟩
   | .float i => ⟨_, rfl, Bound.mem_exact _, by simp [AVal.ofValue, AVal.num]⟩
 
+omit [Boxes.Ambient] in
 theorem joinStrs_left {a b : AVal} {s : String} (ha : a.str = true)
     (hs : a.strs.all (·.contains s) = true) : (joinStrs a b).all (·.contains s) = true := by
   unfold joinStrs
   cases hA : a.strs <;> cases hB : b.strs <;> cases hb : b.str <;> simp_all
   all_goals (split <;> simp_all)
 
+omit [Boxes.Ambient] in
 theorem joinStrs_right {a b : AVal} {s : String} (hb : b.str = true)
     (hs : b.strs.all (·.contains s) = true) : (joinStrs a b).all (·.contains s) = true := by
   unfold joinStrs
   cases hA : a.strs <;> cases hB : b.strs <;> cases ha : a.str <;> simp_all
   all_goals (split <;> simp_all)
 
+omit [Boxes.Ambient] in
 theorem AVal.memNum_join_left {a b : AVal} {k : NumKind} {i : Int} (h : a.MemNum k i) :
     (a.join b).MemNum k i := by
   obtain ⟨x, hx, hm, hn⟩ := h
@@ -589,6 +635,7 @@ theorem AVal.memNum_join_left {a b : AVal} {k : NumKind} {i : Int} (h : a.MemNum
   | none => exact ⟨x, by simp [hx, hb, joinInt], hm, by simpa using hk⟩
   | some y => exact ⟨x.join y, by simp [hx, hb, joinInt], Bound.mem_join_left hm, by simpa using hk⟩
 
+omit [Boxes.Ambient] in
 theorem AVal.memNum_join_right {a b : AVal} {k : NumKind} {i : Int} (h : b.MemNum k i) :
     (a.join b).MemNum k i := by
   obtain ⟨y, hy, hm, hn⟩ := h
@@ -603,6 +650,9 @@ theorem AVal.memNum_join_right {a b : AVal} {k : NumKind} {i : Int} (h : b.MemNu
   cases ha : a.int with
   | none => exact ⟨y, by simp [hy, ha, joinInt], hm, by simpa using hk⟩
   | some x => exact ⟨x.join y, by simp [hy, ha, joinInt], Bound.mem_join_right hm, by simpa using hk⟩
+
+section
+omit [Boxes.Ambient]
 
 mutual
 theorem AVal.mem_join_left {a b : AVal} : ∀ {v}, a.Mem v → (a.join b).Mem v
@@ -650,6 +700,11 @@ theorem AVal.memFields_join_left {xs ys zs : List AVal} : ∀ {vs}, AVal.MemFiel
       | _ :: _, [], _, hj => simp [AVal.joinL] at hj
 end
 
+end
+
+section
+omit [Boxes.Ambient]
+
 mutual
 theorem AVal.mem_join_right {a b : AVal} : ∀ {v}, b.Mem v → (a.join b).Mem v
   | .str _, h => by
@@ -696,6 +751,9 @@ theorem AVal.memFields_join_right {xs ys zs : List AVal} : ∀ {vs}, AVal.MemFie
       | [], _ :: _, _, hj => simp [AVal.joinL] at hj
 end
 
+end
+
+omit [Boxes.Ambient] in
 theorem AVal.certainlyTrue_mem {a : AVal} {v : Value} (hc : a.certainlyTrue = true)
     (hm : a.Mem v) : v = .bool true := by
   simp only [AVal.certainlyTrue, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
@@ -710,6 +768,7 @@ theorem AVal.certainlyTrue_mem {a : AVal} {v : Value} (hc : a.certainlyTrue = tr
   | .str _, hm => simp_all [AVal.Mem]
   | .list _, hm | .struct _, hm => simp_all [AVal.Mem]
 
+omit [Boxes.Ambient] in
 /-- Shapes of a value, for case analysis in the binary soundness proofs. A
 list or a struct is one case: functions of scalars give NULL on both. -/
 theorem AVal.mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
@@ -791,6 +850,7 @@ def Value.mapP₂ (tbl : NumKind → NumKind → Option NumKind) (g : Int → In
 def AVal.nonNumP (ok : NumKind → Bool) (a : AVal) : Bool :=
   a.nonInt || (a.int.isSome && !a.nk.any ok)
 
+omit [Boxes.Ambient] in
 theorem AVal.ok_of_memNum {a : AVal} {ok : NumKind → Bool} {k : NumKind} {b : Bound}
     (hb : a.int = some b) (hk : a.nk.all (· == k) = true) (hn : a.nonNumP ok = false) :
     ok k = true := by
@@ -821,6 +881,7 @@ def Value.CanonEq (x y : Value) : Prop :=
 /-- Two values that are equal, or two numbers of one kind. -/
 def Value.ShapeEq (x y : Value) : Prop := x = y ∨ ∃ (k : NumKind) (c c' : Int), x = k.val c ∧ y = k.val c'
 
+omit [Boxes.Ambient] in
 theorem Value.ShapeEq.trans {x y z : Value} (h : x.ShapeEq y) (h' : y.ShapeEq z) : x.ShapeEq z := by
   rcases h with rfl | ⟨k, c, c', rfl, rfl⟩
   · exact h'
@@ -829,6 +890,7 @@ theorem Value.ShapeEq.trans {x y z : Value} (h : x.ShapeEq y) (h' : y.ShapeEq z)
     · obtain ⟨rfl, rfl⟩ := NumKind.val_inj₂ e
       exact .inr ⟨k, c, d', rfl, rfl⟩
 
+omit [Boxes.Ambient] in
 /-- `a` holds a double by its canonical code (`NumKind.norm`). -/
 theorem AVal.mem_of_canonEq {a : AVal} {x y : Value} (h : x.CanonEq y) (hy : a.Mem y) : a.Mem x := by
   rcases h with rfl | ⟨c, c', rfl, rfl, hc⟩
@@ -839,6 +901,7 @@ theorem AVal.mem_of_canonEq {a : AVal} {x y : Value} (h : x.CanonEq y) (hy : a.M
     refine ⟨b, hb, ?_, hk⟩
     rw [NumKind.norm_float] at hm ⊢; rw [hc]; exact hm
 
+omit [Boxes.Ambient] in
 /-- Where `a` bounds no number, any number of `a`'s kinds is in it. -/
 theorem AVal.mem_of_shapeEq {a : AVal} {x y : Value} (h : x.ShapeEq y) (hy : a.Mem y)
     (htop : ∀ b, a.int = some b → b = Bound.top) : a.Mem x := by
@@ -847,6 +910,7 @@ theorem AVal.mem_of_shapeEq {a : AVal} {x y : Value} (h : x.ShapeEq y) (hy : a.M
   · obtain ⟨b, hb, _, hk⟩ := AVal.mem_val.mp hy
     exact AVal.mem_val.mpr ⟨b, hb, (htop b hb) ▸ Bound.mem_top _, hk⟩
 
+omit [Boxes.Ambient] in
 /-- `mapAbs` holds `mapP`'s values. -/
 theorem mapAbs_mem {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Option Int}
     {bf : Bound → Bound} {extra : Option Bound → Bool}
@@ -897,6 +961,7 @@ theorem mapAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : I
     (mapAbs ok kout bf extra a).Mem (f.apply v) :=
   AVal.mem_of_canonEq (hf v) (mapAbs_mem hb hn h hc)
 
+omit [Boxes.Ambient] in
 /-- **A function whose abstraction bounds no double** is sound where it agrees
 with `mapP` in shape only (`Value.ShapeEq`: NULL where it is NULL, a double
 where it is a double). The functions of native doubles (`ROUND(x, d)`, the
@@ -950,6 +1015,7 @@ fail. -/
     int := (match a.int, b.int with | some x, some y => some (bf x y) | _, _ => none),
     nk := outKind tbl a b }
 
+omit [Boxes.Ambient] in
 theorem mapAbs₂_mem {tbl : NumKind → NumKind → Option NumKind} {g : Int → Int → Option Int}
     {bf : Bound → Bound → Bound} {extra : Option Bound → Option Bound → Bool}
     (hb : ∀ x y i j r, x.Mem i → y.Mem j → g i j = some r → (bf x y).Mem r)
@@ -1010,6 +1076,7 @@ theorem mapAbs₂_sound {tbl : NumKind → NumKind → Option NumKind} {g : Int 
   AVal.mem_of_canonEq (hf v w)
     (mapAbs₂_mem hb (fun x y _ _ _ _ _ _ hi hj hg => hn x y _ _ hi hj hg) ha hb' hc)
 
+omit [Boxes.Ambient] in
 theorem mapP₂_shapeEq (tbl : NumKind → NumKind → Option NumKind) (g : Int → Int → Option Int) (v w : Value) :
     (Value.mapP₂ tbl g v w).ShapeEq (Value.mapP₂ tbl (fun i j => (g i j).map fun _ => 0) v w) := by
   unfold Value.mapP₂
@@ -1054,6 +1121,9 @@ The analysis bounds a double by its canonical code, so `-0.0` and `0.0`, and
 the two NaNs, are in the same abstract values, in lists and structs too. -/
 
 
+section
+omit [Boxes.Ambient]
+
 mutual
 theorem AVal.memR_canonV (a : AVal) : ∀ v : Value, a.MemR v.canonV ↔ a.MemR v
   | .float c => by
@@ -1087,12 +1157,17 @@ theorem AVal.memFields_canonV : ∀ (fs : List AVal) (vs : List Value),
   | [], _ :: _ | _ :: _, [] => by simp [AVal.MemFields]
 end
 
+end
 
+
+omit [Boxes.Ambient] in
 theorem Value.canonV_eq_null {v : Value} : v.canonV = .null ↔ v = .null := by
   cases v <;> simp [Value.canonV]
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_canonV {a : AVal} {v : Value} : a.Mem v.canonV ↔ a.Mem v := AVal.memR_canonV a v
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_of_canonV_eq {a : AVal} {v w : Value} (h : v.canonV = w.canonV) (hw : a.Mem w) :
     a.Mem v := AVal.mem_canonV.mp (h ▸ AVal.mem_canonV.mpr hw)
 

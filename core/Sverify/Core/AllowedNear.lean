@@ -40,6 +40,7 @@ the reference (`StatProps`) until their exact moments (#918), and
 `contract_sound_allowed` needs no side condition. -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Measures whose allowed values are an order's -/
 
@@ -159,6 +160,7 @@ def aggCtx (g : Nat) (ms : List Measure) : ObsCtx where
   near _ col x y := x = y ∨
     ∃ m a b, ms[col - g]? = some m ∧ x = fp64.canon a ∧ y = fp64.canon b ∧ m.Open a b
 
+omit [Boxes.Ambient] in
 theorem aggCtx_reflAt (g : Nat) (ms : List Measure) : (aggCtx g ms).ReflAt Obs.plan :=
   ⟨fun _ _ _ _ => .inl rfl, fun _ h hne => absurd (h.symm.trans rfl) hne⟩
 
@@ -204,6 +206,7 @@ theorem measures_near {g : Nat} {ms₀ : List Measure} {grp : Relation}
         ⟨hv.near_eval ho h0, hrest⟩⟩
   | [], _, _ :: _, _, h | _ :: _, _, [], _, h => by cases h
 
+omit [Boxes.Ambient] in
 theorem Row.EquivFrom.append_left {q : Obs} {ctx : ObsCtx} (hc : ctx.ReflAt q) :
     ∀ (k : Row) {i : Nat} {a b : Row}, Row.EquivFrom q ctx (i + k.length) a b →
       Row.EquivFrom q ctx i (k ++ a) (k ++ b)
@@ -212,6 +215,7 @@ theorem Row.EquivFrom.append_left {q : Obs} {ctx : ObsCtx} (hc : ctx.ReflAt q) :
     ⟨Value.Equiv.refl hc x, Row.EquivFrom.append_left hc k (i := i + 1)
       (by simpa [Nat.add_assoc, Nat.add_comm 1 k.length] using h)⟩
 
+omit [Boxes.Ambient] in
 /-- `Forall2` through an intermediate list. -/
 theorem Forall2.lift {α β γ : Type} {P : α → β → Prop} {Q : α → γ → Prop} {R : γ → β → Prop} :
     ∀ {as : List α} {bs : List β}, (∀ a ∈ as, ∀ b, P a b → ∃ c, Q a c ∧ R c b) →

@@ -151,6 +151,7 @@ theorem rows_narrow {fr : Frame} {sort : List SortKey} {pb pa : List Row} {x : R
   exact filter_mid x fun y hy hP => hW y (List.mem_filter.mpr ⟨by
     rcases List.mem_append.mp hy with h | h <;> simp [h], hP⟩)
 
+variable [Boxes.Ambient]
 /-- **A framed value depends only on the rows in its span.** -/
 theorem valueIn_narrow {k : SortKey} (hk : k.desc = false) {s e : Int} {f : WinFn}
     (hf : f.Framed k s e) (pb : List Row) (x : Row) (pa : List Row) :
@@ -214,6 +215,7 @@ theorem winRow_around (hk : k.desc = false) (hfns : ∀ f ∈ fns, f.Framed k s 
     simp only [around, near, decide_eq_false (hne y (by simp [hy]))] <;>
     cases samePart part x y <;> cases inSpan k s e x y <;> simp
 
+omit [Boxes.Ambient] in
 theorem keyOf_around {x w : Row} (h : around part k s e x w = true) :
     keyOf part w = keyOf part x := by
   simp only [around, near, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true] at h
@@ -222,10 +224,12 @@ theorem keyOf_around {x w : Row} (h : around part k s e x w = true) :
   · simp only [samePart, decide_eq_true_eq] at h
     exact h.symm
 
+omit [Boxes.Ambient] in
 theorem keyOn_sorted {rows : Relation} {K : List Nat} (h : KeyOn K rows) (sort : List SortKey) :
     KeyOn K (rows.mergeSort (sortLe sort)) :=
   h.perm (List.mergeSort_perm rows _).symm fun h => Ne.symm h
 
+omit [Boxes.Ambient] in
 /-- Two inputs with the same rows near `x` have the same rows around `x`,
 in the same sorted order. -/
 theorem sorted_around_eq {rows rows' : Relation} (hK : KeyOn (part ++ [k.col]) rows)
@@ -322,9 +326,11 @@ def narrowed (part : List Nat) (k : SortKey) (K : List Value → Bool) (s e t0 t
     (rows : Relation) : Relation :=
   rows.filter fun r => K (keyOf part r) && timeIn k (t0 - e + s) (t1 - s + e) r
 
+omit [Boxes.Ambient] in
 theorem keyOf_near {x y : Row} (h : near part k s e x y = true) : keyOf part y = keyOf part x :=
   keyOf_around (k := k) (s := s) (e := e) (by simp [around, h])
 
+omit [Boxes.Ambient] in
 /-- A changed row is in the frames of `inside` rows only. -/
 theorem inside_of_near {x y : Row} (h : near part k s e x y = true)
     (hc : changed part k K t0 t1 y = true) : inside part k K s e t0 t1 x = true := by
@@ -338,6 +344,7 @@ theorem inside_of_near {x y : Row} (h : near part k s e x y = true)
   generalize y.getD k.col .null = v at *
   cases u <;> cases v <;> simp_all [spanVal, Value.canonV] <;> omega
 
+omit [Boxes.Ambient] in
 theorem inside_of_changed (hs : s ≤ 0) (he : 0 ≤ e) {y : Row}
     (hc : changed part k K t0 t1 y = true) : inside part k K s e t0 t1 y = true := by
   simp only [changed, inside, timeIn, Bool.and_eq_true] at hc ⊢
@@ -346,6 +353,7 @@ theorem inside_of_changed (hs : s ≤ 0) (he : 0 ≤ e) {y : Row}
   generalize y.getD k.col .null = v at *
   cases v <;> simp_all <;> omega
 
+omit [Boxes.Ambient] in
 theorem mem_narrowed (hs : s ≤ 0) (he : 0 ≤ e) {rows : Relation} {x y : Row}
     (hx : inside part k K s e t0 t1 x = true) (h : y = x ∨ near part k s e x y = true) :
     y ∈ narrowed part k K s e t0 t1 rows ↔ y ∈ rows := by
@@ -367,6 +375,7 @@ theorem mem_narrowed (hs : s ≤ 0) (he : 0 ≤ e) {rows : Relation} {x y : Row}
     generalize y.getD k.col .null = v at *
     cases u <;> cases v <;> simp_all [spanVal, Value.canonV] <;> omega
 
+omit [Boxes.Ambient] in
 /-- `inside` reads columns of the input row, which the output row keeps. -/
 theorem inside_append {x : Row} (l : Row) (hw : ∀ i ∈ k.col :: part, i < x.length) :
     inside part k K s e t0 t1 (x ++ l) = inside part k K s e t0 t1 x := by
@@ -462,11 +471,13 @@ theorem framed_sound (hk : k.desc = false) (hs : s ≤ 0) (he : 0 ≤ e)
     · exact ⟨(mem_narrowed hs he h (.inl rfl)).mpr hy, h⟩
     · exact ⟨(mem_narrowed hs he h (.inl rfl)).mp hy, h⟩
 
+omit [Boxes.Ambient] in
 theorem mem_foldl_erase {y : Row} : ∀ {dels rows : Relation},
     y ∈ dels.foldl List.erase rows → y ∈ rows
   | [], _, h => h
   | _ :: _, _, h => List.mem_of_mem_erase (mem_foldl_erase h)
 
+omit [Boxes.Ambient] in
 theorem mem_foldl_erase_iff {y : Row} : ∀ {dels rows : Relation}, y ∉ dels →
     (y ∈ dels.foldl List.erase rows ↔ y ∈ rows)
   | [], _, _ => .rfl

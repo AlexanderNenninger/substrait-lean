@@ -24,6 +24,7 @@ same rows.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Window functions -/
 
@@ -115,6 +116,7 @@ def Frame.rows (fr : Frame) (sort : List SortKey) (pb : List Row) (x : Row) (pa 
       | b => i + (b.offset.getD 0)
     (all.zipIdx.filter fun (_, j) => decide (lo ≤ j) && decide ((j : Int) ≤ hi)).map (·.1)
 
+omit [Boxes.Ambient] in
 /-- A frame's rows are rows of the partition. -/
 theorem Frame.mem_rows {fr : Frame} {sort : List SortKey} {pb pa : List Row} {x y : Row}
     (h : y ∈ fr.rows sort pb x pa) : y ∈ pb ++ x :: pa := by
@@ -161,6 +163,7 @@ def Expr.refsLtB (n : Nat) : Expr → Bool
   | .ifThen c t e => c.refsLtB n && t.refsLtB n && e.refsLtB n
   | .hof _ l b => l.refsLtB n && b.refsLtB (n + 1)
 
+omit [Boxes.Ambient] in
 theorem Expr.refsLtB_iff {n : Nat} {e : Expr} : e.refsLtB n = true ↔ e.refsLt n := by
   induction e generalizing n <;> simp_all [refsLtB, refsLt, and_assoc]
 
@@ -189,9 +192,11 @@ def ntileOf (i k n : Nat) : Nat :=
   let r := n % k
   if i < r * (q + 1) then i / (q + 1) + 1 else (i - r * (q + 1)) / q + r + 1
 
+omit [Boxes.Ambient] in
 theorem one_le_ntileOf (i k n : Nat) : 1 ≤ ntileOf i k n := by
   simp only [ntileOf]; split <;> exact Nat.le_add_left 1 _
 
+omit [Boxes.Ambient] in
 theorem ntileOf_le (i k n : Nat) : ntileOf i k n ≤ i + 1 := by
   simp only [ntileOf]
   generalize n / k = q
@@ -244,9 +249,11 @@ def windowEval (part : List Nat) (sort : List SortKey) (fns : List WinFn) (rows 
 
 /-! ## Lemmas -/
 
+omit [Boxes.Ambient] in
 theorem samePart_refl (part : List Nat) (x : Row) : samePart part x x = true := by
   simp [samePart]
 
+omit [Boxes.Ambient] in
 theorem samePart_comm {part : List Nat} {x y : Row} (h : samePart part x y = true) :
     samePart part y x = true := by
   simp only [samePart, decide_eq_true_eq] at *; exact h.symm
@@ -273,6 +280,7 @@ theorem mem_windowEval {part : List Nat} {sort : List SortKey} {fns : List WinFn
   have hx : x ∈ rows.mergeSort (sortLe sort) := by rw [he]; simp
   exact ⟨b, x, a, he, List.mem_mergeSort.mp hx, rfl⟩
 
+omit [Boxes.Ambient] in
 /-- Around a row of the sorted input: the rows before sort no later, the
 rows after no earlier, and all of them are input rows. -/
 theorem sorted_split {sort : List SortKey} {rows : Relation} {b a : List Row} {x : Row}

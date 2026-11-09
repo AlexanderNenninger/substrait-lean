@@ -155,6 +155,7 @@ theorem ZSet.weight_cross (a b : ZSet) (r : Row) :
 def ZCatalog.SameWeights (cat cat' : ZCatalog) (ts : List String) : Prop :=
   ∀ t ∈ ts, ∀ row, (cat t).weight row = (cat' t).weight row
 
+variable [Boxes.Ambient]
 private theorem Rel.zeval_weight_congr_aux {cat cat' : ZCatalog} :
     ∀ {r : Rel}, r.Incremental → cat.SameWeights cat' r.tables →
       ∀ row, (r.evalK Impl.lean cat).weight row = (r.evalK Impl.lean cat').weight row
@@ -213,12 +214,14 @@ feed may delete and re-insert a row). -/
 def ChangeFeed (old Δ new : ZCatalog) (ts : List String) : Prop :=
   (old + Δ).SameWeights new ts
 
+omit [Boxes.Ambient] in
 /-- The fallback when the feed is unavailable: the difference of the two
 snapshots is a correct change, so `ChangeFeed` is then proved. -/
 theorem ChangeFeed.of_diff (old new : ZCatalog) (ts : List String) :
     ChangeFeed old (fun t => new t ++ (old t).neg) new ts :=
   fun t _ row => by rw [ZCatalog.add_apply]; exact ZSet.diff_correct _ _ row
 
+omit [Boxes.Ambient] in
 /-- The Iceberg reader's diff of only the changed files: if both snapshots
 consist of the same unchanged files `U` (same weights) plus the files that
 changed (`A` before, `B` after), then `B - A` is a correct change. Reading
@@ -284,6 +287,7 @@ def ColStats.Correct (s : ColStats) (c : Nat) (rows : Relation) : Prop :=
 def tableStats (files : List (Relation × ColStats)) : AVal :=
   files.foldr (fun f a => f.2.aval.join a) AVal.bot
 
+omit [Boxes.Ambient] in
 /-- **Per-file bounds bound the table**: with correct statistics for every
 file, every row of the table (the files' rows together) lies in the join of
 the files' bounds. -/
@@ -299,6 +303,7 @@ theorem stats_table {c : Nat} :
       · exact AVal.mem_join_right
           (stats_table (fun g hg => hc g (List.mem_cons_of_mem _ hg)) row h)
 
+omit [Boxes.Ambient] in
 /-- **Appends**: rows an append inserted lie in the files it added, so the
 added files' bounds bound them, whatever the old files say. -/
 theorem stats_append {c : Nat} {added : List (Relation × ColStats)} {ins : Relation}
@@ -306,6 +311,7 @@ theorem stats_append {c : Nat} {added : List (Relation × ColStats)} {ins : Rela
     ∀ row ∈ ins, (tableStats added).Mem (row.getD c .null) :=
   fun row h => stats_table hc row (hins row h)
 
+omit [Boxes.Ambient] in
 /-- The facts `sverify.io` states from the table's bound: a column without
 NULLs whose files all have both bounds is a non-NULL number between the
 least minimum and the greatest maximum. -/
@@ -322,6 +328,7 @@ theorem stats_bounds {a : AVal} {lo hi : Int} {v : Value}
     exact ⟨k, i, rfl, hmem.1 lo rfl, hmem.2 hi rfl⟩
   all_goals simp_all [AVal.nested]
 
+omit [Boxes.Ambient] in
 /-- The fact `sverify.io` states from a table's bound in general: a value is
 NULL (only if some file has NULLs) or a number within the bound `b`, each side
 of which may be missing (a minimum or maximum some file lacks, a double's
@@ -340,6 +347,7 @@ theorem stats_fact {a : AVal} {b : Bound} {v : Value}
     exact .inr ⟨k, i, rfl, hmem⟩
   all_goals simp_all [AVal.nested]
 
+omit [Boxes.Ambient] in
 /-- A column whose files are all entirely NULL (NULL count = row count) is
 NULL: the fact `c IS NULL`. -/
 theorem stats_all_null {a : AVal} {v : Value}

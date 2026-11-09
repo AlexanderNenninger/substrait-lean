@@ -30,6 +30,7 @@ by zero (FACTS R2–R5).
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-- What evaluating on an engine gives: a value, or an error it raises. -/
 abbrev Outcome := Except Issue Value
@@ -41,6 +42,7 @@ def Outcome.Agree : Outcome → Outcome → Prop
   | .error _, .error _ => True
   | _, _ => False
 
+omit [Boxes.Ambient] in
 theorem Outcome.agree_refl : ∀ o : Outcome, o.Agree o
   | .ok _ => rfl
   | .error _ => trivial
@@ -118,6 +120,7 @@ def Expr.evalP (p : Profile) (row : Row) : Expr → Outcome
     if (← c.evalP p row).isTrue then t.evalP p row else e.evalP p row
   | .hof f l b => do f.applyP (← l.evalP p row) fun x => b.evalP p (x :: row)
 
+omit [Boxes.Ambient] in
 theorem Expr.evalP_shift_insert {p : Profile} (w : Value) :
     ∀ (e : Expr) (xa rest : Row), (e.shift xa.length).evalP p (xa ++ w :: rest) = e.evalP p (xa ++ rest)
   | .lit _, _, _ => rfl
@@ -133,6 +136,7 @@ theorem Expr.evalP_shift_insert {p : Profile} (w : Value) :
     congr 1; funext v; congr 1; funext x
     simpa using Expr.evalP_shift_insert w b (x :: xa) rest
 
+omit [Boxes.Ambient] in
 theorem Expr.evalP_shift_cons {p : Profile} (w : Value) (e : Expr) (row : Row) :
     (e.shift 0).evalP p (w :: row) = e.evalP p row :=
   Expr.evalP_shift_insert w e [] row
@@ -142,6 +146,7 @@ theorem Expr.evalP_shift_cons {p : Profile} (w : Value) (e : Expr) (row : Row) :
 /-- The first error among issues. -/
 def firstError (is : List (Issue × Expr)) : Option Issue := (is.find? (·.1.isError)).map (·.1)
 
+omit [Boxes.Ambient] in
 theorem firstError_append (xs ys : List (Issue × Expr)) :
     firstError (xs ++ ys) = (firstError xs).or (firstError ys) := by
   simp only [firstError, List.find?_append]
@@ -164,18 +169,21 @@ theorem Expr.refOutcome_val {row : Row} {e : Expr} (h : firstError (e.issues row
 /-- The error an optional issue raises: none for a warning. -/
 def errOf (o : Option Issue) : Option Issue := o.bind fun k => if k.isError then some k else none
 
+omit [Boxes.Ambient] in
 theorem raiseIf_eq (o : Option Issue) (v : Value) :
     raiseIf o v = match errOf o with | some k => .error k | none => .ok v := by
   cases o with
   | none => rfl
   | some k => by_cases h : k.isError <;> simp [raiseIf, errOf, h]
 
+omit [Boxes.Ambient] in
 theorem firstError_issue (o : Option Issue) (e : Expr) :
     firstError ((o.map (·, e)).toList) = errOf o := by
   cases o with
   | none => rfl
   | some k => by_cases h : k.isError <;> simp [firstError, errOf, h, List.find?]
 
+omit [Boxes.Ambient] in
 theorem firstError_flatMap (xs : List Value) (g : Value → List (Issue × Expr)) :
     firstError (xs.flatMap g) = xs.findSome? fun x => firstError (g x) := by
   induction xs with
@@ -184,6 +192,7 @@ theorem firstError_flatMap (xs : List Value) (g : Value → List (Issue × Expr)
     rw [List.flatMap_cons, firstError_append, ih, List.findSome?_cons]
     cases firstError (g x) <;> rfl
 
+omit [Boxes.Ambient] in
 /-- An overflow to `±∞` (#575) is not an error: a call's errors are its
 `issue`'s. -/
 theorem errOf_or_inf {o i : Option Issue} (hi : ∀ k, i = some k → k = .infinite) :
@@ -257,48 +266,62 @@ theorem UnFn.apply_isNum (k : NumKind) (v : Value) : UnFn.apply (.isNum k) v = .
 
 /-! The special codes' order, which the generated proofs compare with. -/
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negInf_lt_zero : FloatCode.negInf < 0 := fp64.negInf_lt_zero
 
+omit [Boxes.Ambient] in
 theorem FloatCode.zero_lt_posInf : 0 < FloatCode.posInf := fp64.zero_lt_posInf
 
+omit [Boxes.Ambient] in
 theorem FloatCode.posInf_lt_nan : FloatCode.posInf < FloatCode.nan := fp64.posInf_lt_nan
 
+omit [Boxes.Ambient] in
 set_option exponentiation.threshold 3000 in
 theorem FloatCode.one_lt_posInf : FloatCode.one < FloatCode.posInf := by
   rw [FloatCode.posInf_eq, FloatCode.maxMag_def]; unfold FloatCode.one; decide
 
+omit [Boxes.Ambient] in
 theorem FloatCode.zero_lt_one : (0 : Int) < FloatCode.one := by
   unfold FloatCode.one
   have h : (0 : Int) < 2 ^ 1074 := Int.pow_pos (by decide)
   omega
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negInf_lt_negOne : FloatCode.negInf < FloatCode.negOne := by
   have := FloatCode.one_lt_posInf
   rw [FloatCode.negInf_eq]; rw [FloatCode.posInf_eq] at this
   unfold FloatCode.negOne; omega
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negOne_lt_zero : FloatCode.negOne < 0 := by
   have := FloatCode.zero_lt_one; unfold FloatCode.negOne; omega
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negInf_eq_neg_posInf : FloatCode.negInf = -FloatCode.posInf := by
   rw [FloatCode.negInf_eq, FloatCode.posInf_eq]
 
 /-! The codes of `-0.0` and the negative NaN, below `-∞` (D31), and the
 canonical values of the special codes, for the generated proofs. -/
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negZero_lt_negNan : FloatCode.negZero < FloatCode.negNan := by
   rw [FloatCode.negZero_eq', FloatCode.negNan_eq']; omega
 
+omit [Boxes.Ambient] in
 theorem FloatCode.negNan_lt_negInf : FloatCode.negNan < FloatCode.negInf := by
   rw [FloatCode.negNan_eq', FloatCode.negInf_eq]; omega
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_negZero' : FloatCode.canon FloatCode.negZero = 0 := fp64.canon_negZero
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_negNan' : FloatCode.canon FloatCode.negNan = FloatCode.nan := fp64.canon_negNan
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_nan : FloatCode.canon FloatCode.nan = FloatCode.nan :=
   FloatCode.canon_of_isRef FloatCode.isRef_nan
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
   FloatCode.canon_of_bounds ⟨by
     have := FloatCode.negInf_lt_negOne
@@ -306,19 +329,23 @@ theorem FloatCode.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
     have := FloatCode.zero_lt_one
     omega, FloatCode.one_lt_posInf⟩
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_negOne : FloatCode.canon FloatCode.negOne = FloatCode.negOne :=
   FloatCode.canon_of_bounds ⟨FloatCode.negInf_lt_negOne, by
     have := FloatCode.negOne_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
 
+omit [Boxes.Ambient] in
 /-- The finite codes next to `±∞` are canonical. -/
 theorem FloatCode.canon_negInf_succ : FloatCode.canon (FloatCode.negInf + 1) = FloatCode.negInf + 1 :=
   FloatCode.canon_of_bounds ⟨by omega, by
     have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
 
+omit [Boxes.Ambient] in
 theorem FloatCode.canon_posInf_pred : FloatCode.canon (FloatCode.posInf - 1) = FloatCode.posInf - 1 :=
   FloatCode.canon_of_bounds ⟨by
     have := FloatCode.negInf_lt_zero; have := FloatCode.zero_lt_posInf; omega, by omega⟩
 
+omit [Boxes.Ambient] in
 /-- `floor` keeps `-0.0` and the negative NaN: their magnitudes are beyond the
 finite ones. -/
 theorem FloatCode.floor_negZero : FloatCode.floor FloatCode.negZero = FloatCode.negZero := by
@@ -328,6 +355,7 @@ theorem FloatCode.floor_negZero : FloatCode.floor FloatCode.negZero = FloatCode.
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.floor_negNan : FloatCode.floor FloatCode.negNan = FloatCode.negNan := by
   have h := FloatCode.negNan_eq'
   unfold FloatCode.floor FloatCode.onMag
@@ -335,6 +363,7 @@ theorem FloatCode.floor_negNan : FloatCode.floor FloatCode.negNan = FloatCode.ne
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.round_negZero : FloatCode.round FloatCode.negZero = FloatCode.negZero := by
   have h := FloatCode.negZero_eq'
   unfold FloatCode.round FloatCode.onMag
@@ -342,6 +371,7 @@ theorem FloatCode.round_negZero : FloatCode.round FloatCode.negZero = FloatCode.
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.negNan := by
   have h := FloatCode.negNan_eq'
   unfold FloatCode.round FloatCode.onMag
@@ -349,6 +379,7 @@ theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.ne
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.ceil_negZero : FloatCode.ceil FloatCode.negZero = FloatCode.negZero := by
   have h := FloatCode.negZero_eq'
   unfold FloatCode.ceil FloatCode.onMag
@@ -356,6 +387,7 @@ theorem FloatCode.ceil_negZero : FloatCode.ceil FloatCode.negZero = FloatCode.ne
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+omit [Boxes.Ambient] in
 theorem FloatCode.ceil_negNan : FloatCode.ceil FloatCode.negNan = FloatCode.negNan := by
   have h := FloatCode.negNan_eq'
   unfold FloatCode.ceil FloatCode.onMag
@@ -368,6 +400,7 @@ def Value.isDouble : Value → Bool
   | .float _ => true
   | _ => false
 
+omit [Boxes.Ambient] in
 /-- A value is not a double, `-0.0`, the negative NaN, or a double equal to its
 canonical code: the cases of a generated proof's argument, each double's with
 its canonical code (a canonical one apart from the other two, with a canonical
@@ -412,12 +445,14 @@ theorem BinFn.apply_lt_nondouble_r {x : Value} (hx : x.isDouble = false) (c : In
     BinFn.apply .lt (.float c) x = .null := by
   cases x <;> first | rfl | simp [Value.isDouble] at hx
 
+omit [Boxes.Ambient] in
 theorem Value.isNum_float_nondouble {x : Value} (hx : x.isDouble = false) :
     x.isNum .float = false := by
   cases x <;> first | rfl | simp [Value.isDouble] at hx
 
 /-! ## Agreeing outcomes -/
 
+omit [Boxes.Ambient] in
 theorem Outcome.agree_bind {o o' : Outcome} {g h : Value → Outcome} (ho : Outcome.Agree o o')
     (hg : ∀ v, Outcome.Agree (g v) (h v)) : Outcome.Agree (o >>= g) (o' >>= h) :=
   match o, o', ho with
@@ -425,12 +460,15 @@ theorem Outcome.agree_bind {o o' : Outcome} {g h : Value → Outcome} (ho : Outc
   | .ok v, .ok w, ho => by
     simp only [Outcome.Agree] at ho; subst ho; exact hg v
 
+omit [Boxes.Ambient] in
 theorem Outcome.agree_err {o o' : Outcome} (h : o.Agree o') : o.err?.isSome = o'.err?.isSome := by
   cases o <;> cases o' <;> simp_all [Outcome.Agree, Outcome.err?]
 
+omit [Boxes.Ambient] in
 theorem Outcome.agree_val {o o' : Outcome} (h : o.Agree o') : o.val = o'.val := by
   cases o <;> cases o' <;> simp_all [Outcome.Agree, Outcome.val]
 
+omit [Boxes.Ambient] in
 theorem findSome?_isSome_congr {xs : List Value} {f g : Value → Option Issue}
     (h : ∀ x ∈ xs, (f x).isSome = (g x).isSome) :
     (xs.findSome? f).isSome = (xs.findSome? g).isSome := by
@@ -442,6 +480,7 @@ theorem findSome?_isSome_congr {xs : List Value} {f g : Value → Option Issue}
     have ih := ih fun y hy => h y (List.mem_cons_of_mem x hy)
     cases hf : f x <;> cases hg : g x <;> simp_all
 
+omit [Boxes.Ambient] in
 /-- Lambdas that agree on the list's elements give agreeing outcomes. -/
 theorem HoFn.applyP_agree (f : HoFn) (v : Value) {p q : Value → Outcome}
     (h : ∀ x ∈ v.elems, Outcome.Agree (p x) (q x)) : Outcome.Agree (f.applyP v p) (f.applyP v q) := by
@@ -570,6 +609,7 @@ def Rel.mapExprs (f : Expr → Expr) : Rel → Rel
   | .aggregate r gs ms => .aggregate (r.mapExprs f) (gs.map f) (ms.map (Measure.mapExpr f))
   | .unnest r c => .unnest (r.mapExprs f) c
 
+omit [Boxes.Ambient] in
 theorem Rel.arity_mapExprs (f : Expr → Expr) (cat : Catalog) :
     ∀ r : Rel, (r.mapExprs f).arity cat = r.arity cat
   | .read _ | .values _ _ => rfl
@@ -583,6 +623,7 @@ theorem Rel.arity_mapExprs (f : Expr → Expr) (cat : Catalog) :
 /-- An expression that raises under `p` on `row`. -/
 def Expr.RaisesOn (p : Profile) (row : Row) (e : Expr) : Prop := (e.evalP p row).err?.isSome
 
+omit [Boxes.Ambient] in
 theorem Expr.ok_of_not_raises {p : Profile} {row : Row} {e : Expr} (h : ¬e.RaisesOn p row) :
     ∃ v, e.evalP p row = .ok v := by
   cases he : e.evalP p row with
@@ -627,6 +668,7 @@ theorem hasMatchI_map {I : Impl} {on on' : Expr} {x : Row} :
     simp only [hasMatch, List.any_cons] at ih ⊢
     rw [h y (by simp), ih]
 
+omit [Boxes.Ambient] in
 theorem Measure.mapExpr_exprs (f : Expr → Expr) (m : Measure) :
     (m.mapExpr f).exprs = f m.arg :: m.filter.toList.map f ++ m.sort.map (.field ·.col) := by
   cases h : m.filter <;> simp [Measure.mapExpr, Measure.exprs, h]

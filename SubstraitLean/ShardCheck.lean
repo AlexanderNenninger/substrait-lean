@@ -183,6 +183,7 @@ def floatBounds (root : Rel) : Option Json := do
     ("columns", Json.arr (srcs.map ColSrc.toJson).toArray),
     ("filters_read_doubles", Lean.toJson f)]
 
+variable [Boxes.Ambient]
 def check (input : Json) : Except String Json := do
   let plan ← parsePlan ((input.getObjVal? "plan").toOption.getD .null).compress
   let sharded := ((input.getObjValAs? (Array String) "sharded").toOption.getD #[]).toList

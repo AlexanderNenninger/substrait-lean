@@ -17,6 +17,7 @@ does not import this one.
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 /-- **DuckDB, as the SQL printer writes it, agrees with the reference
 wherever the reference does not raise**, with IEEE operations on (DuckDB's
 default). Elsewhere it differs only where the reference raises: `∞ - ∞` is

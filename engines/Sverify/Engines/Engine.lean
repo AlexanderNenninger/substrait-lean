@@ -37,6 +37,7 @@ def extraAtB (t : ProfileTable) (c : Functions.Ctor) (o : String) : Bool :=
     | none => false
   | none => false
 
+variable [Boxes.Ambient]
 /-- `CallExtra` at the option `o`, from the table and the call's scope (D34). -/
 theorem callExtra_of_at {t : ProfileTable} {c : Functions.Ctor} {o : String} {args : List Value}
     (h : extraAtB t c o = true) (hs : optionScope o c args = true) : CallExtra t c args := by
@@ -80,6 +81,7 @@ theorem Profile.okImpl_within {p : Profile} {t : ProfileTable} (h : p.WithinOk t
     | ok x => exact h.2 f v w x hb
     | error _ => exact .inl rfl
 
+omit [Boxes.Ambient] in
 theorem raiseIf_ok {k : Option Issue} {v w : Value} (h : raiseIf k v = .ok w) : w = v := by
   unfold raiseIf at h
   split at h

@@ -1,5 +1,5 @@
 import SubstraitLean.LoweringSearch
-import SubstraitLean.DuckDBProfile
+import SubstraitLean.DuckDBFunctions
 import Sverify.Core.Issue
 import Sverify.Core.Numeric
 import SubstraitLean.LoweringDuckDB.Lemmas
@@ -21,6 +21,8 @@ checks these entries; it does not search for them.
 generated_entries
 
 open Substrait
+
+variable [Boxes.Ambient]
 
 local macro "native_tac" : tactic => `(tactic| lowering_native [Substrait.Profile.duckdb, Substrait.BinFn.onFloats, Substrait.duckBin, Substrait.duckUn, Substrait.duckZero, Substrait.duckShl, Substrait.nanCase, Substrait.isInfCode, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Substrait.FMath.apply, Substrait.domainIssue, Substrait.nanIssue, Substrait.negInfPow, Substrait.duckNegInfPow, Substrait.atan2?, Substrait.logb?])
 local macro "un_tac" : tactic =>

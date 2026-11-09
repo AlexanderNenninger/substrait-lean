@@ -1,5 +1,7 @@
 import Sverify.Core.Kinds
 import SubstraitLean.Refresh
+import SubstraitLean.DuckDBBoxes
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
@@ -45,6 +47,8 @@ checked with `#guard` at build time.
 -/
 
 namespace Substrait.Examples
+-- The examples run with DuckDB's black boxes (#1189).
+open scoped Substrait.DuckDB
 
 open Rel
 

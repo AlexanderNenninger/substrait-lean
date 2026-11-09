@@ -70,6 +70,7 @@ theorem Profile.spark_extras :
   decide
 
 
+variable [Boxes.Ambient]
 /-- **DuckDB's functions are within its table**, with IEEE operations on:
 each value `duckBin` and `duckUn` change is in the scope of an option the
 table allows another behaviour (D34): a domain error's NaN, a zero divisor's
@@ -487,7 +488,7 @@ def Engine.spark : Engine where
 -- No engine's certificate is empty: each but the reference has rows that
 -- are not theorems (so `Refines` is a real hypothesis, which `#print axioms`
 -- cannot show).
-#guard !(Engine.duckdb {} rfl).testedRows.isEmpty && !Engine.polars.testedRows.isEmpty &&
+#guard letI := Boxes.Ambient.none; !(Engine.duckdb {} rfl).testedRows.isEmpty && !Engine.polars.testedRows.isEmpty &&
   !Engine.spark.testedRows.isEmpty && Engine.reference.testedRows.isEmpty
 
 end Substrait

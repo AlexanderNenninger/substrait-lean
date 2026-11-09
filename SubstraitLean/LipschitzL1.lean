@@ -194,6 +194,7 @@ theorem Tol.exactOn_of_le {tr t : Tol} (h : tr.Le t) {cols : List Nat} (he : t.e
   have := h i; rw [he i hi] at this
   revert this; cases tr i <;> simp [OLe]
 
+variable [Boxes.Ambient]
 theorem Tol.rows_project {tr t : Tol} {n : Nat} {es : List Expr}
     (hes : es.all (fun e => (e.tol? t).isSome) = true) (hle : tr.Le t) {x y : Row}
     (r : tr.Rows x y) (hy : y.length = n) :
@@ -235,14 +236,18 @@ open FloatCode
 /-- A budget's bound in one column, `0` where it is exact. -/
 def Tol.val (t : Tol) (c : Nat) : Nat := (t c).getD 0
 
+omit [Boxes.Ambient] in
 theorem Tol.val_add (a b : Tol) (c : Nat) : (a.add b).val c = a.val c + b.val c := by
   unfold Tol.val Tol.add; cases a c <;> cases b c <;> simp
 
+omit [Boxes.Ambient] in
 theorem Tol.Le.val {a b : Tol} (h : a.Le b) (c : Nat) : a.val c ≤ b.val c := by
   have := h c; unfold Tol.val; revert this; cases a c <;> cases b c <;> simp [OLe]
 
+omit [Boxes.Ambient] in
 theorem OLe.val {o : Option Nat} : OLe o (some (o.getD 0)) := by cases o <;> simp [OLe]
 
+omit [Boxes.Ambient] in
 theorem OLe.of_getD {o : Option Nat} {e : Nat} (h : o.getD 0 ≤ e) : OLe o (some e) := by
   cases o <;> simp_all [OLe]
 
@@ -316,6 +321,7 @@ theorem Measure.sum_factsL1 {t : Tol} {m : Measure} {env : List AVal}
     (fun d v w hd' hv' hw' h => (pair_near (by omega) (by omega) h (hQ w hw')).1)
     (Nat.le_trans (Nat.le_refl _) hD) (fun _ h => h) (fun _ h => h)
 
+omit [Boxes.Ambient] in
 theorem CodeNear.mono {e e' : Nat} (h : e ≤ e') {v w : Value} (h' : CodeNear e v w) :
     CodeNear e' v w := by
   cases v <;> cases w <;> first | exact Nat.le_trans h' h | exact h'
@@ -400,6 +406,7 @@ def Measure.l1 (t : Tol) (mask : Nat → Bool) (env : List AVal) (N : Option Nat
     | _, _ => none
   | _, _ => none
 
+omit [Boxes.Ambient] in
 theorem Measure.l1_none {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} (h : m.l1 t mask env N = some none) : m.tolOk t = true := by
   unfold Measure.l1 at h
@@ -409,6 +416,7 @@ theorem Measure.l1_none {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : O
   repeat' (split at h)
   all_goals simp_all
 
+omit [Boxes.Ambient] in
 theorem Measure.l1_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {o : Option (Nat × Nat)} (h : m.l1 t mask env N = some o) : m.orderFree = true := by
   by_cases hok : m.tolOk t = true
@@ -422,6 +430,7 @@ theorem Measure.l1_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {
        repeat' (split at h)
        all_goals simp_all)
 
+omit [Boxes.Ambient] in
 theorem Measure.l1_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {i c : Nat} (h : m.l1 t mask env N = some (some (i, c))) :
     ∃ n, N = some n := by
@@ -571,6 +580,7 @@ end
 
 /-! ## Groups in `M₁` -/
 
+omit [Boxes.Ambient] in
 /-- A sum over a list without repeats, one entry raised by `a`. -/
 theorem sum_raise {κ : Type} [DecidableEq κ] {k₀ : κ} (f : κ → Nat) (a : Nat) :
     ∀ {ks : List κ}, ks.Nodup → k₀ ∈ ks →
@@ -589,6 +599,7 @@ theorem sum_raise {κ : Type} [DecidableEq κ] {k₀ : κ} (f : κ → Nat) (a :
     · have hk' : k₀ ∈ ks := by simpa [h] using hk
       simp only [h, ↓reduceIte]; rw [sum_raise f a hn.2 hk']; omega
 
+omit [Boxes.Ambient] in
 theorem sum_map_eq_zero {κ : Type} {f : κ → Nat} :
     ∀ {ks : List κ}, (∀ k ∈ ks, f k = 0) → (ks.map f).sum = 0
   | [], _ => rfl
@@ -596,16 +607,19 @@ theorem sum_map_eq_zero {κ : Type} {f : κ → Nat} :
     simp only [List.map_cons, List.sum_cons, h k (List.mem_cons_self ..),
       sum_map_eq_zero fun k' hk' => h k' (List.mem_cons_of_mem _ hk')]
 
+omit [Boxes.Ambient] in
 theorem sum_map_add' {κ : Type} (f g : κ → Nat) :
     ∀ ks : List κ, (ks.map fun k => f k + g k).sum = (ks.map f).sum + (ks.map g).sum
   | [] => rfl
   | k :: ks => by simp only [List.map_cons, List.sum_cons, sum_map_add' f g ks]; omega
 
+omit [Boxes.Ambient] in
 theorem sum_map_mul_const {κ : Type} (f : κ → Nat) (c : Nat) :
     ∀ ks : List κ, (ks.map fun k => f k * c).sum = (ks.map f).sum * c
   | [] => by simp
   | k :: ks => by simp only [List.map_cons, List.sum_cons, sum_map_mul_const f c ks, Nat.add_mul]
 
+omit [Boxes.Ambient] in
 /-- **A matching split by an exact key**: each key's pairs form a matching
 of their own, and the keys' budgets sum within the whole's, column by
 column. -/
@@ -643,6 +657,7 @@ theorem PairsWithin.groups {T0 : Tol} {key : Row → Row}
       have := le.val c; rw [Tol.val_add] at this; have := hs c; omega
   | [], _ :: _, _, h, _, _ | _ :: _, [], _, h, _, _ => h.elim
 
+omit [Boxes.Ambient] in
 /-- The groups' rows add up to the input's. -/
 theorem sum_filter_length {key : Row → Row} {ks : List Row} (hn : ks.Nodup) :
     ∀ {p : List Row}, (∀ y ∈ p, key y ∈ ks) →
@@ -661,6 +676,7 @@ theorem sum_filter_length {key : Row → Row} {ks : List Row} (hn : ks.Nodup) :
     rw [e, sum_raise _ 1 hn (hp y (List.mem_cons_self ..)), ih]
     simp; omega
 
+omit [Boxes.Ambient] in
 /-- **Rows paired one by one** form a matching within a budget that bounds
 their sum in each column. -/
 theorem PairsWithin.of_map {κ : Type} {f g : κ → Row} {O : κ → Tol} {F : Tol} :
@@ -699,6 +715,7 @@ theorem PairsWithin.of_map {κ : Type} {f g : κ → Row} {O : κ → Tol} {F : 
         simp only [List.map_cons, List.sum_cons] at hs
         exact hs
 
+omit [Boxes.Ambient] in
 theorem Tol.add_exact (t : Tol) : (t.add Tol.exact).Le t := fun c => by
   simp only [Tol.add, Tol.exact]; cases t c <;> simp [OLe]
 
@@ -816,6 +833,7 @@ def Rel.tol1 (cat : Catalog) (K : KnowledgeEnv) (T : String → Tol) : Rel → O
       else none
   | .join _ _ .left _ | .fetch .. | .window .. | .unnest .. => none
 
+omit [Boxes.Ambient] in
 theorem Relation.NearL1.nearT {t : Tol} {a b : Relation} (h : Relation.NearL1 t a b) :
     Relation.NearT t a b :=
   let ⟨p, w, hp⟩ := h; ⟨p, w.forall2 (Tol.Le.refl t), hp⟩
@@ -972,13 +990,13 @@ private def exB (r : Rel) : Option (List (Option Nat)) :=
   (r.tol1 exCat1 exK1 exT1).map fun t => (List.range 6).map t
 
 -- A union adds the budgets; `M∞` would take the larger.
-#guard exB (.unionAll (.read "t") (.read "t")) == some [none, none, some 16, none, none, none]
+#guard letI := Boxes.Ambient.none; exB (.unionAll (.read "t") (.read "t")) == some [none, none, some 16, none, none, none]
 -- A cross counts each side's budget once per row of the other: 10 · 8.
-#guard exB (.cross (.read "t") (.read "t")) == some [none, none, some 80, none, none, some 80]
+#guard letI := Boxes.Ambient.none; exB (.cross (.read "t") (.read "t")) == some [none, none, some 80, none, none, some 80]
 -- A projection copies the budget of the column it reads.
-#guard exB (.project (.read "t") [.field 2]) == some [none, none, some 8, some 8, none, none]
+#guard letI := Boxes.Ambient.none; exB (.project (.read "t") [.field 2]) == some [none, none, some 8, some 8, none, none]
 -- A filter on the double is refused, as in `M∞`.
-#guard exB (.filter (.read "t") (.bin .lt (.field 2) (.lit (.int 5)))) == none
+#guard letI := Boxes.Ambient.none; exB (.filter (.read "t") (.bin .lt (.field 2) (.lit (.int 5)))) == none
 
 /-- The table's knowledge: at most 10 rows, the double in `[-10⁶, 10⁶]`. -/
 private def exK1r : KnowledgeEnv := fun _ =>
@@ -989,14 +1007,14 @@ private def exS (r : Rel) : Option (List Bool) :=
 
 -- `SUM` and `AVG` of the double, grouped by an exact column, have a budget: the
 -- column's once, plus a cost per input row (`sumCost1`, `avgCost1`).
-#guard exS (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }, { fn := .avg, arg := .field 2 }]) ==
+#guard letI := Boxes.Ambient.none; exS (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }, { fn := .avg, arg := .field 2 }]) ==
   some [false, true, true, false]
-#guard (Rel.tol1 exCat1 exK1r exT1 (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2 }])).map (· 0) ==
+#guard letI := Boxes.Ambient.none; (Rel.tol1 exCat1 exK1r exT1 (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2 }])).map (· 0) ==
   some (some (8 + 10 * sumCost1 10 8 (magOf (FloatCode.ofFloat (-1.0e6)) (FloatCode.ofFloat 1.0e6))))
 -- Without a range, or of a `DISTINCT`, refused; `COUNT` is exact.
-#guard exB (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }]) == none
-#guard exS (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2, distinct := true }]) == none
-#guard exB (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .lit (.int 1) }]) ==
+#guard letI := Boxes.Ambient.none; exB (.aggregate (.read "t") [.field 0] [{ fn := .fsum, arg := .field 2 }]) == none
+#guard letI := Boxes.Ambient.none; exS (.aggregate (.read "t") [] [{ fn := .fsum, arg := .field 2, distinct := true }]) == none
+#guard letI := Boxes.Ambient.none; exB (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .lit (.int 1) }]) ==
   some [none, none, none, none, none, none]
 
 end Substrait

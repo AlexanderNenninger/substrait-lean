@@ -30,6 +30,7 @@ with `Rel.Allowed` and #85's bounds. A double `SUM` or `AVG` is no choice
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Measures -/
 

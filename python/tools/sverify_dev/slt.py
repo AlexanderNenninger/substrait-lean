@@ -513,7 +513,7 @@ _FRONTEND = tuple(
 #: DuckDB's 128-bit integer types, whose Arrow export can wrap (DD-5, #618).
 _HUGE = re.compile(r"\bU?HUGEINT\b", re.I)
 
-#: Lean's panics for rows it does not compute (`core/Sverify/Core/BlackBox.lean`,
+#: Lean's panics for rows it does not compute (`SubstraitLean/DuckDBBoxes.lean`,
 #: `Text.lean`).
 _NOT_EVALUATED = re.compile(r"not evaluated in Lean|is a black box Lean does not evaluate")
 

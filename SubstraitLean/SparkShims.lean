@@ -115,6 +115,7 @@ wrapping past 2³¹ - 1 (SP-2); a count outside `INT` fails the cast (ANSI),
 modelled as NULL. -/
 def wrap32 (x : Int) : Int := (x + 2 ^ 31) % 2 ^ 32 - 2 ^ 31
 
+variable [Boxes.Ambient]
 /-- **Spark as the writer writes it, under ANSI**, on the functions of the
 slice: integer `+ - *` raise past 64 bits (spark-int-arith), integer `div`
 truncates and raises at a zero divisor and `MIN div -1` (spark-int-divide),
@@ -137,6 +138,7 @@ def bin : BinFn → Value → Value → Value
 
 def written : Impl := ⟨UnFn.apply, bin⟩
 
+omit [Boxes.Ambient] in
 theorem wrap32_of_small {x : Int} (h1 : -2 ^ 31 ≤ x) (h2 : x < 2 ^ 31) : wrap32 x = x := by
   unfold wrap32; omega
 
@@ -184,6 +186,7 @@ end Substrait.Spark
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 /-- **A verified plan runs on Spark.** When `Rel.mayIssues` reports nothing
 but assumed issues (whose guards the writer keeps), on every catalog that
 satisfies the preconditions, Spark under ANSI as the writer writes it gives
