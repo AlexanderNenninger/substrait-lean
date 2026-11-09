@@ -43,15 +43,7 @@ theorem Substrait.duckdbOn.fceil_guards : ∀ (x : Substrait.Value),
   Substrait.Expr.GuardsAt
     (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
     (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.fceil x) [x]
-    (Substrait.Expr.ifThen
-      (Substrait.Expr.bin Substrait.BinFn.and
-        (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-          (Substrait.Expr.lit (Substrait.Value.float 0)))
-        (Substrait.Expr.bin Substrait.BinFn.eq
-          (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0))
-          (Substrait.Expr.lit (Substrait.Value.float 0))))
-      (Substrait.Expr.lit (Substrait.Value.float 0))
-      (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0))) := by
+    Substrait.Lowering.fceilTemplate := by
   guards_un_tac Substrait.duckdbOn.fceil_agree
 
 set_option maxHeartbeats 1600000 in
@@ -59,15 +51,7 @@ theorem Substrait.duckdbOn.fround_guards : ∀ (x : Substrait.Value),
   Substrait.Expr.GuardsAt
     (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
     (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.fround x) [x]
-    (Substrait.Expr.ifThen
-      (Substrait.Expr.bin Substrait.BinFn.and
-        (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-          (Substrait.Expr.lit (Substrait.Value.float 0)))
-        (Substrait.Expr.bin Substrait.BinFn.eq
-          (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0))
-          (Substrait.Expr.lit (Substrait.Value.float 0))))
-      (Substrait.Expr.lit (Substrait.Value.float 0))
-      (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0))) := by
+    Substrait.Lowering.froundTemplate := by
   guards_un_tac Substrait.duckdbOn.fround_agree
 
 set_option maxHeartbeats 1600000 in

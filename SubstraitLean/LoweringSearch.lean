@@ -792,12 +792,17 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       let mustE ← mkAppM ``Expr.must #[tmpl]
       let mem (i : Nat) := mkAppM ``Membership.mem #[mustE, toExpr i]
       let strictTy ← if unary then mem 0 else mkAppM ``And #[← mem 0, ← mem 1]
-      -- A hand-written template comes with its strictness, by name: DuckDB's
-      -- `<<` (`SubstraitLean/LoweringDuckDB/Lemmas.lean`), which this module
-      -- does not import.
-      let named := tmpl.find? (·.isConstOf `Substrait.Lowering.shlTemplate) |>.isSome
-      let strictTac ← if named then `(tactic| exact $(mkIdent `Substrait.Lowering.shlTemplate_must))
-        else `(tactic| simp [Substrait.Expr.must])
+      -- A hand-written template comes with its strictness, by name: `T_must`
+      -- for a template written as the constant `T` (DuckDB's `<<`, `round`
+      -- and `ceil`, `SubstraitLean/LoweringDuckDB/Lemmas.lean`, which this
+      -- module does not import).
+      let env ← getEnv
+      let named : Option Name := tmpl.constName?.bind fun c =>
+        let m := c.appendAfter "_must"
+        if env.contains m then some m else none
+      let strictTac ← match named with
+        | some m => `(tactic| exact $(mkIdent m))
+        | none => `(tactic| simp [Substrait.Expr.must])
       let some strict ← prove strictTy strictTac | return none
       let entry ← mkAppM (if unary then ``UnEntry.mk else ``BinEntry.mk)
         #[tmpl, strict, mkAppN (Lean.mkConst agreeName) ps]
@@ -835,8 +840,9 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       if let some out := sink then
         unless ps.isEmpty do throwError "{k.label}: a template with parameters cannot be written out"
         let proof := if byHand then s!"intros; apply {hand}" else if unary then "un_tac" else "bin_tac"
-        let strictSrc := if named then "exact Substrait.Lowering.shlTemplate_must"
-          else "simp [Substrait.Expr.must]"
+        let strictSrc := match named with
+          | some m => s!"exact {m}"
+          | none => "simp [Substrait.Expr.must]"
         out.modify (·.push (areaOf k.ctor,
           -- A proof gets the budget the search gave it.
           (if byHand then "" else if written then "set_option maxHeartbeats 3200000 in\n"

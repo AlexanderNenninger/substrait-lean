@@ -88,13 +88,13 @@ def schema? : UnFn → Option Tm
       | none, some b => some b
       | none, none => none
     g.map fun g => .ite g (.raise "domain error" x) (.self [x])
-  -- A negative value that rounds to zero is `0.0` (`zero_sign`), where
-  -- DuckDB gives IEEE's `-0.0` (`round_zero_sign`): `CASE WHEN x < 0 AND f(x) = 0 THEN 0.0
-  -- ELSE f(x) END`. `-0.0` itself stays.
-  | .fround | .fceil =>
-    let x := Tm.field 0
-    let zero := Tm.lit (.float 0)
-    some (.ite (andFn (ltFn x zero) (eqFn (.self [x]) zero)) zero (.self [x]))
+  -- A negative value that rounds to zero is `0.0`, where DuckDB gives IEEE's
+  -- `-0.0` (`round_zero_sign`): `Lowering.zeroTemplate`, written and proved by
+  -- hand (`Lowering.fround_agree`), as the tactic's proof is slower.
+  | .fround => some (.expr Lowering.froundTemplate (Lean.mkConst ``Lowering.froundTemplate)
+      "round: 0.0 for a negative value that rounds to zero")
+  | .fceil => some (.expr Lowering.fceilTemplate (Lean.mkConst ``Lowering.fceilTemplate)
+      "ceil: 0.0 for a negative value that rounds to zero")
   | _ => none
 
 /-- **DuckDB's binary schemas** (#242), for its IEEE operations:
