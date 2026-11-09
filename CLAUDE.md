@@ -158,7 +158,12 @@ The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
 under memory caps, and deletes the directory at exit. Its header documents
 its options. Several agents and the user's own services share the box, and
-two parallel runs once hung it, so check first:
+two parallel runs once hung it. The script enforces the first two rules
+below: it refuses to start (exit 75, naming the run in the way and its PIDs)
+while another `/tmp/substrait-lean-*` directory has a live process in it,
+above a 1-minute load of 8, or with less than 6 GB available, and
+`--wait` (before the branch) waits for the box. Long jobs that don't go
+through the script check by hand first:
 
 ```bash
 ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
@@ -176,7 +181,8 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 - **Clean up:** delete your directory when the run ends, also when it fails.
   Stop a run by PID (SIGTERM to the script's bash), never `pkill -f` over
   `ssh`: the pattern matches the `ssh` command itself. A crashed session can
-  leave a directory behind; if no process uses it, remove it.
+  leave a directory behind; if no process uses it, remove it (the script
+  warns about such a directory and ignores it).
 
 ## Working beside other sessions
 

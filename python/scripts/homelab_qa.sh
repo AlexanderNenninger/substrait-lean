@@ -4,7 +4,16 @@
 # Usage, from a checkout on the laptop (the script runs on homelab and clones
 # the branch there, so push it first):
 #
-#   ssh homelab 'bash -s -- <branch> [poe task ...]' < python/scripts/homelab_qa.sh
+#   ssh homelab 'bash -s -- [--wait] <branch> [poe task ...]' < python/scripts/homelab_qa.sh
+#
+# The script refuses to start while the box is busy (CLAUDE.md, "homelab"):
+# another run's /tmp/substrait-lean-* directory with a live process in it, a
+# 1-minute load above 8, or less than 6 GB available. It exits 75 and says
+# why; with `--wait` it checks again every minute until the box is free (at
+# most HOMELAB_QA_WAIT_MAX seconds, 3 hours by default). A directory no
+# process uses is a crashed run's leftover: it gets a warning and is ignored.
+# The chaos run (prefix `substrait-chaos`, below) is exempt from the run and
+# load checks.
 #
 # The poe tasks default to `qa`. Each run clones into its own
 # /tmp/<prefix>-<uuid>, which is deleted at exit, also on failure, and the
@@ -48,7 +57,12 @@
 # from another commit is safe: changed modules and their dependents rebuild.
 set -uo pipefail
 
-branch=${1:?usage: homelab_qa.sh <branch> [poe task ...]}
+wait=false
+if [ "${1:-}" = --wait ]; then
+  wait=true
+  shift
+fi
+branch=${1:?usage: homelab_qa.sh [--wait] <branch> [poe task ...]}
 shift
 tasks=("${@:-qa}")
 
@@ -63,11 +77,56 @@ prefix=${HOMELAB_QA_PREFIX:-substrait-lean}
 check_generated=${HOMELAB_QA_CHECK_GENERATED:-true}
 min_available_kb=$((6 * 1024 * 1024))
 
-available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-if [ "$available_kb" -lt "$min_available_kb" ]; then
-  echo "homelab_qa: only $((available_kb / 1024)) MB available, under 6 GB; not starting" >&2
-  exit 75
-fi
+max_load=8
+wait_max=${HOMELAB_QA_WAIT_MAX:-10800}
+
+waited=0
+
+# `busy`: why the box can't take a run now, on stdout; nothing if it can.
+busy() {
+  local d p cwd pids born age load available_kb
+  available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+  if [ "$available_kb" -lt "$min_available_kb" ]; then
+    echo "only $((available_kb / 1024)) MB available, under 6 GB"
+  fi
+  [ "$prefix" = substrait-chaos ] && return
+  load=$(cut -d' ' -f1 /proc/loadavg)
+  if awk -v l="$load" -v m="$max_load" 'BEGIN { exit !(l > m) }'; then
+    echo "1-minute load $load, over $max_load"
+  fi
+  for d in /tmp/substrait-lean-*; do
+    [ -d "$d" ] || continue
+    # The processes working in it: their working directory is inside it.
+    pids=$(for p in /proc/[0-9]*; do
+      cwd=$(readlink "$p/cwd" 2>/dev/null)
+      if [ "$cwd" = "$d" ] || [[ $cwd == "$d"/* ]]; then echo "${p#/proc/}"; fi
+    done | tr '\n' ' ')
+    # Its age from its birth time; the modification time moves as it fills.
+    born=$(stat -c %W "$d")
+    [ "$born" -gt 0 ] || born=$(stat -c %Y "$d")
+    age=$(( ($(date +%s) - born) / 60 ))
+    if [ -n "$pids" ]; then
+      echo "another run in $d, started $age min ago, PIDs $pids"
+    elif [ "$waited" -eq 0 ]; then
+      echo "homelab_qa: WARNING: $d ($age min old) has no process in it: a crashed run's leftover, ignored" >&2
+    fi
+  done
+}
+
+while reason=$(busy) && [ -n "$reason" ]; do
+  if ! $wait; then
+    echo "homelab_qa: not starting: $reason" | head -1 >&2
+    printf '%s\n' "$reason" | tail -n +2 | sed 's/^/homelab_qa:   also: /' >&2
+    exit 75
+  fi
+  if [ "$waited" -ge "$wait_max" ]; then
+    echo "homelab_qa: still busy after $((waited / 60)) min, giving up: $reason" >&2
+    exit 75
+  fi
+  [ $((waited % 600)) -eq 0 ] && echo "homelab_qa: waiting: $(head -1 <<< "$reason")" >&2
+  sleep 60
+  waited=$((waited + 60))
+done
 
 id=$(uuidgen)
 dir=/tmp/$prefix-$id
