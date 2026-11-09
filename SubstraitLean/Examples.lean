@@ -1,6 +1,7 @@
 import Sverify.Core.Kinds
 import SubstraitLean.Refresh
 import SubstraitLean.DuckDBBoxes
+import SubstraitLean.DuckDBProfile
 import SubstraitLean.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted

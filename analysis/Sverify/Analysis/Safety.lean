@@ -810,8 +810,9 @@ def Expr.mayIssuesFast (env : List AVal) (fs : List Fact) (ks : Assumptions := [
     (ors : Clauses := []) (e : Expr) : List (Issue × Expr) :=
   (e.mayIssuesA env fs ks ors).1
 
+omit [Boxes.Ambient] in
 @[csimp] theorem Expr.mayIssues_csimp : @Expr.mayIssues = @Expr.mayIssuesFast := by
-  funext env fs ks ors e; rw [Expr.mayIssuesFast, Expr.mayIssuesA_eq]
+  funext _ env fs ks ors e; rw [Expr.mayIssuesFast, Expr.mayIssuesA_eq]
 
 -- The DuckDB lift's `a * b` of doubles (#702): the NaN of `0 · ∞` and
 -- `∞ · 0` as a `CASE`, whose `ELSE` branch has no domain error; the bare product

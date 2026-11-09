@@ -1,5 +1,5 @@
 import SubstraitLean.LoweringSearch
-import SubstraitLean.DuckDBProfile
+import SubstraitLean.DuckDBFunctions
 import Sverify.Core.Issue
 import Sverify.Core.Numeric
 import SubstraitLean.LoweringDuckDB.Lemmas

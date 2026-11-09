@@ -135,6 +135,7 @@ def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
   | .fceil, x => if x < 0 ∧ FloatCode.ceil x = 0 then some (.ok (.float FloatCode.negZero)) else none
   | _, _ => none
 
+variable [Boxes.Ambient]
 /-- **DuckDB's profile**, as a diff against the reference (`duckBin`,
 `duckUn`): what DuckDB 2.0 computes under the settings `s`, as probed
 (`sverify_dev.probe`). Functions not probed are taken to be the reference's. -/
