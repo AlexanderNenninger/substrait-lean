@@ -1,32 +1,22 @@
 import SubstraitLean.Lipschitz.Basic
 
 /-!
-# Tolerance composition: reference codes and the `SUM` and `AVG` rows (#929)
+# Tolerance composition: the `SUM` and `AVG` rows (#929)
 
-The columns that keep reference codes (`Rel.refCols`, `Rel.refOn`), and the
-fold's `SUM` and `AVG` rows (`Measure.tolOut`, `Measure.tolOut_cell`).
+The columns the analysis bounds (`Rel.refCols`), and the fold's `SUM` and
+`AVG` rows (`Measure.tolOut`, `Measure.tolOut_cell`).
 -/
 
 namespace Substrait
 
 open FloatCode
 
-/-! ### Columns of reference codes
+/-! ### Columns the analysis bounds
 
-The tolerance compares codes after `canon`, so `-0.0` is within any
-tolerance of `+0.0`. A `SUM` counts a code below `-∞` as `-∞` (`nonFinite`),
-`-0.0`'s among them, so a `SUM` of a tolerated column needs the engine's codes
-there to be the reference's (`IsRef`): `Relation.RefOn`. Sverify reads every
-engine value canonical (`Relation.RefCodes` of the sources); `Rel.refCols`
-follows the columns that keep it: copies of source columns, and `SUM` and
-`AVG` results. -/
-
-/-- The columns `mask` names hold reference codes. -/
-def Relation.RefOn (mask : Nat → Bool) (rows : Relation) : Prop :=
-  ∀ row ∈ rows, ∀ j c, mask j = true → row.getD j .null = .float c → IsRef (canon c)
-
-/-- Every double of `rows` is a reference code. -/
-def Relation.RefCodes (rows : Relation) : Prop := Relation.RefOn (fun _ => true) rows
+The tolerance compares codes after `canon`, and D31's operations and
+aggregates read their inputs up to `canon`, so the bounds hold on any codes.
+`Rel.refCols` names the columns the analysis bounds: copies of source
+columns, D31's operations, and `SUM` and `AVG` results. -/
 
 /-- The first `n` columns from `a`, the rest from `b`. -/
 def maskCat (n : Nat) (a b : Nat → Bool) : Nat → Bool := fun j => if j < n then a j else b (j - n)
@@ -58,31 +48,6 @@ def Rel.refCols (cat : Catalog) : Rel → Nat → Bool
   | .semi a _ _ _ => a.refCols cat
   | .aggregate r gs ms =>
       maskCat gs.length (fun k => (gs[k]?).any (·.refCol (r.refCols cat))) fun k => (ms[k]?).any Measure.refOut
-
-theorem Rel.refCols_congr {c cat : Catalog} (h : ∀ t, (c t).arity = (cat t).arity) :
-    ∀ r : Rel, r.refCols c = r.refCols cat
-  | .read _ | .values _ _ | .window .. | .unnest .. => rfl
-  | .filter r _ | .orderBy r _ | .distinct r | .fetch r _ _ => Rel.refCols_congr h r
-  | .project r es => by simp only [Rel.refCols, Rel.refCols_congr h r, Rel.arity_congr h r]
-  | .emit r m => by simp only [Rel.refCols, Rel.refCols_congr h r]
-  | .cross a b | .join a b _ _ => by
-    simp only [Rel.refCols, Rel.refCols_congr h a, Rel.refCols_congr h b, Rel.arity_congr h a]
-  | .unionAll a b => by simp only [Rel.refCols, Rel.refCols_congr h a, Rel.refCols_congr h b]
-  | .semi a _ _ _ => by simp only [Rel.refCols, Rel.refCols_congr h a]
-  | .aggregate r gs ms => by simp only [Rel.refCols, Rel.refCols_congr h r]
-
-theorem Relation.RefOn.mono {mask : Nat → Bool} {a b : Relation} (h : Relation.RefOn mask a)
-    (hs : ∀ row ∈ b, row ∈ a) : Relation.RefOn mask b := fun row hr => h row (hs row hr)
-
-theorem RefOn.cat {n : Nat} {ma mb : Nat → Bool} {x y : Row} (hx : x.length = n)
-    (ha : ∀ j c, ma j = true → x.getD j .null = .float c → IsRef (canon c))
-    (hb : ∀ j c, mb j = true → y.getD j .null = .float c → IsRef (canon c)) :
-    ∀ j c, maskCat n ma mb j = true → (x ++ y).getD j .null = .float c → IsRef (canon c) := by
-  intro j c hm hc
-  rw [getD_append_split, hx] at hc
-  by_cases hj : j < n
-  · simp only [maskCat, hj, ite_true] at hm hc; exact ha j c hm hc
-  · simp only [maskCat, hj, ite_false] at hm hc; exact hb _ c hm hc
 
 /-- What D31's operations give before `canon`: one of the special codes, or a
 rounding. -/
@@ -148,179 +113,6 @@ theorem fdiv_isRef (a b : Int) : IsRef (canon (fdiv a b)) := by
         exact isRef_canon_of (by simp))
     | exact isRef_canon_of (.inr (.inr (.inr (.inr (.inr ⟨_, _, rfl⟩)))))
 
-/-- D31's operations give a double only on two doubles. Reduced by `cases`
-on the constructors, which `simp [BinFn.apply]` over every pair took 1.4 s
-to do. -/
-theorem fadd_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fadd va vb = .float c) :
-    IsRef (canon c) := by
-  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fadd_isRef _ _) | cases h
-
-theorem fsub_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fsub va vb = .float c) :
-    IsRef (canon c) := by
-  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fsub_isRef _ _) | cases h
-
-theorem fmul_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fmul va vb = .float c) :
-    IsRef (canon c) := by
-  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fmul_isRef _ _) | cases h
-
-theorem fdiv_apply_float {va vb : Value} {c : Int} (h : BinFn.apply .fdiv va vb = .float c) :
-    IsRef (canon c) := by
-  cases va <;> cases vb <;> first | (injection h with h; rw [← h]; exact fdiv_isRef _ _) | cases h
-
-theorem Expr.refCol_sound {mask : Nat → Bool} {e : Expr} (he : e.refCol mask = true) {row : Row}
-    (h : ∀ j c, mask j = true → row.getD j .null = .float c → IsRef (canon c)) {c : Int}
-    (hc : e.eval row = .float c) : IsRef (canon c) := by
-  cases e with
-  | field i => exact h i c he hc
-  | bin f a b =>
-    simp only [Expr.eval] at hc
-    cases f <;> simp only [Expr.refCol, reduceCtorEq] at he
-    · exact fadd_apply_float hc
-    · exact fsub_apply_float hc
-    · exact fmul_apply_float hc
-    · exact fdiv_apply_float hc
-  | _ => simp [Expr.refCol] at he
-
-theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) : IsRef c := by
-  have h1 := fp64.posInf_lt_nan; have h2 := fp64.negInf_lt_zero; have h3 := fp64.zero_lt_posInf
-  have hp : IsRef fp64.posInf := ⟨by omega, by omega⟩
-  have hn : IsRef fp64.negInf := ⟨by omega, by omega⟩
-  have hN : IsRef fp64.nan := ⟨by omega, by omega⟩
-  unfold nonFinite at h
-  split at h
-  · cases h; exact hN
-  split at h
-  · cases h; exact hp
-  split at h
-  · cases h; exact hn
-  · cases h
-
-theorem floatSumCR_isRef (vs : List Value) : IsRef (floatSumCR vs) := by
-  unfold floatSumCR
-  cases h : nonFinite vs with
-  | none => exact isRef_ofExactDiv _ _
-  | some c => exact nonFinite_isRef h
-
-theorem floatAvgCR_isRef (vs : List Value) : IsRef (floatAvgCR vs) := by
-  unfold floatAvgCR
-  cases h : nonFinite vs with
-  | none => exact isRef_ofExactDiv _ _
-  | some c => exact nonFinite_isRef h
-
-theorem Measure.refOut_sound {m : Measure} (hm : m.refOut = true) (rows : Relation) {c : Int}
-    (hc : m.eval rows = .float c) : IsRef c := by
-  unfold Measure.refOut at hm
-  cases hfn : m.fn <;> simp only [hfn, Bool.false_eq_true] at hm
-  all_goals
-    have hs : m.fn.sorts = false := by rw [hfn]; rfl
-    rw [Measure.eval_eq hs, hfn] at hc
-    cases h : m.inputs rows <;> rw [h] at hc <;> simp only [AggFn.apply, reduceCtorEq, Value.float.injEq] at hc
-  · rw [← hc]; exact floatSumCR_isRef _
-  · rw [← hc]; exact floatAvgCR_isRef _
-
-/-- **`Rel.refCols` is sound**: on sources of reference codes, the columns it
-names hold reference codes. -/
-theorem Rel.refOn {cat : Catalog} (hcat : cat.WF) (hR : ∀ s, (cat s).rows.RefCodes) :
-    ∀ {r : Rel}, r.WF cat → Relation.RefOn (r.refCols cat) (r.eval cat)
-  | .read s, _ => fun row hr j c _ hc => hR s row hr j c rfl hc
-  | .values _ _, _ | .window .., _ | .unnest .., _ => fun _ _ _ _ h => by simp [Rel.refCols] at h
-  | .filter r _, hwf => (Rel.refOn hcat hR hwf.1).mono fun _ h => (List.mem_filter.1 h).1
-  | .orderBy r _, hwf => (Rel.refOn hcat hR hwf.1).mono fun _ h => (List.mergeSort_perm _ _).mem_iff.1 h
-  | .distinct r, hwf => (Rel.refOn hcat hR (r := r) hwf).mono fun _ h => canonReps_sub h
-  | .fetch r _ cnt, hwf => (Rel.refOn hcat hR (r := r) hwf).mono fun _ h => by
-    simp only [Rel.eval] at h
-    cases cnt with
-    | none => exact List.mem_of_mem_drop h
-    | some _ => exact List.mem_of_mem_drop (List.mem_of_mem_take h)
-  | .semi a _ _ _, hwf => (Rel.refOn hcat hR hwf.1).mono fun _ h => (List.mem_filter.1 h).1
-  | .unionAll a b, hwf => fun row hr j c hm hc => by
-    simp only [Rel.refCols, Bool.and_eq_true] at hm
-    rcases List.mem_append.1 hr with h | h
-    · exact Rel.refOn hcat hR hwf.1 row h j c hm.1 hc
-    · exact Rel.refOn hcat hR hwf.2.1 row h j c hm.2 hc
-  | .emit r m, hwf => fun row hr j c hm hc => by
-    simp only [Rel.eval, List.mem_map] at hr
-    obtain ⟨x, hx, rfl⟩ := hr
-    simp only [Rel.refCols] at hm
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_map] at hc
-    cases hj : m[j]? with
-    | none => simp [hj] at hm
-    | some i =>
-      simp only [hj, Option.any_some] at hm
-      simp only [hj, Option.map_some, Option.getD_some] at hc
-      exact Rel.refOn hcat hR hwf.1 x hx i c hm (by rw [List.getD_eq_getElem?_getD]; exact hc)
-  | .project r es, hwf => fun row hr j c hm hc => by
-    simp only [Rel.eval, List.mem_map] at hr
-    obtain ⟨x, hx, rfl⟩ := hr
-    refine RefOn.cat (Rel.eval_arity hcat hwf.1 x hx) (Rel.refOn hcat hR hwf.1 x hx) ?_ j c hm hc
-    intro k c' hk hc'
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_map] at hc'
-    cases he : es[k]? with
-    | none => simp [he] at hc'
-    | some e =>
-      simp only [he, Option.any_some] at hk
-      simp only [he, Option.map_some, Option.getD_some] at hc'
-      exact Expr.refCol_sound hk (Rel.refOn hcat hR hwf.1 x hx) hc'
-  | .cross a b, hwf => fun row hr j c hm hc => by
-    simp only [Rel.eval, crossRows, List.mem_flatMap, List.mem_map] at hr
-    obtain ⟨x, hx, y, hy, rfl⟩ := hr
-    exact RefOn.cat (Rel.eval_arity hcat hwf.1 x hx) (Rel.refOn hcat hR hwf.1 x hx)
-      (Rel.refOn hcat hR hwf.2 y hy) j c hm hc
-  | .join a b jt _, hwf => fun row hr j c hm hc => by
-    have hA := Rel.refOn hcat hR hwf.1
-    have hB := Rel.refOn hcat hR hwf.2.1
-    cases jt with
-    | inner =>
-      simp only [Rel.eval, List.mem_filter, crossRows, List.mem_flatMap, List.mem_map] at hr
-      obtain ⟨⟨x, hx, y, hy, rfl⟩, -⟩ := hr
-      exact RefOn.cat (Rel.eval_arity hcat hwf.1 x hx) (hA x hx) (hB y hy) j c hm hc
-    | left =>
-      simp only [Rel.eval, List.mem_flatMap] at hr
-      obtain ⟨x, hx, hr⟩ := hr
-      unfold leftJoinRow at hr
-      simp only at hr
-      split at hr
-      · simp only [List.mem_singleton] at hr; subst hr
-        refine RefOn.cat (Rel.eval_arity hcat hwf.1 x hx) (hA x hx) ?_ j c hm hc
-        intro k c' _ h'
-        simp [List.getD_eq_getElem?_getD, List.getElem?_replicate] at h'
-        split at h' <;> simp at h'
-      · simp only [List.mem_filter, List.mem_map] at hr
-        obtain ⟨⟨y, hy, rfl⟩, -⟩ := hr
-        exact RefOn.cat (Rel.eval_arity hcat hwf.1 x hx) (hA x hx) (hB y hy) j c hm hc
-  | .aggregate r gs ms, hwf => fun row hr j c hm hc => by
-    have hI := Rel.refOn hcat hR hwf.1
-    have hms : ∀ (g : Relation) k c', (ms[k]?).any Measure.refOut = true →
-        (ms.map (·.eval g)).getD k .null = .float c' → IsRef (canon c') := by
-      intro g k c' hk h'
-      simp only [List.getD_eq_getElem?_getD, List.getElem?_map] at h'
-      cases he : ms[k]? with
-      | none => simp [he] at h'
-      | some m =>
-        simp only [he, Option.any_some] at hk
-        simp only [he, Option.map_some, Option.getD_some] at h'
-        have := Measure.refOut_sound hk g h'
-        rwa [canon_of_isRef this]
-    simp only [Rel.eval, aggregateEval] at hr
-    split at hr
-    · rename_i hg
-      simp only [List.mem_singleton] at hr; subst hr
-      have : gs.length = 0 := by simpa using hg
-      simp only [Rel.refCols, maskCat, this, Nat.not_lt_zero, ite_false, Nat.sub_zero] at hm
-      exact hms _ j c hm hc
-    · simp only [List.mem_map] at hr
-      obtain ⟨k, hk, rfl⟩ := hr
-      obtain ⟨x, hx, rfl⟩ := List.mem_map.1 (canonReps_sub hk)
-      refine RefOn.cat (by simp [groupKey]) ?_ (hms _) j c hm hc
-      intro i c' hi h'
-      simp only [groupKey, List.getD_eq_getElem?_getD, List.getElem?_map] at h'
-      cases he : gs[i]? with
-      | none => simp [he] at h'
-      | some e =>
-        simp only [he, Option.any_some] at hi
-        simp only [he, Option.map_some, Option.getD_some] at h'
-        exact Expr.refCol_sound hi (hI x hx) h'
-
 /-! ### The `SUM` and `AVG` rows of the fold (#929 step 3c)
 
 A `SUM` or `AVG` of a tolerated column `i`, within `e` codes, has a bound
@@ -328,9 +120,8 @@ when the reference's analysis gives column `i` a range of codes `[lo, hi]`
 that stays finite `e` codes beyond each end, and the input at most `N` rows:
 the values are finite on both sides, and their exact sums at most
 `N · (M + e)` in units of `2⁻¹⁰⁷⁴`, `M` the larger magnitude of `lo` and
-`hi`. The engine's codes in column `i` must be the reference's
-(`Rel.refCols`): `-0.0` is within any tolerance of `+0.0`, and a `SUM` reads
-its code as `-∞`. -/
+`hi`. Codes compare after `canon`: `-0.0` is within any tolerance of
+`+0.0`. -/
 
 /-- The larger magnitude of the ends of a range of codes. -/
 def magOf (lo hi : Int) : Nat := max (scaled lo).natAbs (scaled hi).natAbs
@@ -526,6 +317,43 @@ theorem Measure.sum_facts {t : Tol} {m : Measure} {env : List AVal}
   · exact exactSum_natAbs_le_mul fun c hc => by
       obtain ⟨v, -, h⟩ := hpairs.mem_right hc
       have := (h.2.2 c rfl).2; omega
+
+theorem nonFinite_isRef {vs : List Value} {c : Int} (h : nonFinite vs = some c) : IsRef c := by
+  have h1 := fp64.posInf_lt_nan; have h2 := fp64.negInf_lt_zero; have h3 := fp64.zero_lt_posInf
+  have hp : IsRef fp64.posInf := ⟨by omega, by omega⟩
+  have hn : IsRef fp64.negInf := ⟨by omega, by omega⟩
+  have hN : IsRef fp64.nan := ⟨by omega, by omega⟩
+  unfold nonFinite at h
+  split at h
+  · cases h; exact hN
+  split at h
+  · cases h; exact hp
+  split at h
+  · cases h; exact hn
+  · cases h
+
+theorem floatSumCR_isRef (vs : List Value) : IsRef (floatSumCR vs) := by
+  unfold floatSumCR
+  cases h : nonFinite vs with
+  | none => exact isRef_ofExactDiv _ _
+  | some c => exact nonFinite_isRef h
+
+theorem floatAvgCR_isRef (vs : List Value) : IsRef (floatAvgCR vs) := by
+  unfold floatAvgCR
+  cases h : nonFinite vs with
+  | none => exact isRef_ofExactDiv _ _
+  | some c => exact nonFinite_isRef h
+
+theorem Measure.refOut_sound {m : Measure} (hm : m.refOut = true) (rows : Relation) {c : Int}
+    (hc : m.eval rows = .float c) : IsRef c := by
+  unfold Measure.refOut at hm
+  cases hfn : m.fn <;> simp only [hfn, Bool.false_eq_true] at hm
+  all_goals
+    have hs : m.fn.sorts = false := by rw [hfn]; rfl
+    rw [Measure.eval_eq hs, hfn] at hc
+    cases h : m.inputs rows <;> rw [h] at hc <;> simp only [AggFn.apply, reduceCtorEq, Value.float.injEq] at hc
+  · rw [← hc]; exact floatSumCR_isRef _
+  · rw [← hc]; exact floatAvgCR_isRef _
 
 /-- A `SUM`'s or `AVG`'s value: NULL, or a reference code. -/
 theorem Measure.eval_refOut {m : Measure} (hm : m.refOut = true) (rows : Relation) :

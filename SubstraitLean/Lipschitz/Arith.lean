@@ -809,7 +809,7 @@ theorem Forall2.floats {e : Nat} {lo hi : Int} :
 
 theorem Measure.minMaxOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {m : Measure}
     {o : Option Nat} (h : m.minMaxOut t mask env = some o) {g g' : Relation}
-    (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row) (hR : Relation.RefOn mask g)
+    (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
     {tm : Tol} {j : Nat} (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
   unfold Measure.minMaxOut at h
   -- The shape: `MIN` or `MAX` of `field i`.
@@ -892,7 +892,7 @@ theorem Measure.minMaxOut_cell {t : Tol} {mask : Nat → Bool} {env : List AVal}
 theorem Measure.outTol_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {o : Option Nat} (h : m.outTol t mask env N = some o) {g g' : Relation}
     (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
-    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) {tm : Tol} {j : Nat}
+    (hN : ∀ n, N = some n → g'.length ≤ n) {tm : Tol} {j : Nat}
     (hj : tm j = o) : tm.Cell j (m.eval g) (m.eval g') := by
   unfold Measure.outTol at h
   cases h1 : m.tolOut t mask env N with
@@ -901,7 +901,7 @@ theorem Measure.outTol_cell {t : Tol} {mask : Nat → Bool} {env : List AVal} {N
     exact Measure.tolOut_cell h1 f henv hN hj
   | none =>
     rw [h1] at h; simp only [Option.none_or] at h
-    exact Measure.minMaxOut_cell h f henv hR hj
+    exact Measure.minMaxOut_cell h f henv hj
 
 theorem Measure.outTol_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {m : Measure} {o : Option Nat} (h : m.outTol t mask env N = some o) : m.orderFree = true := by
@@ -920,7 +920,7 @@ theorem Measure.outTol_orderFree {t : Tol} {mask : Nat → Bool} {env : List AVa
 theorem measures_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Option Nat}
     {ms : List Measure} (hos : (ms.map (·.outTol t mask env N)).all Option.isSome = true)
     {g g' : Relation} (f : Forall2 t.Rows g g') (henv : ∀ row ∈ g', EnvMem env row)
-    (hN : ∀ n, N = some n → g'.length ≤ n) (hR : Relation.RefOn mask g) :
+    (hN : ∀ n, N = some n → g'.length ≤ n) :
     (Tol.ofOuts (ms.map (·.outTol t mask env N))).Rows (ms.map (·.eval g)) (ms.map (·.eval g')) := by
   refine ⟨by simp, fun j => ?_⟩
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
@@ -931,7 +931,7 @@ theorem measures_rows {t : Tol} {mask : Nat → Bool} {env : List AVal} {N : Opt
     have hm : m ∈ ms := List.mem_of_getElem? hj
     obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1
       (List.all_eq_true.1 hos _ (List.mem_map_of_mem (f := (·.outTol t mask env N)) hm))
-    exact Measure.outTol_cell ho f henv hN hR
+    exact Measure.outTol_cell ho f henv hN
       (by simp [Tol.ofOuts, List.getD_eq_getElem?_getD, List.getElem?_map, hj, ho])
 
 /-- **`GROUP BY` on exact keys with measures the fold bounds**: the groups
@@ -940,7 +940,7 @@ theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask 
     {env : List AVal} {N : Option Nat} (hg : gs.all (fun g => t.exactOn g.cols) = true)
     (hos : (ms.map (·.outTol t mask env N)).all Option.isSome = true) {a p : Relation}
     (f : Forall2 t.Rows a p) (henv : ∀ row ∈ p, EnvMem env row)
-    (hN : ∀ n, N = some n → p.length ≤ n) (hR : Relation.RefOn mask a) :
+    (hN : ∀ n, N = some n → p.length ≤ n) :
     Forall2 (Tol.cat gs.length Tol.exact (Tol.ofOuts (ms.map (·.outTol t mask env N)))).Rows
       (aggregateEval gs ms a) (aggregateEval gs ms p) := by
   have hkey : ∀ x y, t.Rows x y → groupKey gs x = groupKey gs y := fun x y r =>
@@ -951,7 +951,7 @@ theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask 
     have h0 : gs.length = 0 := by simpa using he
     refine .cons ?_ .nil
     have := Tol.rows_append (n := 0) (t := Tol.exact) (x := []) (x' := []) (Tol.rows_refl _ _)
-      (measures_rows hos f henv hN hR) rfl
+      (measures_rows hos f henv hN) rfl
     rw [h0]; simpa using this
   · rw [f.map_eq hkey]
     have hl : Forall2 (fun k k' => k = k' ∧ k ∈ distinctRows (p.map (groupKey gs)))
@@ -962,19 +962,9 @@ theorem aggregateEval_near {t : Tol} {gs : List Expr} {ms : List Measure} {mask 
     obtain ⟨y, -, rfl⟩ := List.mem_map.1 (canonReps_sub hk)
     have fg : Forall2 t.Rows (groupRows gs a (groupKey gs y)) (groupRows gs p (groupKey gs y)) :=
       f.filter fun x y' r => by simp only [hkey x y' r]
-    refine Tol.rows_append (Tol.rows_refl _ _) (measures_rows hos fg ?_ ?_ ?_) (by simp [groupKey])
+    refine Tol.rows_append (Tol.rows_refl _ _) (measures_rows hos fg ?_ ?_) (by simp [groupKey])
     · exact fun row h => henv row (List.mem_filter.1 h).1
     · exact fun n hn => Nat.le_trans (List.length_filter_le _ _) (hN n hn)
-    · exact hR.mono fun row h => (List.mem_filter.1 h).1
-
-/-- The engine's catalog is well-formed when its tables are within a
-tolerance of the reference's well-formed ones, with the same arities. -/
-theorem Catalog.wf_of_near {cat cat' : Catalog} (hcat : cat.WF)
-    (ha : ∀ s, (cat' s).arity = (cat s).arity) {T : String → Tol}
-    (hT : ∀ s, Relation.NearT (T s) (cat' s).rows (cat s).rows) : cat'.WF := fun s row hr => by
-  obtain ⟨p, fp, hp⟩ := hT s
-  obtain ⟨y, hy, rxy⟩ := fp.mem_left hr
-  rw [rxy.1, hcat s y (hp.mem_iff.1 hy), ha]
 
 /-- **A bound on a plan's rows** from the knowledge of its sources: `Rel.maxRows`
 with each table's own cap (`Knowledge.rows`). A `SUM`'s group is at most its

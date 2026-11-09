@@ -436,8 +436,7 @@ coarsens no other component the condition depends on
 (`Expr.robust_of_depends_canon`): the checker drops `"zeros"` from what a
 postcondition ignores. -/
 
-/-- Every double column of `r` holds NULL or a reference code. It follows
-from `Relation.RefCodes` and the plan's column kinds. -/
+/-- Every double column of `r` holds NULL or a reference code. -/
 def Row.DoubleCodes (ctx : ObsCtx) (r : Row) : Prop :=
   ∀ j, ctx.kind j = .double → r.getD j .null = .null ∨ ∃ c, r.getD j .null = .float c ∧ fp64.IsRef c
 
