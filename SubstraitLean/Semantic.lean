@@ -491,7 +491,8 @@ theorem Rel.origin_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF c
       simp only [eval, List.mem_mergeSort] at hx
       exact origin_sound hcat hwf.1 h x hx hn
   | .distinct r, hwf => fun h x hx hn => by
-      simp only [eval, mem_dedup] at hx
+      simp only [eval] at hx
+      replace hx := canonReps_sub hx
       exact origin_sound hcat (r := r) hwf h x hx hn
   | .semi r _ _ _, hwf => fun h x hx hn => by
       simp only [eval, List.mem_filter] at hx

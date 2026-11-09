@@ -479,7 +479,8 @@ theorem Rel.evalI_arity {I : Impl} {cat : Catalog} (hcat : cat.WF) :
       simp only [eval, List.mem_mergeSort] at h
       exact evalI_arity hcat hwf.1 row h
   | .distinct r, hwf, row, h => by
-      simp only [eval, mem_dedup] at h
+      simp only [eval] at h
+      replace h := canonReps_sub h
       exact evalI_arity hcat (r := r) hwf row h
   | .aggregate _ _ _, _, _, h => aggregateEvalI_length h
   | .unnest r _, hwf, row, h => by

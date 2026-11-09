@@ -100,7 +100,7 @@ theorem Rel.maxRows_sound_all {cat : Catalog} :
     simp only [maxRows] at h; rw [hp.length_eq]; exact maxRows_sound_all (r := r) h hi
   | .distinct r, _, h, _, ⟨i, hi, hp⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]
-    exact Nat.le_trans (dedup_length_le _) (maxRows_sound_all (r := r) h hi)
+    exact Nat.le_trans (canonReps_length_le _) (maxRows_sound_all (r := r) h hi)
   | .semi r _ _ _, _, h, _, ⟨i, _, hi, _, hp⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]
     exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound_all (r := r) h hi)

@@ -266,6 +266,18 @@ theorem Value.le_antisymm {a b : Value} (hab : a.le b = true) (hba : b.le a = tr
     a.canonV = b.canonV :=
   Value.leRaw_antisymm hab hba
 
+/-- `Value.le` reads values only up to `canonV`. -/
+theorem Value.le_canon_right {a w w' : Value} (h : w.canonV = w'.canonV) : a.le w = a.le w' := by
+  simp only [Value.le, h]
+
+theorem Value.le_canon_left {a a' w : Value} (h : a.canonV = a'.canonV) : a.le w = a'.le w := by
+  simp only [Value.le, h]
+
+/-- `canonV` changes only doubles: a value canonical-equal to an integer is it. -/
+theorem Value.eq_int_of_canonV {w : Value} {i : Int} (h : w.canonV = (Value.int i).canonV) :
+    w = .int i := by
+  cases w <;> simp_all [Value.canonV]
+
 /-- `Value.le` with ties broken by the raw codes: a total order, so `-0.0`
 comes right before `0.0`. `MIN`, `MAX` and the quantiles pick by it, which
 keeps them independent of the order of their values; the reference leaves

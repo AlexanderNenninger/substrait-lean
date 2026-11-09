@@ -395,18 +395,17 @@ def contNeighbours (num scale : Nat) (s : List Value) : Option (Int × Int × In
     (intAt s (p / d + 1)).map fun h =>
       (l, h, FloatCode.fdiv (FloatCode.ofInt (p % d)) (FloatCode.ofInt d))
 
-/-- `r` kept between `l` and `h`. -/
-def clampTo (l h r : Int) : Int := min (max r l) h
-
 /-- `l·(1 − w) + h·w` with native doubles, as DuckDB interpolates doubles,
-kept between `l` and `h`: rounding may leave them by an ulp. `−∞` with
-`+∞` gives NaN, which the clamp makes `+∞`; the reference raises there
-(`AggFn.makesNan`, #561), so no verified plan sees that value
+kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
+D31): rounding may leave them by an ulp. `−∞` with `+∞` gives NaN, which
+the clamp makes `+∞`; the reference raises there (`AggFn.makesNan`, #561),
+so no verified plan sees that value
 (`characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
 def interpolate (l h w : Int) : Int :=
-  clampTo l h (FloatCode.fadd
-    (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
-    (FloatCode.fmul h w))
+  let r := FloatCode.fadd (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
+    (FloatCode.fmul h w)
+  if FloatCode.canon r < FloatCode.canon l then l
+  else if FloatCode.canon h < FloatCode.canon r then h else r
 
 /-- `QUANTILE_CONT` of the doubles `s` in order. -/
 def contValue (num scale : Nat) (s : List Value) : Value :=
@@ -418,7 +417,8 @@ def contValue (num scale : Nat) (s : List Value) : Value :=
 neighbours, else a double between them. -/
 def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
   match contNeighbours num scale s with
-  | some (l, h, _) => ∃ c, v = .float c ∧ (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h))
+  | some (l, h, _) => ∃ c, v = .float c ∧
+      (c = l ∨ c = h ∨ (FloatCode.canon l ≤ FloatCode.canon c ∧ FloatCode.canon c ≤ FloatCode.canon h))
   | none => v = .null
 
 /-- The most frequent of `vs`, the first of those that tie. -/
@@ -553,8 +553,17 @@ theorem contNeighbours_mem {num scale : Nat} {s : List Value} {l h w : Int}
         exact ⟨intAt_mem h1, intAt_mem h2⟩
 
 theorem interpolate_between (l h w : Int) :
-    interpolate l h w = h ∨ (l ≤ interpolate l h w ∧ interpolate l h w ≤ h) := by
-  unfold interpolate clampTo; omega
+    interpolate l h w = l ∨ interpolate l h w = h ∨
+      (FloatCode.canon l ≤ FloatCode.canon (interpolate l h w) ∧
+        FloatCode.canon (interpolate l h w) ≤ FloatCode.canon h) := by
+  unfold interpolate
+  generalize FloatCode.fadd _ _ = r
+  by_cases h1 : FloatCode.canon r < FloatCode.canon l
+  · exact .inl (by simp only [h1, ↓reduceIte])
+  · by_cases h2 : FloatCode.canon h < FloatCode.canon r
+    · exact .inr (.inl (by simp only [h1, h2, ↓reduceIte]))
+    · refine .inr (.inr ?_)
+      simp only [h1, h2, ↓reduceIte]; omega
 
 theorem contValue_allowed (num scale : Nat) (s : List Value) :
     contAllowed num scale s (contValue num scale s) := by
@@ -566,13 +575,13 @@ theorem contValue_allowed (num scale : Nat) (s : List Value) :
     dsimp only
     split
     · exact ⟨l, rfl, .inl rfl⟩
-    · exact ⟨_, rfl, (interpolate_between l h w).elim (fun e => .inr (.inl e)) (.inr ∘ .inr)⟩
+    · exact ⟨_, rfl, interpolate_between l h w⟩
 
 /-- `QUANTILE_CONT` gives NULL or a double between two of the values. -/
 theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
     (AggFn.quantile true num scale).apply vs = .null ∨ ∃ c l h,
       (AggFn.quantile true num scale).apply vs = .float c ∧ .float l ∈ vs ∧ .float h ∈ vs ∧
-        (c = l ∨ c = h ∨ (l ≤ c ∧ c ≤ h)) := by
+        (c = l ∨ c = h ∨ (FloatCode.canon l ≤ FloatCode.canon c ∧ FloatCode.canon c ≤ FloatCode.canon h)) := by
   cases vs with
   | nil => exact .inl rfl
   | cons v vs =>

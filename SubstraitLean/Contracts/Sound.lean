@@ -329,7 +329,7 @@ theorem Measure.inputs_ne_nil {env : List AVal} {fs : List Fact} {grp : Relation
   have hm : m.arg.eval y ∈ (grp.map m.arg.eval).filter (· != .null) :=
     List.mem_filter.mpr ⟨List.mem_map.mpr ⟨y, hy, rfl⟩, by simpa using this⟩
   split
-  · exact List.ne_nil_of_mem (mem_dedup.mpr hm)
+  · exact List.ne_nil_of_mem (classRep_mem_canonReps hm)
   · exact List.ne_nil_of_mem hm
 
 theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
@@ -594,7 +594,8 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
         rcases hb with rfl | rfl | ⟨h1, h2⟩
         · exact hlb
         · exact hhb
-        · exact Bound.mem_between hlb hhb h1 h2
+        · exact Bound.mem_between hlb hhb (by rwa [NumKind.norm_float, NumKind.norm_float])
+            (by rwa [NumKind.norm_float, NumKind.norm_float])
 
 theorem intSum_bounds {b : Bound} :
     ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w.unscaled? = some i ∧ b.Mem i) →
@@ -827,7 +828,8 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
       simp only [eval, List.mem_mergeSort] at h
       exact aeval_sound hcat hA hF hT (r := r) hwf.1 hs row h
   | .distinct r, hwf, hs, row, h => by
-      simp only [eval, mem_dedup] at h
+      simp only [eval] at h
+      replace h := canonReps_sub h
       exact aeval_sound hcat hA hF hT (r := r) hwf hs row h
   | .unnest r c, hwf, hs, row, h => by
       simp only [eval, List.mem_flatMap] at h
@@ -1003,7 +1005,7 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
       aeval_sound_all hcat hA hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
   | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
-      aeval_sound_all hcat hA hF hT (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
+      aeval_sound_all hcat hA hF hT (r := r) hwf hi row (canonReps_sub (h.mem_iff.mp hr))
   | .unnest r c, hwf, _, ⟨i, hi, h⟩, row, hr => by
       obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
       obtain ⟨_, v, hc, hv, rfl⟩ := mem_unnestRow h

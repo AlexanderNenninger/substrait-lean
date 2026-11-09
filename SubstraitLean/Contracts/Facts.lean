@@ -115,7 +115,7 @@ theorem Expr.linTerm_norm {e : Expr} {j : Nat} {c y : Int} {k : NumKind} {row : 
   · exact ⟨by simp, fun d => by simp⟩
   all_goals
     cases k <;> simp_all [eval, BinFn.apply, NumKind.val, List.getD_eq_getElem?_getD, NumKind.norm_int,
-      NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
+      NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod]
 
 theorem Expr.linTerm_of_num {e : Expr} {j : Nat} {c v : Int} {k : NumKind} {row : Row}
     (h : e.linTerm = some (j, c)) (hv : e.eval row = k.val v) :
@@ -816,7 +816,7 @@ theorem orderFact_sound {sort : List SortKey} {c w : Nat} {before : Bool} {gap :
     (hgap : gap = 0 ∨ gap = 1) (hxc : row.getD c .null = x.getD c .null)
     (hv : ∀ (nk : NumKind) Y, row.getD w .null = nk.val Y → ∃ y, (y = x ∨
       (if before then sortLe sort y x else sortLe sort x y) = true) ∧ y.getD c .null = nk.val Y ∧
-      (gap = 1 → ∀ k ∈ sort, y.getD k.col .null ≠ x.getD k.col .null)) :
+      (gap = 1 → ∀ k ∈ sort, (y.getD k.col .null).canonV ≠ (x.getD k.col .null).canonV)) :
     FactsHold (orderFact sort c w before gap) row := by
   match sort, hv with
   | [], _ => intro f hf; simp [orderFact] at hf
@@ -826,12 +826,12 @@ theorem orderFact_sound {sort : List SortKey} {c w : Nat} {before : Bool} {gap :
     · subst hk
       have key : ∀ (nk : NumKind) X Y, row.getD k.col .null = nk.val X →
           row.getD w .null = nk.val Y →
-          if k.desc = before then gap ≤ Y - X else gap ≤ X - Y := by
+          if k.desc = before then gap ≤ nk.norm Y - nk.norm X else gap ≤ nk.norm X - nk.norm Y := by
         intro nk X Y hX hY
         obtain ⟨y, hy, hyc, hne⟩ := hv nk Y hY
         rw [hxc] at hX
-        have hne' : gap = 1 → Y ≠ X := fun h1 he => by
-          subst he; exact hne h1 k (by simp) (by rw [hyc, hX])
+        have hne' : gap = 1 → nk.norm Y ≠ nk.norm X := fun h1 he =>
+          hne h1 k (by simp) (by rw [hyc, hX, Value.canonV_val, Value.canonV_val, he])
         rcases hy with rfl | hy
         · rw [hX] at hyc
           obtain ⟨_, hyc⟩ := NumKind.val_inj₂ hyc
@@ -866,13 +866,13 @@ theorem partFact_sound {part : List Nat} {c w : Nat} {row x : Row}
     subst hf
     intro nk X Y hX hY
     obtain ⟨y, hy, hyc⟩ := hv nk Y hY
-    have : x.getD c .null = y.getD c .null := by
+    have : (x.getD c .null).canonV = (y.getD c .null).canonV := by
       rcases hy with rfl | hy
       · rfl
       · simp only [samePart, decide_eq_true_eq, List.map_inj_left] at hy; exact hy c hc
-    rw [hxc, this, hyc] at hX
-    obtain ⟨_, rfl⟩ := NumKind.val_inj₂ hX
-    simp [Bound.Mem, Bound.exact]
+    rw [← hxc, hX, hyc, Value.canonV_val, Value.canonV_val] at this
+    obtain ⟨_, he⟩ := NumKind.val_inj₂ this
+    simp [Bound.Mem, Bound.exact, he]
   · intro f hf; simp at hf
 
 theorem strictGap_cases (strict : Bool) (sort : List SortKey) (k : Nat) :
@@ -891,7 +891,7 @@ the only sort key. -/
 theorem sort_ne_of_key {part : List Nat} {sort : List SortKey} {x y : Row}
     (hs : sort.length = 1) (hp : samePart part x y = true)
     (hk : keyOf (part ++ sort.map (·.col)) y ≠ keyOf (part ++ sort.map (·.col)) x) :
-    ∀ k ∈ sort, y.getD k.col .null ≠ x.getD k.col .null := by
+    ∀ k ∈ sort, (y.getD k.col .null).canonV ≠ (x.getD k.col .null).canonV := by
   match sort, hs with
   | [k], _ =>
     intro k' hk' he
@@ -998,15 +998,13 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
     fun f h hs => by rw [Measure.eval_eq (h ▸ hs), h]
   -- `MIN` is one of the values and at most each integer among them; `MAX` at least.
   have minle : mi.fn = .min → ∀ {nk : NumKind} {Y}, row.getD ci .null = nk.val Y →
-      nk.val Y ∈ mi.inputs grp ∧ ∀ t, nk.val t ∈ mi.inputs grp → Y ≤ t := fun h nk Y hY => by
+      nk.val Y ∈ mi.inputs grp ∧ ∀ w ∈ mi.inputs grp, (nk.val Y).le w = true := fun h nk Y hY => by
     rw [hi, evi _ h rfl] at hY
-    obtain ⟨hm, hle⟩ := AggFn.apply_min hY (NumKind.val_ne_null nk Y)
-    exact ⟨hm, fun t ht => (Value.le_val nk).1 (hle _ ht)⟩
+    exact AggFn.apply_min hY (NumKind.val_ne_null nk Y)
   have maxge : mi.fn = .max → ∀ {nk : NumKind} {X}, row.getD ci .null = nk.val X →
-      nk.val X ∈ mi.inputs grp ∧ ∀ t, nk.val t ∈ mi.inputs grp → t ≤ X := fun h nk X hX => by
+      nk.val X ∈ mi.inputs grp ∧ ∀ w ∈ mi.inputs grp, w.le (nk.val X) = true := fun h nk X hX => by
     rw [hi, evi _ h rfl] at hX
-    obtain ⟨hm, hle⟩ := AggFn.apply_max hX (NumKind.val_ne_null nk X)
-    exact ⟨hm, fun t ht => (Value.le_val nk).1 (hle _ ht)⟩
+    exact AggFn.apply_max hX (NumKind.val_ne_null nk X)
   -- An integer `AVG` is an integer between two of its integers.
   have avg : mj.fn = .iavg → ∀ {nk : NumKind} {A}, row.getD cj .null = nk.val A →
       intsOf (mj.inputs grp) ≠ [] →
@@ -1034,7 +1032,10 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
   rename_i hc0
   simp only [not_or, Decidable.not_not] at hc0
   obtain ⟨hfil, harg⟩ := hc0
-  have hiff := Measure.mem_inputs_iff harg hfil.symm grp
+  have hmi : ∀ {v}, v ∈ mi.inputs grp → ∃ w ∈ mj.inputs grp, w.canonV = v.canonV :=
+    fun hv => Measure.mem_inputs_canon harg.symm hfil hv
+  have hmj : ∀ {v}, v ∈ mj.inputs grp → ∃ w ∈ mi.inputs grp, w.canonV = v.canonV :=
+    fun hv => Measure.mem_inputs_canon harg hfil.symm hv
   split
   · -- `MIN ≤ MAX`
     rename_i hc
@@ -1043,7 +1044,10 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
     intro nk X Y hX hY
     rw [hj, evj _ hfj rfl] at hX
     obtain ⟨hm, -⟩ := AggFn.apply_max hX (NumKind.val_ne_null nk X)
-    exact ge0 (by have := (minle hfi hY).2 X ((hiff _).1 hm); omega)
+    obtain ⟨w, hw, hwc⟩ := hmj hm
+    have := (minle hfi hY).2 w hw
+    rw [Value.le_canon_right hwc, Value.le_val] at this
+    exact ge0 (by omega)
   split
   · -- `MIN ≤ AVG`
     rename_i hc
@@ -1052,8 +1056,13 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
     intro nk A Y hA hY
     obtain rfl := iavgKind hfj hA
     have hY' := minle hfi hY
-    obtain ⟨-, ⟨l, hl, hla⟩, -⟩ := avg hfj hA (ne_of ((hiff _).2 hY'.1))
-    exact ge0 (by have := hY'.2 l ((hiff _).1 (mem_intsOf.1 hl)); omega)
+    obtain ⟨w, hw, hwc⟩ := hmi hY'.1
+    obtain ⟨-, ⟨l, hl, hla⟩, -⟩ := avg hfj hA (ne_of (Value.eq_int_of_canonV hwc ▸ hw))
+    obtain ⟨w', hw', hwc'⟩ := hmj (mem_intsOf.1 hl)
+    have := hY'.2 w' hw'
+    rw [Value.le_canon_right hwc'] at this
+    have := (Value.le_val .int).1 this
+    exact ge0 (by simp only [NumKind.norm_int] at this ⊢; omega)
   split
   · -- `AVG ≤ MAX`
     rename_i hc
@@ -1062,8 +1071,13 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
     intro nk X A hX hA
     obtain rfl := iavgKind hfj hA
     have hX' := maxge hfi hX
-    obtain ⟨-, -, ⟨h, hh, hah⟩⟩ := avg hfj hA (ne_of ((hiff _).2 hX'.1))
-    exact ge0 (by have := hX'.2 h ((hiff _).1 (mem_intsOf.1 hh)); omega)
+    obtain ⟨w, hw, hwc⟩ := hmi hX'.1
+    obtain ⟨-, -, ⟨h, hh, hah⟩⟩ := avg hfj hA (ne_of (Value.eq_int_of_canonV hwc ▸ hw))
+    obtain ⟨w', hw', hwc'⟩ := hmj (mem_intsOf.1 hh)
+    have := hX'.2 w' hw'
+    rw [Value.le_canon_left hwc'] at this
+    have := (Value.le_val .int).1 this
+    exact ge0 (by simp only [NumKind.norm_int] at this ⊢; omega)
   · intro f hf; simp at hf
 
 theorem aggFacts_sound {g : Nat} {ms : List Measure} {grp : Relation} {k : Row}
@@ -1188,7 +1202,7 @@ theorem Rel.facts_sound_all {cat : Catalog} (hcat : cat.WF) {F : String → List
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
       facts_sound_all hcat hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
   | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
-      facts_sound_all hcat hF hT (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
+      facts_sound_all hcat hF hT (r := r) hwf hi row (canonReps_sub (h.mem_iff.mp hr))
   | .aggregate _ gs ms, _, _, ⟨_, _, _, h, ho⟩, row, hr => by
       obtain ⟨k, vs, grp, rfl, hv, _, hk, _⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
       have hkl : k.length = gs.length := by
@@ -1572,7 +1586,7 @@ theorem eqSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
             canGe_of_le (Bound.mem_exact 0) hm (by omega)]
         · have hne : (k.norm u == k.norm w) = false := by simpa using huw
           simp only [hne, AVal.Mem, AVal.MemR, Bool.cond_false] at hbase ⊢
-          simp [hbase, huw, canNe_of_ne hm (Bound.mem_exact 0) (by omega)]
+          simp [hbase, canNe_of_ne hm (Bound.mem_exact 0) (by omega)]
       · rename_i hkk; rw [ite_eq_right_of_eq_false _ _ (eq_false hkk)] at hbase; exact hbase
     | none =>
       rw [Value.numOf?_some hva, BinFn.cmp_num_other (.inl rfl) k u hvb] at hbase ⊢; exact hbase
