@@ -1,7 +1,6 @@
 import SubstraitLean.Obligations
-import SubstraitLean.PolarsShims
 import SubstraitLean.SparkShims
-import SubstraitLean.PolarsProfile
+import SubstraitLean.PolarsEngine
 import SubstraitLean.SparkProfile
 import Sverify.Engines.Engine
 import SubstraitLean.EngineTables
@@ -9,27 +8,18 @@ import SubstraitLean.EngineTables
 /-!
 # The engines' Engine values (#900)
 
-DuckDB's, Polars's and Spark's `Engine` values (the structure is
-engines-common, `engines/Sverify/Engines/Engine.lean`), with the proofs that
-their functions are within their tables:
+DuckDB's and Spark's `Engine` values (the structure is engines-common,
+`engines/Sverify/Engines/Engine.lean`; Polars's is
+`SubstraitLean/PolarsEngine.lean`), with the proofs that their functions are
+within their tables:
 
 * `Engine.spark` takes its profile's functions where they do not raise
   (`Profile.spark_withinOk`), as DuckDB's does;
   `Engine.duckdb` (IEEE operations, `ieee_floating_point_ops` on, the
-  default) takes `impl := profile.okImpl` (`Profile.duckdb_withinOk`);
-  `Engine.polars` takes the functions of the written plan (`Polars.written`,
-  `Polars.written_within`).
+  default) takes `impl := profile.okImpl` (`Profile.duckdb_withinOk`).
 -/
 
 namespace Substrait
-
-/-- `extraAtB t c o` for a pair of `ps`, from one check of them all. Each
-`decide` of `extraAtB` evaluates the table anew, so a proof that needs many
-pairs decides its list once (`Profile.duckdb_extras`). -/
-theorem extraAt_of_all {t : ProfileTable} {ps : List (Functions.Ctor × String)}
-    (h : (ps.all fun p => extraAtB t p.1 p.2) = true) {c : Functions.Ctor} {o : String}
-    (hm : (c, o) ∈ ps) : extraAtB t c o = true :=
-  List.all_eq_true.mp h _ hm
 
 /-- The options at which `Profile.duckdb_withinOk` uses DuckDB's table. -/
 def Profile.duckdbExtras : List (Functions.Ctor × String) :=
@@ -44,17 +34,6 @@ def Profile.duckdbExtras : List (Functions.Ctor × String) :=
 theorem Profile.duckdb_extras (e : Bool) :
     (Profile.duckdbExtras.all fun p => extraAtB (Profile.duckdb.table ⟨e, true⟩) p.1 p.2) = true := by
   cases e <;> decide
-
-/-- The options at which `Polars.written_within` uses Polars's table. -/
-def Profile.polarsExtras : List (Functions.Ctor × String) :=
-  [(.bin .add, "overflow"), (.bin .sub, "overflow"), (.bin .mul, "overflow"),
-   (.bin .idiv, "on_division_by_zero"), (.bin .imod, "on_division_by_zero"),
-   (.bin .fpow, "on_domain_error"), (.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"),
-   (.bin .fmul, "nan_creation"), (.bin .fdiv, "nan_creation"), (.bin .fmod, "nan_creation")]
-
-theorem Profile.polars_extras :
-    (Profile.polarsExtras.all fun p => extraAtB Profile.polars.table p.1 p.2) = true := by
-  decide
 
 /-- The options at which `Profile.spark_withinOk` uses Spark's table. -/
 def Profile.sparkExtras : List (Functions.Ctor × String) :=
@@ -231,62 +210,6 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
       · exact .inl (raiseIf_ok h)
       · exact hint (by simp_all) h
 
-/-- **The written Polars plan's functions are within Polars's table**:
-wrapping `+ - *` past 64 bits (`overflow`), `//` and `%` by zero
-(`on_division_by_zero`), and NaN for `∞ - ∞`, `0 · ∞`, `∞ / ∞`
-(`nan_creation`), each in its option's scope (D34). -/
-theorem Polars.written_within : Polars.written.Within Profile.polars.table := by
-  have ovf : ∀ {f : BinFn} {a b : Int}, f.issue (.int a) (.int b) = some .wraps →
-      extraAtB Profile.polars.table (.bin f) "overflow" = true →
-      CallExtra Profile.polars.table (.bin f) [.int a, .int b] := fun hi hx =>
-    callExtra_of_at hx (by simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, hi])
-  have zero : ∀ {f : BinFn} {a : Int}, extraAtB Profile.polars.table (.bin f)
-      "on_division_by_zero" = true →
-      CallExtra Profile.polars.table (.bin f) [.int a, .int 0] := fun hx =>
-    callExtra_of_at hx (by simp [optionScope, divisorZero])
-  have wrap : ∀ {f : BinFn} {a b r : Int}, f.apply (.int a) (.int b) = .int r →
-      extraAtB Profile.polars.table (.bin f) "overflow" = true →
-      f.issue (.int a) (.int b) = wrapIf r →
-      Value.int (Polars.wrap64 r) = f.apply (.int a) (.int b) ∨
-        CallExtra Profile.polars.table (.bin f) [.int a, .int b] := by
-    intro f a b r hr hx hi
-    by_cases h64 : inI64 r = true
-    · exact .inl (by rw [hr, Polars.wrap64_of_inI64 h64])
-    · exact .inr (ovf (by rw [hi]; simp [wrapIf, h64]) hx)
-  refine ⟨fun _ _ => .inl rfl, fun f v w => ?_⟩
-  show Polars.bin f v w = f.apply v w ∨ _
-  unfold Polars.bin
-  split
-  · exact wrap rfl (extraAt_of_all Profile.polars_extras (by decide)) (by simp [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?])
-  · exact wrap rfl (extraAt_of_all Profile.polars_extras (by decide)) (by simp [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?])
-  · exact wrap rfl (extraAt_of_all Profile.polars_extras (by decide)) (by simp [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?])
-  · rename_i a b
-    split
-    · rename_i hb; subst hb; exact .inr (zero (extraAt_of_all Profile.polars_extras (by decide)))
-    · rename_i hb; left; simp only [BinFn.apply, hb, ↓reduceIte]; rw [Polars.int_div_trunc a hb]
-  · rename_i a b
-    split
-    · rename_i hb; subst hb; exact .inr (zero (extraAt_of_all Profile.polars_extras (by decide)))
-    · rename_i hb; left; simp only [BinFn.apply, hb, ↓reduceIte]; rw [Polars.int_mod_trunc a hb]
-  · rename_i a b
-    split
-    · rename_i hn
-      -- IEEE division's NaN is its own value (D39).
-      by_cases hi : f = .fdivIeee
-      · subst hi; left; simp only [BinFn.apply, fdiv_of_nanCase_ieee hn]
-      right
-      -- `power` has no `nan_creation`: its NaN is a domain error's.
-      by_cases hp : f = .fpow
-      · subst hp
-        refine callExtra_of_at (o := "on_domain_error") (extraAt_of_all Profile.polars_extras (by decide)) ?_
-        have : BinFn.issue .fpow (.float a) (.float b) = some .domain := by
-          simp only [BinFn.issue, nanIssue, hn]; split <;> rfl
-        simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, this]
-      · refine callExtra_of_at (o := "nan_creation") ?_ (by simp [optionScope, hn])
-        cases f <;> simp [nanCase] at hn <;> first | exact extraAt_of_all Profile.polars_extras (by decide) | exact absurd rfl hp | exact absurd rfl hi
-    · exact .inl rfl
-  · exact .inl rfl
-
 /-- DuckDB with IEEE operations (`ieee_floating_point_ops`, the default),
 through its lowering (`Lowering.duckdb`, written for the default settings). -/
 def Engine.duckdb (s : DuckDBSettings) (hs : s.ieeeOps = true) : Engine where
@@ -297,16 +220,6 @@ def Engine.duckdb (s : DuckDBSettings) (hs : s.ieeeOps = true) : Engine where
   lower r := some (Lowering.duckdb.lowerRel r)
   impl := (Profile.duckdb s).okImpl
   within := Profile.okImpl_within (Profile.duckdb_withinOk hs)
-
-/-- Polars, as the translation writes the plan (`Polars.written`). -/
-def Engine.polars : Engine where
-  name := "polars"
-  profile := Profile.polars
-  table := Profile.polars.table
-  obs := Profile.polars.obs
-  lower := some
-  impl := Polars.written
-  within := Polars.written_within
 
 /-- **Spark's functions are within its table**: each value `sparkBin` and
 `sparkUn` change is in the scope of an option Spark's table allows another

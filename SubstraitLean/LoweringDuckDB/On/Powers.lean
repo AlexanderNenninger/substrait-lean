@@ -4,7 +4,7 @@ import Sverify.Core.Issue
 import Sverify.Core.Numeric
 import SubstraitLean.LoweringDuckDB.Lemmas
 import Sverify.Core.Expr
-import SubstraitLean.Lowering
+import Sverify.Engines.Lowering
 import Lean.Meta.Tactic.Simp.BuiltinSimprocs.Int
 import Lean.Meta.Tactic.Simp.BuiltinSimprocs.Nat
 import Init.Data.List.Nat.Range

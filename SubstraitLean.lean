@@ -42,12 +42,12 @@ import SubstraitLean.IncrementalMinMax
 import SubstraitLean.IncrementalSemi
 import Sverify.Analysis.Guards
 import Sverify.Core.Profile
-import SubstraitLean.ProfileImpl
+import Sverify.Analysis.ProfileImpl
 import SubstraitLean.VarcharCasts
 import SubstraitLean.DuckDBBoxes
 import SubstraitLean.DuckDBFunctions
 import SubstraitLean.DuckDBProfile
-import SubstraitLean.Lowering
+import Sverify.Engines.Lowering
 import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
 import SubstraitLean.LoweringCache
@@ -93,6 +93,8 @@ import SubstraitLean.EngineTables
 import Sverify.Engines.Shims
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
+import SubstraitLean.PolarsTables
+import SubstraitLean.PolarsEngine
 import SubstraitLean.SparkShims
 import SubstraitLean.SparkProfile
 import SubstraitLean.SubstraitProfile

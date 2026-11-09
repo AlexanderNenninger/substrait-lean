@@ -17,7 +17,7 @@ adding guards (`UnFn.raise`, DuckDB's `error()`) where the engine is laxer,
 or refuses it. A shimmed plan is an ordinary plan, so it is written and run
 like any other. Shims are generated: `SubstraitLean/LoweringSearch.lean`
 searches, for each function, for a template the engine evaluates to the
-reference's outcome, and proves it (#241). `SubstraitLean/Lowering.lean` proves
+reference's outcome, and proves it (#241). `engines/Sverify/Engines/Lowering.lean` proves
 lowering with such a table correct, and `SubstraitLean/LoweringDuckDB.lean`
 holds DuckDB's tables, with `Rel.duckdb_shim_sound`.
 
@@ -505,7 +505,7 @@ raises.
 
 * `Expr.Exact p t e`: `t`, run with `p`'s functions, computes `e`'s value on
   every row where it does not raise. `Lowering.lower_exact` proves it for every
-  expression and its lowering (`SubstraitLean/Lowering.lean`).
+  expression and its lowering (`engines/Sverify/Engines/Lowering.lean`).
 * `Rel.Raises p cat t`: some expression of `t` raises on a row `Rel.eval cat p.impl`
   evaluates it on.
 * `Rel.evalI_mapExprs`: a plan whose expressions are each `Exact` computes

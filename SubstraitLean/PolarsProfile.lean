@@ -1,6 +1,5 @@
-import SubstraitLean.Lowering
+import Sverify.Engines.Lowering
 import SubstraitLean.PolarsShims
-import SubstraitLean.Parse
 
 /-!
 # Polars as a profile (#444)
