@@ -200,7 +200,6 @@ def _merged(found: list[ProfilePlugin]) -> ProfilePlugin:
     return out
 
 
-
 class ProfilePluginWarning(SverifyWarning):
     """An entry point of `sverify.profiles` did not load."""
 
