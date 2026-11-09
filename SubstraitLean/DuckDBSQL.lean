@@ -129,10 +129,6 @@ refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
   | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
       (they truncate) cannot state; use semantics='reference', or round() first"
-  -- `power(-0.0, y)` reads the zero's sign (`pow(-0.0, -1)` is `-∞`), which the
-  -- reference's operations state only for division (D39).
-  | .duckdb, .power => some "DuckDB's power of -0.0 depends on the zero's sign, which the \
-      model's lift cannot state yet (D39); use semantics='reference'"
   | _, _ => none
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by
@@ -301,6 +297,12 @@ theorem DuckDBSQL.canon_of_has {c : Int}
     rcases h with ⟨h1, h2⟩ | rfl
     · exact ⟨h1, Int.le_trans h2 (Int.le_of_lt FloatCode.posInf_lt_nan)⟩
     · exact FloatCode.isRef_nan)
+
+/-- The floor of a canonical double is canonical (`power`'s guard reads it). -/
+theorem DuckDBSQL.canon_floor_of_has {c : Int}
+    (h : (FloatCode.negInf ≤ c ∧ c ≤ FloatCode.posInf) ∨ c = FloatCode.nan) :
+    FloatCode.canon (FloatCode.floor c) = FloatCode.floor c :=
+  FloatCode.canon_floor (DuckDBSQL.canon_of_has h)
 
 omit [Boxes.Ambient] in
 theorem DuckDBSQL.canon_negZero : FloatCode.canon FloatCode.negZero = 0 := fp64.canon_negZero

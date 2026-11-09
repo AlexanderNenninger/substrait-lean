@@ -1,5 +1,5 @@
 import SubstraitLean.TableFormat
-import SubstraitLean.Partition
+import Sverify.Analysis.Partition
 
 /-!
 # Pruning files and partitions (#81)

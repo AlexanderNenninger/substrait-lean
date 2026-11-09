@@ -41,22 +41,22 @@ the tables only. The shim count per engine is D9's measure of few shims.
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 23 | 1 | 4 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Rel.polars_sound` | 15 | 13 | 1 | 5 | 8 | 0 | 15 | 7 |
-| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 24 | 1 | 5 | 3 | 0 | 14 | 0 |
+| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 25 | 1 | 5 | 3 | 0 | 14 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 6 | 12 | 16 | 2 | 0 | 0 | 15 |
-| Polars | 29 | 2 | 14 | 0 | 0 | 0 | 15 |
-| Spark | 18 | 9 | 12 | 0 | 0 | 0 | 14 |
+| DuckDB | 6 | 12 | 17 | 2 | 0 | 0 | 15 |
+| Polars | 29 | 2 | 15 | 0 | 0 | 0 | 15 |
+| Spark | 18 | 10 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
 | Engine | Shim | Cost | Options |
 |---|---|---|---|
 | DuckDB | `MIN % -1 written out` | expression | `min_mod_neg_one` |
-| DuckDB | `Dialect.canon` | expression | `zero_sign` |
+| DuckDB | `Dialect.canon` | expression | `round_zero_sign`, `zero_sign` |
 | DuckDB | `nan_through` | expression | agg.var: `stat_algo` |
 | DuckDB | `ORDER BY the keys` | sort | `clustered` |
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
@@ -65,7 +65,7 @@ Rows per evidence level:
 | Polars | `decimal_round_half_away` | expression | `decimal_rescale` |
 | Polars | `decimal_div_half_away` | expression | dec.div: `decimal_rescale` |
 | Polars | `round_half_away` | argument | fp.round: `rounding` |
-| Polars | `one_zero` | expression | `zero_sign`, agg.order: `zero_sign`, fp.arith: `zero_sign` |
+| Polars | `one_zero` | expression | `round_zero_sign`, `zero_sign`, agg.order: `zero_sign`, fp.arith: `zero_sign` |
 | Polars | `max_nan_greatest` | expression | agg.order: `nan_order` |
 | Polars | `nan_through` | expression | agg.var: `stat_algo` |
 | Polars | `avg_int_declared` | expression | `avg_int_result` |
@@ -107,6 +107,7 @@ Rows per evidence level:
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | fuzz | tested: [duckdb-R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `Dialect.canon` (expression) | probe | tested: [duckdb-R14](../characterization/duckdb/facts/duckdb-R14.json) |
+| every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `Dialect.canon` (expression) | probe | tested: [duckdb-R15-round](../characterization/duckdb/facts/duckdb-R15-round.json), [duckdb-R15-round-digits](../characterization/duckdb/facts/duckdb-R15-round-digits.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [duckdb-nan-equality](../characterization/duckdb/facts/duckdb-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [duckdb-arg-min-nulls](../characterization/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | probe | tested: [duckdb-signbit](../characterization/duckdb/facts/duckdb-signbit.json) |
@@ -171,6 +172,7 @@ Rows per evidence level:
 | every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign](../engines/polars/facts/polars-zero-sign.json), [polars-zero-order](../engines/polars/facts/polars-zero-order.json) |
 | agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-order](../engines/polars/facts/polars-zero-order.json), [polars-min-max-zero](../engines/polars/facts/polars-min-max-zero.json) |
 | fp.arith | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign](../engines/polars/facts/polars-zero-sign.json), [polars-zero-add](../engines/polars/facts/polars-zero-add.json) |
+| every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `one_zero` (expression) | probe | tested: [polars-round](../engines/polars/facts/polars-round.json), [polars-round-digits](../engines/polars/facts/polars-round-digits.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [polars-nan-equality](../engines/polars/facts/polars-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [polars-nan-order](../engines/polars/facts/polars-nan-order.json) |
 | agg.order | `nan_order` | choose | `GREATEST` | `IGNORED` | shim `max_nan_greatest` (expression) | proof | proved `Polars.max_nan_greatest`; [polars-min-max-nan](../engines/polars/facts/polars-min-max-nan.json) |
@@ -244,6 +246,7 @@ Refused on Polars, with no expression there:
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.spark_sound`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json), [spark-nonfinite-aggregates](../engines/spark/facts/spark-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `Dialect.canon` (expression) | proof | proved `Shim.one_zero`; [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json), [spark-zero-order](../engines/spark/facts/spark-zero-order.json) |
+| every | `round_zero_sign` | open | `ANY` | `POSITIVE` | native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json), [spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [spark-nan-equality](../engines/spark/facts/spark-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [spark-nan-order](../engines/spark/facts/spark-nan-order.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | fuzz | tested: [spark-nan-sign](../engines/spark/facts/spark-nan-sign.json) |

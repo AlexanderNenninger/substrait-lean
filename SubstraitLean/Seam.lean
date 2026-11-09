@@ -1,5 +1,5 @@
 import Sverify.Core.Ties
-import SubstraitLean.AllowedAnalysis
+import Sverify.Analysis.AllowedAnalysis
 
 /-!
 # The ordered seam (#928)

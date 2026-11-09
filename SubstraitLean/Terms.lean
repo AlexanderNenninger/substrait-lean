@@ -1,4 +1,4 @@
-import SubstraitLean.Incremental
+import Sverify.Analysis.Incremental
 
 /-!
 # Splitting a plan into union-free terms

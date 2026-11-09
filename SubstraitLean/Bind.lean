@@ -1,5 +1,5 @@
 import SubstraitLean.Lowering
-import SubstraitLean.Partition
+import Sverify.Analysis.Partition
 import SubstraitLean.Parse
 import Sverify.Core.AllowedP
 

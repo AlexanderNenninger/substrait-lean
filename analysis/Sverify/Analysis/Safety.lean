@@ -1,5 +1,5 @@
 import Sverify.Core.Issue
-import SubstraitLean.Contracts
+import Sverify.Analysis.Contracts
 
 /-!
 # Runtime errors
@@ -61,7 +61,7 @@ this model (`docs/proofs.md`, "What is trusted"). `Rel.HasIssue` assumes:
 The engines' behaviour is recorded as facts in
 `characterization/<engine>/facts/`. `Rel.HasIssue` states this model;
 `Rel.mayIssues` over-approximates it with the abstract evaluation of
-`SubstraitLean/Contracts.lean`, and
+`analysis/Sverify/Analysis/Contracts.lean`, and
 `Rel.mayIssues_sound` proves that every issue that can happen is reported.
 -/
 

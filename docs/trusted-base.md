@@ -77,7 +77,7 @@ place, and what retires it.
 
 | Construct | Names | File | What runs, or what it stands for | Retired by |
 |---|---|---|---|---|
-| axiom | `FloatCode.exp_fin` | `SubstraitLean/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
+| axiom | `FloatCode.exp_fin` | `analysis/Sverify/Analysis/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
 | opaque, `implemented_by` | `upper`, `lower`, `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256` | `core/Sverify/Core/Text.lean` | The string functions the checker evaluates by compiled code (`upperAscii`, `Digest.md5`, …); no proof looks inside them | A model of each in Lean, or a row of the black-box table |
 | opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `SubstraitLean/DuckDBBoxes.lean` | The functions of DuckDB's black-box catalogue (`evalScalar`, …), outside the model; the core holds none (#1189). A proof uses only a row's laws, which hold by the clamp and `Boxes.duckdb_wf` | A model of a row in Lean, where one exists |
 | structure | `DoubleStats.Correct` | `SubstraitLean/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
@@ -94,7 +94,7 @@ place, and what retires it.
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
 | engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `characterization/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
-| size hypothesis | `Rel.Small`, `Text.sizeCap` | `SubstraitLean/Contracts/Sound.lean`, `core/Sverify/Core/Text.lean` | Fewer than 2⁶² rows a window reads, strings under 2³² characters ([the size hypothesis](core-semantics.md#d27-the-size-hypothesis-is-the-only-size-assumption)) | |
+| size hypothesis | `Rel.Small`, `Text.sizeCap` | `analysis/Sverify/Analysis/Contracts/Sound.lean`, `core/Sverify/Core/Text.lean` | Fewer than 2⁶² rows a window reads, strings under 2³² characters ([the size hypothesis](reference-semantics.md#overrides)) | |
 | toolchain | Lean `v4.35.0` | `lean-toolchain` | The kernel and the compiler | |
 
 ## The trusted parts in detail
@@ -112,7 +112,7 @@ place, and what retires it.
   it is assumed of every run. With it, `ROW_NUMBER() - 1` and Ibis's
   `find` (`strpos - 1`) are proved not to overflow without a precondition, while
   `amount * 2` needs one, which sverify infers. It overrides Substrait
-  ([the size hypothesis](core-semantics.md#d27-the-size-hypothesis-is-the-only-size-assumption)).
+  ([the size hypothesis](reference-semantics.md#overrides)).
 - The frontends produce the plan the user meant: the Ibis producer
   (`python/src/sverify/ibis_substrait/`) and the SQLGlot lift for DuckDB's
   SQL (`python/src/sverify/sql_lift/`), which writes each function's options explicitly from the source
@@ -122,7 +122,7 @@ place, and what retires it.
   tests (`tests/run.sh`) run that round trip on every fixture. The parser's
   choice of function by kind is checked: `checkPlan` refuses a plan
   `Rel.inferKinds` does not type (`Rel.kinds_sound`), and each kind has its
-  own constructor of `Value` ([a value has its kind](core-semantics.md#d29-a-value-has-its-kind)).
+  own constructor of `Value` ([a value has its kind](decisions.md#d29-a-value-has-its-kind)).
 - The code that writes a checked plan for an engine: the SQL printers
   (`Pretty.lean`, `python/src/sverify/sql/`), a shimmed plan's `isNum` as
   `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
@@ -233,7 +233,7 @@ place, and what retires it.
   its formula in Python's doubles.
 
   Beside `Engine.Runs`, the bound on
-  [summation orders](core-semantics.md#d35-engine-summation-orders-are-bounded-sets): the engines' summation algorithms meet
+  [summation orders](float-bounds.md): the engines' summation algorithms meet
   `SumBound` (a double `SUM` within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact
   sum), which `Rel.AllowedP` takes for every non-`EXACT` `sum_order`. It is
   justified by `float-bounds`' `StdModel.Summed.near`, `epsilon_sum_cr` and

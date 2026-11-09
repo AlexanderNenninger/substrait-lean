@@ -164,7 +164,7 @@ def test_engines_agree(con, case, data):
                 continue
             failed.add(engine)
         except polars_engine.RuntimeIssue:
-            # A runtime error of `SubstraitLean/Safety.lean` (the data has
+            # A runtime error of `analysis/Sverify/Analysis/Safety.lean` (the data has
             # NaN and ±inf to cast): both engines raise it.
             failed.add(engine)
     if failed:
@@ -280,7 +280,7 @@ def test_spark_agrees_with_duckdb(con, data):
         try:
             duck = rows(run_plan(con, plan, "duckdb"))
         except duckdb.Error:
-            # A runtime error of `SubstraitLean/Safety.lean`: Spark raises too.
+            # A runtime error of `analysis/Sverify/Analysis/Safety.lean`: Spark raises too.
             with pytest.raises(Exception, match="(?i)sverify|overflow|cast"):
                 query(sql)
             continue

@@ -261,6 +261,159 @@ theorem Lowering.fceil_agree (s : DuckDBSettings) (x : Value) :
       FloatCode.ceil_negNan (fun _ h => FloatCode.canon_ceil h) c
   all_goals rfl
 
+/-- `power` on DuckDB: raise where the reference does (`negInfPow`, and a
+negative finite base to a finite power that is not an integer, `nanCase`). -/
+def Lowering.fpowTemplate : Expr :=
+  let x := Expr.field 0; let y := Expr.field 1
+  let ninf := Expr.lit (.float FloatCode.negInf); let pinf := Expr.lit (.float FloatCode.posInf)
+  let yFrac := Expr.bin .and (.bin .and (.bin .lt ninf y) (.bin .lt y pinf))
+    (.un .not (.bin .eq (.un .ffloor y) y))
+  .ifThen (.bin .or (.bin .and (.bin .and (.bin .lt ninf x) (.bin .lt x (.lit (.float 0)))) yFrac)
+      (.bin .and (.bin .eq x ninf) yFrac))
+    (.un (.raise "domain error") y) (.bin .fpow x y)
+
+/-- The template reads both arguments, for the entry's strictness. -/
+theorem Lowering.fpowTemplate_must : 0 ∈ Lowering.fpowTemplate.must ∧ 1 ∈ Lowering.fpowTemplate.must := by
+  simp [Expr.must, Lowering.fpowTemplate]
+
+/-- `fpowTemplate` agrees with the reference on two doubles, every code:
+its guard, read through `canon`, is the reference's raise condition. -/
+theorem Lowering.fpow_float (e' : Bool) (a b : Int) :
+    (Lowering.fpowTemplate.evalP (Profile.duckdb ⟨e', true⟩) [.float a, .float b]).Agree
+      (Profile.reference.bin .fpow (.float a) (.float b)) := by
+  have hlt : ∀ a b : Int, BinFn.apply .lt (.float a) (.float b) =
+      .bool (decide (FloatCode.canon a < FloatCode.canon b)) := fun _ _ => rfl
+  have heq : ∀ a b : Int, BinFn.apply .eq (.float a) (.float b) =
+      .bool (FloatCode.canon a == FloatCode.canon b) := fun _ _ => rfl
+  have hfl : ∀ b, (Profile.duckdb ⟨e', true⟩).un .ffloor (.float b) =
+      .ok (.float (FloatCode.floor b)) := fun _ => rfl
+  have hduck : (Profile.duckdb ⟨e', true⟩).bin .fpow (.float a) (.float b) =
+      (if negInfPow a b then some (Except.ok (.float (duckNegInfPow b)))
+        else if nanCase .fpow a b then some (Except.ok (.float FloatCode.nan)) else none).getD
+        (Profile.reference.bin .fpow (.float a) (.float b)) := rfl
+  have href : Profile.reference.bin .fpow (.float a) (.float b) =
+      if negInfPow a b || nanCase .fpow a b then .error .domain
+      else .ok (.float (FloatCode.lift₂ Float.pow a b)) := by
+    by_cases h1 : negInfPow a b <;> by_cases h2 : nanCase .fpow a b <;>
+      simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, h1, h2, Issue.isError]
+  -- The guard is true exactly where the reference raises, on every code.
+  have hguard : ∀ G : Bool, G = (negInfPow a b || nanCase .fpow a b) →
+      (Expr.ifThen (.lit (.bool G)) (.un (.raise "domain error") (.field 1))
+        (.bin .fpow (.field 0) (.field 1)) |>.evalP (Profile.duckdb ⟨e', true⟩)
+          [.float a, .float b]).Agree (Profile.reference.bin .fpow (.float a) (.float b)) := by
+    intro G hG; subst hG
+    rw [href]
+    by_cases h1 : negInfPow a b <;> by_cases h2 : nanCase .fpow a b <;>
+      simp [Expr.evalP, Outcome.ok_bind, Value.isTrue, h1, h2, hduck, href, Lowering.duck_raise, Outcome.Agree]
+  -- The guard's value, from the canonical codes, is the reference's raise
+  -- condition on the raw ones.
+  have hb : ∀ p q : Int, (p == q) = decide (p = q) := fun _ _ => rfl
+  have hP := FloatCode.posInf_eq; have hN := FloatCode.negInf_eq
+  have hZ := FloatCode.negZero_eq'; have hY := FloatCode.negNan_eq'
+  have hQ : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+  have hcP := FloatCode.canon_posInf; have hcN := FloatCode.canon_negInf
+  have hc0 := FloatCode.canon_zero
+  have ha3 : ∀ p q : Bool, and3 (.bool p) (.bool q) = .bool (p && q) := by decide
+  have ho3 : ∀ p q : Bool, or3 (.bool p) (.bool q) = .bool (p || q) := by decide
+  have hn3 : ∀ p : Bool, (match Value.bool p with | .bool b => Value.bool !b | _ => .null) =
+      .bool !p := fun _ => rfl
+  have key : ((decide (FloatCode.canon FloatCode.negInf < FloatCode.canon a) &&
+        decide (FloatCode.canon a < FloatCode.canon 0) &&
+        (decide (FloatCode.canon FloatCode.negInf < FloatCode.canon b) &&
+          decide (FloatCode.canon b < FloatCode.canon FloatCode.posInf) &&
+          !decide (FloatCode.canon (FloatCode.floor b) = FloatCode.canon b))) ||
+      (decide (FloatCode.canon a = FloatCode.canon FloatCode.negInf) &&
+        (decide (FloatCode.canon FloatCode.negInf < FloatCode.canon b) &&
+          decide (FloatCode.canon b < FloatCode.canon FloatCode.posInf) &&
+          !decide (FloatCode.canon (FloatCode.floor b) = FloatCode.canon b)))) =
+      (negInfPow a b || nanCase .fpow a b) := by
+    simp only [negInfPow, nanCase, hcN, hcP, hc0]
+    rw [Bool.eq_iff_iff]
+    rcases FloatCode.canon_cases b with ⟨rfl, hb'⟩ | ⟨rfl, hb'⟩ | hb'
+    · simp only [hb', FloatCode.floor_negZero]
+      rcases FloatCode.canon_cases a with ⟨rfl, ha⟩ | ⟨rfl, ha⟩ | ha <;> simp only [ha] <;>
+        simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
+          Bool.not_eq_true', decide_eq_false_iff_not, bne_iff_ne, ne_eq, not_true_eq_false,
+          and_false, or_false] <;> omega
+    · simp only [hb', FloatCode.floor_negNan]
+      rcases FloatCode.canon_cases a with ⟨rfl, ha⟩ | ⟨rfl, ha⟩ | ha <;> simp only [ha] <;>
+        simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
+          Bool.not_eq_true', decide_eq_false_iff_not, bne_iff_ne, ne_eq, not_true_eq_false,
+          and_false, or_false] <;> omega
+    · have hf := FloatCode.canon_floor hb'
+      simp only [hb', hf]
+      rcases FloatCode.canon_cases a with ⟨rfl, ha⟩ | ⟨rfl, ha⟩ | ha <;> simp only [ha] <;>
+        simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
+          Bool.not_eq_true', decide_eq_false_iff_not, bne_iff_ne, ne_eq] <;> omega
+  have hG : (Expr.bin .or (.bin .and (.bin .and (.bin .lt (.lit (.float FloatCode.negInf)) (.field 0))
+        (.bin .lt (.field 0) (.lit (.float 0))))
+        (.bin .and (.bin .and (.bin .lt (.lit (.float FloatCode.negInf)) (.field 1))
+          (.bin .lt (.field 1) (.lit (.float FloatCode.posInf))))
+          (.un .not (.bin .eq (.un .ffloor (.field 1)) (.field 1)))))
+      (.bin .and (.bin .eq (.field 0) (.lit (.float FloatCode.negInf)))
+        (.bin .and (.bin .and (.bin .lt (.lit (.float FloatCode.negInf)) (.field 1))
+          (.bin .lt (.field 1) (.lit (.float FloatCode.posInf))))
+          (.un .not (.bin .eq (.un .ffloor (.field 1)) (.field 1)))))).evalP
+        (Profile.duckdb ⟨e', true⟩) [.float a, .float b] =
+      .ok (.bool (negInfPow a b || nanCase .fpow a b)) := by
+    simp only [Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+      Lowering.duck_lt, Lowering.duck_eq, Lowering.duck_and, Lowering.duck_or, Lowering.duck_not,
+      hlt, heq, hfl, hb, ha3, ho3]
+    rw [key]
+  have hif : ∀ c c' t e : Expr, c.evalP (Profile.duckdb ⟨e', true⟩) [.float a, .float b] =
+      c'.evalP (Profile.duckdb ⟨e', true⟩) [.float a, .float b] →
+      (Expr.ifThen c t e).evalP (Profile.duckdb ⟨e', true⟩) [.float a, .float b] =
+        (Expr.ifThen c' t e).evalP (Profile.duckdb ⟨e', true⟩) [.float a, .float b] := by
+    intro c c' t e h; unfold Expr.evalP; rw [h]
+  unfold Lowering.fpowTemplate; dsimp only
+  rw [hif _ (.lit (.bool (negInfPow a b || nanCase .fpow a b)))
+    _ _ (by rw [hG]; rfl)]
+  exact hguard _ rfl
+
+theorem Lowering.and3_eq_true {a b : Value} : and3 a b = .bool true ↔ a = .bool true ∧ b = .bool true := by
+  unfold and3; split <;> simp_all
+
+theorem Lowering.or3_eq_true {a b : Value} : or3 a b = .bool true ↔ a = .bool true ∨ b = .bool true := by
+  unfold or3; split <;> simp_all
+
+theorem Lowering.isTrue_eq_true {v : Value} : v.isTrue = true ↔ v = .bool true := by
+  unfold Value.isTrue; split <;> simp_all
+
+/-- Where an argument is not a double, `fpowTemplate`'s guard is not true and
+both sides are NULL. -/
+theorem Lowering.fpow_nondouble (e : Bool) {x y : Value}
+    (h : x.isDouble = false ∨ y.isDouble = false) :
+    (Lowering.fpowTemplate.evalP (Profile.duckdb ⟨e, true⟩) [x, y]).Agree
+      (Profile.reference.bin .fpow x y) := by
+  have hf : BinFn.onFloats .fpow = true := rfl
+  obtain ⟨w, hw⟩ : ∃ w, (Profile.duckdb ⟨e, true⟩).un .ffloor y = .ok w := by
+    cases y <;> exact ⟨_, rfl⟩
+  have hr : Profile.reference.bin .fpow x y = .ok .null := by
+    rcases h with h | h
+    · exact Lowering.ref_bin_nondouble_l hf h y
+    · exact Lowering.ref_bin_nondouble_r hf x h
+  have hd : (Profile.duckdb ⟨e, true⟩).bin .fpow x y = .ok .null := by
+    rw [← hr]; rcases h with h | h
+    · exact Lowering.duck_bin_nondouble_l _ hf h y
+    · exact Lowering.duck_bin_nondouble_r _ hf x h
+  simp only [Lowering.fpowTemplate, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+    Outcome.ok_bind, Lowering.duck_lt, Lowering.duck_eq, Lowering.duck_and, Lowering.duck_or,
+    Lowering.duck_not, hw, hd, hr]
+  rcases h with h | h
+  · simp [Lowering.isTrue_eq_true, Lowering.or3_eq_true, Lowering.and3_eq_true, BinFn.apply_lt_nondouble_l h,
+      BinFn.apply_lt_nondouble_r h, BinFn.apply_eq_nondouble_l h, Outcome.Agree]
+  · simp [Lowering.isTrue_eq_true, Lowering.or3_eq_true, Lowering.and3_eq_true, BinFn.apply_lt_nondouble_l h,
+      BinFn.apply_lt_nondouble_r h, Outcome.Agree]
+
+theorem Lowering.fpow_agree (e : Bool) (x y : Value) :
+    (Lowering.fpowTemplate.evalP (Profile.duckdb ⟨e, true⟩) [x, y]).Agree
+      (Profile.reference.bin .fpow x y) := by
+  cases x
+  case float a =>
+    cases y
+    case float b => exact Lowering.fpow_float e a b
+    all_goals exact Lowering.fpow_nondouble e (.inr rfl)
+  all_goals exact Lowering.fpow_nondouble e (.inl rfl)
 theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :
     (Lowering.shlTemplate.evalP (Profile.duckdb s) [x, y]).Agree
       (Profile.reference.bin (.bit .shl) x y) := by

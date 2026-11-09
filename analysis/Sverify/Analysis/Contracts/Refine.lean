@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts.TransferSound
+import Sverify.Analysis.Contracts.TransferSound
 
 /-!
 # Contracts: Refine
@@ -7,7 +7,7 @@ Refinement by filter conditions: constant decimals, `Expr.refine` and
 `Expr.refine_sound`, what a condition says about one expression (`Cstr`),
 alternatives (#702) and whole conditions on a row (#597).
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 

@@ -1,7 +1,7 @@
-import SubstraitLean.Weighted
+import Sverify.Analysis.Weighted
 import Sverify.Core.Decomposable
-import SubstraitLean.Safety
-import SubstraitLean.Keys
+import Sverify.Analysis.Safety
+import Sverify.Analysis.Keys
 
 /-!
 # Sharded evaluation

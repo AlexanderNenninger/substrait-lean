@@ -585,42 +585,7 @@ theorem Substrait.duckdbOn.fpow_guards : ∀ (x y : Substrait.Value),
   Substrait.Expr.GuardsAt
     (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
     (fun _ => Bool.false) (Substrait.BinFn.issue Substrait.BinFn.fpow x y) [x, y]
-    (Substrait.Expr.ifThen
-      (Substrait.Expr.bin Substrait.BinFn.or
-        (Substrait.Expr.bin Substrait.BinFn.and
-          (Substrait.Expr.bin Substrait.BinFn.and
-            (Substrait.Expr.bin Substrait.BinFn.lt
-              (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
-              (Substrait.Expr.field 0))
-            (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
-              (Substrait.Expr.lit (Substrait.Value.float 0))))
-          (Substrait.Expr.bin Substrait.BinFn.and
-            (Substrait.Expr.bin Substrait.BinFn.and
-              (Substrait.Expr.bin Substrait.BinFn.lt
-                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
-                (Substrait.Expr.field 1))
-              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 1)
-                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))))
-            (Substrait.Expr.un Substrait.UnFn.not
-              (Substrait.Expr.bin Substrait.BinFn.eq
-                (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
-                (Substrait.Expr.field 1)))))
-        (Substrait.Expr.bin Substrait.BinFn.and
-          (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
-            (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf)))
-          (Substrait.Expr.bin Substrait.BinFn.and
-            (Substrait.Expr.bin Substrait.BinFn.and
-              (Substrait.Expr.bin Substrait.BinFn.lt
-                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
-                (Substrait.Expr.field 1))
-              (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 1)
-                (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))))
-            (Substrait.Expr.un Substrait.UnFn.not
-              (Substrait.Expr.bin Substrait.BinFn.eq
-                (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 1))
-                (Substrait.Expr.field 1))))))
-      (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 1))
-      (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0) (Substrait.Expr.field 1))) := by
+    Substrait.Lowering.fpowTemplate := by
   guards_bin_tac Substrait.duckdbOn.fpow_agree
 
 set_option maxHeartbeats 800000 in

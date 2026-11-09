@@ -18,7 +18,7 @@ and the others are NULL. Checked against DataFusion 51:
 
 * `SUM` of integers wraps around modulo 2⁶⁴; since wrapping addition is
   associative, the result is the true sum unless that leaves 64 bits.
-  `SUM` here is the true sum, and `SubstraitLean/Safety.lean` warns.
+  `SUM` here is the true sum, and `analysis/Sverify/Analysis/Safety.lean` warns.
 * `SUM` and `AVG` of doubles round, in an order DataFusion does not promise;
   here they add in list order with native floats. `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.

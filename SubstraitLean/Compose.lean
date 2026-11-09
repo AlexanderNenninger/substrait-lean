@@ -1,5 +1,5 @@
-import SubstraitLean.Keys
-import SubstraitLean.Weighted
+import Sverify.Analysis.Keys
+import Sverify.Analysis.Weighted
 
 /-!
 # Composing contracts

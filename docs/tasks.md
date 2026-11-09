@@ -272,7 +272,7 @@ except VerificationError as e:
   If rows can tie in the order, the engine decides which comes first:
   `verify` proves the postconditions that hold for every order of the ties,
   `report.deterministic` is `False`, `str(report)` names the window and
-  `report.ties` the key that would close it ([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+  `report.ties` the key that would close it ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
   A key on the partition and order columns makes the order total, which
   facts such as `prev_ts < ts` and a rerun that must give the same rows
   need.
@@ -351,7 +351,7 @@ print(per_line.run(gcon).to_pylist())
 ```
 
 A guard inside an `AND` or `OR` protects nothing, since DuckDB and Polars
-evaluate both operands ([`AND` and `OR` raise eagerly](core-semantics.md#d19-and-and-or-raise-eagerly)), and
+evaluate both operands ([`AND` and `OR` raise eagerly](reference-semantics.md#null)), and
 neither does a guard in one column of a `SELECT` for a division in another.
 The report then needs the precondition `n != 0`, and says where the error
 sits:
@@ -381,7 +381,7 @@ An overflow at the declared width is an error, so `amount * 2` on a
 leave its range, it works out the range each input column must stay in. By
 default the plan is not proved until you declare it, and the report says
 where it came from and how to fix it
-([why inferred preconditions are errors](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
+([why inferred preconditions are errors](reference-semantics.md#errors)):
 
 ```python
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
@@ -434,7 +434,7 @@ build on it like on any other precondition of a source.
   timestamps to whole years (`(ts + ibis.interval(days=1)).truncate("M")`
   needs `_.ts < datetime(9999, 1, 1)`). A DATE or TIMESTAMP column lies in
   0001-01-01 to 9999-12-31 by its type, and reading one outside fails
-  ([calendar functions](core-semantics.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)),
+  ([calendar functions](reference-semantics.md#temporal)),
   so a column read needs no bound.
 * Other runtime errors get preconditions the same way:
 
@@ -480,7 +480,7 @@ print(sv.verify(per_minute))
 
 `sv.max_rows(n)` in `requires` states that an input has at most `n` rows.
 Lean carries the caps through the plan
-([Rows.lean](../SubstraitLean/Rows.lean)), and an integer `SUM` of values in
+([Rows.lean](../analysis/Sverify/Analysis/Rows.lean)), and an integer `SUM` of values in
 `[-m, m]` over at most `n` rows, with `n · m < 2⁶³`, is proved to fit, with
 nothing to check on the data:
 
@@ -537,7 +537,7 @@ assert not report.assumed and not report.errors
 
 * Filters, sorts, `LIMIT`, `DISTINCT`, semi-joins, projections and
   `UNION ALL` keep the bounds (`Rel.perKey_sound` in
-  [Rows.lean](../SubstraitLean/Rows.lean)), and so does a join on a `unique`
+  [Rows.lean](../analysis/Sverify/Analysis/Rows.lean)), and so does a join on a `unique`
   key of its right side. A `unique` key is a bound of 1.
 * An aggregate grouping by all of a bound's columns has groups of at most
   that many rows (`Rel.groupRows_sound`), which bounds its integer and
@@ -1038,7 +1038,7 @@ refresh batch by batch and a recompute agree:
 - Among the other rows, every row of a key that occurs more than once
   (`sv.unique`, `sv.key`): both copies of a repeated `id`, the one the node
   held before included. The rule needs no order between rows, so it gives the
-  same answer under every profile ([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+  same answer under every profile ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
 - `max_rows`, `arrives_within` and the other conditions on a table as a whole
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
@@ -1612,7 +1612,7 @@ reference by default, `semantics="duckdb"` for what DuckDB does,
 `semantics="polars"` for what Polars does, or
 `semantics="substrait"` for Substrait's extension YAMLs, open wherever they
 say nothing. Each profile refines one core that does a superset of
-operations ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)). An engine computes its own semantics, so running a proved
+operations ([core, profiles and engines](core-and-profiles.md)). An engine computes its own semantics, so running a proved
 plan raises a question: does the proof hold for what the engine computes?
 A route answers it. `report.run(con, engine, route="auto")` and
 `node.refresh(engine=..., route="auto")` pick one of four, and run the plan
@@ -1667,7 +1667,7 @@ list every fact). What to do about one:
 `report.run(..., reproducible=sv.equivalent())`, like a sink's
 `reproducible=`, asks for the deterministic profile, which fixes the order of
 ties
-([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)):
+([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)):
 it refuses a plan whose result is not determined up to row order, and the
 reason names each window, ordered aggregate or `LIMIT` where ties stay open
 (`str(report)`), with the `sv.unique(...)` that would close them
@@ -1675,7 +1675,7 @@ reason names each window, ordered aggregate or `LIMIT` where ties stay open
 Without it the plan runs with the engine's own order of the ties, which every
 proof covers. [Example 7](getting-started.md#7-a-plan-checked-under-duckdbs-profile)
 shows a transfer and a refusal, and
-[how a route is chosen](core-semantics.md#d13-choosing-the-route) gives the
+[how a route is chosen](verifying.md) gives the
 rules behind them.
 
 A postcondition can name what the result's consumer observes:
@@ -1915,7 +1915,7 @@ to sverify and back, keeps every rule sverify reads.
 
 A stored node's sink commits each epoch once, so a rerun must give the same
 result. The sink states what "the same" means (`reproducible=`,
-[two observations per output](core-semantics.md#d20-two-observations-per-output)): `sv.equivalent()` asks for exact
+[two observations per output](tasks.md#reproducible-sinks)): `sv.equivalent()` asks for exact
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
 refused with a `RouteError`; so is a plan whose ties stay open, since the

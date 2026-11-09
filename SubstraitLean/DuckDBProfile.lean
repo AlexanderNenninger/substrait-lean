@@ -1,5 +1,5 @@
 import SubstraitLean.ProfileImpl
-import SubstraitLean.Knowledge
+import Sverify.Analysis.Knowledge
 
 /-!
 # DuckDB's profile (#185)

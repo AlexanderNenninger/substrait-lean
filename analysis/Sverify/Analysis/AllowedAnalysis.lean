@@ -1,6 +1,6 @@
 import Sverify.Core.AllowedNear
-import SubstraitLean.Partition
-import SubstraitLean.Guards
+import Sverify.Analysis.Partition
+import Sverify.Analysis.Guards
 
 /-!
 # What the analysis proves of the allowed results
@@ -8,7 +8,7 @@ import SubstraitLean.Guards
 `Rel.Allowed` (`core/Sverify/Core/Allowed.lean`) is the reference's relation;
 this module states what the analysis proves of it. For a plan without
 choices (`Rel.detPlan`, decided from the abstract values, facts and keys of
-`SubstraitLean/Contracts.lean`), every allowed result is `Rel.eval`'s up to
+`analysis/Sverify/Analysis/Contracts.lean`), every allowed result is `Rel.eval`'s up to
 the order of rows (`Rel.allowed_perm_eval`), so a rewrite to such a plan
 with the original's rows refines it up to the order of rows
 (`Rel.refines_of_perm`); and a plan run without its row-level checks returns

@@ -7,7 +7,7 @@ What goes wrong when a function runs on a row (`Issue`, `UnFn.issue`,
 `BinFn.issue`, `Expr.issues`): where the reference raises, and an error
 allows any engine's answer. Which rows an engine evaluates an expression on,
 and the analysis that over-approximates the issues of a plan
-(`Rel.HasIssue`, `Rel.mayIssues`), are in `SubstraitLean/Safety.lean`.
+(`Rel.HasIssue`, `Rel.mayIssues`), are in `analysis/Sverify/Analysis/Safety.lean`.
 -/
 
 namespace Substrait
@@ -42,7 +42,7 @@ inductive Issue where
   a plan that may raise is not proved, unless the input's rows and the
   argument's range bound the sum (`Measure.sumFits`). Kept apart from
   `wraps` because it comes from a group's rows, not from one row:
-  `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
+  `analysis/Sverify/Analysis/Guards.lean` drops row-level checks, never this one. -/
   | sumWraps
   /-- An argument outside a function's domain (`core/Sverify/Core/Numeric.lean`):
   `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`

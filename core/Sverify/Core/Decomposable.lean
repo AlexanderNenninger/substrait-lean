@@ -7,7 +7,7 @@ Which aggregates combine from parts (`AggFn.decomposable`) and which ignore
 the order of their values (`AggFn.orderFree`, `Measure.orderFree`), with
 `Measure.eval_perm`: such a measure gives the same value on any permutation
 of its rows. `Rel.Allowed` (`core/Sverify/Core/Allowed.lean`) and sharded
-evaluation (`SubstraitLean/Partition.lean`) both use them.
+evaluation (`analysis/Sverify/Analysis/Partition.lean`) both use them.
 -/
 
 namespace Substrait

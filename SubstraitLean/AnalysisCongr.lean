@@ -1,5 +1,5 @@
-import SubstraitLean.Keys
-import SubstraitLean.Partition
+import Sverify.Analysis.Keys
+import Sverify.Analysis.Partition
 
 /-!
 # The analyses read only the catalog's arities (#1088)

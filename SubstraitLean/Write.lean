@@ -1,5 +1,5 @@
 import SubstraitLean.Parse
-import SubstraitLean.Weighted
+import Sverify.Analysis.Weighted
 import SubstraitLean.DuckDBBoxes
 
 /-!
