@@ -218,7 +218,7 @@ jobs:
           # ledgers and the areas it skips.
           reads() { grep -qvE "$docs|$ledger|^($1)" <<< "$files"; }
           flag() { if reads "$1"; then echo true; else echo false; fi; }
-          if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$|^scripts/lean(_timings\.py|-budget\.json)$' <<< "$files"; then
+          if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$|^scripts/lean(_timings\.py|-budget\.json)$|^scripts/checker_speed\.py$|^tests/checker-speed/' <<< "$files"; then
             out proofs=true
           else
             out proofs=false
@@ -265,6 +265,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ledger == 'true' || needs.changes.outputs.weekly == 'true'
     runs-on: ubuntu-latest
+    # `actions: read` for main's checker, the artifact of main's last run.
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -290,6 +294,48 @@ jobs:
           path: checker-bin/substrait-check
           retention-days: 3
           if-no-files-found: error
+      # The checker's speed against main's (docs/build-performance.md), on a
+      # pull request that changes a Lean input: both answer the recorded
+      # requests interleaved, and a request 1.3x as slow, or the set 1.1x,
+      # fails. Main's checker is the artifact of the run on the merge's first
+      # parent, or, without one, built here from main.
+      - id: base
+        if: needs.changes.outputs.proofs == 'true' && github.event_name != 'push' && github.event_name != 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          git fetch -q --deepen=1 origin
+          base=$(git rev-parse HEAD^1)
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+          run=$(gh api "repos/$REPO/actions/artifacts?name=substrait-check&per_page=100" \
+            --jq ".artifacts[] | select(.expired == false and .workflow_run.head_sha == \"$base\") | .workflow_run.id" | head -1)
+          if [ -n "$run" ] && gh run download "$run" -R "$REPO" -n substrait-check -D base-bin; then
+            chmod +x base-bin/substrait-check
+            echo "Main's checker: the substrait-check artifact of run $run ($base)"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Main's checker: no artifact for $base; building it here"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.base.outputs.found == 'false' && steps.cache.outputs.cache-hit == 'true'
+        uses: ./.github/actions/setup-lean
+        with:
+          save: "false"
+      - if: steps.base.outputs.found == 'false'
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          git worktree add -q /tmp/main "$BASE"
+          for d in .lake core/.lake analysis/.lake engines/.lake; do
+            if [ -d "$d" ]; then mkdir -p "/tmp/main/$(dirname "$d")" && cp -a "$d" "/tmp/main/$d"; fi
+          done
+          (cd /tmp/main && lake build substrait-check)
+          mkdir -p base-bin
+          cp /tmp/main/.lake/build/bin/substrait-check base-bin/
+      - if: steps.base.outputs.found != ''
+        name: Checker speed
+        run: python3 scripts/checker_speed.py base-bin/substrait-check checker-bin/substrait-check
 
   # Every proof, the generated entries' included, when a Lean input changed.
   lean:
