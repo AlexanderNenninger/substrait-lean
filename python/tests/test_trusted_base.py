@@ -21,7 +21,15 @@ pytestmark = needs_repo
 
 #: The Lean sources of the checker and the core (`float-bounds/` is a project
 #: of its own, with Mathlib, and proves what it trusts in `NativeLink`).
-SOURCES = ["SubstraitLean.lean", "SubstraitCheck.lean", "Main.lean", "SubstraitLean", "core"]
+SOURCES = [
+    "SubstraitLean.lean",
+    "SubstraitCheck.lean",
+    "Main.lean",
+    "SubstraitLean",
+    "core",
+    "analysis",
+    "engines",
+]
 #: A declaration the kernel takes on trust, and its name.
 DECLARED = re.compile(
     r"^\s*(?:@\[[^\]]*\]\s*)?(?:private |protected )?(?:noncomputable )?"

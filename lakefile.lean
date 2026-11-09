@@ -3,7 +3,7 @@ open Lake DSL
 
 /-- `lake -R -Kcheck_generated=true build` checks the proofs of the generated
 lowering and lift entries; a plain `lake build` takes them as proved, which
-saves most of a cold build (`SubstraitLean/Generated.lean`). CI, the Wheels
+saves most of a cold build (`engines/Sverify/Engines/Generated.lean`). CI, the Wheels
 workflow, `poe qa` and the wheel's build hook set it, so every PR and every
 release checks every entry. `-R` is needed whenever the value changes: Lake
 keeps the configuration of the last `-R`. -/
@@ -12,6 +12,8 @@ def checkGenerated : Bool := get_config? check_generated == some "true"
 package «substrait-lean»
 
 require «sverify-core» from "core"
+require «sverify-analysis» from "analysis"
+require «sverify-engines» from "engines"
 
 @[default_target]
 lean_lib SubstraitLean
@@ -19,7 +21,8 @@ lean_lib SubstraitLean
 /-- The generated modules, which `check_generated` applies to. Declared after
 `SubstraitLean`: within a package, Lake gives a module to the last library
 that contains it. Across packages a library claims every module under its
-root's prefix, which is why each package has a root of its own (`Sverify.Core`)
+root's prefix, which is why each package has a root of its own (`Sverify.Core`,
+`Sverify.Analysis`, `Sverify.Engines`)
 and none is rooted at `Sverify` alone. -/
 lean_lib SubstraitLeanGenerated where
   roots := #[]

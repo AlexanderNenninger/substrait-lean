@@ -146,7 +146,7 @@ reference profile, and DuckDB is the default oracle.
   under other settings has no proved lowering; #241 tracks adding tables for
   them. CI checks every entry's proof; a local `lake build` takes them as
   proved unless run as `lake -R -Kcheck_generated=true build`
-  (`SubstraitLean/Generated.lean`). A committed table that no longer fits fails the
+  (`engines/Sverify/Engines/Generated.lean`). A committed table that no longer fits fails the
   build: a proof stops checking when `Profile.duckdb` changes, and the table's
   `match` is not exhaustive when a function is added. `SubstraitLean/LoweringCache.lean`
   records each construct's template for the regeneration, which tries it first. `substrait-check --lowering-table` exports the
@@ -414,7 +414,7 @@ option the proof depends on. What is proved
   than 10¹⁸ 64-bit values leaves 38 digits, in any order.
 - `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
   the reference's value, by the lemmas Polars's shims share
-  ([Shims.lean](../SubstraitLean/Shims.lean)).
+  ([Shims.lean](../engines/Sverify/Engines/Shims.lean)).
 - `Spark.written_faithful` and `Rel.spark_sound`: Spark under ANSI, as the
   writer writes it, gives `Rel.eval`'s rows for a plan whose only issues are
   assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the
@@ -450,7 +450,7 @@ refused (D14). Tested, and trusted: that Spark computes as the model says
 ## Engine profiles from outside
 
 A package can add an engine profile without changing sverify. The checker
-takes its engines as a list of `EngineProfile`s (`SubstraitLean/EngineTables.lean`):
+takes its engines as a list of `EngineProfile`s (`engines/Sverify/Engines/Tables.lean`):
 each one's choices, observation rows, the theorem its translation from the
 reference rests on, and its shims' costs. `builtinEngines` holds DuckDB's,
 Polars's and Spark's, and every engine-wide fact (`Epsilon.statsProvedOn`,

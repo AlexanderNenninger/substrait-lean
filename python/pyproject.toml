@@ -109,6 +109,14 @@ exclude = ["build", "src/sverify/_bin"]
 "../core/lake-manifest.json" = "lean/core/lake-manifest.json"
 "../core/lean-toolchain" = "lean/core/lean-toolchain"
 "../core/Sverify" = "lean/core/Sverify"
+"../analysis/lakefile.toml" = "lean/analysis/lakefile.toml"
+"../analysis/lake-manifest.json" = "lean/analysis/lake-manifest.json"
+"../analysis/lean-toolchain" = "lean/analysis/lean-toolchain"
+"../analysis/Sverify" = "lean/analysis/Sverify"
+"../engines/lakefile.toml" = "lean/engines/lakefile.toml"
+"../engines/lake-manifest.json" = "lean/engines/lake-manifest.json"
+"../engines/lean-toolchain" = "lean/engines/lean-toolchain"
+"../engines/Sverify" = "lean/engines/Sverify"
 
 [dependency-groups]
 dev = [
@@ -180,18 +188,21 @@ help = "Build the substrait-check CLI that sverify calls"
 cmd = "lake build substrait-check"
 cwd = "${POE_ROOT}/.."
 
+# `lake lean`, which hands Lean each module's file: under `lake env lean` the
+# search path finds `Sverify.Engines.*` in `core/`'s build, the first one
+# with a `Sverify` directory (#1189).
 [tool.poe.tasks.regen-lowering]
 help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
 shell = """
 lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLean.LoweringDuckDB.Lemmas \
   SubstraitLean.LoweringDuckDB.Schemas \
-  && lake env lean -M 6144 scripts/RegenLowering.lean
+  && lake lean scripts/RegenLowering.lean -- -M 6144
 """
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.regen-lift]
 help = "Search for the DuckDB SQL lift again and write it to SubstraitLean/LiftDuckDB (a build only checks it); Lean capped at 6 GB"
-shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake env lean -M 6144 scripts/RegenLift.lean"
+shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake lean scripts/RegenLift.lean -- -M 6144"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.prove-floats]
