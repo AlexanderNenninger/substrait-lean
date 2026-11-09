@@ -55,8 +55,10 @@ count.
 typecheck, golden tests and every Python test (`poe test-all`). It is slow on
 this laptop.
 
-Lean build time and memory are budgeted per module, and CI's `lean` job fails
-a module over its ceiling: `docs/build-performance.md` has the method.
+Lean build time and memory have a per-module target, and checker speed is
+compared against main. CI reports a module over its target, or a slower
+checker, as a warning and never fails on it: the PR body explains the cost
+and a follow-up removes it. `docs/build-performance.md` has the method.
 
 Run expensive tasks through the drivers in `~/Projects/agentic-tools/drivers`
 (`capacity`, `local-run`, `lean-check`, `homelab-qa`, `homelab-run`, its
