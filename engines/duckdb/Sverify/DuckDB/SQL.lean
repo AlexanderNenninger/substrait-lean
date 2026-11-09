@@ -1,4 +1,4 @@
-import SubstraitLean.DuckDBFunctions
+import Sverify.DuckDB.Functions
 
 /-!
 # What DuckDB's SQL means (#268)
@@ -140,6 +140,25 @@ theorem FloatCode.ofInt_ne_negInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.ne
 /-! Lemmas the generated proofs compute with (`generate_lift … using`). -/
 
 variable [Boxes.Ambient]
+
+/-- `BinFn.apply` on two doubles, one equation per function: the proofs below
+rewrite with these, so `simp` never unfolds `BinFn.apply` (and builds its
+match splitter) to get them. -/
+theorem DuckDBSQL.apply_fadd_float (a b : Int) :
+    BinFn.apply .fadd (.float a) (.float b) = .float (FloatCode.fadd a b) := rfl
+theorem DuckDBSQL.apply_fsub_float (a b : Int) :
+    BinFn.apply .fsub (.float a) (.float b) = .float (FloatCode.fsub a b) := rfl
+theorem DuckDBSQL.apply_fmul_float (a b : Int) :
+    BinFn.apply .fmul (.float a) (.float b) = .float (FloatCode.fmul a b) := rfl
+theorem DuckDBSQL.apply_fdiv_float (a b : Int) :
+    BinFn.apply .fdiv (.float a) (.float b) = .float (FloatCode.fdiv a (FloatCode.canon b)) := rfl
+theorem DuckDBSQL.apply_fdivIeee_float (a b : Int) :
+    BinFn.apply .fdivIeee (.float a) (.float b) = .float (FloatCode.fdiv a b) := rfl
+theorem DuckDBSQL.apply_fmod_float (a b : Int) :
+    BinFn.apply .fmod (.float a) (.float b) = .float (FloatCode.fmod a b) := rfl
+theorem DuckDBSQL.apply_fpow_float (a b : Int) :
+    BinFn.apply .fpow (.float a) (.float b) = .float (FloatCode.lift₂ Float.pow a b) := rfl
+
 theorem DuckDBSQL.ref_itof (i : Int) :
     Profile.reference.un .itof (.int i) = .ok (.float (FloatCode.ofInt i)) := rfl
 
@@ -179,14 +198,14 @@ theorem DuckDBSQL.ref_fdiv_float (a b : Int) :
       if FloatCode.canon b = 0 then .error .divByZero else if nanCase .fdiv a b then .error .domain
       else .ok (.float (FloatCode.fdiv a (FloatCode.canon b))) := by
   by_cases hb : FloatCode.canon b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hb, hn, Issue.isError]
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, DuckDBSQL.apply_fdiv_float, hb, hn, Issue.isError]
 
 theorem DuckDBSQL.ref_fmod_float (a b : Int) :
     Profile.reference.bin .fmod (.float a) (.float b) =
       if FloatCode.canon b = 0 then .error .divByZero else if nanCase .fmod a b then .error .domain
       else .ok (.float (FloatCode.fmod a b)) := by
   by_cases hb : FloatCode.canon b = 0 <;> by_cases hn : nanCase .fmod a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hb, hn, Issue.isError]
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, DuckDBSQL.apply_fmod_float, hb, hn, Issue.isError]
 
 theorem DuckDBSQL.ref_fdiv_null_l (y : Value) : Profile.reference.bin .fdiv .null y = .ok .null := by
   cases y <;> rfl
@@ -204,7 +223,7 @@ theorem DuckDBSQL.ref_fadd_float (a b : Int) :
     Profile.reference.bin .fadd (.float a) (.float b) =
       if nanCase .fadd a b then .error .domain else .ok (.float (FloatCode.fadd a b)) := by
   by_cases hn : nanCase .fadd a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, DuckDBSQL.apply_fadd_float, hn, Issue.isError]
 theorem DuckDBSQL.ref_fadd_null_l (y : Value) : Profile.reference.bin .fadd .null y = .ok .null := by
   cases y <;> rfl
 theorem DuckDBSQL.ref_fadd_null_r (x : Value) : Profile.reference.bin .fadd x .null = .ok .null := by
@@ -213,7 +232,7 @@ theorem DuckDBSQL.ref_fsub_float (a b : Int) :
     Profile.reference.bin .fsub (.float a) (.float b) =
       if nanCase .fsub a b then .error .domain else .ok (.float (FloatCode.fsub a b)) := by
   by_cases hn : nanCase .fsub a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, DuckDBSQL.apply_fsub_float, hn, Issue.isError]
 theorem DuckDBSQL.ref_fsub_null_l (y : Value) : Profile.reference.bin .fsub .null y = .ok .null := by
   cases y <;> rfl
 theorem DuckDBSQL.ref_fsub_null_r (x : Value) : Profile.reference.bin .fsub x .null = .ok .null := by
@@ -222,7 +241,7 @@ theorem DuckDBSQL.ref_fmul_float (a b : Int) :
     Profile.reference.bin .fmul (.float a) (.float b) =
       if nanCase .fmul a b then .error .domain else .ok (.float (FloatCode.fmul a b)) := by
   by_cases hn : nanCase .fmul a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, DuckDBSQL.apply_fmul_float, hn, Issue.isError]
 theorem DuckDBSQL.ref_fmul_null_l (y : Value) : Profile.reference.bin .fmul .null y = .ok .null := by
   cases y <;> rfl
 theorem DuckDBSQL.ref_fmul_null_r (x : Value) : Profile.reference.bin .fmul x .null = .ok .null := by
@@ -233,7 +252,7 @@ theorem DuckDBSQL.ref_fpow_float (a b : Int) :
       if negInfPow a b || nanCase .fpow a b then .error .domain
       else .ok (.float (FloatCode.lift₂ Float.pow a b)) := by
   by_cases hi : negInfPow a b <;> by_cases hn : nanCase .fpow a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hi, hn, Issue.isError]
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, DuckDBSQL.apply_fpow_float, hi, hn, Issue.isError]
 theorem DuckDBSQL.ref_fpow_null_l (y : Value) : Profile.reference.bin .fpow .null y = .ok .null := by
   cases y <;> rfl
 theorem DuckDBSQL.ref_fpow_null_r (x : Value) : Profile.reference.bin .fpow x .null = .ok .null := by
@@ -564,7 +583,7 @@ theorem DuckDBSQL.ref_fdivIeee_float (a b : Int) :
     Profile.reference.bin .fdivIeee (.float a) (.float b) =
       if nanCase .fdivIeee a b then .error .domain else .ok (.float (FloatCode.fdiv a b)) := by
   by_cases hn : nanCase .fdivIeee a b <;>
-    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, DuckDBSQL.apply_fdivIeee_float, hn, Issue.isError]
 theorem DuckDBSQL.ref_fdivIeee_null_l (y : Value) : Profile.reference.bin .fdivIeee .null y = .ok .null := by
   cases y <;> rfl
 theorem DuckDBSQL.ref_fdivIeee_null_r (x : Value) : Profile.reference.bin .fdivIeee x .null = .ok .null := by
@@ -584,7 +603,7 @@ theorem DuckDBSQL.duck_fdiv_float (a b : Int) :
         else if nanCase .fdiv a b then FloatCode.nan else FloatCode.fdiv a (FloatCode.canon b))) := by
   by_cases hb : FloatCode.canon b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
     simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, nanIssue,
-      BinFn.apply, hb, hn, Issue.isError]
+      DuckDBSQL.apply_fdiv_float, hb, hn, Issue.isError]
 
 omit [Boxes.Ambient] in
 /-- `fmod` of an infinite dividend is NaN, whatever the divisor. -/
@@ -612,10 +631,10 @@ theorem DuckDBSQL.duck_fmod_float (a b : Int) :
     · by_cases hn : nanCase .fmod a b
       · simp [Profile.duckdb, BinFn.onFloats, duckBin, hb, hn, hi]
       · simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue,
-          nanIssue, BinFn.apply, hb, hn, hi, DuckDBSQL.fmod_of_inf b hi]
+          nanIssue, DuckDBSQL.apply_fmod_float, hb, hn, hi, DuckDBSQL.fmod_of_inf b hi]
     · have hn : nanCase .fmod a b = false := by simp [nanCase, hi]
       simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue,
-        nanIssue, BinFn.apply, hb, hn, hi]
+        nanIssue, DuckDBSQL.apply_fmod_float, hb, hn, hi]
 
 theorem DuckDBSQL.duck_arith_float (f : BinFn) (hf : f = .fadd ∨ f = .fsub ∨ f = .fmul) (a b : Int) :
     (Profile.duckdb {}).bin f (.float a) (.float b) =
@@ -640,7 +659,7 @@ theorem DuckDBSQL.duck_fpow_float (a b : Int) :
       else FloatCode.lift₂ Float.pow a b)) := by
   by_cases hi : negInfPow a b <;> by_cases hn : nanCase .fpow a b <;>
     simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, nanIssue,
-      BinFn.apply, hi, hn, Issue.isError]
+      DuckDBSQL.apply_fpow_float, hi, hn, Issue.isError]
 
 theorem DuckDBSQL.duck_fmath_float (f : FMath) (a : Int) :
     (Profile.duckdb {}).un (.fmath f) (.float a) = .ok (.float (duckElementary f a)) := by

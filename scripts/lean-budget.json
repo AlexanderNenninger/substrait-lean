@@ -85,11 +85,11 @@
    "cpu_s": 62,
    "rss_mb": 1760
   },
-  "SubstraitLean.DuckDBProfile": {
+  "Sverify.DuckDB.Profile": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.DuckDBSQL": {
+  "Sverify.DuckDB.SQL": {
    "cpu_s": 138,
    "rss_mb": 1690
   },
@@ -265,7 +265,7 @@
    "cpu_s": 30,
    "rss_mb": 2626
   },
-  "SubstraitLean.LoweringDuckDB.Lemmas": {
+  "Sverify.DuckDB.LoweringLemmas": {
    "cpu_s": 58,
    "rss_mb": 1536
   },
@@ -425,7 +425,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.VarcharCasts": {
+  "Sverify.DuckDB.VarcharCasts": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

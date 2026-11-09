@@ -160,7 +160,7 @@ time on the runner.
 |---|---:|---:|---:|---:|
 | `SubstraitLean.LoweringDuckDB.On.Doubles` | 733 | 179 | 2550 | 587 |
 | `SubstraitLean.LoweringDuckDB.On.Integers` | 145 | 83 | 1946 | 105 |
-| `SubstraitLean.DuckDBSQL` | 133 | 33 | 930 | 100 |
+| `Sverify.DuckDB.SQL` | 133 | 33 | 930 | 100 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Arith` | 88 | 109 | 1981 | 69 |
 | `SubstraitLean.LoweringDuckDB.On.Math` | 75 | 42 | 1926 | 53 |
 | `SubstraitLean.LoweringDuckDB.On.Guards` | 64 | 28 | 2406 | 51 |

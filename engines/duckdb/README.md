@@ -20,7 +20,10 @@ The directory is one engine package of #1189:
 - `replay/`: the replay of DuckDB's sqllogictests, one ledger per area, the
   fuzz findings and the probes the facts cite;
 - `tests/`: its tests, which run in sverify's test session
-  (`python/pyproject.toml`'s `testpaths`).
-
-Its Lean half (the profile, the generated lowering and the lift, `Sverify.DuckDB`)
-follows.
+  (`python/pyproject.toml`'s `testpaths`);
+- `Sverify/DuckDB/` and `lakefile.toml`: its Lean half, the Lake package
+  `sverify-duckdb`: `Profile.duckdb` and the SQL printer's model, the black
+  boxes, the choice table and the lowering's lemmas, on the core, the
+  analysis and engines-common alone ([docs/proofs.md](../../docs/proofs.md)).
+  The generated lowering, `Engine.duckdb` and the lift follow once the
+  generators move to engines-common.

@@ -1,7 +1,7 @@
 import Lean
 import SubstraitLean.LoweringHint
 import Sverify.Engines.Generated
-import SubstraitLean.DuckDBBoxes
+import Sverify.DuckDB.Boxes
 
 /-!
 # The lowering generator (#241)
@@ -796,7 +796,7 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       let strictTy ← if unary then mem 0 else mkAppM ``And #[← mem 0, ← mem 1]
       -- A hand-written template comes with its strictness, by name: `T_must`
       -- for a template written as the constant `T` (DuckDB's `<<`, `round`
-      -- and `ceil`, `SubstraitLean/LoweringDuckDB/Lemmas.lean`, which this
+      -- and `ceil`, `engines/duckdb/Sverify/DuckDB/LoweringLemmas.lean`, which this
       -- module does not import).
       let env ← getEnv
       let named : Option Name := tmpl.constName?.bind fun c =>

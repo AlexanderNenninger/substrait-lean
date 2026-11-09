@@ -43,10 +43,10 @@ import SubstraitLean.IncrementalSemi
 import Sverify.Analysis.Guards
 import Sverify.Core.Profile
 import Sverify.Analysis.ProfileImpl
-import SubstraitLean.VarcharCasts
-import SubstraitLean.DuckDBBoxes
-import SubstraitLean.DuckDBFunctions
-import SubstraitLean.DuckDBProfile
+import Sverify.DuckDB.VarcharCasts
+import Sverify.DuckDB.Boxes
+import Sverify.DuckDB.Functions
+import Sverify.DuckDB.Profile
 import Sverify.Engines.Lowering
 import SubstraitLean.Bind
 import SubstraitLean.LoweringHint
@@ -61,7 +61,7 @@ import Sverify.Core.Ties
 import SubstraitLean.Seam
 import Sverify.Analysis.Knowledge
 import SubstraitLean.Choices
-import SubstraitLean.DuckDBSQL
+import Sverify.DuckDB.SQL
 import SubstraitLean.LiftHint
 import SubstraitLean.LiftCache
 import SubstraitLean.LiftSearch

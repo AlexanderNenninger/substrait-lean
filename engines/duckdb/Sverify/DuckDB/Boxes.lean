@@ -1,7 +1,7 @@
 import Sverify.Core.BlackBox
 import Sverify.Core.Float
 import Sverify.Core.Time
-import SubstraitLean.VarcharCasts
+import Sverify.DuckDB.VarcharCasts
 
 /-!
 # DuckDB's black boxes (#325, #1189)
@@ -265,7 +265,7 @@ def scalarRows : List Scalar := [
   -- (a BIGINT rounds half away from zero), `inf` and `nan`, `true`/`t`/`yes`/
   -- `y`/`1`, ISO dates and times. `CAST` raises on a string DuckDB rejects,
   -- so it is not NULL for a string; `TRY_CAST` is NULL there. Lean evaluates
-  -- a subset (`SubstraitLean/VarcharCasts.lean`).
+  -- a subset (`engines/duckdb/Sverify/DuckDB/VarcharCasts.lean`).
   { name := "varchar_bigint", args := [.str], result := .int, raises := .sometimes,
     laws := [.nonNull], sample := .int 0 },
   { name := "try_varchar_bigint", args := [.str], result := .int, sample := .int 0 },

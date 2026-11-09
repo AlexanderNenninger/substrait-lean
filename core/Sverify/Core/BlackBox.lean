@@ -22,7 +22,7 @@ catalogue** (`Boxes`) declares of it:
 * the function itself, `eval`, which the engine package supplies (#1189).
 
 The core holds the mechanism only. The rows are an engine package's:
-DuckDB's are `Boxes.duckdb` (`SubstraitLean/DuckDBBoxes.lean`).
+DuckDB's are `Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`).
 
 ## What is proved and what is assumed
 

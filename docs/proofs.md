@@ -45,9 +45,9 @@ contract's preconditions.
 | `Rel.eval` gives a result the reference allows | `eval`, `Allowed` | `Rel.eval_allowed` | `Allowed.lean` |
 | Every row order the reference allows is one `Rel.Allowed` allows | `OrderAllowed`, `Allowed` | `Rel.orderAllowed_allowed` | `Ties.lean` |
 | An operator that factors through the multiset has one meaning over every order; a plan without choices one multiset, an unordered `FETCH` several | `OrderAllowed`, `Bags` | `Sem.eq_iff_of_permInv`, `Measure.orderAllowed_eq`, `Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two` | `Seam.lean` |
-| DuckDB, under its default settings, computes the reference | `eval` | `Rel.duckdb_sound` | `DuckDBProfile.lean` |
+| DuckDB, under its default settings, computes the reference | `eval` | `Rel.duckdb_sound` | `DuckDB/Profile.lean` |
 | The generated DuckDB lowering computes the reference | `eval`, `AllowedP` | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
-| A DuckDB SQL function the lift reads means what DuckDB computes: the template it lifts to agrees with `DuckDBSQL.lean`'s meaning under each semantics, the proof in each generated `LiftEntry`'s `agree` field (checked when `check_generated` is on) | `eval` | `LiftEntry.of₁`, `LiftEntry.of₂` | `LiftSearch.lean`, `LiftDuckDB/Duckdb/*.lean`, `LiftDuckDB/Reference/*.lean` |
+| A DuckDB SQL function the lift reads means what DuckDB computes: the template it lifts to agrees with `DuckDB/SQL.lean`'s meaning under each semantics, the proof in each generated `LiftEntry`'s `agree` field (checked when `check_generated` is on) | `eval` | `LiftEntry.of₁`, `LiftEntry.of₂` | `LiftSearch.lean`, `LiftDuckDB/Duckdb/*.lean`, `LiftDuckDB/Reference/*.lean` |
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `LoweringDuckDB.lean`, `LoweringDuckDB/On/Guards.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `Obligations.lean` |
@@ -55,7 +55,7 @@ contract's preconditions.
 | Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Shims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
-| Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `Polars/Tables.lean`, `SubstraitProfile.lean` |
+| Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `DuckDB/Tables.lean`, `Polars/Tables.lean`, `SubstraitProfile.lean` |
 | An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean`, `Polars/Engine.lean` |
 | A proved contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `Sound.lean`, `EngineSound.lean`, `Polars/Engine.lean`, `Spark/Engine.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
@@ -122,7 +122,7 @@ runs that build as the guard. The modules below it import the core as
 `Sverify.Core.*`. The core is parametric in the black-box catalogue: its
 evaluator, `Rel.Allowed` and its theorems take `[Boxes.Ambient]`, and it
 declares no instance. An engine's theorems name the instance: DuckDB's is
-`open scoped Substrait.DuckDB` (`DuckDBBoxes.lean`).
+`open scoped Substrait.DuckDB` (`DuckDB/Boxes.lean`).
 
 | Module | Job |
 |---|---|
@@ -213,6 +213,26 @@ the guard. The modules below it import it as
 | `Sound.lean` | What an engine's model is sound for (`Engine.Sound`), guard elimination's side condition, and verified contracts on an engine (#900) |
 | `Tables.lean` | The table machinery: the observation rows' constructors and evidence, what reruns give (`withReruns`), `EngineProfile` and its checks, and the JSON a table is reported in |
 | `Transfer.lean` | The options a plan meets, and transfer between profiles |
+
+### DuckDB: `engines/duckdb/Sverify/DuckDB/`
+
+DuckDB's Lean half, in the Lake package `sverify-duckdb` beside its Python
+distribution (#1189, step 5). It imports only the core, the analysis and
+engines-common: `lake build` in `engines/duckdb/` builds it on those alone,
+and CI runs that build as the guard. The modules below import it as
+`Sverify.DuckDB.*`. The lowering's generated entries (`LoweringDuckDB/On`),
+`Engine.duckdb` and the lift stay in the root package until the generators
+move to engines-common.
+
+| Module | Job |
+|---|---|
+| `DuckDB/Functions.lean` | `Profile.duckdb` under DuckDB's settings and `Profile.duckdbWritten`, as the SQL printer writes it, on the core alone |
+| `DuckDB/Tables.lean` | DuckDB's choice table and observation rows, refining the core for every setting |
+| `DuckDB/Profile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, and `Rel.duckdb_sound` |
+| `DuckDB/Boxes.lean` | DuckDB's black-box catalogue `Boxes.duckdb`: its rows, Lean's evaluators, the opaque functions, `Boxes.duckdb_wf`, and the scoped instance `Substrait.DuckDB.boxes` |
+| `DuckDB/VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
+| `DuckDB/SQL.lean` | What each DuckDB SQL function means under each semantics |
+| `DuckDB/LoweringLemmas.lean` | Lemmas the generated DuckDB lowering computes with |
 
 ### Polars: `engines/polars/Sverify/Polars/`
 
@@ -309,11 +329,7 @@ and CI runs that build as the guard. The modules below import it as
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
 | `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
-| `DuckDBBoxes.lean` | DuckDB's black-box catalogue `Boxes.duckdb`: its rows, Lean's evaluators, the opaque functions, `Boxes.duckdb_wf`, and the scoped instance `Substrait.DuckDB.boxes` |
-| `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
-| `DuckDBFunctions.lean` | `Profile.duckdb` under DuckDB's settings and `Profile.duckdbWritten`, as the SQL printer writes it, on the core alone |
-| `DuckDBProfile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, and `Rel.duckdb_sound` |
-| `EngineTables.lean` | DuckDB's choice tables and observation rows, refining the core; `builtinEngines`; the dependency and transfer reports over them |
+| `EngineTables.lean` | `builtinEngines`, the engines' tables together, and the dependency and transfer reports over them |
 | `SubstraitProfile.lean` | Substrait's own semantics as a profile |
 | `Obligations.lean` | The realizability table: how each engine discharges each option |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
@@ -329,10 +345,8 @@ and CI runs that build as the guard. The modules below import it as
 | `LoweringCache.lean` | The lowering hints (generated) |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |
 | `LoweringDuckDB.lean` | The DuckDB lowering's table and its exports |
-| `LoweringDuckDB/Lemmas.lean` | Lemmas the generated DuckDB lowering computes with |
 | `LoweringDuckDB/Schemas.lean` | DuckDB's hand-written template schemas, for the search |
 | `LoweringDuckDB/On/*.lean` | The DuckDB lowering's entries, one module per area, and their guards (generated) |
-| `DuckDBSQL.lean` | What each DuckDB SQL function means under each semantics |
 | `LiftHint.lean` | The hints that tell the lift search which template to try first |
 | `LiftCache.lean` | The lift hints (generated) |
 | `LiftSearch.lean` | `generate_lift`, the lift search |
@@ -389,7 +403,7 @@ regenerate it. Don't edit them by hand.
 | Modules | Regenerate with | When |
 |---|---|---|
 | `LoweringDuckDB/On/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.duckdb`, the generator or the model's functions change |
-| `LiftDuckDB/Duckdb/*.lean`, `LiftDuckDB/Reference/*.lean` | `poe regen-lift` (from `python/`) | `DuckDBSQL.lean`, the generator or the model's functions change |
+| `LiftDuckDB/Duckdb/*.lean`, `LiftDuckDB/Reference/*.lean` | `poe regen-lift` (from `python/`) | `DuckDB/SQL.lean`, the generator or the model's functions change |
 | `LoweringCache.lean` | `.lake/build/bin/substrait-check --lowering-cache > SubstraitLean/LoweringCache.lean` | after a regenerated lowering, to keep the search quick |
 | `LiftCache.lean` | `.lake/build/bin/substrait-check --lift-cache > SubstraitLean/LiftCache.lean` | after a regenerated lift |
 
