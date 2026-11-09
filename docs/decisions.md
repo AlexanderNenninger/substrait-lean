@@ -6,6 +6,7 @@ reference, the core and the profiles make, with when and why it was made.
 [reference-semantics.md](reference-semantics.md) states the resulting
 behaviour for users, without the history.
 
+
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
 D6 as the first draft's alternative, the others as it recommended.
 D9 and the decisions after it were made after #568's classes and #577's translation policy.
@@ -249,7 +250,7 @@ An error in either operand of `AND` or `OR` may raise, whatever the other
 operand's value (#604). `p AND q` is not a guard for `q`: in
 `x <> 0 AND 10 // x > 1`, the division may run on the rows where `x = 0`.
 The reference has always evaluated both operands (`Expr.issues` of `.bin`,
-`SubstraitLean/Safety.lean`); D19 states it as a decision.
+`analysis/Sverify/Analysis/Safety.lean`); D19 states it as a decision.
 
 - It is what the engines do. DuckDB evaluates `AND` and `OR` as values,
   both operands first
@@ -288,7 +289,7 @@ such a constant was proved and raised on DuckDB
 ([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609)).
 Under D21 the reference now counts every constant subexpression that raises
 as raising for the whole plan, whatever the data and whichever branch a row
-takes (`Rel.constIssues` in `SubstraitLean/Safety.lean`): stricter than
+takes (`Rel.constIssues` in `analysis/Sverify/Analysis/Safety.lean`): stricter than
 DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
 raise are rare in real queries. No precondition rules one out; the report
 names the constant.
@@ -501,7 +502,7 @@ keeps the two apart.
 
 ### D27. The size hypothesis is the only size assumption
 
-`Rel.Small` (`SubstraitLean/Safety.lean`): every string has fewer than 2³²
+`Rel.Small` (`analysis/Sverify/Analysis/Safety.lean`): every string has fewer than 2³²
 characters, every relation a window reads fewer than 2⁶² rows, and every
 relation an aggregate reads fewer than 2⁶³. It is a hypothesis of every
 soundness theorem over windows and aggregates, never an axiom, and no other

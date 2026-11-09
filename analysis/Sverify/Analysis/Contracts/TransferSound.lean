@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts.Transfer
+import Sverify.Analysis.Contracts.Transfer
 
 /-!
 # Contracts: TransferSound
@@ -6,7 +6,7 @@ import SubstraitLean.Contracts.Transfer
 Soundness of the transfer functions, ending in `Expr.abs_sound`: abstract
 expression evaluation over-approximates `Expr.eval`.
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 

@@ -1,6 +1,6 @@
 import SubstraitLean.Engine
 import Sverify.Core.AllowedNear
-import SubstraitLean.AllowedAnalysis
+import Sverify.Analysis.AllowedAnalysis
 
 /-!
 # What an engine's model is sound for (#900)

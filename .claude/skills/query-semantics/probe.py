@@ -70,7 +70,7 @@ def short(e: BaseException | str) -> str:
     return re.sub(r"\s+", " ", msg)[:160]
 
 
-#: Run-time errors the Lean model marks (`SubstraitLean/Safety.lean`): its
+#: Run-time errors the Lean model marks (`analysis/Sverify/Analysis/Safety.lean`): its
 #: value is NULL there, and the engines running Lean's plan raise by design.
 RUNTIME = re.compile(r"zero|overflow|DivideByZero|DivisionByZero|out of range", re.IGNORECASE)
 

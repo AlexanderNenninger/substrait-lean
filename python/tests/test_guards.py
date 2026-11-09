@@ -1,4 +1,4 @@
-"""Guard elimination (`SubstraitLean/Guards.lean`): when a contract report is
+"""Guard elimination (`analysis/Sverify/Analysis/Guards.lean`): when a contract report is
 `guard_free`, the SQL and the Polars plan without run-time checks give the
 same result as with them, on data that meets the preconditions."""
 

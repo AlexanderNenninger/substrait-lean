@@ -21,7 +21,7 @@
    "cpu_s": 30,
    "rss_mb": 2769
   },
-  "SubstraitLean.AllowedAnalysis": {
+  "Sverify.Analysis.AllowedAnalysis": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -53,35 +53,35 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts": {
+  "Sverify.Analysis.Contracts": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts.Facts": {
+  "Sverify.Analysis.Contracts.Facts": {
    "cpu_s": 64,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts.Lattice": {
+  "Sverify.Analysis.Contracts.Lattice": {
    "cpu_s": 43,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts.Plan": {
+  "Sverify.Analysis.Contracts.Plan": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts.Refine": {
+  "Sverify.Analysis.Contracts.Refine": {
    "cpu_s": 35,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts.Sound": {
+  "Sverify.Analysis.Contracts.Sound": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts.Transfer": {
+  "Sverify.Analysis.Contracts.Transfer": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Contracts.TransferSound": {
+  "Sverify.Analysis.Contracts.TransferSound": {
    "cpu_s": 62,
    "rss_mb": 1760
   },
@@ -133,7 +133,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Guards": {
+  "Sverify.Analysis.Guards": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -141,7 +141,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Incremental": {
+  "Sverify.Analysis.Incremental": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -165,11 +165,11 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Keys": {
+  "Sverify.Analysis.Keys": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Knowledge": {
+  "Sverify.Analysis.Knowledge": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -333,7 +333,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Partition": {
+  "Sverify.Analysis.Partition": {
    "cpu_s": 46,
    "rss_mb": 1830
   },
@@ -377,11 +377,11 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Rows": {
+  "Sverify.Analysis.Rows": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Safety": {
+  "Sverify.Analysis.Safety": {
    "cpu_s": 69,
    "rss_mb": 1838
   },
@@ -429,11 +429,11 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.WSet": {
+  "Sverify.Analysis.WSet": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Weighted": {
+  "Sverify.Analysis.Weighted": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

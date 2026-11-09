@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts.Facts
+import Sverify.Analysis.Contracts.Facts
 
 /-!
 # Contracts: Plan
@@ -7,7 +7,7 @@ Abstract plan evaluation: row counts and float error bounds (#85), the
 `Rel.aeval` mutual, its one-pass form `Rel.lane` (#903) and the `@[csimp]`
 lemmas that run it.
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 

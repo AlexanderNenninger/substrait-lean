@@ -536,7 +536,7 @@ through `DECIMAL(38,0)`, `canonical` doubles, explicit `NULLS FIRST/LAST`,
 guards that raise) and refuses the plan where it cannot (`UnsupportedError`).
 "Raise rather than differ" is the standard each one is tested against:
 `Rel.eval` (`lean_rows`), another engine's rows, or a raised error. Guard
-elimination (`SubstraitLean/Guards.lean`) is the part already proved in Lean.
+elimination (`analysis/Sverify/Analysis/Guards.lean`) is the part already proved in Lean.
 
 ### Polars
 
@@ -584,7 +584,7 @@ translator pins the semantics and takes no Polars defaults:
   outside 64 bits raises `IntegerOverflow`, where DataFusion wraps silently
   (`2^62 + 2^62` gives `-2^63`). Integer division and remainder truncate
   toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
-* Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
+* Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`: division by
   zero, `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions
   that do not compile, and calendar functions outside the reference's timestamps
   (0001-01-01 to 9999-12-31). Each expression

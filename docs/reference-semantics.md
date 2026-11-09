@@ -54,7 +54,7 @@ A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
 of every allowed result. Where a plan leaves ties open, the contract checker
 proves its postconditions and keys over every order
-(`Rel.OrderAllowed`, `contract_sound_all`, `core/Sverify/Core/OrderAllowed.lean`, `SubstraitLean/Contracts.lean`), and
+(`Rel.OrderAllowed`, `contract_sound_all`, `core/Sverify/Core/OrderAllowed.lean`, `analysis/Sverify/Analysis/Contracts.lean`), and
 `Rel.eval`'s order is the
 [deterministic profile's](#tie-order-and-the-deterministic-profile).
 `Report.deterministic` is false where rows may tie in the order of a window,
@@ -148,7 +148,7 @@ Engine quirks belong in profiles, never in the reference. While sverify is on
 
 `Rel.eval` has no error value. It gives a row's value as if nothing went
 wrong, and `verify` reports separately where the plan may raise
-(`Rel.mayIssues`, `SubstraitLean/Safety.lean`). On a row where an error issue
+(`Rel.mayIssues`, `analysis/Sverify/Analysis/Safety.lean`). On a row where an error issue
 fires, `Rel.eval`'s value is not the answer.
 
 * An error means "may raise". The reference may raise wherever the plan
@@ -198,7 +198,7 @@ fires, `Rel.eval`'s value is not the answer.
   or a bound on the rows per grouping key (`sv.rows_per(cols, at_most=n)`)
   discharges it statically: with values in `[-m, m]` and at most `n` rows
   in a group, `n · m < 2⁶³` proves the sum fits (`Rel.issuesCapped_sound` in
-  [Rows.lean](../SubstraitLean/Rows.lean)).
+  [Rows.lean](../analysis/Sverify/Analysis/Rows.lean)).
 
 ## Core: numbers and NULLs
 
@@ -677,7 +677,7 @@ engine differs ([the engines](stability.md#engines)).
   `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
   DataFusion; here it is reported as an overflow.)
 * Overflow is an error at the declared width. `Rel.eval` computes exact
-  integers, and [Safety.lean](../SubstraitLean/Safety.lean) reports every operation whose
+  integers, and [Safety.lean](../analysis/Sverify/Analysis/Safety.lean) reports every operation whose
   result may not fit its declared width (64 bits, or narrower integers). Where DataFusion fails instead (division, `POWER`, casts), the
   value in the model is `NULL`.
 * Strings are Unicode scalar values. `substring`, `strpos`, `LIKE`, `btrim`, `||`,

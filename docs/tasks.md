@@ -480,7 +480,7 @@ print(sv.verify(per_minute))
 
 `sv.max_rows(n)` in `requires` states that an input has at most `n` rows.
 Lean carries the caps through the plan
-([Rows.lean](../SubstraitLean/Rows.lean)), and an integer `SUM` of values in
+([Rows.lean](../analysis/Sverify/Analysis/Rows.lean)), and an integer `SUM` of values in
 `[-m, m]` over at most `n` rows, with `n · m < 2⁶³`, is proved to fit, with
 nothing to check on the data:
 
@@ -537,7 +537,7 @@ assert not report.assumed and not report.errors
 
 * Filters, sorts, `LIMIT`, `DISTINCT`, semi-joins, projections and
   `UNION ALL` keep the bounds (`Rel.perKey_sound` in
-  [Rows.lean](../SubstraitLean/Rows.lean)), and so does a join on a `unique`
+  [Rows.lean](../analysis/Sverify/Analysis/Rows.lean)), and so does a join on a `unique`
   key of its right side. A `unique` key is a bound of 1.
 * An aggregate grouping by all of a bound's columns has groups of at most
   that many rows (`Rel.groupRows_sound`), which bounds its integer and

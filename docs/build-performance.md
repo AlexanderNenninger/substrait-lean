@@ -87,6 +87,18 @@ The regression this was made for, #1088's split of the contract check
 ([#1330](https://github.com/AlexanderNenninger/substrait-lean/pull/1330)), made the set 2.0 times as slow and tpcds-q27 5.6
 times.
 
+## CI's shards
+
+CI splits the `core` tests three ways (`SVERIFY_SHARD`) and oracle A's
+replay four ways (`--shard`). [`python/tests/shards.json`](../python/tests/shards.json)
+and [`oracle_shards.json`](../python/tools/sverify_dev/oracle_shards.json)
+assign each test of at least 0.05 s, and each replayed file, to a shard,
+longest first to the least loaded, from durations a CI run recorded
+(`SVERIFY_TEST_TIMINGS`, `SVERIFY_SLT_TIMINGS`); anything they don't list
+keeps the old rule, a hash of the node id or every `n`th file. When the
+shards drift apart, record a run with those variables set and run
+`python -m sverify_dev.shard_durations --tests … --slt …`.
+
 ## Patterns that cost
 
 - `simp` or `decide` unfolding a large constant. `canon`'s `2^2045`
@@ -154,9 +166,9 @@ time on the runner.
 | `SubstraitLean.LoweringDuckDB.On.Guards` | 64 | 28 | 2406 | 51 |
 | `SubstraitLean.LoweringDuckDB.On.Native` | 51 | 11 | 1881 | 36 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Compare` | 49 | 70 | 1874 | 37 |
-| `SubstraitLean.Safety` | 44 | 18 | 1219 | 46 |
+| `Sverify.Analysis.Safety` | 44 | 18 | 1219 | 46 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Math` | 43 | 61 | 1858 | 32 |
-| `SubstraitLean.Contracts.TransferSound` | 41 | 16 | 1140 | 36 |
+| `Sverify.Analysis.Contracts.TransferSound` | 41 | 16 | 1140 | 36 |
 | `Sverify.Core.Kinds` | 40 | 26 | 1074 | 32 |
 
 CPU time above wall time is Lean elaborating a module's theorems in

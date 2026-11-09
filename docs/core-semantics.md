@@ -215,7 +215,7 @@ preference, and refuses the plan where it supports none (as
 
 The core, as a specification, allows raising anywhere: a profile states
 where it may raise, its raise set, a constraint like any other, and `verify`'s error issues
-(`Rel.mayIssues`, `SubstraitLean/Safety.lean`) are the reference's raise
+(`Rel.mayIssues`, `analysis/Sverify/Analysis/Safety.lean`) are the reference's raise
 set. A theorem that a plan cannot raise is then a theorem about one profile's
 raise set, and holds on every profile whose raise set is smaller. This keeps
 principle 4 (an error means "may raise", so rewrites stay refinements) and
