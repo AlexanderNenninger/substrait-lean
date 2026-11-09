@@ -472,17 +472,29 @@ def builtinEngines : List EngineProfile := [
       ("Dialect.canon", .expression), ("null_order", .argument), ("sort on the keys", .sort),
       ("decimal_negate_sub", .expression)] }]
 
-/-- **Every DuckDB setting refines the core.** -/
-theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table := by
+/-! Each table's test against the core (`ProfileTable.leB`), decided once in
+the kernel: the refinements below and `builtinEngines_leCore` both use it. -/
+
+theorem Profile.duckdb_leB (s : DuckDBSettings) :
+    (Profile.duckdb.table s).leB Profile.core.table = true := by
   obtain ⟨e, i⟩ := s
-  apply ProfileTable.le_of_leB
   cases e <;> cases i <;> decide +kernel
 
+theorem Profile.polars_leB : Profile.polars.table.leB Profile.core.table = true := by
+  decide +kernel
+
+theorem Profile.spark_leB : Profile.spark.table.leB Profile.core.table = true := by
+  decide +kernel
+
+/-- **Every DuckDB setting refines the core.** -/
+theorem Profile.duckdb_le_core (s : DuckDBSettings) : (Profile.duckdb.table s).Le Profile.core.table :=
+  ProfileTable.le_of_leB (Profile.duckdb_leB s)
+
 theorem Profile.polars_le_core : Profile.polars.table.Le Profile.core.table :=
-  ProfileTable.le_of_leB (by decide +kernel)
+  ProfileTable.le_of_leB Profile.polars_leB
 
 theorem Profile.spark_le_core : Profile.spark.table.Le Profile.core.table :=
-  ProfileTable.le_of_leB (by decide +kernel)
+  ProfileTable.le_of_leB Profile.spark_leB
 
 /-- `Allowed_duckdb ⊆ Allowed_core`, for every setting. -/
 theorem Rel.allowed_duckdb_core (s : DuckDBSettings) {cat : Catalog} {r : Rel} {out : Relation}
