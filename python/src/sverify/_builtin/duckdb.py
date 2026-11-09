@@ -163,6 +163,7 @@ def _dialect() -> Any:
 PLUGIN = ProfilePlugin(
     "duckdb",
     title="DuckDB",
+    default=True,
     translation="sverify's DuckDB lowering, proved for every plan, and its SQL writer",
     settings=SETTINGS,
     installed_version=_version,
