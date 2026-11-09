@@ -762,17 +762,18 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
 /-- What the reference allows an aggregate to give on `vs`: its value, or for
-`MIN` and `MAX` any value of the value's class (`-0.0` for `0.0`, the
-negative NaN for the NaN, D31), present in `vs` or not: engines emit a
-class's canonical value. `AggFn.apply` picks the raw-least member. -/
+`MIN` and `MAX` another value of the value's class (`-0.0` for `0.0`, the
+negative NaN for the NaN, D31): a member of `vs`, or the class's canonical
+value, which engines emit. `AggFn.apply` picks the raw-least member. -/
 def AggFn.Picks (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v.canonV = (f.apply vs).canonV)
+  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v.canonV = (f.apply vs).canonV ∧
+    (v ∈ vs ∨ v = (f.apply vs).canonV))
 
 theorem AggFn.picks_apply (f : AggFn) (vs : List Value) : f.Picks vs (f.apply vs) := .inl rfl
 
 theorem AggFn.Picks.canon {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v) :
     v.canonV = (f.apply vs).canonV := by
-  rcases h with rfl | ⟨-, h⟩
+  rcases h with rfl | ⟨-, h, -⟩
   · rfl
   · exact h
 
@@ -780,7 +781,7 @@ theorem AggFn.Picks.canon {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks
 value. -/
 theorem AggFn.Picks.eq {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v)
     (hlone : ∀ w ∈ vs, w.Lone) : v = f.apply vs := by
-  rcases h with h | ⟨hf, hc⟩
+  rcases h with h | ⟨hf, hc, -⟩
   · exact h
   · cases vs with
     | nil =>

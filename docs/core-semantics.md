@@ -1925,20 +1925,21 @@ raises or leaves the result open where engines disagree."
   bound nothing, by their shape alone (`Value.ShapeEq`, `mapAbs_top_sound`).
 - `ORDER BY` is an identity boundary too: it sorts by a total preorder on
   canonical values, and rows tied on it may come in any order (`Allowed`).
-- Where a class has several members, the reference allows any value of the
-  class, present in the input or not, as long as the class is: a `DISTINCT`
-  row, a `GROUP BY` key, and a `MIN` or `MAX` (`IsReps`, `AggFn.Picks`).
-  Engines emit a class's canonical value, so a group of `-0.0`s comes out
-  as `+0.0`, and any NaN code stands for the NaN. `Rel.eval` keeps one
-  admitted value, the raw-least member. Where the keys and arguments hold no
-  doubles, each class has one member and the output is unique
-  (`aggAllowed_eq`, `Rel.detPlan`'s `noDoubles` guards). A whole condition
-  can tell the members apart (`atan2`), so a `DISTINCT` keeps only the facts
-  that read numbers by their canonical codes (`Fact.classSafe`).
-- Incremental maintenance groups its state by class: the maintained output
-  of `GROUP BY` and `DISTINCT` is one the reference allows
-  (`LinearAgg.aggregate_maintained`, `distinct_maintained`,
-  `ExtremeAgg.extreme_maintained`).
+- Where a class has several members, a `DISTINCT` row, a `GROUP BY` key and
+  a `MIN` or `MAX` may be any member of the class present in the input, or
+  the class's canonical value (`IsReps`, `AggFn.Picks`). Spark and DuckDB
+  emit the canonical value, so a group of `-0.0`s comes out as `+0.0`;
+  Polars emits a present member. `Rel.eval` keeps one admitted value, the
+  raw-least member. Where the keys and arguments hold no doubles, each class
+  has one member and the output is unique (`aggAllowed_eq`, `Rel.detPlan`'s
+  `noDoubles` guards). A whole condition can tell the members apart
+  (`atan2`), so a `DISTINCT` keeps the facts with one value on a class: the
+  comparisons of numbers, and conditions `Expr.canonSafe` admits
+  (`Fact.classSafe`).
+- Incremental maintenance keeps its state per class and emits the class's
+  canonical key: the maintained output of `GROUP BY` and `DISTINCT` is one
+  the reference allows (`LinearAgg.aggregate_maintained`,
+  `distinct_maintained`, `ExtremeAgg.extreme_maintained`).
 
 Why: the reference must compute what the engines compute on a stored or
 computed `-0.0`. Canonicalising reads or results instead is unsound: `atan2`

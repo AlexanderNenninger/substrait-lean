@@ -137,7 +137,7 @@ theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {sc : M
     {K D : Row → Bool} (hKc : RespectsCanon K) (hDc : RespectsCanon D)
     (hT : TouchedGroups.Touches gs K dels ins)
     (hD : ∀ r ∈ dels, D (groupKey gs r) = true) {old : Relation} (hold : aggAllowed gs ms rows old)
-    {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon)
+    {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon) (hkc : ∀ k ∈ ks, k.canon = k)
     (hpos : ∀ k ∈ ks, K k = true ∧ D k = false ∧
       0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k (ZSet.lift ins))
     (hcov : ∀ k, K k = true → D k = false →
@@ -179,7 +179,8 @@ theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {sc : M
       · obtain ⟨hK, hD', hp⟩ := hpos k hk
         rw [← rowsIn_append, ← lift_append] at hp
         obtain ⟨r, hr, he⟩ := rowsIn_lift_pos.mp hp
-        exact ⟨_, List.mem_map_of_mem (List.mem_filter.mpr ⟨hr, hq k hK hD' r he⟩), he.symm⟩
+        exact ⟨_, List.mem_map_of_mem (List.mem_filter.mpr ⟨hr, hq k hK hD' r he⟩), he.symm,
+          .inr ((hkc k hk).symm.trans he.symm)⟩
       · obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hx'
         obtain ⟨hr, hqr⟩ := List.mem_filter.mp hr
         simp only [q, Bool.and_eq_true, Bool.not_eq_true'] at hqr

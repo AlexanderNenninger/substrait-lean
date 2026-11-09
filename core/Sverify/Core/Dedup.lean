@@ -491,24 +491,23 @@ section
 
 variable {α : Type} {c : α → α}
 
-/-- `reps` keeps one value of each class of `l`, any value of the class:
-what the reference allows for `DISTINCT` and `GROUP BY` keys (D31). The
-class must be present in `l`; the value need not be, since engines emit a
-class's canonical value (`+0.0` for a group of `-0.0`s). `canonReps` keeps
-the least member. -/
+/-- `reps` keeps one value of each class of `l`: what the reference allows
+for `DISTINCT` and `GROUP BY` keys (D31). The value is a member of the class
+in `l`, or the class's canonical value, which engines emit (`+0.0` for a
+group of `-0.0`s). `canonReps` keeps the least member. -/
 def IsReps (c' : α → α) (l reps : List α) : Prop :=
-  reps.Pairwise (fun a b => c' a ≠ c' b) ∧ (∀ x ∈ reps, ∃ y ∈ l, c' x = c' y) ∧
+  reps.Pairwise (fun a b => c' a ≠ c' b) ∧ (∀ x ∈ reps, ∃ y ∈ l, c' x = c' y ∧ (x = y ∨ x = c' y)) ∧
     ∀ x ∈ l, ∃ y ∈ reps, c' y = c' x
 
 theorem canonReps_isReps [DecidableEq α] {le : α → α → Bool} (h : RawOrder le) (l : List α) :
     IsReps c l (canonReps c le l) :=
-  ⟨canonReps_pairwise h l, fun x hx => ⟨x, canonReps_sub hx, rfl⟩,
+  ⟨canonReps_pairwise h l, fun x hx => ⟨x, canonReps_sub hx, rfl, .inl rfl⟩,
     fun _ hx => ⟨_, classRep_mem_canonReps hx, classRep_canon _ _⟩⟩
 
 /-- Each representative's class is present. -/
 theorem IsReps.class_mem {l reps : List α} (h : IsReps c l reps) {x : α} (hx : x ∈ reps) :
     ∃ y ∈ l, c x = c y :=
-  h.2.1 x hx
+  let ⟨y, hy, he, _⟩ := h.2.1 x hx; ⟨y, hy, he⟩
 
 /-- A representative of a class with one member is that member. -/
 theorem IsReps.mem_of_lone {l reps : List α} (h : IsReps c l reps)
@@ -541,7 +540,7 @@ theorem IsReps.perm_dedup [DecidableEq α] {l reps : List α} (h : IsReps c l re
 
 theorem IsReps.congr {l l' reps : List α} (h : IsReps c l reps) (hm : ∀ y, y ∈ l ↔ y ∈ l') :
     IsReps c l' reps :=
-  ⟨h.1, fun x hx => by obtain ⟨y, hy, he⟩ := h.2.1 x hx; exact ⟨y, (hm y).mp hy, he⟩,
+  ⟨h.1, fun x hx => by obtain ⟨y, hy, he, ho⟩ := h.2.1 x hx; exact ⟨y, (hm y).mp hy, he, ho⟩,
     fun x hx => h.2.2 x ((hm x).mpr hx)⟩
 
 theorem IsReps.perm {l reps reps' : List α} (h : IsReps c l reps) (hp : reps'.Perm reps) :

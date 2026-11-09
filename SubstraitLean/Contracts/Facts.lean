@@ -51,11 +51,75 @@ theorem FactsHold.append {fs gs : List Fact} {row : Row} (h₁ : FactsHold fs ro
   · exact h₁ f hf
   · exact h₂ f hf
 
+/-- A literal without lists or structs. -/
+def Value.scalar : Value → Bool
+  | .list _ | .struct _ => false
+  | _ => true
+
+/-- A condition with one value on every row of a class of rows equal up to
+canonical codes (D31): comparisons (`=`, `<`) of a column with a scalar
+literal, `IS NULL` of a column, and literals, under `AND`, `OR` and `NOT`.
+Other conditions may tell the members apart (`atan2(-0.0, -1) < 0 <
+atan2(0.0, -1)`). -/
+def Expr.canonSafe : Expr → Bool
+  | .lit _ => true
+  | .bin .and a b | .bin .or a b => a.canonSafe && b.canonSafe
+  | .un .not a => a.canonSafe
+  | .un .isNull (.field _) => true
+  | .bin .eq (.field _) (.lit v) | .bin .lt (.field _) (.lit v)
+  | .bin .eq (.lit v) (.field _) | .bin .lt (.lit v) (.field _) => v.scalar
+  | _ => false
+
+/-- `=` and `<` against a scalar read the other side's canonical value. -/
+theorem cmp_canonV_left {f : BinFn} (hf : f = .eq ∨ f = .lt) (w : Value) {v : Value}
+    (hv : v.scalar = true) : BinFn.apply f w.canonV v = BinFn.apply f w v := by
+  rcases hf with rfl | rfl <;> cases w <;> cases v <;>
+    simp_all [Value.scalar, Value.canonV, BinFn.apply, FloatCode.canon_idem]
+
+theorem cmp_canonV_right {f : BinFn} (hf : f = .eq ∨ f = .lt) (w : Value) {v : Value}
+    (hv : v.scalar = true) : BinFn.apply f v w.canonV = BinFn.apply f v w := by
+  rcases hf with rfl | rfl <;> cases w <;> cases v <;>
+    simp_all [Value.scalar, Value.canonV, BinFn.apply, FloatCode.canon_idem]
+
+theorem isNull_canonV {u w : Value} (h : u.canonV = w.canonV) :
+    UnFn.apply .isNull u = UnFn.apply .isNull w := by
+  cases u <;> cases w <;> simp_all [Value.canonV, UnFn.apply]
+
+/-- **A class-safe condition has one value on a class of rows.** -/
+theorem Expr.canonSafe_eval {x y : Row} (h : x.canon = y.canon) (e : Expr)
+    (hs : e.canonSafe = true) : e.eval x = e.eval y := by
+  have hc := getD_canonV_of_canon h
+  induction e with
+  | lit v => rfl
+  | un f a ih =>
+    cases f
+    case not =>
+      simp only [Expr.canonSafe] at hs
+      simp only [Expr.eval]; rw [ih hs]
+    case isNull =>
+      cases a <;> simp only [Expr.canonSafe, Bool.false_eq_true] at hs
+      simp only [Expr.eval]; exact isNull_canonV (hc _)
+    all_goals (cases a <;> simp [Expr.canonSafe] at hs)
+  | bin f a b iha ihb =>
+    cases f <;>
+      simp (config := { failIfUnchanged := false }) only [Expr.canonSafe,
+        Bool.and_eq_true, Bool.false_eq_true] at hs
+    all_goals first
+      | (simp only [Expr.eval]; rw [iha hs.1, ihb hs.2]; done)
+      | (cases a <;> cases b <;>
+          simp (config := { failIfUnchanged := false }) only [Expr.canonSafe,
+            Bool.false_eq_true] at hs
+         all_goals simp only [Expr.eval]
+         all_goals first
+           | (rw [← cmp_canonV_left (by simp) _ hs, hc, cmp_canonV_left (by simp) _ hs]; done)
+           | (rw [← cmp_canonV_right (by simp) _ hs, hc, cmp_canonV_right (by simp) _ hs]; done))
+  | _ => simp [Expr.canonSafe] at hs
+
 /-- A fact that holds on every row of a class of rows equal up to canonical
-codes (`-0.0` and `0.0`, D31): all but a whole condition, which may tell the
-members apart (`atan2(-0.0, -1) < 0 < atan2(0.0, -1)`). -/
+codes (`-0.0` and `0.0`, D31): the comparisons of numbers, which read
+canonical codes, and a whole condition `Expr.canonSafe` admits. -/
 def Fact.classSafe : Fact → Bool
-  | .holds _ => false
+  | .holds e => e.canonSafe
   | _ => true
 
 /-- A number of kind `k` up to `canonV` is a number of kind `k` with the same
@@ -91,7 +155,10 @@ theorem Fact.holds_of_canon {f : Fact} (hs : f.classSafe = true) {x y : Row}
       cases u <;> cases w <;> simp_all [Value.canonV]
     intro a n ha hn
     exact hy a n (by rw [← hu]; exact ha) (by rw [← hu]; exact hn)
-  | holds e => simp [Fact.classSafe] at hs
+  | holds e =>
+    simp only [Fact.classSafe] at hs
+    simp only [Fact.Holds] at hy ⊢
+    rw [Expr.canonSafe_eval h e hs]; exact hy
 
 theorem FactsHold.filter {fs : List Fact} {row : Row} (h : FactsHold fs row) (p : Fact → Bool) :
     FactsHold (fs.filter p) row := fun f hf => h f (List.mem_filter.mp hf).1
@@ -637,8 +704,8 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
   -- Some of the left rows, or all of the rows in another order or once each.
   | .semi a _ _ _ => a.facts cat F T
   | .orderBy r _ => r.facts cat F T
-  -- `DISTINCT` may give any row of a present class (D31): the facts that
-  -- read numbers by their canonical codes.
+  -- `DISTINCT` may give another row of a present class (D31): the facts
+  -- with one value on a class.
   | .distinct r => (r.facts cat F T).filter Fact.classSafe
   | .aggregate _ gs ms => aggFacts gs.length ms
   | .unnest _ _ => []

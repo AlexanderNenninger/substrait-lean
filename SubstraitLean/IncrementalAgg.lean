@@ -29,8 +29,8 @@ row, and a row is in the output while its count is positive.
   of a group is the aggregate's row (`Measure.eval`) for every measure with
   a sound state.
 * `aggregate_state`: the output rows of the groups with a positive count,
-  one key of each class of keys, are an aggregate the reference allows
-  (`aggAllowed`).
+  the canonical key of each class of keys, are an aggregate the reference
+  allows (`aggAllowed`).
 * `aggregate_maintained`: after a batch, the old rows of the groups the
   batch does not touch, and the rows of the touched groups from the old
   state plus the state of the change, are an aggregate the reference
@@ -38,9 +38,9 @@ row, and a row is in the output while its count is positive.
 * `distinct_state`, `distinct_maintained`: the same for `DISTINCT`.
 
 Groups are classes of keys equal up to canonical codes (`-0.0` and `0.0`,
-D31), as `groupRows` makes them, and a group's row may carry any key of its
-class, as an engine's `GROUP BY` does: so the theorems conclude membership
-in what the reference allows.
+D31), as `groupRows` makes them, and a group's row carries the class's
+canonical key, as Spark's and DuckDB's `GROUP BY` do: so the theorems
+conclude membership in what the reference allows.
 
 The change `Δ` only has to have the right weights (`ChangeFeed`): a change
 feed may delete and re-insert a row.
@@ -378,9 +378,9 @@ theorem Measure.Allowed.perm {m : Measure} {rows rows' : Relation} {v : Value}
 
 /-! ## Aggregates
 
-The state keeps one row per class of keys, and a group's output row may
-carry any key of its class: what `aggAllowed` allows (D31), and what an
-engine's `GROUP BY` gives. So the theorems conclude that the maintained rows
+The state keeps one row per class of keys, and a group's output row carries
+the class's canonical key, as Spark's and DuckDB's `GROUP BY` do: an output
+`aggAllowed` allows (D31). So the theorems conclude that the maintained rows
 are an output the reference allows. -/
 
 variable {gs : List Expr} {ms : List Measure}
@@ -391,7 +391,7 @@ whose count is positive, are an aggregate of `rows` the reference allows. -/
 theorem aggregate_state (hg : gs ≠ []) {st : Measure → LinState}
     (hst : ∀ m ∈ ms, (st m).Sound m) {rows : Relation} (hgood : ∀ m ∈ ms, (st m).Good m rows)
     {z : ZSet} (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) {ks : List Row}
-    (hks : ks.Pairwise fun a b => a.canon ≠ b.canon) (hpos : ∀ k ∈ ks, 0 < rowsIn gs k z)
+    (hks : ks.Pairwise fun a b => a.canon ≠ b.canon) (hkc : ∀ k ∈ ks, k.canon = k) (hpos : ∀ k ∈ ks, 0 < rowsIn gs k z)
     (hcov : ∀ k, 0 < rowsIn gs k z → ∃ k' ∈ ks, k'.canon = k.canon) :
     aggAllowed gs ms rows (ks.map (outRow gs ms st z)) := by
   have hge : gs.isEmpty = false := by simpa using hg
@@ -402,7 +402,7 @@ theorem aggregate_state (hg : gs ≠ []) {st : Measure → LinState}
   · have := hpos k hk
     rw [rowsIn_congr hz] at this
     obtain ⟨r, hr, he⟩ := rowsIn_lift_pos.mp this
-    exact ⟨_, List.mem_map_of_mem hr, he.symm⟩
+    exact ⟨_, List.mem_map_of_mem hr, he.symm, .inr ((hkc k hk).symm.trans he.symm)⟩
   · obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hx
     refine hcov _ ?_
     rw [rowsIn_congr hz]
@@ -438,10 +438,10 @@ theorem aggAllowed_filter_key (hg : gs ≠ []) {p : Row → Bool} (hp : Respects
   obtain ⟨ks, hr, hf⟩ := h
   have hpk : ∀ k ∈ ks.filter p, p k = true := fun k hk => (List.mem_filter.mp hk).2
   refine ⟨ks.filter p, ⟨hr.1.sublist List.filter_sublist, fun k hk => ?_, fun x hx => ?_⟩, ?_⟩
-  · obtain ⟨_, hy, he⟩ := hr.class_mem (List.mem_filter.mp hk).1
+  · obtain ⟨_, hy, he, ho⟩ := hr.2.1 _ (List.mem_filter.mp hk).1
     obtain ⟨r, hr', rfl⟩ := List.mem_map.mp hy
     have : p (groupKey gs r) = true := by rw [← hp _ _ he]; exact hpk k hk
-    exact ⟨_, List.mem_map_of_mem (List.mem_filter.mpr ⟨hr', this⟩), he⟩
+    exact ⟨_, List.mem_map_of_mem (List.mem_filter.mpr ⟨hr', this⟩), he, ho⟩
   · obtain ⟨r, hr', rfl⟩ := List.mem_map.mp hx
     have hpr := (List.mem_filter.mp hr').2
     obtain ⟨y, hy, he⟩ := hr.2.2 _ (List.mem_map_of_mem (List.mem_filter.mp hr').1)
@@ -468,12 +468,13 @@ theorem aggAllowed_append (hg : gs ≠ []) {p : Row → Bool} (hp : RespectsCano
   -- A key's class decides the predicate.
   have side : ∀ {q : Row → Bool}, RespectsCanon q → ∀ {ks : List Row},
       IsReps Row.canon ((rows.filter fun r => q (groupKey gs r)).map (groupKey gs)) ks →
-        ∀ k ∈ ks, q k = true ∧ ∃ y ∈ rows.map (groupKey gs), k.canon = y.canon := by
+        ∀ k ∈ ks, q k = true ∧
+          ∃ y ∈ rows.map (groupKey gs), k.canon = y.canon ∧ (k = y ∨ k = y.canon) := by
     intro q hq ks h k hk
-    obtain ⟨_, hy, he⟩ := h.class_mem hk
+    obtain ⟨_, hy, he, ho⟩ := h.2.1 k hk
     obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hy
     exact ⟨by rw [hq _ _ he]; exact (List.mem_filter.mp hr).2,
-      _, List.mem_map_of_mem (List.mem_filter.mp hr).1, he⟩
+      _, List.mem_map_of_mem (List.mem_filter.mp hr).1, he, ho⟩
   refine ⟨ka ++ kb, ⟨?_, fun x hx => ?_, fun x hx => ?_⟩, Forall2.append ?_ ?_⟩
   · refine List.pairwise_append.mpr ⟨hra.1, hrb.1, fun a ha b hb he => ?_⟩
     have h1 := (side hp hra a ha).1
@@ -506,7 +507,7 @@ theorem aggregate_maintained (hg : gs ≠ []) {st : Measure → LinState}
     (hΔ : ∀ r, (ZSet.lift rows ++ Δ).weight r = (ZSet.lift rows').weight r)
     {K : Row → Bool} (hKc : RespectsCanon K)
     (hK : ∀ x ∈ Δ, K (groupKey gs x.1) = true) {old : Relation} (hold : aggAllowed gs ms rows old)
-    {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon)
+    {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon) (hkc : ∀ k ∈ ks, k.canon = k)
     (hpos : ∀ k ∈ ks, K k = true ∧ 0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k Δ)
     (hcov : ∀ k, K k = true → 0 < rowsIn gs k (ZSet.lift rows) + rowsIn gs k Δ →
       ∃ k' ∈ ks, k'.canon = k.canon) :
@@ -560,12 +561,12 @@ theorem aggregate_maintained (hg : gs ≠ []) {st : Measure → LinState}
     rw [hku a ha, (hpos b hb).1] at this; exact Bool.false_ne_true this
   · -- Each key's class has rows in `rows'`.
     rcases List.mem_append.mp hx with hx | hx
-    · obtain ⟨_, hy, he⟩ := hr0.class_mem (List.mem_filter.mp hx).1
+    · obtain ⟨_, hy, he, ho⟩ := hr0.2.1 _ (List.mem_filter.mp hx).1
       obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hy
       have hKr : K (groupKey gs r) = false := by rw [← hKc _ _ he]; exact hku x hx
-      exact ⟨_, List.mem_map_of_mem ((hmem r hKr).mpr hr), he⟩
+      exact ⟨_, List.mem_map_of_mem ((hmem r hKr).mpr hr), he, ho⟩
     · obtain ⟨r, hr, he⟩ := (hnew x).mp (hpos x hx).2
-      exact ⟨_, List.mem_map_of_mem hr, he.symm⟩
+      exact ⟨_, List.mem_map_of_mem hr, he.symm, .inr ((hkc x hx).symm.trans he.symm)⟩
   · -- Each class of `rows'` has a key.
     obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hx
     cases hKr : K (groupKey gs r)
@@ -597,8 +598,8 @@ theorem aggregate_maintained (hg : gs ≠ []) {st : Measure → LinState}
 /-! ## `DISTINCT`
 
 The state keeps a count per class of rows equal up to canonical codes, and
-the output one row of each class with a positive count, any row of it:
-what `Rel.Allowed` allows for `DISTINCT` (`IsReps`, D31). -/
+the output the canonical row of each class with a positive count: what
+`Rel.Allowed` allows for `DISTINCT` (`IsReps`, D31). -/
 
 /-- The weight of the rows in `k`'s class. -/
 def classIn (k : Row) (z : ZSet) : Int := ZSet.lin (fun r => ind (r.canon == k.canon) 1) z
@@ -620,13 +621,13 @@ the bag `rows`, one row of each class whose count is positive is a
 `DISTINCT` of `rows` the reference allows. -/
 theorem distinct_state {rows : Relation} {z : ZSet}
     (hz : ∀ r, z.weight r = (ZSet.lift rows).weight r) {ks : List Row}
-    (hks : ks.Pairwise fun a b => a.canon ≠ b.canon) (hpos : ∀ k ∈ ks, 0 < classIn k z)
+    (hks : ks.Pairwise fun a b => a.canon ≠ b.canon) (hkc : ∀ k ∈ ks, k.canon = k) (hpos : ∀ k ∈ ks, 0 < classIn k z)
     (hcov : ∀ k, 0 < classIn k z → ∃ k' ∈ ks, k'.canon = k.canon) : IsReps Row.canon rows ks := by
   refine ⟨hks, fun k hk => ?_, fun x hx => hcov x ?_⟩
   · have := hpos k hk
     rw [classIn_congr hz] at this
     obtain ⟨r, hr, he⟩ := classIn_lift_pos.mp this
-    exact ⟨r, hr, he.symm⟩
+    exact ⟨r, hr, he.symm, .inr ((hkc k hk).symm.trans he.symm)⟩
   · rw [classIn_congr hz]; exact classIn_lift_pos.mpr ⟨x, hx, rfl⟩
 
 /-- **Maintaining `DISTINCT`.** A batch changes the input bag from `rows`
@@ -639,7 +640,7 @@ theorem distinct_maintained {rows rows' : Relation} {Δ : ZSet}
     (hΔ : ∀ r, (ZSet.lift rows ++ Δ).weight r = (ZSet.lift rows').weight r)
     {K : Row → Bool} (hKc : RespectsCanon K)
     (hK : ∀ x ∈ Δ, K x.1 = true) {old : Relation} (hold : IsReps Row.canon rows old)
-    {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon)
+    {ks : List Row} (hks : ks.Pairwise fun a b => a.canon ≠ b.canon) (hkc : ∀ k ∈ ks, k.canon = k)
     (hpos : ∀ k ∈ ks, K k = true ∧ 0 < classIn k (ZSet.lift rows) + classIn k Δ)
     (hcov : ∀ k, K k = true → 0 < classIn k (ZSet.lift rows) + classIn k Δ →
       ∃ k' ∈ ks, k'.canon = k.canon) :
@@ -664,11 +665,11 @@ theorem distinct_maintained {rows rows' : Relation} {Δ : ZSet}
     have := hKc a b he
     rw [hku a ha, (hpos b hb).1] at this; exact Bool.false_ne_true this
   · rcases List.mem_append.mp hx with hx | hx
-    · obtain ⟨y, hy, he⟩ := hold.class_mem (List.mem_filter.mp hx).1
+    · obtain ⟨y, hy, he, ho⟩ := hold.2.1 x (List.mem_filter.mp hx).1
       have hKy : K y = false := by rw [← hKc _ _ he]; exact hku x hx
-      exact ⟨y, (hmem y hKy).mpr hy, he⟩
+      exact ⟨y, (hmem y hKy).mpr hy, he, ho⟩
     · obtain ⟨r, hr, he⟩ := (hnew x).mp (hpos x hx).2
-      exact ⟨r, hr, he.symm⟩
+      exact ⟨r, hr, he.symm, .inr ((hkc x hx).symm.trans he.symm)⟩
   · cases hKx : K x
     · obtain ⟨y, hy, he⟩ := hold.2.2 x ((hmem x hKx).mp hx)
       have hKy : K y = false := by rw [hKc _ _ he]; exact hKx

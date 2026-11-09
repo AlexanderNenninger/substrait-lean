@@ -99,9 +99,12 @@ theorem Measure.allowed_picks {m : Measure} (hm : m.orderFree = true) {rows : Re
   have he : m.fn.apply (m.inputs s) = m.fn.apply (m.inputs rows) := by
     rw [← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm),
       ← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm), Measure.eval_perm hm hs]
-  rcases hv with hv | ⟨hf, hc⟩
+  rcases hv with hv | ⟨hf, hc, hm⟩
   · exact .inl (hv.trans he)
-  · exact .inr ⟨hf, hc.trans (by rw [he])⟩
+  · refine .inr ⟨hf, hc.trans (by rw [he]), ?_⟩
+    rcases hm with hm | hm
+    · exact .inl (hp.mem_iff.mp hm)
+    · exact .inr (hm.trans (by rw [he]))
 
 /-- An order-free measure other than `MIN` and `MAX` allows only its value. -/
 theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) (hmin : m.fn ≠ .min)
