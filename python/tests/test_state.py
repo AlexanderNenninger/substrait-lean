@@ -16,8 +16,10 @@ import pytest
 
 import sverify as sv
 from sverify import _duckdb
+from sverify._arrow_state import ArrowOps as ArrowStore
+from sverify._builtin.duckdb import DuckDBStore
 from sverify._scan import Resident
-from sverify._state import ArrowStore, DuckDBStore, Merger, arrow_of
+from sverify._state import Merger, arrow_of
 from sverify._weighted import WEIGHT, consolidated, negated
 from sverify.engine import put_table, run_plan
 from sverify.incremental import Pipeline

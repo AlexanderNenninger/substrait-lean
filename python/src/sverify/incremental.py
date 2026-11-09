@@ -65,11 +65,12 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched
+from sverify._builtin.duckdb import DuckDBStore
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
-from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, by_keys, store_for
+from sverify._state import Merger, State, Store, arrow_of, by_keys, store_for
 from sverify._unsupported import SverifyError
 from sverify._weighted import (
     WEIGHT,
@@ -475,7 +476,7 @@ class SchemaChange:
         self, t: str, start: int, end: int, views: Sequence[str], requires: Sequence[Condition]
     ) -> list[str]:
         """What changed that the contracts of `views` cannot follow, column by
-        column, with the version and what to do (#184)."""
+        column, with the version and what to do."""
         when = f"at v{end}" if end == start + 1 else f"between v{start} and v{end}"
         who = " and ".join(f"`{v}`" for v in views)
         out = []
@@ -557,7 +558,7 @@ def content_digest(table: pa.Table) -> str:
     for tables of any size: the sum of DuckDB's hashes of the rows, and
     their count. The same rows give the same digest under one DuckDB
     version; another version may give another, which a sink reads as other
-    contents (#965)."""
+    contents."""
     import duckdb
 
     con = duckdb.connect()

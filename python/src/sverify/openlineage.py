@@ -1,4 +1,4 @@
-"""Lineage and run events in OpenLineage (#792), emitted and read.
+"""Lineage and run events in OpenLineage, emitted and read.
 
 OpenLineage is the standard for lineage events: Airflow, Spark and dbt emit
 it, and Marquez, DataHub, OpenMetadata and the cloud catalogs read it.
@@ -495,8 +495,8 @@ class Lineage:
             Python stack trace, with the paths and source lines of your
             machine. Default False: the message names the exception's type,
             and gives its text only for sverify's own errors, since another
-            library's text may name a bucket, an endpoint or a catalog URI
-            (#887).
+            library's text may name a bucket, an endpoint or a catalog
+            URI.
 
     `OPENLINEAGE_DISABLED=true` turns every target off. A target that fails
     warns (`LineageWarning`) and the refresh goes on.

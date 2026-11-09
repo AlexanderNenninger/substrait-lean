@@ -220,7 +220,6 @@ def _(dt, pa, tables):
     from sverify import duckdb_engine
     from sverify.engine import put_table, read_tables, run_checker
     from sverify.engines import (
-        SNOWFLAKE,
         UnsupportedError,
         substrait_json,
         written_plan,
@@ -376,7 +375,7 @@ def _(dt, pa, tables):
                 for run in (polars_engine.run, duckdb_engine.run)
             )
             o["sv"] = [("Polars", pt), ("DuckDB", dt_)]
-            o["sql"] = [("Snowflake", generated(wp, SNOWFLAKE)), ("Spark", generated(wp, SPARK))]
+            o["sql"] = [("Snowflake", generated(wp, "snowflake")), ("Spark", generated(wp, SPARK))]
             # The translators agree when both fail or both give the same rows.
             o["sv_agree"] = pv == dv or (pv[:1] == dv[:1] == ("error",))
             return self

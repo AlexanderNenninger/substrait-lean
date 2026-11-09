@@ -218,7 +218,7 @@ jobs:
           # ledgers and the areas it skips.
           reads() { grep -qvE "$docs|$ledger|^($1)" <<< "$files"; }
           flag() { if reads "$1"; then echo true; else echo false; fi; }
-          if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$|^scripts/lean(_timings\.py|-budget\.json)$' <<< "$files"; then
+          if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$|^scripts/lean(_timings\.py|-budget\.json)$|^scripts/checker_speed\.py$|^tests/checker-speed/' <<< "$files"; then
             out proofs=true
           else
             out proofs=false
@@ -265,6 +265,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ledger == 'true' || needs.changes.outputs.weekly == 'true'
     runs-on: ubuntu-latest
+    # `actions: read` for main's checker, the artifact of main's last run.
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -290,6 +294,48 @@ jobs:
           path: checker-bin/substrait-check
           retention-days: 3
           if-no-files-found: error
+      # The checker's speed against main's (docs/build-performance.md), on a
+      # pull request that changes a Lean input: both answer the recorded
+      # requests interleaved, and a request 1.3x as slow, or the set 1.1x,
+      # fails. Main's checker is the artifact of the run on the merge's first
+      # parent, or, without one, built here from main.
+      - id: base
+        if: needs.changes.outputs.proofs == 'true' && github.event_name != 'push' && github.event_name != 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          git fetch -q --deepen=1 origin
+          base=$(git rev-parse HEAD^1)
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+          run=$(gh api "repos/$REPO/actions/artifacts?name=substrait-check&per_page=100" \
+            --jq ".artifacts[] | select(.expired == false and .workflow_run.head_sha == \"$base\") | .workflow_run.id" | head -1)
+          if [ -n "$run" ] && gh run download "$run" -R "$REPO" -n substrait-check -D base-bin; then
+            chmod +x base-bin/substrait-check
+            echo "Main's checker: the substrait-check artifact of run $run ($base)"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Main's checker: no artifact for $base; building it here"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.base.outputs.found == 'false' && steps.cache.outputs.cache-hit == 'true'
+        uses: ./.github/actions/setup-lean
+        with:
+          save: "false"
+      - if: steps.base.outputs.found == 'false'
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          git worktree add -q /tmp/main "$BASE"
+          for d in .lake core/.lake analysis/.lake engines/.lake; do
+            if [ -d "$d" ]; then mkdir -p "/tmp/main/$(dirname "$d")" && cp -a "$d" "/tmp/main/$d"; fi
+          done
+          (cd /tmp/main && lake build substrait-check)
+          mkdir -p base-bin
+          cp /tmp/main/.lake/build/bin/substrait-check base-bin/
+      - if: steps.base.outputs.found != ''
+        name: Checker speed
+        run: python3 scripts/checker_speed.py base-bin/substrait-check checker-bin/substrait-check
 
   # Every proof, the generated entries' included, when a Lean input changed.
   lean:
@@ -333,6 +379,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       # Check every proof, the generated entries' included
       # (engines/Sverify/Engines/Generated.lean), warnings failing the build (what
       # `poe prove` runs, for every default target), before `uv run`'s
@@ -387,6 +437,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: uv sync --locked --project python --no-install-project
       - run: uv run --no-sync --project python poe -e simple -C python lint
       - run: uv run --no-sync --project python poe -e simple -C python typecheck
@@ -414,6 +468,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - env:
           BACKENDS: ${{ matrix.backends }}
           SVERIFY_SHARD: ${{ matrix.shard }}
@@ -452,6 +510,10 @@ jobs:
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: python/pyproject.toml
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: bash python/scripts/wheel_tests.sh --editable python --fast -n 4 --dist worksteal
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
@@ -478,6 +540,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       # DuckDB's test/sql at the version uv.lock pins (`slt.fetch`).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -502,6 +568,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: uv run --locked --project python poe -C python notebooks
 
   # How long a check takes (#745, #825): every catalogue transform and the
@@ -521,6 +591,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - working-directory: python
         run: uv run --locked python -m sverify_dev.bench --notebooks --budgets --json ../bench.json
       - if: always()
@@ -546,6 +620,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - working-directory: python
         run: |
           uv run --locked python -m sverify_dev.facts
@@ -601,6 +679,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: dbt/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       # Not --locked: the lock holds this checkout's sverify, whose own
       # dependencies may change in a PR without relocking dbt/; uv keeps the
       # locked versions and re-resolves only what changed.
@@ -640,6 +722,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: |
           repo=$(mktemp -d)
           cp -R templates/pipelines/. "$repo/"
@@ -674,6 +760,15 @@ jobs:
       - uses: ./.github/actions/setup-lean
         with:
           cache: "false"
+      # The package's own build, by its sources: unchanged, `lake build` only
+      # checks the traces (Mathlib comes from `lake exe cache get` each time).
+      # Lake rebuilds every module whose inputs differ, so a restored build of
+      # other sources (the restore key) is safe too.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: float-bounds/.lake/build
+          key: float-bounds-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('float-bounds/lean-toolchain', 'float-bounds/lake-manifest.json', 'float-bounds/lakefile.toml', 'float-bounds/**/*.lean') }}
+          restore-keys: float-bounds-${{ runner.os }}-${{ runner.arch }}-
       - working-directory: float-bounds
         run: lake exe cache get && lake build --wfail
 

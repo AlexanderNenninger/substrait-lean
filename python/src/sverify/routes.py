@@ -1,5 +1,5 @@
-"""How a verified plan reaches an engine (#444, decisions D10, D13 and D14
-of `docs/core-semantics.md`).
+"""How a verified plan reaches an engine: determinism, choosing the route
+and engine versions, as `docs/core-semantics.md` states them.
 
 A plan runs on the engine `E` by one of four routes, tried in this order:
 
@@ -13,21 +13,21 @@ A plan runs on the engine `E` by one of four routes, tried in this order:
 4. `"recheck"`: the checker proves the contract again under `Profile.E`.
 
 Otherwise the plan is refused on `E`, with the reason. A function `E` does
-not run (`sverify._support`, #271) refuses the plan on every route.
+not run (`sverify._support`) refuses the plan on every route.
 `choose` picks the route; `sv.Report.run(con, engine, route="auto")` runs
 by it, checks the preconditions on the data first (`Report.check_inputs`),
 and records the route in `Report.routes`. An explicit route
 (`route="transfer"`) is taken or refused, never replaced by another.
 
-Each route carries the plan's class on `E` (#568): `exact` (every result
+Each route carries the plan's class on `E`: `exact` (every result
 `E` gives is one the reference allows), `observed` (equal to one up to an
 observation, `Route.observation`: rows as a multiset, a tolerance on
 doubles, …), `shim` or `refused`, the worst over the options the proof
 depends on. The checker gives it, with its evidence, in its verdict on `E`
 (`"engines"`, `SubstraitLean/Realize.lean`), from the class, observation and
-shim columns of `E`'s choices (D15). An option `E` realizes only up to its
+shim columns of `E`'s choices. An option `E` realizes only up to its
 observation needs a postcondition whose observation it refines
-(`sv.equivalent`, D18), or the row's shim; otherwise the plan is refused
+(`sv.equivalent`), or the row's shim; otherwise the plan is refused
 there (`realization`).
 
 A routed run also reads the engine's settings (DuckDB's
@@ -38,16 +38,16 @@ choice-table row the plan depends on reads refuses the run
 NULLS LAST); another warns (`EngineSettingsWarning`).
 
 Each engine profile records the engine versions its facts were probed at
-(the checker's `--options`, "profiles", D14). A run on another version warns
+(the checker's `--options`, "profiles"). A run on another version warns
 (`EngineVersionWarning`); a run on another major version is refused
 (`EngineVersionError`) until the probes are re-run.
 
 A plan whose result is not determined up to row order
 (`Report.deterministic`) runs natively, with the engine's own order of the
-ties: the reference allows every order, and the proofs hold for each (D24).
+ties: the reference allows every order, and the proofs hold for each.
 Where a rerun must give the same result, the deterministic profile applies:
 `choose(..., reproducible=sv.equivalent())`, an incremental refresh or a sink's
-`reproducible=` (D10, D20). It refuses such a plan and names each place where
+`reproducible=`. It refuses such a plan and names each place where
 ties stay open (`Report.tie_places`).
 """
 
@@ -104,7 +104,7 @@ def shim_text(name: str) -> str:
     for p in plugged.plugins().values():
         if name in p.shim_text:
             return p.shim_text[name]
-    return SHIM_TEXT.get(name, name.replace("_", " "))
+    return name.replace("_", " ")
 
 
 #: How a route line names a route without a class (#687).
@@ -114,23 +114,6 @@ _KIND_TEXT: Mapping[str, str] = {
     "transfer": "verified under another engine's semantics, which carries over",
     "recheck": "verified again under the engine's own semantics",
     "unverified": "unverified",
-}
-
-#: What each shim does, as a route line says it (#687); the names are the
-#: shims of `SubstraitLean/EngineTables.lean`.
-SHIM_TEXT: Mapping[str, str] = {
-    "int_div_trunc": "integer division rewritten to truncate",
-    "int_mod_trunc": "integer remainder rewritten to truncate",
-    "one_zero": "-0.0 written as 0.0",
-    "avg_int_declared": "the mean of integers cast to its declared type",
-    "column_divisor": "a division by a column guarded",
-    "round_half_away": "rounding rewritten to round half away from zero",
-    "decimal_round_half_away": "decimal rounding rewritten to round half away from zero",
-    "decimal_div_half_away": "decimal division rewritten to round half away from zero",
-    "null_order": "NULLs sorted as the reference sorts them",
-    "strpos_chars": "string positions counted in characters",
-    "substring_wrap": "substring positions rewritten as the reference reads them",
-    "sum_empty_null": "a SUM of no rows written as NULL",
 }
 
 #: How a route line names what an observation ignores (#687).
@@ -147,7 +130,7 @@ def _short(x: float) -> str:
 
 def observed_text(obs: Observation) -> str:
     """What an observed route's results agree with the reference up to, in
-    words: "doubles within abs=2e-07, rows in any order" (#687)."""
+    words: "doubles within abs=2e-07, rows in any order"."""
     parts = []
     # Rows are compared as a multiset unless the plan sorts them, for every
     # class: a route line leaves them out.
@@ -176,13 +159,12 @@ class UnverifiedRunWarning(SverifyWarning):
 
 class EngineVersionWarning(SverifyWarning):
     """The engine's version is not one its profile's facts were probed at,
-    but the major version is the same (D14)."""
+    but the major version is the same."""
 
 
 class EngineVersionError(SverifyError, RuntimeError):
     """The engine's major version differs from the one its profile's facts
-    were probed at: re-run the probes (`characterization/<engine>/`) first
-    (D14)."""
+    were probed at: re-run the probes (`characterization/<engine>/`) first."""
 
     code = "engine_version"
 
@@ -235,8 +217,8 @@ class Route:
     are not within the profile's, as `{"group", "option", "from", "to",
     "facts"}`."""
     cls: Class | None = None
-    """The plan's class on the engine (#568, "Classes of an engine's
-    functions" in `docs/core-semantics.md`): `"exact"`, `"observed"` (equal
+    """The plan's class on the engine ("Classes of an engine's functions" in
+    `docs/core-semantics.md`): `"exact"`, `"observed"` (equal
     to a result the reference allows up to `observation`), `"shim"`, or
     `"refused"` for a refusal; the worst over the options the proof depends
     on; `"exact"` where the tables give no class for those options (the
@@ -249,7 +231,7 @@ class Route:
     shims: tuple[str, ...] = ()
     """The shims the translation writes for this plan, by option."""
     reproducible: Observation | None = None
-    """What a rerun had to reproduce (D20), where the caller
+    """What a rerun had to reproduce, where the caller
     required one; the route was refused unless the engine's run-to-run
     variation refines it."""
     rerun_evidence: Evidence | None = None
@@ -272,14 +254,14 @@ class Route:
     """For a refusal, what to declare to make the plan verify, as condition
     labels per input table: an `sv.unique(...)` that determines a result
     with ties, an `sv.max_rows(n)` under which the plan's bound meets a
-    tolerance (#655)."""
+    tolerance."""
     facts: tuple[str, ...] = ()
     """The engine facts behind the choices the class rests on
     (`characterization/<engine>/facts/`)."""
     theorems: tuple[str, ...] = ()
     """The Lean theorems that prove those choices, where they are proved."""
     version: str | None = None
-    """The engine version the facts were probed at (D14)."""
+    """The engine version the facts were probed at."""
     issues: tuple[int, ...] = ()
     """The issues that track the tested choices (`"issue"` of a tested row)."""
     proved_facts: tuple[str, ...] = ()
@@ -292,7 +274,7 @@ class Route:
 
     def __str__(self) -> str:
         """The class first, then what it means for this plan and the
-        evidence (#687): "shim (integer division …); evidence tested". The
+        evidence: "shim (integer division …); evidence tested". The
         long form is `reason`."""
         if self.kind is None:
             return f"refused: {self.reason}"
@@ -342,7 +324,7 @@ def probed_version(engine: str) -> str | None:
 def evidence_text(x: Route | Realized, engine: str) -> str:
     """The evidence of a route's class (or a realization's) in words: the
     theorems for a proof, and where they prove the engine's model, the facts
-    that say the engine is that model (#900); the engine version, the facts
+    that say the engine is that model; the engine version, the facts
     and the issues that track them for a test."""
     if x.evidence == "proved":
         out = "proved" + (f" by {', '.join(x.theorems)}" if x.theorems else "")
@@ -365,7 +347,7 @@ def _major(v: str) -> str:
 
 def check_version(engine: str, version: str | None = None) -> str | None:
     """Check `engine`'s version (the installed one by default) against its
-    profile's (D14).
+    profile's.
 
     Returns:
         A warning when the version differs within the major version, also
@@ -499,7 +481,7 @@ def _failure_text(f: Mapping[str, Any], source: str, target: str) -> str:
 
 def lean_transfer(source: str, target: str, depends: Sequence[Mapping[str, Any]]) -> dict | None:
     """The checker's own transfer check (`substrait-check --transfer`), which
-    is authoritative (D1): `{"ok": bool, "failures": [...]}`; None where the
+    is authoritative: `{"ok": bool, "failures": [...]}`; None where the
     checker has none. A route reads the same check from the checker's
     verdict on the engine (`"transfer"`)."""
     import subprocess
@@ -704,12 +686,11 @@ def realization(
 ) -> Realized:
     """How `engine` realizes the plan, from the checker's verdict (`verdict`,
     `SubstraitLean/Realize.lean`): its class over the options the proof
-    depends on, the evidence, the shims and what refuses it (D15, #568's
-    threshold rule), with the observation the postcondition names (D18,
-    check 1) applied to the options the engine realizes only up to an
-    observation (`"observed"`): where that does not refine the
-    postcondition's, the row's shim makes it canonical (class `shim`), or
-    the plan is refused there.
+    depends on, the evidence, the shims and what refuses it (the threshold
+    rule), with the observation the postcondition names applied to the
+    options the engine realizes only up to an observation (`"observed"`):
+    where that does not refine the postcondition's, the row's shim makes it
+    canonical (class `shim`), or the plan is refused there.
 
     A row whose observation bounds the doubles per plan (`{"floats": {"bound":
     "plan"}}`, Polars's `sum_order`) is checked against `epsilon`, the
@@ -937,7 +918,7 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
     postcondition reads are held to their exact value
     (by column, the postcondition's label): a condition proved of the
     reference's value need not hold of a value near it. One that holds of
-    every value near it is not held (`CheckedCondition.robust`, #1045)."""
+    every value near it is not held (`CheckedCondition.robust`)."""
     if report.observation.floats != "plan":
         return report.observation, {}
     held: dict[str, str] = {}
@@ -994,10 +975,9 @@ def max_rows_fix(report: Report, engine: str, required: Observation | None) -> d
     """The `sv.max_rows(N)` under which the plan's bound on its doubles
     (`Report.epsilon`) meets the tolerance `required` states, by the input
     table that has a row cap now: the bound grows linearly with the rows,
-    so `N` is the cap scaled by the tightest ratio of tolerance to bound
-    (#655). Empty where there is no stated tolerance, no single capped
-    input, or the bound already meets it; `sv.max_rows(0)` where no cap
-    does."""
+    so `N` is the cap scaled by the tightest ratio of tolerance to bound.
+    Empty where there is no stated tolerance, no single capped input, or
+    the bound already meets it; `sv.max_rows(0)` where no cap does."""
     from sverify.conditions import MaxRows
 
     if required is None or not isinstance(required.floats, Within) or not report._epsilon:
@@ -1100,10 +1080,10 @@ def reproducibility(
     depends: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[list[str], Evidence]:
     """Whether a rerun of the plan on `engine` reproduces its result up to
-    `required` (what a rerun must reproduce, D20).
+    `required` (what a rerun must reproduce).
 
     The result must be determined up to row order (`Report.deterministic`):
-    the deterministic profile fixes the order of ties (D24), so an open
+    the deterministic profile fixes the order of ties, so an open
     choice (ties in an ORDER BY, a LIMIT without one) fails every
     requirement, and the problem names each place (`Report.tie_places`).
     Then, on each option the plan depends on, the engine's run-to-run
@@ -1124,7 +1104,7 @@ def reproducibility(
     if not report.deterministic:
         problems.append(
             "the result is not determined up to row order: the deterministic profile needs a "
-            "total order (D24), and ties stay open at "
+            "total order, and ties stay open at "
             + ("; ".join(map(str, report._tie_places)) or "an ORDER BY or a LIMIT")
             + ", so no rerun is sure to reproduce it"
         )
@@ -1246,7 +1226,7 @@ def choose(
     version: str | None = None,
     reproducible: Observation | None = None,
 ) -> Route:
-    """The route by which the plan `report` checked reaches `engine` (D13).
+    """The route by which the plan `report` checked reaches `engine`.
 
     Args:
         report: A report of `sv.verify` (or a transform's `report`).
@@ -1254,8 +1234,8 @@ def choose(
         route: `"auto"` (the default) tries `"native"`, `"translated"`,
             `"transfer"` and `"recheck"` in turn; a route by name is taken or
             refused.
-        deterministic: Deprecated: `reproducible=sv.equivalent()` (D10).
-        reproducible: What a rerun must reproduce (D20), as an
+        deterministic: Deprecated: `reproducible=sv.equivalent()`.
+        reproducible: What a rerun must reproduce, as an
             idempotent sink needs: the engine's run-to-run variation must
             refine it (`reproducibility`), or the route is refused. None
             (the default) reports determinism and checks nothing.
@@ -1317,7 +1297,7 @@ def choose(
             )
     if not det:
         notes.append(
-            "ties stay open (D24): the engine picks their order, every proof holds for any "
+            "ties stay open: the engine picks their order, every proof holds for any "
             "pick, and a rerun may pick another"
         )
     if report.observation.rows == "sequence" and not report._sorted:

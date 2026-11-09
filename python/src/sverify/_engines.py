@@ -30,10 +30,31 @@ SUPPORTED: tuple[str, ...] = tuple(
 )
 #: The dialects `to_sql` writes.
 DIALECTS: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.dialect)
-#: Every engine sverify names: a row of `_support.SUPPORT` names only these.
+#: Every engine sverify names: each plugin's.
 NAMED: frozenset[str] = frozenset(_FOUND)
 #: The modules each engine needs.
 MODULES: Mapping[str, tuple[str, ...]] = {e: p.modules for e, p in _FOUND.items()}
+
+
+def default() -> str:
+    """The engine that runs plans where none is named: the installed one that
+    says so (`ProfilePlugin.default`), or else the first local one. `verify`
+    needs none; running a plan does.
+
+    Raises:
+        ValueError: No engine that runs plans is installed.
+    """
+    from sverify import profiles
+
+    found = profiles.plugins()
+    local = [e for e, p in found.items() if p.local]
+    named = [e for e in local if found[e].default]
+    if not (named or local):
+        raise ValueError(
+            "no engine that runs plans is installed: install one, e.g. "
+            "pip install 'sverify[duckdb]' or 'sverify[polars]'"
+        )
+    return (named or local)[0]
 
 
 def translations() -> dict[str, str]:
