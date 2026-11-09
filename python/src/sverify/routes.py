@@ -543,24 +543,10 @@ _KINDS = ("abs", "rel", "ulps")
 
 
 def _bounds(eps: Mapping[str, Any]) -> dict[str, tuple[float, bool]]:
-    """A column's `ε` as `{kind: (value, proved)}`. Each kind is a number or
-    `{"value", "proved"}`; `"proved"` beside them is a bool for all of them
-    or a mapping per kind. A bound is proved only where Lean marks it so: a
-    missing mark means it rests on a test."""
-    flag = eps.get("proved", False)
-    out: dict[str, tuple[float, bool]] = {}
-    for kind in _KINDS:
-        v = eps.get(kind)
-        if v is None:
-            continue
-        proved = bool(flag.get(kind, False)) if isinstance(flag, Mapping) else bool(flag)
-        if isinstance(v, Mapping):
-            proved = bool(v.get("proved", proved))
-            v = v.get("value")
-            if v is None:
-                continue
-        out[kind] = (float(v), proved)
-    return out
+    """A column's `ε` as `{kind: (value, proved)}`, as the checker normalises
+    it (`Realize.epsBounds`: `"epsilon_bounds"`, or an engine's
+    `"epsilon"`, where `proved` is that engine's)."""
+    return {k: (float(b["value"]), bool(b["proved"])) for k, b in eps["bounds"].items()}
 
 
 def _plan_bound(
@@ -596,7 +582,7 @@ def _plan_bound(
     unproved = False
     for col, eps in epsilon.items():
         bounds = _bounds(eps)
-        if _unbounded(eps):
+        if eps["unbounded"]:
             # No bound on the column (a double `SUM` without a row cap, a value
             # computed from one, a window aggregate of doubles): nothing proves
             # it, and a stated tolerance is not met. `why` names what lifts it.
@@ -648,11 +634,6 @@ def _plan_bound(
     return rest, problems, unproved
 
 
-def _unbounded(eps: Mapping[str, Any]) -> bool:
-    """The checker names the column's bounds, and none is finite."""
-    return any(k in eps for k in _KINDS) and not _bounds(eps)
-
-
 def _resolve(observed: Observation, epsilon: Mapping[str, Mapping[str, Any]] | None) -> Observation:
     """`observed` with `floats="plan"` replaced by the plan's bound: per
     kind of bound, the smallest of the double columns' `ε` (every column
@@ -662,7 +643,7 @@ def _resolve(observed: Observation, epsilon: Mapping[str, Mapping[str, Any]] | N
 
     if observed.floats != "plan" or epsilon is None:
         return observed
-    if any(_unbounded(e) for e in epsilon.values()):
+    if any(e["unbounded"] for e in epsilon.values()):
         # A column without a bound: the plan's bound is unknown.
         return observed
     found = [_bounds(e) for e in epsilon.values()]
@@ -692,17 +673,6 @@ def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
     if smallest < v:
         smallest = float(f"{v * 1.5:.0e}")
     return f"sv.within({kind}={smallest:g})"
-
-
-def _on_engine(eps: Mapping[str, Any], engine: str) -> Mapping[str, Any]:
-    """A column's `ε` as `engine` meets it: where the checker names the engines
-    on which its bound is proved (`"proved_on"`, a statistic's: the engines
-    whose algorithm a theorem covers, D30), proved there and tested on the
-    others."""
-    if "proved_on" not in eps:
-        return eps
-    proved = {**(eps.get("proved") or {}), "abs": engine in eps["proved_on"]}
-    return {**eps, "proved": proved}
 
 
 #: Why #568's threshold rule refuses a plan, as `realization` words it.
@@ -761,8 +731,9 @@ def realization(
             (),
             [f"the checker gave no verdict on {engine} for this plan: verify it again"],
         )
-    if epsilon:
-        epsilon = {c: _on_engine(e, engine) for c, e in epsilon.items()}
+    # The engine's own `ε`: a statistic's bound is proved on the engines its
+    # theorem covers (`"proved_on"`, D30).
+    epsilon = verdict.get("epsilon", epsilon)
     worst: Class = verdict["class"]
     if worst not in CLASSES:
         raise ValueError(f"the checker gave an unknown class {worst!r} on {engine}")
@@ -877,7 +848,7 @@ def plan_bound(epsilon: Mapping[str, Mapping[str, Any]] | None) -> Within | None
     """The plan's bound on its doubles as one tolerance: per kind every
     column has, the largest of the columns' `ε` (`Report.epsilon`). None
     where no double column has a bound above zero, or one has none."""
-    if not epsilon or any(_unbounded(e) for e in epsilon.values()):
+    if not epsilon or any(e["unbounded"] for e in epsilon.values()):
         return None
     found = [b for b in (_bounds(e) for e in epsilon.values()) if any(v for v, _ in b.values())]
     kinds = [k for k in _KINDS if found and all(k in b for b in found)]
