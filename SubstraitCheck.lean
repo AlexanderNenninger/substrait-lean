@@ -253,14 +253,47 @@ report: `Profile.spark` evaluates as the reference (`Profile.spark_eval`,
 `asReference`, an out-of-tree one among them. DuckDB's profile is
 reached through its lift (`semantics="duckdb"`); its requests get the
 reference's report, which says so. -/
+/-- Does the request's observation (`"observation"`: the components it
+coarsens, whether doubles compare under the plan's bound) cover `q`, the
+observation an engine's row realises an option up to? Each component `q`
+coarsens, the request coarsens; a float bound only under the plan's own
+(`floats="plan"`), which the plan's `ε` bounds: a numeric tolerance against
+`ε` is #1285's. -/
+def coversObs (request : Json) (q : Obs) : Bool :=
+  let obs := (request.getObjVal? "observation").toOption
+  let coarsens : List String :=
+    ((obs.bind (·.getObjValAs? (Array String) "coarsens" |>.toOption)).getD #[]).toList
+  let floatsPlan := (obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false
+  let named := ["elements", "zeros", "timestamps", "strings", "decimals"].all fun c =>
+    !q.coarsens c || coarsens.contains c
+  let rows := q.rows == .sequence || coarsens.contains "rows"
+  let errors := q.errors == .exact || coarsens.contains "errors"
+  let floats := match q.floats with
+    | .exact => true
+    | .within _ => floatsPlan
+  named && rows && errors && floats
+
+/-- Does `E`'s row at a read realise it, so the read passes the transfer
+under the request's observation (#1189 R1b, Fable's ruling)? The row is
+proved (`Evidence.theorem?`), and refines the reference exactly or up to an
+observation the request covers (`coversObs`). -/
+def realisedAt (E : EngineProfile) (request : Json) : Read → Bool
+  | (g, o, _) => match E.obs.row? g o with
+    | some r => r.evidence.theorem?.isSome && match r.cls with
+      | .refines => true
+      | .refinesUpTo | .approx => coversObs request r.q
+      | .refused => false
+    | none => false
+
 /-- The reference's report carried to the profile table `X` (named `name`),
 engine to engine (#1189): a proof under the reference holds under `X` where,
 at every read of the plan, `X` allows only what the reference allows
 (`ProfileTable.leAtB`, the plan's stated preferences counted;
 `Rel.transfer_of_transferB`). Where it does not, the postconditions and keys
 are not proved, and `"transfer"` names each read, with what `X` and the
-reference allow. `passes` lets a read through that the request covers
-otherwise: none yet (#1189 R1b; the observation-aware rule is pending). -/
+reference allow. `passes` lets a read through that the engine realises under
+the request's observation (`realisedAt`), as the route from the reference to
+an engine does. -/
 def transferTo (name : String) (X : ProfileTable) (plan : Parse.Plan) (report : Json)
     (proved : Bool) (passes : Read → Bool := fun _ => false) : Json × Bool :=
   let P := Profile.reference.table
@@ -294,7 +327,12 @@ def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : 
   let some X := X? | return (report.setObjVal! "profile" "reference", proved)
   let tj ← j.getObjVal? "transform"
   let plan ← ContractCheck.parseJsonPlan tj
-  return transferTo name X plan report proved
+  -- An engine's read passes where its row realises it under the request's
+  -- observation (`realisedAt`); Substrait's profile has no engine rows.
+  let passes : Read → Bool := match engineNamed? es name with
+    | some E => realisedAt E j
+    | none => fun _ => false
+  return transferTo name X plan report proved passes
 
 /-- One request of `--serve`: the mode flag (empty for the default check)
 and the input text. -/

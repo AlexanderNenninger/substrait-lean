@@ -7,6 +7,9 @@ from sverify_dev import catalogue as c
 import sverify as sv
 from sverify import contracts
 
+#: `plan`: each postcondition list gains `sv.equivalent(floats="plan")`.
+PLAN = sys.argv[1:] == ["plan"]
+
 answers: list[dict] = []
 real = contracts.run_checker
 def spy(args, text):
@@ -24,6 +27,8 @@ for q in c.load_queries():
     row = {"id": q.id}
     try:
         e = c.build(q, s, "native"); req, ens = c.contract(q, s, "native")
+        if PLAN:
+            ens = [*ens, sv.equivalent(floats="plan")]
         kw = {"tables": c.tables(s, q.dataset, "native")} if isinstance(e, str) else {}
         r = sv.verify(e, requires=req, ensures=ens, semantics="duckdb", **kw)
         row["proved"] = r.proved
