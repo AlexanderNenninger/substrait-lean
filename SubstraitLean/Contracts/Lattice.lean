@@ -1053,12 +1053,6 @@ theorem mapAbs₂_top_sound {tbl : NumKind → NumKind → Option NumKind} {g : 
 The analysis bounds a double by its canonical code, so `-0.0` and `0.0`, and
 the two NaNs, are in the same abstract values, in lists and structs too. -/
 
-theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by
-  simp only [Value.canonV]
-theorem Value.canonV_list (vs : List Value) : (Value.list vs).canonV = .list (vs.map Value.canonV) := by
-  simp only [Value.canonV]
-theorem Value.canonV_struct (vs : List Value) : (Value.struct vs).canonV = .struct (vs.map Value.canonV) := by
-  simp only [Value.canonV]
 
 mutual
 theorem AVal.memR_canonV (a : AVal) : ∀ v : Value, a.MemR v.canonV ↔ a.MemR v

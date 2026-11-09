@@ -19,56 +19,23 @@ theorem intSum_append : ∀ (vs ws : List Value), intSum (vs ++ ws) = intSum vs 
   | v :: vs, ws => by
     rw [List.cons_append, intSum_cons, intSum_cons, intSum_append vs ws]; omega
 
-/-- `m` is the least element of `l` in the order `le`. -/
-def IsLeast {α : Type} (le : α → α → Bool) (m : α) (l : List α) : Prop :=
-  m ∈ l ∧ ∀ w ∈ l, le m w = true
-
-theorem pickFold_least {le : Value → Value → Bool} (hle : TotalPre le) :
-    ∀ (v : Value) (vs : List Value), IsLeast le (pickFold (fun a b => !le a b) v vs) (v :: vs)
-  | v, [] => ⟨by simp [pickFold], fun w hw => by simp at hw; subst hw; exact hle.refl _⟩
-  | v, w :: vs => by
-    show IsLeast le (pickFold (fun a b => !le a b) (if (!le v w) = true then w else v) vs) (v :: w :: vs)
-    by_cases hp : le v w = true
-    · simp only [hp, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
-      obtain ⟨hm, hl⟩ := pickFold_least hle v vs
-      refine ⟨?_, fun x hx => ?_⟩
-      · rcases List.mem_cons.mp hm with h | h
-        · rw [h]; exact List.mem_cons_self
-        · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ h)
-      · simp only [List.mem_cons] at hx
-        rcases hx with rfl | rfl | hx
-        · exact hl _ (by simp)
-        · exact hle.trans _ _ _ (hl v (by simp)) hp
-        · exact hl x (by simp [hx])
-    · have hwv : le w v = true := by
-        have := hle.total v w; simp only [hp, Bool.false_or] at this; exact this
-      have hp' : le v w = false := by simpa using hp
-      simp only [hp', Bool.not_false, ↓reduceIte]
-      obtain ⟨hm, hl⟩ := pickFold_least hle w vs
-      refine ⟨List.mem_cons_of_mem _ hm, fun x hx => ?_⟩
-      simp only [List.mem_cons] at hx
-      rcases hx with rfl | rfl | hx
-      · exact hle.trans _ _ _ (hl w (by simp)) hwv
-      · exact hl _ (by simp)
-      · exact hl x (by simp [hx])
-
 theorem IsLeast.unique {α : Type} {le : α → α → Bool} (anti : ∀ a b, le a b = true → le b a = true → a = b)
     {m m' : α} {l : List α} (h : IsLeast le m l) (h' : IsLeast le m' l) : m = m' :=
   anti _ _ (h.2 _ h'.1) (h'.2 _ h.1)
 
 /-- The order `MIN` (`max = false`) or `MAX` (`max = true`) picks the least element of. -/
-def minMaxLe (max : Bool) (a b : Value) : Bool := if max then b.le a else a.le b
+def minMaxLe (max : Bool) (a b : Value) : Bool := if max then b.leT a else a.leT b
 
 theorem minMaxLe_totalPre (max : Bool) : TotalPre (minMaxLe max) := by
   cases max
-  · exact Value.le_totalPre
-  · exact Value.le_totalPre.flip
+  · exact Value.leT_totalPre
+  · exact Value.leT_totalPre.flip
 
 theorem minMaxLe_antisymm (max : Bool) (a b : Value) (h : minMaxLe max a b = true)
     (h' : minMaxLe max b a = true) : a = b := by
   cases max
-  · exact Value.le_antisymm h h'
-  · exact Value.le_antisymm h' h
+  · exact Value.leT_antisymm h h'
+  · exact Value.leT_antisymm h' h
 
 /-- `MIN` and `MAX` of a non-empty list: its least element. -/
 theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min)) :

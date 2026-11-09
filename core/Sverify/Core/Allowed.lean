@@ -258,10 +258,11 @@ theorem Rel.unsorted_refinesBag_not_refines :
   have hs : ¬ SortAllowed [{ col := 0 }] [[.int 2], [.int 1]] := by
     rintro ⟨cmp, -, h⟩
     simp [sortLeWith, SortKey.leWith, SortKey.valWith, SortKey.valLe, lexLe, nullRankOf, natLe,
-      SortKey.firstNulls] at h
+      SortKey.firstNulls, Value.le, Value.canonV] at h
     revert h; decide +kernel
   refine ⟨Rel.refinesBag_iff.2 fun out ho => ⟨[[.int 1], [.int 2]], ⟨_, .refl _, .swap _ _ _,
-    .of_sorted (by decide +kernel)⟩, ho.trans (.swap _ _ _)⟩, fun h => hs ?_⟩
+    .of_sorted (by simp [sortLe, SortKey.le, SortKey.valLe, SortKey.nullRank, lexLe, natLe,
+      Value.le, Value.canonV, Value.leRaw_def, Value.leScalar])⟩, ho.trans (.swap _ _ _)⟩, fun h => hs ?_⟩
   obtain ⟨i, -, -, hsort⟩ := Rel.refines_iff.1 h _ (List.Perm.refl _)
   exact hsort
 

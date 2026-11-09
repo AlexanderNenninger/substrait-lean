@@ -368,8 +368,9 @@ theorem corrOf_perm {vs ws : List Value} (h : vs.Perm ws) : corrOf vs = corrOf w
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
 
-/-- The values in the order of `ORDER BY` (`Value.le`). -/
-def sortVals (vs : List Value) : List Value := vs.mergeSort fun a b => a.le b
+/-- The values in the order of `ORDER BY` (`Value.le`), tied doubles by
+their codes (`Value.leT`), so the order doesn't depend on the input's. -/
+def sortVals (vs : List Value) : List Value := vs.mergeSort fun a b => a.leT b
 
 /-- The 0-based position of `QUANTILE_DISC`'s value among `n` values in order,
 for `q = num / 10 ^ scale`: `⌈n·q⌉ − 1`, and the first for `n·q ≤ 1`. -/
@@ -436,8 +437,8 @@ def AggFn.apply : AggFn → List Value → Value
   | .var sample sqrt, vs => varOf sample sqrt vs
   | .cov sample, vs => covOf sample vs
   | .corr, vs => corrOf vs
-  | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
-  | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
+  | .min, v :: vs => pickFold (fun a b => !a.leT b) v vs
+  | .max, v :: vs => pickFold (fun a b => !b.leT a) v vs
   | .collect, vs => .list vs
   | .pick last, v :: vs => if last then (v :: vs).getLast (List.cons_ne_nil _ _) else v
   | .concat sep, vs => .str (sep.intercalate (vs.map fun | .str s => s | _ => ""))
@@ -573,7 +574,7 @@ theorem AggFn.apply_cont (num scale : Nat) (vs : List Value) :
   cases vs with
   | nil => exact .inl rfl
   | cons v vs =>
-    have hp := List.mergeSort_perm (v :: vs) (fun a b => a.le b)
+    have hp := List.mergeSort_perm (v :: vs) (fun a b => a.leT b)
     have ha := contValue_allowed num scale (sortVals (v :: vs))
     show contValue num scale (sortVals (v :: vs)) = .null ∨ ∃ c l h,
       contValue num scale (sortVals (v :: vs)) = .float c ∧ _
@@ -599,7 +600,7 @@ theorem AggFn.apply_disc (num scale : Nat) (vs : List Value) :
     cases h : (sortVals (v :: vs))[discIndex (v :: vs).length num scale]? with
     | none => exact .inl rfl
     | some w =>
-      exact .inr ((List.mergeSort_perm (v :: vs) (fun a b => a.le b)).mem_iff.mp
+      exact .inr ((List.mergeSort_perm (v :: vs) (fun a b => a.leT b)).mem_iff.mp
         (List.mem_of_getElem? h))
 
 /-- `MODE` gives one of the values (or NULL). -/
@@ -690,43 +691,46 @@ theorem AggFn.apply_iavg_between {vs : List Value} (hne : intsOf vs ≠ []) :
 theorem Value.le_refl (a : Value) : a.le a = true := by
   rcases Value.le_total a a with h | h <;> exact h
 
-theorem pickFold_min_le : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
-    (pickFold (fun a b => !a.le b) v vs).le x = true
-  | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
-  | v, w :: ws, x, hx => by
-    simp only [pickFold, List.foldl_cons]
-    have ih := pickFold_min_le (if !v.le w then w else v) ws
-    simp only [pickFold] at ih
-    have hacc : (if !v.le w then w else v).le v = true ∧ (if !v.le w then w else v).le w = true := by
-      cases h : v.le w
-      · simp only [Bool.not_false, ite_true]
-        exact ⟨(Value.le_total v w).resolve_left (by simp [h]), Value.le_refl _⟩
-      · simp only [Bool.not_true, Bool.false_eq_true, ite_false]; exact ⟨Value.le_refl _, h⟩
-    have hm := ih _ (List.mem_cons_self ..)
-    simp only [List.mem_cons] at hx
-    rcases hx with rfl | rfl | hx
-    · exact Value.le_trans _ _ _ hm hacc.1
-    · exact Value.le_trans _ _ _ hm hacc.2
-    · exact ih x (by simp [hx])
+/-- `m` is the least element of `l` in the order `le`. -/
+def IsLeast {α : Type} (le : α → α → Bool) (m : α) (l : List α) : Prop :=
+  m ∈ l ∧ ∀ w ∈ l, le m w = true
 
-theorem pickFold_max_ge : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
-    x.le (pickFold (fun a b => !b.le a) v vs) = true
-  | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
-  | v, w :: ws, x, hx => by
-    simp only [pickFold, List.foldl_cons]
-    have ih := pickFold_max_ge (if !w.le v then w else v) ws
-    simp only [pickFold] at ih
-    have hacc : v.le (if !w.le v then w else v) = true ∧ w.le (if !w.le v then w else v) = true := by
-      cases h : w.le v
-      · simp only [Bool.not_false, ite_true]
-        exact ⟨(Value.le_total w v).resolve_left (by simp [h]), Value.le_refl _⟩
-      · simp only [Bool.not_true, Bool.false_eq_true, ite_false]; exact ⟨Value.le_refl _, h⟩
-    have hm := ih _ (List.mem_cons_self ..)
-    simp only [List.mem_cons] at hx
-    rcases hx with rfl | rfl | hx
-    · exact Value.le_trans _ _ _ hacc.1 hm
-    · exact Value.le_trans _ _ _ hacc.2 hm
-    · exact ih x (by simp [hx])
+theorem pickFold_least {le : Value → Value → Bool} (hle : TotalPre le) :
+    ∀ (v : Value) (vs : List Value), IsLeast le (pickFold (fun a b => !le a b) v vs) (v :: vs)
+  | v, [] => ⟨by simp [pickFold], fun w hw => by simp at hw; subst hw; exact hle.refl _⟩
+  | v, w :: vs => by
+    show IsLeast le (pickFold (fun a b => !le a b) (if (!le v w) = true then w else v) vs) (v :: w :: vs)
+    by_cases hp : le v w = true
+    · simp only [hp, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+      obtain ⟨hm, hl⟩ := pickFold_least hle v vs
+      refine ⟨?_, fun x hx => ?_⟩
+      · rcases List.mem_cons.mp hm with h | h
+        · rw [h]; exact List.mem_cons_self
+        · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ h)
+      · simp only [List.mem_cons] at hx
+        rcases hx with rfl | rfl | hx
+        · exact hl _ (by simp)
+        · exact hle.trans _ _ _ (hl v (by simp)) hp
+        · exact hl x (by simp [hx])
+    · have hwv : le w v = true := by
+        have := hle.total v w; simp only [hp, Bool.false_or] at this; exact this
+      have hp' : le v w = false := by simpa using hp
+      simp only [hp', Bool.not_false, ↓reduceIte]
+      obtain ⟨hm, hl⟩ := pickFold_least hle w vs
+      refine ⟨List.mem_cons_of_mem _ hm, fun x hx => ?_⟩
+      simp only [List.mem_cons] at hx
+      rcases hx with rfl | rfl | hx
+      · exact hle.trans _ _ _ (hl w (by simp)) hwv
+      · exact hl _ (by simp)
+      · exact hl x (by simp [hx])
+
+theorem pickFold_min_le (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
+    (pickFold (fun a b => !a.leT b) v vs).le x = true := fun x hx =>
+  Value.le_of_leT ((pickFold_least Value.leT_totalPre v vs).2 x hx)
+
+theorem pickFold_max_ge (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
+    x.le (pickFold (fun a b => !b.leT a) v vs) = true := fun x hx =>
+  Value.le_of_leT ((pickFold_least Value.leT_totalPre.flip v vs).2 x hx)
 
 /-- `MIN` of values is one of them, and at most each of them. -/
 theorem AggFn.apply_min {vs : List Value} {m : Value} (h : AggFn.min.apply vs = m) (hm : m ≠ .null) :
@@ -746,8 +750,8 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     simp only [apply] at h; subst h
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
-theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y := by
-  rw [Value.le_def]; simp [Value.leScalar]
+theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=
+  Value.le_val .int
 
 /-- Two measures of the same argument and filter aggregate the same values
 (`DISTINCT` drops only repetitions). -/

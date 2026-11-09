@@ -582,6 +582,13 @@ def Value.canonV : Value → Value
   | .struct vs => .struct (vs.map Value.canonV)
   | v => v
 
+theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by
+  simp only [Value.canonV]
+theorem Value.canonV_list (vs : List Value) : (Value.list vs).canonV = .list (vs.map Value.canonV) := by
+  simp only [Value.canonV]
+theorem Value.canonV_struct (vs : List Value) : (Value.struct vs).canonV = .struct (vs.map Value.canonV) := by
+  simp only [Value.canonV]
+
 mutual
 /-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
 the codes of doubles and times) by value, strings by code point, `FALSE <
