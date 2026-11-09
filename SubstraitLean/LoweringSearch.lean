@@ -387,6 +387,15 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
     | (simp only [$u,*]; done)
     | (simp only [$u,*]; (repeat' split) <;> simp_all [$u,*])))
 
+/-- The lemmas that evaluate an expression over a row of arguments with the
+reference's guard functions: the first simp set of `templateTac` and
+`guardsTac`. -/
+def evalNames : Array Name :=
+  #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
+    ``Outcome.ok_bind, ``Lowering.ref_isNum, ``Lowering.ref_isNull, ``Lowering.ref_not,
+    ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
+    ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul]
+
 /-- The template tactic's split on the arguments' kinds: one goal per
 constructor of each argument. -/
 def templateCases (unary : Bool) : TermElabM (TSyntax `tactic) :=
@@ -397,13 +406,10 @@ def templateCases (unary : Bool) : TermElabM (TSyntax `tactic) :=
 engine's, and the reference's, and the lemmas `extra`), split on the
 arguments' kinds (`templateCases`) and on the comparisons the template and
 the profile make, and compute. -/
-def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : Array Name := #[]) :
+def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : Array Name := #[])
+    (staged : Bool := true) :
     TermElabM Syntax := do
-  let preNames := pre2 ++ #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``Lowering.ref_isNum, ``Lowering.ref_isNull, ``Lowering.ref_not,
-    ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
-    ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul,
-    ``Lowering.ref_imod_int] ++ natives ++ extra
+  let preNames := pre2 ++ evalNames ++ #[``Lowering.ref_imod_int] ++ natives ++ extra
   let valNames := #[``Value.isNum, ``Value.numPair, ``and3, ``or3, ``BinFn.apply,
     ``Value.isTrue,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.not_true, ``Bool.not_false,
@@ -424,10 +430,16 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
   -- on `BinFn.apply`'s and `BinFn.issue`'s equations, and `On.Doubles` has
   -- 21 such goals per theorem (#923's 11 kinds; docs/build-performance.md).
   -- On the goal only: at `*` they would rewrite `hP`, `hN`, … away before
-  -- the issues bring the special codes back.
+  -- the issues bring the special codes back. `guardsTac`'s goals gain
+  -- nothing from the stages (`staged := false`).
   let stage1 ← simpArgs (unfold ++ #[``Profile.reference, ``raiseIf])
   let stage2 ← simpArgs #[``BinFn.issue, ``UnFn.issue]
   let stage3 ← simpArgs #[``BinFn.apply]
+  let stages ← if staged then
+      `(tactic| (simp (config := { failIfUnchanged := false, decide := true }) only [$stage1,*]
+                 simp (config := { failIfUnchanged := false, decide := true }) only [$stage2,*]
+                 simp (config := { failIfUnchanged := false, decide := true }) only [$stage3,*]))
+    else `(tactic| skip)
   let cases ← templateCases unary
   let codes := #[(``FloatCode.posInf, `cP, `hP), (``FloatCode.negInf, `cN, `hN),
     (``FloatCode.nan, `cQ, `hQ), (``FloatCode.one, `cO, `hO), (``FloatCode.negOne, `cM, `hM)]
@@ -448,9 +460,7 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
     all_goals first
       | exact Outcome.agree_refl _
-      | (simp (config := { failIfUnchanged := false, decide := true }) only [$stage1,*]
-         simp (config := { failIfUnchanged := false, decide := true }) only [$stage2,*]
-         simp (config := { failIfUnchanged := false, decide := true }) only [$stage3,*]
+      | ($stages:tactic
          simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
          iterate 10
            all_goals try
@@ -499,16 +509,13 @@ def guardsTac (unfold natives extra : Array Name) (unary : Bool) (agree? : Optio
     TermElabM Syntax := do
   let t ← templateTac unfold natives extra unary
     #[``Expr.GuardsAt, ``Expr.raiseMsg?, ``Outcome.FiresOnly, ``Option.map]
-    #[``Issue.name, ``Option.map, ``Outcome.FiresOnly]
+    #[``Issue.name, ``Option.map, ``Outcome.FiresOnly] (staged := false)
   let general : TSyntax `tactic := ⟨t⟩
   let some agree := agree? | `(tactic| first | (intros; trivial) | $general:tactic)
   -- One guard, from the entry's agreement (`Expr.GuardsAt.one`): where it is
   -- true the template raises, so the reference does, with the guard's issue
   -- if all of the function's issues have its name.
-  let pre ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``Lowering.ref_isNum, ``Lowering.ref_isNull, ``Lowering.ref_not,
-    ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
-    ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul] ++ natives)
+  let pre ← simpArgs (evalNames ++ natives)
   let issueFn := mkIdent (if unary then ``UnFn.issue else ``BinFn.issue)
   let cases ← templateCases unary
   let ag ← if unary then `(($(mkIdent agree) _)) else `(($(mkIdent agree) _ _))
