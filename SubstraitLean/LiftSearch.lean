@@ -490,7 +490,7 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.ref_fsub_null_l, ``DuckDBSQL.ref_fsub_null_r, ``DuckDBSQL.ref_fmul_null_l,
     ``DuckDBSQL.ref_fmul_null_r,
     ``DuckDBSQL.ite_or, ``FloatCode.canon_zero, ``FloatCode.canon_posInf, ``FloatCode.canon_negInf,
-    ``DuckDBSQL.canon_of_has, ``DuckDBSQL.canon_negZero, ``DuckDBSQL.canon_negNan, ``DuckDBSQL.canon_nan, ``DuckDBSQL.canon_one, ``DuckDBSQL.canon_negOne,
+    ``DuckDBSQL.canon_of_has, ``DuckDBSQL.canon_floor_of_has, ``FloatCode.floor_negZero, ``FloatCode.floor_negNan, ``DuckDBSQL.canon_negZero, ``DuckDBSQL.canon_negNan, ``DuckDBSQL.canon_nan, ``DuckDBSQL.canon_one, ``DuckDBSQL.canon_negOne,
     ``DuckDBSQL.zero_ne_negZero, ``DuckDBSQL.negZero_ne_zero, ``DuckDBSQL.zero_ne_negNan, ``DuckDBSQL.negNan_ne_zero, ``DuckDBSQL.posInf_ne_negZero, ``DuckDBSQL.negZero_ne_posInf, ``DuckDBSQL.posInf_ne_negNan, ``DuckDBSQL.negNan_ne_posInf, ``DuckDBSQL.negInf_ne_negZero, ``DuckDBSQL.negZero_ne_negInf, ``DuckDBSQL.negInf_ne_negNan, ``DuckDBSQL.negNan_ne_negInf, ``DuckDBSQL.nan_ne_negZero, ``DuckDBSQL.negZero_ne_nan, ``DuckDBSQL.nan_ne_negNan, ``DuckDBSQL.negNan_ne_nan, ``DuckDBSQL.one_ne_negZero, ``DuckDBSQL.negZero_ne_one, ``DuckDBSQL.one_ne_negNan, ``DuckDBSQL.negNan_ne_one, ``DuckDBSQL.negOne_ne_negZero, ``DuckDBSQL.negZero_ne_negOne, ``DuckDBSQL.negOne_ne_negNan, ``DuckDBSQL.negNan_ne_negOne, ``FloatCode.canon_ofInt, ``FloatCode.canon_idem,
     ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
     ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_float,
@@ -510,10 +510,8 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.ref_itof]
   `(tactic| (
     $intro:tactic
-    -- A NULL argument stays whole: both sides are NULL before a double's
-    -- codes are split.
-    all_goals try (simp only [$cheap,*]; exact Outcome.agree_refl _)
     $split3:tactic
+    all_goals try (simp only [$cheap,*]; exact Outcome.agree_refl _)
     all_goals have := FloatCode.negInf_lt_zero
     all_goals have := FloatCode.zero_lt_posInf
     all_goals have := FloatCode.posInf_lt_nan
@@ -566,7 +564,8 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
   if let some why := f.refused s then return .error s!"refused: {why}"
   let tac ← liftTac n extra
   let firstWhy ← IO.mkRef (none : Option String)
-  let liftCand (j : Json) (e : Substrait.Expr) (label : String) : TermElabM (Option String) := do
+  let liftCand (j : Json) (e : Substrait.Expr) (label : String) (mult : Nat := 1) :
+      TermElabM (Option String) := do
     -- The parser reads the whole candidate as its parts combined.
     unless parse f j == some e do return none
     let tmpl ← exprTerm e
@@ -598,7 +597,7 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
     if let some out := sink then
       out.modify (·.push (areaOf k.ctor,
         -- The check elaborates the statement too: twice the search's budget.
-        "set_option maxHeartbeats 800000 in\n" ++
+        s!"set_option maxHeartbeats {800000 * mult} in\n" ++
         s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_tac{n}\n\n" ++
         s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource entryTy} :=\n" ++
         s!"  ⟨{repr j.compress}, {← LoweringSearch.ppSource tmpl},\n" ++
@@ -616,7 +615,13 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
     let rows := sampleRows f.args
     if rows.all fun r => LoweringSearch.Outcome.agreeB (e.evalP Profile.reference r) (DuckFn.eval s f r) then
       let src := if h.source.startsWith "seeded" then "seeded" else "cached"
-      if let some r ← withCurrHeartbeats (liftCand j e s!"{src}") then return .ok r
+      -- A cached template is one a search proved before: if its proof runs
+      -- out of time, it gets four times the budget (`power`), as it is one
+      -- proof where the search tries many.
+      for mult in [1, 4] do
+        let budget (ctx : Core.Context) := { ctx with maxHeartbeats := ctx.maxHeartbeats * mult }
+        if let some r ← withTheReader Core.Context budget
+            (withCurrHeartbeats (liftCand j e s!"{src}" mult)) then return .ok r
   let cands := survivors s f
   for (j, e, label) in cands do
     -- Evaluating and proving count as heartbeats; each candidate starts afresh.
