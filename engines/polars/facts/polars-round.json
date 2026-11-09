@@ -21,7 +21,7 @@
       "streaming"
     ]
   },
-  "description": "`round()` rounds half to even (`round_ties_even`): `0.5` is 0, `2.5` is 2, `-2.5` is -2. `round(mode='half_away_from_zero')` is Rust's `f64::round`, and `mode='to_zero'` truncates. `floor` and `ceil` agree with the reference on every edge case.",
+  "description": "`round()` rounds half to even (`round_ties_even`): `0.5` is 0, `2.5` is 2, `-2.5` is -2. `round(mode='half_away_from_zero')` is Rust's `f64::round`, and `mode='to_zero'` truncates. `floor` and `ceil` agree with the reference on every edge case. A negative value that rounds to zero gives `-0.0` (`round(-0.4)`, `ceil(-0.4)`), as IEEE 754 does, in-memory and streaming.",
   "reference": "`round` with `rounding: TIE_AWAY_FROM_ZERO` (#335), the only value the model accepts. So the writer needs `mode='half_away_from_zero'`, which matches on every row.",
   "status": "open",
   "evidence": "probe",
@@ -131,6 +131,20 @@
           "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L384-L390",
           "note": "#[test] `test_round_series`: [1.003, 2.23222, 3.4352].round(2, default) gives 1.0 first (assert_eq!, exact)."
         }
+      ]
+    },
+    {
+      "checked_at": "2026-11-09",
+      "method": "probe",
+      "checked_by": "canon PR session (claude/canon-congruence), Python 3.12 in python/.venv",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'x': [-0.4, -0.04, -0.6]}).lazy().select(pl.col('x').round(0), pl.col('x').round(1), pl.col('x').ceil(), pl.col('x').floor()).collect(engine=...), engine 'in-memory' and 'streaming'",
+          "observed": "both engines: round(0) [-0.0, -0.0, -1.0], round(1) [-0.4, -0.0, -0.6], ceil [-0.0, -0.0, -0.0], floor [-1.0, -1.0, -1.0] (signs by math.copysign)"
+        }
+      ],
+      "notes": [
+        "Polars py-2.1.0. The sign of a zero result, for the round-to-zero sign option."
       ]
     }
   ],

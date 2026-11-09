@@ -78,9 +78,44 @@ def FMath.hi? : FMath → Option Int
 def FMath.inDomain (f : FMath) (c : Int) : Bool :=
   f.lo?.all (· ≤ c) && (f.hi?.all (c ≤ ·) || c == FloatCode.nan)
 
+-- One `simp` set serves every function's case, each using part of it.
+set_option linter.unusedSimpArgs false in
+set_option exponentiation.threshold 2100 in
+/-- A double in a domain has its canonical code there too: no domain has a
+lower bound below `-0.0`'s, and NaN is in every domain (D31). -/
+theorem FMath.inDomain_canon {f : FMath} {c : Int} (h : f.inDomain c = true) :
+    f.inDomain (FloatCode.canon c) = true := by
+  have h0 : FloatCode.negZero = -(2 * (FloatCode.maxMag : Int) + 6) := fp64.negZero_eq
+  have h1 : FloatCode.negNan = -(2 * (FloatCode.maxMag : Int) + 5) := fp64.negNan_eq
+  have h2 : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+  have h3 : FloatCode.negInf = -(2 * (FloatCode.maxMag : Int) + 3) := fp64.negInf_eq
+  have h4 : FloatCode.posInf = 2 * (FloatCode.maxMag : Int) + 3 := fp64.posInf_eq
+  have hone : FloatCode.one = 2 * (2 : Int) ^ 1074 + 1 := rfl
+  have hnone : FloatCode.negOne = -(2 * (2 : Int) ^ 1074 + 1) := rfl
+  have hmm : (2 : Nat) ^ 1100 ≤ FloatCode.maxMag := by
+    rw [FloatCode.maxMag_def]
+    exact Nat.le_trans (Nat.pow_le_pow_right (by decide) (by decide : 1100 ≤ 2045))
+      (Nat.le_mul_of_pos_left _ (by decide))
+  have hmm' : ((2 : Nat) ^ 1100 : Int) ≤ (FloatCode.maxMag : Int) := by exact_mod_cast hmm
+  by_cases e0 : c = FloatCode.negZero
+  · subst e0; rw [show FloatCode.canon FloatCode.negZero = 0 from fp64.canon_negZero]
+    cases f <;> simp only [FMath.inDomain, FMath.lo?, FMath.hi?, Option.all_some, Option.all_none,
+      Bool.true_and, Bool.and_true, Bool.or_eq_true, decide_eq_true_eq, beq_iff_eq, Bool.and_eq_true,
+      true_or, or_true, and_true, true_and] at h ⊢ <;>
+      omega
+  by_cases e1 : c = FloatCode.negNan
+  · subst e1; rw [show FloatCode.canon FloatCode.negNan = FloatCode.nan from fp64.canon_negNan]
+    cases f <;> simp only [FMath.inDomain, FMath.lo?, FMath.hi?, Option.all_some, Option.all_none,
+      Bool.true_and, Bool.and_true, beq_self_eq_true, Bool.or_true, Bool.or_eq_true, decide_eq_true_eq,
+      beq_iff_eq, Bool.and_eq_true, true_or, or_true, and_true, true_and] <;>
+      omega
+  · rw [show FloatCode.canon c = c from fp64.canon_eq_self ⟨e0, e1⟩]; exact h
+
 /-- The function of the double with code `c`; `none` outside its domain. -/
 def FMath.apply (f : FMath) (c : Int) : Option Int :=
-  if f.inDomain c then some (FloatCode.ofFloat (f.eval (FloatCode.toFloat c))) else none
+  -- The domain of `-0.0` is `0.0`'s, of the negative NaN the NaN's (D31);
+  -- the value is IEEE's on the raw double (`sqrt(-0.0)` is `-0.0`).
+  if f.inDomain (FloatCode.canon c) then some (FloatCode.ofFloat (f.eval (FloatCode.toFloat c))) else none
 
 #guard FMath.apply .sqrt (FloatCode.ofFloat 4.0) == some (FloatCode.ofFloat 2.0)
 #guard FMath.apply .sqrt (FloatCode.ofFloat (-1.0)) == none
@@ -92,14 +127,33 @@ def FMath.apply (f : FMath) (c : Int) : Option Int :=
 
 /-- `atan2(y, x)`: a domain error at `(0, 0)`. -/
 def atan2? (y x : Int) : Option Int :=
-  if y = 0 ∧ x = 0 then none else some (FloatCode.lift₂ Float.atan2 y x)
+  -- The domain reads one zero (D31); the value is the native one on the raw
+  -- doubles (`atan2(-0.0, -1)` is `-π`).
+  if FloatCode.canon y = 0 ∧ FloatCode.canon x = 0 then none else some (FloatCode.lift₂ Float.atan2 y x)
 
 /-- `logb(x, b)`, the logarithm of `x` to base `b`, as `ln x / ln b`: a
 domain error unless `x` and `b` are positive and `b` is not 1. -/
 def logb? (x b : Int) : Option Int :=
-  if 0 < x ∧ 0 < b ∧ b ≠ FloatCode.one then
+  if 0 < FloatCode.canon x ∧ 0 < FloatCode.canon b ∧ FloatCode.canon b ≠ FloatCode.one then
     some (FloatCode.lift₂ (fun x b => Float.log x / Float.log b) x b)
   else none
+
+/-- Whether `atan2?` and `logb?` are defined reads only canonical codes. -/
+theorem atan2?_isSome_canon (y x : Int) :
+    (atan2? (FloatCode.canon y) (FloatCode.canon x)).isSome = (atan2? y x).isSome := by
+  unfold atan2?
+  simp only [FloatCode.canon_idem]
+  split
+  · rfl
+  · simp only [Option.isSome_some]
+
+theorem logb?_isSome_canon (x b : Int) :
+    (logb? (FloatCode.canon x) (FloatCode.canon b)).isSome = (logb? x b).isSome := by
+  unfold logb?
+  simp only [FloatCode.canon_idem]
+  split
+  · simp only [Option.isSome_some]
+  · rfl
 
 #guard atan2? 0 0 == none && atan2? 0 FloatCode.negOne == some (FloatCode.ofFloat 3.141592653589793)
 #guard logb? (FloatCode.ofFloat 8.0) (FloatCode.ofFloat 2.0) == some (FloatCode.ofFloat 3.0)

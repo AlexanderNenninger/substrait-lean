@@ -41,12 +41,19 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
       | some o =>
         right
         cases f <;> simp only [duckUn, reduceCtorEq] at hd
-        rename_i g
-        split at hd
-        · rename_i hc
-          refine callExtra_of_at (o := "on_domain_error") (by cases e <;> cases g <;> decide) ?_
-          simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
-        · cases hd
+        case fmath g =>
+          split at hd
+          · rename_i hc
+            refine callExtra_of_at (o := "on_domain_error") (by cases e <;> cases g <;> decide) ?_
+            simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
+          · cases hd
+        -- IEEE's `-0.0` where the reference's result is a zero (`round_zero_sign`).
+        case fround | fceil =>
+          split at hd
+          · rename_i hc
+            refine callExtra_of_at (o := "round_zero_sign") (by cases e <;> decide) ?_
+            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero, hc.2]
+          · cases hd
     | _ => exact .inl (raiseIf_ok h)
   · -- Each deviation, with the option whose scope it is in.
     have hfl : ∀ {a b : Int}, f.onFloats = true →
@@ -57,6 +64,13 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
       cases hd : duckBin ⟨e, true⟩ f a b with
       | none => rw [hd] at h; exact .inl (raiseIf_ok h)
       | some o =>
+        -- IEEE division's NaN is its own value (D39).
+        by_cases hi : f = .fdivIeee
+        · subst hi; left
+          simp only [duckBin] at h hd
+          split at h
+          · rename_i hn; cases h; simp only [BinFn.apply, fdiv_of_nanCase_ieee hn]
+          · rename_i hn; simp [hn] at hd
         right
         have nanC : nanCase f a b = true → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
             "nan_creation" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
@@ -66,12 +80,13 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
             CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.float a, .float b] :=
           fun hi hx => callExtra_of_at hx (by
             simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, hi])
-        have zero : b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+        have zero : FloatCode.canon b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
             "on_division_by_zero" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
               [.float a, .float b] := fun hb hx => callExtra_of_at hx (by
-            subst hb; simp [optionScope, divisorZero])
+            simp [optionScope, divisorZero, hb])
         cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
           simp only [duckBin] at hd
+        case fdivIeee => exact absurd rfl hi
         case fadd | fsub | fmul =>
           split at hd
           · exact nanC (by assumption) (by cases e <;> decide)
@@ -102,8 +117,12 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
           split at hd
           · rename_i hz
             obtain ⟨rfl, rfl⟩ := hz
-            exact dom (by simp [BinFn.issue, domainIssue, atan2?]) (by cases e <;> decide)
-          · cases hd
+            exact dom (by simp [BinFn.issue, domainIssue, atan2?, FloatCode.canon_zero])
+              (by cases e <;> decide)
+          · split at hd
+            · rename_i _ hz
+              exact dom (by simp [BinFn.issue, domainIssue, atan2?, hz.1, hz.2]) (by cases e <;> decide)
+            · cases hd
     have hint : ∀ {a b : Int}, f.onFloats = false →
         (duckBin ⟨e, true⟩ f a b).getD (Profile.reference.bin f (.int a) (.int b)) = .ok x →
         x = f.apply (.int a) (.int b) ∨
@@ -201,6 +220,9 @@ theorem Polars.written_within : Polars.written.Within Profile.polars.table := by
   · rename_i a b
     split
     · rename_i hn
+      -- IEEE division's NaN is its own value (D39).
+      by_cases hi : f = .fdivIeee
+      · subst hi; left; simp only [BinFn.apply, fdiv_of_nanCase_ieee hn]
       right
       -- `power` has no `nan_creation`: its NaN is a domain error's.
       by_cases hp : f = .fpow
@@ -210,7 +232,7 @@ theorem Polars.written_within : Polars.written.Within Profile.polars.table := by
           simp only [BinFn.issue, nanIssue, hn]; split <;> rfl
         simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, this]
       · refine callExtra_of_at (o := "nan_creation") ?_ (by simp [optionScope, hn])
-        cases f <;> simp [nanCase] at hn <;> first | decide | exact absurd rfl hp
+        cases f <;> simp [nanCase] at hn <;> first | decide | exact absurd rfl hp | exact absurd rfl hi
     · exact .inl rfl
   · exact .inl rfl
 

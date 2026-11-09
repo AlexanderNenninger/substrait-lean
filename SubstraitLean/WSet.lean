@@ -259,7 +259,7 @@ def Rel.evalK (I : Impl) (cat : WCatalog K) (S : Seam K := {}) : Rel → WSet K
   | .orderBy r keys => (r.evalK I cat S).mergeSort fun x y => sortLe keys x.1 y.1
   | .distinct r =>
       let z := r.evalK I cat S
-      ((dedup (List.map (·.1) z)).filter fun row => S.pos (WSet.filter (· == row) z)).map (·, 1)
+      (distinctRows ((List.map (·.1) z).filter fun row => S.pos (WSet.filter (· == row) z))).map (·, 1)
   | .semi a b anti on => WSet.filter (fun x => S.pos (WSet.filter
       (fun y => (on.eval (x ++ y) I).isTrue) (b.evalK I cat S)) != anti) (a.evalK I cat S)
   | .unnest r c => (r.evalK I cat S).flatMap fun x => (unnestRow c x.1).map (·, x.2)
@@ -428,7 +428,7 @@ theorem Rel.evalK_mapW {L : Type} [Mul L] [One L] {h : K → L}
   | .unnest r _ => by
       simp only [evalK]; rw [← evalK_mapW hmul hone r]
       simp [WSet.mapW, List.map_flatMap, List.flatMap_map, Function.comp_def]
-  | .distinct _ => by simp [evalK, WSet.mapW, List.filter_const_false']
+  | .distinct _ => by simp [evalK, WSet.mapW, List.filter_const_false', hone]
   | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
 
 end EvalK
@@ -498,7 +498,7 @@ theorem Rel.eval_eq_evalK {cat : Catalog} {I : Impl} :
       · rfl
       · simp only [Seam.bags, ← WSet.lift_filter, WSet.positive_lift, Bool.not_eq_true',
           List.isEmpty_eq_false_iff, ne_eq, List.filter_eq_nil_iff, beq_iff_eq]
-        exact fun h => h row (mem_dedup.mp hrow) rfl
+        exact fun h => h row hrow rfl
   | .semi a b anti _ => by
       simp only [evalK, eval, eval_eq_evalK a, eval_eq_evalK b, ← WSet.lift_filter]
       congr 1

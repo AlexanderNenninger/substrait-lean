@@ -47,11 +47,29 @@ theorem KeyOn.superset {k k' : List Nat} {rows : Relation} (hk : KeyOn k rows)
     simp only [keyOf, List.map_inj_left] at heq ⊢
     exact fun c hc => heq c (hsub c hc))
 
+/-- A symmetric relation that holds pairwise along a list holds between any
+two of its different members. -/
+theorem pairwise_of_mem {α : Type} {R : α → α → Prop} (hs : ∀ {a b}, R a b → R b a) :
+    ∀ {l : List α}, l.Pairwise R → ∀ {a b}, a ∈ l → b ∈ l → a ≠ b → R a b
+  | [], _, _, _, ha, _, _ => nomatch ha
+  | x :: _, h, a, b, ha, hb, hne => by
+    rw [List.pairwise_cons] at h
+    rcases List.mem_cons.1 ha with ea | ha' <;> rcases List.mem_cons.1 hb with eb | hb'
+    · exact absurd (ea.trans eb.symm) hne
+    · rw [ea]; exact h.1 _ hb'
+    · rw [eb]; exact hs (h.1 _ ha')
+    · exact pairwise_of_mem hs h.2 ha' hb' hne
+
+/-- Keys read rows up to canonical codes. -/
+theorem keyOf_eq_of_canon {k : List Nat} {a b : Row} (h : a.canon = b.canon) :
+    keyOf k a = keyOf k b :=
+  List.map_congr_left fun c _ => getD_canonV_of_canon h c
+
 theorem keyOf_append_left {k : List Nat} {x y : Row} (h : ∀ c ∈ k, c < x.length) :
     keyOf k (x ++ y) = keyOf k x := by
   simp only [keyOf, List.map_inj_left]
   intro c hc
-  exact getD_append_left' (h c hc)
+  rw [getD_append_left' (h c hc)]
 
 theorem keyOf_take {k : List Nat} {n : Nat} {row : Row} (h : ∀ c ∈ k, c < n) :
     keyOf k (row.take n) = keyOf k row := by
@@ -63,7 +81,9 @@ theorem keyOf_shift (k : List Nat) (x y : Row) :
     keyOf (k.map (x.length + ·)) (x ++ y) = keyOf k y := by
   unfold keyOf
   rw [List.map_map]
-  exact List.map_congr_left fun c _ => getD_append_right' c
+  exact List.map_congr_left fun c _ => by
+    show (List.getD (x ++ y) (x.length + c) .null).canonV = _
+    rw [getD_append_right']
 
 theorem keyOf_cross {ka kb : List Nat} {x y : Row} (h : ∀ c ∈ ka, c < x.length) :
     keyOf (ka ++ kb.map (x.length + ·)) (x ++ y) = keyOf ka x ++ keyOf kb y := by
@@ -81,11 +101,41 @@ def Expr.eqCols : Expr → List (Nat × Nat)
       | _, _ => []
   | _ => []
 
+theorem add_int_congr {x y : Value} {c : Int} (h : x.canonV = y.canonV) :
+    BinFn.apply .add x (.int c) = BinFn.apply .add y (.int c) := by
+  cases x <;> cases y <;> simp_all [BinFn.apply, Value.canonV]
+
+theorem int_add_congr {x y : Value} {c : Int} (h : x.canonV = y.canonV) :
+    BinFn.apply .add (.int c) x = BinFn.apply .add (.int c) y := by
+  cases x <;> cases y <;> simp_all [BinFn.apply, Value.canonV]
+
+theorem sub_int_congr {x y : Value} {c : Int} (h : x.canonV = y.canonV) :
+    BinFn.apply .sub x (.int c) = BinFn.apply .sub y (.int c) := by
+  cases x <;> cases y <;> simp_all [BinFn.apply, Value.canonV]
+
+/-- Adding an integer gives no double, so `canonV` leaves it. -/
+theorem add_int_canonV {x : Value} {c : Int} :
+    (BinFn.apply .add x (.int c)).canonV = BinFn.apply .add x (.int c) := by
+  cases x <;> simp [BinFn.apply, Value.canonV]
+
+theorem int_add_canonV {x : Value} {c : Int} :
+    (BinFn.apply .add (.int c) x).canonV = BinFn.apply .add (.int c) x := by
+  cases x <;> simp [BinFn.apply, Value.canonV]
+
+theorem sub_int_canonV {x : Value} {c : Int} :
+    (BinFn.apply .sub x (.int c)).canonV = BinFn.apply .sub x (.int c) := by
+  cases x <;> simp [BinFn.apply, Value.canonV]
+
+/-- A linear term reads its column only up to `canonV`. -/
 theorem Expr.linTerm_congr {t : Expr} {i : Nat} {c : Int} {r r' : Row}
-    (h : t.linTerm = some (i, c)) (hi : r.getD i .null = r'.getD i .null) :
-    t.eval r = t.eval r' := by
+    (h : t.linTerm = some (i, c)) (hi : (r.getD i .null).canonV = (r'.getD i .null).canonV) :
+    (t.eval r).canonV = (t.eval r').canonV := by
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD] at hi
-  rcases Expr.linTerm_spec h with ⟨rfl, rfl⟩ | rfl | rfl | rfl <;> simp [eval, hi]
+  rcases Expr.linTerm_spec h with ⟨rfl, rfl⟩ | rfl | rfl | rfl
+  · simpa [eval, List.getD_eq_getElem?_getD] using hi
+  · simp only [eval, List.getD_eq_getElem?_getD]; rw [add_int_congr hi]
+  · simp only [eval, List.getD_eq_getElem?_getD]; rw [int_add_congr hi]
+  · simp only [eval, List.getD_eq_getElem?_getD]; rw [sub_int_congr hi]
 
 theorem add_lit_inj {v w : Value} {c : Int} (he : BinFn.apply .add v (.int c) = BinFn.apply .add w (.int c))
     (hn : BinFn.apply .add v (.int c) ≠ .null) : v = w := by
@@ -99,21 +149,28 @@ theorem sub_lit_inj {v w : Value} {c : Int} (he : BinFn.apply .sub v (.int c) = 
     (hn : BinFn.apply .sub v (.int c) ≠ .null) : v = w := by
   cases v <;> cases w <;> simp_all [BinFn.apply] <;> omega
 
-/-- A linear term with a non-NULL value pins down its column. -/
+/-- A linear term with a non-NULL value pins down its column, up to `canonV`. -/
 theorem Expr.linTerm_inj {t : Expr} {j : Nat} {c : Int} {r r' : Row}
-    (h : t.linTerm = some (j, c)) (he : t.eval r = t.eval r') (hn : t.eval r ≠ .null) :
-    r.getD j .null = r'.getD j .null := by
+    (h : t.linTerm = some (j, c)) (he : (t.eval r).canonV = (t.eval r').canonV)
+    (hn : t.eval r ≠ .null) :
+    (r.getD j .null).canonV = (r'.getD j .null).canonV := by
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD]
   rcases Expr.linTerm_spec h with ⟨rfl, rfl⟩ | rfl | rfl | rfl
   · simpa [eval] using he
-  · exact add_lit_inj (by simpa [eval] using he) (by simpa [eval] using hn)
-  · exact lit_add_inj (by simpa [eval] using he) (by simpa [eval] using hn)
-  · exact sub_lit_inj (by simpa [eval] using he) (by simpa [eval] using hn)
+  · simp only [eval, add_int_canonV, List.getD_eq_getElem?_getD] at he hn
+    exact congrArg Value.canonV (add_lit_inj he hn)
+  · simp only [eval, int_add_canonV, List.getD_eq_getElem?_getD] at he hn
+    exact congrArg Value.canonV (lit_add_inj he hn)
+  · simp only [eval, sub_int_canonV, List.getD_eq_getElem?_getD] at he hn
+    exact congrArg Value.canonV (sub_lit_inj he hn)
 
 theorem Expr.eqCols_det {e : Expr} {r r' : Row} (ht : (e.eval r).isTrue = true)
     (ht' : (e.eval r').isTrue = true) :
-    ∀ p ∈ e.eqCols, (r.getD p.1 .null = r'.getD p.1 .null → r.getD p.2 .null = r'.getD p.2 .null) ∧
-      (r.getD p.2 .null = r'.getD p.2 .null → r.getD p.1 .null = r'.getD p.1 .null) := by
+    ∀ p ∈ e.eqCols,
+      ((r.getD p.1 .null).canonV = (r'.getD p.1 .null).canonV →
+        (r.getD p.2 .null).canonV = (r'.getD p.2 .null).canonV) ∧
+      ((r.getD p.2 .null).canonV = (r'.getD p.2 .null).canonV →
+        (r.getD p.1 .null).canonV = (r'.getD p.1 .null).canonV) := by
   fun_induction Expr.eqCols e
   case case1 p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at ht ht'
@@ -129,7 +186,8 @@ theorem Expr.eqCols_det {e : Expr} {r r' : Row} (ht : (e.eval r).isTrue = true)
     constructor
     · intro hi
       have := Expr.linTerm_congr h₁ hi
-      exact Expr.linTerm_inj h₂ (by rw [← he, this, he']) (he ▸ hn)
+      exact Expr.linTerm_inj h₂ (by rw [← he, this, he'])
+        fun h0 => hn (Value.canonV_eq_null.mp (he.trans (Value.canonV_eq_null.mpr h0)))
     · intro hj
       have := Expr.linTerm_congr h₂ hj
       exact Expr.linTerm_inj h₁ (by rw [he, this, ← he']) hn
@@ -177,7 +235,7 @@ theorem emitKey_keyOf {m : List Nat} {row : Row} :
       obtain ⟨p, hp, k'', hk, rfl⟩ := h
       have hmem : p ∈ positions m c := List.mem_of_mem_head? hp
       simp only [keyOf, List.map_cons, List.cons.injEq] at *
-      exact ⟨positions_getD hmem, emitKey_keyOf hk⟩
+      exact ⟨by rw [positions_getD hmem], emitKey_keyOf hk⟩
 
 /-- Every way of replacing each key column `c` by one of `σ c`. -/
 def variants (σ : Nat → List Nat) : List Nat → List (List Nat)
@@ -187,7 +245,7 @@ def variants (σ : Nat → List Nat) : List Nat → List (List Nat)
     (σ c).flatMap fun p => rest.map (p :: ·)
 
 theorem variants_keyOf {σ : Nat → List Nat} {row row' : Row} :
-    ∀ {k k' : List Nat}, (∀ c ∈ k, ∀ p ∈ σ c, row'.getD p .null = row.getD c .null) →
+    ∀ {k k' : List Nat}, (∀ c ∈ k, ∀ p ∈ σ c, (row'.getD p .null).canonV = (row.getD c .null).canonV) →
       k' ∈ variants σ k → keyOf k' row' = keyOf k row
   | [], k', _, hk' => by simp [variants] at hk'; subst hk'; rfl
   | c :: k, k', hσ, hk' => by
@@ -201,7 +259,8 @@ theorem variants_keyOf {σ : Nat → List Nat} {row row' : Row} :
 that agree on a variant agree on the original key. -/
 theorem variants_inj {σ : Nat → List Nat} {r₁ r₂ r₁' r₂' : Row} :
     ∀ {k k' : List Nat},
-      (∀ c ∈ k, ∀ p ∈ σ c, r₁'.getD p .null = r₂'.getD p .null → r₁.getD c .null = r₂.getD c .null) →
+      (∀ c ∈ k, ∀ p ∈ σ c, (r₁'.getD p .null).canonV = (r₂'.getD p .null).canonV →
+        (r₁.getD c .null).canonV = (r₂.getD c .null).canonV) →
       k' ∈ variants σ k → keyOf k' r₁' = keyOf k' r₂' → keyOf k r₁ = keyOf k r₂
   | [], _, _, _, _ => rfl
   | c :: k, k', hσ, hk', he => by
@@ -275,8 +334,9 @@ def linCols (n : Nat) (es : List Expr) (env : List AVal) (i : Nat) : List Nat :=
 theorem linCols_inj {n : Nat} {es : List Expr} {env : List AVal} {x₁ x₂ : Row} {i p : Nat}
     (h₁ : x₁.length = n) (h₂ : x₂.length = n) (hm₁ : EnvMem env x₁) (hm₂ : EnvMem env x₂)
     (hp : p ∈ linCols n es env i)
-    (he : (x₁ ++ es.map (·.eval x₁)).getD p .null = (x₂ ++ es.map (·.eval x₂)).getD p .null) :
-    x₁.getD i .null = x₂.getD i .null := by
+    (he : ((x₁ ++ es.map (·.eval x₁)).getD p .null).canonV =
+      ((x₂ ++ es.map (·.eval x₂)).getD p .null).canonV) :
+    (x₁.getD i .null).canonV = (x₂.getD i .null).canonV := by
   unfold linCols at hp
   split at hp
   · rename_i hint
@@ -293,7 +353,7 @@ theorem linCols_inj {n : Nat} {es : List Expr} {env : List AVal} {x₁ x₂ : Ro
       rw [← h₂, getD_append_right']; simp [List.getD_eq_getElem?_getD, List.getElem?_map, hq']
     rw [e₁, e₂, Expr.linTerm_int hl hy₁, Expr.linTerm_int hl hy₂] at he
     rw [hy₁, hy₂]
-    simp only [Value.int.injEq] at he ⊢
+    simp only [Value.canonV, Value.int.injEq] at he ⊢
     omega
   · simp at hp
 
@@ -305,7 +365,8 @@ def Expr.pinned : Expr → List Nat
   | _ => []
 
 theorem Expr.pinned_sound {e : Expr} {r r' : Row} (ht : (e.eval r).isTrue = true)
-    (ht' : (e.eval r').isTrue = true) : ∀ i ∈ e.pinned, r.getD i .null = r'.getD i .null := by
+    (ht' : (e.eval r').isTrue = true) :
+    ∀ i ∈ e.pinned, (r.getD i .null).canonV = (r'.getD i .null).canonV := by
   fun_induction Expr.pinned e
   case case1 p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at ht ht'
@@ -318,13 +379,15 @@ theorem Expr.pinned_sound {e : Expr} {r r' : Row} (ht : (e.eval r).isTrue = true
     simp only [List.mem_singleton] at hx; subst hx
     obtain ⟨he, _⟩ := eq_true_same (by simpa [eval] using ht)
     obtain ⟨he', _⟩ := eq_true_same (by simpa [eval] using ht')
-    simp_all [List.getD_eq_getElem?_getD]
+    simp only [List.getD_eq_getElem?_getD] at he he' ⊢
+    rw [he, he']
   case case3 v i =>
     intro x hx
     simp only [List.mem_singleton] at hx; subst hx
     obtain ⟨he, _⟩ := eq_true_same (by simpa [eval] using ht)
     obtain ⟨he', _⟩ := eq_true_same (by simpa [eval] using ht')
-    simp_all [List.getD_eq_getElem?_getD]
+    simp only [List.getD_eq_getElem?_getD] at he he' ⊢
+    rw [← he, ← he']
   all_goals (intro x hx; simp_all)
 
 /-- Keys of a join: a key of the left side, plus the columns of a right key
@@ -382,6 +445,63 @@ def AVal.disjoint (a b : AVal) : Bool :=
   !(a.null && b.null) && !(a.tt && b.tt) && !(a.ff && b.ff) &&
   (match a.int, b.int with | some x, some y => x.disjoint y | _, _ => true) &&
   (!(a.str && b.str) || strsDisjoint a b) && !(a.list && b.list) && !(a.struct && b.struct)
+
+/-- `a` holds no doubles, also not in lists or structs: `canonV` leaves its
+values alone. -/
+def AVal.noDoubles (a : AVal) : Bool :=
+  !a.list && !a.struct && (a.int.isNone || a.nk.any (· != .float))
+
+theorem AVal.canonV_of_noDoubles {a : AVal} {v : Value} (h : a.noDoubles = true) (hm : a.Mem v) :
+    v.canonV = v := by
+  simp only [AVal.noDoubles, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true,
+    Option.isNone_iff_eq_none, Option.any_eq_true, bne_iff_ne] at h
+  obtain ⟨⟨hl, hs⟩, hn⟩ := h
+  cases v with
+  | float c =>
+    obtain ⟨b, hb, -, hk⟩ := hm
+    rcases hn with hn | ⟨k, hk', hne⟩
+    · simp [hn] at hb
+    · simp [hk'] at hk; exact absurd hk hne
+  | list vs => exact absurd hm.1 (by simp [hl])
+  | struct vs => exact absurd hm.1 (by simp [hs])
+  | _ => simp [Value.canonV]
+
+/-- Rows that an environment without doubles describes are canonical. -/
+theorem Row.canon_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
+    (h : env.all AVal.noDoubles = true) (hl : row.length = env.length) : row.canon = row := by
+  unfold Row.canon
+  apply List.ext_getElem (by simp)
+  intro i h₁ h₂
+  have he : env.getD i AVal.top = env[i]'(hl ▸ h₂) := by
+    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (hl ▸ h₂)]
+  have := hm i
+  rw [he, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h₂] at this
+  simpa using AVal.canonV_of_noDoubles (List.all_eq_true.mp h _ (List.getElem_mem _)) this
+
+/-- A value of an abstract value without doubles is alone in its class. -/
+theorem AVal.lone_of_noDoubles {a : AVal} {v : Value} (h : a.noDoubles = true) (hm : a.Mem v) :
+    v.Lone := by
+  simp only [AVal.noDoubles, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true,
+    Option.isNone_iff_eq_none, Option.any_eq_true, bne_iff_ne] at h
+  obtain ⟨⟨hl, hs⟩, hn⟩ := h
+  refine Value.lone_of_ne (fun c hc => ?_) (fun vs hc => ?_) (fun vs hc => ?_) <;> subst hc
+  · obtain ⟨b, hb, -, hk⟩ := hm
+    rcases hn with hn | ⟨k, hk', hne⟩
+    · simp [hn] at hb
+    · simp [hk'] at hk; exact absurd hk hne
+  · exact absurd hm.1 (by simp [hl])
+  · exact absurd hm.1 (by simp [hs])
+
+/-- A row of an environment without doubles is alone in its class. -/
+theorem Row.lone_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
+    (h : env.all AVal.noDoubles = true) (hl : row.length = env.length) : row.Lone := by
+  refine Row.lone_of_forall fun v hv => ?_
+  obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
+  have he : env.getD i AVal.top = env[i]'(hl ▸ hi) := by
+    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (hl ▸ hi)]
+  have := hm i
+  rw [he, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi] at this
+  exact AVal.lone_of_noDoubles (List.all_eq_true.mp h _ (List.getElem_mem _)) (by simpa using this)
 
 theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (ha : a.Mem v)
     (hb : b.Mem w) : v ≠ w := by
@@ -626,9 +746,9 @@ theorem mem_windowRows_ext {part : List Nat} {fns : List WinFn} :
 theorem keyOf_window {part : List Nat} {fns : List WinFn} {n t : Nat} {x : Row}
     {g : WinFn → Value} (hx : x.length = n) (hpart : ∀ i ∈ part, i < n)
     (ht : fns[t]? = some WinFn.rowNumber) :
-    keyOf (part ++ [n + t]) (x ++ fns.map g) = keyOf part x ++ [g .rowNumber] := by
+    keyOf (part ++ [n + t]) (x ++ fns.map g) = keyOf part x ++ [(g .rowNumber).canonV] := by
   have hsplit : keyOf (part ++ [n + t]) (x ++ fns.map g) =
-      keyOf part (x ++ fns.map g) ++ [(x ++ fns.map g).getD (n + t) .null] := by simp [keyOf]
+      keyOf part (x ++ fns.map g) ++ [((x ++ fns.map g).getD (n + t) .null).canonV] := by simp [keyOf]
   rw [hsplit, keyOf_append_left (fun c hc => hx ▸ hpart c hc), ← hx, getD_append_right']
   simp [List.getD_eq_getElem?_getD, List.getElem?_map, ht]
 
@@ -652,20 +772,24 @@ theorem windowRows_rowNumber_key {part : List Nat} {fns : List WinFn} {n t : Nat
         rw [hpk]
       simp only [WinFn.value, WinFn.valueIn, hsame, List.filter_append, List.filter_cons_of_pos (samePart_refl part x),
         List.filter_nil, List.cons.injEq, Value.int.injEq, List.length_append, List.length_cons,
-        List.length_nil, and_true] at hrn
+        List.length_nil, and_true, Value.canonV] at hrn
       omega
 
-/-- All the columns of a row are the row. -/
-theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n) x = x := by
+/-- All the columns of a row are the row, canonical. -/
+theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n) x = x.canon := by
   subst h
-  apply List.ext_getElem (by simp [keyOf])
-  intro i h₁ h₂
-  simp [keyOf, List.getD, List.getElem?_eq_getElem h₂]
+  unfold keyOf Row.canon
+  apply List.ext_getElem (by simp)
+  intro i h₁ _
+  simp only [List.length_map, List.length_range] at h₁
+  simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h₁]
 
-theorem keyOf_range_append {k rest : Row} : keyOf (List.range k.length) (k ++ rest) = k := by
-  apply List.ext_getElem (by simp [keyOf])
-  intro i h₁ h₂
-  simp [keyOf, List.getD, List.getElem?_append_left h₂, List.getElem?_eq_getElem h₂]
+theorem keyOf_range_append {k rest : Row} : keyOf (List.range k.length) (k ++ rest) = k.canon := by
+  unfold keyOf Row.canon
+  apply List.ext_getElem (by simp)
+  intro i h₁ _
+  simp only [List.length_map, List.length_range] at h₁
+  simp [List.getD_eq_getElem?_getD, List.getElem?_append_left h₁, List.getElem?_eq_getElem h₁]
 
 theorem aggregateEval_key (gs : List Expr) (ms : List Measure) (rows : Relation) :
     KeyOn (List.range gs.length) (aggregateEval gs ms rows) := by
@@ -673,9 +797,9 @@ theorem aggregateEval_key (gs : List Expr) (ms : List Measure) (rows : Relation)
   split
   · simp
   · rw [List.pairwise_map]
-    refine (dedup_pairwise _).imp_of_mem fun hx hy hne => ?_
-    obtain ⟨x, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp hx)
-    obtain ⟨y, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp hy)
+    refine (canonReps_pairwise Row.leRaw_rawOrder _).imp_of_mem fun hx hy hne => ?_
+    obtain ⟨x, _, rfl⟩ := List.mem_map.mp (canonReps_sub hx)
+    obtain ⟨y, _, rfl⟩ := List.mem_map.mp (canonReps_sub hy)
     have hlx : (groupKey gs x).length = gs.length := by simp [groupKey]
     have hly : (groupKey gs y).length = gs.length := by simp [groupKey]
     rw [← hlx, keyOf_range_append]
@@ -691,21 +815,43 @@ theorem aggOrderAllowed_key {gs : List Expr} {ms : List Measure} {rows out : Rel
   · have hmap : ∀ {ks : List Row} {out : Relation}, (∀ k ∈ ks, k.length = gs.length) →
         Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
           Forall2 (fun m v => m.OrderAllowed (groupRows gs rows k) v) ms vs) ks out →
-        out.map (keyOf (List.range gs.length)) = ks := by
+        out.map (keyOf (List.range gs.length)) = ks.map Row.canon := by
       intro ks out hl h
       induction h with
       | nil => rfl
       | cons hk _ ih =>
         obtain ⟨vs, rfl, _⟩ := hk
         have hlk := hl _ (List.mem_cons_self ..)
-        rw [List.map_cons, ih fun k hk => hl k (List.mem_cons_of_mem _ hk)]
+        rw [List.map_cons, List.map_cons, ih fun k hk => hl k (List.mem_cons_of_mem _ hk)]
         simp only [List.cons.injEq, and_true]
         rw [← hlk]; exact keyOf_range_append
-    have hl : ∀ k ∈ dedup (rows.map (groupKey gs)), k.length = gs.length := fun k hk => by
-      obtain ⟨x, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk); simp [groupKey]
+    obtain ⟨ks, hks, h⟩ := h
+    have hl : ∀ k ∈ ks, k.length = gs.length := fun k hk => by
+      obtain ⟨_, hy, he⟩ := hks.class_mem hk
+      obtain ⟨x, _, rfl⟩ := List.mem_map.mp hy
+      rw [Row.length_of_canon he]; simp [groupKey]
     unfold KeyOn
-    rw [← List.pairwise_map, hmap hl h]
-    exact dedup_pairwise _
+    rw [← List.pairwise_map, hmap hl h, List.pairwise_map]
+    exact hks.1
+
+theorem KeyOn.eq_of_keyOf {k : List Nat} : ∀ {rows : Relation}, KeyOn k rows →
+    ∀ {x y : Row}, x ∈ rows → y ∈ rows → keyOf k x = keyOf k y → x = y
+  | [], _, _, _, hx, _, _ => by simp at hx
+  | z :: rows, h, x, y, hx, hy, he => by
+      unfold KeyOn at h
+      rw [List.pairwise_cons] at h
+      simp only [List.mem_cons] at hx hy
+      rcases hx with rfl | hx <;> rcases hy with rfl | hy
+      · rfl
+      · exact absurd he (h.1 y hy)
+      · exact absurd he.symm (h.1 x hx)
+      · exact KeyOn.eq_of_keyOf h.2 hx hy he
+
+/-- A key holds on any list of distinct rows drawn from the rows. -/
+theorem KeyOn.of_subset {k : List Nat} {rows l : Relation} (h : KeyOn k rows)
+    (hsub : ∀ x ∈ l, x ∈ rows) (hl : l.Nodup) : KeyOn k l :=
+  (List.nodup_iff_pairwise_ne.mp hl).imp_of_mem fun hx hy hne heq =>
+    hne (h.eq_of_keyOf (hsub _ hx) (hsub _ hy) heq)
 
 /-- **Derived keys hold on every order.** -/
 theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
@@ -844,9 +990,8 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
         intro u hu v hv heq
         have hum := aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.1 hx u hu c
         have hvm := aeval_sound_all hcat hA hF (WindowKeys.none_soundAll cat) hwf.2.1 hy v hv c
-        apply AVal.disjoint_ne hdis hum hvm
         simp only [keyOf, List.map_inj_left] at heq
-        exact heq c (by simp)
+        exact AVal.disjoint_ne hdis hum (AVal.mem_of_canonV_eq (heq c (by simp)) hvm) rfl
       · simp at hk
   | .semi a _ _ _, hwf, k, hk, _, ⟨x, _, hx, _, h⟩ =>
       ((keys_sound_all hcat hA hF hK hwf.1 k hk hx).sublist List.filter_sublist).perm h.symm
@@ -854,15 +999,23 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
   | .orderBy r _, hwf, k, hk, _, ⟨i, hi, h, _⟩ =>
       (keys_sound_all hcat hA hF hK (r := r) hwf.1 k hk hi).perm h.symm fun h => Ne.symm h
   | .unnest _ _, _, k, hk, _, _ => by simp [Rel.keys] at hk
-  | .distinct r, hwf, k, hk, _, ⟨i, hi, h⟩ => by
+  | .distinct r, hwf, k, hk, _, ⟨i, hi, d, hd, h⟩ => by
       refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
       simp only [Rel.keys, List.mem_cons] at hk
       rcases hk with rfl | hk
-      · refine (dedup_pairwise i).imp_of_mem fun hx hy hne => ?_
-        rw [keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (mem_dedup.mp hx)),
-          keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (mem_dedup.mp hy))]
+      · refine hd.1.imp_of_mem fun hx hy hne => ?_
+        obtain ⟨x', hx', ex⟩ := hd.class_mem hx
+        obtain ⟨y', hy', ey⟩ := hd.class_mem hy
+        rw [keyOf_range ((Row.length_of_canon ex).trans (orderAllowed_arity hcat (r := r) hwf hi _ hx')),
+          keyOf_range ((Row.length_of_canon ey).trans (orderAllowed_arity hcat (r := r) hwf hi _ hy'))]
         exact hne
-      · exact (keys_sound_all hcat hA hF hK (r := r) hwf k hk hi).sublist (dedup_sublist _)
+      · -- Each row of `d` is in the class of a row of `i`, a different one for each.
+        have hi' := keys_sound_all hcat hA hF hK (r := r) hwf k hk hi
+        refine hd.1.imp_of_mem fun hx hy hne => ?_
+        obtain ⟨x', hx', ex⟩ := hd.class_mem hx
+        obtain ⟨y', hy', ey⟩ := hd.class_mem hy
+        rw [keyOf_eq_of_canon ex, keyOf_eq_of_canon ey]
+        exact pairwise_of_mem (fun h e => h e.symm) hi' hx' hy' fun e => hne (by rw [ex, ey, e])
   | .aggregate _ gs _, _, k, hk, _, ⟨_, _, _, h, ho⟩ => by
       simp only [Rel.keys, List.mem_singleton] at hk
       subst hk
@@ -981,19 +1134,6 @@ same rows (`window_tiebreak`). `Rel.windowsTotal` checks this for every
 window of a plan with the derived keys. -/
 
 namespace Substrait
-
-theorem KeyOn.eq_of_keyOf {k : List Nat} : ∀ {rows : Relation}, KeyOn k rows →
-    ∀ {x y : Row}, x ∈ rows → y ∈ rows → keyOf k x = keyOf k y → x = y
-  | [], _, _, _, hx, _, _ => by simp at hx
-  | z :: rows, h, x, y, hx, hy, he => by
-      unfold KeyOn at h
-      rw [List.pairwise_cons] at h
-      simp only [List.mem_cons] at hx hy
-      rcases hx with rfl | hx <;> rcases hy with rfl | hy
-      · rfl
-      · exact absurd he (h.1 y hy)
-      · exact absurd he.symm (h.1 x hx)
-      · exact KeyOn.eq_of_keyOf h.2 hx hy he
 
 theorem KeyOn.nodup {k : List Nat} {rows : Relation} (h : KeyOn k rows) : rows.Nodup :=
   h.imp fun hne heq => hne (by rw [heq])
@@ -1387,19 +1527,23 @@ theorem windowRows_eq_occurrences {part : List Nat} {fns : List WinFn} {S : List
       hf l fun y hy => hin y (by simp [hy])]
 
 /-- **Windows partitioned by every column** do not depend on how ties are
-broken: rows tied in such a partition are equal, so any arrangement `s` of
-the input gives the rows `Rel.eval`'s stable sort gives, as a bag. -/
+broken when the rows are canonical (`hcan`: no `-0.0` and no negative NaN,
+which would share a partition with `0.0` and the NaN): rows tied in such a
+partition are equal, so any arrangement `s` of the input gives the rows
+`Rel.eval`'s stable sort gives, as a bag. -/
 theorem window_allColumns {part : List Nat} {sort : List SortKey} {fns : List WinFn}
     {rows : Relation} {w : Nat} (hlen : ∀ x ∈ rows, x.length = w) (hpart : ∀ i < w, i ∈ part)
-    {s : List Row} (hp : s.Perm rows) :
+    (hcan : ∀ x ∈ rows, x.canon = x) {s : List Row} (hp : s.Perm rows) :
     (windowRows part fns [] s).Perm (windowEval part sort fns rows) := by
   have hS : ∀ x ∈ rows, ∀ y ∈ rows, samePart part x y = true → x = y := by
     intro x hx y hy h
     simp only [samePart, decide_eq_true_eq, List.map_inj_left] at h
-    apply List.ext_getElem ((hlen x hx).trans (hlen y hy).symm)
+    rw [← hcan x hx, ← hcan y hy]
+    apply List.ext_getElem (by simp [Row.canon, hlen x hx, hlen y hy])
     intro i h1 h2
+    simp only [Row.canon, List.length_map] at h1 h2
     have := h i (hpart i (by rw [← hlen x hx]; exact h1))
-    simpa [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h1,
+    simpa [Row.canon, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h1,
       List.getElem?_eq_getElem h2] using this
   have hm := List.mergeSort_perm rows (sortLe sort)
   unfold windowEval
@@ -1484,10 +1628,11 @@ engine's tie-breaking is irrelevant. -/
 theorem Rel.window_allColumns {cat : Catalog} (hcat : cat.WF) {r : Rel} {part : List Nat}
     {sort : List SortKey} {fns : List WinFn} (hwf : r.WF cat)
     (h : (List.range (r.arity cat)).all (· ∈ part) = true)
+    (hcan : ∀ x ∈ r.eval cat, x.canon = x)
     {s : List Row} (hp : s.Perm (r.eval cat)) :
     (windowRows part fns [] s).Perm ((Rel.window r part sort fns).eval cat) := by
   simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at h
-  exact Substrait.window_allColumns (Rel.eval_arity hcat hwf) h hp
+  exact Substrait.window_allColumns (Rel.eval_arity hcat hwf) h hcan hp
 
 end Substrait
 

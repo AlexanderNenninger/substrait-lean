@@ -411,12 +411,13 @@ open FloatCode
 /-- The exact sum of the doubles among `vs`, in units of `2⁻¹⁰⁷⁴`. -/
 def exactSum : List Value → Int
   | [] => 0
-  | .float c :: vs => exact c + exactSum vs
+  -- A double by its canonical code: `-0.0` adds `0` (D31).
+  | .float c :: vs => exact (canon c) + exactSum vs
   | _ :: vs => exactSum vs
 
 /-- Does a code among `vs` satisfy `p`? -/
 def anyCode (p : Int → Bool) (vs : List Value) : Bool :=
-  vs.any fun | .float c => p c | _ => false
+  vs.any fun | .float c => p (canon c) | _ => false
 
 /-- NaN, `+∞` or `-∞` for a list with a non-finite double, as IEEE 754 adds
 them: a NaN, or both infinities, give NaN. A code below `-∞` (no value of the
@@ -457,7 +458,7 @@ theorem floatAvgCR_perm {vs ws : List Value} (h : vs.Perm ws) : floatAvgCR vs = 
 
 theorem nan_eq : nan = 2 * maxMag + 5 := fp64.nan_eq
 
-theorem anyCode_map_false {cs : List Int} {p : Int → Bool} (h : ∀ c ∈ cs, p c = false) :
+theorem anyCode_map_false {cs : List Int} {p : Int → Bool} (h : ∀ c ∈ cs, p (canon c) = false) :
     anyCode p (cs.map .float) = false := by
   simp only [anyCode, List.any_map, List.any_eq_false]
   intro c hc; simp [h c hc]
@@ -485,7 +486,8 @@ theorem nonFinite_cases (vs : List Value) :
   generalize anyCode (fun c => decide (c ≤ negInf)) vs = d
   cases a <;> cases b <;> cases d <;> simp <;> intro h <;> simp [h]
 
-theorem nonFinite_of_fin {cs : List Int} (h : ∀ c ∈ cs, IsFin c) : nonFinite (cs.map .float) = none := by
+theorem nonFinite_of_fin {cs : List Int} (h : ∀ c ∈ cs, IsFin (canon c)) :
+    nonFinite (cs.map .float) = none := by
   have := nan_eq; have := posInf_eq; have := negInf_eq
   simp only [nonFinite]
   rw [anyCode_map_false (fun c hc => by have := h c hc; unfold IsFin at this; simp; omega),
@@ -495,7 +497,7 @@ theorem nonFinite_of_fin {cs : List Int} (h : ∀ c ∈ cs, IsFin c) : nonFinite
 
 /-- `k · lo ≤ Σ ≤ k · hi` for `k` values in `[lo, hi]`. -/
 theorem exactSum_bounds {cs : List Int} {lo hi : Int}
-    (hb : ∀ c ∈ cs, lo ≤ scaled c ∧ scaled c ≤ hi) :
+    (hb : ∀ c ∈ cs, lo ≤ scaled (canon c) ∧ scaled (canon c) ≤ hi) :
     cs.length * lo ≤ exactSum (cs.map .float) ∧ exactSum (cs.map .float) ≤ cs.length * hi := by
   induction cs with
   | nil => simp [exactSum]
@@ -507,22 +509,24 @@ theorem exactSum_bounds {cs : List Int} {lo hi : Int}
     rw [Int.add_mul, Int.add_mul]
     omega
 
-theorem exactSum_nonneg {cs : List Int} (h : ∀ c ∈ cs, 0 ≤ c) : 0 ≤ exactSum (cs.map .float) := by
+theorem exactSum_nonneg {cs : List Int} (h : ∀ c ∈ cs, 0 ≤ canon c) : 0 ≤ exactSum (cs.map .float) := by
   induction cs with
   | nil => simp [exactSum]
   | cons c cs ih =>
     have hc := h c (List.mem_cons_self ..)
     have := ih fun x hx => h x (List.mem_cons_of_mem _ hx)
     simp only [List.map_cons, exactSum, exact, scaled]
+    generalize canon c = c' at hc ⊢
     split <;> omega
 
-theorem exactSum_nonpos {cs : List Int} (h : ∀ c ∈ cs, c ≤ 0) : exactSum (cs.map .float) ≤ 0 := by
+theorem exactSum_nonpos {cs : List Int} (h : ∀ c ∈ cs, canon c ≤ 0) : exactSum (cs.map .float) ≤ 0 := by
   induction cs with
   | nil => simp [exactSum]
   | cons c cs ih =>
     have hc := h c (List.mem_cons_self ..)
     have := ih fun x hx => h x (List.mem_cons_of_mem _ hx)
     simp only [List.map_cons, exactSum, exact, scaled]
+    generalize canon c = c' at hc ⊢
     split <;> omega
 
 /-- `⌈a / 2⁵²⌉` is at least `⌊a / 2⁵²⌋`. -/
@@ -544,12 +548,12 @@ the retired axiom `floatSum_mem` stated them of the sequential sum, with
 half an ulp in place of the order's error. -/
 theorem floatSumCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
     (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
-    (hb : ∀ c ∈ cs, lo ≤ scaled c ∧ scaled c ≤ hi) :
+    (hb : ∀ c ∈ cs, lo ≤ scaled (canon c) ∧ scaled (canon c) ≤ hi) :
     min lo (N * lo) - sumTolScaled N (max lo.natAbs hi.natAbs)
         ≤ scaled (floatSumCR (cs.map .float)) ∧
       scaled (floatSumCR (cs.map .float))
         ≤ max hi (N * hi) + sumTolScaled N (max lo.natAbs hi.natAbs) := by
-  have hfin : ∀ c ∈ cs, IsFin c := fun c hc => isFin_of_scaled (by have := hb c hc; omega)
+  have hfin : ∀ c ∈ cs, IsFin (canon c) := fun c hc => isFin_of_scaled (by have := hb c hc; omega)
   have hk : 1 ≤ cs.length := by
     cases cs with
     | nil => exact absurd rfl hne
@@ -591,10 +595,10 @@ set_option exponentiation.threshold 2100 in
 /-- The bounds of an `AVG` of doubles, as the retired `floatAvg_mem` stated them. -/
 theorem floatAvgCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
     (_h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
-    (hb : ∀ c ∈ cs, lo ≤ scaled c ∧ scaled c ≤ hi) :
+    (hb : ∀ c ∈ cs, lo ≤ scaled (canon c) ∧ scaled (canon c) ≤ hi) :
     lo - avgTolScaled N (max lo.natAbs hi.natAbs) ≤ scaled (floatAvgCR (cs.map .float)) ∧
       scaled (floatAvgCR (cs.map .float)) ≤ hi + avgTolScaled N (max lo.natAbs hi.natAbs) := by
-  have hfin : ∀ c ∈ cs, IsFin c := fun c hc => isFin_of_scaled (by have := hb c hc; omega)
+  have hfin : ∀ c ∈ cs, IsFin (canon c) := fun c hc => isFin_of_scaled (by have := hb c hc; omega)
   have hk : 1 ≤ cs.length := by
     cases cs with
     | nil => exact absurd rfl hne
@@ -649,8 +653,8 @@ theorem floatAvgCR_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ [])
 /-- Doubles all at least `0` (at most `0`) have a `SUM` and an `AVG` at least
 `0` (at most `0`), as the retired `floatSum_sign` stated of the sequential sum. -/
 theorem floatSumCR_sign {cs : List Int} (_hne : cs ≠ []) :
-    ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSumCR (cs.map .float) ∧ 0 ≤ floatAvgCR (cs.map .float)) ∧
-      ((∀ c ∈ cs, c ≤ 0) → floatSumCR (cs.map .float) ≤ 0 ∧ floatAvgCR (cs.map .float) ≤ 0) := by
+    ((∀ c ∈ cs, 0 ≤ canon c) → 0 ≤ floatSumCR (cs.map .float) ∧ 0 ≤ floatAvgCR (cs.map .float)) ∧
+      ((∀ c ∈ cs, canon c ≤ 0) → floatSumCR (cs.map .float) ≤ 0 ∧ floatAvgCR (cs.map .float) ≤ 0) := by
   have := nan_eq; have := posInf_eq; have := negInf_eq; have := maxMag_pos
   constructor
   · intro h

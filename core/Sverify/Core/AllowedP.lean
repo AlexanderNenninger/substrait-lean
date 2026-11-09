@@ -128,7 +128,7 @@ def AggFn.AllowedChoice (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Va
   | .cov _ | .corr => ∃ b ∈ t.allows "agg.stat" "stat_algo" [], StatAlgo b f vs v
   | .quantile true num scale => if vs = [] then v = .null else
       ∃ b ∈ t.allows "agg.quant" "quantile_interp" [], QuantInterp b num scale vs v
-  | _ => v = f.apply vs
+  | _ => f.Picks vs v
 
 /-- `AggFn.Allowed` with the choices of `t`, or any value where `t` allows a
 behaviour this does not model (`AggExtra`). -/
@@ -145,9 +145,9 @@ def Measure.AllowedP (t : ProfileTable) (I : Impl) (m : Measure) (rows : Relatio
 def aggAllowedP (t : ProfileTable) (I : Impl) (gs : List Expr) (ms : List Measure)
     (rows out : Relation) : Prop :=
   if gs.isEmpty then ∃ vs, out = [vs] ∧ Forall2 (fun m v => m.AllowedP t I rows v) ms vs
-  else Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
-      Forall2 (fun m v => m.AllowedP t I (groupRows gs rows k I) v) ms vs)
-    (dedup (rows.map fun row => groupKey gs row I)) out
+  else ∃ ks, IsReps Row.canon (rows.map fun row => groupKey gs row I) ks ∧
+    Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
+      Forall2 (fun m v => m.AllowedP t I (groupRows gs rows k I) v) ms vs) ks out
 
 /-! ## Windows -/
 
@@ -169,7 +169,9 @@ def WinFn.AllowedP (t : ProfileTable) (pb : List Row) (x : Row) (pa : List Row) 
     (v : Value) : Prop :=
   match f with
   | .agg m sort fr =>
-    if m.orderFree then m.AllowedP t Impl.lean (fr.rows sort pb x pa) v ∨ SlidingSum t m
+    -- A window's `MIN` and `MAX` keep `Measure.eval`'s member of a class.
+    if m.orderFree then (m.AllowedP t Impl.lean (fr.rows sort pb x pa) v ∧
+        (m.fn = .min ∨ m.fn = .max → v = m.eval (fr.rows sort pb x pa))) ∨ SlidingSum t m
     else v = m.eval (fr.rows sort pb x pa)
   | _ => v = f.valueIn pb x pa
 
@@ -241,7 +243,7 @@ def Rel.AllowedI (t : ProfileTable) (I : Impl) (cat : Catalog) : Rel → Relatio
   | .semi a b anti on, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
       out.Perm (x.filter fun row => hasMatch on y row I != anti)
   | .orderBy r keys, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm i ∧ SortedP t keys out
-  | .distinct r, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm (dedup i)
+  | .distinct r, out => ∃ i, r.AllowedI t I cat i ∧ ∃ d, IsReps Row.canon i d ∧ out.Perm d
   | .aggregate r gs ms, out => ∃ i, r.AllowedI t I cat i ∧ ∃ o, out.Perm o ∧
       aggAllowedP t I gs ms i o
   | .unnest r c, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm (i.flatMap (unnestRow c))
@@ -296,14 +298,15 @@ theorem aggAllowedP.mono {I : Impl} {gs : List Expr} {ms : List Measure} {rows o
   split
   · rintro ⟨vs, rfl, hv⟩
     exact ⟨vs, rfl, Forall2.imp (fun _ _ => Measure.AllowedP.mono h) hv⟩
-  · exact Forall2.imp fun _ _ ⟨vs, hrow, hv⟩ =>
-      ⟨vs, hrow, Forall2.imp (fun _ _ => Measure.AllowedP.mono h) hv⟩
+  · rintro ⟨ks, hks, hk⟩
+    exact ⟨ks, hks, Forall2.imp (fun _ _ ⟨vs, hrow, hv⟩ =>
+      ⟨vs, hrow, Forall2.imp (fun _ _ => Measure.AllowedP.mono h) hv⟩) hk⟩
 
 theorem WinFn.AllowedP.mono {pb : List Row} {x : Row} {pa : List Row} {f : WinFn} {v : Value} :
     f.AllowedP t pb x pa v → f.AllowedP u pb x pa v := by
   cases f <;> simp only [WinFn.AllowedP] <;> try exact id
   split
-  · exact Or.imp (Measure.AllowedP.mono h) fun ⟨hf, hb⟩ => ⟨hf, h _ _ _ _ hb⟩
+  · exact Or.imp (fun ⟨ha, hm⟩ => ⟨Measure.AllowedP.mono h ha, hm⟩) fun ⟨hf, hb⟩ => ⟨hf, h _ _ _ _ hb⟩
   · exact id
 
 theorem windowRowsP.mono {part : List Nat} {fns : List WinFn} :
@@ -379,12 +382,12 @@ theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
     cases cont <;> simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_quant, QuantInterp]
   case fsum | avg =>
     cases vs with
-    | nil => simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply]
+    | nil => simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, AggFn.Picks]
     | cons w ws =>
       simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, reference_allows_sum, SumOrder,
-        AvgOrder]
+        AvgOrder, AggFn.Picks]
   all_goals simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_var,
-    reference_allows_stat, StatAlgo]
+    reference_allows_stat, StatAlgo, AggFn.Picks]
 
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by
@@ -400,20 +403,26 @@ theorem aggAllowedP_reference (gs : List Expr) (ms : List Measure) (rows out : R
   split
   · exact exists_congr fun vs => and_congr_right fun _ =>
       forall₂_iff fun m v => Measure.allowedP_reference m rows v
-  · exact forall₂_iff fun k row => exists_congr fun vs => and_congr_right fun _ =>
-      forall₂_iff fun m v => Measure.allowedP_reference m _ v
+  · exact exists_congr fun ks => and_congr_right fun _ =>
+      forall₂_iff fun k row => exists_congr fun vs => and_congr_right fun _ =>
+        forall₂_iff fun m v => Measure.allowedP_reference m _ v
 
-/-- An order-free measure allows only its value. -/
+/-- An order-free measure allows only its value, when `MIN` and `MAX` keep
+`Measure.eval`'s member of a class. -/
 theorem Measure.allowed_iff {m : Measure} (hm : m.orderFree = true) (rows : Relation) (v : Value) :
-    m.Allowed rows v ↔ v = m.eval rows := by
-  refine ⟨Measure.allowed_eq hm, fun h => h ▸ ?_⟩
+    (m.Allowed rows v ∧ (m.fn = .min ∨ m.fn = .max → v = m.eval rows)) ↔ v = m.eval rows := by
+  refine ⟨fun ⟨h, hmm⟩ => ?_, fun h => ⟨h ▸ ?_, fun _ => h⟩⟩
+  · rcases Measure.allowed_picks hm h with hv | ⟨hf, -⟩
+    · rw [hv, Measure.eval_eq (AggFn.ne_collect_of_orderFree hm)]
+    · exact hmm hf
   -- As `Measure.eval_allowed`, through `AggFn.allowed_iff`: no measure's axioms.
   by_cases hs : m.fn.sorts = true
   · refine ⟨rows.mergeSort (sortLe m.sort), List.mergeSort_perm _ _, fun _ =>
       List.pairwise_mergeSort (sortLe_totalPre _).trans (sortLe_totalPre _).total rows, ?_⟩
-    rw [Measure.eval_sorts hs]; exact (AggFn.allowed_iff hm _ _).mpr rfl
+    rw [Measure.eval_sorts hs]; exact (AggFn.allowed_iff hm _ _).mpr (AggFn.picks_apply _ _)
   · refine ⟨rows, .refl _, fun h => absurd h hs, ?_⟩
-    rw [Measure.eval_eq (by simpa using hs)]; exact (AggFn.allowed_iff hm _ _).mpr rfl
+    rw [Measure.eval_eq (by simpa using hs)]
+    exact (AggFn.allowed_iff hm _ _).mpr (AggFn.picks_apply _ _)
 
 theorem WinFn.allowedP_reference (pb : List Row) (x : Row) (pa : List Row) (f : WinFn)
     (v : Value) : f.AllowedP Profile.reference.table pb x pa v ↔ v = f.valueIn pb x pa := by

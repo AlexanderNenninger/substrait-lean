@@ -39,7 +39,7 @@ import duckdb
 import ibis
 
 from sverify import plan_json as pj
-from sverify.contracts import INF_MAG, NAN_MAG
+from sverify.contracts import INF_MAG, NAN_MAG, NEG_ZERO
 from sverify.engine import run_checker
 from sverify_dev import slt
 
@@ -150,12 +150,12 @@ PROBES: list[Probe] = [
 
 
 def encode_double(x: float) -> int:
-    """A double's code in the Lean model (`FloatCode.ofFloat`): zero (-0.0
-    too) is 0, magnitudes m = |x| · 2¹⁰⁷⁴ are ±(2m + 1), one NaN."""
+    """A double's code in the Lean model (`FloatCode.ofFloat`): zero is 0 and
+    -0.0 `NEG_ZERO` (D31), magnitudes m = |x| · 2¹⁰⁷⁴ are ±(2m + 1), one NaN."""
     if math.isnan(x):
         return 2 * NAN_MAG + 1
     if x == 0:
-        return 0
+        return NEG_ZERO if math.copysign(1.0, x) < 0 else 0
     mag = INF_MAG if math.isinf(x) else int(Fraction(abs(x)) * 2**1074)
     return (2 * mag + 1) * (1 if x > 0 else -1)
 
@@ -216,9 +216,17 @@ def _plan(p: Probe, rows: Sequence[Sequence[Any]], option: str | None) -> str:
         return json.dumps(pj.plan(c, pj.project_rel(rel, len(p.args), [e]), ["r"]))
 
 
-def lean_outcomes(p: Probe, rows: Sequence[Sequence[Any]], option: str | None) -> list[Outcome]:
-    """Lean's outcome of `p` with `option` on each row, or a refusal for all."""
-    code, out, err = run_checker(("--outcomes",), _plan(p, rows, option))
+def lean_outcomes(
+    p: Probe, rows: Sequence[Sequence[Any]], option: str | None, semantics: str = "reference"
+) -> list[Outcome]:
+    """Lean's outcome of `p` with `option` on each row under `semantics`
+    (the reference's profile, or DuckDB's), or a refusal for all. DuckDB's is
+    the checker's internal stopgap, until `semantics="duckdb"` runs
+    engine to engine (#1288)."""
+    if semantics not in ("reference", "duckdb"):
+        raise ValueError(f"no outcomes under {semantics!r}")
+    flag = "--outcomes" if semantics == "reference" else "--outcomes-duckdb-stopgap"
+    code, out, err = run_checker((flag,), _plan(p, rows, option))
     if code != 0:
         why = ((err or out).strip().splitlines() or ["?"])[-1]
         return [("refused", why)] * len(rows)
