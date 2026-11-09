@@ -22,8 +22,8 @@ open Lean (Json toJson)
 /-! ## Function anchors
 
 Every function the writer can emit has a fixed anchor, from its area's table
-in `core/Sverify/Core/Functions.lean` (black boxes from
-`core/Sverify/Core/BlackBox.lean`). Anchors below 100 predate the areas' ranges
+in `core/Sverify/Core/Functions.lean` (black boxes from the black-box
+catalogue in scope, DuckDB's in `SubstraitLean/DuckDBBoxes.lean`). Anchors below 100 predate the areas' ranges
 and stay as they are. The checks below reject a duplicate anchor or name and
 an anchor outside its area's range; `Functions.lean` checks its rows.
 

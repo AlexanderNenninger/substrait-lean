@@ -2,7 +2,7 @@
 
 Internal: not part of sverify's public API.
 
-The table is `core/Sverify/Core/BlackBox.lean`'s; this module mirrors it for the
+The table is `SubstraitLean/DuckDBBoxes.lean`'s; this module mirrors it for the
 lift (`sverify.sql_lift.blackbox`) and the SQL writers
 (`sverify.sql.core.black_box`), and adds what Lean does not need: the SQL
 DuckDB computes each function with. `tests/test_black_box.py` checks that the
@@ -61,7 +61,7 @@ class BlackBox:
     """An aggregate's result without values (NULLs are skipped)."""
 
 
-#: The table, in `core/Sverify/Core/BlackBox.lean`'s order (scalars, then
+#: The table, in `SubstraitLean/DuckDBBoxes.lean`'s order (scalars, then
 #: aggregates): each row's anchor is 700 plus its index.
 TABLE: tuple[BlackBox, ...] = (
     BlackBox("base64", "scalar", ("str",), "str", "base64(encode({0}))", laws=(("non_null",),)),

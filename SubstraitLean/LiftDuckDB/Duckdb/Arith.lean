@@ -15,10 +15,11 @@ generated_entries
 
 open Substrait
 
+open scoped Substrait.DuckDB
+
 local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
-open scoped Substrait.DuckDB
 set_option maxHeartbeats 400000 in
 theorem Substrait.liftDuckDB.divInt_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.bigint x →

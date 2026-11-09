@@ -17,6 +17,9 @@ build` does not elaborate it.
 
 namespace Substrait
 
+-- DuckDB's black boxes (#1189).
+open scoped Substrait.DuckDB
+
 generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
   unfolding [Profile.duckdb, BinFn.onFloats, duckBin, duckUn, duckZero, duckShl, nanCase, isInfCode,
     FMath.inDomain, FMath.lo?, FMath.hi?, FMath.apply, domainIssue, nanIssue, negInfPow,

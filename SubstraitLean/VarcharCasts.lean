@@ -7,7 +7,7 @@ import Sverify.Core.Time
 
 The black boxes `varchar_bigint`, `varchar_double`, `varchar_boolean`,
 `varchar_date`, `varchar_timestamp` and their `try_` rows
-(`core/Sverify/Core/BlackBox.lean`) are DuckDB's `CAST` and `TRY_CAST` of a
+(`SubstraitLean/DuckDBBoxes.lean`) are DuckDB's `CAST` and `TRY_CAST` of a
 string. No proof depends on what they compute. This file is how Lean runs
 them, and it reads a string three ways:
 

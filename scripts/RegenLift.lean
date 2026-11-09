@@ -14,11 +14,18 @@ Not part of the library: `lake build` does not elaborate it.
 
 namespace Substrait
 
+-- DuckDB's black boxes (#1189).
+open scoped Substrait.DuckDB
+
+-- The written entries' budget (`LiftSearch.lean`): the search proves at it too.
+set_option maxHeartbeats 400000 in
 generate_lift liftDuckDB : Semantics.duckdb
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
   writing "SubstraitLean/LiftDuckDB/Duckdb"
 
+-- The written entries' budget (`LiftSearch.lean`): the search proves at it too.
+set_option maxHeartbeats 400000 in
 generate_lift liftReference : Semantics.reference
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
