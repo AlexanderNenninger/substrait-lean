@@ -12,6 +12,7 @@ import Sverify.Analysis.Incremental
 import Sverify.Analysis.Keys
 import Sverify.Analysis.Knowledge
 import Sverify.Analysis.Partition
+import Sverify.Analysis.ProfileImpl
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Safety
 import Sverify.Analysis.WSet

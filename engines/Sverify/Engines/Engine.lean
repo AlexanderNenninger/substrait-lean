@@ -37,6 +37,14 @@ def extraAtB (t : ProfileTable) (c : Functions.Ctor) (o : String) : Bool :=
     | none => false
   | none => false
 
+/-- `extraAtB t c o` for a pair of `ps`, from one check of them all. Each
+`decide` of `extraAtB` evaluates the table anew, so a proof that needs many
+pairs decides its list once (`Profile.duckdb_extras`). -/
+theorem extraAt_of_all {t : ProfileTable} {ps : List (Functions.Ctor × String)}
+    (h : (ps.all fun p => extraAtB t p.1 p.2) = true) {c : Functions.Ctor} {o : String}
+    (hm : (c, o) ∈ ps) : extraAtB t c o = true :=
+  List.all_eq_true.mp h _ hm
+
 variable [Boxes.Ambient]
 /-- `CallExtra` at the option `o`, from the table and the call's scope (D34). -/
 theorem callExtra_of_at {t : ProfileTable} {c : Functions.Ctor} {o : String} {args : List Value}

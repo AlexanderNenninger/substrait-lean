@@ -1,6 +1,6 @@
 import Sverify.Core.Profile
 import Sverify.Core.Order
-import SubstraitLean.EngineTables
+import SubstraitLean.PolarsTables
 import Sverify.Analysis.Guards
 import Sverify.Engines.Shims
 
