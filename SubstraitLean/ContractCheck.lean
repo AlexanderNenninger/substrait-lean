@@ -729,18 +729,34 @@ def keysOf (t : String) : List (List Nat) :=
 
 def caps : String → Option Nat := rowCaps ((R.input.getObjVal? "max_rows").toOption.getD (.obj {}))
 
-/-- The description of the inputs the analyses start from
-(`KnowledgeEnv.ofSpec`, sound by `KnowledgeEnv.ofSpec_sound`), computed once
-per table: the analyses read it at every read of every pass (#825). -/
-def kenv : KnowledgeEnv :=
-  let know (t : String) : Knowledge :=
-    ⟨tableEnv (R.schemas t) (R.preOf t), (R.preOf t).flatMap Expr.factsOf, R.keysOf t, none⟩
-  let knows := (R.tables.map (·.1) |>.eraseDups).map fun t => (t, know t)
+/-- `knows` as a description of the inputs, `know` for a table it lacks. -/
+@[noinline] def memoKnowledge (knows : List (String × Knowledge)) (know : String → Knowledge) :
+    KnowledgeEnv :=
   fun t => (knows.lookup t).getD (know t)
 
+/-- A table's knowledge: its schema, preconditions and keys. -/
+def know (t : String) : Knowledge :=
+  ⟨tableEnv (R.schemas t) (R.preOf t), (R.preOf t).flatMap Expr.factsOf, R.keysOf t, none⟩
+
+/-- Every table's knowledge, as data. -/
+def knowsTable : List (String × Knowledge) :=
+  (R.tables.map (·.1) |>.eraseDups).map fun t => (t, R.know t)
+
+/-- The description of the inputs the analyses start from
+(`KnowledgeEnv.ofSpec`, sound by `KnowledgeEnv.ofSpec_sound`). A
+`KnowledgeEnv` is a function, so the compiler gives `kenv` the table as a
+second argument and evaluates its body at every call: `Request.check` builds
+it once from `knowsTable`, a value, and passes it on (#825). -/
+def kenv : KnowledgeEnv := memoKnowledge R.knowsTable R.know
+
+/-- A postcondition plan's abstract values under the description `K` of the
+inputs, the rows it reads capped. `Request.check` computes `K` once per
+request (`kenv`) and passes it here and to the other analyses. -/
+def ensureEnvIn (K : KnowledgeEnv) (q : Plan) : List AVal :=
+  (q.root.capReads R.caps).aeval R.cat K.cols K.facts (K.windows R.cat)
+
 /-- A postcondition plan's abstract values, the rows it reads capped. -/
-def ensureEnv (q : Plan) : List AVal :=
-  (q.root.capReads R.caps).aeval R.cat R.kenv.cols R.kenv.facts (R.kenv.windows R.cat)
+def ensureEnv (q : Plan) : List AVal := R.ensureEnvIn R.kenv q
 
 /-- A postcondition plan's columns, each with whether the analysis proves it
 TRUE and its abstract value: proved for every order of the ties
@@ -758,13 +774,13 @@ end Request
 
 /-- The analyses of a parsed request, given each postcondition's abstract
 values (`ensureEnv`), but for the postconditions' verdicts (`Request.check`). -/
-def Request.analyses (R : Request) (envs : List (List AVal)) : Except String Report := do
+def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEnv := R.kenv) :
+    Except String Report := do
   let input := R.input
   let ensures := R.ensures
   let transform := R.transform
   let tables := R.tables
   let cat := R.cat
-  let kenv := R.kenv
   let A := kenv.cols
   let F := kenv.facts
   let inputKeys := kenv.keys
@@ -924,8 +940,11 @@ def Request.check (R : Request) : Except String Report :=
   if !R.ensures.all fun q => (q.root.capReads R.caps).checkWF R.cat then
     throw "a postcondition plan is not well-formed"
   else
-    let envs := R.ensures.map R.ensureEnv
-    match R.analyses envs with
+    -- `R.kenv`, with every table's knowledge evaluated once (`knowsTable`):
+    -- `R.kenv` itself would evaluate it again at each read.
+    let K := memoKnowledge R.knowsTable R.know
+    let envs := R.ensures.map (R.ensureEnvIn K)
+    match R.analyses envs K with
     | .error e => .error e
     | .ok rep =>
       let ensures := (R.ensures.zip envs).map fun (q, env) => Request.ensureResults.resultsOf q env
@@ -1001,7 +1020,8 @@ theorem lookup_map_self {β : Type} (f : String → β) (t : String) :
 theorem Request.kenv_eq (R : Request) :
     R.kenv = KnowledgeEnv.ofSpec R.schemas R.preOf R.keysOf := by
   funext t
-  simp only [Request.kenv, KnowledgeEnv.ofSpec, lookup_map_self]
+  simp only [Request.kenv, memoKnowledge, Request.knowsTable, Request.know, KnowledgeEnv.ofSpec,
+    lookup_map_self]
   split <;> rfl
 
 theorem Request.resultsOf_all (q : Plan) (env : List AVal)
@@ -1064,7 +1084,7 @@ theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
   have hQ : (q.root.capReads R.caps).WF data :=
     Rel.wf_congr harity (Rel.checkWF_iff.mp (check_wf hR hc q (List.mem_of_getElem? hq)))
   have henv : R.ensureEnv q = ((q.root.capReads R.caps).analyse data R.kenv).cols := by
-    simp only [Request.ensureEnv, Rel.analyse, KnowledgeEnv.windows,
+    simp only [Request.ensureEnv, Request.ensureEnvIn, Rel.analyse, KnowledgeEnv.windows,
       Rel.keyedWindows_congr harity, (Rel.aeval_congr harity _ _ _ false _).1]
   exact Knowledge.contract_sound_all hcat hK hQ (henv ▸ hall) (Rel.orderAllowed_capReads hcap ho)
 
