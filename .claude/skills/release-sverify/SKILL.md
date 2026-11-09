@@ -60,7 +60,7 @@ git switch -c release-<version> origin/release/<major>.<minor>
 # dbt/pyproject.toml: version = "<version>", and the dependency "sverify==<version>"
 # engines/polars/pyproject.toml, engines/spark/pyproject.toml: version = "<version>",
 #   and "sverify==<version>"; python/pyproject.toml's `polars` and `spark` extras:
-#   "sverify-polars==<version>", "sverify-spark[run]==<version>"
+#   "sverify-polars[run]==<version>", "sverify-spark[run]==<version>"
 # CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
 #   changelog.d/*.md fragments (file-name order) under it, then git rm the fragments
 #   (keep changelog.d/README.md)
