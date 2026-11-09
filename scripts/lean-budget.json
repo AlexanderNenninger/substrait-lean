@@ -274,32 +274,32 @@
    "rss_mb": 1536
   },
   "SubstraitLean.LoweringDuckDB.On.Bits": {
-   "cpu_s": 53,
-   "rss_mb": 2948
+   "cpu_s": 32,
+   "rss_mb": 2745
   },
   "SubstraitLean.LoweringDuckDB.On.Doubles": {
-   "cpu_s": 1100,
-   "rss_mb": 3942
+   "cpu_s": 317,
+   "rss_mb": 3622
   },
   "SubstraitLean.LoweringDuckDB.On.Guards": {
    "cpu_s": 96,
    "rss_mb": 3609
   },
   "SubstraitLean.LoweringDuckDB.On.Integers": {
-   "cpu_s": 217,
-   "rss_mb": 3048
+   "cpu_s": 149,
+   "rss_mb": 2961
   },
   "SubstraitLean.LoweringDuckDB.On.Math": {
-   "cpu_s": 112,
-   "rss_mb": 3014
+   "cpu_s": 43,
+   "rss_mb": 2770
   },
   "SubstraitLean.LoweringDuckDB.On.Native": {
-   "cpu_s": 77,
-   "rss_mb": 2974
+   "cpu_s": 74,
+   "rss_mb": 2878
   },
   "SubstraitLean.LoweringDuckDB.On.Table": {
    "cpu_s": 30,
-   "rss_mb": 2644
+   "rss_mb": 2608
   },
   "SubstraitLean.LoweringDuckDB.Schemas": {
    "cpu_s": 30,
