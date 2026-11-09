@@ -184,6 +184,35 @@ def nanCase : BinFn → Int → Int → Bool
 
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
+/-- Where IEEE division's NaN case holds (`∞ / ∞`, `0 / 0`), IEEE division
+gives the NaN itself: an engine computing IEEE's `/` needs no option there. -/
+theorem fdiv_of_nanCase_ieee {a b : Int} (h : nanCase .fdivIeee a b = true) :
+    FloatCode.fdiv a b = FloatCode.nan := by
+  have hP := FloatCode.posInf_eq; have hN := FloatCode.negInf_eq
+  have hZ := FloatCode.negZero_eq'; have hY := FloatCode.negNan_eq'
+  have hQ : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+  have hinf : ∀ c, isInfCode c = FloatCode.isInfCode c := fun _ => rfl
+  simp only [nanCase, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, hinf] at h
+  unfold FloatCode.fdiv FloatCode.divI
+  split
+  · rfl
+  rcases h with ⟨ha, hb⟩ | ⟨ha, hb⟩
+  · simp [ha, hb]
+  · have zero : ∀ {c : Int}, FloatCode.canon c = 0 →
+        FloatCode.isZeroCode c = true ∧ FloatCode.isInfCode c = false := by
+      intro c hc
+      have hz : c = 0 ∨ c = FloatCode.negZero := by
+        rcases FloatCode.canon_cases c with ⟨h', _⟩ | ⟨_, h'⟩ | h'
+        · exact .inr h'
+        · omega
+        · exact .inl (h'.symm.trans hc)
+      simp only [FloatCode.isZeroCode, FloatCode.isInfCode, Bool.or_eq_true, beq_iff_eq,
+        Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+      omega
+    obtain ⟨za, ia⟩ := zero ha
+    obtain ⟨zb, ib⟩ := zero hb
+    simp [za, zb, ia, ib]
+
 /-- `power(-∞, y)` for a finite `y` that is not an integer. IEEE 754 gives
 `+∞` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5`
 is a square root, NaN. The reference raises (a domain error, as for a finite
