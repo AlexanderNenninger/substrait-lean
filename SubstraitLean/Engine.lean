@@ -141,10 +141,10 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
             CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.float a, .float b] :=
           fun hi hx => callExtra_of_at hx (by
             simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, hi])
-        have zero : b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+        have zero : FloatCode.canon b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
             "on_division_by_zero" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
               [.float a, .float b] := fun hb hx => callExtra_of_at hx (by
-            subst hb; simp [optionScope, divisorZero])
+            simp [optionScope, divisorZero, hb])
         cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
           simp only [duckBin] at hd
         case fadd | fsub | fmul =>
@@ -177,8 +177,12 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
           split at hd
           · rename_i hz
             obtain ⟨rfl, rfl⟩ := hz
-            exact dom (by simp [BinFn.issue, domainIssue, atan2?]) (by cases e <;> decide)
-          · cases hd
+            exact dom (by simp [BinFn.issue, domainIssue, atan2?, FloatCode.canon_zero])
+              (by cases e <;> decide)
+          · split at hd
+            · rename_i _ hz
+              exact dom (by simp [BinFn.issue, domainIssue, atan2?, hz.1, hz.2]) (by cases e <;> decide)
+            · cases hd
     have hint : ∀ {a b : Int}, f.onFloats = false →
         (duckBin ⟨e, true⟩ f a b).getD (Profile.reference.bin f (.int a) (.int b)) = .ok x →
         x = f.apply (.int a) (.int b) ∨

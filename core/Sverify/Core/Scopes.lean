@@ -73,9 +73,11 @@ def Functions.Ctor.issue : Ctor → List Value → Option Issue
   | .bin f, [v, w] => f.issueAll v w
   | _, _ => none
 
-/-- A zero divisor. -/
+/-- A zero divisor: an integer `0`, or a double `0.0` or `-0.0`, where the
+reference raises (D31). -/
 def divisorZero : List Value → Bool
-  | [_, .int 0] | [_, .float 0] => true
+  | [_, .int 0] => true
+  | [_, .float c] => FloatCode.canon c == 0
   | _ => false
 
 /-- A quotient of operands of opposite signs with a remainder: where
@@ -114,8 +116,9 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   -- `∞ / ∞`, `fmod(±∞, y)` (`nanCase`), `0 / 0`, `fmod(x, 0)`, a `SUM` of
   -- `+∞` and `−∞`.
   | "nan_creation" => match c, args with
-    | .bin f, [.float a, .float b] => nanCase f a b || (f == .fmod && b == 0) ||
-        (f == .fdiv && a == 0 && b == 0)
+    -- Zeros by their canonical codes: `-0.0` is a zero too (D31).
+    | .bin f, [.float a, .float b] => nanCase f a b || (f == .fmod && FloatCode.canon b == 0) ||
+        (f == .fdiv && FloatCode.canon a == 0 && FloatCode.canon b == 0)
     | .agg _, vs => !Value.anyNaN vs && vs.any (· == .float FloatCode.posInf) &&
         vs.any (· == .float FloatCode.negInf)
     | _, _ => false
