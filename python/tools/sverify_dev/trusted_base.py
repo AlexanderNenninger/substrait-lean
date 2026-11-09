@@ -11,7 +11,9 @@ over the generated entries show `sorryAx`.
     python -m sverify_dev.trusted_base --check   # fail where it drifted
 
 `--from FILE` reads Lean's output from a file instead of running
-`lake env lean SubstraitLean/Examples.lean`.
+`lake lean SubstraitLean/Examples.lean`. (`lake lean`, which hands Lean each
+module's file: under `lake env lean` the search path finds `Sverify.Engines.*`
+in `core/`'s build, the first one with a `Sverify` directory, #1189.)
 """
 
 from __future__ import annotations
@@ -39,10 +41,10 @@ def printed(text: str) -> dict[str, str]:
 
 def lean_output() -> str:
     out = subprocess.run(
-        ["lake", "env", "lean", EXAMPLES], cwd=ROOT, capture_output=True, text=True, check=False
+        ["lake", "lean", EXAMPLES], cwd=ROOT, capture_output=True, text=True, check=False
     )
     if out.returncode != 0:
-        sys.exit(f"lake env lean {EXAMPLES} failed:\n{out.stderr or out.stdout}")
+        sys.exit(f"lake lean {EXAMPLES} failed:\n{out.stderr or out.stdout}")
     return out.stdout
 
 
