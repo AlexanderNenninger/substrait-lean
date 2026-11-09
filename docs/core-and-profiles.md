@@ -53,7 +53,7 @@ by default. It belongs to no engine.
 Because the reference is strict, one proof carries to every engine:
 sverify writes the plan for each engine with a shim wherever the engine's
 value differs from the reference's, and the shims are proved
-([routes](tasks.md#routes-classes-and-profiles)).
+([Verifying: the two paths](verifying.md)).
 
 ## Engine profiles
 
