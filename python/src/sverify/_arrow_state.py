@@ -17,8 +17,8 @@ from typing import Any
 import pyarrow as pa
 
 from sverify._scan import Resident
-from sverify._state import State, Store, arrow_of, by_keys
-from sverify._weighted import expanded, has_negative, negated, weighted
+from sverify._store import State, Store, arrow_of, by_keys
+from sverify._weighted import _call, expanded, has_negative, negated, weighted
 
 
 class ArrowOps(Store[Any]):
@@ -43,11 +43,9 @@ class ArrowOps(Store[Any]):
     def retire(self, view, column: str, cutoff: object) -> int:
         """Drop the rows of `view.state` whose bucket `column` starts at or
         before `cutoff` (`sverify._retention`); returns how many buckets."""
-        from sverify import _retention
-
         state = arrow_of(view.state)
-        gone = _retention.buckets(_retention.through(state, column, cutoff), column)
-        view.state = _retention.after(state, column, cutoff)
+        gone = buckets(through(state, column, cutoff), column)
+        view.state = after(state, column, cutoff)
         return gone
 
     def with_keys(self, z: State, columns: Sequence[str], keys: pa.Table) -> State:
@@ -59,3 +57,27 @@ class ArrowOps(Store[Any]):
         """The rows of `z` whose `columns` equal no row of `keys`: the rows
         `with_keys` leaves out."""
         return by_keys(arrow_of(z), columns, keys, keep=False)
+
+
+# Retention over Arrow state (`sverify._retention` re-exports them).
+
+
+def _scalar(value: Any, dtype: pa.DataType) -> pa.Scalar:
+    return pa.scalar(value, type=dtype)
+
+
+def after(table: pa.Table, column: str, cutoff: Any) -> pa.Table:
+    """The rows of `table` whose bucket `column` starts after `cutoff`."""
+    col = table.column(column)
+    return table.filter(_call("greater", col, _scalar(cutoff, col.type)))
+
+
+def through(table: pa.Table, column: str, cutoff: Any) -> pa.Table:
+    """The rows of `table` whose bucket starts at or before `cutoff`."""
+    col = table.column(column)
+    return table.filter(_call("less_equal", col, _scalar(cutoff, col.type)))
+
+
+def buckets(table: pa.Table, column: str) -> int:
+    """How many distinct buckets `table` has."""
+    return _call("count_distinct", table.column(column)).as_py() if table.num_rows else 0

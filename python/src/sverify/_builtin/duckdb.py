@@ -25,7 +25,7 @@ import pyarrow as pa
 from sverify import _duckdb, black_box
 from sverify._arrow_state import ArrowOps
 from sverify._scan import Resident, _q
-from sverify._state import State
+from sverify._store import State
 from sverify._unsupported import RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
 from sverify.profiles import ProfilePlugin, Setting
