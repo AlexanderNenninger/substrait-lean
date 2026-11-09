@@ -1,10 +1,8 @@
 # Engine profiles: the reference semantics and the engines
 
-How a proof relates to the engines that run a plan. The design work lives in
-epic [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)
-(which supersedes the first design for #23), and the evidence for each engine
-in [`characterization/`](../characterization/). This note sums up what was
-decided there and what Lean proves today; where the two differ, #185 wins.
+How a proof relates to the engines that run a plan. The evidence for each
+engine is in [`characterization/`](../characterization/). This note sums up
+the design and what Lean proves today.
 The layers (the core, its profiles, the engines that run them) are in
 [core, profiles and engines](core-semantics.md#core-profiles-and-engines);
 the classes of an engine's functions and which plans run on an engine are in
@@ -12,25 +10,25 @@ the classes of an engine's functions and which plans run on an engine are in
 
 ## The reference profile
 
-`verify` proves things about `Rel.eval`, the **reference semantics**, the
+`verify` proves things about `Rel.eval`, the reference semantics, the
 core under the reference profile. It is
 not a model of any engine, DuckDB included. Its principles, the decided
 defaults (overflow and division by zero are errors, errors mean "may raise",
 rewrites are refinements) and every row of its behaviour, with its status on
 `main`, are in [reference-semantics.md](reference-semantics.md).
 
-An engine runs a plan **correctly** when, on every input, it gives a result
+An engine runs a plan correctly when, on every input, it gives a result
 the reference allows, or raises only where the reference may raise; resource
 errors, such as running out of memory, are excluded
-([D16](core-semantics.md#d16-engine-correctness)). Today Lean proves partial
+([engine correctness](core-semantics.md#d16-engine-correctness)). Today Lean proves partial
 correctness, `Rel.eval`'s rows or an error (`Rel.duckdb_shim_sound` below),
 and for a plan proved to never raise the two agree (`Rel.duckdb_sound`).
 
-**The size hypothesis.** Integers have their declared widths, and so do
+The size hypothesis. Integers have their declared widths, and so do
 lengths, positions and ranks. The reference assumes, as every engine's memory
-guarantees, that every string has fewer than `2³²` characters (#336), every
+guarantees, that every string has fewer than `2³²` characters, every
 relation a window reads fewer than `2⁶²` rows, and every relation an aggregate
-reads fewer than `2⁶³` (#437). It is trusted and stated where
+reads fewer than `2⁶³`. It is trusted and stated where
 it is used: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`, `levenshtein`
 and `ascii` at `2³²` (a cap no real string reaches), and `Rel.Small` is a
 hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound` and
@@ -38,7 +36,7 @@ hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound` and
 the range analysis proves that `ROW_NUMBER() - 1`, Ibis's `find`
 (`strpos - 1`) and sverify's floor division do not overflow. It infers no
 bound from the hypothesis for arithmetic the plan does on its own values
-(`amount * 2`); that needs a precondition, which sverify infers (#244).
+(`amount * 2`); that needs a precondition, which sverify infers.
 
 ## An engine profile and its diff
 
@@ -71,32 +69,32 @@ matches its engine is tested against the engine and trusted.
 [Engines](stability.md#engines) says which engines sverify supports and
 which are in the 1.x promise; the [realizability table](realizability.md)
 gives each engine's class on every option, its shims and its translation
-theorem. The tiers of [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)
-predate the profiles: DuckDB, Polars and Spark now each have one, with the
+theorem. DuckDB, Polars and Spark each have a profile, with the
 translation from the reference proved (`Rel.duckdb_refines`,
 `Rel.polars_sound`, `Rel.spark_sound`).
 
-SQL strings go through SQLGlot and sverify's own lift (#231): DuckDB's SQL
-with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`,
-#239), whose two profiles are generated Lean modules
+SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
+with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
+whose two profiles are generated Lean modules
 (`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). DataFusion's SQL planner
-stopped being a frontend in #211, and sverify no longer runs DataFusion. The
-reference is Lean's reference profile, and DuckDB is the default oracle
-(#1139).
+is not a frontend, and sverify does not run DataFusion. The reference is
+Lean's reference profile, and DuckDB is the default oracle.
 
-## Profiles and shims in Lean (#185, first slice)
+<a id="profiles-and-shims-in-lean-185-first-slice"></a>
+
+## Profiles and shims in Lean
 
 `core/Sverify/Core/Profile.lean` states the scalar part:
 
-* An engine evaluation gives an **`Outcome`**, a value or an error.
-* A **`Profile`** gives each function's outcome; `Expr.evalP` evaluates under
+* An engine evaluation gives an `Outcome`, a value or an error.
+* A `Profile` gives each function's outcome; `Expr.evalP` evaluates under
   one (strictly, left to right; a `CASE` takes one branch; a lambda runs on
   every element).
-* **`Profile.reference`** raises exactly where `Safety.lean` reports an error,
+* `Profile.reference` raises exactly where `Safety.lean` reports an error,
   and `Expr.evalP_reference` proves that evaluating under it is `eval`,
   raising the first error `issues` reports. So the reference is one profile
   among others.
-* **`Profile.duckdb s`** is the reference except where DuckDB 2.0 was probed
+* `Profile.duckdb s` is the reference except where DuckDB 2.0 was probed
   to differ (`python -m sverify_dev.probe`, `characterization/duckdb/probes.json`,
   FACTS R15). With `ieee_floating_point_ops` on (the default), operations on
   doubles that have no value give NaN (`∞ - ∞`, `0 · ∞`, `∞ / ∞`, `sqrt(-1)`),
@@ -105,7 +103,7 @@ reference is Lean's reference profile, and DuckDB is the default oracle
   gives 0 for shifts outside 0–63. Integers divided by zero follow
   `error_on_division_by_zero` (on by default since 2.0). `duckBin` and
   `duckUn` hold the differences; the settings are `DuckDBSettings`.
-* **The shims are generated** (#241). A shim rewrites an expression into one
+* The shims are generated. A shim rewrites an expression into one
   DuckDB evaluates to the reference's outcome. Its guards are two functions
   of the model: `UnFn.raise` (always an error, `Issue.raised`; DuckDB's
   `error()`) and `UnFn.isNum` (written `x IS NOT NULL`). So a shimmed plan is
@@ -128,7 +126,7 @@ reference is Lean's reference profile, and DuckDB is the default oracle
   2^(w-1)` in 128-bit arithmetic, is beyond the search: it is a hand-written
   schema (`LoweringSearch.duckdbSchemas`), still proved for each width by the
   kernel and marked as such in the coverage report. So are the guards for
-  DuckDB's IEEE operations (#242), which copy the reference's error
+  DuckDB's IEEE operations, which copy the reference's error
   conditions atom for atom: `nanCase` for `+ - * / % ^` of doubles (with the
   zero divisor for `/` and `%`), `FMath.inDomain` for the elementary
   functions, `0` for `MIN % -1`, and a range check for `>>`. `<<` multiplies
@@ -143,8 +141,9 @@ reference is Lean's reference profile, and DuckDB is the default oracle
   (`error_on_division_by_zero` and `ieee_floating_point_ops` on), the only
   ones sverify runs DuckDB with: its SQL for DuckDB assumes them, and
   `Lowering.duckdb` exists for `Profile.duckdb {}` alone. A plan meant to run
-  under other settings has no proved lowering; #241 tracks adding tables for
-  them. CI checks every entry's proof; a local `lake build` takes them as
+  under other settings has no proved lowering; tables for them are tracked in
+  [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/241).
+  CI checks every entry's proof; a local `lake build` takes them as
   proved unless run as `lake -R -Kcheck_generated=true build`
   (`engines/Sverify/Engines/Generated.lean`). A committed table that no longer fits fails the
   build: a proof stops checking when `Profile.duckdb` changes, and the table's
@@ -153,7 +152,7 @@ reference is Lean's reference profile, and DuckDB is the default oracle
   templates, and `sverify.sql.lowering`, a small interpreter in the trusted path,
   writes them as DuckDB SQL: the DuckDB printer asks it first (`Dialect.lowered`),
   so the guards in DuckDB's SQL are the proved ones. `SubstraitLean/Lowering.lean` proves once that
-  lowering with any such table is correct: **`Lowering.lower_correct`** (the
+  lowering with any such table is correct: `Lowering.lower_correct` (the
   lowered expression, under the engine's profile, has the reference's
   outcome, the same value or an error), and `Lowering.lowerRel_sound` for
   plans, by `Rel.evalI_mapExprs`. A template's guards are its outer chain of
@@ -174,13 +173,13 @@ reference is Lean's reference profile, and DuckDB is the default oracle
   considered and not used: it proves equalities rather than finding terms,
   it is deprecated, and it needs Lean 4.30 and Rust.
 
-* **The lift is generated too** (#268): the lowering search run backwards.
+* The lift is generated too: the lowering search run backwards.
   `SubstraitLean/DuckDBSQL.lean` states what DuckDB's SQL functions mean
   (`DuckFn`, at one signature each) under `semantics="duckdb"` and
   `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
   `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where
   DuckDB gives them. It is trusted, like a profile, and tested against the
-  engine (oracle A, #242). `generate_lift` (`SubstraitLean/LiftSearch.lean`)
+  engine (oracle A). `generate_lift` (`SubstraitLean/LiftSearch.lean`)
   searches Substrait calls (a function, its arguments as they are or cast,
   every assignment of the options the parser accepts) and calls under one or
   two guards with constants, reads each with the parser itself, tests it on
@@ -205,15 +204,15 @@ For a plan `verify` proves error-free from its contract, no shim is needed:
 `Profile.duckdbWritten_faithful` shows that DuckDB's profile, with IEEE
 operations on, agrees with the reference wherever the reference does not
 raise, so guard elimination (`Rel.guardFree_sound`) gives
-**`Rel.duckdb_sound`**: on every catalog that meets the preconditions, the
+`Rel.duckdb_sound`: on every catalog that meets the preconditions, the
 plan evaluated with DuckDB's functions gives `Rel.eval`'s rows. Two functions
 DuckDB raises on where the reference gives a value, `MIN % -1` and `<<`, are
 the SQL printer's (`Profile.duckdbWritten`): it writes them out even without
 guards. The catalogue's benchmark queries are checked this way
-(`verified_sql`, #229).
+(`verified_sql`).
 
 A plan that may raise (an overflow check, a division) is covered too, by
-**partial correctness**. `Lowering.duckdb_exact` shows that every lowered
+partial correctness. `Lowering.duckdb_exact` shows that every lowered
 expression, run with DuckDB's functions, gives the reference's value on every
 row where it does not raise, and `Rel.duckdb_shim_sound` lifts this to plans
 (`Lowering.lowerRel`): unless an expression raises on a row it is evaluated on, DuckDB
@@ -236,11 +235,7 @@ Each profile refines the loose core of [core-semantics.md](core-semantics.md), o
 
 ### The Polars example
 
-Polars 2.1.0's characterization ([engines/polars/facts/README.md](../engines/polars/facts/README.md),
-with strings, dates and casts in
-[#570](https://github.com/AlexanderNenninger/substrait-lean/pull/570) and the
-remaining items in
-[#573](https://github.com/AlexanderNenninger/substrait-lean/pull/573)) lists
+Polars 2.1.0's characterization ([engines/polars/facts/README.md](../engines/polars/facts/README.md)) lists
 where Polars differs from the reference. Sorted by the three kinds:
 
 Error side, no shim for a proved plan (15). The reference raises on each,
@@ -265,8 +260,10 @@ so a proved plan never reaches Polars's behaviour:
   `atan2(0, 0)` ([atan2](../engines/polars/facts/polars-atan2.json)),
   `±∞` in `sum`, `avg`, `variance`, `std_dev`
   ([nonfinite-aggregates](../engines/polars/facts/polars-nonfinite-aggregates.json));
-- `date_range`, past 9999 and PL-2's panic (#570's date-range), and
-  `substring_range` (#573's substring-range).
+- `date_range`, past 9999 and PL-2's panic
+  ([date-range](../engines/polars/facts/polars-date-range.json)), and
+  `substring_range`
+  ([substring-range](../engines/polars/facts/polars-substring-range.json)).
 
 Value side, shimmed (30). Seven of these are a written argument with no run-time
 cost: `round(mode='half_away_from_zero')`, `nulls_last`, `nan_max`,
@@ -280,20 +277,22 @@ the quantile's `method`. The others are shims with a cost:
   `CORR` of one pair ([corr](../engines/polars/facts/polars-corr.json)),
   `mode`'s list ([mode](../engines/polars/facts/polars-mode.json)),
   the rank of NULL ([rank](../engines/polars/facts/polars-rank.json));
-- `zero_sign` and `nan_kind` (`canon`, or `observed` up to `canon`, D22), and `round` to negative digits
+- `zero_sign` and `nan_kind` (`canon`, or `observed` up to `canon`), and `round` to negative digits
   ([round-digits](../engines/polars/facts/polars-round-digits.json));
 - decimal result types and `decimal_rescale`
   ([decimal-arith](../engines/polars/facts/polars-decimal-arith.json),
   [decimal-casts](../engines/polars/facts/polars-decimal-casts.json)),
   the `i64` against `fp64` comparison, `sum`'s widening of `i8`, `i16`, and
-  the implicit casts and literal types of #573;
+  the implicit casts
+  ([implicit-casts](../engines/polars/facts/polars-implicit-casts.json)) and
+  literal types ([literal-types](../engines/polars/facts/polars-literal-types.json));
 - 0-based positions of `substring`, `strpos` and `list_extract`,
-  `strpos`'s NULL, a regex's NULL without a match, `reverse` by graphemes
-  (#570), and `list_null_order` (#573).
+  `strpos`'s NULL, a regex's NULL without a match, `reverse` by graphemes,
+  and `list_null_order`.
 
 Open, native or `observed`: `tie_pick` and `tie_order` (Polars picks
 deterministically, which the reference allows), `sum_order` and `stat_algo`
-(`observed` within `ε`, #85's bounds), and `log10`, `log2` an ulp off
+(`observed` within `ε`), and `log10`, `log2` an ulp off
 ([log-base](../engines/polars/facts/polars-log-base.json)).
 
 Refused: the shifts, `ntile`, `percent_rank`, `cume_dist` and seven string
@@ -305,7 +304,7 @@ So 15 of Polars's differences cost a proved plan nothing, 7 cost a
 written argument, and the 23 run-time shims left each implement a value the
 reference chose.
 
-For the prototype slice, `SubstraitLean/PolarsShims.lean` proves them, each
+`SubstraitLean/PolarsShims.lean` proves them, each
 shim of `engines/polars/src/sverify_polars/shims.py` once, as `Polars.<name>`,
 against a model of Polars's own functions taken from its facts (the trusted
 part, as `Profile.duckdb` is for DuckDB):
@@ -313,13 +312,13 @@ part, as `Profile.duckdb` is for DuckDB):
 - the value shims: `int_div_trunc` and `int_mod_trunc` give `Int.tdiv` and
   `Int.tmod`, `sum_empty_null` NULL for no values, `avg_int_declared` the
   reference's truncated mean (which its clamp leaves), `round_half_away`
-  `roundMag`, `one_zero` `canon` on the codes of #444 step 1b, `strpos_chars`
+  `roundMag`, `one_zero` `canon` on the float codes, `strpos_chars`
   and `substring_wrap` `Text.strpos` and `Text.substrWrap`, `null_order` the
   key order `sortLe`, and `tie_order` `List.mergeSort` (any stable sort of a
   total preorder is it);
 - the guards, each flagging exactly the rows or groups where the reference's
-  issue is (`int_overflows`, `div_overflows`, `zero_divisor`, A3's
-  `sum_leaves_i64`, B1's `sum_makes_nan`, A4's `makes_infinite` and
+  issue is (`int_overflows`, `div_overflows`, `zero_divisor`,
+  `sum_leaves_i64`, `sum_makes_nan`, `makes_infinite` and
   `agg_makes_infinite`), so a guard refuses exactly the batches the
   precondition rules out. On Polars a double `SUM` is summed in Polars's own
   order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
@@ -330,14 +329,14 @@ part, as `Profile.duckdb` is for DuckDB):
   assumed ones whose guards stay, runs on Polars as `Rel.eval`).
 
 The Polars rows of `--options` name these theorems as their evidence. The
-`clustered` row stays tested, and so do the rows outside the slice.
+`clustered` row stays tested, and so do the rows these theorems do not cover.
 
 ### Polars as a profile
 
 `Profile.polars` ([PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean))
 is the profile `verify(semantics="polars")` checks under, and the one
 `--contract` takes with `"profile": "polars"`. It is an evaluable `Profile`,
-as `Profile.duckdb` is, and it takes Polars's choice option by option (D21):
+as `Profile.duckdb` is, and it takes Polars's choice option by option:
 
 | Option | `Profile.polars` | Polars 2.1.0 | Why |
 |---|---|---|---|
@@ -385,10 +384,10 @@ translation writes the stated calls as Polars's operators.
 
 `Profile.spark` ([SparkProfile.lean](../SubstraitLean/SparkProfile.lean)) is
 the profile `verify(semantics="spark")` checks under, and the one
-`--contract` takes with `"profile": "spark"` (#739). Its choices table,
+`--contract` takes with `"profile": "spark"`. Its choices table,
 `Profile.spark.table` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)),
 records Spark 4.3.0 under `SPARK_CONF` (ANSI mode on, `TIMESTAMP_NTZ`, UTC)
-from its [facts](../engines/spark/facts/). Option by option (D21):
+from its [facts](../engines/spark/facts/). Option by option:
 
 | Option | `Profile.spark` | Spark 4.3.0, ANSI | Why |
 |---|---|---|---|
@@ -427,7 +426,7 @@ option the proof depends on. What is proved
   `s > 6`.
 - `Rel.allowed_spark_core`: `Allowed_spark ⊆ Allowed_core`.
 
-Decimals (#27) run on Spark at the reference's types, which are Spark's own
+Decimals run on Spark at the reference's types, which are Spark's own
 up to 38 digits. Past them Spark cuts the scale to no less than 6
 ([decimal-arith](../engines/spark/facts/spark-decimal-arith.json)),
 so a sum or product whose type would pass 38 digits at a scale above 6 is
@@ -444,7 +443,7 @@ ANSI mode, `timestampType`, the session time zone, `caseSensitive` and
 `legacy.statisticalAggregate`, `decimalOperations.allowPrecisionLoss` and
 `legacy.percentileDiscCalculation` refuse the plans whose options they
 change. A run on another Spark version warns, and on another major version is
-refused (D14). Tested, and trusted: that Spark computes as the model says
+refused. Tested, and trusted: that Spark computes as the model says
 (`engines/spark/tests/test_spark_profile.py`, `engines/spark/tests/test_sql_spark.py`).
 
 ## Engine profiles from outside
@@ -467,8 +466,7 @@ does this for a test profile.
 
 Its Python side registers a `sverify.profiles.ProfilePlugin` under the
 entry-point group `sverify.profiles`. That group is where sverify finds
-engines, and the only place
-([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)):
+engines, and the only place:
 DuckDB and Snowflake's dialect register theirs there too, from
 `sverify._builtin`, and Polars and Spark from their engine packages
 (`engines/polars/` and `engines/spark/`, the distributions `sverify-polars`
@@ -485,7 +483,7 @@ Every field but `engine` is optional:
 | field | what it gives |
 |---|---|
 | `engine` | the engine's name, its profile's in the checker's tables |
-| `versions` | the versions its facts were probed at (D14); empty for a profile whose versions the checker carries, as sverify's own |
+| `versions` | the versions its facts were probed at; empty for a profile whose versions the checker carries, as sverify's own |
 | `translation` | the translation from the reference, as a route line names it; empty for none, so a route takes the reference's |
 | `checker` | a `substrait-check` built over `builtinEngines` and this profile |
 | `settings` | the engine settings the profile assumes (`Setting`), checked before a routed run |
@@ -520,7 +518,7 @@ gets the reference's translation, with no class claimed.
 
 ## The translations today
 
-Each engine reaches the reference through a **translation**, a function from
+Each engine reaches the reference through a translation, a function from
 a plan to something the engine runs. Lean proves the shims a translation
 applies and that the shimmed plan refines the reference under the engine's
 profile (the theorems in [Engines](#engines)); the code below that writes the
@@ -568,7 +566,7 @@ translator pins the semantics and takes no Polars defaults:
   `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
   and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
   and `AVG` of doubles are the exact sum and mean rounded once
-  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
+  ([correctly rounded sums](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
   whatever the order of the rows.
 * Strings are sequences of Unicode scalar values: `character_length`,
   `strpos` and `substring` count characters, and `substring` with
@@ -587,7 +585,7 @@ translator pins the semantics and takes no Polars defaults:
 * Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
   zero, `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions
   that do not compile, and calendar functions outside the reference's timestamps
-  (0001-01-01 to 9999-12-31, D32). Each expression
+  (0001-01-01 to 9999-12-31). Each expression
   carries a per-row flag for each one, masked by `CASE` as `Expr.issues`
   masks it. The operator raises the matching error if a flag is set on a row
   it evaluates. Polars runs filters where the plan puts them, so a filter
@@ -648,7 +646,7 @@ the engine:
   counts the first row of each value, integer `SUM` raises outside 64 bits,
   and a `SUM` or `AVG` of doubles is the engine's own, within the plan's
   bound of the reference's correctly rounded sum
-  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
+  ([correctly rounded sums](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
 * strings: lengths and positions count characters, a negative `substring`
   start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
   (either way the start is normalized before it reaches the engine), and
@@ -675,10 +673,9 @@ rewrite and ASOF differential tests run on DuckDB too.
 
 ### Snowflake
 
-The checks below run on an emulator, [fakesnow](https://github.com/tekumara/fakesnow)
-([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)); Snowflake's profile
-([#851](https://github.com/AlexanderNenninger/substrait-lean/issues/851)) is built from
-Snowflake behaviour recorded privately.
+The checks below run on an emulator, [fakesnow](https://github.com/tekumara/fakesnow).
+Sverify has no Snowflake profile or route yet: Snowflake runs the SQL
+sverify writes.
 
 `to_sql(plan, SNOWFLAKE)` (from `sverify.sql.snowflake`) writes checked plans
 and Lean delta plans as Snowflake SQL. The SQL is written to match Lean where
@@ -699,7 +696,7 @@ raises when it would answer differently:
 * FETCH over a named table is refused: Snowflake tables have no row order.
   A `SUM` or `AVG` of doubles runs natively, within the plan's bound of the
   reference's correctly rounded sum
-  ([D25](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
+  ([correctly rounded sums](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
   over a moving window frame the writer adds the frame's values anew
   (`window_float_sum`).
   Windows and sorts are refused too, unless you pass `deterministic=True` to
@@ -759,7 +756,9 @@ against `Rel.eval`; `test_backends.py` runs every coverage case there. The
 session needs a JVM (Java 17 or 21: `JAVA_HOME` or `java` on `PATH`), or the
 Spark tests are skipped (`poe test-spark` runs them).
 
-### Decimals (#27)
+<a id="decimals-27"></a>
+
+### Decimals
 
 The reference computes a `DECIMAL(p, s)` as its unscaled integer, exactly, and
 raises where a result needs more than `p` digits. `substrait-check --write`
@@ -767,9 +766,9 @@ writes decimal plans back as Substrait's own typed calls and casts, and
 refuses any it cannot (a plan whose written form does not parse back to the
 same `Rel`).
 
-Of the SQL dialects, only DuckDB runs decimal plans (`Dialect.decimals`);
-Snowflake and Spark refuse them for now. Polars runs them too, see
-[below](#decimals-on-polars). DuckDB computes `+`, `-` and
+Of the SQL dialects, DuckDB and Spark run decimal plans (`Dialect.decimals`;
+Spark's are in [Spark as a profile](#spark-as-a-profile)), and Snowflake
+refuses them. Polars runs them too, see [below](#decimals-on-polars). DuckDB computes `+`, `-` and
 `×` exactly, and rounds half away from zero when a cast drops decimal places,
 as the reference does. Its translation compensates where DuckDB differs:
 
@@ -816,8 +815,7 @@ Polars's `min` and `max` skip NaN unless every value is NaN
 ([polars-min-max-nan](../engines/polars/facts/polars-min-max-nan.json)),
 and keep whichever zero `f64::min` picks
 ([polars-min-max-zero](../engines/polars/facts/polars-min-max-zero.json)),
-in aggregates and over windows, on the streaming engine
-([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)):
+in aggregates and over windows, on the streaming engine:
 
 | Reference | Polars by itself | Translation |
 |---|---|---|

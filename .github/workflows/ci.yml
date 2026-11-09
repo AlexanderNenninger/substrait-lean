@@ -361,6 +361,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       # Check every proof, the generated entries' included
       # (engines/Sverify/Engines/Generated.lean), warnings failing the build (what
       # `poe prove` runs, for every default target), before `uv run`'s
@@ -415,6 +419,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: uv sync --locked --project python --no-install-project
       - run: uv run --no-sync --project python poe -e simple -C python lint
       - run: uv run --no-sync --project python poe -e simple -C python typecheck
@@ -442,6 +450,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - env:
           BACKENDS: ${{ matrix.backends }}
           SVERIFY_SHARD: ${{ matrix.shard }}
@@ -480,6 +492,10 @@ jobs:
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: python/pyproject.toml
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: bash python/scripts/wheel_tests.sh --editable python --fast -n 4 --dist worksteal
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
@@ -506,6 +522,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       # DuckDB's test/sql at the version uv.lock pins (`slt.fetch`).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -530,6 +550,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: uv run --locked --project python poe -C python notebooks
 
   # How long a check takes (#745, #825): every catalogue transform and the
@@ -549,6 +573,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - working-directory: python
         run: uv run --locked python -m sverify_dev.bench --notebooks --budgets --json ../bench.json
       - if: always()
@@ -574,6 +602,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - working-directory: python
         run: |
           uv run --locked python -m sverify_dev.facts
@@ -629,6 +661,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: dbt/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       # Not --locked: the lock holds this checkout's sverify, whose own
       # dependencies may change in a PR without relocking dbt/; uv keeps the
       # locked versions and re-resolves only what changed.
@@ -668,6 +704,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # The cache keeps the wheels uv built, and the rest come from PyPI:
+          # 9-12 s for setup and sync against 19-26 s with every wheel cached.
+          prune-cache: true
+          cache-suffix: pruned
       - run: |
           repo=$(mktemp -d)
           cp -R templates/pipelines/. "$repo/"
@@ -702,6 +742,15 @@ jobs:
       - uses: ./.github/actions/setup-lean
         with:
           cache: "false"
+      # The package's own build, by its sources: unchanged, `lake build` only
+      # checks the traces (Mathlib comes from `lake exe cache get` each time).
+      # Lake rebuilds every module whose inputs differ, so a restored build of
+      # other sources (the restore key) is safe too.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: float-bounds/.lake/build
+          key: float-bounds-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('float-bounds/lean-toolchain', 'float-bounds/lake-manifest.json', 'float-bounds/lakefile.toml', 'float-bounds/**/*.lean') }}
+          restore-keys: float-bounds-${{ runner.os }}-${{ runner.arch }}-
       - working-directory: float-bounds
         run: lake exe cache get && lake build --wfail
 

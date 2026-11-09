@@ -86,7 +86,7 @@ Leave out `requires`, and Sverify works out the preconditions under which
 the plan cannot fail: here that `qty` is never zero, and that `total` stays
 far enough from the smallest integer for the division not to overflow. It
 reports the plan as not proved and asks you to declare them
-([D23](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
+([why inferred preconditions are errors](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
 
 ```python
 from sverify.errors import PreconditionError
@@ -102,8 +102,7 @@ print(undeclared)
 
 Declare them, here as `qty != 0` and `total >= 0`, and the plan is proved.
 `report.run` checks the declared preconditions on the data first, and
-refuses a batch that breaks one before anything runs
-([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)):
+refuses a batch that breaks one before anything runs:
 
 ```python
 declared = sv.verify(
@@ -125,8 +124,8 @@ The other fix is a rewrite that no row needs the precondition for:
 `on_inferred="warn"` or `"ignore"` assumes the inferred preconditions and
 checks them on the data as declared ones are.
 
-An `AND` or `OR` evaluates both operands, as DuckDB and Polars do (D19 in
-[core-semantics.md](core-semantics.md)), so `(qty != 0) & (total // qty > 1)`
+An `AND` or `OR` evaluates both operands, as DuckDB and Polars do
+([`AND` and `OR` raise eagerly](core-semantics.md#d19-and-and-or-raise-eagerly)), so `(qty != 0) & (total // qty > 1)`
 still needs the precondition. Guarding the division itself,
 `ibis.cases((_.qty != 0, _.total // _.qty)) > 1`, is proved without it.
 
@@ -137,8 +136,8 @@ where none applies. The route names the plan's class on that engine:
 `exact` (every result the engine gives, the reference allows), `observed`
 (equal under an observation the postcondition states, a float tolerance
 included), `shim` (after a proved translation) or `refused`
-([D13](core-semantics.md#d13-choosing-the-route),
-[D22](core-semantics.md#d22-four-route-classes-and-tolerances-are-observations)).
+([how a route is chosen](core-semantics.md#d13-choosing-the-route),
+[route classes](core-semantics.md#d22-four-route-classes-and-tolerances-are-observations)).
 
 ```python
 con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 250, 30]}))
@@ -160,7 +159,7 @@ each engine.
 
 DuckDB and Polars add doubles in different orders, so a mean's last bits may
 differ. The checker proves how far: a bound on each double the plan computes
-([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)). With
+([float bounds](float-bounds.md)). With
 no observation in `ensures`, a run accepts doubles within that bound, the
 same as `sv.equivalent(floats="plan")`, and the report prints the bound.
 
@@ -205,7 +204,8 @@ that give them on its `observes:` line: for this mean, none.
 ## 6. A reproducible sink, kept up to date
 
 A sink commits each epoch once, so a rerun must give the same result. The
-sink says what "the same" means (`reproducible=`, D20), and a refresh is
+sink says what "the same" means (`reproducible=`,
+[two observations per output](core-semantics.md#d20-two-observations-per-output)), and a refresh is
 refused where the engine's run-to-run variation does not refine it. Polars's
 streaming `SUM` of doubles may add in another order each run, so a sink that
 asks for exact bits, `reproducible=sv.equivalent()`, is refused there, and

@@ -29,7 +29,7 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   postcondition states (a float tolerance is one), or exact or observed
   after a proved shim. Where no route
   applies, the plan is refused with the reason
-  ([D13](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)). DuckDB,
+  ([routes and classes](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)). DuckDB,
   Polars and Spark are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
 * Postconditions say what the result's consumer observes. By default,
@@ -70,12 +70,12 @@ Sverify runs plans on DuckDB, Polars and Spark, and writes DuckDB, Spark
 and Snowflake SQL. [Engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)
 says which are in the 1.x promise, with their profiles and translations.
 
-Polars refuses what only DuckDB runs so far, with "see #271": the functions
+Polars refuses what only DuckDB runs so far, with a message that links
+[the issue that tracks it](https://github.com/AlexanderNenninger/substrait-lean/issues/271): the functions
 that [`SUPPORT` and `WINDOW_SUPPORT`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/_support.py)
 list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `first`, `last`,
 `string_agg`, `median`, the quantiles, `mode`, `arg_min`, `arg_max`, the covariances,
-`corr`, and variances over a window), the black boxes, and `MIN` and `MAX` of doubles
-([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)).
+`corr`, and variances over a window), the black boxes, and `MIN` and `MAX` of doubles.
 
 ```bash
 pip install sverify                # or: uv add sverify
@@ -84,7 +84,13 @@ pip install 'sverify[all]'         # with every engine in the 1.x promise and bo
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
 `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
-`flight`, `testing`, `odcs`, `openlineage`, or `all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
+`flight`, `testing`, `odcs`, `openlineage`, or `all`.
+The `polars` and `spark` extras install the engine packages `sverify-polars`
+and `sverify-spark` with their runtimes; either package alone
+(`pip install sverify-spark`) verifies under its engine's semantics and
+writes its SQL without the runtime. Sverify finds every installed engine
+through its plugin (`sverify.profiles.ProfilePlugin`, the entry-point group
+`sverify.profiles`). Wheels bundle the checker as a small native binary for Linux (x86_64,
 aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
 builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
 starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
@@ -95,7 +101,7 @@ Each night, when `main` has changed, the
 `<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
 
 ```bash
-uv add "sverify>=0.4.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
+uv add "sverify>=0.8.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 pip install --pre sverify --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 ```
 
@@ -242,8 +248,7 @@ Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
 through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
 the default) or DuckDB's (`semantics="duckdb"`), for a subset of
-SQL so far ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/239),
-[#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)).
+SQL so far ([what the SQL lift reads](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md)).
 
 ## Workflows
 

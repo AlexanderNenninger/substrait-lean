@@ -1,4 +1,4 @@
-"""Contracts in the Open Data Contract Standard (ODCS, #791).
+"""Contracts in the Open Data Contract Standard (ODCS).
 
 ODCS (Bitol, Linux Foundation AI & Data) describes a dataset's contract in
 YAML: its schema, quality rules, descriptions and owners. Sverify writes

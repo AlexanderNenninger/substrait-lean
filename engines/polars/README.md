@@ -12,7 +12,7 @@ engine, with a shim where Polars differs from the reference. Install it with
 `semantics="polars"` without Polars. sverify finds it through its
 `ProfilePlugin` in the entry-point group `sverify.profiles`.
 
-The directory is one engine package of #1189:
+The directory holds the whole engine package:
 
 - `src/sverify_polars/`: the plugin (`PLUGIN`), the translation to lazy
   frames (`engine`) and the shims (`shims`);
@@ -22,4 +22,5 @@ The directory is one engine package of #1189:
 - `tests/`: its tests, which run in sverify's test session
   (`python/pyproject.toml`'s `testpaths`).
 
-Its Lean half (the profile and the lowering, `Sverify.Polars`) follows.
+Its Lean half, the profile and its shims, is in the root Lean package for now
+(`SubstraitLean/PolarsProfile.lean`, `PolarsShims.lean`).

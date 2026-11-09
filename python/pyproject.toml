@@ -181,7 +181,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 [tool.pyrefly]
 project-includes = ["src", "tools", "tests", "scripts"]
 # The engine packages are checked from their own directories (`typecheck`).
-search-path = ["src", "tools", "tests", "tests/chaos", "../engines/polars/src", "../engines/spark/src"]
+search-path = ["src", "tools", "tests", "tests/chaos", "scripts", "../engines/polars/src", "../engines/spark/src"]
 
 # Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
 # from the project root. Lean tasks run in the project root and need `lake`.

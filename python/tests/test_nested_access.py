@@ -4,7 +4,7 @@ The reference rules (decided on #94, from Substrait's spec and the backends):
 a list element is zero-based, negative from the end and NULL out of range
 (Substrait's `ListElement`); `cardinality` counts NULL elements and is NULL
 for a NULL list; a NULL struct's fields are NULL. Polars runs them; the SQL
-engines and DataFusion refuse them for now.
+engines refuse them for now.
 """
 
 import json

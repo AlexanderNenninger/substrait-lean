@@ -69,7 +69,7 @@ it and drops a password."""
 
 def public_uri(uri: str) -> str:
     """`uri` as sverify records it: the scheme, host, port and path, without
-    userinfo (`user:password@`), query string or fragment (#887). A path, an
+    userinfo (`user:password@`), query string or fragment. A path, an
     Iceberg identifier or any other text without `://` comes back as it is.
 
     Every URI that goes into a record, a report, an export or an event goes
@@ -154,7 +154,7 @@ def stats_facts(
 
 def rows_fact(files: Sequence[Mapping[str, ColumnStats]], source: str) -> list[Fact]:
     """A cap on the rows of a table made of `files`: the sum of their record
-    counts, when every file has one (#219). A file's count covers its deleted
+    counts, when every file has one. A file's count covers its deleted
     rows too, so it bounds the rows a scan or a filter reads."""
     counts = [next(iter(f.values())).rows if f else None for f in files]
     if any(n is None for n in counts):
@@ -440,7 +440,7 @@ class Contract:
 class ConcurrentWriteError(SverifyError, RuntimeError):
     """Another writer committed to a sink between the moment this refresh
     read what the sink holds (`Sink.committed`) and its own commit: two
-    processes refreshing the same sink (#517). This refresh's write was not
+    processes refreshing the same sink. This refresh's write was not
     committed, and the sink keeps the other writer's state; the next refresh
     replaces it with this process's state, or skips if the sink already holds
     it."""
@@ -610,9 +610,9 @@ def other_tables(committed: Contract, contract: Contract) -> list[str]:
     (one side records none), their version went down (a table's versions
     only grow, so a lower one is another table, dropped and created again).
     Then the sink's rows are not a state of these inputs, whatever the
-    epochs say (#516). With the same id on both sides, a lower version is
+    epochs say. With the same id on both sides, a lower version is
     the same table: this refresh is behind the record, and the sink holds a
-    later state, which is not written over (#1025)."""
+    later state, which is not written over."""
     out = []
     for t, n in contract.sources.items():
         was, now = committed.table_ids.get(t), contract.table_ids.get(t)
