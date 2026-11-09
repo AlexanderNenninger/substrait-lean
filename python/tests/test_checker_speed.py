@@ -34,22 +34,21 @@ def _row(name, base_ms, head_ms, same=True):
 
 
 def test_noise_passes(speed):
-    ok, _ = speed.verdict(
+    warnings, _ = speed.verdict(
         [_row("q1", 100, 105), _row("q2", 50, 48), _row("q3", 2, 9)], 1.3, 1.1, 5.0
     )
-    assert ok  # q3 is under 5 ms on the base: its ratio isn't judged
+    assert warnings == []  # q3 is under 5 ms on the base: its ratio isn't judged
 
 
-def test_a_slow_request_fails_and_is_named(speed):
-    ok, lines = speed.verdict([_row("q1", 100, 101), _row("q27", 98, 552)], 1.3, 1.1, 5.0)
-    assert not ok
-    assert any(line.startswith("q27 --contract: 5.63x") for line in lines)
+def test_a_slow_request_is_named(speed):
+    warnings, lines = speed.verdict([_row("q1", 100, 101), _row("q27", 98, 552)], 1.3, 1.1, 5.0)
+    assert any(w.startswith("q27 --contract: 5.63x") for w in warnings)
+    assert set(warnings) <= set(lines)
 
 
-def test_a_slow_set_fails(speed):
-    ok, lines = speed.verdict([_row(f"q{i}", 100, 115) for i in range(5)], 1.3, 1.1, 5.0)
-    assert not ok
-    assert any("over 1.1x" in line for line in lines)
+def test_a_slow_set_is_named(speed):
+    warnings, _ = speed.verdict([_row(f"q{i}", 100, 115) for i in range(5)], 1.3, 1.1, 5.0)
+    assert warnings == ["The set takes 1.15x as long, over 1.1x."]
 
 
 def test_the_requests_file_reads(speed):
