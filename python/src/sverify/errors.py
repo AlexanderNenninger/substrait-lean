@@ -33,7 +33,7 @@ The data:
 Running:
 
 * `RouteError` (`route_refused`): no route takes a plan to an engine
-  (`Report.run`, `Node.refresh`, #444); `.route` says why.
+  (`Report.run`, `Node.refresh`); `.route` says why.
 * `NotIncrementalError` (`not_incremental`): a plan has no verified delta
   rules.
 * `ConcurrentWriteError` (`concurrent_write`): another process committed to
@@ -45,7 +45,7 @@ Running:
   `ValueError`.
 * `SqlError` (`sql_refused`): a SQL producer refused a query.
 * `ExportError` (`export_refused`): a plan has no conforming Substrait form
-  that keeps its proof (`Report.to_substrait`, #664); the message names the
+  that keeps its proof (`Report.to_substrait`); the message names the
   reason and the spec gap.
 
 Setup:
@@ -58,7 +58,7 @@ Setup:
 * `EngineSettingsError` (`engine_settings`), `EngineSettingsWarning`: an
   engine setting differs from the one its profile's facts were probed
   under.
-* `SecretError` (`secret_unreadable`): a secret could not be read (#775);
+* `SecretError` (`secret_unreadable`): a secret could not be read;
   the message names it, never its value. A `LookupError`.
 
 Warnings:

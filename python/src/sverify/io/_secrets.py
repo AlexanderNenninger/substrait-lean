@@ -261,7 +261,7 @@ class Bao:
       `token_file` (default `~/.vault-token`, where `bao login` and an
       agent's sink put it);
     * `"jwt"`: the JWT auth method at `jwt_mount` with `role`, logging in
-      with the GitHub Actions OIDC token for `audience` (#776), or the
+      with the GitHub Actions OIDC token for `audience`, or the
       token in `jwt_file`. Nothing is stored: the login lasts as long as
       the role's TTL, and is kept in memory for that long.
 
@@ -458,7 +458,7 @@ _EXTRA = {
 
 class Resolver:
     """Looks secrets up: which backend reads each scheme, what each bare
-    name stands for, and the scope of each credential (#778).
+    name stands for, and the scope of each credential.
 
     The default resolver comes from configuration: the TOML file
     `SVERIFY_SECRETS` names, else the `[tool.sverify.secrets]` table of the

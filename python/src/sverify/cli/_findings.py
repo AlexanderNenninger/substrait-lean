@@ -78,7 +78,7 @@ def unchecked(name: str, d: Discovery) -> dict[str, Any]:
 
 
 def credentials(uses: list[tuple[str, CredentialUse]]) -> list[dict[str, Any]]:
-    """The findings of the credentials nodes use (#778): a table outside
+    """The findings of the credentials nodes use: a table outside
     its credential's scope, and credentials given as values."""
     from sverify.io._credentials import INLINE
 
