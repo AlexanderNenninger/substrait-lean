@@ -266,6 +266,15 @@ theorem Value.le_antisymm {a b : Value} (hab : a.le b = true) (hba : b.le a = tr
     a.canonV = b.canonV :=
   Value.leRaw_antisymm hab hba
 
+/-- `Value.le` on doubles compares canonical codes. -/
+theorem Value.le_float (a b : Int) :
+    (Value.float a).le (.float b) = decide (FloatCode.canon a ≤ FloatCode.canon b) := by
+  simp only [Value.le, Value.canonV_float]
+  rw [Value.leRaw_def]; rfl
+
+theorem Value.leRaw_float (a b : Int) : (Value.float a).leRaw (.float b) = decide (a ≤ b) := by
+  rw [Value.leRaw_def]; rfl
+
 /-- `Value.le` reads values only up to `canonV`. -/
 theorem Value.le_canon_right {a w w' : Value} (h : w.canonV = w'.canonV) : a.le w = a.le w' := by
   simp only [Value.le, h]
@@ -286,6 +295,13 @@ def Value.leT : Value → Value → Bool := lexLe Value.le Value.leRaw
 
 theorem Value.leT_totalPre : TotalPre Value.leT := Value.le_totalPre.lex Value.leRaw_totalPre
 
+/-- `Value.leT` of doubles: by canonical code, ties by raw code. -/
+theorem Value.leT_float (a b : Int) : (Value.float a).leT (.float b) = true ↔
+    FloatCode.canon a < FloatCode.canon b ∨ (FloatCode.canon a = FloatCode.canon b ∧ a ≤ b) := by
+  simp only [Value.leT, lexLe, Value.le_float, Value.leRaw_float, Bool.and_eq_true, Bool.or_eq_true,
+    Bool.not_eq_true', decide_eq_true_eq, decide_eq_false_iff_not]
+  omega
+
 theorem Value.leT_antisymm {a b : Value} (hab : a.leT b = true) (hba : b.leT a = true) : a = b :=
   have h := lexLe_antisymm hab hba
   Value.leRaw_antisymm h.2.2.1 h.2.2.2
@@ -298,6 +314,13 @@ picks by it, so a tied class gives its raw-least member, as `MIN` and
 def Value.geT : Value → Value → Bool := lexLe (fun a b => b.le a) Value.leRaw
 
 theorem Value.geT_totalPre : TotalPre Value.geT := Value.le_totalPre.flip.lex Value.leRaw_totalPre
+
+/-- `Value.geT` of doubles: by canonical code reversed, ties by raw code. -/
+theorem Value.geT_float (a b : Int) : (Value.float a).geT (.float b) = true ↔
+    FloatCode.canon b < FloatCode.canon a ∨ (FloatCode.canon a = FloatCode.canon b ∧ a ≤ b) := by
+  simp only [Value.geT, lexLe, Value.le_float, Value.leRaw_float, Bool.and_eq_true, Bool.or_eq_true,
+    Bool.not_eq_true', decide_eq_true_eq, decide_eq_false_iff_not]
+  omega
 
 theorem Value.geT_antisymm {a b : Value} (hab : a.geT b = true) (hba : b.geT a = true) : a = b :=
   have h := lexLe_antisymm hab hba
