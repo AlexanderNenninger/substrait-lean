@@ -222,20 +222,19 @@ theorem Lowering.zeroTemplate_float {s : DuckDBSettings} {f : UnFn} {g : Int →
   have hZ := FloatCode.negZero_eq'; have hY := FloatCode.negNan_eq'
   have hq : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
   simp only [Lowering.zeroTemplate, Expr.evalP, List.getD_cons_zero, Outcome.ok_bind,
-    Lowering.duck_lt, Lowering.duck_eq, Lowering.duck_and, hun, href, hlt, heq]
+    Lowering.duck_lt, Lowering.duck_eq, Lowering.duck_and, hun, href, hlt]
   rcases FloatCode.canon_cases c with ⟨rfl, h0⟩ | ⟨rfl, h0⟩ | h0
   · have : ¬ (FloatCode.negZero = 0) := by omega
-    simp [Outcome.ok_bind, heq, hlt, this, h0, hz, FloatCode.canon_zero, and3, Value.isTrue,
+    simp [Outcome.ok_bind, heq, this, h0, hz, FloatCode.canon_zero, and3, Value.isTrue,
       Outcome.Agree]
   · have : ¬ (FloatCode.negNan = 0) := by omega
     have hn1 : ¬ (FloatCode.nan < 0) := by omega
-    have hn2 : ¬ (FloatCode.nan = 0) := by omega
-    simp [Outcome.ok_bind, heq, hlt, this, hn1, hn2, h0, hn, FloatCode.canon_zero, and3,
+    simp [Outcome.ok_bind, heq, this, hn1, h0, hn, FloatCode.canon_zero, and3,
       Value.isTrue, Outcome.Agree]
   · have hr := hcan c h0
     have hb : (g c == 0) = decide (g c = 0) := rfl
     by_cases hneg : c < 0 <;> by_cases hr0 : g c = 0 <;>
-      simp [Outcome.ok_bind, heq, hlt, h0, hr, hneg, hr0, hb, FloatCode.canon_zero,
+      simp [Outcome.ok_bind, heq, h0, hr, hneg, hr0, hb, FloatCode.canon_zero,
         FloatCode.canon_negZero', and3, Value.isTrue, Outcome.Agree]
 
 /-- `round` on DuckDB, through `zeroTemplate`, agrees with the reference. -/

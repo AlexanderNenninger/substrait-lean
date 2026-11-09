@@ -274,8 +274,8 @@
    "rss_mb": 1536
   },
   "SubstraitLean.LoweringDuckDB.On.Arith": {
-   "cpu_s": 258,
-   "rss_mb": 5214
+   "cpu_s": 199,
+   "rss_mb": 6123
   },
   "SubstraitLean.LoweringDuckDB.On.Bits": {
    "cpu_s": 32,
@@ -298,8 +298,8 @@
    "rss_mb": 2878
   },
   "SubstraitLean.LoweringDuckDB.On.Powers": {
-   "cpu_s": 168,
-   "rss_mb": 3854
+   "cpu_s": 151,
+   "rss_mb": 4019
   },
   "SubstraitLean.LoweringDuckDB.On.Table": {
    "cpu_s": 30,
