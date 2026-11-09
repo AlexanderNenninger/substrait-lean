@@ -1,5 +1,9 @@
 # sverify-spark
 
+Sverify-spark is a working prototype, and so is sverify, which it extends.
+Their proofs and code still need a human audit before anyone relies on their
+results.
+
 Spark as an engine of [sverify](https://github.com/AlexanderNenninger/substrait-lean):
 a plan verified in Lean is written as Spark SQL, with a shim where Spark
 differs from the reference, and runs on a Spark session under ANSI mode.
