@@ -229,6 +229,10 @@ help = "Golden tests: substrait-check output on every plan in tests/fixtures"
 cmd = "tests/run.sh"
 cwd = "${POE_ROOT}/.."
 
+[tool.poe.tasks.trusted-base]
+help = "docs/trusted-base.md's axioms column from #print axioms; after `lake -R -Kcheck_generated=true build`"
+cmd = "python -m sverify_dev.trusted_base --write"
+
 [tool.poe.tasks.test]
 help = "The fast Python tests (not `slow`, a tenth of the Hypothesis examples) on 2 workers; see tests/conftest.py"
 cmd = "pytest -n auto --dist worksteal -m 'not slow'"

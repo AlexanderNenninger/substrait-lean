@@ -320,6 +320,8 @@ jobs:
       - run: uv run --locked --project python poe -C python prove
       - run: uv run --locked --project python poe -C python build
       - run: uv run --locked --project python poe -C python golden
+      # The kernel-checked theorems' axioms, as docs/trusted-base.md lists them (#1088).
+      - run: uv run --locked --project python python -m sverify_dev.trusted_base --check
 
   # The golden tests on the shared checker, when no Lean input changed.
   golden:
