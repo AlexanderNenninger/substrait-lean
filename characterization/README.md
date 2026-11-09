@@ -9,9 +9,10 @@ behaviour is recorded privately.
 
 ## The directory
 
-- [duckdb/](duckdb/README.md): the replay of DuckDB's sqllogictests (one
-  ledger per area of DuckDB's `test/sql/`), the fuzz findings, the probes
-  ([probes.json](duckdb/probes.json)), the facts and the DuckDB diff.
+- DuckDB's facts, the replay of its sqllogictests, the fuzz findings and the
+  probes are in its engine package (#1189):
+  [engines/duckdb/facts/](../engines/duckdb/facts/README.md) and
+  [engines/duckdb/replay/](../engines/duckdb/replay/).
 - Polars's facts and probes are in its engine package (#1189):
   [engines/polars/facts/](../engines/polars/facts/README.md) and
   [engines/polars/probes/](../engines/polars/probes/), under the in-memory and

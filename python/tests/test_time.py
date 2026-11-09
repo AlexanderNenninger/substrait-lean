@@ -32,7 +32,6 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify import duckdb_engine
 from sverify.engine import (
     connect,
     put_table,
@@ -44,6 +43,7 @@ from sverify.engine import (
 from sverify.errors import UnsupportedError
 from sverify.ibis_substrait import Unsupported, to_substrait, to_substrait_json
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
+from sverify_duckdb import engine as duckdb_engine
 from sverify_polars import engine as polars_engine
 
 MIN, MAX = -(2**63), 2**63 - 1
@@ -784,7 +784,7 @@ def test_constant_date_arithmetic_has_no_guard():
     reference's dates, which is decided when the plan is written: the SQL
     has no range guard. A column's arithmetic keeps it (#251)."""
     from sverify.sql import to_sql as plan_sql
-    from sverify.sql.duckdb import DUCKDB
+    from sverify_duckdb.dialect import DUCKDB
 
     t = ibis.table({"d": "date"}, name="t")
     for expr, guarded in [

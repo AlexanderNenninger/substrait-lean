@@ -64,7 +64,7 @@ the reference.
 
 | Profile | What it computes | Facts |
 |---|---|---|
-| DuckDB's | The reference's functions, except where DuckDB 2.0 was probed to differ on doubles and integers, under DuckDB's settings | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
+| DuckDB's | The reference's functions, except where DuckDB 2.0 was probed to differ on doubles and integers, under DuckDB's settings | [`engines/duckdb/facts/`](../engines/duckdb/facts/) |
 | Polars's | The reference's functions, except integer `//` and `%`, which floor | [`engines/polars/facts/`](../engines/polars/facts/) |
 | Spark's | The reference's functions, as the reference evaluates them; Spark's choices of the open options come from its facts | [`engines/spark/facts/`](../engines/spark/facts/) |
 

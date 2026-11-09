@@ -38,8 +38,8 @@ The lift reads DuckDB's default NULL order only: queries run under
 `fetch` checks out `test/sql` at the DuckDB version `python/uv.lock` pins
 (sparse and shallow, into `~/.cache/sverify/duckdb-slt`); `parse` reads the
 `.test` format; `replay_file` runs one file; `python -m sverify_dev.slt` replays
-areas and writes a ledger per area (`characterization/duckdb/<area>.json`)
-and a summary table (`characterization/duckdb/README.md`).
+areas and writes a ledger per area (`engines/duckdb/replay/<area>.json`)
+and a summary table (`engines/duckdb/facts/README.md`).
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ import pyarrow as pa
 
 REPO = Path(__file__).resolve().parents[3]
 CACHE = Path(os.environ.get("SVERIFY_SLT_CACHE", Path.home() / ".cache" / "sverify" / "duckdb-slt"))
-REPLAY_DIR = REPO / "characterization" / "duckdb"
+REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
 
 #: The one-row table a `SELECT` without `FROM` reads.
 ONE = "__sverify_one"
@@ -1161,7 +1161,7 @@ CLASSES = ("agree", "disagree", "refused", "skipped")
 @dataclass(frozen=True)
 class Known:
     """What explains the `disagree` entries of some test files: an open issue
-    (`#909`), a fact (`duckdb-R6`, in `characterization/duckdb/facts/`) or an
+    (`#909`), a fact (`duckdb-R6`, in `engines/duckdb/facts/`) or an
     upstream bug (`DD-6`, in `upstream/bugs/`)."""
 
     by: str

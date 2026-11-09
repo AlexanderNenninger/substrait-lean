@@ -1,0 +1,98 @@
+{
+  "id": "duckdb-R15-shift-left",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`BIGINT << BIGINT`",
+  "verdict": "no option matches",
+  "area": "integers",
+  "options": [
+    "shift_range",
+    "raise_set"
+  ],
+  "rows": [
+    {"group": "int.shift", "option": "shift_range", "types": ["i64"]},
+    {"group": "int.shift", "option": "shift_range", "types": ["i8", "i16", "i32"], "evidence": "engine_test"}
+  ],
+  "constructs": [
+    "<<",
+    "shift_left"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Raises on a negative operand, on bits shifted out, and on shifts below 0 or beyond 63 (but `0 << y` is 0 for any `y`).",
+    "The docs are silent on negative operands, shifted-out bits and out-of-range shifts: a docs gap."
+  ],
+  "reference": "`shift_left` drops the bits shifted out, and raises on shifts below 0 or beyond 63.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT << BIGINT"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/operators/bitwise.cpp#L247-L276",
+          "note": "BitwiseShiftLeftOperator: max_shift is the type's bit width; a negative operand, a shift below 0 or at least the width (unless the input is 0), and lost bits raise"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/operators/bitwise.cpp#L300-L312",
+          "note": "instantiated for every integral type"
+        }
+      ],
+      "notes": "One template for every width, with the range relative to the width: at i8 a shift of 8 or more raises (`0 << 8` is 0), and `1::TINYINT << 7` raises since 128 does not fit. sverify's reference states the range for 64 bits."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_bitwise_ops.test#L34-L50",
+          "note": "for TINYINT, SMALLINT, INT and BIGINT, a statement of `1 << -1`, `1 >> -1`, `1 << w` and `1 >> w` with w past the width (12, 20, 40, 1000) raises"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_bitwise_ops.test#L81-L90",
+          "note": "`0::UBIGINT << 64` and `0::BIGINT << 64` → 0"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_bitwise_ops_types.test#L5-L27",
+          "note": "in-range shifts of TINYINT (and SMALLINT, INTEGER, BIGINT below): `1 << 1` → 2, `1 >> 1` → 0"
+        }
+      ],
+      "notes": "The error is per statement, so the test does not name the expression that raised; `>>` gives 0 out of range (duckdb-R15-shift-right), so it is `<<`, at i8, i16 and i32 as at i64. `shift_right`'s out-of-range result has no test at these widths."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "<< 'Bitwise shift left'; error cases unstated"}
+      ]
+    }
+  ],
+  "issues": [
+    242
+  ]
+}

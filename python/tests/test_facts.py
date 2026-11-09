@@ -49,7 +49,7 @@ def test_validate_finds_problems(tmp_path):
                 "checked_at": "unknown",
                 "method": "docs",
                 "checked_by": "a session",
-                "evidence": [{"file": "characterization/duckdb/missing.json"}],
+                "evidence": [{"file": "engines/duckdb/replay/missing.json"}],
             }
         ],
         "superseded_by": "duckdb-X2",
@@ -59,7 +59,7 @@ def test_validate_finds_problems(tmp_path):
     (root / "duckdb" / "facts" / "duckdb-X3.json").write_text(json.dumps(bad))
     problems = "\n".join(facts.validate(facts.load(root), root))
     assert "not named after its id" in problems
-    assert "no file characterization/duckdb/missing.json" in problems
+    assert "no file engines/duckdb/replay/missing.json" in problems
     assert "no fact duckdb-X2" in problems
     assert "names duckdb-X9" in problems
     assert "'geometry' is not one of" in problems

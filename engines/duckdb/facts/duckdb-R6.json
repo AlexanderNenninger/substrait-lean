@@ -1,0 +1,168 @@
+{
+  "id": "duckdb-R6",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Integer `sum`",
+  "verdict": "deviation: unbounded, and reported as a warning",
+  "area": "aggregates",
+  "options": [
+    "overflow",
+    "avg_int_result"
+  ],
+  "rows": [
+    {
+      "group": "agg.isum",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16"
+      ]
+    },
+    {
+      "group": "agg.isum",
+      "option": "overflow",
+      "types": [
+        "i32",
+        "i64"
+      ],
+      "evidence": "engine_test"
+    }
+  ],
+  "constructs": [
+    "sum",
+    "avg"
+  ],
+  "settings": {},
+  "description": [
+    "Shim. `SUM(BIGINT)` returns `HUGEINT` and never overflows at 64 bits, so DuckDB alone answers where the reference raises. `CAST(SUM(x) AS BIGINT)` raises past `i64`. sverify's written plan already guards this and raises (`test_sum.test:68`).",
+    "`avg` of integers returns `DOUBLE` in DuckDB (duckdb-avg-int). sverify's written SQL computes an `i64` average as the exact `HUGEINT` sum `//` the count (`int_avg` in `engines/duckdb/src/sverify_duckdb/dialect.py`). DataFusion's `avg` is a double, so it refuses an integer one.",
+    "Round 4 (probes): `sum` of TINYINT and SMALLINT is a HUGEINT, so 127 + 126 = 253 and 32767 + 32766 = 65533 without an error.",
+    "The docs are silent on `sum`'s result type, a HUGEINT for integers, and on overflow: a docs gap."
+  ],
+  "reference": [
+    "Substrait and the reference: `sum` of `i8`…`i64` returns `i64?`; with `overflow` omitted, a sum outside `i64` raises.",
+    "Lean: deviation. The sum is unbounded, and `verify` reports it as a warning (`may wrap around`, `sumWraps`); the parser accepts only `SILENT`. `SUM(b)` of values summing past `2⁶³` answers `4611686018427388403500`, and `SUM(b)::BIGINT` the same, since a cast to `BIGINT` is not checked.",
+    "`avg` of integers (decided on #209, fixed): it follows the plan's declared output type. With `fp64` (DataFusion's plans), it is the mean as a double; with `i64` (Substrait's own impl), it is the exact mean truncated toward zero (`AggFn.iavg`), which always fits."
+  ],
+  "status": "deviation",
+  "ledger_entries": 5,
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/aggregate/aggregates/test_sum.test",
+          "note": "lines 68,74"
+        },
+        {
+          "file": "engines/duckdb/replay/aggregate.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-02",
+      "method": "source-reading",
+      "checked_by": "commit ceaf0de (#209)",
+      "notes": "`avg` of integers follows the declared output type."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L405-L452",
+          "note": "GetSumAggregate: SMALLINT, INTEGER, BIGINT, HUGEINT overloads, each returning HUGEINT"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L545-L566",
+          "note": "SumFun::GetFunctions: no TINYINT overload"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L181-L196",
+          "note": "IntegerSumOperation (SMALLINT): int64 state, finalized to HUGEINT"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L341-L402",
+          "note": "SumPropagateStats: swaps in sum_no_overflow (int64 state) when the statistics bound the sum within int64; the result stays HUGEINT"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L155-L200",
+          "note": "AddToHugeint (INTEGER, BIGINT): exact 128-bit accumulation"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/types/hugeint.hpp#L106-L112",
+          "note": "Hugeint::Add (merging states) raises OutOfRange past 128 bits"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L9-L68",
+          "note": "TINYINT binds the BIGINT overload: implicit cast cost 101 against 110 for SMALLINT"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). `sum` of `TINYINT` (through the `BIGINT` overload), `SMALLINT` and `INTEGER` returns `HUGEINT`, like `BIGINT`; each width is its own template instantiation. `SMALLINT` accumulates in an unchecked `int64_t`, out of reach below 2^48 rows; `INTEGER` and `BIGINT` in an exact `HUGEINT`, whose merge raises only past 128 bits. So no sum of `i8` to `i32` overflows or raises at 64 bits, as for `i64`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/sql_export/statement_verification.test#L103-L106",
+          "note": "typeof(sum(i)) over VALUES (1),(2),(2),(4) (INTEGER) → HUGEINT"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/sql_export/aggregate_literals.test#L24-L28",
+          "note": "typeof(sum(7)) (INTEGER) → HUGEINT"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/sql_export/aggregate_results.test#L41-L44",
+          "note": "sum(i), typeof(sum(i)) of INTEGER → 3, HUGEINT"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/sql_export/aggregate_results.test#L36-L39",
+          "note": "large_sum_values: five BIGINT 4000000000000000000"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/sql_export/aggregate_results.test#L84-L87",
+          "note": "sum(i) of large_sum_values → 20000000000000000000, past 2^63"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_sum.test#L59-L77",
+          "note": "SUM(BIGINT) → 4611686018427388403500; SUM(b)::BIGINT → Conversion Error"
+        },
+        {
+          "file": "engines/duckdb/replay/sql_export.json",
+          "note": "aggregate_results.test:84 disagree, side engine: sverify's written SQL raises 'integer overflow in SUM' (the shim) where DuckDB and Lean give 20000000000000000000"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `sum` of `INTEGER` returns `HUGEINT` (three tests), and `sum` of `BIGINT` returns values past 2^63 (test_sum.test, aggregate_results.test), so neither overflows at 64 bits. No test at v2.0.0 sums `TINYINT` or `SMALLINT` and checks the type or a large result; those stay at the source reading. The replay ledgers (written at commit 18e34e66, before this round) show the shim at work: test_sum.test:68 and aggregate_results.test:84 disagree on the engine side because the written SQL raises."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "sum-narrow-int"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates.html", "note": "sum: no result type, HUGEINT or overflow stated (docs gap)"}
+      ]
+    }
+  ],
+  "issues": [
+    185,
+    209
+  ]
+}

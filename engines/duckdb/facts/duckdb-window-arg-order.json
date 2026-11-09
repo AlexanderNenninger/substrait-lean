@@ -1,0 +1,86 @@
+{
+  "id": "duckdb-window-arg-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Ranking functions with an `ORDER BY` of their own rank within the frame",
+  "verdict": "lead: the SQL lift drops the argument ordering and the frame of `rank`, `percent_rank`, `cume_dist`",
+  "area": "windows",
+  "constructs": [
+    "rank",
+    "percent_rank",
+    "cume_dist",
+    "ntile",
+    "row_number"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB accepts an `ORDER BY` inside a ranking function's call, `rank(ORDER BY x) OVER w`. The function then orders the rows of its frame by `x`, independently of `w`'s own `ORDER BY`, and the frame applies: `rank(ORDER BY id) OVER (ORDER BY ch ROWS BETWEEN 1 PRECEDING AND 2 PRECEDING)`, an empty frame, gives 1 on every row, `percent_rank` and `cume_dist` 0.0, `ntile(2 ORDER BY id)` NULL. Peers of the argument ordering share a value even when `w` orders them by a further key.",
+    "Without the argument `ORDER BY`, the ranking functions ignore the frame and rank by the window's order (duckdb-window-frame)."
+  ],
+  "reference": "Substrait's `rank`, `percent_rank`, `cume_dist` and `ntile` rank by the window's sort and take no ordering of their own, and the reference evaluates them over the partition, whatever the frame (`SubstraitLean`, docs/reference-semantics.md, windows). DuckDB's argument-ordered, framed form has no Substrait counterpart, so the frontend should refuse it. At v2.0.0's tests the SQL lift reads `rank(ORDER BY id) OVER (ORDER BY ch ROWS …)` as `rank() OVER (ORDER BY ch)`: the replay ledger records Lean and the written plan both giving 1, 2, 2 where DuckDB gives 1, 1, 1. The lift's `window` (`python/src/sverify/sql_lift/_base.py`, the `_RANKING` branch) reads no argument of a ranking function other than `ntile`'s count, and `ntile(2 ORDER BY id)` is refused only because the count is not a plain constant.",
+  "status": "open",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_rank_orderby.test#L5-L26",
+          "note": "rank and percent_rank (ORDER BY (i // 2) DESC) OVER (ORDER BY (i * 29) % 11): ranks by the argument ordering within the default frame"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_rank_orderby.test#L51-L74",
+          "note": "rank(ORDER BY i // 2) OVER (ORDER BY i // 2 ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING): 1, 1, 3, 3, 4, 3, 4, 3, 4, 3: the rank is within the moving frame"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_rank_orderby.test#L76-L102",
+          "note": "an argument ordering that is a prefix of the window's does not split peers"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_cume_dist_orderby.test#L5-L50",
+          "note": "cume_dist(ORDER BY …) over the default frame and a moving ROWS frame"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/window/test_empty_frames.test#L84-L150",
+          "note": "reversed and empty ROWS frames: cume_dist and percent_rank → 0.0, rank → 1, ntile(2 ORDER BY id) → NULL on every row"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt ledger at commit 18e34e66, read in characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/window.json",
+          "note": "test_empty_frames.test:88 (cume_dist, percent_rank), :108 (rank), :120 (cume_dist, percent_rank), :140 (rank): disagree, side both; Lean and the written plan give 1, 2, 2 for rank and 1/3, 1, 1 for cume_dist"
+        },
+        {
+          "file": "engines/duckdb/replay/window.json",
+          "note": "test_empty_frames.test:131 (ntile(2 ORDER BY id)) refused; test_cume_dist_orderby.test and test_rank_orderby.test refused (WINDOW clause)"
+        }
+      ],
+      "notes": "The ledger was written before this round, 427 commits before it; the lift's `_RANKING` branch still reads no argument ordering at this commit, so the lead stands."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_rank_function.cpp#L16-L36", "note": "an argument ORDER BY turns on framing and builds a token tree over the argument orders"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/window/window_rank_function.cpp#L216-L231", "note": "rank within [frame_begin, frame_end) by the token tree, or the peer start clamped to the frame"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/window_functions", "note": "argument ORDER BY allowed for all but dense_rank; computed within the frame using the provided ordering"}
+      ]
+    }
+  ]
+}

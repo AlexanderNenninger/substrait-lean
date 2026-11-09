@@ -1,0 +1,63 @@
+{
+  "id": "duckdb-R15-int-arith",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`BIGINT + - *` and `-BIGINT`",
+  "verdict": "matches `overflow: ERROR`",
+  "area": "integers",
+  "options": [
+    "overflow"
+  ],
+  "rows": [
+    {"group": "int.arith", "option": "overflow", "types": ["i64"]}
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "unary -"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "Raises on overflow at 64 bits, under every setting (duckdb-R1).",
+  "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT + BIGINT"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT - BIGINT"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT * BIGINT"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "-BIGINT"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    242
+  ]
+}

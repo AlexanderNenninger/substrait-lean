@@ -13,8 +13,8 @@ import duckdb
 import pytest
 
 from sverify.sql import lowering
-from sverify.sql.duckdb import DuckDBDialect
 from sverify_dev import probe
+from sverify_duckdb.dialect import DuckDBDialect
 
 pytestmark = pytest.mark.backend("duckdb")
 

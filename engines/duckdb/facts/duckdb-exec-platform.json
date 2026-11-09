@@ -1,0 +1,111 @@
+{
+  "id": "duckdb-exec-platform",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Platform dependence: IEEE where the hardware supports it",
+  "verdict": "elementary functions call the C++ standard library, so the platform's libm; no bundled math library",
+  "area": "execution",
+  "options": [
+    "platform"
+  ],
+  "constructs": [
+    "FLOAT",
+    "DOUBLE",
+    "sin",
+    "pow",
+    "exp",
+    "ln"
+  ],
+  "settings": {
+    "platform": [
+      "macOS arm64",
+      "Linux x86_64"
+    ]
+  },
+  "description": [
+    "The numeric types page says FLOAT and DOUBLE follow IEEE 754 to the extent the processor, operating system and compiler support it, that values out of the double range may cause errors on some platforms but usually become zero or infinity, and that the special-value semantics hold on machines with the required CPU and FPU support.",
+    "Source at v2.0.0: the scalar math functions in extension/core_functions/scalar/math/numeric.cpp call the C++ standard library: `std::exp`, `std::pow`, `std::log`, `std::log10`, `std::log2`, `std::sin`, `std::cos`, `std::tan`, `std::asin`, `std::atan2`, `std::cbrt`, the hyperbolic functions, and `std::pow(10, d)` inside `round(x, d)`. DuckDB bundles no portable math library (none under third_party/), so the last bits of these functions are the platform's libm: macOS arm64 for the probes, glibc on Linux x86_64 in CI. `sqrt`, `+`, `-`, `*`, `/` and `fmod` are correctly rounded by IEEE 754 and do not depend on it.",
+    "Next rounds: run the double probes (engines/duckdb/replay/probes.json) on homelab (Linux x86_64) and diff them with the macOS arm64 ledger.",
+    "Round 4 (probes): a second platform dependence beside libm: the integer `avg` divides in `long double` (duckdb-avg-int), so `avg` of 2^53 + 1, 0, 0 is 3002399751580330.5 on macOS arm64 and should be 3002399751580331 on x86-64 Linux. The homelab run should also compare the 1M-row `var_samp` repro of duckdb-stat-arg-types, since a compiler may contract Welford's update into `fma` on one platform only.",
+    "Platform: on Linux x86_64 a NaN that an operation creates is negative, on macOS arm64 positive. DuckDB 2.0.0 gives `signbit(sin('inf'::DOUBLE))` and `signbit('inf'::DOUBLE - 'inf'::DOUBLE)` true and prints `-nan` on Linux, false and `nan` on macOS; Polars 2.1.0's `sin(inf)` has the bits fff8000000000000 on Linux and 7ff8000000000000 on macOS, on both engines. The sign comes from the CPU's default NaN (x86's is negative) and libm. The reference has one NaN, so only `nan_kind` and anything that shows a NaN's sign (signbit, text) depend on the platform.",
+    "No upstream test pins this, and none can, since DuckDB's sqllogictests compare floating results within 1 %; it may change between versions."
+  ],
+  "reference": "The reference treats `sin`, `exp`, `pow` and the other elementary functions as black boxes with stated laws (`docs/reference-semantics.md`), so a last-bit difference is allowed; NaN payloads and signs are not observable values for it (duckdb-R14 for -0.0).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/numeric.html"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1309",
+          "note": "exp: std::exp"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1333-L1340",
+          "note": "pow: std::pow"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1477-L1484",
+          "note": "ln: std::log"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1844-L1959",
+          "note": "sin, cos, tan, asin, atan, atan2: std::"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1007-L1018",
+          "note": "round(x, d) scales by std::pow(10, d)"
+        }
+      ],
+      "notes": "third_party/ at v2.0.0 holds no math library (no fdlibm, openlibm, sleef or crlibm)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "sql": "SELECT avg(x)::VARCHAR FROM (VALUES (9007199254740993::BIGINT), (0), (0)) t(x)",
+          "observed": "'3002399751580330.5' on macOS arm64, where long double is double: double(2^53 + 1) / 3. The exact mean is 3002399751580331, which an 80-bit long double (Linux x86-64) gives; to run on homelab."
+        }
+      ],
+      "notes": "A scratch query outside the harness: its result differs between platforms, so it cannot be an observation that CI reruns on Linux."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline platform run (homelab, Linux x86_64, glibc 2.39-0ubuntu8.9; scratchpad ulp_probe.py --n 3000 --seed 1, the same inputs as the macOS run)",
+      "evidence": [
+        {
+          "sql": "SELECT signbit(sin('inf'::DOUBLE)), sin('inf'::DOUBLE)::VARCHAR, signbit(('inf'::DOUBLE) - ('inf'::DOUBLE))",
+          "observed": "Linux x86_64: true, -nan, true; macOS arm64: false, nan, false"
+        },
+        {
+          "note": "Polars: pl.DataFrame({'x': [inf, -inf, 1.039…] * 2000}).lazy().select(pl.col('x').sin()).collect(engine=e) for in-memory and streaming: bits fff8000000000000 on Linux, 7ff8000000000000 on macOS"
+        }
+      ],
+      "notes": "scratchpad platform_repros.py, run on both machines. Also: integer AVG of (2^53+1, 0, 0) is 3002399751580330.5 and BIGINT var_samp/var_pop of 2^53+1..3 are 6.0/4.0 on both platforms (no long double difference seen); tan(1.0391439199447632) is 1.7002787929535204 on macOS and the correctly rounded 1.7002787929535208 on Linux."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sqlite/result_helper.cpp#L543-L594", "note": "approximate float comparison; no test pins platform-dependent bits or a NaN's sign"}
+      ]
+    }
+  ]
+}

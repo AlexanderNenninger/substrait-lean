@@ -216,7 +216,7 @@ order the engine profiles allow (`sum_order`):
 | Behaviour | Algorithm | Theorem |
 |---|---|---|
 | `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of rounded additions in any order (`FloatSums`, `core/Sverify/Core/AllowedP.lean`) | `Rnd.Tree.error`, `TreeSum.tree` ([`Tree.lean`](../float-bounds/FloatBounds/Tree.lean)) |
-| `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` ([duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json)) | `TreeSum.const` |
+| `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` ([duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json)) | `TreeSum.const` |
 | `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../engines/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
 
 Each is within `γ n · Σ (|xᵢ| + tiny)` of the exact sum, the sequential
@@ -343,7 +343,7 @@ loses relative accuracy, and the report does not claim it.
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's
 manual states and the probes measured (0.502 ulp on macOS,
-[duckdb-ulp-libm](../characterization/duckdb/facts/duckdb-ulp-libm.json)), and
+[duckdb-ulp-libm](../engines/duckdb/facts/duckdb-ulp-libm.json)), and
 `rule_exp` bounds `exp a`, `a ≤ ha`, by
 `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + tiny)`. The other elementary
 functions stay tested. The checker evaluates the formulas in

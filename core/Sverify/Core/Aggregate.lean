@@ -399,7 +399,7 @@ kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
 D31): rounding may leave them by an ulp. `−∞` with `+∞` gives NaN, which
 the clamp makes `+∞`; the reference raises there (`AggFn.makesNan`, #561),
 so no verified plan sees that value
-(`characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
+(`engines/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
 def interpolate (l h w : Int) : Int :=
   let r := FloatCode.fadd (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
     (FloatCode.fmul h w)

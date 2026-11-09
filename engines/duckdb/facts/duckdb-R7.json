@@ -1,0 +1,95 @@
+{
+  "id": "duckdb-R7",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`sum`/`avg` of a double constant",
+  "verdict": "fixed (#205)",
+  "area": "aggregates",
+  "options": [
+    "nonfinite_aggregates",
+    "sum_order"
+  ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]}
+  ],
+  "constructs": [
+    "sum",
+    "avg"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB's sums of doubles are IEEE (native): `inf`, `-inf`, `nan`.",
+    "Order class: a constant argument reaches `sum` and `avg` as a constant vector, and DuckDB adds it as one product per vector (`input * count`, at most 2048 rows), so `sum(0.1)` over 10 rows is 1.0 and `avg(0.1)` 0.1, where adding the ten values in turn gives 0.9999999999999999 and 0.09999999999999999. The product's error is at most u·k|x|, inside the sequential bound γ_{n−1} Σ|x_i| (Higham §4.2) and #85's. Lean's `floatSum` adds the constant n times, so this path refines neither SEQUENTIAL nor, until a lemma puts fl(k·x) among the tree sums of k copies, ANY (duckdb-sum-double)."
+  ],
+  "reference": [
+    "Substrait: `sum(fp64)` returns `fp64?`.",
+    "Lean: `SUM(CAST('inf' AS DOUBLE))` evaluated to a 500-digit integer, and `avg(42) OVER ()` to `inf`. The aggregate took a constant argument for an integer and added float codes; over a double column it was right. A deviation and a soundness bug. Fixed (#205): a constant argument has its declared type, so `sum(fp64)` adds doubles."
+  ],
+  "status": "fixed",
+  "ledger_entries": 3,
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/float/nan_aggregates.test",
+          "note": "line 7"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/window/test_scalar_window.test",
+          "note": "line 11"
+        },
+        {
+          "file": "engines/duckdb/replay/types__float.json"
+        },
+        {
+          "file": "engines/duckdb/replay/window.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-01",
+      "method": "source-reading",
+      "checked_by": "commit f861bdd (#205)",
+      "notes": "Aggregate constants have their declared type."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L23-L65",
+          "note": "RepeatedStateValue::Multiply and AddRepeated"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/common/vector_operations/aggregate_executor.hpp#L782-L792",
+          "note": "UnaryUpdate: CONSTANT_VECTOR → ConstantOperation"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch4",
+          "note": "Higham, Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM 2002), ch. 4 Summation: §4.2 recursive, pairwise and any-order bounds; §4.3 compensated summation"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "sql": "SET threads = 1; SELECT sum(0.1::DOUBLE)::VARCHAR, avg(0.1::DOUBLE)::VARCHAR, fsum(0.1::DOUBLE)::VARCHAR FROM range(10); CREATE TABLE t AS SELECT 0.1::DOUBLE v FROM range(10); SELECT sum(v)::VARCHAR, fsum(v)::VARCHAR FROM t; SELECT sum(v ORDER BY i)::VARCHAR FROM (SELECT 0.1::DOUBLE v, i FROM range(10) r(i))",
+          "observed": "constant argument: sum 1.0, avg 0.1, fsum 1.0; table column: sum 0.9999999999999999, fsum 1.0; sum(v ORDER BY i) 0.9999999999999999. 0.1 * 10 is 1.0 in double, the ten additions in turn 0.9999999999999999"
+        }
+      ],
+      "notes": "DuckDB 2.0.0 (Python, macOS arm64), a scratch script at threads = 1."
+    }
+  ],
+  "issues": [
+    205
+  ]
+}

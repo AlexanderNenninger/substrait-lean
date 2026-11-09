@@ -198,7 +198,7 @@ def _(dt, tables):
     import polars as pl
 
     import sverify as sv
-    from sverify import duckdb_engine
+    from sverify_duckdb import engine as duckdb_engine
     from sverify.engine import put_table, read_tables, run_checker
     from sverify.engines import (
         UnsupportedError,

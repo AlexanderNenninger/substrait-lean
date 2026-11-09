@@ -23,7 +23,7 @@
   ],
   "files": [
     "python/tools/sverify_dev/probe.py",
-    "characterization/duckdb/probes.json"
+    "engines/duckdb/replay/probes.json"
   ],
   "facts": [
     "duckdb-exec-short-circuit"

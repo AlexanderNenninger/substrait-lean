@@ -30,7 +30,7 @@ defaults:
   the plan has a `FETCH` or a window.
 
 Engines differ in syntax and in a few semantics; those go through the hooks of
-a `Dialect` (see `sverify.sql.duckdb`).
+a `Dialect` (see `sverify_duckdb.dialect`).
 """
 
 from sverify.sql.core import black_box, nested, strings, temporal
