@@ -1,0 +1,708 @@
+{
+  "assumed": [],
+  "depends": [
+    {
+      "behaviours": [
+        "ERROR"
+      ],
+      "group": "int.arith",
+      "option": "overflow",
+      "stated": false
+    },
+    {
+      "behaviours": [
+        "ERROR"
+      ],
+      "group": "int.div",
+      "option": "overflow",
+      "stated": false
+    },
+    {
+      "behaviours": [
+        "ERROR"
+      ],
+      "group": "int.div",
+      "option": "on_division_by_zero",
+      "stated": false
+    },
+    {
+      "behaviours": [
+        "NAN",
+        "NULL",
+        "ERROR"
+      ],
+      "group": "int.div",
+      "option": "on_domain_error",
+      "stated": false
+    },
+    {
+      "behaviours": [
+        "TRUNCATE"
+      ],
+      "group": "int.div",
+      "option": "division_type",
+      "stated": false
+    }
+  ],
+  "deterministic": true,
+  "dialect": "ibis",
+  "engines": {
+    "duckdb": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "tested",
+      "facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R2",
+        "duckdb-R15-double-arith",
+        "duckdb-R3"
+      ],
+      "guard_free_theorem": null,
+      "issues": [
+        241
+      ],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [],
+      "rows": 5,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [],
+      "transfer": {
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "duckdb-R1",
+                "duckdb-R15-int-arith"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "duckdb-R1",
+                "duckdb-R15-int-arith"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.div",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "duckdb-R2"
+              ],
+              "from": [
+                "NULL"
+              ],
+              "group": "int.div",
+              "option": "on_division_by_zero",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "duckdb-R3"
+              ],
+              "from": [
+                "FLOOR"
+              ],
+              "group": "int.div",
+              "option": "division_type",
+              "preferences": [],
+              "to": [
+                "TRUNCATE"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [],
+          "ok": true
+        },
+        "substrait": {
+          "failures": [
+            {
+              "facts": [
+                "duckdb-nan-equality"
+              ],
+              "from": [
+                "NAN_IS_NOT_NAN"
+              ],
+              "group": "cmp",
+              "option": "nan_equality",
+              "preferences": [],
+              "to": [
+                "NAN_IS_NAN"
+              ]
+            },
+            {
+              "facts": [
+                "duckdb-arg-min-nulls"
+              ],
+              "from": [
+                "UNORDERED"
+              ],
+              "group": "cmp",
+              "option": "nan_order",
+              "preferences": [],
+              "to": [
+                "GREATEST"
+              ]
+            },
+            {
+              "facts": [
+                "duckdb-R15-double-arith"
+              ],
+              "from": [
+                "NULL",
+                "ERROR"
+              ],
+              "group": "int.div",
+              "option": "on_domain_error",
+              "preferences": [],
+              "to": [
+                "NAN",
+                "NULL",
+                "ERROR"
+              ]
+            }
+          ],
+          "ok": false
+        }
+      },
+      "translated_evidence": "tested",
+      "version": "2.0.0",
+      "without_row": []
+    },
+    "polars": {
+      "class": "shim",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "proved",
+      "facts": [
+        "polars-int-arith",
+        "polars-int-divide",
+        "polars-int-modulus",
+        "polars-double-divide"
+      ],
+      "guard_free_theorem": "Rel.polars_sound",
+      "issues": [],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "polars-int-arith",
+        "polars-int-divide",
+        "polars-int-modulus",
+        "polars-double-divide"
+      ],
+      "rows": 5,
+      "shims": [
+        {
+          "group": "int.div",
+          "option": "division_type",
+          "shim": "int_div_trunc"
+        }
+      ],
+      "tested_because": [],
+      "theorems": [
+        "Rel.polars_sound",
+        "Polars.int_div_trunc"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            },
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.div",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            },
+            {
+              "facts": [
+                "polars-int-divide",
+                "polars-int-modulus"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.div",
+              "option": "on_division_by_zero",
+              "preferences": [],
+              "to": [
+                "NULL"
+              ]
+            },
+            {
+              "facts": [
+                "polars-int-divide"
+              ],
+              "from": [
+                "TRUNCATE"
+              ],
+              "group": "int.div",
+              "option": "division_type",
+              "preferences": [],
+              "to": [
+                "FLOOR"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            },
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.div",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            },
+            {
+              "facts": [
+                "polars-int-divide",
+                "polars-int-modulus"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.div",
+              "option": "on_division_by_zero",
+              "preferences": [],
+              "to": [
+                "NULL"
+              ]
+            },
+            {
+              "facts": [
+                "polars-int-divide"
+              ],
+              "from": [
+                "TRUNCATE"
+              ],
+              "group": "int.div",
+              "option": "division_type",
+              "preferences": [],
+              "to": [
+                "FLOOR"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [
+            {
+              "facts": [
+                "polars-nan-equality"
+              ],
+              "from": [
+                "NAN_IS_NOT_NAN"
+              ],
+              "group": "cmp",
+              "option": "nan_equality",
+              "preferences": [],
+              "to": [
+                "NAN_IS_NAN"
+              ]
+            },
+            {
+              "facts": [
+                "polars-nan-order"
+              ],
+              "from": [
+                "UNORDERED"
+              ],
+              "group": "cmp",
+              "option": "nan_order",
+              "preferences": [],
+              "to": [
+                "GREATEST"
+              ]
+            },
+            {
+              "facts": [
+                "polars-double-divide"
+              ],
+              "from": [
+                "NULL",
+                "ERROR"
+              ],
+              "group": "int.div",
+              "option": "on_domain_error",
+              "preferences": [],
+              "to": [
+                "NAN",
+                "NULL",
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "polars-int-divide"
+              ],
+              "from": [
+                "TRUNCATE"
+              ],
+              "group": "int.div",
+              "option": "division_type",
+              "preferences": [],
+              "to": [
+                "FLOOR"
+              ]
+            }
+          ],
+          "ok": false
+        }
+      },
+      "translated_evidence": "proved",
+      "version": "2.1.0",
+      "without_row": []
+    },
+    "spark": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "tested",
+      "facts": [
+        "spark-int-arith",
+        "spark-int-abs",
+        "spark-int-divide",
+        "spark-int-modulus",
+        "spark-math-domain"
+      ],
+      "guard_free_theorem": null,
+      "issues": [
+        271
+      ],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "spark-int-arith",
+        "spark-int-abs",
+        "spark-int-divide",
+        "spark-int-modulus",
+        "spark-math-domain"
+      ],
+      "rows": 5,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [
+        "Rel.spark_sound"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [],
+          "ok": true
+        },
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "spark-int-arith",
+                "spark-int-abs"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "spark-int-divide"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.div",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "spark-int-divide",
+                "spark-int-modulus"
+              ],
+              "from": [
+                "NULL"
+              ],
+              "group": "int.div",
+              "option": "on_division_by_zero",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "spark-int-divide"
+              ],
+              "from": [
+                "FLOOR"
+              ],
+              "group": "int.div",
+              "option": "division_type",
+              "preferences": [],
+              "to": [
+                "TRUNCATE"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [
+            {
+              "facts": [
+                "spark-nan-equality"
+              ],
+              "from": [
+                "NAN_IS_NOT_NAN"
+              ],
+              "group": "cmp",
+              "option": "nan_equality",
+              "preferences": [],
+              "to": [
+                "NAN_IS_NAN"
+              ]
+            },
+            {
+              "facts": [
+                "spark-nan-order"
+              ],
+              "from": [
+                "UNORDERED"
+              ],
+              "group": "cmp",
+              "option": "nan_order",
+              "preferences": [],
+              "to": [
+                "GREATEST"
+              ]
+            },
+            {
+              "facts": [
+                "spark-math-domain"
+              ],
+              "from": [
+                "NULL",
+                "ERROR"
+              ],
+              "group": "int.div",
+              "option": "on_domain_error",
+              "preferences": [],
+              "to": [
+                "NAN",
+                "NULL",
+                "ERROR"
+              ]
+            }
+          ],
+          "ok": false
+        }
+      },
+      "translated_evidence": "tested",
+      "version": "4.3.0",
+      "without_row": []
+    }
+  },
+  "ensures": [],
+  "equivalence": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
+  "facts": {
+    "r": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 2,
+  "implied": {},
+  "inferred": {
+    "orders": [
+      {
+        "column": "total",
+        "label": "(_.total >= -9 * 10**18)",
+        "sql": "\"total\" IS NULL OR \"total\" >= -9000000000000000000"
+      },
+      {
+        "column": "qty",
+        "label": "(_.qty != 0)",
+        "sql": "\"qty\" IS NULL OR \"qty\" <> 0"
+      }
+    ]
+  },
+  "issues": [],
+  "needs": [
+    {
+      "code": "_.total >= -9 * 10**18",
+      "column": "total",
+      "issue": {
+        "kind": "fail",
+        "level": "error",
+        "message": {
+          "text": "overflow: total // qty"
+        },
+        "properties": {
+          "column": null,
+          "constant": false,
+          "hint": "state `(_.total >= -9 * 10**18)` in the requires of 'orders'",
+          "needs": [
+            {
+              "label": "(_.total >= -9 * 10**18)",
+              "table": "orders"
+            }
+          ],
+          "shown": "total // qty",
+          "under_and_or": false
+        },
+        "ruleId": "overflow"
+      },
+      "label": "(_.total >= -9 * 10**18)",
+      "op": ">=",
+      "sql": "\"total\" IS NULL OR \"total\" >= -9000000000000000000",
+      "table": "orders",
+      "value": "-9000000000000000000"
+    },
+    {
+      "code": "_.qty != 0",
+      "column": "qty",
+      "issue": {
+        "kind": "fail",
+        "level": "error",
+        "message": {
+          "text": "division by zero: total // qty"
+        },
+        "properties": {
+          "column": null,
+          "constant": false,
+          "hint": "state `(_.qty != 0)` in the requires of 'orders'",
+          "needs": [
+            {
+              "label": "(_.qty != 0)",
+              "table": "orders"
+            }
+          ],
+          "shown": "total // qty",
+          "under_and_or": false
+        },
+        "ruleId": "division_by_zero"
+      },
+      "label": "(_.qty != 0)",
+      "op": "<>",
+      "sql": "\"qty\" IS NULL OR \"qty\" <> 0",
+      "table": "orders",
+      "value": "0"
+    }
+  ],
+  "not_null": [],
+  "on_inferred": "error",
+  "output": {
+    "r": "int64"
+  },
+  "params": [],
+  "proved": false,
+  "requires": {
+    "orders": [
+      "(_.total >= -9 * 10**18)",
+      "(_.qty != 0)"
+    ]
+  },
+  "rewrites": [],
+  "routes": {},
+  "rows": null,
+  "semantics": "reference",
+  "sorted": false,
+  "sverify": "0.8.0",
+  "ties": {
+    "needs": [],
+    "places": []
+  },
+  "transfer": null,
+  "verdict": "NOT proved: 2 preconditions needed"
+}

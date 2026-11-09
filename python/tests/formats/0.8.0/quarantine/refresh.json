@@ -1,0 +1,38 @@
+{
+  "$schema": "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/1.json",
+  "format": 1,
+  "nodes": [
+    {
+      "credentials": [],
+      "held": null,
+      "node": "doubled",
+      "outcome": "quarantined",
+      "quarantine": [
+        {
+          "by_condition": {
+            "(_.amount >= 0)": 1,
+            "unique(id)": 2
+          },
+          "deleted": 0,
+          "examples": [],
+          "quarantined": 3,
+          "released": 0,
+          "source": "orders",
+          "table": "tests/formats/0.8.0/quarantine/doubled_quarantine",
+          "total": 3
+        }
+      ],
+      "quarantine_table": "tests/formats/0.8.0/quarantine/doubled_quarantine",
+      "quarantined": 3,
+      "sources": [],
+      "started": "computed",
+      "write": {
+        "deleted": 0,
+        "inserted": 2,
+        "mode": "created",
+        "version": 2
+      }
+    }
+  ],
+  "outcome": "quarantined"
+}

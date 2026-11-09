@@ -1,0 +1,284 @@
+{
+  "assumed": [],
+  "depends": [
+    {
+      "behaviours": [
+        "ERROR"
+      ],
+      "group": "int.arith",
+      "option": "overflow",
+      "stated": false
+    }
+  ],
+  "deterministic": true,
+  "dialect": "ibis",
+  "engines": {
+    "duckdb": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "tested",
+      "facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith"
+      ],
+      "guard_free_theorem": null,
+      "issues": [
+        241
+      ],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [],
+      "rows": 1,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [],
+      "transfer": {
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "duckdb-R1",
+                "duckdb-R15-int-arith"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [],
+          "ok": true
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "tested",
+      "version": "2.0.0",
+      "without_row": []
+    },
+    "polars": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "proved",
+      "facts": [
+        "polars-int-arith",
+        "polars-int-divide"
+      ],
+      "guard_free_theorem": "Rel.polars_sound",
+      "issues": [],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "polars-int-arith",
+        "polars-int-divide"
+      ],
+      "rows": 1,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [
+        "Rel.polars_sound"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "proved",
+      "version": "2.1.0",
+      "without_row": []
+    },
+    "spark": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "proved",
+      "facts": [
+        "spark-int-arith",
+        "spark-int-abs"
+      ],
+      "guard_free_theorem": null,
+      "issues": [],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "spark-int-arith",
+        "spark-int-abs"
+      ],
+      "rows": 1,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [
+        "Rel.spark_sound"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [],
+          "ok": true
+        },
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "spark-int-arith",
+                "spark-int-abs"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "proved",
+      "version": "4.3.0",
+      "without_row": []
+    }
+  },
+  "ensures": [],
+  "equivalence": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
+  "facts": {
+    "d": "an integer in [0, 1998]",
+    "id": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 2,
+  "implied": {},
+  "inferred": {},
+  "issues": [],
+  "needs": [],
+  "not_null": [
+    "d"
+  ],
+  "on_inferred": "error",
+  "output": {
+    "d": "int64",
+    "id": "int64"
+  },
+  "params": [],
+  "proved": true,
+  "requires": {
+    "orders": [
+      "(_.total >= 0)",
+      "(_.total < 1000)",
+      "unique(id)"
+    ]
+  },
+  "rewrites": [],
+  "routes": {
+    "duckdb": {
+      "bound_proved": null,
+      "class": "exact",
+      "deterministic": true,
+      "engine": "duckdb",
+      "equivalence": null,
+      "evidence": "tested",
+      "facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith"
+      ],
+      "failures": [],
+      "fallbacks": [],
+      "issues": [
+        241
+      ],
+      "kind": "translated",
+      "needs": [],
+      "reason": "verified under the reference; the translation to duckdb is sverify's DuckDB lowering, proved for every plan, and its SQL writer",
+      "reproducible": null,
+      "rerun_evidence": null,
+      "semantics": "reference",
+      "shims": [],
+      "version": "2.0.0",
+      "warnings": []
+    }
+  },
+  "rows": null,
+  "semantics": "reference",
+  "sorted": false,
+  "sverify": "0.8.0",
+  "ties": {
+    "needs": [],
+    "places": []
+  },
+  "transfer": null,
+  "verdict": "proved"
+}
