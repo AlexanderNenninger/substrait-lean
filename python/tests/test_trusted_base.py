@@ -68,7 +68,10 @@ def _trusted() -> list[tuple[str, set[str], str]]:
 
 
 def _found() -> list[tuple[str, str, str]]:
-    """Each construct in the Lean sources: its file, kind and name."""
+    """Each construct in the Lean sources: its file, kind and name; none
+    outside the repository, where `needs_repo` skips the tests."""
+    if not (ROOT / "lakefile.lean").is_file():
+        return []
     out = []
     for f in _lean_files():
         code = _code(f.read_text())
