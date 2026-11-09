@@ -121,6 +121,15 @@ other pages link here.
   `find` (`strpos - 1`) are proved not to overflow without a precondition, while
   `amount * 2` needs one, which sverify infers (#244). It overrides Substrait
   ([D27](core-semantics.md#d27-the-size-hypothesis-is-the-only-size-assumption)).
+- What a file's statistics mean (`DoubleStats.Correct`, `Pruning.lean`): the
+  minimum and maximum of a double column bound its canonical codes, as
+  writers compare IEEE numbers, so a file holding `-0.0` with minimum `0.0`
+  is read right (D31).
+- The lift from DuckDB SQL under `semantics="duckdb"` refuses `DOUBLE /
+  DOUBLE` and `power` (`DuckFn.refused`): DuckDB's `x / -0.0` and
+  `pow(-0.0, y)` depend on the zero's sign, which the reference's
+  expressions cannot state until D39 adds the IEEE division. Nothing is
+  trusted there; the plans are refused.
 - The frontends produce the plan the user meant: the Ibis producer
   (`python/src/sverify/ibis_substrait/`) and the SQLGlot lift for DuckDB's
   SQL (`python/src/sverify/sql_lift/`,
@@ -171,7 +180,8 @@ other pages link here.
   native ones; an integer or decimal that IEEE would round to `±∞` (from
   2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the
   largest finite double (#257). The one axiom left is `FloatCode.exp_fin`
-  (`Safety.lean`, libm's `exp`). `+ − × ÷` need none since D31: they are the
+  (`Safety.lean`, libm's `exp`), stated of the argument's canonical code
+  since D31, so it covers `exp(-0.0) = 1` too. `+ − × ÷` need none since D31: they are the
   exact result rounded once (`FloatArith.lean`), and the bounds the checker
   trusted for them before (`FloatCode.add_scaled` …,
   [#582](https://github.com/AlexanderNenninger/substrait-lean/issues/582))
