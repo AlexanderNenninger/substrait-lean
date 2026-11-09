@@ -12,8 +12,8 @@
 Running plans:
 
 * `run` runs a plan in sverify's internal form on DuckDB or Polars
-  (`ENGINES`), or on Spark (`"spark"`, or a Spark session
-  configured with `SPARK_CONF`; `pip install 'sverify[spark]'`), over a
+  (`ENGINES`), or on Spark (`"spark"`, or a Spark session configured with
+  `sverify_spark.dialect.SPARK_CONF`; `pip install 'sverify[spark]'`), over a
   `Connection`'s tables (`sv.connect()` makes one; `con.create`, `con.put`
   and `con.rows` put rows in and read them back). `run_sharded` runs a plan
   shard by shard and combines the results.
@@ -23,7 +23,8 @@ SQL:
 
 * `Node.to_sql` and `Report.to_sql` write the plan a proof checked as SQL
   whose meaning is the proof's, in a dialect named as its engine:
-  `"duckdb"`, `"snowflake"` or `"spark"`. What a dialect cannot write is
+  `"duckdb"`, `"snowflake"` or `"spark"`, or a `Dialect` (an engine
+  package's, `sverify_spark.dialect.SPARK`). What a dialect cannot write is
   refused (`UnsupportedError`, the same class as
   `sverify.errors.UnsupportedError`). `Dialect`'s SQL-writing methods
   and subclassing it are outside the 1.x promise.
@@ -59,7 +60,6 @@ from sverify.engine import run_plan as run
 from sverify.incremental import delta_plans
 from sverify.partition import run_sharded
 from sverify.sql import Dialect, to_sql
-from sverify.sql.spark import SPARK_CONF
 
 
 def __getattr__(name: str) -> Any:
@@ -72,7 +72,6 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "ENGINES",
-    "SPARK_CONF",
     "Connection",
     "Dialect",
     "UnsupportedError",

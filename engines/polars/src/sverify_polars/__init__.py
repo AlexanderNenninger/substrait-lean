@@ -85,6 +85,7 @@ def _restore(setting: Setting) -> str:
 PLUGIN = ProfilePlugin(
     "polars",
     title="Polars",
+    profile=True,
     translation="sverify's Polars translation, with shims where Polars differs from the "
     "reference, tested against the reference",
     settings=SETTINGS,

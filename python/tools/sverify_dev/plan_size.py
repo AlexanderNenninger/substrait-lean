@@ -111,7 +111,7 @@ def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.duckdb import DUCKDB
     from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
+    from sverify_spark.dialect import SPARK
 
     in_nodes = plan_nodes(json.loads(plan_json))
     try:

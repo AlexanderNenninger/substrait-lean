@@ -136,6 +136,12 @@ def test_substrait_json_defaults_to_the_reference():
     assert substrait_json(con, sql) == substrait_json(con, sql, "reference")
 
 
+def test_run_spark_is_gone():
+    """`run_spark`, deprecated since 0.5, is gone (#1288): `run(con, plan, "spark")`."""
+    with pytest.raises(AttributeError):
+        sv.engines.run_spark  # noqa: B018
+
+
 def test_rows_and_tables_column_by_column():
     from sverify.engine import arrow_rows, to_arrow
 

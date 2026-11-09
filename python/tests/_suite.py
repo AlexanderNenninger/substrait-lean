@@ -111,25 +111,38 @@ BACKLOG = {
 }
 
 
+#: `python/`, which the backlog's node ids are relative to.
+_PYTHON = Path(__file__).resolve().parents[1]
+
+
+def backlog_id(item: pytest.Item) -> str:
+    """`item`'s node id as `tests/lift_backlog.json` writes it: its file
+    relative to `python/` (`../engines/spark/tests/…` for an engine
+    package's), whatever rootdir and arguments the run has, so the session's
+    own ids (`test_sql_spark.py::…` from `-m spark`) still match."""
+    rel = os.path.relpath(item.path, _PYTHON).replace(os.sep, "/")
+    return rel + item.nodeid[item.nodeid.index("::") :] if "::" in item.nodeid else rel
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> Any:
     outcome = yield
     report = outcome.get_result()
-    listed = item.nodeid in BACKLOG
+    node = backlog_id(item)
+    listed = node in BACKLOG
     if report.failed and call.excinfo is not None:
         reason = _lift_refusal(call.excinfo.value)
         if reason is None:
             return
         if os.environ.get("SVERIFY_LIFT_BACKLOG"):
-            item.config._lift_refused.append(item.nodeid)  # type: ignore[attr-defined]
+            item.config._lift_refused.append(node)  # type: ignore[attr-defined]
         if listed:
             report.outcome = "skipped"
             report.wasxfail = f"#240, the lift refuses: {reason}"
     elif listed and call.when == "call" and report.passed:
         report.outcome = "failed"
         report.longrepr = (
-            f"{item.nodeid} passes: the lift reads its SQL now, so remove it from "
-            "tests/lift_backlog.json"
+            f"{node} passes: the lift reads its SQL now, so remove it from tests/lift_backlog.json"
         )
 
 

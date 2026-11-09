@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[datafusion,delta,polars]",
+#     "sverify[datafusion,delta,polars,spark]",
 # ]
 #
 # [tool.uv.sources]
@@ -1368,7 +1368,7 @@ def _(mo):
 
     Spark and Databricks: the `"spark"` dialect targets
     Spark 4 and is also what `node.refresh(engine="spark")` runs. It
-    assumes the session settings of `sverify.engines.SPARK_CONF`, above all
+    assumes the session settings of `sverify_spark.dialect.SPARK_CONF`, above all
     `spark.sql.ansi.enabled`: without ANSI mode an overflow wraps around
     and a bad cast gives NULL. Spark answers several questions its own way,
     and the SQL spells out or refuses each:

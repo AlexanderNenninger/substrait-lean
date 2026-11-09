@@ -23,8 +23,11 @@ LOCAL: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.local and not p
 #: The engines a `Connection` accepts: `LOCAL` and the optional ones.
 ACCEPTED: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.local)
 #: The engines sverify supports within the 1.x promise, local or not: every
-#: engine but the optional ones.
-SUPPORTED: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if not p.optional)
+#: plugin that runs plans or writes their SQL, but the optional ones (a
+#: profile alone, Substrait's, is no engine).
+SUPPORTED: tuple[str, ...] = tuple(
+    e for e, p in _FOUND.items() if not p.optional and (p.local or p.runner or p.dialect)
+)
 #: The dialects `to_sql` writes.
 DIALECTS: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.dialect)
 #: Every engine sverify names: each plugin's.

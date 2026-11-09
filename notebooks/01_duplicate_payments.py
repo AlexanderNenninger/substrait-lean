@@ -5,7 +5,7 @@
 #     "ibis-framework[duckdb]==12.0.0",
 #     "marimo",
 #     "sqlglot",
-#     "sverify[datafusion,polars,delta]",
+#     "sverify[datafusion,polars,delta,spark]",
 # ]
 #
 # [tool.uv.sources]

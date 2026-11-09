@@ -106,7 +106,6 @@ reference:
       - name: engines.Dialect
         members: [name, guards, finite, decimals]
       - engines.UnsupportedError
-      - engines.SPARK_CONF
       - engines.run_sharded
 
   - title: ASOF joins

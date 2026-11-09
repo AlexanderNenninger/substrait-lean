@@ -1,0 +1,73 @@
+{
+  "id": "spark-var-pop-one-nan",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`var_pop` and `stddev_pop` of one NaN are NaN",
+  "verdict": "NaN for one NaN and for a NaN among other values, as the reference; DuckDB's DD-3 does not occur",
+  "area": "aggregates",
+  "options": [
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.var",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "var_pop",
+    "stddev_pop"
+  ],
+  "settings": {},
+  "description": [
+    "`CentralMomentAgg`'s update is Welford's: `delta = x - avg`, `newM2 = m2 + delta * (delta - delta / n)`, from `m2 = 0` and `avg = 0`. A first value of NaN makes `delta` NaN and so `m2` NaN, and `VariancePop` and `StddevPop` finalize to `If(n === 0.0, null, m2 / n)` and its square root: NaN. There is no special case for one value, so the population variance of one finite value is 0.0 (spark-var-stddev) and of one NaN NaN.",
+    "The merge forces `delta` to 0 only where one side is empty (`isEmptyLeft || isEmptyRight`), so a partition holding the NaN keeps it through the merge. A NaN among other values is NaN (spark-nonfinite-aggregates). Spark needs no NaN guard on `VAR_*`/`STDDEV_*`: the written plan's own `var_pop` gives the reference's NaN."
+  ],
+  "reference": "`varOf` (`core/Sverify/Core/Aggregate.lean`, D30): NaN for a NaN among the values. Spark agrees: Profile.spark's `agg.var` `stat_algo` row cites this fact and names no shim, so the SQL writer leaves out DD-3's NaN guard on Spark (`Dialect.var_nan` reads the row).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "source-reading",
+      "checked_by": "engine-leaks session (DD-3 guard as a dialect hook), started by session local_974f7865",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/CentralMomentAgg.scala#L122-L127",
+          "note": "update: `delta = child - avg; deltaN = delta / newN; newAvg = avg + deltaN; newM2 = m2 + delta * (delta - deltaN)`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/CentralMomentAgg.scala#L242-L253",
+          "note": "VariancePop: `If(n === 0.0, Literal.create(null, DoubleType), m2 / n)`; StddevPop (L170-L181) the same with `sqrt`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/CentralMomentAgg.scala#L89-L101",
+          "note": "merge: `delta` is 0 only where one side is empty"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 through the GitHub API."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "engine-leaks session, pyspark 4.3.0 local session (tests/spark_session.py), Python 3.12, macOS arm64",
+      "evidence": [
+        {
+          "sql": "SELECT g, var_pop(x) AS v, stddev_pop(x) AS s FROM t GROUP BY g, t = (1, NaN), (2, NaN), (2, 1.0), through sverify's written plan without the NaN guard",
+          "observed": "(1, NaN, NaN), (2, NaN, NaN)"
+        },
+        {
+          "file": "engines/spark/tests/test_sql_spark.py",
+          "note": "test_variance_of_one_nan"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    54,
+    758
+  ]
+}

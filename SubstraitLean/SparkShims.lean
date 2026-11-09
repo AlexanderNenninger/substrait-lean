@@ -4,12 +4,12 @@ import SubstraitLean.PolarsShims
 # The reference on Spark: the shims, proved (#739)
 
 The translation from the reference to Spark 4.3.0 is Spark SQL written by
-`sverify.sql.spark` under `SPARK_CONF` (ANSI mode on). Where Spark's value
+`sverify_spark.dialect` under `SPARK_CONF` (ANSI mode on). Where Spark's value
 differs from the reference's on the reference's non-raising domain, the
 writer writes a shim; where Spark raises or gives its own value only where
 the reference raises (the error side), it writes nothing. This module states
 what Spark does for each, as its facts record it
-(`characterization/spark/facts/`), and proves once, per shim, that the
+(`engines/spark/facts/`), and proves once, per shim, that the
 shimmed expression gives the reference's value. The lemmas are named as the
 shims of `Profile.spark.obs` (`EngineTables.lean`): `Spark.<name>`, or, for a
 shim another engine writes the same way, `Shim.<name>` (`engines/Sverify/Engines/Shims.lean`).
