@@ -55,6 +55,9 @@ count.
 typecheck, golden tests and every Python test (`poe test-all`). It is slow on
 this laptop.
 
+Lean build time and memory are budgeted per module, and CI's `lean` job fails
+a module over its ceiling: `docs/build-performance.md` has the method.
+
 Locally, run `poe test`: the fast set on 2 workers, without the `slow` tests
 and with a tenth of the Hypothesis examples (the `dev` profile,
 `python/tests/conftest.py`). Leave the full suite to CI or to homelab
