@@ -91,6 +91,8 @@ def Profile.substrait.table : ProfileTable where
     (none, "zero_sign", .oneOf ["IEEE"]),
     -- `round` and `ceil` say nothing of a zero's sign.
     (none, "round_zero_sign", openAt "round_zero_sign"),
+    -- The YAML's `power` says nothing of `1 ^ ∞` (D40).
+    (none, "pow_one_inf", openAt "pow_one_inf"),
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_equality", openAt "nan_equality"),
     (some "cmp", "nan_equality", .oneOf ["NAN_IS_NOT_NAN"]),

@@ -285,10 +285,10 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
 | core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |
 | core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
-| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error` |
+| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error`, `pow_one_inf` (`power`) |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
-| core | `fp.round` | `round` | `rounding`, `round_zero_sign` |
-| core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`) |
+| core | `fp.round` | `round` | `rounding`, `round_zero_sign`, `float_to_int` (where `round` returns a `BIGINT`) |
+| core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`), `float_to_int` (where they return a `BIGINT`) |
 | core | `cmp` | `equal`, `lt`, `greatest`, `least`, `nanvl`, `is_null`, `not`, `and`, `or` | `nan_equality`, `nan_order`, `zero_sign` (doubles only) |
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
@@ -682,6 +682,7 @@ is a choice that accepts every value the plan states.
 | `nan_creation` | all others | `NAN`, `ERROR` | `ERROR` | raise |
 | `zero_sign` | all others | `IEEE` | `ONE_ZERO` | choose |
 | `round_zero_sign` | all others | `ANY`, `IEEE`, `POSITIVE` | `ANY` | leave open |
+| `pow_one_inf` | all others | `ONE`, `NAN` | `ONE` | choose |
 | `nan_equality` | all others | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
 | `nan_equality` | `cmp` | `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
 | `nan_order` | all others | `GREATEST`, `UNORDERED`, `IGNORED` | `GREATEST` | choose |
@@ -1185,3 +1186,4 @@ to it, so links to an entry here still land.
 - <a id="d37-no-operation-creates-a-nan"></a>[D37. No operation creates a NaN](decisions.md#d37-no-operation-creates-a-nan)
 - <a id="d38-no-operation-on-finite-doubles-overflows-to-infinity"></a>[D38. No operation on finite doubles overflows to infinity](decisions.md#d38-no-operation-on-finite-doubles-overflows-to-infinity)
 - <a id="d39-division-by-zero-has-an-ieee-value"></a>[D39. Division by zero has an IEEE value](decisions.md#d39-division-by-zero-has-an-ieee-value)
+- <a id="d40-power1--is-cs-pow"></a>[D40. `power(±1, ±∞)` is C's `pow`](decisions.md#d40-power1--is-cs-pow)
