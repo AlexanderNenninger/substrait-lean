@@ -436,11 +436,11 @@ theorem semiFast_eq (on : Expr) (la : Nat) (anti : Bool) (xs ys : Relation) :
 
 def Measure.inputsFast (m : Measure) (rows : Relation) : List Value :=
   let vs := ((m.kept rows).map m.arg.eval).filter (· != .null)
-  if m.distinct then dedupH vs else vs
+  if m.distinct then distinctVals vs else vs
 
 theorem Measure.inputsFast_eq (m : Measure) (rows : Relation) :
     m.inputsFast rows = m.inputs rows := by
-  simp [inputsFast, inputs, dedupH_eq]
+  simp [inputsFast, inputs]
 
 def Measure.evalFast (rows : Relation) (m : Measure) : Value :=
   match m.fn with
@@ -456,16 +456,17 @@ theorem Measure.evalFast_eq (rows : Relation) (m : Measure) : m.evalFast rows = 
 def aggregateFast (gs : List Expr) (ms : List Measure) (rows : Relation) : Relation :=
   if gs.isEmpty then [ms.map (·.evalFast rows)]
   else
-    let idx := indexBy (groupKey gs) rows
-    (dedupH (rows.map (groupKey gs))).map fun k =>
-      k ++ ms.map (·.evalFast (idx.getD k #[]).toList)
+    -- Groups are keyed up to canonical codes (D31).
+    let idx := indexBy (fun row => (groupKey gs row).canon) rows
+    (distinctRows (rows.map (groupKey gs))).map fun k =>
+      k ++ ms.map (·.evalFast (idx.getD k.canon #[]).toList)
 
 theorem aggregateFast_eq (gs : List Expr) (ms : List Measure) (rows : Relation) :
     aggregateFast gs ms rows = aggregateEval gs ms rows := by
   unfold aggregateFast aggregateEval
   split
   · simp [Measure.evalFast_eq]
-  · simp only [dedupH_eq, indexBy_getD, Measure.evalFast_eq, groupRows]
+  · simp only [indexBy_getD, Measure.evalFast_eq, groupRows]
 
 /-! ## The evaluator -/
 
@@ -489,7 +490,7 @@ def Rel.evalFast (cat : Catalog) : Rel → Relation
   | .window r part sort fns => windowEval part sort fns (r.evalFast cat)
   | .semi a b anti on => semiFast on (a.arity cat) anti (a.evalFast cat) (b.evalFast cat)
   | .orderBy r keys => (r.evalFast cat).mergeSort (sortLe keys)
-  | .distinct r => dedupH (r.evalFast cat)
+  | .distinct r => distinctRows (r.evalFast cat)
   | .aggregate r gs ms => aggregateFast gs ms (r.evalFast cat)
   | .unnest r c => (r.evalFast cat).flatMap (unnestRow c)
 
@@ -504,7 +505,7 @@ theorem Rel.evalFast_eq (cat : Catalog) : ∀ r : Rel, r.evalFast cat = r.eval c
   | .join a b .left _ => by
       simp [evalFast, eval, evalFast_eq cat a, evalFast_eq cat b, leftJoinFast_eq]
   | .semi a b _ _ => by simp [evalFast, eval, evalFast_eq cat a, evalFast_eq cat b, semiFast_eq]
-  | .distinct r => by simp [evalFast, eval, evalFast_eq cat r, dedupH_eq]
+  | .distinct r => by simp [evalFast, eval, evalFast_eq cat r]
   | .aggregate r _ _ => by simp [evalFast, eval, evalFast_eq cat r, aggregateFast_eq]
 
 end Substrait

@@ -439,7 +439,7 @@ def AggFn.apply : AggFn → List Value → Value
   | .cov sample, vs => covOf sample vs
   | .corr, vs => corrOf vs
   | .min, v :: vs => pickFold (fun a b => !a.leT b) v vs
-  | .max, v :: vs => pickFold (fun a b => !b.leT a) v vs
+  | .max, v :: vs => pickFold (fun a b => !a.geT b) v vs
   | .collect, vs => .list vs
   | .pick last, v :: vs => if last then (v :: vs).getLast (List.cons_ne_nil _ _) else v
   | .concat sep, vs => .str (sep.intercalate (vs.map fun | .str s => s | _ => ""))
@@ -740,8 +740,8 @@ theorem pickFold_min_le (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
   Value.le_of_leT ((pickFold_least Value.leT_totalPre v vs).2 x hx)
 
 theorem pickFold_max_ge (v : Value) (vs : List Value) : ∀ x ∈ v :: vs,
-    x.le (pickFold (fun a b => !b.leT a) v vs) = true := fun x hx =>
-  Value.le_of_leT ((pickFold_least Value.leT_totalPre.flip v vs).2 x hx)
+    x.le (pickFold (fun a b => !a.geT b) v vs) = true := fun x hx =>
+  Value.le_of_geT ((pickFold_least Value.geT_totalPre v vs).2 x hx)
 
 /-- `MIN` of values is one of them, and at most each of them. -/
 theorem AggFn.apply_min {vs : List Value} {m : Value} (h : AggFn.min.apply vs = m) (hm : m ≠ .null) :

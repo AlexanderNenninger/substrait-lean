@@ -54,26 +54,30 @@ open FloatCode
 
 /-- A value's exact part of a sum. -/
 def exactOf : Value → Int
-  | .float c => scaled c
+  | .float c => scaled (canon c)
   | _ => 0
 
 theorem exactSum_cons (v : Value) (vs : List Value) : exactSum (v :: vs) = exactOf v + exactSum vs := by
   cases v <;> simp [exactSum, exactOf]
 
-theorem CodeNear.exactOf {e : Nat} {v w : Value} (h : CodeNear e v w) :
+theorem CodeNear.exactOf {e : Nat} {v w : Value} (h : CodeNear e v w)
+    (hv : ∀ c, v = .float c → IsFin c) (hw : ∀ c, w = .float c → IsFin c) :
     2 * (exactOf v - exactOf w).natAbs ≤ e + 1 := by
   cases v <;> cases w
   case float.float a b =>
-    have := scaled_sub_le a b; simp only [CodeNear] at h; simp only [Substrait.exactOf]; omega
+    have := scaled_sub_le a b; simp only [CodeNear] at h
+    simp only [Substrait.exactOf, canon_of_bounds (hv a rfl), canon_of_bounds (hw b rfl)]; omega
   all_goals first
     | exact absurd rfl (h.1 _) | exact absurd rfl (h.2 _) | simp [Substrait.exactOf]
 
 theorem exactSum_near {e : Nat} : ∀ {vs ws : List Value}, Forall2 (CodeNear e) vs ws →
+    FinCodes vs → FinCodes ws →
     2 * (exactSum vs - exactSum ws).natAbs ≤ vs.length * (e + 1)
-  | _, _, .nil => by simp [exactSum]
-  | _, _, .cons h t => by
-    have ih := exactSum_near t
-    have := h.exactOf
+  | _, _, .nil, _, _ => by simp [exactSum]
+  | _, _, .cons h t, hv, hw => by
+    have ih := exactSum_near t (fun c hc => hv c (List.mem_cons_of_mem _ hc))
+      (fun c hc => hw c (List.mem_cons_of_mem _ hc))
+    have := h.exactOf (fun c e => hv c (e ▸ List.mem_cons_self)) (fun c e => hw c (e ▸ List.mem_cons_self))
     simp only [exactSum_cons, List.length_cons, Nat.succ_mul]
     omega
 
@@ -83,7 +87,7 @@ theorem nonFinite_of_finCodes {vs : List Value} (h : FinCodes vs) : nonFinite vs
     simp only [anyCode, List.any_eq_false]
     intro v hv
     cases v with
-    | float c => simp [hp c (h c hv)]
+    | float c => simp only [canon_of_bounds (h c hv), hp c (h c hv)]; decide
     | _ => simp
   have := nan_eq; have := posInf_eq; have := negInf_eq
   unfold nonFinite
@@ -145,7 +149,7 @@ theorem floatSumCR_near {e : Nat} {vs ws : List Value} (h : Forall2 (CodeNear e)
     (rw' : IsFin (ofExact (exactSum ws))) :
     (floatSumCR vs - floatSumCR ws).natAbs ≤
       vs.length * (e + 1) + ulpDiv (exactSum vs) 1 + ulpDiv (exactSum ws) 1 + 4 :=
-  floatSumCR_of_exact (exactSum_near h) hv hw rv rw'
+  floatSumCR_of_exact (exactSum_near h hv hw) hv hw rv rw'
 
 /-- **A correctly rounded `AVG` from its exact sum**: `n` values on each side
 whose exact sums are within `n·(E + 1)/2` units give means within
@@ -201,7 +205,7 @@ theorem floatAvgCR_near {e : Nat} {vs ws : List Value} (h : Forall2 (CodeNear e)
     (rw' : IsFin (ofExactDiv (exactSum ws) ws.length)) :
     (floatAvgCR vs - floatAvgCR ws).natAbs ≤
       (e + 1) + ulpDiv (exactSum vs) vs.length + ulpDiv (exactSum ws) ws.length + 4 :=
-  floatAvgCR_of_exact h.length_eq (exactSum_near h) hv hw rv rw'
+  floatAvgCR_of_exact h.length_eq (exactSum_near h hv hw) hv hw rv rw'
 
 /-! ## The `M₁` form: distances summed over the pairs -/
 
@@ -266,14 +270,16 @@ theorem ListL1.filter {p : α → Bool} {p' : β → Bool} (hp : ∀ d x y, R d 
 end
 
 theorem exactSum_nearL1 : ∀ {vs ws : List Value} {D : Nat}, ListL1 CodeNear vs ws D →
+    FinCodes vs → FinCodes ws →
     2 * (exactSum vs - exactSum ws).natAbs ≤ D + vs.length
-  | [], [], _, _ => by simp [exactSum]
-  | _ :: _, _ :: _, _, ⟨d, r, h, t, le⟩ => by
-    have ih := exactSum_nearL1 t
-    have := h.exactOf
+  | [], [], _, _, _, _ => by simp [exactSum]
+  | _ :: _, _ :: _, _, ⟨d, r, h, t, le⟩, hv, hw => by
+    have ih := exactSum_nearL1 t (fun c hc => hv c (List.mem_cons_of_mem _ hc))
+      (fun c hc => hw c (List.mem_cons_of_mem _ hc))
+    have := h.exactOf (fun c e => hv c (e ▸ List.mem_cons_self)) (fun c e => hw c (e ▸ List.mem_cons_self))
     simp only [exactSum_cons, List.length_cons]
     omega
-  | [], _ :: _, _, h | _ :: _, [], _, h => h.elim
+  | [], _ :: _, _, h, _, _ | _ :: _, [], _, h, _, _ => h.elim
 
 /-- **A correctly rounded `SUM` in `M₁`**: values whose distances sum to at
 most `D` codes give sums within `D + g + ulp + ulp' + 4` codes, `g` values. -/
@@ -282,7 +288,7 @@ theorem floatSumCR_nearL1 {D : Nat} {vs ws : List Value} (h : ListL1 CodeNear vs
     (rw' : IsFin (ofExact (exactSum ws))) :
     (floatSumCR vs - floatSumCR ws).natAbs ≤
       D + vs.length + ulpDiv (exactSum vs) 1 + ulpDiv (exactSum ws) 1 + 4 :=
-  floatSumCR_of_exact (exactSum_nearL1 h) hv hw rv rw'
+  floatSumCR_of_exact (exactSum_nearL1 h hv hw) hv hw rv rw'
 
 /-- **A correctly rounded `AVG` in `M₁`**: values whose distances sum to at
 most `D` codes give means within `(D + 1) + ulp + ulp' + 4` codes. -/
@@ -293,7 +299,7 @@ theorem floatAvgCR_nearL1 {D : Nat} {vs ws : List Value} (h : ListL1 CodeNear vs
     (floatAvgCR vs - floatAvgCR ws).natAbs ≤
       (D + 1) + ulpDiv (exactSum vs) vs.length + ulpDiv (exactSum ws) ws.length + 4 := by
   refine floatAvgCR_of_exact h.length_eq ?_ hv hw rv rw'
-  have := exactSum_nearL1 h
+  have := exactSum_nearL1 h hv hw
   rcases Nat.eq_zero_or_pos vs.length with h0 | hpos
   · have e1 : vs = [] := List.eq_nil_of_length_eq_zero h0
     have e2 : ws = [] := List.eq_nil_of_length_eq_zero (h.length_eq ▸ h0)

@@ -303,6 +303,53 @@ theorem canonReps_perm (h : RawOrder le) {l l' : List α} (hp : l.Perm l') :
     · rintro ⟨x, hx, rfl⟩; exact ⟨x, hp.mem_iff.mp hx, (classRep_perm h hp hx).symm⟩
     · rintro ⟨x, hx, rfl⟩; exact ⟨x, hp.mem_iff.mpr hx, classRep_perm h hp (hp.mem_iff.mpr hx)⟩
 
+/-- A member's class lies in the part it comes from when no member of the
+other part shares its canonical form. -/
+theorem classRep_append_left {A B : List α} {x : α} (h : ∀ b ∈ B, c b ≠ c x) :
+    classRep c le (A ++ B) x = classRep c le A x := by
+  unfold classRep
+  rw [List.filter_append, List.filter_eq_nil_iff.mpr fun b hb hc => h b hb (by simpa using hc),
+    List.append_nil]
+
+theorem classRep_append_right {A B : List α} {x : α} (h : ∀ a ∈ A, c a ≠ c x) :
+    classRep c le (A ++ B) x = classRep c le B x := by
+  unfold classRep
+  rw [List.filter_append, List.filter_eq_nil_iff.mpr fun a ha hc => h a ha (by simpa using hc),
+    List.nil_append]
+
+/-- `canonReps` of parts with no class in common: the parts' `canonReps`. -/
+theorem canonReps_append_disjoint {A B : List α} (h : ∀ a ∈ A, ∀ b ∈ B, c a ≠ c b) :
+    (canonReps c le (A ++ B)).Perm (canonReps c le A ++ canonReps c le B) := by
+  refine (List.perm_ext_iff_of_nodup (canonReps_nodup _)
+    (List.nodup_append.mpr ⟨canonReps_nodup _, canonReps_nodup _, fun a ha b hb he => ?_⟩)).mpr
+    fun k => ?_
+  · obtain ⟨x, hx, rfl⟩ := mem_canonReps.mp ha
+    obtain ⟨y, hy, rfl⟩ := mem_canonReps.mp hb
+    have := congrArg c he
+    rw [classRep_canon (c := c), classRep_canon (c := c)] at this
+    exact h x hx y hy this
+  · simp only [List.mem_append, mem_canonReps, List.mem_append]
+    constructor
+    · rintro ⟨x, hx | hx, rfl⟩
+      · exact .inl ⟨x, hx, (classRep_append_left fun b hb => (h x hx b hb).symm).symm⟩
+      · exact .inr ⟨x, hx, (classRep_append_right fun a ha => h a ha x hx).symm⟩
+    · rintro (⟨x, hx, rfl⟩ | ⟨x, hx, rfl⟩)
+      · exact ⟨x, .inl hx, classRep_append_left fun b hb => (h x hx b hb).symm⟩
+      · exact ⟨x, .inr hx, classRep_append_right fun a ha => h a ha x hx⟩
+
+/-- `canonReps` of parts with no class in common: the parts' `canonReps`. -/
+theorem canonReps_flatten_disjoint :
+    ∀ {L : List (List α)}, L.Pairwise (fun A B => ∀ a ∈ A, ∀ b ∈ B, c a ≠ c b) →
+      (canonReps c le L.flatten).Perm (L.map (canonReps c le)).flatten
+  | [], _ => by simp [canonReps, dedup_nil]
+  | A :: L, h => by
+    rw [List.pairwise_cons] at h
+    simp only [List.flatten_cons, List.map_cons]
+    refine (canonReps_append_disjoint fun a ha b hb => ?_).trans
+      (List.Perm.append_left _ (canonReps_flatten_disjoint h.2))
+    obtain ⟨B, hB, hb⟩ := List.mem_flatten.mp hb
+    exact h.1 B hB a ha b hb
+
 /-- Without two members of one class, the representatives are `dedup`'s. -/
 theorem canonReps_of_inj {l : List α} (hinj : ∀ x ∈ l, ∀ y ∈ l, c x = c y → x = y) :
     canonReps c le l = dedup l := by

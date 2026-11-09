@@ -24,18 +24,27 @@ theorem IsLeast.unique {α : Type} {le : α → α → Bool} (anti : ∀ a b, le
   anti _ _ (h.2 _ h'.1) (h'.2 _ h.1)
 
 /-- The order `MIN` (`max = false`) or `MAX` (`max = true`) picks the least element of. -/
-def minMaxLe (max : Bool) (a b : Value) : Bool := if max then b.leT a else a.leT b
+def minMaxLe (max : Bool) (a b : Value) : Bool := if max then a.geT b else a.leT b
 
 theorem minMaxLe_totalPre (max : Bool) : TotalPre (minMaxLe max) := by
   cases max
   · exact Value.leT_totalPre
-  · exact Value.leT_totalPre.flip
+  · exact Value.geT_totalPre
 
 theorem minMaxLe_antisymm (max : Bool) (a b : Value) (h : minMaxLe max a b = true)
     (h' : minMaxLe max b a = true) : a = b := by
   cases max
   · exact Value.leT_antisymm h h'
-  · exact Value.leT_antisymm h' h
+  · exact Value.geT_antisymm h h'
+
+/-- Within a tied class, `minMaxLe` is the raw order. -/
+theorem minMaxLe_of_canon (max : Bool) {a b : Value} (h : a.canonV = b.canonV) :
+    minMaxLe max a b = Value.leRaw a b := by
+  have h1 : a.le b = true := by rw [Value.le_canon_right h.symm]; exact Value.le_refl a
+  have h2 : b.le a = true := by rw [Value.le_canon_right h]; exact Value.le_refl b
+  cases max <;> simp [minMaxLe, Value.leT, Value.geT, lexLe, h1, h2]
+
+
 
 /-- `MIN` and `MAX` of a non-empty list: its least element. -/
 theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min)) :
@@ -44,6 +53,25 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
   | v :: vs, _ => by
     have := pickFold_least (minMaxLe_totalPre max) v vs
     cases max <;> subst hf <;> exact this
+
+/-- `MIN` and `MAX` pick the raw-least member of the extreme class, which is
+`DISTINCT`'s member of it: they ignore `DISTINCT`. -/
+theorem AggFn.apply_minMax_distinctVals {f : AggFn} {max : Bool}
+    (hf : f = (if max then .max else .min)) (vs : List Value) :
+    f.apply (distinctVals vs) = f.apply vs := by
+  by_cases hv : vs = []
+  · subst hv; rfl
+  have hl := apply_minMax hf hv
+  -- The extreme is its class's representative.
+  have hrep : classRep Value.canonV Value.leRaw vs (f.apply vs) = f.apply vs := by
+    refine Value.leRaw_antisymm (classRep_least Value.leRaw_rawOrder hl.1 rfl) ?_
+    have hm := classRep_mem (c := Value.canonV) (le := Value.leRaw) hl.1
+    have := hl.2 _ hm
+    rwa [minMaxLe_of_canon max (classRep_canon (c := Value.canonV) vs _).symm] at this
+  have hmem : f.apply vs ∈ distinctVals vs := hrep ▸ classRep_mem_canonReps hl.1
+  have hd : distinctVals vs ≠ [] := List.ne_nil_of_mem hmem
+  exact IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf hd)
+    ⟨hmem, fun w hw => hl.2 w (canonReps_sub hw)⟩
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true

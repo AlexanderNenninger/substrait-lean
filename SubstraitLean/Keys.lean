@@ -361,14 +361,14 @@ theorem Expr.pinned_sound {e : Expr} {r r' : Row} (ht : (e.eval r).isTrue = true
     simp only [List.mem_singleton] at hx; subst hx
     obtain ⟨he, _⟩ := eq_true_same (by simpa [eval] using ht)
     obtain ⟨he', _⟩ := eq_true_same (by simpa [eval] using ht')
-    simp only [eval, List.getD_eq_getElem?_getD] at he he' ⊢
+    simp only [List.getD_eq_getElem?_getD] at he he' ⊢
     rw [he, he']
   case case3 v i =>
     intro x hx
     simp only [List.mem_singleton] at hx; subst hx
     obtain ⟨he, _⟩ := eq_true_same (by simpa [eval] using ht)
     obtain ⟨he', _⟩ := eq_true_same (by simpa [eval] using ht')
-    simp only [eval, List.getD_eq_getElem?_getD] at he he' ⊢
+    simp only [List.getD_eq_getElem?_getD] at he he' ⊢
     rw [← he, ← he']
   all_goals (intro x hx; simp_all)
 

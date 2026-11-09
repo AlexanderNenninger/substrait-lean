@@ -292,6 +292,20 @@ theorem Value.leT_antisymm {a b : Value} (hab : a.leT b = true) (hba : b.leT a =
 
 theorem Value.le_of_leT {a b : Value} (h : a.leT b = true) : a.le b = true := lexLe_left h
 
+/-- `Value.le` reversed, ties broken by the raw codes as in `Value.leT`: `MAX`
+picks by it, so a tied class gives its raw-least member, as `MIN` and
+`DISTINCT` do. -/
+def Value.geT : Value → Value → Bool := lexLe (fun a b => b.le a) Value.leRaw
+
+theorem Value.geT_totalPre : TotalPre Value.geT := Value.le_totalPre.flip.lex Value.leRaw_totalPre
+
+theorem Value.geT_antisymm {a b : Value} (hab : a.geT b = true) (hba : b.geT a = true) : a = b :=
+  have h := lexLe_antisymm hab hba
+  Value.leRaw_antisymm h.2.2.1 h.2.2.2
+
+theorem Value.le_of_geT {a b : Value} (h : a.geT b = true) : b.le a = true :=
+  lexLe_left (le₁ := fun (x y : Value) => y.le x) (le₂ := Value.leRaw) h
+
 /-- One `ORDER BY` key: a column, ascending or descending, NULLs first or last. -/
 structure SortKey where
   col : Nat
