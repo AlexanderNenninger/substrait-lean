@@ -508,6 +508,21 @@ theorem IsReps.sub {l reps : List α} (h : IsReps c l reps) {x : α} (hx : x ∈
 theorem IsReps.nodup {l reps : List α} (h : IsReps c l reps) : reps.Nodup :=
   List.nodup_iff_pairwise_ne.mpr (h.1.imp fun hne he => hne (congrArg c he))
 
+theorem IsReps.length_le {l reps : List α} (h : IsReps c l reps) : reps.length ≤ l.length :=
+  List.Nodup.length_le_of_subset h.nodup fun _ hx => h.sub hx
+
+/-- On members that are their own canonical forms, the one choice of
+representatives is `dedup`'s, up to order. -/
+theorem IsReps.perm_dedup [DecidableEq α] {l reps : List α} (h : IsReps c l reps)
+    (hf : ∀ x ∈ l, c x = x) : reps.Perm (dedup l) :=
+  (List.perm_ext_iff_of_nodup h.nodup (nodup_dedup l)).mpr fun x => by
+    rw [mem_dedup]
+    constructor
+    · exact fun hx => h.sub hx
+    · intro hx
+      obtain ⟨y, hy, he⟩ := h.2.2 x hx
+      rwa [← hf y (h.sub hy), he, hf x hx] at hy
+
 theorem IsReps.congr {l l' reps : List α} (h : IsReps c l reps) (hm : ∀ y, y ∈ l ↔ y ∈ l') :
     IsReps c l' reps :=
   ⟨h.1, fun x hx => (hm x).mp (h.2.1 x hx), fun x hx => h.2.2 x ((hm x).mpr hx)⟩

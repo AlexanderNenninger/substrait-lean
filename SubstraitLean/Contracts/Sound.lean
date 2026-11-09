@@ -887,8 +887,8 @@ end
 values over `grp`. -/
 theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
     {grp : Relation} {row : Row}
-    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false →
-      row.getD (g + i) .null = m.eval grp)
+    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn ≠ .min →
+      m.fn ≠ .max → row.getD (g + i) .null = m.eval grp)
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
     FactsHold (ratioFacts g env fs ms) row := by
   intro f hf
@@ -903,8 +903,10 @@ theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : L
       · rename_i b hb
         simp only [List.mem_singleton] at hf; subst hf
         intro x n hx hn
-        rw [col i mi hmi (by rw [hsum]; rfl), Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
-        rw [col j mj hmj (by rw [hcount]; rfl), Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
+        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; decide) (by rw [hsum]; decide),
+          Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
+        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; decide) (by rw [hcount]; decide),
+          Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
         have hsame : mj.inputs grp = mi.inputs grp := by
           simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
         rw [hsame] at hn
@@ -939,11 +941,19 @@ theorem EnvMem.measures_all {env : List AVal} {fs : List Fact} {grp : Relation}
   intro j
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
   rcases hv.getElem? j with ⟨m, v, hm, hb, hr⟩ | ⟨hm, hb⟩
-  · obtain ⟨s, hp, rfl, _⟩ := hr.eval
+  · obtain ⟨s, hp, hsorts, hpick⟩ := hr.eval
     simp only [hm, hb, Option.map_some, Option.getD_some]
-    exact Measure.abs_sound (grp := s) (fun y hy => hall y (hp.mem_iff.mp hy)) m grouped
-      (fun hg hs => hne hg (List.eq_nil_of_length_eq_zero (by rw [← hp.length_eq, hs]; rfl))) rows
-      (fun n hn => hp.length_eq ▸ hrows n hn)
+    by_cases hs : m.fn.sorts = true
+    · rw [hsorts hs]
+      exact Measure.abs_sound (grp := s) (fun y hy => hall y (hp.mem_iff.mp hy)) m grouped
+        (fun hg hs => hne hg (List.eq_nil_of_length_eq_zero (by rw [← hp.length_eq, hs]; rfl))) rows
+        (fun n hn => hp.length_eq ▸ hrows n hn)
+    · -- `MIN` and `MAX` may give another member of the value's class: the same
+      -- abstract value holds it (`AVal.mem_of_canonV_eq`).
+      have hsf : m.fn.sorts = false := by simpa using hs
+      have hc := (hpick hsf).canon
+      rw [← Measure.eval_eq hsf] at hc
+      exact AVal.mem_of_canonV_eq hc (Measure.abs_sound hall m grouped hne rows hrows)
   · simp [hm, hb, AVal.mem_top]
 
 mutual
@@ -1004,8 +1014,8 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
       aeval_sound_all hcat hA hF hT hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
       aeval_sound_all hcat hA hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
-  | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
-      aeval_sound_all hcat hA hF hT (r := r) hwf hi row (canonReps_sub (h.mem_iff.mp hr))
+  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr =>
+      aeval_sound_all hcat hA hF hT (r := r) hwf hi row (hd.sub (h.mem_iff.mp hr))
   | .unnest r c, hwf, _, ⟨i, hi, h⟩, row, hr => by
       obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
       obtain ⟨_, v, hc, hv, rfl⟩ := mem_unnestRow h
@@ -1042,7 +1052,7 @@ theorem Rel.ratioPart_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → 
       obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, -⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
       have hkl : k.length = gs.length := by
         rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
-      exact ratioFacts_sound_of (hkl ▸ aggCol hv) fun y hy =>
+      exact ratioFacts_sound_of (hkl ▸ aggCol_eq hv) fun y hy =>
         ⟨aeval_sound_all hcat hA hF hT hwf.1 hi y (hgrp y hy),
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
   | .read _, _, _, _, _, _ | .values _ _, _, _, _, _, _ | .filter _ _, _, _, _, _, _

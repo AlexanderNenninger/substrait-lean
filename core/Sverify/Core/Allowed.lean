@@ -132,7 +132,7 @@ order, where its keys and its measures' arguments hold no second member of a
 class (no `-0.0`, no negative NaN): then there is no member to choose (D31). -/
 theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, m.orderFree = true)
     {rows out : Relation} (hk : ∀ r ∈ rows, (groupKey gs r).canon = groupKey gs r)
-    (ha : ∀ m ∈ ms, ∀ r ∈ rows, (m.arg.eval r).canonV = m.arg.eval r)
+    (ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ r ∈ rows, (m.arg.eval r).canonV = m.arg.eval r)
     (h : aggAllowed gs ms rows out) : out.Perm (aggregateEval gs ms rows) := by
   have hvals : ∀ {grp : Relation}, (∀ r ∈ grp, r ∈ rows) → ∀ {vs : List Value},
       Forall2 (fun m v => m.Allowed grp v) ms vs → vs = ms.map (·.eval grp) := by
@@ -149,9 +149,11 @@ theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, 
         have hp := Measure.allowed_picks hof hmv
         refine .cons ?_ (ih fun m' hm' => hms' m' (List.mem_cons_of_mem _ hm'))
         rw [Measure.eval_eq (AggFn.ne_collect_of_orderFree hof)]
-        refine hp.eq fun w hw => ?_
+        rcases hp' : hp with h | ⟨hf, _⟩
+        · exact h
+        refine AggFn.Picks.eq hp fun w hw => ?_
         obtain ⟨-, y, hy, rfl⟩ := Measure.mem_inputs hw
-        exact ha _ hmem y (hg y hy)
+        exact ha _ hmem hf y (hg y hy)
     exact this (fun m hm => ⟨hms m hm, hm⟩) hv
   unfold aggAllowed at h; unfold aggregateEval
   split at h

@@ -795,11 +795,12 @@ theorem aggOrderAllowed_key {gs : List Expr} {ms : List Measure} {rows out : Rel
         rw [List.map_cons, List.map_cons, ih fun k hk => hl k (List.mem_cons_of_mem _ hk)]
         simp only [List.cons.injEq, and_true]
         rw [← hlk]; exact keyOf_range_append
-    have hl : ∀ k ∈ distinctRows (rows.map (groupKey gs)), k.length = gs.length := fun k hk => by
-      obtain ⟨x, _, rfl⟩ := List.mem_map.mp (canonReps_sub hk); simp [groupKey]
+    obtain ⟨ks, hks, h⟩ := h
+    have hl : ∀ k ∈ ks, k.length = gs.length := fun k hk => by
+      obtain ⟨x, _, rfl⟩ := List.mem_map.mp (hks.sub hk); simp [groupKey]
     unfold KeyOn
     rw [← List.pairwise_map, hmap hl h, List.pairwise_map]
-    exact canonReps_pairwise Row.leRaw_rawOrder _
+    exact hks.1
 
 theorem KeyOn.eq_of_keyOf {k : List Nat} : ∀ {rows : Relation}, KeyOn k rows →
     ∀ {x y : Row}, x ∈ rows → y ∈ rows → keyOf k x = keyOf k y → x = y
@@ -966,16 +967,16 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
   | .orderBy r _, hwf, k, hk, _, ⟨i, hi, h, _⟩ =>
       (keys_sound_all hcat hA hF hK (r := r) hwf.1 k hk hi).perm h.symm fun h => Ne.symm h
   | .unnest _ _, _, k, hk, _, _ => by simp [Rel.keys] at hk
-  | .distinct r, hwf, k, hk, _, ⟨i, hi, h⟩ => by
+  | .distinct r, hwf, k, hk, _, ⟨i, hi, d, hd, h⟩ => by
       refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
       simp only [Rel.keys, List.mem_cons] at hk
       rcases hk with rfl | hk
-      · refine (canonReps_pairwise Row.leRaw_rawOrder i).imp_of_mem fun hx hy hne => ?_
-        rw [keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (canonReps_sub hx)),
-          keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (canonReps_sub hy))]
+      · refine hd.1.imp_of_mem fun hx hy hne => ?_
+        rw [keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (hd.sub hx)),
+          keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (hd.sub hy))]
         exact hne
       · exact (keys_sound_all hcat hA hF hK (r := r) hwf k hk hi).of_subset
-          (fun _ h => canonReps_sub h) (canonReps_nodup i)
+          (fun _ h => hd.sub h) hd.nodup
   | .aggregate _ gs _, _, k, hk, _, ⟨_, _, _, h, ho⟩ => by
       simp only [Rel.keys, List.mem_singleton] at hk
       subst hk

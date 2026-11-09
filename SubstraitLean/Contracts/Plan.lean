@@ -98,9 +98,9 @@ theorem Rel.maxRows_sound_all {cat : Catalog} :
     simp only [maxRows] at h; simp only [List.length_map]; exact maxRows_sound_all (r := r) h hi
   | .orderBy r _, _, h, _, ⟨i, hi, hp, _⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]; exact maxRows_sound_all (r := r) h hi
-  | .distinct r, _, h, _, ⟨i, hi, hp⟩ => by
+  | .distinct r, _, h, _, ⟨i, hi, _, hd, hp⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]
-    exact Nat.le_trans (canonReps_length_le _) (maxRows_sound_all (r := r) h hi)
+    exact Nat.le_trans hd.length_le (maxRows_sound_all (r := r) h hi)
   | .semi r _ _ _, _, h, _, ⟨i, _, hi, _, hp⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]
     exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound_all (r := r) h hi)
@@ -152,8 +152,9 @@ theorem Rel.maxRows_sound_all {cat : Catalog} :
       obtain ⟨_, rfl, _⟩ := ho; exact Nat.le_refl _
     · rename_i hg
       simp only [hg, Bool.false_eq_true, ite_false] at ho
+      obtain ⟨ks, hks, ho⟩ := ho
       rw [← ho.length_eq]
-      exact Nat.le_trans (dedup_length_le _) (by simpa using maxRows_sound_all (r := r) h hi)
+      exact Nat.le_trans hks.length_le (by simpa using maxRows_sound_all (r := r) h hi)
   | .unnest _ _, _, h, _, _ => by simp [maxRows] at h
 
 theorem Rel.maxRows_sound {cat : Catalog} {r : Rel} {n : Nat} (h : r.maxRows = some n) :
