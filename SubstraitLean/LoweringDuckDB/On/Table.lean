@@ -245,7 +245,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("BinFn.idiv", "CASE WHEN (#0 IS NOT NULL AND #0 IS NULL) THEN error('division by zero', #1) ELSE idiv(#0, #1) END", 0),
   ("BinFn.imod", "hand-written schema: CASE WHEN ((#0 IS NOT NULL OR #0 IS NOT NULL) AND #1 = 0) THEN error('division by zero', #1) ELSE CASE WHEN (#1 = -1 AND #0 IS NOT NULL) THEN 0 ELSE imod(#0, #1) END END", 0),
   ("BinFn.ipow", "native", 0),
-  ("BinFn.fpow", "hand-written schema: power: error where the reference raises, else #0 ^ #1", 0),
+  ("BinFn.fpow", "hand-written schema: CASE WHEN ((('-inf' < #0 AND #0 < 0) AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1))) OR (#0 = '-inf' AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1)))) THEN error('domain error', #1) ELSE fpow(#0, #1) END", 0),
   ("BinFn.concat", "native", 0),
   ("BinFn.strpos", "native", 0),
   ("BinFn.startsWith", "native", 0),

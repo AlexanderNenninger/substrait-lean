@@ -111,7 +111,7 @@ def schemaBin? (f : BinFn) : Option Tm :=
   -- written and proved by hand (`Lowering.fpow_agree`), as the tactic's proof
   -- is slower.
   | .fpow => some (.expr Lowering.fpowTemplate (Lean.mkConst ``Lowering.fpowTemplate)
-      "power: error where the reference raises, else #0 ^ #1")
+      "CASE WHEN ((('-inf' < #0 AND #0 < 0) AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1))) OR (#0 = '-inf' AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1)))) THEN error('domain error', #1) ELSE fpow(#0, #1) END")
   | .imod => some (zeroGuard [.int, .tod] .int
       (.ite (andFn (eqFn (.field 1) (.lit (.int (-1)))) (isNumFn .int (.field 0))) (.lit (.int 0)) self))
   -- `<<` is `Lowering.shlTemplate`, written and proved by hand
