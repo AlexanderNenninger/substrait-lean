@@ -36,6 +36,27 @@ NAMED: frozenset[str] = frozenset(_FOUND)
 MODULES: Mapping[str, tuple[str, ...]] = {e: p.modules for e, p in _FOUND.items()}
 
 
+def default() -> str:
+    """The engine that runs plans where none is named: the installed one that
+    says so (`ProfilePlugin.default`), or else the first local one. `verify`
+    needs none; running a plan does.
+
+    Raises:
+        ValueError: No engine that runs plans is installed.
+    """
+    from sverify import profiles
+
+    found = profiles.plugins()
+    local = [e for e, p in found.items() if p.local]
+    named = [e for e in local if found[e].default]
+    if not (named or local):
+        raise ValueError(
+            "no engine that runs plans is installed: install one, e.g. "
+            "pip install 'sverify[duckdb]' or 'sverify[polars]'"
+        )
+    return (named or local)[0]
+
+
 def translations() -> dict[str, str]:
     """The translation from the reference to each engine that has one of its
     own, with what makes it sound: every engine a route may reach."""

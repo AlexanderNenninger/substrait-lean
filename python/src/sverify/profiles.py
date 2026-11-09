@@ -179,6 +179,14 @@ class ProfilePlugin:
     outside its chosen executor over these tables (Polars's in-memory nodes
     of a streaming plan). A route records them; `streaming="require"`
     refuses a plan with any. None: the engine has one executor."""
+    floor_division: bool = False
+    """The engine's integer `//` and `%` floor (the remainder takes the
+    divisor's sign): under its profile, the Ibis producer writes them as the
+    engine computes them (`division_type: FLOOR`), and no division hint is
+    given."""
+    default: bool = False
+    """The engine that runs plans where none is named (`sv.connect()`,
+    `Node.refresh()`, `sverify refresh`): `sverify._engines.default`."""
 
     @property
     def verifiable(self) -> bool:

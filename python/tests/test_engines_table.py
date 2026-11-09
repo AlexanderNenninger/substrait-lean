@@ -280,3 +280,19 @@ def test_engine_lists_come_from_the_plugins() -> None:
                 found[f.relative_to(root.parent).as_posix()] = n
     over = {f: n for f, n in found.items() if n > _NAME_LISTS.get(f, 0)}
     assert not over, f"lists of engines by name: {over}; take them from sverify._engines"
+
+
+def test_the_default_engine_is_the_plugin_s(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Where no engine is named, plans run on the one whose plugin says it is
+    the default (DuckDB), or else the first local one; with none installed,
+    running a plan is an error that names what to install (#1189, #1288).
+    `verify` needs none."""
+    assert _engines.default() == "duckdb"
+    found = profiles.plugins()
+    no_default = {e: replace(p, default=False) for e, p in found.items()}
+    monkeypatch.setattr(profiles, "plugins", lambda: no_default)
+    assert _engines.default() in _LOCAL_ENGINES
+    monkeypatch.setattr(profiles, "plugins", lambda: {"substrait": found["substrait"]})
+    no_engine = r"no engine that runs plans is installed.*sverify\[duckdb\]"
+    with pytest.raises(ValueError, match=no_engine):
+        _engines.default()
