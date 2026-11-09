@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts.Lattice
+import Sverify.Analysis.Contracts.Lattice
 
 /-!
 # Contracts: Transfer
@@ -7,7 +7,7 @@ The transfer functions of abstract expression evaluation: rounding, division and
 casts, domains, black boxes, double arithmetic and signs, ending in `UnFn.abs`,
 `BinFn.abs` and `Expr.abs`. Their soundness is in `Contracts/TransferSound`.
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 

@@ -2,7 +2,7 @@ import SubstraitLean.Compose
 import Sverify.Core.Ties
 import Sverify.Core.Robust
 import SubstraitLean.FloatNear
-import SubstraitLean.Knowledge
+import Sverify.Analysis.Knowledge
 
 /-!
 # Tolerance composition: cells, rows and the operators (#929)

@@ -1,4 +1,4 @@
-import SubstraitLean.Safety
+import Sverify.Analysis.Safety
 import SubstraitLean.Pretty
 
 /-!
@@ -8,7 +8,7 @@ Since #202, integer overflow at the declared width is an error, so a contract
 on `amount * 2` must bound `amount`. This file finds such bounds: for each
 overflow `Rel.mayIssues` reports, the range each base-table column must stay
 in to rule it out. It is the forward range analysis of
-`SubstraitLean/Contracts.lean` run backwards: `amount * 2` fits 64 bits when
+`analysis/Sverify/Analysis/Contracts.lean` run backwards: `amount * 2` fits 64 bits when
 `amount ∈ [-2⁶², 2⁶² - 1]`.
 
 The inference is **untrusted**. Its bounds are candidates: the caller adds

@@ -13,7 +13,7 @@ defaults:
   overflow (Lean's integers are unbounded; a wrapped result would be wrong).
   Division and remainder truncate. Where DataFusion fails at run time
   (division by zero, `MIN / -1`, a bad `POWER` or `CAST(double AS BIGINT)`),
-  Lean's value is NULL and `SubstraitLean/Safety.lean` says when that can
+  Lean's value is NULL and `analysis/Sverify/Analysis/Safety.lean` says when that can
   happen; the SQL raises there too (`Dialect.raise_`).
 * Doubles have one zero and one NaN (`core/Sverify/Core/Float.lean`): `-0.0` is
   `0.0`, NaN equals itself and is above `inf`, in comparisons, join

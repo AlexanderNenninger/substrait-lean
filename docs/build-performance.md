@@ -154,9 +154,9 @@ time on the runner.
 | `SubstraitLean.LoweringDuckDB.On.Guards` | 64 | 28 | 2406 | 51 |
 | `SubstraitLean.LoweringDuckDB.On.Native` | 51 | 11 | 1881 | 36 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Compare` | 49 | 70 | 1874 | 37 |
-| `SubstraitLean.Safety` | 44 | 18 | 1219 | 46 |
+| `Sverify.Analysis.Safety` | 44 | 18 | 1219 | 46 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Math` | 43 | 61 | 1858 | 32 |
-| `SubstraitLean.Contracts.TransferSound` | 41 | 16 | 1140 | 36 |
+| `Sverify.Analysis.Contracts.TransferSound` | 41 | 16 | 1140 | 36 |
 | `Sverify.Core.Kinds` | 40 | 26 | 1074 | 32 |
 
 CPU time above wall time is Lean elaborating a module's theorems in

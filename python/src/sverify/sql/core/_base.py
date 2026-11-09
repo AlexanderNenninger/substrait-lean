@@ -89,11 +89,11 @@ class Dialect:
 
     name: str
     guards: bool = True
-    """Write the run-time checks of `SubstraitLean/Safety.lean`'s issues:
+    """Write the run-time checks of `analysis/Sverify/Analysis/Safety.lean`'s issues:
     64-bit overflow, division by zero, `date_trunc` out of range. Without them
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
-    `SubstraitLean/Guards.lean`). Integer `SUM` keeps its check."""
+    `analysis/Sverify/Analysis/Guards.lean`). Integer `SUM` keeps its check."""
     finite: bool = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
