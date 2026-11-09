@@ -21,7 +21,7 @@
   ],
   "files": [
     "docs/core-semantics.md",
-    "characterization/spark/probes.json"
+    "engines/spark/probes/probes.json"
   ],
   "facts": [
     "spark-math-domain",

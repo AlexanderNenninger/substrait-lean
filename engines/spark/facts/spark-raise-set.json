@@ -1,0 +1,206 @@
+{
+  "id": "spark-raise-set",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Where Spark raises beyond the reference, and where it errors without an error class",
+  "verdict": "extra raises: `INT` positions, ANSI string casts, `element_at(…, 0)`, regexes, week patterns; bare Java exceptions (SP-3, SP-4)",
+  "area": "errors",
+  "options": [
+    "raise_set"
+  ],
+  "constructs": [
+    "substring",
+    "element_at",
+    "a[i]",
+    "CAST",
+    "+",
+    "=",
+    "RLIKE",
+    "regexp_extract",
+    "date_format",
+    "make_date",
+    "ntile",
+    "-x"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Under ANSI Spark raises where the reference computes in these places: a `substring` position or length from 2³¹ to 2³² (`CAST_OVERFLOW`, spark-substring-range); an implicit cast of a string in arithmetic or a comparison (`1 + '1.5'`, `1 = '1.0'`: `CAST_INVALID_INPUT`, spark-implicit-casts); `a[i]` out of range. In both modes: `element_at(a, 0)`, an invalid regex or group index, `date_format` week letters, `ntile(0)`, a `DECIMAL(39,…)` type, and `-x` of a 38-digit decimal (SP-1).",
+    "Most errors carry an error class and SQLSTATE. Two do not: timestamp arithmetic past the microsecond range raises `java.lang.ArithmeticException: long overflow` (SP-3), and an invalid constant regex on the codegen path raises `java.util.regex.PatternSyntaxException` (SP-4). Two more raise without a class in both modes: `to_timestamp('294248', 'y')`, a year past the microsecond range, raises `java.lang.ArithmeticException: long overflow` (SP-6), and `TIMESTAMP_SECONDS(0.1234567)`, a decimal with more than six fractional digits, raises `java.lang.ArithmeticException: Rounding necessary` (SP-7), where a double truncates to microseconds. Planning errors (`DATATYPE_MISMATCH`, `UNSUPPORTED_TIME_TYPE`) come when the query is analysed, before any row is read.",
+    "Silent wrong results, the opposite case: `date_add` wraps (SP-2), decimal negation rounds (SP-1), `floor(NaN)` is 0 under ANSI (SP-5)."
+  ],
+  "reference": "The reference raises only where its options say (D2); an engine's extra raises are allowed where they happen only on rows the reference would also reject, and otherwise make a plan that verifies fail at run time. A writer avoids each listed form or guards it.",
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-substring-bigint"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "implicit-cast-string-fraction"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "implicit-cast-int-equals-fraction"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "array-subscript-out"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "array-index-zero"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-regex-invalid"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-regex-group-out-of-range"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "date-format-legacy-pattern"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "ntile-zero"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "decimal-too-wide"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "decimal-negate-max"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "timestamp-overflow"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "time-type"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/array.sql.out#L224-L240",
+          "note": "`element_at(array(1, 2, 3), 0)` raises `INVALID_INDEX_OF_ZERO`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/array.sql.out#L194-L203",
+          "note": "the same raises with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/array.sql.out#L390-L410",
+          "note": "`array(1, 2, 3)[5]` raises `INVALID_ARRAY_INDEX`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/array.sql.out#L278-L283",
+          "note": "the same is NULL with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/regexp-functions.sql.out#L182-L196",
+          "note": "`regexp_extract('1a 2b 14m', '(?l)')` raises `INVALID_PARAMETER_VALUE.PATTERN`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/regexp-functions.sql.out#L130-L145",
+          "note": "`regexp_extract(…, 3)` with two groups raises `INVALID_PARAMETER_VALUE.REGEX_GROUP_INDEX`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/datetime-formatting-invalid.sql.out#L483-L497",
+          "note": "`date_format(…, 'w')` raises `INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/window_part3.sql.out#L460-L482",
+          "note": "`ntile(0)` fails analysis with `DATATYPE_MISMATCH.VALUE_OUT_OF_RANGE`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/datetime-parsing-invalid.sql.out#L2-L8",
+          "note": "`to_timestamp('294248', 'y')` raises a bare `java.lang.ArithmeticException: long overflow`, no error class, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/datetime-parsing-invalid.sql.out#L2-L8",
+          "note": "the same with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/timestamp.sql.out#L675-L681",
+          "note": "`TIMESTAMP_SECONDS(0.1234567)` (a decimal) raises a bare `java.lang.ArithmeticException: Rounding necessary`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/timestamp.sql.out#L647-L653",
+          "note": "the same with ANSI off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/timestamp.sql.out#L684-L689",
+          "note": "`TIMESTAMP_SECONDS(0.1234567d)` of a double truncates to `1969-12-31 16:00:00.123456`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark evidence session",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/api/src/main/scala/org/apache/spark/sql/catalyst/util/TimestampFormatter.scala#L315-L322",
+          "note": "`extractMicros` turns the parsed date-time into microseconds with `Math.multiplyExact`, which throws `ArithmeticException: long overflow` past the range"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/java/org/apache/spark/sql/catalyst/expressions/DateTimeExpressionUtils.java#L153-L168",
+          "note": "under ANSI, `parseToTimestampExact` wraps only `DateTimeException` and `ParseException` in an error class; the `ArithmeticException` propagates"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/datetimeExpressions.scala#L2145-L2150",
+          "note": "without ANSI, `isParseError` turns only the same parse errors into NULL, so the overflow raises there too"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/datetimeExpressions.scala#L944-L956",
+          "note": "`decimalToMicros` calls `longValueExact()` on seconds × 10⁶ and rethrows a bare `ArithmeticException` unless the value is outside the long range"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/datetimeExpressions.scala#L983-L988",
+          "note": "the codegen path does the same: `throw e`"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/fuzz.json",
+          "note": "raise_set[0], substring_range[0], list_index[0], decimal_negate[0], round[0], date_range[1]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 25384 of 25384 results as the fact says; Spark's value differs from Rel.eval's (sverify's lift, reference profile) on 435 of 1754 rows compared.",
+        "It exercises the raising rows: substring positions past 32 bits, element_at at 0 and out of range, a 38-digit decimal negated, floor of ±inf, timestamps past the microsecond range, and `n + s` with a string.",
+        "raise_set[0]: 300 rows, `n + s`, `element_at(a, i)`, 1812 of 1812 results as the fact says (raised: CAST_INVALID_INPUT 30, INVALID_ARRAY_INDEX_IN_ELEMENT_AT 21, INVALID_INDEX_OF_ZERO 39); substring_range[0]: 300 rows, `substring(s, p, l)`, 794 of 794 results as the fact says (raised: CAST_OVERFLOW 30); list_index[0]: 300 rows, `element_at(a, i)`, `a[i]`, `get(a, i)`, `try_element_at(a, i)`, `size(a)`, `array_size(a)`, 6326 of 6326 results as the fact says (raised: INVALID_ARRAY_INDEX 30, INVALID_ARRAY_INDEX_IN_ELEMENT_AT 28, INVALID_INDEX_OF_ZERO 92); decimal_negate[0]: 300 rows, `-x`, `abs(x)`, `0 - x`, 3536 of 3536 results as the fact says (raised: NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION 120); Spark differs from Rel.eval on 394 of 554; round[0]: 300 rows, `round(x, 0)`, `bround(x, 0)`, `round(x, 1)`, `bround(x, 1)`, `round(x, 2)`, `bround(x, 2)`, `round(x, -2)`, `bround(x, -2)`, `floor(x)`, `ceil(x)`, 11956 of 11956 results as the fact says (raised: ARITHMETIC_OVERFLOW 60); Spark differs from Rel.eval on 41 of 1200; date_range[1]: 300 rows, `unix_micros(CAST(timestamp_micros(us) AS TIMESTAMP_NTZ) + make_dt_interval(n, 0, 0, 0))`, 960 of 960 results as the fact says (raised: java.lang.ArithmeticException 60).",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    }
+  ]
+}

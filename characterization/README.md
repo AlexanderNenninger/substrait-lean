@@ -16,8 +16,9 @@ behaviour is recorded privately.
   [engines/polars/facts/](../engines/polars/facts/README.md) and
   [engines/polars/probes/](../engines/polars/probes/), under the in-memory and
   the streaming engine.
-- [spark/](spark/README.md): the probes and fuzzing of Spark SQL, the facts
-  and the Spark diff.
+- Spark's facts, probes and fuzz findings are in its engine package (#1189):
+  [engines/spark/facts/](../engines/spark/facts/README.md) and
+  [engines/spark/probes/](../engines/spark/probes/).
 - [datafusion/facts/](datafusion/facts/): the replay findings that belong to
   DataFusion 51's Substrait producer. DataFusion is optional and never a
   reference.

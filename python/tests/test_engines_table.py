@@ -27,7 +27,7 @@ from sverify.sql import DIALECTS
 
 BUILTIN = {"duckdb", "polars", "spark", "datafusion", "snowflake"}
 #: The built-in engines that are packages of their own (`engines/<engine>/`).
-PACKAGES = {"polars"}
+PACKAGES = {"polars", "spark"}
 
 
 def _checker_profiles() -> dict[str, dict]:

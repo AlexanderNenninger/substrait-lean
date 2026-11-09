@@ -1694,7 +1694,7 @@ the following about the warehouse:
 * Snowflake: time columns are `TIMESTAMP_NTZ`, strings have no
   collation, and tables and columns have quoted lower-case names.
 * Spark and Databricks: the session uses the settings of
-  `sverify.engines.SPARK_CONF` (ANSI mode, a pinned time zone, NTZ
+  `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time zone, NTZ
   timestamps, case-sensitive names), and strings use the default
   `UTF8_BINARY` collation.
 * Both have no row order, so sorts, `LIMIT` and windows are refused unless

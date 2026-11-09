@@ -651,7 +651,7 @@ def run_plan(
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. DataFusion runs it as
     `sverify.datafusion_engine.datafusion_plan` writes it; `"spark"` runs it
-    on the local Spark session (`sverify.spark_engine.session`), and a Spark
+    on the local Spark session (`sverify_spark.engine.session`), and a Spark
     session as `engine` runs it there.
 
     DuckDB runs the SQL `sverify.engines.to_sql` writes for the plan, Polars
