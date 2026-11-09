@@ -272,6 +272,7 @@ def Lowering.fpowTemplate : Expr :=
       (.bin .and (.bin .eq x ninf) yFrac))
     (.un (.raise "domain error") y) (.bin .fpow x y)
 
+omit [Boxes.Ambient] in
 /-- The template reads both arguments, for the entry's strictness. -/
 theorem Lowering.fpowTemplate_must : 0 ∈ Lowering.fpowTemplate.must ∧ 1 ∈ Lowering.fpowTemplate.must := by
   simp [Expr.must, Lowering.fpowTemplate]
@@ -370,12 +371,15 @@ theorem Lowering.fpow_float (e' : Bool) (a b : Int) :
     _ _ (by rw [hG]; rfl)]
   exact hguard _ rfl
 
+omit [Boxes.Ambient] in
 theorem Lowering.and3_eq_true {a b : Value} : and3 a b = .bool true ↔ a = .bool true ∧ b = .bool true := by
   unfold and3; split <;> simp_all
 
+omit [Boxes.Ambient] in
 theorem Lowering.or3_eq_true {a b : Value} : or3 a b = .bool true ↔ a = .bool true ∨ b = .bool true := by
   unfold or3; split <;> simp_all
 
+omit [Boxes.Ambient] in
 theorem Lowering.isTrue_eq_true {v : Value} : v.isTrue = true ↔ v = .bool true := by
   unfold Value.isTrue; split <;> simp_all
 

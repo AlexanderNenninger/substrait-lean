@@ -298,6 +298,7 @@ theorem DuckDBSQL.canon_of_has {c : Int}
     · exact ⟨h1, Int.le_trans h2 (Int.le_of_lt FloatCode.posInf_lt_nan)⟩
     · exact FloatCode.isRef_nan)
 
+omit [Boxes.Ambient] in
 /-- The floor of a canonical double is canonical (`power`'s guard reads it). -/
 theorem DuckDBSQL.canon_floor_of_has {c : Int}
     (h : (FloatCode.negInf ≤ c ∧ c ≤ FloatCode.posInf) ∨ c = FloatCode.nan) :
