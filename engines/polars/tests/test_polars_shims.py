@@ -539,14 +539,14 @@ def test_an_untaken_branch_neither_raises_nor_leaks(case):
 @needs_repo
 def test_every_shim_and_guard_is_a_lean_theorem():
     """#444: each shim and guard is proved once, as `Polars.<name>` in
-    `SubstraitLean/PolarsShims.lean`, or as `Shim.<name>` in
+    `engines/polars/Sverify/Polars/Shims.lean`, or as `Shim.<name>` in
     `engines/Sverify/Engines/Shims.lean` where another engine writes it the same way;
     the Polars rows of the option table name those theorems (a `run_cmd`
     there checks the rows' names)."""
     lean = "".join(
         p.read_text()
         for p in (
-            ROOT / "SubstraitLean" / "PolarsShims.lean",
+            ROOT / "engines" / "polars" / "Sverify" / "Polars" / "Shims.lean",
             ROOT / "engines" / "Sverify" / "Engines" / "Shims.lean",
         )
     )

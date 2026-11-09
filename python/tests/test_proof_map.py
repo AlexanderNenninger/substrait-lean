@@ -22,6 +22,8 @@ MAP = MAP_PATH.read_text() if MAP_PATH.is_file() else ""
 CORE = ROOT / "core" / "Sverify" / "Core"
 ENGINES = ROOT / "engines" / "Sverify" / "Engines"
 ANALYSIS = ROOT / "analysis" / "Sverify" / "Analysis"
+# An engine's package: its rows are `Polars/<module>.lean`, apart from engines-common's.
+POLARS = ROOT / "engines" / "polars" / "Sverify"
 GENERATED_DIRS = [
     ROOT / "SubstraitLean" / "LoweringDuckDB" / "On",
     ROOT / "SubstraitLean" / "LiftDuckDB" / "Duckdb",
@@ -36,6 +38,7 @@ def _modules() -> list[Path]:
         *CORE.glob("*.lean"),
         *ENGINES.glob("*.lean"),
         *ANALYSIS.rglob("*.lean"),
+        *(POLARS / "Polars").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]
@@ -56,6 +59,7 @@ def test_every_module_has_a_line(module):
             CORE,
             ENGINES,
             ANALYSIS,
+            POLARS,
             ROOT / "float-bounds" / "FloatBounds",
             ROOT / "SubstraitLean",
         ]
@@ -83,6 +87,7 @@ def _theorems() -> set[str]:
         *CORE.glob("*.lean"),
         *ENGINES.glob("*.lean"),
         *ANALYSIS.rglob("*.lean"),
+        *(POLARS / "Polars").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]:

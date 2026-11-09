@@ -51,13 +51,13 @@ contract's preconditions.
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `LoweringDuckDB.lean`, `LoweringDuckDB/On/Guards.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `Obligations.lean` |
-| Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `PolarsShims.lean`, `Shims.lean` |
+| Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `Polars/Shims.lean`, `Shims.lean` |
 | Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `SparkShims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
-| Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `PolarsTables.lean`, `SubstraitProfile.lean` |
-| An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean`, `PolarsEngine.lean` |
-| A proved contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `Sound.lean`, `EngineSound.lean`, `PolarsEngine.lean` |
+| Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `EngineTables.lean`, `Polars/Tables.lean`, `SubstraitProfile.lean` |
+| An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean`, `Polars/Engine.lean` |
+| A proved contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `Sound.lean`, `EngineSound.lean`, `Polars/Engine.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `AllowedAnalysis.lean`, `Semantic.lean` |
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean`, `AllowedAnalysis.lean` |
@@ -214,6 +214,21 @@ the guard. The modules below it import it as
 | `Tables.lean` | The table machinery: the observation rows' constructors and evidence, what reruns give (`withReruns`), `EngineProfile` and its checks, and the JSON a table is reported in |
 | `Transfer.lean` | The options a plan meets, and transfer between profiles |
 
+### Polars: `engines/polars/Sverify/Polars/`
+
+Polars's Lean half, in the Lake package `sverify-polars` beside its Python
+distribution (#1189, step 5). It imports only the core, the analysis and
+engines-common: `lake build` in `engines/polars/` builds it on those alone,
+and CI runs that build as the guard. The modules below import it as
+`Sverify.Polars.*`.
+
+| Module | Job |
+|---|---|
+| `Polars/Tables.lean` | Polars's choice table and observation rows, refining the core |
+| `Polars/Shims.lean` | The Polars shims, proved against a model of Polars's functions |
+| `Polars/Profile.lean` | `Profile.polars`, the semantics under `semantics="polars"` |
+| `Polars/Engine.lean` | `Engine.polars`, its functions within Polars's table, and `Engine.polars_sound` |
+
 ### Values and scalar functions
 
 | Module | Job |
@@ -284,10 +299,6 @@ the guard. The modules below it import it as
 | `DuckDBFunctions.lean` | `Profile.duckdb` under DuckDB's settings and `Profile.duckdbWritten`, as the SQL printer writes it, on the core alone |
 | `DuckDBProfile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, and `Rel.duckdb_sound` |
 | `EngineTables.lean` | DuckDB's and Spark's choice tables and observation rows, refining the core; `builtinEngines`; the dependency and transfer reports over them |
-| `PolarsTables.lean` | Polars's choice table and observation rows, refining the core |
-| `PolarsShims.lean` | The Polars shims, proved against a model of Polars's functions |
-| `PolarsProfile.lean` | `Profile.polars`, the semantics under `semantics="polars"` |
-| `PolarsEngine.lean` | `Engine.polars`, its functions within Polars's table, and `Engine.polars_sound` |
 | `SparkShims.lean` | The Spark shims, proved against a model of Spark under ANSI |
 | `SparkProfile.lean` | `Profile.spark`, the semantics under `semantics="spark"` |
 | `SubstraitProfile.lean` | Substrait's own semantics as a profile |

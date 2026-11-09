@@ -6,7 +6,7 @@ import Sverify.Core.Order
 
 Lemmas about a shim, or a guard, that more than one engine's translation
 writes the same way, stated once for all of them: `Shim.<name>`. An engine's
-own shims are in its module (`SubstraitLean/PolarsShims.lean`,
+own shims are in its module (`engines/polars/Sverify/Polars/Shims.lean`,
 `SubstraitLean/SparkShims.lean`, DuckDB's lowering); its rows cite these
 where its shim is one of them.
 

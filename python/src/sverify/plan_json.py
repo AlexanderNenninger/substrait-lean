@@ -307,7 +307,7 @@ def semantics() -> str:
 
 def floor_call(name: str, args: Iterable[Json]) -> Json:
     """Integer `divide` or `modulus` with `division_type` = `FLOOR`: Polars's
-    `//` and `%` (`Profile.polars`, `SubstraitLean/PolarsProfile.lean`)."""
+    `//` and `%` (`Profile.polars`, `engines/polars/Sverify/Polars/Profile.lean`)."""
     j = call(name, args)
     j["scalarFunction"]["options"] = [{"name": "division_type", "preference": ["FLOOR"]}]
     return j

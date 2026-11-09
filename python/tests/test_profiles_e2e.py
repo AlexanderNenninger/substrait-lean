@@ -12,7 +12,7 @@ checker has no classes, and strict ones: they must pass once it does.
 Rows that also wait for step 1c (`UNSPECIFIED` sort keys, open choices
 proved over every pick) or #575 (`±∞` as an error of the reference) are
 expected failures without strictness, with the reason. The F rows check
-`Profile.polars` (`SubstraitLean/PolarsProfile.lean`): a plan whose `%`
+`Profile.polars` (`engines/polars/Sverify/Polars/Profile.lean`): a plan whose `%`
 floors runs natively on Polars and is refused on DuckDB.
 """
 
@@ -419,7 +419,7 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
 
 def _floor_report(con, **kw) -> sv.Report:
     """`i % j` and `i // j` verified under `Profile.polars`, whose integer `%`
-    and `//` floor (`SubstraitLean/PolarsProfile.lean`)."""
+    and `//` floor (`engines/polars/Sverify/Polars/Profile.lean`)."""
     t = con.table("t")
     return sv.verify(
         t.select("k", m=t.i % t.j, q=t.i // t.j),

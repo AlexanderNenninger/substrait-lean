@@ -66,7 +66,7 @@ def ObsRow.upTo (q : Obs) (ids : List String) : ObsRow :=
 def ObsRow.approxWithin (b : String) (ids : List String) : ObsRow :=
   { cls := .approx, q := { floats := .within b }, evidence := .ofIds ids }
 
-/-- The row, proved by the theorem `thm` (`SubstraitLean/PolarsShims.lean`),
+/-- The row, proved by the theorem `thm` (`engines/polars/Sverify/Polars/Shims.lean`),
 whose trusted model rests on the row's facts. -/
 def ObsRow.proved (r : ObsRow) (thm : String) : ObsRow :=
   { r with evidence := .proved thm (match r.evidence with | .tested ids _ | .probed ids _ => ids | _ => []) }

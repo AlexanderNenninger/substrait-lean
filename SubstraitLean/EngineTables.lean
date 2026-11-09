@@ -1,7 +1,7 @@
 import Sverify.Engines.Transfer
 import SubstraitLean.DuckDBFunctions
 import SubstraitLean.SubstraitProfile
-import SubstraitLean.PolarsTables
+import Sverify.Polars.Tables
 
 /-!
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
@@ -23,7 +23,7 @@ models.
 The rows' constructors (`ObsRow.native`, `ObsRow.shimmed`, …), `EngineProfile`
 and the JSON the checker reports them in are engines-common
 (`engines/Sverify/Engines/Tables.lean`); this module holds DuckDB's and
-Spark's rows, Polars's are in `SubstraitLean/PolarsTables.lean`, and
+Spark's rows, Polars's are in `engines/polars/Sverify/Polars/Tables.lean`, and
 `builtinEngines` lists all three.
 
 Each observation row says how the engine's behaviour relates to the

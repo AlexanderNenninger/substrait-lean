@@ -304,7 +304,7 @@ So 15 of Polars's differences cost a proved plan nothing, 7 cost a
 written argument, and the 23 run-time shims left each implement a value the
 reference chose.
 
-`SubstraitLean/PolarsShims.lean` proves them, each
+`engines/polars/Sverify/Polars/Shims.lean` proves them, each
 shim of `engines/polars/src/sverify_polars/shims.py` once, as `Polars.<name>`,
 against a model of Polars's own functions taken from its facts (the trusted
 part, as `Profile.duckdb` is for DuckDB):
@@ -333,7 +333,7 @@ The Polars rows of `--options` name these theorems as their evidence. The
 
 ### Polars as a profile
 
-`Profile.polars` ([PolarsProfile.lean](../SubstraitLean/PolarsProfile.lean))
+`Profile.polars` ([Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean))
 is the profile `verify(semantics="polars")` checks under, and the one
 `--contract` takes with `"profile": "polars"`. It is an evaluable `Profile`,
 as `Profile.duckdb` is, and it takes Polars's choice option by option:
@@ -357,7 +357,7 @@ parser reads, and the report says `"profile": "polars"`. What is proved:
 
 - `Profile.polars_idiv`, `Profile.polars_imod`: on 64-bit integers the
   templates are Polars's `//` and `%` (`Polars.floorDiv`, `Polars.floorMod`,
-  the trusted model of `PolarsShims.lean`); `Profile.polars_zero_divisor`:
+  the trusted model of `Polars/Shims.lean`); `Profile.polars_zero_divisor`:
   a zero divisor raises.
 - `Polars.elaborate_eq`: evaluating an expression under `Profile.polars` is
   evaluating its elaboration, each `//` and `%` replaced by its template,
