@@ -89,7 +89,7 @@ orders them: Substrait's `AggregateFunction.sorts`, Ibis's
 input), and the group's rows are sorted stably before they are collected.
 Without a sort, `Rel.eval` collects in list order, the deterministic
 profile's order; the reference allows every order
-([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
 Such a plan still checks, and its postconditions are proved for every
 order. The abstract value of the result says nothing about its elements, so
 no fact about element order is proved, and the differential tests compare
@@ -176,7 +176,7 @@ and `filter` (the elements the predicate is `TRUE` for). Each is `NULL` for a
 NULL list (`HoFn.apply`).
 
 Lambdas have lexical scope
-([lexical scope](core-semantics.md#d28-lambdas-have-lexical-scope)). The body is
+([lexical scope](reference-semantics.md#nested-lists-and-structs)). The body is
 evaluated on `x :: row`: it reads its parameter as field 0 and the row's
 column `i` as field `i + 1`, and a nested lambda reads its own parameter as
 0 and the outer one as 1. The functions that renumber a row's columns
