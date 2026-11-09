@@ -16,7 +16,7 @@ holds the order (`LAYERS`) and fails on an import against it.
 | writers and engines | `sql`, `duckdb_engine`, `polars_engine`, `spark_engine`, `datafusion_engine` | The SQL dialects and the engines that run a written plan |
 | checker | `engine`, `_engine_settings`, `_builtin` | Connections, `plan_json`, `run_plan`, delta plans, the engines' settings, sverify's own engines as plugins |
 | conditions | `observation`, `counterexample`, `conditions`, `_quarantine` | The table conditions and their checks on data, what a result is observed up to, the counterexample search, the rows a source sets aside |
-| report | `routes`, `report`, `report_json`, `substrait_export`, `_substrait_shims` | What a proof found (`Report`, `Issue`, the errors that carry a report), the routes a plan runs by, the report as JSON and as Substrait |
+| report | `routes`, `report`, `_verdict`, `report_json`, `substrait_export`, `_substrait_shims` | What a proof found (`Report`, `Issue`, the errors that carry a report), the one report of a checker answer (`verdict`), the routes a plan runs by, the report as JSON and as Substrait |
 | transform | `contracts` | `verify`, inferred preconditions, composition and provenance, `transform` |
 | incremental | `_state`, `_retention`, `_linear`, `_semi`, `_touched`, `incremental` | Incremental views and their state |
 | io | `io` | Delta, Iceberg and Flight sources and sinks |

@@ -65,6 +65,7 @@ import SubstraitLean.LiftCache
 import SubstraitLean.LiftSearch
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Keys
+import SubstraitLean.AnalysisCongr
 import SubstraitLean.Quarantine
 import SubstraitLean.Semantic
 import SubstraitLean.Compose
@@ -87,13 +88,13 @@ import Sverify.Core.AllowedNear
 import SubstraitLean.Lipschitz
 import SubstraitLean.LipschitzL1
 import SubstraitLean.EngineTables
-import SubstraitLean.Shims
+import Sverify.Engines.Shims
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
 import SubstraitLean.SparkShims
 import SubstraitLean.SparkProfile
 import SubstraitLean.SubstraitProfile
-import SubstraitLean.Transfer
+import Sverify.Engines.Transfer
 import SubstraitLean.Obligations
 import SubstraitLean.Epsilon
 import SubstraitLean.EngineRobust

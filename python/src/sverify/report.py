@@ -229,14 +229,6 @@ def _sum(issue: Issue) -> bool:
     return issue.kind == "SUM overflow"
 
 
-def _assumable(issue: Issue) -> bool:
-    """Whether `issue` is assumed not to happen, and checked on the data while
-    the job runs (`Issue.assumed` in `SubstraitLean/Safety.lean`): a `SUM`
-    that may leave its type, or an operation on finite doubles that may give
-    `±∞` (#575)."""
-    return _sum(issue) or issue.kind == INFINITE
-
-
 def _assumption(issue: Issue) -> str:
     """How a report names an assumed issue."""
     if _sum(issue):
@@ -322,6 +314,11 @@ class Issue:
     (`_confirm_hints`, #688)."""
     unconfirmed: str | None = field(default=None, repr=False, compare=False)
     """The hint to show instead where a proof does not confirm `hint`."""
+    assumed: bool = False
+    """Assumed not to happen, and checked on the data while the job runs
+    (`Issue.assumed` in `SubstraitLean/Issue.lean`, as the checker reports
+    it): a `SUM` that may leave its type, or an operation on finite doubles
+    that may give `±∞` (#575)."""
 
     @property
     def suggested(self) -> dict[str, tuple[str, ...]]:
@@ -343,7 +340,7 @@ class Issue:
         """The issue in words, as `str(report)` prints it after "may fail: ":
         its kind, the operation, what causes it where the kind does not say,
         and, for one the job also checks while it runs, that it does."""
-        return f"{self}{_cause(self)}" + (f" ({RUNTIME_CHECK})" if _assumable(self) else "")
+        return f"{self}{_cause(self)}" + (f" ({RUNTIME_CHECK})" if self.assumed else "")
 
     @property
     def assumption(self) -> str:
@@ -534,7 +531,9 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
-    _on_inferred: OnInferred = field(default="ignore", repr=False, compare=False)
+    # What an inferred precondition does (`verify(on_inferred=...)`): an error
+    # unless the caller says otherwise (D23).
+    _on_inferred: OnInferred = field(default="error", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
     not proved (`needed`)."""
@@ -1495,7 +1494,7 @@ class Report:
             rows.append(f"| needs | ❌ {n.replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
-            note = f" ({RUNTIME_CHECK})" if _assumable(i) else ""
+            note = f" ({RUNTIME_CHECK})" if i.assumed else ""
             rows.append(
                 f"| runtime | ❌ may fail: {(str(i) + _cause(i)).replace('|', '\\|')}{note} |"
             )

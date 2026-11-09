@@ -140,7 +140,7 @@ over the values every engine may give (`engineVal`), and the engines where
 that is a theorem (`signKeptOn`; tested on the others): each double column `Report.epsilon` bounds widened by
 its `"abs"`, and a sum's, average's or variance's kept to its sign (not a
 covariance's). Columns without a finite bound keep their abstract value: a
-postcondition reads only their sign (`floatBound`'s `signed` part, which
+postcondition reads only their sign (`signBound`, which
 `TreeSum.sign` keeps on every engine). -/
 def robust (es : List EngineProfile) (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.arr #[]

@@ -1681,10 +1681,11 @@ def _floats_component(components: Mapping[str, Any]) -> Any:
 
 def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     """`from_substrait`, under its internal name."""
+    from sverify._verdict import split_assumed, verdict
     from sverify.conditions import CheckedCondition
     from sverify.engine import run_checker
     from sverify.observation import Observation
-    from sverify.report import Issue, Report, tie_places
+    from sverify.report import Issue
 
     imp = read(data)
     m = imp.manifest
@@ -1738,32 +1739,22 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     observation = dataclasses.replace(
         Observation(floats=_floats_component(m.get("equivalence_components") or {})), **components
     )
-    profile = m.get("semantics", "reference")
-    return Report(
-        semantics=profile,
+    report = verdict(
+        out,
+        request=request,
+        issues=[
+            Issue(i["kind"], i["expr"], i["error"] or i["assumed"], assumed=i["assumed"])
+            for i in out["issues"]
+        ],
+        semantics=m.get("semantics", "reference"),
         requires=requires,
         ensures=checked,
         facts={f["name"]: f["value"] for f in out["facts"]},
-        deterministic=out["deterministic"],
-        _windows_total=out.get("windows_total", out["deterministic"]),
-        _tie_places=tie_places(out),
-        issues=[
-            Issue(i["kind"], i["expr"], i["error"])
-            for i in out["issues"]
-            if i["error"] and i["kind"] not in ("SUM overflow", "overflow to infinity")
-        ],
-        _guard_free=out["guard_free"],
-        rows=out.get("rows"),
         internal_plan=json.dumps(imp.plan),
-        _depends=out.get("depends"),
-        _epsilon=out.get("epsilon"),
-        _engines=out.get("engines"),
-        _sorted=out.get("sorted"),
-        _contract=request,
-        _transfer=(out.get("transfer") or {}).get("failures") if profile == "substrait" else None,
         observation=observation,
         _params=list(m.get("params") or []),
     )
+    return split_assumed(report)
 
 
 def _num(s: str) -> Any:

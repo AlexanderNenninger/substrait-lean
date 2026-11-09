@@ -1,0 +1,20 @@
+name = "sverify-engines"
+defaultTargets = ["SverifyEngines"]
+
+# Engines-common (#1189): what every engine shares (the Engine structure, the
+# generators, the table machinery, Shim.*). It imports only the core and the
+# analysis. A
+# standalone `lake build --wfail` here is the guard (CI runs it): inside the
+# root workspace an import of an analysis or engine module would resolve.
+
+[[require]]
+name = "sverify-core"
+path = "../core"
+
+[[require]]
+name = "sverify-analysis"
+path = "../analysis"
+
+[[lean_lib]]
+name = "SverifyEngines"
+roots = ["Sverify.Engines"]
