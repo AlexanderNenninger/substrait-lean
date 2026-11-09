@@ -257,7 +257,7 @@ class Node:
 
         Args:
             dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
-                or one of `sverify.engines.DUCKDB`, `SNOWFLAKE` and `SPARK`.
+                or a `Dialect` (`sverify.sql.dialect_of`).
 
         Returns:
             One SQL query.

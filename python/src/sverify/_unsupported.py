@@ -14,6 +14,11 @@ ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issu
 #: The end of a refusal of what only DuckDB runs: its exit.
 DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 
+#: The start of the message of a RANGE frame's guard (#805): a bound that
+#: leaves its integer key's type. An engine whose dialect raises writes it
+#: (`ProfilePlugin.guards`).
+RANGE_GUARD = "Overflow in a RANGE frame bound"
+
 
 class SverifyError(Exception):
     """The base of every exception sverify raises on purpose: a refusal
