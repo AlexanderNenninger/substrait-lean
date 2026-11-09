@@ -11,6 +11,11 @@
   keys and arguments hold no doubles keep one result.
 - `x / -0.0` and `x % -0.0` raise as `x / 0.0` does. DuckDB's profile gives
   IEEE's signed `±∞` for them, and its `atan2` of signed zeros C's value.
+- Substrait's `divide` with `on_division_by_zero: IEEE` on doubles reads as
+  IEEE division (D39): `1.0 / -0.0` is `-∞`. Under DuckDB's profile
+  `0.0 / 0.0` is NaN; the reference keeps raising on it (D37). The DuckDB
+  SQL lift gives `DOUBLE / DOUBLE` this function. Polars refuses the
+  option, so Ibis's `cot` is refused on Polars.
 - Incremental `GROUP BY`, `DISTINCT`, `MIN` and `MAX` keep one state row per
   class of keys, with its canonical key; Lean proves the maintained view is
   one the reference allows.

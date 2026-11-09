@@ -485,6 +485,21 @@ theorem DuckDBSQL.fdiv_of_canon_zero {a b : Int} (hb : FloatCode.canon b = 0) :
 theorem DuckDBSQL.ofInt_zero : FloatCode.ofInt 0 = 0 := by
   rw [FloatCode.ofInt_exact (by decide)]; simp [FloatCode.exactCode, FloatFormat.exactCode]
 
+/-- An integer's double has the integer's sign. -/
+theorem DuckDBSQL.ofInt_pos (i : Int) : (0 < FloatCode.ofInt i) = (0 < i) := by
+  have h0 := DuckDBSQL.ofInt_zero
+  apply propext; constructor
+  · intro h; by_contra h'
+    have := FloatCode.ofInt_mono (show i ≤ 0 by omega); omega
+  · intro h
+    have := FloatCode.ofInt_mono (show 0 ≤ i by omega)
+    have := FloatCode.ofInt_ne_zero (show i ≠ 0 by omega); omega
+
+theorem DuckDBSQL.ofInt_eq_zero (i : Int) : (FloatCode.ofInt i = 0) = (i = 0) := by
+  apply propext; constructor
+  · intro h; by_contra h'; exact FloatCode.ofInt_ne_zero h' h
+  · rintro rfl; exact DuckDBSQL.ofInt_zero
+
 theorem DuckDBSQL.ref_fdivIeee_float (a b : Int) :
     Profile.reference.bin .fdivIeee (.float a) (.float b) =
       if nanCase .fdivIeee a b then .error .domain else .ok (.float (FloatCode.fdiv a b)) := by

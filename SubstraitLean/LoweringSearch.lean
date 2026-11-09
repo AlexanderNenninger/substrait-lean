@@ -387,11 +387,23 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
     | (simp only [$u,*]; done)
     | (simp only [$u,*]; (repeat' split) <;> simp_all [$u,*])))
 
+/-- One argument's split for `templateCases`. -/
+syntax "split3 " ident ident : tactic
+macro_rules
+  | `(tactic| split3 $x $h) => `(tactic|
+      (rcases Value.float_cases $x with hx | ⟨hx, $h:ident⟩ | ⟨hx, $h:ident⟩ | ⟨c, hx, $h:ident⟩ <;>
+        first
+          | subst hx
+          | (cases $x:ident <;> (try exact absurd rfl (hx _)) <;> have $h:ident : True := trivial)))
+
 /-- The template tactic's split on the arguments' kinds: one goal per
-constructor of each argument. -/
+constructor of each argument, and a double three ways (`Value.float_cases`):
+`-0.0`, the negative NaN, or a code equal to its canonical one (D31), so that
+the comparisons, which read `canon c`, compute. -/
 def templateCases (unary : Bool) : TermElabM (TSyntax `tactic) :=
-  if unary then `(tactic| (rename_i x; cases x))
-  else `(tactic| (rename_i x y; cases x <;> cases y))
+  -- `hcx`, `hcy` unhygienic: `templateTac`'s simp sets name them.
+  if unary then `(tactic| (rename_i x; split3 x $(mkIdent `hcx)))
+  else `(tactic| (rename_i x y; split3 x $(mkIdent `hcx) <;> split3 y $(mkIdent `hcy)))
 
 /-- The tactic for a template: evaluate the guard's functions (`natives`, the
 engine's, and the reference's, and the lemmas `extra`), split on the
@@ -415,7 +427,8 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     ``Lowering.beq_int, ``UnFn.issue, ``BinFn.issue])
   -- Unfolding brings the special codes back: rewrite them to the variables.
   let eqs : Array (TSyntax ``Lean.Parser.Tactic.simpLemma) ←
-    #[`hP, `hN, `hQ, `hO, `hM].mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
+    (#[`hP, `hN, `hQ, `hO, `hM, `hZ, `hY, `g1, `g2, `g3, `g4, `g5, `g6, `g7, `g8, `hcx] ++
+      (if unary then #[] else #[`hcy])).mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
   let ref := ref ++ eqs
   let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree] ++ fin2)) ++ eqs
   -- The profile and the reference unfold in stages on each goal the split
@@ -430,7 +443,8 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
   let stage3 ← simpArgs #[``BinFn.apply]
   let cases ← templateCases unary
   let codes := #[(``FloatCode.posInf, `cP, `hP), (``FloatCode.negInf, `cN, `hN),
-    (``FloatCode.nan, `cQ, `hQ), (``FloatCode.one, `cO, `hO), (``FloatCode.negOne, `cM, `hM)]
+    (``FloatCode.nan, `cQ, `hQ), (``FloatCode.one, `cO, `hO), (``FloatCode.negOne, `cM, `hM),
+    (``FloatCode.negZero, `cZ, `hZ), (``FloatCode.negNan, `cY, `hY)]
   let gens ← codes.mapM fun (c, v, h) =>
     `(tactic| generalize $(mkIdent h):ident : $(mkIdent c):ident = $(mkIdent v):ident at *)
   `(tactic| (
@@ -442,6 +456,17 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     have $(mkIdent `f3) := FloatCode.zero_lt_one
     have $(mkIdent `f4) := FloatCode.one_lt_posInf
     have $(mkIdent `f5) := FloatCode.posInf_lt_nan
+    -- `-0.0` and the negative NaN below `-∞`, and the canonical codes.
+    have $(mkIdent `f6) := FloatCode.negZero_lt_negNan
+    have $(mkIdent `f7) := FloatCode.negNan_lt_negInf
+    have $(mkIdent `g1) := FloatCode.canon_posInf
+    have $(mkIdent `g2) := FloatCode.canon_negInf
+    have $(mkIdent `g3) := FloatCode.canon_nan
+    have $(mkIdent `g4) := FloatCode.canon_one
+    have $(mkIdent `g5) := FloatCode.canon_negOne
+    have $(mkIdent `g6) := FloatCode.canon_negZero'
+    have $(mkIdent `g7) := FloatCode.canon_negNan'
+    have $(mkIdent `g8) := FloatCode.canon_zero
     $[$gens]*
     intros
     simp (config := { decide := true }) only [$pre,*]

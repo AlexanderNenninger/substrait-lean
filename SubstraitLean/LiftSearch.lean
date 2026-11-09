@@ -477,7 +477,7 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.duck_un_null, ``DuckDBSQL.duck_itof, ``duckElementary, ``FMath.isLog, ``duckSign,
     ``nanCase, ``negInfPow, ``duckNegInfPow, ``isInfCode, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
     ``DuckDBSQL.ref_fdivIeee_float, ``DuckDBSQL.ref_fdivIeee_null_l, ``DuckDBSQL.ref_fdivIeee_null_r,
-    ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero, ``DuckDBSQL.ofInt_zero, ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
+    ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero, ``DuckDBSQL.ofInt_zero, ``DuckDBSQL.ofInt_pos, ``DuckDBSQL.ofInt_eq_zero, ``DuckDBSQL.ref_fmod_float, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
     ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_float, ``DuckDBSQL.apply_lt_float, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
     ``DuckDBSQL.apply_lt_null_l, ``DuckDBSQL.apply_lt_null_r, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_greatest, ``Lowering.ref_least,

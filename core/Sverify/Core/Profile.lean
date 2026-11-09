@@ -283,6 +283,52 @@ theorem FloatCode.negOne_lt_zero : FloatCode.negOne < 0 := by
 theorem FloatCode.negInf_eq_neg_posInf : FloatCode.negInf = -FloatCode.posInf := by
   rw [FloatCode.negInf_eq, FloatCode.posInf_eq]
 
+/-! The codes of `-0.0` and the negative NaN, below `-∞` (D31), and the
+canonical values of the special codes, for the generated proofs. -/
+
+theorem FloatCode.negZero_lt_negNan : FloatCode.negZero < FloatCode.negNan := by
+  rw [FloatCode.negZero_eq', FloatCode.negNan_eq']; omega
+
+theorem FloatCode.negNan_lt_negInf : FloatCode.negNan < FloatCode.negInf := by
+  rw [FloatCode.negNan_eq', FloatCode.negInf_eq]; omega
+
+theorem FloatCode.canon_negZero' : FloatCode.canon FloatCode.negZero = 0 := fp64.canon_negZero
+
+theorem FloatCode.canon_negNan' : FloatCode.canon FloatCode.negNan = FloatCode.nan := fp64.canon_negNan
+
+theorem FloatCode.canon_nan : FloatCode.canon FloatCode.nan = FloatCode.nan :=
+  FloatCode.canon_of_isRef FloatCode.isRef_nan
+
+theorem FloatCode.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
+  FloatCode.canon_of_bounds ⟨by
+    have := FloatCode.negInf_lt_negOne
+    have := FloatCode.negOne_lt_zero
+    have := FloatCode.zero_lt_one
+    omega, FloatCode.one_lt_posInf⟩
+
+theorem FloatCode.canon_negOne : FloatCode.canon FloatCode.negOne = FloatCode.negOne :=
+  FloatCode.canon_of_bounds ⟨FloatCode.negInf_lt_negOne, by
+    have := FloatCode.negOne_lt_zero; have := FloatCode.zero_lt_posInf; omega⟩
+
+/-- A value is not a double, `-0.0`, the negative NaN, or a double equal to its
+canonical code: the cases of a generated proof's argument, each double's with
+its canonical code. -/
+theorem Value.float_cases (x : Value) : (∀ c, x ≠ .float c) ∨
+    (x = .float FloatCode.negZero ∧ FloatCode.canon FloatCode.negZero = 0) ∨
+    (x = .float FloatCode.negNan ∧ FloatCode.canon FloatCode.negNan = FloatCode.nan) ∨
+    ∃ c, x = .float c ∧ FloatCode.canon c = c := by
+  cases x with
+  | float c =>
+    by_cases h : c = FloatCode.negZero
+    · exact .inr (.inl ⟨by rw [h], FloatCode.canon_negZero'⟩)
+    · by_cases h' : c = FloatCode.negNan
+      · exact .inr (.inr (.inl ⟨by rw [h'], FloatCode.canon_negNan'⟩))
+      · refine .inr (.inr (.inr ⟨c, rfl, ?_⟩))
+        have e0 : ¬ c = fp64.negZero := h
+        have e1 : ¬ c = fp64.negNan := h'
+        simp [FloatCode.canon, FloatFormat.canon, e0, e1]
+  | _ => exact .inl fun _ h => by cases h
+
 /-! ## Agreeing outcomes -/
 
 theorem Outcome.agree_bind {o o' : Outcome} {g h : Value → Outcome} (ho : Outcome.Agree o o')
