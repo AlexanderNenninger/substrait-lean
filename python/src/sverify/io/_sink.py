@@ -19,8 +19,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import pyarrow as pa
 
 from sverify import _deprecated
+from sverify._builtin.duckdb import DuckDBStore
 from sverify._scan import Resident
-from sverify._state import DuckDBStore, arrow_of
+from sverify._state import arrow_of
 from sverify._unsupported import SverifyWarning
 from sverify._weighted import ChangeLog, consolidated, expanded, split, weighted
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource, first_line

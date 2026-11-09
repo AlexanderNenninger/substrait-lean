@@ -18,6 +18,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sverify.profiles import ProfilePlugin, Setting
+from sverify_polars.store import ArrowStore
 
 #: The settings Polars's profile assumes.
 SETTINGS: tuple[Setting, ...] = (
@@ -84,6 +85,7 @@ def _restore(setting: Setting) -> str:
 
 PLUGIN = ProfilePlugin(
     "polars",
+    store=ArrowStore,
     title="Polars",
     floor_division=True,
     profile=True,

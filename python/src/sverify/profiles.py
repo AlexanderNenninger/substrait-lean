@@ -184,6 +184,11 @@ class ProfilePlugin:
     divisor's sign): under its profile, the Ibis producer writes them as the
     engine computes them (`division_type: FLOOR`), and no division hint is
     given."""
+    store: Callable[[], Any] | None = None
+    """Makes the engine's state store (`sverify._state.Store`): where an
+    incremental pipeline's views keep their state on the engine, as the
+    engine's own handles. None: the engine runs one-shot plans only, and a
+    view refreshed on it is an error."""
     default: bool = False
     """The engine that runs plans where none is named (`sv.connect()`,
     `Node.refresh()`, `sverify refresh`): `sverify._engines.default`."""
