@@ -1,4 +1,5 @@
 import SubstraitLean.LoweringSearch
+import SubstraitLean.LoweringDuckDB.Lemmas
 
 /-!
 # DuckDB's hand-written template schemas (#241, #242)

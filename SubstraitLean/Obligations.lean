@@ -227,9 +227,15 @@ theorem EngineProfile.tracked_iff (e : EngineProfile) :
   simp only [EngineProfile.tracked, List.all_eq_true, Bool.and_eq_true, ObsRow.Tracked,
     Evidence.tracked_iff]
 
-/-- This repository's tables refine the core (`Profile.duckdb_le_core`, …). -/
+/-- This repository's tables refine the core (`Profile.duckdb_le_core`, …): each
+engine's test, from `Profile.duckdb_leB`, `Profile.polars_leB` and
+`Profile.spark_leB`, which the kernel decides once. -/
 theorem builtinEngines_leCore : builtinEngines.all (·.leCore) := by
-  decide +kernel
+  show ((Profile.duckdb.table {}).leB Profile.core.table &&
+    (Profile.polars.table.leB Profile.core.table &&
+      (Profile.spark.table.leB Profile.core.table && true))) = true
+  rw [Profile.duckdb_leB, Profile.polars_leB, Profile.spark_leB]
+  rfl
 
 /-! ## Raise sets under a lowering -/
 

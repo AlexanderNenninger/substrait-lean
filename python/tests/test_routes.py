@@ -308,6 +308,13 @@ def test_inputs_are_checked_before_the_run(con) -> None:
     report.run(con, "polars", check_requires=False)
 
 
+def _eps(why: str | None = None, **kinds: tuple[float, bool]) -> dict:
+    """A column's `ε` as the checker normalises it (`Realize.epsBounds`):
+    each kind's value and whether it is proved."""
+    bounds = {k: {"value": v, "proved": p} for k, (v, p) in kinds.items()}
+    return {"bounds": bounds, "unbounded": False, "why": why}
+
+
 def test_a_plan_dependent_float_bound(con) -> None:
     """Polars's `sum_order`: `q` bounds the doubles per plan. The contract's
     `ε` gives bounds that each hold on their own; a stated tolerance is met
@@ -320,7 +327,8 @@ def test_a_plan_dependent_float_bound(con) -> None:
         plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
         return _on_polars(report, cls="observed", observed=plan)
 
-    both = {"total": {"abs": 222.0, "rel": 1e-10}, "k": {}}
+    no_bound = {"bounds": {}, "unbounded": False, "why": None}
+    both = {"total": _eps(abs=(222.0, False), rel=(1e-10, False)), "k": no_bound}
     assert route(sv.within(rel=1e-9), both).cls == "observed"
     assert route(sv.within(abs=1e3), both).cls == "observed"
     r = route(sv.within(rel=1e-15, abs=1.0), both)
@@ -329,12 +337,10 @@ def test_a_plan_dependent_float_bound(con) -> None:
     # A bound is proved only where Lean says so; otherwise the route rests
     # on a test.
     assert route(sv.within(rel=1e-9), both).evidence == "tested"
-    marked = {"total": {"abs": 222.0, "rel": 1e-10, "proved": {"abs": True, "rel": False}}}
+    marked = {"total": _eps(abs=(222.0, True), rel=(1e-10, False))}
     assert route(sv.within(rel=1e-9), marked).evidence == "tested"
     assert route(sv.within(abs=1e3), marked).evidence == "proved"
-    assert route(sv.within(abs=1e3), {"total": {"abs": 222.0, "proved": True}}).evidence == "proved"
-    nested = {"total": {"rel": {"value": 1e-10, "proved": True}}}
-    assert route(sv.within(rel=1e-9), nested).evidence == "proved"
+    assert route(sv.within(rel=1e-9), {"total": _eps(rel=(1e-10, True))}).evidence == "proved"
 
 
 def test_a_shim_does_not_lift_the_plans_bound(con) -> None:
@@ -346,7 +352,7 @@ def test_a_shim_does_not_lift_the_plans_bound(con) -> None:
 
     def route(tolerance):
         report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report._epsilon = {"v": {"abs": 1.77815e-07, "proved": True}}
+        report._epsilon = {"v": _eps(abs=(1.77815e-07, True))}
         plan = [_observed("stat_algo", {"floats": {"bound": "plan"}}, shim="nan_through")]
         return _on_polars(report, cls="observed", observed=plan)
 
@@ -361,7 +367,7 @@ def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     reference, the route is refused."""
     t = con.table("t")
     report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(abs=1e3))])
-    report._epsilon = {"total": {"abs": 222.0, "proved": True}}
+    report._epsilon = {"total": _eps(abs=(222.0, True))}
     plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
     assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
     r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])

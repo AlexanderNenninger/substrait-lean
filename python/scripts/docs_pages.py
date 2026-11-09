@@ -609,6 +609,11 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
             "A map of the proofs",
             "Each guarantee, its theorem and what is trusted",
         ),
+        (
+            "docs/trusted-base.md",
+            "The trusted base",
+            "What a result rests on that the kernel does not check",
+        ),
         ("docs/layers.md", "Layers", "The layers of the Python package"),
         ("docs/prior-work.md", "Prior work", "The work sverify builds on, and related tools"),
     ],

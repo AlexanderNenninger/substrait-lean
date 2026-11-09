@@ -55,6 +55,9 @@ count.
 typecheck, golden tests and every Python test (`poe test-all`). It is slow on
 this laptop.
 
+Lean build time and memory are budgeted per module, and CI's `lean` job fails
+a module over its ceiling: `docs/build-performance.md` has the method.
+
 Locally, run `poe test`: the fast set on 2 workers, without the `slow` tests
 and with a tenth of the Hypothesis examples (the `dev` profile,
 `python/tests/conftest.py`). Leave the full suite to CI or to homelab
@@ -158,7 +161,12 @@ The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
 under memory caps, and deletes the directory at exit. Its header documents
 its options. Several agents and the user's own services share the box, and
-two parallel runs once hung it, so check first:
+two parallel runs once hung it. The script enforces the first two rules
+below: it refuses to start (exit 75, naming the run in the way and its PIDs)
+while another `/tmp/substrait-lean-*` directory has a live process in it,
+above a 1-minute load of 8, or with less than 6 GB available, and
+`--wait` (before the branch) waits for the box. Long jobs that don't go
+through the script check by hand first:
 
 ```bash
 ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
@@ -176,7 +184,8 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 - **Clean up:** delete your directory when the run ends, also when it fails.
   Stop a run by PID (SIGTERM to the script's bash), never `pkill -f` over
   `ssh`: the pattern matches the `ssh` command itself. A crashed session can
-  leave a directory behind; if no process uses it, remove it.
+  leave a directory behind; if no process uses it, remove it (the script
+  warns about such a directory and ignores it).
 
 ## Working beside other sessions
 
@@ -320,7 +329,7 @@ build fails there, or a golden test of theirs changes, regenerate them with
 6 GB (`-M 6144`).
 
 Their proofs are checked only when the lakefile's `check_generated` option is
-on (`SubstraitLean/Generated.lean`). It is off by default, so a local
+on (`engines/Sverify/Engines/Generated.lean`). It is off by default, so a local
 `lake build` takes the entries as proved and stays quick; the tables and their
 staleness checks are the same. CI, the Wheels workflow, `poe prove` (and so
 `poe qa`), `homelab_qa.sh` and the wheel's build hook turn it on with
