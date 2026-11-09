@@ -28,8 +28,8 @@ def uncharacterized (slice : List String) : List (Option String × String × Cho
 /-- The options the prototype slice characterizes. -/
 def prototypeSlice : List String :=
   ["overflow", "on_division_by_zero", "on_domain_error", "division_type", "min_mod_neg_one",
-   "rounding", "nan_creation", "zero_sign", "nan_kind", "nan_order", "nan_equality",
-   "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
+   "rounding", "nan_creation", "zero_sign", "round_zero_sign", "nan_kind", "nan_order",
+   "nan_equality", "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
    "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
    "null_join_keys", "float_overflow", "stat_algo", "quantile_interp", "decimal_rescale",
    "window_sum_algo"]

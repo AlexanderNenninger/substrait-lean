@@ -213,7 +213,9 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
         assert report.proved, str(report)
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
-    assert route_of(rounded, "duckdb").cls == "exact"
+    # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the written plan's
+    # `Dialect.canon` gives the reference's `0.0`.
+    assert route_of(rounded, "duckdb").cls == "shim"
     assert route_of(rounded, "polars").cls == "shim"
     assert mean._epsilon, "the plan's bound on the mean"
     assert route_of(mean, "duckdb").cls in ("exact", "observed")

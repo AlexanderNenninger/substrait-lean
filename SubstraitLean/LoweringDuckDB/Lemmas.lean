@@ -16,6 +16,35 @@ DuckDB has no function for `UnFn.fit`: its profile computes it as the
 reference does, but the SQL printer has nothing to print, so every template
 must avoid it (`excluding`). These lemmas let the proofs compute it. -/
 
+/-- DuckDB's profile is the reference's on a function of doubles with an
+argument that is not a double (`Value.double_cases`): what lets a generated
+proof keep such an argument whole. -/
+theorem Lowering.duck_bin_nondouble_l (s : DuckDBSettings) {f : BinFn} (hf : f.onFloats = true)
+    {x : Value} (hx : x.isDouble = false) (y : Value) :
+    (Profile.duckdb s).bin f x y = Profile.reference.bin f x y := by
+  cases x <;> cases y <;> simp_all [Profile.duckdb, Value.isDouble]
+
+theorem Lowering.duck_bin_nondouble_r (s : DuckDBSettings) {f : BinFn} (hf : f.onFloats = true)
+    (x : Value) {y : Value} (hy : y.isDouble = false) :
+    (Profile.duckdb s).bin f x y = Profile.reference.bin f x y := by
+  cases x <;> cases y <;> simp_all [Profile.duckdb, Value.isDouble]
+
+/-- The reference's function of doubles is NULL, with no issue, where an
+argument is not a double. -/
+theorem Lowering.ref_bin_nondouble_l {f : BinFn} (hf : f.onFloats = true) {x : Value}
+    (hx : x.isDouble = false) (y : Value) : Profile.reference.bin f x y = .ok .null := by
+  cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
+    cases x <;> simp only [Value.isDouble, Bool.true_eq_false] at hx <;> cases y <;> rfl
+
+theorem Lowering.ref_bin_nondouble_r {f : BinFn} (hf : f.onFloats = true) (x : Value) {y : Value}
+    (hy : y.isDouble = false) : Profile.reference.bin f x y = .ok .null := by
+  cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
+    cases y <;> simp only [Value.isDouble, Bool.true_eq_false] at hy <;> cases x <;> rfl
+
+theorem Lowering.duck_un_nondouble (s : DuckDBSettings) (f : UnFn) {x : Value}
+    (hx : x.isDouble = false) : (Profile.duckdb s).un f x = Profile.reference.un f x := by
+  cases x <;> simp_all [Profile.duckdb, Value.isDouble]
+
 theorem Lowering.ref_fit (m : OverflowMode) (w : IntWidth) (x : Value) :
     Profile.reference.un (.fit m w) x = .ok (UnFn.apply (.fit m w) x) := by
   cases x <;> rfl
@@ -134,7 +163,7 @@ theorem Lowering.pow2Chain_eval (s : DuckDBSettings) (x y : Value) (ks : List Na
         · have hk : b.toNat ≠ k := by omega
           simp [BinFn.apply, h, h0, hk, Value.isTrue]
         · simp [BinFn.apply, h, h0, Value.isTrue]
-    | _ => simp [BinFn.apply, Value.numPair, Value.isTrue]
+    | _ => rfl
 
 /-- `<<` for DuckDB: a shift outside `0`–`63` raises; otherwise `x · 2ʸ`
 (`Lowering.pow2Chain`) wrapped around at 64 bits in 128-bit arithmetic, as
@@ -151,6 +180,82 @@ def Lowering.shlTemplate : Expr :=
     -- `dmul` reads decimals too: an integer only (#923).
     (.ifThen (.un (.isNum .int) (.field 0))
       (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64)))) (.lit .null))
+
+/-- The template reads both arguments, for the entry's strictness. -/
+theorem Lowering.shlTemplate_must : 0 ∈ Lowering.shlTemplate.must ∧ 1 ∈ Lowering.shlTemplate.must := by
+  simp [Expr.must, Lowering.shlTemplate]
+
+/-- `CASE WHEN x < 0 AND f(x) = 0 THEN 0.0 ELSE f(x) END`: `round` or `ceil`
+on DuckDB, which gives IEEE's `-0.0` for a negative value that rounds to zero
+where the reference gives `0.0` (`round_zero_sign`). -/
+def Lowering.zeroTemplate (f : UnFn) : Expr :=
+  .ifThen (.bin .and (.bin .lt (.field 0) (.lit (.float 0)))
+      (.bin .eq (.un f (.field 0)) (.lit (.float 0))))
+    (.lit (.float 0)) (.un f (.field 0))
+
+def Lowering.froundTemplate : Expr := Lowering.zeroTemplate .fround
+def Lowering.fceilTemplate : Expr := Lowering.zeroTemplate .fceil
+
+/-- The templates read their argument, for the entries' strictness. -/
+theorem Lowering.froundTemplate_must : 0 ∈ Lowering.froundTemplate.must := by
+  simp [Expr.must, Lowering.froundTemplate, Lowering.zeroTemplate]
+
+theorem Lowering.fceilTemplate_must : 0 ∈ Lowering.fceilTemplate.must := by
+  simp [Expr.must, Lowering.fceilTemplate, Lowering.zeroTemplate]
+
+/-- `zeroTemplate f` agrees with the reference on a double, for `f` a rounding
+`g` of the codes that DuckDB gives as `-0.0` below zero: `-0.0` and the
+negative NaN stay, and a canonical code rounds to a canonical one. -/
+theorem Lowering.zeroTemplate_float {s : DuckDBSettings} {f : UnFn} {g : Int → Int}
+    (hun : ∀ c, (Profile.duckdb s).un f (.float c) =
+      (if c < 0 ∧ g c = 0 then some (Except.ok (.float FloatCode.negZero)) else none).getD
+        (.ok (.float (g c))))
+    (href : ∀ c, Profile.reference.un f (.float c) = .ok (.float (g c)))
+    (hz : g FloatCode.negZero = FloatCode.negZero) (hn : g FloatCode.negNan = FloatCode.negNan)
+    (hcan : ∀ c, FloatCode.canon c = c → FloatCode.canon (g c) = g c) (c : Int) :
+    ((Lowering.zeroTemplate f).evalP (Profile.duckdb s) [.float c]).Agree
+      (Profile.reference.un f (.float c)) := by
+  have hlt : ∀ a b : Int, BinFn.apply .lt (.float a) (.float b) =
+      .bool (decide (FloatCode.canon a < FloatCode.canon b)) := fun _ _ => rfl
+  have heq : ∀ a b : Int, BinFn.apply .eq (.float a) (.float b) =
+      .bool (FloatCode.canon a == FloatCode.canon b) := fun _ _ => rfl
+  have hZ := FloatCode.negZero_eq'; have hY := FloatCode.negNan_eq'
+  have hq : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+  simp only [Lowering.zeroTemplate, Expr.evalP, List.getD_cons_zero, Outcome.ok_bind,
+    Lowering.duck_lt, Lowering.duck_eq, Lowering.duck_and, hun, href, hlt]
+  rcases FloatCode.canon_cases c with ⟨rfl, h0⟩ | ⟨rfl, h0⟩ | h0
+  · have : ¬ (FloatCode.negZero = 0) := by omega
+    simp [Outcome.ok_bind, heq, this, h0, hz, FloatCode.canon_zero, and3, Value.isTrue,
+      Outcome.Agree]
+  · have : ¬ (FloatCode.negNan = 0) := by omega
+    have hn1 : ¬ (FloatCode.nan < 0) := by omega
+    simp [Outcome.ok_bind, heq, this, hn1, h0, hn, FloatCode.canon_zero, and3,
+      Value.isTrue, Outcome.Agree]
+  · have hr := hcan c h0
+    have hb : (g c == 0) = decide (g c = 0) := rfl
+    by_cases hneg : c < 0 <;> by_cases hr0 : g c = 0 <;>
+      simp [Outcome.ok_bind, heq, h0, hr, hneg, hr0, hb, FloatCode.canon_zero,
+        FloatCode.canon_negZero', and3, Value.isTrue, Outcome.Agree]
+
+/-- `round` on DuckDB, through `zeroTemplate`, agrees with the reference. -/
+theorem Lowering.fround_agree (s : DuckDBSettings) (x : Value) :
+    (Lowering.froundTemplate.evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un .fround x) := by
+  cases x
+  case float c =>
+    exact Lowering.zeroTemplate_float (fun _ => rfl) (fun _ => rfl) FloatCode.round_negZero
+      FloatCode.round_negNan (fun _ h => FloatCode.canon_round h) c
+  all_goals rfl
+
+/-- `ceil` on DuckDB, through `zeroTemplate`, agrees with the reference. -/
+theorem Lowering.fceil_agree (s : DuckDBSettings) (x : Value) :
+    (Lowering.fceilTemplate.evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un .fceil x) := by
+  cases x
+  case float c =>
+    exact Lowering.zeroTemplate_float (fun _ => rfl) (fun _ => rfl) FloatCode.ceil_negZero
+      FloatCode.ceil_negNan (fun _ h => FloatCode.canon_ceil h) c
+  all_goals rfl
 
 theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :
     (Lowering.shlTemplate.evalP (Profile.duckdb s) [x, y]).Agree

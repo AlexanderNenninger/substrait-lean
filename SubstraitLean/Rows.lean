@@ -347,6 +347,12 @@ theorem RowsPer.sublist {k : List Nat} {n : Nat} {rows rows' : Relation} (h : Ro
     (hs : rows'.Sublist rows) : RowsPer k n rows' := fun v =>
   Nat.le_trans (hs.filter _).length_le (h v)
 
+/-- Distinct rows drawn from `rows` have no more rows per key. -/
+theorem RowsPer.of_nodup_subset {k : List Nat} {n : Nat} {rows rows' : Relation} (h : RowsPer k n rows)
+    (hn : rows'.Nodup) (hs : ∀ x ∈ rows', x ∈ rows) : RowsPer k n rows' := fun v =>
+  Nat.le_trans (List.Nodup.length_le_of_subset (hn.filter _) fun x hx =>
+    List.mem_filter.mpr ⟨hs x (List.mem_filter.mp hx).1, (List.mem_filter.mp hx).2⟩) (h v)
+
 theorem RowsPer.perm {k : List Nat} {n : Nat} {rows rows' : Relation} (h : RowsPer k n rows)
     (hp : rows'.Perm rows) : RowsPer k n rows' := fun v => by
   rw [(hp.filter _).length_eq]; exact h v
@@ -488,7 +494,8 @@ theorem Rel.perKey_sound (hcat : cat.WF)
     exact (perKey_sound hcat hA hF hK hP hw.1 kn h).perm (List.mergeSort_perm _ _)
   | .distinct r, hw, kn, h => by
     simp only [perKey] at h; simp only [eval]
-    exact (perKey_sound hcat hA hF hK hP (r := r) hw kn h).sublist (dedup_sublist _)
+    exact (perKey_sound hcat hA hF hK hP (r := r) hw kn h).of_nodup_subset (canonReps_nodup _)
+      fun _ hx => canonReps_sub hx
   | .project r es, hw, kn, h => by
     simp only [perKey, List.mem_filter, List.all_eq_true, decide_eq_true_eq] at h
     simp only [eval]
@@ -570,8 +577,8 @@ theorem keyOf_eq_of_mem_aggGroups {gs : List Expr} {k : List Nat} {rows grp : Re
     subst hk; rfl
   · obtain ⟨kk, _, rfl⟩ := List.mem_map.1 hg
     simp only [groupRows, List.mem_filter, beq_iff_eq] at hy hz
-    have hyz : groupKey gs y = groupKey gs z := hy.2.trans hz.2.symm
-    simp only [groupKey, List.map_inj_left] at hyz
+    have hyz : (groupKey gs y).canon = (groupKey gs z).canon := hy.2.trans hz.2.symm
+    simp only [Row.canon, groupKey, List.map_map, List.map_inj_left] at hyz
     simp only [keyOf, List.map_inj_left]
     intro i hi
     simp only [coveredBy, List.all_eq_true, List.any_eq_true] at hc

@@ -480,8 +480,8 @@ def test_round_to_digits_is_duckdbs():
 
 def test_double_division_by_zero_raises_unless_ieee():
     """`on_division_by_zero` ERROR (the reference's, #204) raises; a plan
-    asking for IEEE (DuckDB's `/`) gets ±inf and NaN, written as a `CASE`
-    every engine runs."""
+    asking for IEEE (DuckDB's `/`, D39) gets ±inf by a zero, and its `0 / 0`
+    creates a NaN, which raises (D37)."""
     r = ints(a=[7, -7, 0, 1], b=[2, 0, 0, 3])
     sql = "SELECT CAST(a AS DOUBLE) / CAST(b AS DOUBLE) AS q FROM r"
     plan_json = plan_of(sql, {"r": r}, "reference")
@@ -493,9 +493,12 @@ def test_double_division_by_zero_raises_unless_ieee():
             f["scalarFunction"]["options"] = [
                 {"name": "on_division_by_zero", "preference": ["IEEE"]}
             ]
-    duck, lean = lean_and_duckdb(plan, {"r": r})
+    with pytest.raises(duckdb.Error, match="domain error"):
+        duckdb_rows(json.dumps(plan), {"r": r})
+    finite = ints(a=[7, -7, 1], b=[2, 0, 3])
+    duck, lean = lean_and_duckdb(plan, {"r": finite})
     agree(plan, duck, lean)
-    assert [repr(q) for (q,) in duck] == ["3.5", "-inf", "nan", repr(1 / 3)]
+    assert [repr(q) for (q,) in duck] == ["3.5", "-inf", repr(1 / 3)]
     assert "CAST(" in to_sql(json.loads(plan_json), DUCKDB)
 
 

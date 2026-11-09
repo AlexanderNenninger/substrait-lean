@@ -19,56 +19,32 @@ theorem intSum_append : ∀ (vs ws : List Value), intSum (vs ++ ws) = intSum vs 
   | v :: vs, ws => by
     rw [List.cons_append, intSum_cons, intSum_cons, intSum_append vs ws]; omega
 
-/-- `m` is the least element of `l` in the order `le`. -/
-def IsLeast {α : Type} (le : α → α → Bool) (m : α) (l : List α) : Prop :=
-  m ∈ l ∧ ∀ w ∈ l, le m w = true
-
-theorem pickFold_least {le : Value → Value → Bool} (hle : TotalPre le) :
-    ∀ (v : Value) (vs : List Value), IsLeast le (pickFold (fun a b => !le a b) v vs) (v :: vs)
-  | v, [] => ⟨by simp [pickFold], fun w hw => by simp at hw; subst hw; exact hle.refl _⟩
-  | v, w :: vs => by
-    show IsLeast le (pickFold (fun a b => !le a b) (if (!le v w) = true then w else v) vs) (v :: w :: vs)
-    by_cases hp : le v w = true
-    · simp only [hp, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
-      obtain ⟨hm, hl⟩ := pickFold_least hle v vs
-      refine ⟨?_, fun x hx => ?_⟩
-      · rcases List.mem_cons.mp hm with h | h
-        · rw [h]; exact List.mem_cons_self
-        · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ h)
-      · simp only [List.mem_cons] at hx
-        rcases hx with rfl | rfl | hx
-        · exact hl _ (by simp)
-        · exact hle.trans _ _ _ (hl v (by simp)) hp
-        · exact hl x (by simp [hx])
-    · have hwv : le w v = true := by
-        have := hle.total v w; simp only [hp, Bool.false_or] at this; exact this
-      have hp' : le v w = false := by simpa using hp
-      simp only [hp', Bool.not_false, ↓reduceIte]
-      obtain ⟨hm, hl⟩ := pickFold_least hle w vs
-      refine ⟨List.mem_cons_of_mem _ hm, fun x hx => ?_⟩
-      simp only [List.mem_cons] at hx
-      rcases hx with rfl | rfl | hx
-      · exact hle.trans _ _ _ (hl w (by simp)) hwv
-      · exact hl _ (by simp)
-      · exact hl x (by simp [hx])
-
 theorem IsLeast.unique {α : Type} {le : α → α → Bool} (anti : ∀ a b, le a b = true → le b a = true → a = b)
     {m m' : α} {l : List α} (h : IsLeast le m l) (h' : IsLeast le m' l) : m = m' :=
   anti _ _ (h.2 _ h'.1) (h'.2 _ h.1)
 
 /-- The order `MIN` (`max = false`) or `MAX` (`max = true`) picks the least element of. -/
-def minMaxLe (max : Bool) (a b : Value) : Bool := if max then b.le a else a.le b
+def minMaxLe (max : Bool) (a b : Value) : Bool := if max then a.geT b else a.leT b
 
 theorem minMaxLe_totalPre (max : Bool) : TotalPre (minMaxLe max) := by
   cases max
-  · exact Value.le_totalPre
-  · exact Value.le_totalPre.flip
+  · exact Value.leT_totalPre
+  · exact Value.geT_totalPre
 
 theorem minMaxLe_antisymm (max : Bool) (a b : Value) (h : minMaxLe max a b = true)
     (h' : minMaxLe max b a = true) : a = b := by
   cases max
-  · exact Value.le_antisymm h h'
-  · exact Value.le_antisymm h' h
+  · exact Value.leT_antisymm h h'
+  · exact Value.geT_antisymm h h'
+
+/-- Within a tied class, `minMaxLe` is the raw order. -/
+theorem minMaxLe_of_canon (max : Bool) {a b : Value} (h : a.canonV = b.canonV) :
+    minMaxLe max a b = Value.leRaw a b := by
+  have h1 : a.le b = true := by rw [Value.le_canon_right h.symm]; exact Value.le_refl a
+  have h2 : b.le a = true := by rw [Value.le_canon_right h]; exact Value.le_refl b
+  cases max <;> simp [minMaxLe, Value.leT, Value.geT, lexLe, h1, h2]
+
+
 
 /-- `MIN` and `MAX` of a non-empty list: its least element. -/
 theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min)) :
@@ -77,6 +53,55 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
   | v :: vs, _ => by
     have := pickFold_least (minMaxLe_totalPre max) v vs
     cases max <;> subst hf <;> exact this
+
+/-- `MIN` and `MAX` pick the raw-least member of the extreme class, which is
+`DISTINCT`'s member of it. -/
+theorem AggFn.apply_minMax_mem_distinctVals {f : AggFn} {max : Bool}
+    (hf : f = (if max then .max else .min)) {vs : List Value} (hv : vs ≠ []) :
+    f.apply vs ∈ distinctVals vs := by
+  have hl := apply_minMax hf hv
+  have hrep : classRep Value.canonV Value.leRaw vs (f.apply vs) = f.apply vs := by
+    refine Value.leRaw_antisymm (classRep_least Value.leRaw_rawOrder hl.1 rfl) ?_
+    have hm := classRep_mem (c := Value.canonV) (le := Value.leRaw) hl.1
+    have := hl.2 _ hm
+    rwa [minMaxLe_of_canon max (classRep_canon (c := Value.canonV) vs _).symm] at this
+  exact hrep ▸ classRep_mem_canonReps hl.1
+
+/-- `MIN` and `MAX` ignore `DISTINCT`. -/
+theorem AggFn.apply_minMax_distinctVals {f : AggFn} {max : Bool}
+    (hf : f = (if max then .max else .min)) (vs : List Value) :
+    f.apply (distinctVals vs) = f.apply vs := by
+  by_cases hv : vs = []
+  · subst hv; rfl
+  have hl := apply_minMax hf hv
+  have hmem := apply_minMax_mem_distinctVals hf hv
+  exact IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf (List.ne_nil_of_mem hmem))
+    ⟨hmem, fun w hw => hl.2 w (canonReps_sub hw)⟩
+
+/-- `MIN` and `MAX` of the parts' `DISTINCT` values are those of all the values. -/
+theorem AggFn.apply_minMax_flatten_distinctVals {f : AggFn} {max : Bool}
+    (hf : f = (if max then .max else .min)) (L : List (List Value)) :
+    f.apply (L.map distinctVals).flatten = f.apply L.flatten := by
+  by_cases hF : L.flatten = []
+  · have : (L.map distinctVals).flatten = [] := by
+      rw [List.flatten_eq_nil_iff] at hF ⊢
+      intro l hl
+      obtain ⟨l', hl', rfl⟩ := List.mem_map.mp hl
+      rw [hF l' hl']; rfl
+    rw [this, hF]
+  have hl := apply_minMax hf hF
+  obtain ⟨l, hlL, hml⟩ := List.mem_flatten.mp hl.1
+  have hle : f.apply l = f.apply L.flatten :=
+    IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf (List.ne_nil_of_mem hml))
+      ⟨hml, fun w hw => hl.2 w (List.mem_flatten.mpr ⟨l, hlL, hw⟩)⟩
+  have hmem : f.apply L.flatten ∈ (L.map distinctVals).flatten :=
+    List.mem_flatten.mpr ⟨_, List.mem_map_of_mem hlL,
+      hle ▸ apply_minMax_mem_distinctVals hf (List.ne_nil_of_mem hml)⟩
+  exact IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf (List.ne_nil_of_mem hmem))
+    ⟨hmem, fun w hw => by
+      obtain ⟨_, hl', hw'⟩ := List.mem_flatten.mp hw
+      obtain ⟨l', hl'L, rfl⟩ := List.mem_map.mp hl'
+      exact hl.2 w (List.mem_flatten.mpr ⟨l', hl'L, canonReps_sub hw'⟩)⟩
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
@@ -284,7 +309,7 @@ def Measure.vals (m : Measure) (rows : Relation) : List Value :=
   ((m.kept rows).map m.arg.eval).filter (· != .null)
 
 theorem Measure.inputs_eq (m : Measure) (rows : Relation) :
-    m.inputs rows = if m.distinct then dedup (m.vals rows) else m.vals rows := rfl
+    m.inputs rows = if m.distinct then distinctVals (m.vals rows) else m.vals rows := rfl
 
 theorem Measure.kept_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
     (m.kept xs).Perm (m.kept ys) := by
@@ -320,13 +345,20 @@ theorem Measure.mem_vals {m : Measure} {rows : Relation} {v : Value} (h : v ∈ 
   · exact hrow
   · exact (List.mem_filter.mp hrow).1
 
+theorem Measure.inputs_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
+    (m.inputs xs).Perm (m.inputs ys) := by
+  simp only [inputs_eq]
+  split
+  · exact canonReps_perm Value.leRaw_rawOrder (m.vals_perm h)
+  · exact m.vals_perm h
+
 theorem Measure.eval_perm {m : Measure} (hm : m.orderFree = true) {xs ys : Relation}
     (h : xs.Perm ys) : m.eval xs = m.eval ys := by
   rw [eval_eq (AggFn.ne_collect_of_orderFree hm), eval_eq (AggFn.ne_collect_of_orderFree hm)]
   simp only [inputs_eq]
   refine AggFn.apply_perm_of_orderFree hm ?_
   split
-  · exact dedup_perm_of_mem fun _ => (m.vals_perm h).mem_iff
+  · exact canonReps_perm Value.leRaw_rawOrder (m.vals_perm h)
   · exact m.vals_perm h
 
 end Substrait

@@ -171,7 +171,7 @@ def Rel.eval (cat : Catalog) : Rel → (I : Impl := Impl.lean) → Relation
   | .window r part sort fns, I => windowEval part sort fns (r.eval cat I)
   | .semi a b anti on, I => (a.eval cat I).filter fun x => hasMatch on (b.eval cat I) x I != anti
   | .orderBy r keys, I => (r.eval cat I).mergeSort (sortLe keys)
-  | .distinct r, I => dedup (r.eval cat I)
+  | .distinct r, I => distinctRows (r.eval cat I)
   | .aggregate r gs ms, I => aggregateEval gs ms (r.eval cat I) I
   | .unnest r c, I => (r.eval cat I).flatMap (unnestRow c)
 
@@ -184,7 +184,9 @@ def Rel.Equiv (r₁ r₂ : Rel) : Prop :=
 
 /-! ## Keys -/
 
-def keyOf (k : List Nat) (row : Row) : List Value := k.map (row.getD · .null)
+/-- A row's values on the columns `k`, canonical: keys are identity
+boundaries (D31), so `-0.0` and `0.0` are one key. -/
+def keyOf (k : List Nat) (row : Row) : List Value := k.map fun c => (row.getD c .null).canonV
 
 /-- No two rows (at different positions) agree on the columns `k`. -/
 def KeyOn (k : List Nat) (rows : Relation) : Prop :=
@@ -268,8 +270,8 @@ theorem Rel.eval_arity {cat : Catalog} (hcat : cat.WF) :
       simp only [eval, List.mem_mergeSort] at h
       exact eval_arity hcat hwf.1 row h
   | .distinct r, hwf, row, h => by
-      simp only [eval, mem_dedup] at h
-      exact eval_arity hcat (r := r) hwf row h
+      simp only [eval] at h
+      exact eval_arity hcat (r := r) hwf row (canonReps_sub h)
   | .aggregate _ _ _, _, _, h => aggregateEval_length h
   | .unnest r _, hwf, row, h => by
       simp only [eval, List.mem_flatMap] at h

@@ -18,7 +18,7 @@ open Substrait
 local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_sqrt_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -44,7 +44,7 @@ abbrev Substrait.liftDuckDB.elementary_sqrt : Substrait.LiftEntry Substrait.Sema
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_sqrt).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_sqrt).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_exp_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -62,7 +62,7 @@ abbrev Substrait.liftDuckDB.elementary_exp : Substrait.LiftEntry Substrait.Seman
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_exp).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_exp).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_ln_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -97,7 +97,7 @@ abbrev Substrait.liftDuckDB.elementary_ln : Substrait.LiftEntry Substrait.Semant
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_ln).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_ln).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_log10_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -132,7 +132,7 @@ abbrev Substrait.liftDuckDB.elementary_log10 : Substrait.LiftEntry Substrait.Sem
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_log10).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_log10).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_log2_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -167,7 +167,7 @@ abbrev Substrait.liftDuckDB.elementary_log2 : Substrait.LiftEntry Substrait.Sema
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_log2).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_log2).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_sin_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -199,7 +199,7 @@ abbrev Substrait.liftDuckDB.elementary_sin : Substrait.LiftEntry Substrait.Seman
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_sin).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_sin).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_cos_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -231,7 +231,7 @@ abbrev Substrait.liftDuckDB.elementary_cos : Substrait.LiftEntry Substrait.Seman
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_cos).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_cos).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_tan_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -263,7 +263,7 @@ abbrev Substrait.liftDuckDB.elementary_tan : Substrait.LiftEntry Substrait.Seman
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_tan).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_tan).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_asin_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -308,7 +308,7 @@ abbrev Substrait.liftDuckDB.elementary_asin : Substrait.LiftEntry Substrait.Sema
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_asin).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_asin).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_acos_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
@@ -353,7 +353,7 @@ abbrev Substrait.liftDuckDB.elementary_acos : Substrait.LiftEntry Substrait.Sema
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_acos).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftDuckDB.elementary_acos).tmpl
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_atan_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree

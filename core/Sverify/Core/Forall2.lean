@@ -38,6 +38,26 @@ theorem imp {R S : α → β → Prop} (h : ∀ a b, R a b → S a b) :
   | _, _, .nil => .nil
   | _, _, .cons r t => .cons (h _ _ r) (imp h t)
 
+theorem imp_mem {R S : α → β → Prop} :
+    ∀ {l : List α} {l' : List β}, (∀ a ∈ l, ∀ b, R a b → S a b) → Forall2 R l l' → Forall2 S l l'
+  | _, _, _, .nil => .nil
+  | _, _, h, .cons hab t =>
+    .cons (h _ (List.mem_cons_self ..) _ hab) (imp_mem (fun a ha => h a (List.mem_cons_of_mem _ ha)) t)
+
+theorem append {R : α → β → Prop} : ∀ {a : List α} {b : List β} {a' : List α} {b' : List β},
+    Forall2 R a b → Forall2 R a' b' → Forall2 R (a ++ a') (b ++ b')
+  | _, _, _, _, .nil, h => h
+  | _, _, _, _, .cons r t, h => .cons r (append t h)
+
+theorem filter {R : α → β → Prop} {p : α → Bool} {p' : β → Bool} (h : ∀ a b, R a b → p a = p' b) :
+    ∀ {l : List α} {l' : List β}, Forall2 R l l' → Forall2 R (l.filter p) (l'.filter p')
+  | _, _, .nil => .nil
+  | _, _, .cons (a := a) (b := b) r t => by
+    simp only [List.filter_cons, h a b r]
+    split
+    · exact .cons r (filter h t)
+    · exact filter h t
+
 theorem flip {R : α → β → Prop} :
     ∀ {l : List α} {l' : List β}, Forall2 R l l' → Forall2 (fun b a => R a b) l' l
   | _, _, .nil => .nil

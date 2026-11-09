@@ -102,17 +102,18 @@ def divI (a b : Int) : Int :=
     else if isZeroCode a then zeroOf s
     else rnd ((if sv b < 0 then -sv a else sv a) * unitK) (sv b).natAbs
 
-/-- The reference's `+` on doubles (D31): IEEE 754's, with one zero and one NaN. -/
-def fadd (a b : Int) : Int := canon (addI a b)
+/-- The reference's `+` on doubles (D31): IEEE 754's on the raw values; a zero
+result keeps IEEE's sign. -/
+def fadd (a b : Int) : Int := addI a b
 
 /-- The reference's `-` on doubles (D31). -/
-def fsub (a b : Int) : Int := canon (subI a b)
+def fsub (a b : Int) : Int := subI a b
 
 /-- The reference's `*` on doubles (D31). -/
-def fmul (a b : Int) : Int := canon (mulI a b)
+def fmul (a b : Int) : Int := mulI a b
 
 /-- The reference's `/` on doubles (D31). -/
-def fdiv (a b : Int) : Int := canon (divI a b)
+def fdiv (a b : Int) : Int := divI a b
 
 /-! ### Finite operands -/
 
@@ -125,12 +126,40 @@ theorem posCode_le_posInf (m : Nat) : posCode m ≤ posInf := by
   · exact Int.le_refl _
   · split <;> omega
 
+/-- A code in `[0, +∞]` is its own canon. -/
+theorem canon_of_bounds' {c : Int} (h0 : 0 ≤ c) (h1 : c ≤ posInf) : canon c = c := by
+  have := posInf_eq; have := negZero_eq'; have := negNan_eq'
+  have e1 : fp64.negZero = negZero := rfl
+  have e2 : fp64.negNan = negNan := rfl
+  exact fp64.canon_eq_self ⟨by show c ≠ fp64.negZero; omega, by show c ≠ fp64.negNan; omega⟩
+
 theorem isRef_ofExactDiv (v : Int) (n : Nat) : IsRef (ofExactDiv v n) := by
   have h1 := posCode_le_posInf (roundMagDiv v.natAbs n)
   have h2 := posCode_nonneg (roundMagDiv v.natAbs n)
   have := posInf_eq; have := negInf_eq; have := nan_eq
   show negInf ≤ _ ∧ _ ≤ nan
   unfold ofExactDiv; split <;> omega
+
+theorem canon_nonFinite {vs : List Value} {c : Int} (h : nonFinite vs = some c) : canon c = c := by
+  have := posInf_eq; have := negInf_eq; have := nan_eq
+  have e1 : fp64.negInf = negInf := rfl
+  have e2 : fp64.nan = nan := rfl
+  unfold nonFinite at h
+  split at h <;> (try split at h) <;> (try split at h) <;> cases h <;>
+    exact canon_of_isRef ⟨by show fp64.negInf ≤ _; omega, by show _ ≤ fp64.nan; omega⟩
+
+/-- `SUM` and `AVG` of doubles are reference codes (D25, D31). -/
+theorem canon_floatSumCR (vs : List Value) : canon (floatSumCR vs) = floatSumCR vs := by
+  unfold floatSumCR
+  cases h : nonFinite vs with
+  | none => exact canon_of_isRef (isRef_ofExactDiv _ _)
+  | some c => exact canon_nonFinite h
+
+theorem canon_floatAvgCR (vs : List Value) : canon (floatAvgCR vs) = floatAvgCR vs := by
+  unfold floatAvgCR
+  cases h : nonFinite vs with
+  | none => exact canon_of_isRef (isRef_ofExactDiv _ _)
+  | some c => exact canon_nonFinite h
 
 theorem canon_rnd (v : Int) (n : Nat) : canon (rnd v n) = ofExactDiv v n := by
   unfold rnd; dsimp only; split
@@ -162,8 +191,9 @@ theorem IsFin.not_nan {c : Int} (h : IsFin c) : isNanCode c = false := by
 theorem IsFin.not_inf {c : Int} (h : IsFin c) : isInfCode c = false := by
   simp [isInfCode, h.ne.2.2.1, h.ne.2.2.2.1]
 
+/-- A finite sum is the rounded exact one, up to the sign of a zero. -/
 theorem fadd_fin {a b : Int} (ha : IsFin a) (hb : IsFin b) :
-    fadd a b = ofExact (scaled a + scaled b) := by
+    canon (fadd a b) = ofExact (scaled a + scaled b) := by
   unfold fadd addI
   simp only [ha.not_nan, hb.not_nan, hb.not_inf, ha.ne.2.2.1, ha.ne.2.2.2.1, ha.sv_eq, hb.sv_eq,
     Bool.or_false, Bool.false_eq_true, ite_false]
@@ -189,7 +219,7 @@ theorem IsFin.negI_parts {b : Int} (hb : IsFin b) :
     unfold scaled; split <;> split <;> omega
 
 theorem fsub_fin {a b : Int} (ha : IsFin a) (hb : IsFin b) :
-    fsub a b = ofExact (scaled a - scaled b) := by
+    canon (fsub a b) = ofExact (scaled a - scaled b) := by
   obtain ⟨n1, n2, n3⟩ := hb.negI_parts
   unfold fsub subI addI
   simp only [ha.not_nan, n1, n2, ha.ne.2.2.1, ha.ne.2.2.2.1, ha.sv_eq, n3,
@@ -198,8 +228,9 @@ theorem fsub_fin {a b : Int} (ha : IsFin a) (hb : IsFin b) :
   · rename_i h; rw [canon_zeroOf, h]; exact (ofExactDiv_zero 1).symm
   · exact canon_rnd _ 1
 
+/-- A finite product is the rounded exact one, up to the sign of a zero. -/
 theorem fmul_fin {a b : Int} (ha : IsFin a) (hb : IsFin b) :
-    fmul a b = ofExactDiv (scaled a * scaled b) unitK := by
+    canon (fmul a b) = ofExactDiv (scaled a * scaled b) unitK := by
   unfold fmul mulI
   simp only [ha.not_nan, hb.not_nan, ha.not_inf, hb.not_inf, ha.sv_eq, hb.sv_eq,
     Bool.or_false, Bool.false_and, Bool.and_false, Bool.false_eq_true, ite_false]
@@ -207,8 +238,9 @@ theorem fmul_fin {a b : Int} (ha : IsFin a) (hb : IsFin b) :
   · rename_i h; rw [canon_zeroOf, h]; exact (ofExactDiv_zero _).symm
   · exact canon_rnd _ _
 
+/-- A finite quotient is the rounded exact one, up to the sign of a zero. -/
 theorem fdiv_fin {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0) :
-    fdiv a b = ofExactDiv ((if scaled b < 0 then -scaled a else scaled a) * unitK)
+    canon (fdiv a b) = ofExactDiv ((if scaled b < 0 then -scaled a else scaled a) * unitK)
       (scaled b).natAbs := by
   have hbz : isZeroCode b = false := by
     have h0 : b ≠ 0 := fun e => hb0 (by subst e; rfl)
@@ -252,7 +284,7 @@ D31, theorems of it now. -/
 
 theorem add_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) :
-    IsFin (fadd a b) ∧ (scaled (fadd a b) - (scaled a + scaled b)).natAbs ≤
+    IsFin (canon (fadd a b)) ∧ (scaled (canon (fadd a b)) - (scaled a + scaled b)).natAbs ≤
       ((scaled a).natAbs + (scaled b).natAbs) / 2 ^ 50 + 1 := by
   rw [fadd_fin ha hb]
   have hS := Int.natAbs_add_le (scaled a) (scaled b)
@@ -263,7 +295,7 @@ theorem add_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
 
 theorem sub_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) :
-    IsFin (fsub a b) ∧ (scaled (fsub a b) - (scaled a - scaled b)).natAbs ≤
+    IsFin (canon (fsub a b)) ∧ (scaled (canon (fsub a b)) - (scaled a - scaled b)).natAbs ≤
       ((scaled a).natAbs + (scaled b).natAbs) / 2 ^ 50 + 1 := by
   rw [fsub_fin ha hb]
   have hS := Int.natAbs_sub_le (scaled a) (scaled b)
@@ -274,8 +306,8 @@ theorem sub_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
 
 theorem mul_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (h : (scaled a).natAbs * (scaled b).natAbs ≤ 2 ^ 3171) :
-    IsFin (fmul a b) ∧
-      (2 ^ 1074 * scaled (fmul a b) - scaled a * scaled b).natAbs ≤
+    IsFin (canon (fmul a b)) ∧
+      (2 ^ 1074 * scaled (canon (fmul a b)) - scaled a * scaled b).natAbs ≤
         (scaled a).natAbs * (scaled b).natAbs / 2 ^ 50 + 2 ^ 1074 := by
   rw [fmul_fin ha hb]
   have hv : (scaled a * scaled b).natAbs = (scaled a).natAbs * (scaled b).natAbs :=
@@ -312,7 +344,7 @@ theorem div_err_eq (r A B : Int) :
 
 theorem div_parts {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
     (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) :
-    IsFin (fdiv a b) ∧ 2 ^ 53 * (scaled (fdiv a b) * scaled b - scaled a * 2 ^ 1074).natAbs ≤
+    IsFin (canon (fdiv a b)) ∧ 2 ^ 53 * (scaled (canon (fdiv a b)) * scaled b - scaled a * 2 ^ 1074).natAbs ≤
       max ((scaled a).natAbs * 2 ^ 1074) ((scaled b).natAbs * 2 ^ 52) := by
   rw [fdiv_fin ha hb hb0]
   have hn : 0 < (scaled b).natAbs := Int.natAbs_pos.2 hb0
@@ -349,23 +381,23 @@ theorem div_err_arith {E A B : Nat} (he : 2 ^ 53 * E ≤ max A (B * 2 ^ 52)) :
 
 theorem div_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
     (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) :
-    IsFin (fdiv a b) ∧
-      (scaled (fdiv a b)).natAbs ≤
+    IsFin (canon (fdiv a b)) ∧
+      (scaled (canon (fdiv a b))).natAbs ≤
         (scaled a).natAbs * (2 ^ 1074 + 2 ^ 1024) / (scaled b).natAbs + 1 := by
   obtain ⟨hf, he⟩ := div_parts ha hb hb0 h
   refine ⟨hf, ?_⟩
   have hn : 0 < (scaled b).natAbs := Int.natAbs_pos.2 hb0
-  have hrb : (scaled (fdiv a b) * scaled b).natAbs = (scaled (fdiv a b)).natAbs * (scaled b).natAbs :=
+  have hrb : (scaled (canon (fdiv a b)) * scaled b).natAbs = (scaled (canon (fdiv a b))).natAbs * (scaled b).natAbs :=
     Int.natAbs_mul _ _
-  have htri : (scaled (fdiv a b) * scaled b).natAbs ≤
-      (scaled (fdiv a b) * scaled b - scaled a * 2 ^ 1074).natAbs + (scaled a * 2 ^ 1074).natAbs := by
-    have := Int.natAbs_add_le (scaled (fdiv a b) * scaled b - scaled a * 2 ^ 1074) (scaled a * 2 ^ 1074)
+  have htri : (scaled (canon (fdiv a b)) * scaled b).natAbs ≤
+      (scaled (canon (fdiv a b)) * scaled b - scaled a * 2 ^ 1074).natAbs + (scaled a * 2 ^ 1074).natAbs := by
+    have := Int.natAbs_add_le (scaled (canon (fdiv a b)) * scaled b - scaled a * 2 ^ 1074) (scaled a * 2 ^ 1074)
     rwa [Int.sub_add_cancel] at this
   have hak : (scaled a * 2 ^ 1074).natAbs = (scaled a).natAbs * 2 ^ 1074 := by
     rw [Int.natAbs_mul]; rfl
   rw [hrb, hak] at htri
-  generalize (scaled (fdiv a b) * scaled b - scaled a * 2 ^ 1074).natAbs = E at he htri
-  generalize (scaled (fdiv a b)).natAbs = R at htri ⊢
+  generalize (scaled (canon (fdiv a b)) * scaled b - scaled a * 2 ^ 1074).natAbs = E at he htri
+  generalize (scaled (canon (fdiv a b))).natAbs = R at htri ⊢
   generalize hB : (scaled b).natAbs = B at hn htri he ⊢
   generalize (scaled a).natAbs = A at he htri ⊢
   exact div_bound_arith hn (Nat.pow_add 2 1021 53) (Nat.pow_add 2 1021 3)
@@ -373,8 +405,8 @@ theorem div_scaled {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠
 
 theorem div_scaled_err {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
     (h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) :
-    IsFin (fdiv a b) ∧
-      2 ^ 51 * (scaled (fdiv a b) * scaled b - scaled a * 2 ^ 1074).natAbs ≤
+    IsFin (canon (fdiv a b)) ∧
+      2 ^ 51 * (scaled (canon (fdiv a b)) * scaled b - scaled a * 2 ^ 1074).natAbs ≤
         2 * (scaled a).natAbs * 2 ^ 1074 + 2 ^ 50 * (scaled b).natAbs := by
   obtain ⟨hf, he⟩ := div_parts ha hb hb0 h
   refine ⟨hf, ?_⟩
@@ -386,22 +418,203 @@ theorem scaled_nonneg {c : Int} (h : 0 ≤ c) : 0 ≤ scaled c := scaled_mono (c
 doubles, and a quotient of one by a positive one, is non-negative. -/
 theorem add_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (_h : (scaled a).natAbs + (scaled b).natAbs ≤ 2 ^ 2097) (ha0 : 0 ≤ a) (hb0 : 0 ≤ b) :
-    0 ≤ fadd a b := by
+    0 ≤ canon (fadd a b) := by
   rw [fadd_fin ha hb]
   exact ofExact_nonneg (Int.add_nonneg (scaled_nonneg ha0) (scaled_nonneg hb0))
 
 theorem mul_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b)
     (_h : (scaled a).natAbs * (scaled b).natAbs ≤ 2 ^ 3171) (ha0 : 0 ≤ a) (hb0 : 0 ≤ b) :
-    0 ≤ fmul a b := by
+    0 ≤ canon (fmul a b) := by
   rw [fmul_fin ha hb]
   exact ofExactDiv_nonneg _ (Int.mul_nonneg (scaled_nonneg ha0) (scaled_nonneg hb0))
 
 theorem div_nonneg {a b : Int} (ha : IsFin a) (hb : IsFin b) (hb0 : scaled b ≠ 0)
     (_h : (scaled a).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (scaled b).natAbs) (ha0 : 0 ≤ a) (hb0' : 0 ≤ b) :
-    0 ≤ fdiv a b := by
+    0 ≤ canon (fdiv a b) := by
   rw [fdiv_fin ha hb hb0]
   have : ¬ scaled b < 0 := by have := scaled_nonneg hb0'; omega
   simp only [this, ite_false]
   exact ofExactDiv_nonneg _ (Int.mul_nonneg (scaled_nonneg ha0) (by unfold unitK; omega))
+
+/-! ### Doubles read through `canon` (D31)
+
+Under `zero_sign` = `ONE_ZERO` and `nan_kind` = `ONE_NAN` the reference has one
+zero and one NaN: each operation gives the same result for `-0.0` as for
+`+0.0`, and for the negative NaN as for the NaN. -/
+
+/-- `-0.0` or the negative NaN, or a code `canon` keeps. -/
+theorem canon_cases (c : Int) : (c = negZero ∧ canon c = 0) ∨ (c = negNan ∧ canon c = nan) ∨ canon c = c := by
+  by_cases h0 : c = negZero
+  · exact .inl ⟨h0, h0 ▸ fp64.canon_negZero⟩
+  by_cases h1 : c = negNan
+  · exact .inr (.inl ⟨h1, h1 ▸ fp64.canon_negNan⟩)
+  exact .inr (.inr (fp64.canon_eq_self ⟨h0, h1⟩))
+
+theorem isNanCode_negZero : isNanCode negZero = false ∧ isNanCode 0 = false := by
+  have := negZero_eq'; have := negNan_eq'; have := nan_eq
+  constructor <;> simp only [isNanCode, Bool.or_eq_false_iff, beq_eq_false_iff_ne] <;> constructor <;> omega
+
+theorem sv_zero : sv 0 = 0 := by simp [sv, scaled]
+
+theorem sv_negZero : sv negZero = 0 := by simp only [sv, ite_true]
+
+/-- `a + b` reads `a` through `canon`, up to the sign of a zero result. -/
+theorem canon_addI_canon_left (a b : Int) : canon (addI (canon a) b) = canon (addI a b) := by
+  have := posInf_eq; have := negInf_eq; have := nan_eq; have := negNan_eq'; have := negZero_eq'
+  rcases canon_cases a with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h]
+    obtain ⟨n1, n2⟩ := isNanCode_negZero
+    unfold addI
+    rw [n1, n2, sv_negZero, sv_zero]
+    simp only [Bool.false_or, show (0 : Int) ≠ posInf by omega, show (0 : Int) ≠ negInf by omega,
+      show negZero ≠ posInf by omega, show negZero ≠ negInf by omega, ite_false]
+    split
+    · rfl
+    · split
+      · rfl
+      · split
+        · rw [canon_zeroOf, canon_zeroOf]
+        · rfl
+  · rw [h]
+    have hn : isNanCode nan = true := by simp [isNanCode]
+    have hn' : isNanCode negNan = true := by simp [isNanCode]
+    unfold addI; rw [hn, hn']; rfl
+  · rw [h]
+
+theorem canon_addI_canon_right (a b : Int) : canon (addI a (canon b)) = canon (addI a b) := by
+  have := posInf_eq; have := negInf_eq; have := nan_eq; have := negNan_eq'; have := negZero_eq'
+  rcases canon_cases b with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h]
+    obtain ⟨n1, n2⟩ := isNanCode_negZero
+    have i1 : isInfCode negZero = false := by simp only [isInfCode, Bool.or_eq_false_iff, beq_eq_false_iff_ne]; constructor <;> omega
+    have i2 : isInfCode 0 = false := by simp only [isInfCode, Bool.or_eq_false_iff, beq_eq_false_iff_ne]; constructor <;> omega
+    unfold addI
+    rw [n1, n2, sv_negZero, sv_zero, i1, i2]
+    simp only [Bool.or_false, show (0 : Int) ≠ posInf by omega, show (0 : Int) ≠ negInf by omega,
+      show negZero ≠ posInf by omega, show negZero ≠ negInf by omega, ite_false, Bool.false_eq_true]
+    split
+    · rfl
+    · split
+      · rfl
+      · split
+        · rfl
+        · split
+          · rw [canon_zeroOf, canon_zeroOf]
+          · rfl
+  · rw [h]
+    have hn : isNanCode nan = true := by simp [isNanCode]
+    have hn' : isNanCode negNan = true := by simp [isNanCode]
+    unfold addI; rw [hn, hn']; simp only [Bool.or_true]; rfl
+  · rw [h]
+
+
+theorem isZeroCode_zero : isZeroCode negZero = true ∧ isZeroCode 0 = true := by
+  simp [isZeroCode]
+
+theorem isInfCode_zero : isInfCode negZero = false ∧ isInfCode 0 = false := by
+  have := posInf_eq; have := negInf_eq; have := negZero_eq'
+  constructor <;> simp only [isInfCode, Bool.or_eq_false_iff, beq_eq_false_iff_ne] <;> constructor <;> omega
+
+theorem isNanCode_nans : isNanCode nan = true ∧ isNanCode negNan = true := by simp [isNanCode]
+
+/-- A product reads its first factor through `canon`, up to the sign of a zero. -/
+theorem canon_mulI_canon_left (a b : Int) : canon (mulI (canon a) b) = canon (mulI a b) := by
+  rcases canon_cases a with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h]
+    obtain ⟨n1, n2⟩ := isNanCode_negZero
+    obtain ⟨z1, z2⟩ := isZeroCode_zero
+    obtain ⟨i1, i2⟩ := isInfCode_zero
+    unfold mulI
+    rw [n1, n2, z1, z2, i1, i2, sv_negZero, sv_zero, Int.zero_mul]
+    simp only [Bool.false_or, Bool.false_and, Bool.true_and, ite_true]
+    split
+    · rfl
+    · split
+      · rfl
+      · rw [canon_zeroOf, canon_zeroOf]
+  · rw [h]; unfold mulI; rw [isNanCode_nans.1, isNanCode_nans.2]; simp only [Bool.true_or, ↓reduceIte]
+  · rw [h]
+
+theorem canon_mulI_canon_right (a b : Int) : canon (mulI a (canon b)) = canon (mulI a b) := by
+  rcases canon_cases b with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h]
+    obtain ⟨n1, n2⟩ := isNanCode_negZero
+    obtain ⟨z1, z2⟩ := isZeroCode_zero
+    obtain ⟨i1, i2⟩ := isInfCode_zero
+    unfold mulI
+    rw [n1, n2, z1, z2, i1, i2, sv_negZero, sv_zero, Int.mul_zero]
+    simp only [Bool.or_false, Bool.and_false, Bool.and_true, ite_true]
+    split
+    · rfl
+    · split
+      · rfl
+      · rw [canon_zeroOf, canon_zeroOf]
+  · rw [h]; unfold mulI; rw [isNanCode_nans.1, isNanCode_nans.2]; simp only [Bool.or_true, ↓reduceIte]
+  · rw [h]
+
+/-- A quotient reads its dividend through `canon`, up to the sign of a zero. -/
+theorem canon_divI_canon_left (a b : Int) : canon (divI (canon a) b) = canon (divI a b) := by
+  rcases canon_cases a with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h]
+    obtain ⟨n1, n2⟩ := isNanCode_negZero
+    obtain ⟨z1, z2⟩ := isZeroCode_zero
+    obtain ⟨i1, i2⟩ := isInfCode_zero
+    unfold divI
+    rw [n1, n2, z1, z2, i1, i2]
+    simp only [Bool.false_or, Bool.false_and, ite_false, Bool.false_eq_true, ite_true]
+    split
+    · rfl
+    · split
+      · rw [canon_zeroOf, canon_zeroOf]
+      · split
+        · rfl
+        · rw [canon_zeroOf, canon_zeroOf]
+  · rw [h]; unfold divI; rw [isNanCode_nans.1, isNanCode_nans.2]; simp only [Bool.true_or, ↓reduceIte]
+  · rw [h]
+
+
+theorem canon_negI_canon (b : Int) : canon (negI (canon b)) = canon (negI b) := by
+  have := negZero_eq'; have := negNan_eq'; have := nan_eq
+  rcases canon_cases b with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h, show negI 0 = negZero by unfold negI; split <;> omega,
+      show negI negZero = 0 by unfold negI; split <;> (try split) <;> omega, h, canon_zero]
+  · rw [h, show negI nan = negNan by unfold negI; split <;> (try split) <;> omega,
+      show negI negNan = nan by unfold negI; split <;> (try split) <;> omega, h,
+      canon_of_isRef isRef_nan]
+  · rw [h]
+
+/-- IEEE's negation is code negation, up to `canon` (D31). -/
+theorem canon_negI_neg (c : Int) : canon (negI c) = canon (neg (canon c)) := by
+  have := negZero_eq'; have := negNan_eq'; have := nan_eq
+  have hzn : negI 0 = negZero := by unfold negI; split <;> omega
+  rcases canon_cases c with ⟨rfl, h⟩ | ⟨rfl, h⟩ | h
+  · rw [h, show negI negZero = 0 by unfold negI; split <;> (try split) <;> omega,
+      show neg 0 = 0 from rfl]
+  · rw [h, show negI negNan = nan by unfold negI; split <;> (try split) <;> omega,
+      show neg nan = negNan by unfold neg; omega, canon_of_isRef isRef_nan,
+      show canon negNan = nan from fp64.canon_negNan]
+  · rw [h]
+    by_cases h0 : c = 0
+    · subst h0; rw [hzn, show neg 0 = 0 from rfl, show canon negZero = 0 from fp64.canon_negZero,
+        canon_zero]
+    · have h1 : c ≠ negZero := fun e => by
+        have := fp64.canon_ne c; rw [show fp64.canon c = c from h] at this; exact this.1 e
+      unfold negI; rw [ite_eq_right h0, ite_eq_right h1]; rfl
+
+/-- **`+`, `-`, `*` and `/` of doubles are congruent for `canon`** (D31): up to
+the sign of a zero, their results do not depend on which zero or NaN they
+read (`/` in its dividend; a zero divisor raises). -/
+theorem fadd_canon (a b : Int) : canon (fadd (canon a) (canon b)) = canon (fadd a b) := by
+  unfold fadd; rw [canon_addI_canon_left, canon_addI_canon_right]
+
+theorem fsub_canon (a b : Int) : canon (fsub (canon a) (canon b)) = canon (fsub a b) := by
+  unfold fsub subI
+  rw [canon_addI_canon_left, ← canon_addI_canon_right, canon_negI_canon, canon_addI_canon_right]
+
+theorem fmul_canon (a b : Int) : canon (fmul (canon a) (canon b)) = canon (fmul a b) := by
+  unfold fmul; rw [canon_mulI_canon_left, canon_mulI_canon_right]
+
+theorem fdiv_canon_left (a b : Int) : canon (fdiv (canon a) b) = canon (fdiv a b) := by
+  unfold fdiv; rw [canon_divI_canon_left]
 
 end Substrait.FloatCode
