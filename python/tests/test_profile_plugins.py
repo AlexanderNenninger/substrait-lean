@@ -17,7 +17,7 @@ from ibis import _
 
 import sverify as sv
 from sverify import _checker, _engine_settings, profiles, routes
-from sverify.engines import SNOWFLAKE, to_sql, written_plan
+from sverify.engines import to_sql, written_plan
 from sverify.profiles import ProfilePlugin, Setting
 from sverify.routes import EngineSettingsError, EngineVersionError
 
@@ -144,7 +144,7 @@ def test_snowflake_sql_without_a_profile_is_the_reference_translation() -> None:
     assert report.internal_plan is not None
     assert report.to_sql("snowflake") == to_sql(
         written_plan(report.internal_plan),
-        SNOWFLAKE,
+        "snowflake",
         deterministic=report.deterministic,
         finite=True,
     )

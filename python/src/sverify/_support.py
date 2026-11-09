@@ -1,6 +1,7 @@
-"""Which engines run each function: one row per function that not every
-engine runs (#271), checked in one walk over the functions a plan calls,
-before `to_sql` and `run_plan` dispatch.
+"""Which engines run each function, as their plugins say
+(`ProfilePlugin.functions`, `window_functions`, `refuses`, `guards`; #271,
+#1189), checked in one walk over the functions a plan calls, before `to_sql`
+and `run_plan` dispatch.
 
 Internal: not part of sverify's public API. Refusals that depend on more
 than the function's name stay with the engine: an `avg` with an integer
@@ -13,95 +14,43 @@ from __future__ import annotations
 from typing import Any
 
 from sverify import _plan_read, black_box
-from sverify._engines import NAMED
 from sverify._unsupported import DUCKDB_ONLY, ISSUE_271  # noqa: F401  (re-exported)
 
-_DUCKDB = frozenset({"duckdb"})
 
-#: The functions by their plan names, each with the engines that run it.
-#: Every function not listed runs on every engine.
-SUPPORT: dict[str, frozenset[str]] = {
-    # Strings (#50).
-    "regexp_extract": _DUCKDB,
-    "regexp_replace": _DUCKDB,
-    "md5": _DUCKDB,
-    "sha256": _DUCKDB,
-    # Aggregates (#53, #54, #55, #94).
-    "first": _DUCKDB,
-    "last": _DUCKDB,
-    "string_agg": _DUCKDB,
-    "array_agg": frozenset({"duckdb", "datafusion", "polars"}),
-    "median": _DUCKDB,
-    "quantile_cont": _DUCKDB,
-    "quantile_disc": _DUCKDB,
-    "mode": _DUCKDB,
-    "arg_min": _DUCKDB,
-    "arg_max": _DUCKDB,
-    "covar_samp": _DUCKDB,
-    "covar_pop": _DUCKDB,
-    "corr": _DUCKDB,
-    # The pairs `covar_*` and `corr` read.
-    "sverify_pair": _DUCKDB,
-    # Lists (#810, #812): DuckDB's list functions, `list(x)` keeping NULLs.
-    "list_prepend": _DUCKDB,
-    "list_concat": _DUCKDB,
-    "list_contains": _DUCKDB,
-    "list_position": _DUCKDB,
-    "flatten": _DUCKDB,
-    # The lift's guards (`UnFn.raise`): `make_date` of columns outside the
-    # calendar (#809), on DuckDB only (`_REASONS`); a RANGE frame's bound that
-    # leaves its integer key's type (#805) runs wherever the dialect raises
-    # (`GUARDS`). Polars and DataFusion run plans without a way to raise.
-    "sverify_raise": _DUCKDB,
-    # Windows: DataFusion spreads the larger buckets out (upstream/bugs/DF-11.json).
-    "ntile": NAMED - {"datafusion"},
-    # Black boxes (#325).
-    **{name: _DUCKDB for name in sorted(black_box.NAMES)},
-}
+def _engines() -> dict[str, Any]:
+    """The installed engines' plugins: those that run plans or write their
+    SQL (a profile alone is no engine)."""
+    from sverify import profiles
 
-#: Functions that run on fewer engines over a window than as aggregates: the
-#: variance over a frame, which only DuckDB's writer computes so far.
-WINDOW_SUPPORT: dict[str, frozenset[str]] = {
-    "variance": _DUCKDB,
-    "std_dev": _DUCKDB,
-}
+    return {e: p for e, p in profiles.plugins().items() if p.local or p.runner or p.dialect}
 
-#: Why an engine refuses a function, where the reason is not #271, and what
-#: tracks it.
-_REASONS = {
-    ("ntile", "datafusion"): (
-        "DataFusion's NTILE does not deal out buckets as SQL does",
-        "upstream/bugs/DF-11.json",
-    ),
-    ("sverify_raise", "spark"): (
-        "Spark's SQL of the date guards exhausts its JVM's heap (a date from columns is "
-        "38 KB of nested CASEs)",
-        ISSUE_271,
-    ),
-    ("sverify_raise", "snowflake"): (
-        "Snowflake's SQL of the date guards grows past what it runs: a date from columns "
-        "writes 208 MB of nested CASEs",
-        ISSUE_271,
-    ),
-}
 
-#: Guards (`sverify_raise`) that run on more engines than the date guards,
-#: by the start of their message: the engines whose dialect writes them
-#: with `raise_` (#805).
-GUARDS: dict[str, frozenset[str]] = {
-    "Overflow in a RANGE frame bound": frozenset({"duckdb", "spark", "snowflake"}),
-}
+def _restricted(field: str) -> frozenset[str]:
+    """The functions some engine lists in `field`: those that run only on the
+    engines that list them."""
+    return frozenset().union(*(getattr(p, field) for p in _engines().values()))
+
+
+def _runs(name: str, engine: str, field: str) -> bool:
+    p = _engines().get(engine.lower())
+    if p is None:
+        return True
+    if name in p.refuses:
+        return False
+    return name not in _restricted(field) or name in getattr(p, field)
 
 
 def _guard_engines(call: dict) -> frozenset[str] | None:
     """The engines that run the guard `call` (`sverify_raise`), by its
-    message (`GUARDS`), or None for one `GUARDS` does not list."""
+    message (`ProfilePlugin.guards`), or None for one no engine lists."""
     for arg in call.get("arguments", [])[1:]:
         msg = (arg.get("value") or {}).get("literal", {}).get("string")
         if isinstance(msg, str):
-            for start, engines in GUARDS.items():
-                if msg.startswith(start):
-                    return engines
+            found = frozenset(
+                e for e, p in _engines().items() if any(msg.startswith(g) for g in p.guards)
+            )
+            if found:
+                return found
     return None
 
 
@@ -136,28 +85,36 @@ _LABELS = {
 }
 
 
+class _NoPlugin:
+    refuses: dict[str, tuple[str, str]] = {}
+
+
+_NO_PLUGIN = _NoPlugin()
+
+
 def supported(name: str, engine: str) -> bool:
-    """Does `engine` run the function `name` (a plan name, its signature aside)?"""
-    engines = SUPPORT.get(_plan_read.base_name(name))
-    return engines is None or engine.lower() in engines
+    """Does `engine` run the function `name` (a plan name, its signature
+    aside)? Its plugin says so (`ProfilePlugin.functions`, `refuses`)."""
+    return _runs(_plan_read.base_name(name), engine, "functions")
 
 
 def window_supported(name: str, engine: str) -> bool:
     """Does `engine` run the function `name` over a window?"""
     base = _plan_read.base_name(name)
-    engines = WINDOW_SUPPORT.get(base)
-    return supported(name, engine) and (engines is None or engine.lower() in engines)
+    return supported(name, engine) and _runs(base, engine, "window_functions")
 
 
 def refusal(name: str, engine: str, window: bool = False) -> str:
     """Why `engine` refuses the function `name` (over a window, `window`)."""
     if name in black_box.NAMES:
         return black_box.refusal(name, engine)
-    over = window and name in WINDOW_SUPPORT and supported(name, engine)
+    over = window and name in _restricted("window_functions") and supported(name, engine)
     label = _LABELS.get(f"{name} OVER" if over else name, name)
-    runs = sorted((WINDOW_SUPPORT if over else SUPPORT).get(name, NAMED))
+    field = "window_functions" if over else "functions"
+    runs = sorted(e for e in _engines() if _runs(name, e, field))
     exit_ = f"run it with engine={runs[0]!r}"
-    if reason := _REASONS.get((name, engine.lower())):
+    reason = (_engines().get(engine.lower()) or _NO_PLUGIN).refuses.get(name)
+    if reason:
         why, issue = reason
         return f"{label}: {why}; {exit_} ({issue})"
     where = " and ".join(runs)

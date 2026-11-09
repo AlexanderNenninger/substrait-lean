@@ -152,7 +152,7 @@ def test_range_frame_bounds_overflow_as_in_duckdb():
 
 def test_range_frame_bound_guard_is_written_for_spark_and_snowflake():
     """The guard on a RANGE frame's integer bounds (`sverify_raise`) is
-    written wherever the dialect raises (`_support.GUARDS`): DuckDB, Spark and
+    written wherever the dialect raises (`ProfilePlugin.guards`): DuckDB, Spark and
     Snowflake. The date guards stay DuckDB's."""
     from sverify.engine import written_plan
     from sverify.sql import dialect_of, to_sql

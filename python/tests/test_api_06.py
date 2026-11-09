@@ -13,7 +13,7 @@ from ibis import _
 import sverify as sv
 from _pipelines import doubled, make_orders, paid
 from sverify import routes
-from sverify.engines import SNOWFLAKE, to_sql
+from sverify.engines import to_sql
 from sverify.errors import (
     InferredWarning,
     RouteError,
@@ -181,10 +181,10 @@ def test_to_sql_takes_deterministic_and_a_plan_string(tmp_path) -> None:
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
     node = paid(orders)
     plan = _quiet(lambda: node.internal_plan)
-    text = _quiet(to_sql, plan, SNOWFLAKE, deterministic=True)
-    assert text == _quiet(to_sql, json.loads(plan), SNOWFLAKE, deterministic=True)
+    text = _quiet(to_sql, plan, "snowflake", deterministic=True)
+    assert text == _quiet(to_sql, json.loads(plan), "snowflake", deterministic=True)
     with pytest.raises(TypeError, match="tie_free"):
-        to_sql(plan, SNOWFLAKE, tie_free=True)  # type: ignore[call-arg]
+        to_sql(plan, "snowflake", tie_free=True)  # type: ignore[call-arg]
 
 
 def test_node_plan_is_internal_plan(tmp_path) -> None:
