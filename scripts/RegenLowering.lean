@@ -31,7 +31,11 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
     Lowering.apply_ffloor_int, Lowering.apply_ffloor_null, Lowering.apply_ffloor_bool,
     Lowering.apply_ffloor_str, Lowering.apply_ffloor_list, Lowering.apply_ffloor_float,
     Lowering.apply_ffloor_date, Lowering.apply_ffloor_ts, Lowering.apply_ffloor_tod,
-    Lowering.apply_ffloor_dec, Lowering.apply_ffloor_struct, Lowering.pow2Chain_eval, List.mem_range]
+    Lowering.apply_ffloor_dec, Lowering.apply_ffloor_struct, Lowering.pow2Chain_eval, List.mem_range,
+    Lowering.duck_bin_nondouble_l, Lowering.duck_bin_nondouble_r, Lowering.duck_un_nondouble,
+    Lowering.ref_bin_nondouble_l, Lowering.ref_bin_nondouble_r,
+    BinFn.apply_eq_nondouble_l, BinFn.apply_eq_nondouble_r, BinFn.apply_lt_nondouble_l,
+    BinFn.apply_lt_nondouble_r, Value.isNum_float_nondouble]
   excluding [UnFn.fit]
   hand_written LoweringSearch.duckdbSchemas
   cache loweringCache

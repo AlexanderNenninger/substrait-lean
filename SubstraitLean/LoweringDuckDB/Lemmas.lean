@@ -16,6 +16,35 @@ DuckDB has no function for `UnFn.fit`: its profile computes it as the
 reference does, but the SQL printer has nothing to print, so every template
 must avoid it (`excluding`). These lemmas let the proofs compute it. -/
 
+/-- DuckDB's profile is the reference's on a function of doubles with an
+argument that is not a double (`Value.double_cases`): what lets a generated
+proof keep such an argument whole. -/
+theorem Lowering.duck_bin_nondouble_l (s : DuckDBSettings) {f : BinFn} (hf : f.onFloats = true)
+    {x : Value} (hx : x.isDouble = false) (y : Value) :
+    (Profile.duckdb s).bin f x y = Profile.reference.bin f x y := by
+  cases x <;> cases y <;> simp_all [Profile.duckdb, Value.isDouble]
+
+theorem Lowering.duck_bin_nondouble_r (s : DuckDBSettings) {f : BinFn} (hf : f.onFloats = true)
+    (x : Value) {y : Value} (hy : y.isDouble = false) :
+    (Profile.duckdb s).bin f x y = Profile.reference.bin f x y := by
+  cases x <;> cases y <;> simp_all [Profile.duckdb, Value.isDouble]
+
+/-- The reference's function of doubles is NULL, with no issue, where an
+argument is not a double. -/
+theorem Lowering.ref_bin_nondouble_l {f : BinFn} (hf : f.onFloats = true) {x : Value}
+    (hx : x.isDouble = false) (y : Value) : Profile.reference.bin f x y = .ok .null := by
+  cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
+    cases x <;> simp only [Value.isDouble, Bool.true_eq_false] at hx <;> cases y <;> rfl
+
+theorem Lowering.ref_bin_nondouble_r {f : BinFn} (hf : f.onFloats = true) (x : Value) {y : Value}
+    (hy : y.isDouble = false) : Profile.reference.bin f x y = .ok .null := by
+  cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
+    cases y <;> simp only [Value.isDouble, Bool.true_eq_false] at hy <;> cases x <;> rfl
+
+theorem Lowering.duck_un_nondouble (s : DuckDBSettings) (f : UnFn) {x : Value}
+    (hx : x.isDouble = false) : (Profile.duckdb s).un f x = Profile.reference.un f x := by
+  cases x <;> simp_all [Profile.duckdb, Value.isDouble]
+
 theorem Lowering.ref_fit (m : OverflowMode) (w : IntWidth) (x : Value) :
     Profile.reference.un (.fit m w) x = .ok (UnFn.apply (.fit m w) x) := by
   cases x <;> rfl

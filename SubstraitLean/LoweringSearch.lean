@@ -388,17 +388,28 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
     | (simp only [$u,*]; done)
     | (simp only [$u,*]; (repeat' split) <;> simp_all [$u,*])))
 
-/-- One argument's split for `templateCases`. -/
-syntax "split3 " ident ident ident : tactic
+/-- One argument's split for `templateCases` (`Value.double_cases`): a value
+that is not a double, kept whole (`d`: `x.isDouble = false`), `-0.0`, the
+negative NaN, or a canonical double (`h`, `f`: its canonical code's facts).
+Each branch names all three, `True` where it has none. -/
+syntax "split4 " ident ident ident ident : tactic
 macro_rules
-  | `(tactic| split3 $x $h $f) => `(tactic|
-      (rcases Value.float_cases $x with hx | ⟨hx, $h:ident⟩ | ⟨hx, $h:ident⟩ | ⟨c, hx, $h:ident, hz, hn, $f:ident⟩ <;>
+  | `(tactic| split4 $x $h $f $d) => `(tactic|
+      (rcases Value.double_cases $x with $d:ident | ⟨hx, $h:ident⟩ | ⟨hx, $h:ident⟩ |
+          ⟨c, hx, $h:ident, hz, hn, $f:ident⟩ <;>
         first
           -- The canonical double (the only branch with `hz`), then the special ones.
-          | (subst hx; revert hz; intro hz)
-          | (subst hx; have $f:ident : True := trivial)
-          | (cases $x:ident <;> (try exact absurd rfl (hx _)) <;> have $h:ident : True := trivial <;>
-              have $f:ident : True := trivial)))
+          | (subst hx; revert hz; intro hz; have $d:ident : True := trivial)
+          | (subst hx; have $f:ident : True := trivial; have $d:ident : True := trivial)
+          | (have $h:ident : True := trivial; have $f:ident : True := trivial)))
+
+/-- A value kept whole (`split4`'s first branch) split into its constructors,
+for a goal that reads more of it than `templateTac`'s lemmas give (a function
+of integers, `fpow`'s `floor`); a double's branch is impossible. -/
+syntax "split_whole " ident ident : tactic
+macro_rules
+  | `(tactic| split_whole $x $d) => `(tactic|
+      (try (cases $x:ident <;> (try simp only [Value.isDouble, Bool.true_eq_false] at $d:ident))))
 
 /-- The lemmas that evaluate an expression over a row of arguments with the
 reference's guard functions: the first simp set of `templateTac` and
@@ -409,22 +420,39 @@ def evalNames : Array Name :=
     ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
     ``Lowering.ref_or, ``Lowering.ref_dadd, ``Lowering.ref_dsub, ``Lowering.ref_dmul]
 
-/-- The template tactic's split on the arguments' kinds: one goal per
-constructor of each argument, and a double three ways (`Value.float_cases`):
-`-0.0`, the negative NaN, or a code equal to its canonical one (D31), so that
-the comparisons, which read `canon c`, compute. -/
-def templateCases (unary : Bool) : TermElabM (TSyntax `tactic) :=
-  -- `hcx`, `hcy` unhygienic: `templateTac`'s simp sets name them.
-  if unary then `(tactic| (rename_i x; split3 x $(mkIdent `hcx) $(mkIdent `hfx)))
-  else `(tactic| (rename_i x y; split3 x $(mkIdent `hcx) $(mkIdent `hfx) <;>
-    split3 y $(mkIdent `hcy) $(mkIdent `hfy)))
+/-- The template tactic's split on the arguments: four ways each
+(`split4`), so that a double's comparisons, which read `canon c`, compute
+(D31), and any other value stays whole; a function of doubles is the
+reference's on it (`Lowering.duck_bin_nondouble_l`, …), and `templateTac`
+splits it further only where a goal needs it (`split_whole`). `plain`: one
+split of the whole value at once, for `guardsTac`'s issues. The names are unhygienic:
+`templateTac`'s simp sets name them. -/
+def splitArgs (unary : Bool) (plain : Bool := false) : TermElabM (TSyntax `tactic) := do
+  let (x, y) := (mkIdent `x, mkIdent `y)
+  -- `plain`: every constructor too, the whole value split at once.
+  let sx ← if plain then
+      `(tactic| (split4 $x $(mkIdent `hcx) $(mkIdent `hfx) $(mkIdent `hxx) <;>
+        split_whole $x $(mkIdent `hxx)))
+    else `(tactic| split4 $x $(mkIdent `hcx) $(mkIdent `hfx) $(mkIdent `hxx))
+  if unary then return sx
+  let sy ← if plain then
+      `(tactic| (split4 $y $(mkIdent `hcy) $(mkIdent `hfy) $(mkIdent `hyy) <;>
+        split_whole $y $(mkIdent `hyy)))
+    else `(tactic| split4 $y $(mkIdent `hcy) $(mkIdent `hfy) $(mkIdent `hyy))
+  `(tactic| ($sx:tactic <;> $sy:tactic))
+
+/-- `splitArgs` on the last arguments introduced, named `x` and `y`. -/
+def templateCases (unary : Bool) (plain : Bool := false) : TermElabM (TSyntax `tactic) := do
+  let s ← splitArgs unary plain
+  if unary then `(tactic| (rename_i $(mkIdent `x):ident; $s:tactic))
+  else `(tactic| (rename_i $(mkIdent `x):ident $(mkIdent `y):ident; $s:tactic))
 
 /-- The tactic for a template: evaluate the guard's functions (`natives`, the
 engine's, and the reference's, and the lemmas `extra`), split on the
 arguments' kinds (`templateCases`) and on the comparisons the template and
 the profile make, and compute. -/
 def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : Array Name := #[])
-    (staged : Bool := true) :
+    (staged : Bool := true) (plain : Bool := false) :
     TermElabM Syntax := do
   let preNames := pre2 ++ evalNames ++ #[``Lowering.ref_imod_int] ++ natives ++ extra
   let valNames := #[``Value.isNum, ``Value.numPair, ``and3, ``or3, ``BinFn.apply,
@@ -432,7 +460,14 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.not_true, ``Bool.not_false,
     ``Option.getD_some, ``Option.getD_none, ``Option.all_some, ``Option.all_none]
   let pre ← simpArgs preNames
-  let vals ← simpArgs (preNames ++ valNames)
+  -- The whole values' hypotheses, for the lemmas on them (`isDouble`).
+  let wholes : Array (TSyntax ``Lean.Parser.Tactic.simpLemma) ←
+    (if unary then #[`hxx] else #[`hxx, `hyy]).mapM fun h =>
+      `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
+  let vals := (← simpArgs (preNames ++ valNames)) ++ wholes
+  -- First without `BinFn.apply`, so that the lemmas on a whole value
+  -- (`BinFn.apply_eq_nondouble_l`, …) rewrite before its match unfolds.
+  let preW := pre ++ wholes
   -- Then the profile and the reference, and everything again.
   let ref ← simpArgs (preNames ++ valNames ++ unfold ++ #[``Profile.reference, ``raiseIf,
     ``Lowering.beq_int, ``UnFn.issue, ``BinFn.issue])
@@ -462,7 +497,11 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
                  simp (config := { failIfUnchanged := false, decide := true }) only [$stage2,*]
                  simp (config := { failIfUnchanged := false, decide := true }) only [$stage3,*]))
     else `(tactic| skip)
-  let cases ← templateCases unary
+  -- `plain` (`guardsTac`'s goals, no `Outcome.Agree` to close a whole
+  -- value's): every constructor at once.
+  let cases ← templateCases unary plain
+  let wholeSplit ← if unary then `(tactic| split_whole $(mkIdent `x) $(mkIdent `hxx))
+    else `(tactic| (split_whole $(mkIdent `x) $(mkIdent `hxx); all_goals split_whole $(mkIdent `y) $(mkIdent `hyy)))
   -- The reference with the codes' equations and facts: at `*` for a binary
   -- template; on the goal only for a unary one, whose facts (`g6`, `hcx`, …)
   -- the final `simp_all` needs after a split (`round` below zero on DuckDB):
@@ -507,20 +546,25 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (pre2 fin2 : 
     $[$gens]*
     intros
     simp (config := { decide := true }) only [$pre,*]
-    $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
+    $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$preW,*]
+    all_goals simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
     all_goals first
       | exact Outcome.agree_refl _
-      | ($stages:tactic
-         $refStep:tactic
-         iterate 10
-           all_goals try
-             lowering_split_decide <;>
-               simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false, Option.getD_some, Option.getD_none, Outcome.ok_bind]
-         all_goals (repeat' split)
+      | ($wholeSplit:tactic
+         all_goals simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
          all_goals first
-           | (simp_all [$fin,*]; done)
-           | (simp_all [$fin,*] <;> omega)
-           | omega)))
+           | exact Outcome.agree_refl _
+           | ($stages:tactic
+              $refStep:tactic
+              iterate 10
+                all_goals try
+                  lowering_split_decide <;>
+                    simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false, Option.getD_some, Option.getD_none, Outcome.ok_bind]
+              all_goals (repeat' split)
+              all_goals first
+                | (simp_all [$fin,*]; done)
+                | (simp_all [$fin,*] <;> omega)
+                | omega))))
 
 /-! ## Generated source
 
@@ -562,7 +606,7 @@ def guardsTac (unfold natives extra : Array Name) (unary : Bool) (agree? : Optio
     TermElabM Syntax := do
   let t ← templateTac unfold natives extra unary
     #[``Expr.GuardsAt, ``Expr.raiseMsg?, ``Outcome.FiresOnly, ``Option.map]
-    #[``Issue.name, ``Option.map, ``Outcome.FiresOnly] (staged := false)
+    #[``Issue.name, ``Option.map, ``Outcome.FiresOnly] (staged := false) (plain := true)
   let general : TSyntax `tactic := ⟨t⟩
   let some agree := agree? | `(tactic| first | (intros; trivial) | $general:tactic)
   -- One guard, from the entry's agreement (`Expr.GuardsAt.one`): where it is
@@ -570,12 +614,16 @@ def guardsTac (unfold natives extra : Array Name) (unary : Bool) (agree? : Optio
   -- if all of the function's issues have its name.
   let pre ← simpArgs (evalNames ++ natives)
   let issueFn := mkIdent (if unary then ``UnFn.issue else ``BinFn.issue)
-  let cases ← templateCases unary
+  -- The arguments named at `intro`: `rename_i` would name the issue's
+  -- `k` and `h`, which the `refine` below introduces after them.
+  let cases ← splitArgs unary (plain := true)
+  let intro ← if unary then `(tactic| intro $(mkIdent `x):ident)
+    else `(tactic| intro $(mkIdent `x):ident $(mkIdent `y):ident)
   let ag ← if unary then `(($(mkIdent agree) _)) else `(($(mkIdent agree) _ _))
   let names ← simpArgs #[``nanIssue, ``domainIssue, ``rangeIssue, ``wrapIf, ``wrapNum]
   `(tactic| first
     | (intros; trivial)
-    | (intros
+    | ($intro:tactic
        refine Substrait.Expr.GuardsAt.one rfl $ag ?_ ?_ ?_ (Substrait.Expr.guardsAt_of_noGuards _ rfl)
        · simp [$pre,*, Substrait.Outcome.err?, bind, Except.bind]
        · refine Substrait.Outcome.raises_named fun k h => ?_

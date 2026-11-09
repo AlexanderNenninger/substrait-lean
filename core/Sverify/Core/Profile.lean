@@ -363,11 +363,17 @@ theorem FloatCode.ceil_negNan : FloatCode.ceil FloatCode.negNan = FloatCode.negN
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
+/-- Is the value a double? -/
+def Value.isDouble : Value → Bool
+  | .float _ => true
+  | _ => false
+
 /-- A value is not a double, `-0.0`, the negative NaN, or a double equal to its
 canonical code: the cases of a generated proof's argument, each double's with
 its canonical code (a canonical one apart from the other two, with a canonical
-`floor`, `round` and `ceil`). -/
-theorem Value.float_cases (x : Value) : (∀ c, x ≠ .float c) ∨
+`floor`, `round` and `ceil`). A function of doubles is the reference's on any
+other value, which its proof keeps whole. -/
+theorem Value.double_cases (x : Value) : x.isDouble = false ∨
     (x = .float FloatCode.negZero ∧ FloatCode.canon FloatCode.negZero = 0) ∨
     (x = .float FloatCode.negNan ∧ FloatCode.canon FloatCode.negNan = FloatCode.nan) ∨
     ∃ c, x = .float c ∧ FloatCode.canon c = c ∧ c ≠ FloatCode.negZero ∧ c ≠ FloatCode.negNan ∧
@@ -385,7 +391,30 @@ theorem Value.float_cases (x : Value) : (∀ c, x ≠ .float c) ∨
         have hc : FloatCode.canon c = c := by simp [FloatCode.canon, FloatFormat.canon, e0, e1]
         exact .inr (.inr (.inr ⟨c, rfl, hc, h, h',
           FloatCode.canon_floor hc, FloatCode.canon_round hc, FloatCode.canon_ceil hc⟩))
-  | _ => exact .inl fun _ h => by cases h
+  | _ => exact .inl rfl
+
+/-! A value that is not a double compares with a double as NULL, and is no
+double: the generated proofs' lemmas for an argument they do not split. -/
+
+theorem BinFn.apply_eq_nondouble_l {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .eq x (.float c) = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem BinFn.apply_eq_nondouble_r {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .eq (.float c) x = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem BinFn.apply_lt_nondouble_l {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .lt x (.float c) = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem BinFn.apply_lt_nondouble_r {x : Value} (hx : x.isDouble = false) (c : Int) :
+    BinFn.apply .lt (.float c) x = .null := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
+
+theorem Value.isNum_float_nondouble {x : Value} (hx : x.isDouble = false) :
+    x.isNum .float = false := by
+  cases x <;> first | rfl | simp [Value.isDouble] at hx
 
 /-! ## Agreeing outcomes -/
 
