@@ -96,13 +96,13 @@ def test_a_failed_refresh_changes_nothing_and_a_retry_applies_once(tmp_path):
 
 def _fail_after_apply(monkeypatch):
     """DuckDB updates the states in place, then the commit fails."""
-    real = sverify._state.DuckDBStore.apply
+    real = sverify._builtin.duckdb.DuckDBStore.apply
 
     def failing(self, updates):
         real(self, updates)
         raise MemoryError("out of memory")
 
-    monkeypatch.setattr(sverify._state.DuckDBStore, "apply", failing)
+    monkeypatch.setattr(sverify._builtin.duckdb.DuckDBStore, "apply", failing)
 
 
 def _fail_putting_the_source(monkeypatch):

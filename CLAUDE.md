@@ -55,8 +55,10 @@ count.
 typecheck, golden tests and every Python test (`poe test-all`). It is slow on
 this laptop.
 
-Lean build time and memory are budgeted per module, and CI's `lean` job fails
-a module over its ceiling: `docs/build-performance.md` has the method.
+Lean build time and memory have a per-module target, and checker speed is
+compared against main. CI reports a module over its target, or a slower
+checker, as a warning and never fails on it: the PR body explains the cost
+and a follow-up removes it. `docs/build-performance.md` has the method.
 
 Run expensive tasks through the drivers in `~/Projects/agentic-tools/drivers`
 (`capacity`, `local-run`, `lean-check`, `homelab-qa`, `homelab-run`, its
@@ -280,9 +282,9 @@ The `prove-lean` skill has the workflow. The rules:
 
 ## Engines
 
-DuckDB, Polars, Spark and Snowflake are the 1.0 engines. DataFusion is an
-optional engine and never a reference: Lean's model is the reference, and
-DuckDB is the default oracle where tests compare against an engine.
+DuckDB, Polars, Spark and Snowflake are the 1.0 engines; sverify no longer
+supports DataFusion. Lean's model is the reference, and DuckDB is the
+default oracle where tests compare against an engine.
 Snowflake's facts are private (the `engine-fact` skill says where).
 
 ## Skills

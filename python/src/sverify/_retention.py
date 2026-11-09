@@ -39,6 +39,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.graph import Node
 
+from sverify._arrow_state import _scalar, after, buckets, through  # noqa: F401  (re-exported: incremental calls them here)
 from sverify._weighted import _call, negative, positive, rows_of
 from sverify.contracts import ArrivesWithin, Condition, label, show_duration
 
@@ -253,10 +254,6 @@ def plan(
 # -- the lateness precondition on batches --------------------------------------
 
 
-def _scalar(value: Any, dtype: pa.DataType) -> pa.Scalar:
-    return pa.scalar(value, type=dtype)
-
-
 def latest_of(column: pa.ChunkedArray | pa.Array) -> Any:
     """The largest value of a column, None if it has no value."""
     if not len(column):
@@ -324,23 +321,6 @@ def show_time(v: Any) -> str:
 
 
 # -- the state ------------------------------------------------------------------
-
-
-def after(table: pa.Table, column: str, cutoff: Any) -> pa.Table:
-    """The rows of `table` whose bucket `column` starts after `cutoff`."""
-    col = table.column(column)
-    return table.filter(_call("greater", col, _scalar(cutoff, col.type)))
-
-
-def through(table: pa.Table, column: str, cutoff: Any) -> pa.Table:
-    """The rows of `table` whose bucket starts at or before `cutoff`."""
-    col = table.column(column)
-    return table.filter(_call("less_equal", col, _scalar(cutoff, col.type)))
-
-
-def buckets(table: pa.Table, column: str) -> int:
-    """How many distinct buckets `table` has."""
-    return _call("count_distinct", table.column(column)).as_py() if table.num_rows else 0
 
 
 @dataclass

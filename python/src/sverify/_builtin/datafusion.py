@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from sverify._arrow_state import ArrowOps
 from sverify.profiles import ProfilePlugin
 
 
@@ -26,6 +27,8 @@ def _version() -> str | None:
 
 PLUGIN = ProfilePlugin(
     "datafusion",
+    # Its views' state as Arrow tables, for now (`sverify._arrow_state`).
+    store=ArrowOps,
     title="DataFusion",
     translation="sverify's SQL writer, with shims where DataFusion differs from the "
     "reference, tested against the reference",
