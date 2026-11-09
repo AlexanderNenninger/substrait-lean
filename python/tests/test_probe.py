@@ -23,6 +23,13 @@ def test_nan_code():
     assert math.isnan(decode_double(probe.encode_double(math.nan)))
 
 
+def test_negative_zero_code():
+    # -0.0 has a code of its own (D31), below -inf.
+    code = probe.encode_double(-0.0)
+    assert code < probe.encode_double(-math.inf)
+    assert math.copysign(1.0, decode_double(code)) == -1.0
+
+
 def _verdict(construct: str, args: tuple[str, ...]) -> dict:
     p = next(p for p in probe.PROBES if p.construct == construct and p.args == args)
     return probe.run_probe(duckdb.connect(), p)

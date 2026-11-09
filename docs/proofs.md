@@ -75,9 +75,9 @@ contract's preconditions.
 | The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `zeval`, `eval` | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `zeval` | `Rel.weighted_eval` | `Weighted.lean` |
 | Union-free terms add up to the plan | `zeval` | `Rel.zeval_terms` | `Terms.lean` |
-| `COUNT`, `SUM` and `DISTINCT` are maintained from their state | `eval` | `aggregate_maintained`, `distinct_maintained` | `IncrementalAgg.lean` |
+| `COUNT`, `SUM` and `DISTINCT` are maintained from their state, one row per class of keys, as the reference allows | `Allowed` | `aggregate_maintained`, `distinct_maintained` | `IncrementalAgg.lean` |
 | `SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` and `CORR` of doubles are maintained exactly, with no drift over any batches | `eval` | `no_drift`, `floatState_sound`, `varState_sound`, `covState_sound`, `corrState_sound` | `IncrementalFloat.lean` |
-| `MIN`, `MAX` and exact `AVG` are maintained under inserts | `eval` | `extreme_maintained`, `finish_iavg` | `IncrementalMinMax.lean` |
+| `MIN`, `MAX` and exact `AVG` are maintained under inserts, as the reference allows | `Allowed` | `extreme_maintained`, `finish_iavg` | `IncrementalMinMax.lean` |
 | Semi and anti joins are maintained from a match count | `eval` | `semi_maintained` | `IncrementalSemi.lean` |
 | Recomputing only the touched groups or frames is exact | `eval` | `touched_sound`, `touched_window_sound`, `framed_sound` | `TouchedGroups.lean`, `TouchedFrames.lean` |
 | Dropping final time buckets from the state changes no result | `eval` | `retention_sound`, `expiry_sound` | `Retention.lean` |

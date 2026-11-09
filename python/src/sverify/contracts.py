@@ -88,7 +88,7 @@ from ibis.common.graph import Node
 
 from sverify import _hooks, _pipe, _stages
 from sverify import observation as _observation
-from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, decode_double  # noqa: F401
+from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyWarning

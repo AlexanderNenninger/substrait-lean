@@ -39,7 +39,7 @@ import duckdb
 import ibis
 
 from sverify import plan_json as pj
-from sverify.contracts import INF_MAG, NAN_MAG
+from sverify.contracts import INF_MAG, NAN_MAG, NEG_ZERO
 from sverify.engine import run_checker
 from sverify_dev import slt
 
@@ -150,12 +150,12 @@ PROBES: list[Probe] = [
 
 
 def encode_double(x: float) -> int:
-    """A double's code in the Lean model (`FloatCode.ofFloat`): zero (-0.0
-    too) is 0, magnitudes m = |x| · 2¹⁰⁷⁴ are ±(2m + 1), one NaN."""
+    """A double's code in the Lean model (`FloatCode.ofFloat`): zero is 0 and
+    -0.0 `NEG_ZERO` (D31), magnitudes m = |x| · 2¹⁰⁷⁴ are ±(2m + 1), one NaN."""
     if math.isnan(x):
         return 2 * NAN_MAG + 1
     if x == 0:
-        return 0
+        return NEG_ZERO if math.copysign(1.0, x) < 0 else 0
     mag = INF_MAG if math.isinf(x) else int(Fraction(abs(x)) * 2**1074)
     return (2 * mag + 1) * (1 if x > 0 else -1)
 

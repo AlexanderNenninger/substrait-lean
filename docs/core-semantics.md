@@ -1923,6 +1923,22 @@ raises or leaves the result open where engines disagree."
   canonical code (`NumKind.norm`); a function's soundness holds up to `canon`
   (`Value.CanonEq`), and the functions of native doubles, whose abstractions
   bound nothing, by their shape alone (`Value.ShapeEq`, `mapAbs_top_sound`).
+- `ORDER BY` is an identity boundary too: it sorts by a total preorder on
+  canonical values, and rows tied on it may come in any order (`Allowed`).
+- Where a class has several members, the reference allows any value of the
+  class, present in the input or not, as long as the class is: a `DISTINCT`
+  row, a `GROUP BY` key, and a `MIN` or `MAX` (`IsReps`, `AggFn.Picks`).
+  Engines emit a class's canonical value, so a group of `-0.0`s comes out
+  as `+0.0`, and any NaN code stands for the NaN. `Rel.eval` keeps one
+  admitted value, the raw-least member. Where the keys and arguments hold no
+  doubles, each class has one member and the output is unique
+  (`aggAllowed_eq`, `Rel.detPlan`'s `noDoubles` guards). A whole condition
+  can tell the members apart (`atan2`), so a `DISTINCT` keeps only the facts
+  that read numbers by their canonical codes (`Fact.classSafe`).
+- Incremental maintenance groups its state by class: the maintained output
+  of `GROUP BY` and `DISTINCT` is one the reference allows
+  (`LinearAgg.aggregate_maintained`, `distinct_maintained`,
+  `ExtremeAgg.extreme_maintained`).
 
 Why: the reference must compute what the engines compute on a stored or
 computed `-0.0`. Canonicalising reads or results instead is unsound: `atan2`

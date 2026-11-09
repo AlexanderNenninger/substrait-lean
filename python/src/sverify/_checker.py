@@ -300,11 +300,13 @@ def run_checker(flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
 
 # Doubles, timestamps and dates are integer codes in the Lean model
 # (core/Sverify/Core/Float.lean). A double with magnitude m = |x| * 2^1074 has
-# code ±(2m + 1), and zero (-0.0 too) has code 0, which orders codes like SQL
-# engines order doubles (-inf < ... < 0.0 < ... < +inf < NaN, one NaN).
-# Timestamps are microseconds, dates days.
+# code ±(2m + 1), and zero has code 0, which orders codes like SQL engines
+# order doubles (-inf < ... < 0.0 < ... < +inf < NaN). -0.0 and the negative
+# NaN have codes of their own below -inf, which comparisons read as 0.0 and
+# the NaN (`FloatCode.canon`, D31). Timestamps are microseconds, dates days.
 MAX_MAG = (2**53 - 1) * 2**2045
 INF_MAG, NAN_MAG = MAX_MAG + 1, MAX_MAG + 2
+NEG_ZERO = -(2 * NAN_MAG + 2)
 
 
 @functools.cache
@@ -327,9 +329,12 @@ def observations() -> dict[str, list[dict]]:
 
 
 def decode_double(code: int) -> float:
-    """The double of a code (`FloatCode.toFloat`): zero is `0`, NaN the one NaN."""
+    """The double of a code (`FloatCode.toFloat`): `0` and `NEG_ZERO` are the
+    zeros, NaN of either sign the one NaN."""
     if code == 0:
         return 0.0
+    if code == NEG_ZERO:
+        return -0.0
     sign = -1.0 if code < 0 else 1.0
     mag = (abs(code) - 1) // 2
     if mag >= NAN_MAG:
