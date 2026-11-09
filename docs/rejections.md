@@ -53,12 +53,14 @@ below the division guards it.
 ## Under an engine's profile
 
 Under `semantics="duckdb"`, `"polars"` or `"spark"` the plan is checked
-against what that engine does ([Verifying: the two paths](verifying.md)).
-Under an engine's profile, a plan is rejected where that engine raises, as
-its facts record, and the same preconditions rule each case out. Where the
-facts record a value the reference would raise on, the profile gives that
-value: DuckDB's profile follows DuckDB's probed behaviour on doubles and
-integers, and Polars's floors integer `//` and `%`.
+against that engine's own profile ([Verifying: the two paths](verifying.md)).
+Where the engine's recorded facts show it gives a value the reference raises
+on, or raises where the reference gives one, its profile says so, and the
+matching precondition still rules the raise out. DuckDB's profile records
+its probed double and integer behaviour, and Polars's floors integer `//`
+and `%`. An engine's rejection set differs from the reference's only where
+its facts record a difference
+([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
 
 ## Reading a refusal
 
