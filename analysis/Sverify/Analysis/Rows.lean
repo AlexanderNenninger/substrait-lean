@@ -1,11 +1,11 @@
-import SubstraitLean.Safety
-import SubstraitLean.Guards
-import SubstraitLean.Keys
+import Sverify.Analysis.Safety
+import Sverify.Analysis.Guards
+import Sverify.Analysis.Keys
 
 /-!
 # Row caps that rule out `SUM` overflow (#219)
 
-`Rel.maxRows` (`SubstraitLean/Contracts.lean`) bounds the rows of a plan from
+`Rel.maxRows` (`analysis/Sverify/Analysis/Contracts.lean`) bounds the rows of a plan from
 its shape: a `VALUES` list, a `FETCH` count, a product of joins. `sverify`
 caps each read of a table with a `max_rows` precondition with a `FETCH`
 (`Rel.capReads`). This file adds the other cap and puts both to use:

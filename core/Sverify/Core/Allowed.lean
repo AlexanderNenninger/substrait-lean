@@ -28,7 +28,7 @@ order of the rows. An engine's order of additions is a behaviour of its
 profile (`SumOrder`, `core/Sverify/Core/AllowedP.lean`), within #85's bound of it
 (`epsilon_sum_cr` in `float-bounds/`).
 
-For a plan without these choices (`Rel.detPlan`, `SubstraitLean/AllowedAnalysis.lean`),
+For a plan without these choices (`Rel.detPlan`, `analysis/Sverify/Analysis/AllowedAnalysis.lean`),
 every allowed result is `Rel.eval`'s up to the order of rows
 (`Rel.allowed_perm_eval`), so whatever is proved of `Rel.eval`'s rows holds
 of every allowed result. A rewrite is

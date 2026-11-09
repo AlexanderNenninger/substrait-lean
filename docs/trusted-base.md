@@ -77,7 +77,7 @@ place, and what retires it.
 
 | Construct | Names | File | What runs, or what it stands for | Retired by |
 |---|---|---|---|---|
-| axiom | `FloatCode.exp_fin` | `SubstraitLean/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
+| axiom | `FloatCode.exp_fin` | `analysis/Sverify/Analysis/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
 | opaque, `implemented_by` | `upper`, `lower`, `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256` | `core/Sverify/Core/Text.lean` | The string functions the checker evaluates by compiled code (`upperAscii`, `Digest.md5`, …); no proof looks inside them | A model of each in Lean, or a row of the black-box table |
 | opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `core/Sverify/Core/BlackBox.lean` | The black boxes' evaluation (`evalScalar`, …), outside the model | A model of the black boxes in `Impl` (`Boxes`) |
 | structure | `DoubleStats.Correct` | `SubstraitLean/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
@@ -94,7 +94,7 @@ place, and what retires it.
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
 | engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `characterization/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
-| size hypothesis | `Rel.Small`, `Text.sizeCap` | `SubstraitLean/Contracts/Sound.lean`, `core/Sverify/Core/Text.lean` | Fewer than 2⁶² rows a window reads, strings under 2³² characters ([the size hypothesis](core-semantics.md#d27-the-size-hypothesis-is-the-only-size-assumption)) | |
+| size hypothesis | `Rel.Small`, `Text.sizeCap` | `analysis/Sverify/Analysis/Contracts/Sound.lean`, `core/Sverify/Core/Text.lean` | Fewer than 2⁶² rows a window reads, strings under 2³² characters ([the size hypothesis](core-semantics.md#d27-the-size-hypothesis-is-the-only-size-assumption)) | |
 | toolchain | Lean `v4.35.0` | `lean-toolchain` | The kernel and the compiler | |
 
 ## The trusted parts in detail

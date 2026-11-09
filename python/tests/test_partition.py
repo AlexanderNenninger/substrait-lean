@@ -1,4 +1,4 @@
-"""Sharded evaluation (`sverify.partition`, `SubstraitLean/Partition.lean`):
+"""Sharded evaluation (`sverify.partition`, `analysis/Sverify/Analysis/Partition.lean`):
 the combined result of a plan run shard by shard equals its result on all
 the data, and plans whose result would depend on the split are refused."""
 
@@ -444,7 +444,7 @@ f_rows_and_shards = st.lists(st.tuples(st.integers(0, 2), doubles), max_size=16)
 
 def test_tolerance_matches_lean():
     """`shard_tol_scaled` and `shard_avg_tol_scaled` are `FloatCode`'s
-    (the `#guard`s in `SubstraitLean/Partition.lean`)."""
+    (the `#guard`s in `analysis/Sverify/Analysis/Partition.lean`)."""
     from sverify.partition import shard_avg_tol_scaled, shard_tol_scaled
 
     assert shard_tol_scaled(0, 0, 0, 0) == 0

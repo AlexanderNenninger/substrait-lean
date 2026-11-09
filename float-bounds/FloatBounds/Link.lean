@@ -9,7 +9,7 @@ public import FloatBounds.Sum
 as one `StdModel` does, and an operation whose exact result does not overflow
 gives a finite double. This is IEEE 754 binary64 with round to nearest, the
 rounding C's `double` does and Lean's `Float` compiles to. Like
-`Impl.Faithful` in `SubstraitLean/Guards.lean`, it is a hypothesis, never an
+`Impl.Faithful` in `analysis/Sverify/Analysis/Guards.lean`, it is a hypothesis, never an
 axiom: a theorem that needs it takes a `NativeLink` argument.
 
 Since Lean 4.35, `Float`'s operations have a logical model in the kernel

@@ -18,7 +18,7 @@ rounds to `0` or `2⁻¹⁰⁷⁴`, a relative error of at least `1/2`.
 The model is a structure, not an axiom: a theorem takes a `StdModel` as a
 hypothesis. The link to Lean's native `Float` (that its operations round as
 some `StdModel` does) is a separate, trusted assumption, `NativeLink` in
-`FloatBounds/Link.lean`, like `Impl.Faithful` in `SubstraitLean/Guards.lean`.
+`FloatBounds/Link.lean`, like `Impl.Faithful` in `analysis/Sverify/Analysis/Guards.lean`.
 
 `γ n = n·u / (1 − n·u)` bounds the relative error of `n` roundings
 (Higham §3.1); `one_add_gamma` writes `1 + γ n` as `1 / (1 − n·u)`, which is

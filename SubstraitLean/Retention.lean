@@ -1,4 +1,4 @@
-import SubstraitLean.Partition
+import Sverify.Analysis.Partition
 import Sverify.Core.Time
 
 /-!
