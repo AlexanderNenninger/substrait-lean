@@ -166,7 +166,7 @@ class Connection:
         ibis: Deprecated: the Ibis DuckDB backend the bound tables read
             through; `table(name).get_backend()` is the same backend.
         datafusion: Deprecated: the DataFusion session, an internal of the
-            DataFusion engine (#413).
+            DataFusion engine.
 
     Raises:
         ValueError: `engine` is unknown.
@@ -533,7 +533,7 @@ def stale_checker(path: Path | None = None) -> str | None:
     build in a source checkout (`.lake/build/bin/substrait-check`, an
     editable install or `SVERIFY_CHECKER`) and a Lean source of that checkout
     is newer than it; None otherwise. A checker that speaks this sverify's
-    protocol may still lack a feature the Python side asks for (#687)."""
+    protocol may still lack a feature the Python side asks for."""
     try:
         path = (path or checker_path()).resolve()
         root = path.parents[3]
@@ -659,7 +659,8 @@ def run_plan(
 
     DuckDB runs the SQL `sverify.engines.to_sql` writes for the plan, Polars
     a translation to a lazy frame, Spark the Spark SQL
-    `sverify.engines.to_sql` writes in the `SPARK` dialect; each gives the result `Rel.eval` gives.
+    `sverify.engines.to_sql` writes in Spark's dialect
+    (`sverify_spark.dialect.SPARK`); each gives the result `Rel.eval` gives.
     This is `sverify.engines.run`.
 
     Args:
@@ -672,7 +673,7 @@ def run_plan(
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
         finite: On DuckDB, Polars and Spark, check that no operation on finite
-            doubles gives `±∞` (`Issue.infinite`, #575), the reference's
+            doubles gives `±∞` (`Issue.infinite`), the reference's
             precondition. Default: True; `Report.run` passes False for a
             plan verified with `semantics="duckdb"`, which allows `±∞`.
         tie_free: On Spark, the plan's windows have no ties on data that

@@ -698,7 +698,7 @@ def _(mo):
     rest through. With `on_violation="quarantine"` on the transform (or on
     the source), the refresh sets aside the rows that break a precondition,
     with the reason, and the node runs on the others
-    ([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)).
+    ([quarantine and hold](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#bad-rows-quarantine-and-hold)).
     A row is set aside when a row condition is not TRUE on it, or when
     another row shares its key: both rows of a repeated `id` go, so the rule
     needs no order between them. Every precondition holds on the rows that
@@ -1268,8 +1268,8 @@ def _(mo):
     A proof is about the plan under one semantics, the reference by default.
     `report.run(con, engine, route="auto")` and
     `node.refresh(engine=..., route="auto")` choose how it reaches the
-    engine, and refuse the plan with the reason where nothing does (D13 in
-    [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)).
+    engine, and refuse the plan with the reason where nothing does
+    ([how a route is chosen](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)).
     The route names the plan's class on the engine: `exact` (every result
     the engine gives, the reference allows), `observed` (equal under an
     observation the postcondition states, a float tolerance included),
@@ -1336,13 +1336,11 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(con, dialect, json, mo, sql_query, substrait_json):
     import sqlglot
-    from sverify.engines import DUCKDB, SNOWFLAKE, UnsupportedError, to_sql
-    from sverify_spark.dialect import SPARK
+    from sverify.engines import UnsupportedError, to_sql
 
     try:
         _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))
-        _dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
-        _sql = to_sql(_plan, _dialects[dialect.value])
+        _sql = to_sql(_plan, dialect.value)
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
         _out = mo.md(f"```sql\n{_pretty}\n```")
     except UnsupportedError as _e:
@@ -1368,7 +1366,7 @@ def _(mo):
     and interval-valued result columns are refused because Snowflake has no
     interval type.
 
-    Spark and Databricks: the dialect (`sverify_spark.dialect.SPARK`) targets
+    Spark and Databricks: the `"spark"` dialect targets
     Spark 4 and is also what `node.refresh(engine="spark")` runs. It
     assumes the session settings of `sverify_spark.dialect.SPARK_CONF`, above all
     `spark.sql.ansi.enabled`: without ANSI mode an overflow wraps around
@@ -1506,11 +1504,11 @@ def _(mo):
     boundary between `v > 0.5` and `v >= 0.5` included. Arithmetic on
     doubles (`v * 2.5`) rounds, and the checker bounds `+`, `-`, `*` and `/`
     from their inputs' bounds with a proved rounding error
-    ([float bounds](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/float-bounds.md#one-operations-bounds-and-overflow-582)).
+    ([float bounds](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/float-bounds.md#one-operations-bounds-and-overflow)).
     The reference raises where an operation on finite doubles overflows to
     ±∞, so where no bound keeps `v * 2.5` finite, the report assumes it
     stays finite and the run checks it on the data first: a ±∞ in a result came from the
-    data ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)). For the same reason `power(-inf, 0.5)`
+    data. For the same reason `power(-inf, 0.5)`
     and a `MEDIAN` between −∞ and +∞ raise, where engines disagree. `FLOOR`, `CEIL`, `ROUND` and the cast to an integer are
     exact and monotone, so a bounded double rounds to a bounded integer:
     """)

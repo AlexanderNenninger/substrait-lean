@@ -82,9 +82,8 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import ENGINES, SNOWFLAKE, to_sql
+    from sverify.engines import ENGINES, to_sql
     from sverify.io import DeltaSink, DeltaSource
-    from sverify_spark.dialect import SPARK
 
     lake = Path(tempfile.mkdtemp())
 
@@ -139,8 +138,6 @@ def _():
         ENGINES,
         HISTORY,
         ORDERS,
-        SNOWFLAKE,
-        SPARK,
         dt,
         history_v0,
         ibis,
@@ -414,7 +411,7 @@ def _(mo):
 
 
 @app.cell
-def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_sql):
+def _(ENGINES, daily_city_revenue, history, mart, orders, to_sql):
     _results = {}
     for _engine in ENGINES:
         _node = orders.pipe(daily_city_revenue, history=history)
@@ -423,8 +420,8 @@ def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_s
     assert len({repr(r) for r in _results.values()}) == 1
     {
         "engines that agree": list(_results),
-        "Snowflake SQL": f"{len(to_sql(mart.internal_plan, SNOWFLAKE))} characters",
-        "Spark SQL": f"{len(to_sql(mart.internal_plan, SPARK))} characters",
+        "Snowflake SQL": f"{len(to_sql(mart.internal_plan, 'snowflake'))} characters",
+        "Spark SQL": f"{len(to_sql(mart.internal_plan, 'spark'))} characters",
     }
     return
 

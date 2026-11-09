@@ -154,7 +154,7 @@ class Sink:
         location: Where the table is, for reports and errors. Default:
             `name`.
         reproducible: What a rerun of a state must reproduce
-            (`sv.equivalent(...)`, #444 D20): the sink commits each epoch
+            (`sv.equivalent(...)`): the sink commits each epoch
             once, so a rerun has to give the same rows up to this. Default:
             rows as a multiset, doubles within the bound the checker proves
             for the plan (`Report.epsilon`, `sv.equivalent(floats="plan")`),
@@ -585,7 +585,7 @@ class _TableSink[T](Sink, ABC):
 
         The commit is conditional: it is made only while the epoch of
         `app_id` in the table is still the one `contract` read. Otherwise
-        the losing writer raises `ConcurrentWriteError` (#517, #534)."""
+        the losing writer raises `ConcurrentWriteError`."""
         try:
             return self._write(change)
         except self._commit_errors as e:
@@ -831,7 +831,7 @@ def sink_from(
             is ignored.
         name: The stored table's name in the plans that read it.
         credentials: The secrets `fn` writes with, by name or reference
-            (`sverify.io.Secret`), so reports list them (#778). Read one
+            (`sverify.io.Secret`), so reports list them. Read one
             inside `fn` with `Secret(name).value()`. Default: none.
 
     Returns:

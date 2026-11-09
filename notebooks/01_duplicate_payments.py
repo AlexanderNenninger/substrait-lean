@@ -94,9 +94,8 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import DUCKDB, ENGINES, SNOWFLAKE, to_sql
+    from sverify.engines import ENGINES, to_sql
     from sverify.io import DeltaSink, DeltaSource
-    from sverify_spark.dialect import SPARK
 
     lake = Path(tempfile.mkdtemp())  # a local "lake"; any Delta URI works, with storage_options
 
@@ -133,13 +132,10 @@ def _():
     )
     DeltaTable(lake / "transactions").alter.add_constraint({"non_negative": "amount_cents >= 0"})
     return (
-        DUCKDB,
         DeltaSink,
         DeltaSource,
         DeltaTable,
         ENGINES,
-        SNOWFLAKE,
-        SPARK,
         at,
         dt,
         first_load,
@@ -409,9 +405,9 @@ def _(mo):
     mo.md(r"""
     For a warehouse, sverify writes the plan as SQL. The SQL is long because
     it spells out every choice an engine would otherwise make. The Spark
-    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your account;
-    Snowflake's profile comes before 1.0
-    ([#851](https://github.com/AlexanderNenninger/substrait-lean/issues/851)):
+    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your
+    account, from the written SQL
+    ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)):
     """)
     return
 
@@ -424,15 +420,12 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(DUCKDB, SNOWFLAKE, SPARK, dialect, dups, mo, to_sql):
+def _(dialect, dups, mo, to_sql):
     import json
 
     import sqlglot
 
-    _sql = to_sql(
-        json.loads(dups.internal_plan),
-        {"snowflake": SNOWFLAKE, "spark": SPARK, "duckdb": DUCKDB}[dialect.value],
-    )
+    _sql = to_sql(json.loads(dups.internal_plan), dialect.value)
     mo.md(f"```sql\n{sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]}\n```")
     return
 

@@ -21,7 +21,7 @@ class Storage:
     endpoint), given once and passed to every source and sink that needs
     them: `DeltaSource(uri, storage_options=s3)`.
 
-    Credentials go by name (#775): `credentials="lake"` (or a reference
+    Credentials go by name: `credentials="lake"` (or a reference
     such as `"bao:kv/pipelines/lake"`) is a `Secret` whose fields are
     options, read when a table is opened; an option's value can be a
     `Secret` too. Without credentials the store's default chain applies
@@ -33,7 +33,7 @@ class Storage:
     credential names only.
 
     `reads` and `writes` declare what the credential may touch, as URI
-    prefixes (#778); a named credential's configuration can declare them
+    prefixes; a named credential's configuration can declare them
     instead (`Resolver`). `sverify check` warns about a sink outside
     `writes` and a source outside `reads` and `writes`.
 

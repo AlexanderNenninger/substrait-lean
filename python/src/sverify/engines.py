@@ -22,11 +22,12 @@ Running plans:
 SQL:
 
 * `Node.to_sql` and `Report.to_sql` write the plan a proof checked as SQL
-  whose meaning is the proof's, in a `Dialect`: `DUCKDB`, `SNOWFLAKE`, an
-  engine package's (`sverify_spark.dialect.SPARK`), or one named. What a
-  dialect cannot write is refused (`UnsupportedError`, the same class as
-  `sverify.errors.UnsupportedError`). `Dialect`'s SQL-writing methods and
-  subclassing it are outside the 1.x promise.
+  whose meaning is the proof's, in a dialect named as its engine:
+  `"duckdb"`, `"snowflake"` or `"spark"`, or a `Dialect` (an engine
+  package's, `sverify_spark.dialect.SPARK`). What a dialect cannot write is
+  refused (`UnsupportedError`, the same class as
+  `sverify.errors.UnsupportedError`). `Dialect`'s SQL-writing methods
+  and subclassing it are outside the 1.x promise.
 
 Plans, the low-level layer, outside the 1.x promise (they take sverify's
 internal plan, and may change in a minor release):
@@ -59,8 +60,6 @@ from sverify.engine import run_plan as run
 from sverify.incremental import delta_plans
 from sverify.partition import run_sharded
 from sverify.sql import Dialect, to_sql
-from sverify.sql.duckdb import DUCKDB
-from sverify.sql.snowflake import SNOWFLAKE
 
 
 def __getattr__(name: str) -> Any:
@@ -72,9 +71,7 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
-    "DUCKDB",
     "ENGINES",
-    "SNOWFLAKE",
     "Connection",
     "Dialect",
     "UnsupportedError",
