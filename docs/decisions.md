@@ -758,6 +758,11 @@ canonicalising read. The engines normalise exactly at the identity
 boundaries (Spark's `NormalizeFloatingNumbers`, DuckDB's hashing, Polars's
 grouping; their facts).
 
+Note (2026-11-09, theory advisor): a zero in an option's scope is either zero
+(`Value.hasZero` reads `FloatCode.isZeroCode`), so `zero_sign`'s scope holds
+a `-0.0` argument or result too, and `fp.elem` takes `zero_sign` for `atan2`
+(Spark's reads `-0.0` as `0.0`). No reference value or allowed set changes.
+
 ### D32. Calendar functions work on the reference's timestamps, 0001 to 9999
 
 Decided 2026-11-08 (signed off by the maintainer, reviewed by the theory
