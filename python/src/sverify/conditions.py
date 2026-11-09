@@ -461,12 +461,12 @@ def max_rows(n: int) -> MaxRows:
     the output. In `ensures` it is proved from them.
 
     With a cap, an integer `SUM` of values in `[-m, m]` over at most `n`
-    rows, with `n · m < 2⁶³`, is proved to fit 64 bits (#219), and needs no
+    rows, with `n · m < 2⁶³`, is proved to fit 64 bits, and needs no
     check on the data. Error bounds of floating-point aggregates grow with
     the number of rows, so `SUM` and `AVG` of doubles get their bounds only
     from inputs with a cap: a sum of at most `n` values in `[lo, hi]` lies
     within the proved tolerance of `[min(lo, n·lo), max(hi, n·hi)]`, and
-    their mean within it of `[lo, hi]` (#85, `docs/float-bounds.md`). Caps of
+    their mean within it of `[lo, hi]` (`docs/float-bounds.md`). Caps of
     up to `2³²` rows give bounds.
 
     Args:
@@ -551,7 +551,7 @@ def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
     most one partner. An aggregate grouping by all of `cols` then has groups
     of at most `at_most` rows (`Rel.groupRows_sound`). So an integer or
     decimal `SUM` of values in `[-m, m]` per group is proved to fit its type
-    when `at_most · m` does (#219), where a cap on the whole table
+    when `at_most · m` does, where a cap on the whole table
     (`max_rows`) would have to bound every group at once. `Report.relations`
     lists the bounds per relation.
 
@@ -705,7 +705,7 @@ def approx(
 
     `_.avg <= 100` may fail by the last bits after `AVG` of doubles rounds;
     `approx(_.avg <= 100)` is `_.avg <= 100.0001`, which the checker proves
-    from the error bounds of #85 when the inputs have a row cap
+    from the error bounds of `docs/float-bounds.md` when the inputs have a row cap
     (`max_rows`), and which runs as that condition at run time. The default
     `rel = 1e-6` covers the error of a `SUM` or `AVG` over any cap up to
     `2³²` rows, about `n · 2⁻⁵³` relative to the values' bound. Comparisons
@@ -974,7 +974,7 @@ class PreconditionError(SverifyError):
 
 
 class Inferred(str):
-    """A bound inferred to rule out an overflow (#244): a SQL condition on one
+    """A bound inferred to rule out an overflow: a SQL condition on one
     column of an input table, labelled as the Ibis code that states it
     (`(_.amount < 2**62)`). NULL passes, since only a value can overflow. It
     is checked, proved and reported like a precondition the user wrote."""

@@ -19,11 +19,11 @@ versions the caller gives. Each table format is an extra:
 imported when first used. `Storage` holds object store options (credentials,
 region) shared by several tables.
 
-Credentials go by name (#775): a `Secret` names where a value lives
+Credentials go by name: a `Secret` names where a value lives
 (`"env:NAME"`, `"bao:kv/path#field"`, a cloud secret manager, the OS
 keychain, or a bare name the configuration maps), and the `Resolver` reads
 it when a table is opened. `Node.credentials()` and each refresh entry
-list them per table, for reading or writing (`CredentialUse`, #778).
+list them per table, for reading or writing (`CredentialUse`).
 
 Your own sources and sinks:
 
