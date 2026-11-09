@@ -38,7 +38,8 @@ while [ $# -gt 0 ]; do
 done
 [ ${#install[@]} -gt 0 ] || { echo "wheel_tests.sh: --wheel or --editable is required" >&2; exit 2; }
 
-work=$(mktemp -d)
+# Resolved (`/private/var` on macOS), so `--rootdir` matches the working directory.
+work=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$work"' EXIT
 # The repository's layout, without the repository: `python/tests`,
 # `python/tools` and each engine package's `tests`. The node ids are relative
