@@ -9,7 +9,7 @@ API.
   lowering is involved, so a difference points at the profile, SQLGlot's
   reading, or the Lean model.
 * **Oracle C** (the round trip): the lifted plan, written back by Lean
-  (`--write`) and printed as DuckDB SQL by `sverify.sql.duckdb`, runs on
+  (`--write`) and printed as DuckDB SQL by `sverify_duckdb.dialect`, runs on
   DuckDB, and gives what DuckDB gives on the original SQL.
 
 `check` runs both on one query. `python -m sverify_dev.lift` scores the
@@ -75,10 +75,10 @@ def _same(a: pa.Table, b: pa.Table, ordered: bool, fmt: slt.Formatter) -> bool:
 
 def check(query: str, tables: Mapping[str, pa.Table], semantics: str = "duckdb") -> Check:
     """Oracles A and C on `query` over `tables` (Arrow tables by name)."""
-    from sverify import duckdb_engine
     from sverify.engine import run_checker, written_plan
     from sverify.sql_lift import lift
     from sverify.testing import lean_values
+    from sverify_duckdb import engine as duckdb_engine
 
     try:
         expected = duckdb_result(query, tables)

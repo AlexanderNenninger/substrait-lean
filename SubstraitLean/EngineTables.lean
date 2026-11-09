@@ -6,7 +6,7 @@ import SubstraitLean.SubstraitProfile
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
 
 DuckDB's, Polars's and Spark's choices and observation rows, from their facts
-(`characterization/duckdb/facts/`, `engines/polars/facts/`,
+(`engines/duckdb/facts/`, `engines/polars/facts/`,
 `engines/spark/facts/`), pinned to
 the versions those were probed at (D14). The rows cover the prototype slice:
 integer `+ - × /` and `%`, `SUM` and `AVG` of integers and doubles, double

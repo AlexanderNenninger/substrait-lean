@@ -9,7 +9,7 @@ plan the lift (`sverify.sql_lift`) writes for it. Two sources of queries:
 * **The benchmarks** (`sverify_dev.lift`): the 54 queries of #229, each
   compared with the stage it reached when `benchmarks.json` was written.
 * **The sqllogictest replay** (`sverify_dev.slt`): a fixed sample of the test
-  files whose ledger (`characterization/duckdb/<area>.json`) has a query that
+  files whose ledger (`engines/duckdb/replay/<area>.json`) has a query that
   agrees or disagrees, replayed and compared query by query with the ledger.
 
 A query that agreed and no longer does fails the check, and so does a new

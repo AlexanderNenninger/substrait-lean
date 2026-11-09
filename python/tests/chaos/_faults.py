@@ -58,7 +58,7 @@ POINTS: dict[str, tuple[str, str]] = {
     "engine.run": ("sverify.incremental.run_plan", "the engine running a plan"),
     # The pipeline's own state, in the process.
     "state.apply": (
-        "sverify._builtin.duckdb.DuckDBStore.apply",
+        "sverify_duckdb.DuckDBStore.apply",
         "updating DuckDB-held state in place",
     ),
     "state.put": ("sverify.incremental.put_table", "replacing a table of the pipeline"),

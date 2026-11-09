@@ -17,7 +17,7 @@
     444
   ],
   "files": [
-    "python/src/sverify/sql/duckdb.py"
+    "engines/duckdb/src/sverify_duckdb/dialect.py"
   ],
   "facts": [
     "duckdb-int-pow"

@@ -70,7 +70,7 @@ Real queries decide what is in. The sources, measured on 2026-11-05:
   wide tables to unpivot, values as text with `:` for missing and flags to
   split off.
 - DuckDB's sqllogictest replay (`sverify_dev.slt`, the ledgers in
-  [`characterization/duckdb/`](../characterization/duckdb/README.md), DuckDB
+  [`engines/duckdb/`](../engines/duckdb/facts/README.md), DuckDB
   2.0.0): 86,155 queries agree, 168 disagree, 22,368 are refused and 12,984
   skipped. The replay tests DuckDB's edge cases more than it samples real
   use, so its counts break ties. Of the refusals, 3,932 are out of scope

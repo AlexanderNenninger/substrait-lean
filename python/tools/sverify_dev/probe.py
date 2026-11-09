@@ -19,9 +19,9 @@ recorded as it is, after the probes, under `TimeZone = 'UTC'` unless its setup
 says otherwise. `--observations` reruns those alone, keeping the recorded
 probes, and needs no Lean.
 
-`python -m sverify_dev.probe --write` writes `characterization/duckdb/probes.json`,
+`python -m sverify_dev.probe --write` writes `engines/duckdb/replay/probes.json`,
 the evidence `Profile.duckdb` is seeded from (the `duckdb-R15-…` facts in
-`characterization/duckdb/facts/` cite its constructs).
+`engines/duckdb/facts/` cite its constructs).
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ import Sverify.Core.Profile
 # DuckDB's functions as a profile (#185)
 
 What DuckDB's scalar functions give, under its settings, as a diff against
-the reference (`Profile.duckdb`, from `characterization/duckdb/facts/`), and the
+the reference (`Profile.duckdb`, from `engines/duckdb/facts/`), and the
 profile as the SQL printer writes it (`Profile.duckdbWritten`). Definitions
 over the core alone, so the lowering's lemmas and the engine tables need not
 wait for the analysis; the soundness of running a verified plan on it
@@ -16,7 +16,7 @@ namespace Substrait
 /-- The DuckDB settings its profile depends on. -/
 structure DuckDBSettings where
   /-- `error_on_division_by_zero`, on by default since DuckDB 2.0: integer
-  `//` and `%` by zero raise, else give NULL (`characterization/duckdb/facts/`,
+  `//` and `%` by zero raise, else give NULL (`engines/duckdb/facts/`,
   R2, R3). Doubles follow it only with `ieeeOps` off. -/
   errorOnDivZero : Bool := true
   /-- `ieee_floating_point_ops`, on by default: doubles follow IEEE 754, so
@@ -83,7 +83,7 @@ def BinFn.onFloats : BinFn → Bool
 
 /-- **DuckDB's binary functions** on non-NULL arguments where they differ from
 the reference (`none`: as the reference), from the probes of
-`characterization/duckdb/probes.json` (FACTS R15). -/
+`engines/duckdb/replay/probes.json` (FACTS R15). -/
 def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
   | .idiv, _, b => if b = 0 then some (duckZero s) else none
   -- `MIN % -1` overflows in DuckDB, as `MIN // -1` does (R3).
@@ -162,7 +162,7 @@ theorem Profile.duckdb_imod_pos (s : DuckDBSettings) (a m : Int) (hm : 0 < m) :
 
 /-- Where DuckDB raises though the reference gives a value (R15): `MIN % -1`,
 and `<<` of a negative number or shifting out a bit. Even without guards, the
-SQL printer writes these out (`sverify.sql.duckdb`: `int_mod`, `bitwise`). -/
+SQL printer writes these out (`sverify_duckdb.dialect`: `int_mod`, `bitwise`). -/
 def BinFn.duckdbWritten : BinFn → Bool
   | .imod | .bit .shl => true
   | _ => false

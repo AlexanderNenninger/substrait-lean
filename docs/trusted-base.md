@@ -157,7 +157,7 @@ place, and what retires it.
   evaluates, on which rows, is trusted. `Rel.loose` models an engine that
   evaluates an expression on more rows than the plan says (merged filters,
   eager `AND` and `OR`), and the facts record what each engine does
-  ([duckdb-exec-filter-pushdown](../characterization/duckdb/facts/duckdb-exec-filter-pushdown.json),
+  ([duckdb-exec-filter-pushdown](../engines/duckdb/facts/duckdb-exec-filter-pushdown.json),
   [DD-7](../upstream/bugs/DD-7.json); `Safety.lean`'s header).
 - Doubles. Lean's `Float` is an opaque `extern` to C `double`, trusted to be
   IEEE binary64 where the model still calls it: `pow`, `log` and the other

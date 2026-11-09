@@ -21,8 +21,8 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify import duckdb_engine
 from sverify.engine import connect, put_table, read_tables, substrait_json, written_plan
+from sverify_duckdb import engine as duckdb_engine
 from sverify_polars import engine as polars_engine
 
 

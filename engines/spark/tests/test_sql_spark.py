@@ -24,8 +24,8 @@ from hypothesis import strategies as st
 
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
 from sverify.sql import Unsupported, to_sql
-from sverify.sql.duckdb import DUCKDB
 from sverify.testing import canonical
+from sverify_duckdb.dialect import DUCKDB
 from sverify_spark.dialect import SPARK
 from test_sql_snowflake import (
     ALL_PLANS,

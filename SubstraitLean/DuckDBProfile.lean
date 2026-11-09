@@ -58,7 +58,7 @@ catalog that satisfies the preconditions `A`, `F`, evaluating the plan with
 DuckDB's functions gives `Rel.eval`'s rows, under DuckDB's IEEE operations
 (the default), provided the plan's windows read fewer than `2⁶²` rows (the
 size hypothesis, `Rel.Small`). Trusted: that `Profile.duckdb` is DuckDB's
-(probed: `characterization/duckdb/probes.json`), that the SQL printer is
+(probed: `engines/duckdb/replay/probes.json`), that the SQL printer is
 faithful, writing out `MIN % -1` and `<<` (`Profile.duckdbWritten`), and that
 DuckDB's aggregates are Lean's (`AggFn.apply`): a profile gives only the
 scalar functions. For a double `SUM` or `AVG` that last part does not hold in

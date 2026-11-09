@@ -1,0 +1,94 @@
+{
+  "id": "duckdb-time-zones",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Time zones: ICU, the session's `TimeZone`; a DST gap moves forward, an overlap takes standard time",
+  "verdict": "time zones outside the model; DuckDB's are ICU's",
+  "area": "temporal",
+  "options": [
+    "time_zones"
+  ],
+  "constructs": [
+    "TIMESTAMPTZ",
+    "AT TIME ZONE",
+    "TimeZone",
+    "date_trunc",
+    "date_diff",
+    "+ INTERVAL"
+  ],
+  "settings": {
+    "TimeZone": [
+      "UTC",
+      "Europe/Berlin"
+    ]
+  },
+  "description": [
+    "`TIMESTAMP WITH TIME ZONE` is an instant (microseconds, UTC); the ICU extension, built into the Python wheel, reads and prints it in the session's `TimeZone` setting, whose default is the host's zone (`Europe/Berlin` on the probing laptop), so a query's text output depends on the host unless the setting is set.",
+    "A local time in a DST gap moves forward by the gap (`2024-03-31 02:30` in Berlin is `03:30:00+02`); one in an overlap takes the later, standard-time instant (`2024-10-27 02:30` is `02:30:00+01`). `AT TIME ZONE` turns a `TIMESTAMP` into such an instant and a `TIMESTAMPTZ` into a local `TIMESTAMP`; both instants of the overlap give `02:30:00`.",
+    "Calendar arithmetic follows the zone: `+ INTERVAL 1 DAY` across the spring change keeps the wall clock (`12:00:00+02`), `+ INTERVAL 24 HOUR` does not (`13:00:00+02`); `date_trunc('day', …)`, `date_part` and a cast to `DATE` use the local date; `date_diff('hour', …)` over the change counts 23. An unknown zone raises (`Not implemented Error: Unknown TimeZone`).",
+    "The docs are silent on DST gaps and overlaps: a docs gap."
+  ],
+  "reference": "Time-zone-aware timestamps are a kind the model does not compute with (reference-semantics.md, Temporal): plans with them are refused, and the reference's `timestamp` has no zone. The written SQL never reads `TimeZone`.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "tz-gap-overlap"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "tz-to-local"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "tz-interval"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "tz-utc"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "tz-unknown"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/extension/icu/icu-timezone.cpp"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu_extension.cpp#L446-L452", "note": "TimeZone defaults to TimeZone::TryCreateDefault() (the host's), UTC if unknown"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu_extension.cpp#L340-L357", "note": "unknown zone → NotImplementedException 'Unknown TimeZone'"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/icu/icu-timezone.cpp#L90-L147", "note": "ICUFromNaiveTimestamp: sets the calendar fields; no wall-time option is set, so ICU's defaults resolve gaps (forward) and overlaps (later instant)"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/timezone/test_icu_timezone_edge_cases.test#L10-L33", "note": "New York 2024-03-10 02:30 → 03:30:00-04; 2024-11-03 01:30 → 01:30:00-05"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/timezone/test_icu_timezone_edge_cases.test#L35-L48", "note": "Lord Howe half-hour DST: 2024-10-06 02:00 → 02:30:00+11"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/data_types/timestamp#time-zone-support", "note": "TimeZone 'defaults to the system time zone'; DST gap and overlap resolution not stated (docs gap)"}
+      ]
+    }
+  ]
+}

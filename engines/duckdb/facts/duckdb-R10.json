@@ -1,0 +1,68 @@
+{
+  "id": "duckdb-R10",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Casts between date and timestamp literals",
+  "verdict": "fixed (#206)",
+  "area": "temporal",
+  "options": [
+    "cast_parsing",
+    "timestamp_precision"
+  ],
+  "constructs": [
+    "CAST",
+    "cast",
+    "COALESCE",
+    ">="
+  ],
+  "settings": {},
+  "description": "DuckDB's conversions are the standard ones (native).",
+  "reference": [
+    "Substrait: a `date` is a day, and a `precision_timestamp` a point in time. A cast from date to timestamp is that day at midnight.",
+    "Lean: a date or timestamp literal was an integer in the model (`argKind`, [`Parse.lean:833`](../../SubstraitLean/Parse.lean#L833)), so `CAST(DATE '2020-05-05' AS TIMESTAMP)` took the `.int → .time` branch ([`Parse.lean:1248`](../../SubstraitLean/Parse.lean#L1248)) and read 18387 days as 18387 µs. `(TIMESTAMP …)::DATE` kept the microsecond count as days. Then `ts >= DATE '1993-08-15'` compared microseconds with days, and `COALESCE(date, timestamp)` mixed both codes. A deviation and a soundness bug.",
+    "Fixed (#206): date and timestamp constants keep their kinds; a cast from a date is that day at midnight, a cast from a timestamp floors to its day, and a comparison of a date with a timestamp that the plan does not cast is refused. A cast of a date column to a timestamp is still refused, as before."
+  ],
+  "status": "fixed",
+  "ledger_entries": 60,
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/date/date_implicit_cast.test",
+          "note": "line 13"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/timestamp/test_timestamp.test",
+          "note": "lines 119,139"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/function/generic/test_if_null.test",
+          "note": "line 15"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/function/generic/test_if.test",
+          "note": "line 20"
+        },
+        {
+          "file": "engines/duckdb/replay/types__date.json"
+        },
+        {
+          "file": "engines/duckdb/replay/types__timestamp.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-01",
+      "method": "source-reading",
+      "checked_by": "commit f861bdd (#206)",
+      "notes": "Date and timestamp casts converted."
+    }
+  ],
+  "issues": [
+    206
+  ]
+}

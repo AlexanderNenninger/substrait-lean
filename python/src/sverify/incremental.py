@@ -65,7 +65,6 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched
-from sverify._builtin.duckdb import DuckDBStore
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
@@ -129,6 +128,7 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     to_arrow,
     written_plan,
 )
+from sverify_duckdb import DuckDBStore
 
 Row = tuple
 

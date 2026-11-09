@@ -20,7 +20,7 @@ PYTHON = [
     *sorted((SRC / "ibis_substrait").glob("*.py")),
     *sorted((SRC / "sql_lift").glob("*.py")),
     *sorted((SRC / "sql" / "core").glob("*.py")),
-    SRC / "sql" / "duckdb.py",
+    ROOT / "engines" / "duckdb" / "src" / "sverify_duckdb" / "dialect.py",
 ]
 
 
@@ -43,7 +43,7 @@ def _refusals(path: Path) -> list[tuple[int, str]]:
     return found
 
 
-@pytest.mark.parametrize("path", PYTHON, ids=lambda p: str(p.relative_to(SRC)))
+@pytest.mark.parametrize("path", PYTHON, ids=lambda p: p.relative_to(ROOT).as_posix())
 def test_no_python_refusal_cites_datafusion(path):
     bad = [(line, text) for line, text in _refusals(path) if "datafusion" in text.lower()]
     assert not bad, bad
