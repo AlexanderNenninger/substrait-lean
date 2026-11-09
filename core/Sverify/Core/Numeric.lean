@@ -156,6 +156,12 @@ theorem logb?_isSome_canon (x b : Int) :
   · rfl
 
 #guard atan2? 0 0 == none && atan2? 0 FloatCode.negOne == some (FloatCode.ofFloat 3.141592653589793)
+-- The branch cut reads the raw `-0.0` (D31): `atan2(-0.0, -1)` is `-π`, and
+-- `atan2(-0.0, 1)` is `-0.0`, as DuckDB gives it; `ONE_ZERO` makes it `0.0`
+-- only where values are compared or grouped. Spark reads `-0.0` as `0.0`
+-- (`sparkBin`, `zero_sign`).
+#guard atan2? FloatCode.negZero FloatCode.negOne == some (FloatCode.ofFloat (-3.141592653589793))
+#guard atan2? FloatCode.negZero FloatCode.one == some FloatCode.negZero
 #guard logb? (FloatCode.ofFloat 8.0) (FloatCode.ofFloat 2.0) == some (FloatCode.ofFloat 3.0)
 #guard logb? 0 (FloatCode.ofFloat 2.0) == none && logb? FloatCode.one FloatCode.one == none
 

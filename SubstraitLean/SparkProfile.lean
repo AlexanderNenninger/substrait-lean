@@ -137,4 +137,14 @@ def Profile.sparkWritten : Profile where
   un f := if f.sparkWritten then Profile.reference.un f else Profile.spark.un f
   bin f := if f.sparkWritten then Profile.reference.bin f else Profile.spark.bin f
 
+
+-- Spark adds `0.0` to `atan2`'s arguments: `atan2(-0.0, -1)` is `+π` there,
+-- `-π` in the reference (`atan2?`), and `atan2(-0.0, 1)` is `+0.0`.
+#guard match sparkBin .fatan2 (.float FloatCode.negZero) (.float FloatCode.negOne) with
+  | some (.ok (.float c)) => c == FloatCode.ofFloat 3.141592653589793
+  | _ => false
+#guard match sparkBin .fatan2 (.float FloatCode.negZero) (.float FloatCode.one) with
+  | some (.ok (.float c)) => c == 0
+  | _ => false
+
 end Substrait
