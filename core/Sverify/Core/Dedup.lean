@@ -483,6 +483,41 @@ theorem canonReps_filter_perm {q : α → Bool} (hq : ∀ a b, c a = c b → q a
     have hqx : q x = true := (hq _ _ (classRep_canon (c := c) l x)).symm.trans hqr
     exact ⟨x, ⟨hxl, hqx⟩, classRep_filter hq hqx⟩
 
+
+end
+
+
+section
+
+variable {α : Type} {c : α → α}
+
+/-- `reps` keeps one member of each class of `l`, any member: what the
+reference allows for `DISTINCT` and `GROUP BY` keys (D31). `canonReps`
+keeps the least. -/
+def IsReps (c' : α → α) (l reps : List α) : Prop :=
+  reps.Pairwise (fun a b => c' a ≠ c' b) ∧ (∀ x ∈ reps, x ∈ l) ∧ ∀ x ∈ l, ∃ y ∈ reps, c' y = c' x
+
+theorem canonReps_isReps [DecidableEq α] {le : α → α → Bool} (h : RawOrder le) (l : List α) :
+    IsReps c l (canonReps c le l) :=
+  ⟨canonReps_pairwise h l, fun _ hx => canonReps_sub hx,
+    fun _ hx => ⟨_, classRep_mem_canonReps hx, classRep_canon _ _⟩⟩
+
+theorem IsReps.sub {l reps : List α} (h : IsReps c l reps) {x : α} (hx : x ∈ reps) : x ∈ l :=
+  h.2.1 x hx
+
+theorem IsReps.nodup {l reps : List α} (h : IsReps c l reps) : reps.Nodup :=
+  List.nodup_iff_pairwise_ne.mpr (h.1.imp fun hne he => hne (congrArg c he))
+
+theorem IsReps.congr {l l' reps : List α} (h : IsReps c l reps) (hm : ∀ y, y ∈ l ↔ y ∈ l') :
+    IsReps c l' reps :=
+  ⟨h.1, fun x hx => (hm x).mp (h.2.1 x hx), fun x hx => h.2.2 x ((hm x).mpr hx)⟩
+
+theorem IsReps.perm {l reps reps' : List α} (h : IsReps c l reps) (hp : reps'.Perm reps) :
+    IsReps c l reps' :=
+  ⟨(List.Perm.pairwise_iff (fun h he => h he.symm) hp).mpr h.1, fun x hx => h.2.1 x (hp.mem_iff.mp hx),
+    fun x hx => by obtain ⟨y, hy, he⟩ := h.2.2 x hx; exact ⟨y, hp.mem_iff.mpr hy, he⟩⟩
+
+
 end
 
 end Substrait
