@@ -48,9 +48,9 @@
 # directory. To stop a run, send SIGTERM to the script's own bash (its PID):
 # it stops the scope that is running and deletes the directory.
 #
-# The warm build is the root package's `.lake`. The core package's
-# `core/.lake` is not kept: it builds in about 20 s. `float-bounds/` and its
-# Mathlib are not part of `poe qa`. The warm build lives
+# The warm build is the root package's `.lake`. The `.lake` of the core,
+# the analysis and engines-common are not kept: they build in about 20 s.
+# `float-bounds/` and its Mathlib are not part of `poe qa`. The warm build lives
 # in ~/.cache/substrait-lean/lake/<toolchain>, is copied into the clone before
 # the build, and is replaced by the clone's `.lake` after a successful run.
 # Lake decides what to rebuild from the hashes in its trace files, so a cache

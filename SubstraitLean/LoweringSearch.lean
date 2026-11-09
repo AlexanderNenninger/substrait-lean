@@ -1,6 +1,6 @@
 import Lean
 import SubstraitLean.LoweringHint
-import SubstraitLean.Generated
+import Sverify.Engines.Generated
 
 /-!
 # The lowering generator (#241)
@@ -665,7 +665,9 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
       let mustE ← mkAppM ``Expr.must #[tmpl]
       let mem (i : Nat) := mkAppM ``Membership.mem #[mustE, toExpr i]
       let strictTy ← if unary then mem 0 else mkAppM ``And #[← mem 0, ← mem 1]
-      let named := tmpl.find? (·.isConstOf ``Lowering.shlTemplate) |>.isSome
+      -- A hand-written template is unfolded by name: DuckDB's `<<`
+      -- (`SubstraitLean/LoweringDuckDB/Lemmas.lean`), which this module does not import.
+      let named := tmpl.find? (·.isConstOf `Substrait.Lowering.shlTemplate) |>.isSome
       let strictTac ← if named then `(tactic| simp [Substrait.Expr.must, Lowering.shlTemplate])
         else `(tactic| simp [Substrait.Expr.must])
       let some strict ← prove strictTy strictTac | return none
