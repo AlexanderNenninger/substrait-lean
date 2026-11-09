@@ -35,6 +35,7 @@ Three theorems:
 engine profiles of step 3. -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## The relational options' behaviours -/
 
@@ -316,6 +317,7 @@ theorem windowRowsP.mono {part : List Nat} {fns : List WinFn} :
   | _, _ :: _, _, ⟨vs, rest, he, hv, hr⟩ =>
     ⟨vs, rest, he, Forall2.imp (fun _ _ => WinFn.AllowedP.mono h) hv, windowRowsP.mono hr⟩
 
+omit [Boxes.Ambient] in
 theorem SortedP.mono {keys : List SortKey} {out : Relation} :
     SortedP t keys out → SortedP u keys out := fun ⟨cmp, hc, nfs, hn, hcl, hs⟩ =>
   ⟨cmp, hc, nfs, Forall2.imp (fun _ _ hk => h _ _ _ _ hk) hn,
@@ -354,19 +356,25 @@ end Mono
 
 /-! ## The reference -/
 
+omit [Boxes.Ambient] in
 /-- The reference's choices of the relational options. -/
 theorem reference_allows_sum :
     Profile.reference.table.allows "agg.fsum" "sum_order" [] = ["EXACT"] := by
   decide +kernel
+omit [Boxes.Ambient] in
 theorem reference_allows_var :
     Profile.reference.table.allows "agg.var" "stat_algo" [] = ["EXACT"] := by decide +kernel
+omit [Boxes.Ambient] in
 theorem reference_allows_stat :
     Profile.reference.table.allows "agg.stat" "stat_algo" [] = ["EXACT"] := by decide +kernel
+omit [Boxes.Ambient] in
 theorem reference_allows_quant :
     Profile.reference.table.allows "agg.quant" "quantile_interp" [] = ["BETWEEN"] := by decide +kernel
+omit [Boxes.Ambient] in
 theorem reference_allows_window_sum :
     Profile.reference.table.allows "win.agg" "window_sum_algo" [] = ["RECOMPUTE"] := by
   decide +kernel
+omit [Boxes.Ambient] in
 theorem reference_allows_clustered :
     Profile.reference.table.allows "rel.sort" "clustered" [] = ["ADJACENT"] := by decide +kernel
 
@@ -393,6 +401,7 @@ theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by
   simp only [Measure.AllowedP, Measure.Allowed, AggFn.allowedP_reference]
 
+omit [Boxes.Ambient] in
 theorem forall₂_iff {α β : Type} {R S : α → β → Prop} (h : ∀ a b, R a b ↔ S a b) {l : List α}
     {l' : List β} : Forall2 R l l' ↔ Forall2 S l l' :=
   ⟨Forall2.imp fun a b => (h a b).mp, Forall2.imp fun a b => (h a b).mpr⟩
@@ -451,15 +460,18 @@ theorem windowRowsP_reference (part : List Nat) (fns : List WinFn) :
     · rintro rfl
       exact ⟨_, _, rfl, (hv _).mpr rfl, (windowRowsP_reference part fns _ after _).mpr rfl⟩
 
+omit [Boxes.Ambient] in
 theorem NullOk.reference (k : SortKey) (nf : Bool) :
     NullOk Profile.reference.table k nf ↔ nf = k.firstNulls := by
   unfold NullOk SortKey.nullPrefs SortKey.firstNulls
   cases k.nullsOpen <;> cases k.nullsFirst <;> cases nf <;> decide
 
+omit [Boxes.Ambient] in
 theorem zip_map_self {α β : Type} (f : α → β) : ∀ l : List α, l.zip (l.map f) = l.map fun a => (a, f a)
   | [] => rfl
   | a :: l => by simp only [List.map_cons, List.zip_cons_cons, zip_map_self f l]
 
+omit [Boxes.Ambient] in
 theorem SortedP.reference (keys : List SortKey) (out : Relation) :
     SortedP Profile.reference.table keys out ↔ SortAllowed keys out := by
   constructor

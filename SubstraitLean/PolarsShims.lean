@@ -156,6 +156,7 @@ theorem round_half_away (c : Int) : round .halfAwayFromZero c = FloatCode.round 
 def avgIntDeclared (vs : List Int) : Value :=
   if vs.length = 0 then .null else .int (intDivTrunc vs.sum vs.length)
 
+variable [Boxes.Ambient]
 /-- **`Polars.avg_int_declared`**: the shimmed `AVG` of integers is the
 reference's (`AggFn.iavg`): Polars's floored quotient corrected to the
 truncated one (`int_div_trunc`) is `Shim.avg_trunc`'s mean. -/
@@ -175,6 +176,7 @@ open FloatCode
 or the negative NaN, whose sign Polars keeps (`nan_kind`). -/
 def DoubleCode (c : Int) : Prop := IsRef c ∨ c = negZero ∨ c = negNan
 
+omit [Boxes.Ambient] in
 theorem canon_le_nan {c : Int} (h : DoubleCode c) : canon c ≤ nan :=
   (fp64.isRef_canon_of_isRef_or h).2
 
@@ -204,11 +206,13 @@ read with one zero. -/
 def maxNanGreatest (vs : List Int) (r : Value) : Value :=
   if vs.any (fun x => decide (canon x = nan)) then .float nan else canonV r
 
+omit [Boxes.Ambient] in
 /-- `Value.le` of two canonical doubles compares their codes. -/
 theorem le_canon_float {a b : Int} (h : (Value.float (canon a)).le (.float (canon b)) = true) :
     canon a ≤ canon b := by
   rw [Value.le_float, canon_idem, canon_idem] at h; exact of_decide_eq_true h
 
+omit [Boxes.Ambient] in
 theorem map_canon_cons (v : Int) (vs : List Int) :
     (Value.float (canon v) :: vs.map fun c => Value.float (canon c)) =
       (v :: vs).map fun c => Value.float (canon c) := rfl
@@ -291,6 +295,7 @@ def decimalRoundHalfAway (k : Nat) (u : Int) : Int :=
   let q : Int := ((u.natAbs + 5 * 10 ^ (k - 1)) / 10 ^ k : Nat)
   if u < 0 then -q else q
 
+omit [Boxes.Ambient] in
 /-- **`Polars.decimal_round_half_away`**: the shimmed rescale is the
 reference's (`roundDiv10`, `UnFn.dround`), on 128 bits: `|u| < 10³⁸`, so
 `|u| + 5·10ᵏ⁻¹` fits. -/
@@ -310,6 +315,7 @@ def decimalDivHalfAway (x n : Int) (k : Nat) : Int :=
   let q : Int := ((ax / an) * 10 ^ k + (2 * (ax % an) * 10 ^ k + an) / (2 * an) : Nat)
   if (x < 0) = (n < 0) then q else -q
 
+omit [Boxes.Ambient] in
 /-- **`Polars.decimal_div_half_away`**: the shimmed quotient is the
 reference's (`roundDivInt?`, `BinFn.ddiv`) of the dividend at `k` more
 places, a decimal `AVG` (`decimalAvgs`) or `sverify_decimal_div`. The
@@ -361,6 +367,7 @@ def strposChars (s t : String) : Int :=
   else if !occurs t.toList s.toList then 0
   else splitFirstLen t.toList s.toList + 1
 
+omit [Boxes.Ambient] in
 theorem findFrom_eq (t : List Char) : ∀ (cs : List Char) (i : Nat),
     Text.findFrom t cs i = if occurs t cs then some (i + splitFirstLen t cs) else none
   | [], i => by
@@ -374,6 +381,7 @@ theorem findFrom_eq (t : List Char) : ∀ (cs : List Char) (i : Nat),
       rw [findFrom_eq t cs (i + 1)]
       split <;> simp; omega
 
+omit [Boxes.Ambient] in
 /-- **`Polars.strpos_chars`**: the shimmed position is the reference's
 (`Text.strpos`), up to the size cap every position stays below. -/
 theorem strpos_chars (s t : String) : Text.strpos s t = Text.capped (strposChars s t) := by
@@ -391,6 +399,7 @@ theorem strpos_chars (s t : String) : Text.strpos s t = Text.capped (strposChars
 a 1-based position (`negative_start` = `WRAP_FROM_END`). -/
 def wrapStart (a : Int) (s : String) : Int := if a < 0 then a + s.length + 1 else a
 
+omit [Boxes.Ambient] in
 /-- **`Polars.substring_wrap`**: the substring from the rewritten start is the
 reference's (`Text.substrWrap`). -/
 theorem substring_wrap (s : String) (a : Int) (n : Option Nat) :
@@ -398,6 +407,7 @@ theorem substring_wrap (s : String) (a : Int) (n : Option Nat) :
 
 /-! ## Sorts: `null_order` and `tie_order` -/
 
+omit [Boxes.Ambient] in
 /-- **`Polars.tie_order`**: Polars's sort with `maintain_order=True` is
 stable (polars-sort-stability): its rows, each with its input position, are a
 permutation of the input sorted by the keys and, among ties, by position
@@ -430,6 +440,7 @@ theorem tie_order (le : Row → Row → Bool) (htrans : ∀ a b c, le a b → le
 /-- `int_overflows`: the exact (128-bit) result leaves 64 bits. -/
 def intOverflows (w : Int) : Bool := decide (w < FloatCode.minI64) || decide (FloatCode.maxI64 < w)
 
+omit [Boxes.Ambient] in
 /-- **`Polars.int_overflows`**: the flag is the reference's `wraps` issue of
 `+`, `-`, `*` (`BinFn.issue`). -/
 theorem intOverflows_eq (w : Int) : intOverflows w = !inI64 w := by
@@ -487,6 +498,7 @@ theorem zero_divisor (f : BinFn) (hf : f = .idiv ∨ f = .imod) (a b : Int) :
 /-- `sum_leaves_i64` of the exact (128-bit) sum. -/
 def sumLeavesI64 (total : Int) : Bool := intOverflows total
 
+omit [Boxes.Ambient] in
 /-- **`Polars.sum_leaves_i64`** (A3): the guard flags a group exactly where
 the reference's integer `SUM` leaves 64 bits (`Measure.sumOk`, `sumWraps`). -/
 theorem sum_leaves_i64 (m : Measure) (hm : m.sumDigits = none) (vs : List Int) :
@@ -545,6 +557,7 @@ theorem agg_makes_infinite (m : Measure) (hm : m.fn.infAgg = true) (grp : Relati
 /-- Polars's integer `+`, `-`, `*` wrap around (polars-int-arith). -/
 def wrap64 (x : Int) : Int := (x + 2 ^ 63) % 2 ^ 64 - 2 ^ 63
 
+omit [Boxes.Ambient] in
 theorem wrap64_of_inI64 {x : Int} (h : inI64 x = true) : wrap64 x = x := by
   simp only [inI64, between, Bool.and_eq_true, decide_eq_true_eq] at h
   have hmin : FloatCode.minI64 = -(2 ^ 63) := rfl
@@ -611,6 +624,7 @@ end Substrait.Polars
 
 namespace Substrait
 
+variable [Boxes.Ambient]
 /-- **A verified plan runs on Polars.** When `Rel.mayIssues` reports nothing
 but assumed issues (whose guards the translation keeps), on every catalog
 that satisfies the preconditions, Polars as the translation writes it, run

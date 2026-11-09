@@ -29,6 +29,7 @@ structure Query where
   out : Catalog → Table
   out_wf : ∀ cat, cat.WF → WF cat → ∀ row ∈ (out cat).rows, row.length = (out cat).arity
 
+variable [Boxes.Ambient]
 def Rel.query (r : Rel) : Query where
   WF := r.WF
   out cat := ⟨r.arity cat, r.eval cat⟩
@@ -38,6 +39,7 @@ def Rel.query (r : Rel) : Query where
 def Catalog.bind (cat : Catalog) (x : String) (tb : Table) : Catalog :=
   fun t => if t = x then tb else cat t
 
+omit [Boxes.Ambient] in
 theorem Catalog.bind_wf {cat : Catalog} {x : String} {tb : Table} (hcat : cat.WF)
     (htb : ∀ row ∈ tb.rows, row.length = tb.arity) : (cat.bind x tb).WF := by
   intro t
@@ -64,14 +66,17 @@ output of `q` satisfies `B`. -/
 def Triple (A : String → Relation → Prop) (q : Query) (B : Relation → Prop) : Prop :=
   ∀ cat, cat.WF → Sat A cat → q.WF cat → B (q.out cat).rows
 
+omit [Boxes.Ambient] in
 theorem Triple.mono {A : String → Relation → Prop} {q : Query} {B B' : Relation → Prop}
     (h : Triple A q B) (hB : ∀ rows, B rows → B' rows) : Triple A q B' :=
   fun cat hcat hA hwf => hB _ (h cat hcat hA hwf)
 
+omit [Boxes.Ambient] in
 theorem Triple.and {A : String → Relation → Prop} {q : Query} {B B' : Relation → Prop}
     (h : Triple A q B) (h' : Triple A q B') : Triple A q fun rows => B rows ∧ B' rows :=
   fun cat hcat hA hwf => ⟨h cat hcat hA hwf, h' cat hcat hA hwf⟩
 
+omit [Boxes.Ambient] in
 /-- **Composition (assume-guarantee).** If `g` guarantees, under `A`, what
 `f` assumes about its input `x` (`A' x`), and `A` implies what `f` assumes
 about its other inputs, then `f ∘ g` satisfies `f`'s postcondition under `A`:
@@ -218,10 +223,12 @@ theorem RowsSat.update {es : List Expr} {old kept del ins new : Relation} (hold 
   · exact hold.of_subset (fun r hr => hkept.subset (List.mem_append_left del hr)) row h
   · exact hins row h
 
+omit [Boxes.Ambient] in
 theorem KeyOn.perm {k : List Nat} {rows rows' : Relation} (h : KeyOn k rows) (hp : rows.Perm rows') :
     KeyOn k rows' :=
   (hp.pairwise_iff fun hne heq => hne heq.symm).1 h
 
+omit [Boxes.Ambient] in
 /-- **Keys under updates.** If the old table has key `k`, the inserted rows
 agree on `k` with neither each other nor any row that the batch keeps, then
 the new table has key `k`. -/
@@ -320,6 +327,7 @@ theorem Rel.chain_sound {C cat Δ : ZCatalog} {δ : String → String} {u : Stri
 
 def ZSet.neg (z : ZSet) : ZSet := List.map (fun x : Row × Int => (x.1, -x.2)) z
 
+omit [Boxes.Ambient] in
 theorem ZSet.weight_neg (z : ZSet) (r : Row) : z.neg.weight r = -z.weight r := by
   induction z with
   | nil => rfl
@@ -328,6 +336,7 @@ theorem ZSet.weight_neg (z : ZSet) (r : Row) : z.neg.weight r = -z.weight r := b
       rw [WSet.weight_cons, WSet.weight_cons, ih]
       split <;> omega
 
+omit [Boxes.Ambient] in
 /-- **Recompute and diff.** A view without a delta rule is recomputed (`new`)
 and its change taken as `new - old`; its old state plus that change has the
 weights of `new`, so it is a correct change for the views downstream. -/

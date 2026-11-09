@@ -23,6 +23,7 @@ where its shim is one of them.
 -/
 
 namespace Substrait.Shim
+variable [Boxes.Ambient]
 
 open FloatCode
 
@@ -34,6 +35,7 @@ where `-0.0 = 0.0`, writes it as `x + 0.0` (`Dialect.canon`) or as Polars's
 `one_zero` (polars-zero-sign, spark-zero-sign, duckdb-R14). -/
 def oneZero (c : Int) : Int := if c = 0 ∨ c = FloatCode.negZero then 0 else c
 
+omit [Boxes.Ambient] in
 /-- **`Shim.one_zero`**: the shim is `canon` on every code but the negative
 NaN, whose sign an engine may keep (`nan_kind`, refines up to `canon`, B2);
 so the keys it groups, deduplicates and joins on are the reference's codes. -/
@@ -47,6 +49,7 @@ theorem one_zero {c : Int} (h : c ≠ FloatCode.negNan) : oneZero c = FloatCode.
     · simp only [h0, hn, or_self, ite_false]
       exact (fp64.canon_eq_self ⟨hn, h⟩).symm
 
+omit [Boxes.Ambient] in
 theorem one_zero_isRef {c : Int} (h : FloatCode.IsRef c ∨ c = FloatCode.negZero) :
     FloatCode.IsRef (oneZero c) := by
   have hne : c ≠ FloatCode.negNan := by
@@ -65,10 +68,12 @@ def sum0 (vs : List Int) : Int := vs.sum
 /-- `sum_empty_null`: NULL where the group has no values. -/
 def sumEmptyNull (vs : List Int) : Value := if vs.length = 0 then .null else .int (sum0 vs)
 
+omit [Boxes.Ambient] in
 theorem intSum_map_int : ∀ vs : List Int, intSum (vs.map .int) = vs.sum
   | [] => rfl
   | v :: vs => by simp [intSum, intSum_map_int vs, List.sum_cons]
 
+omit [Boxes.Ambient] in
 theorem sumOf_map_int (vs : List Int) : sumOf (vs.map .int) = .int (intSum (vs.map .int)) := by
   rcases sumOf_cases (vs.map .int) with ⟨s, h1, _⟩ | ⟨_, e⟩
   · exfalso
@@ -95,6 +100,7 @@ count, NULL for no values (Spark's `div` truncates, spark-int-divide; Polars's
 def avgTrunc (vs : List Int) : Value :=
   if vs.length = 0 then .null else .int (vs.sum.tdiv vs.length)
 
+omit [Boxes.Ambient] in
 theorem sum_between (lo hi : Int) : ∀ vs : List Int, (∀ x ∈ vs, lo ≤ x ∧ x ≤ hi) →
     vs.length * lo ≤ vs.sum ∧ vs.sum ≤ vs.length * hi
   | [], _ => by simp
@@ -105,6 +111,7 @@ theorem sum_between (lo hi : Int) : ∀ vs : List Int, (∀ x ∈ vs, lo ≤ x �
       Int.one_mul]
     omega
 
+omit [Boxes.Ambient] in
 /-- A truncated mean lies between the values. -/
 theorem tdiv_mean_between {s lo hi : Int} {n : Nat} (hn : 0 < n) (h1 : n * lo ≤ s)
     (h2 : s ≤ n * hi) : lo ≤ s.tdiv n ∧ s.tdiv n ≤ hi := by
@@ -132,6 +139,7 @@ theorem tdiv_mean_between {s lo hi : Int} {n : Nat} (hn : 0 < n) (h1 : n * lo �
       omega
     omega
 
+omit [Boxes.Ambient] in
 theorem foldl_min_le_mem : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, xs.foldl min x ≤ y
   | x, [], y, hy => by simp at hy; subst hy; exact Int.le_refl _
   | x, z :: zs, y, hy => by
@@ -144,6 +152,7 @@ theorem foldl_min_le_mem : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, xs.
         exact Int.le_trans (foldl_min_le_mem (min x y) zs _ (List.mem_cons_self ..)) (Int.min_le_right _ _)
       · exact foldl_min_le_mem (min x z) zs y (List.mem_cons_of_mem _ h)
 
+omit [Boxes.Ambient] in
 theorem le_foldl_max_mem : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, y ≤ xs.foldl max x
   | x, [], y, hy => by simp at hy; subst hy; exact Int.le_refl _
   | x, z :: zs, y, hy => by
@@ -156,6 +165,7 @@ theorem le_foldl_max_mem : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, y �
         exact Int.le_trans (Int.le_max_right _ _) (le_foldl_max_mem (max x y) zs _ (List.mem_cons_self ..))
       · exact le_foldl_max_mem (max x z) zs y (List.mem_cons_of_mem _ h)
 
+omit [Boxes.Ambient] in
 theorem intsOf_map_int (vs : List Int) : intsOf (vs.map .int) = vs := by
   induction vs with
   | nil => rfl
@@ -195,6 +205,7 @@ spark-nan-order). -/
 def sortWith (ks : List (SortKey × Bool)) : Row → Row → Bool :=
   sortLeWith Value.le (ks.map fun (k, last) => (k, !last))
 
+omit [Boxes.Ambient] in
 /-- **`Shim.null_order`**: with each key's placement written, the engine
 orders rows as the reference (`sortLe`). -/
 theorem null_order (ks : List SortKey) : sortWith (ks.map fun k => (k, nullsLast k)) = sortLe ks := by

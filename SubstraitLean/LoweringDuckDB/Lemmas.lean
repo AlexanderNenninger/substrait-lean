@@ -16,6 +16,7 @@ DuckDB has no function for `UnFn.fit`: its profile computes it as the
 reference does, but the SQL printer has nothing to print, so every template
 must avoid it (`excluding`). These lemmas let the proofs compute it. -/
 
+variable [Boxes.Ambient]
 /-- DuckDB's profile is the reference's on a function of doubles with an
 argument that is not a double (`Value.double_cases`): what lets a generated
 proof keep such an argument whole. -/
@@ -181,6 +182,7 @@ def Lowering.shlTemplate : Expr :=
     (.ifThen (.un (.isNum .int) (.field 0))
       (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64)))) (.lit .null))
 
+omit [Boxes.Ambient] in
 /-- The template reads both arguments, for the entry's strictness. -/
 theorem Lowering.shlTemplate_must : 0 ∈ Lowering.shlTemplate.must ∧ 1 ∈ Lowering.shlTemplate.must := by
   simp [Expr.must, Lowering.shlTemplate]
@@ -196,10 +198,12 @@ def Lowering.zeroTemplate (f : UnFn) : Expr :=
 def Lowering.froundTemplate : Expr := Lowering.zeroTemplate .fround
 def Lowering.fceilTemplate : Expr := Lowering.zeroTemplate .fceil
 
+omit [Boxes.Ambient] in
 /-- The templates read their argument, for the entries' strictness. -/
 theorem Lowering.froundTemplate_must : 0 ∈ Lowering.froundTemplate.must := by
   simp [Expr.must, Lowering.froundTemplate, Lowering.zeroTemplate]
 
+omit [Boxes.Ambient] in
 theorem Lowering.fceilTemplate_must : 0 ∈ Lowering.fceilTemplate.must := by
   simp [Expr.must, Lowering.fceilTemplate, Lowering.zeroTemplate]
 
@@ -268,6 +272,7 @@ def Lowering.fpowTemplate : Expr :=
       (.bin .and (.bin .eq x ninf) yFrac))
     (.un (.raise "domain error") y) (.bin .fpow x y)
 
+omit [Boxes.Ambient] in
 /-- The template reads both arguments, for the entry's strictness. -/
 theorem Lowering.fpowTemplate_must : 0 ∈ Lowering.fpowTemplate.must ∧ 1 ∈ Lowering.fpowTemplate.must := by
   simp [Expr.must, Lowering.fpowTemplate]
@@ -366,12 +371,15 @@ theorem Lowering.fpow_float (e' : Bool) (a b : Int) :
     _ _ (by rw [hG]; rfl)]
   exact hguard _ rfl
 
+omit [Boxes.Ambient] in
 theorem Lowering.and3_eq_true {a b : Value} : and3 a b = .bool true ↔ a = .bool true ∧ b = .bool true := by
   unfold and3; split <;> simp_all
 
+omit [Boxes.Ambient] in
 theorem Lowering.or3_eq_true {a b : Value} : or3 a b = .bool true ↔ a = .bool true ∨ b = .bool true := by
   unfold or3; split <;> simp_all
 
+omit [Boxes.Ambient] in
 theorem Lowering.isTrue_eq_true {v : Value} : v.isTrue = true ↔ v = .bool true := by
   unfold Value.isTrue; split <;> simp_all
 

@@ -10,6 +10,7 @@ casts, domains, black boxes, double arithmetic and signs, ending in `UnFn.abs`,
 Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Abstract expression evaluation -/
 
@@ -18,6 +19,7 @@ namespace Substrait
 /-- The image of an interval under a monotone map. -/
 def Bound.mapMono (g : Int → Int) (b : Bound) : Bound := ⟨b.lo.map g, b.hi.map g⟩
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_mapMono {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y) {b : Bound} {i : Int}
     (h : b.Mem i) : (b.mapMono g).Mem (g i) := by
   obtain ⟨bl, bh⟩ := b
@@ -78,6 +80,7 @@ def ftoiAbs (a : AVal) : AVal :=
 /-- `a`, or NULL. -/
 def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_nullable {a : AVal} : ∀ {v}, a.Mem v → a.nullable.Mem v
   | .null, _ => rfl
   | .int _, h | .float _, h | .date _, h | .ts _, h | .tod _, h | .dec _ _, h
@@ -91,6 +94,7 @@ def narrowAbs (n : Nat) (a : AVal) : AVal :=
 /-- Can the interval contain 0? -/
 def Bound.has0 (b : Bound) : Bool := b.lo.all (· ≤ 0) && b.hi.all (0 ≤ ·)
 
+omit [Boxes.Ambient] in
 theorem Bound.ne_zero {b : Bound} {i : Int} (h : b.Mem i) (h0 : b.has0 = false) : i ≠ 0 := by
   obtain ⟨bl, bh⟩ := b
   simp only [Bound.Mem, Bound.has0] at *
@@ -106,6 +110,7 @@ def Bound.absHull (b : Bound) : Bound :=
   | some l, some h => let A : Int := max l.natAbs h.natAbs; ⟨some (-A), some A⟩
   | _, _ => Bound.top
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_absHull {b : Bound} {i j : Int} (h : b.Mem i) (hj : j.natAbs ≤ i.natAbs) :
     b.absHull.Mem j := by
   obtain ⟨bl, bh⟩ := b
@@ -129,6 +134,7 @@ def divBound (x y : Bound) : Bound :=
     else x.absHull
   | none => if y.lo.any (1 ≤ ·) then x.signHull else x.absHull
 
+omit [Boxes.Ambient] in
 /-- For a positive divisor, `a / b` lies between 0 and `a`. -/
 theorem tdiv_between {a b : Int} (hb : 0 < b) : min a 0 ≤ a.tdiv b ∧ a.tdiv b ≤ max a 0 := by
   rcases Int.le_total 0 a with ha | ha
@@ -143,6 +149,7 @@ theorem tdiv_between {a b : Int} (hb : 0 < b) : min a 0 ≤ a.tdiv b ∧ a.tdiv 
 /-- `roundDivInt?` for a non-zero divisor: a decimal `AVG`'s quotient (#27). -/
 def roundDiv (a b : Int) : Int := (roundDivInt? a b).getD 0
 
+omit [Boxes.Ambient] in
 theorem nat_roundDiv_le (A B : Nat) (hB : 0 < B) : (2 * A + B) / (2 * B) ≤ A := by
   apply Nat.le_of_lt_succ
   rw [Nat.div_lt_iff_lt_mul (by omega)]
@@ -151,6 +158,7 @@ theorem nat_roundDiv_le (A B : Nat) (hB : 0 < B) : (2 * A + B) / (2 * B) ≤ A :
     rw [Nat.add_mul, Nat.one_mul, Nat.mul_left_comm]
   rw [Nat.succ_eq_add_one, h2]; omega
 
+omit [Boxes.Ambient] in
 /-- The rounded quotient is no larger than the dividend in absolute value. -/
 theorem roundDiv_natAbs_le {a b : Int} (hb : b ≠ 0) : (roundDiv a b).natAbs ≤ a.natAbs := by
   have hq := nat_roundDiv_le a.natAbs b.natAbs (Int.natAbs_pos.mpr hb)
@@ -160,6 +168,7 @@ theorem roundDiv_natAbs_le {a b : Int} (hb : b ≠ 0) : (roundDiv a b).natAbs �
   dsimp only [Option.getD_some]
   split <;> simp only [Int.natAbs_neg, Int.natAbs_natCast] <;> exact hq
 
+omit [Boxes.Ambient] in
 /-- For a positive divisor, the rounded quotient lies between 0 and the
 dividend, as `tdiv_between` says of truncation. -/
 theorem roundDiv_between {a b : Int} (hb : 0 < b) :
@@ -188,6 +197,7 @@ theorem roundDiv_between {a b : Int} (hb : 0 < b) :
     have h1 : (a.natAbs : Int) = -a := Int.ofNat_natAbs_of_nonpos (by omega)
     omega
 
+omit [Boxes.Ambient] in
 theorem nat_roundDiv_le_of {A N M : Nat} (hN : 0 < N) (h : A ≤ N * M) :
     (2 * A + N) / (2 * N) ≤ M := by
   apply Nat.le_of_lt_succ
@@ -197,12 +207,14 @@ theorem nat_roundDiv_le_of {A N M : Nat} (hN : 0 < N) (h : A ≤ N * M) :
   show 2 * A + N < (M + 1) * (2 * N)
   omega
 
+omit [Boxes.Ambient] in
 theorem nat_le_roundDiv_of {A N M : Nat} (hN : 0 < N) (h : N * M ≤ A) :
     M ≤ (2 * A + N) / (2 * N) := by
   rw [Nat.le_div_iff_mul_le (by omega)]
   have e : M * (2 * N) = 2 * (N * M) := by rw [Nat.mul_left_comm, Nat.mul_comm M N]
   omega
 
+omit [Boxes.Ambient] in
 /-- A rounded quotient by a positive divisor stays within integer bounds of
 the exact one (a decimal `AVG` within its values, #237). -/
 theorem roundDiv_bounds {a n : Int} (hn : 0 < n) :
@@ -323,6 +335,7 @@ def Bound.ge (lo : Int) : Bound := ⟨some lo, none⟩
 def Bound.clamp (lo hi : Int) (b : Bound) : Bound :=
   ⟨some (max lo (b.lo.getD lo)), some (min hi (b.hi.getD hi))⟩
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_clamp {lo hi i : Int} {b : Bound} (h : b.Mem i) (hl : lo ≤ i) (hh : i ≤ hi) :
     (b.clamp lo hi).Mem i := by
   obtain ⟨bl, bh⟩ := b
@@ -434,6 +447,7 @@ def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bo
     str := result == .str || result == .atom || any, nk := result.numKind,
     list := result.elemAbs.isSome || any, elems := result.elemAbs, struct := any }
 
+omit [Boxes.Ambient] in
 theorem BlackBox.lawsBound_mem {set : Bool} {k : NumKind} {i : Int} :
     ∀ {laws : List BlackBox.Law}, (laws.all fun l => l.holds set (k.val i)) = true →
       (laws.foldr (fun l b => l.bound.meet b) Bound.top).Mem (k.norm i)
@@ -444,6 +458,7 @@ theorem BlackBox.lawsBound_mem {set : Bool} {k : NumKind} {i : Int} :
     cases l <;> cases k <;> simp_all [BlackBox.Law.holds, BlackBox.Law.bound, Bound.Mem, Bound.top,
       NumKind.val, NumKind.norm]
 
+omit [Boxes.Ambient] in
 theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {set : Bool}
     {v : Value} (h : BlackBox.ok result laws set v = true) :
     (BlackBox.lawsAbs result laws set).Mem v := by
@@ -495,19 +510,19 @@ theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {
 
 /-- A scalar black box's result, where no argument is NULL (`set`) or some may be. -/
 def BlackBox.scalarAbs (name : String) (set : Bool) : AVal :=
-  match BlackBox.scalar? name with
+  match Boxes.Ambient.boxes.scalar? name with
   | some f => BlackBox.lawsAbs f.result f.laws set
   | none => { null := true }
 
 theorem BlackBox.scalarAbs_mem {name : String} {vs : List Value} {set : Bool}
     (hs : set = true → vs.contains .null = false) :
-    (BlackBox.scalarAbs name set).Mem (BlackBox.callScalar name vs) := by
+    (BlackBox.scalarAbs name set).Mem (BlackBox.callScalar Boxes.Ambient.boxes name vs) := by
   unfold BlackBox.scalarAbs BlackBox.callScalar
-  cases h : BlackBox.scalar? name with
+  cases h : Boxes.Ambient.boxes.scalar? name with
   | none => rfl
   | some f =>
     apply BlackBox.lawsAbs_mem
-    have hok := BlackBox.Scalar.call_ok (BlackBox.scalar?_mem h) vs
+    have hok := BlackBox.Scalar.call_ok_of_wf Boxes.Ambient.wf (BlackBox.scalar?_mem h) vs
     cases set
     · cases hc : vs.contains .null
       · rw [hc] at hok; exact BlackBox.ok_of_set hok false
@@ -516,16 +531,16 @@ theorem BlackBox.scalarAbs_mem {name : String} {vs : List Value} {set : Bool}
 
 /-- An aggregate black box's result: over values (`valued`), or maybe over none. -/
 def BlackBox.aggAbs (name : String) (valued : Bool) : AVal :=
-  match BlackBox.aggregate? name with
+  match Boxes.Ambient.boxes.aggregate? name with
   | some f => (BlackBox.lawsAbs f.result f.laws true).join
       (if valued then AVal.bot else AVal.ofValue f.empty)
   | none => { null := true }
 
 theorem BlackBox.aggAbs_mem {name : String} {vs : List Value} {valued : Bool}
     (hv : valued = true → vs ≠ []) :
-    (BlackBox.aggAbs name valued).Mem (BlackBox.callAgg name vs) := by
+    (BlackBox.aggAbs name valued).Mem (BlackBox.callAgg Boxes.Ambient.boxes name vs) := by
   unfold BlackBox.aggAbs BlackBox.callAgg
-  cases h : BlackBox.aggregate? name with
+  cases h : Boxes.Ambient.boxes.aggregate? name with
   | none => rfl
   | some f =>
     cases vs with
@@ -536,7 +551,8 @@ theorem BlackBox.aggAbs_mem {name : String} {vs : List Value} {valued : Bool}
       · exact absurd rfl (hv rfl)
     | cons v vs =>
       exact AVal.mem_join_left (BlackBox.lawsAbs_mem
-        (BlackBox.Aggregate.call_ok (BlackBox.aggregate?_mem h) (List.cons_ne_nil _ _)))
+        (BlackBox.Aggregate.call_ok_of_wf Boxes.Ambient.wf (BlackBox.aggregate?_mem h)
+          (List.cons_ne_nil _ _)))
 
 /-- The interval of a double function's result where `safe` says the
 argument is in its domain: some double. -/
@@ -807,6 +823,7 @@ def Bound.nonneg (b : Bound) : Bool := b.lo.any (0 ≤ ·)
 /-- `b`, raised to start at code `0`. -/
 def Bound.atLeast0 (b : Bound) : Bound := ⟨some (b.lo.elim 0 (max 0)), b.hi⟩
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_atLeast0 {b : Bound} {r : Int} (h : b.Mem r) (h0 : 0 ≤ r) :
     b.atLeast0.Mem r := by
   obtain ⟨hl, hh⟩ := h
@@ -817,6 +834,7 @@ theorem Bound.mem_atLeast0 {b : Bound} {r : Int} (h : b.Mem r) (h0 : 0 ≤ r) :
   | none => simpa using h0
   | some l => have := hl l hlo; simp only [Option.elim]; omega
 
+omit [Boxes.Ambient] in
 theorem Bound.nonneg_mem {b : Bound} {r : Int} (h : b.Mem r) (hn : b.nonneg = true) : 0 ≤ r := by
   unfold Bound.nonneg at hn
   cases hlo : b.lo with
@@ -933,6 +951,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
         { null := a.nonInt || b.nonInt || !sameNk a b, tt := canLt x y || t, ff := canGe x y || f }
       | _, _ => { null := true, tt := t, ff := f }
 
+omit [Boxes.Ambient] in
 theorem strMayEq_of {a b : AVal} {s : String}
     (ha : a.str = true ∧ a.strs.all (·.contains s) = true)
     (hb : b.str = true ∧ b.strs.all (·.contains s) = true) : strMayEq a b = true := by
@@ -940,6 +959,7 @@ theorem strMayEq_of {a b : AVal} {s : String}
   cases hA : a.strs <;> cases hB : b.strs <;> simp_all
   exact ⟨s, ha.2, hb.2⟩
 
+omit [Boxes.Ambient] in
 theorem strMayNe_of {a b : AVal} {s s' : String}
     (ha : a.str = true ∧ a.strs.all (·.contains s) = true)
     (hb : b.str = true ∧ b.strs.all (·.contains s') = true) (hne : s ≠ s') :
@@ -967,18 +987,22 @@ def HoFn.abs : HoFn → AVal → AVal → AVal
   | .filter, l, _ =>
     { null := l.nonList, list := l.list, elems := l.elems, card := ⟨some 0, l.card.hi⟩ }
 
+omit [Boxes.Ambient] in
 theorem or3_bool_or_null (a b : Value) : or3 a b = .null ∨ ∃ x, or3 a b = .bool x := by
   unfold or3; split <;> simp
 
+omit [Boxes.Ambient] in
 theorem and3_bool_or_null (a b : Value) : and3 a b = .null ∨ ∃ x, and3 a b = .bool x := by
   unfold and3; split <;> simp
 
+omit [Boxes.Ambient] in
 /-- A value in `a` other than a list makes `a.nonList` true. -/
 theorem AVal.nonList_of_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : ∀ vs, v ≠ .list vs) :
     a.nonList = true := by
   mem_cases h with i b hb hi
   all_goals simp_all [AVal.nonList, AVal.nested, AVal.Mem]
 
+omit [Boxes.Ambient] in
 /-- A value in `b` other than a boolean makes `b.nonBool` true. -/
 theorem AVal.nonBool_of_mem {b : AVal} {v : Value} (h : b.Mem v) (hv : ∀ x, v ≠ .bool x) :
     b.nonBool = true := by

@@ -357,6 +357,14 @@ jobs:
           LAKE_OVERRIDE_LEAN: "true"
           LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
           LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+      # The core, the analysis and engines-common are parametric in the
+      # black-box catalogue: they declare no `Boxes.Ambient` instance. Only an
+      # engine package does, as a `scoped instance` (#1189).
+      - run: |
+          if git grep -nE 'instance[^:]*:[^=]*Boxes\.Ambient' -- core analysis engines; then
+            echo "a Boxes.Ambient instance in the core, the analysis or engines-common" >&2
+            exit 1
+          fi
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true

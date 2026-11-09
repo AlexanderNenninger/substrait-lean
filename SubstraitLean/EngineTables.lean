@@ -521,6 +521,7 @@ theorem Profile.polars_le_core : Profile.polars.table.Le Profile.core.table :=
 theorem Profile.spark_le_core : Profile.spark.table.Le Profile.core.table :=
   ProfileTable.le_of_leB Profile.spark_leB
 
+variable [Boxes.Ambient]
 /-- `Allowed_duckdb ⊆ Allowed_core`, for every setting. -/
 theorem Rel.allowed_duckdb_core (s : DuckDBSettings) {cat : Catalog} {r : Rel} {out : Relation}
     (h : r.AllowedP (Profile.duckdb.table s) cat out) : r.AllowedP Profile.core.table cat out :=

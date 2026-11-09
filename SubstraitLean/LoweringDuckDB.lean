@@ -94,6 +94,7 @@ infinite parameter (a message, a decimal scale) is native in every table. -/
 def unFns : List UnFn := finite_values% UnFn
 def binFns : List BinFn := finite_values% BinFn
 
+variable [Boxes.Ambient]
 /-- The entries of a table that are not the native call. -/
 def tableJson {p : Profile} (L : Lowering p) : Json :=
   let un := unFns.filterMap fun f => (L.un f).bind fun e =>
@@ -110,6 +111,7 @@ def tableJson {p : Profile} (L : Lowering p) : Json :=
 
 end LoweringExport
 
+variable [Boxes.Ambient]
 /-- The DuckDB table, exported. `"on"` names the setting of
 `error_on_division_by_zero` it is for (`sverify.sql.lowering.SETTING`). -/
 def Lowering.duckdbTableJson : Lean.Json :=

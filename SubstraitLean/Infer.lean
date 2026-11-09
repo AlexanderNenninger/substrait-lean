@@ -113,6 +113,7 @@ def span : Time.TimeUnit → Int
 /-- In days, for truncating a DATE. -/
 def spanDays (u : Time.TimeUnit) : Int := span u / Time.usPerDay
 
+variable [Boxes.Ambient]
 /-- Ranges of the columns of `env` that keep `e` in `[lo, hi]`, or why there
 are none. Over-strict is fine; too weak only fails the proof. -/
 partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Except String Found

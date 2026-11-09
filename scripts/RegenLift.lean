@@ -14,6 +14,9 @@ Not part of the library: `lake build` does not elaborate it.
 
 namespace Substrait
 
+-- DuckDB's black boxes (#1189).
+open scoped Substrait.DuckDB
+
 -- The search's budget per candidate: the generated check's under DuckDB's
 -- semantics (`DOUBLE * DOUBLE` and `/` split nine double cases), half of it
 -- under the reference's.

@@ -38,6 +38,7 @@ operations are in `core/Sverify/Core/Numeric.lean`.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-- Substrait's `overflow` option, where a plan asks for it (#241): `SILENT`
 wraps around at the declared width, `SATURATE` clamps to it. `ERROR`, what a
@@ -77,9 +78,13 @@ def IntWidth.lo : IntWidth → Int
 def IntWidth.hi : IntWidth → Int
   | .i8 => 127 | .i16 => 32767 | .i32 => 2147483647 | .i64 => 9223372036854775807
 
+omit [Boxes.Ambient] in
 theorem IntWidth.half_eq (w : IntWidth) : w.half = 2 ^ (w.bits - 1) := by cases w <;> rfl
+omit [Boxes.Ambient] in
 theorem IntWidth.modulus_eq (w : IntWidth) : w.modulus = 2 ^ w.bits := by cases w <;> rfl
+omit [Boxes.Ambient] in
 theorem IntWidth.lo_eq (w : IntWidth) : w.lo = -w.half := by cases w <;> rfl
+omit [Boxes.Ambient] in
 theorem IntWidth.hi_eq (w : IntWidth) : w.hi = w.half - 1 := by cases w <;> rfl
 
 /-- An exact integer brought to the width: wrapped around (two's complement)
@@ -471,7 +476,7 @@ def UnFn.apply : UnFn → Value → Value
   | .isNum k, v => .bool (v.isNum k)
   | .fit m w, .int i => .int (w.fit m i)
   | .fit _ _, v => v
-  | .bbox n, v => BlackBox.callScalar n [v]
+  | .bbox n, v => BlackBox.callScalar Boxes.Ambient.boxes n [v]
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -503,6 +508,7 @@ def Value.elems : Value → List Value
   | .list vs => vs
   | _ => []
 
+omit [Boxes.Ambient] in
 /-- A higher-order function only applies its lambda to the list's elements. -/
 theorem HoFn.apply_congr (f : HoFn) (v : Value) {p q : Value → Value}
     (h : ∀ x ∈ v.elems, p x = q x) : f.apply v p = f.apply v q := by
@@ -541,6 +547,7 @@ values (`isTrue_eq`). -/
   | .dec s a, .dec t b => if s = t then some (a, b) else none
   | _, _ => none
 
+omit [Boxes.Ambient] in
 /-- Two numbers that compare are of one kind. -/
 theorem Value.numPair_some {a b : Value} {p q : Int} (h : a.numPair b = some (p, q)) :
     ∃ k : NumKind, a = k.val p ∧ b = k.val q := by
@@ -553,6 +560,7 @@ theorem Value.numPair_some {a b : Value} {p q : Int} (h : a.numPair b = some (p,
     | (obtain ⟨rfl, rfl⟩ := h; exact ⟨.tod, rfl, rfl⟩)
     | (obtain ⟨rfl, rfl, rfl⟩ := h; exact ⟨.dec _, rfl, rfl⟩)
 
+omit [Boxes.Ambient] in
 theorem Value.numPair_self {a : Value} {p q : Int} (h : a.numPair a = some (p, q)) : p = q := by
   cases a <;> simp at h <;> omega
 
@@ -564,17 +572,24 @@ def NumKind.norm : NumKind → Int → Int
   | .float, i => FloatCode.canon i
   | _, i => i
 
+omit [Boxes.Ambient] in
 /-- `norm` of a double, for `rw`: `simp` would unfold `canon`'s constants. -/
 theorem NumKind.norm_float (i : Int) : NumKind.float.norm i = FloatCode.canon i := rfl
 
+omit [Boxes.Ambient] in
 theorem NumKind.norm_zero : ∀ k : NumKind, k.norm 0 = 0
   | .float => FloatCode.canon_zero
   | .int | .date | .ts | .tod | .dec _ => rfl
 
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_int (i : Int) : NumKind.int.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_date (i : Int) : NumKind.date.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_ts (i : Int) : NumKind.ts.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_tod (i : Int) : NumKind.tod.norm i = i := rfl
+omit [Boxes.Ambient] in
 @[simp] theorem NumKind.norm_dec (s : Nat) (i : Int) : (NumKind.dec s).norm i = i := rfl
 
 /-- A value with its doubles canonical, in lists and structs too: `-0.0` is
@@ -586,13 +601,17 @@ def Value.canonV : Value → Value
   | .struct vs => .struct (vs.map Value.canonV)
   | v => v
 
+omit [Boxes.Ambient] in
 theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by
   simp only [Value.canonV]
+omit [Boxes.Ambient] in
 theorem Value.canonV_list (vs : List Value) : (Value.list vs).canonV = .list (vs.map Value.canonV) := by
   simp only [Value.canonV]
+omit [Boxes.Ambient] in
 theorem Value.canonV_struct (vs : List Value) : (Value.struct vs).canonV = .struct (vs.map Value.canonV) := by
   simp only [Value.canonV]
 
+omit [Boxes.Ambient] in
 /-- `canonV` keeps a value's kind, so two values compare as numbers exactly
 when their canonical values do. -/
 theorem Value.numPair_canonV_isNone (a b : Value) :
@@ -691,7 +710,7 @@ def ListOp.apply : ListOp → Value → Value → Value
 /-- Arithmetic and comparisons are null-propagating; ill-typed calls yield
 `null` (a well-typed plan never reaches those cases). -/
 def BinFn.apply : BinFn → Value → Value → Value
-  | .bbox2 n, a, b => BlackBox.callScalar n [a, b]
+  | .bbox2 n, a, b => BlackBox.callScalar Boxes.Ambient.boxes n [a, b]
   | .greatest, a, b => Value.pick Value.ltB a b
   | .least, a, b => Value.pick (fun a b => Value.ltB b a) a b
   | .and, a, b => and3 a b
@@ -787,16 +806,16 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .listFn op, a, b => op.apply a b
   | _, _, _ => .null
 
-#guard BinFn.apply (.listFn .prepend) (.int 1) .null == .list [.int 1]
-#guard BinFn.apply (.listFn .prepend) .null (.list [.int 2]) == .list [.null, .int 2]
-#guard BinFn.apply (.listFn .concat) .null .null == .list []
-#guard BinFn.apply (.listFn .concat) (.list [.int 1]) .null == .list [.int 1]
-#guard BinFn.apply (.listFn .contains) (.list [.int 1, .null]) (.int 2) == .bool false
-#guard BinFn.apply (.listFn .contains) (.list [.int 1]) .null == .null
-#guard BinFn.apply (.listFn .contains) .null (.int 1) == .null
-#guard BinFn.apply (.listFn .position) (.list [.int 1, .null, .int 1]) (.int 1) == .int 1
-#guard BinFn.apply (.listFn .position) (.list [.int 1, .null]) .null == .int 2
-#guard BinFn.apply (.listFn .position) (.list [.int 1]) (.int 2) == .null
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .prepend) (.int 1) .null == .list [.int 1]
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .prepend) .null (.list [.int 2]) == .list [.null, .int 2]
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .concat) .null .null == .list []
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .concat) (.list [.int 1]) .null == .list [.int 1]
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .contains) (.list [.int 1, .null]) (.int 2) == .bool false
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .contains) (.list [.int 1]) .null == .null
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .contains) .null (.int 1) == .null
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .position) (.list [.int 1, .null, .int 1]) (.int 1) == .int 1
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .position) (.list [.int 1, .null]) .null == .int 2
+#guard letI := Boxes.Ambient.none; BinFn.apply (.listFn .position) (.list [.int 1]) (.int 2) == .null
 
 /-- An implementation of the scalar functions: Lean's own (`Impl.lean`, the
 reference) or an engine's, without run-time checks (`analysis/Sverify/Analysis/Guards.lean`,
@@ -845,16 +864,20 @@ def liftPred (p : Nat → Bool) : Nat → Bool
   | 0 => true
   | i + 1 => p i
 
+omit [Boxes.Ambient] in
 @[simp] theorem liftIdx_id : liftIdx id = id := by
   funext i; cases i <;> rfl
 
+omit [Boxes.Ambient] in
 @[simp] theorem liftPred_true : liftPred (fun _ => true) = fun _ => true := by
   funext i; cases i <;> rfl
 
+omit [Boxes.Ambient] in
 theorem liftPred_and (p q : Nat → Bool) :
     liftPred (fun i => p i && q i) = fun i => liftPred p i && liftPred q i := by
   funext i; cases i <;> rfl
 
+omit [Boxes.Ambient] in
 /-- A renaming of the row's columns that keeps the values read by `p` keeps
 them under a binder. -/
 theorem liftIdx_getD {p : Nat → Bool} {g : Nat → Nat} {row row' : Row} (x : Value)
@@ -883,6 +906,7 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
   | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
 
+omit [Boxes.Ambient] in
 /-- A shifted field on a row with a column inserted at its position. -/
 theorem getD_shift_insert (w : Value) (i : Nat) (xa rest : Row) :
     (xa ++ w :: rest).getD (if i < xa.length then i else i + 1) .null = (xa ++ rest).getD i .null := by
@@ -894,6 +918,7 @@ theorem getD_shift_insert (w : Value) (i : Nat) (xa rest : Row) :
     rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega),
       show i + 1 - xa.length = (i - xa.length) + 1 by omega, List.getElem?_cons_succ]
 
+omit [Boxes.Ambient] in
 /-- `shift 0` of a list of expressions, read at `i`. -/
 theorem getD_map_shift (cols : List Expr) (i : Nat) :
     (cols.map (·.shift 0)).getD i (.lit .null) = (cols.getD i (.lit .null)).shift 0 := by
@@ -919,6 +944,7 @@ theorem Expr.eval_shift_insert {I : Impl} (w : Value) :
     have := Expr.eval_shift_insert (I := I) w b (x :: xa) rest
     simpa using this
 
+omit [Boxes.Ambient] in
 /-- A shifted expression reads one column more. -/
 theorem Expr.refsLt_shift {m : Nat} : ∀ {e : Expr} (k : Nat), e.refsLt m → (e.shift k).refsLt (m + 1)
   | .lit _, _, _ => trivial
@@ -933,6 +959,7 @@ theorem Expr.eval_shift_cons {I : Impl} (w : Value) (e : Expr) (row : Row) :
     (e.shift 0).eval (w :: row) I = e.eval row I :=
   Expr.eval_shift_insert w e [] row
 
+omit [Boxes.Ambient] in
 theorem Value.pick_mem {better : Value → Value → Bool} (v w : Value) :
     Value.pick better v w = v ∨ Value.pick better v w = w := by
   cases v <;> cases w <;> simp only [Value.pick] <;> (try split) <;> simp
@@ -974,11 +1001,13 @@ theorem Expr.eval_least (row : Row) (a b : Expr) :
   show Value.pick (fun a b => Value.ltB b a) (a.eval row) (b.eval row) = _
   rw [Value.pick_eq, Value.ltB_eq]; rfl
 
+omit [Boxes.Ambient] in
 theorem isTrue_and3 (a b : Value) :
     (and3 a b).isTrue = (a.isTrue && b.isTrue) := by
   unfold and3
   split <;> simp_all [Value.isTrue] <;> split <;> simp_all
 
+omit [Boxes.Ambient] in
 theorem isTrue_or3 (a b : Value) :
     (or3 a b).isTrue = (a.isTrue || b.isTrue) := by
   unfold or3

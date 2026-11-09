@@ -293,6 +293,7 @@ def epsilonBounds (engine : Option String) (eps : Json) : Json :=
     ("proved", toJson true)]), ("rel", Json.mkObj [("value", toJson (0.5 : Float)),
     ("proved", toJson false)])]), ("unbounded", toJson false), ("why", .null)]
 
+variable [Boxes.Ambient]
 /-- `"engines"` and `"sorted"` of a `--contract` request, given its
 `"rows_exact"` (`Epsilon.rowsExactByEngine`), its report and `"robust"`
 (`EngineRobust.robust`). An engine the request names (`"engines"`) without a

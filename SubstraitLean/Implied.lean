@@ -73,6 +73,7 @@ def envCond (E : List AVal) : Expr :=
 /-- A condition TRUE on every row in one of `Es`. -/
 def anyCond (Es : List (List AVal)) : Expr := orAll (Es.map envCond)
 
+variable [Boxes.Ambient]
 theorem andAll_isTrue {row : Row} :
     ∀ {es : List Expr}, (∀ e ∈ es, (e.eval row).isTrue = true) → ((andAll es).eval row).isTrue = true
   | [], _ => rfl
@@ -158,10 +159,12 @@ theorem anyCond_of_mem {Es : List (List AVal)} {E : List AVal} (hE : E ∈ Es) {
 
 /-! ## Abstract rows of the table's rows that matter -/
 
+omit [Boxes.Ambient] in
 theorem envMem_top (n : Nat) (row : Row) : EnvMem (List.replicate n AVal.top) row := fun i => by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_replicate]
   split <;> exact AVal.mem_top _
 
+omit [Boxes.Ambient] in
 theorem envMem_take {e : List AVal} {x y : Row} (h : EnvMem e (x ++ y)) (hx : x.length = n) :
     EnvMem (e.take n) x := fun i => by
   have hi := h i
@@ -172,6 +175,7 @@ theorem envMem_take {e : List AVal} {x y : Row} (h : EnvMem e (x ++ y)) (hx : x.
   · rw [List.getElem?_eq_none (by simp; omega), List.getElem?_eq_none (by omega)]
     exact AVal.mem_top _
 
+omit [Boxes.Ambient] in
 theorem envMem_drop {e : List AVal} {x y : Row} (h : EnvMem e (x ++ y)) (hx : x.length = n) :
     EnvMem (e.drop n) y := fun i => by
   have hi := h (n + i)
@@ -279,12 +283,14 @@ def Value.kind : Value → Nat
   | .float _ => 5 | .date _ => 6 | .ts _ => 7 | .tod _ => 8 | .struct _ => 9
   | .dec s _ => 10 + s
 
+omit [Boxes.Ambient] in
 /-- A value of a number's kind is a number of that kind. -/
 theorem Value.kind_val_eq {k : NumKind} {n : Int} {v : Value} (h : (k.val n).kind = v.kind) :
     ∃ m, v = k.val m := by
   cases k <;> cases v <;> simp [Value.kind, NumKind.val] at h ⊢
   all_goals omega
 
+omit [Boxes.Ambient] in
 theorem AVal.mem_transfer {a b a' : AVal} {u v : Value} (hu : a.Mem u) (hv : b.Mem v)
     (hk : u.kind = v.kind) (hn : a'.null = a.null) (htt : a'.tt = (a.tt && (b.tt || b.ff)))
     (hff : a'.ff = (a.ff && (b.tt || b.ff))) (hs : a'.str = (a.str && b.str))
@@ -344,6 +350,7 @@ theorem lt_val_right {u : Value} {k : NumKind} {b : Int} (h : BinFn.apply .lt u 
     all_goals simp [NumKind.val, BinFn.apply] at h
   all_goals (cases u <;> simp [NumKind.val, NumKind.norm, BinFn.apply] at h ⊢ <;> rfl)
 
+omit [Boxes.Ambient] in
 theorem Value.kind_val (k : NumKind) (a b : Int) : (k.val a).kind = (k.val b).kind := by
   cases k <;> rfl
 
@@ -368,6 +375,7 @@ theorem lt_kind {u v : Value} (h : BinFn.apply .lt u v ≠ .null) : u.kind = v.k
 theorem not_null_of_isTrue_not {x : Value} (h : (UnFn.apply .not x).isTrue = true) : x ≠ .null := by
   rintro rfl; simp [UnFn.apply, Value.isTrue] at h
 
+omit [Boxes.Ambient] in
 theorem not_null_of_isTrue {x : Value} (h : x.isTrue = true) : x ≠ .null := by
   rintro rfl; simp [Value.isTrue] at h
 
@@ -400,6 +408,7 @@ theorem lt_int_isTrue {u v : Value} (h : (BinFn.apply .lt v u).isTrue = true) :
     rw [he] at h; simp at h
     exact ⟨a, rfl, by omega⟩
 
+omit [Boxes.Ambient] in
 theorem geTransfer_sound {env : List AVal} {row : Row} {i j : Nat} {strict : Bool}
     (h : EnvMem env row)
     (hi : ∀ (k : NumKind) a, row.getD i .null = k.val a →
@@ -475,6 +484,7 @@ theorem Expr.refineAll_sound {env : List AVal} {row : Row} (e : Expr) (h : EnvMe
   e.cmpRefine_sound (Expr.refine_sound env e h ht) ht
 
 
+omit [Boxes.Ambient] in
 theorem filter_of_implies {L : Relation} {d p : Row → Bool} (h : ∀ x, d x = true → p x = true) :
     L.filter d = (L.filter p).filter d := by
   rw [List.filter_filter]
@@ -506,6 +516,7 @@ theorem SameOn.eval_free {cat₁ cat₂ : Catalog} {t : String} {P : Expr}
     have : s ≠ t := fun e => by subst e; exact hr hs
     rw [h.other s this]
 
+omit [Boxes.Ambient] in
 theorem flatMap_nil_of_not {α β : Type} {L : List α} {f : α → List β} {p : α → Bool}
     (h : ∀ x ∈ L, p x = false → f x = []) : L.flatMap f = (L.filter p).flatMap f := by
   induction L with
@@ -516,6 +527,7 @@ theorem flatMap_nil_of_not {α β : Type} {L : List α} {f : α → List β} {p 
       · simp [hp, h x List.mem_cons_self hp, ih']
       · simp [hp, ih']
 
+omit [Boxes.Ambient] in
 theorem map_filter_nil_of_not {L : Relation} {f : Row → Row} {g p : Row → Bool}
     (h : ∀ y ∈ L, g (f y) = true → p y = true) :
     (L.map f).filter g = ((L.filter p).map f).filter g := by

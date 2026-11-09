@@ -66,7 +66,7 @@ What a test checks and no proof does.
 | The Python mirror of the function tables (`sverify._functions`) | `python/tests/test_functions.py` against `substrait-check --functions` |
 | The engine facts each engine profile states | Their probes (`characterization/<engine>/probes.json`), checked by `sverify_dev.facts` and the engine jobs |
 | Native `Float` arithmetic agrees with the exact definition, the exact result rounded once | `python/tests/test_float_model.py` and the `float-bounds/` project's `NativeLink` |
-| The black boxes' rows (`sverify.black_box`, `SubstraitLean/BlackBox` in the core) | `python/tests/test_black_box.py` against `substrait-check --black-boxes` |
+| DuckDB's black-box catalogue (`sverify.black_box`, `Boxes.duckdb` in `SubstraitLean/DuckDBBoxes.lean`), and its evaluators against DuckDB's values (`evaluated`) | `python/tests/test_black_box.py` against `substrait-check --black-boxes`, and the samples' `#guard` |
 | The writers' SQL and the Polars translation compute what the lowered plan states | Golden, round-trip and differential tests ([the translations](engine-profiles.md#the-translations-today)) |
 | A report survives its JSON: `Report.from_json(report.to_json())` | `python/tests/test_formats.py` |
 
@@ -79,7 +79,7 @@ place, and what retires it.
 |---|---|---|---|---|
 | axiom | `FloatCode.exp_fin` | `analysis/Sverify/Analysis/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
 | opaque, `implemented_by` | `upper`, `lower`, `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256` | `core/Sverify/Core/Text.lean` | The string functions the checker evaluates by compiled code (`upperAscii`, `Digest.md5`, …); no proof looks inside them | A model of each in Lean, or a row of the black-box table |
-| opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `core/Sverify/Core/BlackBox.lean` | The black boxes' evaluation (`evalScalar`, …), outside the model | A model of the black boxes in `Impl` (`Boxes`) |
+| opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `SubstraitLean/DuckDBBoxes.lean` | The functions of DuckDB's black-box catalogue (`evalScalar`, …), outside the model; the core holds none (#1189). A proof uses only a row's laws, which hold by the clamp and `Boxes.duckdb_wf` | A model of a row in Lean, where one exists |
 | structure | `DoubleStats.Correct` | `SubstraitLean/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
 | opaque | `intToDouble` | `core/Sverify/Core/Float.lean` | A conversion given with the property the proofs use; the proofs see only the property | |
 | opaque | `decToDouble`, `doubleToDecimal` | `core/Sverify/Core/Conversions.lean` | The same, for decimals and doubles | |

@@ -94,6 +94,7 @@ def relEps (k : Nat) : Float :=
 /-- As `upJson`, `0` for zero. -/
 def upJsonZ (f : Float) : Json := if f == 0.0 then toJson (0 : Nat) else upJson f
 
+variable [Boxes.Ambient]
 /-- The bound for a double measure over rows described by `env`, at most
 `rows` of them: absolute, and relative where the values have one sign, with
 whether the relative bound is one `epsilon_avg_rel` covers (an `AVG`'s

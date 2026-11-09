@@ -32,6 +32,7 @@ inductive Fact where
   | holds (e : Expr)
   deriving Repr, DecidableEq
 
+variable [Boxes.Ambient]
 def Fact.Holds (row : Row) : Fact → Prop
   -- Numbers by their canonical codes (`NumKind.norm`): `-0.0` is `0.0` (D31).
   | .diff i j b => ∀ (k : NumKind) x y, row.getD i .null = k.val x → row.getD j .null = k.val y →
@@ -122,6 +123,7 @@ def Fact.classSafe : Fact → Bool
   | .holds e => e.canonSafe
   | _ => true
 
+omit [Boxes.Ambient] in
 /-- A number of kind `k` up to `canonV` is a number of kind `k` with the same
 normal form. -/
 theorem NumKind.val_of_canonV {k : NumKind} {v : Value} {a : Int}
@@ -197,6 +199,7 @@ def Expr.linTerm : Expr → Option (Nat × Int)
   | .bin .sub (.field j) (.lit (.int c)) => some (j, -c)
   | _ => none
 
+omit [Boxes.Ambient] in
 theorem Expr.linTerm_spec {e : Expr} {j : Nat} {c : Int} (h : e.linTerm = some (j, c)) :
     (e = .field j ∧ c = 0) ∨ e = .bin .add (.field j) (.lit (.int c)) ∨
       e = .bin .add (.lit (.int c)) (.field j) ∨ e = .bin .sub (.field j) (.lit (.int (-c))) := by
@@ -710,6 +713,7 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
   | .aggregate _ gs ms => aggFacts gs.length ms
   | .unnest _ _ => []
 
+omit [Boxes.Ambient] in
 theorem headD_mem_of {l : List Nat} (h : (!l.isEmpty) = true) : l.headD 0 ∈ l := by
   cases l with
   | nil => simp at h
@@ -792,10 +796,12 @@ theorem FactsHold.shift {n : Nat} {fs : List Fact} {row row' : Row} (h : FactsHo
       simp only [Fact.shift, Fact.Holds] at this ⊢
       rw [Expr.eval_mapFields (fun i _ => hsh i) (Expr.allFields_true e)]; exact this
 
+omit [Boxes.Ambient] in
 theorem getD_append_left' {x y : Row} {i : Nat} (h : i < x.length) :
     (x ++ y).getD i .null = x.getD i .null := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_append_left h]
 
+omit [Boxes.Ambient] in
 theorem getD_append_right' {x y : Row} (i : Nat) :
     (x ++ y).getD (x.length + i) .null = y.getD i .null := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_append_right]
@@ -890,6 +896,7 @@ theorem FactsHold.shift_nulls {n : Nat} {fs : List Fact} {row : Row}
   | ne i k c => intro x hx; rw [hnull i] at hx; exact absurd hx.symm (NumKind.val_ne_null k x)
   | ratio i j _ => intro x y hx _; rw [hnull i] at hx; cases hx
 
+omit [Boxes.Ambient] in
 theorem positions_getD {m : List Nat} {row : Row} {i p : Nat} (hp : p ∈ positions m i) :
     (m.map (row.getD · .null)).getD p .null = row.getD i .null := by
   simp only [positions, List.mem_filter, List.mem_range, beq_iff_eq] at hp
@@ -917,6 +924,7 @@ theorem FactsHold.rightOf_nulls {n : Nat} {fs : List Fact} {row : Row}
     · exact Fact.holds_of_null (i := j) (by simp [Fact.mentions]) (hn j h)
   | holds _ => simp [Fact.rightOf] at hf
 
+omit [Boxes.Ambient] in
 theorem getD_pad_null {x : Row} {m i : Nat} (h : x.length ≤ i) :
     (x ++ List.replicate m Value.null).getD i .null = .null := by
   obtain ⟨d, rfl⟩ := Nat.exists_eq_add_of_le h
@@ -987,10 +995,12 @@ theorem partFact_sound {part : List Nat} {c w : Nat} {row x : Row}
     simp [Bound.Mem, Bound.exact, he]
   · intro f hf; simp at hf
 
+omit [Boxes.Ambient] in
 theorem strictGap_cases (strict : Bool) (sort : List SortKey) (k : Nat) :
     strictGap strict sort k = 0 ∨ strictGap strict sort k = 1 := by
   unfold strictGap; split <;> simp
 
+omit [Boxes.Ambient] in
 theorem strictGap_one {strict : Bool} {sort : List SortKey} {k : Nat}
     (h : strictGap strict sort k = 1) : strict = true ∧ sort.length = 1 ∧ 1 ≤ k := by
   unfold strictGap at h
@@ -998,6 +1008,7 @@ theorem strictGap_one {strict : Bool} {sort : List SortKey} {k : Nat}
   · rename_i hc; simpa [and_assoc] using hc
   · cases h
 
+omit [Boxes.Ambient] in
 /-- Rows of the same partition that differ on the key `part ++ sort` differ on
 the only sort key. -/
 theorem sort_ne_of_key {part : List Nat} {sort : List SortKey} {x y : Row}
@@ -1221,6 +1232,7 @@ theorem aggFacts_sound {g : Nat} {ms : List Measure} {grp : Relation} {k : Row}
     exact pairFacts_sound (col i mi hmi) (col j mj hmj) f hf
   · simp at hf
 
+omit [Boxes.Ambient] in
 /-- The facts relating two measures are about measures that do not sort. -/
 theorem pairFacts_sorts {ci cj : Nat} {mi mj : Measure} (h : pairFacts ci cj mi mj ≠ []) :
     mi.fn.sorts = false ∧ mj.fn.sorts = false := by
@@ -1535,12 +1547,14 @@ def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr
       let al := l.absD env fs ks
       f.abs al (b.absD (al.elemsOf :: env) [] [])
 
+omit [Boxes.Ambient] in
 theorem Bound.mem_exact_iff {k i : Int} : (Bound.exact k).Mem i ↔ i = k := by
   simp only [Bound.Mem, Bound.exact, Option.some.injEq]
   constructor
   · intro ⟨h₁, h₂⟩; have := h₁ k rfl; have := h₂ k rfl; omega
   · rintro rfl; constructor <;> intro _ h <;> subst h <;> omega
 
+omit [Boxes.Ambient] in
 theorem canLt_of_lt {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) (h : i < j) :
     canLt x y = true := by
   obtain ⟨xl, xh⟩ := x
@@ -1549,6 +1563,7 @@ theorem canLt_of_lt {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) (h :
   unfold canLt
   cases xl <;> cases yh <;> simp_all <;> omega
 
+omit [Boxes.Ambient] in
 theorem canNe_of_ne {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) (h : i ≠ j) :
     canNe x y = true := by
   unfold canNe
@@ -1575,6 +1590,7 @@ theorem Fact.diffBound_sound {f : Fact} {row : Row} {i j : Nat} {d : Bound} {k :
         simpa [Int.neg_sub] using this
       · cases hg
 
+omit [Boxes.Ambient] in
 theorem foldl_meet_mem {z : Int} : ∀ {bs : List Bound} {b : Bound}, b.Mem z →
     (∀ b' ∈ bs, b'.Mem z) → (bs.foldl Bound.meet b).Mem z
   | [], _, hb, _ => hb
@@ -1621,6 +1637,7 @@ theorem BinFn.sub_other_right (k : NumKind) (i : Int) {w : Value} (hw : w.numOf?
     BinFn.apply .sub (k.val i) w = .null := by
   cases w <;> simp only [Value.numOf?, reduceCtorEq] at hw <;> cases k <;> rfl
 
+omit [Boxes.Ambient] in
 /-- Two numbers of abstractions of one kind are of that kind. -/
 theorem sameNk_kinds {aa ab : AVal} (hs : sameNk aa ab = true) {k k' : NumKind} {x y : Int}
     (ha : aa.Mem (k.val x)) (hb : ab.Mem (k'.val y)) : k = k' := by
@@ -1780,6 +1797,7 @@ theorem neSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
     · exact hbase
   · exact hbase
 
+omit [Boxes.Ambient] in
 theorem ratioOf_mem {fs : List Fact} {s c : Nat} {b : Bound} (h : ratioOf fs s c = some b) :
     Fact.ratio s c b ∈ fs := by
   obtain ⟨f, hf, he⟩ := List.exists_of_findSome?_eq_some h

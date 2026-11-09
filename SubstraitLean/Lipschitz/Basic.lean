@@ -322,11 +322,13 @@ theorem Tol.exactOn_none {t : Tol} {cols : List Nat} (h : t.exactOn cols = true)
     (hi : i ∈ cols) : t i = none := by
   simpa [Tol.exactOn] using List.all_eq_true.1 h i hi
 
+variable [Boxes.Ambient]
 /-- An expression reading exact columns has one value on rows within `t`. -/
 theorem Expr.eval_rows {t : Tol} {e : Expr} (he : t.exactOn e.cols = true) {x y : Row}
     (h : t.Rows x y) : e.eval x = e.eval y :=
   Expr.eval_congr_cols e fun i hi => (Tol.cell_none (Tol.exactOn_none he hi)).1 (h.2 i)
 
+omit [Boxes.Ambient] in
 theorem getD_append_split (x y : Row) (j : Nat) :
     (x ++ y).getD j .null = if j < x.length then x.getD j .null else y.getD (j - x.length) .null := by
   simp only [List.getD_eq_getElem?_getD]
@@ -334,6 +336,7 @@ theorem getD_append_split (x y : Row) (j : Nat) :
   · rw [List.getElem?_append_left (by assumption)]
   · rw [List.getElem?_append_right (by omega)]
 
+omit [Boxes.Ambient] in
 /-- Rows side by side: the left one `n` wide. -/
 theorem Tol.rows_append {n : Nat} {t t' : Tol} {x x' y y' : Row} (hx : t.Rows x x')
     (hy : t'.Rows y y') (hn : x'.length = n) : (Tol.cat n t t').Rows (x ++ y) (x' ++ y') := by
@@ -345,6 +348,7 @@ theorem Tol.rows_append {n : Nat} {t t' : Tol} {x x' y y' : Row} (hx : t.Rows x 
   · simp only [hj, ite_false]
     exact Tol.cell_transfer (by simp [Tol.cat, hj, ← hn, OLe.refl]) (hy.2 _)
 
+omit [Boxes.Ambient] in
 theorem Tol.rows_emit {t : Tol} {x y : Row} (h : t.Rows x y) (m : List Nat) :
     (t.emit m).Rows (m.map (x.getD · .null)) (m.map (y.getD · .null)) := by
   refine ⟨by simp, fun j => ?_⟩
@@ -398,8 +402,10 @@ theorem Tol.rows_exprs {t : Tol} {es : List Expr} (hes : es.all (fun e => (e.tol
     obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 hs
     exact Expr.tol?_sound ho h (by simp [Tol.exprs, hk, ho, OLe.refl])
 
+omit [Boxes.Ambient] in
 theorem Tol.rows_refl (t : Tol) (x : Row) : t.Rows x x := ⟨rfl, fun j => Tol.cell_refl t j _⟩
 
+omit [Boxes.Ambient] in
 /-- Rows within a tolerance exact on their columns are equal. -/
 theorem Tol.rows_eq {t : Tol} {n : Nat} (he : t.exactBelow n = true) {x y : Row} (h : t.Rows x y)
     (hn : y.length = n) : x = y := by
@@ -451,6 +457,7 @@ open FloatCode
 
 /-! ### A `SUM` or `AVG` measure over groups within a tolerance -/
 
+omit [Boxes.Ambient] in
 theorem Forall2.and_mem {α β : Type} {R : α → β → Prop} {P : α → Prop} {Q : β → Prop} :
     ∀ {l : List α} {l' : List β}, Forall2 R l l' → (∀ a ∈ l, P a) → (∀ b ∈ l', Q b) →
       Forall2 (fun a b => R a b ∧ P a ∧ Q b) l l'
@@ -463,11 +470,13 @@ theorem Forall2.and_mem {α β : Type} {R : α → β → Prop} {P : α → Prop
 /-- The tolerance of every column, `e`. -/
 def Tol.all (e : Nat) : Tol := fun _ => some e
 
+omit [Boxes.Ambient] in
 /-- A cell within `e` codes holds a NULL where the other does. -/
 theorem Tol.cell_null_iff {e : Nat} {v w : Value} (h : (Tol.all e).Cell 0 v w) :
     (v != .null) = (w != .null) := by
   cases v <;> cases w <;> first | rfl | exact h.elim
 
+omit [Boxes.Ambient] in
 /-- Two finite doubles in a cell within `e` codes are within `e` codes. -/
 theorem Tol.cell_codeNear {e : Nat} {v w : Value} (h : (Tol.all e).Cell 0 v w) :
     CodeNear e v w := by

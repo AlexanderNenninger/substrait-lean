@@ -73,6 +73,7 @@ def BinFn.polarsTmpl : BinFn → Option Expr
   | .imod => some Polars.floorModT
   | _ => none
 
+variable [Boxes.Ambient]
 /-- **Polars's profile**: integer `//` and `%` floor (`division_type` =
 `FLOOR`), every other function is the reference's. -/
 def Profile.polars : Profile where
@@ -85,6 +86,7 @@ namespace Polars
 
 /-! ## The templates are Polars's `//` and `%` on 64-bit integers -/
 
+omit [Boxes.Ambient] in
 theorem fdiv_fmod_neg_pos {a b : Int} (ha : a < 0) (hb : 0 < b) :
     a.fdiv b = (a + 1).tdiv b + -1 ∧ a.fmod b = (a + 1).tmod b + (b - 1) := by
   have h1 := Int.tmod_add_tdiv_mul (a + 1) b
@@ -97,6 +99,7 @@ theorem fdiv_fmod_neg_pos {a b : Int} (ha : a < 0) (hb : 0 < b) :
   rw [Int.fdiv_eq_ediv_of_nonneg a (Int.le_of_lt hb), Int.fmod_eq_emod_of_nonneg a (Int.le_of_lt hb)]
   omega
 
+omit [Boxes.Ambient] in
 theorem fdiv_fmod_pos_neg {a b : Int} (ha : 0 < a) (hb : b < 0) :
     a.fdiv b = (a - 1).tdiv b + -1 ∧ a.fmod b = (a - 1).tmod b + (b + 1) := by
   have h := fdiv_fmod_neg_pos (a := -a) (b := -b) (by omega) (by omega)
@@ -105,6 +108,7 @@ theorem fdiv_fmod_pos_neg {a b : Int} (ha : 0 < a) (hb : b < 0) :
     Int.tmod_neg] at h
   omega
 
+omit [Boxes.Ambient] in
 theorem fdiv_fmod_same {a b : Int} (h1 : ¬(a < 0 ∧ 0 < b)) (h2 : ¬(0 < a ∧ b < 0)) :
     a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := by
   by_cases hb0 : b = 0
@@ -119,6 +123,7 @@ theorem fdiv_fmod_same {a b : Int} (h1 : ¬(a < 0 ∧ 0 < b)) (h2 : ¬(0 < a ∧
     rw [Int.neg_fmod_neg, Int.neg_tmod, Int.tmod_neg] at hm
     exact ⟨by omega, by omega⟩
 
+omit [Boxes.Ambient] in
 theorem inI64_iff (x : Int) : inI64 x = true ↔ -2 ^ 63 ≤ x ∧ x ≤ 2 ^ 63 - 1 := by
   unfold inI64 between
   rw [Bool.and_eq_true]
@@ -143,6 +148,7 @@ theorem ref_lt_int (x y : Int) :
     Profile.reference.bin .lt (.int x) (.int y) = .ok (.bool (decide (x < y))) := by
   rw [Lowering.ref_lt]; rfl
 
+omit [Boxes.Ambient] in
 /-- The truncating quotient of 64-bit integers fits in 64 bits but for
 `MIN / -1`. -/
 theorem tdiv_inI64 {x y : Int} (hx : -2 ^ 63 ≤ x ∧ x ≤ 2 ^ 63 - 1) (hy : y ≠ 0)
@@ -158,6 +164,7 @@ theorem tdiv_inI64 {x y : Int} (hx : -2 ^ 63 ≤ x ∧ x ≤ 2 ^ 63 - 1) (hy : y
 
 end Polars
 
+omit [Boxes.Ambient] in
 theorem Polars.isTrue_bool (z : Bool) : (Value.bool z).isTrue = z := by cases z <;> rfl
 
 /-- **Polars's `%` on 64-bit integers** is its floored remainder
@@ -312,6 +319,7 @@ theorem elaborate_eq : ∀ (e : Expr) (row : Row),
       funext fun x => elaborate_eq b (x :: row)
     rw [this]
 
+omit [Boxes.Ambient] in
 /-- The parser reads a call that states `division_type: FLOOR` as the
 template of Polars's `//` or `%`: the elaboration of the native call. -/
 theorem elaborate_floor (a b : Expr) :

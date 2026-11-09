@@ -33,6 +33,7 @@ namespace SemiDelta
 
 open LinearAgg (ind lin_lift sum_ind_one)
 
+variable [Boxes.Ambient]
 /-- The weight of the rows of `z` that match the left row `x`. -/
 def matchCount (on : Expr) (x : Row) (z : ZSet) : Int :=
   ZSet.lin (fun y => ind (on.eval (x ++ y)).isTrue 1) z
@@ -65,6 +66,7 @@ def change (on : Expr) (anti : Bool) (a : Relation) (Δa B ΔB : ZSet) : ZSet :=
     ZSet.neg (WSet.filter (fun x => keeps anti (matchCount on x B) &&
       !keeps anti (matchCount on x B + matchCount on x ΔB)) (ZSet.lift a))
 
+omit [Boxes.Ambient] in
 theorem weight_filter (p : Row → Bool) (z : ZSet) (r : Row) :
     (WSet.filter p z).weight r = if p r then z.weight r else 0 := by
   induction z with
@@ -76,6 +78,7 @@ theorem weight_filter (p : Row → Bool) (z : ZSet) (r : Row) :
       split <;> simp_all [WSet.weight_cons]
     · split <;> simp_all [WSet.weight_cons]
 
+omit [Boxes.Ambient] in
 theorem lift_filter (p : Row → Bool) (rows : Relation) :
     ZSet.lift (rows.filter p) = WSet.filter p (ZSet.lift rows) := by
   simp [ZSet.lift, WSet.filter, List.filter_map, Function.comp_def]
@@ -113,6 +116,7 @@ theorem matchCount_by_key {on : Expr} {key : Row → Row} {M : Row → Row → B
     matchCount on x z = keyCount M (key x) z := by
   simp only [matchCount, keyCount, h]
 
+omit [Boxes.Ambient] in
 theorem keyCount_append (M : Row → Row → Bool) (k : Row) (a b : ZSet) :
     keyCount M k (a ++ b) = keyCount M k a + keyCount M k b := ZSet.lin_append _ _ _
 

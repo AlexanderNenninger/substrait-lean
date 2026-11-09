@@ -42,6 +42,7 @@ namespace Substrait
 
 /-! ## The bridge -/
 
+variable [Boxes.Ambient]
 /-- **`E`'s run is sound under `side`**: where `E` translates `r` to `r'`,
 `r'` does not raise under `E`'s profile and `side cat r` holds, the rows `r'`
 computes with `E`'s functions are a result the reference allows for `r`. -/

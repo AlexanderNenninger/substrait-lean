@@ -42,6 +42,7 @@ and an unsorted plan refines its `ORDER BY` twin in that sense only
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Aggregates -/
 

@@ -31,6 +31,7 @@ and through it the oracle tests and DuckDB's sqllogictest replay).
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Hashing values -/
 
@@ -69,6 +70,7 @@ def dedupH.go : List α → Std.HashSet α → Array α → Array α
 
 def dedupH (l : List α) : List α := (dedupH.go l ∅ #[]).toList
 
+omit [Boxes.Ambient] in
 theorem dedupH.go_eq : ∀ (l : List α) (seen : Std.HashSet α) (acc : Array α),
     (dedupH.go l seen acc).toList = acc.toList ++ dedup (l.filter fun y => !seen.contains y)
   | [], _, _ => by simp [dedupH.go, dedup, dedupN]
@@ -88,6 +90,7 @@ theorem dedupH.go_eq : ∀ (l : List α) (seen : Std.HashSet α) (acc : Array α
         have h2 : (y != x) = true := bne_iff_ne.mpr fun e => h e.symm
         simp only [h1, h2, Bool.not_false, Bool.true_and]
 
+omit [Boxes.Ambient] in
 theorem dedupH_eq (l : List α) : dedupH l = dedup l := by
   have : l.filter (fun _ => true) = l := List.filter_eq_self.mpr (by simp)
   simp [dedupH, dedupH.go_eq, this]
@@ -110,6 +113,7 @@ def LeastInv (c : α → α) (le : α → α → Bool) (m : Std.HashMap α α) (
   ∀ k, (m[k]? = none → ∀ y ∈ s, c y ≠ k) ∧
     ∀ z, m[k]? = some z → z ∈ s ∧ c z = k ∧ ∀ y ∈ s, c y = k → le z y = true
 
+omit [Boxes.Ambient] in
 theorem LeastInv.step (h : RawOrder le) {m : Std.HashMap α α} {s : List α}
     (hm : LeastInv c le m s) (y : α) : LeastInv c le (leastStep c le m y) (s ++ [y]) := by
   have hrefl : ∀ a, le a a = true := fun a => (h.total a a).elim id id
@@ -154,6 +158,7 @@ theorem LeastInv.step (h : RawOrder le) {m : Std.HashMap α α} {s : List α}
       · exact hl w hw hcw
       · rw [List.mem_singleton.mp hw] at hcw; exact absurd hcw hk
 
+omit [Boxes.Ambient] in
 theorem LeastInv.foldl (h : RawOrder le) : ∀ (r : List α) {m : Std.HashMap α α} {s : List α},
     LeastInv c le m s → LeastInv c le (r.foldl (leastStep c le) m) (s ++ r)
   | [], _, _, hm => by simpa using hm
@@ -161,6 +166,7 @@ theorem LeastInv.foldl (h : RawOrder le) : ∀ (r : List α) {m : Std.HashMap α
     have := LeastInv.foldl h r (hm.step h y)
     simpa [List.foldl_cons, List.append_assoc] using this
 
+omit [Boxes.Ambient] in
 /-- `leastBy` gives each member's `classRep`. -/
 theorem leastBy_getD (h : RawOrder le) {l : List α} {x : α} (hx : x ∈ l) :
     (leastBy c le l).getD (c x) x = classRep c le l x := by
@@ -181,6 +187,7 @@ def canonRepsH (c : α → α) (le : α → α → Bool) (l : List α) : List α
   let m := leastBy c le l
   dedupH (l.map fun x => m.getD (c x) x)
 
+omit [Boxes.Ambient] in
 theorem canonRepsH_eq (h : RawOrder le) (l : List α) : canonRepsH c le l = canonReps c le l := by
   simp only [canonRepsH, dedupH_eq, canonReps]
   congr 1
@@ -198,6 +205,7 @@ variable {α β : Type} [BEq α] [LawfulBEq α] [Hashable α]
 def indexBy (key : β → α) (ys : List β) : Std.HashMap α (Array β) :=
   ys.foldl (fun m y => let k := key y; m.insert k ((m.getD k #[]).push y)) ∅
 
+omit [Boxes.Ambient] in
 theorem indexBy_foldl (key : β → α) (k : α) : ∀ (ys : List β) (m : Std.HashMap α (Array β)),
     ((ys.foldl (fun m y => let k := key y; m.insert k ((m.getD k #[]).push y)) m).getD k #[]).toList =
       (m.getD k #[]).toList ++ ys.filter (key · == k)
@@ -208,10 +216,12 @@ theorem indexBy_foldl (key : β → α) (k : α) : ∀ (ys : List β) (m : Std.H
     · subst h; simp
     · simp [h]
 
+omit [Boxes.Ambient] in
 theorem indexBy_getD (key : β → α) (ys : List β) (k : α) :
     ((indexBy key ys).getD k #[]).toList = ys.filter (key · == k) := by
   simp [indexBy, indexBy_foldl]
 
+omit [Boxes.Ambient] in
 /-- Filtering out, before a map, elements that fail the later filter anyway. -/
 theorem filter_map_filter {γ : Type} {q : β → Bool} {f : β → γ} {p : γ → Bool} (ys : List β)
     (h : ∀ y ∈ ys, p (f y) = true → q y = true) :
@@ -228,6 +238,7 @@ theorem filter_map_filter {γ : Type} {q : β → Bool} {f : β → γ} {p : γ 
         · exact absurd (h y List.mem_cons_self hp) (by simp [hq])
       simp [hq, this, ih]
 
+omit [Boxes.Ambient] in
 theorem any_filter_of {q g : β → Bool} (ys : List β) (h : ∀ y ∈ ys, g y = true → q y = true) :
     (ys.filter q).any g = ys.any g := by
   induction ys with
@@ -353,7 +364,9 @@ def equiKeys (la : Nat) : Expr → List EqKey
   | .bin .and a b => equiKeys la a ++ equiKeys la b
   | e => leafKeys la e
 
+omit [Boxes.Ambient] in
 @[simp] theorem Value.isTrue_bool (c : Bool) : (Value.bool c).isTrue = c := by cases c <;> rfl
+omit [Boxes.Ambient] in
 @[simp] theorem Value.isTrue_null : Value.null.isTrue = false := rfl
 
 /-- Values `=` calls equal have one canonical form (`-0.0 = 0.0`, D31). -/
@@ -387,6 +400,7 @@ theorem eqKey_sound {x y : Row} {a b : Expr} {l r : Expr} (hk : eqKey x.length a
 def EqKey.Holds (x y : Row) (k : EqKey) : Prop :=
   (k.left.eval x).canonV = (k.right.eval y).canonV ∧ (k.strict = true → k.left.eval x ≠ .null)
 
+omit [Boxes.Ambient] in
 theorem Value.canonV_null {v : Value} : v.canonV = .null ↔ v = .null := by
   cases v <;> simp [Value.canonV]
 

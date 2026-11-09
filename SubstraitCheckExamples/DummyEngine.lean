@@ -1,4 +1,5 @@
 import SubstraitCheck
+import SubstraitLean.DuckDBBoxes
 
 /-!
 # An engine profile from outside, as a package adds one (test)
@@ -19,6 +20,11 @@ with the library (`lean_lib SubstraitCheckExamples`), not into
 -/
 
 namespace Substrait.DummyEngine
+
+-- The black-box catalogue in scope: DuckDB's, as the built-in engines bring
+-- it. An engine with black boxes of its own declares them as a `scoped
+-- instance` and joins them to DuckDB's with `Boxes.combine` (#1189).
+open scoped Substrait.DuckDB
 
 /-- The translation theorem the entry names: here a stand-in, Spark's table
 within the core's. A real profile names its `Rel.<engine>_sound`. -/

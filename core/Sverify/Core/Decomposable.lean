@@ -11,14 +11,17 @@ evaluation (`analysis/Sverify/Analysis/Partition.lean`) both use them.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Values of decomposable aggregates -/
 
+omit [Boxes.Ambient] in
 theorem intSum_append : ∀ (vs ws : List Value), intSum (vs ++ ws) = intSum vs + intSum ws
   | [], _ => by simp [intSum]
   | v :: vs, ws => by
     rw [List.cons_append, intSum_cons, intSum_cons, intSum_append vs ws]; omega
 
+omit [Boxes.Ambient] in
 theorem IsLeast.unique {α : Type} {le : α → α → Bool} (anti : ∀ a b, le a b = true → le b a = true → a = b)
     {m m' : α} {l : List α} (h : IsLeast le m l) (h' : IsLeast le m' l) : m = m' :=
   anti _ _ (h.2 _ h'.1) (h'.2 _ h.1)
@@ -26,17 +29,20 @@ theorem IsLeast.unique {α : Type} {le : α → α → Bool} (anti : ∀ a b, le
 /-- The order `MIN` (`max = false`) or `MAX` (`max = true`) picks the least element of. -/
 def minMaxLe (max : Bool) (a b : Value) : Bool := if max then a.geT b else a.leT b
 
+omit [Boxes.Ambient] in
 theorem minMaxLe_totalPre (max : Bool) : TotalPre (minMaxLe max) := by
   cases max
   · exact Value.leT_totalPre
   · exact Value.geT_totalPre
 
+omit [Boxes.Ambient] in
 theorem minMaxLe_antisymm (max : Bool) (a b : Value) (h : minMaxLe max a b = true)
     (h' : minMaxLe max b a = true) : a = b := by
   cases max
   · exact Value.leT_antisymm h h'
   · exact Value.geT_antisymm h h'
 
+omit [Boxes.Ambient] in
 /-- Within a tied class, `minMaxLe` is the raw order. -/
 theorem minMaxLe_of_canon (max : Bool) {a b : Value} (h : a.canonV = b.canonV) :
     minMaxLe max a b = Value.leRaw a b := by
@@ -112,6 +118,7 @@ def AggFn.decomposable : AggFn → Bool
   -- A quantile or mode needs every value of the group (#53).
   | .quantile _ _ _ | .mode => false
 
+omit [Boxes.Ambient] in
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
   cases f <;> simp_all [decomposable, sorts]
 
@@ -125,10 +132,12 @@ def AggFn.orderFree (f : AggFn) : Bool :=
     | .var _ _ | .cov _ | .corr => true
     | _ => false
 
+omit [Boxes.Ambient] in
 theorem AggFn.orderFree_of_decomposable {f : AggFn} (h : f.decomposable = true) :
     f.orderFree = true := by
   simp [orderFree, h]
 
+omit [Boxes.Ambient] in
 theorem AggFn.ne_collect_of_orderFree {f : AggFn} (h : f.orderFree = true) : f.sorts = false := by
   cases f <;> simp_all [orderFree, decomposable, sorts]
 
@@ -209,6 +218,7 @@ theorem sum_partials : ∀ L : List (List Value),
     · rw [intSum_cons, sumOf_unscaled_eq, Option.getD_some, h₁, intSum_append]
     · rw [List.all_cons, h₃ s, List.all_append, isDecOf_sumOf (by simp) s]
 
+omit [Boxes.Ambient] in
 theorem intSum_map_length : ∀ L : List (List Value),
     intSum (L.map fun vs => Value.int vs.length) = (L.flatten.length : Int)
   | [] => rfl

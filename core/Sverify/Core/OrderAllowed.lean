@@ -13,6 +13,7 @@ every order; `Ties.lean` links it to `Rel.Allowed`.
 -/
 
 namespace Substrait
+variable [Boxes.Ambient]
 
 /-! ## Measures -/
 
@@ -29,10 +30,12 @@ def Measure.OrderAllowed (m : Measure) (rows : Relation) (v : Value) : Prop :=
   ∃ s, s.Perm rows ∧ s.Pairwise (sortLe m.sort · · = true) ∧
     if m.fn.sorts then v = m.eval s else m.fn.Picks (m.inputs rows) v
 
+omit [Boxes.Ambient] in
 theorem mergeSort_sorted (sort : List SortKey) (rows : Relation) :
     (rows.mergeSort (sortLe sort)).Pairwise (sortLe sort · · = true) :=
   List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total rows
 
+omit [Boxes.Ambient] in
 /-- A sorted list sorts to itself. -/
 theorem mergeSort_eq_of_sorted {sort : List SortKey} {s : Relation}
     (h : s.Pairwise (sortLe sort · · = true)) : s.mergeSort (sortLe sort) = s :=

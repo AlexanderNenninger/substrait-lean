@@ -119,7 +119,10 @@ generators, then the trusted reading and writing.
 The reference's semantics, in the Lake package `sverify-core` (#1189). It
 imports nothing but Lean: `lake build` in `core/` builds it alone, and CI
 runs that build as the guard. The modules below it import the core as
-`Sverify.Core.*`.
+`Sverify.Core.*`. The core is parametric in the black-box catalogue: its
+evaluator, `Rel.Allowed` and its theorems take `[Boxes.Ambient]`, and it
+declares no instance. An engine's theorems name the instance: DuckDB's is
+`open scoped Substrait.DuckDB` (`DuckDBBoxes.lean`).
 
 | Module | Job |
 |---|---|
@@ -129,8 +132,7 @@ runs that build as the guard. The modules below it import the core as
 | `FloatMoments.lean` | Exact dyadic moments (`n Σx² − (Σx)²` and the co-moment) and correctly rounded square roots of rationals, for #918 |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `FloatArith.lean` | `+ − × ÷` of doubles as the exact result rounded once (D31), IEEE 754's signed zeros and NaN, and their bounds (`add_scaled` …) |
-| `BlackBox.lean` | The black-box functions' table: types, NULL handling, raising, laws |
-| `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
+| `BlackBox.lean` | The black-box mechanism: a row's types, NULL handling, raising and laws, the black-box catalogue `Boxes` with its well-formedness, and `Boxes.Ambient`, the catalogue in scope; no rows |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
 | `Regex.lean` | The regular-expression evaluator behind the regex black boxes |
 | `Rounding.lean` | Exact `FLOOR`, `CEIL`, `ROUND` and double-to-integer casts on codes |
@@ -275,6 +277,8 @@ the guard. The modules below it import it as
 | `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
 | `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`) |
+| `DuckDBBoxes.lean` | DuckDB's black-box catalogue `Boxes.duckdb`: its rows, Lean's evaluators, the opaque functions, `Boxes.duckdb_wf`, and the scoped instance `Substrait.DuckDB.boxes` |
+| `VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `DuckDBFunctions.lean` | `Profile.duckdb` under DuckDB's settings and `Profile.duckdbWritten`, as the SQL printer writes it, on the core alone |
 | `DuckDBProfile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, and `Rel.duckdb_sound` |
 | `EngineTables.lean` | DuckDB's, Polars's and Spark's choice tables and observation rows, refining the core; `builtinEngines`; the dependency and transfer reports over them |
