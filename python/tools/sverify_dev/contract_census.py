@@ -84,7 +84,7 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
         r = routes.row(engine, d.get("group"), d["option"])
         if r is not None and r.get("evidence") == "tested":
             causes.append(f"row tested: {routes._where(d.get('group'), d['option'])}")
-    if any(routes._unbounded(e) for e in (report._epsilon or {}).values()):
+    if any(e["unbounded"] for e in (report._epsilon or {}).values()):
         causes.append("no bound on the doubles (a SUM or AVG without sv.max_rows)")
     if route.bound_proved is False:
         causes.append("tolerance bound not proved")
