@@ -2,7 +2,7 @@ name: Set up Lean
 description: Install elan with the toolchain from lean-toolchain and restore the lake build cache.
 inputs:
   cache:
-    description: Restore and save ~/.elan, .lake and core/.lake
+    description: Restore and save ~/.elan, .lake and each package's .lake (core, analysis, engines)
     default: "true"
   save:
     description: Save .lake after the job (false restores only, for a job whose build differs from the others)
@@ -18,7 +18,9 @@ runs:
           ~/.elan
           .lake
           core/.lake
-        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', '**/*.lean') }}
+          analysis/.lake
+          engines/.lake
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', '**/*.lean') }}
         restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
     - name: Restore elan and the lake build
       if: inputs.cache == 'true' && inputs.save != 'true'
@@ -28,7 +30,9 @@ runs:
           ~/.elan
           .lake
           core/.lake
-        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', '**/*.lean') }}
+          analysis/.lake
+          engines/.lake
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', '**/*.lean') }}
         restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
     - name: Install elan
       shell: bash

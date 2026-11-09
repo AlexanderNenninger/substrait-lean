@@ -1,5 +1,5 @@
 import Lean.Data.Json
-import SubstraitLean.EngineTables
+import Sverify.Engines.Tables
 
 /-!
 # The options a plan meets, and the option-wise transfer check (#444, step 3c)
@@ -37,11 +37,17 @@ def Expr.ctors : Expr → List Ctor
 /-- A read of a profile's table: a group, an option and the plan's preferences. -/
 abbrev Read := String × String × List Behaviour
 
-/-- The options of a call's group, with the group. -/
+/-- The options of a call's group that apply to it (`optionApplies`), with
+the group: a `SUM` does not read `avg_int_result`. -/
 def ctorReads (c : Ctor) : List Read :=
   match rowOf c with
-  | some r => ((groups.lookup r.group).getD []).map (r.group, ·, [])
+  | some r => (((groups.lookup r.group).getD []).filter (optionApplies · c)).map (r.group, ·, [])
   | none => []
+
+-- A `SUM` of integers reads its group's `overflow` and
+-- `empty_group_aggregates`, and only an integer `AVG` reads `avg_int_result`.
+#guard (ctorReads (.agg .sum)).map (·.2.1) == ["overflow", "empty_group_aggregates"]
+#guard (ctorReads (.agg .iavg)).any (·.2.1 == "avg_int_result")
 
 def Expr.reads (e : Expr) : List Read := e.ctors.flatMap ctorReads
 
@@ -426,8 +432,9 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
     all_goals exact hc
   · right
     have hp : (r.group, o, []) ∈ f.reads := by
-      simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map]
-      exact .inl ⟨o, ho, rfl⟩
+      simp only [AggFn.reads, ctorReads, hr, hos, Option.getD_some, List.mem_append, List.mem_map,
+        List.mem_filter]
+      exact .inl ⟨o, ⟨ho, optionApplies_of_scope hsc⟩, rfl⟩
     exact ⟨r, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩, hsc⟩
 
 theorem Measure.AllowedP.monoOn {I : Impl} {m : Measure} (h : ∀ p ∈ m.reads, t.LeAt u p)
@@ -534,7 +541,8 @@ theorem Rel.AllowedP_transfer {t u : ProfileTable} {cat : Catalog} {r : Rel}
   have hx : ∀ c ∈ r.ctors, ∀ args, CallExtra t c args → CallExtra u c args :=
     fun c hc _ ⟨row, hr, os, hos, o, ho, hi, ⟨b, hb, hn⟩, hs⟩ =>
       ⟨row, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ (Rel.ctorReads_sub hc _ (by
-        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map]; exact ⟨o, ho, rfl⟩))) hi hb,
+        simp only [ctorReads, hr, hos, Option.getD_some, List.mem_map, List.mem_filter]
+        exact ⟨o, ⟨ho, optionApplies_of_scope hs⟩, rfl⟩))) hi hb,
         hn⟩, hs⟩
   refine ⟨J, ⟨fun f v => ?_, fun f v w => ?_⟩, ?_⟩
   · by_cases hf : Ctor.un f ∈ r.ctors
@@ -584,57 +592,10 @@ def Rel.functions (r : Rel) : List String :=
 def ProfileTable.missingIn (t : ProfileTable) (fns : List String) : List (String × List String) :=
   fns.filterMap fun f => (t.missing.lookup f).map (f, ·)
 
-/-! ## The report, for Python -/
+/-! ## The report, for Python
 
-/-- The profiles a report compares. -/
-def reportProfiles (es : List EngineProfile) : List (ProfileTable × ObsTable) :=
-  (Profile.reference.table, Profile.reference.obs) ::
-    (Profile.substrait.table, Profile.substrait.obs) :: es.map fun e => (e.table, e.obs)
-
-open Lean (Json toJson) in
-/-- `substrait-check --dependencies`: the options the plan meets, each with
-every profile's choice and observation row; per pair of profiles whether a
-proof under the first holds under the second (`transferB`); and per engine
-the shims its translation from the reference needs for this plan. -/
-def Rel.dependenciesJson (es : List EngineProfile) (r : Rel) : Json :=
-  let reads := r.reads.eraseDups
-  let choiceAt (t : ProfileTable) (p : Read) : Json :=
-    match t.choice? p.1 p.2.1 with | some c => c.json | none => Json.null
-  let rowAt (obs : ObsTable) (p : Read) : Json :=
-    match obs.row? p.1 p.2.1 with | some row => row.json | none => Json.null
-  Json.mkObj [
-    ("options", Json.arr <| (reads.map fun p => Json.mkObj ([
-      ("group", toJson p.1), ("option", toJson p.2.1), ("preferences", toJson p.2.2),
-      ("tool", toJson ((Profile.reference.tools.find? (·.option == p.2.1)).map fun t =>
-        match t.tool with | .raise => "raise" | .choose => "choose" | .leaveOpen => "leave_open"))] ++
-      (reportProfiles es).map fun (t, obs) => (t.name, Json.mkObj [
-        ("choice", choiceAt t p), ("allows", toJson (t.allows p.1 p.2.1 p.2.2)),
-        ("row", rowAt obs p), ("version", toJson t.version)]))).toArray),
-    ("transfer", Json.mkObj ((reportProfiles es).map fun (t, _) => (t.name,
-      Json.mkObj ((reportProfiles es).map fun (u, _) => (u.name, toJson (transferB r t u)))))),
-    ("functions", toJson r.functions),
-    ("missing", Json.mkObj (es.map fun e => (e.name,
-      Json.arr <| ((e.table.missingIn r.functions).map fun (f, ids) =>
-        Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray))),
-    -- A shim the plan needs at an option, unless every read there states a
-    -- preference the engine gives as stated (a key's `NULLS LAST` on Polars):
-    -- the shim is for the reference's default (#444, step 3b).
-    ("shims", Json.mkObj (es.map fun e => (e.name,
-      Json.arr <| ((reads.map fun p => (p.1, p.2.1)).eraseDups.filterMap fun (g, o) =>
-        let stated := reads.filter fun p => p.1 == g && p.2.1 == o
-        if stated.all (fun p => !p.2.2.isEmpty &&
-            (e.table.allows g o p.2.2).all (Profile.reference.table.allows g o p.2.2).contains) then none
-        else (e.obs.row? g o).bind fun row => row.shim.map fun sh =>
-          Json.mkObj [("group", toJson g), ("option", toJson o), ("shim", toJson sh)]).toArray)))]
-
-/-! ## The transfer check, on a dependency report -/
-
-/-- The profiles by name: the reference, the core, Substrait, and the engines
-(DuckDB under its default settings). -/
-def profileNamed (es : List EngineProfile) (name : String) : Option (ProfileTable × ObsTable) :=
-  ((Profile.reference.table, Profile.reference.obs) :: (Profile.core.table, []) ::
-    (Profile.substrait.table, Profile.substrait.obs) :: es.map fun e => (e.table, e.obs)).find?
-    (·.1.name == name)
+The reports over the profiles (`Rel.dependenciesJson`, `transferJson`) are
+with the engines' tables, in `SubstraitLean/EngineTables.lean`. -/
 
 /-- What `t` allows at `group` (`none`: the row without a group) and `option`. -/
 def ProfileTable.allowsAt (t : ProfileTable) (group : Option String) (option : String)
@@ -654,38 +615,6 @@ def ObsTable.factsAt (obs : ObsTable) (group : Option String) (option : String) 
   | some { evidence := .tested ids _, .. } | some { evidence := .proved _ ids, .. } => ids
   | some { evidence := .probed ids _, .. } => ids
   | _ => []
-
-open Lean (Json toJson) in
-/-- `substrait-check --transfer`, on stdin `{"from": P, "to": E, "depends":
-[{"group", "option", "preferences"?, "behaviours"?}], "functions"?: [...]}`:
-whether a proof under `P` that uses only `depends` holds under `E`. Each row
-fails where `E` allows a behaviour not below one the proof used (`behaviourLe`;
-`behaviours`, or else all `P` allows there), and each function `E` lacks fails. With
-`depends` = `Rel.reads` and no `behaviours`, this is `transferB`, which
-`Rel.transfer_of_transferB` proves sound. -/
-def transferJson (es : List EngineProfile) (input : Json) : Except String Json := do
-  let name (k : String) : Except String (ProfileTable × ObsTable) := do
-    let n ← input.getObjValAs? String k
-    match profileNamed es n with
-    | some p => pure p
-    | none => throw s!"unknown profile {n}"
-  let (P, _) ← name "from"
-  let (E, obsE) ← name "to"
-  let rows := (input.getObjValAs? (Array Json) "depends").toOption.getD #[]
-  let mut failures : Array Json := #[]
-  for row in rows do
-    let group := (row.getObjValAs? String "group").toOption
-    let option ← row.getObjValAs? String "option"
-    let ps := (row.getObjValAs? (List String) "preferences").toOption.getD []
-    let used := (row.getObjValAs? (List String) "behaviours").toOption.getD (P.allowsAt group option ps)
-    let target := E.allowsAt group option ps
-    unless target.all (fun b => used.any (behaviourLe option b ·)) do
-      failures := failures.push (Json.mkObj [("group", toJson group), ("option", toJson option),
-        ("from", toJson used), ("to", toJson target), ("facts", toJson (obsE.factsAt group option))])
-  let fns := (input.getObjValAs? (List String) "functions").toOption.getD []
-  for (f, ids) in E.missingIn fns do
-    failures := failures.push (Json.mkObj [("function", toJson f), ("facts", toJson ids)])
-  return Json.mkObj [("ok", toJson failures.isEmpty), ("failures", Json.arr failures)]
 
 /-- One group and option a contract's transformation meets: the reference's
 behaviours its reads there use, and whether every read states its preference

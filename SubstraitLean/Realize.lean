@@ -35,6 +35,13 @@ the options where the engine allows a behaviour that profile does not
 (`transferB`, which `Rel.transfer_of_transferB` proves sound). `"sorted"`
 says whether the plan's result comes out of a sort.
 
+`"translated_evidence"` is the evidence a translated run from the reference
+carries: `"proved"` only where `"evidence"` is and nothing in
+`"tested_because"` (`testedBecause`) makes it rest on a test. An engine the
+request names (`"engines"`) without a profile here gets a verdict too
+(`unprofiledJson`, `"profile": false`), so every engine a route may reach has
+one.
+
 What the postcondition observes (the observation it states, a tolerance the
 plan's `ε` must meet, the columns it reads) is applied to `"observed"` in
 Python for now; a later step brings it here.
@@ -188,9 +195,50 @@ def sortedRoot : Rel → Bool
   | .fetch (.orderBy _ _) _ _ => true
   | _ => false
 
+/-- Why a translated run on `E` of a plan proved under the reference rests on
+tests, beside the rows (`"without_row"`): `"robust_by_facts"` where, under
+the plan's bound, a postcondition holds on the engine's doubles by the
+engine's facts and not by a theorem (`"robust"`'s `"proved_on"`, #1045:
+Kahan sums, whose sign `TreeSum.sign` does not cover);
+`"allowed_orders_only"` where, under an observation that states its
+doubles, a postcondition is proved on every order of the reference but not
+on every result it allows (`Report.allowed`, #1071). -/
+def testedBecause (E : EngineProfile) (input : Json) (rep : ContractCheck.Report)
+    (robust : Json) : List String :=
+  let obs := (input.getObjVal? "observation").toOption
+  let floatsPlan := (obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false
+  let approxs : List Bool :=
+    ((obs.bind (·.getObjValAs? (Array Bool) "approx" |>.toOption)).getD #[]).toList
+  let rob : List Json := ((robust.getArr?).toOption.getD #[]).toList
+  let proved := rep.ensures.flatten.map (·.2.1)
+  let byFacts := floatsPlan && (List.range proved.length).any fun i =>
+    let r := rob.getD i .null
+    proved.getD i false && !approxs.getD i false &&
+      (r.getObjValAs? Bool "robust").toOption.getD false &&
+      !(((r.getObjValAs? (Array String) "proved_on").toOption.getD #[]).contains E.name)
+  let ordersOnly := obs.isSome && !floatsPlan && (List.range proved.length).any fun i =>
+    proved.getD i false && !rep.allowed.getD i true && (rep.ignores.getD i none).isSome
+  (if byFacts then ["robust_by_facts"] else []) ++ (if ordersOnly then ["allowed_orders_only"] else [])
+
+/-- The verdict on an engine without a profile in this checker (an optional
+one, DataFusion): no option has a row, so the translation's tests stand for
+the plan. -/
+def unprofiledJson : Json := Json.mkObj [
+  ("class", toJson "exact"), ("class_basis", toJson "computed"),
+  ("evidence", toJson "tested"), ("translated_evidence", toJson "tested"),
+  ("tested_because", toJson ["no_profile"]), ("profile", toJson false),
+  ("rows", toJson (0 : Nat)), ("without_row", Json.arr #[]),
+  ("theorems", Json.arr #[]), ("facts", Json.arr #[]), ("proved_facts", Json.arr #[]),
+  ("issues", Json.arr #[]), ("guard_free_theorem", .null), ("version", .null),
+  ("shims", Json.arr #[]), ("observed", Json.arr #[]), ("problems", Json.arr #[]),
+  ("transfer", Json.mkObj [])]
+
 /-- `"engines"` and `"sorted"` of a `--contract` request, given its
-`"rows_exact"` (`Epsilon.rowsExactByEngine`). -/
-def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json) :
+`"rows_exact"` (`Epsilon.rowsExactByEngine`), its report and `"robust"`
+(`EngineRobust.robust`). An engine the request names (`"engines"`) without a
+profile here gets `unprofiledJson`. -/
+def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
+    (rep : ContractCheck.Report) (robust : Json) :
     Except String (List (String × Json)) := do
   let some reads ← Epsilon.dependsReads input | return []
   let some tj := (input.getObjVal? "transform").toOption | return []
@@ -199,7 +247,18 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json) :
   let ds := deps reads
   -- Without the threshold analysis's answer, the rows may differ.
   let exact (e : String) : Bool := (rowsExact.getObjValAs? Bool e).toOption.getD false
-  return [("engines", Json.mkObj (es.map fun E => (E.name, engineJson es E ds all (exact E.name)))),
+  let profiled := es.map fun E =>
+    let because := testedBecause E input rep robust
+    let v := engineJson es E ds all (exact E.name)
+    let proved := (v.getObjValAs? String "evidence").toOption == some "proved"
+    (E.name, v.setObjVal! "profile" (toJson true)
+      |>.setObjVal! "tested_because" (toJson because)
+      |>.setObjVal! "translated_evidence"
+        (toJson (if proved && because.isEmpty then "proved" else "tested")))
+  let named : List String :=
+    ((input.getObjValAs? (Array String) "engines").toOption.getD #[]).toList
+  let others := named.eraseDups.filter (fun n => !es.any (·.name == n)) |>.map (·, unprofiledJson)
+  return [("engines", Json.mkObj (profiled ++ others)),
     ("sorted", toJson (sortedRoot plan.root)), ("sorted_basis", toJson "computed")]
 
 end Substrait.Realize

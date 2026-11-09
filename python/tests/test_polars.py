@@ -175,7 +175,7 @@ def test_golden_fixtures(fixture, data):
     code, rows = expected(fixture)
     source = fixture.read_text()
     if code != 0:
-        with pytest.raises(ValueError, match="rejects the plan"):
+        with pytest.raises(ValueError, match="refuses the plan"):
             written_plan(source)
         return
     plan = written_plan(source)

@@ -333,7 +333,10 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
-        raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
+        raise Unsupported(
+            f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}; check that DuckDB "
+            "runs it, or write the step in Ibis"
+        ) from e
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
     for node in tree.find_all(*_NONDETERMINISTIC):
@@ -360,7 +363,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     except sg.errors.OptimizeError as e:
         raise Unsupported(f"cannot resolve the SQL's names: {str(e).splitlines()[0]}") from e
     if not isinstance(tree, sge.Select | sge.SetOperation):
-        raise Unsupported(f"{type(tree).__name__} is not supported; only SELECT queries are")
+        raise Unsupported(_ONLY_SELECT.format(type(tree).__name__))
     return tree
 
 
@@ -532,13 +535,16 @@ _SELECT_ARGS = {
 }
 
 #: The clauses of the queries SQLGlot reads that the subset lacks, by name.
+#: The SELECT clauses the lift refuses, each with its rewrite or issue.
 _CLAUSES = {
-    "qualify": "QUALIFY",
-    "windows": "WINDOW",
-    "laterals": "LATERAL",
-    "pivots": "PIVOT",
-    "sample": "SAMPLE",
+    "qualify": ("QUALIFY", "filter the window's column in a subquery (#319)"),
+    "windows": ("WINDOW", "write each window in its OVER (…)"),
+    "laterals": ("LATERAL", "write it as a join (#813)"),
+    "pivots": ("PIVOT", "write one aggregate per value, SUM(CASE WHEN k = v THEN x END)"),
+    "sample": ("SAMPLE", "sample the input before sverify reads it"),
 }
+
+_ONLY_SELECT = "{} is not supported; only SELECT queries are: write it as a SELECT"
 
 
 def _option(name: str, value: str) -> Json:
@@ -625,11 +631,11 @@ class _Lift:
         if isinstance(node, sge.SetOperation):
             return self.set_op(node)
         if not isinstance(node, sge.Select):
-            raise Unsupported(f"{type(node).__name__} is not supported; only SELECT queries are")
+            raise Unsupported(_ONLY_SELECT.format(type(node).__name__))
         if (with_ := node.args.get("with_")) is not None:
             # CTEs are inlined where they are read; each sees the ones before.
             if with_.args.get("recursive"):
-                raise Unsupported("WITH RECURSIVE is not supported")
+                raise Unsupported("WITH RECURSIVE is not supported yet (#320)")
             saved = self.ctes
             self.ctes = dict(saved)
             for cte in with_.expressions:
@@ -640,15 +646,18 @@ class _Lift:
                 return self.query(body)
             finally:
                 self.ctes = saved
-        for arg, what in _CLAUSES.items():
+        for arg, (what, exit_) in _CLAUSES.items():
             if node.args.get(arg):
-                raise Unsupported(f"{what} is not supported yet")
+                raise Unsupported(f"{what} is not supported yet; {exit_}")
         extra = [k for k, v in node.args.items() if v and k not in _SELECT_ARGS]
         if extra:
             raise Unsupported(f"SELECT with {', '.join(sorted(extra))} is not supported")
         distinct = node.args.get("distinct")
         if distinct is not None and distinct.args.get("on") is not None:
-            raise Unsupported("DISTINCT ON is not supported")
+            raise Unsupported(
+                "DISTINCT ON is not supported; keep the rows whose "
+                "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …) is 1, in a subquery"
+            )
         rel, scope = self.from_(node)
         if (where := node.args.get("where")) is not None:
             rel = {"filter": {"input": rel, "condition": self.condition(where.this, scope)}}
@@ -860,7 +869,7 @@ class _Lift:
             side, kind = (join.side or "").upper(), (join.kind or "").upper()
             on = join.args.get("on")
             if join.args.get("using"):
-                raise Unsupported("JOIN … USING is not supported")
+                raise Unsupported("JOIN … USING is not supported; write the join with ON a.k = b.k")
             if kind == "CROSS" or (not side and not kind and on is None):
                 rel = {"cross": {"left": rel, "right": right}}
                 scope = scope + cols
@@ -963,7 +972,10 @@ class _Lift:
         """One window function: the window functions (JSON and type) it is
         computed from, and its value from their columns."""
         if w.args.get("alias") is not None or w.args.get("first") is not None:
-            raise Unsupported(f"{_shown(w)}: named windows are not supported yet")
+            raise Unsupported(
+                f"{_shown(w)}: named windows are not supported yet; write the window in "
+                "its OVER (…)"
+            )
         f = w.this
         ignore_nulls = False
         if isinstance(f, sge.RespectNulls) and isinstance(f.this, sge.FirstValue | sge.LastValue):
@@ -1361,7 +1373,7 @@ class _Lift:
         if a.midnight:
             raise Unsupported(
                 f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
-                "TIMESTAMP is not supported yet (#240)"
+                "TIMESTAMP is not supported yet; CAST it to DATE first"
             )
         t = a.type
         sorts: list[Json] = []
@@ -1574,7 +1586,8 @@ class _Lift:
                 c.name == name and (not table or c.table == table) for o in self.outer for c in o
             ):
                 raise Unsupported(
-                    f"correlated subqueries are not supported yet (it reads {_shown(node)})"
+                    f"correlated subqueries are not supported yet (it reads {_shown(node)}); "
+                    "write it as a join (#813)"
                 )
             what = "unknown" if not found else "ambiguous"
             raise Unsupported(f"{what} column {_shown(node)}")
@@ -2039,7 +2052,7 @@ def _check_numbers(query: str) -> None:
         if re.search(r"(?<!\d)_|_(?!\d)", m.group()):
             raise Unsupported(
                 f"the number {m.group()!r}: an underscore not between two digits is read "
-                "differently by DuckDB and SQLGlot"
+                "differently by DuckDB and SQLGlot (SG-4); write the number without it"
             )
 
 
@@ -2086,7 +2099,10 @@ def _check_intervals(query: str) -> None:
             and tok.token_type == TokenType.STRING
             and re.search(r"\bago\b", tok.text, re.I)
         ):
-            raise Unsupported(f"INTERVAL {tok.text!r}: an interval with `ago` is not supported yet")
+            raise Unsupported(
+                f"INTERVAL {tok.text!r}: an interval with `ago` is not supported yet (SG-8); "
+                "write a negative interval, INTERVAL '-1' DAY"
+            )
 
 
 def _check_export_state(tree: Any) -> None:
@@ -2100,7 +2116,10 @@ def _check_export_state(tree: Any) -> None:
             and not name.quoted
             and name.name.upper() == "EXPORT_STATE"
         ):
-            raise Unsupported(f"{_shown(a)}: EXPORT_STATE is not supported")
+            raise Unsupported(
+                f"{_shown(a)}: EXPORT_STATE is not supported (SG-9); drop it to read the "
+                "aggregate's value"
+            )
 
 
 def _check_using_stars(tree: Any) -> None:
@@ -2145,7 +2164,10 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     if profile is None:
         raise ValueError(f"semantics must be one of {', '.join(PROFILES)}, not {semantics!r}")
     if profile.null_ordering != sg.Dialect.get_or_raise(DIALECT).NULL_ORDERING:
-        raise Unsupported("SQLGlot's DuckDB dialect no longer sorts NULLs as DuckDB does")
+        raise Unsupported(
+            "SQLGlot's DuckDB dialect no longer sorts NULLs as DuckDB does; install the "
+            "SQLGlot release sverify's requirements name"
+        )
     tree = parse(query, schemas)
     with compiling() as compiler:
         rel, cols = _Lift(profile, schemas).query(tree)

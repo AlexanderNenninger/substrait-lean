@@ -7,7 +7,7 @@ install gets a symlink to `.lake/build/bin/substrait-check`, so a later
 
 The Lean project is the repository root, or `lean/` in an unpacked sdist.
 A wheel's build checks every generated entry's proof (`-Kcheck_generated=true`,
-`SubstraitLean/Generated.lean`), so no wheel ships an unchecked table; an
+`engines/Sverify/Engines/Generated.lean`), so no wheel ships an unchecked table; an
 editable install builds with the checkout's current setting.
 
 `SVERIFY_PREBUILT_CHECKER=<path>` makes an editable install link that binary

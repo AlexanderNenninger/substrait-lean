@@ -1171,6 +1171,98 @@ def _(mo):
     mo.md(r"""
     Every engine returns the same rows, and the NULL key matches nothing.
 
+    ### Splitting a plan across machines
+
+    When a table outgrows one machine, its rows live in pieces, and the plan
+    has to run piece by piece. `sverify.engines.run_sharded` asks the
+    checker how the plan splits: what each shard computes, and how the
+    parts combine into the plan's result on all the rows
+    (`Rel.shardSplit_sound`). It runs each shard on Polars and refuses a
+    plan whose result would depend on the split. We'll total each meter's
+    readings, kept in two regions:
+    """)
+    return
+
+
+@app.cell
+def _(pa, substrait_json, sv):
+    from sverify.engines import run_sharded
+
+    def _readings(rows):
+        return pa.table(
+            {
+                "meter": pa.array([m for m, _, _ in rows], pa.int64()),
+                "wh": pa.array([w for _, w, _ in rows], pa.int64()),
+                "kwh": pa.array([k for _, _, k in rows], pa.float64()),
+            }
+        )
+
+    regions = [
+        {"readings": _readings([(1, 120, 0.12), (2, 300, 0.3), (1, 80, 0.08)])},
+        {"readings": _readings([(2, 50, 0.05), (3, 10, 0.01)])},
+    ]
+    _con = sv.connect()
+    _con.create("readings", regions[0]["readings"].schema)
+    wh_plan = substrait_json(_con, "SELECT meter, SUM(wh) AS wh FROM readings GROUP BY meter")
+    kwh_plan = substrait_json(_con, "SELECT meter, SUM(kwh) AS kwh FROM readings GROUP BY meter")
+    _wh = run_sharded(wh_plan, regions, sharded=["readings"])
+    sorted(_wh.to_pylist(), key=lambda r: r["meter"])
+    return kwh_plan, regions, run_sharded
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    An integer sum splits exactly: each region sums its meters, and the
+    parts add up. A sum of doubles doesn't, since each region rounds its
+    partial sum, and the rounding depends on which rows land where. The
+    plan is refused, and the refusal names the way through:
+    """)
+    return
+
+
+@app.cell
+def _(kwh_plan, regions, run_sharded):
+    try:
+        run_sharded(kwh_plan, regions, sharded=["readings"])
+    except ValueError as _e:
+        print(f"{type(_e).__name__}: {_e}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    With `reproducible=sv.equivalent(floats="plan")` we accept doubles
+    within the bound the proof gives for this split
+    (`StdModel.sharded_near`), and `tolerance=True` reports it per row:
+    """)
+    return
+
+
+@app.cell
+def _(kwh_plan, regions, run_sharded, sv):
+    _kwh = run_sharded(
+        kwh_plan,
+        regions,
+        sharded=["readings"],
+        reproducible=sv.equivalent(floats="plan"),
+        tolerance=True,
+    )
+    assert _kwh.rows_exact
+    {
+        "kwh": _kwh.table.sort_by("meter").to_pylist(),
+        "within": _kwh.tolerance["kwh"],
+    }
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Each meter's total is within a few units of 10⁻¹⁶ of the sum on one
+    machine, and the bound comes with the result.
+
     ### Routes: how a proof reaches an engine
 
     A proof is about the plan under one semantics, the reference by default.
@@ -1439,6 +1531,53 @@ def _(con, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ### Averages round
+
+    A sum or average of doubles rounds, and each engine adds in its own
+    order. Say every reading is at most 60. The reference rounds the exact
+    average once, so its average is at most 60 too, and the claim is
+    proved. An engine's average can land a few units of 10⁻⁹ above it. With
+    a row cap, Lean bounds how far (`StdModel.epsilon_avg_cr`), and the
+    route to an engine says how close the claim comes:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from ibis import _
+    from sverify import routes as _routes
+
+    _readings = ibis.table({"sensor": "int64", "temp": "float64"}, name="readings")
+    _avg = _readings.group_by("sensor").aggregate(avg_temp=_readings.temp.mean())
+    _requires = {"readings": [_.temp >= -50.0, _.temp <= 60.0, sv.max_rows(1_000_000)]}
+    exact_claim = sv.verify(_avg, requires=_requires, ensures=[_.avg_temp <= 60.0])
+    approx_claim = sv.verify(_avg, requires=_requires, ensures=[sv.approx(_.avg_temp <= 60.0)])
+    assert exact_claim.proved and not exact_claim.ensures[0].robust and approx_claim.proved
+    print(_routes.choose(exact_claim, "duckdb"))
+    return (approx_claim,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The hint names the exit, `sv.approx`, which states the claim up to that
+    rounding. With it the claim is proved, and the report's `observes:` line
+    says which results count as the same: the doubles within the plan's
+    bound (`floats="plan"`, the default of `sv.equivalent`):
+    """)
+    return
+
+
+@app.cell
+def _(approx_claim):
+    print(approx_claim.observation)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Timestamps and intervals
 
     Timestamps are microseconds since 1970 (UTC) in the model, and
@@ -1500,6 +1639,64 @@ def _(mo):
 @app.cell
 def _(events, sv):
     sv.verify(events.select(month_start=events.ts.truncate("M")))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Decimals, and the types sverify reads
+
+    Money is a decimal, and a scale that drops a cent is a wrong answer that
+    looks right. Sverify reads each column's type and keeps a decimal's
+    precision and scale through the plan: a price of `DECIMAL(10, 2)` times
+    a quantity is still in cents. A type it doesn't model yet is refused
+    when it reads the table, with the cast that gets you through. We'll load
+    order lines whose ids came in as unsigned integers:
+    """)
+    return
+
+
+@app.cell
+def _(pa, sv):
+    import decimal as _decimal
+
+    _raw = pa.table(
+        {
+            "id": pa.array([1, 2], pa.uint32()),
+            "price": pa.array(
+                [_decimal.Decimal("9.99"), _decimal.Decimal("0.10")], pa.decimal128(10, 2)
+            ),
+            "qty": pa.array([3, 7], pa.int64()),
+        }
+    )
+    con_lines = sv.connect()
+    con_lines.put("lines", _raw)
+    _lines = con_lines.table("lines")
+    try:
+        sv.verify(_lines.select("id", total=_lines.price * _lines.qty))
+    except sv.errors.UnsupportedError as _e:
+        print(f"UnsupportedError: {_e}")
+    con_lines.put("lines", _raw.set_column(0, "id", _raw["id"].cast(pa.int64())))
+    return (con_lines,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    With the ids cast to a signed integer before sverify reads the table,
+    the plan is proved, and the total keeps the price's scale
+    (`Rel.kinds_sound`):
+    """)
+    return
+
+
+@app.cell
+def _(con_lines, sv):
+    _lines = con_lines.table("lines")
+    _totals = sv.verify(_lines.select("id", total=_lines.price * _lines.qty))
+    assert _totals.proved
+    {"total": str(_totals.output["total"]), "rows": _totals.run(con_lines, "duckdb").to_pylist()}
     return
 
 
@@ -1587,12 +1784,9 @@ def _(mo):
     their guarantees in every state while only each batch is checked. You
     can refresh a node on DuckDB, Polars or Spark, hand a plan
     to Snowflake as SQL, and tell where an engine could depart from the
-    model. That is the end of the tour. The
-    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
-    covers every feature in more detail, and
-    [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md)
-    goes under the hood: the checker, the producers and engines, and what
-    is proved and what is trusted.
+    model. The last chapter, [Running it in production](?file=06_running_in_production.py),
+    covers the work around a proved pipeline: checking its file in CI,
+    testing it, its credentials, its lineage and a bound on its state.
     """)
     return
 
@@ -1600,7 +1794,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 4. [Contracts](?file=04_contracts.py)
+    ← 4. [Contracts](?file=04_contracts.py) · 6. [Running it in production](?file=06_running_in_production.py) →
     """)
     return
 

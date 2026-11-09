@@ -5,7 +5,7 @@ A plan runs on the engine `E` by one of four routes, tried in this order:
 
 1. `"native"`: it was verified under `Profile.E` (`verify(semantics=E)`).
 2. `"translated"`: it was verified under the reference, and runs through
-   the translation from the reference to `E` (`TRANSLATIONS`).
+   the translation from the reference to `E` (`_engines.translations()`).
 3. `"transfer"`: it was verified under another profile `P`, and at every
    option the plan reads, `E`'s choices are within `P`'s: the proof holds
    under `Profile.E` as it is. The checker decides it (`transferB`, proved
@@ -60,6 +60,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
+from sverify._engines import translations
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.observation import Observation, Within, _deterministic_arg
 
@@ -94,27 +95,6 @@ class EngineProfile:
     versions: tuple[str, ...]
     """The engine versions the profile's facts were probed at
     (`characterization/<engine>/facts/`)."""
-
-
-#: The translation from the reference to each engine, with what makes it
-#: sound.
-TRANSLATIONS: Mapping[str, str] = {
-    "duckdb": "sverify's DuckDB lowering, proved for every plan, and its SQL writer",
-    "polars": "sverify's Polars translation, with shims where Polars differs from the "
-    "reference, tested against the reference",
-    "datafusion": "sverify's SQL writer, with shims where DataFusion differs from the "
-    "reference, tested against the reference",
-    "spark": "sverify's Spark SQL writer, with shims where Spark differs from the reference, "
-    "proved against Spark's facts (Rel.spark_sound) and tested against the reference",
-}
-
-
-def translations() -> dict[str, str]:
-    """`TRANSLATIONS`, with those of the installed profiles from outside
-    sverify (`sverify.profiles`)."""
-    from sverify import profiles as plugged
-
-    return {**TRANSLATIONS, **{e: p.translation for e, p in plugged.plugins().items()}}
 
 
 def shim_text(name: str) -> str:
@@ -343,24 +323,13 @@ def installed_version(engine: str) -> str | None:
     or is not installed."""
     from sverify import profiles as plugged
 
-    if (p := plugged.plugins().get(engine)) is not None:
-        return p.installed_version() if p.installed_version else None
+    p = plugged.find(engine)
+    if p is None or p.installed_version is None:
+        return None
     try:
-        if engine == "duckdb":
-            import duckdb
-
-            return duckdb.__version__
-        if engine == "polars":
-            import polars
-
-            return polars.__version__
-        if engine == "spark":
-            import pyspark
-
-            return pyspark.__version__
+        return p.installed_version()
     except ImportError:
         return None
-    return None
 
 
 def probed_version(engine: str) -> str | None:
@@ -513,7 +482,8 @@ def profiles() -> dict[str, EngineProfile]:
 
     out: dict[str, EngineProfile] = {}
     for e, p in plugged.plugins().items():
-        out[e] = EngineProfile(e, p.versions)
+        if p.versions:  # a profile from outside; sverify's own are the checker's
+            out[e] = EngineProfile(e, p.versions)
     for name, p in (_options_json().get("profiles") or {}).items():
         if isinstance(p, dict) and p.get("engine"):
             out[name] = EngineProfile(p["engine"], tuple(p.get("versions") or ()))
@@ -749,7 +719,9 @@ def _cited(facts: Sequence[str] | None) -> str:
 
 def verdict(report: Report, engine: str) -> Mapping[str, Any] | None:
     """The checker's verdict on the report's plan on `engine` (`"engines"`,
-    `SubstraitLean/Realize.lean`); None where it gives none."""
+    `SubstraitLean/Realize.lean`); None where it gives none. An engine
+    without a profile in the checker has one too (`"profile": false`): the
+    translation's tests stand for the plan."""
     return (report._engines or {}).get(engine)
 
 
@@ -783,11 +755,6 @@ def realization(
     from sverify.observation import from_json
 
     if verdict is None:
-        if engine not in (_options_json().get("profiles") or {}):
-            # An engine without a profile in the checker (DataFusion, an
-            # installed one): no option has a row, so the translation's tests
-            # stand for the plan (`TRANSLATIONS`).
-            return Realized("exact", "tested", (), [])
         return Realized(
             "refused",
             None,
@@ -937,7 +904,7 @@ def floats_on(report: Report) -> dict[str, list[str]]:
     looser = replace(observation, floats="plan")
     out: dict[str, list[str]] = {}
     for e in translations():
-        if (v := verdict(report, e)) is None:
+        if (v := verdict(report, e)) is None or v.get("profile") is False:
             continue
         asked = realization(e, v, observation, report._epsilon)
         base = realization(e, v, looser, report._epsilon)
@@ -956,20 +923,19 @@ def evidence_on(report: Report) -> dict[str, Realized]:
     seen, held = observed(report)
     out: dict[str, Realized] = {}
     for e in translations():
-        if (v := verdict(report, e)) is None:
+        if (v := verdict(report, e)) is None or v.get("profile") is False:
             continue
         got = realization(e, v, seen, report._epsilon, held)
-        out[e] = got._replace(evidence=translated_evidence(report, e, got))
+        out[e] = got._replace(evidence=translated_evidence(v, got))
     return out
 
 
-def translated_evidence(report: Report, engine: str, got: Realized) -> Evidence | None:
-    """The evidence of a translated route: `got`'s, and tested where a
-    postcondition holds on the engine only by its facts (`_robust_tested`)
-    or only on the reference's orders (`_allowed_tested`)."""
-    if got.evidence == "proved" and (_robust_tested(report, engine) or _allowed_tested(report)):
-        return "tested"
-    return got.evidence
+def translated_evidence(v: Mapping[str, Any], got: Realized) -> Evidence | None:
+    """The evidence of a translated route: `got`'s, and tested where the
+    checker says a translated run rests on a test (`"tested_because"`: a
+    postcondition that holds on the engine's doubles by its facts, or on the
+    reference's orders only)."""
+    return "tested" if got.evidence == "proved" and v.get("tested_because") else got.evidence
 
 
 def _all_proved(epsilon: Mapping[str, Any] | None) -> bool:
@@ -1012,34 +978,6 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
             if col in doubles:
                 held.setdefault(col, c.label)
     return replace(report.observation, bound=None), held
-
-
-def _robust_tested(report: Report, engine: str) -> bool:
-    """Does a postcondition run unheld on `engine` (`CheckedCondition.robust`)
-    where that rests on the engine's facts, not on a theorem (its sums are
-    Kahan's, whose sign `TreeSum.sign` does not cover, #1045)?"""
-    if report.observation.floats != "plan":
-        return False
-    return any(
-        c.proved
-        and not c.approx
-        and getattr(c, "robust", False)
-        and engine not in getattr(c, "robust_on", ())
-        for c in report.ensures
-    )
-
-
-def _allowed_tested(report: Report) -> bool:
-    """Is a postcondition proved on every order of the reference but not on
-    every result it allows (`CheckedCondition.allowed`, `postAllowed`): one
-    that reads an open measure (`VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`,
-    `QUANTILE_CONT`, a double `SUM` or `AVG` in another order)? Under the
-    plan's bound a run holds the columns it reads (`observed`); under another
-    observation the engine's value is only tested (#1071). The checker
-    reports `allowed` for the postconditions it reports `ignores` for."""
-    if report.observation.floats == "plan":
-        return False
-    return any(c.proved and not c.allowed and c.checker_ignores is not None for c in report.ensures)
 
 
 # -- the re-check -------------------------------------------------------------
@@ -1169,9 +1107,19 @@ TIES = (
 
 
 def engine_name(engine: Any) -> str:
-    """An engine's name: a string as given, lower case; any other object
-    (a Spark session) is Spark."""
-    return engine.lower() if isinstance(engine, str) else "spark"
+    """An engine's name: a string as given, lower case; a session, the
+    engine's that recognises it (`ProfilePlugin.session`: a Spark session).
+
+    Raises:
+        ValueError: No installed engine recognises the session.
+    """
+    if isinstance(engine, str):
+        return engine.lower()
+    from sverify import profiles as plugged
+
+    if (p := plugged.find(engine)) is None:
+        raise ValueError(f"no installed engine takes {type(engine).__name__} as a session")
+    return p.engine
 
 
 def reproducibility(
@@ -1364,8 +1312,8 @@ def choose(
     depends = report._depends
     from sverify import _engine_settings
 
-    # A Spark session of the caller's: its own settings.
-    values = None if isinstance(engine, str) else _engine_settings.spark_values(engine)
+    # A session of the caller's (Spark's): its own settings.
+    values = None if isinstance(engine, str) else _engine_settings.current(e, engine)
     notes += check_settings(e, values, depends=depends)
     source = report.semantics
     det = report.deterministic
@@ -1426,7 +1374,8 @@ def choose(
                 rerun_evidence=rerun_evidence,
             )
         seen, held = observed(report)
-        got = realization(e, verdict(report, e), seen, report._epsilon, held)
+        v = verdict(report, e)
+        got = realization(e, v, seen, report._epsilon, held)
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
@@ -1443,7 +1392,7 @@ def choose(
             tuple(notes),
             (),
             got.cls,
-            translated_evidence(report, e, got),
+            translated_evidence(v or {}, got),
             got.shims,
             reproducible,
             rerun_evidence,

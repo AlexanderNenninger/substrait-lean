@@ -2017,6 +2017,7 @@ never narrower; one not pinned down yet is every call.
 | `negative_start` | a negative start |
 | `null_handling` | an argument is NULL |
 | `empty_group_aggregates` | an aggregate of no values |
+| `avg_int_result` | an `AVG` with an integer result (`AggFn.iavg`); a `SUM` never meets it |
 | the others (`rounding`, `sum_order`, `stat_algo`, `tie_*`, `shift_range`, …) | every call |
 
 `sum_order`'s true scope is a sum that is not exact; it is every call until
@@ -2033,6 +2034,9 @@ Consequences:
   `fmod(x, 0)` is NaN under `nan_creation`, since its table gives `fp.mod`
   no other `on_division_by_zero`; Polars's NaN for `power` is a domain
   error's (`on_domain_error`), since `power` has no `nan_creation`.
+- A call reads only its group's options that apply to it (`optionApplies`,
+  `optionApplies_of_scope`), so a `SUM` does not read `avg_int_result`
+  (`ctorReads`, `Rel.reads`, `Rel.AllowedP_transfer`).
 - A plan's option dependency report keeps an option only where a call may be
   in its scope, from the arguments' abstract values (`Expr.eval_dead`,
   `Rel.AllowedP_transfer_live`, a follow-up), and reports the function's

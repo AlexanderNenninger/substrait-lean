@@ -1,5 +1,7 @@
 /.lake
 /core/.lake
+/analysis/.lake
+/engines/.lake
 /float-bounds/.lake
 /python/.venv
 .hypothesis/
@@ -18,3 +20,8 @@ __marimo__/
 /python/semantics/
 /python/design/
 /python/ledgers/
+
+# Coverage data (`poe test-cov`, #750).
+.coverage
+.coverage.*
+coverage.json

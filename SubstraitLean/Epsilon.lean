@@ -1,5 +1,5 @@
 import SubstraitLean.ShardCheck
-import SubstraitLean.Transfer
+import SubstraitLean.EngineTables
 import SubstraitLean.MarginCheck
 
 /-!
@@ -956,7 +956,6 @@ knows more, the columns' types and what the preconditions rule out, and its
   is a double and no join compares doubles;
 * `empty_group_aggregates`, where every `SUM` and `AVG` is grouped, without a
   filter, over an argument that cannot be NULL (a group then has a value);
-* `avg_int_result`, where no `AVG` has an integer result (`AggFn.iavg`);
 * a comparison's NaN and zeros options (`cmp`), where no comparison has a
   double side;
 * `min_mod_neg_one`, where every integer `%`'s dividend is bounded above
@@ -964,7 +963,10 @@ knows more, the columns' types and what the preconditions rule out, and its
 * a value-side or open option of an expression whose result reaches neither
   the output nor the rows kept (`liveReads`): a projected column nothing reads.
   An error-side option counts wherever it is met, since an engine may still
-  compute such a column and raise. -/
+  compute such a column and raise.
+
+`avg_int_result` needs no filter: since reads are per function (D34,
+`ctorReads`), only an integer `AVG` reads it. -/
 
 /-- Every aggregate of a plan: its input, keys and measures. A window's
 aggregates count as ungrouped: a frame may be empty. -/
@@ -1093,7 +1095,6 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
   let empty := aggs.any fun (r, gs, ms) => ms.any fun m =>
     (m.fn = .sum || m.fn = .fsum || m.fn = .avg) &&
       (gs.isEmpty || m.filter.isSome || (m.arg.absD (r.aeval cat A F T) []).null)
-  let iavg := aggs.any fun (_, _, ms) => ms.any (·.fn = .iavg)
   let ctx := exprCtx (Write.planSchemas plan) cat A F T plan.root
   let cmp := ctx.any fun (e, cols, _) => (subExprs e).any (cmpDouble cols)
   let minMod := ctx.any fun (e, _, env) => (subExprs e).any (minModPossible env)
@@ -1105,7 +1106,7 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
   let reads := (plan.root.reads.filter fun p => raises p.2.1 || live.contains p).filter
     fun (g, o, _) =>
     !(g == "rel.keys" && !keys) && !(o == "empty_group_aggregates" && !empty) &&
-      !(o == "avg_int_result" && !iavg) && !(g == "cmp" && !cmp) &&
+      !(g == "cmp" && !cmp) &&
       !(o == "min_mod_neg_one" && !minMod)
   return some reads
 

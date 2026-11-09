@@ -61,6 +61,15 @@ sverify = "sverify.cli:main"
 [project.entry-points.pytest11]
 sverify = "sverify.pytest_plugin"
 
+# sverify's own engines, registered as a package from outside registers one
+# (`sverify.profiles`, #1189); each moves to its engine's package with step 5.
+[project.entry-points."sverify.profiles"]
+duckdb = "sverify._builtin.duckdb:PLUGIN"
+polars = "sverify._builtin.polars:PLUGIN"
+spark = "sverify._builtin.spark:PLUGIN"
+datafusion = "sverify._builtin.datafusion:PLUGIN"
+snowflake = "sverify._builtin.snowflake:PLUGIN"
+
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
 Documentation = "https://alexandernenninger.github.io/substrait-lean/"
@@ -100,6 +109,14 @@ exclude = ["build", "src/sverify/_bin"]
 "../core/lake-manifest.json" = "lean/core/lake-manifest.json"
 "../core/lean-toolchain" = "lean/core/lean-toolchain"
 "../core/Sverify" = "lean/core/Sverify"
+"../analysis/lakefile.toml" = "lean/analysis/lakefile.toml"
+"../analysis/lake-manifest.json" = "lean/analysis/lake-manifest.json"
+"../analysis/lean-toolchain" = "lean/analysis/lean-toolchain"
+"../analysis/Sverify" = "lean/analysis/Sverify"
+"../engines/lakefile.toml" = "lean/engines/lakefile.toml"
+"../engines/lake-manifest.json" = "lean/engines/lake-manifest.json"
+"../engines/lean-toolchain" = "lean/engines/lean-toolchain"
+"../engines/Sverify" = "lean/engines/Sverify"
 
 [dependency-groups]
 dev = [
@@ -119,6 +136,8 @@ dev = [
     "pyiceberg[sql-sqlite]>=0.12.0",
     "pyrefly>=1.4.0",
     "pytest>=9.2.0",
+    # Line and branch coverage (`poe test-cov`, #750).
+    "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.17.3",
     "snowflake-connector-python<5",
@@ -134,6 +153,16 @@ override-dependencies = ["sqlglot~=30.22.0"]
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:The 'future.infer_string' option is deprecated"]
+
+[tool.coverage.run]
+# What `poe test-cov` measures (#750): the package and the dev tools, with
+# branches, also in the Python subprocesses the tests start.
+source = ["sverify", "sverify_dev"]
+branch = true
+patch = ["subprocess"]
+
+[tool.coverage.report]
+skip_empty = true
 
 [tool.ruff]
 line-length = 100
@@ -159,18 +188,21 @@ help = "Build the substrait-check CLI that sverify calls"
 cmd = "lake build substrait-check"
 cwd = "${POE_ROOT}/.."
 
+# `lake lean`, which hands Lean each module's file: under `lake env lean` the
+# search path finds `Sverify.Engines.*` in `core/`'s build, the first one
+# with a `Sverify` directory (#1189).
 [tool.poe.tasks.regen-lowering]
 help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
 shell = """
 lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLean.LoweringDuckDB.Lemmas \
   SubstraitLean.LoweringDuckDB.Schemas \
-  && lake env lean -M 6144 scripts/RegenLowering.lean
+  && lake lean scripts/RegenLowering.lean -- -M 6144
 """
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.regen-lift]
 help = "Search for the DuckDB SQL lift again and write it to SubstraitLean/LiftDuckDB (a build only checks it); Lean capped at 6 GB"
-shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake env lean -M 6144 scripts/RegenLift.lean"
+shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake lean scripts/RegenLift.lean -- -M 6144"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.prove-floats]
@@ -197,6 +229,10 @@ help = "Golden tests: substrait-check output on every plan in tests/fixtures"
 cmd = "tests/run.sh"
 cwd = "${POE_ROOT}/.."
 
+[tool.poe.tasks.trusted-base]
+help = "docs/trusted-base.md's axioms column from #print axioms; after `lake -R -Kcheck_generated=true build`"
+cmd = "python -m sverify_dev.trusted_base --write"
+
 [tool.poe.tasks.test]
 help = "The fast Python tests (not `slow`, a tenth of the Hypothesis examples) on 2 workers; see tests/conftest.py"
 cmd = "pytest -n auto --dist worksteal -m 'not slow'"
@@ -206,6 +242,11 @@ env = { PYTEST_XDIST_AUTO_NUM_WORKERS.default = "2", SVERIFY_PROFILE.default = "
 help = "Every Python test with full Hypothesis counts, on every core (as CI and qa run them)"
 cmd = "pytest -n auto --dist worksteal"
 env = { SVERIFY_PROFILE.default = "ci" }
+
+[tool.poe.tasks.test-cov]
+help = "`test-all` with line and branch coverage of sverify and sverify_dev (#750); the JSON report goes to $COV_JSON"
+cmd = "pytest -n auto --dist worksteal --cov --cov-report=term:skip-covered --cov-report=json:${COV_JSON}"
+env = { SVERIFY_PROFILE.default = "ci", COV_JSON.default = "coverage.json" }
 
 [tool.poe.tasks.test-chaos]
 help = "Crash injection into pipeline execution (tests/chaos), streamed to a ledger and summarised; not in qa or CI, run it on homelab"

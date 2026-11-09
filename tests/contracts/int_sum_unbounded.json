@@ -1,0 +1,131 @@
+{
+ "requires": [],
+ "ensures": [],
+ "transform": {
+  "extensions": [
+   {
+    "extensionFunction": {
+     "functionAnchor": 1,
+     "name": "sum"
+    }
+   }
+  ],
+  "relations": [
+   {
+    "root": {
+     "input": {
+      "aggregate": {
+       "input": {
+        "read": {
+         "baseSchema": {
+          "names": [
+           "k",
+           "a",
+           "b",
+           "x",
+           "s"
+          ],
+          "struct": {
+           "types": [
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "i64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "fp64": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            },
+            {
+             "string": {
+              "nullability": "NULLABILITY_NULLABLE"
+             }
+            }
+           ],
+           "nullability": "NULLABILITY_REQUIRED"
+          }
+         },
+         "namedTable": {
+          "names": [
+           "t"
+          ]
+         }
+        }
+       },
+       "groupingExpressions": [
+        {
+         "selection": {
+          "directReference": {
+           "structField": {
+            "field": 0
+           }
+          },
+          "rootReference": {}
+         }
+        }
+       ],
+       "groupings": [
+        {
+         "expressionReferences": [
+          0
+         ]
+        }
+       ],
+       "measures": [
+        {
+         "measure": {
+          "functionReference": 1,
+          "arguments": [
+           {
+            "value": {
+             "selection": {
+              "directReference": {
+               "structField": {
+                "field": 1
+               }
+              },
+              "rootReference": {}
+             }
+            }
+           }
+          ],
+          "invocation": "AGGREGATION_INVOCATION_ALL"
+         }
+        }
+       ]
+      }
+     },
+     "names": [
+      "k",
+      "s"
+     ]
+    }
+   }
+  ]
+ },
+ "keys": {},
+ "ensures_keys": [],
+ "references": {},
+ "max_rows": {},
+ "rows_per": {},
+ "observation": {
+  "coarsens": [
+   "rows",
+   "floats"
+  ],
+  "floats_plan": true,
+  "approx": [],
+  "sql": false
+ }
+}

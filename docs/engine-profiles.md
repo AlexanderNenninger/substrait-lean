@@ -146,7 +146,7 @@ reference profile, and DuckDB is the default oracle.
   under other settings has no proved lowering; #241 tracks adding tables for
   them. CI checks every entry's proof; a local `lake build` takes them as
   proved unless run as `lake -R -Kcheck_generated=true build`
-  (`SubstraitLean/Generated.lean`). A committed table that no longer fits fails the
+  (`engines/Sverify/Engines/Generated.lean`). A committed table that no longer fits fails the
   build: a proof stops checking when `Profile.duckdb` changes, and the table's
   `match` is not exhaustive when a function is added. `SubstraitLean/LoweringCache.lean`
   records each construct's template for the regeneration, which tries it first. `substrait-check --lowering-table` exports the
@@ -414,7 +414,7 @@ option the proof depends on. What is proved
   than 10¹⁸ 64-bit values leaves 38 digits, in any order.
 - `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
   the reference's value, by the lemmas Polars's shims share
-  ([Shims.lean](../SubstraitLean/Shims.lean)).
+  ([Shims.lean](../engines/Sverify/Engines/Shims.lean)).
 - `Spark.written_faithful` and `Rel.spark_sound`: Spark under ANSI, as the
   writer writes it, gives `Rel.eval`'s rows for a plan whose only issues are
   assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the
@@ -450,7 +450,7 @@ refused (D14). Tested, and trusted: that Spark computes as the model says
 ## Engine profiles from outside
 
 A package can add an engine profile without changing sverify. The checker
-takes its engines as a list of `EngineProfile`s (`SubstraitLean/EngineTables.lean`):
+takes its engines as a list of `EngineProfile`s (`engines/Sverify/Engines/Tables.lean`):
 each one's choices, observation rows, the theorem its translation from the
 reference rests on, and its shims' costs. `builtinEngines` holds DuckDB's,
 Polars's and Spark's, and every engine-wide fact (`Epsilon.statsProvedOn`,
@@ -465,15 +465,53 @@ consistent and evidenced. It then builds a checker of its own,
 `substrait-check`. [`SubstraitCheckExamples/DummyEngine.lean`](../SubstraitCheckExamples/DummyEngine.lean)
 does this for a test profile.
 
-Its Python side registers a `sverify.profiles.ProfilePlugin` under the entry-point
-group `sverify.profiles`: the engine's name and versions, its translation
-and the settings a run checks, and the path of its checker. Installed, the
-plugin's checker is the one sverify runs (`$SVERIFY_CHECKER` still comes
-first), `verify(semantics=<engine>)` checks under the profile, and
-`sverify.routes.choose` routes plans to the engine with their class
-(`tests/test_profile_plugins.py`). Without it, nothing changes: an engine with
-a SQL dialect and no profile gets the reference's translation, with no class
-claimed.
+Its Python side registers a `sverify.profiles.ProfilePlugin` under the
+entry-point group `sverify.profiles`. That group is where sverify finds
+engines, and the only place
+([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)):
+DuckDB, Polars, Spark, DataFusion and Snowflake's dialect register theirs
+there too, from `sverify._builtin`, and `tests/test_engines_table.py` checks
+that with the entry points gone sverify names no engine.
+
+```toml
+[project.entry-points."sverify.profiles"]
+myengine = "my_package:PROFILE"
+```
+
+Every field but `engine` is optional:
+
+| field | what it gives |
+|---|---|
+| `engine` | the engine's name, its profile's in the checker's tables |
+| `versions` | the versions its facts were probed at (D14); empty for a profile whose versions the checker carries, as sverify's own |
+| `translation` | the translation from the reference, as a route line names it; empty for none, so a route takes the reference's |
+| `checker` | a `substrait-check` built over `builtinEngines` and this profile |
+| `settings` | the engine settings the profile assumes (`Setting`), checked before a routed run |
+| `shim_text` | what each of its shims does, as a route line says it |
+| `installed_version` | the engine version this process runs |
+| `restore` | how the user puts a setting back |
+| `runner` | runs a written plan over a `Connection`'s tables: `runner(con, plan_json, session, *, keep, finite, tie_free)` |
+| `local` | a `Connection` takes the engine as the one it runs plans on |
+| `optional` | outside the 1.x promise: `sverify.engines.ENGINES` leaves it out |
+| `session` | recognises a session of the engine passed as `engine=` (a Spark session) |
+| `modules` | the modules a run on it needs |
+| `read_settings` | reads the named settings in a session, or in the one the next run uses |
+| `dialect` | the `sverify.sql.Dialect` that `to_sql` writes |
+| `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
+
+Entries for one engine are merged field by field, so one package can add a
+profile to an engine whose dialect another ships: Snowflake's dialect is
+sverify's, and its profile, translation and checker come from the private
+evidence repository. Two entries that set a field differently warn, and the
+first one's value is kept.
+
+Installed, a plugin's checker is the one sverify runs (`$SVERIFY_CHECKER`
+still comes first), `verify(semantics=<engine>)` checks under its profile,
+`sverify.routes.choose` routes plans to the engine with their class, and a
+runner and a dialect give it `connect`, `run` and `to_sql` as sverify's own
+engines have them (`tests/test_profile_plugins.py`,
+`tests/test_engines_table.py`). An engine with a SQL dialect and no profile
+gets the reference's translation, with no class claimed.
 
 ## The translations today
 

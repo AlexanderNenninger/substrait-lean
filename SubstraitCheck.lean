@@ -297,7 +297,7 @@ def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32
         -- The margin checks of threshold filters on double sums (#929).
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
-        let engines := (Realize.enginesJson es j rowsExact).toOption.getD []
+        let engines := (Realize.enginesJson es j rowsExact report robust).toOption.getD []
         let base := report.json |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust

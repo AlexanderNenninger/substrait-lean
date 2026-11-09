@@ -259,7 +259,7 @@ from source tables to a sink, with what goes wrong without the checker:
   dimension, in Ibis and in SQL.
 
 The [whole tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks)
-adds two guides, to contracts and to pipelines and engines; it runs locally with
+adds three guides, to contracts, to pipelines and engines, and to running it in production; it runs locally with
 `uvx marimo edit --sandbox notebooks` from a clone.
 
 ## The API in brief

@@ -46,7 +46,7 @@ def polars_sums() -> dict[str, list[float]]:
 
     import sverify as sv
 
-    # sverify's translation (`python_windows`), as a verified plan runs.
+    # sverify's translation (`polars_engine.Windows`), as a verified plan runs.
     con = sv.connect()
     con.put("t", pa.table({"i": list(range(len(VALUES))), "v": VALUES}))
     t = con.table("t")
@@ -54,7 +54,7 @@ def polars_sums() -> dict[str, list[float]]:
     finite = {"t": [_.v.between(-1e17, 1e17), _.i.notnull()]}
     report = sv.verify(t.mutate(s=t.v.sum().over(w)).order_by("i"), requires=finite)
     ran = report.run(con, "polars")
-    # Polars' own rolling kernel, which the translation does not use.
+    # Polars' own rolling kernel (a sliding Kahan sum), which the translation does not use.
     native = pl.Series(VALUES).rolling_sum(window_size=2, min_samples=1)
     return {"sverify": ran.column("s").to_pylist(), "rolling_sum": native.to_list()}
 

@@ -164,7 +164,7 @@ jobs:
             git rev-parse -q --verify HEAD^2 >/dev/null || return 1
             git merge-base --is-ancestor HEAD^1 HEAD^2 || return 1
             [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'HEAD^2^{tree}')" ] || return 1
-            if grep -qE '\.lean$|^(core/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$' \
+            if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$' \
                <<< "$(git diff --name-only HEAD^1 HEAD)"; then
               return 1
             fi
@@ -216,7 +216,7 @@ jobs:
           # ledgers and the areas it skips.
           reads() { grep -qvE "$docs|$ledger|^($1)" <<< "$files"; }
           flag() { if reads "$1"; then echo true; else echo false; fi; }
-          if grep -qE '\.lean$|^(core/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$' <<< "$files"; then
+          if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$' <<< "$files"; then
             out proofs=true
           else
             out proofs=false
@@ -237,7 +237,7 @@ jobs:
             out models=false
           fi
           # sverify-dbt reads sverify, and what the checker proves.
-          if grep -qE '^(dbt/|python/|SubstraitLean/|core/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          if grep -qE '^(dbt/|python/|SubstraitLean/|core/|analysis/|engines/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out dbt=true
           else
             out dbt=false
@@ -271,7 +271,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: checker-bin
-          key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', '**/*.lean') }}
+          key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', '**/*.lean') }}
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup-lean
         with:
@@ -299,21 +299,29 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
-      # The core guard (#1189, #1162): the core builds alone, so none of its
-      # modules imports the analysis or an engine. In the root workspace such
-      # an import would resolve. The root build below reuses core/.lake.
+      # The layer guards (#1189, #1162): each package builds on the layers
+      # below it alone. The core imports no analysis and no engine, the
+      # analysis no engine, engines-common no single engine. In the root
+      # workspace such an import would resolve. The root build below reuses
+      # each package's .lake.
       - run: lake build --wfail
         working-directory: core
+      - run: lake build --wfail
+        working-directory: analysis
+      - run: lake build --wfail
+        working-directory: engines
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
-      # Check every generated entry's proof (SubstraitLean/Generated.lean),
+      # Check every generated entry's proof (engines/Sverify/Engines/Generated.lean),
       # before `uv run`'s editable install builds substrait-check.
       - run: lake -R -Kcheck_generated=true build
       - run: uv run --locked --project python poe -C python prove
       - run: uv run --locked --project python poe -C python build
       - run: uv run --locked --project python poe -C python golden
+      # The kernel-checked theorems' axioms, as docs/trusted-base.md lists them (#1088).
+      - run: uv run --locked --project python python -m sverify_dev.trusted_base --check
 
   # The golden tests on the shared checker, when no Lean input changed.
   golden:
@@ -507,13 +515,14 @@ jobs:
       # test_functions checks the facts Lean's tables cite; test_probe and
       # test_probe_polars the probes' `probes.json`; test_polars_shims the
       # facts its shims cite and `areas.json`; test_substrait_cases the
-      # ledger of Substrait's test cases and the ST entries it cites.
+      # ledger of Substrait's test cases and the ST entries it cites;
+      # test_unexplained that every engine disagreement names its explanation.
       - working-directory: python
         run: >-
           uv run --locked pytest -n auto --dist worksteal
           tests/test_facts.py tests/test_bugs.py tests/test_functions.py
           tests/test_probe.py tests/test_probe_polars.py tests/test_polars_shims.py
-          tests/test_substrait_cases.py
+          tests/test_substrait_cases.py tests/test_unexplained.py
       # A change to the lift's backlog changes how its tests report
       # (tests/conftest.py): run every test it lists before or after.
       - if: needs.changes.outputs.backlog == 'true'

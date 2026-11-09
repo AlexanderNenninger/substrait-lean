@@ -1,9 +1,11 @@
 # Notes for Claude
 
-## Every PR leaves its area faster or simpler
+## Every PR leaves its area faster and simpler
 
-Each pull request comes with at least one improvement in the area it
-touches, beside its main change. It can be any of these:
+Each pull request comes with two improvements in the area it touches,
+beside its main change: one to performance and one to code quality.
+
+Performance, one of these:
 
 - Faster development: a quicker or leaner build, test, proof or check. For
   example, a slow test made cheap, a `decide` replaced by reflection, a
@@ -11,6 +13,9 @@ touches, beside its main change. It can be any of these:
 - Faster at runtime: sverify running faster or in less memory for its users.
   For example, a smaller written plan, a cheaper proof, less data read or a
   lower peak.
+
+Code quality, one of these:
+
 - Simpler code:
   - less code for the same behaviour, such as dead code, a duplicate helper
     or a table kept in two places;
@@ -32,11 +37,13 @@ touches, beside its main change. It can be any of these:
     has more than 1,500 lines and each part keeps at least 300. Tiny
     modules don't count.
 
-Measure it, before and after, and put the numbers in the PR body under
-"Improvement". Count lines, shims, xfails, hypotheses, axioms, public names,
-names for one concept or seconds, whichever fits. Keep it in the code the
-PR already touches, so it doesn't collide with other sessions' work. A PR that touches nothing
-measurable (docs, facts, ledgers) says so instead.
+Measure both, before and after, and put the numbers in the PR body under
+"Improvement", one line for each. Count lines, shims, xfails, hypotheses,
+axioms, public names, names for one concept, seconds or bytes, whichever
+fits. Keep them in the code the PR already touches, so they don't collide
+with other sessions' work. A PR that touches nothing measurable (docs,
+facts, ledgers) says so instead, and a PR whose area has no runtime or
+build cost to cut says which of the two it couldn't find.
 
 Behaviour stays the same: an improvement changes no result and weakens no
 proof. Shorter must also stay clear. Golfed code or a cryptic proof doesn't
@@ -57,9 +64,11 @@ in three shards.
 Before every push, run the cheap checks from `python/`: `poe fmt` (ruff's fixes
 and formatting, also of the notebooks), then `poe lint` and `poe typecheck`
 (pyrefly). They take seconds and catch what CI's `static` job would fail on.
-After an edit to `pyproject.toml` or `uv.lock`, call them as
-`.venv/bin/poe …`, since `uv run` would rebuild the package. A push that
-changes Lean also builds with `lake build --wfail` first.
+Call them as `.venv/bin/poe …` (or `.venv/bin/ruff`, `.venv/bin/pyrefly`):
+`uv run` may rebuild the package, and its build hook runs a full `lake build`
+that races any build already running. A worktree without a venv can use
+another worktree's tools. A push that changes Lean also builds with
+`lake build --wfail` first.
 
 On pull requests CI runs what the change can affect; pushes to main, merge
 queue entries and retargets run everything. One job builds `substrait-check`
@@ -149,7 +158,12 @@ The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
 under memory caps, and deletes the directory at exit. Its header documents
 its options. Several agents and the user's own services share the box, and
-two parallel runs once hung it, so check first:
+two parallel runs once hung it. The script enforces the first two rules
+below: it refuses to start (exit 75, naming the run in the way and its PIDs)
+while another `/tmp/substrait-lean-*` directory has a live process in it,
+above a 1-minute load of 8, or with less than 6 GB available, and
+`--wait` (before the branch) waits for the box. Long jobs that don't go
+through the script check by hand first:
 
 ```bash
 ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
@@ -167,7 +181,8 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 - **Clean up:** delete your directory when the run ends, also when it fails.
   Stop a run by PID (SIGTERM to the script's bash), never `pkill -f` over
   `ssh`: the pattern matches the `ssh` command itself. A crashed session can
-  leave a directory behind; if no process uses it, remove it.
+  leave a directory behind; if no process uses it, remove it (the script
+  warns about such a directory and ignores it).
 
 ## Working beside other sessions
 
@@ -311,7 +326,7 @@ build fails there, or a golden test of theirs changes, regenerate them with
 6 GB (`-M 6144`).
 
 Their proofs are checked only when the lakefile's `check_generated` option is
-on (`SubstraitLean/Generated.lean`). It is off by default, so a local
+on (`engines/Sverify/Engines/Generated.lean`). It is off by default, so a local
 `lake build` takes the entries as proved and stays quick; the tables and their
 staleness checks are the same. CI, the Wheels workflow, `poe prove` (and so
 `poe qa`), `homelab_qa.sh` and the wheel's build hook turn it on with

@@ -205,7 +205,9 @@ class _Checker:
     def _model(self, m: Relation) -> ModelResult:
         res = ModelResult(name=m.name, unique_id=m.unique_id, path=m.path, ref=m.ref)
         if m.language != "sql":
-            return res.refuse(f"a {m.language} model: sverify reads SQL models only")
+            return res.refuse(
+                f"a {m.language} model: sverify reads SQL models only; dbt still runs its tests"
+            )
         if not m.compiled_code:
             return res.refuse(
                 "no compiled SQL in the manifest: run `dbt compile` (or `dbt build`) first; "
@@ -229,7 +231,10 @@ class _Checker:
             out = self.con.execute(f"DESCRIBE {res.sql}").fetchall()
         except duckdb.Error as e:
             res.sql = None
-            return res.refuse(f"DuckDB cannot plan the compiled SQL: {_first_line(e)}")
+            return res.refuse(
+                f"DuckDB cannot plan the compiled SQL: {_first_line(e)}; sverify-dbt reads "
+                "DuckDB projects (other adapters: see #271)"
+            )
         res.duckdb_types = {row[0]: row[1] for row in out}
         # sverify reads DuckDB's type names (`verify(tables=...)`).
         tables = {
@@ -473,7 +478,8 @@ def _rewrite(sql: str, inputs: dict[str, str]) -> str:
     if unknown:
         raise _Unreadable(
             f"it reads {', '.join(dict.fromkeys(unknown))}, which is no ref or source of the "
-            "model (a hard-coded table name, or one a macro wrote)"
+            "model (a hard-coded table name, or one a macro wrote); read it with "
+            "{{ ref() }} or {{ source() }}"
         )
     return tree.sql("duckdb")
 
@@ -488,15 +494,18 @@ def _first_line(e: BaseException) -> str:
 
 
 def _refusal(e: BaseException) -> str:
-    """sverify's refusal of a model, in the user's terms."""
-    msg = _first_line(e)
+    """sverify's refusal of a model, in the user's terms: all of its message,
+    so the exit sverify names at its end stays."""
+    msg = " ".join(str(e).split()) or type(e).__name__
     m = re.match(r"(.*?) is not supported(?: yet)?;?(.*)", msg)
     if m:
         what = m[1].strip()
         if len(what) > 70:
             what = what[:67] + "..."
         rest = m[2].strip()
-        return f"sverify cannot read {what} yet" + (f" ({rest})" if rest else "")
+        if rest and not rest.startswith("("):
+            rest = f"({rest})"
+        return f"sverify cannot read {what} yet" + (f" {rest}" if rest else "")
     return f"sverify cannot check it: {msg}"
 
 

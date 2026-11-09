@@ -6,33 +6,26 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 
 from typing import Any
 
+from sverify._engines import DIALECTS
 from sverify.sql.core import Dialect, Kind, Unsupported, parse_plan, to_sql
-
-DIALECTS = ("duckdb", "snowflake", "spark")
 
 
 def dialect_of(dialect: Any) -> Dialect:
-    """The `Dialect` named `dialect` (`"duckdb"`, `"snowflake"` or
-    `"spark"`), or `dialect` itself when it is one.
+    """The `Dialect` named `dialect` (an installed engine's, `DIALECTS`:
+    `"duckdb"`, `"snowflake"`, `"spark"`), or `dialect` itself when it is
+    one.
 
     Raises:
         ValueError: `dialect` names no dialect.
     """
     if isinstance(dialect, Dialect):
         return dialect
-    if dialect == "duckdb":
-        from sverify.sql.duckdb import DUCKDB
+    from sverify import profiles
 
-        return DUCKDB
-    if dialect == "snowflake":
-        from sverify.sql.snowflake import SNOWFLAKE
-
-        return SNOWFLAKE
-    if dialect == "spark":
-        from sverify.sql.spark import SPARK
-
-        return SPARK
-    raise ValueError(f"unknown dialect {dialect!r}; expected one of {DIALECTS} or a Dialect")
+    p = profiles.find(dialect) if isinstance(dialect, str) else None
+    if p is None or p.dialect is None:
+        raise ValueError(f"unknown dialect {dialect!r}; expected one of {DIALECTS} or a Dialect")
+    return p.dialect()
 
 
 __all__ = ["DIALECTS", "Dialect", "Kind", "Unsupported", "dialect_of", "parse_plan", "to_sql"]

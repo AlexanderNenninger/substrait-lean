@@ -26,11 +26,13 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from sverify import _engines
 from sverify_dev import catalogue as cat
 
 CASES = cat.ROOT / "contracts.toml"
 RESULTS = cat.ROOT / "contracts.json"
-ENGINES = ("duckdb", "polars", "spark", "snowflake")
+#: The engines the census has an outcome for: those sverify supports.
+ENGINES = _engines.SUPPORTED
 
 
 @dataclass(frozen=True)
@@ -86,9 +88,10 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
         causes.append("no bound on the doubles (a SUM or AVG without sv.max_rows)")
     if route.bound_proved is False:
         causes.append("tolerance bound not proved")
-    if routes._robust_tested(report, engine):
+    because = (routes.verdict(report, engine) or {}).get("tested_because") or []
+    if "robust_by_facts" in because:
         causes.append("robust only by the engine's facts (#1045)")
-    if routes._allowed_tested(report):
+    if "allowed_orders_only" in because:
         causes.append("proved on the reference's orders only (open measure, #1071)")
     if not causes:
         causes.append("translation tested (no row for the options)")
@@ -156,6 +159,10 @@ TESTED = [
 REFUSED = [
     ("no translation from the reference to", "refused: no route from the reference (Snowflake)"),
     ("which the observation ignores", "refused: postcondition reads doubles a tolerance ignores"),
+    (
+        "of the reference: write it as sv.approx",
+        "refused: exact bound, the engine adds in another order",
+    ),
     ("not verified: ensures", "refused: postcondition not proved"),
     ("no engine meets the observation's tolerance", "refused: tolerance unmet"),
     ("and the postcondition asks within", "refused: tolerance unmet"),
