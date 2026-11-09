@@ -350,6 +350,75 @@ theorem canonReps_flatten_disjoint :
     obtain ⟨B, hB, hb⟩ := List.mem_flatten.mp hb
     exact h.1 B hB a ha b hb
 
+/-- The representative is the class's least member. -/
+theorem classRep_eq_of_least (h : RawOrder le) {l : List α} {x y : α} (hx : x ∈ l) (hy : y ∈ l)
+    (hc : c y = c x) (hl : ∀ z ∈ l, c z = c x → le y z = true) : classRep c le l x = y :=
+  h.antisymm _ _ (classRep_least h hy hc) (hl _ (classRep_mem hx) (classRep_canon _ _))
+
+/-- **Representatives in two phases**: the representatives of the parts'
+representatives are the representatives of the whole (two-phase `GROUP BY`
+and `DISTINCT`). -/
+theorem canonReps_flatten_canonReps (h : RawOrder le) (L : List (List α)) :
+    (canonReps c le (L.map (canonReps c le)).flatten).Perm (canonReps c le L.flatten) := by
+  have hGF : ∀ x ∈ (L.map (canonReps c le)).flatten, x ∈ L.flatten := fun x hx => by
+    obtain ⟨_, hl, hx⟩ := List.mem_flatten.mp hx
+    obtain ⟨l, hlL, rfl⟩ := List.mem_map.mp hl
+    exact List.mem_flatten.mpr ⟨l, hlL, canonReps_sub hx⟩
+  -- On the reps, the whole's representative is the reps' one.
+  have claim : ∀ x ∈ (L.map (canonReps c le)).flatten,
+      classRep c le (L.map (canonReps c le)).flatten x = classRep c le L.flatten x := by
+    intro x hx
+    have hxF := hGF x hx
+    have hrF := classRep_mem (c := c) (le := le) hxF
+    obtain ⟨l, hlL, hrl⟩ := List.mem_flatten.mp hrF
+    have hrc : c (classRep c le L.flatten x) = c x := classRep_canon _ _
+    -- It is the least of its class in its part, so the part's representative.
+    have hpart : classRep c le l (classRep c le L.flatten x) = classRep c le L.flatten x :=
+      classRep_eq_of_least h hrl hrl rfl fun z hz hzc =>
+        classRep_least h (List.mem_flatten.mpr ⟨l, hlL, hz⟩) (hzc.trans hrc)
+    have hrG : classRep c le L.flatten x ∈ (L.map (canonReps c le)).flatten :=
+      List.mem_flatten.mpr ⟨_, List.mem_map_of_mem hlL, hpart ▸ classRep_mem_canonReps hrl⟩
+    exact classRep_eq_of_least h hx hrG hrc fun z hz hzc => classRep_least h (hGF z hz) hzc
+  refine dedup_perm_of_mem fun y => ?_
+  simp only [List.mem_map]
+  constructor
+  · rintro ⟨x, hx, rfl⟩; exact ⟨x, hGF x hx, (claim x hx).symm⟩
+  · rintro ⟨x, hx, rfl⟩
+    obtain ⟨l, hlL, hxl⟩ := List.mem_flatten.mp hx
+    have hx' : classRep c le l x ∈ (L.map (canonReps c le)).flatten :=
+      List.mem_flatten.mpr ⟨_, List.mem_map_of_mem hlL, classRep_mem_canonReps hxl⟩
+    refine ⟨_, hx', ?_⟩
+    rw [claim _ hx']
+    exact classRep_eq h (hGF _ hx') hx (classRep_canon _ _)
+
+/-- The representatives hold at most one member of each class: one when the
+list has the class, none otherwise. -/
+theorem canonReps_filter_canon (h : RawOrder le) (l : List α) (k : α) :
+    ∃ r, (canonReps c le l).filter (fun j => c j == c k) =
+      if l.any (fun x => c x == c k) then [r] else [] := by
+  by_cases ha : l.any (fun x => c x == c k) = true
+  · obtain ⟨x, hx, hxc⟩ := List.any_eq_true.mp ha
+    simp only [beq_iff_eq] at hxc
+    refine ⟨classRep c le l x, ?_⟩
+    simp only [ha, ↓reduceIte]
+    have hmem : classRep c le l x ∈ (canonReps c le l).filter (fun j => c j == c k) :=
+      List.mem_filter.mpr ⟨classRep_mem_canonReps hx, by simp [classRep_canon, hxc]⟩
+    have hpw := (canonReps_pairwise (c := c) h l).filter (fun j => c j == c k)
+    have hall : ∀ a ∈ (canonReps c le l).filter (fun j => c j == c k), c a = c k :=
+      fun a ha => by simpa using (List.mem_filter.mp ha).2
+    generalize (canonReps c le l).filter (fun j => c j == c k) = F at hmem hpw hall ⊢
+    match F, hmem, hpw, hall with
+    | [a], hmem, _, _ => rw [List.mem_singleton.mp hmem]
+    | a :: b :: t, _, hpw, hall =>
+      exact absurd ((hall a (by simp)).trans (hall b (by simp)).symm)
+        (List.rel_of_pairwise_cons hpw (by simp))
+  · refine ⟨k, ?_⟩
+    simp only [Bool.not_eq_true] at ha
+    simp only [ha, Bool.false_eq_true, ↓reduceIte, List.filter_eq_nil_iff]
+    intro a hal hac
+    have := List.any_eq_false.mp ha a (canonReps_sub hal)
+    exact this hac
+
 /-- Without two members of one class, the representatives are `dedup`'s. -/
 theorem canonReps_of_inj {l : List α} (hinj : ∀ x ∈ l, ∀ y ∈ l, c x = c y → x = y) :
     canonReps c le l = dedup l := by

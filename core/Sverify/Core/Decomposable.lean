@@ -55,23 +55,53 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
     cases max <;> subst hf <;> exact this
 
 /-- `MIN` and `MAX` pick the raw-least member of the extreme class, which is
-`DISTINCT`'s member of it: they ignore `DISTINCT`. -/
+`DISTINCT`'s member of it. -/
+theorem AggFn.apply_minMax_mem_distinctVals {f : AggFn} {max : Bool}
+    (hf : f = (if max then .max else .min)) {vs : List Value} (hv : vs ≠ []) :
+    f.apply vs ∈ distinctVals vs := by
+  have hl := apply_minMax hf hv
+  have hrep : classRep Value.canonV Value.leRaw vs (f.apply vs) = f.apply vs := by
+    refine Value.leRaw_antisymm (classRep_least Value.leRaw_rawOrder hl.1 rfl) ?_
+    have hm := classRep_mem (c := Value.canonV) (le := Value.leRaw) hl.1
+    have := hl.2 _ hm
+    rwa [minMaxLe_of_canon max (classRep_canon (c := Value.canonV) vs _).symm] at this
+  exact hrep ▸ classRep_mem_canonReps hl.1
+
+/-- `MIN` and `MAX` ignore `DISTINCT`. -/
 theorem AggFn.apply_minMax_distinctVals {f : AggFn} {max : Bool}
     (hf : f = (if max then .max else .min)) (vs : List Value) :
     f.apply (distinctVals vs) = f.apply vs := by
   by_cases hv : vs = []
   · subst hv; rfl
   have hl := apply_minMax hf hv
-  -- The extreme is its class's representative.
-  have hrep : classRep Value.canonV Value.leRaw vs (f.apply vs) = f.apply vs := by
-    refine Value.leRaw_antisymm (classRep_least Value.leRaw_rawOrder hl.1 rfl) ?_
-    have hm := classRep_mem (c := Value.canonV) (le := Value.leRaw) hl.1
-    have := hl.2 _ hm
-    rwa [minMaxLe_of_canon max (classRep_canon (c := Value.canonV) vs _).symm] at this
-  have hmem : f.apply vs ∈ distinctVals vs := hrep ▸ classRep_mem_canonReps hl.1
-  have hd : distinctVals vs ≠ [] := List.ne_nil_of_mem hmem
-  exact IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf hd)
+  have hmem := apply_minMax_mem_distinctVals hf hv
+  exact IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf (List.ne_nil_of_mem hmem))
     ⟨hmem, fun w hw => hl.2 w (canonReps_sub hw)⟩
+
+/-- `MIN` and `MAX` of the parts' `DISTINCT` values are those of all the values. -/
+theorem AggFn.apply_minMax_flatten_distinctVals {f : AggFn} {max : Bool}
+    (hf : f = (if max then .max else .min)) (L : List (List Value)) :
+    f.apply (L.map distinctVals).flatten = f.apply L.flatten := by
+  by_cases hF : L.flatten = []
+  · have : (L.map distinctVals).flatten = [] := by
+      rw [List.flatten_eq_nil_iff] at hF ⊢
+      intro l hl
+      obtain ⟨l', hl', rfl⟩ := List.mem_map.mp hl
+      rw [hF l' hl']; rfl
+    rw [this, hF]
+  have hl := apply_minMax hf hF
+  obtain ⟨l, hlL, hml⟩ := List.mem_flatten.mp hl.1
+  have hle : f.apply l = f.apply L.flatten :=
+    IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf (List.ne_nil_of_mem hml))
+      ⟨hml, fun w hw => hl.2 w (List.mem_flatten.mpr ⟨l, hlL, hw⟩)⟩
+  have hmem : f.apply L.flatten ∈ (L.map distinctVals).flatten :=
+    List.mem_flatten.mpr ⟨_, List.mem_map_of_mem hlL,
+      hle ▸ apply_minMax_mem_distinctVals hf (List.ne_nil_of_mem hml)⟩
+  exact IsLeast.unique (minMaxLe_antisymm max) (apply_minMax hf (List.ne_nil_of_mem hmem))
+    ⟨hmem, fun w hw => by
+      obtain ⟨_, hl', hw'⟩ := List.mem_flatten.mp hw
+      obtain ⟨l', hl'L, rfl⟩ := List.mem_map.mp hl'
+      exact hl.2 w (List.mem_flatten.mpr ⟨l', hl'L, canonReps_sub hw'⟩)⟩
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
