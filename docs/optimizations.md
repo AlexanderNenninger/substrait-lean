@@ -471,7 +471,7 @@ aggregate of the new input the reference allows, with the groups that appear
 and disappear (`LinearAgg.aggregate_maintained`), and the same for
 `DISTINCT` (`LinearAgg.distinct_maintained`). The state keeps one row per
 class of keys equal up to `-0.0` and the NaN's sign, with any key of the
-class, as an engine's `GROUP BY` does (D31). The change only needs the
+class, as an engine's `GROUP BY` does. The change only needs the
 right weights, so a change feed that deletes and re-inserts a row is fine
 (`ChangeFeed`). The maintenance reads the change and the touched groups'
 state, never the view's input, where touched-group recompute
