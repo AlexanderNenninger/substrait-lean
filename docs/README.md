@@ -68,6 +68,7 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
 | [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per module | Design |
+| [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
 | [layers.md](layers.md) | The layers of the Python package | Design |
 | [prior-work.md](prior-work.md) | The work sverify builds on, and related tools | Design |
 
@@ -83,7 +84,8 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | How engine facts are judged | [characterization/README.md](../characterization/README.md) |
 | Each engine's translation and shims | [engine-profiles.md](engine-profiles.md) |
 | Profiles, options, soundness, decisions | [core-semantics.md](core-semantics.md) |
-| What is proved and what is trusted | [proofs.md](proofs.md) |
+| What is proved | [proofs.md](proofs.md) |
+| What is trusted | [trusted-base.md](trusted-base.md) |
 | How each feature is taught, and each refusal's exit | [teaching.md](teaching.md) |
 | Float error bounds | [float-bounds.md](float-bounds.md) |
 | The refresh protocol, model-checked | [models/refresh/README.md](../models/refresh/README.md) |
