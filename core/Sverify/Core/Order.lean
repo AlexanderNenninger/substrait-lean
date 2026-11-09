@@ -487,6 +487,12 @@ def Row.leRaw (a b : Row) : Bool := Value.leListRaw a b
 theorem Row.leRaw_rawOrder : RawOrder Row.leRaw :=
   ⟨Value.leListRaw_total, Value.leListRaw_trans, fun _ _ => Value.leListRaw_antisymm⟩
 
+/-- `f` reads rows only up to canonical codes: it cannot tell a `-0.0` from a
+`0.0`, or the negative NaN from the NaN. Groups and keys are classes up to
+canonical codes (D31), so a function of a group's key is well defined on the
+group when it respects them. -/
+def RespectsCanon {β : Type} (f : Row → β) : Prop := ∀ k k' : Row, k.canon = k'.canon → f k = f k'
+
 /-- `DISTINCT` of values, up to canonical codes. -/
 def distinctVals (vs : List Value) : List Value := canonReps Value.canonV Value.leRaw vs
 

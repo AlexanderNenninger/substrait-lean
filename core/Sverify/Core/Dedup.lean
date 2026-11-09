@@ -457,6 +457,32 @@ theorem canonReps_of_pairwise {l : List α} (hl : l.Pairwise fun a b => c a ≠ 
   rw [canonReps_of_inj hinj, dedup_of_nodup (List.nodup_iff_pairwise_ne.mpr
     (hl.imp fun h he => h (congrArg c he)))]
 
+
+/-- A filter that keeps or drops whole classes keeps their representatives. -/
+theorem classRep_filter {q : α → Bool} (hq : ∀ a b, c a = c b → q a = q b) {l : List α} {x : α}
+    (hx : q x = true) : classRep c le (l.filter q) x = classRep c le l x := by
+  unfold classRep
+  rw [List.filter_filter]
+  congr 1
+  refine List.filter_congr fun y _ => ?_
+  by_cases h : c y = c x
+  · simp [h, hq y x h, hx]
+  · simp [h]
+
+theorem canonReps_filter_perm {q : α → Bool} (hq : ∀ a b, c a = c b → q a = q b)
+    (l : List α) : (canonReps c le (l.filter q)).Perm ((canonReps c le l).filter q) := by
+  refine (List.perm_ext_iff_of_nodup (canonReps_nodup _) ((canonReps_nodup l).filter q)).mpr
+    fun y => ?_
+  simp only [List.mem_filter, mem_canonReps]
+  constructor
+  · rintro ⟨x, hx, rfl⟩
+    obtain ⟨hxl, hqx⟩ := hx
+    rw [classRep_filter hq hqx]
+    exact ⟨⟨x, hxl, rfl⟩, (hq _ _ (classRep_canon (c := c) l x)).trans hqx⟩
+  · rintro ⟨⟨x, hxl, rfl⟩, hqr⟩
+    have hqx : q x = true := (hq _ _ (classRep_canon (c := c) l x)).symm.trans hqr
+    exact ⟨x, ⟨hxl, hqx⟩, classRep_filter hq hqx⟩
+
 end
 
 end Substrait
