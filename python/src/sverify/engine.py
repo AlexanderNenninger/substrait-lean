@@ -156,7 +156,8 @@ class Connection:
 
     Args:
         engine: `"duckdb"` or `"polars"` (`"datafusion"` is
-            experimental). Default: `"duckdb"`.
+            experimental). Default: the installed default engine
+            (`ProfilePlugin.default`: DuckDB).
 
     Attributes:
         engine: The engine that runs plans unless a call names another.
@@ -171,10 +172,10 @@ class Connection:
         ValueError: `engine` is unknown.
     """
 
-    def __init__(self, engine: Engine = "duckdb"):
+    def __init__(self, engine: Engine | None = None):
         from sverify import profiles
 
-        plugin = profiles.find(engine)
+        plugin = profiles.find(engine if engine is not None else _engines.default())
         if plugin is None or not plugin.local:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
         self.engine: Engine = plugin.engine  # type: ignore[assignment] - an installed engine's name
@@ -327,12 +328,13 @@ class Connection:
         return self._datafusion
 
 
-def connect(engine: Engine = "duckdb") -> Connection:
+def connect(engine: Engine | None = None) -> Connection:
     """A new, empty connection whose plans run on `engine`.
 
     Args:
         engine: `"duckdb"`, `"polars"` or `"datafusion"` (see
-            `sverify.engines.ENGINES`). Default: `"duckdb"`.
+            `sverify.engines.ENGINES`). Default: the installed default
+            engine (`ProfilePlugin.default`: DuckDB).
 
     Returns:
         A connection with no tables. Add them with

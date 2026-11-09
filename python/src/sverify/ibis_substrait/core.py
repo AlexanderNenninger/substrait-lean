@@ -71,13 +71,23 @@ def _arith(name: str) -> Callable[[Exprs, Any], Json]:
     return rule
 
 
+def _floors() -> bool:
+    """Does the profile the plan is produced for floor integer `//` and `%`
+    (`ProfilePlugin.floor_division`, Polars's)? Then the producer writes them
+    as that engine computes them."""
+    from sverify import profiles
+
+    p = profiles.plugins().get(semantics())
+    return p is not None and p.floor_division
+
+
 def _modulus(x: Exprs, op: Any) -> Json:
     """`%`; of doubles, sverify's own `sverify_fmod` (C's `fmod`, #256), as
     Substrait's `modulus` has no double impl."""
     if exact(op).is_floating():
         return call("sverify_fmod", [x(op.left, exact(op)), x(op.right, exact(op))])
-    if semantics() == "polars" and exact(op).is_integer():
-        # Polars's `%` takes the divisor's sign (`Profile.polars`).
+    if _floors() and exact(op).is_integer():
+        # The engine's `%` takes the divisor's sign (Polars's, `Profile.polars`).
         return floor_call("modulus", [x(op.left, exact(op)), x(op.right, exact(op))])
     return _arith("modulus")(x, op)
 
@@ -108,8 +118,8 @@ def _divide(x: Exprs, op: Any) -> Json:
 
 
 def _floor_divide(x: Exprs, op: Any) -> Json:
-    if op.left.dtype.is_integer() and op.right.dtype.is_integer() and semantics() == "polars":
-        # Polars's own `//` (`Profile.polars`).
+    if op.left.dtype.is_integer() and op.right.dtype.is_integer() and _floors():
+        # The engine's own `//` (Polars's, `Profile.polars`).
         return floor_call("divide", [x(op.left, op.dtype), x(op.right, op.dtype)])
     if op.left.dtype.is_integer() and op.right.dtype.is_integer():
         # Floor division in integers, as `sverify.engine` compiles `//`. With
