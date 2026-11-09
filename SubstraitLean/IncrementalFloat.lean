@@ -34,14 +34,15 @@ open FloatCode
 
 set_option exponentiation.threshold 2200
 
-/-- `1` for a double whose code satisfies `p`, else `0`. -/
+/-- `1` for a double whose canonical code satisfies `p`, else `0`. -/
 def codeCount (p : Int → Bool) : Value → Int
-  | .float c => if p c then 1 else 0
+  | .float c => if p (canon c) then 1 else 0
   | _ => 0
 
-/-- A double's exact value in units of `2⁻¹⁰⁷⁴`, `0` for anything else. -/
+/-- A double's exact value in units of `2⁻¹⁰⁷⁴`, by its canonical code
+(`-0.0` is `0`, D31); `0` for anything else. -/
 def exactOf : Value → Int
-  | .float c => exact c
+  | .float c => exact (canon c)
   | _ => 0
 
 /-- The predicates `nonFinite` reads: NaN, `+∞`, `-∞`. -/
@@ -154,12 +155,13 @@ and `corrOf` do. -/
 
 /-- A double's `x²`, in units of `2⁻²¹⁴⁸`; `0` for anything else. -/
 def sqOf : Value → Int
-  | .float c => scaled c * scaled c
+  | .float c => scaled (canon c) * scaled (canon c)
   | _ => 0
 
-/-- The pair a `COVAR` or `CORR` adds up (`BinFn.pair`), if `v` is one. -/
+/-- The pair a `COVAR` or `CORR` adds up (`BinFn.pair`), if `v` is one, by
+canonical codes. -/
 def pairOf : Value → Option (Int × Int)
-  | .list [.float a, .float b] => some (a, b)
+  | .list [.float a, .float b] => some (canon a, canon b)
   | _ => none
 
 /-- `f` of the pair `v` is, `0` for anything else. -/
@@ -167,17 +169,19 @@ def pairFeat (f : Int × Int → Int) (v : Value) : Int := ((pairOf v).map f).ge
 
 /-- The non-finite codes of the pair `v` that satisfy `p`. -/
 def pairCount (p : Int → Bool) (v : Value) : Int :=
-  pairFeat (fun q => (if p q.1 then 1 else 0) + (if p q.2 then 1 else 0)) v
+  pairFeat (fun q => (if p (canon q.1) then 1 else 0) + (if p (canon q.2) then 1 else 0)) v
 
 theorem foldr_add_eq_sum (xs : List Int) : xs.foldr (· + ·) 0 = xs.sum := rfl
 
-theorem scaledSum_floatsOf : ∀ vs : List Value, scaledSum (floatsOf vs) = (vs.map exactOf).sum
+theorem scaledSum_floatsOf : ∀ vs : List Value,
+    scaledSum ((floatsOf vs).map canon) = (vs.map exactOf).sum
   | [] => rfl
   | v :: vs => by
     have ih := scaledSum_floatsOf vs
     cases v <;> simp_all [floatsOf, scaledSum, exactOf, foldr_add_eq_sum]
 
-theorem sqSumOf_floatsOf : ∀ vs : List Value, sqSumOf (floatsOf vs) = (vs.map sqOf).sum
+theorem sqSumOf_floatsOf : ∀ vs : List Value,
+    sqSumOf ((floatsOf vs).map canon) = (vs.map sqOf).sum
   | [] => rfl
   | v :: vs => by
     have ih := sqSumOf_floatsOf vs
@@ -216,7 +220,7 @@ theorem pairs_length : ∀ vs : List Value,
 
 theorem pairCodes_count (p : Int → Bool) : ∀ ps : List (Int × Int),
     ((pairCodes ps).map (codeCount p)).sum =
-      (ps.map fun q => (if p q.1 then 1 else 0) + (if p q.2 then 1 else 0)).sum
+      (ps.map fun q => (if p (canon q.1) then 1 else 0) + (if p (canon q.2) then 1 else 0)).sum
   | [] => rfl
   | q :: ps => by
     have := pairCodes_count p ps
@@ -258,7 +262,7 @@ theorem varState_sound {m : Measure} {sample sqrt : Bool} (hf : m.fn = .var samp
   | nil => simp [AggFn.apply]
   | cons a l =>
     have hn : ((a :: l).length : Int) ≠ 0 := by simp; omega
-    simp only [hn, ite_false, AggFn.apply, varOf, hfl]
+    simp only [hn, ite_false, AggFn.apply, varOf]
     by_cases h1 : sample = true ∧ (a :: l).length = 1
     · have h2 : ((a :: l).length : Int) = 1 := by exact_mod_cast h1.2
       simp [h1.1, h1.2]

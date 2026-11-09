@@ -234,7 +234,7 @@ theorem AVal.mem_unscaled {a : AVal} {v : Value} {i : Int} {b : Bound} (hm : a.M
     obtain ⟨b', hb', hm', -⟩ := hm <;> rw [ha] at hb' <;> cases hb' <;> exact hm'
 
 theorem AVal.kindOnly_mem {a : AVal} {k : NumKind} (ho : a.kindOnly k = true) {v : Value}
-    (hm : a.Mem v) (hn : v ≠ .null) : ∃ i b, v = k.val i ∧ a.int = some b ∧ b.Mem i := by
+    (hm : a.Mem v) (hn : v ≠ .null) : ∃ i b, v = k.val i ∧ a.int = some b ∧ b.Mem (k.norm i) := by
   simp only [AVal.kindOnly, AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at ho
   obtain ⟨⟨⟨⟨htt, hff⟩, hstr⟩, hnest⟩, hk⟩ := ho
   rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k', i, b, rfl, hb, hi, hk'⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ |
@@ -251,7 +251,13 @@ theorem AVal.unscaledOnly_mem {a : AVal} (ho : a.unscaledOnly = true) {v : Value
   rcases AVal.mem_cases hm with ⟨rfl, _⟩ | ⟨k, i, b, rfl, hb, hi, hk'⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ |
       ⟨_, rfl, h, _⟩ | ⟨_, _, h⟩
   · exact absurd rfl hn
-  · refine ⟨i, b, ?_, hb, hi⟩
+  · -- A number with an unscaled integer is an integer or a decimal: `norm` is the identity.
+    have hi' : b.Mem i := by
+      cases k
+      all_goals first
+        | exact hi
+        | (exfalso; generalize a.nk = o at hk hk'; cases o <;> simp_all)
+    refine ⟨i, b, ?_, hb, hi'⟩
     cases hnk : a.nk with
     | none => simp [hnk] at hk
     | some k' =>
@@ -323,7 +329,7 @@ theorem Measure.inputs_ne_nil {env : List AVal} {fs : List Fact} {grp : Relation
   have hm : m.arg.eval y ∈ (grp.map m.arg.eval).filter (· != .null) :=
     List.mem_filter.mpr ⟨List.mem_map.mpr ⟨y, hy, rfl⟩, by simpa using this⟩
   split
-  · exact List.ne_nil_of_mem (mem_dedup.mpr hm)
+  · exact List.ne_nil_of_mem (classRep_mem_canonReps hm)
   · exact List.ne_nil_of_mem hm
 
 theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
@@ -376,6 +382,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     refine ⟨_, rfl, ⟨fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩, rfl⟩
     simp only [Bound.ge, Option.some.injEq] at hl
     subst hl
+    rw [NumKind.norm_int]
     split
     · rename_i hc
       simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Bool.not_eq_true'] at hc
@@ -443,13 +450,14 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       split
       · rename_i honly
         have hint : ∀ w ∈ v :: vs, ∃ i b, w = .float i ∧ (m.arg.absD env fs).int = some b ∧
-            b.Mem i :=
+            b.Mem (FloatCode.canon i) :=
           fun w hw => AVal.kindOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
         have hcs : v :: vs = (floatsOf (v :: vs)).map .float := floats_map_floatsOf fun w hw => by
           obtain ⟨i, _, rfl, _⟩ := hint w hw; exact ⟨i, rfl⟩
         have hne' : floatsOf (v :: vs) ≠ [] := by
           intro h; rw [h] at hcs; simp at hcs
-        have hb : ∀ c ∈ floatsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
+        have hb : ∀ c ∈ floatsOf (v :: vs),
+            ((m.arg.absD env fs).int.getD Bound.top).Mem (FloatCode.canon c) := by
           intro c hc
           obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_floatsOf.1 hc)
           cases he; rw [hb]; exact hm
@@ -464,7 +472,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
         have key := floatBound_sound (avg := false) hne' hb hlen
         have e : floatSumCR (v :: vs) = floatSumCR ((floatsOf (v :: vs)).map .float) :=
           congrArg floatSumCR hcs
-        rw [e]; simpa using key
+        rw [e, NumKind.norm_float, FloatCode.canon_floatSumCR]; simpa using key
       · exact Bound.mem_top _
   case avg =>
     cases hvs : m.inputs grp with
@@ -474,13 +482,14 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       split
       · rename_i honly
         have hint : ∀ w ∈ v :: vs, ∃ i b, w = .float i ∧ (m.arg.absD env fs).int = some b ∧
-            b.Mem i :=
+            b.Mem (FloatCode.canon i) :=
           fun w hw => AVal.kindOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
         have hcs : v :: vs = (floatsOf (v :: vs)).map .float := floats_map_floatsOf fun w hw => by
           obtain ⟨i, _, rfl, _⟩ := hint w hw; exact ⟨i, rfl⟩
         have hne' : floatsOf (v :: vs) ≠ [] := by
           intro h; rw [h] at hcs; simp at hcs
-        have hb : ∀ c ∈ floatsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
+        have hb : ∀ c ∈ floatsOf (v :: vs),
+            ((m.arg.absD env fs).int.getD Bound.top).Mem (FloatCode.canon c) := by
           intro c hc
           obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_floatsOf.1 hc)
           cases he; rw [hb]; exact hm
@@ -494,7 +503,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := true) hne' hb hlen
         have e := congrArg floatAvgCR hcs
-        rw [e]; simpa [avgCode] using key
+        rw [e, NumKind.norm_float, FloatCode.canon_floatAvgCR]; simpa [avgCode] using key
       · exact Bound.mem_top _
   case iavg =>
     cases hvs : m.inputs grp with
@@ -525,14 +534,18 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       · -- D30: NaN, a rounded square root, or a rounded non-negative quotient.
         split
         · have := Substrait.nan_eq
-          exact ⟨_, rfl, ⟨fun l hl => by cases hl; omega, fun h hh => by cases hh⟩, rfl⟩
+          refine ⟨_, rfl, ⟨fun l hl => ?_, fun h hh => by cases hh⟩, rfl⟩
+          cases hl; rw [NumKind.norm_float, FloatCode.canon_of_isRef FloatCode.isRef_nan]; omega
         · split
-          · exact ⟨_, rfl, ⟨fun l hl => by cases hl; exact FloatCode.posCode_nonneg _,
-              fun h hh => by cases hh⟩, rfl⟩
-          · have h0 := FloatCode.ofExactDiv_nonneg ((floatsOf (v :: vs)).length *
-                (if sample = true then (floatsOf (v :: vs)).length - 1 else (floatsOf (v :: vs)).length) *
-                  2 ^ 1074) (comomentNum_nonneg (floatsOf (v :: vs)))
-            exact ⟨_, rfl, ⟨fun l hl => by cases hl; exact h0, fun h hh => by cases hh⟩, rfl⟩
+          · refine ⟨_, rfl, ⟨fun l hl => ?_, fun h hh => by cases hh⟩, rfl⟩
+            cases hl
+            rw [NumKind.norm_float, FloatCode.canon_of_bounds' (FloatCode.posCode_nonneg _)
+              (FloatCode.posCode_le_posInf _)]
+            exact FloatCode.posCode_nonneg _
+          · refine ⟨_, rfl, ⟨fun l hl => ?_, fun h hh => by cases hh⟩, rfl⟩
+            cases hl
+            rw [NumKind.norm_float, FloatCode.canon_of_isRef (FloatCode.isRef_ofExactDiv _ _)]
+            exact FloatCode.ofExactDiv_nonneg _ (comomentNum_nonneg _)
   case min | max =>
     split
     · -- A group with a value: one of the values.
@@ -581,7 +594,8 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
         rcases hb with rfl | rfl | ⟨h1, h2⟩
         · exact hlb
         · exact hhb
-        · exact Bound.mem_between hlb hhb h1 h2
+        · exact Bound.mem_between hlb hhb (by rwa [NumKind.norm_float, NumKind.norm_float])
+            (by rwa [NumKind.norm_float, NumKind.norm_float])
 
 theorem intSum_bounds {b : Bound} :
     ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w.unscaled? = some i ∧ b.Mem i) →
@@ -814,7 +828,8 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
       simp only [eval, List.mem_mergeSort] at h
       exact aeval_sound hcat hA hF hT (r := r) hwf.1 hs row h
   | .distinct r, hwf, hs, row, h => by
-      simp only [eval, mem_dedup] at h
+      simp only [eval] at h
+      replace h := canonReps_sub h
       exact aeval_sound hcat hA hF hT (r := r) hwf hs row h
   | .unnest r c, hwf, hs, row, h => by
       simp only [eval, List.mem_flatMap] at h
@@ -872,8 +887,8 @@ end
 values over `grp`. -/
 theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
     {grp : Relation} {row : Row}
-    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false →
-      row.getD (g + i) .null = m.eval grp)
+    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn ≠ .min →
+      m.fn ≠ .max → row.getD (g + i) .null = m.eval grp)
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
     FactsHold (ratioFacts g env fs ms) row := by
   intro f hf
@@ -888,8 +903,10 @@ theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : L
       · rename_i b hb
         simp only [List.mem_singleton] at hf; subst hf
         intro x n hx hn
-        rw [col i mi hmi (by rw [hsum]; rfl), Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
-        rw [col j mj hmj (by rw [hcount]; rfl), Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
+        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; decide) (by rw [hsum]; decide),
+          Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
+        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; decide) (by rw [hcount]; decide),
+          Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
         have hsame : mj.inputs grp = mi.inputs grp := by
           simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
         rw [hsame] at hn
@@ -924,11 +941,19 @@ theorem EnvMem.measures_all {env : List AVal} {fs : List Fact} {grp : Relation}
   intro j
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
   rcases hv.getElem? j with ⟨m, v, hm, hb, hr⟩ | ⟨hm, hb⟩
-  · obtain ⟨s, hp, rfl, _⟩ := hr.eval
+  · obtain ⟨s, hp, hsorts, hpick⟩ := hr.eval
     simp only [hm, hb, Option.map_some, Option.getD_some]
-    exact Measure.abs_sound (grp := s) (fun y hy => hall y (hp.mem_iff.mp hy)) m grouped
-      (fun hg hs => hne hg (List.eq_nil_of_length_eq_zero (by rw [← hp.length_eq, hs]; rfl))) rows
-      (fun n hn => hp.length_eq ▸ hrows n hn)
+    by_cases hs : m.fn.sorts = true
+    · rw [hsorts hs]
+      exact Measure.abs_sound (grp := s) (fun y hy => hall y (hp.mem_iff.mp hy)) m grouped
+        (fun hg hs => hne hg (List.eq_nil_of_length_eq_zero (by rw [← hp.length_eq, hs]; rfl))) rows
+        (fun n hn => hp.length_eq ▸ hrows n hn)
+    · -- `MIN` and `MAX` may give another member of the value's class: the same
+      -- abstract value holds it (`AVal.mem_of_canonV_eq`).
+      have hsf : m.fn.sorts = false := by simpa using hs
+      have hc := (hpick hsf).canon
+      rw [← Measure.eval_eq hsf] at hc
+      exact AVal.mem_of_canonV_eq hc (Measure.abs_sound hall m grouped hne rows hrows)
   · simp [hm, hb, AVal.mem_top]
 
 mutual
@@ -989,8 +1014,9 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
       aeval_sound_all hcat hA hF hT hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
       aeval_sound_all hcat hA hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
-  | .distinct r, hwf, _, ⟨i, hi, h⟩, row, hr =>
-      aeval_sound_all hcat hA hF hT (r := r) hwf hi row (mem_dedup.mp (h.mem_iff.mp hr))
+  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr => by
+      obtain ⟨y, hy, he⟩ := hd.class_mem (h.mem_iff.mp hr)
+      exact (aeval_sound_all hcat hA hF hT (r := r) hwf hi y hy).of_canon he
   | .unnest r c, hwf, _, ⟨i, hi, h⟩, row, hr => by
       obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
       obtain ⟨_, v, hc, hv, rfl⟩ := mem_unnestRow h
@@ -1002,10 +1028,11 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
       have hm := EnvMem.measures_all hall hv (!gs.isEmpty) (fun hg => hne (by simpa using hg))
         (rows := r.maxRows) (fun n hn => Nat.le_trans hglen (Rel.maxRows_sound_all hn hi))
-      rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
+      rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, he⟩
       · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
-      · exact (EnvMem.mapD (aeval_sound_all hcat hA hF hT hwf.1 hi x hx)
-          (Rel.facts_sound_all hcat hF hT hwf.1 hi x hx) gs).append hm (by simp)
+      · exact ((EnvMem.mapD (aeval_sound_all hcat hA hF hT hwf.1 hi x hx)
+          (Rel.facts_sound_all hcat hF hT hwf.1 hi x hx) gs).of_canon he).append hm
+          (by rw [Row.length_of_canon he]; simp [groupKey])
   | .unionAll a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
       rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
       · exact (aeval_sound_all hcat hA hF hT hwf.1 hx row h).zip_left
@@ -1026,8 +1053,10 @@ theorem Rel.ratioPart_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → 
   | .aggregate r gs ms, hwf, _, ⟨i, hi, o, h, ho⟩, row, hr => by
       obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, -⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
       have hkl : k.length = gs.length := by
-        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
-      exact ratioFacts_sound_of (hkl ▸ aggCol hv) fun y hy =>
+        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, he⟩
+        · rfl
+        · rw [Row.length_of_canon he]; simp [groupKey]
+      exact ratioFacts_sound_of (hkl ▸ aggCol_eq hv) fun y hy =>
         ⟨aeval_sound_all hcat hA hF hT hwf.1 hi y (hgrp y hy),
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
   | .read _, _, _, _, _, _ | .values _ _, _, _, _, _, _ | .filter _ _, _, _, _, _, _

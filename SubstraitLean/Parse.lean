@@ -279,8 +279,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fmod _ _
-  | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fdivIeee _ _
+  | .bin .fmod _ _ | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
   | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
@@ -1904,7 +1904,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         else e
       let mode := divByZeroMode (← arrD f "options")
       match baseName name, args with
-      | "divide", [a, b] => return divByZero mode true (.bin .fdiv) a b
+      -- `IEEE` reads both operands' raw signs (D39): one operation.
+      | "divide", [a, b] =>
+        return if mode == "IEEE" then .bin .fdivIeee a b else divByZero mode true (.bin .fdiv) a b
       | "modulus", [a, b] => return divByZero mode true (.bin .fmod) a b
       | _, _ => mkFloatCall (baseName name) args
     else

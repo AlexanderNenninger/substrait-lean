@@ -394,7 +394,7 @@ def groups : List (String × List String) := [
   ("fp.mod", ["division_type", "on_division_by_zero", "nan_creation", "zero_sign"]),
   ("fp.elem", ["rounding", "on_domain_error"]),
   ("fp.log", ["rounding", "on_domain_error", "on_log_zero"]),
-  ("fp.round", ["rounding"]), ("fp.floor", []),
+  ("fp.round", ["rounding", "round_zero_sign"]), ("fp.floor", ["round_zero_sign"]),
   ("cmp", ["nan_equality", "nan_order", "zero_sign"]), ("sverify", []),
   ("str.sub", ["negative_start", "substring_range", "string_positions"]),
   ("str.match", ["case_sensitivity", "string_positions"]),

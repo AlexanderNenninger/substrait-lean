@@ -40,6 +40,10 @@ date's truncation, ...). -/
 def monoAbs (kin kout : NumKind) (g : Int → Int) (a : AVal) : AVal :=
   mapAbs kin.is (fun _ => kout) (·.mapMono g) (fun _ => false) a
 
+/-- `-x` of doubles: the negated interval, or any double where NaN may be in it,
+since `-NaN` is the NaN (D31). -/
+def fnegBound (b : Bound) : Bound := if b.hi.any (· < FloatCode.nan) then b.neg else Bound.top
+
 /-- A conversion's interval to finite doubles: between the conversions of the
 ends, or of `-∞` and `+∞`'s neighbours. -/
 def convBound (c : FloatCode.FiniteMonoConv) (b : Bound) : Bound :=
@@ -432,13 +436,13 @@ def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bo
 
 theorem BlackBox.lawsBound_mem {set : Bool} {k : NumKind} {i : Int} :
     ∀ {laws : List BlackBox.Law}, (laws.all fun l => l.holds set (k.val i)) = true →
-      (laws.foldr (fun l b => l.bound.meet b) Bound.top).Mem i
-  | [], _ => Bound.mem_top i
+      (laws.foldr (fun l b => l.bound.meet b) Bound.top).Mem (k.norm i)
+  | [], _ => Bound.mem_top _
   | l :: ls, h => by
     simp only [List.all_cons, Bool.and_eq_true] at h
     refine Bound.mem_meet ?_ (lawsBound_mem h.2)
     cases l <;> cases k <;> simp_all [BlackBox.Law.holds, BlackBox.Law.bound, Bound.Mem, Bound.top,
-      NumKind.val]
+      NumKind.val, NumKind.norm]
 
 theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {set : Bool}
     {v : Value} (h : BlackBox.ok result laws set v = true) :
@@ -575,7 +579,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .isNull, a => { tt := a.null, ff := a.int.isSome || a.tt || a.ff || a.str || a.nested }
   | .neg, a => mapAbs NumKind.int.is (fun _ => .int) Bound.neg (fun _ => false) a
   -- Double negation is code negation too (zero is `0`).
-  | .fneg, a => mapAbs NumKind.float.is (fun _ => .float) Bound.neg (fun _ => false) a
+  | .fneg, a => mapAbs NumKind.float.is (fun _ => .float) fnegBound (fun _ => false) a
   -- Float results: some double (any code), or NULL.
   | .itof, a => convAbs NumKind.int.is FloatCode.intConv a
   | .froundTo _, a => mapAbs NumKind.float.is (fun _ => .float) (fun _ => Bound.top) (fun _ => false) a
@@ -854,6 +858,13 @@ def fmulBoundS (x y : Bound) : Bound :=
 def fdivBoundS (x y : Bound) : Bound :=
   if x.nonneg && y.nonneg && fdivOk x y then (fdivBound x y).atLeast0 else fdivBound x y
 
+/-- Do `fdivBound`'s guards hold of two values' intervals? Then the divisor is
+neither zero nor NaN, and IEEE division (`BinFn.fdivIeee`, D39) is `fdiv`. -/
+def fdivIeeeOk (a b : AVal) : Bool :=
+  match a.int, b.int with
+  | some x, some y => fdivOk x y
+  | _, _ => false
+
 def BinFn.abs : BinFn → AVal → AVal → AVal
   | .bbox2 n, a, b => BlackBox.scalarAbs n (!a.null && !b.null)
   | .greatest, a, b => pickAbs Bound.greatest a b
@@ -877,6 +888,10 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .fsub, a, b => arith floatsOnly (faddBoundS true) a b
   | .fmul, a, b => arith floatsOnly fmulBoundS a b
   | .fdiv, a, b => arith floatsOnly fdivBoundS a b
+  -- By a divisor that may be `±0.0`, `±∞` of either sign.
+  | .fdivIeee, a, b =>
+    if fdivIeeeOk a b then arith floatsOnly fdivBoundS a b
+    else arith floatsOnly (fun _ _ => Bound.top) a b
   | .fmod, a, b | .fpow, a, b => arith floatsOnly (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs intsOnly divBound a b
   | .imod, a, b => divAbs modNK modBound a b
@@ -1061,12 +1076,41 @@ def Expr.abs (env : List AVal) : Expr → AVal
       let al := l.abs env
       f.abs al (b.abs (al.elemsOf :: env))
 
-/-- Proves a function's shape (`Value.mapP`, `Value.mapP₂`) on one value. -/
+/-- The congruences of `canon` that the functions of doubles satisfy (D31). -/
+macro "canon_tac" : tactic => `(tactic| first
+  | exact (FloatCode.canon_floor_canon _).symm
+  | exact (FloatCode.canon_ceil_canon _).symm
+  | exact (FloatCode.canon_round_canon _).symm
+  | exact (FloatCode.canon_negI_canon _).symm
+  | exact (FloatCode.fadd_canon _ _).symm
+  | exact (FloatCode.fsub_canon _ _).symm
+  | exact (FloatCode.fmul_canon _ _).symm
+  | exact (FloatCode.fdiv_canon_left _ _).symm)
+
+/-- `f.apply v` is `mapP`'s value up to `canon` (`Value.CanonEq`). -/
 macro "hf_tac" : tactic => `(tactic| first
-  | rfl
-  | (simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
+  | exact .inl rfl
+  | (refine .inr ⟨_, _, rfl, rfl, ?_⟩
+     repeat rw [NumKind.norm_float]
+     try rw [FloatCode.canon_idem]
+     canon_tac)
+  | (refine .inl ?_
+     simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
       NumKind.val, Value.unscaled?, intsOnly, floatsOnly, addNK, subNK, decNK, dateAddNK,
-      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp]
+      dateDiffNK, modNK, intOrDec, tsOrTod, beq_self_eq_true, ite_true, Function.comp,
+      NumKind.norm_int, NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
+     try (repeat' split) <;> first | rfl | simp_all))
+
+/-- `f.apply v` is `mapP`'s value in shape (`Value.ShapeEq`). -/
+macro "hf_top_tac" : tactic => `(tactic| first
+  | exact .inl rfl
+  | exact .inr ⟨.float, _, _, rfl, rfl⟩
+  | exact .inr ⟨.int, _, _, rfl, rfl⟩
+  | exact .inr ⟨_, _, _, rfl, rfl⟩
+  | (refine .inl ?_
+     simp only [UnFn.apply, BinFn.apply, Value.mapP, Value.mapP₂, Value.numOf?, NumKind.is,
+      NumKind.val, Value.unscaled?, intsOnly, floatsOnly, Function.comp,
+      NumKind.norm_int, NumKind.norm_date, NumKind.norm_ts, NumKind.norm_tod, NumKind.norm_dec]
      try (repeat' split) <;> first | rfl | simp_all))
 
 end Substrait

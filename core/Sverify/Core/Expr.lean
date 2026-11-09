@@ -242,6 +242,10 @@ inductive BinFn where
   | add | sub | mul | eq | lt | and | or
   /-- Double arithmetic, rounded like IEEE 754. -/
   | fadd | fsub | fmul | fdiv
+  /-- `x / y` with `on_division_by_zero` = `IEEE` (D39): IEEE 754's quotient
+  on the raw codes, by a zero `±∞` by the signs of both operands and NaN for
+  `0 / 0`, so the divisor's zero sign counts. -/
+  | fdivIeee
   /-- The remainder of doubles, C's `fmod` (`FloatCode.fmod`); by zero, an
   error (`Safety.lean`). -/
   | fmod
@@ -388,16 +392,20 @@ def UnFn.apply : UnFn → Value → Value
   | .isNull, _ => .bool false
   | .neg, .int i => .int (-i)
   | .itof, .int i => .float (FloatCode.ofInt i)
-  | .fneg, .float k => .float (FloatCode.neg k)
+  -- IEEE 754's negation, on the raw value: `-(0.0)` is `-0.0` (D31: scalar
+  -- functions run on raw values; `zero_sign` = `ONE_ZERO` canonicalises only
+  -- at identity boundaries).
+  | .fneg, .float k => .float (FloatCode.negI k)
   | .ffloor, .float c => .float (FloatCode.floor c)
   | .fceil, .float c => .float (FloatCode.ceil c)
   | .fround, .float c => .float (FloatCode.round c)
   | .froundTo d, .float c => .float (FloatCode.roundTo d c)
-  | .ftoi, .float c => match FloatCode.toInt? c with
+  -- Casts read one zero (D31): `CAST(-0.0 AS BIGINT)` is `0`.
+  | .ftoi, .float c => match FloatCode.toInt? (FloatCode.canon c) with
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
-  | .ftoiOrNull, .float c => match FloatCode.toInt? c with
+  | .ftoiOrNull, .float c => match FloatCode.toInt? (FloatCode.canon c) with
     | some i => if fitsBits 64 i then .int i else .null
     | none => .null
   | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
@@ -450,7 +458,7 @@ def UnFn.apply : UnFn → Value → Value
   | .dtrunc k, v => match v.unscaled? with
     | some i => .int (i.tdiv (10 ^ k))
     | none => .null
-  | .ftod s, .float c => match FloatCode.toDecimal? c s with
+  | .ftod s, .float c => match FloatCode.toDecimal? (FloatCode.canon c) s with
     | some m => .int m
     | none => .null
   | .dtof s, v => match v.unscaled? with
@@ -548,6 +556,50 @@ theorem Value.numPair_some {a b : Value} {p q : Int} (h : a.numPair b = some (p,
 theorem Value.numPair_self {a : Value} {p q : Int} (h : a.numPair a = some (p, q)) : p = q := by
   cases a <;> simp at h <;> omega
 
+/-- The integer the analysis bounds for a number of kind `k`: a double's
+canonical code (`-0.0` is `0.0`, the negative NaN the NaN: `zero_sign` =
+`ONE_ZERO`, `nan_kind` = `ONE_NAN`, D31), which is what every function of
+doubles reads; the integer itself for the other kinds. -/
+def NumKind.norm : NumKind → Int → Int
+  | .float, i => FloatCode.canon i
+  | _, i => i
+
+/-- `norm` of a double, for `rw`: `simp` would unfold `canon`'s constants. -/
+theorem NumKind.norm_float (i : Int) : NumKind.float.norm i = FloatCode.canon i := rfl
+
+theorem NumKind.norm_zero : ∀ k : NumKind, k.norm 0 = 0
+  | .float => FloatCode.canon_zero
+  | .int | .date | .ts | .tod | .dec _ => rfl
+
+@[simp] theorem NumKind.norm_int (i : Int) : NumKind.int.norm i = i := rfl
+@[simp] theorem NumKind.norm_date (i : Int) : NumKind.date.norm i = i := rfl
+@[simp] theorem NumKind.norm_ts (i : Int) : NumKind.ts.norm i = i := rfl
+@[simp] theorem NumKind.norm_tod (i : Int) : NumKind.tod.norm i = i := rfl
+@[simp] theorem NumKind.norm_dec (s : Nat) (i : Int) : (NumKind.dec s).norm i = i := rfl
+
+/-- A value with its doubles canonical, in lists and structs too: `-0.0` is
+`+0.0` and the negative NaN the NaN (`zero_sign` = `ONE_ZERO`, `nan_kind` =
+`ONE_NAN`, D31). Comparisons read values through it. -/
+def Value.canonV : Value → Value
+  | .float c => .float (FloatCode.canon c)
+  | .list vs => .list (vs.map Value.canonV)
+  | .struct vs => .struct (vs.map Value.canonV)
+  | v => v
+
+theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by
+  simp only [Value.canonV]
+theorem Value.canonV_list (vs : List Value) : (Value.list vs).canonV = .list (vs.map Value.canonV) := by
+  simp only [Value.canonV]
+theorem Value.canonV_struct (vs : List Value) : (Value.struct vs).canonV = .struct (vs.map Value.canonV) := by
+  simp only [Value.canonV]
+
+/-- `canonV` keeps a value's kind, so two values compare as numbers exactly
+when their canonical values do. -/
+theorem Value.numPair_canonV_isNone (a b : Value) :
+    (a.canonV.numPair b.canonV).isNone = (a.numPair b).isNone := by
+  cases a <;> cases b <;> simp only [Value.canonV, Value.numPair] <;> (try split) <;> rfl
+
+
 mutual
 /-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
 the codes of doubles and times) by value, strings by code point, `FALSE <
@@ -556,6 +608,7 @@ def Value.lt3 : Value → Value → Option Bool
   | .str a, .str b => some (decide (a < b))
   | .bool a, .bool b => some (!a && b)
   | .list as, .list bs | .struct as, .struct bs => Value.listLt3 as bs
+  | .float a, .float b => some (decide (FloatCode.canon a < FloatCode.canon b))
   | a, b => (a.numPair b).map fun (x, y) => decide (x < y)
 
 /-- Lists element by element (#207): the first position where the elements
@@ -571,7 +624,7 @@ def Value.listLt3 : List Value → List Value → Option Bool
     match x, y with
     | .null, .null => Value.listLt3 xs ys
     | .null, _ | _, .null => none
-    | x, y => if x = y then Value.listLt3 xs ys else Value.lt3 x y
+    | x, y => if x.canonV = y.canonV then Value.listLt3 xs ys else Value.lt3 x y
 end
 
 #guard Value.listLt3 [.int 1, .null] [.int 2] == some true
@@ -592,6 +645,7 @@ def Value.ltB : Value → Value → Bool
   | .str a, .str b => decide (a < b)
   | .bool a, .bool b => !a && b
   | .list a, .list b | .struct a, .struct b => (Value.ofLt3 (Value.listLt3 a b)).isTrue
+  | .float a, .float b => decide (FloatCode.canon a < FloatCode.canon b)
   | a, b => match a.numPair b with
     | some (x, y) => decide (x < y)
     | none => false
@@ -658,8 +712,12 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .mul, .int a, .int b => .int (a * b)
   | .eq, .bool a, .bool b => .bool (a == b)
   | .eq, .str a, .str b => .bool (a == b)
-  -- Lists are equal element by element, NULL elements equal (DuckDB).
-  | .eq, .list a, .list b | .eq, .struct a, .struct b => .bool (decide (a = b))
+  -- Lists are equal element by element, NULL elements equal (DuckDB), doubles
+  -- by their canonical codes.
+  | .eq, .list a, .list b | .eq, .struct a, .struct b =>
+    .bool (decide (a.map Value.canonV = b.map Value.canonV))
+  -- One zero and one NaN (D31): `-0.0 = 0.0`, and NaN equals itself.
+  | .eq, .float a, .float b => .bool (FloatCode.canon a == FloatCode.canon b)
   | .eq, a, b => match a.numPair b with
     | some (x, y) => .bool (x == y)
     | none => .null
@@ -669,13 +727,16 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .lt, .bool a, .bool b => .bool (!a && b)
   -- Lexicographically, element by element (#207).
   | .lt, .list a, .list b | .lt, .struct a, .struct b => Value.ofLt3 (Value.listLt3 a b)
+  | .lt, .float a, .float b => .bool (decide (FloatCode.canon a < FloatCode.canon b))
   | .lt, a, b => match a.numPair b with
     | some (x, y) => .bool (decide (x < y))
     | none => .null
   | .fadd, .float a, .float b => .float (FloatCode.fadd a b)
   | .fsub, .float a, .float b => .float (FloatCode.fsub a b)
   | .fmul, .float a, .float b => .float (FloatCode.fmul a b)
-  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a b)
+  -- A zero divisor raises (`BinFn.issue`), so the divisor's zero sign is moot.
+  | .fdiv, .float a, .float b => .float (FloatCode.fdiv a (FloatCode.canon b))
+  | .fdivIeee, .float a, .float b => .float (FloatCode.fdiv a b)
   | .fmod, .float a, .float b => .float (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
@@ -874,6 +935,7 @@ theorem Value.ltB_eq (a b : Value) : Value.ltB a b = (BinFn.apply .lt a b).isTru
     | (rename_i x y; cases x <;> cases y <;> rfl)
     | (generalize Value.listLt3 _ _ = r; rcases r with _ | _ | _ <;> rfl)
     | (rename_i x y; generalize decide (x < y) = d; cases d <;> rfl)
+    | (generalize decide (FloatCode.canon _ < FloatCode.canon _) = d; cases d <;> rfl)
     | (generalize Value.numPair _ _ = r; rcases r with _ | ⟨x, y⟩
        · rfl
        · dsimp only; generalize decide (x < y) = d; cases d <;> rfl)

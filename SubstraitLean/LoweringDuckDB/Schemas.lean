@@ -26,6 +26,9 @@ def nanGuard : BinFn → Option Tm
   | .fmul => some (orFn (andFn (eqFn (.field 0) (.lit (.float 0))) (isInfT (.field 1)))
       (andFn (isInfT (.field 0)) (eqFn (.field 1) (.lit (.float 0)))))
   | .fdiv => some (andFn (isInfT (.field 0)) (isInfT (.field 1)))
+  -- IEEE division (D39): `0 / 0` too, either zero's sign.
+  | .fdivIeee => some (orFn (andFn (isInfT (.field 0)) (isInfT (.field 1)))
+      (andFn (eqFn (.field 0) (.lit (.float 0))) (eqFn (.field 1) (.lit (.float 0)))))
   | .fmod => some (andFn (isInfT (.field 0)) (notFn (eqFn (.field 1) nanT)))
   | .fpow => some (andFn (andFn (ltFn negInfT (.field 0)) (ltFn (.field 0) (.lit (.float 0))))
       (andFn (andFn (ltFn negInfT (.field 1)) (ltFn (.field 1) posInfT))
@@ -50,7 +53,9 @@ def zeroGuard (ks : List NumKind) (k : NumKind) (e : Tm) : Tm :=
   and `m = 2^w`.
 * An elementary function raises outside its domain (`FMath.inDomain`), where
   DuckDB gives NaN or `-∞`: `CASE WHEN x < lo OR (hi < x AND x <> NaN) THEN
-  error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`. -/
+  error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`.
+* `round` and `ceil` give `0.0` for a negative value that rounds to zero, where
+  DuckDB gives IEEE's `-0.0` (`round_zero_sign`). -/
 def schema? : UnFn → Option Tm
   | .fit .silent w =>
     let h := w.half
@@ -83,6 +88,13 @@ def schema? : UnFn → Option Tm
       | none, some b => some b
       | none, none => none
     g.map fun g => .ite g (.raise "domain error" x) (.self [x])
+  -- A negative value that rounds to zero is `0.0`, where DuckDB gives IEEE's
+  -- `-0.0` (`round_zero_sign`): `Lowering.zeroTemplate`, written and proved by
+  -- hand (`Lowering.fround_agree`), as the tactic's proof is slower.
+  | .fround => some (.expr Lowering.froundTemplate (Lean.mkConst ``Lowering.froundTemplate)
+      "round: 0.0 for a negative value that rounds to zero")
+  | .fceil => some (.expr Lowering.fceilTemplate (Lean.mkConst ``Lowering.fceilTemplate)
+      "ceil: 0.0 for a negative value that rounds to zero")
   | _ => none
 
 /-- **DuckDB's binary schemas** (#242), for its IEEE operations:

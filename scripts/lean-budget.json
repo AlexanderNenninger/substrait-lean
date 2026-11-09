@@ -273,13 +273,13 @@
    "cpu_s": 35,
    "rss_mb": 1536
   },
+  "SubstraitLean.LoweringDuckDB.On.Arith": {
+   "cpu_s": 199,
+   "rss_mb": 6123
+  },
   "SubstraitLean.LoweringDuckDB.On.Bits": {
    "cpu_s": 32,
    "rss_mb": 2745
-  },
-  "SubstraitLean.LoweringDuckDB.On.Doubles": {
-   "cpu_s": 317,
-   "rss_mb": 3622
   },
   "SubstraitLean.LoweringDuckDB.On.Guards": {
    "cpu_s": 96,
@@ -296,6 +296,10 @@
   "SubstraitLean.LoweringDuckDB.On.Native": {
    "cpu_s": 74,
    "rss_mb": 2878
+  },
+  "SubstraitLean.LoweringDuckDB.On.Powers": {
+   "cpu_s": 151,
+   "rss_mb": 4019
   },
   "SubstraitLean.LoweringDuckDB.On.Table": {
    "cpu_s": 30,
