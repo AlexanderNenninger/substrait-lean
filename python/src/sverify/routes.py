@@ -1107,7 +1107,7 @@ def reproducibility(
     if not report.deterministic:
         problems.append(
             "the result is not determined up to row order: the deterministic profile needs a "
-            "total order (D24), and ties stay open at "
+            "total order, and ties stay open at "
             + ("; ".join(map(str, report._tie_places)) or "an ORDER BY or a LIMIT")
             + ", so no rerun is sure to reproduce it"
         )
@@ -1300,7 +1300,7 @@ def choose(
             )
     if not det:
         notes.append(
-            "ties stay open (D24): the engine picks their order, every proof holds for any "
+            "ties stay open: the engine picks their order, every proof holds for any "
             "pick, and a rerun may pick another"
         )
     if report.observation.rows == "sequence" and not report._sorted:

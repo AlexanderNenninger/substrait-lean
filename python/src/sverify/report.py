@@ -1042,7 +1042,7 @@ class Report:
                 msg = (
                     f"the margin check and the plan read {', '.join(loose)} twice, and "
                     f"{'it is' if len(loose) == 1 else 'they are'} not pinned to one version: "
-                    "the two reads may see different rows (#929)"
+                    "the two reads may see different rows"
                 )
                 if deterministic:
                     raise PreconditionError(msg)
