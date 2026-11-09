@@ -404,13 +404,16 @@ from its [facts](../engines/spark/facts/). Option by option:
 
 Spark gives the reference's value wherever the reference reports no issue
 (`Profile.spark_okImpl_faithful`), so a plan the reference proves runs on
-Spark as it is (`Engine.spark_sound`), and the report of a `"profile":
-"spark"` request is the reference's, marked `"spark"`. Three of Spark's
+Spark as it is (`Engine.spark_sound`). Until the checker reports under
+Spark's profile ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
+a `"profile": "spark"` request gets the reference's report, labelled
+`"reference"`, with `"pending": "spark"`. Three of Spark's
 values are not in the profile yet, as no option's scope holds them:
 `power(±1, ±∞)` is NaN, `floor` and `ceil` of NaN are `0`, and `atan2` reads
-`-0.0` as `0.0`. What the profile adds is the route: a plan proved under it runs on Spark by `native`, and
-on DuckDB by `transfer` where DuckDB's choices are within Spark's at every
-option the proof depends on. What is proved
+`-0.0` as `0.0`. Once the checker reports under the profile, a plan proved
+under it runs on Spark by `native`, and on DuckDB by `transfer` where
+DuckDB's choices are within Spark's at every option the proof depends on.
+What is proved
 ([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
 
 - `Shim.sum_empty_null`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`

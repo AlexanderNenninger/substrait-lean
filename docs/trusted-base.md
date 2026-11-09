@@ -137,7 +137,7 @@ place, and what retires it.
   `schemaEnv`, the declared types as abstract values), `Report.json`, the
   `--serve` loop and `runOn` that call `check` and print its report, and
   `underProfile`, which labels the reference's report with the profile a
-  request names for an engine marked `asReference` (today Polars and Spark). On the Python side, the glue of
+  request names for an engine marked `asReference` (today Polars). On the Python side, the glue of
   incremental views (change tables, consolidation, merge).
 - The exact state of a maintained `SUM` or `AVG` of doubles
   (`python/src/sverify/_exact_sum.py`). Lean proves that the state, an

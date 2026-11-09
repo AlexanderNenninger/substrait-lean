@@ -247,19 +247,21 @@ options. Under Polars's profile the report is the reference's of the plan as
 parsed: a plan states Polars's choices (`division_type: FLOOR`), which the
 parser reads as their templates, and `Polars.elaborate_eq` proves that
 evaluating those under the reference is evaluating the calls under
-`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). Under Spark's it is the
-reference's report: a plan the reference proves runs on Spark as it is, Spark's
-own values only where the reference raises (`Engine.spark_sound`,
-`SubstraitLean/SparkProfile.lean`). So does any engine of `es` marked
-`asReference`, an out-of-tree one among them. DuckDB's profile is reached
-through its lift (`semantics="duckdb"`); its requests get the reference's
-report, which says so. -/
+`Profile.polars` (`SubstraitLean/PolarsProfile.lean`); so does any engine of `es`
+marked `asReference`, an out-of-tree one among them. An engine whose profile is
+its own (DuckDB's, Spark's: `DuckDBProfile.lean`, `SparkProfile.lean`) has no
+report under it yet (#1288): its request gets the reference's report, labelled
+`"reference"`, with `"pending"` naming the profile asked for. A name the
+checker does not know gets the reference's report alone. -/
 def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : Bool) :
     Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"
   if (engineNamed? es name).any (·.asReference) then
     return (report.setObjVal! "profile" name, proved)
-  unless name == "substrait" do return (report.setObjVal! "profile" "reference", proved)
+  unless name == "substrait" do
+    let report := report.setObjVal! "profile" "reference"
+    return (if (engineNamed? es name).isSome then report.setObjVal! "pending" name else report,
+      proved)
   let tj ← j.getObjVal? "transform"
   let plan ← ContractCheck.parseJsonPlan tj
   let P := Profile.reference.table

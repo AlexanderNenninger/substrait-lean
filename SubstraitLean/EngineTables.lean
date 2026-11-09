@@ -480,7 +480,7 @@ def builtinEngines : List EngineProfile := [
       ("max_nan_greatest", .expression), ("nan_through", .expression),
       ("sort on the keys", .sort)] },
   { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
-    translationTheorem := "Rel.spark_sound", executes := "batch", asReference := true,
+    translationTheorem := "Rel.spark_sound", executes := "batch",
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
       ("Dialect.canon", .expression), ("null_order", .argument), ("sort on the keys", .sort),
       ("decimal_negate_sub", .expression)] }]
