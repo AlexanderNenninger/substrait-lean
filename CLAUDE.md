@@ -58,6 +58,10 @@ this laptop.
 Lean build time and memory are budgeted per module, and CI's `lean` job fails
 a module over its ceiling: `docs/build-performance.md` has the method.
 
+Run expensive tasks through the drivers in `~/Projects/agentic-tools/drivers`
+(`capacity`, `local-run`, `lean-check`, `homelab-qa`, `homelab-run`, its
+README); they apply the capacity rules below.
+
 Locally, run `poe test`: the fast set on 2 workers, without the `slow` tests
 and with a tenth of the Hypothesis examples (the `dev` profile,
 `python/tests/conftest.py`). Leave the full suite to CI or to homelab
@@ -158,6 +162,10 @@ background, from the repository root:
 ```bash
 ssh homelab 'bash -s -- <branch>' < python/scripts/homelab_qa.sh
 ```
+
+The `homelab-qa` driver sends main's copy of this script, and `homelab-run`
+runs any other long job there (regens, bisects, profiles) in a capped
+`/tmp/substrait-lean-run-*` directory.
 
 The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
