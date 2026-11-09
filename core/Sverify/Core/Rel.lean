@@ -150,7 +150,7 @@ them (`contract_sound_all`).
 
 The scalar functions come from `I`, Lean's own by default: `r.eval cat` is
 the reference, and `r.eval cat I` runs the plan with an
-engine's functions (`SubstraitLean/Guards.lean`). Windows keep Lean's. -/
+engine's functions (`analysis/Sverify/Analysis/Guards.lean`). Windows keep Lean's. -/
 def Rel.eval (cat : Catalog) : Rel → (I : Impl := Impl.lean) → Relation
   | .read t, _ => (cat t).rows
   | .values _ rows, _ => rows

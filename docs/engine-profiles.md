@@ -4,7 +4,7 @@ How a proof relates to the engines that run a plan. The evidence for each
 engine is in [`characterization/`](../characterization/). This note sums up
 the design and what Lean proves today.
 The layers (the core, its profiles, the engines that run them) are in
-[core, profiles and engines](core-semantics.md#core-profiles-and-engines);
+[core, profiles and engines](core-and-profiles.md);
 the classes of an engine's functions and which plans run on an engine are in
 [core-semantics.md](core-semantics.md#which-plans-run-on-an-engine).
 
@@ -20,7 +20,7 @@ rewrites are refinements) and every row of its behaviour, with its status on
 An engine runs a plan correctly when, on every input, it gives a result
 the reference allows, or raises only where the reference may raise; resource
 errors, such as running out of memory, are excluded
-([engine correctness](core-semantics.md#d16-engine-correctness)). Today Lean proves partial
+([engine correctness](reference-semantics.md#what-it-is)). Today Lean proves partial
 correctness, `Rel.eval`'s rows or an error (`Rel.duckdb_shim_sound` below),
 and for a plan proved to never raise the two agree (`Rel.duckdb_sound`).
 
@@ -546,7 +546,7 @@ through `DECIMAL(38,0)`, `canonical` doubles, explicit `NULLS FIRST/LAST`,
 guards that raise) and refuses the plan where it cannot (`UnsupportedError`).
 "Raise rather than differ" is the standard each one is tested against:
 `Rel.eval` (`lean_rows`), another engine's rows, or a raised error. Guard
-elimination (`SubstraitLean/Guards.lean`) is the part already proved in Lean.
+elimination (`analysis/Sverify/Analysis/Guards.lean`) is the part already proved in Lean.
 
 ### Polars
 
@@ -578,7 +578,7 @@ translator pins the semantics and takes no Polars defaults:
   `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
   and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
   and `AVG` of doubles are the exact sum and mean rounded once
-  ([correctly rounded sums](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
+  ([correctly rounded sums](reference-semantics.md#of-doubles)),
   whatever the order of the rows.
 * Strings are sequences of Unicode scalar values: `character_length`,
   `strpos` and `substring` count characters, and `substring` with
@@ -594,7 +594,7 @@ translator pins the semantics and takes no Polars defaults:
   outside 64 bits raises `IntegerOverflow`, where DataFusion wraps silently
   (`2^62 + 2^62` gives `-2^63`). Integer division and remainder truncate
   toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
-* Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
+* Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`: division by
   zero, `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions
   that do not compile, and calendar functions outside the reference's timestamps
   (0001-01-01 to 9999-12-31). Each expression
@@ -658,7 +658,7 @@ the engine:
   counts the first row of each value, integer `SUM` raises outside 64 bits,
   and a `SUM` or `AVG` of doubles is the engine's own, within the plan's
   bound of the reference's correctly rounded sum
-  ([correctly rounded sums](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
+  ([correctly rounded sums](reference-semantics.md#of-doubles));
 * strings: lengths and positions count characters, a negative `substring`
   start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
   (either way the start is normalized before it reaches the engine), and
@@ -709,7 +709,7 @@ raises when it would answer differently:
 * FETCH over a named table is refused: Snowflake tables have no row order.
   A `SUM` or `AVG` of doubles runs natively, within the plan's bound of the
   reference's correctly rounded sum
-  ([correctly rounded sums](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums));
+  ([correctly rounded sums](reference-semantics.md#of-doubles));
   over a moving window frame the writer adds the frame's values anew
   (`window_float_sum`).
   Windows and sorts are refused too, unless you pass `deterministic=True` to

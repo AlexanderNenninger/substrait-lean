@@ -1,7 +1,7 @@
 # Float error bounds
 
 Doubles round. Sverify models them exactly where it can (comparisons, `MIN`,
-`MAX`), computes `+ − × ÷` as the exact result rounded once ([double arithmetic](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once)),
+`MAX`), computes `+ − × ÷` as the exact result rounded once ([double arithmetic](reference-semantics.md#floating-point)),
 and computes `pow`, `log` and the other libm functions with Lean's native
 `Float`. Proved error bounds cover the aggregates that add up doubles: `SUM`,
 `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`. This note records the model,
@@ -41,7 +41,7 @@ Lean's `Float`: `NativeLink` says that addition, subtraction,
 multiplication, division and square root of finite doubles round as one
 `StdModel` does, and give a finite double when the exact result is at most the
 largest finite double. This is IEEE 754 binary64 with round to nearest. Like
-`Impl.Faithful` in `SubstraitLean/Guards.lean`, it is a hypothesis.
+`Impl.Faithful` in `analysis/Sverify/Analysis/Guards.lean`, it is a hypothesis.
 `native_sum_error` and `native_avg_error` apply the bounds below to a fold of
 native doubles, `xs.foldl (· + ·) 0`, which is what `floatSum` computes.
 Since Lean 4.35, `Float` has a logical model in the kernel
@@ -80,7 +80,7 @@ keeps signs exact: a `SUM` or `AVG` of values `≥ 0` is `≥ 0`.
 `--shard` with `float_order="any"`, and `sverify.engines.run_sharded` with a
 `reproducible=` that accepts a tolerance on doubles, add each
 shard's doubles, then the partial sums (`floatPartial`, `floatCombine` in
-`SubstraitLean/Partition.lean`), where the reference adds all of them in one
+`analysis/Sverify/Analysis/Partition.lean`), where the reference adds all of them in one
 pass. [`Shard.lean`](../float-bounds/FloatBounds/Shard.lean) bounds the
 difference from what the partial rows report:
 
@@ -254,7 +254,7 @@ Polars cite `StdModel.epsilon_sum` ([realizability](realizability.md)).
 ### Against the correctly rounded sum
 
 The reference's `SUM` of doubles is the exact sum of the values rounded once
-([float aggregates](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
+([float aggregates](reference-semantics.md#of-doubles)),
 and its `AVG` the exact mean rounded once (`floatSumCR`, `floatAvgCR`,
 [`FloatExact.lean`](../core/Sverify/Core/FloatExact.lean)). The core computes
 them on integers, since every finite double is a multiple of `2⁻¹⁰⁷⁴`, and
@@ -353,7 +353,7 @@ factor `1 + 2⁻⁴⁰` covers them.
 ### One operation's bounds and overflow
 
 The checker bounds a double `+`, `-`, `*` and `/` from its inputs' bounds
-(`faddBound`, `fmulBound`, `fdivBound` in `SubstraitLean/Contracts.lean`), so
+(`faddBound`, `fmulBound`, `fdivBound` in `analysis/Sverify/Analysis/Contracts.lean`), so
 chains such as `(a + b) * c` have bounds, and a result the bounds keep below
 the largest double needs no "stays finite" precondition on the data
 (`BinFn.mayInf`). The core states one fact per operation on scaled values
@@ -384,7 +384,7 @@ An engine's `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` have the generic
 properties (`StatProps`, [reference
 semantics](reference-semantics.md#statistical-aggregates)), and the
 reference's own value is the exact moments rounded once
-([statistical aggregates](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)), within half an
+([statistical aggregates](reference-semantics.md#statistical-aggregates)), within half an
 ulp of the exact value, so an engine is within these bounds plus that of it
 (`Epsilon.statEps`).
 [`CoreKappa.lean`](../float-bounds/FloatBounds/CoreKappa.lean) proves the

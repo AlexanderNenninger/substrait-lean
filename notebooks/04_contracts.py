@@ -244,7 +244,7 @@ def _(mo):
     mo.md(r"""
     ### What backs a proof
 
-    Theorem `contract_sound` in `SubstraitLean/Contracts.lean` says: if every
+    Theorem `contract_sound` in `analysis/Sverify/Analysis/Contracts.lean` says: if every
     input row matches its schema and satisfies the preconditions, and the
     abstract interpretation says every postcondition is certainly TRUE, then
     every postcondition is TRUE on every output row. Sverify checks the
@@ -345,7 +345,7 @@ def _(PreconditionError, ibis, mo, sv, with_city):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Keys come from other places too, all proved in `SubstraitLean/Keys.lean`
+    Keys come from other places too, all proved in `analysis/Sverify/Analysis/Keys.lean`
     (`Rel.keys_sound`).
 
     * `DISTINCT` rows are a key: all their columns together.
@@ -527,7 +527,7 @@ def _(mo):
       `t0` repeats. The relations still hold, since they are about each row.
 
     The facts are `Expr.factsOf_sound` and `Rel.facts_sound` in
-    `SubstraitLean/Contracts.lean`: a fact `x − y ∈ [lo, hi]` or `x ≠ k`
+    `analysis/Sverify/Analysis/Contracts.lean`: a fact `x − y ∈ [lo, hi]` or `x ≠ k`
     taken from a condition holds on every row that passes it, and every
     operator above keeps it.
 
@@ -558,7 +558,7 @@ def _(mo):
       column. Elsewhere it assumes each sum fits, and the job checks it on
       the data before the run (`Report.assumed`).
 
-    Lean's model computes with exact integers, and `SubstraitLean/Safety.lean`
+    Lean's model computes with exact integers, and `analysis/Sverify/Analysis/Safety.lean`
     lists, for every operation of a plan, which of these can happen. Theorem
     `Rel.mayIssues_sound` proves the list complete: if the report lists no
     error, no input can trigger one. `@sv.transform` refuses a transformation
@@ -804,7 +804,7 @@ def _(ibis, keyed, mo, sv, with_neighbours):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Theorem `window_tiebreak` (`SubstraitLean/Keys.lean`) makes the keyed
+    Theorem `window_tiebreak` (`analysis/Sverify/Analysis/Keys.lean`) makes the keyed
     case trustworthy: when a window's partition and sort columns contain a
     key of its input, every way of sorting the input by the window's keys
     gives the same rows. The proof therefore describes what the engine

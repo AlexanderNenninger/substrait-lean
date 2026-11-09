@@ -15,7 +15,7 @@ Polars's error-side differences (wrapping integers, `NULL` for a zero
 divisor, NaN from `inf - inf`) need no shim: the reference raises there, so a
 verified plan never reaches them. Where a precondition is checked on the data
 (`Report.assumed`), a guard raises before Polars's value is used: the flags
-of `GUARDS`, one per issue of `SubstraitLean/Safety.lean`, by its
+of `GUARDS`, one per issue of `analysis/Sverify/Analysis/Safety.lean`, by its
 `Issue.name`.
 """
 
@@ -53,7 +53,7 @@ class Guard:
     reference raises."""
 
     issue: str
-    """The issue's `Issue.name` (`SubstraitLean/Safety.lean`)."""
+    """The issue's `Issue.name` (`analysis/Sverify/Analysis/Safety.lean`)."""
     flag: str
     """The function here that flags the rows or groups it hits."""
     polars: str

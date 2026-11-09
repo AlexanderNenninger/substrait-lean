@@ -1364,6 +1364,14 @@ def _stop_worker(conn: Connection, proc: Any) -> None:
     conn.close()
 
 
+def record_time(rel: str, seconds: float) -> None:
+    """Append a file's replay time to `$SVERIFY_SLT_TIMINGS`, if set: what
+    `sverify_dev.shard_durations` balances `oracle-a`'s shards by."""
+    if path := os.environ.get("SVERIFY_SLT_TIMINGS"):
+        with open(path, "a") as f:
+            f.write(json.dumps({"file": rel, "s": round(seconds, 3)}) + "\n")
+
+
 def replay_files(
     files: list[tuple[str, str]], jobs: int, timeout: float = FILE_TIMEOUT
 ) -> Iterator[tuple[str, list[dict], str | None]]:
@@ -1385,7 +1393,7 @@ def replay_files(
             due = min(start + timeout for _, _, start in busy.values())
             ready = mp_connection.wait(list(busy), max(0.0, due - time.monotonic()))
             for conn in cast(list[Connection], ready):
-                proc, task, _ = busy.pop(conn)
+                proc, task, start = busy.pop(conn)
                 try:
                     out = conn.recv()
                 except EOFError:
@@ -1393,6 +1401,7 @@ def replay_files(
                     idle.append(_start_worker(ctx))
                     yield task[1], [], "harness: the replay process crashed"
                     continue
+                record_time(task[1], time.monotonic() - start)
                 idle.append((conn, proc))
                 yield out
             now = time.monotonic()

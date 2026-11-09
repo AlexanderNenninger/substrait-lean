@@ -1,5 +1,5 @@
 import SubstraitLean.Lipschitz.Arith
-import SubstraitLean.AllowedAnalysis
+import Sverify.Analysis.AllowedAnalysis
 
 /-!
 # Tolerance composition along a plan (#929)

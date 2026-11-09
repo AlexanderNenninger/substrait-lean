@@ -4,10 +4,10 @@
 surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
-* guard elimination: `SubstraitLean/Guards.lean`, `Report.guard_free`,
+* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report.guard_free`,
   and `guards=False` in `sverify.engines.to_sql` (and in
   `sverify_polars.engine.run` and `duckdb_engine.run`);
-* sharded evaluation: `SubstraitLean/Partition.lean`,
+* sharded evaluation: `analysis/Sverify/Analysis/Partition.lean`,
   `substrait-check --shard` and `sverify.engines.run_sharded`
   (`sverify.partition`).
 
@@ -55,7 +55,7 @@ check. The Polars engine adds a `map_batches` flag check per operator and
 disables predicate pushdown. Most of these checks never fire on data that
 meets a contract.
 
-What is proved. `SubstraitLean/Guards.lean`:
+What is proved. `analysis/Sverify/Analysis/Guards.lean`:
 
 * `Impl` is an engine's own functions, without checks. `Impl.Faithful` is the
   trusted assumption: they agree with Lean wherever `UnFn.issue` and
@@ -138,7 +138,7 @@ then on one shard, as a Delta or Iceberg partition column (or a hash of it)
 guarantees. The question is when
 `eval q (D₁ ⊎ … ⊎ Dₙ) ~ eval q D₁ ⊎ … ⊎ eval q Dₙ`, or something close to it.
 
-Proved (`SubstraitLean/Partition.lean`, all without `sorry`):
+Proved (`analysis/Sverify/Analysis/Partition.lean`, all without `sorry`):
 
 * `Rel.eval_sharded`. A plan *linear* in `S` (`Rel.linear`) gives the union
   of its results on the shards, as bags. Linear means filters, projections,
@@ -438,7 +438,7 @@ syntactic equality, so it comes after the items above.
 A node's `refresh` maintains filters, projections, inner and cross joins and
 `UNION ALL` from the changes to their inputs, by delta rules Lean proves
 over Z-sets (`Rel.incremental_sound` in
-[`SubstraitLean/Incremental.lean`](../SubstraitLean/Incremental.lean)).
+[`analysis/Sverify/Analysis/Incremental.lean`](../analysis/Sverify/Analysis/Incremental.lean)).
 Further delta rules cover operators that are not linear: `COUNT` and
 integer `SUM` per group, and `DISTINCT`
 ([`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),

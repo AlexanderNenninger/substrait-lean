@@ -11,7 +11,7 @@
     "Polars 2.1: a negative integer exponent raises (`InvalidOperationError`, fact polars-int-arith); sverify's reference raises (`Issue.negExponent`)."
   ],
   "handling": [
-    "The reference raises on a negative exponent (`Issue.negExponent`, `SubstraitLean/Safety.lean`), an inferred precondition. The core allows raising anywhere (D2), so no option of the catalogue names it; `Profile.substrait` accepts any `on_domain_error` preference for integer `power`, which the YAML does not give it.",
+    "The reference raises on a negative exponent (`Issue.negExponent`, `analysis/Sverify/Analysis/Safety.lean`), an inferred precondition. The core allows raising anywhere (D2), so no option of the catalogue names it; `Profile.substrait` accepts any `on_domain_error` preference for integer `power`, which the YAML does not give it.",
     "Could be expressed as: `on_domain_error: [NULL, ERROR]` on the integer implementations of `power`, as integer `divide` has, with a negative exponent as its domain error, or a sentence in the description."
   ],
   "found_by": "writing Profile.substrait (#444 step 2), SubstraitLean/SubstraitProfile.lean",
@@ -20,7 +20,7 @@
   ],
   "files": [
     "SubstraitLean/SubstraitProfile.lean",
-    "SubstraitLean/Safety.lean"
+    "analysis/Sverify/Analysis/Safety.lean"
   ],
   "facts": [
     "polars-int-arith"

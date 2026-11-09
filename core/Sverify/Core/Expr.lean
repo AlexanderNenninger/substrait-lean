@@ -27,7 +27,7 @@ integer is exact (see `core/Sverify/Core/Rounding.lean`).
 Integer division and remainder truncate toward zero; the writers shim an
 engine whose division floors (Polars). Where
 an operation raises an error (division by zero, a cast out of range, a domain
-error, …) the value here is `null`; `SubstraitLean/Safety.lean` says when
+error, …) the value here is `null`; `analysis/Sverify/Analysis/Safety.lean` says when
 that happens.
 
 String functions are in `core/Sverify/Core/Text.lean` (`UPPER`, `LOWER` and
@@ -799,7 +799,7 @@ def BinFn.apply : BinFn → Value → Value → Value
 #guard BinFn.apply (.listFn .position) (.list [.int 1]) (.int 2) == .null
 
 /-- An implementation of the scalar functions: Lean's own (`Impl.lean`, the
-reference) or an engine's, without run-time checks (`SubstraitLean/Guards.lean`,
+reference) or an engine's, without run-time checks (`analysis/Sverify/Analysis/Guards.lean`,
 `core/Sverify/Core/AllowedP.lean`). -/
 structure Impl where
   un : UnFn → Value → Value
