@@ -215,7 +215,7 @@ preference, and refuses the plan where it supports none (as
 
 The core, as a specification, allows raising anywhere: a profile states
 where it may raise, its raise set, a constraint like any other, and `verify`'s error issues
-(`Rel.mayIssues`, `SubstraitLean/Safety.lean`) are the reference's raise
+(`Rel.mayIssues`, `analysis/Sverify/Analysis/Safety.lean`) are the reference's raise
 set. A theorem that a plan cannot raise is then a theorem about one profile's
 raise set, and holds on every profile whose raise set is smaller. This keeps
 principle 4 (an error means "may raise", so rewrites stay refinements) and
@@ -1442,7 +1442,7 @@ An error in either operand of `AND` or `OR` may raise, whatever the other
 operand's value (#604). `p AND q` is not a guard for `q`: in
 `x <> 0 AND 10 // x > 1`, the division may run on the rows where `x = 0`.
 The reference has always evaluated both operands (`Expr.issues` of `.bin`,
-`SubstraitLean/Safety.lean`); D19 states it as a decision.
+`analysis/Sverify/Analysis/Safety.lean`); D19 states it as a decision.
 
 - It is what the engines do. DuckDB evaluates `AND` and `OR` as values,
   both operands first
@@ -1481,7 +1481,7 @@ such a constant was proved and raised on DuckDB
 ([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609)).
 Under D21 the reference now counts every constant subexpression that raises
 as raising for the whole plan, whatever the data and whichever branch a row
-takes (`Rel.constIssues` in `SubstraitLean/Safety.lean`): stricter than
+takes (`Rel.constIssues` in `analysis/Sverify/Analysis/Safety.lean`): stricter than
 DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
 raise are rare in real queries. No precondition rules one out; the report
 names the constant.
@@ -1694,7 +1694,7 @@ keeps the two apart.
 
 ### D27. The size hypothesis is the only size assumption
 
-`Rel.Small` (`SubstraitLean/Safety.lean`): every string has fewer than 2³²
+`Rel.Small` (`analysis/Sverify/Analysis/Safety.lean`): every string has fewer than 2³²
 characters, every relation a window reads fewer than 2⁶² rows, and every
 relation an aggregate reads fewer than 2⁶³. It is a hypothesis of every
 soundness theorem over windows and aggregates, never an axiom, and no other

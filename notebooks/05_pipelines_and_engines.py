@@ -316,7 +316,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(display, include_corner, mo):
-    # A small mirror of SubstraitLean/Incremental.lean: Z-sets are lists of (row, weight).
+    # A small mirror of analysis/Sverify/Analysis/Incremental.lean: Z-sets are lists of (row, weight).
     def z_lift(rows):
         return [(r, 1) for r in rows]
 

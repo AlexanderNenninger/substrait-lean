@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts
+import Sverify.Analysis.Contracts
 
 /-!
 # Keys: "at most one row per …"
@@ -570,7 +570,7 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
 
 `Rel.keys` reads its inputs' arity and description (`Rel.aeval` without
 window keys) at every node, each a walk of the input. `Rel.laneK` carries
-the keys next to the lane (`Rel.lane`, `SubstraitLean/Contracts.lean`) in one
+the keys next to the lane (`Rel.lane`, `analysis/Sverify/Analysis/Contracts.lean`) in one
 bottom-up pass; `Rel.laneK_eq` proves it computes `Rel.keys`, and the
 `@[csimp]` lemma makes compiled code use it. -/
 

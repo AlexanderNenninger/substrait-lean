@@ -1,11 +1,11 @@
-import SubstraitLean.WSet
+import Sverify.Analysis.WSet
 
 /-!
 # Incremental view maintenance over Z-sets
 
 Bags cannot express deletions, so updates are modelled as **Z-sets**: rows
 with signed multiplicities (DBSP, Budiu et al., VLDB 2023). A Z-set is a
-weighted relation over `Int` (`WSet Int`, `SubstraitLean/WSet.lean`); adding
+weighted relation over `Int` (`WSet Int`, `analysis/Sverify/Analysis/WSet.lean`); adding
 Z-sets is list append, and a deletion is a row with negative weight.
 
 Equivalence is `List.Perm`. It is finer than Z-set equality (it never

@@ -20,7 +20,7 @@
     575
   ],
   "files": [
-    "SubstraitLean/Safety.lean",
+    "analysis/Sverify/Analysis/Safety.lean",
     "docs/core-semantics.md",
     "docs/reference-semantics.md"
   ],

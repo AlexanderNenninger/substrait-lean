@@ -25,7 +25,7 @@
     "The docs are silent on a raising expression other than a cast moving onto rows an earlier `filter` removed: a docs gap.",
     "No upstream test pins a fallible function outside the fallible list; it may change between versions."
   ],
-  "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee.",
+  "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `analysis/Sverify/Analysis/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee.",
   "status": "open",
   "evidence": "probe",
   "provenance": [

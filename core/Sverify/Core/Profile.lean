@@ -4,7 +4,7 @@ import Sverify.Core.Issue
 # Engine profiles and proven shims (#185)
 
 The reference semantics is `Expr.eval` together with `verify`'s errors
-(`Expr.issues`, `SubstraitLean/Safety.lean`): on a row where an error issue
+(`Expr.issues`, `analysis/Sverify/Analysis/Safety.lean`): on a row where an error issue
 fires, the plan raises. An engine's semantics is a **profile**: what each
 function gives, as an `Outcome`, a value or an error. The reference is one
 profile (`Profile.reference`), and `Expr.evalP_reference` proves that

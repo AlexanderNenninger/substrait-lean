@@ -1,10 +1,10 @@
-import SubstraitLean.Contracts.Lattice
-import SubstraitLean.Contracts.Transfer
-import SubstraitLean.Contracts.TransferSound
-import SubstraitLean.Contracts.Refine
-import SubstraitLean.Contracts.Facts
-import SubstraitLean.Contracts.Plan
-import SubstraitLean.Contracts.Sound
+import Sverify.Analysis.Contracts.Lattice
+import Sverify.Analysis.Contracts.Transfer
+import Sverify.Analysis.Contracts.TransferSound
+import Sverify.Analysis.Contracts.Refine
+import Sverify.Analysis.Contracts.Facts
+import Sverify.Analysis.Contracts.Plan
+import Sverify.Analysis.Contracts.Sound
 
 /-!
 # Pre- and postconditions: a verified abstract interpreter

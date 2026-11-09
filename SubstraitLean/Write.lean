@@ -1,5 +1,5 @@
 import SubstraitLean.Parse
-import SubstraitLean.Weighted
+import Sverify.Analysis.Weighted
 
 /-!
 # Writing `Rel` back out as Substrait JSON

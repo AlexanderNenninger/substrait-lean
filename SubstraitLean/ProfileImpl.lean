@@ -1,12 +1,12 @@
 import Sverify.Core.Profile
-import SubstraitLean.Guards
+import Sverify.Analysis.Guards
 
 /-!
 # Plans that cannot raise
 
 For a plan `verify` proves error-free from its contract, no shim is needed:
 an engine whose profile agrees with the reference wherever the reference
-does not raise (`Impl.Faithful`, `SubstraitLean/Guards.lean`) gives
+does not raise (`Impl.Faithful`, `analysis/Sverify/Analysis/Guards.lean`) gives
 `Rel.eval`'s rows, by guard elimination (`Rel.guardFree_sound`). The
 reference's own values are such an implementation
 (`Profile.reference_faithful`); DuckDB's profile is another
