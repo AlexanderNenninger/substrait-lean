@@ -43,8 +43,8 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-Ten [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md), from a first contract to
-Substrait's own semantics, show each of these in a few lines.
+[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes in ten steps from a first contract to
+Substrait's own semantics, each feature in a few lines.
 
 We aim to make sverify an assistant that makes data engineering more joyful: fewer
 3 a.m. pages, fewer surprises between engines, more trust in the tables you
@@ -187,7 +187,7 @@ except VerificationError as e:
 #     would hold with `(_.amount >= 5)` in the requires of 'orders'
 ```
 
-The [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md) go on from here: SQL, inferred
+[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes on from here: SQL, inferred
 preconditions, routes and their classes, tolerances for doubles,
 reproducible sinks, engine profiles and Substrait's own semantics.
 
@@ -308,7 +308,7 @@ to_sql(big.internal_plan, "snowflake")  # or "duckdb", "spark"; or sverify.engin
   are maintained from the changes. Another aggregate recomputes only the
   groups a batch touches, and a window only the partitions it touches;
   anything else is recomputed and diffed
-  ([what refresh maintains](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+  ([what refresh maintains](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#nodes-composing-storing-refreshing)).
 * `sverify.io` has Delta, Iceberg and in-memory sources and sinks, and
   base classes for your own: a `Source` implements `read(since)`
   (`from_query`, `from_frame` and `from_files` build one), a `Sink`
@@ -330,7 +330,7 @@ Refused for now: correlated scalar subqueries, unbound parameters
 `sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
 marks ✗. The repository has
-[a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md), [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md),
+[a how-to page](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), [getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md),
 the Ibis coverage table in its README, and
 [what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 
@@ -338,7 +338,7 @@ the Ibis coverage table in its README, and
 
 * `SVERIFY_CHECKER`: path to a `substrait-check` binary that replaces the
   bundled one, for example your own `lake build`. The guide lists every
-  variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#environment-variables)).
+  variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#environment-variables)).
 * DataFusion is an optional engine, outside the 1.x promise, and not in the `all`
   extra. It is pinned to 51, because Ibis 12's DataFusion backend doesn't
   connect to later versions.

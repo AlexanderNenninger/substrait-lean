@@ -28,6 +28,7 @@ and every notebook once.
 
 | Page | Job |
 |---|---|
+| [getting-started.md](getting-started.md) | From the install to a proved plan, in ten steps; what goes wrong without a checker; how it works, in brief (on the site: Getting started) |
 | [notebooks/01_duplicate_payments.py](../notebooks/01_duplicate_payments.py) | A Delta pipeline that catches double charges |
 | [notebooks/02_sensor_alerts.py](../notebooks/02_sensor_alerts.py) | An Iceberg pipeline of sensor alerts: ties, NaN, windows |
 | [notebooks/03_orders_mart.py](../notebooks/03_orders_mart.py) | An orders mart: a point-in-time join, dbt's tests as a contract |
@@ -42,8 +43,9 @@ release on PyPI.
 
 | Page | Job | Site |
 |---|---|---|
-| [guide.md](guide.md) | Every task, one section each: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
-| [examples.md](examples.md) | Ten short examples, each a step up | Examples |
+| [tasks.md](tasks.md) | One section per task: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
+| [examples.md](examples.md) | Moved: a list of links to the steps of getting-started.md | |
+| [guide.md](guide.md) | Moved: each section links to its home in getting-started.md or tasks.md | |
 
 ## Reference
 
@@ -59,6 +61,8 @@ release on PyPI.
 
 | Page | Job | Site |
 |---|---|---|
+| [core-and-profiles.md](core-and-profiles.md) | The core, an abstract machine, and the profiles that narrow it: the reference, each engine's, Substrait's | Design |
+| [verifying.md](verifying.md) | Verifying under the reference or under an engine's profile, the routes each takes, and what the report says | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers, what is proved | Design |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
@@ -83,8 +87,8 @@ release on PyPI.
 | Topic | Home |
 |---|---|
 | Which engines sverify supports | [stability.md, Engines](stability.md#engines) |
-| What refresh maintains incrementally | [guide.md, Nodes](guide.md#nodes-composing-storing-refreshing) |
-| Routes and classes, for users | [guide.md, Routes, classes and profiles](guide.md#routes-classes-and-profiles) |
+| What refresh maintains incrementally | [tasks.md, Nodes](tasks.md#nodes-composing-storing-refreshing) |
+| Routes and classes, for users | [tasks.md, Routes, classes and profiles](tasks.md#routes-classes-and-profiles) |
 | What a plan means | [reference-semantics.md](reference-semantics.md) |
 | What an Ibis expression means | [reference-semantics.md, The Ibis frontend](reference-semantics.md#the-ibis-frontend) |
 | How engine facts are judged | [characterization/README.md](../characterization/README.md) |
