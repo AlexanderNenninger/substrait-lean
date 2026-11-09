@@ -31,24 +31,12 @@ def BinFn.divides : BinFn → Bool
   | .idiv | .imod | .fdiv | .fmod => true
   | _ => false
 
-/-- `x / 0.0` in IEEE arithmetic: NaN for `0.0` and NaN, else ±∞ by the
-dividend's sign. -/
-def ieeeDivZero (x : Int) : Int :=
-  if x = 0 ∨ x = FloatCode.nan then FloatCode.nan
-  else if 0 < x then FloatCode.posInf else FloatCode.negInf
-
-/-- DuckDB's `/` of doubles, IEEE 754's: by zero `±∞` by the dividend's
-sign, NaN for `0` and NaN (R5, `ieeeDivZero`); `±∞ / ±∞` is NaN. The NaN
-cases are stated, not left to native floats, so that proofs can see them. -/
-def duckDivide (x y : Int) : Int :=
-  if y = 0 then ieeeDivZero x
-  else if isInfCode x && isInfCode y then FloatCode.nan
-  else FloatCode.fdiv x y
-
-/-- DuckDB's `%` of doubles: NaN by zero (R4) and for an infinite dividend,
-else C's `fmod`. -/
-def duckMod (x y : Int) : Int :=
-  if y = 0 ∨ isInfCode x then FloatCode.nan else FloatCode.fmod x y
+/-- `x / y` in IEEE arithmetic for a zero `y` (`0.0` or `-0.0`): NaN for a
+zero or NaN `x`, else `±∞` by the signs of `x` and `y` (R5). The cases are
+stated, not left to native floats, so that proofs can see them. -/
+def ieeeDivZero (x y : Int) : Int :=
+  if FloatCode.canon x = 0 ∨ FloatCode.canon x = FloatCode.nan then FloatCode.nan
+  else if decide (0 < x) = decide (y = 0) then FloatCode.posInf else FloatCode.negInf
 
 /-- A logarithm (`ln`, `log10`, `log2`)? -/
 def FMath.isLog : FMath → Bool
@@ -107,11 +95,13 @@ def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
   | .fadd, a, b => if nanCase .fadd a b then some (.ok (.float FloatCode.nan)) else none
   | .fsub, a, b => if nanCase .fsub a b then some (.ok (.float FloatCode.nan)) else none
   | .fmul, a, b => if nanCase .fmul a b then some (.ok (.float FloatCode.nan)) else none
+  -- DuckDB's `/` and `%` of doubles: by `0.0` or `-0.0` (equal in IEEE
+  -- arithmetic), IEEE's `±∞` or NaN, or as integers without `ieeeOps`.
   | .fdiv, a, b =>
-    if b = 0 then some (if s.ieeeOps then .ok (.float (ieeeDivZero a)) else duckZero s)
+    if FloatCode.canon b = 0 then some (if s.ieeeOps then .ok (.float (ieeeDivZero a b)) else duckZero s)
     else if nanCase .fdiv a b then some (.ok (.float FloatCode.nan)) else none
   | .fmod, a, b =>
-    if b = 0 then some (if s.ieeeOps then .ok (.float FloatCode.nan) else duckZero s)
+    if FloatCode.canon b = 0 then some (if s.ieeeOps then .ok (.float FloatCode.nan) else duckZero s)
     else if nanCase .fmod a b then some (.ok (.float FloatCode.nan)) else none
   -- `(-∞) ^ y` for a finite `y` that is not an integer: IEEE's `+∞` or `0`,
   -- under any setting, where the reference raises (`negInfPow`).
@@ -120,7 +110,13 @@ def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
     else if s.ieeeOps then (if nanCase .fpow a b then some (.ok (.float FloatCode.nan)) else none)
     -- Without IEEE operations `0 ^ y` raises for a negative `y` (the reference: `∞`).
     else if a = 0 ∧ b < 0 then some (.error .domain) else none
-  | .fatan2, a, b => if a = 0 ∧ b = 0 then some (.ok (.float 0)) else none
+  -- `atan2` of two zeros: `0` for `(0.0, 0.0)`, else C's `atan2`,
+  -- signed by the zeros' signs.
+  | .fatan2, a, b =>
+    if a = 0 ∧ b = 0 then some (.ok (.float 0))
+    else if FloatCode.canon a = 0 ∧ FloatCode.canon b = 0 then
+      some (.ok (.float (FloatCode.lift₂ Float.atan2 a b)))
+    else none
   | .bit .shl, a, b => some (duckShl a b)
   | .bit .shr, _, b => if b < 0 ∨ 64 ≤ b then some (.ok (.int 0)) else none
   | _, _, _ => none

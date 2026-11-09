@@ -228,13 +228,6 @@ theorem Measure.allowedP_congr {t : ProfileTable} {I J : Impl} {m : Measure}
     (h : Impl.AgreeOn m.ctors I J) : m.AllowedP t I = m.AllowedP t J := by
   funext rows v; simp only [Measure.AllowedP, Measure.inputsI_congr h]
 
-theorem Forall2.imp_mem {α β : Type} {R S : α → β → Prop} :
-    ∀ {l : List α} {l' : List β}, (∀ a ∈ l, ∀ b, R a b → S a b) → Forall2 R l l' → Forall2 S l l'
-  | _, _, _, .nil => .nil
-  | _, _, h, .cons hab t =>
-    .cons (h _ (List.mem_cons_self ..) _ hab)
-      (Forall2.imp_mem (fun a ha => h a (List.mem_cons_of_mem _ ha)) t)
-
 theorem forall₂_congr_mem {α β : Type} {R S : α → β → Prop} {l : List α} {l' : List β}
     (h : ∀ a ∈ l, ∀ b, R a b ↔ S a b) : Forall2 R l l' ↔ Forall2 S l l' :=
   ⟨Forall2.imp_mem fun a ha b => (h a ha b).mp, Forall2.imp_mem fun a ha b => (h a ha b).mpr⟩
@@ -252,8 +245,9 @@ theorem aggAllowedP_congr {t : ProfileTable} {I J : Impl} {gs : List Expr} {ms :
   split
   · exact exists_congr fun vs => and_congr_right fun _ =>
       forall₂_congr_mem fun m hmem v => by rw [hms m hmem]
-  · exact forall₂_congr_mem fun k _ row => exists_congr fun vs => and_congr_right fun _ =>
-      forall₂_congr_mem fun m hmem v => by rw [hms m hmem]
+  · exact exists_congr fun _ => and_congr_right fun _ =>
+      forall₂_congr_mem fun k _ row => exists_congr fun vs => and_congr_right fun _ =>
+        forall₂_congr_mem fun m hmem v => by rw [hms m hmem]
 
 /-- **`AllowedI` reads the functions only at the plan's calls.** -/
 theorem Rel.allowedI_congr {t : ProfileTable} {I J : Impl} {cat : Catalog} :
@@ -451,8 +445,8 @@ theorem aggAllowedP.monoOn {I : Impl} {gs : List Expr} {ms : List Measure}
   split
   · rintro ⟨vs, rfl, hv⟩
     exact ⟨vs, rfl, Forall2.imp_mem (fun m hmem v => hm m hmem rows v) hv⟩
-  · exact Forall2.imp fun _ _ ⟨vs, hrow, hv⟩ =>
-      ⟨vs, hrow, Forall2.imp_mem (fun m hmem v => hm m hmem _ v) hv⟩
+  · exact fun ⟨ks, hks, h'⟩ => ⟨ks, hks, h'.imp fun _ _ ⟨vs, hrow, hv⟩ =>
+      ⟨vs, hrow, Forall2.imp_mem (fun m hmem v => hm m hmem _ v) hv⟩⟩
 
 theorem WinFn.AllowedP.monoOn {f : WinFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {pb : List Row} {x : Row}
     {pa : List Row} {v : Value} : f.AllowedP t pb x pa v → f.AllowedP u pb x pa v := by
@@ -460,8 +454,8 @@ theorem WinFn.AllowedP.monoOn {f : WinFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {p
   | agg m sort fr =>
     simp only [WinFn.AllowedP]
     split
-    · refine Or.imp (Measure.AllowedP.monoOn fun p hp => h p ?_) fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
-      · exact List.mem_append_left _ hp
+    · refine Or.imp (fun ⟨ha, hb⟩ => ⟨Measure.AllowedP.monoOn
+        (fun p hp => h p (List.mem_append_left _ hp)) ha, hb⟩) fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
       · have hp : ("win.agg", "window_sum_algo", ([] : List String)) ∈ (WinFn.agg m sort fr).reads := by
           simp only [WinFn.reads, List.mem_append]
           exact .inr (by simp only [hf, ↓reduceIte]; exact List.mem_singleton_self _)

@@ -179,11 +179,6 @@ theorem Relation.NearT_iff {t : Tol} {a b : Relation} :
 namespace Forall2
 variable {α β γ δ : Type}
 
-theorem append {R : α → β → Prop} : ∀ {a : List α} {b : List β} {a' : List α} {b' : List β},
-    Forall2 R a b → Forall2 R a' b' → Forall2 R (a ++ a') (b ++ b')
-  | _, _, _, _, .nil, h => h
-  | _, _, _, _, .cons r t, h => .cons r (append t h)
-
 theorem map {R : α → β → Prop} {S : γ → δ → Prop} {f : α → γ} {g : β → δ}
     (h : ∀ a b, R a b → S (f a) (g b)) : ∀ {l : List α} {l' : List β}, Forall2 R l l' →
       Forall2 S (l.map f) (l'.map g)
@@ -194,15 +189,6 @@ theorem map_eq {R : α → β → Prop} {f : α → γ} {g : β → γ} (h : ∀
     ∀ {l : List α} {l' : List β}, Forall2 R l l' → l.map f = l'.map g
   | _, _, .nil => rfl
   | _, _, .cons r t => by simp [h _ _ r, map_eq h t]
-
-theorem filter {R : α → β → Prop} {p : α → Bool} {p' : β → Bool} (h : ∀ a b, R a b → p a = p' b) :
-    ∀ {l : List α} {l' : List β}, Forall2 R l l' → Forall2 R (l.filter p) (l'.filter p')
-  | _, _, .nil => .nil
-  | _, _, .cons (a := a) (b := b) r t => by
-    simp only [List.filter_cons, h a b r]
-    split
-    · exact .cons r (filter h t)
-    · exact filter h t
 
 theorem flatMap {R : α → β → Prop} {S : γ → δ → Prop} {f : α → List γ} {g : β → List δ}
     (h : ∀ a b, R a b → Forall2 S (f a) (g b)) : ∀ {l : List α} {l' : List β}, Forall2 R l l' →

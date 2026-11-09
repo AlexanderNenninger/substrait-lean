@@ -154,16 +154,16 @@ theorem FloatCode.ofInt_ne_nan (i : Int) : FloatCode.ofInt i ≠ FloatCode.nan :
 
 theorem DuckDBSQL.ref_fdiv_float (a b : Int) :
     Profile.reference.bin .fdiv (.float a) (.float b) =
-      if b = 0 then .error .divByZero else if nanCase .fdiv a b then .error .domain
-      else .ok (.float (FloatCode.fdiv a b)) := by
-  by_cases hb : b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
+      if FloatCode.canon b = 0 then .error .divByZero else if nanCase .fdiv a b then .error .domain
+      else .ok (.float (FloatCode.fdiv a (FloatCode.canon b))) := by
+  by_cases hb : FloatCode.canon b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
     simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hb, hn, Issue.isError]
 
 theorem DuckDBSQL.ref_fmod_float (a b : Int) :
     Profile.reference.bin .fmod (.float a) (.float b) =
-      if b = 0 then .error .divByZero else if nanCase .fmod a b then .error .domain
+      if FloatCode.canon b = 0 then .error .divByZero else if nanCase .fmod a b then .error .domain
       else .ok (.float (FloatCode.fmod a b)) := by
-  by_cases hb : b = 0 <;> by_cases hn : nanCase .fmod a b <;>
+  by_cases hb : FloatCode.canon b = 0 <;> by_cases hn : nanCase .fmod a b <;>
     simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hb, hn, Issue.isError]
 
 theorem DuckDBSQL.ref_fdiv_null_l (y : Value) : Profile.reference.bin .fdiv .null y = .ok .null := by
@@ -235,9 +235,13 @@ theorem DuckDBSQL.sumOf_int_vals {vs : List Value} (h : ∀ v ∈ vs, ∃ i, v =
 theorem DuckDBSQL.apply_eq_int (a b : Int) : BinFn.apply .eq (.int a) (.int b) = .bool (decide (a = b)) := rfl
 theorem DuckDBSQL.apply_lt_int (a b : Int) : BinFn.apply .lt (.int a) (.int b) = .bool (decide (a < b)) := rfl
 theorem DuckDBSQL.apply_eq_float (a b : Int) :
-    BinFn.apply .eq (.float a) (.float b) = .bool (decide (a = b)) := rfl
+    BinFn.apply .eq (.float a) (.float b) =
+      .bool (decide (FloatCode.canon a = FloatCode.canon b)) := by
+  simp only [BinFn.apply]; rfl
 theorem DuckDBSQL.apply_lt_float (a b : Int) :
-    BinFn.apply .lt (.float a) (.float b) = .bool (decide (a < b)) := rfl
+    BinFn.apply .lt (.float a) (.float b) =
+      .bool (decide (FloatCode.canon a < FloatCode.canon b)) := by
+  simp only [BinFn.apply]
 theorem DuckDBSQL.apply_eq_null_l (y : Value) : BinFn.apply .eq .null y = .null := by cases y <;> rfl
 theorem DuckDBSQL.apply_eq_null_r (x : Value) : BinFn.apply .eq x .null = .null := by cases x <;> rfl
 theorem DuckDBSQL.apply_lt_null_l (y : Value) : BinFn.apply .lt .null y = .null := by cases y <;> rfl
@@ -251,9 +255,10 @@ theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α
 from `Profile.duckdb` (the lift's proofs rewrite with them). -/
 
 theorem DuckDBSQL.duck_fdiv_float (a b : Int) :
-    (Profile.duckdb {}).bin .fdiv (.float a) (.float b) = .ok (.float (if b = 0 then ieeeDivZero a
-      else if nanCase .fdiv a b then FloatCode.nan else FloatCode.fdiv a b)) := by
-  by_cases hb : b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
+    (Profile.duckdb {}).bin .fdiv (.float a) (.float b) =
+      .ok (.float (if FloatCode.canon b = 0 then ieeeDivZero a b
+        else if nanCase .fdiv a b then FloatCode.nan else FloatCode.fdiv a (FloatCode.canon b))) := by
+  by_cases hb : FloatCode.canon b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
     simp [Profile.duckdb, BinFn.onFloats, duckBin, Profile.reference, raiseIf, BinFn.issue, nanIssue,
       BinFn.apply, hb, hn, Issue.isError]
 
@@ -264,14 +269,19 @@ theorem DuckDBSQL.fmod_of_inf {a : Int} (b : Int) (h : isInfCode a = true) :
   have hi : FloatCode.infMag = FloatCode.maxMag + 1 := rfl
   simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at h
   unfold FloatCode.fmod FloatCode.finiteParts
+  have hz := FloatCode.negZero_eq'
+  have ha : a ≠ fp64.negZero := by
+    show a ≠ FloatCode.negZero
+    rcases h with rfl | rfl <;> omega
   have hm : FloatCode.infMag ≤ (a.natAbs - 1) / 2 := by
     rcases h with rfl | rfl <;> omega
-  simp [hm]
+  simp [ha, hm]
 
 theorem DuckDBSQL.duck_fmod_float (a b : Int) :
     (Profile.duckdb {}).bin .fmod (.float a) (.float b) =
-      .ok (.float (if b = 0 ∨ isInfCode a then FloatCode.nan else FloatCode.fmod a b)) := by
-  by_cases hb : b = 0
+      .ok (.float (if FloatCode.canon b = 0 ∨ isInfCode a then FloatCode.nan
+        else FloatCode.fmod a b)) := by
+  by_cases hb : FloatCode.canon b = 0
   · simp [Profile.duckdb, BinFn.onFloats, duckBin, hb]
   · by_cases hi : isInfCode a = true
     · by_cases hn : nanCase .fmod a b
