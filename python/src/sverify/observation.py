@@ -1,5 +1,5 @@
-"""Postconditions that name the observation (#444, decisions D11, D12 and
-D18 of `docs/core-semantics.md`).
+"""Postconditions that name the observation (`docs/core-semantics.md`
+has the rules).
 
 An observation says which differences between two results a consumer
 ignores: the order of the rows, the last bits of a double, the sign of a
@@ -22,9 +22,9 @@ is exact.
 An observation is a product of components, each a short chain from exact
 to coarse. One refines another (`a.refines(b)`) when it is at least as fine
 on every
-component, so refinement is a partial order (D18). Every other condition in
+component, so refinement is a partial order. Every other condition in
 `ensures` must not tell results equal up to the observation apart:
-`dependencies` names the components a condition reads that it ignores (D12).
+`dependencies` names the components a condition reads that it ignores.
 """
 
 from __future__ import annotations
@@ -134,7 +134,7 @@ def within(abs: float | None = None, rel: float | None = None, ulps: int | None 
     they are at most `abs` apart, at most `rel · max(|x|, |y|)` apart, or at
     most `ulps` units in the last place apart (any one suffices).
 
-    A tolerance with smaller bounds refines one with larger bounds (D18);
+    A tolerance with smaller bounds refines one with larger bounds;
     tolerances on different bounds (`abs` and `rel`) are incomparable.
     """
     return Within(abs, rel, ulps)
@@ -355,7 +355,7 @@ def _order_key(v: Any) -> tuple:
 
 
 def from_json(q: Mapping[str, Any] | None) -> Observation:
-    """An observation as the checker writes it (a choices row's `"observation"`, D15):
+    """An observation as the checker writes it (a choices row's `"observation"`):
     component levels, a float tolerance as `{"abs", "rel", "ulps"}`; an
     absent component is exact, rows and elements included."""
     q = dict(q or {})
@@ -400,7 +400,7 @@ def equivalent(
     errors: Errors = "exact",
     elements: Elements = "sequence",
 ) -> Observation:
-    """A postcondition naming what the result's consumer observes (#444, D11).
+    """A postcondition naming what the result's consumer observes.
 
     Put it in a transformation's `ensures` (or `sv.verify`'s). An engine's
     result is then correct when it equals, up to this observation, a result
@@ -482,9 +482,9 @@ def dependencies(
     open_columns: Mapping[str, str] | None = None,
 ) -> list[str]:
     """The components `observation` ignores that `cond`, a table condition
-    (`unique`, `references`, `max_rows`, `rows_per`), depends on (D12). The
+    (`unique`, `references`, `max_rows`, `rows_per`), depends on. The
     checker reports them for every other condition (`ContractCheck`'s
-    `Report.ignores`, #1071); a table condition is no expression it
+    `Report.ignores`); a table condition is no expression it
     evaluates. Empty when the condition cannot tell results equal up to
     `observation` apart.
 
@@ -500,8 +500,8 @@ def dependencies(
         columns: The output's columns by name, with Ibis types.
         read: The columns `cond` reads; None if unknown, which counts as
             every column.
-        open_columns: Output columns whose value the reference leaves open
-            (D1): `"picks"` for `first` or `last` without an order (which
+        open_columns: Output columns whose value the reference leaves open:
+            `"picks"` for `first` or `last` without an order (which
             row's value), `"elements"` for a `collect` without one (the
             order of the elements).
     """

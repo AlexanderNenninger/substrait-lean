@@ -153,7 +153,7 @@ class Check:
         return str(self.d.path)
 
     def credential_uses(self) -> list[tuple[str, Any]]:
-        """Per node variable, the credentials its refresh uses (#778), each
+        """Per node variable, the credentials its refresh uses, each
         table and credential once."""
         if self._uses is None:
             self._uses = []
