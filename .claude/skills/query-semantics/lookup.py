@@ -248,6 +248,7 @@ def conditions(requires: list[list[str]], ensures: list[str]) -> tuple[dict, lis
     over `_`, or sverify's conditions (`sv.max_rows(1000)`,
     `sv.equivalent(floats=sv.within(rel=1e-9))`)."""
     import ibis
+
     import sverify as sv
 
     ns = {"_": ibis._, "ibis": ibis, "sv": sv}
@@ -367,7 +368,9 @@ def evidence_of(fact: dict) -> str:
 @functools.cache
 def all_facts() -> list[dict]:
     out = []
-    for f in sorted(ROOT.glob("characterization/*/facts/*.json")):
+    # An engine package's facts (`engines/<e>/facts`, #1189) or the others'.
+    paths = [*ROOT.glob("engines/*/facts/*.json"), *ROOT.glob("characterization/*/facts/*.json")]
+    for f in sorted(paths):
         d = json.loads(f.read_text())
         d["_path"] = str(f.relative_to(ROOT))
         out.append(d)
@@ -578,8 +581,8 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
     py = ROOT / "python/src/sverify"
     for path in [
         py / "sql/duckdb.py",
-        py / "polars_engine.py",
-        py / "_polars_shims.py",
+        ROOT / "engines/polars/src/sverify_polars/engine.py",
+        ROOT / "engines/polars/src/sverify_polars/shims.py",
         py / "sql/core/_base.py",
     ]:
         if not path.exists():

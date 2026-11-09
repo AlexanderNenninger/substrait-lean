@@ -47,7 +47,7 @@ from typing import Any
 import ibis
 import pyarrow as pa
 import sverify.engine as eng
-from sverify import polars_engine
+from sverify_polars import engine as polars_engine
 from sverify.sql import Unsupported, parse_plan
 from sverify.sql import to_sql as plan_sql
 from sverify.sql.core import Emit, Fetch, Filter, OrderBy, Project, Window, kinds
@@ -327,7 +327,7 @@ def lean(plan: str, tables: dict[str, pa.Table]) -> tuple[str, str, Rows | None]
 def backends(
     con: eng.Connection, written: str, tables: dict[str, pa.Table], spark: bool
 ) -> dict[str, tuple[str, Rows | None]]:
-    from sverify import polars_engine
+    from sverify_polars import engine as polars_engine
     from sverify.sql.snowflake import SNOWFLAKE
 
     out: dict[str, tuple[str, Rows | None]] = {}

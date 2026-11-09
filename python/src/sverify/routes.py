@@ -258,7 +258,7 @@ class Route:
     rests on an unproved bound; None without `reproducible`."""
     fallbacks: tuple[str, ...] = ()
     """On Polars, the nodes of the plan's streaming plan that run on the
-    in-memory engine (`polars_engine.fallback_nodes`), recorded by
+    in-memory engine (`sverify_polars.engine.fallback_nodes`), recorded by
     `Report.run`: the in-memory engine's facts hold for those."""
     observation: Observation | None = None
     """For an `"observed"` route: the observation up to which the engine's

@@ -26,6 +26,10 @@ brings:
 - a runner: `runner`, `local`, `optional`, `session`, `modules`,
   `read_settings`. `sverify.engines.run` runs plans with it, and a
   `Connection` takes the engine when it is `local`.
+- runs over Arrow tables: `run_tables`, for `sverify.partition.run_sharded`
+  and, with `guard_free_theorem`, for plans whose checks a contract report
+  discharged; `fallbacks`, the plan's nodes the engine runs outside its
+  chosen executor, which a route records.
 - a SQL dialect: `dialect`, for `to_sql`.
 - its name in prose: `title`.
 
@@ -50,6 +54,8 @@ __all__ = ["ProfilePlugin", "Setting", "plugins"]
 
 #: A plan runner: `runner(con, plan_json, session, keep=, finite=, tie_free=)`.
 Runner = Callable[..., Any]
+#: A run over Arrow tables: `run_tables(plan_json, tables, guard_free=, finite=)`.
+TablesRunner = Callable[..., Any]
 
 Action = Literal["refuse", "warn"]
 
@@ -137,6 +143,21 @@ class ProfilePlugin:
     """The `sverify.sql.Dialect` that `to_sql` writes for it."""
     title: str = ""
     """The engine's name as prose writes it (`"DuckDB"`); empty: `engine`."""
+    run_tables: TablesRunner | None = None
+    """Runs a plan in Lean's written form over Arrow tables by name:
+    `run_tables(plan_json, tables, *, guard_free=False, finite=True)`.
+    `guard_free=True` leaves out the per-row checks a `guard_free` contract
+    report discharged, keeping the assumed issues' checks; `finite=False`
+    leaves out the check of an overflow to ±∞ (#575). None: no run over
+    tables (`sverify.partition.run_sharded`, guard-free runs)."""
+    guard_free_theorem: str = ""
+    """The theorem that covers `run_tables(..., guard_free=True)`, as the
+    checker names it (`"guard_free_theorem"`); empty: no guard-free run."""
+    fallbacks: Callable[[Mapping[str, Any], Mapping[str, Any]], Sequence[str]] | None = None
+    """The nodes of a plan (Lean's written form, parsed) the engine would run
+    outside its chosen executor over these tables (Polars's in-memory nodes
+    of a streaming plan). A route records them; `streaming="require"`
+    refuses a plan with any. None: the engine has one executor."""
 
 
 def _merged(found: list[ProfilePlugin]) -> ProfilePlugin:

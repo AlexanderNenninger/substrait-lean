@@ -896,7 +896,7 @@ class Report:
                 and on the other engines, every check stays.
             streaming: On Polars, `"require"` refuses a plan any of whose
                 nodes runs on the in-memory engine
-                (`polars_engine.fallback_nodes`); `"allow"` (the default)
+                (`sverify_polars.engine.fallback_nodes`); `"allow"` (the default)
                 runs it. Either way a chosen route records the nodes in
                 `Route.fallbacks`.
 
@@ -932,7 +932,7 @@ class Report:
             result = report.run(con)  # refused if report.proved is False
             ```
         """
-        from sverify import routes
+        from sverify import profiles, routes
 
         if self.internal_plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
@@ -961,8 +961,14 @@ class Report:
             self.check_inputs(con)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
-        if target == "polars" and (chosen is not None or streaming == "require"):
-            self._streaming(con, chosen, streaming)
+        plugin = profiles.find(target)
+        fallbacks = plugin.fallbacks if plugin is not None else None
+        if (
+            plugin is not None
+            and fallbacks is not None
+            and (chosen is not None or streaming == "require")
+        ):
+            self._streaming(con, chosen, streaming, plugin.engine, fallbacks)
         # The check of an overflow to ±∞ is the reference's precondition
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
@@ -1069,24 +1075,28 @@ class Report:
         issue = self._inferred_from.get(lab)
         return " (inferred)" if issue is None else f" (inferred from {issue.what})"
 
-    def _streaming(self, con: Connection, chosen: Any, streaming: str) -> None:
-        """Record the in-memory nodes of the plan's Polars streaming plan in
-        its route, and refuse it with `streaming="require"` if it has any."""
+    def _streaming(
+        self, con: Connection, chosen: Any, streaming: str, engine: str, fallbacks: Any
+    ) -> None:
+        """Record the nodes of the plan the engine runs outside its chosen
+        executor (`ProfilePlugin.fallbacks`: Polars's in-memory nodes of its
+        streaming plan) in its route, and refuse it with
+        `streaming="require"` if it has any."""
         import dataclasses
 
-        from sverify import polars_engine, routes
+        from sverify import routes
         from sverify.engine import read_tables
 
         assert self.internal_plan is not None
         plan = json.loads(written_plan(self.internal_plan))
         tables = {t: con._arrow[t] for t in read_tables(plan)}
-        nodes = tuple(polars_engine.plan_fallbacks(plan, tables))
+        nodes = tuple(fallbacks(plan, tables))
         if chosen is not None:
             chosen = dataclasses.replace(chosen, fallbacks=nodes)
             self.routes[chosen.engine] = chosen
         if streaming == "require" and nodes:
             refused = routes.Route(
-                engine="polars",
+                engine=engine,
                 kind=None,
                 profile=chosen.profile if chosen is not None else self.semantics,
                 reason=(
@@ -1095,7 +1105,7 @@ class Report:
                 ),
                 fallbacks=nodes,
             )
-            self.routes["polars"] = refused
+            self.routes[engine] = refused
             raise routes.RouteError(refused)
 
     @property

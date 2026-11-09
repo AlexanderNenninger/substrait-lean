@@ -36,8 +36,8 @@ def test_regex_groups_agree_with_polars(pattern: str, groups: int) -> None:
     """The SQL writer and Polars count with one definition, and it agrees
     with the `regex` crate's own count."""
     pl = pytest.importorskip("polars")
-    from sverify.polars_engine import regex_groups as polars_groups
     from sverify.sql.core import regex_groups as sql_groups
+    from sverify_polars.engine import regex_groups as polars_groups
 
     rust = pl.Series([""], dtype=pl.String).str.extract_groups(pattern).dtype
     assert isinstance(rust, pl.Struct)
@@ -55,7 +55,7 @@ def test_regex_groups_refuses_other_groups(pattern: str) -> None:
 
 def test_invalid_pattern_on_polars() -> None:
     pytest.importorskip("polars")
-    from sverify.polars_engine import regex_groups
+    from sverify_polars.engine import regex_groups
 
     assert regex_groups("(a") is None
 

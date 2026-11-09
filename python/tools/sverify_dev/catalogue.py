@@ -512,12 +512,12 @@ def probe_engines(
     (SQL written and parsed with sqlglot, not run) or `refused: …`."""
     import sqlglot
 
-    from sverify import polars_engine
     from sverify.sql import Unsupported as Untranslatable
     from sverify.sql import parse_plan
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.core import Fetch, Window, order_matters
     from sverify.sql.snowflake import SNOWFLAKE
+    from sverify_polars import engine as polars_engine
 
     out: dict[str, str] = {}
     results: dict[str, list[tuple]] = {}

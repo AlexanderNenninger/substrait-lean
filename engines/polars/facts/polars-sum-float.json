@@ -1,0 +1,252 @@
+{
+  "id": "polars-sum-float",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`sum` of floats: pairwise, Kahan when grouped",
+  "verdict": "pairwise (full); Kahan (grouped, in memory); in turn (grouped, streaming); in the input's width",
+  "area": "aggregates",
+  "options": [
+    "sum_order",
+    "empty_group_aggregates",
+    "rounding"
+  ],
+  "rows": [
+    {
+      "group": "agg.fsum",
+      "option": "sum_order",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ],
+      "evidence": "source"
+    }
+  ],
+  "constructs": [
+    "sum"
+  ],
+  "settings": {
+    "engine": "in-memory",
+    "POLARS_IDEAL_MORSEL_SIZE": [
+      "100000 (default)",
+      "64"
+    ],
+    "POLARS_SORT_PARTITION_THRESHOLD_BYTES": [
+      "33554432 (default)",
+      "1024"
+    ]
+  },
+  "description": [
+    "A full aggregation sums pairwise: blocks of 128 in 16 SIMD stripes, combined pairwise, the remainder added in turn. Groups of indices use Kahan summation with a finiteness guard. Streaming merges partial sums plainly.",
+    "The sum of no values (or only nulls) is 0 in the Series API.",
+    "The sum has the input's width. A `Float32` column adds in single precision on every path: `sum_arr_as_f32` with `f32` lanes, `KahanSum<f32>` per group, `NumSumReducer<Float32Type>` (`SumCast` maps `f32` to `f32`). One `Float32` group of 16777216, 1, 1 sums to 16777216 ungrouped and grouped when streaming, and to 16777218 grouped in memory (Kahan). Each step is one IEEE addition, rounded to nearest with ties to even; the paths differ in the order of the additions. The float-sum kernel uses plain `+`, not the reassociable `alg_add_f64`.",
+    "Streaming engine (a lazy `collect()` by default, polars-exec-engine): ungrouped, each morsel is summed by the in-memory kernel (`ChunkAgg::sum`, pairwise per chunk), added to its pipeline's running sum, and the pipelines' sums are added in pipeline order. Which morsels a pipeline receives depends on scheduling, so the grouping of a large sum can change between runs. Grouped, each value is added in turn to its group's sum (`reduce_one`, `+=`) and the pipelines' partial sums are added on merge. So grouped sums differ between the engines: Kahan in memory, plain left-to-right when streaming. One `Float64` group of 1e16, 1, 1, -1e16 sums to 2.0 in memory and 0.0 streaming.",
+    "Order class (in memory): (a) ungrouped, pairwise with blocks of 128: in a block each of 16 lanes adds its 8 values in turn and the lanes reduce in a tree of depth 4, the blocks combine pairwise, and the first n mod 128 values are added in turn and then to the rest; several chunks add their sums in turn. Grouped by index groups, Kahan's compensated sum in the input's width with the error kept only while finite; grouped by slices (sorted keys), the ungrouped kernel per slice. (b) Any tree: |ŝ − s| ≤ γ_h Σ|x_i| (Higham §4.2), h ≤ max(12 + ⌈log₂ B⌉, r) for one array of n = 128B + r values (7 lane additions, 4 lane levels, ⌈log₂ B⌉ pairwise levels, the final addition; r for the leading remainder); for n ≥ 2¹⁶ that is about ⌈log₂ n⌉ + 5, below the sequential n − 1. Kahan: (2u + O(nu²)) Σ|x_i| (§4.3). u = 2⁻⁵³ for `Float64`, 2⁻²⁴ for `Float32`, which sums in `f32` throughout. (c) The source below; polars-sum-float's manual repros (16777218 and 2.0 grouped in memory). (d) Ungrouped and slice-grouped: ANY (a fixed tree), never SEQUENTIAL past 128 values. Index-grouped Kahan: no Lean order (duckdb-kahan-sum has a four-value Kahan result outside every tree sum). `Float32`: no Lean order either, as `SumOrder` rounds every step to a double; the class is ANY at u = 2⁻²⁴. The in-memory planner can also hand a group_by with at most two plain column keys and sum/mean/min/max/first/last/count aggregations to the streaming group-by (`partitionable_gb`, when it has a streaming builder); the probes saw Kahan in memory, so that branch was not taken there."
+  ],
+  "reference": "`AggFn.fsum` is `floatSumCR` (D25): the exact sum of the doubles, rounded once to nearest with ties to even; a NaN, or `+∞` with `-∞`, gives NaN, and one kind of infinity gives it. NULL without values. An engine's own order of additions is within the plan's bound (`sum_order`, `StdModel.epsilon_sum_cr`).",
+  "status": "open",
+  "evidence": "probe",
+  "superseded_by": "polars-sum-float-streaming",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L194-L215"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L254-L265"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/kahan_sum.rs"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L867-L891"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Unverified: the sum of no values through polars-sql."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "float-sum-empty"
+        }
+      ],
+      "notes": "The sum of no values and of NULLs only is 0.0; `mean` of no values is NULL. Polars 2.1.0."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L40-L47",
+          "note": "`SumCast`: `f32` and `f64` sum in their own type"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L86-L133",
+          "note": "per-array sum: `sum_arr_as_f32` for `f32`, `sum_arr_as_f64` for `f64`; chunks folded left"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L71-L103",
+          "note": "SIMD block sum: 16 lanes of the output type, then `vector_horizontal_sum`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L248-L314",
+          "note": "pairwise main part plus the remainder added in turn"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L867-L939",
+          "note": "in-memory `agg_sum`: `KahanSum<T::Native>` per index group"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/kahan_sum.rs#L37-L49",
+          "note": "Kahan step; the error term is kept only while finite"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/sum.rs#L63-L115",
+          "note": "`NumSumReducer`: `reduce_ca` uses `ChunkAgg::sum`, `reduce_one` and `combine` plain `+=`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L42-L104",
+          "note": "ungrouped streaming reduce: each pipeline folds its morsels into a local state (`update_group`), the local states merge in pipeline order (`combine_subset`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L396-L455",
+          "note": "`VecGroupedReduction`: `update_group` calls `reduce_ca` on a morsel; `update_groups_subset` calls `reduce_one` per row"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mod.rs#L457-L528",
+          "note": "`update_groups_while_evicting` (per row `reduce_one`) and `combine_subset` (`combine`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/group_by/sink.rs#L636-L655",
+          "note": "streaming group_by: each pipeline updates its local per-group states row by row"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/group_by/table.rs#L105-L115",
+          "note": "the pipelines' pre-aggregated states merge with `combine_subset`"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine has its own reducers in `polars-expr/src/reduce`, lowered by `polars-stream`; sums of `Float32` and `Float64` take the same generic code."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "manual-repro",
+      "checked_by": "characterization pipeline round 2 (aggregates)",
+      "evidence": [
+        {
+          "note": "pl.LazyFrame({'g': [1]*3, 'x': [16777216.0, 1.0, 1.0]}, schema={'g': pl.Int64, 'x': pl.Float32}): select(x.sum()) is 16777216.0 on both engines; group_by('g').agg(x.sum()) is 16777218.0 in memory and 16777216.0 streaming"
+        },
+        {
+          "note": "pl.LazyFrame({'g': [1]*4, 'x': [1e16, 1.0, 1.0, -1e16]}): group_by('g').agg(x.sum()) is 2.0 in memory and 0.0 streaming; select(x.sum()) is 0.0 on both"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "s-group-fsum-cancel"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "s-group-fsum-f32"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "s-fsum-runs"
+        }
+      ],
+      "notes": [
+        "Narrowed to the in-memory engine; the streaming engine, which sverify targets, is in polars-sum-float-streaming. The streaming probes show a grouped sum adding in turn (0.0 and 16777216 where memory gives 2.0 and 16777218) and an ungrouped sum that varies between runs.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 5 (summation order classes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L13-L14",
+          "note": "STRIPE = 16, PAIRWISE_RECURSION_LIMIT = 128"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L45-L64",
+          "note": "horizontal sum: 16 → 8 → 4 lanes, then (v0 + v2) + (v1 + v3)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L72-L104",
+          "note": "a block of 128: 16 lanes, each adding 8 values in turn"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L194-L216",
+          "note": "pairwise over whole blocks, split at half the blocks"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L254-L265",
+          "note": "the first n mod 128 values added in turn, then mainsum + restsum"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs#L127-L137",
+          "note": "ChunkAgg::sum folds the chunks' sums left; _sum_as_f64 likewise"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L867-L936",
+          "note": "agg_sum: KahanSum per index group; per slice ChunkAgg::sum or the rolling kernel for overlapping slices"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/kahan_sum.rs#L38-L50",
+          "note": "Kahan step; the error kept only while finite"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-mem-engine/src/planner/lp.rs#L19-L50",
+          "note": "partitionable_gb"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-mem-engine/src/planner/lp.rs#L674-L706",
+          "note": "a partitionable group_by goes to GroupByStreamingExec when a streaming builder is given"
+        },
+        {
+          "url": "https://epubs.siam.org/doi/10.1137/1.9780898718027.ch4",
+          "note": "Higham, Accuracy and Stability of Numerical Algorithms (2nd ed., SIAM 2002), ch. 4 Summation: §4.2 recursive, pairwise and any-order bounds; §4.3 compensated summation"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). With the `simd` feature the block uses `Simd<F, 16>` lanes; without it the same 16-lane loop, so the tree is the same."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (probe_polars --diff, small morsels)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "s-fsum-runs"
+        }
+      ],
+      "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

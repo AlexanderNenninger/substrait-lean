@@ -236,7 +236,7 @@ Each profile refines the loose core of [core-semantics.md](core-semantics.md), o
 
 ### The Polars example
 
-Polars 2.1.0's characterization ([characterization/polars/README.md](../characterization/polars/README.md),
+Polars 2.1.0's characterization ([engines/polars/facts/README.md](../engines/polars/facts/README.md),
 with strings, dates and casts in
 [#570](https://github.com/AlexanderNenninger/substrait-lean/pull/570) and the
 remaining items in
@@ -247,24 +247,24 @@ Error side, no shim for a proved plan (15). The reference raises on each,
 so a proved plan never reaches Polars's behaviour:
 
 - integer `overflow` of `+ - ×`, negate and `**` (wraps,
-  [int-arith](../characterization/polars/facts/polars-int-arith.json)),
-  `abs(MIN)` ([int-abs](../characterization/polars/facts/polars-int-abs.json)),
+  [int-arith](../engines/polars/facts/polars-int-arith.json)),
+  `abs(MIN)` ([int-abs](../engines/polars/facts/polars-int-abs.json)),
   `MIN / -1` and `sum` of `i32`, `i64`
-  ([int-divide](../characterization/polars/facts/polars-int-divide.json),
-  [sum-int](../characterization/polars/facts/polars-sum-int.json));
+  ([int-divide](../engines/polars/facts/polars-int-divide.json),
+  [sum-int](../engines/polars/facts/polars-sum-int.json));
 - integer division and modulus by zero (`NULL`, int-divide,
-  [int-modulus](../characterization/polars/facts/polars-int-modulus.json));
+  [int-modulus](../engines/polars/facts/polars-int-modulus.json));
 - doubles: `nan_creation`
-  ([double-arith](../characterization/polars/facts/polars-double-arith.json)),
+  ([double-arith](../engines/polars/facts/polars-double-arith.json)),
   division by zero
-  ([double-divide](../characterization/polars/facts/polars-double-divide.json)),
+  ([double-divide](../engines/polars/facts/polars-double-divide.json)),
   `x % 0`
-  ([double-modulus](../characterization/polars/facts/polars-double-modulus.json)),
+  ([double-modulus](../engines/polars/facts/polars-double-modulus.json)),
   `on_domain_error`, `on_log_zero`
-  ([math-domain](../characterization/polars/facts/polars-math-domain.json)),
-  `atan2(0, 0)` ([atan2](../characterization/polars/facts/polars-atan2.json)),
+  ([math-domain](../engines/polars/facts/polars-math-domain.json)),
+  `atan2(0, 0)` ([atan2](../engines/polars/facts/polars-atan2.json)),
   `±∞` in `sum`, `avg`, `variance`, `std_dev`
-  ([nonfinite-aggregates](../characterization/polars/facts/polars-nonfinite-aggregates.json));
+  ([nonfinite-aggregates](../engines/polars/facts/polars-nonfinite-aggregates.json));
 - `date_range`, past 9999 and PL-2's panic (#570's date-range), and
   `substring_range` (#573's substring-range).
 
@@ -275,16 +275,16 @@ the quantile's `method`. The others are shims with a cost:
 
 - truncating division and modulus of negative integers (`//` floors,
   int-divide, int-modulus), and the sign of a double modulus (double-modulus);
-- an empty `SUM` (0, [sum-float](../characterization/polars/facts/polars-sum-float.json)),
-  `avg` of integers ([avg-int](../characterization/polars/facts/polars-avg-int.json)),
-  `CORR` of one pair ([corr](../characterization/polars/facts/polars-corr.json)),
-  `mode`'s list ([mode](../characterization/polars/facts/polars-mode.json)),
-  the rank of NULL ([rank](../characterization/polars/facts/polars-rank.json));
+- an empty `SUM` (0, [sum-float](../engines/polars/facts/polars-sum-float.json)),
+  `avg` of integers ([avg-int](../engines/polars/facts/polars-avg-int.json)),
+  `CORR` of one pair ([corr](../engines/polars/facts/polars-corr.json)),
+  `mode`'s list ([mode](../engines/polars/facts/polars-mode.json)),
+  the rank of NULL ([rank](../engines/polars/facts/polars-rank.json));
 - `zero_sign` and `nan_kind` (`canon`, or `observed` up to `canon`, D22), and `round` to negative digits
-  ([round-digits](../characterization/polars/facts/polars-round-digits.json));
+  ([round-digits](../engines/polars/facts/polars-round-digits.json));
 - decimal result types and `decimal_rescale`
-  ([decimal-arith](../characterization/polars/facts/polars-decimal-arith.json),
-  [decimal-casts](../characterization/polars/facts/polars-decimal-casts.json)),
+  ([decimal-arith](../engines/polars/facts/polars-decimal-arith.json),
+  [decimal-casts](../engines/polars/facts/polars-decimal-casts.json)),
   the `i64` against `fp64` comparison, `sum`'s widening of `i8`, `i16`, and
   the implicit casts and literal types of #573;
 - 0-based positions of `substring`, `strpos` and `list_extract`,
@@ -294,7 +294,7 @@ the quantile's `method`. The others are shims with a cost:
 Open, native or `observed`: `tie_pick` and `tie_order` (Polars picks
 deterministically, which the reference allows), `sum_order` and `stat_algo`
 (`observed` within `ε`, #85's bounds), and `log10`, `log2` an ulp off
-([log-base](../characterization/polars/facts/polars-log-base.json)).
+([log-base](../engines/polars/facts/polars-log-base.json)).
 
 Refused: the shifts, `ntile`, `percent_rank`, `cume_dist` and seven string
 functions have no Polars expression, and `<`, `min`, `max` of lists raise in
@@ -306,7 +306,7 @@ written argument, and the 23 run-time shims left each implement a value the
 reference chose.
 
 For the prototype slice, `SubstraitLean/PolarsShims.lean` proves them, each
-shim of `python/src/sverify/_polars_shims.py` once, as `Polars.<name>`,
+shim of `engines/polars/src/sverify_polars/shims.py` once, as `Polars.<name>`,
 against a model of Polars's own functions taken from its facts (the trusted
 part, as `Profile.duckdb` is for DuckDB):
 
@@ -341,8 +341,8 @@ as `Profile.duckdb` is, and it takes Polars's choice option by option (D21):
 
 | Option | `Profile.polars` | Polars 2.1.0 | Why |
 |---|---|---|---|
-| `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../characterization/polars/facts/polars-int-divide.json), [int-modulus](../characterization/polars/facts/polars-int-modulus.json)) | Polars's own value, so the native route needs no shim |
-| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/polars/facts/polars-double-arith.json)) | as under DuckDB's profile |
+| `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../engines/polars/facts/polars-int-divide.json), [int-modulus](../engines/polars/facts/polars-int-modulus.json)) | Polars's own value, so the native route needs no shim |
+| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../engines/polars/facts/polars-double-arith.json)) | as under DuckDB's profile |
 | `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a proved plan never wraps |
 | `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
 | `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
@@ -368,7 +368,7 @@ parser reads, and the report says `"profile": "polars"`. What is proved:
   choices table.
 
 On the routes: a plan proved under `Profile.polars` runs on Polars by
-`native`, where `polars_engine` runs Polars's `//` and `%` for the stated
+`native`, where `sverify_polars.engine` runs Polars's `//` and `%` for the stated
 calls and the translation's shims elsewhere. The SQL writer computes a
 stated `FLOOR` on every dialect from the truncating operations, as
 `Expr.floorDivOf` and `Expr.floorModOf` do, so the written plan runs on
@@ -377,7 +377,7 @@ transfer check, which fails on `division_type`. The re-check route targets the
 profile too: `--contract` with `"profile": "polars"` proves the reference
 plan again, its unstated `//` and `%` being the reference's `TRUNCATE`,
 which the translation shims. Tested, and trusted: that Polars computes
-`Polars.floorDiv` and `Polars.floorMod` (`tests/test_polars_profile.py` runs
+`Polars.floorDiv` and `Polars.floorMod` (`engines/polars/tests/test_polars_profile.py` runs
 it against Python's floor division on random 64-bit values), and that the
 translation writes the stated calls as Polars's operators.
 
@@ -469,9 +469,11 @@ Its Python side registers a `sverify.profiles.ProfilePlugin` under the
 entry-point group `sverify.profiles`. That group is where sverify finds
 engines, and the only place
 ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)):
-DuckDB, Polars, Spark, DataFusion and Snowflake's dialect register theirs
-there too, from `sverify._builtin`, and `tests/test_engines_table.py` checks
-that with the entry points gone sverify names no engine.
+DuckDB, Spark, DataFusion and Snowflake's dialect register theirs there
+too, from `sverify._builtin`, and Polars from its engine package
+(`engines/polars/`, the distribution `sverify-polars`, which `sverify[polars]`
+installs). `tests/test_engines_table.py` checks that with the entry points
+gone sverify names no engine.
 
 ```toml
 [project.entry-points."sverify.profiles"]
@@ -498,6 +500,9 @@ Every field but `engine` is optional:
 | `read_settings` | reads the named settings in a session, or in the one the next run uses |
 | `dialect` | the `sverify.sql.Dialect` that `to_sql` writes |
 | `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
+| `run_tables` | runs a written plan over Arrow tables by name: `run_tables(plan_json, tables, *, guard_free=False, finite=True)`; `sverify.engines.run_sharded` runs its shards with it |
+| `guard_free_theorem` | the theorem that covers `run_tables(..., guard_free=True)`, the run without the checks a `guard_free` contract report discharged |
+| `fallbacks` | the nodes of a written plan the engine runs outside its chosen executor (Polars's in-memory nodes of a streaming plan), which a route records and `streaming="require"` refuses |
 
 Entries for one engine are merged field by field, so one package can add a
 profile to an engine whose dialect another ships: Snowflake's dialect is
@@ -524,7 +529,7 @@ shimmed plan for the engine is trusted, and tested against `Rel.eval`:
 | engine | translation | where |
 |---|---|---|
 | DataFusion | `substrait-check --write-datafusion` | `Write.writeRel (df := true)` |
-| Polars | `polars_engine` (LazyFrame) | Python |
+| Polars | `sverify_polars.engine` (LazyFrame) | Python |
 | DuckDB, Snowflake, Spark | `sverify.sql.to_sql` with a `Dialect` | Python |
 
 A translation compensates for its engine where it can (an exact `SUM`
@@ -539,7 +544,7 @@ elimination (`SubstraitLean/Guards.lean`) is the part already proved in Lean.
 Polars runs Lean's own serialisation of the checked plan: the plan as
 `substrait-check --write` writes it back out from the parsed `Rel`
 (`sverify.engines.written_plan`), and the delta plans of `--delta`, which use the same
-writer. `sverify/polars_engine.py` translates only that small, canonical form
+writer. `sverify_polars/engine.py` translates only that small, canonical form
 to a `LazyFrame` and raises `UnsupportedError` on anything else. It does not go
 through Ibis's Polars backend, which would compile a different plan. The
 translator pins the semantics and takes no Polars defaults:
@@ -592,7 +597,7 @@ translator pins the semantics and takes no Polars defaults:
 * Doubles divide in numpy: Polars divides a column by a constant by
   multiplying with its reciprocal, which rounds differently.
 
-`python/tests/test_polars.py` runs every golden fixture (among them sorts,
+`engines/polars/tests/test_polars.py` runs every golden fixture (among them sorts,
 `DISTINCT`, semi, anti and outer joins, and the string and time functions),
 the window and rewrite queries of the other suites, and every delta plan of
 the example pipelines on both engines. It checks Polars against DuckDB as bags and
@@ -788,9 +793,9 @@ make that true of the SQL, and they are tested against `Rel.eval`
 
 Polars computes every `+`, `-`, `×` and `/` of decimals as a
 `Decimal(38, max(s₁, s₂))`, rounds half to even, and averages to a `Float64`
-([polars-decimal-arith](../characterization/polars/facts/polars-decimal-arith.json),
-[polars-decimal-casts](../characterization/polars/facts/polars-decimal-casts.json)).
-`polars_engine` keeps each value in the plan's `Decimal(p, s)` and computes
+([polars-decimal-arith](../engines/polars/facts/polars-decimal-arith.json),
+[polars-decimal-casts](../engines/polars/facts/polars-decimal-casts.json)).
+`sverify_polars.engine` keeps each value in the plan's `Decimal(p, s)` and computes
 the rest on the unscaled values (`to_physical`, an `Int128`):
 
 | Reference | Polars by itself | Translation |
@@ -803,7 +808,7 @@ the rest on the unscaled values (`to_physical`, an `Int128`):
 | a double becomes `x · 10ˢ`, rounded once, then half away from zero | the same product, half to even | `round_half_away` on the product; a scale over 22, where Polars's `10ˢ` is inexact, is refused |
 | decimal → double is correctly rounded, → integer truncates, comparisons are exact | the same | native |
 
-`tests/test_polars_decimal.py` runs each operation's written plan on Polars
+`engines/polars/tests/test_polars_decimal.py` runs each operation's written plan on Polars
 and on DuckDB against `Rel.eval`, and the 40 proved catalogue queries with
 decimal columns run on Polars (`catalogue/status.json`).
 
@@ -811,9 +816,9 @@ decimal columns run on Polars (`catalogue/status.json`).
 
 The reference orders doubles by their codes: NaN above `+∞`, one zero.
 Polars's `min` and `max` skip NaN unless every value is NaN
-([polars-min-max-nan](../characterization/polars/facts/polars-min-max-nan.json)),
+([polars-min-max-nan](../engines/polars/facts/polars-min-max-nan.json)),
 and keep whichever zero `f64::min` picks
-([polars-min-max-zero](../characterization/polars/facts/polars-min-max-zero.json)),
+([polars-min-max-zero](../engines/polars/facts/polars-min-max-zero.json)),
 in aggregates and over windows, on the streaming engine
 ([#697](https://github.com/AlexanderNenninger/substrait-lean/issues/697)):
 
@@ -824,5 +829,5 @@ in aggregates and over windows, on the streaming engine
 | `MIN` and `MAX` of `0.0` and `-0.0` are `0.0` | `-0.0` for `min` on macOS arm64 | `one_zero` on the result |
 | no values give NULL | the same | native |
 
-`tests/test_polars_shims.py` runs grouped, global, filtered, `DISTINCT` and
+`engines/polars/tests/test_polars_shims.py` runs grouped, global, filtered, `DISTINCT` and
 windowed `MIN` and `MAX` of these cases on Polars, DuckDB and `Rel.eval`.

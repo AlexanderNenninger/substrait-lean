@@ -6,7 +6,7 @@ import SubstraitLean.SubstraitProfile
 # Engine profiles as choice tables (#444, step 3a, prototype slice)
 
 DuckDB's, Polars's and Spark's choices and observation rows, from their facts
-(`characterization/duckdb/facts/`, `characterization/polars/facts/`,
+(`characterization/duckdb/facts/`, `engines/polars/facts/`,
 `characterization/spark/facts/`), pinned to
 the versions those were probed at (D14). The rows cover the prototype slice:
 integer `+ - × /` and `%`, `SUM` and `AVG` of integers and doubles, double
@@ -449,7 +449,7 @@ def Profile.spark.obs : ObsTable := [
 
 /-- The engine profiles of this repository, DuckDB under its default
 settings. Each one's shims are named as its rows name them; Polars's are
-`python/src/sverify/_polars_shims.py`'s `SHIMS` (named as their lemmas
+`engines/polars/src/sverify_polars/shims.py`'s `SHIMS` (named as their lemmas
 `Polars.<name>`), which `tests/test_realizability.py` checks against these. -/
 def builtinEngines : List EngineProfile := [
   { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,

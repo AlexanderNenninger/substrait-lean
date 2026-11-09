@@ -89,8 +89,10 @@ TABLE_THEOREMS = ("Choice.le_sound",)
 
 
 def _fact_path(engine: str, ident: str) -> Path | None:
+    from sverify_dev import facts
+
     for e in (engine, *sorted(_engines.NAMED)):
-        path = ROOT / "characterization" / e / "facts" / f"{ident}.json"
+        path = facts.facts_dir(e) / f"{ident}.json"
         if path.exists():
             return path
     return None

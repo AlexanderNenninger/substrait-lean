@@ -216,7 +216,7 @@ order the engine profiles allow (`sum_order`):
 |---|---|---|
 | `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of rounded additions in any order (`FloatSums`, `core/Sverify/Core/AllowedP.lean`) | `Rnd.Tree.error`, `TreeSum.tree` ([`Tree.lean`](../float-bounds/FloatBounds/Tree.lean)) |
 | `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` ([duckdb-sum-double](../characterization/duckdb/facts/duckdb-sum-double.json)) | `TreeSum.const` |
-| `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../characterization/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
+| `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../engines/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
 
 Each is within `γ n · Σ (|xᵢ| + tiny)` of the exact sum, the sequential
 sum's bound, for `n ≤ 2³²` doubles. For a tree, an error grows with the
