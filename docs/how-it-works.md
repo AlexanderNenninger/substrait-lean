@@ -1,7 +1,7 @@
 # How it works
 
 How plans are checked, how the engines are made to agree, and exactly what
-is proved. The user-facing side is in [guide.md](guide.md); the map of the
+is proved. The user-facing side is in [getting-started.md](getting-started.md) and [tasks.md](tasks.md); the map of the
 proofs, with each Lean module's job and the theorems each guarantee rests
 on, is in [proofs.md](proofs.md).
 
@@ -77,7 +77,7 @@ rows (3):
 ```
 
 What it accepts is the model's fragment (`core/Sverify/Core/Rel.lean` lists the
-operators): the coverage table under [What is supported](../README.md#what-is-supported)
+operators): the coverage table under [What is supported](../README.md#ibis-coverage)
 probes it from the Ibis side, and the catalogue's
 [`features.toml`](../catalogue/features.toml) records it per feature. Function
 calls are matched by name in `extensions`, and anything else is rejected.
@@ -536,7 +536,7 @@ The linear fragment, `Rel.Incremental`, covers every operator except left,
 semi and anti joins, `DISTINCT`, aggregates, fetch and windows; semi and anti
 joins, `DISTINCT` and `COUNT`, `SUM`, `AVG`, `MIN` and `MAX` per group have
 delta rules of their own ([section 6 of the optimizations note](optimizations.md#6-incremental-maintenance);
-what refresh maintains is in [the guide](guide.md#nodes-composing-storing-refreshing)):
+what refresh maintains is in [the guide](tasks.md#nodes-composing-storing-refreshing)):
 
 * `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit, sort and union
   are linear (a sort only orders the bag), and cross and inner join use the bilinear rule

@@ -167,7 +167,7 @@ sequential sum. They cost a few integer operations per measure.
 - A `SUM` needs one. `sv.max_rows(n)` in `requires` caps an input
   and is checked on the data (`COUNT(*) <= n`), or proved from the record
   counts of a Delta or Iceberg table's files. The same cap proves integer
-  `SUM`s fit 64 bits ([Row caps](guide.md#row-caps)). The checker reads capped
+  `SUM`s fit 64 bits ([Row caps](tasks.md#row-caps)). The checker reads capped
   tables through a `FETCH` of `n` rows (`Rel.capReads`), which keeps their
   rows (`Rel.capReads_eval`), and bounds every relation's rows from it
   (`Rel.maxRows`, `Rel.maxRows_sound`). With a cap `n`, a `SUM` of doubles
