@@ -1,7 +1,7 @@
 # Float error bounds
 
 Doubles round. Sverify models them exactly where it can (comparisons, `MIN`,
-`MAX`), computes `+ − × ÷` as the exact result rounded once ([double arithmetic](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once)),
+`MAX`), computes `+ − × ÷` as the exact result rounded once ([double arithmetic](reference-semantics.md#floating-point)),
 and computes `pow`, `log` and the other libm functions with Lean's native
 `Float`. Proved error bounds cover the aggregates that add up doubles: `SUM`,
 `AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`. This note records the model,
@@ -254,7 +254,7 @@ Polars cite `StdModel.epsilon_sum` ([realizability](realizability.md)).
 ### Against the correctly rounded sum
 
 The reference's `SUM` of doubles is the exact sum of the values rounded once
-([float aggregates](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)),
+([float aggregates](reference-semantics.md#of-doubles)),
 and its `AVG` the exact mean rounded once (`floatSumCR`, `floatAvgCR`,
 [`FloatExact.lean`](../core/Sverify/Core/FloatExact.lean)). The core computes
 them on integers, since every finite double is a multiple of `2⁻¹⁰⁷⁴`, and
@@ -384,7 +384,7 @@ An engine's `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` have the generic
 properties (`StatProps`, [reference
 semantics](reference-semantics.md#statistical-aggregates)), and the
 reference's own value is the exact moments rounded once
-([statistical aggregates](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)), within half an
+([statistical aggregates](reference-semantics.md#statistical-aggregates)), within half an
 ulp of the exact value, so an engine is within these bounds plus that of it
 (`Epsilon.statEps`).
 [`CoreKappa.lean`](../float-bounds/FloatBounds/CoreKappa.lean) proves the
