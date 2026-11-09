@@ -92,8 +92,8 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     · obtain ⟨hc, hnd⟩ := hc
       simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
       refine Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc (fun x hx => ?_) hp
-      exact Row.canon_of_env (Rel.aeval_sound hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
-        (by simp) x hx) (by simpa using hnd)
+      exact Row.canon_of_env (Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
+        (fun h => by cases h) x hx) (by simpa using hnd)
         (by rw [Rel.aeval_length hwf.1, Rel.eval_arity hcat hwf.1 x hx])
   | .semi a b _ on, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
     simp only [detPlan, Bool.and_eq_true] at hd
@@ -107,7 +107,7 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
       (List.mergeSort_perm _ _).symm)
   | .distinct r, hwf, hd, _, ⟨i, hi, h⟩ => by
     have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf hd hi
-    exact h.trans (dedup_perm_of_mem fun y => hp.mem_iff)
+    exact h.trans (canonReps_perm Row.leRaw_rawOrder hp)
   | .aggregate r gs ms, hwf, hd, _, ⟨i, hi, o, h, ho⟩ => by
     simp only [detPlan, Bool.and_eq_true, List.all_eq_true] at hd
     have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd.1 hi

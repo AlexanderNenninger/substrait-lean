@@ -47,15 +47,18 @@ theorem KeyOn.superset {k k' : List Nat} {rows : Relation} (hk : KeyOn k rows)
     simp only [keyOf, List.map_inj_left] at heq ⊢
     exact fun c hc => heq c (hsub c hc))
 
-/-- Keys read rows up to canonical codes. -/
-theorem keyOf_eq_of_canon {k : List Nat} {a b : Row} (h : a.canon = b.canon) :
-    keyOf k a = keyOf k b := by
-  unfold keyOf
-  refine List.map_congr_left fun c _ => ?_
+/-- A column of rows equal up to canonical codes is equal up to them. -/
+theorem getD_canonV_of_canon {a b : Row} (h : a.canon = b.canon) (c : Nat) :
+    (a.getD c .null).canonV = (b.getD c .null).canonV := by
   have := congrArg (·[c]?) h
   simp only [Row.canon, List.getElem?_map] at this
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD]
   cases ha : a[c]? <;> cases hb : b[c]? <;> simp_all [Value.canonV]
+
+/-- Keys read rows up to canonical codes. -/
+theorem keyOf_eq_of_canon {k : List Nat} {a b : Row} (h : a.canon = b.canon) :
+    keyOf k a = keyOf k b :=
+  List.map_congr_left fun c _ => getD_canonV_of_canon h c
 
 theorem keyOf_append_left {k : List Nat} {x y : Row} (h : ∀ c ∈ k, c < x.length) :
     keyOf k (x ++ y) = keyOf k x := by

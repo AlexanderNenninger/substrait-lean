@@ -168,7 +168,8 @@ def Rel.condVal (cat : Catalog) (A : String → List AVal) (F : String → List 
 
 /-- On `rows`, the columns `k` determine column `c`. -/
 def FD (k : List Nat) (c : Nat) (rows : Relation) : Prop :=
-  ∀ x ∈ rows, ∀ y ∈ rows, keyOf k x = keyOf k y → x.getD c .null = y.getD c .null
+  ∀ x ∈ rows, ∀ y ∈ rows, keyOf k x = keyOf k y →
+    (x.getD c .null).canonV = (y.getD c .null).canonV
 
 /-- A key determines every column. -/
 def keyFds (ks : List (List Nat)) (n : Nat) : List (List Nat × Nat) :=
@@ -409,17 +410,21 @@ theorem Measure.eval_dropDistinct {ks : List (List Nat)} {rows : Relation}
     split at hc
     · rename_i c heq
       obtain ⟨k, hkm, hkc⟩ := List.any_eq_true.mp hc
-      have hp := (hk k hkm).map_pairwise (f := m.arg.eval) fun x y he => by
+      have hp := (hk k hkm).map_pairwise (f := fun row => (m.arg.eval row).canonV) fun x y he => by
         simp only [keyOf, List.map_inj_left]
         intro c' hc'
         have := List.all_eq_true.mp hkc c' hc'
         simp only [beq_iff_eq] at this
         subst this
         simpa [heq, Expr.eval] using he
-      have hnd : (((m.kept rows).map m.arg.eval).filter (· != .null)).Nodup :=
-        ((hp.sublist ((m.kept_sublist rows).map _)).filter _)
+      -- The key column's values lie in different classes, so `DISTINCT` keeps them all.
+      have hnd : (((m.kept rows).map m.arg.eval).filter (· != .null)).Pairwise
+          fun a b => a.canonV ≠ b.canonV := by
+        have h1 := hp.sublist ((m.kept_sublist rows).map _)
+        rw [← List.map_map (g := Value.canonV)] at h1
+        exact (List.pairwise_map.mp h1).filter _
       rw [Measure.eval_eq hfc, Measure.eval_eq (m := { m with distinct := false }) hfc]
-      simp only [inputs, hd, ↓reduceIte, dedup_of_nodup hnd]
+      simp only [inputs, hd, ↓reduceIte, distinctVals, canonReps_of_pairwise hnd]
       rfl
     · simp at hc
   · rfl
@@ -445,10 +450,11 @@ def OriginOk (cat : Catalog) (r : Rel) : Prop :=
     ∃ y ∈ (cat t).rows, y.getD c .null = x.getD i .null
 
 /-- `Rel.cover` is right: every non-NULL value of the table column is in
-column `j`. -/
+column `j`, up to canonical codes (`DISTINCT` and `GROUP BY` keep one member
+of a class, D31). -/
 def CoverOk (cat : Catalog) (r : Rel) : Prop :=
   ∀ {j t p}, r.cover cat j = some (t, p) → ∀ y ∈ (cat t).rows, y.getD p .null ≠ .null →
-    ∃ z ∈ r.eval cat, z.getD j .null = y.getD p .null
+    ∃ z ∈ r.eval cat, (z.getD j .null).canonV = (y.getD p .null).canonV
 
 theorem getD_replicate_null (k j : Nat) : (List.replicate k Value.null).getD j .null = .null := by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_replicate]
@@ -626,7 +632,8 @@ theorem Rel.cover_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF ca
       exact ⟨z, by simpa [eval, List.mem_mergeSort] using hz, he⟩
   | .distinct r, hwf => fun h y hy hn => by
       obtain ⟨z, hz, he⟩ := cover_sound hcat (r := r) hwf h y hy hn
-      exact ⟨z, by simpa [eval, mem_dedup] using hz, he⟩
+      refine ⟨_, classRep_mem_canonReps hz, ?_⟩
+      rw [getD_canonV_of_canon (classRep_canon (c := Row.canon) _ _) j, he]
   | .values _ _, _ | .filter _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .fetch _ _ _, _
   | .unionAll _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .aggregate _ _ _, _
   | .unnest _ _, _ => fun h => by simp [cover] at h
@@ -824,7 +831,8 @@ theorem keyFds_sound {ks : List (List Nat)} {n : Nat} {rows : Relation} (h : ∀
 
 /-- Columns that agree on every row determine each other. -/
 theorem FD.of_eq {i j : Nat} {rows : Relation}
-    (h : ∀ x ∈ rows, ∀ y ∈ rows, x.getD i .null = y.getD i .null → x.getD j .null = y.getD j .null) :
+    (h : ∀ x ∈ rows, ∀ y ∈ rows, (x.getD i .null).canonV = (y.getD i .null).canonV →
+      (x.getD j .null).canonV = (y.getD j .null).canonV) :
     FD [i] j rows := fun x hx y hy he => h x hx y hy (by simpa [keyOf] using he)
 
 theorem eqFds_sound {c : Expr} {rows : Relation} (ht : ∀ x ∈ rows, (c.eval x).isTrue = true) :

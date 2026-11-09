@@ -260,11 +260,15 @@ theorem classRep_self {l : List α} {x : α} (hx : x ∈ l)
   exact hinj _ hm (classRep_canon l x)
 
 /-- The representative depends only on which members occur. -/
+theorem classRep_congr (h : RawOrder le) {l l' : List α} (hm : ∀ y, y ∈ l ↔ y ∈ l') {x : α}
+    (hx : x ∈ l) : classRep c le l x = classRep c le l' x :=
+  h.antisymm _ _
+    (classRep_least h ((hm _).mpr (classRep_mem ((hm _).mp hx))) (classRep_canon _ _))
+    (classRep_least h ((hm _).mp (classRep_mem hx)) (classRep_canon _ _))
+
 theorem classRep_perm (h : RawOrder le) {l l' : List α} (hp : l.Perm l') {x : α} (hx : x ∈ l) :
     classRep c le l x = classRep c le l' x :=
-  h.antisymm _ _
-    (classRep_least h (hp.mem_iff.mpr (classRep_mem (hp.mem_iff.mp hx))) (classRep_canon _ _))
-    (classRep_least h (hp.mem_iff.mp (classRep_mem hx)) (classRep_canon _ _))
+  classRep_congr h (fun _ => hp.mem_iff) hx
 
 theorem mem_canonReps {l : List α} {k : α} :
     k ∈ canonReps c le l ↔ ∃ x ∈ l, classRep c le l x = k := by
@@ -294,6 +298,14 @@ theorem canonReps_length_le (l : List α) : (canonReps c le l).length ≤ l.leng
   simpa [canonReps] using dedup_length_le (l.map (classRep c le l))
 
 theorem canonReps_nodup (l : List α) : (canonReps c le l).Nodup := nodup_dedup _
+
+/-- Lists with the same members have the same representatives. -/
+theorem mem_canonReps_congr (h : RawOrder le) {l l' : List α} (hm : ∀ y, y ∈ l ↔ y ∈ l') {k : α} :
+    k ∈ canonReps c le l ↔ k ∈ canonReps c le l' := by
+  simp only [mem_canonReps]
+  constructor
+  · rintro ⟨x, hx, rfl⟩; exact ⟨x, (hm x).mp hx, (classRep_congr h hm hx).symm⟩
+  · rintro ⟨x, hx, rfl⟩; exact ⟨x, (hm x).mpr hx, classRep_congr h hm ((hm x).mpr hx)⟩
 
 theorem canonReps_perm (h : RawOrder le) {l l' : List α} (hp : l.Perm l') :
     (canonReps c le l).Perm (canonReps c le l') :=
@@ -426,6 +438,24 @@ theorem canonReps_of_inj {l : List α} (hinj : ∀ x ∈ l, ∀ y ∈ l, c x = c
   have : l.map (classRep c le l) = l.map id :=
     List.map_congr_left fun x hx => classRep_self hx fun y hy hc => hinj y hy x hx hc
   rw [this, List.map_id]
+
+
+/-- A list whose members lie in different classes is its own representatives. -/
+theorem canonReps_of_pairwise {l : List α} (hl : l.Pairwise fun a b => c a ≠ c b) :
+    canonReps c le l = l := by
+  have hinj : ∀ x ∈ l, ∀ y ∈ l, c x = c y → x = y := by
+    induction l with
+    | nil => intro x hx; simp at hx
+    | cons a t ih =>
+      rw [List.pairwise_cons] at hl
+      intro x hx y hy hc
+      rcases List.mem_cons.mp hx with ex | hxt <;> rcases List.mem_cons.mp hy with ey | hyt
+      · rw [ex, ey]
+      · exact absurd (ex ▸ hc) (hl.1 y hyt)
+      · exact absurd (ey ▸ hc).symm (hl.1 x hxt)
+      · exact ih hl.2 x hxt y hyt hc
+  rw [canonReps_of_inj hinj, dedup_of_nodup (List.nodup_iff_pairwise_ne.mpr
+    (hl.imp fun h he => h (congrArg c he)))]
 
 end
 
