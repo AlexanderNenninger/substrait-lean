@@ -169,7 +169,7 @@ theorem extreme_maintained (hg : gs ≠ []) (hms : ∀ m ∈ ms, Kept m) {sc : M
           (rows ++ ins).filter q := by
         simp only [new, applyBatch, List.filter_append]
         congr 1
-        exact filter_foldl_erase dels rows fun d hd => by simp [q, hD d hd]
+        exact filter_foldl_erase dels rows fun d hd => by simp [hD d hd]
       rw [e, hx]
       have hq : ∀ k, K k = true → D k = false → ∀ r, (groupKey gs r).canon = k.canon → q r = true :=
         fun k hK hD' r he => by simp [q, hKc _ _ he, hDc _ _ he, hK, hD']

@@ -262,7 +262,7 @@ theorem varState_sound {m : Measure} {sample sqrt : Bool} (hf : m.fn = .var samp
   | nil => simp [AggFn.apply]
   | cons a l =>
     have hn : ((a :: l).length : Int) ≠ 0 := by simp; omega
-    simp only [hn, ite_false, AggFn.apply, varOf, hfl]
+    simp only [hn, ite_false, AggFn.apply, varOf]
     by_cases h1 : sample = true ∧ (a :: l).length = 1
     · have h2 : ((a :: l).length : Int) = 1 := by exact_mod_cast h1.2
       simp [h1.1, h1.2]
