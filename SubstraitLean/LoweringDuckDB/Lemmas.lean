@@ -1,5 +1,5 @@
 import SubstraitLean.Lowering
-import SubstraitLean.DuckDBProfile
+import SubstraitLean.DuckDBFunctions
 
 /-!
 # Lemmas the DuckDB lowering's proofs compute with (#241)

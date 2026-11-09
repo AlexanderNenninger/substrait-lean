@@ -10,9 +10,6 @@ producer (`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings
 (DuckDB's SQL) with sverify's lift (`sverify.sql_lift`). `run_plan` runs a plan in Lean's
 written form (`substrait-check --write`, `--delta`) on the connection's engine
 or the one a call names.
-
-DataFusion is an optional engine (`pip install 'sverify[datafusion]'`): it
-is needed only to run plans with `engine="datafusion"`.
 """
 
 from __future__ import annotations
@@ -30,8 +27,6 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import pyarrow.compute as pc
 import sqlglot as sg
-from google.protobuf import json_format
-from substrait.plan_pb2 import Plan
 
 from sverify import _duckdb, _engines, _stages
 from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
@@ -53,44 +48,12 @@ from sverify.ibis_substrait import to_substrait_json
 Engine = str
 """An engine's name, as its plugin registers it (`sverify.profiles`):
 `"duckdb"`, `"polars"`, `"spark"`, and any installed one. A `Connection` runs
-plans on the local ones (`ENGINES`, and DataFusion, an optional engine outside
-the 1.x promise, `docs/stability.md`); `sverify.engines.run` and
+plans on the local ones (`ENGINES`); `sverify.engines.run` and
 `Node.refresh` also run them on Spark."""
 ENGINES: tuple[Engine, ...] = _engines.LOCAL
 """The engines a `Connection` runs plans on: `"duckdb"` (the default) and
 `"polars"`. Loop over it to run a plan on each, as the tests do.
 `sverify.engines.run` also takes `"spark"` or a Spark session."""
-_LOCAL_ENGINES = _engines.ACCEPTED
-"""The engines a `Connection` accepts: `ENGINES` and DataFusion, an optional
-engine."""
-
-
-def _datafusion() -> Any:
-    """The `datafusion` module, or an error saying how to install it."""
-    try:
-        import datafusion
-        import datafusion.substrait
-    except ImportError as e:
-        raise ImportError(
-            "this needs DataFusion: pip install 'sverify[datafusion]' "
-            "(it runs plans with engine='datafusion')"
-        ) from e
-    return datafusion
-
-
-def _register(ctx: Any, name: str, table: pa.Table) -> None:
-    """Register (or replace) a table in a DataFusion session, as record
-    batches rather than a PyArrow dataset: DataFusion pushes filters into
-    datasets, where PyArrow compares doubles by IEEE rules instead of
-    DataFusion's total order (NaN = NaN). The table's doubles become
-    `canonical` (DataFusion's order tells `-0.0` from `0.0`) and its strings
-    plain ones (the type DataFusion's consumer checks the plans' strings
-    against)."""
-    table = canonical(table.cast(plain_schema(table.schema)))
-    if ctx.table_exist(name):
-        ctx.deregister_table(name)
-    batches = table.to_batches() or [pa.RecordBatch.from_pylist([], schema=table.schema)]
-    ctx.register_record_batches(name, [batches])
 
 
 def _ibis_backend() -> Any:
@@ -150,13 +113,9 @@ class Connection:
       `con.table(name).get_backend()` is the backend, for SQL of your own.
     * `engine` runs plans (`sverify.engines.run`) unless a call names
       another.
-    * The DataFusion engine runs on a private DataFusion session holding the
-      same tables (with the functions Ibis's DataFusion SQL calls), created
-      on first use.
 
     Args:
-        engine: `"duckdb"` or `"polars"` (`"datafusion"` is
-            experimental). Default: the installed default engine
+        engine: `"duckdb"` or `"polars"`. Default: the installed default engine
             (`ProfilePlugin.default`: DuckDB).
 
     Attributes:
@@ -165,8 +124,6 @@ class Connection:
             `rows` and `put` read and write them.
         ibis: Deprecated: the Ibis DuckDB backend the bound tables read
             through; `table(name).get_backend()` is the same backend.
-        datafusion: Deprecated: the DataFusion session, an internal of the
-            DataFusion engine.
 
     Raises:
         ValueError: `engine` is unknown.
@@ -185,7 +142,6 @@ class Connection:
         self._ibis: Any = _ibis_backend()
         # A bound table keeps its backend alive, and the backend its connection.
         self._ibis._sverify_connection = self
-        self._datafusion: Any = None
 
     def table(self, name: str) -> ir.Table:
         """Table `name` as an Ibis table bound to the connection. Its schema is
@@ -266,8 +222,7 @@ class Connection:
     def put(self, name: str, table: pa.Table | Native) -> None:
         """Add or replace table `name`, as it is: no copy. The engines read
         `-0.0` as `0.0` and every NaN as one, as the model has them. The
-        table is registered with the Ibis backend and, once it exists, the
-        DataFusion session.
+        table is registered with the Ibis backend.
 
         Args:
             name: The table's name.
@@ -275,8 +230,6 @@ class Connection:
                 `Scan` of files, a `Resident` table), which the Ibis backend
                 views.
         """
-        if isinstance(table, Native) and self._datafusion is not None:
-            table = table.to_arrow()  # DataFusion's session holds Arrow tables
         self.drop(name)
         if isinstance(table, Native):
             if isinstance(table, Scan):
@@ -295,8 +248,6 @@ class Connection:
         _check_calendar(table)
         self._tables[name] = table
         self._ibis.con.register(name, table)
-        if self._datafusion is not None:
-            _register(self._datafusion, name, table)
 
     def drop(self, name: str) -> None:
         """Remove table `name`; nothing happens if there is none."""
@@ -306,33 +257,13 @@ class Connection:
             drop()
         elif isinstance(table, pa.Table):
             self._ibis.con.unregister(name)
-        if self._datafusion is not None and self._datafusion.table_exist(name):
-            self._datafusion.deregister_table(name)
-
-    @property
-    def _datafusion_session(self) -> Any:
-        """A `datafusion.SessionContext` with the connection's tables.
-
-        Raises:
-            ImportError: DataFusion is not installed (`pip install
-                'sverify[datafusion]'`).
-        """
-        if self._datafusion is None:
-            _datafusion()
-            # Ibis's DataFusion backend registers the UDFs its SQL calls
-            # (`extract_epoch_seconds_timestamp`, …).
-            ctx = ibis.datafusion.connect().con
-            for name, table in self._arrow.items():
-                _register(ctx, name, table)
-            self._datafusion = ctx
-        return self._datafusion
 
 
 def connect(engine: Engine | None = None) -> Connection:
     """A new, empty connection whose plans run on `engine`.
 
     Args:
-        engine: `"duckdb"`, `"polars"` or `"datafusion"` (see
+        engine: `"duckdb"` or `"polars"` (see
             `sverify.engines.ENGINES`). Default: the installed default
             engine (`ProfilePlugin.default`: DuckDB).
 
@@ -414,65 +345,9 @@ class SqlError(SverifyError, ValueError):
     code = "sql_refused"
 
 
-def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
-    """Run a Substrait plan on DataFusion.
-
-    The plan runs as given; `sverify.engines.run(con, plan, "datafusion")`
-    first rewrites a plan in Lean's written form where DataFusion's
-    semantics differ, and is what to use for checked plans.
-
-    Args:
-        con: The connection whose tables the plan reads.
-        plan_json: A Substrait plan as protobuf JSON.
-
-    Returns:
-        The result, with doubles as `canonical` makes them.
-
-    Raises:
-        ImportError: DataFusion is not installed.
-    """
-    ss = _datafusion().substrait
-    ctx = con._datafusion_session
-    proto = Plan()
-    json_format.Parse(plan_json, proto)
-    logical = ss.Consumer.from_substrait_plan(
-        ctx, ss.Serde.deserialize_bytes(proto.SerializeToString())
-    )
-    return canonical(collect(ctx.create_dataframe_from_logical_plan(logical)))
-
-
-def collect(df: Any) -> pa.Table:
-    """A DataFusion DataFrame's result as one Arrow table.
-
-    DataFusion 51 can return record batches whose schemas differ only in
-    nullability: the branches of a `UNION ALL` (`SELECT 'x' UNION ALL SELECT
-    NULL`, a recursive CTE's anchor and step) each keep their own, and its
-    `to_arrow_table()` then fails to concatenate them. A recursive CTE's
-    batches can also differ in column names. The result has the first batch's
-    names and types, and a column is nullable if it is in any batch."""
-    batches = df.collect()
-    if not batches:
-        return df.to_arrow_table()
-    first = batches[0].schema
-    nullable = [any(b.schema.field(i).nullable for b in batches) for i in range(len(first))]
-    schema = pa.schema(
-        [f.with_nullable(n) for f, n in zip(first, nullable, strict=True)], first.metadata
-    )
-    return pa.Table.from_batches(
-        [
-            pa.RecordBatch.from_arrays(
-                [c.cast(f.type) for c, f in zip(b.columns, schema, strict=True)], schema=schema
-            )
-            for b in batches
-        ],
-        schema,
-    )
-
-
 def canonical(table: pa.Table) -> pa.Table:
     """Doubles as the model has them: `-0.0` as `0.0` and every NaN as the
-    positive one. DataFusion orders doubles by `f64::total_cmp`, where both
-    signs show, so the tables it reads and its results go through this."""
+    positive one."""
     columns = []
     for c in table.columns:
         if pa.types.is_floating(c.type):
@@ -652,8 +527,7 @@ def run_plan(
     tie_free: bool = False,
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
-    connection's), over the tables of `con`. DataFusion runs it as
-    `sverify.datafusion_engine.datafusion_plan` writes it; `"spark"` runs it
+    connection's), over the tables of `con`. `"spark"` runs it
     on the local Spark session (`sverify_spark.engine.session`), and a Spark
     session as `engine` runs it there.
 
@@ -667,9 +541,8 @@ def run_plan(
         con: The connection whose tables the plan reads.
         plan_json: A plan in Lean's written form (a node's `plan`, or
             `sverify.engines.written_plan`'s output).
-        engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session
-            (`"datafusion"` is an optional engine). Default: the connection's
-            engine.
+        engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session.
+            Default: the connection's engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
         finite: On DuckDB, Polars and Spark, check that no operation on finite
@@ -914,8 +787,7 @@ def _check_times(schema: pa.Schema) -> None:
 
 def plain_schema(schema: pa.Schema) -> pa.Schema:
     """`schema` with large and view strings as plain `string`: the type the
-    plans name (Substrait has one string type), which DataFusion's consumer
-    checks against the registered table. Table formats such as Iceberg read
+    plans name (Substrait has one string type). Table formats such as Iceberg read
     strings as `large_string`."""
     plain = (pa.types.is_large_string, getattr(pa.types, "is_string_view", lambda _: False))
     fields = [f.with_type(pa.string()) if any(p(f.type) for p in plain) else f for f in schema]

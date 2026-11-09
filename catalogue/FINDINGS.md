@@ -188,30 +188,30 @@ Over the 136 queries that verify (some only as DOUBLE):
 | `tie_order` | 44 | – |
 | `null_join_keys` | 19 | N4 |
 | `empty_aggregate` | 16 | A1 |
-| `timezone_dst` | 14 | D8 |
+| `timezone_dst` | 14 | – |
 | `division_by_zero` | 13 | I4, I5, F5 |
 | `decimal_scale` | 12 | – |
 | `float_sum_order` | 12 | F8 |
 | `window_default_frame` | 11 | O4 |
 | `gap_threshold` | 11 | – |
 | `null_aggregate` | 11 | A2 |
-| `float_nan` | 8 | F1, F2, F3, F4, D10 |
+| `float_nan` | 8 | F1, F2, F3, F4 |
 | `null_ordering` | 8 | O1, O2 |
 | `rank_semantics` | 6 | – |
 | `integer_division` | 4 | I1, I3 |
 | `count_distinct_null` | 3 | A3 |
-| `string_collation` | 3 | S7, S4, D5 |
+| `string_collation` | 3 | S7, S4 |
 | `percentile_method` | 3 | – |
 | `not_in_null` | 3 | N2 |
 | `limit_without_order` | 2 | – |
-| `int_overflow` | 2 | I6, I7, I8, D2, D11 |
+| `int_overflow` | 2 | I6, I7, I8 |
 | `week_definition` | 2 | T1, T2, T4 |
-| `implicit_coercion` | 2 | I1, D1, D7 |
+| `implicit_coercion` | 2 | I1 |
 | `regex_dialect` | 1 | S6 |
 | `duration_vs_interval` | 1 | – |
 | `degenerate_statistic` | 1 | – |
 | `null_at_extreme` | 1 | – |
-| `eager_evaluation` | 1 | E1, E2, E4, E5 |
+| `eager_evaluation` | 1 | – |
 | `like_escape` | 1 | S5 |
 | `substr_index` | 1 | S1, S2, S3 |
 <!-- stats:end -->

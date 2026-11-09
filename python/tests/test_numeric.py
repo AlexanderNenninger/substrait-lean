@@ -4,7 +4,7 @@ runtime errors.
 * The reference's rounding and casts of doubles agree with Python's.
 * `sverify` compiles Ibis's integer `//` to exact integer floor division.
 * The runtime-error check (`Rel.mayIssues_sound`) reports what it should, and
-  whenever DataFusion or DuckDB running the plan fails on random data, the
+  whenever DuckDB running the plan fails on random data, the
   check had reported an error: this tests the trusted part, the model of when
   an engine evaluates what.
 """
@@ -222,33 +222,6 @@ PIPELINES = [
 values = st.one_of(st.integers(-3, 3), st.sampled_from([MIN, 2**63 - 1, -1]), st.none())
 
 
-@pytest.mark.backend("datafusion")
-@pytest.mark.parametrize("i", range(len(PIPELINES)))
-@settings(
-    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
-@given(rows=st.lists(st.tuples(values, values), max_size=6))
-def test_datafusion_fails_only_where_reported(i, rows):
-    expr = PIPELINES[i]
-    reported = errors(expr)
-    con = connect()
-    put_table(
-        con,
-        "t",
-        pa.table(
-            {
-                "qty": pa.array([q for q, _ in rows], pa.int64()),
-                "n": pa.array([n for _, n in rows], pa.int64()),
-                "amount": pa.array([1.0 for _ in rows], pa.float64()),
-            }
-        ),
-    )
-    try:
-        run_plan(con, written_plan(to_substrait_json(expr)), "datafusion")
-    except Exception as e:  # noqa: BLE001 - any engine failure counts
-        assert reported, f"DataFusion failed ({e}) but no error was reported"
-
-
 @pytest.mark.backend("duckdb")
 @pytest.mark.parametrize("i", range(len(PIPELINES)))
 @settings(
@@ -422,9 +395,8 @@ def test_try_cast_is_no_error_and_cast_is():
     con = connect()
     con.create("t", TC.schema(), [(1.5, 1)])
     plan = written_plan(to_substrait_json(try_casts(TC)))
-    for engine in ("polars", "datafusion"):
-        with pytest.raises(Exception, match="see #271"):
-            run_plan(con, plan, engine)
+    with pytest.raises(Exception, match="see #271"):
+        run_plan(con, plan, "polars")
     with pytest.raises(Exception, match="TRY_CAST to DECIMAL"):
         written_plan(to_substrait_json(TC.select(d=TC.f.try_cast("decimal(10, 2)"))))
 

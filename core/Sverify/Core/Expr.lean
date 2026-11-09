@@ -896,6 +896,16 @@ def Expr.shift (n : Nat) : Expr → Expr
   | .ifThen c t e => .ifThen (c.shift n) (t.shift n) (e.shift n)
   | .hof f l b => .hof f (l.shift n) (b.shift (n + 1))
 
+/-- Substitute expressions for field references (the contracts' and the
+lowering's templates; its lemmas are with the contracts). -/
+def Expr.subst (cols : List Expr) : Expr → Expr
+  | .lit v => .lit v
+  | .field i => cols.getD i (.lit .null)
+  | .un f a => .un f (a.subst cols)
+  | .bin f a b => .bin f (a.subst cols) (b.subst cols)
+  | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
+  | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
+
 omit [Boxes.Ambient] in
 /-- A shifted field on a row with a column inserted at its position. -/
 theorem getD_shift_insert (w : Value) (i : Nat) (xa rest : Row) :

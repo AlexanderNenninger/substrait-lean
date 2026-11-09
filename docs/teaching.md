@@ -111,7 +111,7 @@ on 2026-11-07.
 | `EngineSettingsError` | Engine settings | `SET ...` as named |
 | `RouteError`, "N node(s) of the streaming plan run on the in-memory engine" | Polars | `streaming=` other than `"require"` |
 | "X runs on duckdb only (see #271)" | Engines | `engine="duckdb"`; lifted by [#271] |
-| Spark and Snowflake date guards; DataFusion's NTILE | Engines | `engine="duckdb"`; lifted by [#271] and DF-11 |
+| Spark and Snowflake date guards | Engines | `engine="duckdb"`; lifted by [#271] |
 | "run on polars only; E truncates" | Profiles | `semantics="reference"` |
 | A DuckDB-only construct on another writer (TRY_CAST, lists, black boxes, ...) | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
 | "the E writer does not write integer division yet" and other writer hooks | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
@@ -123,7 +123,6 @@ on 2026-11-07.
 | Spark decimal negation, division, double to DECIMAL | Engines | A cast to fewer digits (to DOUBLE for an AVG), or `engine="duckdb"`; lifted by [#27] |
 | Snowflake's libm, MOD, VAR, decimals, intervals | Engines | `engine="duckdb"`; Snowflake behaviour recorded privately; lifted by [#852] |
 | "Snowflake SQL is written only for plans verified under the reference" | SQL for an engine | `semantics="reference"` |
-| DataFusion's AVG of integers, substring | Engines | `engine="duckdb"` (DF-24, DF-23) |
 | Polars decimals, categorical strings, type mismatches, refused functions | Engines | `engine="duckdb"`, which every Polars refusal names |
 | "unsigned integers are not supported yet", zoned timestamps | Typed values | A cast to a signed integer or to UTC; lifted by [#350] and [#323] |
 | float32, "use float64"; nanosecond times, "cast them to microseconds" | Typed values | As named |

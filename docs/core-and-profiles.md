@@ -69,8 +69,7 @@ the reference.
 | Spark's | The reference's functions, as the reference evaluates them; Spark's choices of the open options come from its facts | [`engines/spark/facts/`](../engines/spark/facts/) |
 
 Snowflake has no profile in sverify: it runs the SQL sverify writes
-([the engines](stability.md#engines)). DataFusion is an optional engine,
-without a profile of its own.
+([the engines](stability.md#engines)).
 
 `semantics="duckdb"`, `"polars"` or `"spark"` verifies a plan under that
 engine's profile. Under Spark's profile that is the same proof as under

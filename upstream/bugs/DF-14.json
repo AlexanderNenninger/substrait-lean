@@ -8,17 +8,13 @@
     "`select cast(9223372036854775807 as bigint) * 2` gives `-2`.",
     "`select sum(v) from (values (9223372036854775807), (1)) t(v)` gives `-9223372036854775808`."
   ],
-  "handling": "`--write-datafusion` casts an integer `SUM`'s argument to `DECIMAL(38,0)` and its result back, so it fails instead of wrapping (#24); `verify` reports `+ - *` overflow, and DataFusion's run wraps where DuckDB and Polars raise (`test_datafusion_wraps_where_the_model_raises`).",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "issues": [
     24,
     202
   ],
   "upstream": [
     "https://github.com/apache/datafusion/issues/3520"
-  ],
-  "files": [
-    "SubstraitLean/Write.lean",
-    "python/tests/test_datafusion_quirks.py"
   ],
   "checked": [
     {

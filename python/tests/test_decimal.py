@@ -232,14 +232,12 @@ def test_a_bounded_decimal_sum_over_capped_rows_is_proved_to_fit():
     assert [i.kind for i in uncapped.errors] == ["SUM overflow"]
 
 
-def test_decimal_plans_are_written_but_not_for_datafusion(con):
+def test_decimal_plans_are_written(con):
     """Stage 2: decimal plans are written back as typed calls and casts for
-    the engines; DataFusion does not compute decimals as the reference does."""
+    the engines."""
     plan = substrait_json(con, "SELECT a + b AS r FROM t", semantics="duckdb")
     code, out, _ = run_checker(("--write",), plan)
     assert code == 0 and "decimal" in out
-    code, _, err = run_checker(("--write-datafusion",), plan)
-    assert code == 1 and "#27" in err
 
 
 def test_abs_of_a_double_next_to_decimals_is_written(con):

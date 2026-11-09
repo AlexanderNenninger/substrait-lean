@@ -413,7 +413,7 @@ def assert_contract(
         expected: The rows the node should give on `data`: dicts by column
             name, tuples in column order, or an Arrow table.
         engine: Where to run the node: `"duckdb"` (the default),
-            `"polars"`, `"datafusion"` or `"spark"`.
+            `"polars"` or `"spark"`.
 
     Returns:
         The node's output on `data`, or None without `data`.

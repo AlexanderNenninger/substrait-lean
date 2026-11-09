@@ -132,11 +132,16 @@ def test_an_overflow_to_infinity_is_the_reference_s_error(monkeypatch: pytest.Mo
     assert "overflow to infinity" not in {i["kind"] for i in duck["issues"]}
 
 
-def test_an_engine_without_a_profile_gets_a_verdict() -> None:
-    """DataFusion has no profile in the checker: the translation's tests
-    stand for the plan, and the checker says so (#1166)."""
+def test_an_engine_without_a_profile_gets_a_verdict(monkeypatch) -> None:
+    """An engine with no profile in the checker (a plugin's from outside):
+    the translation's tests stand for the plan, and the checker says so
+    (#1166)."""
+    from sverify import routes
+
+    found = routes.translations()
+    monkeypatch.setattr(routes, "translations", lambda: {**found, "outside": "its translation"})
     report = sv.verify(CASES["projection"][0], requires=BOUNDED)
-    v = (report._engines or {})["datafusion"]
+    v = (report._engines or {})["outside"]
     assert (v["class"], v["evidence"], v["profile"]) == ("exact", "tested", False)
     assert v["tested_because"] == ["no_profile"]
 

@@ -85,10 +85,6 @@
    "cpu_s": 62,
    "rss_mb": 1760
   },
-  "SubstraitLean.DataFusion": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
   "SubstraitLean.DuckDBProfile": {
    "cpu_s": 30,
    "rss_mb": 1536

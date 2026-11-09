@@ -717,6 +717,102 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
   -- The body on any element, with the row in scope (D28).
   | .hof _ l b => l.mayIssues env fs ks ors ++ b.mayIssues (AVal.top :: env) [] []
 
+/-! ### `Expr.mayIssues` in one pass (#925)
+
+`Expr.mayIssues` asks each node for its own and its operands' abstract values,
+and `Expr.absD` evaluates the whole subtree each time: a node's value is
+computed once per ancestor. `Expr.mayIssuesA` returns each subtree's issues
+with its abstract value, so a parent takes its operands' values from the
+recursion. Only what the recursion cannot give is evaluated again: the right
+operand of `OR` under the left one's refinement, and the branches of a `CASE`
+or a lambda's body, which `Expr.absD` evaluates under other environments. The
+`@[csimp]` lemma makes compiled code run it; the proofs keep `Expr.mayIssues`. -/
+
+/-- `Expr.absD` of `.bin f a b` from its operands' values `aa` and `ab`
+(`Expr.absD_bin`). -/
+def Expr.absBin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn) (a b : Expr)
+    (aa ab : AVal) : AVal :=
+  narrowAll ks (.bin f a b) <|
+    if f = .or ∧ aa.nonBool = false then
+      orSplit aa (b.absD (useFacts fs ((Expr.un .not a).refine env)) fs (a.cstrs false ++ ks))
+    else if f = .or ∧ aa.int.isNone = true ∧ aa.str = false ∧ aa.nested = false then
+      orSplitNull aa (b.absD (useFacts fs ((a.refineNeg env).map AVal.prune)) fs (a.cstrs false ++ ks))
+    else sharpen fs f a b aa ab (f.abs aa ab)
+
+theorem Expr.absD_bin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn)
+    (a b : Expr) :
+    (Expr.bin f a b).absD env fs ks = Expr.absBin env fs ks f a b (a.absD env fs ks) (b.absD env fs ks) :=
+  rfl
+
+/-- `Expr.nonZero` given `x`'s abstract value `ax` (`Expr.nonZero_eq_nonZeroA`). -/
+def Expr.nonZeroA (env : List AVal) (fs : List Fact) (ks : Assumptions) (k : NumKind) (x : Expr)
+    (ax : AVal) : Bool :=
+  ax.int.all (!·.has0) ||
+  ks.any (fun sk => sk.1 == x && match sk.2 with | .ne k' 0 => k' == k | _ => false) ||
+  (match x.linTerm with | some (j, c) => fs.contains (.ne j k (-c)) | none => false) ||
+  match x with
+  | .ifThen c t e =>
+    let ac := c.absD env fs ks
+    (!ac.tt || t.nonZero (c.refine env) fs (c.cstrs true ++ ks) k) &&
+      (!(ac.nonBool || ac.ff) || e.nonZero (c.refineNeg env) fs (c.cstrs false ++ ks) k)
+  | .bin .mul a b => k == .int && a.nonZero env fs ks .int && b.nonZero env fs ks .int
+  | .un .itof a => k == .float && a.nonZero env fs ks .int
+  | _ => false
+
+theorem Expr.nonZero_eq_nonZeroA (env : List AVal) (fs : List Fact) (ks : Assumptions)
+    (k : NumKind) (x : Expr) :
+    x.nonZero env fs ks k = x.nonZeroA env fs ks k (x.absD env fs ks) := by
+  rw [Expr.nonZero.eq_def]; rfl
+
+/-- `Expr.mayIssues` with `Expr.absD` (`Expr.mayIssuesA_eq`). -/
+def Expr.mayIssuesA (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors : Clauses) :
+    Expr → List (Issue × Expr) × AVal
+  | .lit v => ([], (Expr.lit v).absD env fs ks)
+  | .field i => ([], (Expr.field i).absD env fs ks)
+  | .un f a =>
+    let ra := a.mayIssuesA env fs ks ors
+    let ar := narrowAll ks (.un f a) (f.abs ra.2)
+    (ra.1 ++ (f.mayIssue ra.2 ar ++ f.mayInf ra.2).map (·, .un f a), ar)
+  | .bin f a b =>
+    let ra := a.mayIssuesA env fs ks ors
+    let rb := b.mayIssuesA env fs ks ors
+    let ar := Expr.absBin env fs ks f a b ra.2 rb.2
+    (ra.1 ++ rb.1 ++
+      (f.mayIssueX ra.2 rb.2 ar (b.nonZeroA env fs ks f.divKind rb.2) a.strBytes?
+        (Expr.nanExcluded env fs ks ors f a b) ++ f.mayInf ra.2 rb.2).map (·, .bin f a b), ar)
+  | .ifThen c t e =>
+    let rc := c.mayIssuesA env fs ks ors
+    let tk := withAlts (c.cstrAlts true) ks ors
+    let ek := withAlts (c.cstrAlts false) ks ors
+    (rc.1 ++
+      (if rc.2.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if rc.2.nonBool || rc.2.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else []),
+      (Expr.ifThen c t e).absD env fs ks)
+  | .hof f l b =>
+    ((l.mayIssuesA env fs ks ors).1 ++ b.mayIssues (AVal.top :: env) [] [],
+      (Expr.hof f l b).absD env fs ks)
+
+theorem Expr.mayIssuesA_eq (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors : Clauses) :
+    ∀ e : Expr, e.mayIssuesA env fs ks ors = (e.mayIssues env fs ks ors, e.absD env fs ks)
+  | .lit _ | .field _ => rfl
+  | .un f a => by
+    simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors a, Expr.mayIssues, Expr.absD]
+  | .bin f a b => by
+    simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors a,
+      Expr.mayIssuesA_eq env fs ks ors b, Expr.mayIssues, Expr.nonZero_eq_nonZeroA, Expr.absD_bin]
+  | .ifThen c t e => by
+    simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors c, Expr.mayIssues]
+  | .hof f l b => by
+    simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors l, Expr.mayIssues]
+
+/-- `Expr.mayIssues` by `Expr.mayIssuesA`. -/
+def Expr.mayIssuesFast (env : List AVal) (fs : List Fact) (ks : Assumptions := [])
+    (ors : Clauses := []) (e : Expr) : List (Issue × Expr) :=
+  (e.mayIssuesA env fs ks ors).1
+
+@[csimp] theorem Expr.mayIssues_csimp : @Expr.mayIssues = @Expr.mayIssuesFast := by
+  funext env fs ks ors e; rw [Expr.mayIssuesFast, Expr.mayIssuesA_eq]
+
 -- The DuckDB lift's `a * b` of doubles (#702): the NaN of `0 · ∞` and
 -- `∞ · 0` as a `CASE`, whose `ELSE` branch has no domain error; the bare product
 -- has one. (Both may overflow to `±∞`, an assumed issue of its own.)

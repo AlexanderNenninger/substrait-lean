@@ -5,7 +5,7 @@
 #     "duckdb",
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[datafusion,polars,delta,spark]",
+#     "sverify[polars,delta,spark]",
 # ]
 #
 # [tool.uv.sources]
@@ -382,14 +382,13 @@ def _(mo):
 
 @app.cell
 def _():
-    import datafusion
+    import sqlite3
+
     import duckdb
 
     {
         "DuckDB": duckdb.sql("select 4699 / 2 as avg").fetchall()[0][0],
-        "DataFusion": datafusion.SessionContext()
-        .sql("select 4699 / 2 as avg")
-        .to_pylist()[0]["avg"],
+        "SQLite": sqlite3.connect(":memory:").execute("select 4699 / 2").fetchone()[0],
     }
     return
 
@@ -397,7 +396,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    DuckDB's `/` on integers gives a double, DataFusion's (and
+    DuckDB's `/` on integers gives a double, SQLite's (and
     PostgreSQL's) truncates, Snowflake's gives a NUMBER with extra decimals,
     and Spark's gives a double. A model moved from DuckDB in development to
     Snowflake in production changes its numbers without an error, and

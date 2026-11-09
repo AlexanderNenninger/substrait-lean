@@ -5,11 +5,7 @@
   "status_note": "Fixed upstream: on 55.0.0 `DataFrame.to_arrow_table()` concatenates the batches.",
   "summary": "A `UNION ALL` gives record batches whose schemas differ in nullability (and, for a recursive CTE, in column names), and `DataFrame.to_arrow_table()` fails to concatenate them: `Schema at index 1 was different`.",
   "repro": "`ctx.sql('select 1 as a union all select null').to_arrow_table()` fails on 51.0.0 (`a: int64 not null vs a: int64`) and works on 55.0.0.",
-  "handling": "`sverify.engine.collect` reconciles the batches' schemas (`test_union_batches_differ_in_nullability`).",
-  "files": [
-    "python/src/sverify/engine.py",
-    "python/tests/test_datafusion_quirks.py"
-  ],
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "checked": [
     {
       "checked_at": "2026-11-08",

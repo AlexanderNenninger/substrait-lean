@@ -601,8 +601,8 @@ def leaf_tables(expr: ir.Table) -> dict[str, ibis.Schema]:
 
 def bind_params(expr: ir.Table, params: Mapping[ir.Scalar, Any]) -> ir.Table:
     """`expr` with each `ibis.param` in `params` replaced by its value, a
-    literal of the parameter's type (#58), as Ibis's `execute(params=...)`
-    binds them.
+    literal of the parameter's type, as Ibis's `execute(params=...)` binds
+    them.
 
     Raises:
         TypeError: A key is not an `ibis.param`, or a value does not fit its
@@ -627,7 +627,7 @@ def requires_by_input(
     kind: str = "table",
     error: type[Exception] = ValueError,
 ) -> dict[str, Sequence[Condition]]:
-    """`requires` as a mapping from input to its conditions (#408). A plain
+    """`requires` as a mapping from input to its conditions. A plain
     list is the conditions on the only input; a key that names no input
     raises `error`, naming the key, the inputs and a close match."""
     if requires is None:
@@ -701,8 +701,8 @@ def verify(
     runs the verified plan with that meaning (or fails) on DuckDB and
     Polars. A SQL string, and a SQL condition, is DuckDB's SQL, lifted by
     `sverify.sql_lift` with `semantics`: the reference semantics by default,
-    or what DuckDB computes with `semantics="duckdb"` (#411). The report
-    says which (`Report.semantics`).
+    or what DuckDB computes with `semantics="duckdb"`. The report says
+    which (`Report.semantics`).
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
@@ -739,11 +739,11 @@ def verify(
             (None), it is `"duckdb"` for a transformation whose SQL is all
             `sv.sql(..., semantics="duckdb")`, else `"reference"`.
             `"polars"` checks an Ibis transformation under Polars's
-            profile (#444), `"spark"` under Spark's (#739): its plan runs
-            natively on that engine (`sverify.routes`, the route
-            `"native"`).
+            profile, `"spark"` under Spark's, which evaluates as the
+            reference does: its plan runs natively on that engine
+            (`sverify.routes`, the route `"native"`).
             `"substrait"` checks an Ibis transformation under Substrait's
-            own semantics (`Profile.substrait`, #444): the proof under the
+            own semantics (`Profile.substrait`): the proof under the
             reference holds there where Substrait allows nothing more at
             the options the plan meets, and `Report.transfer` names the
             options where it allows more.
@@ -879,7 +879,7 @@ def infer_bounds(
     semantics: Semantics = "reference",
     on_inferred: OnInferred,
 ) -> Report:
-    """`verify`, with the bounds that rule out overflow inferred (#244).
+    """`verify`, with the bounds that rule out overflow inferred.
 
     Lean's `SubstraitLean/Infer.lean` runs the range analysis backwards: for
     each overflow it may not rule out, the range of each input column that
@@ -1852,8 +1852,7 @@ DIVISION_HINT = (
 
 def division_hints(transform: ir.Table) -> list[str]:
     """For each integer `a // b` and `a % b` the Ibis expression applies to the
-    same operands: that the pair does not split `a` for negative values
-    (#693)."""
+    same operands: that the pair does not split `a` for negative values."""
     import ibis.expr.operations as ops
 
     node = transform.op()
@@ -1891,7 +1890,7 @@ def rounding_hints(
 ) -> list[str]:
     """For each unproved comparison of a double column with a number that the
     column's proved bounds miss only by rounding (by at most `1e-6` of the
-    number, #85): how much, and the `approx` that proves it."""
+    number): how much, and the `approx` that proves it."""
     import ibis.expr.operations as ops
 
     bounds = {}
@@ -1995,7 +1994,7 @@ def _confirmed_ties(
 def tie_keys(expr: ir.Table) -> dict[str, list[str]]:
     """The `sv.unique(...)` per input table that leaves no ties in the
     ORDER BY of a window or of an ordered aggregate (`first`, `last`, …):
-    its partition (or grouping) and order columns, as labels (#655)."""
+    its partition (or grouping) and order columns, as labels."""
     out: dict[str, list[str]] = {}
 
     def add(fields: Sequence[Any]) -> None:
@@ -2090,8 +2089,7 @@ def _user_and_or(transform: Transform) -> list[set[str]]:
 
 def and_or_hints(issues: Sequence[Issue], transform: Transform | None = None) -> list[str]:
     """`AND_OR_HINT` for each error under an `AND`/`OR` the user wrote, once
-    per expression (#688): the checker also counts those the producer
-    writes."""
+    per expression: the checker also counts those the producer writes."""
     dialect = "sql" if isinstance(transform, str) else "ibis"
     held = _user_and_or(transform) if transform is not None else [set()]
     seen = []
@@ -2129,7 +2127,7 @@ def _and_or_hint(e: str, dialect: str = "ibis") -> str:
 def overflow_hints(
     transform: ir.Table, requires: Mapping[str, Sequence[Condition]], report: Report
 ) -> list[str]:
-    """The bounds to add to `requires` for the overflows `report` names (#379):
+    """The bounds to add to `requires` for the overflows `report` names:
     lower and upper bounds on each truncated timestamp or date column, and for
     an integer `SUM` that is checked while the job runs, a bound on the
     column it adds up, with the largest group whose sum then fits 64 bits."""
@@ -2243,7 +2241,7 @@ class Fact:
     source: str
     rows: int | None = None
     """For a row-count fact, at most this many rows; its `condition` is then
-    `TRUE` (the record counts of a table format's files, #219)."""
+    `TRUE` (the record counts of a table format's files)."""
 
 
 SCHEMA = "schema"
@@ -2615,7 +2613,7 @@ class ContractedTransform:
         self.fn, self.ensures = fn, expand_keys(ensures)
         self.on_violation: Policy | None = check_policy(on_violation)
         """What a refresh does with a batch of a source that breaks this
-        transform's preconditions (#184); None: the source's setting."""
+        transform's preconditions; None: the source's setting."""
         self.on_inferred = _checked_on_inferred(on_inferred)
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.semantics = _checked_semantics(semantics)
@@ -3085,9 +3083,8 @@ def transform(
             inputs at call time. Default True. False with an
             `on_violation` other than `"error"` raises `ValueError`: that
             setting acts on those checks.
-        check_engine: Where checks on data run: `"duckdb"` or `"polars"` (or
-            the optional `"datafusion"`) run each condition's plan as Lean
-            wrote it; None
+        check_engine: Where checks on data run: `"duckdb"` or `"polars"` run each
+            condition's plan as Lean wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
             `refresh(engine=)` says where a node's plan runs.
         semantics: What the contract's SQL conditions mean in its proofs,
@@ -3105,8 +3102,8 @@ def transform(
             runs (`Report.assumed`). `"silent"` is a deprecated spelling of
             `"ignore"`.
         on_violation: What a refresh does with a batch of a source that
-            breaks one of these preconditions, inferred ones included
-            (#184): `"error"` raises `PreconditionError`; `"quarantine"`
+            breaks one of these preconditions, inferred ones included:
+            `"error"` raises `PreconditionError`; `"quarantine"`
             sets the offending rows aside with the reason, in the node's
             quarantine table, and the rest flows; `"hold"` commits nothing
             for the batch and holds the node at its versions until a later

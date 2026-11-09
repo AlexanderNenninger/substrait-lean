@@ -232,7 +232,7 @@ CONTRACTS = [
 amounts = st.one_of(st.none(), st.integers(-100, 100))
 
 
-@pytest.mark.parametrize("engine", ["datafusion", "duckdb"])
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
 @pytest.mark.parametrize("index", range(len(CONTRACTS)))
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
