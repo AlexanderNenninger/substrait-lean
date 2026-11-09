@@ -1,0 +1,143 @@
+{
+  "id": "duckdb-R11",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Ordering comparisons of lists",
+  "verdict": "fixed (#207): lexicographic; DuckDB shim",
+  "area": "nested",
+  "options": [
+    "list_null_order"
+  ],
+  "rows": [
+    {
+      "group": "list.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ]
+    },
+    {
+      "group": "agg.order",
+      "option": "list_null_order",
+      "types": [
+        "list"
+      ]
+    }
+  ],
+  "constructs": [
+    "<",
+    ">",
+    "<=",
+    ">=",
+    "lt",
+    "gt",
+    "lte",
+    "gte",
+    "list_lt"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB orders lists lexicographically natively, but a NULL element sorts above every value, so `[1, NULL] < [1, 3]` is FALSE.",
+    "Shim: it finds the first position whose elements are distinct (`list_position` over `IS DISTINCT FROM`) and gives NULL when one of them is NULL. DataFusion sorts NULL first and Polars has no list order: both refuse."
+  ],
+  "reference": [
+    "Substrait: `lt(x, y)` (and `gt`, `lte`, `gte`) takes `any1`, and \"if either/both of `x` and `y` are `null`, `null` is returned\"; it does not define an order on lists.",
+    "Lean: `[1, 2] < [1, 3]` was NULL on every row, a deviation. Fixed (#207), with the order decided on #209: lexicographic, element by element (`Value.listLt3`). A proper prefix sorts first, two NULL elements at a position are equal (as in list equality), and a NULL element against a value makes the result NULL: `[1, NULL] < [2]` is TRUE, `[1, NULL] < [1, 3]` is NULL, `[NULL, 1] < [NULL, 2]` is TRUE. Lists of lists are refused. The written plan spells the comparison `list_lt`, so every engine knows it compares lists."
+  ],
+  "status": "shimmed",
+  "ledger_entries": 22,
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/list/list_comparison.test",
+          "note": "lines 136-186"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/list/list_null_members.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/join/test_nested_inequality.test",
+          "note": "lines 57,94"
+        },
+        {
+          "file": "engines/duckdb/replay/types__list.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-01",
+      "method": "source-reading",
+      "checked_by": "commit 691a5c4 (#207)",
+      "notes": "Lists are ordered lexicographically."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (docs; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/data_types/list",
+          "note": "Comparison and Ordering: lexicographic; at lower nesting levels NULLs are greater than other values; [1, 2] < [1, NULL, 4] is true"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "min, max: the minimum and maximum value"
+        }
+      ],
+      "notes": "Docs for DuckDB 2.0 confirm GREATEST for a NULL element. They define one LIST ordering for the comparison operators; that `min` and `max` of lists use it is read from that, not stated (agg.order row)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (source; aggregates, windows, relations, temporal, nested, strings)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/aggregate/distributive/minmax.cpp#L322-L334",
+          "note": "GetMinMaxOperator: LIST, STRUCT, ARRAY take the sort-key path"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/aggregate/distributive/minmax.cpp#L239-L302",
+          "note": "VectorMinMaxBase: keep the smaller sort key; MIN ascending, MAX descending, NULLS_LAST"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/include/duckdb/function/aggregate/sort_key_helpers.hpp#L17-L25",
+          "note": "UnaryUpdate: CreateSortKey with OrderModifiers(ORDER_TYPE, NULLS_LAST)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/create_sort_key.cpp#L104-L125",
+          "note": "nested children: NULLS_LAST under ASC, NULLS_FIRST under DESC"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/create_sort_key.cpp#L700-L731",
+          "note": "lists: element validity bytes unflipped, end-of-list delimiter"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). `min` and `max` of a list compare sort keys: ascending with child NULLs last for `min`, descending with child NULLs first for `max`, so a NULL element is greater than every value in both, and a proper prefix sorts first. This is the list order of the comparison operators, `GREATEST`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/nested/list/list_aggregates.test#L21-L37",
+          "note": "min(i), max(i) over [1], [1, 2], [1, NULL], [NULL, 2], [NULL, NULL], [NULL], NULL → [1], [NULL, NULL]: a NULL element sorts above every value, a proper prefix first"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/parallelism/intraquery/test_parallel_nested_aggregates.test#L27-L37",
+          "note": "min/max of lists at threads=4: [-99998, 1, 99998] and [0, 1, 0], …"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. `MIN` and `MAX` of lists use the same order as the sort: NULL elements greatest."
+    }
+  ],
+  "issues": [
+    207,
+    209
+  ]
+}

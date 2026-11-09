@@ -1,0 +1,276 @@
+{
+  "id": "duckdb-exec-short-circuit",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Short-circuit: `CASE` and `COALESCE` lazy, `AND`/`OR` lazy only in a filter",
+  "verdict": "`CASE`, `COALESCE` lazy at run time, but a raising constant `WHEN` raises while planning (DD-7); `AND`/`OR` eager in a projection, sequential in a filter with the order kept when a child can raise",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "CASE",
+    "COALESCE",
+    "AND",
+    "OR",
+    "WHERE"
+  ],
+  "settings": {
+    "error_on_division_by_zero": true
+  },
+  "description": [
+    "The documentation is silent: the `CASE` page says the matching branch is evaluated and returned, and the logical operators page says `AND` and `OR` are commutative. Neither says whether other operands run.",
+    "The executor at v2.0.0: `CASE` evaluates each `WHEN` on the rows still undecided and each `THEN` only on the rows its `WHEN` selects, `ELSE` on the rest (`execute_case.cpp`). `COALESCE` evaluates each argument only on the rows still NULL (`execute_operator.cpp`). So a raising branch or argument runs only on the rows that reach it.",
+    "`AND` and `OR` run two ways. As a value (in a `SELECT` list, or inside a `CASE` result), `Execute` evaluates every child on every row and combines them, so `SELECT x <> 0 AND 10 // x > 1` raises on `x = 0`. As a condition (`WHERE`, a `CASE` `WHEN`, a join filter), `Select` evaluates the children one after the other, each on the rows the earlier ones left undecided. The adaptive filter permutes the children at run time by observed cost, but not when one of them can raise (`Expression::CanThrow`) or holds a barrier, and the optimizer's cost ordering (`ExpressionHeuristics`) also leaves such a conjunction in its written order. DuckDB's own test checks that `WHERE id <> 0 AND s::INT = 10` does not raise on the rows `id <> 0` removes, also when the filter is pushed into a dictionary-compressed segment or a Parquet dictionary.",
+    "Constant folding does not raise: an expression whose folding fails is left in place (`constant_folding.cpp`), so `CASE WHEN false THEN 1 // 0 END` is evaluated at run time, lazily.",
+    "To settle at the next rounds: probes of `SELECT a AND b` with a raising `b`, of a `WHERE` that writes the raising conjunct first, and of which functions `CanThrow` misses (a function marked as not raising that does raise would be permuted).",
+    "Round 2 (source): common subexpression elimination respects the lazy forms: inside a `CASE` or a conjunction it counts only the first child as a new candidate, so a subexpression of a `THEN` is hoisted only when it also occurs where it is evaluated unconditionally (`cse_optimizer.cpp`). One eager path remains: the `CASE` simplification rule evaluates every foldable `WHEN` at plan time with `EvaluateScalar`, which throws, where constant folding uses `TryEvaluateScalar` and leaves a failing expression alone. So `CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END` appears to raise while planning, even on an empty table or when every row takes the first branch. From reading only: a probe must confirm it (ST-12 covers the operand order of `AND`/`OR`, #604).",
+    "Round 3 (engine tests): DuckDB's tests pin lazy `CASE` (also an `AND` in a `WHEN`) and `COALESCE`, a failing constant left unfolded, and `NOT (false AND error('…'))` raising: an `AND` evaluated as a value runs every operand. No test covers a `WHEN` that raises at plan time.",
+    "Round 4 (probes): the `CASE` simplification raises while planning, as round 2 read. `CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END` raises `Division by zero` over a table whose one row takes the first branch, over an empty table and under `EXPLAIN`; a constant `WHEN 'a'::INTEGER = 1` raises its conversion error the same way. A raising `ELSE` that no row reaches does not raise. This is DD-7, and it breaks the reference's lazy `CASE`. `AND` and `OR` as values raise on `x = 0` (`(x <> 0) AND (10 // x > 1)` over 0 and 5), except when statistics decide the guard: over a one-row table holding 0 the projection is folded to `false` and nothing raises. As a `WHERE` they do not raise, in either written order when the guard is a column compared with a constant (`x <> 0` is pushed into the scan and runs first), and in the written order otherwise: `WHERE (10 // x > 1) AND (x * x <> 0)` raises. An `AND` in a `CASE` `WHEN` is lazy. An aggregate's `FILTER (WHERE (x <> 0) AND (10 // x > 1))` raises: the filter clause evaluates its conjunction as a value."
+  ],
+  "reference": [
+    "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `analysis/Sverify/Analysis/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. Lean evaluates `CASE` lazily and `and`/`or` on both operands (Kleene), the same model.",
+    "Since D21 (docs/core-semantics.md, #609) the reference itself raises on a constant subexpression that raises, in any CASE branch and on an empty table too (`Rel.constIssues`), so DuckDB's plan-time fold (DD-7) no longer breaks a verified plan's no-error guarantee: such a plan is not verified error-free."
+  ],
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/expressions/case.html"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/expressions/logical_operators.html"
+        }
+      ],
+      "notes": "Both pages are silent on evaluation order and on errors in operands that do not decide the result."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_case.cpp#L35-L95",
+          "note": "CASE: THEN on the WHEN's true rows only, ELSE on the rest"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_operator.cpp#L126-L172",
+          "note": "COALESCE: each argument on the rows still NULL"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_conjunction.cpp#L33-L59",
+          "note": "AND/OR as a value: every child on every row"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/expression_executor/execute_conjunction.cpp#L61-L146",
+          "note": "AND/OR as a condition: children in sequence on the undecided rows, in the adaptive filter's permutation"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/execution/adaptive_filter.cpp#L17-L47",
+          "note": "no permutation when a child CanThrow or holds a barrier"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/expression_heuristics.cpp#L50-L55",
+          "note": "no cost reordering when an expression can throw"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_function_expression.cpp#L75-L79",
+          "note": "CanThrow: the function's error mode, lambdas, children"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_cast_expression.cpp#L337-L380",
+          "note": "CastCanThrow"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/constant_folding.cpp#L34-L41",
+          "note": "failed folding leaves the expression"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 1 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/filter/test_throwing_filter_pushdown.test#L39-L69",
+          "note": "`WHERE id <> 0 AND s::INT = 10` and `grp <> 0 AND val::TINYINT = 5` do not raise; the cast alone does"
+        }
+      ],
+      "notes": "Read, not replayed."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/cse_optimizer.cpp#L49-L95",
+          "note": "CSE: in CASE and conjunctions only the first child adds candidates"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/case_simplification.cpp#L15-L46",
+          "note": "foldable WHEN evaluated with EvaluateScalar, which throws"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/rule/constant_folding.cpp#L28-L42",
+          "note": "constant folding uses TryEvaluateScalar and keeps a failing expression"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/expression/bound_function_expression.cpp#L66-L73",
+          "note": "IsFoldable ignores CanThrow"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (engine tests; aggregates, windows, relations, temporal, nested, strings, execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/generic/case_short_circuit.test#L5-L20",
+          "note": "CASE WHEN n <> '' AND cast(substr(n, 1, 1) AS int) <= 0 … over '1', '0', '' → 1, 0, 2: the cast does not run on the empty string the first conjunct rejects (an AND in a WHEN)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/projection/coalesce_error.test#L5-L31",
+          "note": "COALESCE(1, 'hello'::INT) → 1; COALESCE(a, b::INT) over (1,'hello'), (NULL,'2'), (3,NULL) → 1, 2, 3; COALESCE(NULL, b::INT) → Conversion Error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/parser/parser_rewrites_method_chain.test#L123-L127",
+          "note": "(1).coalesce(error('must not be evaluated')) → 1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/generic/fold_constant_arguments.test#L26-L35",
+          "note": "abs(('1' || 'x')::INT) raises at execution, not while binding; CASE WHEN 1 = 0 THEN abs(('1' || 'x')::INT) ELSE 42 END → 42"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/not_conjunction_simplification.test#L99-L109",
+          "note": "a = false: WHERE NOT (a AND error('expected')) → error 'expected': the AND under NOT is evaluated as a value, every operand on every row, and the optimizer must not change that"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/or_null_simplification.test#L108-L112",
+          "note": "WHERE error('expected')::BOOLEAN OR NULL → error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/boolean_wrapper_pushdown.test#L90-L94",
+          "note": "WHERE (error('expected')::INTEGER > 0) IS TRUE → error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/error/test_try_nested_conditional.test#L27-L45",
+          "note": "TRY(CASE WHEN x % 2 = 0 THEN 1 // (x - 2) ELSE -1 END) → NULL only on x = 2: the THEN runs only on the rows its WHEN selects"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/filter/test_throwing_filter_pushdown.test#L39-L47",
+          "note": "WHERE id <> 0 AND s::INT = 10 over a dictionary segment → 20000, no error"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/optimizer/case_simplification.test#L1-L34",
+          "note": "the CASE simplification tests use constant WHENs that do not raise (1=1, 1=0, NULL>3); none has a raising WHEN"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3); the tests were not run. The tests pin the lazy forms: a `CASE` branch and its `WHEN` conjuncts, `COALESCE`'s later arguments, a dead constant branch whose folding fails. They also pin the eager one: `NOT (a AND error(…))` raises with `a` false, and the simplifier keeps the error of `error(…) OR NULL` and `(…) IS TRUE`. No test at v2.0.0 has a `CASE` whose constant `WHEN` raises (`CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END`): test/optimizer/case_simplification.test folds only non-raising constants, so round 2's reading that the rule raises while planning still wants a probe."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-case-when-folded"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-case-when-folded-empty"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-case-when-folded-cast"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-case-else-lazy"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-and-value"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-and-value-one-row"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-or-value"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-and-where"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-and-where-raising-first"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-and-where-raising-first-expr"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-or-where"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-and-case-when"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exec-and-aggregate-filter"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current. Confirms round 2's reading of the CASE simplification: it raises while planning (DD-7)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "fuzz",
+      "checked_by": "characterization pipeline round 5 (sverify_dev.duckdb_fuzz on homelab, Linux x86_64, budget 900 s per target)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/fuzz__eval_order.json"
+        }
+      ],
+      "notes": "eval_order: 16183 random DuckDB queries with integer + - * // % over 0, ±1, 2, 7 and the i64 bounds inside CASE, COALESCE, NULLIF, AND, OR and NOT; five disagreements, all an integer overflow or division by zero that DuckDB raises and Rel.eval evaluates (four flagged by verify; `k - 1` at the minimum and `x // x` at 0 are not, leads for the lift's DuckDB profile). None turns on evaluation order: no CASE, COALESCE, AND or OR evaluated an operand the reference skips, in these queries (the plan-time CASE fold of DD-7 needs a constant raising WHEN, which the generator does not draw)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "fuzz",
+      "checked_by": "characterization pipeline round 5 (re-score, #638)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/fuzz__eval_order.json"
+        }
+      ],
+      "notes": "Re-scored: the five eval_order and the one float_special disagreements are inputs a verified plan's preconditions exclude (verify without inference reports the overflow or the division by zero for each: `k - 1` at the i64 minimum, `x // x` at 0), so none remains; the earlier 'leads for the lift's DuckDB profile' were not model bugs (#638)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline reverse pass (after #609)",
+      "evidence": [
+        {
+          "file": "docs/reference-semantics.md",
+          "note": "Constants that raise (D21)"
+        }
+      ],
+      "notes": "Since D21 (docs/core-semantics.md, #609) the reference itself raises on a constant subexpression that raises, in any CASE branch and on an empty table too (`Rel.constIssues`), so DuckDB's plan-time fold (DD-7) no longer breaks a verified plan's no-error guarantee: such a plan is not verified error-free."
+    }
+  ],
+  "issues": [
+    604
+  ]
+}

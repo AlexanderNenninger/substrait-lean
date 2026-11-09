@@ -1,0 +1,68 @@
+{
+  "id": "duckdb-R15-elementary",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`abs`, `floor`, `ceil`, `exp`, `atan`",
+  "verdict": "the reference",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {"group": "fp.elem", "option": "rounding", "types": ["fp64"]}
+  ],
+  "constructs": [
+    "abs",
+    "floor",
+    "ceil",
+    "exp",
+    "atan"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "Gives the reference's value on every probed row.",
+  "reference": "The functions of `functions_arithmetic.yaml` and `functions_rounding.yaml`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "abs(BIGINT)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "floor(DOUBLE)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "ceil(DOUBLE)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "exp(DOUBLE)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "atan(DOUBLE)"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    242
+  ]
+}

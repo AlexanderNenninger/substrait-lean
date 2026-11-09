@@ -13,7 +13,7 @@
     507
   ],
   "files": [
-    "python/src/sverify/sql/duckdb.py",
+    "engines/duckdb/src/sverify_duckdb/dialect.py",
     "python/tools/sverify_dev/coverage_cases/temporal.py"
   ],
   "facts": [

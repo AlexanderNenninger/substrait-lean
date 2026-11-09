@@ -28,9 +28,9 @@ import pyarrow as pa
 from ibis import _
 
 import sverify as sv
-from sverify import duckdb_engine
 from sverify.engine import connect, create_table, plan_json, substrait_json, written_plan
 from sverify.partition import run_sharded
+from sverify_duckdb import engine as duckdb_engine
 from sverify_polars import engine as polars_engine
 
 

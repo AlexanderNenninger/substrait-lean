@@ -5,7 +5,7 @@ and `TIMESTAMP` of a string column lift and verify, with DuckDB's rules:
 spaces around, signs, fractions and exponents, `inf` and `nan`, the boolean
 words, ISO dates and times
 ([#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806),
-[`duckdb-cast-varchar`](characterization/duckdb/facts/duckdb-cast-varchar.json)).
+[`duckdb-cast-varchar`](engines/duckdb/facts/duckdb-cast-varchar.json)).
 `CAST` raises on a string DuckDB rejects, which `verify` reports as a domain
 error; `TRY_CAST` is NULL there, so `TRY_CAST(value AS DOUBLE)` reads
 numbers stored as text with flags such as `12.3 p` or `:` for missing. The

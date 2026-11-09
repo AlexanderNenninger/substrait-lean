@@ -1,0 +1,62 @@
+{
+  "id": "duckdb-null-keys",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "NULL keys group together and do not match in `=` joins; `IS NOT DISTINCT FROM` matches them",
+  "verdict": "NULLs group together; `IS NOT DISTINCT FROM` joins them; no `<=>`",
+  "area": "nulls",
+  "options": [
+    "null_join_keys"
+  ],
+  "rows": [
+    {"option": "null_join_keys", "types": ["any"]}
+  ],
+  "constructs": [
+    "JOIN",
+    "FULL JOIN",
+    "IS NOT DISTINCT FROM",
+    "IN (subquery)",
+    "GROUP BY"
+  ],
+  "settings": {},
+  "description": [
+    "An equi-join on `=` does not match NULL keys; one on `IS NOT DISTINCT FROM` does. A full join keeps each NULL row unmatched. `x IN (SELECT NULL)` and `x NOT IN (2, NULL)` are NULL. `GROUP BY` puts the NULLs in one group.",
+    "The spelling is `IS NOT DISTINCT FROM`; MySQL's `<=>` is not a DuckDB operator (Binder Error)."
+  ],
+  "reference": "Grouping and `DISTINCT` put NULLs together; an equi-join's `=` does not match NULL, and keys compared with `IS NOT DISTINCT FROM` do (reference-semantics.md, NULL).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-join"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-full-join"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-in-subquery"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-group"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-spaceship"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/join/inner/test_join_is_distinct.test"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ]
+}

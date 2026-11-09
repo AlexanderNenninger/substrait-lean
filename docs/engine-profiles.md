@@ -55,7 +55,7 @@ checked on the data ([What strictness buys](core-semantics.md#what-strictness-bu
 `Rel.duckdb_sound` below proves this for DuckDB.
 
 DuckDB is the first engine characterized this way:
-[`characterization/duckdb/facts/`](../characterization/duckdb/facts/)
+[`engines/duckdb/facts/`](../engines/duckdb/facts/)
 judges DuckDB's own sqllogictests and the fuzzer's findings against
 Substrait's definitions and options, not against ISO SQL or DuckDB
 ([how facts are judged](../characterization/README.md)). Polars and Spark
@@ -95,7 +95,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   raising the first error `issues` reports. So the reference is one profile
   among others.
 * `Profile.duckdb s` is the reference except where DuckDB 2.0 was probed
-  to differ (`python -m sverify_dev.probe`, `characterization/duckdb/probes.json`,
+  to differ (`python -m sverify_dev.probe`, `engines/duckdb/replay/probes.json`,
   FACTS R15). With `ieee_floating_point_ops` on (the default), operations on
   doubles that have no value give NaN (`∞ - ∞`, `0 · ∞`, `∞ / ∞`, `sqrt(-1)`),
   a logarithm of 0 is `-∞`, and a double divided by zero is `±∞`; `atan2(0, 0)`
@@ -477,10 +477,11 @@ does this for a test profile.
 Its Python side registers a `sverify.profiles.ProfilePlugin` under the
 entry-point group `sverify.profiles`. That group is where sverify finds
 engines, and the only place:
-DuckDB and Snowflake's dialect register theirs there too, from
-`sverify._builtin`, and Polars and Spark from their engine packages
-(`engines/polars/` and `engines/spark/`, the distributions `sverify-polars`
-and `sverify-spark`, which `sverify[polars]` and `sverify[spark]` install). `tests/test_engines_table.py` checks that with the entry points
+Snowflake's dialect and Substrait's profile register theirs there too, from
+`sverify._builtin`, and DuckDB, Polars and Spark from their engine packages
+(`engines/duckdb/`, `engines/polars/` and `engines/spark/`, the distributions
+`sverify-duckdb`, `sverify-polars` and `sverify-spark`; `sverify` installs the
+first, `sverify[polars]` and `sverify[spark]` the others). `tests/test_engines_table.py` checks that with the entry points
 gone sverify names no engine.
 
 ```toml
@@ -670,7 +671,7 @@ the engine:
   sorted result comes out in Lean's order.
 
 Engine differences go through the hooks of a `Dialect`
-(`sverify/sql/core/_base.py`). DuckDB's is `sverify/sql/duckdb.py`.
+(`sverify/sql/core/_base.py`). DuckDB's is `sverify_duckdb/dialect.py`.
 
 `python/tests/test_sql.py` checks the generator. Every golden fixture and every
 delta plan of the incremental fixtures and example pipelines runs on DuckDB

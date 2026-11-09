@@ -1,0 +1,74 @@
+{
+  "id": "duckdb-R2",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Integer division by zero",
+  "verdict": "no finding (`verify`: division by zero error)",
+  "area": "integers",
+  "options": [
+    "on_division_by_zero",
+    "division_type"
+  ],
+  "rows": [
+    {"group": "int.div", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "division_type", "types": ["i64"]}
+  ],
+  "constructs": [
+    "//",
+    "divide"
+  ],
+  "settings": {
+    "error_on_division_by_zero": true
+  },
+  "description": [
+    "Native, under `error_on_division_by_zero = true`, the 2.0 default. With the setting off, DuckDB returns NULL, so it needs a guard, `CASE WHEN y = 0 THEN error('division by zero') ELSE x // y END`. A plan that asks for `NULL` needs `CASE WHEN y = 0 THEN NULL ELSE x // y END`.",
+    "Truncation is native: `-7 // 2 = -3`, in every agreeing entry and fuzz case."
+  ],
+  "reference": [
+    "Substrait and the reference: `divide` on integers truncates toward zero; with `on_division_by_zero` omitted, a zero divisor raises.",
+    "Lean: no finding. `verify` reports `division by zero` as an error, so on those rows the plan may raise, which is the reference. `Rel.eval`'s NULL there ([`Expr.lean:195`](../../core/Sverify/Core/Expr.lean#L195)) is not an answer anyone sees. It is the reference value for `NULL`, should a plan ask for it."
+  ],
+  "status": "no-finding",
+  "ledger_entries": 23,
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/function/operator/test_division_by_zero.test"
+        },
+        {
+          "file": "engines/duckdb/replay/function__operator.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-01",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.duckdb_fuzz on homelab (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/fuzz__int_division.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT // BIGINT"
+        }
+      ],
+      "notes": "`on_division_by_zero: ERROR` matches; `NULL` with `error_on_division_by_zero` off. `sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    185
+  ]
+}

@@ -43,6 +43,6 @@ whoever does it.
 
 `python -m sverify_dev.facts` checks the documents (`tests/test_facts.py`
 does too). The JSON documents are the record: there is no generated overview. The judging principles and the
-DuckDB diff table are in `characterization/duckdb/README.md`.
+DuckDB diff table are in `engines/duckdb/facts/README.md`.
 
 Snowflake's facts are private: they live in `AlexanderNenninger/sverify-snowflake-evidence`, never in this repository. This repository gets only sverify's own Snowflake SQL fixes, citing "Snowflake behaviour recorded privately".

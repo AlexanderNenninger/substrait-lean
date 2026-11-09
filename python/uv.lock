@@ -4440,6 +4440,7 @@ dependencies = [
     { name = "pyarrow" },
     { name = "sqlglot" },
     { name = "substrait" },
+    { name = "sverify-duckdb", extra = ["run"] },
 ]
 
 [package.optional-dependencies]
@@ -4536,6 +4537,7 @@ requires-dist = [
     { name = "sqlglot", specifier = "~=30.17.0" },
     { name = "substrait", specifier = ">=0.37.0" },
     { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
+    { name = "sverify-duckdb", extras = ["run"], editable = "../engines/duckdb" },
     { name = "sverify-polars", extras = ["run"], marker = "extra == 'polars'", editable = "../engines/polars" },
     { name = "sverify-spark", extras = ["run"], marker = "extra == 'spark'", editable = "../engines/spark" },
 ]
@@ -4561,6 +4563,26 @@ dev = [
     { name = "sverify", extras = ["all"] },
 ]
 docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
+
+[[package]]
+name = "sverify-duckdb"
+version = "0.7.1"
+source = { editable = "../engines/duckdb" }
+dependencies = [
+    { name = "sverify" },
+]
+
+[package.optional-dependencies]
+run = [
+    { name = "duckdb" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb", marker = "extra == 'run'", specifier = ">=2.0.0" },
+    { name = "sverify", editable = "." },
+]
+provides-extras = ["run"]
 
 [[package]]
 name = "sverify-polars"

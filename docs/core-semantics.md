@@ -235,7 +235,7 @@ and the engine raises nowhere (`Rel.duckdb_sound`,
 
 An engine sometimes does something none of the YAML's values describe:
 DuckDB gives `0` for `x >> 64`
-([`duckdb-R15-shift-right`](../characterization/duckdb/facts/duckdb-R15-shift-right.json)),
+([`duckdb-R15-shift-right`](../engines/duckdb/facts/duckdb-R15-shift-right.json)),
 where Substrait's `shift_right` has no option. Its `-∞` for `ln(0)` is the
 YAML's `on_log_zero: MINUS_INFINITY`, and needs nothing new. The core needs every profile's native
 behaviour, so an option's behaviours are the YAML's values and the
@@ -569,9 +569,9 @@ integer.
 | Value | What the core needs | Blocks #444? |
 |---|---|---|
 | `-0.0` | a code apart from `+0.0`, ordered by `zero_sign` | Yes, before step 2: `Profile.substrait` gives `1.0 / -0.0 = -∞`. Step 1 can land with it. |
-| NaN's sign | NaN codes with a sign, ordered by `nan_order` | Yes, before step 2 (Substrait), and for DuckDB's `signbit` ([duckdb-signbit](../characterization/duckdb/facts/duckdb-signbit.json)). |
+| NaN's sign | NaN codes with a sign, ordered by `nan_order` | Yes, before step 2 (Substrait), and for DuckDB's `signbit` ([duckdb-signbit](../engines/duckdb/facts/duckdb-signbit.json)). |
 | NaN payloads | not observed by any function sverify models | No: a NaN is one of two codes, by its sign ([D4](decisions.md#d4-nan-payloads)). |
-| `fp32` | the `FloatFormat` layer ([PR #558](https://github.com/AlexanderNenninger/substrait-lean/pull/558), #417 stage 1) carries the codes per format; the second instance is #417 stage 3 | No: the core is generic over `FloatFormat` from the start, and every profile refuses `fp32` arithmetic until stage 3 (fact [duckdb-R12](../characterization/duckdb/facts/duckdb-R12.json)). |
+| `fp32` | the `FloatFormat` layer ([PR #558](https://github.com/AlexanderNenninger/substrait-lean/pull/558), #417 stage 1) carries the codes per format; the second instance is #417 stage 3 | No: the core is generic over `FloatFormat` from the start, and every profile refuses `fp32` arithmetic until stage 3 (fact [duckdb-R12](../engines/duckdb/facts/duckdb-R12.json)). |
 | Timestamp precisions | `precisionTimestamp` at 0, 3, 6 and 9, a count of units ([#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323)) | No: the value is an `int` already; the precision is the type's. Refused in every profile until #323. |
 | Decimal division | `DECIMAL(p, s)` is its unscaled `int`; division needs the YAML's result type and a rounding ([#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27)) | No: refused in every profile until #27. |
 | Strings | code points, as now; the size hypothesis (fewer than 2³² characters) is a premise of every theorem, `Profile.substrait`'s included | No. Decided (#336). |

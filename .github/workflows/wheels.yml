@@ -139,7 +139,7 @@ jobs:
       - name: Check the engine packages' versions and pins
         run: |
           sverify=$(sed -n 's/^version = "\(.*\)"/\1/p' python/pyproject.toml)
-          for e in polars spark; do
+          for e in polars spark duckdb; do
             grep -x "version = \"$sverify\"" engines/$e/pyproject.toml
             grep -F "\"sverify==$sverify\"" engines/$e/pyproject.toml
             grep -E "\"sverify-$e(\[[a-z]+\])?==$sverify\"" python/pyproject.toml
@@ -153,7 +153,7 @@ jobs:
         run: |
           sed -i.orig "s/^version = \".*\"/version = \"$VERSION\"/; s/\"\(sverify-[a-z]*\(\[[a-z]*\]\)\{0,1\}\)==[^\"]*\"/\"\1==$VERSION\"/" \
             python/pyproject.toml
-          for e in polars spark; do
+          for e in polars spark duckdb; do
             sed -i.orig "s/^version = \".*\"/version = \"$VERSION\"/; s/\"sverify==[^\"]*\"/\"sverify==$VERSION\"/" \
               engines/$e/pyproject.toml
             rm engines/$e/pyproject.toml.orig
@@ -168,6 +168,7 @@ jobs:
         run: |
           uv build engines/polars --out-dir dist-polars
           uv build engines/spark --out-dir dist-spark
+          uv build engines/duckdb --out-dir dist-duckdb
 
       - name: Tag manylinux
         if: runner.os == 'Linux'
@@ -195,7 +196,8 @@ jobs:
           fast=()
           if [ "$FAST" = true ]; then fast=(--fast); fi
           bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl \
-            --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl ${fast[@]+"${fast[@]}"}
+            --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl \
+            --engine-wheel dist-duckdb/*.whl ${fast[@]+"${fast[@]}"}
 
       # Without extras: no optional package is installed or imported, a node
       # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
@@ -234,6 +236,11 @@ jobs:
         with:
           name: engine-spark
           path: dist-spark/*
+      - if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-duckdb
+          path: dist-duckdb/*
 
   # sverify-dbt (`dbt/`, #732): pure Python, released with sverify at its
   # version, so one runner builds its sdist and wheel. The wheel is checked
@@ -480,6 +487,10 @@ jobs:
         with:
           name: engine-spark
           path: dist-spark
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-duckdb
+          path: dist-duckdb
 
       - name: Test installed wheel
         env:
@@ -488,7 +499,7 @@ jobs:
           fast=()
           if [ "$FULL" != true ]; then fast=(--fast); fi
           bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl --engine-wheel dist-polars/*.whl \
-            --engine-wheel dist-spark/*.whl \
+            --engine-wheel dist-spark/*.whl --engine-wheel dist-duckdb/*.whl \
             --python ${{ matrix.python }} ${fast[@]+"${fast[@]}"}
 
       # Without extras: no optional package is installed or imported, a node
@@ -559,7 +570,7 @@ jobs:
           test "$dbt" = "$version" || { echo "dbt/ is at $dbt, sverify at $version"; exit 1; }
           grep -F "\"sverify==$version\"" dbt/pyproject.toml
           # So do the engine packages, pinned both ways.
-          for e in polars spark; do
+          for e in polars spark duckdb; do
             grep -x "version = \"$version\"" engines/$e/pyproject.toml
             grep -F "\"sverify==$version\"" engines/$e/pyproject.toml
             grep -E "\"sverify-$e(\[[a-z]+\])?==$version\"" python/pyproject.toml
@@ -583,7 +594,7 @@ jobs:
       fail-fast: false
       matrix:
         # One entry per engine package with an `engine-<engine>` artifact.
-        engine: [polars, spark]
+        engine: [polars, spark, duckdb]
     runs-on: ubuntu-latest
     environment: pypi-${{ matrix.engine }}
     permissions:

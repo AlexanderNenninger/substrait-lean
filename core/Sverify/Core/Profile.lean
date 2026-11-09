@@ -11,7 +11,7 @@ profile (`Profile.reference`), and `Expr.evalP_reference` proves that
 evaluating under it is `eval` and `issues`.
 
 An engine's profile is a diff against the reference, from its
-characterization (`characterization/duckdb/facts/` for DuckDB). A **shim**
+characterization (`engines/duckdb/facts/` for DuckDB). A **shim**
 rewrites a plan into one the engine evaluates to the reference's outcome,
 adding guards (`UnFn.raise`, DuckDB's `error()`) where the engine is laxer,
 or refuses it. A shimmed plan is an ordinary plan, so it is written and run

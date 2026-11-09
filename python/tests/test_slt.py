@@ -277,7 +277,7 @@ def test_issues_of_queries_without_tables(sql):
 
 
 def test_the_summary_skips_files_that_are_not_ledgers(tmp_path):
-    # `characterization/duckdb/` also holds `probes.json`.
+    # `engines/duckdb/` also holds `probes.json`.
     (tmp_path / "probes.json").write_text(json.dumps({"duckdb": "2.0.0", "probes": []}))
     (tmp_path / "area.json").write_text(
         json.dumps(

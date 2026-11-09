@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import pyarrow as pa
 
 from sverify import _deprecated
-from sverify._builtin.duckdb import DuckDBStore
 from sverify._scan import Resident
 from sverify._state import arrow_of
 from sverify._unsupported import SverifyWarning
@@ -38,6 +37,7 @@ from sverify.io._common import (
 from sverify.io._credentials import declared
 from sverify.io._secrets import Secret
 from sverify.observation import PLAN_BOUND, Observation
+from sverify_duckdb import DuckDBStore
 
 if TYPE_CHECKING:
     from sverify.incremental import IncrementalView

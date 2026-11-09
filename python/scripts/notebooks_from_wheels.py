@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from publish_notebooks import _HEADER, header, rewrite  # noqa: E402
 
 #: sverify's distributions, released at one version; each needs a wheel.
-DISTRIBUTIONS = ("sverify", "sverify_polars", "sverify_spark", "sverify_dbt")
+DISTRIBUTIONS = ("sverify", "sverify_duckdb", "sverify_polars", "sverify_spark", "sverify_dbt")
 _WHEEL = re.compile(r"^(sverify(?:_[a-z]+)?)-([^-]+)-")
 
 

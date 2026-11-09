@@ -5,7 +5,7 @@ build generates a template and proves it gives the reference's outcome under
 DuckDB's profile (`SubstraitLean/LoweringDuckDB.lean`, `Lowering.duckdb_exact`).
 `substrait-check --lowering-table` exports those templates, and this module
 writes one as SQL: its fields are the arguments' SQL, its calls DuckDB's own
-operators, its `CASE`s SQL's. The DuckDB printer (`sverify.sql.duckdb`) asks
+operators, its `CASE`s SQL's. The DuckDB printer (`sverify_duckdb.dialect`) asks
 it first (`Dialect.lowered`), so the guards in DuckDB's SQL are the proved
 ones rather than hand-written.
 

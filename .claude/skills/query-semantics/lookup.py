@@ -580,7 +580,7 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
     keys = sorted({k for n in nodes for k in KEYWORDS.get(n, [])})
     py = ROOT / "python/src/sverify"
     for path in [
-        py / "sql/duckdb.py",
+        ROOT / "engines/duckdb/src/sverify_duckdb/dialect.py",
         ROOT / "engines/polars/src/sverify_polars/engine.py",
         ROOT / "engines/polars/src/sverify_polars/shims.py",
         py / "sql/core/_base.py",

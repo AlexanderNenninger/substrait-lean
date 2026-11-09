@@ -11,14 +11,14 @@
     "The reference defines `upper` and `lower` as black boxes with Rust's full mappings (`Text.upper`, `Text.lower`), and the written SQL raises on non-ASCII text for every engine (`ascii_only`, #70), where every engine agrees.",
     "Could be expressed as: a `case_mapping` option (`SIMPLE`, `FULL`) beside `char_set`, or `UTF8` defined as one of the two, with the length rule for the `varchar<L1>` and `fixedchar<L1>` signatures."
   ],
-  "found_by": "the DuckDB characterization (sverify_dev.probe observations, characterization/duckdb/probes.json)",
+  "found_by": "the DuckDB characterization (sverify_dev.probe observations, engines/duckdb/replay/probes.json)",
   "issues": [
     70,
     444
   ],
   "files": [
     "python/src/sverify/sql/core/strings.py",
-    "characterization/duckdb/probes.json"
+    "engines/duckdb/replay/probes.json"
   ],
   "facts": [
     "duckdb-case-mapping",

@@ -14,7 +14,7 @@ A `Target` aims the fuzzer at one area of the replay's disagreements: the
 integer values the tables hold (boundaries, zero), the integer literals,
 and the expression kinds drawn. `python -m sverify_dev.duckdb_fuzz <target>`
 runs one target for a budget and writes its findings as a ledger in the
-format of `sverify_dev.slt` (`characterization/duckdb/fuzz__<target>.json`).
+format of `sverify_dev.slt` (`engines/duckdb/replay/fuzz__<target>.json`).
 
 This module needs Hypothesis, which only the `dev` group installs.
 """
