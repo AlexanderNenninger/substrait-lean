@@ -157,6 +157,20 @@
         "round[0]: 300 rows, `round(x, 0)`, `bround(x, 0)`, `round(x, 1)`, `bround(x, 1)`, `round(x, 2)`, `bround(x, 2)`, `round(x, -2)`, `bround(x, -2)`, `floor(x)`, `ceil(x)`, 11956 of 11956 results as the fact says (raised: ARITHMETIC_OVERFLOW 60); Spark differs from Rel.eval on 41 of 1200.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-09",
+      "method": "probe",
+      "checked_by": "canon PR session (claude/canon-congruence), Python 3.12 in python/.venv",
+      "evidence": [
+        {
+          "sql": "SELECT round(x), round(x, 1), ceil(x), bround(x), CAST(ceil(x) AS DOUBLE) FROM VALUES (CAST(-0.4 AS DOUBLE)), (CAST(-0.04 AS DOUBLE)), (CAST(-0.6 AS DOUBLE)) AS t(x)",
+          "observed": "(0.0, -0.4, 0, 0.0, 0.0), (0.0, 0.0, 0, 0.0, 0.0), (-1.0, -0.6, 0, -1.0, 0.0); every 0.0 has a positive sign bit; ceil is BIGINT"
+        }
+      ],
+      "notes": [
+        "Spark 4.3.0 local session (sverify.spark_engine.session), spark.sql.ansi.enabled true. Rechecks that a rounded negative value that reaches zero is +0.0, for the round-to-zero sign option; `ceil` is a BIGINT, which has no signed zero."
+      ]
     }
   ],
   "issues": [
