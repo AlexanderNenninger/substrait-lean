@@ -280,6 +280,7 @@ def Profile.reference.tools : List ToolRow := [
   { option := "zero_sign", tool := .choose },
   -- Which zero a value rounded to zero is: open, observed up to `canon`.
   { option := "round_zero_sign", tool := .leaveOpen, q := some { zeros := .canon } },
+  { option := "pow_one_inf", tool := .choose },
   { option := "nan_equality", tool := .choose },
   { option := "nan_order", tool := .choose },
   { option := "nan_kind", tool := .choose },

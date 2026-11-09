@@ -383,8 +383,11 @@ translation writes the stated calls as Polars's operators.
 ### Spark as a profile
 
 `Profile.spark` ([SparkProfile.lean](../SubstraitLean/SparkProfile.lean)) is
-the profile `verify(semantics="spark")` checks under, and the one
-`--contract` takes with `"profile": "spark"`. Its choices table,
+what Spark computes, from its facts: the reference's functions with Spark's
+own values where they differ (`sparkBin`, `sparkUn`), as DuckDB's profile is
+built. `Engine.spark` runs them where they do not raise, and each value of
+Spark's own is in the scope of an option its table allows
+(`Profile.spark_withinOk`). Its choices table,
 `Profile.spark.table` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)),
 records Spark 4.3.0 under `SPARK_CONF` (ANSI mode on, `TIMESTAMP_NTZ`, UTC)
 from its [facts](../engines/spark/facts/). Option by option:
@@ -393,17 +396,24 @@ from its [facts](../engines/spark/facts/). Option by option:
 |---|---|---|---|
 | `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../engines/spark/facts/spark-double-arith.json)) | as under DuckDB's and Polars's profiles |
 | `overflow`, `on_division_by_zero` | `ERROR` | `ERROR` ([int-arith](../engines/spark/facts/spark-int-arith.json), [int-divide](../engines/spark/facts/spark-int-divide.json)) | native: ANSI raises where the reference raises |
-| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../engines/spark/facts/spark-math-domain.json)) | tightened, as the reference; a proved plan never reaches them |
+| `nan_creation`, `on_domain_error` | `NAN`, NULL for a logarithm of `x ≤ 0` | the same ([math-domain](../engines/spark/facts/spark-math-domain.json)) | the reference raises there, so a proved plan never reaches them |
 | `avg_int_result` | the reference's | `FP64` ([avg-int](../engines/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
 | `null_order` | the reference's | first for an ascending key ([null-order](../engines/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
 | every other option | the reference's | the table | native, or the writer's shims |
 
-Spark's profile states no choice of its own in a plan, so `Profile.spark`
-evaluates as the reference (`Profile.spark_eval`), and the report of a
-`"profile": "spark"` request is the reference's, marked `"spark"`. What it
-adds is the route: a plan proved under it runs on Spark by `native`, and
-on DuckDB by `transfer` where DuckDB's choices are within Spark's at every
-option the proof depends on. What is proved
+Spark gives the reference's value wherever the reference reports no issue
+(`Profile.spark_okImpl_faithful`), so a plan the reference proves runs on
+Spark as it is (`Engine.spark_sound`). Until the checker reports under
+Spark's profile ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
+a `"profile": "spark"` request gets the reference's report, labelled
+`"reference"`, with `"pending": "spark"`. `power(±1, ±∞)` is NaN on Spark
+(`pow_one_inf`, D40) and `floor` and `ceil` of NaN are `0` (`float_to_int`);
+the writer refuses double `power` and passes NaN through `floor` and `ceil`
+(`Profile.sparkWritten`). `atan2` reading `-0.0` as `0.0` is not in the
+profile yet. Once the checker reports under the profile, a plan proved
+under it runs on Spark by `native`, and on DuckDB by `transfer` where
+DuckDB's choices are within Spark's at every option the proof depends on.
+What is proved
 ([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
 
 - `Shim.sum_empty_null`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`

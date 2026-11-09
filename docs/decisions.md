@@ -864,6 +864,7 @@ never narrower; one not pinned down yet is every call.
 | `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
 | `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
 | `round_zero_sign` | the reference result is a zero (`round(-0.4)`, `ceil(-0.4)`) |
+| `pow_one_inf` | `power` of `±1` to `±∞`, or of `1` to NaN |
 | `nan_equality`, `nan_order` | an argument is NaN, or holds one |
 | `nan_kind` | an argument or the reference result is NaN |
 | `on_domain_error`, `on_log_zero`, `substring_range`, `cast_failure`, `date_range` | the reference reports the issue at the call (a domain error, a failed cast, a date out of range) |
@@ -1020,3 +1021,27 @@ so the reference could not state DuckDB's division, and the lift had to
 refuse `/` and everything built on it (`round(x, d)`). A dedicated operation
 exposes `FloatCode.fdiv`, which is IEEE on every code already, and no other
 expression gains access to the sign of a zero.
+
+### D40. `power(±1, ±∞)` is C's `pow`
+
+Decided 2026-11-09 (theory advisor).
+
+`pow_one_inf` is IEEE 754's choice between `pow` and `powr` at their one
+disagreement on numbers: `power(±1, ±∞)` and `power(1, NaN)`. `pow` (C's,
+`ONE`) gives `1`; `powr` (`NAN`) gives NaN, as Java's `StrictMath.pow` does.
+The reference is `ONE`: it computes `power` with C's `pow` on the raw doubles
+(`FloatCode.lift₂ Float.pow`), as DuckDB and Polars do
+([duckdb-pow-one-inf](../engines/duckdb/facts/duckdb-pow-one-inf.json),
+[polars-pow-one-inf](../engines/polars/facts/polars-pow-one-inf.json)). Spark's profile
+is `NAN` ([spark-math-domain](../engines/spark/facts/spark-math-domain.json)); its writer
+refuses double `power`, so no portable plan meets it there. The scope is
+`powOneInf` (`core/Sverify/Core/Issue.lean`). No reference value changes.
+
+Why: an option states both engines' values, where a raise would take `1` from
+the plans that DuckDB and Polars compute alike.
+
+Also decided: `float_to_int`'s scope reaches `floor`, `ceil` and one-argument
+`round` (`fp.floor`, `fp.round`), where an engine returns a `BIGINT` (Spark: NaN
+is `0`; `±∞` and values past 64 bits overflow,
+[spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json)). The
+reference stays a double, and the `BIGINT` is the writer's cast.

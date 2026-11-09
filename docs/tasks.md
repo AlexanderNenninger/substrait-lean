@@ -852,9 +852,12 @@ writer computes from truncating operations; a zero divisor and integer overflow 
 infers the same preconditions as under the reference
 ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
-under ANSI mode: the same values as the reference, and doubles that overflow
-are ±inf with no precondition, so the plan runs on Spark natively
-([engine-profiles.md](engine-profiles.md#spark-as-a-profile)).
+under ANSI mode, and doubles that overflow are ±inf with no precondition.
+Until the checker reports under Spark's own profile
+([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
+the report is the reference's, `report.semantics` says `"reference"`, a
+`ProfilePendingWarning` says so, and the plan reaches Spark through its
+translation ([engine-profiles.md](engine-profiles.md#spark-as-a-profile)).
 The lift reads a subset (SELECT, WHERE,
 joins of every kind, subqueries and CTEs, GROUP BY with grouping sets,
 windows, set operations, ORDER BY, LIMIT, CASE, CAST, and the numeric,

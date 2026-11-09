@@ -28,7 +28,7 @@ def uncharacterized (slice : List String) : List (Option String × String × Cho
 /-- The options the prototype slice characterizes. -/
 def prototypeSlice : List String :=
   ["overflow", "on_division_by_zero", "on_domain_error", "division_type", "min_mod_neg_one",
-   "rounding", "nan_creation", "zero_sign", "round_zero_sign", "nan_kind", "nan_order",
+   "rounding", "nan_creation", "zero_sign", "round_zero_sign", "pow_one_inf", "nan_kind", "nan_order",
    "nan_equality", "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
    "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
    "null_join_keys", "float_overflow", "stat_algo", "quantile_interp", "decimal_rescale",
@@ -158,9 +158,8 @@ structure EngineProfile where
   `"batch"`), or empty. -/
   executes : String := ""
   /-- A `--contract` request under this profile gets the reference's report,
-  marked with the profile's name: the profile evaluates as the reference
-  (`Profile.spark_eval`), or a plan states its choices as the reference's
-  templates (`Polars.elaborate_eq`). -/
+  marked with the profile's name: a plan states the profile's choices as the
+  reference's templates (`Polars.elaborate_eq`). -/
   asReference : Bool := false
 
 def EngineProfile.name (e : EngineProfile) : String := e.table.name

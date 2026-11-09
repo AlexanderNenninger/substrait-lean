@@ -392,9 +392,12 @@ def groups : List (String × List String) := [
   ("fp.div", ["rounding", "on_division_by_zero", "on_domain_error", "nan_creation", "zero_sign",
     "float_overflow"]),
   ("fp.mod", ["division_type", "on_division_by_zero", "nan_creation", "zero_sign"]),
-  ("fp.elem", ["rounding", "on_domain_error"]),
+  ("fp.elem", ["rounding", "on_domain_error", "pow_one_inf"]),
   ("fp.log", ["rounding", "on_domain_error", "on_log_zero"]),
-  ("fp.round", ["rounding", "round_zero_sign"]), ("fp.floor", ["round_zero_sign"]),
+  -- A `BIGINT` result where an engine's `floor`, `ceil` or `round` returns
+  -- one (Spark's): `float_to_int`, the conversion.
+  ("fp.round", ["rounding", "round_zero_sign", "float_to_int"]),
+  ("fp.floor", ["round_zero_sign", "float_to_int"]),
   ("cmp", ["nan_equality", "nan_order", "zero_sign"]), ("sverify", []),
   ("str.sub", ["negative_start", "substring_range", "string_positions"]),
   ("str.match", ["case_sensitivity", "string_positions"]),
