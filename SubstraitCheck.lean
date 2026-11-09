@@ -247,12 +247,13 @@ options. Under Polars's profile the report is the reference's of the plan as
 parsed: a plan states Polars's choices (`division_type: FLOOR`), which the
 parser reads as their templates, and `Polars.elaborate_eq` proves that
 evaluating those under the reference is evaluating the calls under
-`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). Under Spark's it is the reference's
-report: `Profile.spark` evaluates as the reference (`Profile.spark_eval`,
-`SubstraitLean/SparkProfile.lean`); so does any engine of `es` marked
-`asReference`, an out-of-tree one among them. DuckDB's profile is
-reached through its lift (`semantics="duckdb"`); its requests get the
-reference's report, which says so. -/
+`Profile.polars` (`SubstraitLean/PolarsProfile.lean`). Under Spark's it is the
+reference's report: a plan the reference proves runs on Spark as it is, Spark's
+own values only where the reference raises (`Engine.spark_sound`,
+`SubstraitLean/SparkProfile.lean`). So does any engine of `es` marked
+`asReference`, an out-of-tree one among them. DuckDB's profile is reached
+through its lift (`semantics="duckdb"`); its requests get the reference's
+report, which says so. -/
 def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : Bool) :
     Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"

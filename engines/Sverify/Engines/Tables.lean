@@ -158,9 +158,9 @@ structure EngineProfile where
   `"batch"`), or empty. -/
   executes : String := ""
   /-- A `--contract` request under this profile gets the reference's report,
-  marked with the profile's name: the profile evaluates as the reference
-  (`Profile.spark_eval`), or a plan states its choices as the reference's
-  templates (`Polars.elaborate_eq`). -/
+  marked with the profile's name: a plan states the profile's choices as the
+  reference's templates (`Polars.elaborate_eq`), or a plan the reference
+  proves runs on the engine as it is (`Engine.spark_sound`). -/
   asReference : Bool := false
 
 def EngineProfile.name (e : EngineProfile) : String := e.table.name

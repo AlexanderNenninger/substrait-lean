@@ -10,13 +10,16 @@ import SubstraitLean.AllowedAnalysis
 computes with `E`'s functions are a result the reference allows for `r`
 (`Rel.Allowed`). It is proved for the four engines:
 
-* `Engine.reference_sound`, `Engine.spark_sound`: both run Lean's functions
-  on the plan as it is, so the run is `Rel.eval`.
+* `Engine.reference_sound`: Lean's functions on the plan as it is, so the
+  run is `Rel.eval`.
 * `Engine.duckdb_sound`: DuckDB at its default settings, through its lowering
   (`Rel.eval_okImpl`, then `Rel.duckdb_shim_allowed`).
-* `Engine.polars_sound`: under `Engine.PolarsSide`, `Rel.polars_sound`'s
-  hypotheses. Its plan part (`Engine.PolarsPlan`) is decidable; its data part
-  (`Engine.PolarsData`) states preconditions on the catalog, as `hK` does,
+* `Engine.polars_sound`, `Engine.spark_sound`: under `Engine.GuardFreeSide`,
+  guard elimination's hypotheses (`Rel.guardFree_sound`), with the engine's
+  functions faithful where the reference reports no issue
+  (`Polars.written_faithful`, `Profile.spark_okImpl_faithful`). Its plan part
+  (`Engine.GuardFreePlan`) is decidable; its data part
+  (`Engine.GuardFreeData`) states preconditions on the catalog, as `hK` does,
   with the size hypothesis (`Rel.Small`).
 
 `Engine.contract_sound` composes it with `contract_sound_allowed`: unless the
@@ -49,9 +52,6 @@ def Engine.Sound (E : Engine) (side : Catalog → Rel → Prop) : Prop :=
 theorem Engine.reference_sound : Engine.reference.Sound fun _ _ => True := by
   intro cat r r' hl _ _; cases hl; exact r.eval_allowed cat
 
-theorem Engine.spark_sound : Engine.spark.Sound fun _ _ => True := by
-  intro cat r r' hl _ _; cases hl; exact r.eval_allowed cat
-
 /-- DuckDB at its default settings: where the lowered plan does not raise,
 `okImpl` computes DuckDB's run (`Rel.eval_okImpl`), which the reference
 allows (`Rel.duckdb_shim_allowed`). -/
@@ -61,30 +61,39 @@ theorem Engine.duckdb_sound : (Engine.duckdb {} rfl).Sound fun _ _ => True := by
   show r.Allowed cat ((Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).okImpl)
   rw [Rel.eval_okImpl (p := Profile.duckdb {}) hr]; exact Rel.duckdb_shim_allowed hr
 
-/-- The data part of Polars's side condition: preconditions on the catalog
+/-- The data part of guard elimination's side condition: preconditions on the catalog
 (`A` its tables' values, `F` their facts, `T` the window keys), and the size
 hypothesis. Not decidable: the checker assumes it of the data, as `hK`. -/
-def Engine.PolarsData (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+def Engine.GuardFreeData (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (T : WindowKeys) (r : Rel) : Prop :=
   cat.WF ∧ (∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row) ∧
     (∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) ∧ T.SoundAll cat ∧ r.Small cat
 
-/-- The plan part of Polars's side condition, decidable (`Rel.checkWF`):
+/-- The plan part of guard elimination's side condition, decidable (`Rel.checkWF`):
 the plan is well-formed, keeps its loose subtractions (`Rel.looseSub`), and
 `Rel.mayIssues` reports only assumed issues. -/
-def Engine.PolarsPlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+def Engine.GuardFreePlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (T : WindowKeys) (r : Rel) : Prop :=
   r.WF cat ∧ r.looseSub = true ∧ (r.mayIssues cat A F T false).all (·.1.assumed) = true
 
-/-- **Polars's side condition**: `Rel.polars_sound`'s hypotheses. -/
-def Engine.PolarsSide (cat : Catalog) (r : Rel) : Prop :=
-  ∃ A F T, Engine.PolarsData cat A F T r ∧ Engine.PolarsPlan cat A F T r
+/-- **Guard elimination's side condition**: `Rel.guardFree_sound`'s
+hypotheses, Polars's and Spark's. -/
+def Engine.GuardFreeSide (cat : Catalog) (r : Rel) : Prop :=
+  ∃ A F T, Engine.GuardFreeData cat A F T r ∧ Engine.GuardFreePlan cat A F T r
 
-theorem Engine.polars_sound : Engine.polars.Sound Engine.PolarsSide := by
+theorem Engine.polars_sound : Engine.polars.Sound Engine.GuardFreeSide := by
   intro cat r r' hl _ ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
   cases hl
   show r.Allowed cat (r.eval cat Polars.written)
   rw [Rel.polars_sound hcat hA hF hT hwf hsmall hs hm]; exact r.eval_allowed cat
+
+/-- Spark: its profile's functions where they do not raise give the
+reference's value wherever the reference reports no issue
+(`Profile.spark_okImpl_faithful`), so guard elimination applies. -/
+theorem Engine.spark_sound : Engine.spark.Sound Engine.GuardFreeSide := by
+  intro cat r r' hl _ ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
+  cases hl
+  exact Rel.guardFree_allowed hcat hA hF hT hwf hsmall hs hm Profile.spark_okImpl_faithful
 
 /-! ## Within the engine's table -/
 

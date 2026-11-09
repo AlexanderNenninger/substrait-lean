@@ -13,7 +13,8 @@ DuckDB's, Polars's and Spark's `Engine` values (the structure is
 engines-common, `engines/Sverify/Engines/Engine.lean`), with the proofs that
 their functions are within their tables:
 
-* `Engine.spark` takes Lean's functions (`Profile.spark` is the reference);
+* `Engine.spark` takes its profile's functions where they do not raise
+  (`Profile.spark_withinOk`), as DuckDB's does;
   `Engine.duckdb` (IEEE operations, `ieee_floating_point_ops` on, the
   default) takes `impl := profile.okImpl` (`Profile.duckdb_withinOk`);
   `Engine.polars` takes the functions of the written plan (`Polars.written`,
@@ -257,16 +258,140 @@ def Engine.polars : Engine where
   impl := Polars.written
   within := Polars.written_within
 
-/-- Spark under ANSI: the reference's functions (`Profile.spark`), its own
-choices. -/
+/-- **Spark's functions are within its table**: each value `sparkBin` and
+`sparkUn` change is in the scope of an option Spark's table allows another
+behaviour: a created NaN (`nan_creation`), a domain error's NaN or NULL, or
+an out-of-range shift's masked count (`on_domain_error`). -/
+theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := by
+  refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
+  · simp only [Profile.spark] at h
+    cases hs : sparkUn f v with
+    | none => rw [hs] at h; exact .inl (raiseIf_ok h)
+    | some o =>
+      rw [hs] at h
+      right
+      cases f <;> cases v <;> simp only [sparkUn, reduceCtorEq] at hs
+      case fmath.float g c =>
+        split at hs
+        · rename_i hc
+          refine callExtra_of_at (o := "on_domain_error") (by cases g <;> decide) ?_
+          simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc]
+        · cases hs
+      all_goals (split at hs <;> cases hs; cases h)
+  · simp only [Profile.spark] at h
+    cases hs : sparkBin f v w with
+    | none => rw [hs] at h; exact .inl (raiseIf_ok h)
+    | some o =>
+      rw [hs] at h
+      have nanC : ∀ {g : BinFn} {a b : Int}, nanCase g a b = true →
+          extraAtB Profile.spark.table (.bin g) "nan_creation" = true →
+          CallExtra Profile.spark.table (.bin g) [.float a, .float b] :=
+        fun hn hx => callExtra_of_at hx (by simp [optionScope, hn])
+      have dom : ∀ {g : BinFn} {v w : Value}, g.issue v w = some .domain →
+          extraAtB Profile.spark.table (.bin g) "on_domain_error" = true →
+          CallExtra Profile.spark.table (.bin g) [v, w] :=
+        fun hi hx => callExtra_of_at hx (by
+          simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, hi])
+      cases f <;> cases v <;> cases w <;> simp only [sparkBin, reduceCtorEq] at hs
+      case fadd.float.float | fsub.float.float | fmul.float.float | fdiv.float.float
+          | fmod.float.float =>
+        split at hs
+        · exact .inr (nanC (by assumption) (by decide))
+        · cases hs
+      case fdivIeee.float.float a b =>
+        split at hs
+        · cases hs; cases h
+        · split at hs
+          · rename_i _ hn
+            -- `∞ / ∞`: IEEE division's own NaN.
+            have : nanCase .fdivIeee a b = true := by
+              simp only [nanCase, Bool.or_eq_true] at hn ⊢; exact .inl hn
+            cases hs; cases h
+            exact .inl (by simp only [BinFn.apply, fdiv_of_nanCase_ieee this])
+          · cases hs
+      case fpow.float.float a b =>
+        simp only [sparkPow] at hs
+        split at hs
+        · rename_i hn
+          exact .inr (dom (by simp [BinFn.issue, hn]) (by decide))
+        · split at hs
+          · rename_i hn' hn
+            exact .inr (dom (by simp [BinFn.issue, nanIssue, hn, Bool.not_eq_true _ |>.mp hn'])
+              (by decide))
+          · cases hs
+      case bit.int.int op a b =>
+        cases op <;> simp only [reduceCtorEq] at hs
+        all_goals
+          split at hs
+          · cases hs
+          · exact .inr (callExtra_of_at (o := "shift_range") (by decide) (by simp [optionScope]))
+
+/-- **Spark's functions are faithful where they do not raise**: wherever the
+reference reports no issue, Spark gives the reference's value or raises
+(IEEE division by a zero, `floor` of `±∞`), and `okImpl` then takes the
+reference's. Every value of its own is where the reference raises. -/
+theorem Profile.spark_okImpl_faithful : Profile.spark.okImpl.Faithful := by
+  refine ⟨fun f v h => ?_, fun f v w h => ?_⟩
+  · show (match Profile.spark.un f v with | .ok w => w | .error _ => f.apply v) = f.apply v
+    simp only [Profile.spark, Profile.reference, h, raiseIf]
+    cases hs : sparkUn f v with
+    | none => rfl
+    | some o =>
+      simp only [Option.getD]
+      cases f <;> cases v <;> simp only [sparkUn, reduceCtorEq] at hs
+      case fmath.float g c =>
+        split at hs
+        · rename_i hc; simp [UnFn.issue, domainIssue, hc] at h
+        · cases hs
+      all_goals (split at hs <;> cases hs <;> rfl)
+  · show (match Profile.spark.bin f v w with | .ok x => x | .error _ => f.apply v w) = f.apply v w
+    simp only [Profile.spark, Profile.reference, h, raiseIf]
+    cases hs : sparkBin f v w with
+    | none => rfl
+    | some o =>
+      simp only [Option.getD]
+      cases f <;> cases v <;> cases w <;> simp only [sparkBin, reduceCtorEq] at hs
+      case fadd.float.float | fsub.float.float | fmul.float.float | fdiv.float.float
+          | fmod.float.float =>
+        split at hs
+        · rename_i hn
+          -- `/` and `%` report a zero divisor first, a domain issue else.
+          simp [BinFn.issue, nanIssue, hn] at h <;> split at h <;> simp at h
+        · cases hs
+      case fdivIeee.float.float a b =>
+        split at hs
+        · cases hs; rfl
+        · split at hs
+          · rename_i _ hn
+            have : nanCase .fdivIeee a b = true := by
+              simp only [nanCase, Bool.or_eq_true] at hn ⊢; exact .inl hn
+            cases hs; simp only [BinFn.apply, fdiv_of_nanCase_ieee this]
+          · cases hs
+      case fpow.float.float a b =>
+        simp only [sparkPow] at hs
+        split at hs
+        · rename_i hn; simp [BinFn.issue, hn] at h
+        · split at hs
+          · rename_i hn' hn
+            simp [BinFn.issue, nanIssue, hn, Bool.not_eq_true _ |>.mp hn'] at h
+          · cases hs
+      case bit.int.int op a b =>
+        cases op <;> simp only [reduceCtorEq] at hs
+        all_goals
+          split at hs
+          · cases hs
+          · rename_i hr; simp [BinFn.issue, domainIssue, BitOp.apply, hr] at h
+
+/-- Spark under ANSI: its profile's functions where they do not raise
+(`Profile.spark`), its own choices. -/
 def Engine.spark : Engine where
   name := "spark"
   profile := Profile.spark
   table := Profile.spark.table
   obs := Profile.spark.obs
   lower := some
-  impl := Impl.lean
-  within := Impl.lean_within _
+  impl := Profile.spark.okImpl
+  within := Profile.okImpl_within Profile.spark_withinOk
 
 -- No engine's certificate is empty: each but the reference has rows that
 -- are not theorems (so `Refines` is a real hypothesis, which `#print axioms`
