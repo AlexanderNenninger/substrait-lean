@@ -113,8 +113,8 @@ def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.duckdb import DUCKDB
     from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
     from sverify_polars import engine as polars_engine
+    from sverify_spark.dialect import SPARK
 
     dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
     plan = json.loads(written_plan(to_substrait_json(c.build())))

@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[3]
-FACTS = REPO / "characterization" / "spark" / "facts"
+FACTS = REPO / "engines" / "spark" / "facts"
 #: The Spark release the facts are about, and its commit.
 TAG = "v4.3.0"
 COMMIT = "98bc0212c94705434471627068f41e374ccab143"

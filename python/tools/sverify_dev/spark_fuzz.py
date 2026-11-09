@@ -4,7 +4,7 @@
 Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
 API. The Spark counterpart of `sverify_dev.duckdb_fuzz`.
 
-Each `Target` is one open deviation of `characterization/spark/facts/`: a
+Each `Target` is one open deviation of `engines/spark/facts/`: a
 construct in Spark's SQL, a generator of random rows that leans on the edges
 the fact names (bounds, zeros, NaN, ±inf, NULL), and a model of what the fact
 says Spark gives, per ANSI setting. Every row runs on a local Spark session
@@ -25,7 +25,7 @@ Rows the model predicts to raise run one by one (a sample of them); the
 others run as one query, and an unexpected raise is narrowed down to its row.
 
 `python -m sverify_dev.spark_fuzz [targets…] --rows N --seed S` runs the
-targets and writes `characterization/spark/fuzz.json`: per target, the fact,
+targets and writes `engines/spark/probes/fuzz.json`: per target, the fact,
 the seed, the rows and settings, the counts and the findings. It needs
 `pyspark` and a JVM; run it on homelab (CLAUDE.md), with one Spark session.
 """
@@ -53,7 +53,7 @@ from typing import Any
 import numpy as np
 
 _HERE = Path(__file__).resolve()
-OUT = _HERE.parents[3] / "characterization" / "spark" / "fuzz.json"
+OUT = _HERE.parents[3] / "engines" / "spark" / "probes" / "fuzz.json"
 
 #: The session: `sverify_dev.probe_spark.BASE_CONF`.
 CONF: dict[str, str] = {

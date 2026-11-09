@@ -14,8 +14,8 @@
     738
   ],
   "files": [
-    "characterization/spark/facts/spark-raise-set.json",
-    "characterization/spark/facts/spark-timestamp-precision.json"
+    "engines/spark/facts/spark-raise-set.json",
+    "engines/spark/facts/spark-timestamp-precision.json"
   ],
   "facts": [
     "spark-raise-set",

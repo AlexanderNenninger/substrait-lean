@@ -1,0 +1,83 @@
+{
+  "id": "spark-case",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`upper`, `lower`: Java's full Unicode mappings, in the JVM's default locale",
+  "verdict": "`char_set: UTF8` with full mappings (`ß` → `SS`, final sigma); ASCII fast path",
+  "area": "strings",
+  "options": [
+    "char_set",
+    "settings"
+  ],
+  "rows": [
+    {
+      "group": "str.case",
+      "option": "char_set",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "upper",
+    "lower",
+    "ucase",
+    "lcase",
+    "initcap"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`upper` and `lower` map ASCII text byte by byte and anything else with Java's `String.toUpperCase()` and `toLowerCase()`: Unicode's full mappings, context included. `upper('ß')` is `SS`, `upper('ﬁ')` `FI`, `upper('straße')` `STRASSE` (the length grows from 6 to 7), `lower('İ')` `i̇` (two code points), `lower('ΣΑΣ')` `σας` with a final sigma, `upper('ǅ')` `Ǆ`, `lower('Ⅻ')` `ⅻ`.",
+    "The no-argument `toUpperCase()` uses the JVM's default locale, so a JVM started in a Turkish or Azeri locale maps `i` to `İ` (a setting outside Spark's own configuration). The probes ran in an English locale."
+  ],
+  "reference": "`upper`, `lower` with `char_set: UTF8`, a black box (Rust's `str::to_uppercase`, Unicode's full mappings); Lean evaluates them on ASCII only. ST-10 records that Substrait leaves simple and full mappings open. Spark's mappings are Unicode's full ones, as Rust's are, under a locale without special casing.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/unsafe/types/UTF8String.java#L792-L840",
+          "note": "`toUpperCase`/`toLowerCase`: the ASCII path, else `toString().toUpperCase()` (`toUpperCaseSlow`)"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-case"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/collations-string-functions.sql.out#L2255-L2274",
+          "note": "`lower` of the UTF8_BINARY column turns `İo` into `i̇o`: `i` plus U+0307, two code points for one"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/collations-string-functions.sql.out#L2211-L2230",
+          "note": "`upper` of the same rows: `İo` → `İO`, ASCII rows upper-cased byte by byte"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    }
+  ]
+}

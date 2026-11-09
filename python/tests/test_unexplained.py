@@ -3,7 +3,7 @@
 Each `disagree` entry of DuckDB's ledgers (`characterization/duckdb/<area>.json`:
 the sqllogictest replay and `fuzz__<target>.json`) is explained by an open
 issue, a fact or an upstream bug, through `sverify_dev.slt.KNOWN`. Spark's fuzz
-ledger (`characterization/spark/fuzz.json`) keeps no finding, and each target
+ledger (`engines/spark/probes/fuzz.json`) keeps no finding, and each target
 names the fact whose deviation it measures."""
 
 import functools

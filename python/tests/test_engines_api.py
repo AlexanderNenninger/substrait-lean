@@ -8,9 +8,10 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, substrait_json, to_sql, written_plan
+from sverify.engines import DUCKDB, SNOWFLAKE, substrait_json, to_sql, written_plan
 from sverify.errors import RouteError, UnverifiedRunError
 from sverify.io import StaticSource
+from sverify_spark.dialect import SPARK
 
 SCHEMA = ibis.schema({"id": "int64", "amount": "int64"})
 
@@ -135,15 +136,10 @@ def test_substrait_json_defaults_to_the_reference():
     assert substrait_json(con, sql) == substrait_json(con, sql, "reference")
 
 
-def test_run_spark_is_deprecated(monkeypatch):
-    spark_engine = pytest.importorskip("sverify.spark_engine")
-    from sverify.engines import run_spark
-
-    calls = []
-    monkeypatch.setattr(spark_engine, "run", lambda *a, **k: calls.append((a, k)))
-    with pytest.warns(DeprecationWarning, match=r"run\(con, plan, 'spark'\).*sv\.unique"):
-        run_spark("{}", {})
-    assert calls == [(("{}", {}, None), {"deterministic": False})]
+def test_run_spark_is_gone():
+    """`run_spark`, deprecated since 0.5, is gone (#1288): `run(con, plan, "spark")`."""
+    with pytest.raises(AttributeError):
+        sv.engines.run_spark  # noqa: B018
 
 
 def test_rows_and_tables_column_by_column():
