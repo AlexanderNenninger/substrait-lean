@@ -1,5 +1,9 @@
 # sverify-dbt
 
+> Sverify-dbt is a working prototype, and so is sverify, which it builds on.
+> Their proofs and code still need a human audit before anyone relies on their
+> results.
+
 Sverify-dbt proves a dbt project's data tests and model contracts before
 the models run. It reads the project after `dbt compile`, checks each
 model's compiled SQL with [sverify](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md) against the tests on

@@ -1,5 +1,8 @@
 # sverify
 
+> Sverify is a working prototype. Its Lean proofs, its checker and its Python
+> code still need a human audit before anyone relies on their results.
+
 Sverify proves a data pipeline's contracts before it runs, takes the proof to
 [DuckDB](https://duckdb.org), [Polars](https://pola.rs) and
 [Spark](https://spark.apache.org) by a route that says what carries over,

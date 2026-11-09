@@ -1,5 +1,9 @@
 # sverify-polars
 
+> Sverify-polars is a working prototype, and so is sverify, which it extends.
+> Their proofs and code still need a human audit before anyone relies on their
+> results.
+
 Polars as an engine of [sverify](https://github.com/AlexanderNenninger/substrait-lean):
 a plan verified in Lean runs as a Polars lazy frame on Polars's streaming
 engine, with a shim where Polars differs from the reference. Install it with
