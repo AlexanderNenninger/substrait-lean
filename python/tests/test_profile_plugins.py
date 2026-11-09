@@ -23,6 +23,7 @@ from sverify.routes import EngineSettingsError, EngineVersionError
 
 DUMMY = ProfilePlugin(
     engine="dummy",
+    profile=True,
     versions=("1.2.0",),
     translation="the dummy writer, proved (DummyEngine.dummy_sound)",
     settings=(Setting("dummy_mode", ("strict",), "refuse", ("dummy-mode",), "every value"),),
@@ -66,7 +67,15 @@ def test_no_profile_from_outside_by_default() -> None:
 def test_a_profile_from_outside_is_loaded(installed: None) -> None:
     with pytest.warns(profiles.ProfilePluginWarning) as warned:
         found = profiles.plugins.__wrapped__()
-    assert set(found) == {"dummy", "duckdb", "polars", "spark", "datafusion", "snowflake"}
+    assert set(found) == {
+        "dummy",
+        "duckdb",
+        "polars",
+        "spark",
+        "datafusion",
+        "snowflake",
+        "substrait",
+    }
     assert {str(w.message).split("'")[1] for w in warned} == {"broken", "other"}
 
 
