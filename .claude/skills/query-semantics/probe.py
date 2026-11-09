@@ -340,7 +340,7 @@ def backends(
             out[engine] = (failed(e), None)
     if spark:
         try:
-            from sverify import spark_engine
+            from sverify_spark import engine as spark_engine
 
             out["spark"] = ("ran", positional(spark_engine.run(written, tables)))
         except Unsupported as e:
@@ -380,7 +380,7 @@ def native_sql(con: eng.Connection, sql: str, tables: dict[str, pa.Table], spark
     attempt("polars", lambda: native_polars(ctx.execute(sql)).to_arrow())
     attempt("datafusion", lambda: con.datafusion.sql(sql).to_arrow_table())
     if spark:
-        from sverify import spark_engine
+        from sverify_spark import engine as spark_engine
 
         def run_spark():
             spark_engine.put_tables(tables)

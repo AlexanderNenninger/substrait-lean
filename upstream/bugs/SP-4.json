@@ -15,8 +15,8 @@
     50
   ],
   "files": [
-    "characterization/spark/probes.json",
-    "characterization/spark/facts/spark-regex.json"
+    "engines/spark/probes/probes.json",
+    "engines/spark/facts/spark-regex.json"
   ],
   "facts": [
     "spark-regex"

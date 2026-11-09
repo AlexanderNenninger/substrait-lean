@@ -123,7 +123,8 @@ jobs:
           # and `test (duckdb)`, can read.
           src=python/src/sverify
           tests=python/tests
-          spark="$src/(spark_engine|sql/spark)\.py$|$tests/(spark_session|test_sql_spark|test_spark_[a-z0-9_]+)\.py$"
+          # An engine package (#1189): its Python, tests, facts and probes.
+          spark="engines/spark/|$tests/spark_session\.py$"
           snowflake="$src/sql/snowflake\.py$|$tests/test_sql_snowflake\.py$"
           # An engine package (#1189): its Python, tests, facts and probes.
           polars="engines/polars/|python/tools/sverify_dev/probe_polars\.py$"

@@ -1,0 +1,124 @@
+{
+  "id": "spark-exec-evaluation-order",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`CASE`, `IF`, `COALESCE` are lazy; `AND`, `OR` short-circuit left to right; filters can move below projections",
+  "verdict": "a guarded branch never raises; `b <> 0 AND a div b > 1` is safe, the reverse raises; pushdown only removes raises",
+  "area": "execution",
+  "options": [
+    "evaluation_order"
+  ],
+  "constructs": [
+    "CASE",
+    "IF",
+    "COALESCE",
+    "AND",
+    "OR",
+    "WHERE",
+    "JOIN"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`CASE WHEN b <> 0 THEN a div b END`, `if(b = 0, NULL, a div b)` and `CASE WHEN c RLIKE '^[0-9]+$' THEN CAST(c AS INT) END` evaluate the guarded expression only on the rows that reach it, under ANSI too, also when the same subexpression appears twice in a branch or in two `CASE`s (common subexpression elimination keeps conditional ones lazy). `COALESCE` stops at the first non-NULL argument.",
+    "`AND` and `OR` evaluate left to right and short-circuit: `WHERE b <> 0 AND a div b > 1` runs, `WHERE a div b > 1 AND b <> 0` raises `DIVIDE_BY_ZERO` under ANSI. Stacked filters stay in order when the optimizer combines them (`CombineFilters` puts the lower condition first): a filter on `CAST(c AS INT)` above one on `c RLIKE …` runs, and so does a join filter above a guard.",
+    "The optimizer pushes a filter below a projection, so `SELECT * FROM (SELECT a div b AS q, b …) WHERE b <> 0` raises on the folded path (the projection runs first on the driver) and runs on the codegen path (the filter moved below the division). That removes raises and adds none."
+  ],
+  "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it. Its issue analysis trusts that `CASE` is lazy and `AND`/`OR` are not (ST-12). Spark keeps each guard the reference's analysis relies on; its `AND` is lazier than the model assumes.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "case-guard"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "if-guard"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "and-guard"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "and-guard-reversed"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "coalesce-guard"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "case-guard-cast"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "case-guard-cse"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "case-guard-cse-both"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "stacked-filter-cast"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "stacked-filter-divide"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "projection-under-filter"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "aggregate-guard"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "join-filter-order"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L43-L50",
+          "note": "`if(c2 >= 0, 1-0, 1/0)` over a table with `c2 = 0` rows runs under ANSI: the `1/0` branch is never evaluated"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L70-L78",
+          "note": "`coalesce(c2, 1/0)` with non-NULL `c2` runs under ANSI: `1/0` is never evaluated"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L89-L94",
+          "note": "`coalesce(null, 1, 1/0)` is 1.0 under ANSI: evaluation stops at the first non-NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/conditional-functions.sql.out#L97-L105",
+          "note": "`CASE WHEN c2 >= 0 THEN 1 ELSE 1/0 END` over the table runs under ANSI"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/case.sql.out#L189-L197",
+          "note": "`CASE WHEN i > 100 THEN 1/0 ELSE 0 END FROM case_tbl` is 0.0 on every row under ANSI"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    }
+  ]
+}

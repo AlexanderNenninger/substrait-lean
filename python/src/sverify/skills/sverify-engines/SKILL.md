@@ -113,7 +113,7 @@ print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is 
 * **Snowflake has no interval type**: interval-valued expressions are refused.
 * **Warehouse setup the SQL assumes:** Snowflake time columns are
   `TIMESTAMP_NTZ`, strings have no collation, names are quoted lower case;
-  Spark sessions use `sverify.engines.SPARK_CONF` (ANSI mode, a pinned time
+  Spark sessions use `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time
   zone, NTZ timestamps) and the `UTF8_BINARY` collation.
 
 ## Align two time series: `asof_join`

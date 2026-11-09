@@ -4478,10 +4478,10 @@ all = [
     { name = "openlineage-python" },
     { name = "pyarrow" },
     { name = "pyiceberg", extra = ["pyarrow", "sql-sqlite"] },
-    { name = "pyspark" },
     { name = "pytest" },
     { name = "pyyaml" },
-    { name = "sverify-polars" },
+    { name = "sverify-polars", extra = ["run"] },
+    { name = "sverify-spark", extra = ["run"] },
 ]
 datafusion = [
     { name = "datafusion" },
@@ -4502,7 +4502,7 @@ openlineage = [
     { name = "openlineage-python" },
 ]
 polars = [
-    { name = "sverify-polars" },
+    { name = "sverify-polars", extra = ["run"] },
 ]
 secrets-aws = [
     { name = "boto3" },
@@ -4518,7 +4518,7 @@ secrets-keychain = [
     { name = "keyring" },
 ]
 spark = [
-    { name = "pyspark" },
+    { name = "sverify-spark", extra = ["run"] },
 ]
 testing = [
     { name = "hypothesis" },
@@ -4564,13 +4564,13 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
     { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
-    { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
     { name = "sqlglot", specifier = "~=30.17.0" },
     { name = "substrait", specifier = ">=0.37.0" },
     { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
-    { name = "sverify-polars", marker = "extra == 'polars'", editable = "../engines/polars" },
+    { name = "sverify-polars", extras = ["run"], marker = "extra == 'polars'", editable = "../engines/polars" },
+    { name = "sverify-spark", extras = ["run"], marker = "extra == 'spark'", editable = "../engines/spark" },
 ]
 provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "secrets-aws", "secrets-gcp", "secrets-azure", "secrets-keychain", "all"]
 
@@ -4600,17 +4600,42 @@ name = "sverify-polars"
 version = "0.7.1"
 source = { editable = "../engines/polars" }
 dependencies = [
+    { name = "sverify" },
+]
+
+[package.optional-dependencies]
+run = [
     { name = "numpy" },
     { name = "polars" },
-    { name = "sverify" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "numpy", specifier = ">=2.5.4" },
-    { name = "polars", specifier = ">=2.1.0" },
+    { name = "numpy", marker = "extra == 'run'", specifier = ">=2.5.4" },
+    { name = "polars", marker = "extra == 'run'", specifier = ">=2.1.0" },
     { name = "sverify", editable = "." },
 ]
+provides-extras = ["run"]
+
+[[package]]
+name = "sverify-spark"
+version = "0.7.1"
+source = { editable = "../engines/spark" }
+dependencies = [
+    { name = "sverify" },
+]
+
+[package.optional-dependencies]
+run = [
+    { name = "pyspark" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pyspark", marker = "extra == 'run'", specifier = ">=4.0" },
+    { name = "sverify", editable = "." },
+]
+provides-extras = ["run"]
 
 [[package]]
 name = "sympy"

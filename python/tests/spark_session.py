@@ -1,4 +1,4 @@
-"""The Spark session of the tests (`sverify.spark_engine.session`).
+"""The Spark session of the tests (`sverify_spark.engine.session`).
 
 Spark needs a JVM (Java 17 or 21): `JAVA_HOME`, or a working `java` on
 `PATH`. Without one the Spark tests are skipped.
@@ -31,13 +31,13 @@ def session() -> Any:
     pytest.importorskip("pyspark")
     if not has_java():
         pytest.skip("Spark needs a JVM: set JAVA_HOME or put java on PATH")
-    from sverify import spark_engine
+    from sverify_spark import engine as spark_engine
 
     return spark_engine.session()
 
 
 def put_tables(tables: Mapping[str, pa.Table]) -> None:
-    from sverify import spark_engine
+    from sverify_spark import engine as spark_engine
 
     spark_engine.put_tables(tables, session())
 

@@ -22,7 +22,7 @@
       "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
     },
     {
-      "test": "tests/test_sql_spark.py::test_date_trunc_matches_lean",
+      "test": "../engines/spark/tests/test_sql_spark.py::test_date_trunc_matches_lean",
       "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
     },
     {

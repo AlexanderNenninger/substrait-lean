@@ -1,0 +1,2336 @@
+{
+ "spark": "4.3.0",
+ "java": "21.0.12.1",
+ "platform": "Linux x86_64",
+ "driver_tz": "UTC",
+ "settings": {
+  "spark.master": "local[2]",
+  "spark.driver.memory": "1g",
+  "spark.ui.enabled": "false",
+  "spark.sql.shuffle.partitions": "2",
+  "spark.sql.session.timeZone": "UTC",
+  "spark.sql.timestampType": "TIMESTAMP_NTZ",
+  "spark.sql.caseSensitive": "true",
+  "spark.sql.parser.escapedStringLiterals": "false",
+  "spark.sql.optimizer.excludedRules (codegen path)": "org.apache.spark.sql.catalyst.optimizer.ConvertToLocalRelation,org.apache.spark.sql.catalyst.optimizer.ConstantFolding"
+ },
+ "probes": [
+  {
+   "construct": "tinyint-add",
+   "sql": "SELECT a + b AS r, typeof(a + b) AS t FROM VALUES (CAST(127 AS TINYINT), CAST(1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error BINARY_ARITHMETIC_OVERFLOW: [BINARY_ARITHMETIC_OVERFLOW] 127S + 1S caused overflow. Use `try_add` to ignore overflow problem and return NULL. SQLSTATE: 22003",
+    "ansi=false": "(-128, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-subtract",
+   "sql": "SELECT a - b AS r, typeof(a - b) AS t FROM VALUES (CAST(-128 AS TINYINT), CAST(1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error BINARY_ARITHMETIC_OVERFLOW: [BINARY_ARITHMETIC_OVERFLOW] -128S - 1S caused overflow. Use `try_subtract` to ignore overflow problem and return NULL. SQLSTATE: 22003",
+    "ansi=false": "(127, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-multiply",
+   "sql": "SELECT a * b AS r, typeof(a * b) AS t FROM VALUES (CAST(127 AS TINYINT), CAST(2 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error BINARY_ARITHMETIC_OVERFLOW: [BINARY_ARITHMETIC_OVERFLOW] 127S * 2S caused overflow. Use `try_multiply` to ignore overflow problem and return NULL. SQLSTATE: 22003",
+    "ansi=false": "(-2, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-negate",
+   "sql": "SELECT -a AS r, typeof(-a) AS t FROM VALUES (CAST(-128 AS TINYINT), CAST(1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-128, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-abs",
+   "sql": "SELECT abs(a) AS r, typeof(abs(a)) AS t FROM VALUES (CAST(-128 AS TINYINT), CAST(1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-128, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-div-min",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(-128 AS TINYINT), CAST(-1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(128, bigint)",
+    "ansi=false": "(128, bigint)"
+   }
+  },
+  {
+   "construct": "tinyint-mod-min",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(-128 AS TINYINT), CAST(-1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, tinyint)",
+    "ansi=false": "(0, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-pmod-min",
+   "sql": "SELECT pmod(a, b) AS r, typeof(pmod(a, b)) AS t FROM VALUES (CAST(-128 AS TINYINT), CAST(-1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, tinyint)",
+    "ansi=false": "(0, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-div-zero",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(7 AS TINYINT), CAST(0 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, bigint)"
+   }
+  },
+  {
+   "construct": "tinyint-mod-zero",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(7 AS TINYINT), CAST(0 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error REMAINDER_BY_ZERO: [REMAINDER_BY_ZERO] Remainder by zero. Use `try_mod` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-slash-zero",
+   "sql": "SELECT a / b AS r, typeof(a / b) AS t FROM VALUES (CAST(7 AS TINYINT), CAST(0 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, double)"
+   }
+  },
+  {
+   "construct": "tinyint-div-mod-signs",
+   "sql": "SELECT a, b, a div b, a % b, pmod(a, b), a / b, typeof(a / b) FROM VALUES (CAST(-7 AS TINYINT), CAST(2 AS TINYINT)), (CAST(7 AS TINYINT), CAST(-2 AS TINYINT)), (CAST(-7 AS TINYINT), CAST(-2 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)",
+    "ansi=false": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)"
+   }
+  },
+  {
+   "construct": "tinyint-shifts",
+   "sql": "SELECT n, shiftleft(a, n), shiftright(a, n), shiftrightunsigned(a, n), typeof(shiftleft(a, n)) FROM VALUES (CAST(-8 AS TINYINT), 1), (CAST(-8 AS TINYINT), 7), (CAST(-8 AS TINYINT), 8), (CAST(-8 AS TINYINT), 15), (CAST(-8 AS TINYINT), 16), (CAST(-8 AS TINYINT), 31), (CAST(-8 AS TINYINT), 32), (CAST(-8 AS TINYINT), 33), (CAST(-8 AS TINYINT), 63), (CAST(-8 AS TINYINT), 64), (CAST(-8 AS TINYINT), 65), (CAST(-8 AS TINYINT), -1) AS s(a, n)",
+   "observed": {
+    "ansi=true": "(1, -16, -4, 2147483644, int); (7, -1024, -1, 33554431, int); (8, -2048, -1, 16777215, int); (15, -262144, -1, 131071, int); (16, -524288, -1, 65535, int); (31, 0, -1, 1, int); (32, -8, -8, -8, int); (33, -16, -4, 2147483644, int); (63, 0, -1, 1, int); (64, -8, -8, -8, int); (65, -16, -4, 2147483644, int); (-1, 0, -1, 1, int)",
+    "ansi=false": "(1, -16, -4, 2147483644, int); (7, -1024, -1, 33554431, int); (8, -2048, -1, 16777215, int); (15, -262144, -1, 131071, int); (16, -524288, -1, 65535, int); (31, 0, -1, 1, int); (32, -8, -8, -8, int); (33, -16, -4, 2147483644, int); (63, 0, -1, 1, int); (64, -8, -8, -8, int); (65, -16, -4, 2147483644, int); (-1, 0, -1, 1, int)"
+   }
+  },
+  {
+   "construct": "tinyint-bitwise",
+   "sql": "SELECT a & b, a | b, a ^ b, ~a, typeof(a & b) FROM VALUES (CAST(-128 AS TINYINT), CAST(-1 AS TINYINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-128, -1, 127, 127, tinyint)",
+    "ansi=false": "(-128, -1, 127, 127, tinyint)"
+   }
+  },
+  {
+   "construct": "tinyint-sum-overflow",
+   "sql": "SELECT sum(a), typeof(sum(a)), avg(a), typeof(avg(a)) FROM VALUES (CAST(127 AS TINYINT)), (CAST(127 AS TINYINT)) AS s(a)",
+   "observed": {
+    "ansi=true": "(254, bigint, 127.0, double)",
+    "ansi=false": "(254, bigint, 127.0, double)"
+   }
+  },
+  {
+   "construct": "smallint-add",
+   "sql": "SELECT a + b AS r, typeof(a + b) AS t FROM VALUES (CAST(32767 AS SMALLINT), CAST(1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error BINARY_ARITHMETIC_OVERFLOW: [BINARY_ARITHMETIC_OVERFLOW] 32767S + 1S caused overflow. Use `try_add` to ignore overflow problem and return NULL. SQLSTATE: 22003",
+    "ansi=false": "(-32768, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-subtract",
+   "sql": "SELECT a - b AS r, typeof(a - b) AS t FROM VALUES (CAST(-32768 AS SMALLINT), CAST(1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error BINARY_ARITHMETIC_OVERFLOW: [BINARY_ARITHMETIC_OVERFLOW] -32768S - 1S caused overflow. Use `try_subtract` to ignore overflow problem and return NULL. SQLSTATE: 22003",
+    "ansi=false": "(32767, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-multiply",
+   "sql": "SELECT a * b AS r, typeof(a * b) AS t FROM VALUES (CAST(32767 AS SMALLINT), CAST(2 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error BINARY_ARITHMETIC_OVERFLOW: [BINARY_ARITHMETIC_OVERFLOW] 32767S * 2S caused overflow. Use `try_multiply` to ignore overflow problem and return NULL. SQLSTATE: 22003",
+    "ansi=false": "(-2, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-negate",
+   "sql": "SELECT -a AS r, typeof(-a) AS t FROM VALUES (CAST(-32768 AS SMALLINT), CAST(1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-32768, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-abs",
+   "sql": "SELECT abs(a) AS r, typeof(abs(a)) AS t FROM VALUES (CAST(-32768 AS SMALLINT), CAST(1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-32768, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-div-min",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(-32768 AS SMALLINT), CAST(-1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(32768, bigint)",
+    "ansi=false": "(32768, bigint)"
+   }
+  },
+  {
+   "construct": "smallint-mod-min",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(-32768 AS SMALLINT), CAST(-1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, smallint)",
+    "ansi=false": "(0, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-pmod-min",
+   "sql": "SELECT pmod(a, b) AS r, typeof(pmod(a, b)) AS t FROM VALUES (CAST(-32768 AS SMALLINT), CAST(-1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, smallint)",
+    "ansi=false": "(0, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-div-zero",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(7 AS SMALLINT), CAST(0 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, bigint)"
+   }
+  },
+  {
+   "construct": "smallint-mod-zero",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(7 AS SMALLINT), CAST(0 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error REMAINDER_BY_ZERO: [REMAINDER_BY_ZERO] Remainder by zero. Use `try_mod` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-slash-zero",
+   "sql": "SELECT a / b AS r, typeof(a / b) AS t FROM VALUES (CAST(7 AS SMALLINT), CAST(0 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, double)"
+   }
+  },
+  {
+   "construct": "smallint-div-mod-signs",
+   "sql": "SELECT a, b, a div b, a % b, pmod(a, b), a / b, typeof(a / b) FROM VALUES (CAST(-7 AS SMALLINT), CAST(2 AS SMALLINT)), (CAST(7 AS SMALLINT), CAST(-2 AS SMALLINT)), (CAST(-7 AS SMALLINT), CAST(-2 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)",
+    "ansi=false": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)"
+   }
+  },
+  {
+   "construct": "smallint-shifts",
+   "sql": "SELECT n, shiftleft(a, n), shiftright(a, n), shiftrightunsigned(a, n), typeof(shiftleft(a, n)) FROM VALUES (CAST(-8 AS SMALLINT), 1), (CAST(-8 AS SMALLINT), 7), (CAST(-8 AS SMALLINT), 8), (CAST(-8 AS SMALLINT), 15), (CAST(-8 AS SMALLINT), 16), (CAST(-8 AS SMALLINT), 31), (CAST(-8 AS SMALLINT), 32), (CAST(-8 AS SMALLINT), 33), (CAST(-8 AS SMALLINT), 63), (CAST(-8 AS SMALLINT), 64), (CAST(-8 AS SMALLINT), 65), (CAST(-8 AS SMALLINT), -1) AS s(a, n)",
+   "observed": {
+    "ansi=true": "(1, -16, -4, 2147483644, int); (7, -1024, -1, 33554431, int); (8, -2048, -1, 16777215, int); (15, -262144, -1, 131071, int); (16, -524288, -1, 65535, int); (31, 0, -1, 1, int); (32, -8, -8, -8, int); (33, -16, -4, 2147483644, int); (63, 0, -1, 1, int); (64, -8, -8, -8, int); (65, -16, -4, 2147483644, int); (-1, 0, -1, 1, int)",
+    "ansi=false": "(1, -16, -4, 2147483644, int); (7, -1024, -1, 33554431, int); (8, -2048, -1, 16777215, int); (15, -262144, -1, 131071, int); (16, -524288, -1, 65535, int); (31, 0, -1, 1, int); (32, -8, -8, -8, int); (33, -16, -4, 2147483644, int); (63, 0, -1, 1, int); (64, -8, -8, -8, int); (65, -16, -4, 2147483644, int); (-1, 0, -1, 1, int)"
+   }
+  },
+  {
+   "construct": "smallint-bitwise",
+   "sql": "SELECT a & b, a | b, a ^ b, ~a, typeof(a & b) FROM VALUES (CAST(-32768 AS SMALLINT), CAST(-1 AS SMALLINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-32768, -1, 32767, 32767, smallint)",
+    "ansi=false": "(-32768, -1, 32767, 32767, smallint)"
+   }
+  },
+  {
+   "construct": "smallint-sum-overflow",
+   "sql": "SELECT sum(a), typeof(sum(a)), avg(a), typeof(avg(a)) FROM VALUES (CAST(32767 AS SMALLINT)), (CAST(32767 AS SMALLINT)) AS s(a)",
+   "observed": {
+    "ansi=true": "(65534, bigint, 32767.0, double)",
+    "ansi=false": "(65534, bigint, 32767.0, double)"
+   }
+  },
+  {
+   "construct": "int-add",
+   "sql": "SELECT a + b AS r, typeof(a + b) AS t FROM VALUES (CAST(2147483647 AS INT), CAST(1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_add' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-2147483648, int)"
+   }
+  },
+  {
+   "construct": "int-subtract",
+   "sql": "SELECT a - b AS r, typeof(a - b) AS t FROM VALUES (CAST(-2147483648 AS INT), CAST(1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_subtract' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(2147483647, int)"
+   }
+  },
+  {
+   "construct": "int-multiply",
+   "sql": "SELECT a * b AS r, typeof(a * b) AS t FROM VALUES (CAST(2147483647 AS INT), CAST(2 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_multiply' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-2, int)"
+   }
+  },
+  {
+   "construct": "int-negate",
+   "sql": "SELECT -a AS r, typeof(-a) AS t FROM VALUES (CAST(-2147483648 AS INT), CAST(1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-2147483648, int)"
+   }
+  },
+  {
+   "construct": "int-abs",
+   "sql": "SELECT abs(a) AS r, typeof(abs(a)) AS t FROM VALUES (CAST(-2147483648 AS INT), CAST(1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-2147483648, int)"
+   }
+  },
+  {
+   "construct": "int-div-min",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(-2147483648 AS INT), CAST(-1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(2147483648, bigint)",
+    "ansi=false": "(2147483648, bigint)"
+   }
+  },
+  {
+   "construct": "int-mod-min",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(-2147483648 AS INT), CAST(-1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, int)",
+    "ansi=false": "(0, int)"
+   }
+  },
+  {
+   "construct": "int-pmod-min",
+   "sql": "SELECT pmod(a, b) AS r, typeof(pmod(a, b)) AS t FROM VALUES (CAST(-2147483648 AS INT), CAST(-1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, int)",
+    "ansi=false": "(0, int)"
+   }
+  },
+  {
+   "construct": "int-div-zero",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(7 AS INT), CAST(0 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, bigint)"
+   }
+  },
+  {
+   "construct": "int-mod-zero",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(7 AS INT), CAST(0 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error REMAINDER_BY_ZERO: [REMAINDER_BY_ZERO] Remainder by zero. Use `try_mod` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, int)"
+   }
+  },
+  {
+   "construct": "int-slash-zero",
+   "sql": "SELECT a / b AS r, typeof(a / b) AS t FROM VALUES (CAST(7 AS INT), CAST(0 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, double)"
+   }
+  },
+  {
+   "construct": "int-div-mod-signs",
+   "sql": "SELECT a, b, a div b, a % b, pmod(a, b), a / b, typeof(a / b) FROM VALUES (CAST(-7 AS INT), CAST(2 AS INT)), (CAST(7 AS INT), CAST(-2 AS INT)), (CAST(-7 AS INT), CAST(-2 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)",
+    "ansi=false": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)"
+   }
+  },
+  {
+   "construct": "int-shifts",
+   "sql": "SELECT n, shiftleft(a, n), shiftright(a, n), shiftrightunsigned(a, n), typeof(shiftleft(a, n)) FROM VALUES (CAST(-8 AS INT), 1), (CAST(-8 AS INT), 7), (CAST(-8 AS INT), 8), (CAST(-8 AS INT), 15), (CAST(-8 AS INT), 16), (CAST(-8 AS INT), 31), (CAST(-8 AS INT), 32), (CAST(-8 AS INT), 33), (CAST(-8 AS INT), 63), (CAST(-8 AS INT), 64), (CAST(-8 AS INT), 65), (CAST(-8 AS INT), -1) AS s(a, n)",
+   "observed": {
+    "ansi=true": "(1, -16, -4, 2147483644, int); (7, -1024, -1, 33554431, int); (8, -2048, -1, 16777215, int); (15, -262144, -1, 131071, int); (16, -524288, -1, 65535, int); (31, 0, -1, 1, int); (32, -8, -8, -8, int); (33, -16, -4, 2147483644, int); (63, 0, -1, 1, int); (64, -8, -8, -8, int); (65, -16, -4, 2147483644, int); (-1, 0, -1, 1, int)",
+    "ansi=false": "(1, -16, -4, 2147483644, int); (7, -1024, -1, 33554431, int); (8, -2048, -1, 16777215, int); (15, -262144, -1, 131071, int); (16, -524288, -1, 65535, int); (31, 0, -1, 1, int); (32, -8, -8, -8, int); (33, -16, -4, 2147483644, int); (63, 0, -1, 1, int); (64, -8, -8, -8, int); (65, -16, -4, 2147483644, int); (-1, 0, -1, 1, int)"
+   }
+  },
+  {
+   "construct": "int-bitwise",
+   "sql": "SELECT a & b, a | b, a ^ b, ~a, typeof(a & b) FROM VALUES (CAST(-2147483648 AS INT), CAST(-1 AS INT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-2147483648, -1, 2147483647, 2147483647, int)",
+    "ansi=false": "(-2147483648, -1, 2147483647, 2147483647, int)"
+   }
+  },
+  {
+   "construct": "int-sum-overflow",
+   "sql": "SELECT sum(a), typeof(sum(a)), avg(a), typeof(avg(a)) FROM VALUES (CAST(2147483647 AS INT)), (CAST(2147483647 AS INT)) AS s(a)",
+   "observed": {
+    "ansi=true": "(4294967294, bigint, 2147483647.0, double)",
+    "ansi=false": "(4294967294, bigint, 2147483647.0, double)"
+   }
+  },
+  {
+   "construct": "bigint-add",
+   "sql": "SELECT a + b AS r, typeof(a + b) AS t FROM VALUES (CAST(9223372036854775807 AS BIGINT), CAST(1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_add' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-9223372036854775808, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-subtract",
+   "sql": "SELECT a - b AS r, typeof(a - b) AS t FROM VALUES (CAST(-9223372036854775808 AS BIGINT), CAST(1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_subtract' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(9223372036854775807, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-multiply",
+   "sql": "SELECT a * b AS r, typeof(a * b) AS t FROM VALUES (CAST(9223372036854775807 AS BIGINT), CAST(2 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_multiply' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-2, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-negate",
+   "sql": "SELECT -a AS r, typeof(-a) AS t FROM VALUES (CAST(-9223372036854775808 AS BIGINT), CAST(1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-9223372036854775808, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-abs",
+   "sql": "SELECT abs(a) AS r, typeof(abs(a)) AS t FROM VALUES (CAST(-9223372036854775808 AS BIGINT), CAST(1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-9223372036854775808, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-div-min",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(-9223372036854775808 AS BIGINT), CAST(-1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] Overflow in integral divide. Use 'try_divide' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-9223372036854775808, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-mod-min",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(-9223372036854775808 AS BIGINT), CAST(-1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, bigint)",
+    "ansi=false": "(0, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-pmod-min",
+   "sql": "SELECT pmod(a, b) AS r, typeof(pmod(a, b)) AS t FROM VALUES (CAST(-9223372036854775808 AS BIGINT), CAST(-1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0, bigint)",
+    "ansi=false": "(0, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-div-zero",
+   "sql": "SELECT a div b AS r, typeof(a div b) AS t FROM VALUES (CAST(7 AS BIGINT), CAST(0 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-mod-zero",
+   "sql": "SELECT a % b AS r, typeof(a % b) AS t FROM VALUES (CAST(7 AS BIGINT), CAST(0 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error REMAINDER_BY_ZERO: [REMAINDER_BY_ZERO] Remainder by zero. Use `try_mod` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-slash-zero",
+   "sql": "SELECT a / b AS r, typeof(a / b) AS t FROM VALUES (CAST(7 AS BIGINT), CAST(0 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, double)"
+   }
+  },
+  {
+   "construct": "bigint-div-mod-signs",
+   "sql": "SELECT a, b, a div b, a % b, pmod(a, b), a / b, typeof(a / b) FROM VALUES (CAST(-7 AS BIGINT), CAST(2 AS BIGINT)), (CAST(7 AS BIGINT), CAST(-2 AS BIGINT)), (CAST(-7 AS BIGINT), CAST(-2 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)",
+    "ansi=false": "(-7, 2, -3, -1, 1, -3.5, double); (7, -2, -3, 1, 1, -3.5, double); (-7, -2, 3, -1, -1, 3.5, double)"
+   }
+  },
+  {
+   "construct": "bigint-shifts",
+   "sql": "SELECT n, shiftleft(a, n), shiftright(a, n), shiftrightunsigned(a, n), typeof(shiftleft(a, n)) FROM VALUES (CAST(-8 AS BIGINT), 1), (CAST(-8 AS BIGINT), 7), (CAST(-8 AS BIGINT), 8), (CAST(-8 AS BIGINT), 15), (CAST(-8 AS BIGINT), 16), (CAST(-8 AS BIGINT), 31), (CAST(-8 AS BIGINT), 32), (CAST(-8 AS BIGINT), 33), (CAST(-8 AS BIGINT), 63), (CAST(-8 AS BIGINT), 64), (CAST(-8 AS BIGINT), 65), (CAST(-8 AS BIGINT), -1) AS s(a, n)",
+   "observed": {
+    "ansi=true": "(1, -16, -4, 9223372036854775804, bigint); (7, -1024, -1, 144115188075855871, bigint); (8, -2048, -1, 72057594037927935, bigint); (15, -262144, -1, 562949953421311, bigint); (16, -524288, -1, 281474976710655, bigint); (31, -17179869184, -1, 8589934591, bigint); (32, -34359738368, -1, 4294967295, bigint); (33, -68719476736, -1, 2147483647, bigint); (63, 0, -1, 1, bigint); (64, -8, -8, -8, bigint); (65, -16, -4, 9223372036854775804, bigint); (-1, 0, -1, 1, bigint)",
+    "ansi=false": "(1, -16, -4, 9223372036854775804, bigint); (7, -1024, -1, 144115188075855871, bigint); (8, -2048, -1, 72057594037927935, bigint); (15, -262144, -1, 562949953421311, bigint); (16, -524288, -1, 281474976710655, bigint); (31, -17179869184, -1, 8589934591, bigint); (32, -34359738368, -1, 4294967295, bigint); (33, -68719476736, -1, 2147483647, bigint); (63, 0, -1, 1, bigint); (64, -8, -8, -8, bigint); (65, -16, -4, 9223372036854775804, bigint); (-1, 0, -1, 1, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-bitwise",
+   "sql": "SELECT a & b, a | b, a ^ b, ~a, typeof(a & b) FROM VALUES (CAST(-9223372036854775808 AS BIGINT), CAST(-1 AS BIGINT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-9223372036854775808, -1, 9223372036854775807, 9223372036854775807, bigint)",
+    "ansi=false": "(-9223372036854775808, -1, 9223372036854775807, 9223372036854775807, bigint)"
+   }
+  },
+  {
+   "construct": "bigint-sum-overflow",
+   "sql": "SELECT sum(a), typeof(sum(a)), avg(a), typeof(avg(a)) FROM VALUES (CAST(9223372036854775807 AS BIGINT)), (CAST(9223372036854775807 AS BIGINT)) AS s(a)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_add' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-2, bigint, 9.223372036854776e+18, double)"
+   }
+  },
+  {
+   "construct": "bigint-sum-partial-overflow",
+   "sql": "SELECT sum(a) FROM VALUES (9223372036854775807L), (1L), (-2L) AS s(a)",
+   "note": "the total fits in 64 bits; a partial sum does not",
+   "observed": {
+    "ansi=true": "(9223372036854775806)",
+    "ansi=false": "(9223372036854775806)"
+   }
+  },
+  {
+   "construct": "bigint-sum-order",
+   "sql": "SELECT sum(a) FROM (SELECT /*+ COALESCE(1) */ * FROM VALUES (9223372036854775807L), (1L), (-2L) AS s(a))",
+   "note": "one partition, in input order: the first partial sum overflows",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_add' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(9223372036854775806)"
+   }
+  },
+  {
+   "construct": "bigint-sum-order-reversed",
+   "sql": "SELECT sum(a) FROM (SELECT /*+ COALESCE(1) */ * FROM VALUES (-2L), (1L), (9223372036854775807L) AS s(a))",
+   "observed": {
+    "ansi=true": "(9223372036854775806)",
+    "ansi=false": "(9223372036854775806)"
+   }
+  },
+  {
+   "construct": "int-power",
+   "sql": "SELECT power(a, b), typeof(power(a, b)) FROM VALUES (2L, 63L), (2L, 64L), (-8L, 3L), (0L, -1L), (2L, -1L), (0L, 0L), (-2L, 1023L), (-2L, 1024L) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(9.223372036854776e+18, double); (1.8446744073709552e+19, double); (-512.0, double); (inf, double); (0.5, double); (1.0, double); (-8.98846567431158e+307, double); (inf, double)",
+    "ansi=false": "(9.223372036854776e+18, double); (1.8446744073709552e+19, double); (-512.0, double); (inf, double); (0.5, double); (1.0, double); (-8.98846567431158e+307, double); (inf, double)"
+   }
+  },
+  {
+   "construct": "int-shift-operator",
+   "sql": "SELECT 1 << 33, 1L << 65, -8 >> 1, -8 >>> 1",
+   "observed": {
+    "ansi=true": "(2, 2, -4, 2147483644)",
+    "ansi=false": "(2, 2, -4, 2147483644)"
+   }
+  },
+  {
+   "construct": "double-nan-creation",
+   "sql": "SELECT a + b, a - b, a * b, a / b, a % b FROM VALUES (CAST('Infinity' AS DOUBLE), -CAST('Infinity' AS DOUBLE)), (CAST('Infinity' AS DOUBLE), CAST('Infinity' AS DOUBLE)), (CAST('0' AS DOUBLE), CAST('Infinity' AS DOUBLE)), (CAST('Infinity' AS DOUBLE), CAST('2' AS DOUBLE)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-NaN, inf, -inf, -NaN, -NaN); (inf, -NaN, inf, -NaN, -NaN); (inf, -inf, -NaN, 0.0, 0.0); (inf, inf, inf, inf, -NaN)",
+    "ansi=false": "(-NaN, inf, -inf, -NaN, -NaN); (inf, -NaN, inf, -NaN, -NaN); (inf, -inf, -NaN, 0.0, 0.0); (inf, inf, inf, inf, -NaN)"
+   }
+  },
+  {
+   "construct": "double-overflow",
+   "sql": "SELECT a * 10.0D, a + a, -a * 10.0D, a / 1e-308D FROM VALUES (1e308D) AS s(a)",
+   "observed": {
+    "ansi=true": "(inf, inf, -inf, inf)",
+    "ansi=false": "(inf, inf, -inf, inf)"
+   }
+  },
+  {
+   "construct": "double-divide-zero",
+   "sql": "SELECT a / b, a % b, pmod(a, b), typeof(a / b) FROM VALUES (1.0D, 0.0D), (-1.0D, 0.0D), (0.0D, 0.0D), (1.0D, -0.0D), (CAST('NaN' AS DOUBLE), 0.0D), (CAST('Infinity' AS DOUBLE), 0.0D) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, NULL, NULL, double); (NULL, NULL, NULL, double); (NULL, NULL, NULL, double); (NULL, NULL, NULL, double); (NULL, NULL, NULL, double); (NULL, NULL, NULL, double)"
+   }
+  },
+  {
+   "construct": "double-modulus",
+   "sql": "SELECT a, b, a % b, pmod(a, b), typeof(a % b) FROM VALUES (-7.5D, 2.0D), (7.5D, -2.0D), (-6.0D, 2.0D), (5.0D, CAST('Infinity' AS DOUBLE)), (-5.0D, CAST('Infinity' AS DOUBLE)), (CAST('Infinity' AS DOUBLE), 2.0D), (5.0D, CAST('NaN' AS DOUBLE)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-7.5, 2.0, -1.5, 0.5, double); (7.5, -2.0, 1.5, 1.5, double); (-6.0, 2.0, -0.0, -0.0, double); (5.0, inf, 5.0, 5.0, double); (-5.0, inf, -5.0, -NaN, double); (inf, 2.0, -NaN, -NaN, double); (5.0, NaN, NaN, NaN, double)",
+    "ansi=false": "(-7.5, 2.0, -1.5, 0.5, double); (7.5, -2.0, 1.5, 1.5, double); (-6.0, 2.0, -0.0, -0.0, double); (5.0, inf, 5.0, 5.0, double); (-5.0, inf, -5.0, -NaN, double); (inf, 2.0, -NaN, -NaN, double); (5.0, NaN, NaN, NaN, double)"
+   }
+  },
+  {
+   "construct": "double-zero-sign",
+   "sql": "SELECT a + b, a - b, a * b, -a, a * -1.0D, b / -1.0D, abs(a) FROM VALUES (-0.0D, 0.0D), (-0.0D, -0.0D), (0.0D, 0.0D) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0.0, -0.0, -0.0, 0.0, 0.0, -0.0, 0.0); (-0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0); (0.0, 0.0, 0.0, -0.0, -0.0, -0.0, 0.0)",
+    "ansi=false": "(0.0, -0.0, -0.0, 0.0, 0.0, -0.0, 0.0); (-0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0); (0.0, 0.0, 0.0, -0.0, -0.0, -0.0, 0.0)"
+   }
+  },
+  {
+   "construct": "double-zero-literal",
+   "sql": "SELECT -0.0D, -0.0, CAST('-0.0' AS DOUBLE), 0.0D * -1, typeof(-0.0)",
+   "note": "whether a literal or a cast keeps the sign of zero",
+   "observed": {
+    "ansi=true": "(-0.0, 0.0, -0.0, -0.0, decimal(1,1))",
+    "ansi=false": "(-0.0, 0.0, -0.0, -0.0, decimal(1,1))"
+   }
+  },
+  {
+   "construct": "double-rounding-arith",
+   "sql": "SELECT 0.1D + 0.2D, 1.0D / 3.0D, 1e16D + 1.0D, 0.1D * 3.0D",
+   "observed": {
+    "ansi=true": "(0.30000000000000004, 0.3333333333333333, 1e+16, 0.30000000000000004)",
+    "ansi=false": "(0.30000000000000004, 0.3333333333333333, 1e+16, 0.30000000000000004)"
+   }
+  },
+  {
+   "construct": "double-math-domain",
+   "sql": "SELECT x, sqrt(x), ln(x), log10(x), log2(x), log(2.0D, x), log(x, 8.0D), asin(x), acos(x), exp(x), sin(x), cos(x), tan(x), atan(x) FROM VALUES (CAST('0' AS DOUBLE)), (CAST('-0' AS DOUBLE)), (CAST('1' AS DOUBLE)), (CAST('-1' AS DOUBLE)), (CAST('2.5' AS DOUBLE)), (CAST('1e308' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)), (CAST('-Infinity' AS DOUBLE)), (CAST('NaN' AS DOUBLE)), (-1e-320D), (2.0D) AS s(x)",
+   "observed": {
+    "ansi=true": "(0.0, 0.0, NULL, NULL, NULL, NULL, NULL, 0.0, 1.5707963267948966, 1.0, 0.0, 1.0, 0.0, 0.0); (-0.0, -0.0, NULL, NULL, NULL, NULL, NULL, -0.0, 1.5707963267948966, 1.0, -0.0, 1.0, -0.0, -0.0); (1.0, 1.0, 0.0, 0.0, 0.0, 0.0, inf, 1.5707963267948966, 0.0, 2.7182818284590455, 0.8414709848078965, 0.5403023058681398, 1.5574077246549023, 0.7853981633974483); (-1.0, -NaN, NULL, NULL, NULL, NULL, NULL, -1.5707963267948966, 3.141592653589793, 0.36787944117144233, -0.8414709848078965, 0.5403023058681398, -1.5574077246549023, -0.7853981633974483); (2.5, 1.5811388300841898, 0.9162907318741551, 0.3979400086720376, 1.3219280948873624, 1.3219280948873624, 2.26941239209809, -NaN, -NaN, 12.182493960703473, 0.5984721441039564, -0.8011436155469337, -0.7470222972386603, 1.1902899496825317); (1e+308, 1e+154, 709.1962086421661, 308.0, 1023.1538532253077, 1023.1538532253077, 0.00293211034737644, -NaN, -NaN, inf, 0.4533964905016491, -0.8913089376870335, -0.5086861259107568, 1.5707963267948966); (inf, inf, inf, inf, inf, inf, 0.0, -NaN, -NaN, inf, -NaN, -NaN, -NaN, 1.5707963267948966); (-inf, -NaN, NULL, NULL, NULL, NULL, NULL, -NaN, -NaN, 0.0, -NaN, -NaN, -NaN, -1.5707963267948966); (NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN); (-1e-320, -NaN, NULL, NULL, NULL, NULL, NULL, -1e-320, 1.5707963267948966, 1.0, -1e-320, 1.0, -1e-320, -1e-320); (2.0, 1.4142135623730951, 0.6931471805599453, 0.3010299956639812, 1.0, 1.0, 3.0, -NaN, -NaN, 7.38905609893065, 0.9092974268256817, -0.4161468365471424, -2.185039863261519, 1.1071487177940904)",
+    "ansi=false": "(0.0, 0.0, NULL, NULL, NULL, NULL, NULL, 0.0, 1.5707963267948966, 1.0, 0.0, 1.0, 0.0, 0.0); (-0.0, -0.0, NULL, NULL, NULL, NULL, NULL, -0.0, 1.5707963267948966, 1.0, -0.0, 1.0, -0.0, -0.0); (1.0, 1.0, 0.0, 0.0, 0.0, 0.0, inf, 1.5707963267948966, 0.0, 2.7182818284590455, 0.8414709848078965, 0.5403023058681398, 1.5574077246549023, 0.7853981633974483); (-1.0, -NaN, NULL, NULL, NULL, NULL, NULL, -1.5707963267948966, 3.141592653589793, 0.36787944117144233, -0.8414709848078965, 0.5403023058681398, -1.5574077246549023, -0.7853981633974483); (2.5, 1.5811388300841898, 0.9162907318741551, 0.3979400086720376, 1.3219280948873624, 1.3219280948873624, 2.26941239209809, -NaN, -NaN, 12.182493960703473, 0.5984721441039564, -0.8011436155469337, -0.7470222972386603, 1.1902899496825317); (1e+308, 1e+154, 709.1962086421661, 308.0, 1023.1538532253077, 1023.1538532253077, 0.00293211034737644, -NaN, -NaN, inf, 0.4533964905016491, -0.8913089376870335, -0.5086861259107568, 1.5707963267948966); (inf, inf, inf, inf, inf, inf, 0.0, -NaN, -NaN, inf, -NaN, -NaN, -NaN, 1.5707963267948966); (-inf, -NaN, NULL, NULL, NULL, NULL, NULL, -NaN, -NaN, 0.0, -NaN, -NaN, -NaN, -1.5707963267948966); (NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN); (-1e-320, -NaN, NULL, NULL, NULL, NULL, NULL, -1e-320, 1.5707963267948966, 1.0, -1e-320, 1.0, -1e-320, -1e-320); (2.0, 1.4142135623730951, 0.6931471805599453, 0.3010299956639812, 1.0, 1.0, 3.0, -NaN, -NaN, 7.38905609893065, 0.9092974268256817, -0.4161468365471424, -2.185039863261519, 1.1071487177940904)"
+   }
+  },
+  {
+   "construct": "double-atan2",
+   "sql": "SELECT atan2(a, b) FROM VALUES (0.0D, 0.0D), (-0.0D, 0.0D), (0.0D, -0.0D), (-0.0D, -0.0D), (CAST('Infinity' AS DOUBLE), CAST('Infinity' AS DOUBLE)), (1.0D, CAST('NaN' AS DOUBLE)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0.0); (0.0); (0.0); (0.0); (0.7853981633974483); (NaN)",
+    "ansi=false": "(0.0); (0.0); (0.0); (0.0); (0.7853981633974483); (NaN)"
+   }
+  },
+  {
+   "construct": "double-power",
+   "sql": "SELECT a, b, power(a, b), typeof(power(a, b)) FROM VALUES (-8.0D, 1.0D / 3.0D), (0.0D, -1.0D), (-0.0D, -1.0D), (1.0D, CAST('NaN' AS DOUBLE)), (CAST('NaN' AS DOUBLE), 0.0D), (10.0D, 400.0D), (-1.0D, CAST('Infinity' AS DOUBLE)), (2.0D, 0.5D) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(-8.0, 0.3333333333333333, -NaN, double); (0.0, -1.0, inf, double); (-0.0, -1.0, -inf, double); (1.0, NaN, NaN, double); (NaN, 0.0, 1.0, double); (10.0, 400.0, inf, double); (-1.0, inf, -NaN, double); (2.0, 0.5, 1.4142135623730951, double)",
+    "ansi=false": "(-8.0, 0.3333333333333333, -NaN, double); (0.0, -1.0, inf, double); (-0.0, -1.0, -inf, double); (1.0, NaN, NaN, double); (NaN, 0.0, 1.0, double); (10.0, 400.0, inf, double); (-1.0, inf, -NaN, double); (2.0, 0.5, 1.4142135623730951, double)"
+   }
+  },
+  {
+   "construct": "double-round",
+   "sql": "SELECT x, round(x), round(x, 1), round(x, -1), bround(x), bround(x, 1), typeof(round(x)) FROM VALUES (0.5D), (1.5D), (2.5D), (-2.5D), (-0.5D), (2.675D), (0.285D), (1.005D), (15.0D), (25.0D), (1e300D), (CAST('NaN' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)), (-0.4D) AS s(x)",
+   "observed": {
+    "ansi=true": "(0.5, 1.0, 0.5, 0.0, 0.0, 0.5, double); (1.5, 2.0, 1.5, 0.0, 2.0, 1.5, double); (2.5, 3.0, 2.5, 0.0, 2.0, 2.5, double); (-2.5, -3.0, -2.5, 0.0, -2.0, -2.5, double); (-0.5, -1.0, -0.5, 0.0, 0.0, -0.5, double); (2.675, 3.0, 2.7, 0.0, 3.0, 2.7, double); (0.285, 0.0, 0.3, 0.0, 0.0, 0.3, double); (1.005, 1.0, 1.0, 0.0, 1.0, 1.0, double); (15.0, 15.0, 15.0, 20.0, 15.0, 15.0, double); (25.0, 25.0, 25.0, 30.0, 25.0, 25.0, double); (1e+300, 1e+300, 1e+300, 1e+300, 1e+300, 1e+300, double); (NaN, NaN, NaN, NaN, NaN, NaN, double); (inf, inf, inf, inf, inf, inf, double); (-0.4, 0.0, -0.4, 0.0, 0.0, -0.4, double)",
+    "ansi=false": "(0.5, 1.0, 0.5, 0.0, 0.0, 0.5, double); (1.5, 2.0, 1.5, 0.0, 2.0, 1.5, double); (2.5, 3.0, 2.5, 0.0, 2.0, 2.5, double); (-2.5, -3.0, -2.5, 0.0, -2.0, -2.5, double); (-0.5, -1.0, -0.5, 0.0, 0.0, -0.5, double); (2.675, 3.0, 2.7, 0.0, 3.0, 2.7, double); (0.285, 0.0, 0.3, 0.0, 0.0, 0.3, double); (1.005, 1.0, 1.0, 0.0, 1.0, 1.0, double); (15.0, 15.0, 15.0, 20.0, 15.0, 15.0, double); (25.0, 25.0, 25.0, 30.0, 25.0, 25.0, double); (1e+300, 1e+300, 1e+300, 1e+300, 1e+300, 1e+300, double); (NaN, NaN, NaN, NaN, NaN, NaN, double); (inf, inf, inf, inf, inf, inf, double); (-0.4, 0.0, -0.4, 0.0, 0.0, -0.4, double)"
+   }
+  },
+  {
+   "construct": "double-round-digits",
+   "sql": "SELECT round(x, 2), bround(x, 2), round(y, -2), bround(y, -2), round(z, 2), round(z, 400), round(x, -400) FROM VALUES (2.675D, 1250.0D, 1e300D), (0.285D, 1350.0D, 5e-324D), (1.005D, -1250.0D, 1.7976931348623157e308D), (-0.004D, -40.0D, -0.004D) AS s(x, y, z)",
+   "observed": {
+    "ansi=true": "(2.68, 2.68, 1300.0, 1200.0, 1e+300, 1e+300, 0.0); (0.29, 0.28, 1400.0, 1400.0, 0.0, 5e-324, 0.0); (1.01, 1.0, -1300.0, -1200.0, 1.7976931348623157e+308, 1.7976931348623157e+308, 0.0); (0.0, 0.0, 0.0, 0.0, 0.0, -0.004, 0.0)",
+    "ansi=false": "(2.68, 2.68, 1300.0, 1200.0, 1e+300, 1e+300, 0.0); (0.29, 0.28, 1400.0, 1400.0, 0.0, 5e-324, 0.0); (1.01, 1.0, -1300.0, -1200.0, 1.7976931348623157e+308, 1.7976931348623157e+308, 0.0); (0.0, 0.0, 0.0, 0.0, 0.0, -0.004, 0.0)"
+   }
+  },
+  {
+   "construct": "double-floor-ceil",
+   "sql": "SELECT x, floor(x), ceil(x), typeof(floor(x)), floor(x, 0), typeof(floor(x, 0)) FROM VALUES (CAST('0' AS DOUBLE)), (CAST('-0' AS DOUBLE)), (CAST('1' AS DOUBLE)), (CAST('-1' AS DOUBLE)), (CAST('2.5' AS DOUBLE)), (CAST('1e308' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)), (CAST('-Infinity' AS DOUBLE)), (CAST('NaN' AS DOUBLE)), (1e20D), (-2.5D) AS s(x)",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(0.0, 0, 0, bigint, 0, decimal(16,0)); (-0.0, 0, 0, bigint, 0, decimal(16,0)); (1.0, 1, 1, bigint, 1, decimal(16,0)); (-1.0, -1, -1, bigint, -1, decimal(16,0)); (2.5, 2, 3, bigint, 2, decimal(16,0)); (1e+308, 9223372036854775807, 9223372036854775807, bigint, NULL, decimal(16,0)); (inf, 9223372036854775807, 9223372036854775807, bigint, NULL, decimal(16,0)); (-inf, -9223372036854775808, -9223372036854775808, bigint, NULL, decimal(16,0)); (NaN, 0, 0, bigint, NULL, decimal(16,0)); (1e+20, 9223372036854775807, 9223372036854775807, bigint, NULL, decimal(16,0)); (-2.5, -3, -2, bigint, -3, decimal(16,0))"
+   }
+  },
+  {
+   "construct": "double-floor-ceil-finite",
+   "sql": "SELECT x, floor(x), ceil(x), typeof(floor(x)), floor(x, 0), ceil(x, 1), typeof(ceil(x, 1)) FROM VALUES (2.5D), (-2.5D), (-0.5D), (-0.0D), (9.2e18D) AS s(x)",
+   "observed": {
+    "ansi=true": "error NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION]  9200000000000000000 cannot be represented as Decimal(30, 15). If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error, and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(2.5, 2, 3, bigint, 2, 2.5, decimal(17,1)); (-2.5, -3, -2, bigint, -3, -2.5, decimal(17,1)); (-0.5, -1, 0, bigint, -1, -0.5, decimal(17,1)); (-0.0, 0, 0, bigint, 0, 0.0, decimal(17,1)); (9.2e+18, 9200000000000000000, 9200000000000000000, bigint, NULL, NULL, decimal(17,1))"
+   }
+  },
+  {
+   "construct": "double-floor-nan",
+   "sql": "SELECT floor(CAST('NaN' AS DOUBLE)), ceil(CAST('NaN' AS DOUBLE))",
+   "observed": {
+    "ansi=true": "(0, 0)",
+    "ansi=false": "(0, 0)"
+   }
+  },
+  {
+   "construct": "double-floor-inf",
+   "sql": "SELECT floor(CAST('Infinity' AS DOUBLE))",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(9223372036854775807)"
+   }
+  },
+  {
+   "construct": "double-compare",
+   "sql": "SELECT a, b, a = b, a < b, a > b, a <=> b, greatest(a, b), least(a, b) FROM VALUES (CAST('NaN' AS DOUBLE), CAST('NaN' AS DOUBLE)), (CAST('NaN' AS DOUBLE), CAST('Infinity' AS DOUBLE)), (1.0D, CAST('NaN' AS DOUBLE)), (-0.0D, 0.0D), (0.0D, -0.0D), (CAST(NULL AS DOUBLE), CAST('NaN' AS DOUBLE)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(NaN, NaN, True, False, False, True, NaN, NaN); (NaN, inf, False, False, True, False, NaN, inf); (1.0, NaN, False, True, False, False, NaN, 1.0); (-0.0, 0.0, True, False, False, True, -0.0, -0.0); (0.0, -0.0, True, False, False, True, 0.0, 0.0); (NULL, NaN, NULL, NULL, NULL, False, NaN, NaN)",
+    "ansi=false": "(NaN, NaN, True, False, False, True, NaN, NaN); (NaN, inf, False, False, True, False, NaN, inf); (1.0, NaN, False, True, False, False, NaN, 1.0); (-0.0, 0.0, True, False, False, True, -0.0, -0.0); (0.0, -0.0, True, False, False, True, 0.0, 0.0); (NULL, NaN, NULL, NULL, NULL, False, NaN, NaN)"
+   }
+  },
+  {
+   "construct": "double-sort",
+   "sql": "SELECT x FROM VALUES (CAST('0' AS DOUBLE)), (CAST('-0' AS DOUBLE)), (CAST('1' AS DOUBLE)), (CAST('-1' AS DOUBLE)), (CAST('2.5' AS DOUBLE)), (CAST('1e308' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)), (CAST('-Infinity' AS DOUBLE)), (CAST('NaN' AS DOUBLE)), (CAST(NULL AS DOUBLE)), (-0.0D) AS s(x) ORDER BY x",
+   "observed": {
+    "ansi=true": "(NULL); (-inf); (-1.0); (-0.0); (0.0); (-0.0); (1.0); (2.5); (1e+308); (inf); (NaN)",
+    "ansi=false": "(NULL); (-inf); (-1.0); (-0.0); (0.0); (-0.0); (1.0); (2.5); (1e+308); (inf); (NaN)"
+   }
+  },
+  {
+   "construct": "double-sort-desc",
+   "sql": "SELECT x FROM VALUES (CAST('0' AS DOUBLE)), (CAST('-0' AS DOUBLE)), (CAST('1' AS DOUBLE)), (CAST('-1' AS DOUBLE)), (CAST('2.5' AS DOUBLE)), (CAST('1e308' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)), (CAST('-Infinity' AS DOUBLE)), (CAST('NaN' AS DOUBLE)), (CAST(NULL AS DOUBLE)) AS s(x) ORDER BY x DESC",
+   "observed": {
+    "ansi=true": "(NaN); (inf); (1e+308); (2.5); (1.0); (0.0); (-0.0); (-1.0); (-inf); (NULL)",
+    "ansi=false": "(NaN); (inf); (1e+308); (2.5); (1.0); (0.0); (-0.0); (-1.0); (-inf); (NULL)"
+   }
+  },
+  {
+   "construct": "double-group-nan-zero",
+   "sql": "SELECT x, count(*) FROM VALUES (0.0D), (-0.0D), (-0.0D), (CAST('NaN' AS DOUBLE)), (-CAST('NaN' AS DOUBLE)), (CAST('NaN' AS DOUBLE) * 0.0D) AS s(x) GROUP BY x ORDER BY x",
+   "observed": {
+    "ansi=true": "(0.0, 3); (NaN, 3)",
+    "ansi=false": "(0.0, 3); (NaN, 3)"
+   }
+  },
+  {
+   "construct": "double-group-zero-first",
+   "sql": "SELECT x, count(*) FROM VALUES (-0.0D), (0.0D) AS s(x) GROUP BY x",
+   "note": "which zero represents the group when -0.0 comes first",
+   "observed": {
+    "ansi=true": "(0.0, 2)",
+    "ansi=false": "(0.0, 2)"
+   }
+  },
+  {
+   "construct": "double-distinct-nan-zero",
+   "sql": "SELECT DISTINCT x FROM VALUES (-0.0D), (0.0D), (CAST('NaN' AS DOUBLE)), (-CAST('NaN' AS DOUBLE)) AS s(x) ORDER BY x",
+   "observed": {
+    "ansi=true": "(0.0); (NaN)",
+    "ansi=false": "(0.0); (NaN)"
+   }
+  },
+  {
+   "construct": "double-join-nan-zero",
+   "sql": "SELECT l.x, r.y FROM VALUES (0.0D), (CAST('NaN' AS DOUBLE)) AS l(x) JOIN VALUES (-0.0D), (-CAST('NaN' AS DOUBLE)) AS r(y) ON l.x = r.y ORDER BY l.x",
+   "observed": {
+    "ansi=true": "(0.0, -0.0); (NaN, -NaN)",
+    "ansi=false": "(0.0, -0.0); (NaN, -NaN)"
+   }
+  },
+  {
+   "construct": "double-min-max",
+   "sql": "SELECT min(x), max(x) FROM VALUES (1.0D), (CAST('NaN' AS DOUBLE)), (-1.0D) AS s(x)",
+   "observed": {
+    "ansi=true": "(-1.0, NaN)",
+    "ansi=false": "(-1.0, NaN)"
+   }
+  },
+  {
+   "construct": "double-min-max-zero",
+   "sql": "SELECT min(x), max(x), min(y), max(y) FROM VALUES (-0.0D, 0.0D), (0.0D, -0.0D) AS s(x, y)",
+   "observed": {
+    "ansi=true": "(-0.0, -0.0, 0.0, 0.0)",
+    "ansi=false": "(-0.0, -0.0, 0.0, 0.0)"
+   }
+  },
+  {
+   "construct": "double-nan-sign",
+   "sql": "SELECT x, -x, x * -1.0D, abs(x), CAST(x AS STRING) FROM VALUES (CAST('NaN' AS DOUBLE)), (-CAST('NaN' AS DOUBLE)), (CAST('Infinity' AS DOUBLE) - CAST('Infinity' AS DOUBLE)), (CAST('Infinity' AS DOUBLE) * 0.0D) AS s(x)",
+   "note": "NaN's sign is read from the double the driver receives (copysign)",
+   "observed": {
+    "ansi=true": "(NaN, -NaN, NaN, NaN, NaN); (-NaN, NaN, -NaN, NaN, NaN); (-NaN, NaN, -NaN, NaN, NaN); (-NaN, NaN, -NaN, NaN, NaN)",
+    "ansi=false": "(NaN, -NaN, NaN, NaN, NaN); (-NaN, NaN, -NaN, NaN, NaN); (-NaN, NaN, -NaN, NaN, NaN); (-NaN, NaN, -NaN, NaN, NaN)"
+   }
+  },
+  {
+   "construct": "float-arith",
+   "sql": "SELECT a + b, a * b, a / b, typeof(a + b), CAST(16777216 AS FLOAT) + CAST(1 AS FLOAT), a + 0.1D, typeof(a + 0.1D), typeof(a + 1) FROM VALUES (CAST(0.1 AS FLOAT), CAST(0.2 AS FLOAT)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0.30000001192092896, 0.020000001415610313, 0.5, float, 16777216.0, 0.20000000149011612, double, double)",
+    "ansi=false": "(0.30000001192092896, 0.020000001415610313, 0.5, float, 16777216.0, 0.20000000149011612, double, float)"
+   }
+  },
+  {
+   "construct": "float-edges",
+   "sql": "SELECT a * CAST(10 AS FLOAT), typeof(a * CAST(10 AS FLOAT)), -CAST(0 AS FLOAT), CAST(1e-50D AS FLOAT), sqrt(CAST(-1 AS FLOAT)), typeof(sqrt(a)), a - a * CAST('Infinity' AS FLOAT), typeof(round(a)), typeof(floor(a)) FROM VALUES (CAST(3e38 AS FLOAT)) AS s(a)",
+   "observed": {
+    "ansi=true": "(inf, float, -0.0, 0.0, -NaN, double, -inf, float, bigint)",
+    "ansi=false": "(inf, float, -0.0, 0.0, -NaN, double, -inf, float, bigint)"
+   }
+  },
+  {
+   "construct": "float-divide-zero",
+   "sql": "SELECT a / CAST(0 AS FLOAT), a % CAST(0 AS FLOAT) FROM VALUES (CAST(1 AS FLOAT)) AS s(a)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, NULL)"
+   }
+  },
+  {
+   "construct": "float-cast-overflow",
+   "sql": "SELECT CAST(1e40D AS FLOAT), CAST('1e40' AS FLOAT)",
+   "observed": {
+    "ansi=true": "(inf, inf)",
+    "ansi=false": "(inf, inf)"
+   }
+  },
+  {
+   "construct": "float-literal",
+   "sql": "SELECT 1.5F, typeof(1.5F), typeof(CAST(1 AS REAL)), CAST(0.1F AS DOUBLE), CAST(CAST(0.1F AS DOUBLE) AS STRING)",
+   "observed": {
+    "ansi=true": "(1.5, float, float, 0.10000000149011612, 0.10000000149011612)",
+    "ansi=false": "(1.5, float, float, 0.10000000149011612, 0.10000000149011612)"
+   }
+  },
+  {
+   "construct": "decimal-types",
+   "sql": "SELECT typeof(a + b), typeof(a - b), typeof(a * b), typeof(a / b), typeof(a % b), a * b, a / b FROM VALUES (CAST(0.05 AS DECIMAL(10,2)), CAST(0.5 AS DECIMAL(10,1))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(decimal(12,2), decimal(12,2), decimal(21,3), decimal(22,13), decimal(10,2), 0.025, 0.1000000000000)",
+    "ansi=false": "(decimal(12,2), decimal(12,2), decimal(21,3), decimal(22,13), decimal(10,2), 0.025, 0.1000000000000)"
+   }
+  },
+  {
+   "construct": "decimal-rescale",
+   "sql": "SELECT x, CAST(x AS DECIMAL(10,2)), round(x, 2), bround(x, 2) FROM VALUES (CAST(0.125 AS DECIMAL(10,3))), (CAST(-0.125 AS DECIMAL(10,3))), (CAST(0.135 AS DECIMAL(10,3))), (CAST(0.124 AS DECIMAL(10,3))) AS s(x)",
+   "observed": {
+    "ansi=true": "(0.125, 0.13, 0.13, 0.12); (-0.125, -0.13, -0.13, -0.12); (0.135, 0.14, 0.14, 0.14); (0.124, 0.12, 0.12, 0.12)",
+    "ansi=false": "(0.125, 0.13, 0.13, 0.12); (-0.125, -0.13, -0.13, -0.12); (0.135, 0.14, 0.14, 0.14); (0.124, 0.12, 0.12, 0.12)"
+   }
+  },
+  {
+   "construct": "decimal-divide",
+   "sql": "SELECT a / b, typeof(a / b) FROM VALUES (CAST(1.00 AS DECIMAL(10,2)), CAST(8 AS DECIMAL(10,0))), (CAST(2 AS DECIMAL(10,0)), CAST(3 AS DECIMAL(10,0))), (CAST(1 AS DECIMAL(38,0)), CAST(3 AS DECIMAL(38,0))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(0.125000, decimal(38,6)); (0.666667, decimal(38,6)); (0.333333, decimal(38,6))",
+    "ansi=false": "(0.125000, decimal(38,6)); (0.666667, decimal(38,6)); (0.333333, decimal(38,6))"
+   }
+  },
+  {
+   "construct": "decimal-precision-loss",
+   "sql": "SELECT a * b, typeof(a * b) FROM VALUES (CAST(1.0000000005 AS DECIMAL(38,10)), CAST(1.0000005 AS DECIMAL(38,10))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(1.000001, decimal(38,6))",
+    "ansi=false": "(1.000001, decimal(38,6))"
+   }
+  },
+  {
+   "construct": "decimal-precision-loss-off",
+   "sql": "SELECT a * b, typeof(a * b) FROM VALUES (CAST(1.0000000005 AS DECIMAL(38,10)), CAST(1.0000005 AS DECIMAL(38,10))) AS s(a, b)",
+   "conf": {
+    "spark.sql.decimalOperations.allowPrecisionLoss": "false"
+   },
+   "observed": {
+    "ansi=true": "(1.00000050050000025000, decimal(38,20))",
+    "ansi=false": "(1.00000050050000025000, decimal(38,20))"
+   }
+  },
+  {
+   "construct": "decimal-overflow-add",
+   "sql": "SELECT a + a, typeof(a + a) FROM VALUES (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))) AS s(a)",
+   "observed": {
+    "ansi=true": "error NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION]  199999999999999999999999999999999999998 cannot be represented as Decimal(38, 0). If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error, and return NULL instead. SQLSTATE: 220",
+    "ansi=false": "(NULL, decimal(38,0))"
+   }
+  },
+  {
+   "construct": "decimal-overflow-multiply",
+   "sql": "SELECT a * CAST(10 AS DECIMAL(2,0)), typeof(a * CAST(10 AS DECIMAL(2,0))) FROM VALUES (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))) AS s(a)",
+   "observed": {
+    "ansi=true": "error NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION]  999999999999999999999999999999999999990 cannot be represented as Decimal(38, 0). If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error, and return NULL instead. SQLSTATE: 220",
+    "ansi=false": "(NULL, decimal(38,0))"
+   }
+  },
+  {
+   "construct": "decimal-overflow-subtract",
+   "sql": "SELECT -a - a FROM VALUES (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))) AS s(a)",
+   "observed": {
+    "ansi=true": "error NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION]  The -100000000000000000000000000000000000000 rounded half up from -1.000000000000000000000000000000000E+38 cannot be represented as Decimal(38, 0). SQLSTATE: 22003",
+    "ansi=false": "error NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION]  The -100000000000000000000000000000000000000 rounded half up from -1.000000000000000000000000000000000E+38 cannot be represented as Decimal(38, 0). SQLSTATE: 22003"
+   }
+  },
+  {
+   "construct": "decimal-overflow-scaled",
+   "sql": "SELECT a + a, typeof(a + a) FROM VALUES (CAST('9999999999999999999999999999999999.9999' AS DECIMAL(38,4))) AS s(a)",
+   "note": "a result type of precision 39 borrows from the scale",
+   "observed": {
+    "ansi=true": "error NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION]  19999999999999999999999999999999999.9998 cannot be represented as Decimal(38, 4). If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error, and return NULL instead. SQLSTATE: 22",
+    "ansi=false": "(NULL, decimal(38,4))"
+   }
+  },
+  {
+   "construct": "decimal-negate-34-digits",
+   "sql": "SELECT CAST(-a AS STRING), CAST(abs(-a) AS STRING), CAST(0 - a AS STRING), CAST(-b AS STRING) FROM VALUES (CAST('12345678901234567890123456789012345678' AS DECIMAL(38,0)), CAST('1234567890123456789.0123456789012345678' AS DECIMAL(38,19))) AS s(a, b)",
+   "note": "negation and abs of a decimal with more than 34 significant digits (SP-1)",
+   "observed": {
+    "ansi=true": "(-12345678901234567890123456789012350000, 12345678901234567890123456789012350000, -12345678901234567890123456789012345678, -1234567890123456789.0123456789012350000)",
+    "ansi=false": "(-12345678901234567890123456789012350000, 12345678901234567890123456789012350000, -12345678901234567890123456789012345678, -1234567890123456789.0123456789012350000)"
+   }
+  },
+  {
+   "construct": "decimal-negate-max",
+   "sql": "SELECT -a FROM VALUES (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))) AS s(a)",
+   "observed": {
+    "ansi=true": "error NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION]  The -100000000000000000000000000000000000000 rounded half up from -1.000000000000000000000000000000000E+38 cannot be represented as Decimal(38, 0). SQLSTATE: 22003",
+    "ansi=false": "error NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITHOUT_SUGGESTION]  The -100000000000000000000000000000000000000 rounded half up from -1.000000000000000000000000000000000E+38 cannot be represented as Decimal(38, 0). SQLSTATE: 22003"
+   }
+  },
+  {
+   "construct": "decimal-divide-zero",
+   "sql": "SELECT a / b, a % b, a div b FROM VALUES (CAST(1 AS DECIMAL(10,2)), CAST(0 AS DECIMAL(10,2))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(NULL, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "decimal-aggregates",
+   "sql": "SELECT sum(x), typeof(sum(x)), avg(x), typeof(avg(x)), variance(x), typeof(variance(x)) FROM VALUES (CAST(1.25 AS DECIMAL(10,2))), (CAST(2.50 AS DECIMAL(10,2))), (CAST(2.50 AS DECIMAL(10,2))) AS s(x)",
+   "observed": {
+    "ansi=true": "(6.25, decimal(20,2), 2.083333, decimal(14,6), 0.5208333333333334, double)",
+    "ansi=false": "(6.25, decimal(20,2), 2.083333, decimal(14,6), 0.5208333333333334, double)"
+   }
+  },
+  {
+   "construct": "decimal-sum-overflow",
+   "sql": "SELECT sum(x), typeof(sum(x)) FROM VALUES (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))), (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))) AS s(x)",
+   "observed": {
+    "ansi=true folded": "error NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION]  199999999999999999999999999999999999998 cannot be represented as Decimal(38, 0). If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error, and return NULL instead. SQLSTATE: 220",
+    "ansi=true codegen": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] Overflow in sum of decimals. Use 'try_sum' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(NULL, decimal(38,0))"
+   }
+  },
+  {
+   "construct": "decimal-too-wide",
+   "sql": "SELECT CAST(1 AS DECIMAL(39,0))",
+   "observed": {
+    "ansi=true": "error DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION: [DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION] Decimal precision 39 exceeds max precision 38. SQLSTATE: 22003",
+    "ansi=false": "error DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION: [DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION] Decimal precision 39 exceeds max precision 38. SQLSTATE: 22003"
+   }
+  },
+  {
+   "construct": "decimal-abs-compare",
+   "sql": "SELECT abs(a), a = b, a < b, typeof(abs(a)) FROM VALUES (CAST(-1.50 AS DECIMAL(10,2)), CAST(-1.5 AS DECIMAL(5,1))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(1.50, True, False, decimal(10,2))",
+    "ansi=false": "(1.50, True, False, decimal(10,2))"
+   }
+  },
+  {
+   "construct": "string-case",
+   "sql": "SELECT s, upper(s), lower(s), initcap(s), length(upper(s)) FROM VALUES ('ß'), ('ﬁ'), ('İ'), ('ǅ'), ('ΣΑΣ'), ('straße'), ('Ⅻ') AS t(s)",
+   "observed": {
+    "ansi=true": "(ß, SS, ß, Ss, 2); (ﬁ, FI, ﬁ, Fi, 2); (İ, İ, i̇, İ, 1); (ǅ, Ǆ, ǆ, ǅ, 1); (ΣΑΣ, ΣΑΣ, σας, Σας, 3); (straße, STRASSE, straße, Straße, 7); (Ⅻ, Ⅻ, ⅻ, Ⅻ, 1)",
+    "ansi=false": "(ß, SS, ß, Ss, 2); (ﬁ, FI, ﬁ, Fi, 2); (İ, İ, i̇, İ, 1); (ǅ, Ǆ, ǆ, ǅ, 1); (ΣΑΣ, ΣΑΣ, σας, Σας, 3); (straße, STRASSE, straße, Straße, 7); (Ⅻ, Ⅻ, ⅻ, Ⅻ, 1)"
+   }
+  },
+  {
+   "construct": "string-case-sensitivity",
+   "sql": "SELECT 'ABC' LIKE 'a%', 'ABC' ILIKE 'a%', contains('ABC', 'b'), startswith('ABC', 'a'), endswith('ABC', 'c'), instr('ABC', 'b'), locate('b', 'ABC'), 'ABC' RLIKE 'b', replace('ABC', 'b', 'x'), 'ABC' = 'abc'",
+   "observed": {
+    "ansi=true": "(False, True, False, False, False, 0, 0, False, ABC, False)",
+    "ansi=false": "(False, True, False, False, False, 0, 0, False, ABC, False)"
+   }
+  },
+  {
+   "construct": "string-substring",
+   "sql": "SELECT p, l, substring('héllo', p, l), substr('héllo', p, l) FROM VALUES (1, 2), (0, 2), (-1, 2), (-3, 2), (-5, 2), (-6, 2), (-10, 3), (2, -1), (2, 0), (6, 1), (2, 2147483647), (-2147483648, 2147483647) AS t(p, l)",
+   "observed": {
+    "ansi=true": "(1, 2, hé, hé); (0, 2, hé, hé); (-1, 2, o, o); (-3, 2, ll, ll); (-5, 2, hé, hé); (-6, 2, h, h); (-10, 3, , ); (2, -1, , ); (2, 0, , ); (6, 1, , ); (2, 2147483647, éllo, éllo); (-2147483648, 2147483647, héll, héll)",
+    "ansi=false": "(1, 2, hé, hé); (0, 2, hé, hé); (-1, 2, o, o); (-3, 2, ll, ll); (-5, 2, hé, hé); (-6, 2, h, h); (-10, 3, , ); (2, -1, , ); (2, 0, , ); (6, 1, , ); (2, 2147483647, éllo, éllo); (-2147483648, 2147483647, héll, héll)"
+   }
+  },
+  {
+   "construct": "string-substring-no-length",
+   "sql": "SELECT p, substring('héllo', p) FROM VALUES (0), (1), (-2), (-10), (10) AS t(p)",
+   "observed": {
+    "ansi=true": "(0, héllo); (1, héllo); (-2, lo); (-10, héllo); (10, )",
+    "ansi=false": "(0, héllo); (1, héllo); (-2, lo); (-10, héllo); (10, )"
+   }
+  },
+  {
+   "construct": "string-substring-bigint",
+   "sql": "SELECT substring('hello', p, 2) FROM VALUES (4294967297L) AS t(p)",
+   "observed": {
+    "ansi=true": "error CAST_OVERFLOW: [CAST_OVERFLOW] The value 4294967297L of the type \"BIGINT\" cannot be cast to \"INT\" due to an overflow. Use `try_cast` to tolerate overflow and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(he)"
+   }
+  },
+  {
+   "construct": "string-substring-bigint-length",
+   "sql": "SELECT substring('hello', 2, l) FROM VALUES (4294967297L) AS t(l)",
+   "observed": {
+    "ansi=true": "error CAST_OVERFLOW: [CAST_OVERFLOW] The value 4294967297L of the type \"BIGINT\" cannot be cast to \"INT\" due to an overflow. Use `try_cast` to tolerate overflow and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(e)"
+   }
+  },
+  {
+   "construct": "string-positions",
+   "sql": "SELECT instr(s, 'l'), locate('l', s), locate('l', s, 4), position('l' IN s), instr(s, 'z'), instr(s, ''), locate('l', s, 0), length(s), octet_length(s), char_length(s) FROM VALUES ('héllo') AS t(s)",
+   "observed": {
+    "ansi=true": "(3, 3, 4, 3, 0, 1, 0, 5, 6, 5)",
+    "ansi=false": "(3, 3, 4, 3, 0, 1, 0, 5, 6, 5)"
+   }
+  },
+  {
+   "construct": "string-length",
+   "sql": "SELECT s, length(s), char_length(s), octet_length(s), reverse(s) FROM VALUES ('😀a'), ('éx'), ('') AS t(s)",
+   "observed": {
+    "ansi=true": "(😀a, 2, 2, 5, a😀); (éx, 3, 3, 4, x́e); (, 0, 0, 0, )",
+    "ansi=false": "(😀a, 2, 2, 5, a😀); (éx, 3, 3, 4, x́e); (, 0, 0, 0, )"
+   }
+  },
+  {
+   "construct": "string-trim",
+   "sql": "SELECT '[' || trim(s) || ']', '[' || btrim(s) || ']', '[' || ltrim(s) || ']', '[' || rtrim(s) || ']', '[' || trim(BOTH 'x' FROM 'xxaxx') || ']' FROM VALUES (' \ta\n ') AS t(s)",
+   "observed": {
+    "ansi=true": "([\ta\n], [\ta\n], [\ta\n ], [ \ta\n], [a])",
+    "ansi=false": "([\ta\n], [\ta\n], [\ta\n ], [ \ta\n], [a])"
+   }
+  },
+  {
+   "construct": "string-misc",
+   "sql": "SELECT ascii('é'), ascii(''), repeat('ab', 2), repeat('ab', -1), levenshtein('kitten', 'sitting'), levenshtein('héllo', 'hello'), replace('aaa', 'a', ''), replace('abc', '', 'x'), startswith('abc', ''), startswith('abc', NULL)",
+   "observed": {
+    "ansi=true": "(233, 0, abab, , 3, 1, , abc, True, NULL)",
+    "ansi=false": "(233, 0, abab, , 3, 1, , abc, True, NULL)"
+   }
+  },
+  {
+   "construct": "string-concat-null",
+   "sql": "SELECT concat('a', NULL), 'a' || NULL, concat_ws(',', 'a', NULL, 'b'), concat(), concat_ws(',', NULL)",
+   "observed": {
+    "ansi=true": "(NULL, NULL, a,b, , )",
+    "ansi=false": "(NULL, NULL, a,b, , )"
+   }
+  },
+  {
+   "construct": "string-regex",
+   "sql": "SELECT regexp_extract('abc', 'x', 0), regexp_extract('abc', '(b)', 1), regexp_extract('abc', '(x)?b', 1), regexp_replace('abc', '(b)', '[$1]'), regexp_replace('abc', '(b)', '[\\\\1]'), '٣' RLIKE '^\\\\d$', 'é' RLIKE '^\\\\w$', 'É' RLIKE '(?i)é', regexp_like('a\\nb', 'a.b'), regexp_extract_all('a1b22', '\\\\d+', 0), regexp_count('aaa', 'aa'), regexp_instr('xabc', 'b')",
+   "observed": {
+    "ansi=true": "(, b, , a[b]c, a[1]c, False, False, False, False, [1, 22], 1, 3)",
+    "ansi=false": "(, b, , a[b]c, a[1]c, False, False, False, False, [1, 22], 1, 3)"
+   }
+  },
+  {
+   "construct": "string-regex-invalid",
+   "sql": "SELECT 'a' RLIKE '('",
+   "observed": {
+    "ansi=true folded": "error INVALID_PARAMETER_VALUE.PATTERN: [INVALID_PARAMETER_VALUE.PATTERN] The value of parameter(s) `regexp` in `rlike` is invalid: '('. SQLSTATE: 22023",
+    "ansi=true codegen": "error java.util.regex.PatternSyntaxException: Unclosed group near index 1\n(",
+    "ansi=false folded": "error INVALID_PARAMETER_VALUE.PATTERN: [INVALID_PARAMETER_VALUE.PATTERN] The value of parameter(s) `regexp` in `rlike` is invalid: '('. SQLSTATE: 22023",
+    "ansi=false codegen": "error java.util.regex.PatternSyntaxException: Unclosed group near index 1\n("
+   }
+  },
+  {
+   "construct": "string-regex-group-out-of-range",
+   "sql": "SELECT regexp_extract('abc', '(b)', 2)",
+   "observed": {
+    "ansi=true": "error INVALID_PARAMETER_VALUE.REGEX_GROUP_INDEX: [INVALID_PARAMETER_VALUE.REGEX_GROUP_INDEX] The value of parameter(s) `idx` in `regexp_extract` is invalid: Expects group index between 0 and 1, but got 2. SQLSTATE: 22023",
+    "ansi=false": "error INVALID_PARAMETER_VALUE.REGEX_GROUP_INDEX: [INVALID_PARAMETER_VALUE.REGEX_GROUP_INDEX] The value of parameter(s) `idx` in `regexp_extract` is invalid: Expects group index between 0 and 1, but got 2. SQLSTATE: 22023"
+   }
+  },
+  {
+   "construct": "string-regex-null-pattern",
+   "sql": "SELECT regexp_extract('abc', NULL, 0), regexp_replace('abc', 'b', NULL), 'abc' RLIKE NULL",
+   "observed": {
+    "ansi=true": "(NULL, NULL, NULL)",
+    "ansi=false": "(NULL, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "string-digests",
+   "sql": "SELECT md5('abc'), sha2('abc', 256), sha1('abc'), crc32('abc'), md5('é'), sha2('abc', 0), sha2('abc', 1), md5(CAST('abc' AS BINARY)), typeof(md5('a'))",
+   "observed": {
+    "ansi=true": "(900150983cd24fb0d6963f7d28e17f72, ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad, a9993e364706816aba3e25717850c26c9cd0d89d, 891568578, 66ddcd97cfdeabb2f6fb8a999b4bc76f, ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad, NULL, 900150983cd24fb0d6963f7d28e17f72, string)",
+    "ansi=false": "(900150983cd24fb0d6963f7d28e17f72, ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad, a9993e364706816aba3e25717850c26c9cd0d89d, 891568578, 66ddcd97cfdeabb2f6fb8a999b4bc76f, ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad, NULL, 900150983cd24fb0d6963f7d28e17f72, string)"
+   }
+  },
+  {
+   "construct": "string-order",
+   "sql": "SELECT s FROM VALUES ('b'), ('B'), ('a'), ('é'), ('z'), (''), ('😀'), ('Ａ') AS t(s) ORDER BY s",
+   "observed": {
+    "ansi=true": "(); (B); (a); (b); (z); (é); (Ａ); (😀)",
+    "ansi=false": "(); (B); (a); (b); (z); (é); (Ａ); (😀)"
+   }
+  },
+  {
+   "construct": "string-like-escape",
+   "sql": "SELECT 'a_c' LIKE 'a\\\\_c', 'abc' LIKE 'a\\\\_c', 'a%' LIKE 'a!%' ESCAPE '!', 'aXc' LIKE 'a_c', 'é' LIKE '_', '\\n' LIKE '_'",
+   "observed": {
+    "ansi=true": "(True, False, True, True, True, True)",
+    "ansi=false": "(True, False, True, True, True, True)"
+   }
+  },
+  {
+   "construct": "date-range",
+   "sql": "SELECT CAST(date_add(d, 1) AS STRING), CAST(d + INTERVAL 1 DAY AS STRING), CAST(date_sub(DATE'0001-01-01', 1) AS STRING), typeof(date_add(d, 1)) FROM VALUES (DATE'9999-12-31') AS t(d)",
+   "observed": {
+    "ansi=true": "(+10000-01-01, +10000-01-01, 0000-12-31, date)",
+    "ansi=false": "(+10000-01-01, +10000-01-01, 0000-12-31, date)"
+   }
+  },
+  {
+   "construct": "date-range-far",
+   "sql": "SELECT CAST(date_add(DATE'2024-01-01', n) AS STRING) FROM VALUES (2000000000), (-2000000000), (2147483647) AS t(n)",
+   "observed": {
+    "ansi=true": "(+5477838-01-06); (-5473791-12-27); (-5877587-06-21)",
+    "ansi=false": "(+5477838-01-06); (-5473791-12-27); (-5877587-06-21)"
+   }
+  },
+  {
+   "construct": "date-literal-far",
+   "sql": "SELECT CAST(DATE'+10000-01-01' AS STRING), CAST(make_date(10000, 1, 1) AS STRING), CAST(DATE'-0044-03-15' AS STRING)",
+   "observed": {
+    "ansi=true": "(+10000-01-01, +10000-01-01, -0044-03-15)",
+    "ansi=false": "(+10000-01-01, +10000-01-01, -0044-03-15)"
+   }
+  },
+  {
+   "construct": "make-date-zero",
+   "sql": "SELECT CAST(make_date(0, 1, 1) AS STRING)",
+   "observed": {
+    "ansi=true": "(0000-01-01)",
+    "ansi=false": "(0000-01-01)"
+   }
+  },
+  {
+   "construct": "make-date-invalid",
+   "sql": "SELECT make_date(2024, 2, 30)",
+   "observed": {
+    "ansi=true": "error DATETIME_FIELD_OUT_OF_BOUNDS.WITHOUT_SUGGESTION: [DATETIME_FIELD_OUT_OF_BOUNDS.WITHOUT_SUGGESTION] Invalid date 'FEBRUARY 30'.  SQLSTATE: 22023",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "timestamp-range",
+   "sql": "SELECT CAST(ts + INTERVAL 1 DAY AS STRING), CAST(ts - INTERVAL 3000 YEAR AS STRING) FROM VALUES (TIMESTAMP'9999-12-31 23:59:59') AS t(ts)",
+   "observed": {
+    "ansi=true": "(+10000-01-01 23:59:59, 6999-12-31 23:59:59)",
+    "ansi=false": "(+10000-01-01 23:59:59, 6999-12-31 23:59:59)"
+   }
+  },
+  {
+   "construct": "timestamp-add-overflow",
+   "sql": "SELECT CAST(timestampadd(YEAR, 300000, TIMESTAMP'9999-12-31 23:59:59') AS STRING)",
+   "observed": {
+    "ansi=true": "error DATETIME_OVERFLOW: [DATETIME_OVERFLOW] Datetime operation overflow: add 300000L YEAR to TIMESTAMP '9999-12-31 23:59:59'. SQLSTATE: 22008",
+    "ansi=false": "error DATETIME_OVERFLOW: [DATETIME_OVERFLOW] Datetime operation overflow: add 300000L YEAR to TIMESTAMP '9999-12-31 23:59:59'. SQLSTATE: 22008"
+   }
+  },
+  {
+   "construct": "timestamp-ltz-range",
+   "sql": "SELECT CAST(ts + INTERVAL 1 DAY AS STRING), typeof(ts) FROM VALUES (TIMESTAMP_LTZ'9999-12-31 23:59:59') AS t(ts)",
+   "observed": {
+    "ansi=true": "(+10000-01-01 23:59:59, timestamp)",
+    "ansi=false": "(+10000-01-01 23:59:59, timestamp)"
+   }
+  },
+  {
+   "construct": "date-months",
+   "sql": "SELECT add_months(d, 1), d + INTERVAL 1 MONTH, add_months(d, -1), d + INTERVAL '1-1' YEAR TO MONTH, months_between(DATE'2024-03-31', d) FROM VALUES (DATE'2024-01-31') AS t(d)",
+   "observed": {
+    "ansi=true": "(2024-02-29, 2024-02-29, 2023-12-31, 2025-02-28, 2.0)",
+    "ansi=false": "(2024-02-29, 2024-02-29, 2023-12-31, 2025-02-28, 2.0)"
+   }
+  },
+  {
+   "construct": "time-type",
+   "sql": "SELECT t, typeof(t), t + INTERVAL 13 HOUR, t - INTERVAL 13 HOUR FROM VALUES (TIME'12:00:00') AS s(t)",
+   "observed": {
+    "ansi=true": "error UNSUPPORTED_TIME_TYPE: [UNSUPPORTED_TIME_TYPE] The data type TIME is not supported. SQLSTATE: 0A000",
+    "ansi=false": "error UNSUPPORTED_TIME_TYPE: [UNSUPPORTED_TIME_TYPE] The data type TIME is not supported. SQLSTATE: 0A000"
+   }
+  },
+  {
+   "construct": "time-months",
+   "sql": "SELECT TIME'12:00:00' + INTERVAL 1 MONTH",
+   "observed": {
+    "ansi=true": "error DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES: [DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES] Cannot resolve \"(TIME '12:00:00' + INTERVAL '1' MONTH)\" due to data type mismatch: the left and right operands of the binary operator have incompatible types (\"TIME(6)\" and \"INTERVAL MONTH\"). SQLSTAT",
+    "ansi=false": "error DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES: [DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES] Cannot resolve \"(TIME '12:00:00' + INTERVAL '1' MONTH)\" due to data type mismatch: the left and right operands of the binary operator have incompatible types (\"TIME(6)\" and \"INTERVAL MONTH\"). SQLSTAT"
+   }
+  },
+  {
+   "construct": "time-type-enabled",
+   "sql": "SELECT CAST(t AS STRING), typeof(t), CAST(t + INTERVAL 13 HOUR AS STRING), CAST(t - INTERVAL 13 HOUR AS STRING) FROM VALUES (TIME'12:00:00') AS s(t)",
+   "conf": {
+    "spark.sql.timeType.enabled": "true"
+   },
+   "observed": {
+    "ansi=true": "error DATETIME_OVERFLOW: [DATETIME_OVERFLOW] Datetime operation overflow: add INTERVAL '13' HOUR to the time value TIME '12:00:00'. SQLSTATE: 22008",
+    "ansi=false": "error DATETIME_OVERFLOW: [DATETIME_OVERFLOW] Datetime operation overflow: add INTERVAL '13' HOUR to the time value TIME '12:00:00'. SQLSTATE: 22008"
+   }
+  },
+  {
+   "construct": "time-months-enabled",
+   "sql": "SELECT TIME'12:00:00' + INTERVAL 1 MONTH",
+   "conf": {
+    "spark.sql.timeType.enabled": "true"
+   },
+   "observed": {
+    "ansi=true": "error DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES: [DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES] Cannot resolve \"(TIME '12:00:00' + INTERVAL '1' MONTH)\" due to data type mismatch: the left and right operands of the binary operator have incompatible types (\"TIME(6)\" and \"INTERVAL MONTH\"). SQLSTAT",
+    "ansi=false": "error DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES: [DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES] Cannot resolve \"(TIME '12:00:00' + INTERVAL '1' MONTH)\" due to data type mismatch: the left and right operands of the binary operator have incompatible types (\"TIME(6)\" and \"INTERVAL MONTH\"). SQLSTAT"
+   }
+  },
+  {
+   "construct": "timestamp-precision",
+   "sql": "SELECT CAST('2024-01-01 00:00:00.123456789' AS TIMESTAMP), CAST(CAST('2024-01-01 00:00:00.123456789' AS TIMESTAMP) AS STRING), TIMESTAMP'2024-01-01 00:00:00.1234567', unix_micros(TIMESTAMP_LTZ'1970-01-01 00:00:00.000001')",
+   "observed": {
+    "ansi=true": "(2024-01-01T00:00:00.123456, 2024-01-01 00:00:00.123456, 2024-01-01T00:00:00.123456, 1)",
+    "ansi=false": "(2024-01-01T00:00:00.123456, 2024-01-01 00:00:00.123456, 2024-01-01T00:00:00.123456, 1)"
+   }
+  },
+  {
+   "construct": "timestamp-extremes",
+   "sql": "SELECT CAST(TIMESTAMP_NTZ'-290308-12-21 19:59:06.224192' AS STRING), CAST(TIMESTAMP_NTZ'+294247-01-10 04:00:54.775807' AS STRING)",
+   "observed": {
+    "ansi=true": "(-290308-12-21 19:59:06.224192, +294247-01-10 04:00:54.775807)",
+    "ansi=false": "(-290308-12-21 19:59:06.224192, +294247-01-10 04:00:54.775807)"
+   }
+  },
+  {
+   "construct": "timestamp-overflow",
+   "sql": "SELECT TIMESTAMP_NTZ'+294247-01-10 04:00:54.775807' + INTERVAL 1 DAY",
+   "observed": {
+    "ansi=true folded": "error ArithmeticException: long overflow",
+    "ansi=true codegen": "error java.lang.ArithmeticException: long overflow",
+    "ansi=false folded": "error ArithmeticException: long overflow",
+    "ansi=false codegen": "error java.lang.ArithmeticException: long overflow"
+   }
+  },
+  {
+   "construct": "time-zone-gap",
+   "sql": "SELECT CAST(TIMESTAMP_LTZ'2024-03-10 02:30:00' AS STRING), CAST(to_utc_timestamp(TIMESTAMP_NTZ'2024-03-10 02:30:00', 'America/New_York') AS STRING), CAST(CAST(TIMESTAMP_NTZ'2024-03-10 02:30:00' AS TIMESTAMP_LTZ) AS STRING)",
+   "conf": {
+    "spark.sql.session.timeZone": "America/New_York"
+   },
+   "observed": {
+    "ansi=true": "(2024-03-10 03:30:00, 2024-03-10 07:30:00, 2024-03-10 03:30:00)",
+    "ansi=false": "(2024-03-10 03:30:00, 2024-03-10 07:30:00, 2024-03-10 03:30:00)"
+   }
+  },
+  {
+   "construct": "time-zone-overlap",
+   "sql": "SELECT unix_seconds(TIMESTAMP_LTZ'2024-11-03 01:30:00'), unix_seconds(to_utc_timestamp(TIMESTAMP_NTZ'2024-11-03 01:30:00', 'America/New_York')), CAST(TIMESTAMP_LTZ'2024-11-03 05:30:00Z' AS STRING), CAST(TIMESTAMP_LTZ'2024-11-03 06:30:00Z' AS STRING)",
+   "conf": {
+    "spark.sql.session.timeZone": "America/New_York"
+   },
+   "observed": {
+    "ansi=true": "(1730611800, 1730629800, 2024-11-03 01:30:00, 2024-11-03 01:30:00)",
+    "ansi=false": "(1730611800, 1730629800, 2024-11-03 01:30:00, 2024-11-03 01:30:00)"
+   }
+  },
+  {
+   "construct": "time-zone-convert",
+   "sql": "SELECT CAST(convert_timezone('UTC', 'Asia/Kolkata', TIMESTAMP_NTZ'2024-01-01 00:00:00') AS STRING), CAST(from_utc_timestamp(TIMESTAMP_NTZ'2024-01-01 00:00:00', '+05:30') AS STRING), CAST(TIMESTAMP_LTZ'2024-01-01 00:00:00+05:30' AS STRING), typeof(current_timestamp())",
+   "observed": {
+    "ansi=true": "(2024-01-01 05:30:00, 2024-01-01 05:30:00, 2023-12-31 18:30:00, timestamp)",
+    "ansi=false": "(2024-01-01 05:30:00, 2024-01-01 05:30:00, 2023-12-31 18:30:00, timestamp)"
+   }
+  },
+  {
+   "construct": "time-zone-invalid",
+   "sql": "SELECT from_utc_timestamp(TIMESTAMP_NTZ'2024-01-01 00:00:00', 'Mars/Olympus')",
+   "observed": {
+    "ansi=true": "error INVALID_TIMEZONE: [INVALID_TIMEZONE] The timezone: Mars/Olympus is invalid. The timezone must be either a region-based zone ID or a zone offset. Region IDs must have the form 'area/city', such as 'America/Los_Angeles'. Zone offsets must be in the format '(+|",
+    "ansi=false": "error INVALID_TIMEZONE: [INVALID_TIMEZONE] The timezone: Mars/Olympus is invalid. The timezone must be either a region-based zone ID or a zone offset. Region IDs must have the form 'area/city', such as 'America/Los_Angeles'. Zone offsets must be in the format '(+|"
+   }
+  },
+  {
+   "construct": "week-parts",
+   "sql": "SELECT d, weekofyear(d), dayofweek(d), weekday(d), extract(DOW FROM d), extract(DOW_ISO FROM d), extract(YEAROFWEEK FROM d), date_part('week', d), extract(QUARTER FROM d), dayofyear(d), CAST(date_trunc('week', d) AS DATE), trunc(d, 'week') FROM VALUES (DATE'2021-01-03'), (DATE'2024-12-30'), (DATE'2024-01-01'), (DATE'1969-12-31'), (DATE'0001-01-01') AS t(d)",
+   "observed": {
+    "ansi=true": "(2021-01-03, 53, 1, 6, 1, 7, 2020, 53, 1, 3, 2020-12-28, 2020-12-28); (2024-12-30, 1, 2, 0, 2, 1, 2025, 1, 4, 365, 2024-12-30, 2024-12-30); (2024-01-01, 1, 2, 0, 2, 1, 2024, 1, 1, 1, 2024-01-01, 2024-01-01); (1969-12-31, 1, 4, 2, 4, 3, 1970, 1, 4, 365, 1969-12-29, 1969-12-29); (0001-01-01, 1, 2, 0, 2, 1, 1, 1, 1, 1, 0001-01-01, 0001-01-01)",
+    "ansi=false": "(2021-01-03, 53, 1, 6, 1, 7, 2020, 53, 1, 3, 2020-12-28, 2020-12-28); (2024-12-30, 1, 2, 0, 2, 1, 2025, 1, 4, 365, 2024-12-30, 2024-12-30); (2024-01-01, 1, 2, 0, 2, 1, 2024, 1, 1, 1, 2024-01-01, 2024-01-01); (1969-12-31, 1, 4, 2, 4, 3, 1970, 1, 4, 365, 1969-12-29, 1969-12-29); (0001-01-01, 1, 2, 0, 2, 1, 1, 1, 1, 1, 0001-01-01, 0001-01-01)"
+   }
+  },
+  {
+   "construct": "pre-1970-parts",
+   "sql": "SELECT ts, extract(SECOND FROM ts), second(ts), date_trunc('second', ts), date_trunc('month', ts), date_trunc('year', ts), unix_micros(CAST(ts AS TIMESTAMP_LTZ)) FROM VALUES (TIMESTAMP_NTZ'1969-12-31 23:59:59.5'), (TIMESTAMP_NTZ'1900-03-01 00:00:00.000001') AS t(ts)",
+   "observed": {
+    "ansi=true": "(1969-12-31T23:59:59.500000, 59.500000, 59, 1969-12-31T23:59:59, 1969-12-01T00:00:00, 1969-01-01T00:00:00, -500000); (1900-03-01T00:00:00.000001, 0.000001, 0, 1900-03-01T00:00:00, 1900-03-01T00:00:00, 1900-01-01T00:00:00, -2203891199999999)",
+    "ansi=false": "(1969-12-31T23:59:59.500000, 59.500000, 59, 1969-12-31T23:59:59, 1969-12-01T00:00:00, 1969-01-01T00:00:00, -500000); (1900-03-01T00:00:00.000001, 0.000001, 0, 1900-03-01T00:00:00, 1900-03-01T00:00:00, 1900-01-01T00:00:00, -2203891199999999)"
+   }
+  },
+  {
+   "construct": "date-diff",
+   "sql": "SELECT datediff(DATE'2024-03-01', DATE'2024-02-01'), date_diff(DATE'2024-03-01', DATE'2024-02-01'), timestampdiff(MONTH, TIMESTAMP'2024-01-31 00:00:00', TIMESTAMP'2024-02-29 00:00:00'), timestampdiff(YEAR, DATE'2023-02-28', DATE'2024-02-28'), timestampdiff(DAY, TIMESTAMP'2024-01-01 12:00:00', TIMESTAMP'2024-01-02 11:00:00')",
+   "observed": {
+    "ansi=true": "(29, 29, 0, 1, 0)",
+    "ansi=false": "(29, 29, 0, 1, 0)"
+   }
+  },
+  {
+   "construct": "date-format",
+   "sql": "SELECT date_format(TIMESTAMP'2024-01-05 13:04:05.123456', 'yyyy-MM-dd HH:mm:ss.SSSSSS EEE'), date_format(DATE'2021-01-03', 'YYYY-ww e'), CAST(to_date('05/01/2024', 'dd/MM/yyyy') AS STRING)",
+   "observed": {
+    "ansi=true": "error INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_WEEK_BASED_PATTERN: [INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_WEEK_BASED_PATTERN] You may get a different result due to the upgrading to Spark >= 3.0:",
+    "ansi=false": "error INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_WEEK_BASED_PATTERN: [INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_WEEK_BASED_PATTERN] You may get a different result due to the upgrading to Spark >= 3.0:"
+   }
+  },
+  {
+   "construct": "date-format-legacy-pattern",
+   "sql": "SELECT date_format(DATE'2024-01-05', 'u')",
+   "observed": {
+    "ansi=true": "error INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION: [INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION] You may get a different result due to the upgrading to Spark >= 3.0:",
+    "ansi=false": "error INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION: [INCONSISTENT_BEHAVIOR_CROSS_VERSION.DATETIME_PATTERN_RECOGNITION] You may get a different result due to the upgrading to Spark >= 3.0:"
+   }
+  },
+  {
+   "construct": "to-date-invalid",
+   "sql": "SELECT to_date('2024-02-30')",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '2024-02-30' of the type \"STRING\" cannot be cast to \"DATE\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL in",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "date-format-invalid-input",
+   "sql": "SELECT to_date('2024-13-01', 'yyyy-MM-dd')",
+   "observed": {
+    "ansi=true": "error CANNOT_PARSE_TIMESTAMP: [CANNOT_PARSE_TIMESTAMP] Text '2024-13-01' could not be parsed: Invalid value for MonthOfYear (valid values 1 - 12): 13. Use `try_to_date` to tolerate invalid input string and return NULL instead. SQLSTATE: 22007",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "date-bin",
+   "sql": "SELECT window(TIMESTAMP'2024-01-01 00:07:00', '5 minutes').start, date_trunc('hour', TIMESTAMP'2024-01-01 00:07:00')",
+   "observed": {
+    "ansi=true": "(2024-01-01T00:05:00, 2024-01-01T00:00:00)",
+    "ansi=false": "(2024-01-01T00:05:00, 2024-01-01T00:00:00)"
+   }
+  },
+  {
+   "construct": "cast-double-to-int",
+   "sql": "SELECT x, CAST(x AS TINYINT), CAST(x AS SMALLINT), CAST(x AS INT), CAST(x AS BIGINT) FROM VALUES (1.9D), (-1.9D), (2.5D), (-2.5D), (130.0D), (40000.0D), (3e9D), (1e20D), (CAST('NaN' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)), (-CAST('Infinity' AS DOUBLE)) AS s(x)",
+   "observed": {
+    "ansi=true": "error CAST_OVERFLOW: [CAST_OVERFLOW] The value 130.0D of the type \"DOUBLE\" cannot be cast to \"TINYINT\" due to an overflow. Use `try_cast` to tolerate overflow and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(1.9, 1, 1, 1, 1); (-1.9, -1, -1, -1, -1); (2.5, 2, 2, 2, 2); (-2.5, -2, -2, -2, -2); (130.0, -126, 130, 130, 130); (40000.0, 64, -25536, 40000, 40000); (3000000000.0, -1, -1, 2147483647, 3000000000); (1e+20, -1, -1, 2147483647, 9223372036854775807); (NaN, 0, 0, 0, 0); (inf, -1, -1, 2147483647, 9223372036854775807); (-inf, 0, 0, -2147483648, -9223372036854775808)"
+   }
+  },
+  {
+   "construct": "cast-decimal-to-int",
+   "sql": "SELECT x, CAST(x AS INT), CAST(x AS TINYINT) FROM VALUES (CAST(1.9 AS DECIMAL(10,2))), (CAST(-1.9 AS DECIMAL(10,2))), (CAST(300.5 AS DECIMAL(10,2))) AS s(x)",
+   "observed": {
+    "ansi=true": "error CAST_OVERFLOW: [CAST_OVERFLOW] The value 300.50BD of the type \"DECIMAL(10,2)\" cannot be cast to \"TINYINT\" due to an overflow. Use `try_cast` to tolerate overflow and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(1.90, 1, 1); (-1.90, -1, -1); (300.50, 300, 44)"
+   }
+  },
+  {
+   "construct": "cast-int-narrow",
+   "sql": "SELECT CAST(x AS TINYINT), CAST(x AS INT), CAST(x AS FLOAT), CAST(x AS DOUBLE) FROM VALUES (300L), (9007199254740993L), (9223372036854775807L) AS s(x)",
+   "observed": {
+    "ansi=true": "error CAST_OVERFLOW: [CAST_OVERFLOW] The value 300L of the type \"BIGINT\" cannot be cast to \"TINYINT\" due to an overflow. Use `try_cast` to tolerate overflow and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(44, 300, 300.0, 300.0); (1, 1, 9007199254740992.0, 9007199254740992.0); (-1, -1, 9.223372036854776e+18, 9.223372036854776e+18)"
+   }
+  },
+  {
+   "construct": "cast-string-to-int",
+   "sql": "SELECT s, CAST(s AS INT) FROM VALUES (' 12 '), ('+12'), ('-0'), ('1e3'), ('1.5'), ('-1.9'), ('12abc'), ('0x10'), (''), ('\t7\n'), ('2147483648'), ('١٢') AS t(s)",
+   "observed": {
+    "ansi=true folded": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '1e3' of the type \"STRING\" cannot be cast to \"INT\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instead. S",
+    "ansi=true codegen": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '12abc' of the type \"STRING\" cannot be cast to \"INT\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instead.",
+    "ansi=false": "( 12 , 12); (+12, 12); (-0, 0); (1e3, NULL); (1.5, 1); (-1.9, -1); (12abc, NULL); (0x10, NULL); (, NULL); (\t7\n, 7); (2147483648, NULL); (١٢, NULL)"
+   }
+  },
+  {
+   "construct": "cast-string-to-double",
+   "sql": "SELECT s, CAST(s AS DOUBLE), CAST(s AS FLOAT) FROM VALUES ('nan'), ('NaN'), ('-nan'), ('inf'), ('Infinity'), ('-infinity'), ('+Inf'), (' 1.5 '), ('1e400'), ('1e-400'), ('1.5d'), ('1.5f'), ('0x1p3'), ('.5'), ('5.'), ('1_000') AS t(s)",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '-nan' of the type \"STRING\" cannot be cast to \"DOUBLE\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instea",
+    "ansi=false": "(nan, NaN, NaN); (NaN, NaN, NaN); (-nan, NULL, NULL); (inf, inf, inf); (Infinity, inf, inf); (-infinity, -inf, -inf); (+Inf, inf, inf); ( 1.5 , 1.5, 1.5); (1e400, inf, inf); (1e-400, 0.0, 0.0); (1.5d, 1.5, 1.5); (1.5f, 1.5, 1.5); (0x1p3, 8.0, 8.0); (.5, 0.5, 0.5); (5., 5.0, 5.0); (1_000, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "cast-string-to-decimal",
+   "sql": "SELECT s, CAST(s AS DECIMAL(10,2)) FROM VALUES ('1.005'), ('1.015'), ('-1.005'), (' 2 '), ('1e2'), ('123456789012') AS t(s)",
+   "observed": {
+    "ansi=true": "error NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION]  123456789012 cannot be represented as Decimal(10, 2). If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error, and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(1.005, 1.01); (1.015, 1.02); (-1.005, -1.01); ( 2 , 2.00); (1e2, 100.00); (123456789012, NULL)"
+   }
+  },
+  {
+   "construct": "try-cast-string-parsing",
+   "sql": "SELECT s, try_cast(s AS INT), try_cast(s AS DOUBLE), try_cast(s AS DECIMAL(10,2)), try_cast(s AS BOOLEAN) FROM VALUES (' 12 '), ('+12'), ('1e3'), ('1.5'), ('12abc'), ('0x10'), (''), ('nan'), ('-nan'), ('Infinity'), ('1.5d'), ('0x1p3'), ('1_000'), ('t'), ('yes'), ('2'), ('1.005') AS t(s)",
+   "note": "try_cast parses as the ANSI cast does and gives NULL where it would raise",
+   "observed": {
+    "ansi=true": "( 12 , 12, 12.0, 12.00, NULL); (+12, 12, 12.0, 12.00, NULL); (1e3, NULL, 1000.0, 1000.00, NULL); (1.5, NULL, 1.5, 1.50, NULL); (12abc, NULL, NULL, NULL, NULL); (0x10, NULL, NULL, NULL, NULL); (, NULL, NULL, NULL, NULL); (nan, NULL, NaN, NULL, NULL); (-nan, NULL, NULL, NULL, NULL); (Infinity, NULL, inf, NULL, NULL); (1.5d, NULL, 1.5, NULL, NULL); (0x1p3, NULL, 8.0, NULL, NULL); (1_000, NULL, NULL, NULL, NULL); (t, NULL, NULL, NULL, True); (yes, NULL, NULL, NULL, True); (2, 2, 2.0, 2.00, NULL); (1.005, NULL, 1.005, 1.01, NULL)",
+    "ansi=false": "( 12 , 12, 12.0, 12.00, NULL); (+12, 12, 12.0, 12.00, NULL); (1e3, NULL, 1000.0, 1000.00, NULL); (1.5, NULL, 1.5, 1.50, NULL); (12abc, NULL, NULL, NULL, NULL); (0x10, NULL, NULL, NULL, NULL); (, NULL, NULL, NULL, NULL); (nan, NULL, NaN, NULL, NULL); (-nan, NULL, NULL, NULL, NULL); (Infinity, NULL, inf, NULL, NULL); (1.5d, NULL, 1.5, NULL, NULL); (0x1p3, NULL, 8.0, NULL, NULL); (1_000, NULL, NULL, NULL, NULL); (t, NULL, NULL, NULL, True); (yes, NULL, NULL, NULL, True); (2, 2, 2.0, 2.00, NULL); (1.005, NULL, 1.005, 1.01, NULL)"
+   }
+  },
+  {
+   "construct": "try-cast-string-to-date",
+   "sql": "SELECT s, CAST(try_cast(s AS DATE) AS STRING) FROM VALUES ('2024-01-05'), ('2024-1-5'), (' 2024-01-05 '), ('2024-01-05T10:00'), ('2024-01-05 10:00:00'), ('2024'), ('2024-01'), ('2024-02-30'), ('+10000-01-01'), ('05/01/2024') AS t(s)",
+   "observed": {
+    "ansi=true": "(2024-01-05, 2024-01-05); (2024-1-5, 2024-01-05); ( 2024-01-05 , 2024-01-05); (2024-01-05T10:00, 2024-01-05); (2024-01-05 10:00:00, 2024-01-05); (2024, 2024-01-01); (2024-01, 2024-01-01); (2024-02-30, NULL); (+10000-01-01, +10000-01-01); (05/01/2024, NULL)",
+    "ansi=false": "(2024-01-05, 2024-01-05); (2024-1-5, 2024-01-05); ( 2024-01-05 , 2024-01-05); (2024-01-05T10:00, 2024-01-05); (2024-01-05 10:00:00, 2024-01-05); (2024, 2024-01-01); (2024-01, 2024-01-01); (2024-02-30, NULL); (+10000-01-01, +10000-01-01); (05/01/2024, NULL)"
+   }
+  },
+  {
+   "construct": "try-cast-numeric",
+   "sql": "SELECT x, try_cast(x AS TINYINT), try_cast(x AS INT), try_cast(x AS BIGINT) FROM VALUES (1.9D), (-1.9D), (130.0D), (3e9D), (1e20D), (CAST('NaN' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)) AS s(x)",
+   "observed": {
+    "ansi=true": "(1.9, 1, 1, 1); (-1.9, -1, -1, -1); (130.0, NULL, 130, 130); (3000000000.0, NULL, NULL, 3000000000); (1e+20, NULL, NULL, NULL); (NaN, NULL, NULL, NULL); (inf, NULL, NULL, NULL)",
+    "ansi=false": "(1.9, 1, 1, 1); (-1.9, -1, -1, -1); (130.0, NULL, 130, 130); (3000000000.0, NULL, NULL, 3000000000); (1e+20, NULL, NULL, NULL); (NaN, NULL, NULL, NULL); (inf, NULL, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "cast-string-to-bool",
+   "sql": "SELECT s, CAST(s AS BOOLEAN) FROM VALUES ('true'), ('TRUE '), ('t'), ('yes'), ('y'), ('1'), ('false'), ('f'), ('no'), ('0'), ('2'), ('') AS t(s)",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '2' of the type \"STRING\" cannot be cast to \"BOOLEAN\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instead.",
+    "ansi=false": "(true, True); (TRUE , True); (t, True); (yes, True); (y, True); (1, True); (false, False); (f, False); (no, False); (0, False); (2, NULL); (, NULL)"
+   }
+  },
+  {
+   "construct": "cast-string-to-date",
+   "sql": "SELECT s, CAST(CAST(s AS DATE) AS STRING) FROM VALUES ('2024-01-05'), ('2024-1-5'), (' 2024-01-05 '), ('2024-01-05T10:00'), ('2024-01-05 10:00:00'), ('2024'), ('2024-01'), ('2024-02-30'), ('+10000-01-01'), ('05/01/2024') AS t(s)",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '2024-02-30' of the type \"STRING\" cannot be cast to \"DATE\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL in",
+    "ansi=false": "(2024-01-05, 2024-01-05); (2024-1-5, 2024-01-05); ( 2024-01-05 , 2024-01-05); (2024-01-05T10:00, 2024-01-05); (2024-01-05 10:00:00, 2024-01-05); (2024, 2024-01-01); (2024-01, 2024-01-01); (2024-02-30, NULL); (+10000-01-01, +10000-01-01); (05/01/2024, NULL)"
+   }
+  },
+  {
+   "construct": "cast-string-to-timestamp",
+   "sql": "SELECT s, CAST(s AS TIMESTAMP) FROM VALUES ('2024-01-05 10:00:00'), ('2024-01-05T10:00:00Z'), ('2024-01-05 10:00:00+02:00'), ('2024-01-05'), ('2024-01-05 25:00:00') AS t(s)",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '2024-01-05 25:00:00' of the type \"STRING\" cannot be cast to \"TIMESTAMP_NTZ\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input ",
+    "ansi=false": "(2024-01-05 10:00:00, 2024-01-05T10:00:00); (2024-01-05T10:00:00Z, 2024-01-05T10:00:00); (2024-01-05 10:00:00+02:00, 2024-01-05T10:00:00); (2024-01-05, 2024-01-05T00:00:00); (2024-01-05 25:00:00, NULL)"
+   }
+  },
+  {
+   "construct": "cast-to-string",
+   "sql": "SELECT CAST(1e20D AS STRING), CAST(1e-5D AS STRING), CAST(0.1D AS STRING), CAST(100.0D AS STRING), CAST(1e7D AS STRING), CAST(1.0E-3D AS STRING), CAST(123456789.0D AS STRING), CAST(-0.0D AS STRING), CAST(CAST('NaN' AS DOUBLE) AS STRING), CAST(CAST('Infinity' AS DOUBLE) AS STRING), CAST(CAST(0.1 AS FLOAT) AS STRING), CAST(true AS STRING), CAST(CAST(1.50 AS DECIMAL(10,2)) AS STRING), CAST(CAST(0.0000001 AS DECIMAL(20,10)) AS STRING), CAST(DATE'0001-01-01' AS STRING), CAST(TIMESTAMP'2024-01-05 10:00:00.120' AS STRING), CAST(INTERVAL 1 DAY AS STRING), CAST(array(1, NULL) AS STRING), CAST(named_struct('a', 1, 'b', CAST(NULL AS INT)) AS STRING), CAST(X'00FF' AS STRING)",
+   "observed": {
+    "ansi=true": "(1.0E20, 1.0E-5, 0.1, 100.0, 1.0E7, 0.001, 1.23456789E8, -0.0, NaN, Infinity, 0.1, true, 1.50, 0.0000001000, 0001-01-01, 2024-01-05 10:00:00.12, INTERVAL '1' DAY, [1, null], {1, null}, \u0000�)",
+    "ansi=false": "(1.0E20, 1.0E-5, 0.1, 100.0, 1.0E7, 0.001, 1.23456789E8, -0.0, NaN, Infinity, 0.1, true, 1.50, 1.000E-7, 0001-01-01, 2024-01-05 10:00:00.12, INTERVAL '1' DAY, [1, null], {1, null}, \u0000�)"
+   }
+  },
+  {
+   "construct": "cast-to-bool",
+   "sql": "SELECT CAST(2 AS BOOLEAN), CAST(0.0D AS BOOLEAN), CAST(CAST('NaN' AS DOUBLE) AS BOOLEAN), CAST(true AS INT)",
+   "observed": {
+    "ansi=true": "(True, False, True, 1)",
+    "ansi=false": "(True, False, True, 1)"
+   }
+  },
+  {
+   "construct": "try-variants",
+   "sql": "SELECT try_cast('abc' AS INT), try_cast(1e20D AS INT), try_add(9223372036854775807L, 1L), try_subtract(-9223372036854775808L, 1L), try_multiply(9223372036854775807L, 2L), try_divide(1, 0), try_mod(1, 0), try_element_at(array(1), 5), try_to_number('x', '9'), try_to_timestamp('nope'), try_cast(300 AS TINYINT)",
+   "observed": {
+    "ansi=true": "(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+    "ansi=false": "(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "try-aggregates",
+   "sql": "SELECT try_sum(x), try_avg(x) FROM VALUES (9223372036854775807L), (1L) AS s(x)",
+   "observed": {
+    "ansi=true": "(NULL, 4.611686018427388e+18)",
+    "ansi=false": "(NULL, 4.611686018427388e+18)"
+   }
+  },
+  {
+   "construct": "try-still-raises",
+   "sql": "SELECT try_cast(array('a') AS ARRAY<INT>), try_divide(1, 0) + (1 div 0)",
+   "note": "the second column raises from outside the try_ form",
+   "observed": {
+    "ansi=true": "([NULL], NULL)",
+    "ansi=false": "([NULL], NULL)"
+   }
+  },
+  {
+   "construct": "try-regex-still-raises",
+   "sql": "SELECT try_cast(regexp_extract('a', '(', 0) AS INT)",
+   "observed": {
+    "ansi=true": "error INVALID_PARAMETER_VALUE.PATTERN: [INVALID_PARAMETER_VALUE.PATTERN] The value of parameter(s) `regexp` in `regexp_extract` is invalid: '('. SQLSTATE: 22023",
+    "ansi=false": "error INVALID_PARAMETER_VALUE.PATTERN: [INVALID_PARAMETER_VALUE.PATTERN] The value of parameter(s) `regexp` in `regexp_extract` is invalid: '('. SQLSTATE: 22023"
+   }
+  },
+  {
+   "construct": "kleene",
+   "sql": "SELECT a, b, a AND b, a OR b, NOT a FROM VALUES (NULL, false), (NULL, true), (NULL, NULL), (true, NULL) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(NULL, False, False, NULL, NULL); (NULL, True, NULL, True, NULL); (NULL, NULL, NULL, NULL, NULL); (True, NULL, NULL, True, False)",
+    "ansi=false": "(NULL, False, False, NULL, NULL); (NULL, True, NULL, True, NULL); (NULL, NULL, NULL, NULL, NULL); (True, NULL, NULL, True, False)"
+   }
+  },
+  {
+   "construct": "bool-aggregates",
+   "sql": "SELECT bool_and(a), bool_or(a), every(a), some(a), count(a) FROM VALUES (true), (CAST(NULL AS BOOLEAN)) AS s(a)",
+   "observed": {
+    "ansi=true": "(True, True, True, True, 1)",
+    "ansi=false": "(True, True, True, True, 1)"
+   }
+  },
+  {
+   "construct": "bool-aggregates-null",
+   "sql": "SELECT bool_and(a), bool_or(a) FROM VALUES (CAST(NULL AS BOOLEAN)), (CAST(NULL AS BOOLEAN)) AS s(a)",
+   "observed": {
+    "ansi=true": "(NULL, NULL)",
+    "ansi=false": "(NULL, NULL)"
+   }
+  },
+  {
+   "construct": "null-join-keys",
+   "sql": "SELECT (SELECT count(*) FROM VALUES (1), (NULL) AS l(x) JOIN VALUES (1), (NULL) AS r(y) ON x = y), (SELECT count(*) FROM VALUES (1), (NULL) AS l(x) JOIN VALUES (1), (NULL) AS r(y) ON x <=> y), (SELECT count(*) FROM VALUES (1), (NULL) AS l(x) JOIN VALUES (1), (NULL) AS r(y) ON x IS NOT DISTINCT FROM y)",
+   "observed": {
+    "ansi=true": "(1, 2, 2)",
+    "ansi=false": "(1, 2, 2)"
+   }
+  },
+  {
+   "construct": "null-group-keys",
+   "sql": "SELECT x, count(*) FROM VALUES (1), (NULL), (NULL) AS s(x) GROUP BY x ORDER BY x",
+   "observed": {
+    "ansi=true": "(NULL, 2); (1, 1)",
+    "ansi=false": "(NULL, 2); (1, 1)"
+   }
+  },
+  {
+   "construct": "null-in",
+   "sql": "SELECT 1 IN (2, NULL), 1 NOT IN (2, NULL), 1 IN (SELECT * FROM VALUES (NULL) AS s(x))",
+   "observed": {
+    "ansi=true": "(NULL, NULL, False)",
+    "ansi=false": "(NULL, NULL, False)"
+   }
+  },
+  {
+   "construct": "null-functions",
+   "sql": "SELECT abs(NULL), NULL + 1, coalesce(NULL, 1), nvl(NULL, 2), greatest(1, NULL), least(1, NULL), nanvl(CAST('NaN' AS DOUBLE), NULL), length(NULL), upper(NULL)",
+   "observed": {
+    "ansi=true": "(NULL, NULL, 1, 2, 1, 1, NULL, NULL, NULL)",
+    "ansi=false": "(NULL, NULL, 1, 2, 1, 1, NULL, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "array-compare",
+   "sql": "SELECT a, b, a < b, a = b, a <=> b, greatest(a, b) FROM VALUES (array(1, NULL), array(1, 2)), (array(1, NULL), array(1, NULL)), (array(1), array(1, 2)), (array(CAST(NULL AS INT)), array(0)), (array(2), array(1, 5)) AS s(a, b)",
+   "observed": {
+    "ansi=true": "([1, NULL], [1, 2], True, False, False, [1, 2]); ([1, NULL], [1, NULL], False, True, True, [1, NULL]); ([1], [1, 2], True, False, False, [1, 2]); ([NULL], [0], True, False, False, [0]); ([2], [1, 5], False, False, False, [2])",
+    "ansi=false": "([1, NULL], [1, 2], True, False, False, [1, 2]); ([1, NULL], [1, NULL], False, True, True, [1, NULL]); ([1], [1, 2], True, False, False, [1, 2]); ([NULL], [0], True, False, False, [0]); ([2], [1, 5], False, False, False, [2])"
+   }
+  },
+  {
+   "construct": "array-sort-order",
+   "sql": "SELECT a FROM VALUES (array(1, 2)), (array(1, NULL)), (array(1)), (array(CAST(NULL AS INT))), (CAST(NULL AS ARRAY<INT>)), (array()) AS s(a) ORDER BY a",
+   "observed": {
+    "ansi=true": "(NULL); ([]); ([NULL]); ([1]); ([1, NULL]); ([1, 2])",
+    "ansi=false": "(NULL); ([]); ([NULL]); ([1]); ([1, NULL]); ([1, 2])"
+   }
+  },
+  {
+   "construct": "array-sort-order-desc",
+   "sql": "SELECT a FROM VALUES (array(1, 2)), (array(1, NULL)), (array(1)), (array(CAST(NULL AS INT))), (CAST(NULL AS ARRAY<INT>)) AS s(a) ORDER BY a DESC",
+   "observed": {
+    "ansi=true": "([1, 2]); ([1, NULL]); ([1]); ([NULL]); (NULL)",
+    "ansi=false": "([1, 2]); ([1, NULL]); ([1]); ([NULL]); (NULL)"
+   }
+  },
+  {
+   "construct": "array-min-max",
+   "sql": "SELECT min(a), max(a) FROM VALUES (array(1, NULL)), (array(1, 2)), (array(1)) AS s(a)",
+   "observed": {
+    "ansi=true": "([1], [1, 2])",
+    "ansi=false": "([1], [1, 2])"
+   }
+  },
+  {
+   "construct": "array-element-functions",
+   "sql": "SELECT sort_array(array(2, NULL, 1)), sort_array(array(2, NULL, 1), false), array_sort(array(2, NULL, 1)), array_max(array(1, NULL, 3)), array_min(array(CAST('NaN' AS DOUBLE), 1.0D))",
+   "observed": {
+    "ansi=true": "([NULL, 1, 2], [2, 1, NULL], [1, 2, NULL], 3, 1.0)",
+    "ansi=false": "([NULL, 1, 2], [2, 1, NULL], [1, 2, NULL], 3, 1.0)"
+   }
+  },
+  {
+   "construct": "array-index",
+   "sql": "SELECT element_at(a, 1), element_at(a, -1), element_at(a, -3), a[0], a[2], get(a, 5), get(a, -1), try_element_at(a, 5), try_element_at(a, -5) FROM VALUES (array(10, 20, 30)) AS s(a)",
+   "observed": {
+    "ansi=true": "(10, 30, 10, 10, 30, NULL, NULL, NULL, NULL)",
+    "ansi=false": "(10, 30, 10, 10, 30, NULL, NULL, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "array-element-at-out",
+   "sql": "SELECT element_at(array(10, 20, 30), 5)",
+   "observed": {
+    "ansi=true": "error INVALID_ARRAY_INDEX_IN_ELEMENT_AT: [INVALID_ARRAY_INDEX_IN_ELEMENT_AT] The index 5 is out of bounds. The array has 3 elements. Use `try_element_at` to tolerate accessing element at invalid index and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "array-subscript-out",
+   "sql": "SELECT array(10, 20, 30)[5]",
+   "observed": {
+    "ansi=true": "error INVALID_ARRAY_INDEX: [INVALID_ARRAY_INDEX] The index 5 is out of bounds. The array has 3 elements. Use the SQL function `get()` to tolerate accessing element at invalid index and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "array-subscript-negative",
+   "sql": "SELECT array(10, 20, 30)[-1]",
+   "observed": {
+    "ansi=true": "error INVALID_ARRAY_INDEX: [INVALID_ARRAY_INDEX] The index -1 is out of bounds. The array has 3 elements. Use the SQL function `get()` to tolerate accessing element at invalid index and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "array-index-zero",
+   "sql": "SELECT element_at(array(10, 20, 30), 0)",
+   "observed": {
+    "ansi=true": "error INVALID_INDEX_OF_ZERO: [INVALID_INDEX_OF_ZERO] The index 0 is invalid. An index shall be either < 0 or > 0 (the first element has index 1). SQLSTATE: 22003",
+    "ansi=false": "error INVALID_INDEX_OF_ZERO: [INVALID_INDEX_OF_ZERO] The index 0 is invalid. An index shall be either < 0 or > 0 (the first element has index 1). SQLSTATE: 22003"
+   }
+  },
+  {
+   "construct": "array-size-null",
+   "sql": "SELECT size(a), cardinality(a), array_size(a) FROM VALUES (CAST(NULL AS ARRAY<INT>)), (array()) AS s(a)",
+   "observed": {
+    "ansi=true": "(NULL, NULL, NULL); (0, 0, 0)",
+    "ansi=false": "(-1, -1, NULL); (0, 0, 0)"
+   }
+  },
+  {
+   "construct": "array-lambdas",
+   "sql": "SELECT transform(a, x -> x * 2), filter(a, x -> x > 1), exists(a, x -> x > 1), forall(a, x -> x > 1), aggregate(a, 0, (acc, x) -> acc + x) FROM VALUES (array(1, NULL, 3)) AS s(a)",
+   "observed": {
+    "ansi=true": "([2, NULL, 6], [3], True, False, NULL)",
+    "ansi=false": "([2, NULL, 6], [3], True, False, NULL)"
+   }
+  },
+  {
+   "construct": "struct-equality",
+   "sql": "SELECT a = b, a <=> b, a < c FROM VALUES (named_struct('x', 1, 'y', CAST(NULL AS INT)), named_struct('x', 1, 'y', CAST(NULL AS INT)), named_struct('x', 1, 'y', 0)) AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(True, True, True)",
+    "ansi=false": "(True, True, True)"
+   }
+  },
+  {
+   "construct": "struct-group-order",
+   "sql": "SELECT a, count(*) FROM VALUES (named_struct('x', 1, 'y', CAST(NULL AS INT))), (named_struct('x', 1, 'y', CAST(NULL AS INT))), (named_struct('x', 1, 'y', 0)), (named_struct('x', CAST(NULL AS INT), 'y', 0)) AS s(a) GROUP BY a ORDER BY a",
+   "observed": {
+    "ansi=true": "({x: NULL, y: 0}, 1); ({x: 1, y: NULL}, 2); ({x: 1, y: 0}, 1)",
+    "ansi=false": "({x: NULL, y: 0}, 1); ({x: 1, y: NULL}, 2); ({x: 1, y: 0}, 1)"
+   }
+  },
+  {
+   "construct": "array-equality-nan",
+   "sql": "SELECT array(CAST('NaN' AS DOUBLE)) = array(CAST('NaN' AS DOUBLE)), array(-0.0D) = array(0.0D)",
+   "observed": {
+    "ansi=true": "(True, True)",
+    "ansi=false": "(True, True)"
+   }
+  },
+  {
+   "construct": "unnest",
+   "sql": "SELECT id, x FROM VALUES (1, array(1, 2)), (2, CAST(NULL AS ARRAY<INT>)), (3, array()), (4, array(CAST(NULL AS INT))) AS s(id, a) LATERAL VIEW explode(a) e AS x ORDER BY id",
+   "observed": {
+    "ansi=true": "(1, 1); (1, 2); (4, NULL)",
+    "ansi=false": "(1, 1); (1, 2); (4, NULL)"
+   }
+  },
+  {
+   "construct": "unnest-outer",
+   "sql": "SELECT id, x FROM VALUES (1, array(1, 2)), (2, CAST(NULL AS ARRAY<INT>)), (3, array()) AS s(id, a) LATERAL VIEW OUTER explode(a) e AS x ORDER BY id",
+   "observed": {
+    "ansi=true": "(1, 1); (1, 2); (2, NULL); (3, NULL)",
+    "ansi=false": "(1, 1); (1, 2); (2, NULL); (3, NULL)"
+   }
+  },
+  {
+   "construct": "unnest-select",
+   "sql": "SELECT explode(a) FROM VALUES (CAST(NULL AS ARRAY<INT>)), (array(7)) AS s(a)",
+   "observed": {
+    "ansi=true": "(7)",
+    "ansi=false": "(7)"
+   }
+  },
+  {
+   "construct": "empty-aggregates",
+   "sql": "SELECT sum(x), count(x), count(*), min(x), max(x), avg(x), variance(x), bool_and(x > 0), collect_list(x), bit_and(x) FROM VALUES (1L) AS s(x) WHERE x > 5",
+   "observed": {
+    "ansi=true": "(NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, [], NULL)",
+    "ansi=false": "(NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, [], NULL)"
+   }
+  },
+  {
+   "construct": "null-aggregates",
+   "sql": "SELECT sum(x), count(x), count(*), min(x), avg(x), sum(d), avg(d) FROM VALUES (CAST(NULL AS BIGINT), CAST(NULL AS DOUBLE)), (CAST(NULL AS BIGINT), CAST(NULL AS DOUBLE)) AS s(x, d)",
+   "observed": {
+    "ansi=true": "(NULL, 0, 2, NULL, NULL, NULL, NULL)",
+    "ansi=false": "(NULL, 0, 2, NULL, NULL, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "empty-group-by",
+   "sql": "SELECT k, sum(x) FROM VALUES (1, 1L) AS s(k, x) WHERE x > 5 GROUP BY k",
+   "observed": {
+    "ansi=true": "",
+    "ansi=false": ""
+   }
+  },
+  {
+   "construct": "avg-int",
+   "sql": "SELECT avg(x), typeof(avg(x)), mean(x) FROM VALUES (9007199254740993L), (9007199254740993L) AS s(x)",
+   "observed": {
+    "ansi=true": "(9007199254740992.0, double, 9007199254740992.0)",
+    "ansi=false": "(9007199254740992.0, double, 9007199254740992.0)"
+   }
+  },
+  {
+   "construct": "avg-int-large",
+   "sql": "SELECT avg(x) FROM VALUES (9223372036854775807L), (9223372036854775807L) AS s(x)",
+   "observed": {
+    "ansi=true": "(9.223372036854776e+18)",
+    "ansi=false": "(9.223372036854776e+18)"
+   }
+  },
+  {
+   "construct": "avg-int-small",
+   "sql": "SELECT avg(x), typeof(avg(x)) FROM VALUES (1), (2) AS s(x)",
+   "observed": {
+    "ansi=true": "(1.5, double)",
+    "ansi=false": "(1.5, double)"
+   }
+  },
+  {
+   "construct": "sum-double-order-1",
+   "sql": "SELECT sum(x), avg(x) FROM (SELECT /*+ REPARTITION(1) */ * FROM VALUES (1e16D), (1.0D), (-1e16D), (1.0D) AS s(x))",
+   "observed": {
+    "ansi=true": "(1.0, 0.25)",
+    "ansi=false": "(1.0, 0.25)"
+   }
+  },
+  {
+   "construct": "sum-double-order-3",
+   "sql": "SELECT sum(x), avg(x) FROM (SELECT /*+ REPARTITION(3) */ * FROM VALUES (1e16D), (1.0D), (-1e16D), (1.0D) AS s(x))",
+   "observed": {
+    "ansi=true": "(2.0, 0.5)",
+    "ansi=false": "(2.0, 0.5)"
+   }
+  },
+  {
+   "construct": "sum-double-order-values",
+   "sql": "SELECT sum(x) FROM VALUES (1e16D), (1.0D), (-1e16D), (1.0D) AS s(x)",
+   "note": "input order, one partition: a sequential sum",
+   "observed": {
+    "ansi=true": "(0.0)",
+    "ansi=false": "(0.0)"
+   }
+  },
+  {
+   "construct": "sum-double-nonfinite",
+   "sql": "SELECT sum(x), avg(x), variance(x), stddev(x), min(x), max(x) FROM VALUES (CAST('Infinity' AS DOUBLE)), (-CAST('Infinity' AS DOUBLE)) AS s(x)",
+   "observed": {
+    "ansi=true": "(-NaN, -NaN, -NaN, -NaN, -inf, inf)",
+    "ansi=false": "(-NaN, -NaN, -NaN, -NaN, -inf, inf)"
+   }
+  },
+  {
+   "construct": "sum-double-inf",
+   "sql": "SELECT sum(x), avg(x), variance(x), stddev_pop(x) FROM VALUES (CAST('Infinity' AS DOUBLE)), (1.0D) AS s(x)",
+   "observed": {
+    "ansi=true": "(inf, inf, -NaN, -NaN)",
+    "ansi=false": "(inf, inf, -NaN, -NaN)"
+   }
+  },
+  {
+   "construct": "sum-double-nan",
+   "sql": "SELECT sum(x), avg(x), variance(x), min(x), max(x), median(x) FROM VALUES (CAST('NaN' AS DOUBLE)), (1.0D) AS s(x)",
+   "observed": {
+    "ansi=true": "(NaN, NaN, NaN, 1.0, NaN, NaN)",
+    "ansi=false": "(NaN, NaN, NaN, 1.0, NaN, NaN)"
+   }
+  },
+  {
+   "construct": "sum-double-overflow",
+   "sql": "SELECT sum(x), avg(x), variance(x) FROM VALUES (1e308D), (1e308D) AS s(x)",
+   "observed": {
+    "ansi=true": "(inf, inf, 0.0)",
+    "ansi=false": "(inf, inf, 0.0)"
+   }
+  },
+  {
+   "construct": "sum-float",
+   "sql": "SELECT sum(x), typeof(sum(x)), avg(x), typeof(avg(x)), max(x), typeof(max(x)) FROM VALUES (CAST(0.1 AS FLOAT)), (CAST(0.2 AS FLOAT)) AS s(x)",
+   "observed": {
+    "ansi=true": "(0.30000000447034836, double, 0.15000000223517418, double, 0.20000000298023224, float)",
+    "ansi=false": "(0.30000000447034836, double, 0.15000000223517418, double, 0.20000000298023224, float)"
+   }
+  },
+  {
+   "construct": "var-one",
+   "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x), stddev_pop(x), variance(x), stddev(x), std(x), covar_samp(x, x), covar_pop(x, x), corr(x, x) FROM VALUES (2.0D) AS s(x)",
+   "observed": {
+    "ansi=true": "(NULL, 0.0, NULL, 0.0, NULL, NULL, NULL, NULL, 0.0, NULL)",
+    "ansi=false": "(NULL, 0.0, NULL, 0.0, NULL, NULL, NULL, NULL, 0.0, NULL)"
+   }
+  },
+  {
+   "construct": "var-one-legacy",
+   "sql": "SELECT var_samp(x), stddev_samp(x), covar_samp(x, x), corr(x, x) FROM VALUES (2.0D) AS s(x)",
+   "conf": {
+    "spark.sql.legacy.statisticalAggregate": "true"
+   },
+   "observed": {
+    "ansi=true": "(NaN, NaN, NaN, NaN)",
+    "ansi=false": "(NaN, NaN, NaN, NaN)"
+   }
+  },
+  {
+   "construct": "var-types",
+   "sql": "SELECT var_samp(i), typeof(var_samp(i)), var_samp(d), typeof(var_samp(d)), stddev(i), covar_samp(i, d), corr(i, d), typeof(corr(i, d)) FROM VALUES (1L, CAST(1.5 AS DECIMAL(10,2))), (2L, CAST(2.5 AS DECIMAL(10,2))), (4L, CAST(3.0 AS DECIMAL(10,2))) AS s(i, d)",
+   "observed": {
+    "ansi=true": "(2.333333333333333, double, 0.5833333333333334, double, 1.5275252316519465, 1.0833333333333335, 0.9285714285714288, double)",
+    "ansi=false": "(2.333333333333333, double, 0.5833333333333334, double, 1.5275252316519465, 1.0833333333333335, 0.9285714285714288, double)"
+   }
+  },
+  {
+   "construct": "var-cancellation",
+   "sql": "SELECT var_samp(x), var_pop(x) FROM VALUES (1e9D + 4.0D), (1e9D + 7.0D), (1e9D + 13.0D), (1e9D + 16.0D) AS s(x)",
+   "note": "the exact sample variance is 30",
+   "observed": {
+    "ansi=true": "(30.0, 22.5)",
+    "ansi=false": "(30.0, 22.5)"
+   }
+  },
+  {
+   "construct": "corr-degenerate",
+   "sql": "SELECT corr(x, y), covar_samp(x, y), covar_pop(x, y) FROM VALUES (1.0D, 5.0D), (2.0D, 5.0D), (3.0D, 5.0D) AS s(x, y)",
+   "observed": {
+    "ansi=true": "(NULL, 0.0, 0.0)",
+    "ansi=false": "(NULL, 0.0, 0.0)"
+   }
+  },
+  {
+   "construct": "corr-one-pair",
+   "sql": "SELECT corr(x, y), covar_samp(x, y) FROM VALUES (1.0D, 2.0D) AS s(x, y)",
+   "observed": {
+    "ansi=true": "(NULL, NULL)",
+    "ansi=false": "(NULL, NULL)"
+   }
+  },
+  {
+   "construct": "quantiles",
+   "sql": "SELECT median(x), percentile_cont(0.5) WITHIN GROUP (ORDER BY x), percentile_disc(0.5) WITHIN GROUP (ORDER BY x), percentile(x, 0.25), percentile_cont(0.25) WITHIN GROUP (ORDER BY x), percentile_disc(0.25) WITHIN GROUP (ORDER BY x), percentile_approx(x, 0.5), typeof(median(x)) FROM VALUES (1L), (2L), (3L), (10L) AS s(x)",
+   "observed": {
+    "ansi=true": "(2.5, 2.5, 2.0, 1.75, 1.75, 1.0, 2, double)",
+    "ansi=false": "(2.5, 2.5, 2.0, 1.75, 1.75, 1.0, 2, double)"
+   }
+  },
+  {
+   "construct": "quantiles-decimal",
+   "sql": "SELECT median(x), typeof(median(x)), percentile_disc(0.5) WITHIN GROUP (ORDER BY x), typeof(percentile_disc(0.5) WITHIN GROUP (ORDER BY x)) FROM VALUES (CAST(1.10 AS DECIMAL(10,2))), (CAST(2.25 AS DECIMAL(10,2))) AS s(x)",
+   "observed": {
+    "ansi=true": "(1.675, double, 1.1, double)",
+    "ansi=false": "(1.675, double, 1.1, double)"
+   }
+  },
+  {
+   "construct": "quantiles-double",
+   "sql": "SELECT median(x), percentile_disc(0.5) WITHIN GROUP (ORDER BY x), percentile_cont(1.0) WITHIN GROUP (ORDER BY x) FROM VALUES (1.0D), (CAST('NaN' AS DOUBLE)), (3.0D), (CAST(NULL AS DOUBLE)) AS s(x)",
+   "observed": {
+    "ansi=true": "(3.0, 3.0, NaN)",
+    "ansi=false": "(3.0, 3.0, NaN)"
+   }
+  },
+  {
+   "construct": "quantiles-disc-position",
+   "sql": "SELECT percentile_disc(0.0) WITHIN GROUP (ORDER BY x), percentile_cont(0.0) WITHIN GROUP (ORDER BY x), percentile_disc(0.25) WITHIN GROUP (ORDER BY x), percentile_cont(0.25) WITHIN GROUP (ORDER BY x), percentile_disc(0.26) WITHIN GROUP (ORDER BY x), percentile_cont(0.26) WITHIN GROUP (ORDER BY x), percentile_disc(0.5) WITHIN GROUP (ORDER BY x), percentile_cont(0.5) WITHIN GROUP (ORDER BY x), percentile_disc(0.75) WITHIN GROUP (ORDER BY x), percentile_cont(0.75) WITHIN GROUP (ORDER BY x), percentile_disc(1.0) WITHIN GROUP (ORDER BY x), percentile_cont(1.0) WITHIN GROUP (ORDER BY x) FROM VALUES (1), (2), (3), (4) AS s(x)",
+   "observed": {
+    "ansi=true": "(1.0, 1.0, 1.0, 1.75, 2.0, 1.78, 2.0, 2.5, 3.0, 3.25, 4.0, 4.0)",
+    "ansi=false": "(1.0, 1.0, 1.0, 1.75, 2.0, 1.78, 2.0, 2.5, 3.0, 3.25, 4.0, 4.0)"
+   }
+  },
+  {
+   "construct": "first-last",
+   "sql": "SELECT first(x), last(x), first(x, true), last(x, true), any_value(x), first_value(x) FROM VALUES (CAST(NULL AS INT)), (1), (2), (CAST(NULL AS INT)) AS s(x)",
+   "observed": {
+    "ansi=true": "(NULL, NULL, 1, 2, NULL, NULL)",
+    "ansi=false": "(NULL, NULL, 1, 2, NULL, NULL)"
+   }
+  },
+  {
+   "construct": "first-partitions",
+   "sql": "SELECT first(x), last(x) FROM (SELECT /*+ REPARTITION(3) */ * FROM range(0, 1000) AS s(x))",
+   "observed": {
+    "ansi=true": "(279, 635)",
+    "ansi=false": "(279, 635)"
+   }
+  },
+  {
+   "construct": "arg-min-max",
+   "sql": "SELECT min_by(v, k), max_by(v, k), min_by(v, n), max_by(v, n) FROM VALUES ('a', 1, CAST(NULL AS INT)), ('b', 1, 1), ('c', 2, 1), ('d', 2, CAST(NULL AS INT)) AS s(v, k, n)",
+   "observed": {
+    "ansi=true": "(b, d, c, c)",
+    "ansi=false": "(b, d, c, c)"
+   }
+  },
+  {
+   "construct": "mode",
+   "sql": "SELECT mode(x), mode(x, true), mode(x, false), mode() WITHIN GROUP (ORDER BY x), mode() WITHIN GROUP (ORDER BY x DESC) FROM VALUES (3), (1), (2), (2), (1), (CAST(NULL AS INT)), (CAST(NULL AS INT)), (CAST(NULL AS INT)) AS s(x)",
+   "observed": {
+    "ansi=true": "(1, 1, 1, 1, 2)",
+    "ansi=false": "(1, 1, 1, 1, 2)"
+   }
+  },
+  {
+   "construct": "collect-order",
+   "sql": "SELECT collect_list(x), array_agg(x), string_agg(CAST(x AS STRING), ','), listagg(CAST(x AS STRING), ',') WITHIN GROUP (ORDER BY x DESC), collect_set(x) FROM VALUES (3), (CAST(NULL AS INT)), (1), (2) AS s(x)",
+   "observed": {
+    "ansi=true": "([3, 1, 2], [3, 1, 2], 3,1,2, 3,2,1, [1, 2, 3])",
+    "ansi=false": "([3, 1, 2], [3, 1, 2], 3,1,2, 3,2,1, [1, 2, 3])"
+   }
+  },
+  {
+   "construct": "collect-partitions",
+   "sql": "SELECT slice(collect_list(x), 1, 5) FROM (SELECT /*+ REPARTITION(3) */ * FROM range(0, 1000) AS s(x))",
+   "observed": {
+    "ansi=true": "([279, 196, 235, 161, 104])",
+    "ansi=false": "([279, 196, 235, 161, 104])"
+   }
+  },
+  {
+   "construct": "bit-aggregates",
+   "sql": "SELECT bit_and(x), bit_or(x), bit_xor(x), typeof(bit_and(x)) FROM VALUES (CAST(6 AS TINYINT)), (CAST(3 AS TINYINT)), (CAST(NULL AS TINYINT)) AS s(x)",
+   "observed": {
+    "ansi=true": "(2, 7, 5, tinyint)",
+    "ansi=false": "(2, 7, 5, tinyint)"
+   }
+  },
+  {
+   "construct": "count-distinct-nan",
+   "sql": "SELECT count(DISTINCT x), approx_count_distinct(x) FROM VALUES (CAST('NaN' AS DOUBLE)), (-CAST('NaN' AS DOUBLE)), (0.0D), (-0.0D) AS s(x)",
+   "observed": {
+    "ansi=true": "(2, 2)",
+    "ansi=false": "(2, 2)"
+   }
+  },
+  {
+   "construct": "ntile",
+   "sql": "SELECT x, ntile(3) OVER (ORDER BY x), ntile(10) OVER (ORDER BY x) FROM range(1, 8) AS s(x) ORDER BY x",
+   "observed": {
+    "ansi=true": "(1, 1, 1); (2, 1, 2); (3, 1, 3); (4, 2, 4); (5, 2, 5); (6, 3, 6); (7, 3, 7)",
+    "ansi=false": "(1, 1, 1); (2, 1, 2); (3, 1, 3); (4, 2, 4); (5, 2, 5); (6, 3, 6); (7, 3, 7)"
+   }
+  },
+  {
+   "construct": "ntile-zero",
+   "sql": "SELECT ntile(0) OVER (ORDER BY x) FROM range(1, 3) AS s(x)",
+   "observed": {
+    "ansi=true": "error DATATYPE_MISMATCH.VALUE_OUT_OF_RANGE: [DATATYPE_MISMATCH.VALUE_OUT_OF_RANGE] Cannot resolve \"ntile(0)\" due to data type mismatch: The buckets must be between (0, 2147483647] (current value = 0). SQLSTATE: 42K09; line 1 pos 7;",
+    "ansi=false": "error DATATYPE_MISMATCH.VALUE_OUT_OF_RANGE: [DATATYPE_MISMATCH.VALUE_OUT_OF_RANGE] Cannot resolve \"ntile(0)\" due to data type mismatch: The buckets must be between (0, 2147483647] (current value = 0). SQLSTATE: 42K09; line 1 pos 7;"
+   }
+  },
+  {
+   "construct": "default-frame",
+   "sql": "SELECT k, v, sum(v) OVER (ORDER BY k), sum(v) OVER (), first_value(v) OVER (ORDER BY k), last_value(v) OVER (ORDER BY k), count(*) OVER (ORDER BY k) FROM VALUES (1, 10), (2, 20), (2, 30), (3, 40) AS s(k, v) ORDER BY k, v",
+   "observed": {
+    "ansi=true": "(1, 10, 10, 100, 10, 10, 1); (2, 20, 60, 100, 10, 30, 3); (2, 30, 60, 100, 10, 30, 3); (3, 40, 100, 100, 10, 40, 4)",
+    "ansi=false": "(1, 10, 10, 100, 10, 10, 1); (2, 20, 60, 100, 10, 30, 3); (2, 30, 60, 100, 10, 30, 3); (3, 40, 100, 100, 10, 40, 4)"
+   }
+  },
+  {
+   "construct": "rank-ties-nulls",
+   "sql": "SELECT k, row_number() OVER w, rank() OVER w, dense_rank() OVER w, percent_rank() OVER w, cume_dist() OVER w FROM VALUES (1), (2), (2), (CAST(NULL AS INT)), (CAST(NULL AS INT)), (3) AS s(k) WINDOW w AS (ORDER BY k) ORDER BY k",
+   "observed": {
+    "ansi=true": "(NULL, 1, 1, 1, 0.0, 0.3333333333333333); (NULL, 2, 1, 1, 0.0, 0.3333333333333333); (1, 3, 3, 2, 0.4, 0.5); (2, 4, 4, 3, 0.6, 0.8333333333333334); (2, 5, 4, 3, 0.6, 0.8333333333333334); (3, 6, 6, 4, 1.0, 1.0)",
+    "ansi=false": "(NULL, 1, 1, 1, 0.0, 0.3333333333333333); (NULL, 2, 1, 1, 0.0, 0.3333333333333333); (1, 3, 3, 2, 0.4, 0.5); (2, 4, 4, 3, 0.6, 0.8333333333333334); (2, 5, 4, 3, 0.6, 0.8333333333333334); (3, 6, 6, 4, 1.0, 1.0)"
+   }
+  },
+  {
+   "construct": "window-values",
+   "sql": "SELECT k, lag(k) OVER w, lead(k, 2) OVER w, lag(k, 1, -1) OVER w, nth_value(k, 2) OVER w, nth_value(k, 2) IGNORE NULLS OVER w FROM VALUES (1), (CAST(NULL AS INT)), (3), (4) AS s(k) WINDOW w AS (ORDER BY k NULLS LAST) ORDER BY k",
+   "observed": {
+    "ansi=true": "(NULL, 4, NULL, 4, 3, 3); (1, NULL, 4, -1, NULL, NULL); (3, 1, NULL, 1, 3, 3); (4, 3, NULL, 3, 3, 3)",
+    "ansi=false": "(NULL, 4, NULL, 4, 3, 3); (1, NULL, 4, -1, NULL, NULL); (3, 1, NULL, 1, 3, 3); (4, 3, NULL, 3, 3, 3)"
+   }
+  },
+  {
+   "construct": "window-tie-order",
+   "sql": "SELECT g, row_number() OVER (ORDER BY g) AS rn, id FROM (SELECT /*+ REPARTITION(3) */ id, id % 2 AS g FROM range(0, 12) AS s(id)) ORDER BY rn",
+   "note": "which id each tie gets: the input order after a shuffle",
+   "observed": {
+    "ansi=true": "(0, 1, 2); (0, 2, 10); (0, 3, 4); (0, 4, 8); (0, 5, 6); (0, 6, 0); (1, 7, 5); (1, 8, 9); (1, 9, 1); (1, 10, 3); (1, 11, 11); (1, 12, 7)",
+    "ansi=false": "(0, 1, 2); (0, 2, 10); (0, 3, 4); (0, 4, 8); (0, 5, 6); (0, 6, 0); (1, 7, 5); (1, 8, 9); (1, 9, 1); (1, 10, 3); (1, 11, 11); (1, 12, 7)"
+   }
+  },
+  {
+   "construct": "window-range-double",
+   "sql": "SELECT x, count(*) OVER (ORDER BY x RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) FROM VALUES (1.0D), (2.0D), (CAST('NaN' AS DOUBLE)), (CAST('Infinity' AS DOUBLE)) AS s(x) ORDER BY x",
+   "observed": {
+    "ansi=true": "(1.0, 1); (2.0, 2); (inf, 1); (NaN, 1)",
+    "ansi=false": "(1.0, 1); (2.0, 2); (inf, 1); (NaN, 1)"
+   }
+  },
+  {
+   "construct": "null-order",
+   "sql": "SELECT (SELECT collect_list(coalesce(x, -1)) FROM (SELECT x FROM VALUES (2), (NULL), (1) AS s(x) ORDER BY x)), (SELECT collect_list(coalesce(x, -1)) FROM (SELECT x FROM VALUES (2), (NULL), (1) AS s(x) ORDER BY x DESC))",
+   "observed": {
+    "ansi=true": "([-1, 1, 2], [2, 1, -1])",
+    "ansi=false": "([-1, 1, 2], [2, 1, -1])"
+   }
+  },
+  {
+   "construct": "null-order-rows",
+   "sql": "SELECT x FROM VALUES (2), (NULL), (1) AS s(x) ORDER BY x DESC",
+   "observed": {
+    "ansi=true": "(2); (1); (NULL)",
+    "ansi=false": "(2); (1); (NULL)"
+   }
+  },
+  {
+   "construct": "sort-ties",
+   "sql": "SELECT k, id FROM (SELECT /*+ REPARTITION(3) */ id, id % 2 AS k FROM range(0, 12) AS s(id)) ORDER BY k LIMIT 6",
+   "note": "ties after a shuffle: the order the partitions return them",
+   "observed": {
+    "ansi=true": "(0, 2); (0, 10); (0, 4); (0, 8); (0, 6); (0, 0)",
+    "ansi=false": "(0, 4); (0, 8); (0, 6); (0, 2); (0, 10); (0, 0)"
+   }
+  },
+  {
+   "construct": "sort-ties-one-partition",
+   "sql": "SELECT k, id FROM VALUES (1, 'a'), (0, 'b'), (1, 'c'), (0, 'd'), (1, 'e') AS s(k, id) ORDER BY k",
+   "observed": {
+    "ansi=true": "(0, b); (0, d); (1, a); (1, c); (1, e)",
+    "ansi=false": "(0, b); (0, d); (1, a); (1, c); (1, e)"
+   }
+  },
+  {
+   "construct": "sort-within-partitions",
+   "sql": "SELECT id % 3 AS k, id FROM range(0, 9) AS s(id) DISTRIBUTE BY id % 3 SORT BY k",
+   "observed": {
+    "ansi=true": "(0, 0); (0, 3); (0, 6); (1, 1); (1, 4); (1, 7); (2, 2); (2, 5); (2, 8)",
+    "ansi=false": "(0, 0); (0, 3); (0, 6); (1, 1); (1, 4); (1, 7); (2, 2); (2, 5); (2, 8)"
+   }
+  },
+  {
+   "construct": "set-operations",
+   "sql": "SELECT 'union' AS op, sort_array(collect_list(coalesce(x, -1))) FROM (SELECT * FROM VALUES (1), (1), (NULL), (NULL), (2) AS a(x) UNION SELECT * FROM VALUES (1), (NULL), (3) AS b(x)) UNION ALL SELECT 'union all', sort_array(collect_list(coalesce(x, -1))) FROM (SELECT * FROM VALUES (1), (1), (NULL), (NULL), (2) AS a(x) UNION ALL SELECT * FROM VALUES (1), (NULL), (3) AS b(x)) UNION ALL SELECT 'intersect', sort_array(collect_list(coalesce(x, -1))) FROM (SELECT * FROM VALUES (1), (1), (NULL), (NULL), (2) AS a(x) INTERSECT SELECT * FROM VALUES (1), (1), (NULL), (3) AS b(x)) UNION ALL SELECT 'intersect all', sort_array(collect_list(coalesce(x, -1))) FROM (SELECT * FROM VALUES (1), (1), (NULL), (NULL), (2) AS a(x) INTERSECT ALL SELECT * FROM VALUES (1), (1), (NULL), (3) AS b(x)) UNION ALL SELECT 'except', sort_array(collect_list(coalesce(x, -1))) FROM (SELECT * FROM VALUES (1), (1), (NULL), (NULL), (2) AS a(x) EXCEPT SELECT * FROM VALUES (1), (3) AS b(x)) UNION ALL SELECT 'except all', sort_array(collect_list(coalesce(x, -1))) FROM (SELECT * FROM VALUES (1), (1), (NULL), (NULL), (2) AS a(x) EXCEPT ALL SELECT * FROM VALUES (1), (NULL), (3) AS b(x))",
+   "observed": {
+    "ansi=true": "(union, [-1, 1, 2, 3]); (union all, [-1, -1, -1, 1, 1, 1, 2, 3]); (intersect, [-1, 1]); (intersect all, [-1, 1, 1]); (except, [-1, 2]); (except all, [-1, 1, 2])",
+    "ansi=false": "(union, [-1, 1, 2, 3]); (union all, [-1, -1, -1, 1, 1, 1, 2, 3]); (intersect, [-1, 1]); (intersect all, [-1, 1, 1]); (except, [-1, 2]); (except all, [-1, 1, 2])"
+   }
+  },
+  {
+   "construct": "set-operations-nan-zero",
+   "sql": "SELECT x FROM VALUES (0.0D), (CAST('NaN' AS DOUBLE)) AS a(x) INTERSECT SELECT * FROM VALUES (-0.0D), (-CAST('NaN' AS DOUBLE)) AS b(x)",
+   "observed": {
+    "ansi=true": "(0.0); (NaN)",
+    "ansi=false": "(0.0); (NaN)"
+   }
+  },
+  {
+   "construct": "union-order",
+   "sql": "SELECT * FROM VALUES (2), (1) AS a(x) UNION ALL SELECT * FROM VALUES (4), (3) AS b(x)",
+   "observed": {
+    "ansi=true": "(2); (1); (4); (3)",
+    "ansi=false": "(2); (1); (4); (3)"
+   }
+  },
+  {
+   "construct": "case-guard",
+   "sql": "SELECT CASE WHEN b <> 0 THEN a div b END FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(5); (NULL)",
+    "ansi=false": "(5); (NULL)"
+   }
+  },
+  {
+   "construct": "if-guard",
+   "sql": "SELECT if(b = 0, NULL, a div b), nullif(b, 0) FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(5, 2); (NULL, NULL)",
+    "ansi=false": "(5, 2); (NULL, NULL)"
+   }
+  },
+  {
+   "construct": "and-guard",
+   "sql": "SELECT a FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c) WHERE b <> 0 AND a div b > 1",
+   "observed": {
+    "ansi=true": "(10)",
+    "ansi=false": "(10)"
+   }
+  },
+  {
+   "construct": "and-guard-reversed",
+   "sql": "SELECT a FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c) WHERE a div b > 1 AND b <> 0",
+   "observed": {
+    "ansi=true": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=false": "(10)"
+   }
+  },
+  {
+   "construct": "coalesce-guard",
+   "sql": "SELECT coalesce(a, a div b) FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(10); (10)",
+    "ansi=false": "(10); (10)"
+   }
+  },
+  {
+   "construct": "case-guard-cast",
+   "sql": "SELECT CASE WHEN c RLIKE '^[0-9]+$' THEN CAST(c AS INT) END FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(5); (NULL)",
+    "ansi=false": "(5); (NULL)"
+   }
+  },
+  {
+   "construct": "case-guard-cse",
+   "sql": "SELECT CASE WHEN c RLIKE '^[0-9]+$' THEN CAST(c AS INT) + CAST(c AS INT) ELSE 0 END FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(10); (0)",
+    "ansi=false": "(10); (0)"
+   }
+  },
+  {
+   "construct": "case-guard-cse-both",
+   "sql": "SELECT CASE WHEN c RLIKE '^[0-9]+$' THEN CAST(c AS INT) + 1 ELSE 0 END, CASE WHEN c RLIKE '^[0-9]+$' THEN CAST(c AS INT) + 2 ELSE 0 END FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(6, 7); (0, 0)",
+    "ansi=false": "(6, 7); (0, 0)"
+   }
+  },
+  {
+   "construct": "stacked-filter-cast",
+   "sql": "SELECT * FROM (SELECT * FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c) WHERE c RLIKE '^[0-9]+$') WHERE CAST(c AS INT) > 1",
+   "observed": {
+    "ansi=true": "(10, 2, 5)",
+    "ansi=false": "(10, 2, 5)"
+   }
+  },
+  {
+   "construct": "stacked-filter-divide",
+   "sql": "SELECT * FROM (SELECT * FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c) WHERE b <> 0) WHERE a div b > 1",
+   "observed": {
+    "ansi=true": "(10, 2, 5)",
+    "ansi=false": "(10, 2, 5)"
+   }
+  },
+  {
+   "construct": "projection-under-filter",
+   "sql": "SELECT * FROM (SELECT a div b AS q, b FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)) WHERE b <> 0",
+   "observed": {
+    "ansi=true folded": "error DIVIDE_BY_ZERO: [DIVIDE_BY_ZERO] Division by zero. Use `try_divide` to tolerate divisor being 0 and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22012",
+    "ansi=true codegen": "(5, 2)",
+    "ansi=false": "(5, 2)"
+   }
+  },
+  {
+   "construct": "aggregate-guard",
+   "sql": "SELECT sum(CASE WHEN b <> 0 THEN a div b END) FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)",
+   "observed": {
+    "ansi=true": "(5)",
+    "ansi=false": "(5)"
+   }
+  },
+  {
+   "construct": "join-filter-order",
+   "sql": "SELECT * FROM (SELECT * FROM VALUES (10, 2, '5'), (10, 0, 'x') AS s(a, b, c)) l JOIN VALUES (2), (0) AS r(y) ON l.b = r.y WHERE l.b <> 0 AND l.a div l.b = 5",
+   "observed": {
+    "ansi=true": "(10, 2, 5, 2)",
+    "ansi=false": "(10, 2, 5, 2)"
+   }
+  },
+  {
+   "construct": "settings",
+   "sql": "SELECT 1",
+   "note": "read the settings below (see `settings` of the output)",
+   "observed": {
+    "ansi=true": "(1)",
+    "ansi=false": "(1)"
+   }
+  },
+  {
+   "construct": "literal-types",
+   "sql": "SELECT typeof(1), typeof(2147483648), typeof(9223372036854775808), typeof(1.5), typeof(1e0), typeof(1.5D), typeof(1L), typeof(1Y), typeof(1S), typeof(1BD), typeof('a'), typeof(X'00'), typeof(DATE'2024-01-01'), typeof(TIMESTAMP'2024-01-01 00:00:00'), typeof(NULL), typeof(INTERVAL 1 DAY), typeof(INTERVAL 1 MONTH), typeof(array(1, 2L)), typeof(1.5E10BD)",
+   "observed": {
+    "ansi=true": "(int, bigint, decimal(19,0), decimal(2,1), double, double, bigint, tinyint, smallint, decimal(1,0), string, binary, date, timestamp_ntz, void, interval day, interval month, array<bigint>, decimal(11,0))",
+    "ansi=false": "(int, bigint, decimal(19,0), decimal(2,1), double, double, bigint, tinyint, smallint, decimal(1,0), string, binary, date, timestamp_ntz, void, interval day, interval month, array<bigint>, decimal(11,0))"
+   }
+  },
+  {
+   "construct": "implicit-casts-numeric",
+   "sql": "SELECT typeof(1 + 1.5), typeof(1L + 1.5), typeof(CAST(1 AS INT) + 1.5D), typeof(1Y + 1S), typeof(coalesce(1, 1.5D)), 9007199254740993L = 9007199254740992.0D, typeof(1L + 1.5F), typeof(CAST(1 AS DECIMAL(20,0)) + 1.5D), typeof(1 / 2), typeof(CAST(1 AS DECIMAL(5,0)) / 2)",
+   "observed": {
+    "ansi=true": "(decimal(3,1), decimal(3,1), double, smallint, double, True, double, double, double, decimal(11,6))",
+    "ansi=false": "(decimal(3,1), decimal(3,1), double, smallint, double, True, float, double, double, decimal(11,6))"
+   }
+  },
+  {
+   "construct": "implicit-casts-string",
+   "sql": "SELECT 1 + '2', typeof(1 + '2'), 1 = '1', 1L = '1', DATE'2024-01-01' = '2024-01-01', typeof(concat(1, 'a')), 1.5D = '1.5'",
+   "observed": {
+    "ansi=true": "(3, bigint, True, True, True, string, True)",
+    "ansi=false": "(3.0, double, True, True, True, string, True)"
+   }
+  },
+  {
+   "construct": "implicit-cast-string-fraction",
+   "sql": "SELECT '1.5' + 1, typeof('1.5' + 1)",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '1.5' of the type \"STRING\" cannot be cast to \"BIGINT\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instead",
+    "ansi=false": "(2.5, double)"
+   }
+  },
+  {
+   "construct": "implicit-cast-int-equals-fraction",
+   "sql": "SELECT 1 = '1.0'",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value '1.0' of the type \"STRING\" cannot be cast to \"BIGINT\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instead",
+    "ansi=false": "(True)"
+   }
+  },
+  {
+   "construct": "implicit-cast-bad-string",
+   "sql": "SELECT 1 + 'x'",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value 'x' of the type \"STRING\" cannot be cast to \"BIGINT\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instead. ",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "implicit-cast-compare-bad-string",
+   "sql": "SELECT 1 = 'x'",
+   "observed": {
+    "ansi=true": "error CAST_INVALID_INPUT: [CAST_INVALID_INPUT] The value 'x' of the type \"STRING\" cannot be cast to \"BIGINT\" because it is malformed. Correct the value as per the syntax, or change its target type. Use `try_cast` to tolerate malformed input and return NULL instead. ",
+    "ansi=false": "(NULL)"
+   }
+  },
+  {
+   "construct": "type-names",
+   "sql": "SELECT typeof(CAST(1 AS BYTE)), typeof(CAST(1 AS SHORT)), typeof(CAST(1 AS INTEGER)), typeof(CAST(1 AS LONG)), typeof(CAST(1 AS REAL)), typeof(CAST(1 AS DOUBLE)), typeof(CAST(1 AS DEC)), typeof(CAST(1 AS NUMERIC(5,2))), typeof(CAST('a' AS VARCHAR(3))), typeof(CAST('a' AS CHAR(3))), typeof(CAST('a' AS BINARY)), typeof(CAST(NULL AS TIMESTAMP_LTZ)), typeof(CAST(NULL AS TIMESTAMP_NTZ)), typeof(CAST(NULL AS TIMESTAMP)), typeof(CAST(NULL AS MAP<STRING, INT>)), typeof(CAST(NULL AS VARIANT))",
+   "observed": {
+    "ansi=true": "(tinyint, smallint, int, bigint, float, double, decimal(10,0), decimal(5,2), string, string, binary, timestamp, timestamp_ntz, timestamp_ntz, map<string,int>, variant)",
+    "ansi=false": "(tinyint, smallint, int, bigint, float, double, decimal(10,0), decimal(5,2), string, string, binary, timestamp, timestamp_ntz, timestamp_ntz, map<string,int>, variant)"
+   }
+  },
+  {
+   "construct": "type-names-ltz-default",
+   "sql": "SELECT typeof(CAST(NULL AS TIMESTAMP)), typeof(TIMESTAMP'2024-01-01 00:00:00')",
+   "conf": {
+    "spark.sql.timestampType": "TIMESTAMP_LTZ"
+   },
+   "observed": {
+    "ansi=true": "(timestamp, timestamp)",
+    "ansi=false": "(timestamp, timestamp)"
+   }
+  },
+  {
+   "construct": "integer-literal-overflow",
+   "sql": "SELECT 2147483647 + 1",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. Use 'try_add' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(-2147483648)"
+   }
+  },
+  {
+   "construct": "varchar-length",
+   "sql": "SELECT CAST('abcd' AS VARCHAR(3)), length(CAST('a' AS CHAR(3)))",
+   "observed": {
+    "ansi=true": "(abcd, 1)",
+    "ansi=false": "(abcd, 1)"
+   }
+  },
+  {
+   "construct": "is-null-kinds",
+   "sql": "SELECT b IS NULL, d IS NULL, s IS NULL FROM VALUES (CAST(NULL AS BIGINT), CAST(NULL AS DOUBLE), CAST(NULL AS STRING)), (0L, CAST('NaN' AS DOUBLE), ''), (-9223372036854775808L, -0.0D, 'ß') AS t(b, d, s)",
+   "observed": {
+    "ansi=true": "(True, True, True); (False, False, False); (False, False, False)",
+    "ansi=false": "(True, True, True); (False, False, False); (False, False, False)"
+   }
+  },
+  {
+   "construct": "bigint-to-double",
+   "sql": "SELECT CAST(x AS DOUBLE) FROM VALUES (9007199254740993L), (9007199254740995L), (-9223372036854775808L), (9223372036854775807L), (CAST(NULL AS BIGINT)) AS t(x)",
+   "observed": {
+    "ansi=true": "(9007199254740992.0); (9007199254740996.0); (-9.223372036854776e+18); (9.223372036854776e+18); (NULL)",
+    "ansi=false": "(9007199254740992.0); (9007199254740996.0); (-9.223372036854776e+18); (9.223372036854776e+18); (NULL)"
+   }
+  },
+  {
+   "construct": "timestamp-to-date",
+   "sql": "SELECT CAST(CAST(t AS DATE) AS STRING) FROM VALUES (TIMESTAMP_NTZ'1969-12-31 23:59:59.999999'), (TIMESTAMP_NTZ'0001-01-01 00:00:00'), (TIMESTAMP_NTZ'9999-12-31 23:59:59.999999') AS v(t)",
+   "observed": {
+    "ansi=true": "(1969-12-31); (0001-01-01); (9999-12-31)",
+    "ansi=false": "(1969-12-31); (0001-01-01); (9999-12-31)"
+   }
+  },
+  {
+   "construct": "micros-to-timestamp",
+   "sql": "SELECT CAST(CAST(timestamp_micros(u) AS TIMESTAMP_NTZ) AS STRING) FROM VALUES (-1L), (0L), (-62135596800000000L), (253402300799999999L) AS t(u)",
+   "observed": {
+    "ansi=true": "(1969-12-31 23:59:59.999999); (1970-01-01 00:00:00); (0001-01-01 00:00:00); (9999-12-31 23:59:59.999999)",
+    "ansi=false": "(1969-12-31 23:59:59.999999); (1970-01-01 00:00:00); (0001-01-01 00:00:00); (9999-12-31 23:59:59.999999)"
+   }
+  },
+  {
+   "construct": "timestamp-to-micros",
+   "sql": "SELECT unix_micros(CAST(t AS TIMESTAMP_LTZ)) FROM VALUES (TIMESTAMP_NTZ'1969-12-31 23:59:59.999999'), (TIMESTAMP_NTZ'0001-01-01 00:00:00'), (TIMESTAMP_NTZ'9999-12-31 23:59:59.999999') AS v(t)",
+   "observed": {
+    "ansi=true": "(-1); (-62135596800000000); (253402300799999999)",
+    "ansi=false": "(-1); (-62135596800000000); (253402300799999999)"
+   }
+  },
+  {
+   "construct": "unix-date-diff",
+   "sql": "SELECT CAST(unix_date(a) AS BIGINT) - CAST(unix_date(b) AS BIGINT) FROM VALUES (DATE'0001-01-01', DATE'9999-12-31'), (DATE'9999-12-31', DATE'0001-01-01'), (DATE'1969-12-31', DATE'1970-01-01') AS t(a, b)",
+   "observed": {
+    "ansi=true": "(-3652058); (3652058); (-1)",
+    "ansi=false": "(-3652058); (3652058); (-1)"
+   }
+  },
+  {
+   "construct": "floor-remainder-bigint",
+   "sql": "SELECT u - (((u - 3L) % 10L + 10L) % 10L) FROM VALUES (-1L), (-7L), (7L), (0L), (-9223372036854775805L) AS t(u)",
+   "note": "date_bin's floor, as sql/core/temporal.py writes it: `%` truncates, `+ k) % k` floors",
+   "observed": {
+    "ansi=true": "(-7); (-7); (3); (-7); (-9223372036854775807)",
+    "ansi=false": "(-7); (-7); (3); (-7); (-9223372036854775807)"
+   }
+  },
+  {
+   "construct": "decimal-to-double-text",
+   "sql": "SELECT CAST(CAST(CAST('0.1' AS DECIMAL(38,37)) AS STRING) AS DOUBLE), CAST(CAST(CAST('2.5' AS DECIMAL(10,1)) AS STRING) AS DOUBLE), CAST(CAST(CAST('-0.0' AS DECIMAL(5,1)) AS STRING) AS DOUBLE), CAST(CAST(CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0)) AS STRING) AS DOUBLE), CAST(CAST(CAST('0.30000000000000000444089209850062616169' AS DECIMAL(38,38)) AS STRING) AS DOUBLE)",
+   "observed": {
+    "ansi=true": "(0.1, 2.5, 0.0, 1e+38, 0.3)",
+    "ansi=false": "(0.1, 2.5, 0.0, 1e+38, 0.3)"
+   }
+  },
+  {
+   "construct": "double-to-decimal-round",
+   "sql": "SELECT CAST((CAST(CAST(ROUND(x * 100.0D) AS BIGINT) AS DECIMAL(10,0)) * 0.01) AS DECIMAL(10,2)) FROM VALUES (2.675D), (-2.675D), (0.125D), (1.005D) AS t(x)",
+   "note": "`decimal_cast` of a double at scale 2, as sverify_spark/dialect.py writes it",
+   "observed": {
+    "ansi=true": "(2.68); (-2.68); (0.13); (1.00)",
+    "ansi=false": "(2.68); (-2.68); (0.13); (1.00)"
+   }
+  },
+  {
+   "construct": "repeat-bigint-count",
+   "sql": "SELECT REPEAT('', 2147483648L), REPEAT('a', CAST(0 AS BIGINT))",
+   "observed": {
+    "ansi=true": "error CAST_OVERFLOW: [CAST_OVERFLOW] The value 2147483648L of the type \"BIGINT\" cannot be cast to \"INT\" due to an overflow. Use `try_cast` to tolerate overflow and return NULL instead. SQLSTATE: 22003",
+    "ansi=false": "(, )"
+   }
+  },
+  {
+   "construct": "double-to-bigint-edge",
+   "sql": "SELECT CAST(9.223372036854775807E18D AS BIGINT), CAST(-9.223372036854775808E18D AS BIGINT), CAST(9.2233720368547748E18D AS BIGINT)",
+   "note": "`float_to_int` checks -2^63 <= x < 2^63 before the cast",
+   "observed": {
+    "ansi=true": "(9223372036854775807, -9223372036854775808, 9223372036854774784)",
+    "ansi=false": "(9223372036854775807, -9223372036854775808, 9223372036854774784)"
+   }
+  }
+ ]
+}

@@ -10,9 +10,11 @@ dependencies = [
     # Released with sverify, at its version (#1189;
     # .claude/skills/release-sverify/SKILL.md bumps both).
     "sverify==0.7.1",
-    "numpy>=2.5.4",
-    "polars>=2.1.0",
 ]
+
+[project.optional-dependencies]
+# Running plans on Polars. The plugin and the facts need nothing more.
+run = ["numpy>=2.5.4", "polars>=2.1.0"]
 
 # sverify finds its engines here and nowhere else (`sverify.profiles`).
 [project.entry-points."sverify.profiles"]

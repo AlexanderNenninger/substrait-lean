@@ -7,7 +7,7 @@ import SubstraitLean.SubstraitProfile
 
 DuckDB's, Polars's and Spark's choices and observation rows, from their facts
 (`characterization/duckdb/facts/`, `engines/polars/facts/`,
-`characterization/spark/facts/`), pinned to
+`engines/spark/facts/`), pinned to
 the versions those were probed at (D14). The rows cover the prototype slice:
 integer `+ - × /` and `%`, `SUM` and `AVG` of integers and doubles, double
 arithmetic, and an `ORDER BY`'s NULL order, clustering and ties, with what
@@ -320,7 +320,7 @@ def Profile.polars.obs : ObsTable := [
 
 /-! ## Spark -/
 
-/-- Spark 4.3.0 under `sverify.sql.spark.SPARK_CONF`: ANSI mode on, `TIMESTAMP`
+/-- Spark 4.3.0 under `sverify_spark.dialect.SPARK_CONF`: ANSI mode on, `TIMESTAMP`
 as `TIMESTAMP_NTZ`, the session time zone UTC (spark-exec-settings). -/
 def Profile.spark.table : ProfileTable where
   name := "spark"

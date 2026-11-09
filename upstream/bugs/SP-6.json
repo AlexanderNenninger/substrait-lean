@@ -14,8 +14,8 @@
     738
   ],
   "files": [
-    "characterization/spark/facts/spark-raise-set.json",
-    "characterization/spark/facts/spark-date-range.json"
+    "engines/spark/facts/spark-raise-set.json",
+    "engines/spark/facts/spark-date-range.json"
   ],
   "facts": [
     "spark-raise-set",
