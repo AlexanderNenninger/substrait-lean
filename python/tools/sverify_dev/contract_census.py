@@ -98,9 +98,10 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
     return sorted(set(causes))
 
 
-#: A list of engine fact ids in a reason, "(duckdb-var-stddev, duckdb-covar)":
-#: it changes with every characterization PR, and the outcome does not.
-FACTS = re.compile(r" \((?:(?:duckdb|polars|spark|snowflake|datafusion)-[\w-]+(?:, )?)+\)")
+#: A list of engine fact ids in a reason, "(duckdb-var-stddev, duckdb-covar)",
+#: each named after its engine: it changes with every characterization PR,
+#: and the outcome does not.
+FACTS = re.compile(rf" \((?:(?:{'|'.join(sorted(_engines.NAMED))})-[\w-]+(?:, )?)+\)")
 
 
 def census_case(c: Case, schemas: dict[str, Any]) -> dict[str, Any]:

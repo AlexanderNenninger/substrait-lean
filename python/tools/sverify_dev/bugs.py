@@ -28,7 +28,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import jsonschema
 
@@ -40,17 +40,6 @@ SCHEMA = ROOT / "bug.schema.json"
 BACKLOG = REPO / "python" / "tests" / "lift_backlog.json"
 REPORT = ROOT / "REPORT.md"
 
-#: The id prefix of each project.
-PREFIXES = {
-    "sqlglot": "SG",
-    "datafusion": "DF",
-    "duckdb": "DD",
-    "deltalake": "DL",
-    "polars": "PL",
-    "spark": "SP",
-    "ibis": "IB",
-    "substrait": "ST",
-}
 
 Bug = dict[str, Any]
 
@@ -80,7 +69,7 @@ def validate(docs: dict[Path, Bug], root: Path = ROOT) -> list[str]:
         seen.add(b["id"])
         if path.name != f"{b['id']}.json":
             problems.append(f"{where}: the file is not named after its id {b['id']}")
-        prefix = PREFIXES[b["project"]]
+        prefix = PROJECTS[b["project"]].prefix
         if not b["id"].startswith(f"{prefix}-"):
             problems.append(f"{where}: a {b['project']} bug's id starts with {prefix}-")
         if b.get("kind") == "spec-gap" and b["project"] != "substrait":
@@ -116,16 +105,24 @@ _STATUS_CLASS = {
     "unverified": "unverified",
 }
 
-#: The projects' names as the report shows them, in its order.
+
+class Project(NamedTuple):
+    prefix: str
+    """The prefix of its entries' ids."""
+    name: str
+    """Its name as the report shows it."""
+
+
+#: The projects, in the report's order.
 PROJECTS = {
-    "duckdb": "DuckDB",
-    "polars": "Polars",
-    "spark": "Spark",
-    "sqlglot": "SQLGlot",
-    "ibis": "Ibis",
-    "deltalake": "delta-rs",
-    "datafusion": "DataFusion",
-    "substrait": "Substrait",
+    "duckdb": Project("DD", "DuckDB"),
+    "polars": Project("PL", "Polars"),
+    "spark": Project("SP", "Spark"),
+    "sqlglot": Project("SG", "SQLGlot"),
+    "ibis": Project("IB", "Ibis"),
+    "deltalake": Project("DL", "delta-rs"),
+    "datafusion": Project("DF", "DataFusion"),
+    "substrait": Project("ST", "Substrait"),
 }
 
 
@@ -175,7 +172,7 @@ def render(docs: dict[Path, Bug]) -> str:
         "|---|---|---|---|",
     ]
     out += [
-        f"| {link(b['id'])} | {PROJECTS[b['project']]} | {b['title']} | {_versions(b)} |"
+        f"| {link(b['id'])} | {PROJECTS[b['project']].name} | {b['title']} | {_versions(b)} |"
         for b in by_class["report"]
     ]
     out += [
@@ -188,7 +185,7 @@ def render(docs: dict[Path, Bug]) -> str:
         "|---|---|---|",
     ]
     out += [
-        f"| {link(b['id'])} | {PROJECTS[b['project']]} | {_issue(b['upstream'][0])} |"
+        f"| {link(b['id'])} | {PROJECTS[b['project']].name} | {_issue(b['upstream'][0])} |"
         for b in by_class["duplicate"]
     ]
     shown = [c for c in CLASSES if by_class[c]]
@@ -199,7 +196,7 @@ def render(docs: dict[Path, Bug]) -> str:
         "| Project | " + " | ".join(shown) + " | total |",
         "|---|" + "---:|" * (len(shown) + 1),
     ]
-    for project, name in PROJECTS.items():
+    for project, (_, name) in PROJECTS.items():
         row = [sum(b["project"] == project for b in by_class[c]) for c in shown]
         out.append(f"| {name} | " + " | ".join(map(str, row)) + f" | {sum(row)} |")
     totals = [len(by_class[c]) for c in shown]
