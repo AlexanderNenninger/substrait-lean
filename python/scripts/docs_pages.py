@@ -609,6 +609,11 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
             "Verifying: the two paths",
             "Under the reference or under an engine's profile",
         ),
+        (
+            "docs/rejections.md",
+            "The rejection set",
+            "Where the reference raises, and the precondition that lifts each",
+        ),
         ("docs/how-it-works.md", "How it works", "The checker, incremental views and the engines"),
         (
             "docs/engine-profiles.md",
