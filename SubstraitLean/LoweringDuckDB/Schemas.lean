@@ -30,9 +30,6 @@ def nanGuard : BinFn → Option Tm
   | .fdivIeee => some (orFn (andFn (isInfT (.field 0)) (isInfT (.field 1)))
       (andFn (eqFn (.field 0) (.lit (.float 0))) (eqFn (.field 1) (.lit (.float 0)))))
   | .fmod => some (andFn (isInfT (.field 0)) (notFn (eqFn (.field 1) nanT)))
-  | .fpow => some (andFn (andFn (ltFn negInfT (.field 0)) (ltFn (.field 0) (.lit (.float 0))))
-      (andFn (andFn (ltFn negInfT (.field 1)) (ltFn (.field 1) posInfT))
-        (notFn (eqFn (ffloorFn (.field 1)) (.field 1)))))
   | _ => none
 
 /-- `CASE WHEN x IS NOT NULL AND y = 0 THEN error ELSE e END`: a zero divisor
@@ -110,11 +107,11 @@ def schemaBin? (f : BinFn) : Option Tm :=
   match f with
   | .fdiv | .fmod => (nan self).map (zeroGuard [.float] .float)
   -- `(-∞) ^ y` for a finite `y` that is not an integer raises too
-  -- (`negInfPow`), where DuckDB gives `+∞` or `0`.
-  | .fpow => (nanGuard .fpow).map fun g =>
-    .ite (orFn g (andFn (eqFn (.field 0) negInfT) (andFn (andFn (ltFn negInfT (.field 1))
-      (ltFn (.field 1) posInfT)) (notFn (eqFn (ffloorFn (.field 1)) (.field 1))))))
-      (.raise "domain error" (.field 1)) self
+  -- (`negInfPow`), where DuckDB gives `+∞` or `0`: `Lowering.fpowTemplate`,
+  -- written and proved by hand (`Lowering.fpow_agree`), as the tactic's proof
+  -- is slower.
+  | .fpow => some (.expr Lowering.fpowTemplate (Lean.mkConst ``Lowering.fpowTemplate)
+      "CASE WHEN ((('-inf' < #0 AND #0 < 0) AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1))) OR (#0 = '-inf' AND (('-inf' < #1 AND #1 < 'inf') AND NOT (ffloor(#1) = #1)))) THEN error('domain error', #1) ELSE fpow(#0, #1) END")
   | .imod => some (zeroGuard [.int, .tod] .int
       (.ite (andFn (eqFn (.field 1) (.lit (.int (-1)))) (isNumFn .int (.field 0))) (.lit (.int 0)) self))
   -- `<<` is `Lowering.shlTemplate`, written and proved by hand
