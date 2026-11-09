@@ -1,23 +1,11 @@
-# Guide
+# How-to guide
 
-What sverify does and how to use it, with examples that the test suite
-runs. [python/README.md](../python/README.md) is the short version,
-[examples.md](examples.md) shows each feature in a few lines, and how it
-works inside is in [how-it-works.md](how-it-works.md).
-
-## Install and a first contract
-
-```bash
-pip install sverify                 # or: uv add sverify
-pip install 'sverify[delta,iceberg,polars,spark]'   # or 'sverify[all]'
-```
-
-The core runs on DuckDB: contracts, incremental maintenance, and SQL for
-DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
-(needs Java 17 or 21), `delta`, `iceberg`, `flight` (`FlightSource`) and
-`testing` (Hypothesis strategies). Wheels bundle the Lean checker
-as a small native binary, so you need no Lean toolchain; they exist for Linux
-(x86_64, aarch64) and macOS (arm64), Python 3.12 and later.
+One section per task: contracts and runtime errors, the command line,
+nodes and refresh, bad rows, Delta Lake and Iceberg, credentials,
+OpenLineage, engines and routes, export, ODCS and pytest.
+[Getting started](getting-started.md) is the on-ramp, in ten steps; this
+page is for looking a task up. Its examples run in order
+(`python/tests/test_readme.py`), from this setup:
 
 ```python
 import ibis
@@ -33,10 +21,9 @@ orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))  # now 
 ```
 
 A transform states what it assumes about its inputs (`requires`) and what
-it promises about its output (`ensures`). Applying it to a source proves
-the promise for every input that meets the assumptions, before any data
-runs; `refresh` runs it, here on Polars by a route that says how the proof
-carries over ([Routes](#routes-classes-and-profiles)):
+it promises about its output (`ensures`); `refresh` runs it, here on Polars
+by a route that says how the proof carries over
+([Routes](#routes-classes-and-profiles)):
 
 ```python
 @sv.transform(
@@ -53,75 +40,12 @@ print(first.to_arrow().to_pylist())
 # [{'id': 3, 'doubled': 100}]
 ```
 
-## What it does for you
+## A complete job, in outline
 
-In order of day-to-day value:
-
-1. Contracts proved before the pipeline runs. The checks you would
-   write as dbt tests or data expectations (`not_null`, `unique`, accepted
-   ranges, relations between columns) hold on every input that meets the
-   preconditions, including data you never tested with. A test finds a
-   NULL city after a left join when one shows up in production; the checker
-   refuses `not_null(city)` when you write the model. Runtime errors
-   (division by zero, integer overflow, bad casts, regular expressions that
-   don't compile) are ruled out the same way, or reported before the job
-   can fail at 3 am. Preconditions are checked on the data, or proved from
-   Delta and Iceberg metadata (schemas, CHECK constraints, file statistics).
-2. One plan, the same answer on every engine. You develop on DuckDB or
-   Polars and run on Spark, or as SQL on Snowflake. The same SQL text doesn't
-   mean the same thing on each (`/` on integers truncates in DataFusion and
-   PostgreSQL and gives a double in DuckDB and Spark; DataFusion wraps on
-   overflow where DuckDB raises; NULLs sort first or last depending on the
-   engine). Sverify translates the checked plan for each engine with every
-   such choice spelled out, or refuses the plan where an engine can't
-   match, as for windows over a Snowflake table with ties. On DuckDB and
-   Polars a route says how the proof carries over, and its class what you
-   can rely on ([Routes](#routes-classes-and-profiles)).
-3. Results kept up to date from the changes, provably. Instead of a
-   watermark job ("process the rows newer than…"), which misses deletes,
-   late rows and new join matches, sverify updates a result from the
-   inserts and deletes alone, with a delta plan proved equal to a full
-   recompute. It reads Delta's Change Data Feed and Iceberg's appends
-   (skipping the Delta files a proof shows a filter can't match),
-   writes each state to a Delta or Iceberg sink exactly once, and the sink
-   carries the proved contract to the next job, which builds on it without
-   re-checking the data.
-4. Proved optimizations. A plan can be split across shards (Delta or
-   Iceberg partitions, files) and the results combined, with a proof that
-   the result is the same; per-row overflow checks can be dropped where a
-   contract proves them unnecessary; and a plan can be rewritten with what
-   its contract establishes (a `DISTINCT` over a key or an implied filter
-   goes, a left join on a NOT NULL foreign key becomes an inner join). See
-   [docs/optimizations.md](optimizations.md).
-
-What it doesn't do (yet). Correlated scalar subqueries are not in the
-model. An `ibis.param` is checked with its value bound,
-`sv.verify(expr, params={threshold: 50})`, and the report and `report.run`
-are about that value; an unbound parameter is refused, and so is one in a
-transform or a node. Incremental maintenance covers filters,
-projections, inner, cross, semi and anti joins, `UNION ALL`, `DISTINCT`, and
-`COUNT`, exact `SUM` and `AVG`, `MIN` and `MAX` per group; another aggregate
-recomputes only the groups a batch touches, and a window only the partitions
-it touches. Other views (left joins) are recomputed and diffed instead, and
-`node.status()` says so. [The Ibis coverage table](../README.md#ibis-coverage)
-has the full list.
-
-## Workflows
-
-Three complete jobs, condensed from the [query catalogue](../catalogue/INDEX.md)
-of 139 real analytical queries, are the first notebooks of the
-[tour](../README.md#the-tour). Each starts from source tables, states and proves a
-contract, runs on every engine, keeps up with new data, writes a sink, and
-shows what goes wrong without the checker. `poe notebooks` runs them
-headless in CI.
-
-| Workflow | Sources and sinks | What the checker catches |
-|---|---|---|
-| [Duplicate card payments](../notebooks/01_duplicate_payments.py) | Delta table with Change Data Feed → Delta sink → a downstream job | a self-join matching each payment with itself; a watermark job that misses a late duplicate and keeps a reversed one |
-| [Sensor alerts](../notebooks/02_sensor_alerts.py) | Iceberg table → Iceberg sink | an alert over `LAG` that depends on how ties break; a NaN reading raising a false alert (`NaN > 30` is TRUE in SQL); a sensor sending twice |
-| [An orders mart](../notebooks/03_orders_mart.py) | Delta orders and a type-2 customer dimension → Delta sink | dbt's `not_null(city)` failing after a point-in-time left join; `/` meaning three things on three engines |
-
-The first, in outline:
+The tasks below build on this job, the first notebook of the
+[tour](../README.md#the-tour) in outline: a Delta table of card payments,
+a contract that finds double charges, a sink, and a refresh from the
+Change Data Feed.
 
 ```python
 import datetime as dt
@@ -199,35 +123,7 @@ for engine in ENGINES:  # the same rows on DuckDB and Polars
     assert again.to_arrow().to_pylist() == stored.to_arrow().to_pylist()
 ```
 
-## What goes wrong without it
-
-The catalogue probed its 139 queries on DataFusion, DuckDB, Polars and
-Snowflake SQL and recorded each query's cross-engine pitfalls
-([`pitfalls.toml`](../catalogue/pitfalls.toml), [FINDINGS](../catalogue/FINDINGS.md)).
-The most common, and what sverify does about each:
-
-| Pitfall | What the engines do | sverify |
-|---|---|---|
-| Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Snowflake and Spark SQL is only written with a proved `deterministic=True` |
-| NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the reference's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
-| Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
-| Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
-| NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
-| `NOT IN` with a NULL | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
-| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, and DataFusion merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](#guards)); a constant that raises makes the whole plan raise |
-| NULL ordering | DataFusion, PostgreSQL and Snowflake put NULLs last ascending and first descending, DuckDB last both ways, Spark first ascending, a Polars sort first | every `ORDER BY` says where NULLs go |
-
-Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
-threshold (a total over all parts) into each part's own sum, so the query
-compared each part with itself, and nothing failed. [backend_semantics.py](../catalogue/backend_semantics.py) checks every such quirk
-against the model, and its section 8 checks DataFusion as a backend.
-
-## Using sverify
-
-[Install](#install-and-a-first-contract) covers the release; the nightly
-builds of `main` and how to pin one are in
-[python/README.md](../python/README.md).
+## Tasks
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents every public function and class, for the released version (built
@@ -1777,7 +1673,7 @@ reason names each window, ordered aggregate or `LIMIT` where ties stay open
 (`str(report)`), with the `sv.unique(...)` that would close them
 (`report.ties`).
 Without it the plan runs with the engine's own order of the ties, which every
-proof covers. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
+proof covers. [Example 7](getting-started.md#7-a-plan-checked-under-duckdbs-profile)
 shows a transfer and a refusal, and
 [how a route is chosen](core-semantics.md#d13-choosing-the-route) gives the
 rules behind them.
@@ -1814,7 +1710,7 @@ tolerance, and `floats="exact"` asks for the same bits. `verify` checks
 either against the plan's bound on each engine; where
 no engine meets it, the plan is not proved, and the report's `observes:`
 line gives the plan's bound, the reason per engine and a tolerance that
-would do ([example 5](examples.md#5-doubles-within-the-plans-bound)).
+would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
 `sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
 `timestamps="ms"`, `strings="nfc"`, `decimals="value"` and
@@ -1923,7 +1819,7 @@ Within 1.x the message and the manifest only gain fields, and
 sidecar file. `sv.Report.from_substrait(exported)` reads a plan back, in either
 format, and proves its contract again with the checker; the report it
 returns has the same postconditions and verdict.
-[Example 10](examples.md#10-a-proved-plan-for-any-substrait-consumer)
+[Example 10](getting-started.md#10-a-proved-plan-for-any-substrait-consumer)
 exports a plan and shows the three modes. DataFusion's Substrait consumer
 runs the exports in `tests/test_substrait_export.py` and gives the
 reference's results; it does not know Substrait's `variance` or

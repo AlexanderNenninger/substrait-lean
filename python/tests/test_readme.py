@@ -1,4 +1,4 @@
-"""The Python examples of the READMEs and of docs/guide.md, docs/examples.md
+"""The Python examples of the READMEs and of docs/guide.md, docs/getting-started.md
 and docs/how-it-works.md run.
 
 Each file's ```python blocks are run in order, in one namespace and in a
@@ -20,7 +20,7 @@ READMES = [
     ROOT / "README.md",
     ROOT / "python" / "README.md",
     ROOT / "docs" / "guide.md",
-    ROOT / "docs" / "examples.md",
+    ROOT / "docs" / "getting-started.md",
     ROOT / "docs" / "how-it-works.md",
 ]
 

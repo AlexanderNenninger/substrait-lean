@@ -6,7 +6,7 @@ Great Docs renders the directories `python/examples/`, `python/semantics/`,
 written here, at build time, and ignored by git (CLAUDE.md, "Generated
 files"):
 
-- `examples/`: `docs/examples.md`;
+- `examples/`: `docs/getting-started.md`, as `examples/examples.md`;
 - `semantics/` and `design/`: the reference and design pages of `docs/`
   (`DOC_SECTIONS`), with GitHub's heading anchors. Links between pages the
   site has stay on the site; links to other files of the repository point at
@@ -625,7 +625,7 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
 def site_names() -> dict[str, tuple[str, str]]:
     """Each file of the repository the site renders: its section and page name."""
     names = {
-        "docs/examples.md": ("examples", "examples"),
+        "docs/getting-started.md": ("examples", "examples"),
         "docs/realizability.md": ("ledgers", "realizability"),
     }
     for section, pages in DOC_SECTIONS.items():
@@ -692,10 +692,10 @@ def write(out: Path, root: Path = ROOT) -> None:
         front("Realizability", "How a plan verified under the reference runs on each engine") + text
     )
 
-    source = root / "docs/examples.md"
+    source = root / "docs/getting-started.md"
     text = rewrite_links(strip_title(source.read_text()), source, relative(local, "examples"))
     (examples / "examples.md").write_text(
-        front("Examples", "Sverify's features in ten short examples, each a step up", True) + text
+        front("Getting started", "From the install to a proved plan, in ten steps", True) + text
     )
 
     for section, pages in DOC_SECTIONS.items():

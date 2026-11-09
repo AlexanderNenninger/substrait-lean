@@ -77,7 +77,7 @@ rows (3):
 ```
 
 What it accepts is the model's fragment (`core/Sverify/Core/Rel.lean` lists the
-operators): the coverage table under [What is supported](../README.md#what-is-supported)
+operators): the coverage table under [What is supported](../README.md#ibis-coverage)
 probes it from the Ibis side, and the catalogue's
 [`features.toml`](../catalogue/features.toml) records it per feature. Function
 calls are matched by name in `extensions`, and anything else is rejected.

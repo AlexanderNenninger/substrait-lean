@@ -28,6 +28,7 @@ and every notebook once.
 
 | Page | Job |
 |---|---|
+| [getting-started.md](getting-started.md) | From the install to a proved plan, in ten steps; what goes wrong without a checker; how it works, in brief (on the site: Getting started) |
 | [notebooks/01_duplicate_payments.py](../notebooks/01_duplicate_payments.py) | A Delta pipeline that catches double charges |
 | [notebooks/02_sensor_alerts.py](../notebooks/02_sensor_alerts.py) | An Iceberg pipeline of sensor alerts: ties, NaN, windows |
 | [notebooks/03_orders_mart.py](../notebooks/03_orders_mart.py) | An orders mart: a point-in-time join, dbt's tests as a contract |
@@ -42,8 +43,8 @@ release on PyPI.
 
 | Page | Job | Site |
 |---|---|---|
-| [guide.md](guide.md) | Every task, one section each: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
-| [examples.md](examples.md) | Ten short examples, each a step up | Examples |
+| [guide.md](guide.md) | One section per task: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
+| [examples.md](examples.md) | Moved: a list of links to the steps of getting-started.md | |
 
 ## Reference
 
