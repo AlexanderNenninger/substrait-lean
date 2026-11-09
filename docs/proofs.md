@@ -2,6 +2,7 @@
 
 Sverify's guarantees are theorems of the Lean project in
 [`core/`](../core) (the reference's semantics),
+[`engines/`](../engines) (what every engine shares),
 [`SubstraitLean/`](../SubstraitLean) and
 [`float-bounds/`](../float-bounds). This page names the theorems each
 guarantee rests on, what each of them assumes, and the one job of every
@@ -162,6 +163,23 @@ runs that build as the guard. The modules below it import the core as
 | `AllowedNear.lean` | Allowed results close to an order's: every order of a double `SUM` or `AVG` among them |
 | `Profile.lean` | Engine profiles as outcomes per function; the reference is one |
 
+### Engines-common: `engines/Sverify/Engines/`
+
+What every engine shares, in the Lake package `sverify-engines` (#1189). It
+imports only the core and the analysis (`analysis/`, the Lake package
+`sverify-analysis`, empty until #1189's step 3b moves the analysis into it):
+`lake build` in `engines/` builds it on those alone, and CI runs that build as
+the guard. The modules below it import it as
+`Sverify.Engines.*`.
+
+| Module | Job |
+|---|---|
+| `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `Profile.okImpl`, `AllowedE`, `Engine.reference`, the per-plan `Refines` certificate |
+| `Generated.lean` | The `check_generated` switch for the generated modules |
+| `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
+| `Tables.lean` | The table machinery: the observation rows' constructors and evidence, what reruns give (`withReruns`), `EngineProfile` and its checks, and the JSON a table is reported in |
+| `Transfer.lean` | The options a plan meets, and transfer between profiles |
+
 ### Values and scalar functions
 
 | Module | Job |
@@ -236,7 +254,7 @@ runs that build as the guard. The modules below it import the core as
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
 | `AllowedAnalysis.lean` | What the analysis proves of the allowed results: plans without choices, row caps, postconditions on every allowed result |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
-| `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `AllowedE`, the per-plan `Refines` certificate |
+| `Engine.lean` | DuckDB's, Polars's and Spark's `Engine` values (#900), with the proofs that their functions are within their tables (`Profile.duckdb_withinOk`, `Polars.written_within`) |
 | `EngineSound.lean` | What an engine's model is sound for (#900): `Engine.Sound` per engine, `Engine.contract_sound` on the model's rows, and `Engine.contract_sound_runs` on the actual output under the transfer check |
 | `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
 | `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, and the range of an engine's double `AVG` (`AvgOrder.bound`) |
@@ -248,14 +266,12 @@ runs that build as the guard. The modules below it import the core as
 | `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`) |
 | `DuckDBProfile.lean` | `Profile.duckdb` under DuckDB's settings, as the SQL printer writes it, and `Rel.duckdb_sound` |
 | `Guards.lean` | Guard elimination for the SQL writers |
-| `EngineTables.lean` | DuckDB's and Polars's choice tables, refining the core |
-| `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
+| `EngineTables.lean` | DuckDB's, Polars's and Spark's choice tables and observation rows, refining the core; `builtinEngines`; the dependency and transfer reports over them |
 | `PolarsShims.lean` | The Polars shims, proved against a model of Polars's functions |
 | `PolarsProfile.lean` | `Profile.polars`, the semantics under `semantics="polars"` |
 | `SparkShims.lean` | The Spark shims, proved against a model of Spark under ANSI |
 | `SparkProfile.lean` | `Profile.spark`, the semantics under `semantics="spark"` |
 | `SubstraitProfile.lean` | Substrait's own semantics as a profile |
-| `Transfer.lean` | The options a plan meets, and transfer between profiles |
 | `Obligations.lean` | The realizability table: how each engine discharges each option |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
 | `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |
@@ -280,7 +296,6 @@ runs that build as the guard. The modules below it import the core as
 | `LiftSearch.lean` | `generate_lift`, the lift search |
 | `LiftDuckDB.lean` | The lift's tables and their exports |
 | `LiftDuckDB/Duckdb/*.lean`, `LiftDuckDB/Reference/*.lean` | The lift's entries per semantics, one module per area (generated) |
-| `Generated.lean` | The `check_generated` switch for the generated modules |
 
 ### Reading, writing and the CLI
 

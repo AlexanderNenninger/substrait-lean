@@ -156,7 +156,7 @@ def test_rows_cite_theorems_float_bounds_has() -> None:
     """The core cannot see `float-bounds`' theorems: the names its engine rows
     cite (`floatBoundsTheorems`) are the ones `float-bounds` checks exist."""
     root = Path(__file__).resolve().parents[2]
-    core = (root / "SubstraitLean" / "EngineTables.lean").read_text()
+    core = (root / "engines" / "Sverify" / "Engines" / "Tables.lean").read_text()
     names = re.compile(r'"(FloatBounds\.[\w.]+)"')
     cited = core[core.index("def floatBoundsTheorems") :].split("\n\n")[0]
     checked = "".join(

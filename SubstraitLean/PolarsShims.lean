@@ -1,7 +1,7 @@
 import Sverify.Core.Profile
 import Sverify.Core.Order
 import SubstraitLean.EngineTables
-import SubstraitLean.Shims
+import Sverify.Engines.Shims
 
 /-!
 # The reference on Polars: the shims, proved (#444)
@@ -19,7 +19,7 @@ engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`,
 **Trusted**: the model of Polars's own functions below (`Polars.floorDiv`,
 `Polars.floorMod`, `Polars.round`, `Polars.find`, …), each from its fact,
 and of the shims it shares with other engines (`Shim.sortWith`, … in
-`SubstraitLean/Shims.lean`). The shims are then theorems, as `Rel.duckdb_shim_sound` is for
+`engines/Sverify/Engines/Shims.lean`). The shims are then theorems, as `Rel.duckdb_shim_sound` is for
 DuckDB.
 
 * Value side (`SHIMS`): `int_div_trunc`, `int_mod_trunc`, `round_half_away`,

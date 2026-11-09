@@ -11,7 +11,7 @@ generated: the search (`generate_lowering`, `SubstraitLean/LoweringSearch.lean`)
 runs in `scripts/RegenLowering.lean` (`poe regen-lowering`) and writes each
 entry it found, with its proof, to `SubstraitLean/LoweringDuckDB/On`, one
 module per area, which a build checks in parallel without searching
-(`SubstraitLean/Generated.lean`). Other settings have no table: sverify runs
+(`engines/Sverify/Engines/Generated.lean`). Other settings have no table: sverify runs
 DuckDB with its defaults, and the SQL it writes for DuckDB assumes them (#241). Where
 DuckDB differs from the reference (FACTS R15), an entry is a guard that
 raises where the reference does, or `MIN % -1` and `<<` as the reference

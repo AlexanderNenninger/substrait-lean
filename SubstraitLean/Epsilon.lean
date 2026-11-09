@@ -1,5 +1,5 @@
 import SubstraitLean.ShardCheck
-import SubstraitLean.Transfer
+import SubstraitLean.EngineTables
 import SubstraitLean.MarginCheck
 
 /-!
