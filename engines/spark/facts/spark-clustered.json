@@ -1,0 +1,64 @@
+{
+  "id": "spark-clustered",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`DISTRIBUTE BY`, `SORT BY`, `CLUSTER BY`: equal keys in one partition, sorted within it",
+  "verdict": "`clustered`: `DISTRIBUTE BY k` puts equal keys together; `SORT BY` sorts each partition",
+  "area": "relations",
+  "options": [
+    "clustered"
+  ],
+  "rows": [
+    {
+      "option": "clustered",
+      "types": [
+        "any"
+      ]
+    }
+  ],
+  "constructs": [
+    "DISTRIBUTE BY",
+    "SORT BY",
+    "CLUSTER BY",
+    "REPARTITION"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": "`DISTRIBUTE BY k` hash-partitions so equal keys share a partition; `SORT BY k` sorts within each partition; `CLUSTER BY k` is both. The output keeps equal keys adjacent with no global order.",
+  "reference": "`SORT_DIRECTION_CLUSTERED`: equal keys adjacent, groups in any order; the parser refuses it for now. `CLUSTER BY` gives it, as does a full sort.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-syntax-qry-select-clusterby.md",
+          "note": "`CLUSTER BY`: `DISTRIBUTE BY` and `SORT BY` together"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-syntax-qry-select-distribute-by.md"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "sort-within-partitions"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    }
+  ]
+}

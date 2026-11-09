@@ -1,0 +1,121 @@
+{
+  "id": "spark-kleene",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`AND`, `OR`, `NOT` are Kleene's; `bool_and`, `bool_or` skip NULLs",
+  "verdict": "three-valued logic; boolean aggregates skip NULLs, NULL when all are",
+  "area": "nulls",
+  "options": [
+    "three_valued_logic"
+  ],
+  "constructs": [
+    "AND",
+    "OR",
+    "NOT",
+    "bool_and",
+    "bool_or",
+    "every",
+    "some",
+    "any",
+    "IN",
+    "NOT IN"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`NULL AND false` is false, `NULL OR true` true, `NOT NULL` NULL. `bool_and` and `bool_or` (`every`, `some`) skip NULLs and are NULL over NULLs only. `1 IN (2, NULL)` and `1 NOT IN (2, NULL)` are NULL."
+  ],
+  "reference": "`and`, `or`, `not` are Kleene's; `bool_and` and `bool_or` skip NULLs as aggregates do. Spark is native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-null-semantics.md#L101-L147",
+          "note": "Logical operators: the truth tables"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "kleene"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "bool-aggregates"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "bool-aggregates-null"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "null-in"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "null-functions"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/predicate-functions.sql.out#L18-L23",
+          "note": "`not null::boolean` is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/predicate-functions.sql.out#L66-L71",
+          "note": "`false and null::boolean` is false"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/predicate-functions.sql.out#L58-L63",
+          "note": "`true and null::boolean` is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/predicate-functions.sql.out#L130-L135",
+          "note": "`true or null::boolean` is true"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/predicate-functions.sql.out#L138-L143",
+          "note": "`false or null::boolean` is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/predicate-functions.sql.out#L659-L664",
+          "note": "`1 in ('2', '3', '4', null)` is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/predicate-functions.sql.out#L723-L728",
+          "note": "`1 not in ('2', '3', '4', null)` is NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/group-by.sql.out#L392-L397",
+          "note": "`every`, `some`, `any`, `bool_and`, `bool_or` over NULLs only are NULL"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/group-by.sql.out#L400-L405",
+          "note": "Over `(NULL, true, false)` they are false, true, true, false, true: NULLs skipped"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    }
+  ]
+}

@@ -5,7 +5,7 @@
 #     "duckdb",
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[datafusion,polars,delta]",
+#     "sverify[datafusion,polars,delta,spark]",
 # ]
 #
 # [tool.uv.sources]
@@ -82,8 +82,9 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import ENGINES, SNOWFLAKE, SPARK, to_sql
+    from sverify.engines import ENGINES, SNOWFLAKE, to_sql
     from sverify.io import DeltaSink, DeltaSource
+    from sverify_spark.dialect import SPARK
 
     lake = Path(tempfile.mkdtemp())
 

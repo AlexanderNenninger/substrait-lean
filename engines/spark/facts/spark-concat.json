@@ -1,0 +1,81 @@
+{
+  "id": "spark-concat",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`concat` and `||` are NULL with a NULL argument; `concat_ws` skips NULLs",
+  "verdict": "`null_handling: ACCEPT_NULLS` native; `concat_ws` for `IGNORE_NULLS`",
+  "area": "nulls",
+  "options": [
+    "null_handling"
+  ],
+  "rows": [
+    {
+      "group": "str.concat",
+      "option": "null_handling",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "concat",
+    "||",
+    "concat_ws"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": "`concat('a', NULL)` and `'a' || NULL` are NULL; `concat_ws(',', 'a', NULL, 'b')` is `a,b`, and `concat_ws(',', NULL)` the empty string. `concat()` with no arguments is the empty string. A NULL separator makes `concat_ws` NULL: `concat_ws(NULL, 10, 20, NULL, 30)` is NULL.",
+  "reference": "`str_concat` with `null_handling: ACCEPT_NULLS` (NULL in, NULL out); `IGNORE_NULLS` refused. Spark is native, and `concat_ws` gives `IGNORE_NULLS`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-null-semantics.md#L148-L190",
+          "note": "Null intolerant expressions return NULL for a NULL argument"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-concat-null"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/text.sql.out#L152-L157",
+          "note": "`concat_ws(',', 10, 20, null, 30)` is `10,20,30`: the NULL is skipped"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/text.sql.out#L160-L165",
+          "note": "`concat_ws('', 10, 20, null, 30)` is `102030`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/text.sql.out#L168-L173",
+          "note": "`concat_ws(NULL, 10, 20, null, 30) is null` is true"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    }
+  ]
+}

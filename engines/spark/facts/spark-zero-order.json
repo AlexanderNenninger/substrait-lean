@@ -1,0 +1,141 @@
+{
+  "id": "spark-zero-order",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "The two zeros compare equal; grouping normalises to 0.0; `min`, `max` keep the first",
+  "verdict": "`=`: -0.0 = 0.0; group key 0.0; sorts tie; `min`/`max` return the zero seen first",
+  "area": "doubles",
+  "options": [
+    "zero_sign",
+    "nan_zero_grouping"
+  ],
+  "rows": [
+    {
+      "group": "cmp",
+      "option": "zero_sign",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "cmp",
+      "option": "zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "agg.order",
+      "option": "zero_sign",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.order",
+      "option": "zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    }
+  ],
+  "constructs": [
+    "=",
+    "<",
+    "ORDER BY",
+    "GROUP BY",
+    "DISTINCT",
+    "JOIN",
+    "min",
+    "max",
+    "greatest",
+    "least"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`-0.0 = 0.0` and `-0.0 <=> 0.0` are true, `-0.0 < 0.0` false; a sort keeps the zeros as ties in input order. Grouping, `DISTINCT`, joins and set operations normalise -0.0 to 0.0, so a group key is 0.0 whichever zero came first, and the joined side keeps its own value (`0.0` joins `-0.0`).",
+    "`min` and `max` keep the first of two equal zeros: over (-0.0, 0.0) both are -0.0, over (0.0, -0.0) both 0.0. `greatest(-0.0, 0.0)` is -0.0."
+  ],
+  "reference": "`ONE_ZERO` (#89): `-0.0` is `0.0` everywhere, so a group key and an aggregate's result are never -0.0. Spark's grouping is native; `min`, `max`, `greatest`, `least` and a sorted column need the zero canonicalised where it is observed.",
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/util/SQLOrderingUtil.scala#L28-L45"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/NormalizeFloatingNumbers.scala#L179-L201",
+          "note": "-0.0 becomes 0.0"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-compare"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-sort"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-group-nan-zero"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-group-zero-first"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-distinct-nan-zero"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-join-nan-zero"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-min-max-zero"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/fuzz.json",
+          "note": "zero_order[0], zero_order[1]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 5784 of 5784 results as the fact says.",
+        "zero_order[0]: 300 rows, `min(x)`, `max(x)`, `count(DISTINCT x)`, 984 of 984 results as the fact says; zero_order[1]: 300 rows, `a = b`, `a < b`, `a <=> b`, `greatest(a, b)`, 4800 of 4800 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    }
+  ],
+  "issues": [
+    89
+  ]
+}

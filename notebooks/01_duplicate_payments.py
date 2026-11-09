@@ -5,7 +5,7 @@
 #     "ibis-framework[duckdb]==12.0.0",
 #     "marimo",
 #     "sqlglot",
-#     "sverify[datafusion,polars,delta]",
+#     "sverify[datafusion,polars,delta,spark]",
 # ]
 #
 # [tool.uv.sources]
@@ -94,8 +94,9 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import DUCKDB, ENGINES, SNOWFLAKE, SPARK, to_sql
+    from sverify.engines import DUCKDB, ENGINES, SNOWFLAKE, to_sql
     from sverify.io import DeltaSink, DeltaSource
+    from sverify_spark.dialect import SPARK
 
     lake = Path(tempfile.mkdtemp())  # a local "lake"; any Delta URI works, with storage_options
 

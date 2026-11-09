@@ -21,7 +21,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 #: The engine packages whose tests run here (`python/pyproject.toml`'s `testpaths`).
-engines=(polars)
+engines=(polars spark)
 install=() python=() select=()
 while [ $# -gt 0 ]; do
   case "$1" in

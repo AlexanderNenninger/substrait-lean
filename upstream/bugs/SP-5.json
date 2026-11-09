@@ -15,8 +15,8 @@
     739
   ],
   "files": [
-    "characterization/spark/probes.json",
-    "characterization/spark/facts/spark-round.json"
+    "engines/spark/probes/probes.json",
+    "engines/spark/facts/spark-round.json"
   ],
   "facts": [
     "spark-round"
