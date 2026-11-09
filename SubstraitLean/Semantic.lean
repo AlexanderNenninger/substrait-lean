@@ -421,8 +421,9 @@ theorem Measure.eval_dropDistinct {ks : List (List Nat)} {rows : Relation}
       have hnd : (((m.kept rows).map m.arg.eval).filter (· != .null)).Pairwise
           fun a b => a.canonV ≠ b.canonV := by
         have h1 := hp.sublist ((m.kept_sublist rows).map _)
-        rw [← List.map_map (g := Value.canonV)] at h1
-        exact (List.pairwise_map.mp h1).filter _
+        have h2 : ((m.kept rows).map m.arg.eval).Pairwise fun a b => a.canonV ≠ b.canonV :=
+          List.pairwise_map.mpr (List.pairwise_map.mp h1)
+        exact h2.filter _
       rw [Measure.eval_eq hfc, Measure.eval_eq (m := { m with distinct := false }) hfc]
       simp only [inputs, hd, ↓reduceIte, distinctVals, canonReps_of_pairwise hnd]
       rfl
@@ -633,7 +634,7 @@ theorem Rel.cover_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF ca
   | .distinct r, hwf => fun h y hy hn => by
       obtain ⟨z, hz, he⟩ := cover_sound hcat (r := r) hwf h y hy hn
       refine ⟨_, classRep_mem_canonReps hz, ?_⟩
-      rw [getD_canonV_of_canon (classRep_canon (c := Row.canon) _ _) j, he]
+      rw [getD_canonV_of_canon (classRep_canon (c := Row.canon) _ _), he]
   | .values _ _, _ | .filter _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .fetch _ _ _, _
   | .unionAll _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .aggregate _ _ _, _
   | .unnest _ _, _ => fun h => by simp [cover] at h
@@ -641,8 +642,14 @@ theorem Rel.cover_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF ca
 theorem eq_self_isTrue {v : Value} (h : v ≠ .null) : (BinFn.apply .eq v v).isTrue = true := by
   cases v <;> simp_all [BinFn.apply, Value.isTrue]
 
+/-- SQL `=` holds of values equal up to canonical codes. -/
+theorem eq_canon_isTrue {v w : Value} (h : v.canonV = w.canonV) (hn : v ≠ .null) :
+    (BinFn.apply .eq v w).isTrue = true := by
+  cases v <;> cases w <;> simp_all [BinFn.apply, Value.isTrue, Value.canonV]
+
 theorem eqPair_sound {n i j : Nat} {on : Expr} {x z : Row} (h : eqPair n on = some (i, j))
-    (hl : x.length = n) (hv : z.getD j .null = x.getD i .null) (hn : x.getD i .null ≠ .null) :
+    (hl : x.length = n) (hv : (z.getD j .null).canonV = (x.getD i .null).canonV)
+    (hn : x.getD i .null ≠ .null) :
     (on.eval (x ++ z)).isTrue = true := by
   unfold eqPair at h
   split at h
@@ -654,7 +661,7 @@ theorem eqPair_sound {n i j : Nat} {on : Expr} {x z : Row} (h : eqPair n on = so
       obtain ⟨d, rfl⟩ : ∃ d, j' = x.length + d := ⟨j' - x.length, by omega⟩
       simp only [Expr.eval, getD_append_left' (hl ▸ hc.1), getD_append_right']
       rw [← hl, Nat.add_sub_cancel_left] at hv
-      rw [hv]; exact eq_self_isTrue hn
+      exact eq_canon_isTrue hv.symm hn
     · split at h
       · rename_i _ hc
         simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -662,7 +669,8 @@ theorem eqPair_sound {n i j : Nat} {on : Expr} {x z : Row} (h : eqPair n on = so
         obtain ⟨d, rfl⟩ : ∃ d, i' = x.length + d := ⟨i' - x.length, by omega⟩
         simp only [Expr.eval, getD_append_left' (hl ▸ hc.1), getD_append_right']
         rw [← hl, Nat.add_sub_cancel_left] at hv
-        rw [hv]; exact eq_self_isTrue hn
+        exact eq_canon_isTrue hv
+          fun h0 => hn (Value.canonV_eq_null.mp (hv.symm.trans (Value.canonV_eq_null.mpr h0)))
       · simp at h
   · simp at h
 
@@ -875,8 +883,8 @@ theorem FD.right {rows B : Relation} {n : Nat}
 
 theorem fdClosure_sound {fds : List (List Nat × Nat)} {rows : Relation}
     (h : ∀ fd ∈ fds, FD fd.1 fd.2 rows) {x y : Row} (hx : x ∈ rows) (hy : y ∈ rows) :
-    ∀ (fuel : Nat) (X : List Nat), (∀ i ∈ X, x.getD i .null = y.getD i .null) →
-      ∀ i ∈ fdClosure fds fuel X, x.getD i .null = y.getD i .null
+    ∀ (fuel : Nat) (X : List Nat), (∀ i ∈ X, (x.getD i .null).canonV = (y.getD i .null).canonV) →
+      ∀ i ∈ fdClosure fds fuel X, (x.getD i .null).canonV = (y.getD i .null).canonV
   | 0, _, hX => hX
   | fuel + 1, X, hX => fdClosure_sound h hx hy fuel _ fun i hi => by
     rcases List.mem_append.mp hi with hi | hi
@@ -1004,7 +1012,7 @@ theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD f
       exact (fds_sound hwf.1 fd hfd).mono fun x hx => by simpa [eval, List.mem_mergeSort] using hx
   | .distinct r, hwf => fun fd hfd => by
       simp only [fds] at hfd
-      exact (fds_sound (r := r) hwf fd hfd).mono fun x hx => by simpa [eval, mem_dedup] using hx
+      exact (fds_sound (r := r) hwf fd hfd).mono fun x hx => canonReps_sub hx
   | .semi r _ _ _, hwf => fun fd hfd => by
       simp only [fds] at hfd
       exact (fds_sound hwf.1 fd hfd).mono fun x hx => (List.mem_filter.mp hx).1
@@ -1056,7 +1064,7 @@ theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD f
           have := List.all_eq_true.mp hall x hx
           obtain ⟨p', hp''⟩ := Option.isSome_iff_exists.mp this
           simp only [Function.comp_apply, hp'', Option.getD_some]
-          exact getD_emit (emitPos?_spec hp'')
+          rw [getD_emit (emitPos?_spec hp'')]
         intro o ho o' ho' he
         obtain ⟨y, hy, rfl⟩ := List.mem_map.mp ho
         obtain ⟨y', hy', rfl⟩ := List.mem_map.mp ho'
@@ -1437,8 +1445,12 @@ theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {nam
           obtain ⟨w, hw⟩ := hg' row hmem
           have hrl : row.length = out := by rw [← hout]; exact aggregateEval_length hmem
           simp only [Function.comp_apply, hw, id]
-          change keyOf (List.range out) (row ++ w) = row
-          rw [keyOf_append_left (by simp [hrl]), keyOf_range hrl]
+          show (List.range out).map (fun x => (row ++ w).getD x .null) = row
+          apply List.ext_getElem (by simp [hrl])
+          intro i h1 _
+          simp only [List.length_map, List.length_range] at h1
+          simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (hrl ▸ h1 : i < row.length),
+            List.getElem?_eq_getElem (hrl ▸ h1 : i < row.length)]
         exact new.trans orig.symm
     · simp at h
   | _ => simp [eagerAgg] at h
@@ -1598,7 +1610,10 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨-, rfl⟩ := h
       obtain ⟨k, hk⟩ := List.exists_mem_of_ne_nil _ (by simpa using hne)
-      exact ⟨hwf, rfl, by simp only [eval, dedup_of_nodup (keys (r := r) hwf k hk).nodup]⟩
+      exact ⟨hwf, rfl, by
+        simp only [eval, distinctRows]
+        exact (canonReps_of_pairwise ((keys (r := r) hwf k hk).imp fun hne hc =>
+          hne (keyOf_eq_of_canon hc))).symm⟩
   | .aggregate r gs ms, hwf, h =>
     simp only [rule] at h
     split at h
@@ -1611,17 +1626,22 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
       have hlen := eval_arity hcat hwf.1
       refine ⟨⟨⟨hwf.1, hwf.2.1⟩, by simp [arity]⟩, by simp [arity], ?_⟩
       -- The groups are distinct, so each has one row.
-      have hp := (keys hwf.1 k hk).map_pairwise (f := groupKey gs) fun x y he => by
+      have hp := (keys hwf.1 k hk).map_pairwise (f := fun x => (groupKey gs x).canon) fun x y he => by
         simp only [keyOf, List.map_inj_left]
         intro c hc
+        simp only [Row.canon, groupKey, List.map_map] at he
         simpa [Expr.eval] using List.map_inj_left.mp he _ (hkg c hc)
-      simp only [eval, aggregateEval, List.isEmpty_iff, hgs, ↓reduceIte, dedup_of_nodup hp,
-        List.map_map]
+      have hp' : (((r.eval cat).map (groupKey gs))).Pairwise fun a b => a.canon ≠ b.canon :=
+        List.pairwise_map.mpr (List.pairwise_map.mp hp)
+      simp only [eval, aggregateEval, List.isEmpty_iff, hgs, ↓reduceIte, distinctRows,
+        canonReps_of_pairwise hp', List.map_map]
       refine List.map_congr_left fun row hrow => ?_
-      have h1 : keyOf ((List.range gs.length).map (r.arity cat + ·)) (row ++ groupKey gs row) =
-          groupKey gs row := by
-        rw [← hlen row hrow, keyOf_shift, keyOf_range (by simp [groupKey])]
-      simpa [keyOf, List.map_map, groupKey] using h1
+      have hl := hlen row hrow
+      apply List.ext_getElem (by simp [groupKey])
+      intro i h₁ h₂
+      simp only [groupKey] at h₂
+      simp [List.getD_eq_getElem?_getD, ← hl, List.getElem?_append_right, groupKey,
+        List.getElem?_eq_getElem (by simpa using h₂ : i < gs.length)]
     · split at h
       · simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨-, rfl⟩ := h
