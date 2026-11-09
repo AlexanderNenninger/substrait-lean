@@ -266,7 +266,7 @@ adds three guides, to contracts, to pipelines and engines, and to running it in 
 
 ```python
 import ibis
-from sverify.engines import SNOWFLAKE, to_sql  # also DUCKDB, SPARK
+from sverify.engines import SNOWFLAKE, to_sql  # also DUCKDB; Spark: sverify_spark.dialect.SPARK
 from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
 
 sv.verify(

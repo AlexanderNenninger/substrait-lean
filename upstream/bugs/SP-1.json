@@ -20,12 +20,12 @@
     739
   ],
   "files": [
-    "characterization/spark/probes.json",
-    "characterization/spark/facts/spark-decimal-negate.json",
-    "characterization/spark/fuzz.json",
-    "python/src/sverify/sql/spark.py",
+    "engines/spark/probes/probes.json",
+    "engines/spark/facts/spark-decimal-negate.json",
+    "engines/spark/probes/fuzz.json",
+    "engines/spark/src/sverify_spark/dialect.py",
     "SubstraitLean/SparkShims.lean",
-    "python/tests/test_spark_decimal.py"
+    "engines/spark/tests/test_spark_decimal.py"
   ],
   "facts": [
     "spark-decimal-negate"
@@ -36,14 +36,14 @@
       "against": {
         "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
       },
-      "note": "probes decimal-negate-34-digits and decimal-negate-max of characterization/spark/probes.json, both ANSI modes, folded and codegen. Source at v4.3.0: Decimal.scala#L567-L575, arithmetic.scala#L70. JIRA search (project SPARK) for \"unary minus decimal precision\", \"negate decimal 38\", \"Decimal unary_- MathContext\", \"abs decimal precision loss\": SPARK-45438 only."
+      "note": "probes decimal-negate-34-digits and decimal-negate-max of engines/spark/probes/probes.json, both ANSI modes, folded and codegen. Source at v4.3.0: Decimal.scala#L567-L575, arithmetic.scala#L70. JIRA search (project SPARK) for \"unary minus decimal precision\", \"negate decimal 38\", \"Decimal unary_- MathContext\", \"abs decimal precision loss\": SPARK-45438 only."
     },
     {
       "checked_at": "2026-11-05",
       "against": {
         "spark": "4.3.0 (pyspark 4.3.0, Java 21.0.12, Linux x86_64)"
       },
-      "note": "sverify_dev.spark_fuzz decimal_negate (characterization/spark/fuzz.json): random DECIMAL(38,0) and DECIMAL(38,10) values, ties at 34 digits among them, both ANSI modes, folded and codegen. Ties round half to even; abs of a positive value is exact."
+      "note": "sverify_dev.spark_fuzz decimal_negate (engines/spark/probes/fuzz.json): random DECIMAL(38,0) and DECIMAL(38,10) values, ties at 34 digits among them, both ANSI modes, folded and codegen. Ties round half to even; abs of a positive value is exact."
     }
   ]
 }

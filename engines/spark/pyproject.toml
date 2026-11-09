@@ -1,0 +1,51 @@
+[project]
+name = "sverify-spark"
+version = "0.7.1"
+description = "Spark as an engine of sverify: plans verified in Lean, written as Spark SQL"
+readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    # Released with sverify, at its version (#1189;
+    # .claude/skills/release-sverify/SKILL.md bumps both).
+    "sverify==0.7.1",
+]
+
+[project.optional-dependencies]
+# Running plans on Spark: a local session, or the user's (and a JVM). Writing
+# Spark SQL (`sverify_spark.dialect`) needs nothing more.
+run = ["pyspark>=4.0"]
+
+# sverify finds its engines here and nowhere else (`sverify.profiles`).
+[project.entry-points."sverify.profiles"]
+spark = "sverify_spark:PLUGIN"
+
+[project.urls]
+Source = "https://github.com/AlexanderNenninger/substrait-lean/tree/main/engines/spark"
+Issues = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sverify_spark"]
+
+# The sdist: the package and its tests. The facts and probes are the
+# evidence for the Lean profile, which the checker carries.
+[tool.hatch.build.targets.sdist]
+include = ["src/sverify_spark", "tests", "README.md", "LICENSE"]
+
+[tool.uv.sources]
+# The sverify of this checkout.
+sverify = { path = "../../python", editable = true }
+
+[tool.pyrefly]
+project-includes = ["src", "tests"]
+# The tests reuse sverify's test modules (`spark_session`, the queries).
+search-path = ["src", "tests", "../../python/src", "../../python/tests", "../../python/tools"]
+
+[tool.ruff]
+# sverify's settings.
+extend = "../../python/pyproject.toml"

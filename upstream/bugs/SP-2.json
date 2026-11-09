@@ -17,8 +17,8 @@
     251
   ],
   "files": [
-    "characterization/spark/probes.json",
-    "characterization/spark/facts/spark-date-range.json"
+    "engines/spark/probes/probes.json",
+    "engines/spark/facts/spark-date-range.json"
   ],
   "facts": [
     "spark-date-range"

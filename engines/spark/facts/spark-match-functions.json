@@ -1,0 +1,103 @@
+{
+  "id": "spark-match-functions",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`LIKE`, `contains`, `startswith`, `instr`, `RLIKE`, `replace` are case-sensitive",
+  "verdict": "`case_sensitivity: CASE_SENSITIVE`; `ILIKE` and `(?i)` for the other, `(?i)` ASCII only",
+  "area": "strings",
+  "options": [
+    "case_sensitivity"
+  ],
+  "rows": [
+    {
+      "group": "str.match",
+      "option": "case_sensitivity",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "LIKE",
+    "ILIKE",
+    "contains",
+    "startswith",
+    "endswith",
+    "instr",
+    "locate",
+    "RLIKE",
+    "replace",
+    "="
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`'ABC' LIKE 'a%'`, `contains('ABC', 'b')`, `startswith('ABC', 'a')`, `endswith('ABC', 'c')`, `'ABC' RLIKE 'b'` are false and `instr('ABC', 'b')` is 0: every match function compares code points exactly, and so does `=` under the default `UTF8_BINARY` collation. `ILIKE` folds case. In a regex, `(?i)` folds ASCII only (`'É' RLIKE '(?i)é'` is false) unless `(?iu)` is given.",
+    "`LIKE` escapes with `\\` by default or `ESCAPE`; `_` matches one code point (`'é' LIKE '_'`). `startswith(s, '')` is true."
+  ],
+  "reference": "`starts_with`, `ends_with`, `strpos`, `like`, `replace` with `case_sensitivity: CASE_SENSITIVE`. Spark is native.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-case-sensitivity"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-like-escape"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-regex"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-misc"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L1408-L1413",
+          "note": "`contains('Spark SQL', 'SPARK')` is false: case-sensitive"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/regexp-functions.sql.out#L574-L579",
+          "note": "`regexp_count('the fox', 'FOX')` is 0: regex matching is case-sensitive"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/regexp-functions.sql.out#L582-L587",
+          "note": "`regexp_count('the fox', '(?i)FOX')` is 1: `(?i)` folds case"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/ilike.sql.out#L42-L47",
+          "note": "`'A' ilike 'a'` is true: ILIKE folds case"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/ilike.sql.out#L66-L71",
+          "note": "`'a_%b' ilike 'a\\\\__b'` is true: `\\` escapes `_` by default"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/ilike.sql.out#L147-L152",
+          "note": "`'A€a' ilike '_€_'` is true: `_` matches one code point, `€` being three UTF-8 bytes"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    }
+  ]
+}

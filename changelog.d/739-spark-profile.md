@@ -10,7 +10,7 @@ and in `Node.refresh(engine="spark")`
   reaches Spark with its class and the shims it needs named, and one verified
   under Spark's profile transfers to DuckDB where the choices allow it.
 - The shims are proved in Lean (`SubstraitLean/SparkShims.lean`), with
-  `Rel.spark_sound`: a verified plan, as `sverify.sql.spark` writes it, gives
+  `Rel.spark_sound`: a verified plan, as `sverify_spark.dialect` writes it, gives
   the reference's rows on Spark under ANSI mode.
 - A run reads the Spark session's settings and refuses one that changes
   what the profile relies on (ANSI mode, the timestamp type, the session

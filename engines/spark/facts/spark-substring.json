@@ -1,0 +1,118 @@
+{
+  "id": "spark-substring",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`substring`: 1-based characters; a start of 0 is 1; negative counts from the end",
+  "verdict": "`negative_start: WRAP_FROM_END`, 1-based code points; start 0 reads as 1",
+  "area": "strings",
+  "options": [
+    "negative_start",
+    "string_positions"
+  ],
+  "rows": [
+    {
+      "group": "str.sub",
+      "option": "negative_start",
+      "types": [
+        "string"
+      ]
+    },
+    {
+      "group": "str.sub",
+      "option": "string_positions",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "substring",
+    "substr",
+    "substring_index"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`substring(s, pos, len)` counts code points from 1. A negative `pos` counts from the end (`substring('héllo', -3, 2)` is `ll`), and a window that starts before the string is cut at its start (`substring('héllo', -6, 2)` is `h`, `(-10, 3)` empty). A `pos` of 0 reads as 1: `substring('héllo', 0, 2)` is `hé`, two characters. A negative or zero `len` gives the empty string. Neither mode raises."
+  ],
+  "reference": "`substring(s, start, length)`, 1-based, `negative_start: WRAP_FROM_END` (#209), the window cut at the string's ends. A start of 0 covers positions 0 and 1 of a length-2 window, so `substring('héllo', 0, 2)` is `h`. Spark agrees but at a start of 0, where it returns one character more; a writer maps a start of 0 (and a negative start that reaches before the string) to the reference's window.",
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/unsafe/types/UTF8String.java#L664-L683",
+          "note": "`substringSQL`: `start = pos > 0 ? pos - 1 : (pos < 0 ? numChars() + pos : 0)`, end clamped to the `int` range"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-substring"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-substring-no-length"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L372-L377",
+          "note": "`substr('Spark SQL', -3)` is `SQL`: a negative start counts from the end (ANSI on)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/string-functions.sql.out#L338-L343",
+          "note": "The same with ANSI off: `SQL`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L1997-L2012",
+          "note": "`to_binary(..., substr('base64whynot', 0, 6))` reports the format `'BASE64'`: start 0 reads as 1 and takes six characters"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/collations-string-functions.sql.out#L2668-L2687",
+          "note": "`substr(s, 2, 2)` of `i̇o` (`i`, U+0307, `o`) is U+0307 then `o`: code points, a combining mark counted alone"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/fuzz.json",
+          "note": "substring[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 1200 of 1200 results as the fact says.",
+        "substring[0]: 300 rows, `substring(s, p, l)`, 1200 of 1200 results as the fact says.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    }
+  ],
+  "issues": [
+    209
+  ]
+}

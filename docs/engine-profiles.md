@@ -388,15 +388,15 @@ the profile `verify(semantics="spark")` checks under, and the one
 `--contract` takes with `"profile": "spark"` (#739). Its choices table,
 `Profile.spark.table` ([EngineTables.lean](../SubstraitLean/EngineTables.lean)),
 records Spark 4.3.0 under `SPARK_CONF` (ANSI mode on, `TIMESTAMP_NTZ`, UTC)
-from its [facts](../characterization/spark/facts/). Option by option (D21):
+from its [facts](../engines/spark/facts/). Option by option (D21):
 
 | Option | `Profile.spark` | Spark 4.3.0, ANSI | Why |
 |---|---|---|---|
-| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../characterization/spark/facts/spark-double-arith.json)) | as under DuckDB's and Polars's profiles |
-| `overflow`, `on_division_by_zero` | `ERROR` | `ERROR` ([int-arith](../characterization/spark/facts/spark-int-arith.json), [int-divide](../characterization/spark/facts/spark-int-divide.json)) | native: ANSI raises where the reference raises |
-| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../characterization/spark/facts/spark-math-domain.json)) | tightened, as the reference; a proved plan never reaches them |
-| `avg_int_result` | the reference's | `FP64` ([avg-int](../characterization/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
-| `null_order` | the reference's | first for an ascending key ([null-order](../characterization/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
+| `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../engines/spark/facts/spark-double-arith.json)) | as under DuckDB's and Polars's profiles |
+| `overflow`, `on_division_by_zero` | `ERROR` | `ERROR` ([int-arith](../engines/spark/facts/spark-int-arith.json), [int-divide](../engines/spark/facts/spark-int-divide.json)) | native: ANSI raises where the reference raises |
+| `nan_creation`, `on_domain_error` | `ERROR` | `NAN`, NULL for a logarithm of `x ≤ 0` ([math-domain](../engines/spark/facts/spark-math-domain.json)) | tightened, as the reference; a proved plan never reaches them |
+| `avg_int_result` | the reference's | `FP64` ([avg-int](../engines/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
+| `null_order` | the reference's | first for an ascending key ([null-order](../engines/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
 | every other option | the reference's | the table | native, or the writer's shims |
 
 Spark's profile states no choice of its own in a plan, so `Profile.spark`
@@ -409,7 +409,7 @@ option the proof depends on. What is proved
 
 - `Shim.sum_empty_null`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
   on Spark raises as soon as a partial sum leaves 64 bits, which depends on
-  the order of the rows ([sum-int](../characterization/spark/facts/spark-sum-int.json));
+  the order of the rows ([sum-int](../engines/spark/facts/spark-sum-int.json));
   the writer sums exact `DECIMAL(38,0)` values, and no partial sum of fewer
   than 10¹⁸ 64-bit values leaves 38 digits, in any order.
 - `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
@@ -429,7 +429,7 @@ option the proof depends on. What is proved
 
 Decimals (#27) run on Spark at the reference's types, which are Spark's own
 up to 38 digits. Past them Spark cuts the scale to no less than 6
-([decimal-arith](../characterization/spark/facts/spark-decimal-arith.json)),
+([decimal-arith](../engines/spark/facts/spark-decimal-arith.json)),
 so a sum or product whose type would pass 38 digits at a scale above 6 is
 refused. A double becomes a decimal as `round(x · 10ˢ)` in doubles, through
 `BIGINT`, since Spark's own cast reads the double's shortest text
@@ -445,7 +445,7 @@ ANSI mode, `timestampType`, the session time zone, `caseSensitive` and
 `legacy.percentileDiscCalculation` refuse the plans whose options they
 change. A run on another Spark version warns, and on another major version is
 refused (D14). Tested, and trusted: that Spark computes as the model says
-(`tests/test_spark_profile.py`, `tests/test_sql_spark.py`).
+(`engines/spark/tests/test_spark_profile.py`, `engines/spark/tests/test_sql_spark.py`).
 
 ## Engine profiles from outside
 
@@ -469,10 +469,10 @@ Its Python side registers a `sverify.profiles.ProfilePlugin` under the
 entry-point group `sverify.profiles`. That group is where sverify finds
 engines, and the only place
 ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)):
-DuckDB, Spark, DataFusion and Snowflake's dialect register theirs there
-too, from `sverify._builtin`, and Polars from its engine package
-(`engines/polars/`, the distribution `sverify-polars`, which `sverify[polars]`
-installs). `tests/test_engines_table.py` checks that with the entry points
+DuckDB, DataFusion and Snowflake's dialect register theirs there too, from
+`sverify._builtin`, and Polars and Spark from their engine packages
+(`engines/polars/` and `engines/spark/`, the distributions `sverify-polars`
+and `sverify-spark`, which `sverify[polars]` and `sverify[spark]` install). `tests/test_engines_table.py` checks that with the entry points
 gone sverify names no engine.
 
 ```toml
@@ -724,7 +724,7 @@ about Snowflake's behaviour. To run the same checks on a real account, set `SNOW
 
 ### Spark
 
-`to_sql(plan, SPARK)` (from `sverify.sql.spark`) writes checked plans and
+`to_sql(plan, SPARK)` (from `sverify_spark.dialect`) writes checked plans and
 Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. With the
 `spark` extra, `sverify.engines.run(con, plan, "spark")` runs a plan over a
 connection's tables on a local session (or on the session you pass as the
@@ -754,7 +754,7 @@ table without `deterministic=True` (tables have no row order), and so `SUM` or
 `Math.pow` (within 1 ulp of C's).
 
 String columns must use the default `UTF8_BINARY` collation (code point
-order). `python/tests/test_sql_spark.py` snapshots the SQL, parses it with
+order). `engines/spark/tests/test_sql_spark.py` snapshots the SQL, parses it with
 sqlglot's Spark parser, and runs the Snowflake suite's queries, the hooks
 and `date_part`/`date_trunc` at the calendar's edges on a local Spark session
 against `Rel.eval`; `test_backends.py` runs every coverage case there. The

@@ -1,0 +1,106 @@
+{
+  "id": "spark-substring-range",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`substring` positions and lengths are `INT`: wider ones raise (ANSI) or wrap",
+  "verdict": "`substring_range`: a `BIGINT` past 32 bits raises `CAST_OVERFLOW` (ANSI) or wraps",
+  "area": "strings",
+  "options": [
+    "substring_range",
+    "raise_set"
+  ],
+  "rows": [
+    {
+      "group": "str.sub",
+      "option": "substring_range",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "substring",
+    "substr"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`substring`'s position and length are `INT`; a `BIGINT` argument is cast. Under ANSI 4294967297 (2³² + 1) raises `CAST_OVERFLOW`; without ANSI it wraps to 1 (`substring('hello', 4294967297, 2)` is `he`). Any value from 2³¹ to 2³² raises under ANSI where the reference computes.",
+    "Within `INT`, the end of the window is clamped to the `int` range: `substring('héllo', 2, 2147483647)` is `éllo`."
+  ],
+  "reference": "`substring_range`: offsets outside `[-2³², 2³²)` raise (#336). Spark under ANSI raises from 2³¹ on, a stricter range: an extra raise where the reference returns a string.",
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/unsafe/types/UTF8String.java#L664-L683"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-substring-bigint"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-substring-bigint-length"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "string-substring"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/string-functions.sql.out#L364-L369",
+          "note": "`substr('Spark SQL', 5)` has the length `2147483647` (an `int`) in its schema and returns `k SQL`: the window's end is clamped (ANSI on)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/nonansi/string-functions.sql.out#L330-L335",
+          "note": "The same with ANSI off"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/fuzz.json",
+          "note": "substring_range[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 794 of 794 results as the fact says.",
+        "substring_range[0]: 300 rows, `substring(s, p, l)`, 794 of 794 results as the fact says (raised: CAST_OVERFLOW 30).",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    }
+  ],
+  "issues": [
+    336
+  ]
+}

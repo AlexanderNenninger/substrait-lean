@@ -107,9 +107,7 @@ reference:
         members: [name, guards, finite, decimals]
       - engines.DUCKDB
       - engines.SNOWFLAKE
-      - engines.SPARK
       - engines.UnsupportedError
-      - engines.SPARK_CONF
       - engines.run_sharded
 
   - title: ASOF joins
