@@ -1904,7 +1904,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         else e
       let mode := divByZeroMode (← arrD f "options")
       match baseName name, args with
-      | "divide", [a, b] => return divByZero mode true (.bin .fdiv) a b
+      -- `IEEE` reads both operands' raw signs (D39): one operation.
+      | "divide", [a, b] =>
+        return if mode == "IEEE" then .bin .fdivIeee a b else divByZero mode true (.bin .fdiv) a b
       | "modulus", [a, b] => return divByZero mode true (.bin .fmod) a b
       | _, _ => mkFloatCall (baseName name) args
     else

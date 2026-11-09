@@ -252,7 +252,7 @@ def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   | .imod => (Kind.modK a.toKind b.toKind).map .kind
   | .eq | .lt => need (Kind.comparable a.toKind b.toKind) (.kind .bool)
   | .and | .or => need (a.okK .bool && b.okK .bool) (.kind .bool)
-  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb =>
     need (num Kind.isFloat) (.kind .float)
   | .idiv | .ipow | .bit _ => need (num Kind.isInt) (.kind .int)
   | .concat | .trim _ _ => need (a.okK .str && b.okK .str) (.kind .str)
@@ -438,7 +438,7 @@ has one kind; `other` for the rest. -/
 def BinFn.out : BinFn → Kind
   | .eq | .lt | .and | .or | .startsWith | .endsWith | .like | .ilike | .listFn .contains => .bool
   | .concat | .substr _ _ | .trim _ _ | .strRepeat => .str
-  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb => .float
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb => .float
   | .strpos | .levenshtein | .idiv | .ipow | .bit _ | .dateDiff | .dadd | .dsub | .dmul | .ddiv
   | .listFn .position => .int
   | .dateAdd => .date

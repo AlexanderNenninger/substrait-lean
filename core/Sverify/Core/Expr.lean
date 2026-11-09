@@ -242,6 +242,10 @@ inductive BinFn where
   | add | sub | mul | eq | lt | and | or
   /-- Double arithmetic, rounded like IEEE 754. -/
   | fadd | fsub | fmul | fdiv
+  /-- `x / y` with `on_division_by_zero` = `IEEE` (D39): IEEE 754's quotient
+  on the raw codes, by a zero `±∞` by the signs of both operands and NaN for
+  `0 / 0`, so the divisor's zero sign counts. -/
+  | fdivIeee
   /-- The remainder of doubles, C's `fmod` (`FloatCode.fmod`); by zero, an
   error (`Safety.lean`). -/
   | fmod
@@ -732,6 +736,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fmul, .float a, .float b => .float (FloatCode.fmul a b)
   -- A zero divisor raises (`BinFn.issue`), so the divisor's zero sign is moot.
   | .fdiv, .float a, .float b => .float (FloatCode.fdiv a (FloatCode.canon b))
+  | .fdivIeee, .float a, .float b => .float (FloatCode.fdiv a b)
   | .fmod, .float a, .float b => .float (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)

@@ -1353,6 +1353,9 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case fmod =>
     exact mapAbs₂_top_sound (g := fun i j => some (FloatCode.fmod i j))
       (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb
+  case fdivIeee =>
+    exact mapAbs₂_top_sound (g := fun i j => some (FloatCode.fdiv i j))
+      (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb
   case fpow =>
     exact mapAbs₂_top_sound (g := fun i j => some (FloatCode.lift₂ Float.pow i j))
       (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb

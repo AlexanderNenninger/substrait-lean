@@ -331,8 +331,7 @@ theorem Lowering.pow2Chain_eval (s : DuckDBSettings) (x y : Value) (ks : List Na
         · have hk : b.toNat ≠ k := by omega
           simp [h, h0, hk, Value.isTrue, bind, Except.bind]
         · simp [h, h0, Value.isTrue, bind, Except.bind]
-    | _ => simp only [Profile.duckdb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.numPair,
-        Value.isTrue, Outcome.ok_bind, Bool.false_eq_true, ite_false]
+    | _ => rfl
 
 /-- `<<` for DuckDB: a shift outside `0`–`63` raises; otherwise `x · 2ʸ`
 (`Lowering.pow2Chain`) wrapped around at 64 bits in 128-bit arithmetic, as

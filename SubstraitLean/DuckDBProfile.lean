@@ -80,7 +80,7 @@ def duckShl (a b : Int) : Outcome :=
 
 /-- The functions of doubles among `duckBin`'s; the others take integers. -/
 def BinFn.onFloats : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 => true
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 => true
   | _ => false
 
 /-- **DuckDB's binary functions** on non-NULL arguments where they differ from
@@ -101,6 +101,8 @@ def duckBin (s : DuckDBSettings) : BinFn → Int → Int → Option Outcome
   | .fdiv, a, b =>
     if FloatCode.canon b = 0 then some (if s.ieeeOps then .ok (.float (ieeeDivZero a b)) else duckZero s)
     else if nanCase .fdiv a b then some (.ok (.float FloatCode.nan)) else none
+  -- IEEE division (D39) is DuckDB's own `/`: NaN for `∞ / ∞` under any setting.
+  | .fdivIeee, a, b => if nanCase .fdivIeee a b then some (.ok (.float FloatCode.nan)) else none
   | .fmod, a, b =>
     if FloatCode.canon b = 0 then some (if s.ieeeOps then .ok (.float FloatCode.nan) else duckZero s)
     else if nanCase .fmod a b then some (.ok (.float FloatCode.nan)) else none

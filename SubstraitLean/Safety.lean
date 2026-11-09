@@ -204,7 +204,7 @@ def BinFn.mayNan (f : BinFn) (aa ab : AVal) : Bool :=
   | .fsub => (aa.has FloatCode.posInf && ab.has FloatCode.posInf) ||
       (aa.has FloatCode.negInf && ab.has FloatCode.negInf)
   | .fmul => (aa.has 0 && inf ab) || (inf aa && ab.has 0)
-  | .fdiv => inf aa && inf ab
+  | .fdiv | .fdivIeee => inf aa && inf ab
   | .fmod => inf aa
   -- An integer exponent (`x ** 2`) is fine.
   | .fpow => aa.negFinite && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
@@ -279,6 +279,9 @@ theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (
   · obtain ⟨h1 | h1, h2 | h2⟩ := h
     all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
       by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
+  · obtain ⟨h1 | h1, h2 | h2⟩ := h
+    all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
+      by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
   · obtain ⟨h1 | h1, _⟩ := h
     · exact .inl (hAp h1)
     · exact .inr (hAn h1)
@@ -338,6 +341,8 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
     (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fdiv aa ab then [.domain] else [])
   | .fmod, aa, ab, _, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fmod aa ab then [.domain] else [])
+  -- IEEE by a zero (D39): only `±∞ / ±∞` raises.
+  | .fdivIeee, aa, ab, _, _, _ => if BinFn.mayNan .fdivIeee aa ab then [.domain] else []
   | .fadd, aa, ab, _, _, _ => if BinFn.mayNan .fadd aa ab then [.domain] else []
   | .fsub, aa, ab, _, _, _ => if BinFn.mayNan .fsub aa ab then [.domain] else []
   | .fmul, aa, ab, _, _, _ => if BinFn.mayNan .fmul aa ab then [.domain] else []
@@ -539,7 +544,7 @@ shown not to raise. -/
 
 /-- Operations of doubles whose only domain error is a NaN case (`nanCase`). -/
 def BinFn.nanOnly : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fmod => true
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod => true
   | _ => false
 
 theorem BinFn.nanCase_of_issue {f : BinFn} (hf : f.nanOnly = true) {v w : Value}
@@ -559,7 +564,7 @@ def BinFn.mayNanBy (f : BinFn) (pa pb : Int → Bool) : Bool :=
   | .fsub => (pa FloatCode.posInf && pb FloatCode.posInf) ||
       (pa FloatCode.negInf && pb FloatCode.negInf)
   | .fmul => (pa 0 && inf pb) || (inf pa && pb 0)
-  | .fdiv => inf pa && inf pb
+  | .fdiv | .fdivIeee => inf pa && inf pb
   | .fmod => inf pa
   | _ => true
 
@@ -599,6 +604,9 @@ theorem BinFn.mayNanBy_sound {f : BinFn} {pa pb : Int → Bool} {a b : Int}
     · exact .inl ⟨hA0 h1, .inr (hBn h2)⟩
     · exact .inr ⟨.inl (hAp h1), hB0 h2⟩
     · exact .inr ⟨.inr (hAn h1), hB0 h2⟩
+  · obtain ⟨h1 | h1, h2 | h2⟩ := h
+    all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
+      by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
   · obtain ⟨h1 | h1, h2 | h2⟩ := h
     all_goals exact ⟨by first | exact .inl (hAp h1) | exact .inr (hAn h1),
       by first | exact .inl (hBp h2) | exact .inr (hBn h2)⟩
@@ -1071,7 +1079,7 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       subst hk
       rename_i hn
       right; simp [BinFn.mayNan_sound ha hb hn]
-  case fadd.float.float i j | fsub.float.float i j | fmul.float.float i j =>
+  case fadd.float.float i j | fsub.float.float i j | fmul.float.float i j | fdivIeee.float.float i j =>
     simp only [BinFn.mayIssue]
     simp only [nanIssue] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk

@@ -881,7 +881,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .fsub, a, b => arith floatsOnly (faddBoundS true) a b
   | .fmul, a, b => arith floatsOnly fmulBoundS a b
   | .fdiv, a, b => arith floatsOnly fdivBoundS a b
-  | .fmod, a, b | .fpow, a, b => arith floatsOnly (fun _ _ => Bound.top) a b
+  | .fmod, a, b | .fpow, a, b | .fdivIeee, a, b => arith floatsOnly (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs intsOnly divBound a b
   | .imod, a, b => divAbs modNK modBound a b
   | .ipow, a, b => powAbs a b

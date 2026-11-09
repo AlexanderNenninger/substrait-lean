@@ -173,7 +173,7 @@ def nanCase : BinFn → Int → Int → Bool
       (a == FloatCode.negInf && b == FloatCode.negInf)
   | .fmul, a, b => ((a == 0 || a == FloatCode.negZero) && isInfCode b) ||
       (isInfCode a && (b == 0 || b == FloatCode.negZero))
-  | .fdiv, a, b => isInfCode a && isInfCode b
+  | .fdiv, a, b | .fdivIeee, a, b => isInfCode a && isInfCode b
   | .fmod, a, b => isInfCode a && b != FloatCode.nan && b != FloatCode.negNan
   | .fpow, a, b => decide (FloatCode.negInf < a) && decide (a < 0) &&
       decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) && FloatCode.floor b != b
@@ -204,6 +204,8 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   -- other options as a `CASE` around this (`Parse.divByZero`).
   | .fdiv, .float a, .float b =>
     if FloatCode.canon b = 0 then some .divByZero else nanIssue .fdiv a b
+  -- IEEE by a zero (D39); `±∞ / ±∞` raises as for `fdiv`.
+  | .fdivIeee, .float a, .float b => nanIssue .fdivIeee a b
   | .fmod, .float a, .float b =>
     if FloatCode.canon b = 0 then some .divByZero else nanIssue .fmod a b
   | .fadd, .float a, .float b => nanIssue .fadd a b
