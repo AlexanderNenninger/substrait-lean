@@ -32,8 +32,9 @@ Where Spark differs, by its facts:
   `BIGINT` (`float_to_int`). The writer refuses double `power` and passes NaN
   through `floor` and `ceil` (`Profile.sparkWritten`).
 
-Not stated yet: `atan2` reads `-0.0` as `0.0` (`atan2(-0.0, -1)` is `π`),
-pending a decision on `zero_sign`'s scope.
+* `atan2` adds `0.0` to its arguments, so `-0.0` is `0.0`: `atan2(-0.0, -1)`
+  is `π`, and `atan2(0, 0)` is `0` (`zero_sign`, `on_domain_error`). The
+  writer refuses double `atan2`.
 
 Integer arithmetic, `div` and `%` raise where the reference raises
 (spark-int-arith, spark-int-divide, spark-int-modulus): no diff. Functions
@@ -72,6 +73,13 @@ def sparkBin : BinFn → Value → Value → Option Outcome
     if FloatCode.canon b = 0 then some (.error .divByZero)
     else if nanCase .fdiv a b then some (.ok (.float FloatCode.nan)) else none
   | .fpow, .float a, .float b => sparkPow a b
+  -- Spark adds `0.0` to both arguments, so `-0.0` is `0.0` (spark-math-domain):
+  -- `atan2(0, 0)` is `0`, and `atan2(-0.0, -1)` is `π` (`zero_sign`).
+  | .fatan2, .float a, .float b =>
+    if FloatCode.canon a = 0 ∧ FloatCode.canon b = 0 then some (.ok (.float 0))
+    else if a = FloatCode.negZero ∨ b = FloatCode.negZero then
+      some (.ok (.float (FloatCode.lift₂ Float.atan2 (FloatCode.canon a) (FloatCode.canon b))))
+    else none
   -- Java's `<<` and `>>` on a `BIGINT` read the count's low six bits.
   | .bit .shl, .int a, .int b =>
     if 0 ≤ b ∧ b < 64 then none else some (.ok (.int ((BitVec.ofInt 64 a) <<< (b % 64).toNat).toInt))
@@ -115,10 +123,11 @@ def UnFn.sparkWritten : UnFn → Bool
   | .ffloor | .fceil => true
   | _ => false
 
-/-- `power` of doubles, which the writer refuses (Spark's `POWER` is within an
-ulp of C's, spark-elem-rounding): a plan with it does not run on Spark. -/
+/-- `power` and `atan2` of doubles, which the writer refuses (Spark's are
+Java's, within an ulp of C's, spark-elem-rounding): a plan with them does not
+run on Spark. -/
 def BinFn.sparkWritten : BinFn → Bool
-  | .fpow => true
+  | .fpow | .fatan2 => true
   | _ => false
 
 /-- Spark's profile with the functions of `UnFn.sparkWritten` and
