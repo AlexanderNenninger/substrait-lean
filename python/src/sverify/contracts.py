@@ -221,7 +221,7 @@ def _profile_requests() -> frozenset[str]:
     (`ProfilePlugin.profile`)."""
     from sverify import profiles
 
-    return frozenset(e for e, p in profiles.plugins().items() if p.profile)
+    return frozenset(e for e, p in profiles.plugins().items() if p.verifiable)
 
 
 def semantics_names() -> tuple[str, ...]:
