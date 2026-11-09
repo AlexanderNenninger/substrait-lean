@@ -360,7 +360,7 @@ class Node:
             sink: Where to store the node, such as `DeltaSink(uri)` or
                 `IcebergSink(catalog, identifier)`. A sink stores one node.
             quarantine: Where the rows this node's stage sets aside go
-                (`on_violation="quarantine"`, #184): a `DeltaSink` or
+                (`on_violation="quarantine"`): a `DeltaSink` or
                 `IcebergSink` whose table holds them, False for no
                 quarantine table (`Node.quarantined` still returns them), or
                 None (the default): a
@@ -410,11 +410,11 @@ class Node:
         as a multiset, doubles within the plan's bound and other values
         exact by default): a node whose result is
         not determined up to row order, or whose engine varies between runs
-        more than that, is refused before anything runs (#444, D10, D20).
+        more than that, is refused before anything runs.
         Each node with a contract is refused unless its report is proved,
         or `unverified=True` (`Report.run`), or its transform says
         `on_unproved="warn"`; its proof is taken to `engine`
-        by a route (`sverify.routes.choose`, D13), or the refresh is
+        by a route (`sverify.routes.choose`), or the refresh is
         refused. `StageRefresh.route` records it.
 
         Each node is refreshed once per call, upstream first, against each
@@ -442,10 +442,10 @@ class Node:
                 node refuses the refresh, unless its transform says
                 `on_unproved="warn"`.
             reproducible: What a rerun must reproduce for every node
-                (`sv.equivalent(...)`, D20), over each sink's own. Default
+                (`sv.equivalent(...)`), over each sink's own. Default
                 None: a stored node needs its sink's, another node nothing.
             lineage: Where to send OpenLineage run events, one run per node
-                (`sverify.openlineage.Lineage`, #792): a `Lineage`, or what
+                (`sverify.openlineage.Lineage`): a `Lineage`, or what
                 `Lineage(...)` takes (a file, `"console"`, a URL), or True
                 for the OpenLineage client's own configuration. Default
                 None: no events, and no connection.
@@ -537,7 +537,7 @@ class Node:
 
     def quarantined(self, source: str | None = None) -> pa.Table:
         """The rows of the node's sources set aside by `on_violation=
-        "quarantine"` (#184), as of the last refresh: each copy once, with
+        "quarantine"`, as of the last refresh: each copy once, with
         the source's columns and `_conditions` (the labels of the
         preconditions it breaks), `_reason` and `_source_version` (the
         version that set it aside).
@@ -632,7 +632,7 @@ class Node:
         value: for each table it reads or writes, which credential, for
         reading or writing, and whether the table lies inside what the
         credential may touch where that is known (`Storage(reads=,
-        writes=)`, #778). Upstream stored nodes' stages first.
+        writes=)`). Upstream stored nodes' stages first.
 
         Returns:
             One `sverify.io.CredentialUse` per table and credential.
@@ -939,12 +939,12 @@ class StageRefresh:
     prove and checks on its output (`on_unproved="check"`), checked on the
     full result (later batches: `report.postconditions`)."""
     route: Route | None = None
-    """With `refresh(route=...)`: how the node's proof reached the engine
-    (D13), with its class; None without a route or a contract."""
+    """With `refresh(route=...)`: how the node's proof reached the engine,
+    with its class; None without a route or a contract."""
     transform: str | None = None
     """For a stored node, the transform that made it, where its name differs
     from the node's (the sink's): the entry is headed `daily_revenue →
-    daily:` (#695)."""
+    daily:`."""
 
     @property
     def heading(self) -> str:
@@ -953,8 +953,8 @@ class StageRefresh:
         return self.node if self.transform is None else f"{self.transform} → {self.node}"
 
     quarantine: list[QuarantineReport] = field(default_factory=list)
-    """For each source with rows set aside (`on_violation="quarantine"`,
-    #184): what this refresh set aside, released and deleted."""
+    """For each source with rows set aside (`on_violation="quarantine"`):
+    what this refresh set aside, released and deleted."""
     quarantined: int = 0
     """The rows of the node's sources quarantined after the refresh, in all."""
     quarantine_table: str | None = None
@@ -967,7 +967,7 @@ class StageRefresh:
     """The `PreconditionError` that held it, with `.rows`."""
     credentials: list[CredentialUse] = field(default_factory=list)
     """The credentials the node's stage used, by name, for reading its
-    sources and writing its sink (#778); never a value."""
+    sources and writing its sink; never a value."""
 
     @property
     def outcome(self) -> str:
@@ -1149,14 +1149,14 @@ class Refresh:
         not "ok": per node, what broke, how many rows, where the rows are,
         and what to do. None when there is nothing to say.
 
-        A scheduled job posts it, for example as a GitHub issue (#771).
+        A scheduled job posts it, for example as a GitHub issue.
 
         Args:
             rows: Whether the text shows a few of the rows that broke a
                 condition (rows of the user's data) as Markdown tables.
                 Default False: counts, labels and where the rows are, so the
-                text can go where more people read it than read the data
-                (#887). The rows stay on `PreconditionError.rows` and
+                text can go where more people read it than read the data.
+                The rows stay on `PreconditionError.rows` and
                 `QuarantineReport.examples`.
         """
         parts = []
@@ -1194,7 +1194,7 @@ class Refresh:
             examples: Whether each quarantine entry's `examples` carries up
                 to ten of the rows it set aside (rows of the user's data).
                 Default False: `examples` is an empty list, so the document
-                can go to a CI artifact or an issue (#887).
+                can go to a CI artifact or an issue.
         """
         return {
             "$schema": REFRESH_SCHEMA,

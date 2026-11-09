@@ -32,7 +32,7 @@ SETTINGS: tuple[Setting, ...] = (
             "polars-mean-float",
         ),
         "the engine a query runs on, and with it the algorithms of float aggregates "
-        "(sum_order, stat_algo); sverify runs Polars's streaming engine (#605)",
+        "(sum_order, stat_algo); sverify runs Polars's streaming engine",
     ),
 )
 
