@@ -17,7 +17,7 @@ Answer per profile, never just "Lean vs engine":
 - Preconditions. Name what `sv.verify` inferred (`requires … (inferred)`, `assumes: … stays finite`). `Report.run` checks them on the data before a routed run.
 - Route and class (`sverify.routes.choose`, D13, D15), per engine with a profile (DuckDB, Polars, Spark): route `native`, `translated`, `transfer` or `recheck`, or refused with the reason; class `exact`, `observed`, `shim` or `refused`, the worst over the options the proof depends on. The tables are in [docs/guide.md](../../../docs/guide.md#routes-classes-and-profiles). An `observed` option needs a postcondition whose observation it refines (`sv.equivalent(...)`, D11, D18), or the row's shim; say which. What a rerun must reproduce is a second observation (D20, #613).
 - Facts. Cite the engine facts the class rests on, with evidence level and status, and any ledger entry.
-- Engines without a profile run the writer's shims, tested only; mark their results as such. DataFusion has none and is experimental; Snowflake's is planned (#851). Engines list: [docs/stability.md](../../../docs/stability.md#engines).
+- Engines without a profile run the writer's shims, tested only; mark their results as such. Snowflake's is planned (#851). Engines list: [docs/stability.md](../../../docs/stability.md#engines).
 
 ## Prerequisites
 
@@ -85,8 +85,8 @@ Output:
 1. Environment: package versions, each profile's fact versions against the installed engine (D14), the DuckDB settings the facts depend on (#598), and how Polars runs.
 2. Frontends: the lift's and the Ibis producer's plans, the checker's verdict under the reference, the `Rel`, and `Rel.eval` on the rows.
 3. Profiles: as in the lookup.
-4. Engines on the written plan: DuckDB and Polars, each `= Rel.eval`, `DIFFERS`, `raises` or `refused`, with the route and class under it; DataFusion (and Spark with `--spark`, which the probe runs without a route) marked outside the profiles; Snowflake as SQL text only.
-5. Native: the SQL as written on DuckDB, Polars SQL and DataFusion (and Spark), and the Ibis expression on Ibis's backends. No route applies; this is what the engine itself does.
+4. Engines on the written plan: DuckDB and Polars, each `= Rel.eval`, `DIFFERS`, `raises` or `refused`, with the route and class under it; Spark with `--spark`, which the probe runs without a route; Snowflake as SQL text only.
+5. Native: the SQL as written on DuckDB and Polars SQL (and Spark), and the Ibis expression on Ibis's backends. No route applies; this is what the engine itself does.
 
 Polars runs on its streaming engine, as sverify does (#605), with sverify's flags for plans and Polars's defaults for native queries. Rows compare as bags, or in order where a sort reaches the result; doubles to 6 decimals, times as µs, dates as days.
 

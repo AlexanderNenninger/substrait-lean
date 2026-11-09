@@ -21,8 +21,7 @@ pip install 'sverify[polars,delta]' # the steps below use Polars and Delta Lake
 The core runs on DuckDB: contracts, incremental maintenance, and SQL for
 DuckDB, Snowflake and Spark. The extras add `polars`, `spark` (needs Java 17
 or 21), `delta`, `iceberg`, `flight`, `testing`, `odcs` and `openlineage`;
-`all` brings every one of them, and the optional engine `datafusion` stays
-outside it. `polars` and `spark` install the engine packages `sverify-polars`
+`all` brings every one of them. `polars` and `spark` install the engine packages `sverify-polars`
 and `sverify-spark` with their runtimes. Wheels bundle the Lean checker as a
 small native binary, so you need no Lean toolchain; they exist for Linux
 (x86_64, aarch64) and macOS (arm64), Python 3.12 and later.
@@ -501,7 +500,7 @@ The most common, and what sverify does about each:
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
 threshold (a total over all parts) into each part's own sum, so the query
 compared each part with itself, and nothing failed. [backend_semantics.py](../catalogue/backend_semantics.py) checks every such quirk
-against the model, and its section 8 checks DataFusion as a backend.
+against the model.
 
 ## How it works, in brief
 

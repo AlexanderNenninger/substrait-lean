@@ -12,8 +12,7 @@ description: >
 # sverify engines: one plan, the same answer everywhere
 
 The same SQL text means different things on different engines: integer `/`
-truncates in DataFusion and PostgreSQL but gives a double in DuckDB and
-Spark; DataFusion wraps on integer overflow where DuckDB raises; NULLs sort
+truncates in PostgreSQL but gives a double in DuckDB and Spark; NULLs sort
 first or last depending on the engine; ties in a sort or window break
 differently. sverify translates the plan Lean checked for each engine with
 every such choice spelled out, or refuses it where an engine can't match.

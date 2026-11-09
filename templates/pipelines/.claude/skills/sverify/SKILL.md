@@ -22,14 +22,11 @@ that happened to be there.
 ```bash
 pip install sverify                       # core: DuckDB, contracts, views
 pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
-pip install 'sverify[datafusion]'         # DataFusion, an optional engine outside `all`
 ```
 
 DuckDB (the default), Polars (streaming) and Spark 4.x run plans, each with a
 proved profile (`semantics="duckdb"`, `"polars"`, `"spark"`). The SQL
-dialects (DuckDB, Spark, Snowflake) need no extra. DataFusion is outside the
-1.x promise
-([docs/stability.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)).
+dialects (DuckDB, Spark, Snowflake) need no extra.
 
 Wheels bundle the checker, so no Lean toolchain is needed.
 

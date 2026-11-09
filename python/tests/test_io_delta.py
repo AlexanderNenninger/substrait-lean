@@ -48,7 +48,7 @@ def source_schema(node, name):
 # -- Step 1: the Change Data Feed as a change source --------------------------
 
 
-@pytest.mark.parametrize("engine", ["datafusion", "polars", "duckdb"])
+@pytest.mark.parametrize("engine", ["polars", "duckdb"])
 def test_refresh_applies_cdf(tmp_path, engine: Engine):
     src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     node = doubled(paid(src))

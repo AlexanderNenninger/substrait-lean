@@ -24,13 +24,7 @@ from ibis import _
 
 import sverify as sv
 from sverify.contracts import decode_double
-from sverify.engine import (
-    collect,
-    connect,
-    run_plan,
-    substrait_json,
-    written_plan,
-)
+from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.engines import ENGINES
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
@@ -68,14 +62,6 @@ def duckdb_rows_of(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
     con = connect()
     con.create("t", schema, rows)
     out = duckdb_sql(con, sql)
-    return list(zip(*(c.to_pylist() for c in out.columns), strict=True))
-
-
-def datafusion_rows(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
-    """DataFusion running `sql`, as an engine."""
-    con = connect()
-    con.create("t", schema, rows)
-    out = collect(con._datafusion_session.sql(sql))
     return list(zip(*(c.to_pylist() for c in out.columns), strict=True))
 
 
@@ -235,15 +221,6 @@ def test_avg_of_doubles_rounds_past_the_values():
     assert engine_rows(sql, F, rows) == {"polars": [(1, mean)], "duckdb": [(1, mean)]}
 
 
-@pytest.mark.backend("datafusion")
-def test_min_and_max_of_doubles_are_refused_on_datafusion():
-    # DataFusion's grouped MIN of a group of +∞ is the largest finite double.
-    expected = datafusion_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)])
-    assert expected == [(1, 1.7976931348623157e308)]
-    with pytest.raises(ValueError, match="MIN and MAX of doubles are not supported on DataFusion"):
-        engine_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)], "datafusion")
-
-
 def test_min_and_max_of_doubles_run_on_polars():
     # #697: NaN is the greatest double and there is one zero, on both engines.
     rows = [(1, 0.5), (1, math.nan), (2, -0.0), (2, 0.0), (3, None), (4, math.nan)]
@@ -321,8 +298,7 @@ def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     # Lean's sum is exact, so an integer SUM may leave 64 bits, and the
     # reference raises there. Nothing bounds a group's rows yet (#219), so
     # `verify` assumes each sum fits, as it assumes inferred bounds, and the
-    # job checks it on the data while it runs (DataFusion's wrap-around is
-    # pinned in test_datafusion_quirks.py).
+    # job checks it on the data while it runs.
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
     assert report.proved
     assert [str(i) for i in report.assumed] == ["SUM overflow: sum(amount)"]
@@ -647,9 +623,8 @@ def test_first_and_last_are_determined_by_a_key():
     con = connect()
     con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
-    for engine in ("polars", "datafusion"):
-        with pytest.raises(Exception, match="see #271"):
-            run_plan(con, written, engine)
+    with pytest.raises(Exception, match="see #271"):
+        run_plan(con, written, "polars")
     # Without an order every row ties: determined only by a key on the group.
     any_row = P.group_by("k").aggregate(f=P.x.first())
     assert not sv.verify(any_row, requires={"t": [sv.unique("k", "o")]}).deterministic
@@ -762,9 +737,8 @@ def test_correlation_is_null_where_the_standard_says():
         (3, None, None, None),
         (4, None, 0.0, None),
     ]
-    for engine in ("polars", "datafusion"):
-        with pytest.raises(Exception, match="see #271"):
-            run_plan(con, written, engine)
+    with pytest.raises(Exception, match="see #271"):
+        run_plan(con, written, "polars")
 
 
 def test_covariance_of_an_infinity_raises():
@@ -831,9 +805,8 @@ def test_group_concat_is_determined_by_a_key():
     con = connect()
     con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
-    for engine in ("polars", "datafusion"):
-        with pytest.raises(Exception, match="see #271"):
-            run_plan(con, written, engine)
+    with pytest.raises(Exception, match="see #271"):
+        run_plan(con, written, "polars")
     unordered = P.group_by("k").aggregate(s=P.x.group_concat(","))
     assert not sv.verify(unordered).deterministic
     assert not sv.verify(unordered, requires={"t": [sv.unique("k", "o")]}).deterministic
@@ -1039,9 +1012,8 @@ def test_quantiles_are_refused_on_other_engines(agg):
     con = connect()
     con.create("t", Q.schema(), [(1, 1, 1.0, "a")])
     written = written_plan(to_substrait_json(Q.group_by("k").aggregate(v=agg)))
-    for engine in ("polars", "datafusion"):
-        with pytest.raises(Exception, match="see #271"):
-            run_plan(con, written, engine)
+    with pytest.raises(Exception, match="see #271"):
+        run_plan(con, written, "polars")
 
 
 @pytest.mark.parametrize(

@@ -5,13 +5,9 @@
   "title": "The Substrait consumer takes an equality of two columns of one join input for a join key",
   "summary": "An inner join whose condition has an `=` between two columns of the same input, next to the real key (`a.k = b.k AND a.k = a.x`), fails in the Substrait consumer: it takes every `=` conjunct for an equi-join key pair without checking which side each column comes from. The SQL runs.",
   "repro": "The Substrait plan (Lean's `--write`) of `select count(*) from a join b on a.k = b.k and a.k = a.x` fails with `type_coercion caused by Schema error: No field named a.x. Valid fields are b.k, b.y.` (55.0.0; 51.0.0 `FieldNotFound`).",
-  "handling": "`--write-datafusion` moves conjuncts over one input into a filter on that input (an inner join's left side) or writes them as a `CASE` (`Write.writeRel`, #98).",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "issues": [
     98
-  ],
-  "files": [
-    "SubstraitLean/Write.lean",
-    "python/tests/test_datafusion_quirks.py"
   ],
   "checked": [
     {

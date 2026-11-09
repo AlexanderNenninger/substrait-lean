@@ -16,9 +16,6 @@
   "prs": [
     264
   ],
-  "facts": [
-    "datafusion-S3"
-  ],
   "checked": [
     {
       "checked_at": "2026-11-03",

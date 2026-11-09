@@ -23,7 +23,6 @@ from pathlib import Path
 #: The optional packages of the extras (and of extras to come); none may be
 #: installed for this check to mean anything.
 OPTIONAL = (
-    "datafusion",
     "polars",
     "pyspark",
     "deltalake",

@@ -138,7 +138,7 @@ without Lean.
 
 ## sverify: written plans and the harness
 
-S3, S4 and S6 are DataFusion's: [../datafusion/facts/](../datafusion/facts/).
+S3, S4 and S6 were DataFusion's, which sverify no longer runs.
 
 ### S1. The written plan types literals by their value (#96)
 

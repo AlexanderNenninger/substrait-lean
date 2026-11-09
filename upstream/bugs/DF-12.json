@@ -4,11 +4,7 @@
   "status_note": "Not reproduced on 51.0.0 or 55.0.0: plans with a `UNION ALL` under a join, of joins and of one table with itself, all ran correctly through the Substrait consumer. Recorded because the checker split delta plans into union-free terms for it (`Rel.terms`) until #1158.",
   "summary": "The Substrait consumer was said to lose table qualifiers at a `UNION ALL`, so the duplicate column names broke a later join.",
   "repro": "Substrait plans (Lean's `--write`) of `select u.k, u.x, c.z from (select k, x from a union all select k, y from b) u join c on u.k = c.k`, of a union of two joins under a join, and of `(select k from a union all select k from a) u join a on u.k = a.k`, run through `datafusion.substrait.Consumer`: all give the rows DuckDB gives (51.0.0 and 55.0.0).",
-  "handling": "None since #1158: `substrait-check --delta` writes one plan with its unions on every engine; DataFusion's incremental tests pass.",
-  "files": [
-    "SubstraitCheck.lean",
-    "SubstraitLean/Terms.lean"
-  ],
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "checked": [
     {
       "checked_at": "2026-11-08",
