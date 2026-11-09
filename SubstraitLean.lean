@@ -44,6 +44,7 @@ import SubstraitLean.IncrementalSemi
 import Sverify.Analysis.Guards
 import Sverify.Core.Profile
 import SubstraitLean.ProfileImpl
+import SubstraitLean.DuckDBFunctions
 import SubstraitLean.DuckDBProfile
 import SubstraitLean.Lowering
 import SubstraitLean.Bind
