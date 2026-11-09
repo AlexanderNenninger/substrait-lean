@@ -317,7 +317,7 @@ def substring_left(args: list[Json]) -> Json:
     """`substring` whose start may be below 1, which then lies left of the
     first character (`negative_start` = `LEFT_OF_BEGINNING`): the rules below
     compute such starts. A plan that omits the option counts a negative start
-    from the end instead (`Text.substrWrap`, #209)."""
+    from the end instead (`Text.substrWrap`)."""
     j = call("substring", args)
     j["scalarFunction"]["options"] = [
         {"name": "negative_start", "preference": ["LEFT_OF_BEGINNING"]}
@@ -327,7 +327,7 @@ def substring_left(args: list[Json]) -> Json:
 
 def ieee_divide(a: Json, b: Json) -> Json:
     """`a / b` with `on_division_by_zero` = IEEE: `±inf` or NaN by zero rather
-    than an error (#204)."""
+    than an error."""
     c = call("divide", [a, b])
     c["scalarFunction"]["options"] = [{"name": "on_division_by_zero", "preference": ["IEEE"]}]
     return c
@@ -339,7 +339,7 @@ def field_ref(i: int) -> Json:
 
 def column_of(e: Json) -> int | None:
     """The input column `e` reads, if it is a plain column reference (not a
-    reference into a value, #94)."""
+    reference into a value)."""
     sel = e.get("selection")
     if sel is None or "rootReference" not in sel:
         return None
@@ -378,7 +378,7 @@ def in_values(
     """`value IN (options…)`. With `ints`, the options' integer values (None
     where one is not a constant), a list that fills a range of integers is
     `value BETWEEN lo AND hi`, NULLs included, and the checker reads a range
-    as one (#691); otherwise a `singularOrList`."""
+    as one; otherwise a `singularOrList`."""
     if ints is not None and (span := int_range(ints)) is not None:
         lo, hi = (options[ints.index(v)] for v in span)
         return between(value, lo, hi, typed)
@@ -390,7 +390,7 @@ def if_then(ifs: list[tuple[Json, Json]], default: Json) -> Json:
 
 
 def cast_json(e: Json, to: Any, or_null: bool = False) -> Json:
-    """`CAST(e AS to)`, or `TRY_CAST` (`or_null`: NULL where it fails, #58)."""
+    """`CAST(e AS to)`, or `TRY_CAST` (`or_null`: NULL where it fails)."""
     behavior = "RETURN_NULL" if or_null else "THROW_EXCEPTION"
     return {
         "cast": {
@@ -411,7 +411,7 @@ def days_json(date: Json, n: Json) -> Json:
 
 
 def make_date_json(y: Json, m: Json, d: Json) -> Json:
-    """`make_date(y, m, d)` of integers (#809): the date by H. Hinnant's
+    """`make_date(y, m, d)` of integers: the date by H. Hinnant's
     `days_from_civil`, NULL if an argument is. It raises for a month or day
     the calendar lacks, as DuckDB does, and for a year outside the
     reference's 1 to 9999."""

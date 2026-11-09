@@ -26,8 +26,7 @@ decide what the reference does: it follows Substrait, takes the least
 surprising choice where Substrait is silent, can be followed by every engine
 with reasonable effort, and keeps optimizations provable. They are stated,
 with what each means in practice, in
-[reference-semantics.md](docs/reference-semantics.md#principles)
-([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)).
+[reference-semantics.md](docs/reference-semantics.md#principles).
 
 Engine quirks belong in the engine profiles ([engine-profiles.md](docs/engine-profiles.md)).
 Changing the reference is a breaking change.
@@ -59,14 +58,20 @@ SQL string ─► SQLGlot lift ────────────────�
 
 | Directory | Contents |
 |---|---|
-| `SubstraitLean/`, `Main.lean` | The Lean library and the `substrait-check` CLI ([the files](#the-lean-project)) |
-| `python/src/sverify/` | The package: `contracts`, `nodes`, `incremental`, `io/`, `sql/` (SQL per engine), `sql_lift`, `ibis_substrait/` (vendored producer), `*_engine.py`, `testing`, `pytest_plugin` |
+| `core/` | The Lean core, `Sverify.Core`: values, expressions, `Rel.eval` and the options; it imports only Lean |
+| `analysis/` | `Sverify.Analysis`: what the checker proves of a plan under the core, with no engine in it |
+| `engines/` | `Sverify.Engines`, what every engine shares in Lean; and one directory per engine package (`polars/`, `spark/`), each a Python distribution with its plugin, facts and probes |
+| `SubstraitLean/`, `Main.lean` | The profiles, lowerings and lifts, the checker's modes and the `substrait-check` CLI ([the files](#the-lean-project)) |
+| `python/src/sverify/` | The package: `contracts`, `nodes`, `incremental`, `io/`, `sql/` (SQL per dialect), `sql_lift`, `ibis_substrait/` (vendored producer), `profiles` (the engine plugins), `duckdb_engine.py`, `testing`, `pytest_plugin` |
 | `python/tools/sverify_dev/` | Development tools: the Ibis coverage harness, the catalogue runner, fuzzers, the sqllogictest replay |
 | `python/tests/` | The Python tests: differential tests against `Rel.eval`, golden SQL snapshots, README examples |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) and lowering expectations |
 | `notebooks/` | The tour, in [marimo](https://marimo.io) ([below](#the-tour)) |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O and more), probed against the checker and the engines; [findings](catalogue/FINDINGS.md) |
-| `characterization/` | What each engine does, as a diff against the reference profile: one JSON document per fact, with provenance ([DuckDB's facts](characterization/duckdb/facts/)) |
+| `characterization/` | What each engine does, as a diff against the reference profile: one JSON document per fact, with provenance ([DuckDB's facts](characterization/duckdb/facts/); Polars's and Spark's are in `engines/<engine>/facts/`) |
+| `dbt/` | `sverify-dbt`, which checks a dbt project's tests and contracts ([dbt/README.md](dbt/README.md)) |
+| `models/` | The refresh protocol, model-checked in TLA+ |
+| `templates/` | A template repository for pipelines ([templates/pipelines/README.md](templates/pipelines/README.md)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
 | `upstream/` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream: one JSON document per bug ([the bugs](upstream/bugs/)) |
@@ -97,7 +102,7 @@ SQL string ─► SQLGlot lift ────────────────�
   [which engines](docs/stability.md#engines) sverify supports.
 * [docs/core-semantics.md](docs/core-semantics.md): the loose core, which
   does a superset of operations, the profiles that refine it, the translations between them, and the
-  decisions D1 onwards; [docs/realizability.md](docs/realizability.md): the
+  decisions behind the reference; [docs/realizability.md](docs/realizability.md): the
   class of every option on each engine, generated.
 * [docs/proofs.md](docs/proofs.md): each guarantee with its theorem, what is
   trusted, and one line per Lean module.
@@ -111,18 +116,23 @@ SQL string ─► SQLGlot lift ────────────────�
 
 ## The Lean project
 
-`lake build` checks every proof and builds `substrait-check`. The library has
-no dependencies beyond Lean core, so the build takes seconds. The plan model
-(`Rel`, `Expr`, `Value`) comes first, then the checkers built on it
-(contracts, runtime errors, delta plans, sharding), then the parser and
-writer, which are trusted code.
+`lake build` checks every proof and builds `substrait-check`. The project has
+no dependencies beyond Lean itself, and is four Lake packages: the core
+(`core/`), the analysis (`analysis/`), what the engines share (`engines/`) and
+the root (`SubstraitLean/`), which holds the profiles, lowerings and the CLI. A
+cold build takes about four minutes on 12 threads, a no-op build a second
+([build-performance.md](docs/build-performance.md)). The plan model (`Rel`,
+`Expr`, `Value`) comes first, then the checkers built on it (contracts,
+runtime errors, delta plans, sharding), then the parser and writer, which are
+trusted code.
 
 [docs/proofs.md](docs/proofs.md) maps every Lean module to its job and
 names the theorems each guarantee rests on. The rest of the repository:
 
 | File | Contents |
 |---|---|
-| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars and Spark runners, the Snowflake SQL and the optional DataFusion runner ([the engines](docs/stability.md#engines)); differential tests |
+| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB runner, the Snowflake SQL and the optional DataFusion runner ([the engines](docs/stability.md#engines)); differential tests |
+| `engines/polars/`, `engines/spark/` | `sverify-polars` and `sverify-spark`, the Polars and Spark engines as packages of their own |
 | `notebooks/` | The tour: three workflows and three guides (marimo) |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
@@ -167,7 +177,7 @@ undefined in the model (it is NULL there, while SQL compares), and Snowflake
 and Spark tables have no row order for FETCH or for the ties of a sort or a
 window. A `SUM` or `AVG` of doubles runs natively on every engine, within the
 plan's bound of the reference's correctly rounded sum
-([D25](docs/core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)). See
+([float-bounds.md](docs/float-bounds.md)). See
 [Engines and SQL](docs/tasks.md#engines-and-sql).
 
 ## Development
@@ -307,11 +317,10 @@ uv run --project python python my_pipeline.py
 
 ## Open work
 
-The [roadmap to 1.0](https://github.com/AlexanderNenninger/substrait-lean/issues/757)
-holds the plan, milestone by milestone, and the
-[core design dossier](https://github.com/AlexanderNenninger/substrait-lean/issues/936)
-the design work on the Lean core. What is wanted after 1.0 is in the
-[After 1.0 milestone](https://github.com/AlexanderNenninger/substrait-lean/milestone/9).
+Open work is in the
+[issue tracker](https://github.com/AlexanderNenninger/substrait-lean/issues);
+the [roadmap to 1.0](https://github.com/AlexanderNenninger/substrait-lean/issues/757)
+lists what 1.0 needs.
 
 ## License
 

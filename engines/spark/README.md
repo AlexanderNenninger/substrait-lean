@@ -11,7 +11,7 @@ differs from the reference, and runs on a Spark session under ANSI mode.
 writes Spark SQL (`sverify_spark.dialect.SPARK`) without PySpark. sverify finds
 it through its `ProfilePlugin` in the entry-point group `sverify.profiles`.
 
-The directory is one engine package of #1189:
+The directory holds the whole engine package:
 
 - `src/sverify_spark/`: the plugin (`PLUGIN`), the dialect (`dialect`:
   `SPARK`, `SPARK_CONF`) and the runner on a Spark session (`engine`);
@@ -21,4 +21,5 @@ The directory is one engine package of #1189:
 - `tests/`: its tests, which run in sverify's test session
   (`python/pyproject.toml`'s `testpaths`).
 
-Its Lean half (the profile and the lowering, `Sverify.Spark`) follows.
+Its Lean half, the profile and its shims, is in the root Lean package for now
+(`SubstraitLean/SparkProfile.lean`, `SparkShims.lean`).
