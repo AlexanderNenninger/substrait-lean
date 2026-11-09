@@ -73,6 +73,7 @@ from sverify import _decimals, _plan_read, _support
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify._support import DUCKDB_ONLY
 from sverify._unsupported import Unsupported as _Unsupported
+
 try:
     import polars as pl
 except ImportError as e:
