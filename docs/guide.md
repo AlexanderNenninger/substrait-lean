@@ -68,7 +68,7 @@ In order of day-to-day value:
    can fail at 3 am. Preconditions are checked on the data, or proved from
    Delta and Iceberg metadata (schemas, CHECK constraints, file statistics).
 2. One plan, the same answer on every engine. You develop on DuckDB or
-   Polars and run on Spark (one day, on Snowflake). The same SQL text doesn't
+   Polars and run on Spark, or as SQL on Snowflake. The same SQL text doesn't
    mean the same thing on each (`/` on integers truncates in DataFusion and
    PostgreSQL and gives a double in DuckDB and Spark; DataFusion wraps on
    overflow where DuckDB raises; NULLs sort first or last depending on the
@@ -293,16 +293,14 @@ except VerificationError as e:
   transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
   report; an Ibis condition there reads the query's output, or in `requires`
-  its input table ([#438](https://github.com/AlexanderNenninger/substrait-lean/issues/438)).
+  its input table.
 * `report.run(con)` runs the plan the report checked over the tables of an
   `sv.connect()` connection, on its engine or the one you name
   (`report.run(con, "polars")`). The result is the one the report is about,
-  `params` and `semantics` included
-  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)).
+  `params` and `semantics` included.
   It first checks the report's preconditions on the tables, the inferred
   ones included, and refuses a batch that breaks one with a
-  `PreconditionError` that names it, before anything runs
-  ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
+  `PreconditionError` that names it, before anything runs.
   `check_requires=False` skips the check for a caller that has made it
   already; the report's guarantee then holds only on data that meets them:
 
@@ -313,15 +311,14 @@ except VerificationError as e:
   ```
 * `requires` maps each input to its conditions. A transformation with one
   input also takes a plain list, `requires=[_.amount >= 0]`. A key that
-  names no input raises a `ValueError` that lists the inputs (#408).
+  names no input raises a `ValueError` that lists the inputs.
 * Preconditions describe data that comes from outside. On a source, they
   are checked on the data when the node is first refreshed and then on each
   batch (`PreconditionError`), or proved from the table's metadata; on Ibis
   tables bound to data (`sv.connect()`), at call time. The error carries
   the table (`e.source`), the condition as stated or inferred
   (`e.condition`) and up to ten of the rows that break it, as an Arrow
-  table (`e.rows`; None for `max_rows` and `rows_per`)
-  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)):
+  table (`e.rows`; None for `max_rows` and `rows_per`):
 
   ```python
   try:
@@ -337,8 +334,7 @@ except VerificationError as e:
   `on_unproved="warn"` you get a warning.
 * Every exception sverify raises on purpose derives from
   `sverify.errors.SverifyError`, and keeps its built-in base (`ValueError`,
-  `RuntimeError`); import the exceptions from `sverify.errors`
-  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  `RuntimeError`); import the exceptions from `sverify.errors`.
 * What Lean tracks per column: whether it can be NULL, integer, double
   and timestamp ranges, which booleans it can be, and whether it can be a
   string. Filters (`amount > 10`, `x IN (1, 2, 3)`, `x IS NOT NULL`) refine
@@ -346,13 +342,13 @@ except VerificationError as e:
   them through. Schemas count: a non-nullable column is never NULL.
   `x IN (0, 1)`, and `isin([0, 1])`, of integers that fill a range is
   read as `x BETWEEN 0 AND 1`, so a column known to lie in `[0, 1]` meets
-  it ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  it.
   `report.not_null` lists the output columns the checker shows are never NULL.
 * Relations between columns: join and filter conditions such as
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
   `first_txn < duplicate_txn` follow.
-* Conditions kept whole (#597): each precondition and filter condition, of
+* Conditions kept whole: each precondition and filter condition, of
   any shape, is also a fact about each row, as stated. A postcondition that
   restates one is proved where the plan keeps it: through projections that
   keep its columns (renamed or not), filters, sorts, limits, joins and
@@ -364,15 +360,15 @@ except VerificationError as e:
   disjunct is not TRUE either, so the columns need not be NOT NULL.
   Implications written `ifelse(_.a > 0, _.b < 0, True)` work the same way.
   Comparisons between columns other than `x - y` against a constant,
-  products and facts through aggregates are later steps of #597
-  ([tests](../python/tests/test_relational_preconditions.py)).
+  products and facts through aggregates are not facts yet, tracked in
+  [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/597) ([tests](../python/tests/test_relational_preconditions.py)).
 * Keys: `sv.unique("user_id", "ts")` says there is at most one row per
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
   pins down the other side's key). Every Arrow column is nullable, so
   `sv.unique("id")` leaves `id` able to be NULL. `sv.key("id")` is a
   primary key: `sv.unique("id")` and `'"id" IS NOT NULL'`, which the report
-  lists in its place ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  lists in its place.
 * Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
   like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
@@ -380,7 +376,7 @@ except VerificationError as e:
   If rows can tie in the order, the engine decides which comes first:
   `verify` proves the postconditions that hold for every order of the ties,
   `report.deterministic` is `False`, `str(report)` names the window and
-  `report.ties` the key that would close it ([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
+  `report.ties` the key that would close it ([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
   A key on the partition and order columns makes the order total, which
   facts such as `prev_ts < ts` and a rerun that must give the same rows
   need.
@@ -391,7 +387,7 @@ except VerificationError as e:
 * Doubles and time: comparisons with constants are exact, including
   sentinels like `-9999.0`, `isnan()` and intervals; doubles compare as SQL
   engines compare them, with one zero and one NaN above every number.
-* Sums and means of doubles round once (D25). Their signs are exact, a mean
+* Sums and means of doubles round once. Their signs are exact, a mean
   of values in `[0, 100]` is in `[0, 100]`, and with a row cap in
   `requires`, `sv.max_rows(10_000_000)` (checked on the data), a sum of
   values in `[0, 100]` is in `[0, 10⁹]` ([float bounds](float-bounds.md)).
@@ -400,9 +396,7 @@ except VerificationError as e:
 * Strings: a column's strings while they are few (up to 64), from constants,
   `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and `UNION ALL`. That
   proves dbt's `accepted_values` and keys over `UNION ALL` branches tagged by
-  a constant
-  ([#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708),
-  [#436](https://github.com/AlexanderNenninger/substrait-lean/issues/436)).
+  a constant.
 * Not tracked yet: what is inside a string (`LIKE`, lengths), relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
@@ -435,14 +429,14 @@ Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
 wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
-or a decimal `SUM` leaving its precision ([#316](https://github.com/AlexanderNenninger/substrait-lean/issues/316)),
+or a decimal `SUM` leaving its precision,
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
 `requires` bounds the column. Elsewhere sverify assumes the sum fits, and
 the job checks it at run time, on the data before the run
 (`Report.assumed`; an error with `on_inferred="off"`). The same holds for an
 operation on finite doubles that may overflow to `±∞`, which the reference
-raises on ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
+raises on.
 
 ### Guards
 
@@ -461,7 +455,7 @@ print(per_line.run(gcon).to_pylist())
 ```
 
 A guard inside an `AND` or `OR` protects nothing, since DuckDB and Polars
-evaluate both operands (D19 of [core-semantics.md](core-semantics.md)), and
+evaluate both operands ([`AND` and `OR` raise eagerly](core-semantics.md#d19-and-and-or-raise-eagerly)), and
 neither does a guard in one column of a `SELECT` for a division in another.
 The report then needs the precondition `n != 0`, and says where the error
 sits:
@@ -481,18 +475,17 @@ and `run` refuses this batch, whose second row has `n = 0`, with a
 `ibis.cases((_.n != 0, _.total // _.n))`, and no precondition is needed.
 A constant subexpression that raises, such as `1 // 0 = 1` in a later
 `WHEN`, makes the whole plan raise on any data, since DuckDB evaluates it
-while it plans the query
-([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609)).
+while it plans the query.
 
 ### Inferred bounds
 
-An overflow at the declared width is an error (#202), so `amount * 2` on a
-`BIGINT` needs a bound on `amount`. Sverify infers it (#244): for each `+`,
+An overflow at the declared width is an error, so `amount * 2` on a
+`BIGINT` needs a bound on `amount`. Sverify infers it: for each `+`,
 `-`, `*` by a constant, negation, `abs` and timestamp truncation that may
 leave its range, it works out the range each input column must stay in. By
 default the plan is not proved until you declare it, and the report says
 where it came from and how to fix it
-([D23](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
+([why inferred preconditions are errors](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
 
 ```python
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
@@ -545,7 +538,7 @@ build on it like on any other precondition of a source.
   timestamps to whole years (`(ts + ibis.interval(days=1)).truncate("M")`
   needs `_.ts < datetime(9999, 1, 1)`). A DATE or TIMESTAMP column lies in
   0001-01-01 to 9999-12-31 by its type, and reading one outside fails
-  ([D32](core-semantics.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)),
+  ([calendar functions](core-semantics.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)),
   so a column read needs no bound.
 * Other runtime errors get preconditions the same way:
 
@@ -589,8 +582,8 @@ print(sv.verify(per_minute))
 
 ### Row caps
 
-`sv.max_rows(n)` in `requires` states that an input has at most `n` rows
-(#219). Lean carries the caps through the plan
+`sv.max_rows(n)` in `requires` states that an input has at most `n` rows.
+Lean carries the caps through the plan
 ([Rows.lean](../SubstraitLean/Rows.lean)), and an integer `SUM` of values in
 `[-m, m]` over at most `n` rows, with `n · m < 2⁶³`, is proved to fit, with
 nothing to check on the data:
@@ -626,13 +619,12 @@ print(report)
 * The SUM hint names the cap that proves a sum fits.
 * A cap also bounds the magnitude of an integer or decimal `SUM`: at most
   `n` values in `[lo, hi]` add up to within `[min(0, n·lo), max(0, n·hi)]`,
-  so arithmetic on the sum can be proved to fit
-  ([#470](https://github.com/AlexanderNenninger/substrait-lean/issues/470)).
+  so arithmetic on the sum can be proved to fit.
 
 ### Rows per key
 
 `sv.rows_per("customer", at_most=n)` in `requires` states that at most
-`n` rows of an input agree on the columns (#219). A cap on the whole table
+`n` rows of an input agree on the columns. A cap on the whole table
 bounds every group at once; this bounds each group alone, so a table may
 grow without limit while each customer's rows stay few:
 
@@ -718,8 +710,7 @@ The report's parts come as data and as the lines `str(report)` prints:
   table, column, comparison, bound, SQL, the runtime error it rules out,
   the fixes in words (`text`) and the `condition` ready for `requires=`, in
   the transform's language: an Ibis deferred (`_.qty.isnull() | (_.qty != 0)`,
-  NULL passing as the inferred bound lets it) or a SQL string
-  ([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  NULL passing as the inferred bound lets it) or a SQL string.
   `Issue.needs` holds the same records for one runtime error, which
   `Issue.hint` states in words.
 - `Report.suggested_requires` is the whole `requires=` mapping: the stated
@@ -735,8 +726,7 @@ The report's parts come as data and as the lines `str(report)` prints:
   Postconditions, issues and assumptions are findings in the shape of a
   SARIF result, with a `ruleId`, a `level` and a `message`.
   `sv.Report.from_json(text)` reads it back into a `Report` with the same
-  verdict ([#736](https://github.com/AlexanderNenninger/substrait-lean/issues/736),
-  [stability](stability.md)).
+  verdict ([stability](stability.md)).
 
 The counterexample search tries 200 inputs per unproved postcondition. The
 `SVERIFY_COUNTEREXAMPLES` environment variable sets that budget for
@@ -751,7 +741,7 @@ it where every window orders its rows totally, so its reason is `"ties"`
 Sverify keeps the checker's answers on disk, so the next `verify`, `check`
 or `refresh` of an unchanged transform takes its proof from there, and an
 edit proves again only the transforms whose plans, conditions or inputs
-changed ([#825](https://github.com/AlexanderNenninger/substrait-lean/issues/825)).
+changed.
 An entry is keyed by what the checker reads (the plans, the conditions and
 the profile), sverify's version and a hash of the checker binary, so a
 change to any of them proves again
@@ -765,8 +755,7 @@ process, and the next request starts another.
 ### The command line
 
 The `sverify` command checks, fixes and runs a pipeline's file from a
-shell, a CI job or an agent
-([#744](https://github.com/AlexanderNenninger/substrait-lean/issues/744)):
+shell, a CI job or an agent:
 
 ```bash
 sverify check pipelines/orders.py            # prove every transform and node in the file
@@ -821,8 +810,7 @@ proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
   app;
 - `sarif`: a SARIF 2.1.0 log for code scanning
   (`github/codeql-action/upload-sarif`), one rule per code, with
-  `explain`'s text
-  ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
+  `explain`'s text.
 
 The codes are snake case (`may_be_false`), as the report's `reason` and
 issue `kind` write them; `explain` reads kebab case too. The exit codes are:
@@ -840,8 +828,7 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 With 5, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
-data that otherwise stay out of CI artifacts and issues
-([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
+data that otherwise stay out of CI artifacts and issues.
 
 `--timeout` (default 30 s, or `SVERIFY_TIMEOUT`; 0 turns it off) bounds
 proof, planning and checking. A refresh moving data has no time limit:
@@ -948,13 +935,13 @@ c2 = orders.pipe(
 large = orders.pipe(lambda t: t.filter(_.amount > 20))
 ```
 
-SQL is DuckDB's dialect. Sverify reads it with its own lift (SQLGlot, #239)
+SQL is DuckDB's dialect. Sverify reads it with its own lift (SQLGlot)
 and writes every choice DuckDB's SQL leaves implicit into the plan: `/` divides
 as doubles, NULLs sort last, an integer literal has the narrowest type that
 holds it.
 
-Every check uses sverify's reference semantics unless you opt into DuckDB's
-(#411). `semantics="reference"`, the default, means what sverify's reference
+Every check uses sverify's reference semantics unless you opt into DuckDB's.
+`semantics="reference"`, the default, means what sverify's reference
 computes, so a double divided by zero raises; `semantics="duckdb"` means what
 DuckDB computes, which gives `inf`, and models NaN and ±inf as DuckDB has
 them. `sv.sql(query, semantics=...)` attaches the choice to the query.
@@ -971,12 +958,12 @@ infers the same preconditions as under the reference
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode: the same values as the reference, and doubles that overflow
 are ±inf with no precondition, so the plan runs on Spark natively
-([engine-profiles.md](engine-profiles.md#spark-as-a-profile)). Until
-#411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
+([engine-profiles.md](engine-profiles.md#spark-as-a-profile)).
+The lift reads a subset (SELECT, WHERE,
 joins of every kind, subqueries and CTEs, GROUP BY with grouping sets,
 windows, set operations, ORDER BY, LIMIT, CASE, CAST, and the numeric,
 string, date and list functions of
-[#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)) and
+[the coverage targets](coverage-targets.md)) and
 refuses the rest, saying what.
 
 A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
@@ -1103,8 +1090,7 @@ print(c.refresh().summary())
 
 A batch that breaks a precondition on a source raises `PreconditionError` by
 default, and the refresh commits nothing. `on_violation` on the transform, or
-on the source, chooses otherwise
-([#184](https://github.com/AlexanderNenninger/substrait-lean/issues/184)):
+on the source, chooses otherwise:
 
 - `"quarantine"` sets the rows that break a precondition aside, with the
   reason, and the node runs on the others.
@@ -1156,7 +1142,7 @@ refresh batch by batch and a recompute agree:
 - Among the other rows, every row of a key that occurs more than once
   (`sv.unique`, `sv.key`): both copies of a repeated `id`, the one the node
   held before included. The rule needs no order between rows, so it gives the
-  same answer under every profile ([D24](core-semantics.md)).
+  same answer under every profile ([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)).
 - `max_rows`, `arrives_within` and the other conditions on a table as a whole
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
@@ -1194,8 +1180,7 @@ Both leave the rows themselves out, since they go to CI artifacts and
 issues that more people read than read the data: `alert(rows=True)` shows
 five as a table, `to_json(examples=True)` writes up to ten per source in
 `examples`, and `PreconditionError.rows` and `QuarantineReport.examples`
-hold them in the process
-([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
+hold them in the process.
 
 A change to the schema that a contract cannot follow raises `SchemaError`,
 and its message names the column, the version and the contract:
@@ -1225,8 +1210,8 @@ tables. A table format plays four roles:
   the Parquet files of its version, with the rows that deletion vectors or
   position delete files remove, and DuckDB reads them with `read_parquet`.
   Partitioned tables, Delta column mapping, renamed Iceberg columns,
-  equality deletes, object stores and the other engines read through Arrow
-  (#173).
+  equality deletes, object stores and the other engines read through Arrow;
+  native scans for them are tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/173).
 * A source of preconditions. `requires` conditions are proved from
   schema nullability, Delta CHECK constraints and per-file statistics:
   min/max of integers, doubles (only where the files count no NaN), dates
@@ -1251,7 +1236,7 @@ tables. A table format plays four roles:
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg). The NOT NULL columns are those `ensures`
   states (`_.id.notnull()`) and those the proved report shows are never NULL
-  (`report.not_null`, [#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+  (`report.not_null`).
   The commit records the plan hash, the
   source versions and the contract (`sverify.io.Contract`, under the key
   `sverify.contract`, in the format of
@@ -1263,12 +1248,12 @@ tables. A table format plays four roles:
   `IcebergSink(catalog, identifier, location=..., partition_by=[("ts", "day")],
   properties={...})` creates its table at that location, partitioned and
   with those properties, which a catalog without a default location, such
-  as Unity Catalog's, needs (#468).
+  as Unity Catalog's, needs.
   A streaming sink adds a snapshot and small files on every refresh.
   `DeltaSink(uri, compact_every=..., vacuum_retention=...)` and
   `IcebergSink(catalog, identifier, compact_every=..., snapshot_retention=...)`
   compact the table after every so many writes and then remove what older
-  versions alone used; `maintain()` does it on demand (#465).
+  versions alone used; `maintain()` does it on demand.
 
 Schema changes. A batch whose data fits the old schema (added columns,
 widened types whose values still fit) is read in it, and the report names
@@ -1388,8 +1373,7 @@ proved is listed under [Table formats](how-it-works.md#table-formats).
 
 ### Credentials
 
-A pipeline names its credentials and holds no value
-([#774](https://github.com/AlexanderNenninger/substrait-lean/issues/774)).
+A pipeline names its credentials and holds no value.
 The store's default chain comes first: with no options, delta-rs finds
 environment variables, `~/.aws` profiles, instance or pod roles, or the
 short-lived keys a CI job got through OIDC (the
@@ -1448,8 +1432,7 @@ hold values or a URI holds them in its userinfo (`s3://key:secret@bucket`).
 Every URI sverify records, reports, exports or sends is written without
 userinfo, query string or fragment: a sink's `location`, `started`,
 `credentials[].location`, the ODCS `physicalName` and the OpenLineage
-namespace
-([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
+namespace.
 A source's cursor (`Source.restore`) is stored in clear in the sink's
 table, so it must not be a credential.
 
@@ -1458,8 +1441,7 @@ table, so it must not be a credential.
 [OpenLineage](https://openlineage.io) is the standard for lineage and run
 events: Airflow, Spark and dbt emit it, and Marquez, DataHub, OpenMetadata
 and the cloud catalogs read it. A refresh emits a run per node, and
-`sverify.openlineage` reads what upstream jobs emitted
-([#792](https://github.com/AlexanderNenninger/substrait-lean/issues/792)).
+`sverify.openlineage` reads what upstream jobs emitted.
 The events follow spec 2-0-2, the spec of `openlineage-python` 1.55.0, and
 the tests validate every event and facet against it
 ([tests/standards/](../python/tests/standards/openlineage-1.55.0/),
@@ -1531,8 +1513,7 @@ the data as `dataQualityAssertions`, and two more facets:
 A refresh that raises sends FAIL with the exception's type, and its text
 only for sverify's own errors (`sverify.errors.SverifyError`): another
 library's message may name a bucket, an endpoint or a catalog URI.
-`Lineage(trace=True)` adds the Python stack trace
-([#887](https://github.com/AlexanderNenninger/substrait-lean/issues/887)).
+`Lineage(trace=True)` adds the Python stack trace.
 
 Datasets are named by OpenLineage's conventions: a Delta table in object
 storage is `s3://bucket` and its path, a local one `file` and its absolute
@@ -1627,8 +1608,7 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
   or after the watermark: the largest `ts` seen before the batch, minus two
   hours. The first refresh checks that `ts` has no NULLs; every later batch
   is checked at refresh, and a late row rejects the batch with
-  `PreconditionError`, so nothing is applied. Quarantining late rows instead
-  is #184.
+  `PreconditionError`, so nothing is applied.
 - A delete before the watermark is an expiry, the source's own retention (a
   `FlightSource` floor, a Delta `VACUUM` of old partitions), when its row is
   in a final bucket of every view that drops buckets of `ts`. The views and
@@ -1664,7 +1644,8 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
 
 The refresh still recomputes the aggregate from the source and keeps the
 buckets after the last one retired. Windows over time with bounded frames
-and interval joins are follow-ups in #294.
+and interval joins keep every bucket; bounded state for them is tracked in
+[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/294).
 
 ### Engines and SQL
 
@@ -1701,11 +1682,10 @@ the following about the warehouse:
   the report is `deterministic` (a key on the order columns in the
   contract, which `to_sql` reads from the report). A `SUM` or `AVG` of
   doubles runs natively, within the plan's bound of the reference's correctly
-  rounded sum (D25). Snowflake has no interval type, so interval-valued
+  rounded sum. Snowflake has no interval type, so interval-valued
   expressions are refused there.
 
-How the engine translations relate to the reference semantics, and where
-that is going, is in [docs/engine-profiles.md](engine-profiles.md).
+How the engine translations relate to the reference semantics is in [docs/engine-profiles.md](engine-profiles.md).
 
 ### Integer division in Ibis and SQL
 
@@ -1770,7 +1750,7 @@ any run, one `evidence:` line per engine:
 `evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc on polars's model (facts …)` or
 `evidence: spark exact, tested at 4.3.0 (facts spark-int-arith, …; #…)`. A proof
 "on the engine's model" proves the model the engine's facts describe; those facts
-say the engine is that model (#900). Before the plan runs, its preconditions,
+say the engine is that model. Before the plan runs, its preconditions,
 the inferred bounds and the assumed `SUM`s are checked on the data, and a
 batch that breaks one raises `PreconditionError`.
 
@@ -1791,16 +1771,16 @@ list every fact). What to do about one:
 `report.run(..., reproducible=sv.equivalent())`, like a sink's
 `reproducible=`, asks for the deterministic profile, which fixes the order of
 ties
-([D24](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)):
+([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)):
 it refuses a plan whose result is not determined up to row order, and the
 reason names each window, ordered aggregate or `LIMIT` where ties stay open
 (`str(report)`), with the `sv.unique(...)` that would close them
 (`report.ties`).
 Without it the plan runs with the engine's own order of the ties, which every
 proof covers. [Example 7](examples.md#7-a-plan-checked-under-duckdbs-profile)
-shows a transfer and a refusal, and D13 in
-[core-semantics.md](core-semantics.md#d13-choosing-the-route) the rules
-behind them.
+shows a transfer and a refusal, and
+[how a route is chosen](core-semantics.md#d13-choosing-the-route) gives the
+rules behind them.
 
 A postcondition can name what the result's consumer observes:
 
@@ -1820,7 +1800,7 @@ means.equivalence.equal(duckdb_result, polars_result)  # True
 
 Polars sums doubles in its own order, so its mean is within the plan's
 bound of the reference's: here about `2.2e-4`, from the bounds on `x` and the
-row cap (#85; `--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
+row cap (`--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
 values may cancel, so only an absolute bound holds, and the tolerance is
 absolute.
 
@@ -1850,7 +1830,7 @@ observation (`Expr.robust_of_depends`,
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
 every such result (`Expr.narrow_sound`). A postcondition is proved on every
 result the reference allows (`contract_sound_allowed`), and
-`CheckedCondition.allowed` says so. Since D25 a double `SUM` or `AVG` is one
+`CheckedCondition.allowed` says so. A double `SUM` or `AVG` is one
 value, the exact sum rounded once, so this covers postconditions that read
 it; one that reads a statistical aggregate, whose value is still a choice of
 the reference, is proved of the plan's own value, and `sv.approx` allows for
@@ -1865,7 +1845,7 @@ of at most `M` in absolute value, about `2.2e-16 · n² · M`, and for an
 
 `report.to_substrait(format="json" | "binary")` returns a proved plan for
 any conforming Substrait consumer, with the conditions under which its proof
-holds ([#664](https://github.com/AlexanderNenninger/substrait-lean/issues/664)).
+holds.
 It is the plan the checker proved, written for Substrait 0.106:
 
 - each call declares its YAML's URN and its compound name (`add:i64_i64`),
@@ -1911,8 +1891,7 @@ the gap. So does an unproved report, a plan proved under an engine's
 profile, and a function outside Substrait's YAMLs.
 
 `node.to_substrait()` and `transform.to_substrait()` export the report of
-a node and of a transform's last call
-([#691](https://github.com/AlexanderNenninger/substrait-lean/issues/691)).
+a node and of a transform's last call.
 A node's plan is its last transform's: a contracted node upstream is a
 table of that transform's name, and the contract's `requires` on it are
 what that node guarantees. Export each node to cover a pipeline.
@@ -1955,8 +1934,7 @@ reference's results; it does not know Substrait's `variance` or
 The [Open Data Contract Standard](https://bitol-io.github.io/open-data-contract-standard/)
 (ODCS, Bitol, Linux Foundation AI & Data) describes a dataset's contract in
 YAML: its schema, quality rules, descriptions and owners. Sverify writes a
-node's contract as ODCS and reads ODCS contracts as conditions
-([#791](https://github.com/AlexanderNenninger/substrait-lean/issues/791)).
+node's contract as ODCS and reads ODCS contracts as conditions.
 It writes ODCS v3.2.0 (`sverify.odcs.ODCS_VERSION`), and the tests validate
 every export against that release's JSON schema
 ([tests/standards/](../python/tests/standards/odcs-json-schema-v3.2.0.json),
@@ -2040,12 +2018,12 @@ to sverify and back, keeps every rule sverify reads.
 ### Reproducible sinks
 
 A stored node's sink commits each epoch once, so a rerun must give the same
-result. The sink states what "the same" means (`reproducible=`, D20 in
-[core-semantics.md](core-semantics.md)): `sv.equivalent()` asks for exact
+result. The sink states what "the same" means (`reproducible=`,
+[two observations per output](core-semantics.md#d20-two-observations-per-output)): `sv.equivalent()` asks for exact
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
 refused with a `RouteError`; so is a plan whose ties stay open, since the
-sink then needs the deterministic profile (D24), and the error names the
+sink then needs the deterministic profile, and the error names the
 place. Polars's streaming `SUM` of doubles may add in
 another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the
@@ -2131,7 +2109,7 @@ tolerance, as a sink's `reproducible=` states it:
 `sv.equivalent(floats=sv.within(abs=...))` raises where a row's bound exceeds
 the tolerance. `tolerance=True` returns the proved bound per row on how far
 each is from the one-pass sum
-([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg-stage-5)).
+([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg)).
 Anything else raises `NotShardable` with the reason. The checker also proves
 where the per-row overflow checks can go, and rewrites the transformation
 with what the preconditions establish (a `DISTINCT` over a key goes, a filter
