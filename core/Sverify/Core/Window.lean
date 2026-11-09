@@ -168,9 +168,10 @@ def WinFn.refsLt (n : Nat) : WinFn → Bool
   | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ => decide (c < n)
   | .agg m _ _ => m.arg.refsLtB n && m.filter.all (·.refsLtB n)
 
-/-- Same partition: equal on every partition column (NULLs are equal). -/
+/-- Same partition: equal on every partition column up to canonical codes
+(NULLs are equal; partition keys are an identity boundary, D31). -/
 def samePart (part : List Nat) (x y : Row) : Bool :=
-  decide (part.map (x.getD · .null) = part.map (y.getD · .null))
+  decide (part.map (fun c => (x.getD c .null).canonV) = part.map (fun c => (y.getD c .null).canonV))
 
 /-- Ties with `x` on every sort key. -/
 def peer (sort : List SortKey) (x y : Row) : Bool := sortLe sort y x && sortLe sort x y
