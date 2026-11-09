@@ -107,7 +107,7 @@ What such sources can and cannot promise:
   dates, decimals, bytes and tuples are tagged).
 * A source without `restore` has its sinks record a digest of its contents.
   After a restart, a first read with the recorded digest resumes there and
-  writes nothing (#889). Otherwise, as for a `restore` that returns None
+  writes nothing. Otherwise, as for a `restore` that returns None
   (the cursor's rows are gone), it is read in full again: its versions
   continue above the ones the job's sinks recorded, so the stored nodes
   reading it are recomputed and written once, never skipped by mistake.
