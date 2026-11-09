@@ -736,6 +736,7 @@ is a choice that accepts every value the plan states.
 | `on_log_zero` | all others | `NAN`, `ERROR`, `MINUS_INFINITY` | `ERROR` | raise |
 | `nan_creation` | all others | `NAN`, `ERROR` | `ERROR` | raise |
 | `zero_sign` | all others | `IEEE` | `ONE_ZERO` | choose |
+| `round_zero_sign` | all others | `ANY`, `IEEE`, `POSITIVE` | `ANY` | leave open |
 | `nan_equality` | all others | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
 | `nan_equality` | `cmp` | `NAN_IS_NOT_NAN` | `NAN_IS_NAN` | choose |
 | `nan_order` | all others | `GREATEST`, `UNORDERED`, `IGNORED` | `GREATEST` | choose |
