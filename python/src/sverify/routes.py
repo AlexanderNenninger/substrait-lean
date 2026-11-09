@@ -104,7 +104,7 @@ def shim_text(name: str) -> str:
     for p in plugged.plugins().values():
         if name in p.shim_text:
             return p.shim_text[name]
-    return SHIM_TEXT.get(name, name.replace("_", " "))
+    return name.replace("_", " ")
 
 
 #: How a route line names a route without a class (#687).
@@ -114,23 +114,6 @@ _KIND_TEXT: Mapping[str, str] = {
     "transfer": "verified under another engine's semantics, which carries over",
     "recheck": "verified again under the engine's own semantics",
     "unverified": "unverified",
-}
-
-#: What each shim does, as a route line says it (#687); the names are the
-#: shims of `SubstraitLean/EngineTables.lean`.
-SHIM_TEXT: Mapping[str, str] = {
-    "int_div_trunc": "integer division rewritten to truncate",
-    "int_mod_trunc": "integer remainder rewritten to truncate",
-    "one_zero": "-0.0 written as 0.0",
-    "avg_int_declared": "the mean of integers cast to its declared type",
-    "column_divisor": "a division by a column guarded",
-    "round_half_away": "rounding rewritten to round half away from zero",
-    "decimal_round_half_away": "decimal rounding rewritten to round half away from zero",
-    "decimal_div_half_away": "decimal division rewritten to round half away from zero",
-    "null_order": "NULLs sorted as the reference sorts them",
-    "strpos_chars": "string positions counted in characters",
-    "substring_wrap": "substring positions rewritten as the reference reads them",
-    "sum_empty_null": "a SUM of no rows written as NULL",
 }
 
 #: How a route line names what an observation ignores (#687).
