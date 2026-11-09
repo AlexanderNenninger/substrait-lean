@@ -17,6 +17,14 @@ on:
       - python/pyproject.toml
       - python/hatch_build.py
       - dbt/pyproject.toml
+      # The engine packages (#1189): their builds, entry points and the plugin
+      # interface they register through.
+      - engines/*/pyproject.toml
+      - engines/*/src/**
+      - python/src/sverify/profiles.py
+      - python/scripts/check_packages.py
+      - python/scripts/notebooks_from_wheels.py
+      - python/scripts/publish_notebooks.py
       - lean-toolchain
       - lakefile.lean
       - .github/workflows/wheels.yml
@@ -278,6 +286,136 @@ jobs:
         with:
           name: dist-dbt
           path: dist-dbt/*
+
+  # The distributions together, as users install them (#1189): each
+  # combination in an environment of its own, from this run's wheels
+  # (`--find-links`, no source tree), checked by
+  # `python/scripts/check_packages.py`: the engines sverify finds, the
+  # versions pinned to sverify's, a `verify` and a run on each installed
+  # engine; the light Spark install writes Spark SQL and names the extra
+  # for a run; sverify-dbt checks the sample project.
+  packages:
+    needs: [nightly, build, build-dbt]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        combination: [base, polars, spark, spark-light, dbt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-ubuntu-latest
+          path: wheelhouse
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
+          path: dist-engines
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-dbt
+          path: dist-dbt
+      - name: Install ${{ matrix.combination }}
+        env:
+          COMBINATION: ${{ matrix.combination }}
+        run: |
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          case "$COMBINATION" in
+            base) spec=("sverify @ file://$wheel") ;;
+            polars) spec=("sverify[polars] @ file://$wheel") ;;
+            spark) spec=("sverify[spark] @ file://$wheel") ;;
+            spark-light) spec=("sverify @ file://$wheel" "$(ls "$PWD"/dist-engines/sverify_spark-*.whl)") ;;
+            dbt) spec=("sverify @ file://$wheel" "$(ls "$PWD"/dist-dbt/sverify_dbt-*.whl)" dbt-core dbt-duckdb) ;;
+          esac
+          uv venv --python 3.12 "$RUNNER_TEMP/venv"
+          . "$RUNNER_TEMP/venv/bin/activate"
+          uv pip install --find-links "$PWD/dist-engines" "${spec[@]}"
+      - name: Check ${{ matrix.combination }}
+        env:
+          COMBINATION: ${{ matrix.combination }}
+        run: |
+          script="$PWD/python/scripts/check_packages.py"
+          cd "$RUNNER_TEMP"
+          . venv/bin/activate
+          python "$script" "$COMBINATION"
+      - name: sverify-dbt on the sample project
+        if: matrix.combination == 'dbt'
+        run: |
+          cp -r dbt/examples/shop "$RUNNER_TEMP/shop"
+          cd "$RUNNER_TEMP"
+          . venv/bin/activate
+          dbt --no-use-colors deps --project-dir shop --profiles-dir shop
+          dbt --no-use-colors compile --project-dir shop --profiles-dir shop
+          sverify-dbt check shop --selectors
+
+  # The tour notebooks as molab runs them, before a release: each header
+  # rewritten as `publish-notebooks` rewrites it (pinned to this version, no
+  # `../python` source), resolving sverify, the engine packages and
+  # sverify-dbt from this run's wheels (`notebooks_from_wheels.py`), and run
+  # in its own sandbox, one job per notebook. A missing extra fails here.
+  notebook-list:
+    needs: [nightly]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      notebooks: ${{ steps.list.outputs.notebooks }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          echo "notebooks=$(cd notebooks && ls [0-9]*.py | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+
+  notebooks-wheels:
+    needs: [nightly, build, build-dbt, notebook-list]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        notebook: ${{ fromJSON(needs.notebook-list.outputs.notebooks) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-ubuntu-latest
+          path: wheels/sverify
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
+          path: wheels/engines
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-dbt
+          path: wheels/dbt
+      - name: Pin the notebook to this run's wheels
+        env:
+          NOTEBOOK: ${{ matrix.notebook }}
+        run: |
+          python3 python/scripts/notebooks_from_wheels.py \
+            --wheels wheels/sverify wheels/engines wheels/dbt -- "notebooks/$NOTEBOOK"
+          sed -n '1,/^# \/\/\/$/p' "notebooks/$NOTEBOOK"
+      - name: Run it in its own sandbox
+        working-directory: notebooks
+        env:
+          NOTEBOOK: ${{ matrix.notebook }}
+        run: uvx marimo export html --sandbox "$NOTEBOOK" -o "$RUNNER_TEMP/${NOTEBOOK%.py}.html"
 
   # The wheel is tagged `py3-none-<platform>`, so it installs on every Python
   # from 3.12 on. Test the very wheel `build` made (no rebuild) on the newer
