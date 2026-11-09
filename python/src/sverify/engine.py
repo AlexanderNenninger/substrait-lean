@@ -727,40 +727,32 @@ def run_plan(
     return plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
 
 
-def _polars_guard_free(con: Connection, plan_json: str, finite: bool) -> pa.Table:
-    from sverify import polars_engine
-
-    checked = polars_engine.NO_GUARDS
-    if not finite:
-        checked -= {polars_engine.InfiniteResult.issue}
-    tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
-    return polars_engine.run(plan_json, tables, guards=checked)
-
-
-#: The writers that run a plan without the guards its contract report
-#: discharged (`guard_free`), keeping the assumed issues' checks, each with the
-#: theorem that says so; the checker names the theorem per engine
-#: (`"guard_free_theorem"`, `SubstraitLean/Realize.lean`).
-_GUARD_FREE_WRITERS = {"polars": ("Rel.polars_sound", _polars_guard_free)}
-
-
 def run_guard_free(
     con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool = True
 ) -> pa.Table:
     """Run a plan whose contract report is `guard_free` on `engine` without
-    its other per-row checks, on data that meets its preconditions.
+    its other per-row checks, on data that meets its preconditions. The
+    assumed issues keep their checks. The engine's plugin names the theorem
+    that covers its writer without them (`ProfilePlugin.guard_free_theorem`),
+    and the checker names it per engine (`"guard_free_theorem"`,
+    `SubstraitLean/Realize.lean`).
 
     Raises:
         ValueError: No theorem covers the engine's writer without them, or
             `theorem` is not the one that does.
     """
-    found = _GUARD_FREE_WRITERS.get(engine)
-    if found is None or theorem != found[0]:
+    from sverify import profiles
+
+    plugin = profiles.find(engine)
+    run = plugin.run_tables if plugin is not None else None
+    covers = plugin.guard_free_theorem if plugin is not None and run is not None else ""
+    if run is None or not covers or theorem != covers:
         raise ValueError(
             f"no theorem covers {engine}'s writer without its guards"
-            + (f" ({theorem} is not its writer's)" if theorem and found else "")
+            + (f" ({theorem} is not its writer's)" if theorem and covers else "")
         )
-    return found[1](con, plan_json, finite)
+    tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
+    return run(plan_json, tables, guard_free=True, finite=finite)
 
 
 def _rename_tables(node: object, names: dict[str, str]) -> None:

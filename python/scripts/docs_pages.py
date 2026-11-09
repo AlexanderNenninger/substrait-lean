@@ -271,7 +271,9 @@ def _pr(p: Any) -> str:
 
 
 def load_facts(root: Path) -> dict[str, dict]:
-    docs = [_load(p) for p in sorted(root.glob("characterization/*/facts/*.json"))]
+    from sverify_dev import facts
+
+    docs = [_load(p) for p in sorted(facts.load(root / "characterization"))]
     return {d["id"]: d for d in sorted(docs, key=lambda d: (d["engine"], d["area"], d["id"]))}
 
 

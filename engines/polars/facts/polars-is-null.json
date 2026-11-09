@@ -1,0 +1,63 @@
+{
+  "id": "polars-is-null",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`is_null` is the reference's for doubles, integers and strings",
+  "verdict": "native",
+  "area": "nulls",
+  "constructs": [
+    "is_null"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "`is_null()` is true exactly for NULL, on Float64 (NaN is not NULL), Int64 and String.",
+  "reference": "`UnFn.isNull`: true for NULL, false for every other value.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.is_null()"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Int64.is_null()"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "String.is_null()"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; the probe strings; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python) on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars --diff (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Float64.is_null()"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "Int64.is_null()"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "String.is_null()"
+        }
+      ],
+      "notes": "`--diff`: the streaming engine gives what the in-memory one gives, one row at a time and on a column of several morsels."
+    }
+  ]
+}

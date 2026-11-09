@@ -117,7 +117,7 @@ jobs:
         run: |
           out() { echo "$1" >> "$GITHUB_OUTPUT"; }
           docs='^(docs/|\.claude/|changelog\.d/|models/|[^/]+\.md$)'
-          ledger='^(upstream/|characterization/([^/]+\.json$|[^/]+/facts/|[^/]+/probes\.json$|.*\.md$)|python/tests/lift_backlog\.json$)'
+          ledger='^(upstream/|characterization/([^/]+\.json$|[^/]+/facts/|[^/]+/probes\.json$|.*\.md$)|engines/[^/]+/(facts|probes)/|python/tests/lift_backlog\.json$)'
 
           # The areas: files that only one job, or no job but `test (core)`
           # and `test (duckdb)`, can read.
@@ -125,7 +125,8 @@ jobs:
           tests=python/tests
           spark="$src/(spark_engine|sql/spark)\.py$|$tests/(spark_session|test_sql_spark|test_spark_[a-z0-9_]+)\.py$"
           snowflake="$src/sql/snowflake\.py$|$tests/test_sql_snowflake\.py$"
-          polars="$src/(polars_engine|_polars_shims)\.py$|$tests/test_(polars|polars_shims|probe_polars)\.py$|python/tools/sverify_dev/probe_polars\.py$"
+          # An engine package (#1189): its Python, tests, facts and probes.
+          polars="engines/polars/|python/tools/sverify_dev/probe_polars\.py$"
           datafusion="$tests/test_datafusion_quirks\.py$"
           io="$src/io/|$tests/test_io_"
           pytests="$tests/"
@@ -223,9 +224,10 @@ jobs:
           fi
           out "oracle=$(flag "$skip_oracle")"
           out "notebooks=$(flag "$skip_notebooks")"
-          # The tests outside the repository (`outside-repo`) read python/ and
-          # the dependencies; the workflow itself.
-          if grep -qE '^(python/|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          # The tests outside the repository (`outside-repo`) read python/,
+          # the engine packages' Python and tests, and the dependencies; the
+          # workflow itself.
+          if grep -qE '^(python/|engines/[^/]+/(src|tests)/|engines/[^/]+/pyproject\.toml$|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out python=true
           else
             out python=false
@@ -556,7 +558,8 @@ jobs:
         run: >-
           uv run --locked pytest -n auto --dist worksteal
           tests/test_facts.py tests/test_bugs.py tests/test_functions.py
-          tests/test_probe.py tests/test_probe_polars.py tests/test_polars_shims.py
+          tests/test_probe.py ../engines/polars/tests/test_probe_polars.py
+          ../engines/polars/tests/test_polars_shims.py
           tests/test_substrait_cases.py tests/test_unexplained.py
       # A change to the lift's backlog changes how its tests report
       # (tests/conftest.py): run every test it lists before or after.

@@ -11,8 +11,8 @@
   "handling": "sverify doesn't work around it yet. The workaround is to cast both inputs to `Float64` before `cov` or `corr`, which is what the in-memory engine does and gives the same result.",
   "found_by": "the Polars characterization round 2 (source reading of crates/polars-expr/src/reduce/cov.rs, then a manual repro)",
   "files": [
-    "characterization/polars/facts/polars-cov.json",
-    "characterization/polars/facts/polars-corr.json"
+    "engines/polars/facts/polars-cov.json",
+    "engines/polars/facts/polars-corr.json"
   ],
   "facts": [
     "polars-cov",

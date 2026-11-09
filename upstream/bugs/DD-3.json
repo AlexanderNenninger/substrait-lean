@@ -13,7 +13,7 @@
   ],
   "files": [
     "SubstraitLean/EngineTables.lean",
-    "python/src/sverify/_polars_shims.py",
+    "engines/polars/src/sverify_polars/shims.py",
     "python/src/sverify/sql/core/_base.py"
   ],
   "checked": [

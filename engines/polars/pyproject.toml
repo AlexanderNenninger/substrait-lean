@@ -1,0 +1,48 @@
+[project]
+name = "sverify-polars"
+version = "0.7.1"
+description = "Polars as an engine of sverify: plans verified in Lean, run as Polars lazy frames"
+readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    # Released with sverify, at its version (#1189;
+    # .claude/skills/release-sverify/SKILL.md bumps both).
+    "sverify==0.7.1",
+    "numpy>=2.5.4",
+    "polars>=2.1.0",
+]
+
+# sverify finds its engines here and nowhere else (`sverify.profiles`).
+[project.entry-points."sverify.profiles"]
+polars = "sverify_polars:PLUGIN"
+
+[project.urls]
+Source = "https://github.com/AlexanderNenninger/substrait-lean/tree/main/engines/polars"
+Issues = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sverify_polars"]
+
+# The sdist: the package and its tests. The facts and probes are the
+# evidence for the Lean profile, which the checker carries.
+[tool.hatch.build.targets.sdist]
+include = ["src/sverify_polars", "tests", "README.md", "LICENSE"]
+
+[tool.uv.sources]
+# The sverify of this checkout.
+sverify = { path = "../../python", editable = true }
+
+[tool.pyrefly]
+project-includes = ["src", "tests"]
+# `test_polars` reuses the queries of sverify's test modules.
+search-path = ["src", "tests", "../../python/src", "../../python/tests", "../../python/tools"]
+
+[tool.ruff]
+# sverify's settings.
+extend = "../../python/pyproject.toml"

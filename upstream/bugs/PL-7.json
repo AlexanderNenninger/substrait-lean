@@ -15,14 +15,14 @@
     "So `filter(s != 'x').filter(s.str.to_integer() == 1)` becomes one `FILTER (s != 'x') & (s.str.to_integer() == 1)`. `&` evaluates both sides on every row, so the parse runs on the row the first filter removes and raises. With predicate pushdown off, the query returns the row. Other raising parsers outside the list (`str.to_decimal`, `str.json_decode`, strict temporal parsers other than `strptime`) are the same class; not probed."
   ],
   "repro": "import polars as pl\nlf = pl.LazyFrame({\"s\": [\"1\", \"x\"]})\nq = lf.filter(pl.col(\"s\") != \"x\").filter(pl.col(\"s\").str.to_integer() == 1)\nq.collect()  # ComputeError: strict integer parsing failed for 1 value(s): [\"x\"]\nq.collect(engine=\"streaming\")  # the same error\nq.collect(optimizations=pl.QueryOptFlags(predicate_pushdown=False)).rows()  # [('1',)]\nprint(q.explain())\n# FILTER (col(\"s\") != \"x\") & (col(\"s\").str.to_integer([dyn int: 10]) == 1)",
-  "handling": "sverify collects every translated plan with `predicate_pushdown=False` (`sverify.polars_engine`), so its plans keep their filter order. The fix upstream is to add `str.to_integer(strict=True)` and the other raising string parsers to `is_fallible_top_level`.",
+  "handling": "sverify collects every translated plan with `predicate_pushdown=False` (`sverify_polars.engine`), so its plans keep their filter order. The fix upstream is to add `str.to_integer(strict=True)` and the other raising string parsers to `is_fallible_top_level`.",
   "found_by": "the Polars characterization reverse pass (2026-11-04): each open fact checked against the source, docstrings and user guide at py-2.1.0 and Polars's own tests, with light probes on both engines; the source reading of predicate pushdown for polars-exec-predicate-pushdown, then a manual repro",
   "issues": [
     444
   ],
   "files": [
-    "python/src/sverify/polars_engine.py",
-    "characterization/polars/facts/polars-exec-predicate-pushdown.json"
+    "engines/polars/src/sverify_polars/engine.py",
+    "engines/polars/facts/polars-exec-predicate-pushdown.json"
   ],
   "facts": [
     "polars-exec-predicate-pushdown"

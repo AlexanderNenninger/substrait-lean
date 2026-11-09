@@ -1,0 +1,80 @@
+{
+  "id": "polars-decimal-compare",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Decimal comparisons: exact across scales and with integers",
+  "verdict": "exact",
+  "area": "decimals",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "==",
+    "<",
+    ">",
+    "min",
+    "max",
+    "sum"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`==` and `<` compare decimals of different scales, and a decimal with an integer, by value: 12.35 at scale 2 equals 12.350 at scale 3, and -0.05 < -0.051 is false. A rescale that would overflow decides by the sign instead.",
+    "`sum` of no decimals, or only NULLs, is 0 at the column's scale (as for integers, polars-sum-int); `min` of only NULLs is NULL."
+  ],
+  "reference": "Comparisons at the larger scale, exactly (`docs/reference-semantics.md`, Decimals); `SUM` of no values is NULL (`empty_group_aggregates`), which `sum_empty_null` gives.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session polars-decimals)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "decimal-compare"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "decimal-sum-empty"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python), macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars --diff (session polars-decimals)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "decimal-compare"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "decimal-sum-empty"
+        }
+      ],
+      "notes": "Streaming gives what in memory gives."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "session polars-decimals",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/decimal.rs#L1006-L1052",
+          "note": "dec128_eq and dec128_cmp rescale to the larger scale; an overflowing rescale is unequal, or ordered by its sign."
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    27
+  ]
+}

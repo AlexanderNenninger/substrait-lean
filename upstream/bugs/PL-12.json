@@ -17,7 +17,7 @@
     444
   ],
   "files": [
-    "characterization/polars/facts/polars-list-index.json"
+    "engines/polars/facts/polars-list-index.json"
   ],
   "facts": [
     "polars-list-index"

@@ -217,7 +217,8 @@ def _(dt, pa, tables):
     import polars as pl
 
     import sverify as sv
-    from sverify import duckdb_engine, polars_engine
+    from sverify import duckdb_engine
+    from sverify_polars import engine as polars_engine
     from sverify.engine import put_table, read_tables, run_checker
     from sverify.engines import (
         SNOWFLAKE,

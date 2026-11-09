@@ -1,0 +1,47 @@
+{
+  "id": "polars-int128-remainder",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Int128 `%` by a positive constant is the floor remainder",
+  "verdict": "native",
+  "area": "integers",
+  "constructs": [
+    "%"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "`%` of an Int128 by a positive constant takes the divisor's sign (`-1 % 86400000000` is 86399999999, `-7 % 5` is 3, `MIN_i64 % 86400000000` is 71945224192), as Lean's `%` does for a positive divisor. So `x - (x - origin) % k`, as `polars_engine` writes `date_bin`, is `Time.bucket`, and `x % 86400000000` the time of day of `CAST(ts AS TIME)`.",
+  "reference": "`Time.bucket k o ts` is `floorTo k (ts - o) + o`; `Time.timeOfDay ts` is `ts % usPerDay` (Lean's Euclidean `%`).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "int128-remainder"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; the probe strings; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python) on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars --diff (session lowerings-271, #271)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "int128-remainder"
+        }
+      ],
+      "notes": "`--diff`: the streaming engine gives what the in-memory one gives, one row at a time and on a column of several morsels."
+    }
+  ]
+}

@@ -13,11 +13,11 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
-from sverify import polars_engine
 from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.partition import NotShardable, apriori_tolerance, run_sharded, split
 from sverify.testing import canonical
+from sverify_polars import engine as polars_engine
 
 pytestmark = pytest.mark.backend("polars")
 

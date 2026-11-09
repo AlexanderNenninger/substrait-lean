@@ -125,18 +125,34 @@ jobs:
           python-version: "3.12"
           enable-cache: false
 
+      # The engine packages (`engines/<engine>/`, #1189) go out at sverify's
+      # version, pinned both ways: sverify's extra pins the package, the
+      # package pins sverify.
+      - name: Check the engine packages' versions and pins
+        run: |
+          sverify=$(sed -n 's/^version = "\(.*\)"/\1/p' python/pyproject.toml)
+          grep -x "version = \"$sverify\"" engines/polars/pyproject.toml
+          grep -F "\"sverify==$sverify\"" engines/polars/pyproject.toml
+          grep -F "\"sverify-polars==$sverify\"" python/pyproject.toml
+
       # Only in the build: the commit keeps the released version.
       - name: Set the nightly version
         if: needs.nightly.outputs.version
         env:
           VERSION: ${{ needs.nightly.outputs.version }}
         run: |
-          sed -i.orig "s/^version = \".*\"/version = \"$VERSION\"/" python/pyproject.toml
-          rm python/pyproject.toml.orig
-          grep -x "version = \"$VERSION\"" python/pyproject.toml
+          sed -i.orig "s/^version = \".*\"/version = \"$VERSION\"/; s/\"sverify-polars==[^\"]*\"/\"sverify-polars==$VERSION\"/" \
+            python/pyproject.toml
+          sed -i.orig "s/^version = \".*\"/version = \"$VERSION\"/; s/\"sverify==[^\"]*\"/\"sverify==$VERSION\"/" \
+            engines/polars/pyproject.toml
+          rm python/pyproject.toml.orig engines/polars/pyproject.toml.orig
+          grep -x "version = \"$VERSION\"" python/pyproject.toml engines/polars/pyproject.toml
 
       - name: Build sdist, then the wheel from it
         run: uv build python --out-dir dist
+      # Pure Python: the wheel tests install it beside sverify's wheel.
+      - name: Build sverify-polars
+        run: uv build engines/polars --out-dir dist-polars
 
       - name: Tag manylinux
         if: runner.os == 'Linux'
@@ -163,7 +179,8 @@ jobs:
         run: |
           fast=()
           if [ "$FAST" = true ]; then fast=(--fast); fi
-          bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl ${fast[@]+"${fast[@]}"}
+          bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl \
+            --engine-wheel dist-polars/*.whl ${fast[@]+"${fast[@]}"}
 
       # Without extras: no optional package is installed or imported, a node
       # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
@@ -184,6 +201,14 @@ jobs:
         with:
           name: dist-sdist
           path: dist/*.tar.gz
+      # `engine-*`, not `dist-*`: `publish` uploads it to PyPI only once the
+      # project has a trusted publisher (`vars.PUBLISH_ENGINES`, the release
+      # skill's "Engine packages").
+      - if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-polars
+          path: dist-polars/*
 
   # sverify-dbt (`dbt/`, #732): pure Python, released with sverify at its
   # version, so one runner builds its sdist and wheel. The wheel is checked
@@ -286,6 +311,10 @@ jobs:
         with:
           name: dist-${{ matrix.os }}
           path: wheelhouse
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-polars
+          path: dist-polars
 
       - name: Test installed wheel
         env:
@@ -293,7 +322,8 @@ jobs:
         run: |
           fast=()
           if [ "$FULL" != true ]; then fast=(--fast); fi
-          bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl --python ${{ matrix.python }} ${fast[@]+"${fast[@]}"}
+          bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl --engine-wheel dist-polars/*.whl \
+            --python ${{ matrix.python }} ${fast[@]+"${fast[@]}"}
 
       # Without extras: no optional package is installed or imported, a node
       # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
@@ -351,9 +381,21 @@ jobs:
           dbt=$(sed -n 's/^version = "\(.*\)"/\1/p' dbt/pyproject.toml)
           test "$dbt" = "$version" || { echo "dbt/ is at $dbt, sverify at $version"; exit 1; }
           grep -F "\"sverify==$version\"" dbt/pyproject.toml
+          # So do the engine packages, pinned both ways.
+          grep -x "version = \"$version\"" engines/polars/pyproject.toml
+          grep -F "\"sverify==$version\"" engines/polars/pyproject.toml
+          grep -F "\"sverify-polars==$version\"" python/pyproject.toml
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: dist-*
+          path: dist
+          merge-multiple: true
+      # The engine packages, once PyPI has a trusted publisher for each
+      # (`vars.PUBLISH_ENGINES`; the release skill's "Engine packages").
+      - if: vars.PUBLISH_ENGINES == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
           path: dist
           merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
@@ -469,6 +511,12 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: dist-*
+          path: dist
+          merge-multiple: true
+      # The engine packages' wheels too: a GitHub release, so no publisher.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
           path: dist
           merge-multiple: true
 

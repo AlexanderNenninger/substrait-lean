@@ -1,0 +1,67 @@
+{
+  "id": "polars-null-order",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`sort`: NULLs first, ascending and descending",
+  "verdict": "`NULLS_FIRST` by default in both directions",
+  "area": "relations",
+  "options": [
+    "null_order"
+  ],
+  "rows": [
+    {"option": "null_order", "types": ["any"]}
+  ],
+  "constructs": [
+    "sort",
+    "top_k",
+    "rank"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "`sort` puts NULLs first by default, ascending and descending; `nulls_last=True` puts them last, per key when given a list. So Polars's default is the same NULL placement in both directions, where SQL's convention flips it with the direction.",
+  "reference": "The key's direction states the NULL placement; `SORT_DIRECTION_UNSPECIFIED` is `NULLS_LAST` (D8). Polars is native for every stated direction with `nulls_last`; its default differs from DuckDB's `NULLS_LAST` (duckdb-F2).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "sort-doubles"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "sort-null-default"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "sort-doubles"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "sort-null-default"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    }
+  ]
+}

@@ -7,10 +7,10 @@ import Sverify.Engines.Shims
 # The reference on Polars: the shims, proved (#444)
 
 The translation from the reference to Polars 2.1.0 writes one small shim per
-value choice Polars makes differently (`python/src/sverify/_polars_shims.py`,
+value choice Polars makes differently (`engines/polars/src/sverify_polars/shims.py`,
 its `SHIMS`), and checks the preconditions it cannot drop on the data (its
 `GUARDS`). This module states what Polars does natively for each of them, as
-its facts record it (`characterization/polars/facts/`), and proves once, per
+its facts record it (`engines/polars/facts/`), and proves once, per
 shim, that the shimmed expression gives the reference's value. The lemmas are
 named as the Python shims: `Polars.<name>`, or `Shim.<name>` for one another
 engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`,

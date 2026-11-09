@@ -1,0 +1,68 @@
+{
+  "id": "polars-cast-to-double",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Integer to double and double to float round to nearest",
+  "verdict": "round to nearest even; overflow to ±inf",
+  "area": "casts",
+  "options": [
+    "fp32"
+  ],
+  "rows": [
+    {"option": "fp32", "types": ["fp32"]}
+  ],
+  "constructs": [
+    "cast"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "`Int64` to `Float64` rounds to the nearest double (2⁵³ + 1 is 2⁵³). `Float64` to `Float32` rounds to the nearest float, overflows to inf and underflows to 0.",
+  "reference": "The conversions between integers and doubles are opaque constants with proved properties (`core/Sverify/Core/Conversions.lean`), the same in every profile; `fp32` arithmetic is refused until #417.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-int-to-double"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "cast-double-to-float"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 5 (streaming engine)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-int-to-double"
+        },
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "cast-double-to-float"
+        }
+      ],
+      "notes": [
+        "Streaming gives what in memory gives on every probe and observation cited here.",
+        "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    }
+  ],
+  "issues": [
+    417
+  ]
+}

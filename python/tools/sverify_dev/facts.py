@@ -104,14 +104,31 @@ RELATION_OPTIONS = ("tie_order",)
 Fact = dict[str, Any]
 
 
+def _facts_dirs(root: Path = ROOT) -> dict[str, Path]:
+    """Each engine's `facts/` folder, by engine: in its engine package
+    (`engines/<engine>/facts/`, #1189), else under `root`
+    (`characterization/<engine>/facts/`). The engine packages are beside
+    `root`, so a `root` elsewhere (a test's) has none."""
+    found = {p.parent.name: p for p in root.glob("*/facts") if p.is_dir()}
+    found |= {p.parent.name: p for p in (root.parent / "engines").glob("*/facts") if p.is_dir()}
+    return dict(sorted(found.items()))
+
+
+def facts_dir(engine: str, root: Path = ROOT) -> Path:
+    """Where `engine`'s facts are: its engine package's `facts/` folder, or
+    `characterization/<engine>/facts/` until the engine is a package."""
+    return _facts_dirs(root).get(engine, root / engine / "facts")
+
+
 def engines(root: Path = ROOT) -> list[str]:
     """The engines with a `facts/` folder."""
-    return sorted(p.parent.name for p in root.glob("*/facts") if p.is_dir())
+    return list(_facts_dirs(root))
 
 
 def load(root: Path = ROOT) -> dict[Path, Fact]:
     """Every fact document, by path."""
-    return {p: json.loads(p.read_text()) for p in sorted(root.glob("*/facts/*.json"))}
+    paths = sorted(p for d in _facts_dirs(root).values() for p in d.glob("*.json"))
+    return {p: json.loads(p.read_text()) for p in paths}
 
 
 def checklist(root: Path = ROOT) -> dict[str, list[str]]:

@@ -12,8 +12,10 @@ behaviour is recorded privately.
 - [duckdb/](duckdb/README.md): the replay of DuckDB's sqllogictests (one
   ledger per area of DuckDB's `test/sql/`), the fuzz findings, the probes
   ([probes.json](duckdb/probes.json)), the facts and the DuckDB diff.
-- [polars/](polars/README.md): the probes of Polars's expression API, under
-  the in-memory and the streaming engine, the facts and the Polars diff.
+- Polars's facts and probes are in its engine package (#1189):
+  [engines/polars/facts/](../engines/polars/facts/README.md) and
+  [engines/polars/probes/](../engines/polars/probes/), under the in-memory and
+  the streaming engine.
 - [spark/](spark/README.md): the probes and fuzzing of Spark SQL, the facts
   and the Spark diff.
 - [datafusion/facts/](datafusion/facts/): the replay findings that belong to
@@ -22,7 +24,8 @@ behaviour is recorded privately.
 - [oracle-a/benchmarks.json](oracle-a/benchmarks.json): each benchmark
   query's stage (`lift.STAGES`) when last written, which oracle A
   (`sverify_dev.oracle`) reads.
-- `<engine>/facts/`: the facts, one JSON document each.
+- `<engine>/facts/`: the facts, one JSON document each; an engine package
+  keeps its own in `engines/<engine>/facts/` (`sverify_dev.facts.facts_dir`).
 - [fact.schema.json](fact.schema.json): the facts' format.
   `python -m sverify_dev.facts` checks every document against it, and
   `tests/test_facts.py` does too.
