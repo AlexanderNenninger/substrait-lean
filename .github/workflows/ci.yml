@@ -216,7 +216,7 @@ jobs:
           # ledgers and the areas it skips.
           reads() { grep -qvE "$docs|$ledger|^($1)" <<< "$files"; }
           flag() { if reads "$1"; then echo true; else echo false; fi; }
-          if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$' <<< "$files"; then
+          if grep -qE '\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$|^scripts/lean(_timings\.py|-budget\.json)$' <<< "$files"; then
             out proofs=true
           else
             out proofs=false
@@ -299,6 +299,10 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - uses: ./.github/actions/setup-lean
+      # The build budget (docs/build-performance.md): the builds below run
+      # `lean` through a sysroot that records each module's CPU time and peak
+      # RSS, and `check` fails on a module over its ceiling.
+      - run: python3 scripts/lean_timings.py sysroot "$RUNNER_TEMP/lean-sysroot"
       # The layer guards (#1189, #1162): each package builds on the layers
       # below it alone. The core imports no analysis and no engine, the
       # analysis no engine, engines-common no single engine. In the root
@@ -306,18 +310,49 @@ jobs:
       # each package's .lake.
       - run: lake build --wfail
         working-directory: core
+        env:
+          LAKE_OVERRIDE_LEAN: "true"
+          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
+          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
       - run: lake build --wfail
         working-directory: analysis
+        env:
+          LAKE_OVERRIDE_LEAN: "true"
+          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
+          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
       - run: lake build --wfail
         working-directory: engines
+        env:
+          LAKE_OVERRIDE_LEAN: "true"
+          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
+          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
-      # Check every generated entry's proof (engines/Sverify/Engines/Generated.lean),
-      # before `uv run`'s editable install builds substrait-check.
-      - run: lake -R -Kcheck_generated=true build
-      - run: uv run --locked --project python poe -C python prove
+      # Check every proof, the generated entries' included
+      # (engines/Sverify/Engines/Generated.lean), warnings failing the build (what
+      # `poe prove` runs, for every default target), before `uv run`'s
+      # editable install builds substrait-check.
+      - run: lake -R -Kcheck_generated=true build --wfail
+        env:
+          LAKE_OVERRIDE_LEAN: "true"
+          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
+          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+      # Only the modules this run rebuilt are measured: the others restored
+      # from the cache, unchanged with all they import.
+      - name: Build budget
+        run: |
+          touch "$RUNNER_TEMP/lean-timings.jsonl"
+          python3 scripts/lean_timings.py report --top 15 "$RUNNER_TEMP/lean-timings.jsonl" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/lean_timings.py check "$RUNNER_TEMP/lean-timings.jsonl"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: lean-timings
+          path: ${{ runner.temp }}/lean-timings.jsonl
+          retention-days: 14
+          if-no-files-found: ignore
       - run: uv run --locked --project python poe -C python build
       - run: uv run --locked --project python poe -C python golden
       # The kernel-checked theorems' axioms, as docs/trusted-base.md lists them (#1088).
