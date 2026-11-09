@@ -146,9 +146,12 @@ def duckdb_ibis(con: Connection, expr: ibis.Table) -> pa.Table:
 
 def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) -> list[tuple]:
     """Rows of the plan's SQL on a fresh DuckDB database holding `tables`."""
-    from sverify import duckdb_engine
+    from sverify import profiles
 
-    return arrow_rows(duckdb_engine.run(plan_json, tables or {}))
+    plugin = profiles.find("duckdb")
+    if plugin is None or plugin.run_tables is None:
+        raise ImportError("DuckDB is not installed: pip install sverify")
+    return arrow_rows(plugin.run_tables(plan_json, tables or {}))
 
 
 def canonical(rows: Iterable[tuple]) -> list[str]:

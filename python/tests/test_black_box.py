@@ -21,13 +21,14 @@ from hypothesis import strategies as st
 
 import sverify as sv
 from _sql_lift import SCHEMAS, TABLES
-from sverify import black_box, duckdb_engine
+from sverify import black_box
 from sverify.engine import checker_path, connect, run_checker, run_plan, written_plan
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql import Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.sql_lift import lift
 from sverify_dev.lift import check, duckdb_result
+from sverify_duckdb import engine as duckdb_engine
 from sverify_spark.dialect import SPARK
 
 pytestmark = pytest.mark.backend("duckdb")

@@ -1,6 +1,6 @@
 """The probing harness (`sverify_dev.probe`, #242): DuckDB's functions on edge
 cases against Lean's outcomes under each candidate option, and the verdicts
-recorded in `characterization/duckdb/probes.json`."""
+recorded in `engines/duckdb/replay/probes.json`."""
 
 import json
 import math

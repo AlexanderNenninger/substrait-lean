@@ -6,7 +6,7 @@ A view's state (`IncrementalView.state`) is a weighted table
 (`sverify._weighted`): its rows, each once, with its number of copies. The
 engine a pipeline runs on keeps it, in its own form: its plugin's `Store`
 (`ProfilePlugin.store`; `store_for`). sverify holds no state of its own and
-picks no store (#1189, #1288). DuckDB's (`sverify._builtin.duckdb.DuckDBStore`)
+picks no store (#1189, #1288). DuckDB's (`sverify_duckdb.DuckDBStore`)
 is a table DuckDB holds between calls (`Resident`), so the state never passes
 through Python; Polars's, Spark's and DataFusion's keep Arrow tables in the
 process for now (`sverify._arrow_state`).
@@ -75,8 +75,8 @@ class Merger:
     def __call__(self, a: State, b: State | None = None, *, keep: bool = False) -> State:
         """`a` plus `b` (default: nothing), consolidated: as a `Resident`
         table with `keep`, else as an Arrow table."""
-        from sverify import duckdb_engine
         from sverify.sql.core import Unsupported
+        from sverify_duckdb import engine as duckdb_engine
 
         b = self.schema.empty_table() if b is None else b
         plan = self.plan()
@@ -92,7 +92,7 @@ class Merger:
                 return out.rename_columns(self.schema.names).cast(self.schema)
         merged = consolidated(arrow_of(a).cast(self.schema), arrow_of(b).cast(self.schema))
         if keep:
-            from sverify._builtin.duckdb import DuckDBStore
+            from sverify_duckdb import DuckDBStore
 
             return DuckDBStore().keep_table(merged)
         return merged

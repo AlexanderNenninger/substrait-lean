@@ -57,7 +57,7 @@ This design pass found seven, each checked against Substrait's `main` at
 
 A NaN is one of two codes, by its sign. No function sverify models reads a
 payload, and `signbit` reads the sign
-([duckdb-signbit](../characterization/duckdb/facts/duckdb-signbit.json)).
+([duckdb-signbit](../engines/duckdb/facts/duckdb-signbit.json)).
 WebAssembly treats a NaN's sign as a choice too, and IEEE 754 only
 recommends that payloads propagate ([Prior work](core-semantics.md#loose-specifications-and-profiles)).
 
@@ -73,7 +73,7 @@ The core reads a key's `UNSPECIFIED` direction as `null_order` open, and
 `CLUSTERED` as an order relation of its own: rows with equal keys adjacent,
 the groups in any order. `Profile.substrait` accepts both, and the reference
 and each engine profile fix the NULL order (DuckDB: `NULLS_LAST`,
-[F2](../characterization/duckdb/facts/duckdb-F2.json)). Substrait's sort
+[F2](../engines/duckdb/facts/duckdb-F2.json)). Substrait's sort
 directions include both, so a faithful profile has to read them. The parser
 keeps refusing them until step 1c lands the choice point and the relation.
 
@@ -93,7 +93,7 @@ at run time, and the generated tables already carry the proofs.
 ### D8. The reference's NULL order
 
 Where a key's direction is `UNSPECIFIED`, the reference puts NULLs last in
-both directions: DuckDB's default ([F2](../characterization/duckdb/facts/duckdb-F2.json))
+both directions: DuckDB's default ([F2](../engines/duckdb/facts/duckdb-F2.json))
 and the default of the model's `SortKey` for hand-built values.
 
 ### D9. One tool per option
@@ -798,7 +798,7 @@ one guard outside it:
 
 | engine | inside 0001 to 9999 | outside | type the writer pins |
 |---|---|---|---|
-| DuckDB | native ([duckdb-calendar-range](../characterization/duckdb/facts/duckdb-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP` (µs) |
+| DuckDB | native ([duckdb-calendar-range](../engines/duckdb/facts/duckdb-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP` (µs) |
 | Polars | native ([polars-calendar-range](../engines/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
 | Spark | native ([spark-calendar-range](../engines/spark/facts/spark-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP_NTZ`, session time zone UTC |
 | Snowflake | reachable by a shim, probe pending: parts in year 1 are right and sverify truncates weeks itself (private facts); month, quarter and year truncation at the ends is not recorded | computes (years 0 to 302024); the SQL guards | `TIMESTAMP_NTZ` |

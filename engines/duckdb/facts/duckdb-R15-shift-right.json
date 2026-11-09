@@ -1,0 +1,94 @@
+{
+  "id": "duckdb-R15-shift-right",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`BIGINT >> BIGINT`",
+  "verdict": "no option matches",
+  "area": "integers",
+  "options": [
+    "shift_range"
+  ],
+  "rows": [
+    {"group": "int.shift", "option": "shift_range", "types": ["i64"]},
+    {"group": "int.shift", "option": "shift_range", "types": ["i8", "i16", "i32"], "evidence": "source"}
+  ],
+  "constructs": [
+    ">>",
+    "shift_right"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "0 for shifts below 0 or beyond 63 (`-5 >> 64` too).",
+    "The docs are silent on out-of-range shifts: a docs gap. No upstream test pins this below HUGEINT (DuckDB's test puts it in one `statement error` with `<<`); it may change between versions."
+  ],
+  "reference": "`shift_right` raises on shifts below 0 or beyond 63.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT >> BIGINT"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/operators/bitwise.cpp#L319-L329",
+          "note": "BitwiseShiftRightOperator: input >> shift for shift in [0, width), else 0"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/operators/bitwise.cpp#L350-L362",
+          "note": "instantiated for every integral type"
+        }
+      ],
+      "notes": "One template for every width, with the range relative to the width: at i8, `x >> 8` is 0 (also for a negative `x`), and inside the range the shift is arithmetic (a narrow operand is promoted to `int` first). sverify's reference states the range for 64 bits."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": ">> 'Bitwise shift right'; out-of-range shifts unstated"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/operator/test_bitwise_ops.test#L35-L50", "note": "out-of-range >> shares a statement error with <<, so its 0 result is not pinned"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/hugeint/test_hugeint_bitwise.test#L71-L99", "note": "HUGEINT only: >> -1 → 0, negative >> 200 → 0"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "SELECT -5::BIGINT >> 64, -5::BIGINT >> -1", "observed": "0, 0"}
+      ]
+    }
+  ],
+  "issues": [
+    242
+  ]
+}

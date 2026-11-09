@@ -37,7 +37,7 @@ class Target:
     uses: str
     """Who needs it: catalogue queries (`catalogue/features.toml`), dbt
     macros, the patterns of #749 and #765, the Eurostat pipeline of #771,
-    refusals in DuckDB's sqllogictest replay (`characterization/duckdb`)."""
+    refusals in DuckDB's sqllogictest replay (`engines/duckdb/`)."""
     covered: bool
     """What the probes give today; `tests/test_coverage_targets.py` pins it,
     so coverage changes by a deliberate edit here."""

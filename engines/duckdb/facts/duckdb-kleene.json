@@ -1,0 +1,53 @@
+{
+  "id": "duckdb-kleene",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Three-valued `AND`, `OR`, `NOT`, `IN`; `bool_and`, `bool_or` skip NULLs",
+  "verdict": "Kleene logic natively",
+  "area": "nulls",
+  "options": [
+    "three_valued_logic"
+  ],
+  "constructs": [
+    "AND",
+    "OR",
+    "NOT",
+    "IN",
+    "NOT IN",
+    "bool_and",
+    "bool_or"
+  ],
+  "settings": {},
+  "description": [
+    "`NULL AND FALSE` is false, `NULL OR TRUE` true, `NULL AND TRUE`, `NULL OR FALSE`, `NOT NULL` and `NULL = NULL` NULL. `1 IN (1, NULL)` is true, `NULL IN (1, NULL)` and `2 NOT IN (1, NULL)` NULL.",
+    "`bool_and` and `bool_or` skip NULLs: over (TRUE, NULL) both are true, over (FALSE, NULL) both false; over NULLs only or no rows both are NULL."
+  ],
+  "reference": "`and`, `or`, `not` and comparisons are Kleene's; aggregates skip NULLs and are NULL over no values (reference-semantics.md, NULL and Aggregates).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session duckdb-characterization-gaps)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-logic"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-bool-agg"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "null-in-subquery"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/null/test_boolean_null.test"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ]
+}

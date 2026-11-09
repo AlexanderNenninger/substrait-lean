@@ -13,12 +13,12 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify import duckdb_engine
 from sverify.engine import connect, plan_json, written_plan
 from sverify.sql import Unsupported, to_sql
-from sverify.sql.duckdb import DUCKDB
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import canonical
+from sverify_duckdb import engine as duckdb_engine
+from sverify_duckdb.dialect import DUCKDB
 from sverify_polars import engine as polars_engine
 
 pytestmark = pytest.mark.backend("duckdb")

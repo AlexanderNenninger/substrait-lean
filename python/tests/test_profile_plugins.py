@@ -178,8 +178,8 @@ def test_the_state_store_is_the_engine_s(installed: None) -> None:
     """The engine a view runs on keeps its state: its plugin's store
     (`ProfilePlugin.store`, #1189). sverify has none of its own, and an
     engine without one runs no incremental view."""
-    from sverify._builtin.duckdb import DuckDBStore
     from sverify._state import Store, store_for
+    from sverify_duckdb import DuckDBStore
 
     assert isinstance(store_for("dummy"), DummyStore)
     assert isinstance(store_for("duckdb"), DuckDBStore)

@@ -40,7 +40,6 @@ from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_t
 from sverify.io import Changes
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import kinds, order_matters
-from sverify.sql.duckdb import DUCKDB, DuckDBDialect
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import (
     EPOCH,
@@ -53,6 +52,7 @@ from sverify.testing import (
 )
 from sverify_dev import examples
 from sverify_dev.examples import PIPELINES
+from sverify_duckdb.dialect import DUCKDB, DuckDBDialect
 
 pytestmark = pytest.mark.backend("duckdb")
 

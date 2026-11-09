@@ -49,7 +49,7 @@ permissions:
 # `characterization/<engine>/facts/`, `characterization/*.json`, the probes'
 # `probes.json`, Markdown, `upstream/`, `python/tests/lift_backlog.json`,
 # plus docs) runs `static` and `ledger`: the checkers of those records and the
-# tests that read them. The replay ledgers `characterization/duckdb/<area>.json`
+# tests that read them. The replay ledgers `engines/duckdb/replay/<area>.json`
 # and `characterization/oracle-a/` feed oracle A, so they run everything.
 #
 # The other pull requests run `test (core)` and `test (duckdb)` always, and
@@ -117,7 +117,7 @@ jobs:
         run: |
           out() { echo "$1" >> "$GITHUB_OUTPUT"; }
           docs='^(docs/|\.claude/|changelog\.d/|models/|[^/]+\.md$)'
-          ledger='^(upstream/|characterization/([^/]+\.json$|[^/]+/facts/|[^/]+/probes\.json$|.*\.md$)|engines/[^/]+/(facts|probes)/|python/tests/lift_backlog\.json$)'
+          ledger='^(upstream/|characterization/([^/]+\.json$|[^/]+/facts/|[^/]+/probes\.json$|.*\.md$)|engines/[^/]+/(facts|probes|replay)/|python/tests/lift_backlog\.json$)'
 
           # The areas: files that only one job, or no job but `test (core)`
           # and `test (duckdb)`, can read.
@@ -639,7 +639,7 @@ jobs:
           tests/test_facts.py tests/test_bugs.py tests/test_functions.py
           tests/test_probe.py ../engines/polars/tests/test_probe_polars.py
           ../engines/polars/tests/test_polars_shims.py
-          tests/test_substrait_cases.py tests/test_unexplained.py
+          tests/test_substrait_cases.py engines/duckdb/tests/test_unexplained.py
       # A change to the lift's backlog changes how its tests report
       # (tests/conftest.py): run every test it lists before or after.
       - if: needs.changes.outputs.backlog == 'true'

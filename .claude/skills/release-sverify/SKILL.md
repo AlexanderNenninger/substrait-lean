@@ -58,9 +58,10 @@ The version bump is a PR into the release branch:
 git switch -c release-<version> origin/release/<major>.<minor>
 # python/pyproject.toml: version = "<version>"
 # dbt/pyproject.toml: version = "<version>", and the dependency "sverify==<version>"
-# engines/polars/pyproject.toml, engines/spark/pyproject.toml: version = "<version>",
-#   and "sverify==<version>"; python/pyproject.toml's `polars` and `spark` extras:
-#   "sverify-polars[run]==<version>", "sverify-spark[run]==<version>"
+# engines/{duckdb,polars,spark}/pyproject.toml: version = "<version>", and
+#   "sverify==<version>"; python/pyproject.toml: the dependency
+#   "sverify-duckdb[run]==<version>" and the extras "sverify-polars[run]==<version>",
+#   "sverify-spark[run]==<version>"
 # CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
 #   changelog.d/*.md fragments (file-name order) under it, then git rm the fragments
 #   (keep changelog.d/README.md)
@@ -69,7 +70,7 @@ uv run python -m sverify_dev.formats tests/formats/<version>   # the formats thi
 uv run pytest tests/test_formats.py && cd ..                     # every earlier release's still read
 git add python/tests/formats/<version>
 cd dbt && uv lock && cd ..           # sverify-dbt's and the sverify it pins
-git diff --stat                      # these seven files, the removed fragments and the fixtures
+git diff --stat                      # these eight files, the removed fragments and the fixtures
 git commit -am "Release <version>"
 git push -u origin release-<version>
 gh pr create --base release/<major>.<minor> --title "Release <version>" --body "…"

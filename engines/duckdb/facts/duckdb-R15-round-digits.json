@@ -1,0 +1,104 @@
+{
+  "id": "duckdb-R15-round-digits",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`round(DOUBLE, d)` for `d` from -1000 to 400",
+  "verdict": "the reference (DuckDB's formula since #335)",
+  "area": "doubles",
+  "options": [
+    "rounding"
+  ],
+  "rows": [
+    {"group": "fp.round", "option": "rounding", "types": ["fp64"]}
+  ],
+  "constructs": [
+    "round"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "DuckDB rounds to `d` digits; below zero it computes `round(x / 10^-d) · 10^-d`, and 0 where that is not finite. A negative value that rounds to zero keeps its sign: `round(-0.04, 1)` is `-0.0`.",
+  "reference": "`round` with a digit count: DuckDB's formula since #335, so the outcomes match on every probed `d`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#335, commit 4b8d8bb)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, -1000)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, -309)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, -308)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, -20)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, -1)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, 1)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, 2)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, 16)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, 308)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, 309)"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "round(DOUBLE, 400)"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-09",
+      "method": "probe",
+      "checked_by": "canon PR session (claude/canon-congruence), Python 3.12 in python/.venv",
+      "evidence": [
+        {
+          "sql": "SELECT round(x, 0), round(x, 1), ceil(x), round(x) FROM (VALUES (-0.4::DOUBLE), (-0.04::DOUBLE), (-0.6::DOUBLE)) t(x)",
+          "observed": "(-0.0, -0.4, -0.0, -0.0), (-0.0, -0.0, -0.0, -0.0), (-1.0, -0.6, -0.0, -1.0)"
+        }
+      ],
+      "notes": [
+        "DuckDB 2.0.0. The sign of a zero result, for the round-to-zero sign option."
+      ]
+    }
+  ],
+  "issues": [
+    242,
+    335
+  ],
+  "superseded_by": "duckdb-round-digits-2"
+}

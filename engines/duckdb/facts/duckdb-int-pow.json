@@ -1,0 +1,174 @@
+{
+  "id": "duckdb-int-pow",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`power` has no integer overload",
+  "verdict": "shimmed: DuckDB's `power` is of doubles; sverify writes integer powers as checked products",
+  "area": "integers",
+  "options": [
+    "overflow",
+    "on_domain_error"
+  ],
+  "rows": [
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16"
+      ]
+    },
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
+        "i64"
+      ],
+      "evidence": "engine_test"
+    },
+    {
+      "group": "int.pow",
+      "option": "overflow",
+      "types": [
+        "i32"
+      ],
+      "evidence": "source"
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
+        "i8",
+        "i16"
+      ]
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
+        "i32"
+      ],
+      "evidence": "engine_test"
+    },
+    {
+      "group": "int.pow",
+      "option": "on_domain_error",
+      "types": [
+        "i64"
+      ],
+      "evidence": "source"
+    }
+  ],
+  "constructs": [
+    "power",
+    "pow",
+    "**",
+    "^"
+  ],
+  "settings": {
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`pow`, `power`, `**` and `^` are one function with a single signature, `(DOUBLE, DOUBLE) -> DOUBLE`. Integer arguments are cast to DOUBLE, so `2 ** 3` is the double `8.0`, a BIGINT above 2⁵³ loses digits on the way in, and a result outside 64 bits is a large double or `inf`. Nothing checks integer overflow.",
+    "The body is C's `std::pow`. With `ieee_floating_point_ops` on (the default) it raises nothing: a negative exponent gives a fraction (`2 ** -1 = 0.5`) and `0 ** -1` gives `inf`. With it off, `0 ** negative` raises `zero raised to a negative power is undefined` and the rest is unchanged.",
+    "So the `int.pow` rows have no native DuckDB answer: sverify's SQL never calls `POWER` for `BinFn.ipow`. It writes the power out as repeated checked BIGINT multiplication, which raises `Overflow in multiplication` exactly when a partial product leaves 64 bits (duckdb-R1), and raises on a negative exponent itself.",
+    "Round 4 (probes): `**` of TINYINT and of SMALLINT is a DOUBLE: `2 ** 7 = 128.0` and `2 ** 15 = 32768.0` leave the argument's range without an error, `2 ** -1 = 0.5` and `0 ** -1 = inf`.",
+    "The numeric functions page shows `3 ** 4` as `81` and `pow(2, 3)` as `8` and never states the DOUBLE result: a docs bug, DD-9."
+  ],
+  "reference": "`power` on integers keeps the integer type; a result outside the width raises (`overflow: ERROR`), and `on_domain_error` never applies (docs/core-semantics.md). Lean's `BinFn.ipow` raises on a negative exponent. The SQL lift reads DuckDB's `**` as the double `power` (`sql_lift/core.py`, `_pow`), as DuckDB computes it.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1327-L1342",
+          "note": "PowOperator (0 to a negative power raises) and IEEEPowOperator: std::pow on the arguments"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L1402-L1408",
+          "note": "PowOperatorFun: one ScalarFunction, arguments and result DOUBLE, bound by BindIEEEFloatingBinary"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/scalar/math/numeric.cpp#L33-L42",
+          "note": "BindIEEEFloatingBinary: ieee_floating_point_ops picks the IEEE or the raising operator, both on double"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/scalar/math_functions.hpp#L34-L60",
+          "note": "pow, power and ^ are aliases of **"
+        },
+        {
+          "file": "python/src/sverify/sql/core/_base.py",
+          "note": "Dialect.int_pow and int_pow_var: checked products, a negative exponent raises"
+        },
+        {
+          "file": "python/src/sverify/sql_lift/core.py",
+          "note": "_pow: DuckDB's power is of doubles, whatever its arguments"
+        }
+      ],
+      "notes": "The signature is generic in nothing: no per-width instantiation exists, so the reading covers i8 to i64 alike."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (integers)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_pow.test#L5-L19",
+          "note": "powerme(a DOUBLE, b INTEGER) holds b = 3: `pow(b, -2)` → 0.111111, an INTEGER base to a negative exponent gives a fraction and raises nothing (i32)"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/power_zonemap_pruning.test#L20-L42",
+          "note": "`power(x, 2)` and `power(x, 3)` of an INTEGER column have DOUBLE statistics (0.0 … 9.0, -27.0 … 8.0): the result is a double"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/optimizer/power_zonemap_pruning.test#L72-L88",
+          "note": "with ieee_floating_point_ops = false, `power(x, -2)` of INTEGER 0 raises `zero raised to a negative power is undefined`"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_pow.test#L36-L60",
+          "note": "`power(0.0::float8, -2.0::float8)` and `0.0::float8 ^ -1.0::float8` → inf; with ieee_floating_point_ops = false both raise"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/bignum/test_bignum_hugeint.test#L15-L31",
+          "note": "`(10 * power(10, i))::HUGEINT` for BIGINT i in 0 … 37 runs without error and every value up to 10³⁸ round-trips through BIGNUM: a power past 2⁶³ is a double, no overflow error (i64)"
+        }
+      ],
+      "notes": "These pin the kind of result (a fraction, a double past 2⁶³, an error only for 0 to a negative power with IEEE off), not its last digits. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly. No test raises a TINYINT or SMALLINT base, so i8 and i16 stay at the source reading."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "int-pow-narrow"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "examples 3 ** 4 → 81 and pow(2, 3) → 8, no result type; the engine returns DOUBLE (draft docs entry)"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "SELECT 3 ** 4, typeof(3 ** 4), pow(2,3), typeof(pow(2,3))", "observed": "81.0, DOUBLE, 8.0, DOUBLE"}
+      ]
+    }
+  ]
+}

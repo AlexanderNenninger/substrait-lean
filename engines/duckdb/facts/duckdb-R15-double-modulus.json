@@ -1,0 +1,173 @@
+{
+  "id": "duckdb-R15-double-modulus",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`DOUBLE % DOUBLE`",
+  "verdict": "no option matches: NaN for a zero divisor or an infinite dividend",
+  "area": "doubles",
+  "options": [
+    "nan_creation",
+    "division_type"
+  ],
+  "rows": [
+    {
+      "group": "fp.mod",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.mod",
+      "option": "nan_creation",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.mod",
+      "option": "division_type",
+      "types": [
+        "fp32",
+        "fp64"
+      ],
+      "evidence": "probe"
+    }
+  ],
+  "constructs": [
+    "%"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "NaN for a zero divisor or an infinite dividend (duckdb-R4).",
+    "Round 4 (probes): FLOAT `%` is a FLOAT and truncates like `fmod` (`-7 % 3 = -1`, `7 % -3 = 1`, `-7.5 % 2 = -1.5`); `1 % 0` and `inf % 1` are NaN.",
+    "The numeric functions page says `%` raises on a zero divisor, which FLOAT and DOUBLE `%` do not: a docs bug, DD-8. The page is also silent on `%` of doubles truncating while its `fmod` floors (`-7.5::DOUBLE % 2` is -1.5, `fmod(-7.5, 2)` 0.5): a docs gap. No upstream test pins the sign of a negative dividend's `%` on doubles; it may change between versions."
+  ],
+  "reference": "`modulus` of doubles is `fmod` (duckdb-R4); a zero divisor and an infinite dividend raise.",
+  "status": "shimmed",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "DOUBLE % DOUBLE"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 2 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1432-L1442",
+          "note": "ModuloOperator<float>, <double>: std::fmod, truncating, NaN for a zero divisor or an infinite dividend"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L1452-L1469",
+          "note": "% of FLOAT and of DOUBLE: BindBinaryFloatingPoint<ModuloOperator>"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/catalog/default/default_functions.cpp#L150",
+          "note": "the SQL function fmod is a macro, x - y * floor(x / y): floored, and inexact"
+        },
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html",
+          "note": "fmod: the floored definition, always DOUBLE"
+        }
+      ],
+      "notes": "`%` on FLOAT is `std::fmod` at float, as on DOUBLE. The function named `fmod` is a different thing: a macro that floors (`fmod(-7.5, 2) = 0.5`, where `-7.5 % 2 = -1.5`) and computes through `/`, `*`, `floor` and `-`, so it rounds. The docs describe that macro correctly; facts that call `%` C's fmod mean `std::fmod`. The lift reads only `%` as `sverify_fmod`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_arithmetic.test#L122-L130",
+          "note": "for FLOAT and DOUBLE: `'inf' % 1` → nan, `1 % 'inf'` → 1"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/nan_arithmetic.test#L162-L165",
+          "note": "`'-inf' % 1` → nan"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sqlite/result_helper.cpp#L543-L594",
+          "note": "CompareValues: numeric results are cast to the column type and compared with Value::ValuesAreEqual"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types.cpp#L1384-L1393",
+          "note": "ApproxEqual: NaN equals NaN, non-finite values compare exactly, finite ones within 1 %"
+        }
+      ],
+      "notes": "No test takes `%` of a negative FLOAT or DOUBLE, so `division_type` at fp32 stays at the source reading. The runner compares FLOAT and DOUBLE results within 1 % and counts NaN equal to NaN of either sign and `-0.0` equal to `0.0` (`test/sqlite/result_helper.cpp`, `ApproxEqual` in `src/common/types.cpp`); infinities, integers, booleans and strings compare exactly."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (probes; duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "float-mod"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection under `TimeZone = 'UTC'` (or its own setup) and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "fuzz",
+      "checked_by": "characterization pipeline round 5 (sverify_dev.duckdb_fuzz on homelab, Linux x86_64, budget 900 s per target)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/fuzz__float_special.json"
+        }
+      ],
+      "notes": "float_special: 16810 random DuckDB queries over DOUBLE columns and literals holding ±0, NaN, ±inf, 1.7e308, 0.1 and a subnormal, with + - * / %, negation, abs, CASE, COALESCE and comparisons; Rel.eval under DuckDB's semantics agreed with DuckDB on every one (doubles compared to six decimals, so zero and NaN signs are not seen). The one disagreement is integer `i // i` at 0 (DuckDB raises)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "docs",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "'modulo (%) … throw an Invalid Input Error on division by zero' — contradicted for FLOAT/DOUBLE (NaN); fmod documented as floored, % sign rule unstated"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/float/ieee_floating_points.test#L23-L31", "note": "FLOAT and DOUBLE: val % 0 → nan for 1, -1, 0, nan, inf"},
+        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_fdiv_fmod.test#L14-L25", "note": "fmod is floored: fmod(10, -3) → -2, fmod(-10, 3) → 2"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline reverse pass",
+      "evidence": [
+        {"sql": "SELECT 1.0::DOUBLE % 0, 0.0::DOUBLE % 0, 1.0::FLOAT % 0", "observed": "nan, nan, nan"},
+        {"sql": "SELECT -7.5::DOUBLE % 2, fmod(-7.5, 2)", "observed": "-1.5, 0.5"}
+      ]
+    }
+  ],
+  "issues": [
+    242
+  ]
+}
