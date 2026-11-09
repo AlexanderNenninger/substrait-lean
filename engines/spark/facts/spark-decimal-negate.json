@@ -113,7 +113,7 @@
         }
       ],
       "notes": [
-        "sverify_spark.dialect writes -x as 0 - x past 34 digits where its type keeps the scale (up to 37 digits, or 38 at scale 6 or less) and refuses DECIMAL(38, s) with s > 6; Spark.decimal_negate_sub (SubstraitLean/SparkShims.lean). Spark 4.3.0, Java 21.0.13, macOS arm64, local[2]."
+        "sverify_spark.dialect writes -x as 0 - x past 34 digits where its type keeps the scale (up to 37 digits, or 38 at scale 6 or less) and refuses DECIMAL(38, s) with s > 6; Spark.decimal_negate_sub (engines/spark/Sverify/Spark/Shims.lean). Spark 4.3.0, Java 21.0.13, macOS arm64, local[2]."
       ]
     }
   ]

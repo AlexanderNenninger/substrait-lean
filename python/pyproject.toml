@@ -124,6 +124,10 @@ exclude = ["build", "src/sverify/_bin"]
 "../engines/polars/lake-manifest.json" = "lean/engines/polars/lake-manifest.json"
 "../engines/polars/lean-toolchain" = "lean/engines/polars/lean-toolchain"
 "../engines/polars/Sverify" = "lean/engines/polars/Sverify"
+"../engines/spark/lakefile.toml" = "lean/engines/spark/lakefile.toml"
+"../engines/spark/lake-manifest.json" = "lean/engines/spark/lake-manifest.json"
+"../engines/spark/lean-toolchain" = "lean/engines/spark/lean-toolchain"
+"../engines/spark/Sverify" = "lean/engines/spark/Sverify"
 
 [dependency-groups]
 dev = [

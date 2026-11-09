@@ -76,5 +76,6 @@ def test_the_budget_names_existing_modules(timings):
     budget = json.loads(timings.BUDGET.read_text())
     for module in budget["modules"]:
         path = module.replace(".", "/") + ".lean"
-        roots = (ROOT, *(ROOT / d for d in ("core", "analysis", "engines", "engines/polars")))
+        packages = ("core", "analysis", "engines", "engines/polars", "engines/spark")
+        roots = (ROOT, *(ROOT / d for d in packages))
         assert any((root / path).is_file() for root in roots), module

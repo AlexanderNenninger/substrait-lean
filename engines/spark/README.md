@@ -19,7 +19,8 @@ The directory holds the whole engine package:
   `Profile.spark` ([facts/README.md](facts/README.md));
 - `probes/`: the probes' and the fuzzer's recordings the facts cite;
 - `tests/`: its tests, which run in sverify's test session
-  (`python/pyproject.toml`'s `testpaths`).
-
-Its Lean half, the profile and its shims, is in the root Lean package for now
-(`SubstraitLean/SparkProfile.lean`, `SparkShims.lean`).
+  (`python/pyproject.toml`'s `testpaths`);
+- `Sverify/Spark/` and `lakefile.toml`: its Lean half, the Lake package
+  `sverify-spark`: the choice table, the shims and their lemmas,
+  `Profile.spark` and the `Engine` value, on the core, the analysis and
+  engines-common alone ([docs/proofs.md](../../docs/proofs.md)).

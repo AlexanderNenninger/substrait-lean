@@ -46,7 +46,7 @@ the project's one axiom (the trusted table below).
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `LiftDuckDB/Duckdb.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings) | `EngineSound.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.polars_sound` | … on the model of Polars | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `Engine.spark_sound` | … on the model of Spark | `EngineSound.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.spark_sound` | … on the model of Spark | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
@@ -184,7 +184,7 @@ place, and what retires it.
   its profile: `Impl.Faithful` (`Guards.lean`) for the functions the SQL
   calls unguarded, `Profile.duckdb` (`DuckDBProfile.lean`, `EngineTables.lean`),
   `Profile.polars` and `Polars.*` (`Polars/Profile.lean`, `Polars/Shims.lean`),
-  `Profile.spark` and `Spark.*` (`SparkProfile.lean`, `SparkShims.lean`), and
+  `Profile.spark` and `Spark.*` (`Spark/Profile.lean`, `Spark/Shims.lean`), and
   the shared shims' models `Shim.*` for each engine that writes them (`Shims.lean`),
   each from the engine's characterization facts
   (`characterization/<engine>/facts/`, [how they are judged](../characterization/README.md)).
