@@ -1,0 +1,617 @@
+{
+ "comment": "Per-module ceilings of the Lean build: 1.5x the highest measured CPU time and peak RSS, at least 30 s and 1536 MB (docs/build-performance.md). Modules not listed get `default`.",
+ "default": {
+  "cpu_s": 60,
+  "rss_mb": 2560
+ },
+ "modules": {
+  "Main": {
+   "cpu_s": 30,
+   "rss_mb": 2778
+  },
+  "SubstraitCheck": {
+   "cpu_s": 30,
+   "rss_mb": 2847
+  },
+  "SubstraitCheckExamples.DummyEngine": {
+   "cpu_s": 30,
+   "rss_mb": 2799
+  },
+  "SubstraitLean": {
+   "cpu_s": 30,
+   "rss_mb": 2769
+  },
+  "SubstraitLean.AllowedAnalysis": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.AnalysisCongr": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Bind": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Check": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Choices": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Completeness": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Compose": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.ContractCheck": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts.Facts": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts.Lattice": {
+   "cpu_s": 43,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts.Plan": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts.Refine": {
+   "cpu_s": 35,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts.Sound": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts.Transfer": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Contracts.TransferSound": {
+   "cpu_s": 62,
+   "rss_mb": 1760
+  },
+  "SubstraitLean.DataFusion": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.DuckDBProfile": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.DuckDBSQL": {
+   "cpu_s": 199,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Engine": {
+   "cpu_s": 30,
+   "rss_mb": 3009
+  },
+  "SubstraitLean.EngineRobust": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.EngineSound": {
+   "cpu_s": 30,
+   "rss_mb": 2658
+  },
+  "SubstraitLean.EngineTables": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Epsilon": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.EvalFast": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Examples": {
+   "cpu_s": 30,
+   "rss_mb": 2754
+  },
+  "SubstraitLean.FloatArithCheck": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.FloatNear": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Guards": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Implied": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Incremental": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.IncrementalAgg": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.IncrementalFloat": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.IncrementalMinMax": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.IncrementalSemi": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Infer": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Keys": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Knowledge": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LiftCache": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LiftDuckDB": {
+   "cpu_s": 30,
+   "rss_mb": 2638
+  },
+  "SubstraitLean.LiftDuckDB.Duckdb.Aggregates": {
+   "cpu_s": 30,
+   "rss_mb": 2586
+  },
+  "SubstraitLean.LiftDuckDB.Duckdb.Arith": {
+   "cpu_s": 132,
+   "rss_mb": 3081
+  },
+  "SubstraitLean.LiftDuckDB.Duckdb.Casts": {
+   "cpu_s": 30,
+   "rss_mb": 2638
+  },
+  "SubstraitLean.LiftDuckDB.Duckdb.Compare": {
+   "cpu_s": 73,
+   "rss_mb": 2889
+  },
+  "SubstraitLean.LiftDuckDB.Duckdb.Math": {
+   "cpu_s": 64,
+   "rss_mb": 2866
+  },
+  "SubstraitLean.LiftDuckDB.Duckdb.Table": {
+   "cpu_s": 30,
+   "rss_mb": 2638
+  },
+  "SubstraitLean.LiftDuckDB.Reference.Aggregates": {
+   "cpu_s": 30,
+   "rss_mb": 2610
+  },
+  "SubstraitLean.LiftDuckDB.Reference.Arith": {
+   "cpu_s": 30,
+   "rss_mb": 2640
+  },
+  "SubstraitLean.LiftDuckDB.Reference.Casts": {
+   "cpu_s": 30,
+   "rss_mb": 2638
+  },
+  "SubstraitLean.LiftDuckDB.Reference.Compare": {
+   "cpu_s": 30,
+   "rss_mb": 2865
+  },
+  "SubstraitLean.LiftDuckDB.Reference.Math": {
+   "cpu_s": 30,
+   "rss_mb": 2662
+  },
+  "SubstraitLean.LiftDuckDB.Reference.Table": {
+   "cpu_s": 30,
+   "rss_mb": 2620
+  },
+  "SubstraitLean.LiftHint": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LiftSearch": {
+   "cpu_s": 30,
+   "rss_mb": 2736
+  },
+  "SubstraitLean.Lipschitz": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Lipschitz.Arith": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Lipschitz.Basic": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Lipschitz.Measures": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LipschitzL1": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Lowering": {
+   "cpu_s": 86,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LoweringCache": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LoweringDuckDB": {
+   "cpu_s": 30,
+   "rss_mb": 2626
+  },
+  "SubstraitLean.LoweringDuckDB.Lemmas": {
+   "cpu_s": 35,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LoweringDuckDB.On.Bits": {
+   "cpu_s": 53,
+   "rss_mb": 2948
+  },
+  "SubstraitLean.LoweringDuckDB.On.Doubles": {
+   "cpu_s": 1100,
+   "rss_mb": 3942
+  },
+  "SubstraitLean.LoweringDuckDB.On.Guards": {
+   "cpu_s": 96,
+   "rss_mb": 3609
+  },
+  "SubstraitLean.LoweringDuckDB.On.Integers": {
+   "cpu_s": 217,
+   "rss_mb": 3048
+  },
+  "SubstraitLean.LoweringDuckDB.On.Math": {
+   "cpu_s": 112,
+   "rss_mb": 3014
+  },
+  "SubstraitLean.LoweringDuckDB.On.Native": {
+   "cpu_s": 77,
+   "rss_mb": 2974
+  },
+  "SubstraitLean.LoweringDuckDB.On.Table": {
+   "cpu_s": 30,
+   "rss_mb": 2644
+  },
+  "SubstraitLean.LoweringDuckDB.Schemas": {
+   "cpu_s": 30,
+   "rss_mb": 2577
+  },
+  "SubstraitLean.LoweringHint": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.LoweringSearch": {
+   "cpu_s": 30,
+   "rss_mb": 2790
+  },
+  "SubstraitLean.MarginCheck": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.MarginSound": {
+   "cpu_s": 36,
+   "rss_mb": 1653
+  },
+  "SubstraitLean.Obligations": {
+   "cpu_s": 30,
+   "rss_mb": 3482
+  },
+  "SubstraitLean.Parse": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Partition": {
+   "cpu_s": 46,
+   "rss_mb": 1830
+  },
+  "SubstraitLean.PolarsProfile": {
+   "cpu_s": 31,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.PolarsShims": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Pretty": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.ProfileImpl": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Pruning": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Quarantine": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Realize": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Refresh": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Retention": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Rewrites": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Rows": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Safety": {
+   "cpu_s": 69,
+   "rss_mb": 1838
+  },
+  "SubstraitLean.Seam": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Semantic": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.ShardCheck": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.SparkProfile": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.SparkShims": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.SubstraitProfile": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.SumBound": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.TableFormat": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Terms": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.TouchedFrames": {
+   "cpu_s": 40,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.TouchedGroups": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.WSet": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Weighted": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "SubstraitLean.Write": {
+   "cpu_s": 30,
+   "rss_mb": 2286
+  },
+  "Sverify.Core.Aggregate": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Allowed": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.AllowedNear": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.AllowedP": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.BlackBox": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Conversions": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Decomposable": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Dedup": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Digest": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Expr": {
+   "cpu_s": 32,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Float": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.FloatArith": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.FloatExact": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.FloatFormat": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.FloatMoments": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Forall2": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Functions": {
+   "cpu_s": 30,
+   "rss_mb": 2002
+  },
+  "Sverify.Core.Issue": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Kinds": {
+   "cpu_s": 61,
+   "rss_mb": 1635
+  },
+  "Sverify.Core.Numeric": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.ObsEquiv": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Observations": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Options": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Order": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.OrderAllowed": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Profile": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Reflect": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Regex": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Rel": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Robust": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Rounding": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Scopes": {
+   "cpu_s": 51,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.StatProps": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Text": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Ties": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Time": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Value": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.VarcharCasts": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Window": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.Engine": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.Generated": {
+   "cpu_s": 30,
+   "rss_mb": 2274
+  },
+  "Sverify.Engines.Shims": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.Tables": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.Transfer": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  }
+ }
+}
