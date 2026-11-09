@@ -5,7 +5,7 @@ What open-source Spark does at each of the core's options
 JSON document each in [facts/](./), in the format of
 [fact.schema.json](../../../characterization/fact.schema.json) (`python -m sverify_dev.facts` checks
 them). They are the evidence `Profile.spark`
-(`SubstraitLean/SparkProfile.lean`, the profile `verify(semantics="spark")`
+(`engines/spark/Sverify/Spark/Profile.lean`, the profile `verify(semantics="spark")`
 checks under; [Spark as a
 profile](../../../docs/engine-profiles.md#spark-as-a-profile), #739) and its row
 of the realizability table are built from. Databricks and Photon are out of scope.

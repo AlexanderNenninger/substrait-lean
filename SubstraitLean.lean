@@ -95,8 +95,10 @@ import Sverify.Polars.Shims
 import Sverify.Polars.Profile
 import Sverify.Polars.Tables
 import Sverify.Polars.Engine
-import SubstraitLean.SparkShims
-import SubstraitLean.SparkProfile
+import Sverify.Spark.Shims
+import Sverify.Spark.Profile
+import Sverify.Spark.Tables
+import Sverify.Spark.Engine
 import SubstraitLean.SubstraitProfile
 import Sverify.Engines.Transfer
 import SubstraitLean.Obligations

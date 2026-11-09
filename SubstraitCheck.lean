@@ -238,7 +238,7 @@ parser reads as their templates, and `Polars.elaborate_eq` proves that
 evaluating those under the reference is evaluating the calls under
 `Profile.polars` (`engines/polars/Sverify/Polars/Profile.lean`); so does any engine of `es`
 marked `asReference`, an out-of-tree one among them. An engine whose profile is
-its own (DuckDB's, Spark's: `DuckDBProfile.lean`, `SparkProfile.lean`) has no
+its own (DuckDB's, Spark's: `DuckDBProfile.lean`, `Spark/Profile.lean`) has no
 report under it yet (#1288): its request gets the reference's report, labelled
 `"reference"`, with `"pending"` naming the profile asked for. A name the
 checker does not know gets the reference's report alone. -/

@@ -15,6 +15,7 @@ require «sverify-core» from "core"
 require «sverify-analysis» from "analysis"
 require «sverify-engines» from "engines"
 require «sverify-polars» from "engines/polars"
+require «sverify-spark» from "engines/spark"
 
 @[default_target]
 lean_lib SubstraitLean
@@ -23,7 +24,7 @@ lean_lib SubstraitLean
 `SubstraitLean`: within a package, Lake gives a module to the last library
 that contains it. Across packages a library claims every module under its
 root's prefix, which is why each package has a root of its own (`Sverify.Core`,
-`Sverify.Analysis`, `Sverify.Engines`, `Sverify.Polars`)
+`Sverify.Analysis`, `Sverify.Engines`, `Sverify.Polars`, `Sverify.Spark`)
 and none is rooted at `Sverify` alone. -/
 lean_lib SubstraitLeanGenerated where
   roots := #[]
