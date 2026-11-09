@@ -1672,7 +1672,11 @@ def _verify_once(
     report._hints += and_or_hints(report.issues, transform)
     if not isinstance(transform, str):
         report._hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
-        if semantics != "polars":
+        from sverify import profiles
+
+        plugin = profiles.plugins().get(semantics)
+        if plugin is None or not plugin.floor_division:
+            # An engine whose `//` and `%` floor computes them as the plan states.
             report._hints += division_hints(transform)
     return report, out["inferred"], schemas
 

@@ -43,7 +43,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify import _hooks, _quarantine, _stages
+from sverify import _engines, _hooks, _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -840,7 +840,7 @@ class _Stage:
         is built again with them."""
         from sverify.io._common import _TableSource
 
-        con = connect(engine if engine in _LOCAL_ENGINES else "duckdb")  # type: ignore[arg-type] - DataFusion too
+        con = connect(engine if engine in _LOCAL_ENGINES else None)
         pipe = Pipeline(con)
         mapping = {}
         for leaf in leaves:
@@ -1365,7 +1365,7 @@ class Group:
                 '`if __name__ == "__main__":`, or with `sverify refresh <file>:<node>`'
             )
         if engine is None:
-            engine = "duckdb"
+            engine = _engines.default()
         order = self._order()
         # OpenLineage run events (#792): off unless `lineage` is given.
         runs = None
