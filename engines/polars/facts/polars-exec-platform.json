@@ -93,7 +93,7 @@
       ],
       "notes": [
         "Confirms the shortcut on both engines: `(-inf) ** 0.5` is NaN when 0.5 is a literal and +inf, IEEE `pow`'s result, when it is a column. It is the probe's only differing row of 144.",
-        "The reference gives IEEE +inf with no domain error: `nanCase` for `fpow` (SubstraitLean/Safety.lean) raises only for a finite negative base to a finite non-integer exponent, and the `-inf` base is excluded; an infinity from the data passes through (docs/reference-semantics.md, the rows on creating NaN and `±∞`). So a literal 0.5 exponent on Polars gives NaN where the reference gives +inf: the writer should not emit `** 0.5` for a base that may be `-inf`, or should guard it.",
+        "The reference gives IEEE +inf with no domain error: `nanCase` for `fpow` (analysis/Sverify/Analysis/Safety.lean) raises only for a finite negative base to a finite non-integer exponent, and the `-inf` base is excluded; an infinity from the data passes through (docs/reference-semantics.md, the rows on creating NaN and `±∞`). So a literal 0.5 exponent on Polars gives NaN where the reference gives +inf: the writer should not emit `** 0.5` for a base that may be `-inf`, or should guard it.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
     },

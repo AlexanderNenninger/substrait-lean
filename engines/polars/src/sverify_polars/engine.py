@@ -37,7 +37,7 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   those shims; Polars adds doubles in its own order (`sum_order`:
   `SEQUENTIAL`, `ANY` or `COMPENSATED`), within the plan's bound of the
   reference's correctly rounded sum (D25).
-* Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`, which a
+* Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`, which a
   checked plan is proved free of. Each expression carries a per-row flag for
   each issue, masked by `CASE` as `Expr.issues` masks it (both sides of
   `AND`/`OR` count), and the operator raises the matching `RuntimeIssue` if it
@@ -105,7 +105,7 @@ class Unsupported(_Unsupported):
 
 class RuntimeIssue(ArithmeticError):
     """A runtime error happened on a row the operator evaluates: one of the
-    `Issue`s of `SubstraitLean/Safety.lean`, which a checked plan is proved
+    `Issue`s of `analysis/Sverify/Analysis/Safety.lean`, which a checked plan is proved
     free of. `issue` is its `Issue.name`, which `guards` selects by."""
 
     issue = "raised by a guard"
@@ -329,7 +329,7 @@ INTEGRAL = (pl.Int64, US, INTERVAL)
 
 @dataclass(frozen=True)
 class Issue:
-    """A runtime error `Expr.issues` (`SubstraitLean/Safety.lean`) reports:
+    """A runtime error `Expr.issues` (`analysis/Sverify/Analysis/Safety.lean`) reports:
     `flag` is TRUE (never NULL) on the rows where it happens."""
 
     flag: pl.Expr

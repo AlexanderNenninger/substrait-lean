@@ -6,7 +6,7 @@ import Sverify.Core.Rel
 A relation over a weight type `K` is a list of rows with weights,
 `WSet K := List (Row × K)` (K-relations: Green, Karvounarakis, Tannen,
 "Provenance semirings", PODS 2007). The weights pick the semantics: `Nat`
-gives bags, `Int` gives Z-sets (`SubstraitLean/Incremental.lean`, where a
+gives bags, `Int` gives Z-sets (`analysis/Sverify/Analysis/Incremental.lean`, where a
 deletion is a negative weight), and a provenance semiring gives lineage.
 
 `Rel.evalK I cat` evaluates the incremental fragment (`Rel.Incremental`:

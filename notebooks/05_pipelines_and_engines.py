@@ -316,7 +316,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(display, include_corner, mo):
-    # A small mirror of SubstraitLean/Incremental.lean: Z-sets are lists of (row, weight).
+    # A small mirror of analysis/Sverify/Analysis/Incremental.lean: Z-sets are lists of (row, weight).
     def z_lift(rows):
         return [(r, 1) for r in rows]
 
@@ -1269,7 +1269,7 @@ def _(mo):
     `report.run(con, engine, route="auto")` and
     `node.refresh(engine=..., route="auto")` choose how it reaches the
     engine, and refuse the plan with the reason where nothing does
-    ([how a route is chosen](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route)).
+    ([how a route is chosen](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/verifying.md)).
     The route names the plan's class on the engine: `exact` (every result
     the engine gives, the reference allows), `observed` (equal under an
     observation the postcondition states, a float tolerance included),

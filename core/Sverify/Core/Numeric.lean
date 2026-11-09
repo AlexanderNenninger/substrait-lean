@@ -15,7 +15,7 @@ for `overflow` and `on_division_by_zero` (epic #185): `sqrt` of a negative,
 the logarithm of zero or a negative, `asin` and `acos` outside `[-1, 1]`,
 `atan2(0, 0)`, and `logb` to a base that is not positive or is 1. A NaN
 argument is in every domain: NaN in, NaN out. An error is `null` here, and
-`SubstraitLean/Safety.lean` reports it as `Issue.domain`.
+`analysis/Sverify/Analysis/Safety.lean` reports it as `Issue.domain`.
 
 **Bitwise operations** act on 64-bit two's complement, exactly. Substrait's
 `shift_left` and `shift_right` fill the vacated bits with zeros (with the

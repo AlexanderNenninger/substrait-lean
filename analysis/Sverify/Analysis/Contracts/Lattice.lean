@@ -7,7 +7,7 @@ The lattice of the abstract interpreter: integer intervals (`Bound`), abstract
 values (`AVal`) with their membership `AVal.Mem` and `AVal.join`, and numbers by
 kind (#923).
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 

@@ -1,7 +1,7 @@
 import SubstraitLean.MarginCheck
 import SubstraitLean.SumBound
 import Sverify.Core.FloatArith
-import SubstraitLean.Partition
+import Sverify.Analysis.Partition
 
 /-!
 # The margin check is sound, in codes (#929)

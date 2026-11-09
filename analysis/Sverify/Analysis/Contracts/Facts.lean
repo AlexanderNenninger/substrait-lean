@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts.Refine
+import Sverify.Analysis.Contracts.Refine
 
 /-!
 # Contracts: Facts
@@ -6,7 +6,7 @@ import SubstraitLean.Contracts.Refine
 Relational facts (`Fact`, `Fact.Holds`): facts through a plan, about window
 columns and about the measures of one group, with `Rel.facts_sound`.
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 

@@ -1,4 +1,4 @@
-import SubstraitLean.Contracts.Plan
+import Sverify.Analysis.Contracts.Plan
 
 /-!
 # Contracts: Sound
@@ -7,7 +7,7 @@ Soundness of abstract plan evaluation (`Rel.aeval_sound`,
 `Rel.aeval_sound_all`) and the contract theorems `contract_sound_all` and
 `contract_sound`.
 
-Part of `SubstraitLean.Contracts`, which re-exports it. -/
+Part of `Sverify.Analysis.Contracts`, which re-exports it. -/
 
 namespace Substrait
 

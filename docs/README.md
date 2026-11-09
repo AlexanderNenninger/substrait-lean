@@ -52,7 +52,7 @@ release on PyPI.
 | Page | Job | Site |
 |---|---|---|
 | [The API reference](https://alexandernenninger.github.io/substrait-lean/reference/) | Every public function and class, from the docstrings | Reference |
-| [reference-semantics.md](reference-semantics.md) | What a plan means, row by row, the Ibis frontend and how the model holds a plan | Semantics |
+| [reference-semantics.md](reference-semantics.md) | What a plan means, row by row: the open choices, every option's value, the Ibis frontend and how the model holds a plan | Semantics |
 | [stability.md](stability.md) | What 1.x keeps: the formats, the proofs, the API, the engines | Semantics |
 | [realizability.md](realizability.md) | Each engine's class on every option, generated | Ledgers |
 | The ledgers | Upstream bugs, spec gaps, engine facts, the checklist's coverage | Ledgers |
@@ -75,7 +75,8 @@ release on PyPI.
 
 | Page | Job |
 |---|---|
-| [core-semantics.md](core-semantics.md) | The loose core, which does a superset of operations, the profiles that refine it, translations, and the decision log |
+| [core-semantics.md](core-semantics.md) | The design of the loose core: how profiles state their constraints, the value domain, translations and their soundness |
+| [decisions.md](decisions.md) | The decision log: each choice of the reference, the core and the profiles, with when and why |
 | [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per Lean module |
 | [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area, with where each stands |
 | [layers.md](layers.md) | The layers of the Python package |
@@ -93,7 +94,10 @@ release on PyPI.
 | What an Ibis expression means | [reference-semantics.md, The Ibis frontend](reference-semantics.md#the-ibis-frontend) |
 | How engine facts are judged | [characterization/README.md](../characterization/README.md) |
 | Each engine's translation and shims | [engine-profiles.md](engine-profiles.md) |
-| Profiles, options, soundness, decisions | [core-semantics.md](core-semantics.md) |
+| Each option's value | [reference-semantics.md, Options](reference-semantics.md#options) |
+| Profiles, for users | [core-and-profiles.md](core-and-profiles.md) |
+| Profile tables, translations, soundness | [core-semantics.md](core-semantics.md) |
+| Why each choice was made | [decisions.md](decisions.md) |
 | What is proved | [proofs.md](proofs.md) |
 | What is trusted | [trusted-base.md](trusted-base.md) |
 | The Lean build's time and memory, and its budget | [build-performance.md](build-performance.md) |
