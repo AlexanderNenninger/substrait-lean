@@ -7,7 +7,6 @@ import pytest
 
 from _repo import needs_repo
 from sverify import _support, black_box
-from sverify._engines import NAMED
 from sverify.sql import Unsupported
 
 FUNCTIONS_LEAN = (
@@ -22,11 +21,15 @@ def lean_functions() -> set[str]:
 
 @needs_repo
 def test_rows_are_functions_lean_writes() -> None:
+    """Each function a plugin lists (`ProfilePlugin.functions`, `refuses`) is
+    one Lean writes, and every restricted one runs on DuckDB."""
+    from sverify import profiles
+
     known = lean_functions() | black_box.NAMES
-    assert set(_support.SUPPORT) <= known, set(_support.SUPPORT) - known
-    for name, engines in _support.SUPPORT.items():
-        assert engines <= NAMED, name
-        assert "duckdb" in engines, name
+    listed = {n for p in profiles.plugins().values() for n in (*p.functions, *p.refuses)}
+    assert listed <= known, listed - known
+    for name in _support._restricted("functions"):
+        assert _support.supported(name, "duckdb"), name
 
 
 def plan(name: str, key: str = "scalarFunction", anchor: int = 7) -> dict:

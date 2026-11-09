@@ -400,7 +400,7 @@ def test_double_group_keys_have_one_zero_and_one_nan():
 
 def test_md5_is_refused_on_polars_with_the_reason():
     """G1: no Polars expression computes `md5`; the engine support table
-    (`_support.SUPPORT`) refuses it before the run, with #271."""
+    (`ProfilePlugin.functions`) refuses it before the run, with #271."""
     con = connect()
     con.create("r", STRINGS, TEXTS)
     t = ibis.table(STRINGS, name="r")
