@@ -408,12 +408,12 @@ def test_window_sums_have_the_aggregate_bound() -> None:
     assert grouped._epsilon is not None and windowed._epsilon is not None
     for col in ("s", "a"):
         assert windowed._epsilon[col] == grouped._epsilon[col]
-        assert windowed._epsilon[col]["proved"]["abs"]
-    assert windowed._epsilon["v"]["abs"] is None and "#918" in windowed._epsilon["v"]["why"]
+        assert windowed._epsilon[col]["bounds"]["abs"]["proved"]
+    assert windowed._epsilon["v"]["unbounded"] and "#918" in windowed._epsilon["v"]["why"]
     derived = sv.verify(t.mutate(s=t.x.sum().over(w)).mutate(d=_.s * 2.0), requires=req)
-    assert derived._epsilon is not None and derived._epsilon["d"]["abs"] is None
+    assert derived._epsilon is not None and derived._epsilon["d"]["unbounded"]
     uncapped = sv.verify(t.mutate(s=t.x.sum().over(w)), requires={"t": [_.x.between(-1, 1)]})
-    assert uncapped._epsilon == {"s": {"abs": None}}
+    assert uncapped._epsilon == {"s": {"bounds": {}, "unbounded": True, "why": None}}
 
 
 def test_statistics_have_proved_bounds_but_corr() -> None:
@@ -430,13 +430,22 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
     req = {"t": [_.x.between(-1e3, 1e3), _.y.between(-1e3, 1e3), sv.max_rows(1000)]}
     proved = sv.verify(t.group_by("k").aggregate(v=t.x.var(), c=t.x.cov(t.y)), requires=req)
     assert proved._epsilon is not None
+    engines = proved._engines or {}
+
+    def proved_on(report_engines: dict, col: str) -> list[str]:
+        return sorted(
+            e
+            for e, v in report_engines.items()
+            if v["profile"] and v["epsilon"][col]["bounds"]["abs"]["proved"]
+        )
+
     for col in ("v", "c"):
-        assert proved._epsilon[col]["abs"] > 0
-        assert proved._epsilon[col]["proved_on"] == ["duckdb", "spark"]
+        assert proved._epsilon[col]["bounds"]["abs"]["value"] > 0
+        assert proved_on(engines, col) == ["duckdb", "spark"]
     std = sv.verify(t.group_by("k").aggregate(s=t.x.std()), requires=req)
-    assert std._epsilon is not None and std._epsilon["s"]["proved_on"] == []
+    assert std._epsilon is not None and proved_on(std._engines or {}, "s") == []
     corr = sv.verify(t.group_by("k").aggregate(c=t.x.corr(t.y)), requires=req)
-    assert corr._epsilon is not None and corr._epsilon["c"]["abs"] is None
+    assert corr._epsilon is not None and corr._epsilon["c"]["unbounded"]
     assert "#918" in corr._epsilon["c"]["why"]
     corr.run(con, "duckdb")
     assert corr.routes["duckdb"].evidence == "tested"
@@ -461,7 +470,7 @@ def test_a_tolerance_on_a_column_without_a_bound_is_refused() -> None:
     for expr, req, col in cases:
         plain = sv.verify(expr, requires=req)
         assert plain._epsilon is not None
-        assert plain._epsilon[col]["abs"] is None
+        assert plain._epsilon[col]["unbounded"]
         plain.run(con, "duckdb")
         assert plain.routes["duckdb"].evidence == "tested"
         tight = sv.verify(expr, requires=req, ensures=tol)
