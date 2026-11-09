@@ -409,9 +409,9 @@ def _(mo):
     mo.md(r"""
     For a warehouse, sverify writes the plan as SQL. The SQL is long because
     it spells out every choice an engine would otherwise make. The Spark
-    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your account;
-    Snowflake's profile comes before 1.0
-    ([#851](https://github.com/AlexanderNenninger/substrait-lean/issues/851)):
+    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your
+    account, from the written SQL
+    ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)):
     """)
     return
 
