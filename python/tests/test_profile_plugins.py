@@ -81,7 +81,6 @@ def test_a_profile_from_outside_is_loaded(installed: None) -> None:
         "duckdb",
         "polars",
         "spark",
-        "datafusion",
         "snowflake",
         "substrait",
     }

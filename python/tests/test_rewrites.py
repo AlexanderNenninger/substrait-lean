@@ -1,7 +1,6 @@
 """Operations the parser rewrites into modelled ones (`IN` lists, `COALESCE`,
 `NULLIF`, `GREATEST`/`LEAST`, `ABS`, `RIGHT JOIN`, `LIMIT … OFFSET`) mean what
-SQL means by them: Lean's semantics of the rewrite agrees with DuckDB, and the
-rewritten plan, written back out, runs on DataFusion with the same result."""
+SQL means by them: Lean's semantics of the rewrite agrees with DuckDB."""
 
 import json
 import math
@@ -18,7 +17,7 @@ from sverify.engine import (
     connect,
     put_table,
     run_checker,
-    run_substrait_json,
+    run_plan,
     substrait_json,
 )
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
@@ -92,9 +91,8 @@ TYPED = [
 ]
 
 
-@pytest.mark.backend("datafusion")
 @pytest.mark.parametrize("sql", TYPED)
-def test_written_plans_run_on_datafusion(sql):
+def test_typed_plans_run_on_duckdb(sql):
     con = connect()
     pairs = [(v, w) for v in DOUBLES for w in DOUBLES]
     names = ["a", "", None, "b"]
@@ -108,7 +106,7 @@ def test_written_plans_run_on_datafusion(sql):
     )
     put_table(con, "f", table)
     plan = substrait_json(con, sql, semantics="duckdb")
-    got = run_substrait_json(con, written(plan)).to_pylist()
+    got = run_plan(con, written(plan), "duckdb").to_pylist()
     want = duckdb_sql(con, sql).to_pylist()
     assert canonical(tuple(r.values()) for r in got) == canonical(tuple(r.values()) for r in want)
     on_duckdb = duckdb_rows(plan, {"f": table})

@@ -1,5 +1,5 @@
 """Window functions: Lean's semantics agree with DuckDB (also in Lean's row
-order), DataFusion runs the plans Lean writes, contracts see through
+order), contracts see through
 LAG/LEAD/ROW_NUMBER, and ties in the window order are refused. Ranks, NTILE
 (the SQL standard's), frames over rows and over the sort key's values, and
 aggregates over them agree with DuckDB too, on tables with ties and NULL keys
@@ -14,15 +14,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import (
-    collect,
-    connect,
-    run_checker,
-    run_plan,
-    run_substrait_json,
-    substrait_json,
-    written_plan,
-)
+from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.errors import NotIncrementalError
 from sverify.ibis_substrait import to_substrait
 from sverify.incremental import IncrementalView
@@ -74,19 +66,6 @@ def test_lean_semantics_match_duckdb(sql, rows):
     lean = lean_rows(json.dumps(plan))
     assert canonical(lean) == canonical(expected)
     assert duckdb_rows(json.dumps(plan)) == lean
-
-
-@pytest.mark.backend("datafusion")
-def test_written_window_plans_run_on_datafusion():
-    con = connect()
-    rows = [(1, 3, 10), (1, 1, 20), (2, 5, None), (1, 2, 30), (None, 4, 40)]
-    con.create("r", SCHEMA, rows)
-    for sql in QUERIES:
-        code, written, err = run_checker(("--write",), substrait_json(con, sql, semantics="duckdb"))
-        assert code == 0, err
-        got = [tuple(r.values()) for r in run_substrait_json(con, written).to_pylist()]
-        want = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
-        assert canonical(got) == canonical(want), sql
 
 
 readings = ibis.table({"sensor": "int64", "ts": "timestamp", "value": "float64"}, name="readings")
@@ -274,7 +253,7 @@ def test_ordered_windows_match_duckdb(sql, rows):
 def test_ntile_is_the_sql_standards():
     """NTILE deals the rows out as the SQL standard says (`ntileOf`), as
     DuckDB does: the first `n % k` buckets hold one row more, so 6 rows in 4
-    tiles are 1 1 2 2 3 4. (DataFusion's own NTILE gives 1 1 2 3 3 4.)"""
+    tiles are 1 1 2 2 3 4."""
     sql = "SELECT t, NTILE(4) OVER (ORDER BY t) AS n FROM r"
     rows = [(0, t, 0) for t in range(6)]
     lean, expected = lean_and_duckdb(sql, rows)
@@ -286,7 +265,7 @@ def test_ntile_is_the_sql_standards():
 @pytest.mark.parametrize(("n", "k"), [(10, 4), (7, 3), (3, 5), (12, 5), (1, 1)])
 def test_ntile_on_every_engine(n, k):
     """Lean's written plan: DuckDB and Spark write NTILE natively, Polars deals
-    the buckets itself; DataFusion, whose NTILE differs, is refused."""
+    the buckets itself."""
     con = connect()
     t = ibis.table({"t": "int64"}, name="w")
     con.create("w", t.schema(), [(i,) for i in range(n)])
@@ -302,44 +281,6 @@ def test_ntile_on_every_engine(n, k):
     for engine in ("duckdb", "polars"):
         got = sorted(tuple(r.values()) for r in run_plan(con, written, engine).to_pylist())
         assert got == expected, engine
-    with pytest.raises(Exception, match="DataFusion's NTILE"):
-        run_plan(con, written, "datafusion")
-
-
-@pytest.mark.backend("datafusion")
-def test_sliding_double_aggregates_are_refused():
-    """DataFusion averages a sliding frame that has become empty to NaN, sums
-    its doubles by retracting rows (rounding differently), and keeps a MIN
-    of a frame left with NULLs only: the checker verifies these plans, and
-    `--write-datafusion` refuses them; a running frame (from UNBOUNDED
-    PRECEDING) is fine (#506)."""
-    con = connect()
-    con.create("f", ibis.schema({"t": "int64", "v": "float64"}), [(1, 0.0), (2, None), (3, None)])
-    sliding = (
-        "SELECT t, AVG(v) OVER (ORDER BY t ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS a FROM f"
-    )
-    assert any(
-        r["a"] != r["a"] for r in collect(con._datafusion_session.sql(sliding)).to_pylist()
-    )  # NaN
-    assert run_checker((), substrait_json(con, sliding, semantics="duckdb"))[0] == 0
-    code, out, err = run_checker(
-        ("--write-datafusion",), substrait_json(con, sliding, semantics="duckdb")
-    )
-    assert code != 0 and "sliding frame" in out + err
-    running = "SELECT t, AVG(v) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING) AS a FROM f"
-    assert (
-        run_checker(("--write-datafusion",), substrait_json(con, running, semantics="duckdb"))[0]
-        == 0
-    )
-    stale = "SELECT t, MIN(v) OVER (ORDER BY t ROWS CURRENT ROW) AS m FROM f"
-    assert [r["m"] for r in collect(con._datafusion_session.sql(stale)).to_pylist()] == [
-        0.0,
-        0.0,
-        0.0,
-    ]
-    assert (
-        run_checker(("--write-datafusion",), substrait_json(con, stale, semantics="duckdb"))[0] != 0
-    )
 
 
 def test_window_sums_may_wrap():

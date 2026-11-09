@@ -14,7 +14,7 @@ from sverify._state import arrow_of
 from sverify.io import Changes, StaticSource
 
 SCHEMA = pa.schema([("host", pa.string()), ("minute", pa.int64()), ("cpu", pa.int64())])
-ENGINES = ["duckdb", "polars", "datafusion"]
+ENGINES = ["duckdb", "polars"]
 
 
 def samples(rows) -> pa.Table:

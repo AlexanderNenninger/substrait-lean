@@ -44,7 +44,7 @@ def plan(name: str, key: str = "scalarFunction", anchor: int = 7) -> dict:
     }
 
 
-@pytest.mark.parametrize("dialect", ["spark", "snowflake", "DataFusion", "Polars"])
+@pytest.mark.parametrize("dialect", ["spark", "snowflake", "Polars"])
 @pytest.mark.parametrize(
     "name", ["regexp_extract", "md5", "first", "median", "corr", "list_prepend", "flatten"]
 )
@@ -66,9 +66,10 @@ def test_messages() -> None:
         "covariance and correlation (Ibis cov, corr) runs on duckdb only: "
         "run it with engine='duckdb' (spark does not run it yet; see #271, https://"
     )
-    assert _support.refusal("ntile", "DataFusion") == (
-        "ntile: DataFusion's NTILE does not deal out buckets as SQL does; "
-        "run it with engine='duckdb' (upstream/bugs/DF-11.json)"
+    assert _support.refusal("sverify_raise", "snowflake").endswith(
+        ": Snowflake's SQL of the date guards grows past what it runs: a date from "
+        "columns writes 208 MB of nested CASEs; run it with engine='duckdb' "
+        "(see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
     )
 
 
@@ -76,7 +77,7 @@ def test_engine_specific_rows() -> None:
     assert _support.supported("array_agg", "Polars")
     assert not _support.supported("array_agg", "spark")
     assert _support.supported("ntile", "spark")
-    assert not _support.supported("ntile", "datafusion")
+    assert not _support.supported("sverify_raise", "snowflake")
     assert _support.supported("add:i64_i64", "snowflake")
 
 

@@ -323,8 +323,7 @@ def _set_op(op: Any) -> Json:
     # equal: DISTINCT of it, as DataFusion plans them, or with ALL the k-th
     # copy of a row matching the k-th copy on the right, which keeps
     # min(m, n) or max(m - n, 0) copies (SQL's bag semantics, as DuckDB
-    # computes them; DataFusion 51 keeps or drops every copy: see
-    # `tests/test_datafusion_quirks.py`).
+    # computes them).
     n = len(op.schema)
     width = n if op.distinct else n + 1
     if not op.distinct:

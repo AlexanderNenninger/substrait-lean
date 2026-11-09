@@ -25,7 +25,6 @@ import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Write
-import SubstraitLean.DataFusion
 import SubstraitLean.Check
 import Sverify.Analysis.Contracts
 import Sverify.Core.Issue

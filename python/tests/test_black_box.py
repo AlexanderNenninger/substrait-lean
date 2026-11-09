@@ -162,7 +162,7 @@ def test_other_dialects_refuse(query, dialect):
         to_sql(plan, dialect)
 
 
-@pytest.mark.parametrize("engine", ["polars", "datafusion"])
+@pytest.mark.parametrize("engine", ["polars"])
 @pytest.mark.parametrize(
     "query", ["SELECT base64(encode(s)) AS b FROM t", "SELECT s, entropy(x) AS e FROM t GROUP BY s"]
 )

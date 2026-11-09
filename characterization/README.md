@@ -20,9 +20,6 @@ behaviour is recorded privately.
 - Spark's facts, probes and fuzz findings are in its engine package (#1189):
   [engines/spark/facts/](../engines/spark/facts/README.md) and
   [engines/spark/probes/](../engines/spark/probes/).
-- [datafusion/facts/](datafusion/facts/): the replay findings that belong to
-  DataFusion 51's Substrait producer. DataFusion is optional and never a
-  reference.
 - [oracle-a/benchmarks.json](oracle-a/benchmarks.json): each benchmark
   query's stage (`lift.STAGES`) when last written, which oracle A
   (`sverify_dev.oracle`) reads.

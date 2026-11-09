@@ -23,7 +23,7 @@ brings:
   checks under the profile and `sverify.routes.choose` routes plans to the
   engine with their class. `$SVERIFY_CHECKER` still takes precedence over a
   plugin's checker.
-- a runner: `runner`, `local`, `optional`, `session`, `modules`,
+- a runner: `runner`, `local`, `session`, `modules`,
   `read_settings`. `sverify.engines.run` runs plans with it, and a
   `Connection` takes the engine when it is `local`.
 - runs over Arrow tables: `run_tables`, for `sverify.partition.run_sharded`
@@ -127,9 +127,6 @@ class ProfilePlugin:
     None: `sverify.engines.run` does not run on the engine."""
     local: bool = False
     """A `Connection` takes the engine as the one it runs plans on."""
-    optional: bool = False
-    """Outside the 1.x promise: `sverify.engines.ENGINES` leaves it out
-    (`docs/stability.md`)."""
     session: Callable[[Any], bool] | None = None
     """Recognises a session of the engine passed as `engine=` in place of
     its name (a Spark session)."""

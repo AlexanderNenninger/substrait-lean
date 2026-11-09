@@ -68,8 +68,7 @@ they say nothing
 
 Sverify runs plans on DuckDB, Polars and Spark, and writes DuckDB, Spark
 and Snowflake SQL. [Engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)
-says which are in the 1.x promise, with their profiles and translations;
-DataFusion is an optional engine, outside it, and the `all` extra leaves it out.
+says which are in the 1.x promise, with their profiles and translations.
 
 Polars refuses what only DuckDB runs so far, with a message that links
 [the issue that tracks it](https://github.com/AlexanderNenninger/substrait-lean/issues/271): the functions
@@ -85,7 +84,7 @@ pip install 'sverify[all]'         # with every engine in the 1.x promise and bo
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
 `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
-`flight`, `testing`, `odcs`, `openlineage`, or `all`, and the optional engine `datafusion`.
+`flight`, `testing`, `odcs`, `openlineage`, or `all`.
 The `polars` and `spark` extras install the engine packages `sverify-polars`
 and `sverify-spark` with their runtimes; either package alone
 (`pip install sverify-spark`) verifies under its engine's semantics and
@@ -339,9 +338,6 @@ the Ibis coverage table in its README, and
 * `SVERIFY_CHECKER`: path to a `substrait-check` binary that replaces the
   bundled one, for example your own `lake build`. The guide lists every
   variable ([environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#environment-variables)).
-* DataFusion is an optional engine, outside the 1.x promise, and not in the `all`
-  extra. It is pinned to 51, because Ibis 12's DataFusion backend doesn't
-  connect to later versions.
 
 ## Development
 

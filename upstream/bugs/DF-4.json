@@ -7,9 +7,6 @@
   "summary": "`GROUP BY k, k` writes two grouping expressions, and the projection above reads the aggregate's columns shifted by one. On main (since #23468) the key is written once but referenced twice in the grouping, and the round trip is still wrong.",
   "repro": "DuckDB `aggregate/group/test_group_by.test:149`",
   "found_by": "FACTS S6",
-  "facts": [
-    "datafusion-S6"
-  ],
   "checked": [
     {
       "checked_at": "2026-11-03",

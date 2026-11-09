@@ -109,7 +109,7 @@ assert stored.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 * `audit=True` also compares the batch with the new snapshot and every node
   with a recompute before committing (`sverify.errors.AuditError`).
 * `refresh(engine="polars")` (or `"spark"`, a Spark session) picks the
-  engine at refresh time; `"datafusion"` also runs, an optional engine.
+  engine at refresh time.
 * `refresh().summary()` gives one line per node for the log of a job that
   refreshes often; `str(refresh)` is the full report.
 * Where the change feed is gone (CDF off, files vacuumed), the changed files

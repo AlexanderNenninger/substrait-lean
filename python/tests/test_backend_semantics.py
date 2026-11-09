@@ -8,7 +8,7 @@ them shows up too. Then the translators on the notebook's edge rows: Polars
 and DuckDB must agree with each other.
 
 Last, the sverify gaps the notebook found, now fixed: constant casts fold as
-DataFusion casts, and the Polars translator keeps repeated output names.
+column casts do, and the Polars translator keeps repeated output names.
 """
 
 import json
@@ -54,15 +54,10 @@ def positional(t: pa.Table) -> list[tuple]:
 
 @pytest.fixture(scope="module")
 def con():
-    """The tables as the model has them (`put_table`: one zero, one NaN), and
-    in DataFusion as they are, so that its own answers show its own order."""
+    """The tables as the model has them (`put_table`: one zero, one NaN)."""
     c = connect()
     for name, t in TABLES.items():
         put_table(c, name, t)
-    ctx = c._datafusion_session
-    for name, t in TABLES.items():
-        ctx.deregister_table(name)
-        ctx.register_record_batches(name, [t.to_batches()])
     return c
 
 
@@ -151,29 +146,9 @@ def test_duckdb_overflow_raises(duck):
         duck.sql("SELECT a + 1 FROM mx WHERE a > 0").fetchall()
 
 
-@pytest.mark.parametrize(
-    ("sql", "expected"),
-    [
-        # Backslash is LIKE's default escape (DuckDB and the standard have none).
-        ("SELECT s LIKE 'a\\b' FROM ss", [(False,), (False,)]),
-        # concat() skips NULLs; || propagates.
-        ("SELECT concat(s, 'x'), s || 'x' FROM s WHERE s IS NULL", [("x", None)]),
-        # The total order on doubles is pinned in test_datafusion_quirks.py.
-        # NULL is the largest value.
-        ("SELECT x FROM n ORDER BY x DESC", [(None,), (2,), (1,)]),
-        # Rust's case mapping and regex classes: in
-        # test_translators_agree_or_refuse_on_opaque_functions.
-        # AVG converts to doubles first.
-        ("SELECT avg(a) FROM mx", [(0.0,)]),
-    ],
-)
-def test_datafusion_native(con, sql, expected):
-    assert positional(con._datafusion_session.sql(sql).to_arrow_table()) == expected
-
-
 # --- Ibis: one expression, a backend-dependent meaning -------------------------
 
-BACKENDS = ("datafusion", "duckdb", "polars")
+BACKENDS = ("duckdb", "polars")
 
 
 @pytest.fixture(scope="module")
@@ -193,19 +168,18 @@ def on_each(backends, build, table: str) -> dict[str, list[tuple]]:
         (
             lambda t: t.select(q=t.a % t.b),
             "dm",
-            {"datafusion": [(-1,), (1,), (-1,)], "polars": [(1,), (-1,), (-1,)]},
+            {"polars": [(1,), (-1,), (-1,)]},
         ),
         # `length` counts bytes on Polars.
         (
             lambda t: t.select(l=t.s.length()),
             "s",
             {
-                "datafusion": [(5,), (1,), (1,), (0,), (None,)],
                 "polars": [(5,), (2,), (4,), (0,), (None,)],
             },
         ),
         # `nunique` counts NULL on Polars.
-        (lambda t: t.aggregate(n=t.v.nunique()), "k", {"datafusion": [(2,)], "polars": [(3,)]}),
+        (lambda t: t.aggregate(n=t.v.nunique()), "k", {"polars": [(3,)]}),
         # `max` skips NaN on Polars.
         (lambda t: t.aggregate(m=t.v.max()), "f", {"polars": [(1.0,)]}),
         # `round` and `cast('int64')` inherit each backend's rounding.
@@ -213,7 +187,6 @@ def on_each(backends, build, table: str) -> dict[str, list[tuple]]:
             lambda t: t.select(q=t.v.round()),
             "r",
             {
-                "datafusion": [(3,), (-3,), (1,), (2,), (3,)],
                 "polars": [(2,), (-2,), (0,), (2,), (3,)],
             },
         ),
@@ -221,7 +194,6 @@ def on_each(backends, build, table: str) -> dict[str, list[tuple]]:
             lambda t: t.select(q=t.v.cast("int64")),
             "r",
             {
-                "datafusion": [(2,), (-2,), (0,), (1,), (2,)],
                 "duckdb": [(2,), (-2,), (0,), (2,), (3,)],
             },
         ),
@@ -229,14 +201,13 @@ def on_each(backends, build, table: str) -> dict[str, list[tuple]]:
         (
             lambda t: t.select(q=t.v == 0.0),
             "f0",
-            {"datafusion": [(False,), (True,)], "duckdb": [(True,), (True,)]},
+            {"duckdb": [(True,), (True,)]},
         ),
         # `find` gives -1 for a NULL string on Polars.
         (
             lambda t: t.select(p=t.s.find("l")),
             "s",
             {
-                "datafusion": [(2,), (-1,), (-1,), (-1,), (None,)],
                 "polars": [(2,), (-1,), (-1,), (-1,), (-1,)],
             },
         ),
@@ -250,7 +221,7 @@ def test_ibis_is_leaky(ibis_backends, build, table, expected):
 
 def test_ibis_max_with_nan_on_sql_backends(ibis_backends):
     expr = (t := ibis.memtable(TABLES["f"])).aggregate(m=t.v.max())
-    for b in ("datafusion", "duckdb"):
+    for b in ("duckdb",):
         assert math.isnan(positional(ibis_backends[b].to_pyarrow(expr))[0][0])
 
 
@@ -281,7 +252,7 @@ def test_ibis_window_frames_and_row_numbers(ibis_backends):
         s=t.v.sum().over(group_by="g", order_by="o"),
         r=ibis.row_number().over(order_by=["g", "o", "v"]),
     ).order_by(["g", "o", "v"])
-    for b in ("datafusion", "duckdb"):
+    for b in ("duckdb",):
         assert positional(ibis_backends[b].to_pyarrow(expr)) == [
             (1, 1, 10, 60, 0),
             (1, 2, 20, 60, 1),
@@ -356,10 +327,9 @@ def test_translators_agree(con, sql):
 )
 def test_translators_agree_or_refuse_on_opaque_functions(con, sql, table, rows):
     """Black boxes in Lean, meaning Rust's case mapping and regex classes
-    (#70): Polars computes them as DataFusion does; DuckDB, whose utf8proc and
+    (#70): Polars computes them as Rust does; DuckDB, whose utf8proc and
     RE2 differ on non-ASCII text, raises there; on ASCII text it agrees."""
     plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
-    assert positional(con._datafusion_session.sql(sql).to_arrow_table()) == rows
     assert positional(polars_engine.run(plan, {table: TABLES[table]})) == rows
     with pytest.raises(duckdb.Error, match="non-ASCII text differs between engines"):
         duckdb_engine.run(plan, {table: TABLES[table]})
@@ -396,13 +366,9 @@ def proves(sql: str, ensures: str) -> bool:
 
 def test_constant_casts_truncate(con):
     """F9: under the reference semantics constant casts fold as column casts
-    do (truncating, as DataFusion casts), not rounded."""
+    do (truncating), not rounded."""
     for value, truncated in [("2.7", 2), ("-2.5", -2), ("CAST(2.5 AS DOUBLE)", 2)]:
         sql = f"SELECT CAST({value} AS BIGINT) AS c FROM j"
-        assert positional(con._datafusion_session.sql(sql).to_arrow_table()) == [
-            (truncated,),
-            (truncated,),
-        ]
         assert proves(sql, f"c = {truncated}")
         assert not proves(sql, f"c = {truncated + (1 if truncated > 0 else -1)}")
 
@@ -415,20 +381,17 @@ def test_constant_casts_truncate(con):
         ("' 1.5'", "DOUBLE"),
     ],
 )
-def test_constant_strings_datafusion_cannot_cast_are_refused(con, value, kind):
-    """S8: strings with spaces or `_` fail DataFusion's cast at run time, so
-    the checker refuses them instead of reading them its own way."""
+def test_constant_strings_with_spaces_are_refused(value, kind):
+    """S8: the checker refuses strings with spaces or `_` in a cast instead
+    of reading them its own way."""
     sql = f"SELECT CAST({value} AS {kind}) AS c FROM j"
-    with pytest.raises(Exception, match="Cannot cast|Error parsing|cast"):
-        con._datafusion_session.sql(sql).to_arrow_table()
     with pytest.raises(ValueError, match="cannot (cast|parse)"):
         sv.verify(sql, tables={"j": {"a": "int64"}})
 
 
 def test_padded_date_strings_are_read_as_duckdb_reads_them():
     """S8 for dates: DuckDB's SQL reads a date with spaces around it, and a
-    timestamp with spaces before it, as the lift does; DataFusion's cast
-    fails on both."""
+    timestamp with spaces before it, as the lift does."""
     j = {"j": {"a": "int64"}}
     for value, kind in [("' 2024-01-01'", "TIMESTAMP"), ("'2024-01-01 '", "DATE")]:
         sql = f"SELECT CAST({value} AS {kind}) AS c FROM j"

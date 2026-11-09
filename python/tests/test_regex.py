@@ -212,7 +212,7 @@ def test_refused(build, message):
         written_plan(to_substrait_json(t.select(x=build(t))))
 
 
-@pytest.mark.parametrize("engine", ["polars", "datafusion"])
+@pytest.mark.parametrize("engine", ["polars"])
 def test_other_engines_refuse_until_271(engine):
     con = connect()
     put_table(con, "r", pa.table({"s": ["abc"]}))

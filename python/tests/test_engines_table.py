@@ -19,12 +19,11 @@ import pytest
 from _repo import needs_repo
 from sverify import _engines, engines, profiles, routes
 from sverify.contracts import semantics_names
-from sverify.engine import _LOCAL_ENGINES
 from sverify.profiles import ProfilePlugin
 from sverify.routes import _options_json
 from sverify.sql import DIALECTS
 
-BUILTIN = {"duckdb", "polars", "spark", "datafusion", "snowflake", "substrait"}
+BUILTIN = {"duckdb", "polars", "spark", "snowflake", "substrait"}
 #: The built-in engines that are packages of their own (`engines/<engine>/`).
 PACKAGES = {"polars", "spark", "duckdb"}
 
@@ -50,7 +49,6 @@ def test_semantics_are_the_checker_s_profiles() -> None:
 def test_every_engine_has_a_plugin() -> None:
     assert _engine_profiles() <= _engines.NAMED
     assert set(engines.ENGINES) <= _engine_profiles()
-    assert set(_LOCAL_ENGINES) == {*engines.ENGINES, "datafusion"}
     assert set(DIALECTS) <= _engines.NAMED
     # The engines within the 1.x promise, and their names in prose.
     assert set(_engines.SUPPORTED) == {*engines.ENGINES, "spark", "snowflake"}
@@ -63,7 +61,7 @@ def test_every_engine_has_a_plugin() -> None:
 
 
 def test_every_engine_a_plan_runs_on_has_a_translation() -> None:
-    assert {*_engine_profiles(), *_LOCAL_ENGINES} <= set(_engines.translations())
+    assert {*_engine_profiles(), *engines.ENGINES} <= set(_engines.translations())
 
 
 def test_sverify_registers_its_engines_in_its_metadata() -> None:
@@ -101,7 +99,7 @@ def test_without_the_entry_points_sverify_names_no_engine() -> None:
         from sverify.sql import dialect_of
 
         assert ENGINES == (), ENGINES
-        for name in ("duckdb", "polars", "datafusion"):
+        for name in ("duckdb", "polars"):
             try:
                 sv.connect(name)
             except ValueError:
@@ -291,7 +289,7 @@ def test_the_default_engine_is_the_plugin_s(monkeypatch: pytest.MonkeyPatch) -> 
     found = profiles.plugins()
     no_default = {e: replace(p, default=False) for e, p in found.items()}
     monkeypatch.setattr(profiles, "plugins", lambda: no_default)
-    assert _engines.default() in _LOCAL_ENGINES
+    assert _engines.default() in engines.ENGINES
     monkeypatch.setattr(profiles, "plugins", lambda: {"substrait": found["substrait"]})
     no_engine = r"no engine that runs plans is installed.*sverify\[duckdb\]"
     with pytest.raises(ValueError, match=no_engine):

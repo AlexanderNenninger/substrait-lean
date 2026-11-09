@@ -323,8 +323,8 @@ Without `on_inferred="off"`, the report names the precondition the plan needs,
 
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
-not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
-wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
+not compile, and `+`, `-`, `*` leaving their declared width (Polars's own
+arithmetic wraps around there; the reference raises). An integer `SUM` leaving 64 bits,
 or a decimal `SUM` leaving its precision,
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
@@ -967,7 +967,7 @@ print(sv.group(report, totals).refresh())  # paid is refreshed and written once
 ```
 
 The engine is chosen at refresh time: `"duckdb"` (the default, in memory),
-`"polars"`, `"spark"`, a Spark session, or the optional `"datafusion"`. The nodes keep their
+`"polars"`, `"spark"` or a Spark session. The nodes keep their
 state while the process runs; a stored node's table is its durable state.
 
 A job that refreshes every minute logs `summary()`, one line per node, and
@@ -1820,10 +1820,7 @@ sidecar file. `sv.Report.from_substrait(exported)` reads a plan back, in either
 format, and proves its contract again with the checker; the report it
 returns has the same postconditions and verdict.
 [Example 10](getting-started.md#10-a-proved-plan-for-any-substrait-consumer)
-exports a plan and shows the three modes. DataFusion's Substrait consumer
-runs the exports in `tests/test_substrait_export.py` and gives the
-reference's results; it does not know Substrait's `variance` or
-`shift_left` yet.
+exports a plan and shows the three modes.
 
 ### ODCS contracts
 

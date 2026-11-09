@@ -77,9 +77,8 @@ SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
 whose two profiles are generated Lean modules
 (`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). DataFusion's SQL planner
-is not a frontend; DataFusion is an optional engine, and no test
-takes it as a reference or an oracle: the reference is Lean's
-reference profile, and DuckDB is the default oracle.
+is not a frontend, and sverify does not run DataFusion. The reference is
+Lean's reference profile, and DuckDB is the default oracle.
 
 <a id="profiles-and-shims-in-lean-185-first-slice"></a>
 
@@ -468,12 +467,11 @@ does this for a test profile.
 Its Python side registers a `sverify.profiles.ProfilePlugin` under the
 entry-point group `sverify.profiles`. That group is where sverify finds
 engines, and the only place:
-DataFusion, Snowflake's dialect and Substrait's profile register theirs
-there too, from `sverify._builtin`, and DuckDB, Polars and Spark from their
-engine packages (`engines/duckdb/`, `engines/polars/` and `engines/spark/`,
-the distributions `sverify-duckdb`, `sverify-polars` and `sverify-spark`;
-`sverify` installs the first, `sverify[polars]` and `sverify[spark]` the
-others). `tests/test_engines_table.py` checks that with the entry points
+Snowflake's dialect and Substrait's profile register theirs there too, from
+`sverify._builtin`, and DuckDB, Polars and Spark from their engine packages
+(`engines/duckdb/`, `engines/polars/` and `engines/spark/`, the distributions
+`sverify-duckdb`, `sverify-polars` and `sverify-spark`; `sverify` installs the
+first, `sverify[polars]` and `sverify[spark]` the others). `tests/test_engines_table.py` checks that with the entry points
 gone sverify names no engine.
 
 ```toml
@@ -529,7 +527,6 @@ shimmed plan for the engine is trusted, and tested against `Rel.eval`:
 
 | engine | translation | where |
 |---|---|---|
-| DataFusion | `substrait-check --write-datafusion` | `Write.writeRel (df := true)` |
 | Polars | `sverify_polars.engine` (LazyFrame) | Python |
 | DuckDB, Snowflake, Spark | `sverify.sql.to_sql` with a `Dialect` | Python |
 
@@ -613,8 +610,8 @@ Ibis's own SQL, and generates its Snowflake SQL and runs its Spark SQL on a loca
 cases on all three engines.
 
 Known gaps: the writer gives virtual tables placeholder `i64` column types and
-writes `FetchRel`'s deprecated `offset`/`count`. DataFusion rejects both, so
-written plans with string `VALUES` or a fetch run only on Polars. Doubles in a
+writes `FetchRel`'s deprecated `offset`/`count`, both of which DataFusion's
+consumer rejects. Doubles in a
 virtual table come out as their integer codes. The translator refuses `lt`
 on strings and booleans; the model compares strings by code point
 ([reference semantics](reference-semantics.md#strings)).
@@ -667,9 +664,8 @@ Engine differences go through the hooks of a `Dialect`
 (`sverify/sql/core/_base.py`). DuckDB's is `sverify_duckdb/dialect.py`.
 
 `python/tests/test_sql.py` checks the generator. Every golden fixture and every
-delta plan of the incremental fixtures and example pipelines runs on DataFusion
-and on DuckDB with random tables. The results must agree with each other and
-with Lean's `Rel.eval` (row for row, in Lean's order, when `FETCH` or a window
+delta plan of the incremental fixtures and example pipelines runs on DuckDB
+with random tables. The results must agree with Lean's `Rel.eval` (row for row, in Lean's order, when `FETCH` or a window
 makes order matter). The file also has targeted tests for engine traps: NULL
 join keys, three-valued logic, NULL ordering in windows, refused integer
 division, overflow, and NaN and signed zeros. It keeps snapshots of the
@@ -769,8 +765,7 @@ The reference computes a `DECIMAL(p, s)` as its unscaled integer, exactly, and
 raises where a result needs more than `p` digits. `substrait-check --write`
 writes decimal plans back as Substrait's own typed calls and casts, and
 refuses any it cannot (a plan whose written form does not parse back to the
-same `Rel`). DataFusion gets none: it does not compute decimals as the
-reference does.
+same `Rel`).
 
 Of the SQL dialects, DuckDB and Spark run decimal plans (`Dialect.decimals`;
 Spark's are in [Spark as a profile](#spark-as-a-profile)), and Snowflake

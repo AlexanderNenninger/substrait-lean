@@ -45,7 +45,7 @@ def test_extras_are_kept_and_only_the_header_changes(script):
 # requires-python = ">=3.12"
 # dependencies = [
 #     "marimo",
-#     "sverify[datafusion,polars]",
+#     "sverify[delta,polars]",
 # ]
 #
 # [tool.uv.sources]
@@ -61,7 +61,7 @@ mo.md("[catalogue](../catalogue/INDEX.md), [chapter 5](05_keys.py)")
 # requires-python = ">=3.12"
 # dependencies = [
 #     "marimo",
-#     "sverify[datafusion,polars]==0.2.0",
+#     "sverify[delta,polars]==0.2.0",
 # ]
 # ///
 

@@ -35,8 +35,7 @@ internal plan, and may change in a minor release):
 * `to_sql` writes any plan in sverify's internal form as SQL.
 * `substrait_json` compiles DuckDB's SQL with sverify's lift; `written_plan`
   is a plan as the checker parsed and wrote it back, the form `run` and
-  `to_sql` take; `run_substrait_json` runs a Substrait plan on DataFusion (an optional engine);
-  `delta_plans` are the weighted delta plans the checker derives for
+  `to_sql` take; `delta_plans` are the weighted delta plans the checker derives for
   incremental maintenance.
 
 Deprecated: `create_table` (`con.create`), `table_rows` (`con.rows`).
@@ -51,7 +50,6 @@ from sverify.engine import (
     ENGINES,
     Connection,
     create_table,
-    run_substrait_json,
     substrait_json,
     table_rows,
     written_plan,
@@ -79,7 +77,6 @@ __all__ = [
     "delta_plans",
     "run",
     "run_sharded",
-    "run_substrait_json",
     "substrait_json",
     "table_rows",
     "to_sql",

@@ -4,15 +4,14 @@
   timestamps before 1970 and at the ends of the reference's timestamps,
   0001-01-01 to 9999-12-31 (D32).
 * `date_part` and truncating to a week, month, quarter or year outside that
-  range are reported as errors, and DataFusion running the plan fails only
-  where an error was reported.
+  range are reported as errors.
 * Polars and DuckDB, which run the plan Lean writes, agree with Lean, and
   raise outside the range.
 * Contracts use that years and truncations grow with the timestamp.
 * Dates: adding days and months (clamped to the end of a shorter month),
   parts and truncation give Lean's rows on Polars and DuckDB, and fail
-  outside the reference's dates; Ibis's date operations that
-  DataFusion's own SQL cannot run agree with Python's calendar.
+  outside the reference's dates; Ibis's date operations agree with
+  Python's calendar.
 * Times of day (`CAST(ts AS TIME)`, clock parts) and `strftime` (chrono's
   formats) give Lean's rows on Polars and DuckDB within the reference's
   timestamps, Lean's agree with Python's calendar, and they fail outside
@@ -49,7 +48,7 @@ from sverify_polars import engine as polars_engine
 
 MIN, MAX = -(2**63), 2**63 - 1
 #: The reference's timestamps, 0001-01-01 to 9999-12-31 (`Time.tsMin`,
-#: `Time.tsMax`, D32), and DataFusion's nanoseconds, which are inside them.
+#: `Time.tsMax`, D32), and the nanosecond range, which is inside them.
 TS_MIN, TS_MAX = -62135596800000000, 253402300799999999
 NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
 DAY = 86_400_000_000
@@ -165,7 +164,7 @@ def test_date_part_matches_duckdb(values):
 @given(values=st.lists(st.one_of(st.none(), anywhere), max_size=8))
 def test_date_trunc_matches_duckdb_where_no_issue(unit, values):
     sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
-    # Only where there is no issue: DataFusion fails or wraps elsewhere.
+    # Only where there is no issue.
     # DuckDB reads ±(2⁶³ - 1) as the timestamps ±infinity, which it does not
     # truncate (#240).
     calendar = unit in ("week", "month", "quarter", "year")
@@ -322,52 +321,6 @@ def test_parts_of_a_column_read_are_not_null():
     assert report.proved, str(report)
 
 
-#: Pipelines over `t(ts)`, on timestamps including the extremes.
-PIPELINES = [
-    T.select(m=T.ts.truncate("M")),
-    T.select(y=T.ts.truncate("Y"), w=T.ts.truncate("W")),
-    T.filter(T.ts >= datetime(1700, 1, 1)).select(m=T.ts.truncate("M")),
-    T.filter(SINCE_2000).select(q=T.ts.truncate("Q")),
-    T.select(d=T.ts.truncate("D"), y=T.ts.year()),
-]
-
-
-#: DataFusion refuses calendar truncation (upstream/bugs/DF-17.json): only the
-#: last pipeline, a truncation to a day, runs there.
-DF_PIPELINES = [
-    pytest.param(i, marks=pytest.mark.skip(reason="DF-17: calendar truncation refused"))
-    if i < len(PIPELINES) - 1
-    else i
-    for i in range(len(PIPELINES))
-]
-
-
-@pytest.mark.backend("datafusion")
-@pytest.mark.parametrize("i", DF_PIPELINES)
-@settings(
-    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
-@given(values=st.lists(st.one_of(st.none(), anywhere), max_size=6))
-def test_datafusion_fails_only_where_reported(i, values):
-    expr = PIPELINES[i]
-    reported, _warnings = kinds(expr)
-    con = connect()
-    put_table(
-        con,
-        "t",
-        pa.table(
-            {
-                "ts": pa.array(values, pa.timestamp("us")),
-                "n": pa.array([1] * len(values), pa.int64()),
-            }
-        ),
-    )
-    try:
-        run_plan(con, written_plan(to_substrait_json(expr)), "datafusion")
-    except BaseException as e:  # noqa: BLE001 - DataFusion also panics here
-        assert reported, f"DataFusion failed ({e}) but no error was reported"
-
-
 # --------------------------------------------------------------------------
 # Dates: arithmetic with days and months, parts and truncation
 
@@ -375,7 +328,7 @@ def test_datafusion_fails_only_where_reported(i, values):
 DAY_MIN, DAY_MAX = -719162, 2932896
 
 #: Date arithmetic and parts, in Ibis: Lean gets the Ibis producer's plan
-#: and DataFusion runs Ibis's SQL. (DuckDB's SQL types `DATE + INTERVAL` as
+#: and the engines run the plan Lean writes. (DuckDB's SQL types `DATE + INTERVAL` as
 #: a TIMESTAMP, which the SQL lift cannot output yet, #240.)
 R_DATES = ibis.table({"d": "date"}, name="r")
 DATE_EXPR = R_DATES.select(
@@ -437,8 +390,8 @@ dates = st.one_of(day_edges, st.integers(DAY_MIN + 800, DAY_MAX - 800))
 @settings(max_examples=25, deadline=None)
 @given(values=st.lists(st.one_of(st.none(), dates), max_size=8))
 def test_date_arithmetic(values):
-    """Months clamp to the end of a shorter month and come before days, as in
-    DataFusion; Polars and DuckDB give Lean's rows."""
+    """Months clamp to the end of a shorter month and come before days;
+    Polars and DuckDB give Lean's rows."""
     runs = date_runs(DATE_EXPR, values)
     expected = canonical(runs.pop("lean"))
     for engine, rows in runs.items():
@@ -497,7 +450,7 @@ def python_date(days: int) -> date:
 
 
 def reference(d: int | None, ts: int | None, n: int | None) -> tuple:
-    """What Ibis means by the operations its DataFusion SQL cannot run."""
+    """What Ibis means by the operations below."""
     if ts is None:
         epoch = ms = us_ = iso_ts = None
     else:
@@ -518,8 +471,8 @@ def reference(d: int | None, ts: int | None, n: int | None) -> tuple:
 @settings(max_examples=40, deadline=None)
 @given(rows=d_rows())
 def test_ibis_temporal_ops_match_python(rows):
-    """Ibis's temporal operations that DataFusion's own SQL does not run
-    (`epoch_seconds`, `iso_year`, …), against Python's calendar."""
+    """Ibis's temporal operations (`epoch_seconds`, `iso_year`, …), against
+    Python's calendar."""
     expr = D.select(
         e=D.ts.epoch_seconds(),
         ms=D.ts.millisecond(),
@@ -536,7 +489,7 @@ def test_ibis_temporal_ops_match_python(rows):
 # --------------------------------------------------------------------------
 # Times of day, formatting, timestamps from numbers
 
-#: Times of day and formats, in Ibis (`to_char` is DataFusion's name).
+#: Times of day and formats, in Ibis (`to_char` in SQL).
 R_TS = ibis.table({"ts": "timestamp"}, name="r")
 TOD_EXPR = R_TS.select(
     t=R_TS.ts.time(),
@@ -681,7 +634,7 @@ def test_unsupported_formats_are_refused():
 
 def test_constructors_of_constants():
     """`ibis.date(2024, 2, 29)` and friends are constants; a bad date is
-    refused (DataFusion's `make_date` fails). A date of columns is computed
+    refused. A date of columns is computed
     (#809, `tests/test_sql_lift_temporal.py`); a timestamp of columns is
     refused."""
     expr = D.select(

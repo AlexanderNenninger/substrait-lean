@@ -47,7 +47,7 @@ from sverify import _engines, _hooks, _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
-from sverify.engine import _LOCAL_ENGINES, connect, plain_schema, written_plan
+from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
 from sverify.io._credentials import CredentialUse
@@ -400,8 +400,7 @@ class Node:
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
         stored ones. `engine` runs the plans: `"duckdb"` (in memory, the
-        default), `"polars"`, `"spark"`, a Spark session, or the optional
-        `"datafusion"`. With
+        default), `"polars"`, `"spark"` or a Spark session. With
         `audit`, every batch is compared with recomputation before it is
         applied (`AuditError`).
 
@@ -425,8 +424,8 @@ class Node:
         a node that has none (`status` says which).
 
         Args:
-            engine: What runs the plans: `"duckdb"`, `"polars"`, `"spark"`,
-                a Spark session, or the optional `"datafusion"`. It may differ
+            engine: What runs the plans: `"duckdb"`, `"polars"`, `"spark"`
+                or a Spark session. It may differ
                 from one refresh to the next. Default None: DuckDB, in
                 memory, the engine of the nodes' state (as `Report.run`'s
                 None is its connection's).
@@ -840,7 +839,7 @@ class _Stage:
         is built again with them."""
         from sverify.io._common import _TableSource
 
-        con = connect(engine if engine in _LOCAL_ENGINES else None)
+        con = connect(engine if engine in ENGINES else None)
         pipe = Pipeline(con)
         mapping = {}
         for leaf in leaves:
@@ -874,8 +873,8 @@ class _Stage:
         return stage
 
     def use(self, engine: Any) -> None:
-        if engine in _LOCAL_ENGINES:
-            self.pipe.con.engine = engine  # type: ignore[assignment] - DataFusion too
+        if engine in ENGINES:
+            self.pipe.con.engine = engine
         self.view.engine = engine
 
     def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
@@ -1326,8 +1325,8 @@ class Group:
         they read: each is refreshed and written once. See `Node.refresh`.
 
         Args:
-            engine: What runs the plans: `"duckdb"`, `"polars"`, `"spark"`,
-                a Spark session, or the optional `"datafusion"`. Default None:
+            engine: What runs the plans: `"duckdb"`, `"polars"`, `"spark"`
+                or a Spark session. Default None:
                 DuckDB, in memory.
             audit: Whether to compare every batch with recomputation before
                 applying it. Default False.

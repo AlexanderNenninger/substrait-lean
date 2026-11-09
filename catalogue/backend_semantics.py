@@ -2,10 +2,10 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "duckdb",
-#     "ibis-framework[datafusion,duckdb,polars]==12.0.0",
+#     "ibis-framework[duckdb,polars]==12.0.0",
 #     "marimo",
 #     "polars",
-#     "sverify[datafusion,polars]",
+#     "sverify[polars]",
 # ]
 #
 # [tool.uv.sources]
@@ -35,20 +35,18 @@ def _(mo):
     Ibis expression has no single meaning: each engine gives it its own.
     This notebook collects the questions that a semantics written
     *from first principles* (instead of read off one implementation) has to
-    answer, and shows how each engine answers them today. The last section
-    asks the question the other way round, for DataFusion as a backend: when
-    it runs a plan that `verify` checked, does it compute what was proved?
+    answer, and shows how each engine answers them today.
 
     Every entry is one small question, such as "what is `-7 % 2`?" or "where do
     NULLs go in a descending sort?". It is asked three ways, and every answer
     except Snowflake's is computed live when the notebook runs:
 
-    * **Native engines.** The SQL runs on **DataFusion** and **DuckDB**, and
-      the Polars expression runs on **Polars**. **Snowflake** is quoted from
+    * **Native engines.** The SQL runs on **DuckDB**, and the Polars
+      expression runs on **Polars**. **Snowflake** is quoted from
       its documentation, since there is no account to run on. The SQL standard
       is given in prose where it says something.
-    * **Ibis.** One Ibis expression, executed by Ibis's **DataFusion**,
-      **DuckDB** and **Polars** backends. The Snowflake SQL that Ibis
+    * **Ibis.** One Ibis expression, executed by Ibis's **DuckDB** and
+      **Polars** backends. The Snowflake SQL that Ibis
       compiles it to is under "Snowflake SQL". Ibis promises one meaning for
       one expression, and this column tests that promise.
     * **Lean and sverify.** `Rel.eval` of the plan sverify's lift writes for
@@ -142,11 +140,9 @@ def _(mo):
     mo.md(r"""
     ## Setup
 
-    One tiny table per topic, put into DataFusion (through `sverify`), DuckDB
-    and Polars, and given to Ibis as a memtable. Lean gets the same rows,
-    inlined into the plan as a Substrait virtual table. DataFusion gets the
-    tables as they are (`put_table` would store them the model's way, with
-    one zero and one NaN), so its native answers show its own order.
+    One tiny table per topic, put into sverify's connection, DuckDB and
+    Polars, and given to Ibis as a memtable. Lean gets the same rows,
+    inlined into the plan as a Substrait virtual table.
     """)
     return
 
@@ -186,27 +182,12 @@ def _():
             }
         ),
         "w": ints(g=[1, 1, 1, 2], o=[1, 2, 2, 1], v=[10, 20, 30, 40]),
-        # For DataFusion as a backend (section 8).
-        "t": ints(a=[5, 0], b=[1, 0]),
-        "mixed": pa.table({"a": pa.array([1], pa.int64()), "f": [0.5]}),
-        "i32": pa.table({"a": pa.array([2**31 - 1], pa.int32()), "b": pa.array([1], pa.int32())}),
-        "u8": pa.table({"a": pa.array([0], pa.uint8()), "b": pa.array([1], pa.uint8())}),
-        "pn": ints(a=[None, 2]),
-        "str5": pa.table({"s": ["5", "05"]}),
-        "zt": pa.table(
-            {
-                "t": pa.array(
-                    [dt.datetime(2024, 3, 30, 12, 0, tzinfo=dt.UTC)],
-                    pa.timestamp("us", tz="Europe/Berlin"),
-                )
-            }
-        ),
     }
     return dt, tables
 
 
 @app.cell(hide_code=True)
-def _(dt, pa, tables):
+def _(dt, tables):
     import json
     import re
     import warnings
@@ -224,10 +205,9 @@ def _(dt, pa, tables):
         substrait_json,
         written_plan,
     )
-    from sverify.engines import run as run_plan
     from sverify.engines import to_sql as plan_sql
     from sverify.incremental import arrow_rows
-    from sverify.testing import inline_tables, lean_values
+    from sverify.testing import inline_tables
     from sverify_polars import engine as polars_engine
     from sverify_spark.dialect import SPARK
 
@@ -235,14 +215,10 @@ def _(dt, pa, tables):
     duck = duckdb.connect()
     for _name, _t in tables.items():
         put_table(con, _name, _t)
-        # DataFusion gets the table as it is, to show its own order.
-        _batches = _t.to_batches() or [pa.RecordBatch.from_pylist([], schema=_t.schema)]
-        con._datafusion_session.deregister_table(_name)
-        con._datafusion_session.register_record_batches(_name, [_batches])
         duck.register(_name, _t)
     P = {k: pl.from_arrow(t) for k, t in tables.items()}
     MEM = {k: ibis.memtable(t) for k, t in tables.items()}
-    IBIS = {b: getattr(ibis, b).connect() for b in ("datafusion", "duckdb", "polars")}
+    IBIS = {b: getattr(ibis, b).connect() for b in ("duckdb", "polars")}
 
     def positional(t) -> list[tuple]:
         """Rows by position: SQL allows two output columns with one name."""
@@ -265,7 +241,7 @@ def _(dt, pa, tables):
         return text if len(text) < 140 else text[:137] + "…"
 
     def short_error(e: Exception) -> str:
-        msg = str(e).replace("DataFusion error: ", "").strip().splitlines()[0]
+        msg = str(e).strip().splitlines()[0]
         return f"error ({type(e).__name__}): " + (msg if len(msg) < 90 else msg[:87] + "…")
 
     def attempt(f, bag: bool = False) -> tuple[str, object]:
@@ -317,9 +293,6 @@ def _(dt, pa, tables):
 
         def run(self) -> "E":
             o = self.out
-            o["df"] = attempt(
-                lambda: positional(con._datafusion_session.sql(self.sql).to_arrow_table())
-            )[0]
             duck_sql = self.sql if self.duck == "same" else self.duck
             o["duck"] = attempt(lambda: duck.sql(duck_sql).fetchall())[0] if duck_sql else None
             with warnings.catch_warnings():
@@ -380,71 +353,7 @@ def _(dt, pa, tables):
             o["sv_agree"] = pv == dv or (pv[:1] == dv[:1] == ("error",))
             return self
 
-    def claim(sql: str, on: str, requires, ensures) -> tuple[str, bool]:
-        """What `sverify.verify` claims, and whether it reported a possible
-        runtime error."""
-        try:
-            r = sv.verify(
-                sql,
-                requires={on: list(requires)},
-                ensures=list(ensures),
-                tables={on: MEM[on]},
-                counterexamples=0,
-            )
-        except Exception as e:
-            return "refused: " + str(e).splitlines()[0][:90], False
-        parts = [f"{c.label}: {'proved' if c.proved else 'not proved'}" for c in r.ensures]
-        parts += [f"may fail: {i.kind}" for i in dict.fromkeys(r.errors)]
-        verdict = "proved" if r.proved else "not proved"
-        return f"{verdict}" + (" (" + "; ".join(parts) + ")" if parts else ""), bool(r.errors)
-
-    @dataclass
-    class B:
-        """DataFusion running a checked plan, against `verify` and the model."""
-
-        id: str
-        title: str
-        on: str
-        sql: str
-        why: str
-        requires: tuple = ()
-        ensures: tuple = ()
-        tag: str = ""
-        out: dict = field(default_factory=dict)
-
-        def run(self) -> "B":
-            o = self.out
-            o["verify"], may_fail = claim(self.sql, self.on, self.requires, self.ensures)
-            try:
-                wp = written_plan(substrait_json(con, self.sql))
-            except Exception as e:
-                o["df"], o["sv"], self.tag = "no plan: " + short_error(e), [], "handled"
-                return self
-            o["df"], dfv = attempt(lambda: positional(run_plan(con, wp, "datafusion")))
-            tabs = {n: tables[n] for n in read_tables(json.loads(wp))}
-            (pt, pv), (dt_, dv) = (
-                attempt(lambda run=run: positional(run(wp, tabs)))
-                for run in (polars_engine.run, duckdb_engine.run)
-            )
-            o["sv"] = [("Polars", pt), ("DuckDB", dt_)]
-
-            if pv[:1] == dv[:1] == ("error",) and {pv[1], dv[1]} == {"UnsupportedError"}:
-                # Both translators refuse the plan: compare with `Rel.eval` itself.
-                rows = {n: arrow_rows(t) for n, t in tabs.items()}
-                lean = lean_values(json.dumps(inline_tables(json.loads(wp), rows)))
-                o["sv"].append(("Lean", fmt(lean)))
-                pv = dv = list(map(repr, lean))
-
-            def same(v) -> bool:
-                return v == dfv or v[:1] == dfv[:1] == ("error",)
-
-            # agree: DataFusion gives what a translator of `Rel.eval` gives (or
-            # fails where it fails). handled: they differ, but `verify` said a
-            # runtime error is possible. GAP: they differ, and it did not.
-            self.tag = "agree" if same(pv) or same(dv) else "handled" if may_fail else "GAP"
-            return self
-
-    return B, E, pl
+    return (E,)
 
 
 @app.cell(hide_code=True)
@@ -491,9 +400,7 @@ def _(mo):
             native = []
             if e.std:
                 native.append(f"<i>SQL standard</i>: {html.escape(e.std)}")
-            native.append(
-                _lines([("DataFusion", o["df"]), ("DuckDB", o["duck"]), ("Polars", o["polars"])])
-            )
+            native.append(_lines([("DuckDB", o["duck"]), ("Polars", o["polars"])]))
             if e.snowflake:
                 native.append(f"<i>Snowflake (docs)</i>: {html.escape(e.snowflake)}")
             ib = _lines(list(o["ibis"].items())) if o["ibis"] else "—"
@@ -638,8 +545,8 @@ def _(E, render):
             std="`||` with NULL is NULL",
             snowflake="`||` and CONCAT are NULL if any argument is",
             engines="split",
-            why="DataFusion's and DuckDB's `concat()` skip NULL arguments (as "
-            "PostgreSQL's does); `||` propagates. Ibis's `concat` propagates on every "
+            why="DuckDB's `concat()` skips NULL arguments (as PostgreSQL's does); "
+            "`||` propagates. Ibis's `concat` propagates on every "
             "backend. Lean has `||` only and refuses `concat`.",
             picks="refuses concat(); `||` propagates NULL",
         ).run(),
@@ -684,7 +591,7 @@ def _(E, render):
             "NULLS LAST. sverify's Snowflake SQL refuses sorts and windows over a named "
             "table (Snowflake tables have no row order to break ties by), here and in "
             "O2–O5.",
-            picks="as the plan says (DataFusion writes NULLS LAST)",
+            picks="as the plan says",
         ).run(),
         E(
             "O2",
@@ -697,11 +604,11 @@ def _(E, render):
             snowflake="NULLS FIRST (NULLs are largest)",
             engines="split",
             sverify="faithful",
-            why="DataFusion and Snowflake treat NULL as the largest value, so it comes "
-            "first in DESC. DuckDB puts NULLs last in both directions. Ibis always "
+            why="Snowflake treats NULL as the largest value, so it comes first in DESC. "
+            "DuckDB puts NULLs last in both directions, Polars first. Ibis always "
             "says NULLs last, which is not the mirror of SQL's default. So one Ibis "
             "expression and its SQL look-alike sort differently.",
-            picks="as the plan says (DataFusion writes NULLS FIRST)",
+            picks="as the plan says",
         ).run(),
         E(
             "O3",
@@ -788,10 +695,10 @@ def _(E, render):
             std="an exact numeric of implementation-defined scale; truncation in practice",
             snowflake="a decimal rounded to 6 places (-3.500000)",
             engines="split",
-            why="DataFusion truncates to an integer; DuckDB, Polars and Ibis "
-            "always give a double. Snowflake gives a decimal. Ibis's `/` is true division "
+            why="DuckDB, Polars and Ibis always give a double; PostgreSQL truncates to "
+            "an integer. Snowflake gives a decimal. Ibis's `/` is true division "
             "on every backend. Translated, DuckDB and Polars truncate as Lean does.",
-            picks="truncating (`Int.tdiv`), as DataFusion",
+            picks="truncating (`Int.tdiv`)",
         ).run(),
         E(
             "I2",
@@ -804,8 +711,7 @@ def _(E, render):
             snowflake="the sign of the dividend",
             engines="split",
             why="Polars' `%` is Python's: floor, so the sign of the divisor. Ibis passes "
-            "that through, so Ibis's `%` gives −1 on DataFusion and DuckDB but +1 on "
-            "Polars.",
+            "that through, so Ibis's `%` gives −1 on DuckDB but +1 on Polars.",
             picks="truncating (`Int.tmod`)",
         ).run(),
         E(
@@ -817,9 +723,9 @@ def _(E, render):
             polars="t.select(q=pl.col('a') // pl.col('b'))",
             snowflake="no operator; Ibis writes FLOOR(a / b), over a 6-place decimal",
             engines="split",
-            why="DataFusion's SQL has no `//`. DuckDB's `//` is not what its name "
+            why="DuckDB's `//` is not what its name "
             "suggests: it truncates (−3) on integers. Polars and Ibis floor (−4); sverify "
-            "has a shim so Ibis's `//` reaches DataFusion as a floor. On Snowflake, Ibis's "
+            "has a shim so Ibis's `//` reaches the plan as a floor. On Snowflake, Ibis's "
             "`FLOOR(a / b)` rounds the quotient to 6 decimals first, so it can be off by one "
             "for large operands.",
             picks="no `//` in SQL; Ibis's floor reaches Lean through the shim",
@@ -834,9 +740,9 @@ def _(E, render):
             std="an exception (data exception: division by zero)",
             snowflake="error: Division by zero (DIV0 gives 0, DIV0NULL gives NULL)",
             engines="split",
-            why="DataFusion raises. DuckDB's `/` is double division, so 1/0 = inf and "
-            "0/0 = NaN. Polars gives NULL. Through Ibis that is an error on DataFusion and "
-            "DuckDB (casting inf to an integer) and NULL on Polars. Lean's value is NULL "
+            why="DuckDB's `/` is double division, so 1/0 = inf and 0/0 = NaN. Polars "
+            "gives NULL. Through Ibis that is an error on DuckDB (casting inf to an "
+            "integer) and NULL on Polars. Lean's value is NULL "
             "and `Safety.lean` reports `divByZero`; the translators raise.",
             picks="NULL plus a runtime issue that must be proved absent",
         ).run(),
@@ -863,7 +769,7 @@ def _(E, render):
             std="an exception (numeric value out of range)",
             snowflake="no overflow: NUMBER(38,0) holds 2⁶³",
             engines="split",
-            why="DataFusion and Polars wrap around to −2⁶³ silently; DuckDB raises; "
+            why="Polars wraps around to −2⁶³ silently; DuckDB raises; "
             "Snowflake's integers are 38-digit decimals and do not overflow here. Lean's "
             "integers are unbounded (it gives 2⁶³) and the checker warns `wraps`; the "
             "translators raise.",
@@ -894,7 +800,7 @@ def _(E, render):
             engines="split",
             sverify="faithful",
             why="DuckDB sums BIGINT into a 128-bit HUGEINT and gets 2⁶³ exactly, which "
-            "Ibis then cannot convert back to int64. DataFusion and Polars wrap. The "
+            "Ibis then cannot convert back to int64. Polars wraps. The "
             "translators raise, since Lean's exact sum leaves 64 bits.",
             picks="unbounded (the `sum` of `Rel.eval` is exact)",
         ).run(),
@@ -909,11 +815,11 @@ def _(E, render):
             snowflake="exact decimal: -0.5",
             engines="split",
             sverify="faithful",
-            why="The true mean of 2⁶³ − 1 and −2⁶³ is −0.5. DataFusion and Polars "
-            "convert each value to a double first, where both round to ±2⁶³, so they "
-            "sum to 0. DuckDB sums exactly. Lean gives +0.0 (code 1), DataFusion's "
-            "answer, and so do the translators.",
-            picks="+0.0, DataFusion's double accumulation",
+            why="The true mean of 2⁶³ − 1 and −2⁶³ is −0.5. Polars converts each value "
+            "to a double first, where both round to ±2⁶³, so they sum to 0. DuckDB sums "
+            "exactly. Lean gives +0.0 (code 1), Polars' answer, and so do the "
+            "translators.",
+            picks="+0.0, double accumulation",
         ).run(),
         E(
             "I10",
@@ -925,7 +831,7 @@ def _(E, render):
             std="an exception",
             snowflake="no 32-bit type: INT is NUMBER(38,0)",
             engines="split",
-            why="DataFusion and DuckDB raise; Polars' non-strict cast gives NULL. Lean "
+            why="DuckDB raises; Polars' non-strict cast gives NULL. Lean "
             "used to read the cast as the identity. It is now "
             "`UnFn.narrow`: NULL plus a `badCast` issue where the value does not fit, so "
             "`verify` reports the possible error and both translators raise.",
@@ -964,10 +870,9 @@ def _(E, render):
             polars="t.select('v', a=pl.col('v') == 0.0, b=pl.col('v') < 0.0)",
             std="IEEE: -0.0 = 0.0",
             snowflake="not documented",
-            engines="split",
-            why="DataFusion compares doubles by their total order, where −0.0 < +0.0. "
-            "DuckDB, Polars and Spark follow IEEE (equal), and so does the model, which "
-            "has one zero: the least surprise.",
+            why="DuckDB, Polars and Spark follow IEEE (equal), and so does the model, "
+            "which has one zero: the least surprise. A total order on doubles would put "
+            "−0.0 below +0.0.",
             picks="one zero: −0.0 = 0.0",
         ).run(),
         E(
@@ -980,9 +885,8 @@ def _(E, render):
             polars="t.unique()",
             std="IEEE equality would merge them",
             snowflake="not documented",
-            engines="split",
-            why="It follows from F1: DataFusion keeps both zeros, DuckDB and Polars "
-            "merge them, as the model does. Ibis inherits each backend's answer.",
+            why="It follows from F1: DuckDB and Polars merge them, as the model does. "
+            "Ibis inherits each backend's answer.",
             picks="one value, 0.0",
         ).run(),
         E(
@@ -1038,7 +942,7 @@ def _(E, render):
             std="implementation-defined: truncate or round",
             snowflake="rounds ('Converting a FLOAT to INTEGER rounds the value')",
             engines="split",
-            why="DataFusion and Polars truncate (2.7 → 2). DuckDB rounds half to even "
+            why="Polars truncates (2.7 → 2). DuckDB rounds half to even "
             "(2.5 → 2, 1.5 → 2, 2.7 → 3). Snowflake rounds too (the docs do not say how "
             "halves go). So Ibis's `cast('int64')` depends on the backend. The "
             "translators truncate, as Lean does.",
@@ -1082,7 +986,7 @@ def _(E, render):
             std="implementation-defined: truncate or round",
             snowflake="rounds",
             engines="split",
-            why="DataFusion truncates constants as it truncates columns (F6): 2. DuckDB "
+            why="Polars truncates constants as it truncates columns (F6): 2. DuckDB "
             "rounds the decimal 2.7 to 3. Lean's parser folds a constant cast itself "
             "(`Const.toInt?`); it used to round, so `verify` proved `c = 3`. It now "
             "truncates, as for a column.",
@@ -1164,7 +1068,7 @@ def _(E, render):
             snowflake="not documented",
             engines="split",
             sverify="opaque",
-            why="Rust (DataFusion, Polars) maps ß to 'SS'; DuckDB's utf8proc to 'ẞ' "
+            why="Rust (Polars) maps ß to 'SS'; DuckDB's utf8proc to 'ẞ' "
             "(capital sharp s). `upper` is an uninterpreted function in Lean, so no "
             "proof depends on it; its meaning is Rust's. sverify's DuckDB, Snowflake and "
             "Spark SQL raise on non-ASCII text, where their case tables could differ, and "
@@ -1180,11 +1084,10 @@ def _(E, render):
             std="no escape character unless ESCAPE says so",
             snowflake="no default escape; a backslash in a literal is an escape itself",
             engines="split",
-            why="DataFusion treats `\\` as LIKE's escape by default (as PostgreSQL does); "
-            "DuckDB and the standard have none. So 'a\\b' LIKE 'a\\b' is false on DataFusion "
-            "and true on DuckDB, and Ibis's `like` inherits the split. Ibis-on-Polars has "
-            "no LIKE. sverify's SQL names the escape explicitly.",
-            picks="backslash escapes (DataFusion)",
+            why="PostgreSQL treats `\\` as LIKE's escape by default; DuckDB and the "
+            "standard have none. So 'a\\b' LIKE 'a\\b' is false on PostgreSQL and true "
+            "on DuckDB. Ibis-on-Polars has no LIKE. sverify's SQL names the escape explicitly.",
+            picks="backslash escapes",
         ).run(),
         E(
             "S6",
@@ -1199,7 +1102,7 @@ def _(E, render):
             snowflake="POSIX classes plus Perl's \\d, \\s, \\w; Unicode reach not documented",
             engines="split",
             sverify="opaque",
-            why="Rust's regex (DataFusion, Polars) is Unicode-aware: the Arabic-Indic "
+            why="Rust's regex (Polars) is Unicode-aware: the Arabic-Indic "
             "digit ٣ is a `\\d` and a no-break space is a `\\s`. DuckDB's RE2 is "
             "ASCII-only. Lean leaves regular expressions uninterpreted; their meaning is "
             "Rust's. sverify's SQL raises where a pattern with \\d, \\w or \\s meets "
@@ -1217,7 +1120,7 @@ def _(E, render):
             snowflake="bytewise (UTF-8) without a collation",
             sverify="refused",
             why="Every engine compares bytewise ('' and 'S' come before 'b'), and so "
-            "does Lean's `<` now. The translators still refuse the plan (section 8, D5).",
+            "does Lean's `<` now. The translators still refuse the plan.",
             picks="bytewise (UTF-8)",
         ).run(),
         E(
@@ -1229,13 +1132,13 @@ def _(E, render):
             polars="t.select(c=pl.lit(' 12').cast(pl.Int64, strict=False))",
             std="leading and trailing spaces are allowed",
             engines="split",
-            why="The standard and DuckDB strip the spaces; DataFusion raises; Polars' "
-            "strict cast raises and its non-strict cast gives NULL. Lean folds a cast of a "
-            "string constant itself. It used to trim the spaces (and accept `1_000`), so "
-            "`verify` proved `c = 12` where DataFusion fails. It now reads integers, "
-            "doubles, timestamps and dates as DataFusion does and refuses the rest, so "
-            "the plan is refused. Casts of string columns are refused too.",
-            picks="refused (DataFusion fails)",
+            why="The standard and DuckDB strip the spaces; Polars' strict cast raises "
+            "and its non-strict cast gives NULL. Lean folds a cast of a string constant "
+            "itself. It used to trim the spaces (and accept `1_000`), so `verify` proved "
+            "`c = 12` where a strict cast fails. It now reads integers, doubles, "
+            "timestamps and dates strictly and refuses the rest, so the plan is refused. "
+            "Casts of string columns are refused too.",
+            picks="refused",
         ).run(),
     ]
     render(strings)
@@ -1338,7 +1241,7 @@ def _(E, render):
             why="2024-01-07 is a Sunday. SQL's `dow` says 0 (Sunday first), Polars' "
             "`weekday` 7 (ISO: Monday = 1), Ibis's `day_of_week.index()` 6 (Monday = 0). "
             "Three conventions, and Snowflake's depends on a session parameter.",
-            picks="Sunday = 0 (DataFusion)",
+            picks="Sunday = 0",
         ).run(),
         E(
             "T2",
@@ -1382,248 +1285,6 @@ def _(E, render):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 8. DataFusion as a backend
-
-    Say your nightly job runs on DataFusion, because that is the engine the
-    platform team already operates. `verify` proved the job's division can't
-    fail, and at 2 a.m. it fails with a division by zero anyway. Whoever gets
-    paged relies on the proof meaning something on the engine that ran it.
-
-    The sections above ask each engine the same question natively. This one
-    takes the plan sverify's lift writes for the SQL (read as DuckDB's SQL),
-    lets the checker look at it, and then runs it the way a node would:
-    `sverify.engines.run(con, plan, "datafusion")`. DataFusion runs Substrait
-    through its own consumer and optimizer, so its own semantics apply there,
-    where the DuckDB and Polars translators write out `Rel.eval`'s meaning
-    explicitly. Each entry shows what `verify` claims, what DataFusion
-    returns, and what the two translators return, and is tagged live:
-
-    * **agree**: DataFusion gives what one of the translators gives, or fails
-      where one fails (where the model allows a runtime error, either answer
-      is right).
-    * **handled**: they differ, but `verify` reported that a runtime error
-      is possible, so the proof promised nothing on that input, or the lift
-      refuses the query.
-    * **GAP**: they differ, and nothing warned you.
-
-    The E entries are about *when* DataFusion evaluates an expression: a
-    guard only protects a division if the engine evaluates the guard first.
-    The D entries are the soundness gaps found while sverify still planned
-    SQL with DataFusion, most severe first, re-checked on today's path.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(B):
-    backend = [
-        B(
-            "E1",
-            "AND evaluates both sides",
-            "t",
-            "SELECT a FROM t WHERE b <> 0 AND a // b > 1",
-            "DataFusion evaluates both sides of `AND` on every row, and so does the "
-            "model: `verify` reports the possible division by zero.",
-            requires=("a >= 0",),
-        ).run(),
-        B(
-            "E2",
-            "filters are pushed past guards",
-            "t",
-            "SELECT a FROM (SELECT * FROM t WHERE b <> 0) WHERE a // b > 1",
-            "DataFusion's optimizer merges the two filters and divides by zero. The "
-            "translators keep them apart, but `verify` checks conditions on the input "
-            "with filters removed (`Rel.loose`), so it reports the error DataFusion raises.",
-            requires=("a >= 0",),
-        ).run(),
-        B(
-            "E3",
-            "numeric CASE is lazy",
-            "t",
-            "SELECT CASE WHEN b <> 0 THEN a // b END AS q FROM t",
-            "Proved safe, and DataFusion evaluates only the chosen branch.",
-            requires=("a >= 0",),
-        ).run(),
-        B(
-            "E4",
-            "boolean CASE becomes AND",
-            "t",
-            "SELECT a FROM t WHERE CASE WHEN b <> 0 THEN a // b > 1 ELSE false END",
-            "DataFusion's simplifier rewrites the CASE into `b <> 0 AND a // b > 1`, which "
-            "fails. While sverify read DataFusion's own plans, `verify` proved this could "
-            "not fail; on the lift's plan it reports the division by zero.",
-            requires=("a >= 0",),
-        ).run(),
-        B(
-            "E5",
-            "COALESCE may be eager",
-            "t",
-            "SELECT coalesce(b, a // b) AS c FROM t",
-            "DataFusion has evaluated every argument of COALESCE, where SQL:2003 defines "
-            "it as a lazy CASE. `verify` relies on neither: it reports the possible "
-            "division by zero, and the overflow of the smallest integer `// -1`.",
-            requires=("b IS NOT NULL",),
-        ).run(),
-        B(
-            "D1",
-            "int column vs double",
-            "mixed",
-            "SELECT a, f, a > f AS gt FROM mixed",
-            "Once a false proof: DataFusion's unanalysed plan had no cast, so Lean "
-            "compared 1 with the code of 0.5 and proved `NOT gt`. The lift writes the "
-            "cast, so nothing false is proved and DataFusion agrees.",
-            requires=("a = 1", "f = 0.5"),
-            ensures=("NOT gt",),
-        ).run(),
-        B(
-            "D2",
-            "INT + INT at 32 bits",
-            "i32",
-            "SELECT a + b AS s FROM i32",
-            "The model raises at the declared width, and `verify` reports the overflow. "
-            "DataFusion wraps instead and returns a negative sum with no error, which "
-            "breaks the proved `s >= 0`. DuckDB and Polars raise.",
-            requires=("a BETWEEN 0 AND 2147483647", "b BETWEEN 0 AND 2147483647"),
-            ensures=("s >= 0",),
-        ).run(),
-        B(
-            "D3",
-            "UINT8 read as signed",
-            "u8",
-            "SELECT a - b AS d FROM u8",
-            "Substrait has no unsigned types, and Lean once computed 0 − 1 = −1 and "
-            "proved `d < 0`. The lift refuses unsigned columns.",
-            requires=("a = 0", "b = 1"),
-            ensures=("d < 0",),
-        ).run(),
-        B(
-            "D4",
-            "abs of the smallest integer",
-            "mx",
-            "SELECT abs(a) AS x FROM mx",
-            "DataFusion raises an overflow; Lean read `abs` as `IF a < 0 THEN -a` with a "
-            "wrap warning only, so `verify` said proved. The lift does not read `abs` yet.",
-        ).run(),
-        B(
-            "D5",
-            "string < and >",
-            "s",
-            "SELECT s, s > 'd' AS gt FROM s",
-            "Lean's `<` once had no string case, so `Rel.eval` gave NULL and `verify` "
-            "proved `gt IS NULL` for `s = 'z'`. Lean now compares bytes, as DataFusion "
-            "does. The DuckDB and Polars translators still refuse the plan, so the "
-            "comparison here is with `Rel.eval` itself.",
-            requires=("s = 'z'",),
-            ensures=("gt IS NULL",),
-        ).run(),
-        B(
-            "D6",
-            "int || text",
-            "n",
-            "SELECT x, x || 'a' AS p FROM n",
-            "DataFusion's plan had no cast of x to a string, so Lean computed NULL and "
-            "proved `p IS NULL`. The lift refuses `||` on an integer.",
-            ensures=("p IS NULL",),
-        ).run(),
-        B(
-            "D7",
-            "string = number",
-            "str5",
-            "SELECT s, s = 5 AS eq FROM str5",
-            "DataFusion casts the number to a string ('05' = 5 is false), DuckDB the "
-            "string to a number (true). The plan had no cast and Lean got NULL; the lift "
-            "refuses comparing a string with a number.",
-        ).run(),
-        B(
-            "D8",
-            "+1 day across DST",
-            "zt",
-            "SELECT t, t + INTERVAL '1 day' >= t + INTERVAL '24 hours' AS ok FROM zt",
-            "DataFusion adds a wall-clock day to a zoned timestamp (23 hours on "
-            "2024-03-30 in Berlin); Lean added 86 400 s. The lift refuses zoned timestamps.",
-        ).run(),
-        B(
-            "D9",
-            "power(NULL, 0)",
-            "pn",
-            "SELECT a, power(a, 0) AS p FROM pn",
-            "DataFusion gives 1 for a NULL base, `Rel.eval` NULL. The lift does not "
-            "read `power` yet.",
-        ).run(),
-        B(
-            "D10",
-            "negating ±0.0 and NaN",
-            "f",
-            "SELECT v, -v AS w, -v = v AS eq FROM f ORDER BY w",
-            "DataFusion's own order splits −0.0 from 0.0 and −NaN from NaN (F1). Running "
-            "a checked plan, sverify hands DataFusion the model's doubles, one zero and "
-            "one NaN, so the rows agree.",
-        ).run(),
-        B(
-            "D11",
-            "negating the smallest integer",
-            "mx",
-            "SELECT -a AS x FROM mx",
-            "As D2, at 64 bits: `verify` reports the overflow and DuckDB and Polars raise, "
-            "but DataFusion returns the smallest integer unchanged.",
-        ).run(),
-    ]
-    return (backend,)
-
-
-@app.cell(hide_code=True)
-def _(backend, mo):
-    import html as _html
-
-    _colors = {"agree": "#2e8b57", "handled": "#2f6db5", "GAP": "#c0392b"}
-    _order = ["GAP", "handled", "agree"]
-
-    def _row(b) -> str:
-        cell = "text-align:left;vertical-align:top;padding:4px 12px 4px 0"
-        mono = "font-family:var(--monospace-font, monospace);font-size:0.78rem"
-        query = _html.escape(b.sql)
-        for label, conds in (("requires", b.requires), ("ensures", b.ensures)):
-            if conds:
-                query += (
-                    f"<br><span style='opacity:.7'>{label}: {_html.escape(', '.join(conds))}</span>"
-                )
-        sv_out = "<br>".join(f"<i>sverify→{k}</i>: {_html.escape(v)}" for k, v in b.out["sv"])
-        return (
-            "<tr style='border-top:1px solid #8883'>"
-            f"<td style='{cell};opacity:.6'>{b.id}</td>"
-            f"<td style='{cell};min-width:8rem'>{_html.escape(b.title)}</td>"
-            f"<td style='{cell};{mono};max-width:20rem'>{query}</td>"
-            f"<td style='{cell};{mono};max-width:14rem'>{_html.escape(b.out['verify'])}</td>"
-            f"<td style='{cell};{mono};max-width:16rem'>{_html.escape(b.out['df'])}</td>"
-            f"<td style='{cell};{mono};max-width:16rem'>{sv_out or '—'}</td>"
-            f"<td style='{cell};font-size:0.85rem;max-width:22rem'>"
-            f"<b style='color:{_colors[b.tag]}'>{b.tag}</b> {_html.escape(b.why)}</td>"
-            "</tr>"
-        )
-
-    _cols = ["", "question", "query", "verify", "DataFusion runs the plan", "translators", ""]
-    _head = "".join(f"<th style='text-align:left;padding-right:12px'>{c}</th>" for c in _cols)
-    _ranked = sorted(backend, key=lambda b: _order.index(b.tag))
-    mo.vstack(
-        [
-            mo.md(
-                f"**{sum(b.tag == 'GAP' for b in backend)} gaps** among {len(backend)} "
-                f"entries ({sum(b.tag == 'handled' for b in backend)} handled, "
-                f"{sum(b.tag == 'agree' for b in backend)} agree), most severe first."
-            ),
-            mo.Html(
-                "<table style='border-collapse:collapse;font-size:0.85rem;width:auto;margin:0'>"
-                f"<thead><tr>{_head}</tr></thead>"
-                f"<tbody>{''.join(map(_row, _ranked))}</tbody></table>"
-            ),
-        ]
-    )
-    return
-
-
-@app.cell(hide_code=True)
 def _(aggregates, floats, integers, nulls, order, strings, times):
     catalogue = [*nulls, *order, *integers, *floats, *strings, *aggregates, *times]
     return (catalogue,)
@@ -1635,57 +1296,44 @@ def _(mo):
     ## What this means for a formal semantics
 
     * **Pick, don't inherit.** Of the questions above, the `split` ones have
-      no engine-neutral answer. The Lean model mostly takes DataFusion's,
-      which made sense while DataFusion was the only engine. A semantics of
-      its own would state each choice (truncating division, −0.0 < +0.0, NULL
-      as the largest value, 1-based positions) and treat every engine as
-      something to *translate into*, as sverify's Polars and DuckDB
-      translators already do.
+      no engine-neutral answer. A semantics of its own states each choice
+      (truncating division, one zero, 1-based positions) and treats every
+      engine as something to *translate into*, as sverify's Polars and DuckDB
+      translators do.
     * **Ibis is a language of its own.** Its expressions do not mean the SQL
       they compile to: `== null` is `IS NULL`, `row_number` and `find` and
       `substr` are 0-based, sorts put NULLs last in both directions, and a
       window with an `order_by` but no frame covers the whole partition. And
       where Ibis does not normalise (`%`, `round`, `cast`, `length`,
-      `nunique`, `max` with NaN, `like`), the backend shows through. A
+      `nunique`, `max` with NaN), the backend shows through. A
       semantics of Ibis expressions should therefore be defined on Ibis's
-      own operations, with sverify checking against Ibis-on-DataFusion only
-      as one implementation.
+      own operations, with each backend as one implementation of them.
     * **Uninterpreted is not the same as agreed.** `upper`, `lower` and
       regular expressions are black boxes in Lean, which keeps proofs honest,
       and sverify's translators used to compute them with different Unicode
       tables (S4, S6). Their meaning is now pinned to Rust's
-      `str::to_uppercase` and `regex` crate (DataFusion, Polars); the SQL
+      `str::to_uppercase` and `regex` crate (as in Polars); the SQL
       translations raise on non-ASCII text where their engines could differ,
       so "the same plan, the same rows, or an error" holds across engines.
     * **sverify gaps found here, all fixed.** Constant casts used to round
-      (`CAST(2.7 AS BIGINT)` was proved to be 3; DataFusion gives 2, F9) and
-      to trim spaces from strings (`' 12'` was proved to be 12; DataFusion
-      fails, S8); constants now fold by the same rules as columns, and strings
-      DataFusion cannot parse are refused. Narrowing casts were the identity
-      (I10); they are now range-checked and may raise
+      (`CAST(2.7 AS BIGINT)` was proved to be 3; a column cast gives 2, F9)
+      and to trim spaces from strings (`' 12'` was proved to be 12; a strict
+      cast fails, S8); constants now fold by the same rules as columns, and
+      strings outside the strict literal forms are refused. Narrowing casts
+      were the identity (I10); they are now range-checked and may raise
       `badCast`. The Polars translator crashed on duplicate output column
       names (N4); it now keeps them.
-    * **A backend with its own consumer is a semantics of its own.**
-      DataFusion runs Substrait through its own optimizer, so where it
-      evaluates, wraps or compares differently (section 8), a proof holds on
-      DuckDB and Polars but not necessarily on it. Most gaps of the days when
-      sverify planned SQL with DataFusion closed when the lift took over:
-      it writes the casts DataFusion's plans left out, and refuses what it
-      cannot read. What remains is DataFusion's silent integer wrap (D2,
-      D11), which `verify` reports as a possible overflow.
 
     `python/tests/test_backend_semantics.py` pins the native behaviours that
     sverify's translators work around (Polars' floor `%`, NULL on division by
     zero and NULLs-first sort, DuckDB's double `/`, IEEE zeros and
     half-to-even cast, and so on), so an upgrade that changes one of them shows
-    up, and pins each fixed gap so that it stays fixed;
-    `python/tests/test_datafusion_quirks.py` does the same for section 8.
+    up, and pins each fixed gap so that it stays fixed.
 
     You can now tell, for any query, which answers are the engine's habit and
-    which are the model's choice, and you know where a proof stops at the
-    edge of an engine. When a number changes after a migration, start here:
-    the answer is usually one of these entries, and the fix is usually to
-    let sverify's translation say what you meant.
+    which are the model's choice. When a number changes after a migration,
+    start here: the answer is usually one of these entries, and the fix is
+    usually to let sverify's translation say what you meant.
     """)
     return
 

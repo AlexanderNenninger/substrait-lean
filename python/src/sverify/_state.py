@@ -8,7 +8,7 @@ engine a pipeline runs on keeps it, in its own form: its plugin's `Store`
 (`ProfilePlugin.store`; `store_for`). sverify holds no state of its own and
 picks no store (#1189, #1288). DuckDB's (`sverify_duckdb.DuckDBStore`)
 is a table DuckDB holds between calls (`Resident`), so the state never passes
-through Python; Polars's, Spark's and DataFusion's keep Arrow tables in the
+through Python; Polars's and Spark's keep Arrow tables in the
 process for now (`sverify._arrow_state`).
 
 Whatever the store, weighted tables are added up by one plan (`Merger`):

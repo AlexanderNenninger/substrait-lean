@@ -16,7 +16,8 @@ Sverify builds on other people's work: the projects it runs on, the ideas behind
 - Apache Arrow and [Arrow Flight](https://arrow.apache.org/docs/format/Flight.html), the data sverify moves between engines. [arrow.apache.org](https://arrow.apache.org)
 - Delta Lake: M. Armbrust et al., "Delta Lake: High-Performance ACID Table Storage over Cloud Object Stores", PVLDB 13(12), 2020, and [delta-rs](https://github.com/delta-io/delta-rs).
 - [Apache Iceberg](https://iceberg.apache.org) and [pyiceberg](https://github.com/apache/iceberg-python).
-- The engines sverify profiles: DuckDB; [Polars](https://pola.rs); Spark SQL (M. Armbrust et al., SIGMOD 2015); Apache DataFusion (A. Lamb et al., SIGMOD 2024); and Snowflake.
+- The engines sverify profiles: DuckDB; [Polars](https://pola.rs); Spark SQL (M. Armbrust et al., SIGMOD 2015); and Snowflake.
+- Apache DataFusion (A. Lamb et al., SIGMOD 2024), whose Substrait producer wrote the `df_*.json` golden fixtures and whose bugs sverify recorded (`upstream/bugs/DF-*.json`).
 
 ### Engine testing
 

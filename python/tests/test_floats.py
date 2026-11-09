@@ -11,18 +11,9 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import _LOCAL_ENGINES as ENGINES  # DataFusion too
+from sverify.engines import ENGINES
 from sverify.incremental import IncrementalView
 from sverify.io import Changes
-
-#: DataFusion refuses plans whose double operations can give `-0.0` or a
-#: negative NaN, which it orders apart (upstream/bugs/DF-13.json).
-DOUBLE_ENGINES = [
-    pytest.param(e, marks=pytest.mark.skip(reason="DF-13: refused, total_cmp order"))
-    if e == "datafusion"
-    else e
-    for e in ENGINES
-]
 
 ERR = -9999.0
 s1 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s1")
@@ -79,7 +70,7 @@ minutes = st.integers(0, 4)
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("engine", DOUBLE_ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_incremental_view_with_floats_matches_recompute(engine, data):
@@ -161,12 +152,10 @@ def test_signed_zeros_are_one_row(engine):
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 1.0), (t, 2.0)])
 
 
-@pytest.mark.parametrize("engine", DOUBLE_ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 def test_computed_zeros_and_nans_are_canonical(engine):
     """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `NaN * -1.0` is the one NaN,
-    sorted last, though x86 computes a negative NaN. DataFusion orders
-    computed doubles by `total_cmp` and refuses these plans
-    (upstream/bugs/DF-13.json)."""
+    sorted last, though x86 computes a negative NaN."""
     con = sv.connect()
     sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf, math.nan])}))
 
@@ -185,8 +174,8 @@ def test_computed_zeros_and_nans_are_canonical(engine):
 
 
 def test_negating_a_non_positive_double_gives_a_non_negative_one():
-    """With one zero, `-v >= 0` follows from `v <= 0` (in DataFusion's total
-    order `-(0.0)` would be -0.0, which is below 0.0)."""
+    """With one zero, `-v >= 0` follows from `v <= 0` (in a total order
+    that tells the zeros apart, `-(0.0)` would be -0.0, below 0.0)."""
     t = s1.filter(s1.value <= 0).select(y=-s1.value)
     report = sv.verify(t, ensures=[_.y >= 0])
     assert report.proved, str(report)
