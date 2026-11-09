@@ -1,5 +1,5 @@
 import Sverify.Engines.Transfer
-import SubstraitLean.DuckDBProfile
+import SubstraitLean.DuckDBFunctions
 import SubstraitLean.SubstraitProfile
 
 /-!
