@@ -110,7 +110,6 @@ def test_a_field_outside_the_struct_is_refused(con):
     ("engine", "message"),
     [
         ("duckdb", "struct columns have no SQL form yet"),
-        ("datafusion", "DataFusion does not run struct fields"),
     ],
 )
 def test_other_engines_refuse(con, engine, message):

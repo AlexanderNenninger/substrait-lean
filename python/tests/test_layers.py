@@ -47,7 +47,7 @@ LAYERS: list[tuple[str, list[str]]] = [
     ("frontends", ["ibis_substrait", "sql_lift"]),
     (
         "writers and engines",
-        ["sql", "duckdb_engine", "datafusion_engine"],
+        ["sql", "duckdb_engine"],
     ),
     ("checker", ["engine", "_engine_settings", "_builtin"]),
     ("conditions", ["observation", "counterexample", "conditions", "_quarantine"]),

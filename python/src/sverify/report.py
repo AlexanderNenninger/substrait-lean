@@ -868,7 +868,7 @@ class Report:
 
         Args:
             con: The connection whose tables the plan reads (`sv.connect()`).
-            engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
+            engine: `"duckdb"`, `"polars"`, `"spark"`, or a
                 Spark session. Default: the connection's engine.
             route: `"auto"` (the default) chooses a route; `"native"`,
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or

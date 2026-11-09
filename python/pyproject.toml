@@ -28,9 +28,6 @@ dependencies = [
 # `sverify.connect()`. Other engines and table formats are extras; the SQL
 # dialects (DuckDB, Snowflake, Spark) need nothing.
 [project.optional-dependencies]
-# DataFusion, an optional engine (`engine="datafusion"`): outside the
-# 1.x promise (`docs/stability.md`), and not in `all`.
-datafusion = ["datafusion==51.0.0"]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
 # sverify at its version; `run` brings `polars` and `numpy`.
 polars = ["sverify-polars[run]==0.7.1"]
@@ -69,7 +66,6 @@ sverify = "sverify.pytest_plugin"
 # (`sverify.profiles`, #1189); each moves to its engine's package with step 5.
 [project.entry-points."sverify.profiles"]
 duckdb = "sverify._builtin.duckdb:PLUGIN"
-datafusion = "sverify._builtin.datafusion:PLUGIN"
 snowflake = "sverify._builtin.snowflake:PLUGIN"
 substrait = "sverify._builtin.substrait:PLUGIN"
 
@@ -123,7 +119,7 @@ exclude = ["build", "src/sverify/_bin"]
 
 [dependency-groups]
 dev = [
-    "sverify[all,datafusion]",
+    "sverify[all]",
     "fakesnow>=0.12.1",
     "hypothesis>=6.170.14",
     # Checks the engine facts against characterization/fact.schema.json,
@@ -279,10 +275,6 @@ env = { SVERIFY_PROFILE.default = "ci", SVERIFY_CHAOS_EXAMPLES.default = "2000" 
 [tool.poe.tasks.test-core]
 help = "Python tests of Lean, the producers, and DuckDB as the oracle (see tests/conftest.py)"
 cmd = "pytest -n auto --dist worksteal -m core"
-
-[tool.poe.tasks.test-datafusion]
-help = "Python tests of DataFusion, an optional engine outside the 1.x promise"
-cmd = "pytest -n auto --dist worksteal -m datafusion"
 
 [tool.poe.tasks.test-duckdb]
 help = "Python tests of the DuckDB engine and its SQL"

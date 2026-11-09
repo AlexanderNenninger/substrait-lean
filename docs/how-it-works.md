@@ -99,7 +99,7 @@ hand-written.
 ## How incremental views work
 
 `python/` holds `sverify`, which maintains query results incrementally on
-DuckDB (by default), Polars or the optional DataFusion, using delta plans
+DuckDB (by default) or Polars, using delta plans
 from Lean. A
 node's `refresh` runs an incremental view (`sverify.incremental`, internal):
 
@@ -149,8 +149,7 @@ Connections. `sv.connect(engine=...)` gives a `Connection`: the Arrow
 tables (`con.create`, `con.put`, `con.get`), the engine plans run on, and Ibis
 tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
 backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
-contracts find a table's data). The DataFusion engine runs on a private
-DataFusion session with the same tables, created on first use. Tables are stored with their doubles as
+contracts find a table's data). Tables are stored with their doubles as
 the reference profile reads them (below).
 
 A Delta or Iceberg source on DuckDB is held as a scan (`sverify._scan.Scan`):
@@ -206,16 +205,6 @@ rewritten files as deleted and added, which nets to the change.
 and through delta-rs and pyiceberg, and compares the tables after every
 refresh and the statistics both record.
 
-DataFusion is an optional engine (`pip install 'sverify[datafusion]'`), and no
-test takes its results as a reference or an oracle
-([#1139](https://github.com/AlexanderNenninger/substrait-lean/pull/1139)). It runs plans
-with `engine="datafusion"`, and nothing else needs it
-(`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
-51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
-registered there as record batches. DataFusion pushes filters into
-datasets, where PyArrow compares doubles by IEEE rules, which would make
-filters and projections disagree on NaN.
-
 #### Doubles under the reference profile
 
 The core has IEEE's doubles, both zeros and signed NaNs, and each profile
@@ -232,13 +221,6 @@ engine is made to agree:
   every operation that IEEE lets produce −0.0 (negation, `*`, `/`, `POWER`,
   rounding, `AVG`): `-0.0 + 0.0` is `0.0`, and other values stay. Ibis
   queries on a connection run on DuckDB, so they agree too.
-* DataFusion, the optional engine, orders doubles by `f64::total_cmp` (−0.0 <
-  0.0, a negative NaN first), so the tables it reads and its results are canonicalized
-  (`sverify.engine.canonical`). DataFusion is a tier-3 engine: it refuses
-  a plan with a double operation that IEEE arithmetic lets give −0.0 or a
-  negative NaN (`DataFusion.signedDoubles`,
-  [DF-13](../upstream/bugs/DF-13.json)). SQL run on DataFusion directly (a
-  query on a `datafusion.SessionContext`) follows DataFusion's order.
 * `Report.to_substrait` writes each double operation `x` for other consumers
   as `if is_nan(x + 0.0) then NaN else x + 0.0` (ST-4), which gives every NaN
   the same sign and payload.
@@ -304,7 +286,7 @@ and timestamps at precision 0. It checks the argument kinds a signature names.
 
 Plans come from the Ibis producer or sverify's SQL lift, and run on DuckDB
 (the default), [Polars](https://pola.rs) or Spark
-([the engines](stability.md#engines)); DataFusion is an optional engine. You pick
+([the engines](stability.md#engines)). You pick
 one with `engine="polars"` on `node.refresh`, `sv.connect` or
 `sverify.engines.run(con, plan, "polars")`. The tables stay in `con` and are
 handed to the engine as Arrow. Contracts take `engine=` for their runtime
@@ -527,7 +509,7 @@ group (checked at run time: the job raises if it does not …)` (or
 Trusted: *when* an engine evaluates an expression (`Rel.HasIssue`: `CASE` is lazy,
 `AND`/`OR` are not, filter and join conditions may run before the filters below
 them; [What is trusted](proofs.md#what-is-trusted)). `python/tests/test_numeric.py`
-runs the plans on DuckDB (and, in its weekly job, on the optional DataFusion) on random data and checks
+runs the plans on DuckDB on random data and checks
 they only fail where an error was reported. `BIGINT` and timestamp columns are taken to
 hold 64-bit values (from the schema); arithmetic on narrower integers is
 checked at their declared width (#202, #419).

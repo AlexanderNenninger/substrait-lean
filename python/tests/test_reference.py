@@ -524,8 +524,7 @@ def int_avg_plan(con, sql: str) -> str:
     for node in _dicts(plan):
         for key in ("measure", "windowFunction"):
             if key in node:
-                # Substrait's `avg` of `i64`: an `i64` argument and result
-                # (DataFusion casts the argument to a double).
+                # Substrait's `avg` of `i64`: an `i64` argument and result.
                 node[key]["outputType"] = i64
                 for a in node[key].get("arguments", []):
                     if "cast" in a["value"]:
@@ -558,8 +557,6 @@ def test_integer_avg_truncates(sql, expected):
         assert sorted(arrow_rows(run_plan(con, written, engine)), key=str) == sorted(
             expected, key=str
         ), engine
-    with pytest.raises(Exception, match="no integer result"):
-        run_plan(con, written, "datafusion")
 
 
 def test_integer_avg_with_a_double_result_is_the_mean():
@@ -711,7 +708,7 @@ def test_a_double_sum_of_both_infinities_raises(icon, engine):
 
 def test_not_in_subquery_means_what_sql_means():
     """The checker lifts `NOT IN (subquery)` with SQL's NULL rules, so a NULL
-    in the subquery leaves no rows (DataFusion's own SQL keeps some)."""
+    in the subquery leaves no rows."""
     c = connect()
     put_table(c, "n", pa.table({"x": pa.array([1, None, 2], pa.int64())}))
     put_table(c, "s", pa.table({"y": pa.array([1, None], pa.int64())}))

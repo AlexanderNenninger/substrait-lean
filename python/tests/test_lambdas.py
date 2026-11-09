@@ -113,10 +113,7 @@ def test_lambdas_are_closed(con, make, message):
         plan_json(con, t.select(x=make(t)))
 
 
-@pytest.mark.parametrize(
-    ("engine", "message"),
-    [("duckdb", "lambdas have no SQL form yet"), ("datafusion", "DataFusion does not run")],
-)
+@pytest.mark.parametrize(("engine", "message"), [("duckdb", "lambdas have no SQL form yet")])
 def test_other_engines_refuse(con, engine, message):
     t = con.table("t")
     w = written_plan(plan_json(con, t.select(x=t.l.contains(1))))

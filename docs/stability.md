@@ -131,7 +131,7 @@ tooling `sverify_dev`, and the printed text of a report (`str(report)`) are
 outside it; tools read the report through its attributes or its JSON.
 Two parts of `sverify.engines` are documented but outside it too, and may
 change in a minor release: the plan layer (`to_sql`, `substrait_json`,
-`written_plan`, `run_substrait_json`, `delta_plans`), which takes sverify's
+`written_plan`, `delta_plans`), which takes sverify's
 internal plan, and `Dialect`'s SQL-writing methods and subclasses of it.
 `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
 to a plan's SQL and Substrait.
@@ -168,7 +168,6 @@ by a route that the checker justifies against it
 | Polars, streaming | `engine="polars"` | | `"polars"` | `Rel.polars_sound` | yes |
 | Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Rel.spark_sound` | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | planned ([#851](https://github.com/AlexanderNenninger/substrait-lean/issues/851)) | | the written SQL |
-| DataFusion | `engine="datafusion"`, the `datafusion` extra, `run_substrait_json` | | | | no: an optional engine |
 
 `sverify.engines.Engine` names the engines in the promise. The engine
 versions each profile describes, the class of every option on each engine
@@ -180,7 +179,7 @@ DuckDB, Polars, Spark and Snowflake are the engines of 1.0
 Snowflake's profile ([#851](https://github.com/AlexanderNenninger/substrait-lean/issues/851))
 and running plans on it ([#852](https://github.com/AlexanderNenninger/substrait-lean/issues/852))
 come before the release, from Snowflake behaviour recorded privately. The
-`all` extra installs every engine in the promise and leaves DataFusion out.
+`all` extra installs every engine in the promise.
 Where tests compare against an engine, DuckDB is the default oracle; Lean's
 model stays the reference.
 

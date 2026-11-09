@@ -1,7 +1,6 @@
 # Correctness pitfalls across engines. A query lists them as "tag: what it
 # means for this query". `quirks` are entries of
-# catalogue/backend_semantics.py: its questions per
-# engine, and its section 8 on DataFusion as a backend (E and D entries).
+# catalogue/backend_semantics.py: its questions per engine.
 #
 # The pitfalls predate the engine facts (characterization/<engine>/facts/,
 # judged as characterization/README.md says). Where an `engines` note and a
@@ -40,7 +39,7 @@ quirks = ["F8"]
 [float_nan]
 description = "NaN and -0.0 in comparisons, sorting, grouping and MAX."
 engines = "DataFusion and DuckDB order NaN above +inf and treat NaN = NaN in grouping; IEEE comparison says NaN != NaN."
-quirks = ["F1", "F2", "F3", "F4", "D10"]
+quirks = ["F1", "F2", "F3", "F4"]
 
 [empty_aggregate]
 description = "Aggregates over no rows: SUM, AVG, MIN, MAX give NULL, COUNT gives 0; a global aggregate still returns one row."
@@ -70,22 +69,21 @@ quirks = ["A3"]
 [eager_evaluation]
 description = "A CASE or COALESCE guard against an error (division, cast) may not protect, because the engine evaluates both branches."
 engines = "DataFusion rewrites boolean CASE into AND/OR and evaluates COALESCE eagerly; filters may be pushed past guards."
-quirks = ["E1", "E2", "E4", "E5"]
 
 [int_overflow]
 description = "Sums and products of integers can overflow 64 (or 32) bits."
 engines = "DataFusion wraps silently on +; INT32 arithmetic wraps at 32 bits; Snowflake NUMBER(38) does not overflow; DuckDB raises."
-quirks = ["I6", "I7", "I8", "D2", "D11"]
+quirks = ["I6", "I7", "I8"]
 
 [implicit_coercion]
 description = "Comparing columns of different types (int vs double, string vs number) relies on implicit casts."
 engines = "Coercion rules differ: DataFusion compares string = number as strings; Snowflake casts the string to a number."
-quirks = ["I1", "D1", "D7"]
+quirks = ["I1"]
 
 [string_collation]
 description = "String order and case: < on strings, MIN/MAX, ORDER BY, LIKE case sensitivity."
 engines = "DataFusion and DuckDB compare bytes; Snowflake uses a collation if set; LIKE is case-sensitive except ILIKE."
-quirks = ["S7", "S4", "D5"]
+quirks = ["S7", "S4"]
 
 [substr_index]
 description = "Substring positions: 1-based in SQL, 0-based in Ibis and Polars; negative starts differ."
@@ -105,7 +103,6 @@ quirks = ["S6"]
 [timezone_dst]
 description = "Local time zones: day boundaries, DATE_TRUNC and interval arithmetic across DST."
 engines = "DataFusion adds 1 day DST-aware on zoned timestamps; Snowflake TIMESTAMP_LTZ depends on the session time zone; DuckDB TIMESTAMPTZ likewise."
-quirks = ["D8"]
 
 [week_definition]
 description = "Week start and numbering: DATE_TRUNC('week'), day-of-week numbers, ISO weeks."

@@ -8,15 +8,10 @@
     "`select k, count(*) from (values (0.0), (-0.0)) t(k) group by k` gives two groups on 51.0.0, one on 55.0.0.",
     "`select count(distinct v) from (values (cast('NaN' as double)), (-cast('NaN' as double))) t(v)` gives `2` on both."
   ],
-  "handling": "DataFusion is a tier-3 engine. Tables handed to it and its results are canonicalised (`sverify.engine.canonical`); `--write-datafusion` refuses plans whose double operations can make `-0.0` or a negative NaN (#1165), and the DataFusion tests of computed doubles skip citing this entry.",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "upstream": [
     "https://github.com/apache/datafusion/issues/26138",
     "https://github.com/apache/datafusion/pull/26091"
-  ],
-  "files": [
-    "python/src/sverify/engine.py",
-    "python/tests/test_datafusion_quirks.py",
-    "python/tests/test_floats.py"
   ],
   "checked": [
     {

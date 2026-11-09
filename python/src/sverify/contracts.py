@@ -3085,9 +3085,8 @@ def transform(
             inputs at call time. Default True. False with an
             `on_violation` other than `"error"` raises `ValueError`: that
             setting acts on those checks.
-        check_engine: Where checks on data run: `"duckdb"` or `"polars"` (or
-            the optional `"datafusion"`) run each condition's plan as Lean
-            wrote it; None
+        check_engine: Where checks on data run: `"duckdb"` or `"polars"` run each
+            condition's plan as Lean wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
             `refresh(engine=)` says where a node's plan runs.
         semantics: What the contract's SQL conditions mean in its proofs,

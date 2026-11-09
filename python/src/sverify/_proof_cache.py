@@ -32,9 +32,7 @@ from sverify._meta import PROTOCOL, VERSION
 #: The checker's modes whose answers are kept: those that prove or write a
 #: plan. The modes that evaluate a plan on data (`--eval-spec`,
 #: `--eval-choices`, `--outcomes`) are many small requests, each asked once.
-CACHED_MODES = frozenset(
-    {"-", "--contract", "--delta", "--shard", "--dependencies", "--write", "--write-datafusion"}
-)
+CACHED_MODES = frozenset({"-", "--contract", "--delta", "--shard", "--dependencies", "--write"})
 #: Days a checker build's directory stays after its last write.
 KEEP_DAYS = 30
 

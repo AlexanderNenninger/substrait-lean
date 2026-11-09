@@ -11,12 +11,6 @@ pytest plugin), else its `backend` mark (on the test or as the module's
 Tests comparing two engines with each other stay in `core`. The engine
 tests run on every engine with a profile, Spark's too (`_engines.py`).
 
-DataFusion is an optional engine and never a reference or oracle: Lean is
-the reference, and DuckDB the default oracle. Only the `datafusion` tests
-(`poe test-datafusion`, a weekly CI job) may run it; in any other test
-`sverify` behaves as if it were not installed (`_no_datafusion`), and
-`test_without_datafusion.py` checks the base install in a fresh interpreter.
-
 `tests/lift_backlog.json` lists the tests that wait on SQL the lift
 (`sverify.sql_lift`) does not read yet: the backlog of M2 (#240), each with
 the reason it waits (`python -m sverify_dev.bugs` checks it). A listed
@@ -62,7 +56,7 @@ from hypothesis import settings
 from sverify.engines import ENGINES
 
 #: Keep in step with the `test-*` poe tasks and the CI matrix.
-BACKENDS = ("core", *ENGINES, "datafusion", "snowflake", "spark")
+BACKENDS = ("core", *ENGINES, "snowflake", "spark")
 
 PROFILE = os.environ.get("SVERIFY_PROFILE") or ("ci" if os.environ.get("CI") else "dev")
 if PROFILE not in ("dev", "ci"):
@@ -218,23 +212,6 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         test._hypothesis_internal_use_settings = settings(  # noqa: SLF001
             given, max_examples=max(min(given.max_examples, 3), round(given.max_examples * SCALE))
         )
-
-
-@pytest.fixture(autouse=True)
-def _no_datafusion(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Outside the `datafusion` tests, DataFusion is not installed as far as
-    `sverify` can tell: no test of another backend takes it as an oracle."""
-    if backend(request.node) == "datafusion":
-        return
-    from sverify import engine
-
-    def missing() -> Any:
-        raise ImportError(
-            "DataFusion is an optional engine, never an oracle: only tests whose "
-            "backend is `datafusion` run it (tests/conftest.py)"
-        )
-
-    monkeypatch.setattr(engine, "_datafusion", missing)
 
 
 @pytest.fixture(autouse=True)

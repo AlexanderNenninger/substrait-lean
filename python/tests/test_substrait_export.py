@@ -1,14 +1,11 @@
 """`Report.to_substrait` and `sv.Report.from_substrait` (#664): the export of a
 verified plan for any Substrait consumer, with its contract as metadata.
 
-The round trips export, read back and prove the contract again; the
-consumer tests run the export on DataFusion's Substrait consumer and compare
-with the reference's result under the stated observation, on small inputs."""
+The round trips export, read back and prove the contract again."""
 
 from __future__ import annotations
 
 import json
-import math
 import re
 from pathlib import Path
 from typing import Literal
@@ -270,100 +267,6 @@ def test_gaps_name_existing_entries() -> None:
     for gap in {*se.GAPS.values(), *se.FUNCTION_GAPS.values()}:
         doc = json.loads((ROOT / "upstream" / "bugs" / f"{gap}.json").read_text())
         assert doc["kind"] == "spec-gap", gap
-
-
-@pytest.mark.backend("datafusion")
-def test_st6_cast_truncates_first() -> None:
-    """The ST-6 shim: a cast of a double to an integer truncates first, so
-    the cast is exact on a consumer that rounds; DataFusion gives the
-    reference's truncation."""
-    datafusion = pytest.importorskip("datafusion")
-    from datafusion import substrait as dfs
-
-    from sverify import _substrait_shims
-    from sverify.engine import written_plan
-
-    t = ibis.table({"x": "float64"}, name="t")
-    report = _verify(t.select(i=_.x.cast("int32")), {"t": [_.x.between(-1000, 1000)]})
-    assert report.internal_plan is not None
-    plan = json.loads(written_plan(report.internal_plan))
-    typer = se._Typer(plan)
-    typer.run()
-    done = _substrait_shims.st6(typer, _substrait_shims.Builder(plan))
-    assert done is not None and "floor" in done["shim"]
-    se._Typer(plan).run()
-    ctx = datafusion.SessionContext()
-    ctx.register_record_batches("t", [pa.table({"x": [-2.7, -0.5, 0.5, 2.7]}).to_batches()])
-    msg = se._plan_message(plan)
-    got = ctx.create_dataframe_from_logical_plan(
-        dfs.Consumer.from_substrait_plan(ctx, dfs.Serde.deserialize_bytes(msg.SerializeToString()))
-    ).to_arrow_table()
-    assert got.column(0).to_pylist() == [-2, 0, 0, 2]
-
-
-# -- a real consumer ----------------------------------------------------------------
-
-
-def _norm(table: pa.Table) -> list:
-    rows = [
-        tuple("NaN" if isinstance(v, float) and math.isnan(v) else v for v in r.values())
-        for r in table.to_pylist()
-    ]
-    return sorted(rows, key=repr)
-
-
-CONSUMER = {
-    "integers": (orders.select("id", total=_.amount + 1, m=_.amount % 3), BOUNDED),
-    "doubles": (orders.select("id", y=_.x / 2.0), None),
-    "aggregate": (orders.group_by("id").aggregate(s=_.amount.sum(), m=_.amount.mean()), BOUNDED),
-    "decimals": (orders.select(q=_.d * _.d), None),
-    "casts": (orders.select(i=_.amount.cast("float64").cast("int32")), BOUNDED),
-    "ST-4 keys": (orders.group_by("x").aggregate(n=_.id.count()), None),
-    "ST-4 join": (orders.join(other, orders.x == other.k).select("id", "w"), None),
-    "ST-3": (orders.group_by("id").aggregate(v=_.amount.var(), p=_.amount.var(how="pop")), None),
-    "ST-1": (orders.select("id", u=_.amount << 2), BOUNDED),
-}
-
-
-#: Substrait functions DataFusion 51's consumer does not know.
-MISSING = {
-    "ST-3": "DataFusion 51's consumer has no Substrait `variance` (it names var_samp)",
-    "ST-1": "DataFusion 51's consumer has no Substrait `shift_left`",
-}
-
-
-@pytest.mark.backend("datafusion")
-@pytest.mark.parametrize(
-    "case",
-    [
-        pytest.param(c, marks=pytest.mark.xfail(reason=MISSING[c], strict=True))
-        if c in MISSING
-        else c
-        for c in CONSUMER
-    ],
-)
-def test_runs_on_a_substrait_consumer(case: str) -> None:
-    """DataFusion's Substrait consumer runs the export and gives the
-    reference's result, `-0.0`, NaN and one-row groups included."""
-    datafusion = pytest.importorskip("datafusion")
-    from datafusion import substrait as dfs
-
-    expr, requires = CONSUMER[case]
-    report = _verify(expr, requires)
-    m = read(report.to_substrait()).manifest
-    # D25: a consumer adds a double `SUM` in its own order, within the plan's
-    # bound of the reference's correctly rounded sum.
-    assert m["class"] == ("observed" if case == "aggregate" else "exact")
-    ctx = datafusion.SessionContext()
-    for name, table in DATA.items():
-        ctx.register_record_batches(name, [table.to_batches()])
-    plan = dfs.Serde.deserialize_bytes(report.to_substrait("binary"))
-    got = ctx.create_dataframe_from_logical_plan(dfs.Consumer.from_substrait_plan(ctx, plan))
-    con = sv.connect()
-    for name, table in DATA.items():
-        con.put(name, table)
-    expected = report.run(con, "duckdb", check_requires=False)
-    assert _norm(got.to_arrow_table()) == _norm(expected)
 
 
 # -- the generated table and the .proto ------------------------------------------------

@@ -155,7 +155,7 @@ def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: {"profiles": {e: {"engine": e, "versions": [v]} for e, v in versions.items()}},
     )
     assert routes.check_version("duckdb", "2.0.0") is None
-    assert routes.check_version("datafusion", "1.0.0") is None
+    assert routes.check_version("outside", "1.0.0") is None
     with pytest.warns(routes.EngineVersionWarning, match="polars 2.2.0"):
         assert routes.check_version("polars", "2.2.0")
     with pytest.raises(routes.EngineVersionError, match="needs its facts probed again"):

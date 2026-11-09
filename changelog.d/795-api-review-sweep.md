@@ -8,10 +8,7 @@ Engines (A5, J3):
 - `sverify.engine.Engine` is `"duckdb"`, `"polars"` or `"spark"`, the
   engines of the 1.x promise ([stability](docs/stability.md)), and
   `sverify.engines.ENGINES`, the engines a `Connection` runs plans on, is
-  `("duckdb", "polars")`. DataFusion is experimental and outside the
-  promise: `engine="datafusion"` and the `datafusion` extra still work, and
-  `sverify[all]` no longer installs it. To keep it, install
-  `sverify[all,datafusion]`.
+  `("duckdb", "polars")`.
 - The `iceberg` extra installs `pyiceberg[pyarrow,sql-sqlite]`, which a
   local SQLite catalog needs.
 

@@ -8,13 +8,9 @@
     "`select k, min(v), max(v) from (values (1, cast('inf' as double)), (1, cast('inf' as double))) t(k, v) group by k` gives `1, 1.7976931348623157e308, inf`.",
     "`select k, min(v), max(v) from (values (1, cast('NaN' as double)), (1, 1.0)) t(k, v) group by k` gives `1, 1.0, 1.0`; `select min(v), max(v) from (values (cast('NaN' as double)), (1.0)) t(v)` gives `1.0, NaN`."
   ],
-  "handling": "`--write-datafusion` refuses `MIN` and `MAX` of doubles (`Rel.floatExtremes`, #371).",
+  "handling": "None: sverify no longer runs DataFusion. The entry records the bug.",
   "issues": [
     371
-  ],
-  "files": [
-    "SubstraitLean/Write.lean",
-    "SubstraitCheck.lean"
   ],
   "checked": [
     {

@@ -13,7 +13,7 @@ pip install 'sverify[delta,iceberg,polars,spark]'   # or 'sverify[all]'
 ```
 
 The core runs on DuckDB: contracts, incremental maintenance, and SQL for
-DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
+DuckDB, Snowflake and Spark. The extras add `polars`, `spark`
 (needs Java 17 or 21), `delta`, `iceberg`, `flight` (`FlightSource`) and
 `testing` (Hypothesis strategies). Wheels bundle the Lean checker
 as a small native binary, so you need no Lean toolchain; they exist for Linux
@@ -221,7 +221,7 @@ The most common, and what sverify does about each:
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
 threshold (a total over all parts) into each part's own sum, so the query
 compared each part with itself, and nothing failed. [backend_semantics.py](../catalogue/backend_semantics.py) checks every such quirk
-against the model, and its section 8 checks DataFusion as a backend.
+against the model.
 
 ## Using sverify
 
@@ -1084,7 +1084,7 @@ print(sv.group(report, totals).refresh())  # paid is refreshed and written once
 ```
 
 The engine is chosen at refresh time: `"duckdb"` (the default, in memory),
-`"polars"`, `"spark"`, a Spark session, or the optional `"datafusion"`. The nodes keep their
+`"polars"`, `"spark"` or a Spark session. The nodes keep their
 state while the process runs; a stored node's table is its durable state.
 
 A job that refreshes every minute logs `summary()`, one line per node, and
@@ -1945,10 +1945,7 @@ sidecar file. `sv.Report.from_substrait(exported)` reads a plan back, in either
 format, and proves its contract again with the checker; the report it
 returns has the same postconditions and verdict.
 [Example 10](examples.md#10-a-proved-plan-for-any-substrait-consumer)
-exports a plan and shows the three modes. DataFusion's Substrait consumer
-runs the exports in `tests/test_substrait_export.py` and gives the
-reference's results; it does not know Substrait's `variance` or
-`shift_left` yet.
+exports a plan and shows the three modes.
 
 ### ODCS contracts
 

@@ -14,11 +14,10 @@ and Substrait's (once #600 lands), with the route and class
 (`sverify.routes.choose`) to each engine.
 
 Engines, on the written plan (`substrait-check --write`): DuckDB and Polars
-(the profiles; Polars on its streaming engine), DataFusion and Spark
-(`--spark`, needs a JVM) outside the profiles (#271); Snowflake as generated
-SQL only. Native: the original query on DuckDB, Polars SQL, DataFusion and
-Spark SQL (and an `--ibis` expression on Ibis's DuckDB, Polars and DataFusion
-backends), which is what each engine itself makes of it.
+(the profiles; Polars on its streaming engine) and Spark (`--spark`, needs a
+JVM); Snowflake as generated SQL only. Native: the original query on DuckDB,
+Polars SQL and Spark SQL (and an `--ibis` expression on Ibis's DuckDB and
+Polars backends), which is what each engine itself makes of it.
 
 Every row set is compared with Lean's (in order if the plan's order matters,
 else as bags; doubles to six decimals, times as microseconds, dates as days).
@@ -116,7 +115,7 @@ def environment(con: eng.Connection, spark: bool, polars_mode: str) -> None:
     from sverify import routes
 
     print("== Environment")
-    pkgs = ["sverify", "duckdb", "polars", "datafusion", "ibis-framework", "sqlglot"]
+    pkgs = ["sverify", "duckdb", "polars", "ibis-framework", "sqlglot"]
     if spark:
         pkgs.append("pyspark")
     vers = []
@@ -378,7 +377,6 @@ def native_sql(con: eng.Connection, sql: str, tables: dict[str, pa.Table], spark
     attempt("duckdb", lambda: db.sql(sql).fetch_arrow_table())
     ctx = pl.SQLContext({n: pl.from_arrow(t).lazy() for n, t in tables.items()})
     attempt("polars", lambda: native_polars(ctx.execute(sql)).to_arrow())
-    attempt("datafusion", lambda: con.datafusion.sql(sql).to_arrow_table())
     if spark:
         from sverify_spark import engine as spark_engine
 
@@ -406,7 +404,7 @@ def native_ibis(code: str, tables: dict[str, pa.Table]):
     # backend with the pinned versions.
     expr = ibis_expr(code, {n: ibis.memtable(t) for n, t in tables.items()})
     out: dict[str, tuple[str, Rows | None]] = {}
-    for name in ("duckdb", "polars", "datafusion"):
+    for name in ("duckdb", "polars"):
         try:
             backend = getattr(ibis, name).connect()
             if name == "polars":

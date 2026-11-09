@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[datafusion]",
+#     "sverify",
 # ]
 #
 # [tool.uv.sources]
@@ -547,12 +547,8 @@ def _(mo):
     * Integer `POWER` with a negative exponent or a huge result.
     * A regular expression that does not compile.
     * Truncating a timestamp near the ends of its range to a month or year.
-      DataFusion, an optional engine outside the
-      [1.x promise](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines), panics or returns garbage there.
     * `+`, `-`, `*` leaving the declared width (64 bits for `BIGINT`). The
       reference raises, and so do the DuckDB and Polars translations.
-      DataFusion wraps around (`2⁶² + 2⁶²` gives `-2⁶³`), which an error
-      allows.
     * An integer `SUM` leaving 64 bits. Sverify rules it out where the plan
       bounds a group's rows (a `FETCH` count) and `requires` bounds the
       column. Elsewhere it assumes each sum fits, and the job checks it on
@@ -637,7 +633,7 @@ def _(mo):
       [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md)). The report flags the error inside the
       `AND` and suggests guarding the operation itself with the `CASE` above.
     * An earlier filter is no guard either. An optimizer may merge the two
-      filters into one `AND`, as DataFusion's does. Lean models that (`Rel.loose`) and reports
+      filters into one `AND`. Lean models that (`Rel.loose`) and reports
       the error.
     * `round(amount)` becomes a cast to `BIGINT`, which fails on `1e30` and
       NaN. Bounding `amount` first makes it safe, because `ROUND` is exact
@@ -870,8 +866,8 @@ def _(mo):
     An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their
     timestamps rarely line up. To train a model on both, each accelerometer
     sample needs the latest gyroscope sample at or before it, and only if
-    that one is recent enough. This is an ASOF join. Not every engine has one
-    (DataFusion has none), and Ibis's `asof_join` compiles to DuckDB syntax, so `sv.asof_join` builds it
+    that one is recent enough. This is an ASOF join. Not every engine has one,
+    and Ibis's `asof_join` compiles to DuckDB syntax, so `sv.asof_join` builds it
     from parts Lean understands: a range join, then `ROW_NUMBER` to keep the
     latest match.
 
