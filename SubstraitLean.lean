@@ -88,7 +88,7 @@ import Sverify.Core.AllowedNear
 import SubstraitLean.Lipschitz
 import SubstraitLean.LipschitzL1
 import SubstraitLean.EngineTables
-import SubstraitLean.Shims
+import Sverify.Engines.Shims
 import SubstraitLean.PolarsShims
 import SubstraitLean.PolarsProfile
 import SubstraitLean.SparkShims

@@ -12,7 +12,7 @@ what Spark does for each, as its facts record it
 (`characterization/spark/facts/`), and proves once, per shim, that the
 shimmed expression gives the reference's value. The lemmas are named as the
 shims of `Profile.spark.obs` (`EngineTables.lean`): `Spark.<name>`, or, for a
-shim another engine writes the same way, `Shim.<name>` (`SubstraitLean/Shims.lean`).
+shim another engine writes the same way, `Shim.<name>` (`engines/Sverify/Engines/Shims.lean`).
 
 **Trusted**: the model of Spark's own functions (`Spark.bin` below; the sort
 `Shim.sortWith`, the `DECIMAL(38,0)` sum `Shim.sumEmptyNull`), each from its

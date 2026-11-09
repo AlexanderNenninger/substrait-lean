@@ -540,6 +540,8 @@ def stale_checker(path: Path | None = None) -> str | None:
             root / "SubstraitLean.lean",
             *(root / "SubstraitLean").rglob("*.lean"),
             *(root / "core").rglob("*.lean"),
+            *(root / "analysis").rglob("*.lean"),
+            *(root / "engines").rglob("*.lean"),
         ]
         built = path.stat().st_mtime
         newer = [f for f in sources if f.exists() and f.stat().st_mtime > built]

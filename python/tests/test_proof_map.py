@@ -20,6 +20,7 @@ MAP_PATH = ROOT / "docs" / "proofs.md"
 MAP = MAP_PATH.read_text() if MAP_PATH.is_file() else ""
 
 CORE = ROOT / "core" / "Sverify" / "Core"
+ENGINES = ROOT / "engines" / "Sverify" / "Engines"
 GENERATED_DIRS = [
     ROOT / "SubstraitLean" / "LoweringDuckDB" / "On",
     ROOT / "SubstraitLean" / "LiftDuckDB" / "Duckdb",
@@ -32,6 +33,7 @@ CACHES = [ROOT / "SubstraitLean" / "LoweringCache.lean", ROOT / "SubstraitLean" 
 def _modules() -> list[Path]:
     lean = [
         *CORE.glob("*.lean"),
+        *ENGINES.glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]
@@ -48,7 +50,7 @@ def _section(title: str) -> str:
 def test_every_module_has_a_line(module):
     base = next(
         d
-        for d in [CORE, ROOT / "float-bounds" / "FloatBounds", ROOT / "SubstraitLean"]
+        for d in [CORE, ENGINES, ROOT / "float-bounds" / "FloatBounds", ROOT / "SubstraitLean"]
         if d in module.parents
     )
     rel = module.relative_to(base)
@@ -71,6 +73,7 @@ def _theorems() -> set[str]:
     names = set()
     for p in [
         *CORE.glob("*.lean"),
+        *ENGINES.glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]:
