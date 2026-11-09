@@ -94,7 +94,7 @@ import SubstraitLean.PolarsProfile
 import SubstraitLean.SparkShims
 import SubstraitLean.SparkProfile
 import SubstraitLean.SubstraitProfile
-import SubstraitLean.Transfer
+import Sverify.Engines.Transfer
 import SubstraitLean.Obligations
 import SubstraitLean.Epsilon
 import SubstraitLean.EngineRobust
