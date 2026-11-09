@@ -4,14 +4,12 @@
 surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
-* **guard elimination**: `SubstraitLean/Guards.lean`, `Report.guard_free`,
+* guard elimination: `SubstraitLean/Guards.lean`, `Report.guard_free`,
   and `guards=False` in `sverify.engines.to_sql` (and in
-  `polars_engine.run` and `duckdb_engine.run`);
-* **sharded evaluation**: `SubstraitLean/Partition.lean`,
+  `sverify_polars.engine.run` and `duckdb_engine.run`);
+* sharded evaluation: `SubstraitLean/Partition.lean`,
   `substrait-check --shard` and `sverify.engines.run_sharded`
   (`sverify.partition`).
-
-The rest were filed as #74–#83, under the closed roadmap epic #29.
 
 ## What engines already do
 
@@ -26,30 +24,30 @@ emit.
 | Hash-partitioned parallelism inside the engine | yes | yes | yes | yes | yes |
 | Partial/final (two-phase) aggregation inside the engine | yes | yes | yes | yes | yes |
 
-The useful question is therefore not "is this rewrite valid" but **what does
-the checker know that the engine does not?** The checker knows three things:
+The useful question is what the checker knows that the engine does not.
+The checker knows three things:
 
-1. **Contracts.** The preconditions are checked on the data at call time and
+1. Contracts. The preconditions are checked on the data at call time and
    composed across pipelines (`Compose.lean`). `Contracts.lean` derives value
    ranges, NULL-freedom and keys (`Keys.lean`) from them.
-2. **Exact semantics.** It knows where results are exact and where an engine
+2. Exact semantics. It knows where results are exact and where an engine
    would wrap, round or fail.
-3. **Guards.** The SQL we emit contains run-time checks that only we inserted,
+3. Guards. The SQL we emit contains run-time checks that only we inserted,
    so only we can remove them.
 
 ## Ranking
 
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
-| 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Public**, proved: `to_sql(…, guards=False)`, for a plan whose report's internal `_guard_free` holds |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79), eager aggregation (#80) |
-| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Public**, proved, including split keys (#74): `sverify.engines.run_sharded` |
-| 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | Proved, [section 4](#4-partition-and-file-pruning-81) (#81) |
-| 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
+| 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | Public, proved: `to_sql(…, guards=False)`, for a plan whose report's internal `_guard_free` holds |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination, implied filters, outer to inner joins, join elimination, GROUP BY through FDs, eager aggregation |
+| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | Public, proved, including split keys: `sverify.engines.run_sharded` |
+| 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | Proved, [section 4](#4-partition-and-file-pruning) |
+| 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | Not started ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/82)) |
 
 ## 1. Guard elimination
 
-**Problem.** Lean's integers are unbounded, so the SQL of every dialect
+Problem. Lean's integers are unbounded, so the SQL of every dialect
 checks each operation. `Snowflake` wraps `+`, `-`, `*` in an `IFF(… BETWEEN
 -2^63 AND 2^63-1, …, error)`. Every dialect writes integer division and
 remainder as `CASE WHEN b = 0 THEN error(…)`, and `date_trunc` gets a range
@@ -57,7 +55,7 @@ check. The Polars engine adds a `map_batches` flag check per operator and
 disables predicate pushdown. Most of these checks never fire on data that
 meets a contract.
 
-**What is proved.** `SubstraitLean/Guards.lean`:
+What is proved. `SubstraitLean/Guards.lean`:
 
 * `Impl` is an engine's own functions, without checks. `Impl.Faithful` is the
   trusted assumption: they agree with Lean wherever `UnFn.issue` and
@@ -87,7 +85,7 @@ To keep the `SUM` case apart, `Safety.lean` reports its issue as
 `Report.assumed`) and the job checks it on the data, so unlike the others, the
 guards keep its check.
 
-**A gap in the specification.** `Rel.HasIssue` evaluates filter and join
+A gap in the specification. `Rel.HasIssue` evaluates filter and join
 conditions on the rows of `Rel.loose`, the plan without the filters an engine
 may reorder. Under a left join whose right side has a filter, `loose` can
 *lose* rows: with the filter gone, a left row may find a match, so its
@@ -97,13 +95,13 @@ stay; `test_filtered_right_side_of_a_left_join_keeps_guards` covers this
 case. `Rel.mayIssues` itself is probably still sound on such plans, because
 the abstract left join always allows padded rows. But `mayIssues_sound` is
 stated against `HasIssue`, so it does not cover them. Strengthening
-`HasIssue` to cover every evaluated row is a follow-up (#83).
+`HasIssue` to cover every evaluated row is open ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/83)).
 
-**Wiring.** `Report._guard_free`. `to_sql(plan, dialect, guards=False)` drops
+Wiring. `Report._guard_free`. `to_sql(plan, dialect, guards=False)` drops
 the division-by-zero `CASE`s, the `date_trunc` range check, Snowflake's
 row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 `MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
-`polars_engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
+`sverify_polars.engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
 `to_sql(plan, dialect, unchecked=report._unchecked)` drops the checks of the
 expressions `unchecked` lists and keeps the others, and every aggregate's.
@@ -114,7 +112,7 @@ keeps its overflow check (`test_per_expression_guards` in
 `python/tests/test_guards.py`). The Polars engine still drops all of its
 checks or none.
 
-**Benchmark** (`python/scripts/bench_optimizations.py`, homelab, 10⁶ rows,
+Benchmark (`python/scripts/bench_optimizations.py`, a 12-core Linux machine, 10⁶ rows,
 `a // b`, `a % b`, `a * 3 + b` under a filter, preconditions `0 ≤ a ≤ 10⁶`,
 `1 ≤ b ≤ 1000`):
 
@@ -123,24 +121,24 @@ checks or none.
 | Polars | 281 ms | 103 ms | 2.7× |
 | DuckDB | 30 ms | 26 ms | 1.1× (DuckDB checks overflow natively; only the `CASE`s go) |
 
-**Limits found on the way.** `Bound.mul` of two non-constant ranges used to
+Limits found on the way. `Bound.mul` of two non-constant ranges used to
 be ⊤, so `a * b` kept its overflow guard even when both columns are bounded.
 It now multiplies the corners of two finite intervals (`Bound.mem_corners`),
 so such products go guard-free; a half-open range still gives ⊤. The
 elimination was also all or nothing per plan; `Rel.evalG_marks` now decides
-per expression (#83).
+per expression.
 
 ## 2. Sharded evaluation
 
-**Setting.** The sharded tables `S` are split over shards `cs`, and every
+Setting. The sharded tables `S` are split over shards `cs`, and every
 other table is broadcast (`Sharding S K cat cs`). A table may have a
-**split key** `K t`: columns on which rows of different shards never agree,
+split key `K t`: columns on which rows of different shards never agree,
 across all keyed tables (`Sharding.keyDisj`). All rows with one key value are
 then on one shard, as a Delta or Iceberg partition column (or a hash of it)
 guarantees. The question is when
 `eval q (D₁ ⊎ … ⊎ Dₙ) ~ eval q D₁ ⊎ … ⊎ eval q Dₙ`, or something close to it.
 
-**Proved** (`SubstraitLean/Partition.lean`, all without `sorry`):
+Proved (`SubstraitLean/Partition.lean`, all without `sorry`):
 
 * `Rel.eval_sharded`. A plan *linear* in `S` (`Rel.linear`) gives the union
   of its results on the shards, as bags. Linear means filters, projections,
@@ -149,7 +147,7 @@ guarantees. The question is when
   reads only broadcast tables. For inner and cross joins that side can be
   either one; for left and semi joins it must be the right side. Literal
   tables (`VALUES`) are not linear, because every shard would repeat them.
-* **With split keys,** `Rel.linear` also accepts an aggregate whose
+* With split keys, `Rel.linear` also accepts an aggregate whose
   `GROUP BY` contains the key, and a `DISTINCT` whose columns do. No group,
   and no duplicate row, spans two shards (`aggregateEval_flatten_disjoint`,
   `dedup_flatten_disjoint`), so each shard's result is final, for every
@@ -160,14 +158,14 @@ guarantees. The question is when
   `SELECT` lists emit), emits, joins with broadcast tables, unions and
   aggregates. `Rel.keyRows` proves that every output row carries the key of
   a row on its own shard.
-* **Co-partitioned joins.** An inner, left, semi or anti join of two linear
+* Co-partitioned joins. An inner, left, semi or anti join of two linear
   plans, both with split keys that the condition equates (`ON r.k = s.k`,
   possibly among other conjuncts: `Expr.eqFields`, `coCond`), runs on each
   shard. A row of one shard never matches a row of another
   (`Sharding.coDisjoint`), so the cross product keeps only same-shard pairs
   (`cross_filter_diag`), and a left join's padding and a semi join's test only
   see the row's own shard (`flatMap_rowwise`, `filter_rowwise`).
-* **Windows.** A window whose `PARTITION BY` contains the split key runs on
+* Windows. A window whose `PARTITION BY` contains the split key runs on
   each shard, when its partition and sort columns form a key of its input
   (`windowEval_sharded`). The key is needed because Lean breaks ties in a
   window's sort by row order, which neither sharding nor engines keep.
@@ -186,7 +184,7 @@ guarantees. The question is when
   NULL partial (`SUM`, `MIN`, `MAX`) or `0` (`COUNT`), and both are neutral.
   A global aggregate over zero shards would give NULL instead of `COUNT = 0`,
   so at least one shard is required.
-* `Rel.eval_algebraic` (#245). An algebraic aggregate is a final expression
+* `Rel.eval_algebraic`. An algebraic aggregate is a final expression
   over a tuple of distributive partials: each shard computes the partials,
   the combining phase combines each of them as above, and the final
   expression gives the result (`aggregateEval_algFinish`). The instance is
@@ -204,8 +202,7 @@ guarantees. The question is when
   split key, like `COUNT(DISTINCT x)`. `AVG` with a double result stays
   refused (see the float sums below). `VAR_*`, `STDDEV_*`, `COVAR_*` and
   `CORR` are doubles in the model, also of integers, so the same caveat
-  holds for them; their exact partials (`n`, `Σx`, `Σx²`, …) wait for the
-  error bounds of #85.
+  holds for them; their exact partials (`n`, `Σx`, `Σx²`, …) are not split.
 * `Rel.eval_twoPhase`, `Rel.shardSplit_sound`. `Rel.shardSplit` turns a plan
   into the plan each shard runs and the plan that combines their
   concatenated results. Filters, projections and sorts above the aggregate
@@ -213,10 +210,10 @@ guarantees. The question is when
 * `inI64_partial`. When all values have the same sign, every partial sum lies
   between 0 and the total, so it fits in 64 bits whenever the total does.
 
-**The exact-semantics catches, and what we do with each:**
+The exact-semantics catches, and what we do with each:
 
-* **A 64-bit partial sum can overflow when the total does not, or the
-  reverse.** Example: a shard with `2^62, 2^62` next to one with
+* A 64-bit partial sum can overflow when the total does not, or the
+  reverse. Example: a shard with `2^62, 2^62` next to one with
   `-2^62, -2^62`. Engines differ here. DataFusion and Polars wrap, and since
   wrapping addition is associative the wrapped total is still right
   mod 2⁶⁴. Spark in ANSI mode raises on an overflowing partial sum, as
@@ -226,40 +223,39 @@ guarantees. The question is when
   (`test_partial_sum_may_overflow_where_the_total_does_not`). A spurious
   failure is ruled out when all values have one sign (`inI64_partial`),
   which a contract bound such as `_.amount >= 0` gives. Wiring that bound
-  into `--shard`, to say "cannot fail spuriously", is a follow-up (#83).
+  into `--shard`, to say "cannot fail spuriously", is not done.
   The reverse case is caught: a total that leaves 64 bits fails in the
   combining `SUM`.
-* **Float sums are not associative.** `SUM` and `AVG` of doubles round the
-  exact sum once in Lean (`floatSumCR`, D25), and engines already return
+* Float sums are not associative. `SUM` and `AVG` of doubles round the
+  exact sum once in Lean (`floatSumCR`), and engines already return
   results that depend on their thread partitioning. A split rounds each
   shard's partial sum before the combine, so `--shard` refuses these
   aggregates by default. With `float_order="any"` it splits them anyway
   (`floatCombine`: `SUM` of partial sums, `AVG` as summed sums over summed
-  counts), within a proved bound
-  ([#428](https://github.com/AlexanderNenninger/substrait-lean/issues/428)).
+  counts), within a proved bound.
   Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split
   double (`floatBoundParts`), and from them the combined `SUM` of a group of
   `n` values in `k` shards of at most `m` is within
   `(γ (m + k) + γ n) · (mag + k · 2⁻¹⁰²²)` of Lean's one-pass sum, the `AVG`
   within the same with `+ 2` in each `γ`, over `n` (`floatSplit_sum`,
   `floatSplit_avg`, proved over the reals in
-  [`float-bounds/FloatBounds/Shard.lean`](float-bounds.md#sharded-sum-and-avg-stage-5)).
+  [`float-bounds/FloatBounds/Shard.lean`](float-bounds.md#sharded-sum-and-avg)).
   The result stays `proved: false`, and `float_bounds` in `--shard`'s output
   says which output columns carry the bound; `run_sharded(...,
   tolerance=True)` gives τ per row. Everything else is still Lean's value.
   Rewriting `AVG` as `SUM / COUNT` does not help for doubles. For integers,
   `AVG(x)` is defined as the `AVG` of the converted doubles
   (`Aggregate.lean`), which is not `CAST(SUM(x)) / COUNT(x)` either. An exact
-  result would need an exact accumulator, deferred with stage 6 of #85.
-* **Other `DISTINCT` aggregates** are refused: a value in two shards counts
+  result would need an exact accumulator, which `--shard` does not keep.
+* Other `DISTINCT` aggregates are refused: a value in two shards counts
   once in the whole and twice in the parts. `DISTINCT` without the split
   key, windows and `FETCH` are refused because they look at rows of other
   shards.
-* **Joins of two sharded tables** that are not co-partitioned are refused,
+* Joins of two sharded tables that are not co-partitioned are refused,
   and so are windows without the split key in `PARTITION BY`, or with
   possible ties.
 
-**Wiring.** `substrait-check --shard {"plan", "sharded", "keys", "unique",
+Wiring. `substrait-check --shard {"plan", "sharded", "keys", "unique",
 "float_order"}` returns the partial and combining plans in Lean's written
 form, whether the result is proved, and with split doubles where their
 bound is read (`float_bounds`), or exit code 5 with the reason. The
@@ -271,14 +267,14 @@ checks split keys and `unique` columns on the data before relying on them
 does. `tests/test_partition.py` compares the sharded result
 with the whole on random data and random splits.
 
-**Benchmark.** On one machine, a grouped aggregate over 10⁶ rows in 8 shards
+Benchmark. On one machine, a grouped aggregate over 10⁶ rows in 8 shards
 takes 157 ms against 112 ms in one Polars run (0.7×). That is expected:
 Polars already parallelises a single query, and the threads share the GIL in
 the Python glue. Sharding pays off where the data already lives apart:
 Delta/Iceberg partitions processed where they are stored, several engines
 or warehouses, or incremental maintenance of one partition at a time.
 
-## 3. Constraint-based semantic rewrites (issues)
+## 3. Constraint-based semantic rewrites
 
 Snowflake does not enforce PK, FK or UNIQUE constraints; it enforces only
 NOT NULL. Its optimizer eliminates joins only for constraints marked `RELY`,
@@ -290,20 +286,20 @@ optimizer. DataFusion uses primary keys for functional dependencies in
 or proved through composition, so each rewrite below rests on facts we know
 hold:
 
-* **Join elimination** (#75, done). Take `R ⋈ S` on a condition that
+* Join elimination. Take `R ⋈ S` on a condition that
   determines a key of `S` (`Keys.determines`), so each left row has at most
   one partner. A left join then gives exactly one row per left row, and so
   does an inner join on a NOT NULL foreign key (`sv.references`, as in
-  #77). When an emit, a projection or an aggregate above reads no column of
+  the outer-to-inner conversion below). When an emit, a projection or an aggregate above reads no column of
   `S`, the join goes (`Rel.joinElim`, `flatMap_single`, `aggregateEval_map`).
-* **DISTINCT elimination** (#76, done). If `Rel.keys` proves any key of
+* DISTINCT elimination. If `Rel.keys` proves any key of
   `r`, its rows are pairwise distinct and `DISTINCT r` is `r`
   (`dedup_of_nodup`). The same goes for a `GROUP BY` without measures whose
   grouping expressions contain a key's columns (it becomes a projection), and
   for `fn(DISTINCT x)` when `x` alone is a key (`COUNT(DISTINCT id)` becomes
   `COUNT(id)`).
 
-**Wiring.** `Rel.optimize` (`SubstraitLean/Semantic.lean`) applies the
+Wiring. `Rel.optimize` (`SubstraitLean/Semantic.lean`) applies the
 rewrites bottom-up, deciding each from the analyses of the already rewritten
 inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
 is well-formed, has the same arity and gives the same list of rows (not just
@@ -311,9 +307,9 @@ the same bag). `substrait-check --contract` reports the rewritten plan as
 `optimized`, in Lean's written form, with the names of the rewrites applied
 (`rewrites`); the report keeps them as `_optimized` and `_rewrites`.
 Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
-`polars_engine.run`) only on data that meets the preconditions, as with
+`sverify_polars.engine.run`) only on data that meets the preconditions, as with
 `guards=False`.
-* **Outer-to-inner join conversion** (#77, done). A filter above a left
+* Outer-to-inner join conversion. A filter above a left
   join that is never TRUE on a padded row (`Expr.absD` with the right
   columns NULL) turns it into an inner join; engines do this case too. With a
   foreign key and NOT NULL, every left row matches, so the conversion holds
@@ -324,13 +320,13 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   in the incremental fragment (`--delta`), which excludes left joins. Incremental
   views do not take `references` preconditions yet: they would have to check
   deletes from the referenced table.
-* **Filters implied by CHECK constraints** (#78, done). If `Expr.absD`
+* Filters implied by CHECK constraints. If `Expr.absD`
   shows the condition certainly TRUE on the input's abstract rows
   (`AVal.certainlyTrue`, as for a postcondition), `filter r c` is `r`. If it
   shows the condition never TRUE (`tt = false`), the filter is an empty
   `VALUES`. This composes: a downstream re-check of an upstream guarantee
   disappears (`test_composed_pipeline_drops_the_downstream_check`).
-* **GROUP BY simplification through functional dependencies** (#79, done).
+* GROUP BY simplification through functional dependencies.
   `Rel.fds` derives dependencies: input keys and aggregate groups determine
   every column, equalities in filters and inner joins and copied columns
   determine each other, and they follow emits, projections and joins
@@ -338,13 +334,13 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   of the others determines and carries it through `MIN`, which is the
   group's one value, NULL included (`Measure.eval_min_const`). The groups
   stay the same (`dedup_parallel`), so the result is the same list of rows.
-  **Benchmark** (`scripts/bench_optimizations.py`, laptop, 10⁶ line items,
+  Benchmark (`scripts/bench_optimizations.py`, laptop, 10⁶ line items,
   TPC-H Q3-style `GROUP BY l_orderkey, o_date, o_prio` after a join on the
   order key): DuckDB 57 ms as written, 67 ms by key; Polars 420 ms and
   600 ms. Neither engine gains: both hash a few more key columns more
   cheaply than they compute the `MIN`s. The rewrite may pay off on engines
   with costly wide hash keys or spilling, which is not measured here.
-* **Eager aggregation below joins** (#80, done for joins on a key). Take a
+* Eager aggregation below joins (for joins on a key). Take a
   `GROUP BY` of left columns over `R ⋈ S`, where the condition determines a
   key of `S` (so each left row has at most one partner,
   `Rel.partners_le_one`) and reads only left columns that are grouped (so the
@@ -354,14 +350,14 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   scaling of `COUNT` or `SUM` is needed, since every multiplicity is 0 or 1.
   The general case, without a key, needs measures scaled by match counts
   (`AggFn.combine_apply` in `Partition.lean`) and is not done.
-  **Benchmark** (`scripts/bench_optimizations.py`, laptop): 10⁶ line items
+  Benchmark (`scripts/bench_optimizations.py`, laptop): 10⁶ line items
   grouped by order key, 4 rows per group: DuckDB 10 ms as written, 12 ms
   aggregated first; Polars 78 ms and 131 ms. With 1000 rows per group, DuckDB
   is even (4.9 ms and 4.2 ms) and Polars still slower (31 ms and 43 ms). The
   join to a small keyed table is cheap in both engines, so aggregating first
   saves little.
 
-## 4. Partition and file pruning (#81)
+## 4. Partition and file pruning
 
 `sverify.io` reads Delta and Iceberg with per-file statistics, and
 `TableFormat.lean` proves that statistics bound a file's rows
@@ -384,7 +380,7 @@ rule it out. `SubstraitLean/Pruning.lean` proves the criterion:
   a file whose NULL count equals its row count holds only NULLs
   (`ColStats.aval`). With deletion vectors or delete files the statistics
   describe a superset of the rows, which keeps them correct.
-* NaN (#36): writers leave NaN out of a double column's minimum and
+* NaN: writers leave NaN out of a double column's minimum and
   maximum. NaN is the greatest code, so the minimum still bounds the
   column, and the maximum only where the file counts no NaN
   (`DoubleStats.colStats_correct`). Delta and pyiceberg count no NaN, so
@@ -427,7 +423,7 @@ CHECK constraints and a source's own condition). File statistics change
 between versions, so they are left out. A table whose preconditions fail
 on rows the predicate drops raises in fewer cases; the result is the same.
 
-## 5. View matching and shared subplans (#82, later)
+## 5. View matching and shared subplans
 
 Pipelines often recompute the same subplan, such as one filtered fact table
 feeding several aggregates. The checker could find subplans equal up to
@@ -443,10 +439,10 @@ A node's `refresh` maintains filters, projections, inner and cross joins and
 `UNION ALL` from the changes to their inputs, by delta rules Lean proves
 over Z-sets (`Rel.incremental_sound` in
 [`SubstraitLean/Incremental.lean`](../SubstraitLean/Incremental.lean)).
-Epic #248 extends the delta rules to the operators that are not linear. Its
-first stage covers `COUNT` and integer `SUM` per group, and `DISTINCT`
+Further delta rules cover operators that are not linear: `COUNT` and
+integer `SUM` per group, and `DISTINCT`
 ([`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
-[`sverify._linear`](../python/src/sverify/_linear.py)). The second covers
+[`sverify._linear`](../python/src/sverify/_linear.py)),
 exact `SUM` and `AVG`, `MIN` and `MAX` per group
 ([`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)),
 and semi and anti joins
@@ -486,7 +482,7 @@ as on a full recompute. A row's value times its weight must fit 64 bits too.
 the values (an integer in units of `2⁻¹⁰⁷⁴`, which every finite double is a
 multiple of) and the counts of NaN, `+∞` and `-∞` among them. A batch adds
 each changed row's value times its weight to it, and the view's value is
-the exact sum rounded once, `floatSumCR` (D25). Lean proves that after any
+the exact sum rounded once, `floatSumCR`. Lean proves that after any
 sequence of batches the state finishes to the aggregate of the current rows
 (`LinearAgg.fsum_no_drift` in
 [`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)):
@@ -500,7 +496,7 @@ state is rebuilt from the inputs when a job starts: about 2 s for 10⁷ rows.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` of doubles keep their exact moments
 the same way: the count, `Σx`, `Σx²`, and for pairs `Σy`, `Σxy`, `Σy²`, with
-the counts of NaN and infinities, from which the view's value is D30's, the
+the counts of NaN and infinities, from which the view's value is the reference's, the
 exact moments rounded once (`varState_sound`, `covState_sound`,
 `corrState_sound`, and `LinearAgg.no_drift` for every batch sequence).
 
@@ -521,7 +517,7 @@ maintained, like a view with delta rules. The tests
 with a full recompute over random change streams on DuckDB, Polars and
 DataFusion.
 
-`AVG` of exact types is a `SUM`, a `COUNT` and a division (#245). A
+`AVG` of exact types is a `SUM`, a `COUNT` and a division. A
 `DECIMAL` `AVG` is, in the model, an aggregate of the `SUM` and the `COUNT`
 with a projection that divides them at four more decimal places
 (`Parse.decimalAvgs`), so the state of `SUM` maintains it, and the view
@@ -533,7 +529,7 @@ of the full `SUM`, ten more digits, so it raises where a full recompute
 does. An integer `AVG` with an integer result (`AggFn.iavg`) finishes from
 the same state as `SUM / COUNT` truncated (`ExtremeAgg.finish_iavg`). Ibis
 types `mean()` of integers as a double, which, like a double `SUM`, is
-left to touched-group recompute (#85).
+left to touched-group recompute.
 
 `MIN` and `MAX` are linear under inserts: the `MIN` of a group's old values
 and the inserted ones is the `MIN` of the two (`minMax_combine`). A
@@ -571,7 +567,7 @@ a full recompute over random change streams on both sides, on DuckDB,
 Polars and DataFusion.
 
 A failed commit leaves the state of every view as it was, the counts per
-key and the extremes included (#515): the commit swaps them in with the
+key and the extremes included: the commit swaps them in with the
 rest, and puts them back on any error
 ([`test_io_delta.py`](../python/tests/test_io_delta.py)).
 
@@ -591,10 +587,8 @@ the partition and time columns. The tests
 ([`test_touched_frames.py`](../python/tests/test_touched_frames.py)) compare
 every refresh with a full recompute, duplicate and NULL times included.
 
-Later stages of #248, each with its own delta rule:
+These have no delta rule yet, tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/248):
 
 * global aggregates (no `GROUP BY`), one output row even on an empty input;
-* double `SUM` and `AVG` with deletes, whose error grows with every change
-  (#85);
 * left joins, which retract their NULL-padded rows when a match arrives;
 * windows.

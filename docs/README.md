@@ -1,17 +1,17 @@
 # A map of the docs
 
-Every page of sverify's docs is one of four kinds, and each kind has one job
-([#751](https://github.com/AlexanderNenninger/substrait-lean/issues/751)):
+Every page of sverify's docs is one of four kinds, and each kind has one job:
 
 - a tutorial teaches by doing, start to finish;
 - a how-to guide solves one task;
 - a reference states the facts, to look up;
 - an explanation says how and why.
 
-Each topic has one home, and the other pages link to it
-([#1016](https://github.com/AlexanderNenninger/substrait-lean/issues/1016)).
+Each topic has one home, and the other pages link to it.
 The [docs site](https://alexandernenninger.github.io/substrait-lean/) renders
-the pages marked "site", in the section named; the rest are read here.
+the pages marked "site", in the section named; the rest are read here. The
+pages for contributors, last, are records of the project's design: they keep
+its decision numbers and issue links, and the site leaves them out.
 `tests/test_docs_pages.py` checks that this map lists every page of `docs/`
 and every notebook once.
 
@@ -35,14 +35,14 @@ and every notebook once.
 | [notebooks/05_pipelines_and_engines.py](../notebooks/05_pipelines_and_engines.py) | Pipelines and engines: delta rules, quarantine, routes, doubles |
 | [notebooks/06_running_in_production.py](../notebooks/06_running_in_production.py) | Running it in production: the command in CI, tests, credentials, lineage, late rows |
 
-The notebooks run on molab from the `published` branch (CLAUDE.md,
-"Notebooks on molab").
+The notebooks run on molab from the `published` branch, which follows the
+release on PyPI.
 
 ## How-to
 
 | Page | Job | Site |
 |---|---|---|
-| [guide.md](guide.md) | Every task, one section each: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest ([#753](https://github.com/AlexanderNenninger/substrait-lean/issues/753) splits it) | |
+| [guide.md](guide.md) | Every task, one section each: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
 | [examples.md](examples.md) | Ten short examples, each a step up | Examples |
 
 ## Reference
@@ -52,10 +52,7 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | [The API reference](https://alexandernenninger.github.io/substrait-lean/reference/) | Every public function and class, from the docstrings | Reference |
 | [reference-semantics.md](reference-semantics.md) | What a plan means, row by row, the Ibis frontend and how the model holds a plan | Semantics |
 | [stability.md](stability.md) | What 1.x keeps: the formats, the proofs, the API, the engines | Semantics |
-| [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area | Semantics |
 | [realizability.md](realizability.md) | Each engine's class on every option, generated | Ledgers |
-| [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit | |
-| [build-performance.md](build-performance.md) | The Lean build's time and memory per module, how they are measured, and the budget CI checks | |
 | The ledgers | Upstream bugs, spec gaps, engine facts, the checklist's coverage | Ledgers |
 
 ## Explanation
@@ -63,15 +60,23 @@ The notebooks run on molab from the `published` branch (CLAUDE.md,
 | Page | Job | Site |
 |---|---|---|
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers, what is proved | Design |
-| [core-semantics.md](core-semantics.md) | The loose core, which does a superset of operations, the profiles that refine it, translations, the decisions D1 onwards | Design |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
-| [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per module | Design |
 | [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
-| [layers.md](layers.md) | The layers of the Python package | Design |
 | [prior-work.md](prior-work.md) | The work sverify builds on, and related tools | Design |
+
+## For contributors
+
+| Page | Job |
+|---|---|
+| [core-semantics.md](core-semantics.md) | The loose core, which does a superset of operations, the profiles that refine it, translations, and the decision log |
+| [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per Lean module |
+| [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area, with where each stands |
+| [layers.md](layers.md) | The layers of the Python package |
+| [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit |
+| [build-performance.md](build-performance.md) | The Lean build's time and memory per module, how they are measured, and the budget CI checks |
 
 ## Where each topic lives
 

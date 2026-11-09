@@ -27,13 +27,13 @@ Which plans split, which are refused and why, and why a 64-bit partial sum
 can fail where the total would not: docs/optimizations.md, "2. Sharded
 evaluation".
 
-`float_order="any"` splits `SUM`/`AVG` of doubles anyway (#428): `Split.proved`
+`float_order="any"` splits `SUM`/`AVG` of doubles anyway: `Split.proved`
 is then false, and `Split.float_bounds` says which output columns are within
 a tolerance τ of Lean's value. `run_sharded(..., tolerance=True)` computes τ
 for each group of `n` values from the partial rows (`group_tolerance`), with
 `A` the shards' rounded `SUM(|x|)`s added up. τ is the larger of two bounds.
-Lean's own split, each shard's exact sum rounded once and then the partials'
-(D25), is within `A / 2⁵⁰` of the whole's one rounding, and a split mean
+Lean's own split, each shard's exact sum rounded once and then the partials',
+is within `A / 2⁵⁰` of the whole's one rounding, and a split mean
 within `A / (n · 2⁴⁷) + 2⁻¹⁰⁷⁴` (`shard_tol_cr`, `shard_avg_tol_cr`). An
 engine adding the shards in its own order is within `shard_tol_scaled` of
 the reference's rounding; its `γ(n)` term covers that rounding, at most
@@ -256,7 +256,7 @@ def shard_avg_tol_scaled(n: int, m: int, k: int, a: int) -> int:
 
 def shard_tol_cr(a: int) -> int:
     """`FloatCode.shardTolCR` (`SubstraitLean/Partition.lean`): the bound of a
-    split double `SUM` that Lean computes (D25: each shard's exact sum rounded
+    split double `SUM` that Lean computes (each shard's exact sum rounded
     once, then the partials'), scaled: `a / 2⁵⁰`."""
     return a // 2**50
 

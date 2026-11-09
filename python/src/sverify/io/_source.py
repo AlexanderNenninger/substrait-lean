@@ -144,10 +144,10 @@ class Source(Pipeable, ABC):
     refresh reads only what is new since (`read(cursor)`). A source that
     cannot restore has its sink record a digest of its contents: a restarted
     job whose first read has the recorded digest resumes there, and writes
-    nothing (#889). Otherwise its stored nodes are recomputed and written
+    nothing. Otherwise its stored nodes are recomputed and written
     again in full, with versions above the ones their sink recorded, so the
     sink still writes exactly once; a sink that holds other contents at a
-    version this process also reached is written over (#965).
+    version this process also reached is written over.
 
     Args:
         name: The table's name in the plans that read it.
@@ -264,7 +264,7 @@ class Source(Pipeable, ABC):
         sink records the cursor if it has a JSON form (see
         `Batch.cursor`). It stores it in clear, in the table's own metadata,
         where every reader of the table can read it: a cursor must not be a
-        credential, a signed URL or a token that grants access (#887).
+        credential, a signed URL or a token that grants access.
 
         The restored table is trusted to be the table the stored nodes were
         computed from; `refresh(audit=True)` reads the whole table again on
@@ -466,7 +466,7 @@ class Source(Pipeable, ABC):
         """The content digest of the table as of the latest version, for a
         source whose cursors do not last (`restore`): its versions count
         this process's reads, so a sink records the digest with the version
-        and tells other contents at the same version (#965). None for a
+        and tells other contents at the same version. None for a
         source that restores, whose versions last."""
         st = self._state
         if st is None or self._durable():
@@ -623,7 +623,7 @@ def from_query(
             Default: that of the first rows.
 
         credentials: The secrets `fn` reads, by name or reference
-            (`sverify.io.Secret`), so reports list them (#778). Read one
+            (`sverify.io.Secret`), so reports list them. Read one
             inside `fn` with `Secret(name).value()`. Default: none.
     Returns:
         The source.
@@ -688,7 +688,7 @@ def from_frame(
             that of the first read.
 
         credentials: The secrets `fn` reads, by name or reference
-            (`sverify.io.Secret`), so reports list them (#778). Read one
+            (`sverify.io.Secret`), so reports list them. Read one
             inside `fn` with `Secret(name).value()`. Default: none.
     Returns:
         The source.
@@ -790,7 +790,7 @@ def from_files(
             its default credentials (environment, profile, role).
 
         credentials: The secrets `filesystem` was built with, by name or
-            reference (`sverify.io.Secret`), so reports list them (#778).
+            reference (`sverify.io.Secret`), so reports list them.
             Default: none.
     Returns:
         The source.

@@ -114,7 +114,7 @@ def _(mo):
       largest 64-bit integer overflows and the reference raises, so the
       plan needs an upper bound on `amount`. Without one, Sverify works out
       the weakest, `amount < 2**62`, and reports the plan as not proved
-      until you declare a bound (D23). Like every precondition, it is
+      until you declare a bound. Like every precondition, it is
       checked on your data, or proved from table metadata.
 
     `sv.verify(expr, requires=..., ensures=...)` does the same for an
@@ -633,8 +633,8 @@ def _(mo):
       sees rows that passed. `n != 0` leaves `MIN / -1` open, and `n > 0`
       closes it.
     * The same `AND` is no guard: DuckDB and Polars evaluate both operands,
-      so `qty % n` runs on the `n = 0` row (D19 in
-      [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md)). The report flags the error inside the
+      so `qty % n` runs on the `n = 0` row
+      ([eager AND and OR](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#guards)). The report flags the error inside the
       `AND` and suggests guarding the operation itself with the `CASE` above.
     * An earlier filter is no guard either. An optimizer may merge the two
       filters into one `AND`, as DataFusion's does. Lean models that (`Rel.loose`) and reports
@@ -652,12 +652,10 @@ def _(mo):
     works out the precondition `(_.n != 0)` and reports the plan as not
     proved until you declare it in `requires`. Declared, it is checked on
     each batch before the run, so `report.run` and `refresh` refuse a batch
-    with `n = 0` with a `PreconditionError` and nothing runs
-    ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
+    with `n = 0` with a `PreconditionError` and nothing runs.
     A `SUM` that may overflow, or an operation on doubles that may overflow
     to ±∞, does not block the proof: the assumption is listed in
-    `Report.assumed` and checked at run time, on the data before the run
-    ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
+    `Report.assumed` and checked at run time, on the data before the run.
     """)
     return
 
@@ -699,9 +697,8 @@ def _(mo):
     expression (lazy `CASE`, eager `AND`/`OR`, merged filters, and the
     constant conditions DuckDB evaluates while it plans the query). A
     constant that raises, such as `1 // 0 = 1` in a later `WHEN`, makes
-    Sverify report the whole plan as raising, on any data
-    ([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609),
-    D21). The test suite runs plans on random data, extreme values included,
+    Sverify report the whole plan as raising, on any data. The test suite
+    runs plans on random data, extreme values included,
     and checks that they fail only where Lean reported an error.
 
     ## Windows and ASOF joins

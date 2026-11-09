@@ -207,8 +207,7 @@ and through delta-rs and pyiceberg, and compares the tables after every
 refresh and the statistics both record.
 
 DataFusion is an optional engine (`pip install 'sverify[datafusion]'`), and no
-test takes its results as a reference or an oracle
-([#1139](https://github.com/AlexanderNenninger/substrait-lean/pull/1139)). It runs plans
+test takes its results as a reference or an oracle. It runs plans
 with `engine="datafusion"`, and nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
 51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
@@ -234,7 +233,7 @@ engine is made to agree:
   queries on a connection run on DuckDB, so they agree too.
 * DataFusion, the optional engine, orders doubles by `f64::total_cmp` (−0.0 <
   0.0, a negative NaN first), so the tables it reads and its results are canonicalized
-  (`sverify.engine.canonical`). DataFusion is a tier-3 engine: it refuses
+  (`sverify.engine.canonical`). DataFusion is an optional engine: it refuses
   a plan with a double operation that IEEE arithmetic lets give −0.0 or a
   negative NaN (`DataFusion.signedDoubles`,
   [DF-13](../upstream/bugs/DF-13.json)). SQL run on DataFusion directly (a
@@ -252,7 +251,7 @@ writes the functions and encodings the Lean parser reads, and each operation
 means what [the Ibis frontend](reference-semantics.md#the-ibis-frontend) says, with Ibis's
 type promotions written as explicit casts. That makes plans typed: `qty >
 amount` compares as doubles, where DataFusion's producer (from its unanalysed
-plan) once left an integer next to a double's code (#16). Upstream's mistakes are fixed
+plan) once left an integer next to a double's code. Upstream's mistakes are fixed
 (integer `/` divided integers, `where=` filters were dropped, sorts were always
 `NULLS FIRST`, promotions could cast a double down to an integer, timestamp
 literals were read in local time), and anything outside the model raises
@@ -291,9 +290,8 @@ SQL strings are DuckDB's SQL, and go through sverify's own lift
 (`sverify.sql_lift`): SQLGlot parses the query and resolves its names against
 the input tables, and the lift writes a Substrait plan in which every choice
 DuckDB's SQL leaves implicit is explicit (casts, output types, function
-options, sort directions). It reads a subset of SQL so far and refuses the
-rest ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231),
-[#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)).
+options, sort directions). It reads a subset of SQL and refuses the
+rest.
 
 The parser also reads encodings other producers write: typed function names
 (`add:date_iday`), CHAR and VARCHAR literals, window functions inside
@@ -352,8 +350,7 @@ main ones.
 [Contracts.lean](../SubstraitLean/Contracts.lean) is an abstract interpreter
 over `Rel`. Each column gets an `AVal`, a set of possible values: whether it can be NULL, an integer
 interval, possible booleans, and whether it can be a string, with the strings
-it can be when they are few: at most `strCap` (64) of them, past that any string
-(#708).
+it can be when they are few: at most `strCap` (64) of them, past that any string.
 
 * `Expr.abs_sound`: abstract evaluation of expressions is sound, including SQL's
   three-valued `AND`/`OR`, NULL-propagating arithmetic and comparisons.
@@ -365,7 +362,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   A fact `holds e` keeps a whole condition, a conjunct of a precondition or
   of a filter or inner join condition (`Expr.conjuncts_sound`): projections
   rename its columns (`Expr.eval_mapFields`), and a left join drops those of
-  its right side, which NULL padding may break (#597).
+  its right side, which NULL padding may break.
 * `Expr.refineOr_sound`, `useFacts_sound`: a row on which `p OR q` is TRUE,
   and `p` cannot be TRUE under the columns' description, has `q` TRUE, so
   `q` refines the columns; a `CASE` whose condition is decided is its branch.
@@ -385,7 +382,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   which proves `x >= 0 OR x IS NULL` for a nullable `x`.
   A string constant is that one string, `s = 'k'` and `s IN ('a', 'b')`
   narrow a column to those strings, `s <> 'k'` and `NOT IN` take them out,
-  and `CASE`, `COALESCE` and `UNION ALL` join the sets (`AVal.strs`, #708),
+  and `CASE`, `COALESCE` and `UNION ALL` join the sets (`AVal.strs`),
   so a filter `status <> 'cancelled'` over a source whose `status` is one of
   four strings proves `status IN ('placed', 'shipped', 'returned')`.
 * `Rel.keys_sound` ([Keys.lean](../SubstraitLean/Keys.lean)): derived keys hold. No two
@@ -410,8 +407,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   keys; join keys drop right-key columns the condition ties to the left side
   (`a.device = b.device`), for inner and left joins. A key of each branch of
   a `UNION ALL`, with a column whose values the branches cannot share (a
-  constant tag, a `GROUPING` level), is a key of the union (`AVal.disjoint_ne`,
-  #436).
+  constant tag, a `GROUPING` level), is a key of the union (`AVal.disjoint_ne`).
 * `window_tiebreak`, `Rel.window_deterministic` ([Keys.lean](../SubstraitLean/Keys.lean)):
   when a window's partition and sort columns contain a key of its input, every
   arrangement of the input sorted by the window's keys gives the same rows as
@@ -430,7 +426,7 @@ Doubles are modelled as exact integer codes (each double is a multiple of 2⁻¹
 [Float.lean](../core/Sverify/Core/Float.lean) and
 [FloatFormat.lean](../core/Sverify/Core/FloatFormat.lean). `+ − × ÷` compute on the
 codes, the exact result rounded once
-([D31](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once),
+([exact, rounded once](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once),
 [FloatArith.lean](../core/Sverify/Core/FloatArith.lean)). The conversions between
 codes and native floats, which `pow`, `log` and the other libm functions use,
 are trusted code.
@@ -471,7 +467,7 @@ runtime errors, or reports what may go wrong. `sverify` reports these as
 `may fail: …` (a `VerificationError` from `@sv.transform`). A `SUM` that
 may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
 group (checked at run time: the job raises if it does not …)` (or
-`fits DECIMAL(38, 2)` for a decimal `SUM`, #316), and is an error with
+`fits DECIMAL(38, 2)` for a decimal `SUM`), and is an error with
 `on_inferred="off"`.
 
 * Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
@@ -479,16 +475,16 @@ group (checked at run time: the job raises if it does not …)` (or
   `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, a regular expression
   that may not compile, and calendar functions (`date_part`, `date_trunc` to a week or
   longer, `date_bin`, `strftime`, adding months) outside the reference's timestamps,
-  0001-01-01 to 9999-12-31 (D32).
+  0001-01-01 to 9999-12-31.
 * `+`, `-`, `*` and negation leaving their declared width (64 bits, or narrower
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
-  reference raises (#202), while DataFusion wraps around silently, which an error
+  reference raises, while DataFusion wraps around silently, which an error
   allows.
 * An integer `SUM` leaving 64 bits, or a decimal `SUM` leaving its precision
-  (`Measure.sumOk`, #316), is ruled out where the plan bounds a group's
+  (`Measure.sumOk`), is ruled out where the plan bounds a group's
   rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
   bounds each value (`Measure.sumFits`). Row caps on the inputs count too
-  ([Rows.lean](../SubstraitLean/Rows.lean), #219): a capped read is a `FETCH`
+  ([Rows.lean](../SubstraitLean/Rows.lean)): a capped read is a `FETCH`
   (`Rel.capReads`), and a join on a key of its right side is capped by its
   left side (`Rel.capJoins_eval`). Its `SUM`s are decided on the capped plan
   and every other issue on the plan as it is (`Rel.issuesCapped_sound`).
@@ -496,7 +492,7 @@ group (checked at run time: the job raises if it does not …)` (or
   (`Rel.SumsFit`, `Rel.noIssue_of_sumsFit`) that the SQL checks on the data while
   the job runs.
 * Bounds that rule out overflow are inferred
-  ([Infer.lean](../SubstraitLean/Infer.lean), #244): the range analysis run
+  ([Infer.lean](../SubstraitLean/Infer.lean)): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,
   filters, joins and `MIN`/`MAX` down to base-table columns. So are the
   ranges of codes that rule out domain errors, casts out of range, string
@@ -530,7 +526,7 @@ them; [What is trusted](proofs.md#what-is-trusted)). `python/tests/test_numeric.
 runs the plans on DuckDB (and, in its weekly job, on the optional DataFusion) on random data and checks
 they only fail where an error was reported. `BIGINT` and timestamp columns are taken to
 hold 64-bit values (from the schema); arithmetic on narrower integers is
-checked at their declared width (#202, #419).
+checked at their declared width.
 
 ### Incremental view maintenance
 
@@ -590,7 +586,7 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and the trusted facts below. The bounds of `SUM` and `AVG` of doubles need none since D25: they are theorems about the correctly rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`), and the bound of a sharded `SUM` too (`floatSplit_sum`). The statistical aggregates need none since D30: they are the exact moments rounded once (`varOf_props`, `covOf_props`, `corrOf_props` are retired). The bounds of one double `+`, `-`, `*` and `/` need none since D31 ([#1095](https://github.com/AlexanderNenninger/substrait-lean/pull/1095)): they are the exact result rounded once, and `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled`, `div_scaled_err` and the signs (#441) `add_nonneg`, `mul_nonneg`, `div_nonneg` are theorems in `FloatArith.lean`, so a sharded `AVG`'s division rests on none either. The one axiom left is `exp_fin` in `Safety.lean` (libm's `exp`, #582). [`float-bounds/`](float-bounds.md) also proves the bounds over the reals with Mathlib, kept out of the core build (`div_scaled_err` is `core_div`'s statement).
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`) and the trusted facts below. The bounds of `SUM` and `AVG` of doubles need none: they are theorems about the correctly rounded sum (`floatSumCR_mem`, `floatAvgCR_mem`, `floatSumCR_sign`), and the bound of a sharded `SUM` too (`floatSplit_sum`). The statistical aggregates need none: they are the exact moments rounded once. The bounds of one double `+`, `-`, `*` and `/` need none: they are the exact result rounded once, and `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled`, `div_scaled_err` and the signs `add_nonneg`, `mul_nonneg`, `div_nonneg` are theorems in `FloatArith.lean`, so a sharded `AVG`'s division rests on none either. The one axiom left is `exp_fin` in `Safety.lean` (libm's `exp`). [`float-bounds/`](float-bounds.md) also proves the bounds over the reals with Mathlib, kept out of the core build (`div_scaled_err` is `core_div`'s statement).
 
 ## Modelling choices
 
