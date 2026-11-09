@@ -85,6 +85,8 @@ def _restore(setting: Setting) -> str:
 PLUGIN = ProfilePlugin(
     "polars",
     title="Polars",
+    floor_division=True,
+    profile=True,
     translation="sverify's Polars translation, with shims where Polars differs from the "
     "reference, tested against the reference",
     settings=SETTINGS,
@@ -97,4 +99,19 @@ PLUGIN = ProfilePlugin(
     run_tables=_run_tables,
     guard_free_theorem="Rel.polars_sound",
     fallbacks=_fallbacks,
+    functions=frozenset({"array_agg"}),
+    shim_text={
+        "int_div_trunc": "integer division rewritten to truncate",
+        "int_mod_trunc": "integer remainder rewritten to truncate",
+        "one_zero": "-0.0 written as 0.0",
+        "avg_int_declared": "the mean of integers cast to its declared type",
+        "column_divisor": "a division by a column guarded",
+        "round_half_away": "rounding rewritten to round half away from zero",
+        "decimal_round_half_away": "decimal rounding rewritten to round half away from zero",
+        "decimal_div_half_away": "decimal division rewritten to round half away from zero",
+        "null_order": "NULLs sorted as the reference sorts them",
+        "strpos_chars": "string positions counted in characters",
+        "substring_wrap": "substring positions rewritten as the reference reads them",
+        "sum_empty_null": "a SUM of no rows written as NULL",
+    },
 )

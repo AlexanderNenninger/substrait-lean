@@ -1,0 +1,83 @@
+{
+  "id": "spark-time-type",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`TIME` is off by default; with it on, `TIME + INTERVAL` raises past midnight",
+  "verdict": "`time_interval_months`: `TIME` unsupported by default; `+ INTERVAL 1 MONTH` a type error",
+  "area": "temporal",
+  "options": [
+    "time_interval_months"
+  ],
+  "rows": [
+    {
+      "group": "time.arith",
+      "option": "time_interval_months",
+      "types": [
+        "time"
+      ]
+    }
+  ],
+  "constructs": [
+    "TIME",
+    "+ INTERVAL",
+    "- INTERVAL"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ],
+    "spark.sql.timeType.enabled": [
+      false,
+      true
+    ]
+  },
+  "description": [
+    "Spark 4.3.0 parses `TIME` only with `spark.sql.timeType.enabled` on; by default `TIME'12:00:00'` raises `UNSUPPORTED_TIME_TYPE`. With it on, `TIME'12:00:00' + INTERVAL 13 HOUR` raises `DATETIME_OVERFLOW` rather than wrapping past midnight, in both modes, and `TIME + INTERVAL 1 MONTH` is rejected when the query is analysed (`DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES`)."
+  ],
+  "reference": "`TIME ± INTERVAL` is refused (`time_interval_months`). Spark refuses `TIME` by default too.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "time-type"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "time-months"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "time-type-enabled"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "time-months-enabled"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/time.sql.out#L1667-L1688",
+          "note": "`'10:00:01' :: TIME(1) - INTERVAL '1' MONTH` fails analysis with `DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES`, ANSI on (the suite enables `TIME` under tests)"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/time.sql.out#L1587-L1592",
+          "note": "`TIME(4) + INTERVAL '01:04:05.56' HOUR TO SECOND` is a `time(6)`, `13:47:38.6834`"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    }
+  ]
+}

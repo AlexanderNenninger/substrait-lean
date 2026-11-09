@@ -42,10 +42,10 @@ from sverify.sql import Unsupported, parse_plan
 from sverify.sql import to_sql as plan_sql
 from sverify.sql.core import Aggregate, Fetch, Rel, order_matters
 from sverify.sql.snowflake import SNOWFLAKE
-from sverify.sql.spark import SPARK
 from sverify.testing import canonical, duckdb_ibis, inline_tables, lean_values
 from sverify_dev import coverage
 from sverify_polars import engine as polars_engine
+from sverify_spark.dialect import SPARK
 
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
 

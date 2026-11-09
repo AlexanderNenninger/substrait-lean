@@ -75,8 +75,9 @@ class Dialect:
     subclasses override what their engine writes differently and raise
     `Unsupported` for what it cannot do.
 
-    Use one of the dialect objects: `sverify.engines.DUCKDB`,
-    `sverify.engines.SNOWFLAKE` and `sverify.engines.SPARK`. This is
+    Name a dialect where SQL is written (`"duckdb"`, `"snowflake"`,
+    `"spark"`); `sverify.sql.dialect_of` gives its object, as each engine's
+    plugin provides it (`ProfilePlugin.dialect`). This is
     `sverify.engines.Dialect`. Its fields (`name`, `guards`, `finite`,
     `decimals`) are public; its SQL-writing methods change whenever a
     function lands, so they and subclassing are outside the 1.x promise
@@ -4965,7 +4966,7 @@ def _no_fields() -> str:
 
 def to_sql(
     plan: dict | str,
-    dialect: Dialect,
+    dialect: Dialect | str,
     *,
     deterministic: bool = False,
     guards: bool = True,
@@ -4998,8 +4999,8 @@ def to_sql(
         plan: A Substrait JSON plan, as a string or parsed (`json.loads`),
             such as a node's `internal_plan` or
             `sverify.engines.written_plan`'s output.
-        dialect: The engine to write SQL for: `sverify.engines.DUCKDB`,
-            `sverify.engines.SNOWFLAKE` or `sverify.engines.SPARK`.
+        dialect: The engine to write SQL for, by name (`"duckdb"`,
+            `"snowflake"`, `"spark"`), or its `Dialect`.
         deterministic: Promise that windows have no ties on their PARTITION
             BY and ORDER BY columns (`Report.deterministic`). Default: False.
         guards: Write the run-time checks. Default: True.
@@ -5028,7 +5029,7 @@ def to_sql(
 
         import pyarrow as pa
         import sverify as sv
-        from sverify.engines import SNOWFLAKE, to_sql
+        from sverify.engines import to_sql
         from sverify.io import StaticSource
 
         orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
@@ -5039,10 +5040,15 @@ def to_sql(
             return orders.filter(orders.amount > 10)
 
 
-        print(to_sql(big_orders(orders).internal_plan, SNOWFLAKE))
+        print(to_sql(big_orders(orders).internal_plan, "snowflake"))
         # SELECT s1."c0" AS "id", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", ...
         ```
     """
+    if isinstance(dialect, str):
+        # A dialect by its engine's name, as its plugin provides it.
+        from sverify.sql import dialect_of
+
+        dialect = dialect_of(dialect)
     if isinstance(plan, str):
         plan = json.loads(plan)
     if not guards:

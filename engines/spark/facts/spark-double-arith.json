@@ -1,0 +1,172 @@
+{
+  "id": "spark-double-arith",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Double `+ - *`: IEEE, NaN from `inf - inf`, `±inf` on overflow",
+  "verdict": "IEEE in both modes: `nan_creation` NaN, `float_overflow` `±inf`",
+  "area": "doubles",
+  "options": [
+    "rounding",
+    "nan_creation",
+    "float_overflow"
+  ],
+  "rows": [
+    {
+      "group": "fp.arith",
+      "option": "rounding",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.arith",
+      "option": "rounding",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.arith",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.arith",
+      "option": "nan_creation",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.arith",
+      "option": "float_overflow",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.arith",
+      "option": "float_overflow",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    }
+  ],
+  "constructs": [
+    "+",
+    "-",
+    "*"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`DOUBLE` and `FLOAT` arithmetic is the JVM's, IEEE 754 round to nearest even: `0.1 + 0.2` is 0.30000000000000004. ANSI mode checks no double arithmetic: `inf - inf`, `inf + -inf` and `0 * inf` are NaN, and `1e308 * 10` is +inf, `1e308 + 1e308` +inf, in both modes. `FLOAT` stays single precision (`3e38f * 10f` is +inf as a `FLOAT`, spark-fp32).",
+    "Spark's docs state the infinity rules: `inf * 0` is NaN."
+  ],
+  "reference": "`add`, `subtract`, `multiply` round once (`TIE_TO_EVEN`) and raise a domain issue for `inf - inf` and `0 · inf` (`nan_creation`: raise, #257, ST-5); a finite result past the largest double raises (#575, ST-9). Spark is native for rounding and needs guards for the other two.",
+  "status": "open",
+  "evidence": "fuzz",
+  "provenance": [
+    {
+      "checked_at": "2026-11-05",
+      "method": "docs",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/docs/sql-ref-datatypes.md#L290-L318",
+          "note": "Floating Point Special Values: positive/negative infinity semantics"
+        }
+      ],
+      "notes": "Spark's docs at tag v4.3.0."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "source-reading",
+      "checked_by": "Spark characterization session (#738)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/arithmetic.scala",
+          "note": "`Add`, `Subtract`, `Multiply` on `DoubleType`/`FloatType`: plain Java arithmetic; the exact variants only for integral types"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark on homelab (Spark characterization session, #738)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-nan-creation"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-overflow"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "double-rounding-arith"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "float-arith"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "float-edges"
+        }
+      ],
+      "notes": "`sverify_dev.probe_spark` runs each query four times on one local session: with `spark.sql.ansi.enabled` true and false, on the folded path (the optimizer evaluates a query over `VALUES` on the driver) and on the codegen path (`ConvertToLocalRelation` and `ConstantFolding` excluded, so the query runs as a job with whole-stage code generation). probes.json keeps one result per ANSI setting where the two paths agree. Spark 4.3.0 (pyspark 4.3.0), Java 21.0.12, Linux x86_64, `local[2]`, session time zone UTC, `spark.sql.timestampType=TIMESTAMP_NTZ`."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "engine-test",
+      "checked_by": "sverify_dev.spark_tests (Spark evidence session)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float8.sql.out#L197-L202",
+          "note": "`double('Infinity') + 100.0` is Infinity, a `double`, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/float8.sql.out#L563-L572",
+          "note": "`f1 * '1e200'` with f1 = -1.2345678901234E200 is -Infinity, no raise, ANSI on"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/core/src/test/resources/sql-tests/results/postgreSQL/aggregates_part1.sql.out#L261-L267",
+          "note": "`avg` over -infinity and infinity is NaN: `-inf + inf` in the sum is NaN, ANSI on"
+        }
+      ],
+      "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-05",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.spark_fuzz on homelab (Spark evidence session)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/fuzz.json",
+          "note": "double_arith[0]"
+        }
+      ],
+      "notes": [
+        "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 3600 of 3600 results as the fact says; Spark's value differs from Rel.eval's (sverify's lift, reference profile) on 86 of 900 rows compared.",
+        "double_arith[0]: 300 rows, `a + b`, `a - b`, `a * b`, 3600 of 3600 results as the fact says; Spark differs from Rel.eval on 86 of 900.",
+        "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    }
+  ],
+  "issues": [
+    257,
+    575
+  ]
+}

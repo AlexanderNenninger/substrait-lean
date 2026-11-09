@@ -5,7 +5,7 @@
 #     "ibis-framework[duckdb]==12.0.0",
 #     "marimo",
 #     "sqlglot",
-#     "sverify[datafusion,polars,delta]",
+#     "sverify[datafusion,polars,delta,spark]",
 # ]
 #
 # [tool.uv.sources]
@@ -94,7 +94,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import DUCKDB, ENGINES, SNOWFLAKE, SPARK, to_sql
+    from sverify.engines import ENGINES, to_sql
     from sverify.io import DeltaSink, DeltaSource
 
     lake = Path(tempfile.mkdtemp())  # a local "lake"; any Delta URI works, with storage_options
@@ -132,13 +132,10 @@ def _():
     )
     DeltaTable(lake / "transactions").alter.add_constraint({"non_negative": "amount_cents >= 0"})
     return (
-        DUCKDB,
         DeltaSink,
         DeltaSource,
         DeltaTable,
         ENGINES,
-        SNOWFLAKE,
-        SPARK,
         at,
         dt,
         first_load,
@@ -423,15 +420,12 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(DUCKDB, SNOWFLAKE, SPARK, dialect, dups, mo, to_sql):
+def _(dialect, dups, mo, to_sql):
     import json
 
     import sqlglot
 
-    _sql = to_sql(
-        json.loads(dups.internal_plan),
-        {"snowflake": SNOWFLAKE, "spark": SPARK, "duckdb": DUCKDB}[dialect.value],
-    )
+    _sql = to_sql(json.loads(dups.internal_plan), dialect.value)
     mo.md(f"```sql\n{sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]}\n```")
     return
 

@@ -18,6 +18,8 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
+from sverify import black_box
+from sverify._unsupported import RANGE_GUARD
 from sverify.profiles import ProfilePlugin, Setting
 
 _R15 = tuple(
@@ -163,6 +165,7 @@ def _dialect() -> Any:
 PLUGIN = ProfilePlugin(
     "duckdb",
     title="DuckDB",
+    default=True,
     translation="sverify's DuckDB lowering, proved for every plan, and its SQL writer",
     settings=SETTINGS,
     installed_version=_version,
@@ -171,4 +174,39 @@ PLUGIN = ProfilePlugin(
     local=True,
     read_settings=_read_settings,
     dialect=_dialect,
+    # The functions only some engines run (#50, #53-#55, #94, #810, #812,
+    # #325's black boxes), and the lift's guards (`sverify_raise`: a date of
+    # columns outside the calendar, #809).
+    functions=frozenset(
+        {
+            "regexp_extract",
+            "regexp_replace",
+            "md5",
+            "sha256",
+            "first",
+            "last",
+            "string_agg",
+            "array_agg",
+            "median",
+            "quantile_cont",
+            "quantile_disc",
+            "mode",
+            "arg_min",
+            "arg_max",
+            "covar_samp",
+            "covar_pop",
+            "corr",
+            "sverify_pair",
+            "list_prepend",
+            "list_concat",
+            "list_contains",
+            "list_position",
+            "flatten",
+            "sverify_raise",
+            *black_box.NAMES,
+        }
+    ),
+    # The variance over a frame, which only DuckDB's writer computes so far.
+    window_functions=frozenset({"variance", "std_dev"}),
+    guards=(RANGE_GUARD,),
 )

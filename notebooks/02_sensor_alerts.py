@@ -90,7 +90,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from pyiceberg.catalog.sql import SqlCatalog
-    from sverify.engines import ENGINES, SNOWFLAKE, UnsupportedError, to_sql
+    from sverify.engines import ENGINES, UnsupportedError, to_sql
     from sverify.errors import PreconditionError
     from sverify.io import IcebergSink, IcebergSource
 
@@ -135,7 +135,6 @@ def _():
         IcebergSource,
         PreconditionError,
         READING,
-        SNOWFLAKE,
         UnsupportedError,
         catalog,
         first,
@@ -361,7 +360,7 @@ def _(mo):
 
 
 @app.cell
-def _(ENGINES, SNOWFLAKE, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
+def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -370,10 +369,10 @@ def _(ENGINES, SNOWFLAKE, UnsupportedError, alerts, alerts_node, readings, repor
     assert len({repr(r) for r in _rows.values()}) == 1
 
     try:
-        to_sql(alerts_node.internal_plan, SNOWFLAKE)
+        to_sql(alerts_node.internal_plan, "snowflake")
     except UnsupportedError as e:
         refused = str(e)
-    _sql = to_sql(alerts_node.internal_plan, SNOWFLAKE, deterministic=report.deterministic)
+    _sql = to_sql(alerts_node.internal_plan, "snowflake", deterministic=report.deterministic)
     assert _sql.startswith("SELECT")
     refused
     return

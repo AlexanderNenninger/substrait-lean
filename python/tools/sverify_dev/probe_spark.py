@@ -3,7 +3,7 @@
 
 Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
 API. The Spark counterpart of `sverify_dev.probe_polars`'s observations, for
-`characterization/spark/`.
+`engines/spark/`.
 
 Each `Obs` is a SQL query whose result is recorded as it is. Every query runs
 four times on one local session: with `spark.sql.ansi.enabled` on and off, and
@@ -15,8 +15,8 @@ whole-stage code generation, as it does over a table. Where the two paths agree
 the observation keeps one result per ANSI setting.
 
 `python -m sverify_dev.probe_spark --write` writes
-`characterization/spark/probes.json`; the facts in
-`characterization/spark/facts/` cite its constructs. It needs `pyspark` and a
+`engines/spark/probes/probes.json`; the facts in
+`engines/spark/facts/` cite its constructs. It needs `pyspark` and a
 JVM (Java 17 or 21); run it on homelab (CLAUDE.md), where it takes about a
 minute. No test checks it is current: a JVM is too heavy for the test suite.
 """
@@ -37,14 +37,15 @@ _HERE = Path(__file__).resolve()
 #: Where `--write` writes: the repository's, when run from a checkout.
 OUT = (
     (_HERE.parents[3] if len(_HERE.parents) > 3 else _HERE.parent)
-    / "characterization"
+    / "engines"
     / "spark"
+    / "probes"
     / "probes.json"
 )
 
-#: The session's settings, apart from the two that vary. `sverify.sql.spark`'s
+#: The session's settings, apart from the two that vary. `sverify_spark.dialect`'s
 #: `SPARK_CONF` without `spark.sql.ansi.enabled`, and the local session of
-#: `sverify.spark_engine.session()`.
+#: `sverify_spark.engine.session()`.
 BASE_CONF: dict[str, str] = {
     "spark.master": "local[2]",
     "spark.driver.memory": "1g",
@@ -1221,7 +1222,7 @@ def _frontend_probes() -> list[Obs]:
 
 
 def _writer_probes() -> list[Obs]:
-    """The functions `sverify.sql.spark` writes that no other fact covers,
+    """The functions `sverify_spark.dialect` writes that no other fact covers,
     spelled as the writer spells them (#271: a run profile states only what a
     fact says)."""
     return [
@@ -1258,7 +1259,7 @@ def _writer_probes() -> list[Obs]:
         Obs("double-to-decimal-round",
             "SELECT CAST((CAST(CAST(ROUND(x * 100.0D) AS BIGINT) AS DECIMAL(10,0)) * 0.01) AS DECIMAL(10,2)) "
             "FROM VALUES (2.675D), (-2.675D), (0.125D), (1.005D) AS t(x)",
-            note="`decimal_cast` of a double at scale 2, as sql/spark.py writes it"),
+            note="`decimal_cast` of a double at scale 2, as sverify_spark/dialect.py writes it"),
         Obs("repeat-bigint-count", "SELECT REPEAT('', 2147483648L), REPEAT('a', CAST(0 AS BIGINT))"),
         Obs("double-to-bigint-edge",
             "SELECT CAST(9.223372036854775807E18D AS BIGINT), CAST(-9.223372036854775808E18D AS BIGINT), "

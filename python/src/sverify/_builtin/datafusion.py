@@ -33,4 +33,11 @@ PLUGIN = ProfilePlugin(
     local=True,
     optional=True,
     modules=("datafusion",),
+    functions=frozenset({"array_agg"}),
+    refuses={
+        "ntile": (
+            "DataFusion's NTILE does not deal out buckets as SQL does",
+            "upstream/bugs/DF-11.json",
+        )
+    },
 )

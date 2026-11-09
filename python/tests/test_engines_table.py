@@ -13,41 +13,43 @@ from collections.abc import Iterator
 from dataclasses import replace
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import get_args
 
 import pytest
 
 from _repo import needs_repo
 from sverify import _engines, engines, profiles, routes
-from sverify.engine import _LOCAL_ENGINES, Engine
+from sverify.contracts import semantics_names
+from sverify.engine import _LOCAL_ENGINES
 from sverify.profiles import ProfilePlugin
-from sverify.report import Semantics
 from sverify.routes import _options_json
 from sverify.sql import DIALECTS
 
-BUILTIN = {"duckdb", "polars", "spark", "datafusion", "snowflake"}
+BUILTIN = {"duckdb", "polars", "spark", "datafusion", "snowflake", "substrait"}
 #: The built-in engines that are packages of their own (`engines/<engine>/`).
-PACKAGES = {"polars"}
+PACKAGES = {"polars", "spark"}
 
 
 def _checker_profiles() -> dict[str, dict]:
     return _options_json()["profiles"]
 
 
+def _engine_profiles() -> set[str]:
+    """The checker's profiles of an engine."""
+    return {e for e, p in _checker_profiles().items() if p.get("engine")}
+
+
 def test_semantics_are_the_checker_s_profiles() -> None:
-    """A plan is verified under any profile of the checker but the core."""
-    assert set(get_args(Semantics)) == set(_checker_profiles()) - {"core"}
-
-
-def test_engines_are_the_checker_s_engine_profiles() -> None:
-    """`Engine` names the checker's engine profiles."""
-    named = {e for e, p in _checker_profiles().items() if p.get("engine")}
-    assert set(get_args(Engine)) == named
+    """A plan is verified under any profile of the checker but the core: the
+    reference, DuckDB's through its lift, and each plugin's that has one
+    (`ProfilePlugin.profile`, #1189)."""
+    assert set(semantics_names()) == set(_checker_profiles()) - {"core"}
+    with_profile = {e for e, p in profiles.plugins().items() if p.verifiable}
+    assert with_profile == set(_checker_profiles()) - {"core", "reference", "duckdb"}
 
 
 def test_every_engine_has_a_plugin() -> None:
-    assert set(get_args(Engine)) <= _engines.NAMED
-    assert set(engines.ENGINES) <= set(get_args(Engine))
+    assert _engine_profiles() <= _engines.NAMED
+    assert set(engines.ENGINES) <= _engine_profiles()
     assert set(_LOCAL_ENGINES) == {*engines.ENGINES, "datafusion"}
     assert set(DIALECTS) <= _engines.NAMED
     # The engines within the 1.x promise, and their names in prose.
@@ -61,7 +63,7 @@ def test_every_engine_has_a_plugin() -> None:
 
 
 def test_every_engine_a_plan_runs_on_has_a_translation() -> None:
-    assert {*get_args(Engine), *_LOCAL_ENGINES} <= set(_engines.translations())
+    assert {*_engine_profiles(), *_LOCAL_ENGINES} <= set(_engines.translations())
 
 
 def test_sverify_registers_its_engines_in_its_metadata() -> None:
@@ -278,3 +280,19 @@ def test_engine_lists_come_from_the_plugins() -> None:
                 found[f.relative_to(root.parent).as_posix()] = n
     over = {f: n for f, n in found.items() if n > _NAME_LISTS.get(f, 0)}
     assert not over, f"lists of engines by name: {over}; take them from sverify._engines"
+
+
+def test_the_default_engine_is_the_plugin_s(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Where no engine is named, plans run on the one whose plugin says it is
+    the default (DuckDB), or else the first local one; with none installed,
+    running a plan is an error that names what to install (#1189, #1288).
+    `verify` needs none."""
+    assert _engines.default() == "duckdb"
+    found = profiles.plugins()
+    no_default = {e: replace(p, default=False) for e, p in found.items()}
+    monkeypatch.setattr(profiles, "plugins", lambda: no_default)
+    assert _engines.default() in _LOCAL_ENGINES
+    monkeypatch.setattr(profiles, "plugins", lambda: {"substrait": found["substrait"]})
+    no_engine = r"no engine that runs plans is installed.*sverify\[duckdb\]"
+    with pytest.raises(ValueError, match=no_engine):
+        _engines.default()

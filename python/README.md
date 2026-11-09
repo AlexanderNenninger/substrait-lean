@@ -1,5 +1,8 @@
 # sverify
 
+> Sverify is a working prototype. Its Lean proofs, its checker and its Python
+> code still need a human audit before anyone relies on their results.
+
 Sverify proves a data pipeline's contracts before it runs, takes the proof to
 [DuckDB](https://duckdb.org), [Polars](https://pola.rs) and
 [Spark](https://spark.apache.org) by a route that says what carries over,
@@ -266,7 +269,7 @@ adds three guides, to contracts, to pipelines and engines, and to running it in 
 
 ```python
 import ibis
-from sverify.engines import SNOWFLAKE, to_sql  # also DUCKDB, SPARK
+from sverify.engines import to_sql
 from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
 
 sv.verify(
@@ -274,7 +277,7 @@ sv.verify(
     tables={"orders": ibis.table({"id": "int64", "amount": "int64"}, name="orders")},
     ensures=["amount > 0"],
 )  # SQL, checked; returns the report
-to_sql(big.internal_plan, SNOWFLAKE)  # the checked plan, or sverify.engines.UnsupportedError
+to_sql(big.internal_plan, "snowflake")  # or "duckdb", "spark"; or sverify.engines.UnsupportedError
 
 # p = DeltaSource("s3://.../orders").pipe(paid).write(DeltaSink("s3://.../paid"))  # stored
 # r = p.pipe(revenue, regions=regions).write(DeltaSink("s3://.../revenue"))

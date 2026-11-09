@@ -17,12 +17,13 @@ from ibis import _
 
 import sverify as sv
 from sverify import _checker, _engine_settings, profiles, routes
-from sverify.engines import SNOWFLAKE, to_sql, written_plan
+from sverify.engines import to_sql, written_plan
 from sverify.profiles import ProfilePlugin, Setting
 from sverify.routes import EngineSettingsError, EngineVersionError
 
 DUMMY = ProfilePlugin(
     engine="dummy",
+    profile=True,  # It has no checker of its own here: the tests use sverify's.
     versions=("1.2.0",),
     translation="the dummy writer, proved (DummyEngine.dummy_sound)",
     settings=(Setting("dummy_mode", ("strict",), "refuse", ("dummy-mode",), "every value"),),
@@ -66,7 +67,15 @@ def test_no_profile_from_outside_by_default() -> None:
 def test_a_profile_from_outside_is_loaded(installed: None) -> None:
     with pytest.warns(profiles.ProfilePluginWarning) as warned:
         found = profiles.plugins.__wrapped__()
-    assert set(found) == {"dummy", "duckdb", "polars", "spark", "datafusion", "snowflake"}
+    assert set(found) == {
+        "dummy",
+        "duckdb",
+        "polars",
+        "spark",
+        "datafusion",
+        "snowflake",
+        "substrait",
+    }
     assert {str(w.message).split("'")[1] for w in warned} == {"broken", "other"}
 
 
@@ -135,7 +144,22 @@ def test_snowflake_sql_without_a_profile_is_the_reference_translation() -> None:
     assert report.internal_plan is not None
     assert report.to_sql("snowflake") == to_sql(
         written_plan(report.internal_plan),
-        SNOWFLAKE,
+        "snowflake",
         deterministic=report.deterministic,
         finite=True,
     )
+
+
+def test_a_plugin_with_a_checker_has_a_profile(tmp_path: Path) -> None:
+    """`profile` unset is whether the plugin brings a checker (#1189): a
+    profile from outside sverify ships one and needs no flag. Merged with
+    the same engine's dialect-only entry (Snowflake's public one), the
+    checker's entry still makes it verifiable."""
+    mine = tmp_path / "substrait-check-dummy"
+    assert ProfilePlugin("dummy", checker=mine).verifiable
+    assert not ProfilePlugin("dummy").verifiable
+    assert not ProfilePlugin("dummy", checker=mine, profile=False).verifiable
+    public = ProfilePlugin("dummy", title="Dummy")
+    private = ProfilePlugin("dummy", ("1.2.0",), checker=mine)
+    assert profiles._merged([public, private]).verifiable
+    assert profiles._merged([private, public]).verifiable

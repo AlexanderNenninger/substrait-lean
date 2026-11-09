@@ -32,9 +32,11 @@ dependencies = [
 # 1.x promise (`docs/stability.md`), and not in `all`.
 datafusion = ["datafusion==51.0.0"]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
-# sverify at its version; it brings `polars` and `numpy`.
-polars = ["sverify-polars==0.7.1"]
-spark = ["pyspark>=4.0"]
+# sverify at its version; `run` brings `polars` and `numpy`.
+polars = ["sverify-polars[run]==0.7.1"]
+# Spark is a package of its own (`engines/spark/`, #1189), released with
+# sverify at its version; `run` brings PySpark.
+spark = ["sverify-spark[run]==0.7.1"]
 delta = ["deltalake>=1.6.6"]
 # `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
 iceberg = ["pyiceberg[pyarrow,sql-sqlite]>=0.12.0"]
@@ -67,9 +69,9 @@ sverify = "sverify.pytest_plugin"
 # (`sverify.profiles`, #1189); each moves to its engine's package with step 5.
 [project.entry-points."sverify.profiles"]
 duckdb = "sverify._builtin.duckdb:PLUGIN"
-spark = "sverify._builtin.spark:PLUGIN"
 datafusion = "sverify._builtin.datafusion:PLUGIN"
 snowflake = "sverify._builtin.snowflake:PLUGIN"
+substrait = "sverify._builtin.substrait:PLUGIN"
 
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
@@ -150,6 +152,7 @@ docs = ["great-docs>=0.11.0"]
 [tool.uv.sources]
 # The engine packages of this checkout (#1189).
 sverify-polars = { path = "../engines/polars", editable = true }
+sverify-spark = { path = "../engines/spark", editable = true }
 
 [tool.uv]
 # fakesnow 0.12 needs `sqlglot~=30.22.0`, so development and the main CI
@@ -159,13 +162,13 @@ override-dependencies = ["sqlglot~=30.22.0"]
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:The 'future.infer_string' option is deprecated"]
 # The engine packages' tests run in this session, with `tests/_suite.py`.
-testpaths = ["tests", "../engines/polars/tests"]
+testpaths = ["tests", "../engines/polars/tests", "../engines/spark/tests"]
 pythonpath = ["tests"]
 
 [tool.coverage.run]
 # What `poe test-cov` measures (#750): the package and the dev tools, with
 # branches, also in the Python subprocesses the tests start.
-source = ["sverify", "sverify_dev", "sverify_polars"]
+source = ["sverify", "sverify_dev", "sverify_polars", "sverify_spark"]
 branch = true
 patch = ["subprocess"]
 
@@ -174,7 +177,7 @@ skip_empty = true
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tools", "tests", "tests/chaos", "scripts", "../engines/polars/src", "../engines/polars/tests"]
+src = ["src", "tools", "tests", "tests/chaos", "scripts", "../engines/polars/src", "../engines/polars/tests", "../engines/spark/src", "../engines/spark/tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
@@ -182,7 +185,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 [tool.pyrefly]
 project-includes = ["src", "tools", "tests", "scripts"]
 # The engine packages are checked from their own directories (`typecheck`).
-search-path = ["src", "tools", "tests", "tests/chaos", "../engines/polars/src"]
+search-path = ["src", "tools", "tests", "tests/chaos", "scripts", "../engines/polars/src", "../engines/spark/src"]
 
 # Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
 # from the project root. Lean tasks run in the project root and need `lake`.
@@ -220,12 +223,12 @@ cwd = "${POE_ROOT}/../float-bounds"
 
 [tool.poe.tasks.lint]
 help = "Lint and check formatting of the Python code and the notebooks"
-sequence = ["ruff check . ../notebooks ../engines/polars", "ruff format --check . ../notebooks ../engines/polars"]
+sequence = ["ruff check . ../notebooks ../engines/polars ../engines/spark", "ruff format --check . ../notebooks ../engines/polars ../engines/spark"]
 default_item_type = "cmd"
 
 [tool.poe.tasks.fmt]
 help = "Fix lint issues and format the Python code and the notebooks"
-sequence = ["ruff check --fix . ../notebooks ../engines/polars", "ruff format . ../notebooks ../engines/polars"]
+sequence = ["ruff check --fix . ../notebooks ../engines/polars ../engines/spark", "ruff format . ../notebooks ../engines/polars ../engines/spark"]
 default_item_type = "cmd"
 
 [tool.poe.tasks.typecheck]
@@ -233,6 +236,7 @@ help = "Type-check the Python code with pyrefly, sverify's and the engine packag
 sequence = [
     "pyrefly check",
     { cmd = "pyrefly check --python-interpreter-path ${POE_ROOT}/.venv/bin/python", cwd = "${POE_ROOT}/../engines/polars" },
+    { cmd = "pyrefly check --python-interpreter-path ${POE_ROOT}/.venv/bin/python", cwd = "${POE_ROOT}/../engines/spark" },
 ]
 default_item_type = "cmd"
 

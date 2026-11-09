@@ -65,11 +65,12 @@ from sverify.conditions import (
     resolve,
 )
 
-Semantics = Literal["reference", "duckdb", "polars", "spark", "substrait"]
+Semantics = str
 """The profile a check is under: sverify's reference semantics (the
-default), DuckDB's (#411), whose SQL also means what DuckDB computes,
-Polars's or Spark's (#739), for Ibis transformations, or Substrait's own, as
-its extension YAMLs state it (#444)."""
+default), DuckDB's (#411), whose SQL also means what DuckDB computes, or an
+installed engine's profile (`ProfilePlugin.profile`): Polars's or Spark's
+(#739), Substrait's own, as its extension YAMLs state it (#444).
+`sverify.contracts.semantics_names` lists them."""
 
 
 def _transfer_failure(f: Mapping[str, Any]) -> str:
@@ -700,7 +701,7 @@ class Report:
 
         Args:
             dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
-                or one of `sverify.engines.DUCKDB`, `SNOWFLAKE` and `SPARK`.
+                or a `Dialect` (`sverify.sql.dialect_of`).
 
         Returns:
             One SQL query, reading the plan's tables by the names it was

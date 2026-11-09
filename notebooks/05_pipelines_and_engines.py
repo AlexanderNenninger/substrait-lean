@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[datafusion,delta,polars]",
+#     "sverify[datafusion,delta,polars,spark]",
 # ]
 #
 # [tool.uv.sources]
@@ -1336,12 +1336,11 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(con, dialect, json, mo, sql_query, substrait_json):
     import sqlglot
-    from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, UnsupportedError, to_sql
+    from sverify.engines import UnsupportedError, to_sql
 
     try:
         _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))
-        _dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
-        _sql = to_sql(_plan, _dialects[dialect.value])
+        _sql = to_sql(_plan, dialect.value)
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
         _out = mo.md(f"```sql\n{_pretty}\n```")
     except UnsupportedError as _e:
@@ -1367,9 +1366,9 @@ def _(mo):
     and interval-valued result columns are refused because Snowflake has no
     interval type.
 
-    Spark and Databricks: the dialect (`sverify.engines.SPARK`) targets
+    Spark and Databricks: the `"spark"` dialect targets
     Spark 4 and is also what `node.refresh(engine="spark")` runs. It
-    assumes the session settings of `sverify.engines.SPARK_CONF`, above all
+    assumes the session settings of `sverify_spark.dialect.SPARK_CONF`, above all
     `spark.sql.ansi.enabled`: without ANSI mode an overflow wraps around
     and a bad cast gives NULL. Spark answers several questions its own way,
     and the SQL spells out or refuses each:

@@ -1,0 +1,79 @@
+{
+  "id": "spark-calendar-range",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Calendar parts and truncations agree with the reference from 0001 to 9999",
+  "verdict": "native in 0001-01-01 … 9999-12-31 on TIMESTAMP_NTZ under UTC; the written SQL raises outside",
+  "area": "temporal",
+  "constructs": [
+    "date_trunc",
+    "year",
+    "quarter",
+    "month",
+    "weekofyear",
+    "day",
+    "dayofweek",
+    "dayofyear"
+  ],
+  "settings": {
+    "spark.sql.session.timeZone": "UTC",
+    "spark.sql.timestampType": "TIMESTAMP_NTZ",
+    "spark.sql.ansi.enabled": "true"
+  },
+  "description": [
+    "At 0001-01-01, the leap days 0004-02-29, 1600-02-29 and 2000-02-29, 1900-02-28 and 1900-03-01 (1900 is not a leap year), both sides of the Gregorian switch (1582-10-04 and 1582-10-15, ten days apart in history and eleven in the proleptic calendar) and 9999-12-31, each at 23:59:59.999999, the engine gives the proleptic Gregorian values `core/Sverify/Core/Time.lean`'s `#guard`s give: 0001-01-01 is a Monday (its own week), the week of 9999-12-31 starts 9999-12-27, its ISO week is 52 and its weekday Friday.",
+    "sverify's session pins `spark.sql.timestampType` to `TIMESTAMP_NTZ` and the session time zone to UTC (`sverify_spark/dialect.py`'s `SPARK_CONF`), so no calendar field depends on a zone. Spark holds timestamps past both ends (`TIMESTAMP_NTZ '0000-12-31'`, `'+10000-01-01'`), and `9999-12-31 + INTERVAL 1 MONTH` is `+10000-01-31`."
+  ],
+  "reference": "D32: the reference's timestamps are 0001-01-01 00:00:00 to 9999-12-31 23:59:59.999999 (`Time.tsMin`, `Time.tsMax`); `date_part`, truncation to a week or longer, `date_bin`, `strftime` and adding months raise outside them (`Issue.overflow`), and the writers guard, since the engine computes there.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-08",
+      "method": "probe",
+      "checked_by": "D32 probe (session youthful-margulis), spark 4.3.0, macOS arm64",
+      "evidence": [
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '0001-01-01 23:59:59.999999' AS t)",
+          "observed": "[\"0001-01-01\", \"0001-01-01\", \"0001-01-01\", \"0001-01-01\", 1, 1, 1, 1, 1, 1, 1]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '0004-02-29 23:59:59.999999' AS t)",
+          "observed": "[\"0004-02-23\", \"0004-02-01\", \"0004-01-01\", \"0004-01-01\", 4, 1, 2, 9, 29, 0, 60]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '1582-10-04 23:59:59.999999' AS t)",
+          "observed": "[\"1582-10-04\", \"1582-10-01\", \"1582-10-01\", \"1582-01-01\", 1582, 4, 10, 40, 4, 1, 277]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '1582-10-15 23:59:59.999999' AS t)",
+          "observed": "[\"1582-10-11\", \"1582-10-01\", \"1582-10-01\", \"1582-01-01\", 1582, 4, 10, 41, 15, 5, 288]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '1600-02-29 23:59:59.999999' AS t)",
+          "observed": "[\"1600-02-28\", \"1600-02-01\", \"1600-01-01\", \"1600-01-01\", 1600, 1, 2, 9, 29, 2, 60]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '1900-02-28 23:59:59.999999' AS t)",
+          "observed": "[\"1900-02-26\", \"1900-02-01\", \"1900-01-01\", \"1900-01-01\", 1900, 1, 2, 9, 28, 3, 59]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '1900-03-01 23:59:59.999999' AS t)",
+          "observed": "[\"1900-02-26\", \"1900-03-01\", \"1900-01-01\", \"1900-01-01\", 1900, 1, 3, 9, 1, 4, 60]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '2000-02-29 23:59:59.999999' AS t)",
+          "observed": "[\"2000-02-28\", \"2000-02-01\", \"2000-01-01\", \"2000-01-01\", 2000, 1, 2, 9, 29, 2, 60]"
+        },
+        {
+          "sql": "SELECT cast(cast(date_trunc('WEEK', t) as date) as string), cast(cast(date_trunc('MONTH', t) as date) as string), cast(cast(date_trunc('QUARTER', t) as date) as string), cast(cast(date_trunc('YEAR', t) as date) as string), year(t), quarter(t), month(t), weekofyear(t), day(t), dayofweek(t) - 1, dayofyear(t) FROM (SELECT TIMESTAMP_NTZ '9999-12-31 23:59:59.999999' AS t)",
+          "observed": "[\"9999-12-27\", \"9999-12-01\", \"9999-10-01\", \"9999-01-01\", 9999, 4, 12, 52, 31, 5, 365]"
+        },
+        {
+          "test": "python/tests/test_time.py::test_d32_probe_points"
+        }
+      ],
+      "notes": "Columns: date_trunc week, month, quarter, year; year, quarter, month, ISO week, day, dow (Sunday 0), doy."
+    }
+  ]
+}

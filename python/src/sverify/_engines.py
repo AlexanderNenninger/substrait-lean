@@ -23,14 +23,38 @@ LOCAL: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.local and not p
 #: The engines a `Connection` accepts: `LOCAL` and the optional ones.
 ACCEPTED: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.local)
 #: The engines sverify supports within the 1.x promise, local or not: every
-#: engine but the optional ones.
-SUPPORTED: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if not p.optional)
+#: plugin that runs plans or writes their SQL, but the optional ones (a
+#: profile alone, Substrait's, is no engine).
+SUPPORTED: tuple[str, ...] = tuple(
+    e for e, p in _FOUND.items() if not p.optional and (p.local or p.runner or p.dialect)
+)
 #: The dialects `to_sql` writes.
 DIALECTS: tuple[str, ...] = tuple(e for e, p in _FOUND.items() if p.dialect)
-#: Every engine sverify names: a row of `_support.SUPPORT` names only these.
+#: Every engine sverify names: each plugin's.
 NAMED: frozenset[str] = frozenset(_FOUND)
 #: The modules each engine needs.
 MODULES: Mapping[str, tuple[str, ...]] = {e: p.modules for e, p in _FOUND.items()}
+
+
+def default() -> str:
+    """The engine that runs plans where none is named: the installed one that
+    says so (`ProfilePlugin.default`), or else the first local one. `verify`
+    needs none; running a plan does.
+
+    Raises:
+        ValueError: No engine that runs plans is installed.
+    """
+    from sverify import profiles
+
+    found = profiles.plugins()
+    local = [e for e, p in found.items() if p.local]
+    named = [e for e in local if found[e].default]
+    if not (named or local):
+        raise ValueError(
+            "no engine that runs plans is installed: install one, e.g. "
+            "pip install 'sverify[duckdb]' or 'sverify[polars]'"
+        )
+    return (named or local)[0]
 
 
 def translations() -> dict[str, str]:
