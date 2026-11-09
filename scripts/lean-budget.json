@@ -58,7 +58,7 @@
    "rss_mb": 1536
   },
   "SubstraitLean.Contracts.Facts": {
-   "cpu_s": 30,
+   "cpu_s": 64,
    "rss_mb": 1536
   },
   "SubstraitLean.Contracts.Lattice": {
@@ -186,20 +186,20 @@
    "rss_mb": 2586
   },
   "SubstraitLean.LiftDuckDB.Duckdb.Arith": {
-   "cpu_s": 132,
-   "rss_mb": 3081
+   "cpu_s": 263,
+   "rss_mb": 3192
   },
   "SubstraitLean.LiftDuckDB.Duckdb.Casts": {
    "cpu_s": 30,
    "rss_mb": 2638
   },
   "SubstraitLean.LiftDuckDB.Duckdb.Compare": {
-   "cpu_s": 73,
-   "rss_mb": 2889
+   "cpu_s": 357,
+   "rss_mb": 3222
   },
   "SubstraitLean.LiftDuckDB.Duckdb.Math": {
-   "cpu_s": 64,
-   "rss_mb": 2866
+   "cpu_s": 194,
+   "rss_mb": 3024
   },
   "SubstraitLean.LiftDuckDB.Duckdb.Table": {
    "cpu_s": 30,
@@ -218,8 +218,8 @@
    "rss_mb": 2638
   },
   "SubstraitLean.LiftDuckDB.Reference.Compare": {
-   "cpu_s": 30,
-   "rss_mb": 2865
+   "cpu_s": 59,
+   "rss_mb": 2919
   },
   "SubstraitLean.LiftDuckDB.Reference.Math": {
    "cpu_s": 30,
@@ -270,36 +270,36 @@
    "rss_mb": 2626
   },
   "SubstraitLean.LoweringDuckDB.Lemmas": {
-   "cpu_s": 35,
-   "rss_mb": 1536
+   "cpu_s": 92,
+   "rss_mb": 1545
   },
   "SubstraitLean.LoweringDuckDB.On.Arith": {
-   "cpu_s": 199,
-   "rss_mb": 6123
+   "cpu_s": 866,
+   "rss_mb": 7212
   },
   "SubstraitLean.LoweringDuckDB.On.Bits": {
-   "cpu_s": 32,
-   "rss_mb": 2745
+   "cpu_s": 76,
+   "rss_mb": 3056
   },
   "SubstraitLean.LoweringDuckDB.On.Guards": {
-   "cpu_s": 96,
-   "rss_mb": 3609
+   "cpu_s": 318,
+   "rss_mb": 5622
   },
   "SubstraitLean.LoweringDuckDB.On.Integers": {
    "cpu_s": 149,
    "rss_mb": 2961
   },
   "SubstraitLean.LoweringDuckDB.On.Math": {
-   "cpu_s": 43,
-   "rss_mb": 2770
+   "cpu_s": 164,
+   "rss_mb": 3140
   },
   "SubstraitLean.LoweringDuckDB.On.Native": {
    "cpu_s": 74,
    "rss_mb": 2878
   },
   "SubstraitLean.LoweringDuckDB.On.Powers": {
-   "cpu_s": 151,
-   "rss_mb": 4019
+   "cpu_s": 633,
+   "rss_mb": 4557
   },
   "SubstraitLean.LoweringDuckDB.On.Table": {
    "cpu_s": 30,

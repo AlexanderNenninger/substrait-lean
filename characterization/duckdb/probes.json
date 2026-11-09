@@ -470,8 +470,13 @@
      ]
     },
     "IEEE": {
-     "differ": 4,
+     "differ": 5,
      "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
       {
        "row": "[inf, inf]",
        "duckdb": "ok nan",
@@ -484,11 +489,6 @@
       },
       {
        "row": "[-inf, inf]",
-       "duckdb": "ok nan",
-       "lean": "error Substrait.Issue.domain"
-      },
-      {
-       "row": "[-inf, -inf]",
        "duckdb": "ok nan",
        "lean": "error Substrait.Issue.domain"
       }
@@ -2206,13 +2206,8 @@
      ]
     },
     "IEEE": {
-     "differ": 15,
+     "differ": 14,
      "examples": [
-      {
-       "row": "[0.0, 0.0]",
-       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
-       "lean": "ok nan"
-      },
       {
        "row": "[0.5, 0.0]",
        "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
@@ -2227,6 +2222,11 @@
        "row": "[-1.0, 0.0]",
        "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
        "lean": "ok -inf"
+      },
+      {
+       "row": "[2.5, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok inf"
       }
      ]
     },
@@ -3806,8 +3806,13 @@
      ]
     },
     "IEEE": {
-     "differ": 4,
+     "differ": 5,
      "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
       {
        "row": "[inf, inf]",
        "duckdb": "ok nan",
@@ -3820,11 +3825,6 @@
       },
       {
        "row": "[-inf, inf]",
-       "duckdb": "ok nan",
-       "lean": "error Substrait.Issue.domain"
-      },
-      {
-       "row": "[-inf, -inf]",
        "duckdb": "ok nan",
        "lean": "error Substrait.Issue.domain"
       }
@@ -5547,7 +5547,7 @@
       {
        "row": "[0.0, 0.0]",
        "duckdb": "ok None",
-       "lean": "ok nan"
+       "lean": "error Substrait.Issue.domain"
       },
       {
        "row": "[0.5, 0.0]",
