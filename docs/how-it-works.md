@@ -209,7 +209,7 @@ refresh and the statistics both record.
 
 The core has IEEE's doubles, both zeros and signed NaNs, and each profile
 chooses how to read them
-([core, profiles and engines](core-semantics.md#core-profiles-and-engines)).
+([core, profiles and engines](core-and-profiles.md)).
 The reference profile reads them as users expect from SQL (PostgreSQL,
 DuckDB, Spark, Snowflake): −0.0 is 0.0, and every NaN is one NaN, equal to
 itself and above `inf` (`ONE_ZERO`, `ONE_NAN`, `NAN_IS_NAN`, NaN `GREATEST`). `-1 * 0.0` is `0.0`, `-0.0 >= 0` is TRUE, and `GROUP BY`, `DISTINCT`,
@@ -409,7 +409,7 @@ Doubles are modelled as exact integer codes (each double is a multiple of 2⁻¹
 [Float.lean](../core/Sverify/Core/Float.lean) and
 [FloatFormat.lean](../core/Sverify/Core/FloatFormat.lean). `+ − × ÷` compute on the
 codes, the exact result rounded once
-([exact, rounded once](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once),
+([exact, rounded once](reference-semantics.md#floating-point),
 [FloatArith.lean](../core/Sverify/Core/FloatArith.lean)). The conversions between
 codes and native floats, which `pow`, `log` and the other libm functions use,
 are trusted code.

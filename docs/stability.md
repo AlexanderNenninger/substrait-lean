@@ -114,7 +114,7 @@ request's diff.
 Reference changes made before 1.0, so that 1.0 starts from the tighter
 reference:
 
-- [Correctly rounded float aggregates](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums):
+- [Correctly rounded float aggregates](reference-semantics.md#of-doubles):
   a `SUM`, `AVG` or statistical aggregate of doubles is the correctly rounded
   value of the exact sum or moments. A postcondition at a rounding boundary
   can move by one ulp, which `sv.approx` absorbs.
@@ -153,7 +153,7 @@ of [the changelog](../CHANGELOG.md).
 This section is the one statement of which engines sverify supports; other
 pages link here. The reference is Lean's reference profile
 ([reference semantics](reference-semantics.md)), one of the profiles that
-refine the core ([core, profiles and engines](core-semantics.md#core-profiles-and-engines)), and an engine runs a plan
+refine the core ([core, profiles and engines](core-and-profiles.md)), and an engine runs a plan
 by a route that the checker justifies against it
 ([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
 

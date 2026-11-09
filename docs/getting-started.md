@@ -129,7 +129,7 @@ Leave out `requires`, and Sverify works out the preconditions under which
 the plan cannot fail: here that `qty` is never zero, and that `total` stays
 far enough from the smallest integer for the division not to overflow. It
 reports the plan as not proved and asks you to declare them
-([why inferred preconditions are errors](core-semantics.md#d23-inferred-preconditions-are-errors-by-default)):
+([why inferred preconditions are errors](reference-semantics.md#errors)):
 
 ```python
 from sverify.errors import PreconditionError
@@ -168,7 +168,7 @@ The other fix is a rewrite that no row needs the precondition for:
 checks them on the data as declared ones are.
 
 An `AND` or `OR` evaluates both operands, as DuckDB and Polars do
-([`AND` and `OR` raise eagerly](core-semantics.md#d19-and-and-or-raise-eagerly)), so `(qty != 0) & (total // qty > 1)`
+([`AND` and `OR` raise eagerly](reference-semantics.md#null)), so `(qty != 0) & (total // qty > 1)`
 still needs the precondition. Guarding the division itself,
 `ibis.cases((_.qty != 0, _.total // _.qty)) > 1`, is proved without it.
 
@@ -179,8 +179,8 @@ where none applies. The route names the plan's class on that engine:
 `exact` (every result the engine gives, the reference allows), `observed`
 (equal under an observation the postcondition states, a float tolerance
 included), `shim` (after a proved translation) or `refused`
-([how a route is chosen](core-semantics.md#d13-choosing-the-route),
-[route classes](core-semantics.md#d22-four-route-classes-and-tolerances-are-observations)).
+([how a route is chosen](verifying.md),
+[route classes](verifying.md)).
 
 ```python
 con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 250, 30]}))
@@ -264,7 +264,7 @@ Three helpers state what a postcondition observes:
 
 A sink commits each epoch once, so a rerun must give the same result. The
 sink says what "the same" means (`reproducible=`,
-[two observations per output](core-semantics.md#d20-two-observations-per-output)), and a refresh is
+[two observations per output](tasks.md#reproducible-sinks)), and a refresh is
 refused where the engine's run-to-run variation does not refine it. Polars's
 streaming `SUM` of doubles may add in another order each run, so a sink that
 asks for exact bits, `reproducible=sv.equivalent()`, is refused there, and
@@ -374,7 +374,7 @@ saturate), and the check compares the profiles option by option, so the
 proof does not carry over even where the bound on `total` rules overflow
 out. `substrait-check --profile-diff` lists every option
 where the two profiles differ, published in
-[core-semantics.md](core-semantics.md#the-substrait-profile). Gaps like this
+[core-semantics.md](core-and-profiles.md#substraits-profile). Gaps like this
 one, which Substrait could close with an option, are on the
 [upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html) as `ST` entries.
 

@@ -5,10 +5,13 @@ reference semantics, the strict profile plans are proved under:
 `verify` proves things about it, and every engine's row of the realizability
 table is its difference from it. The reference is one profile of the core,
 which does a superset of operations; the other profiles and the engines are
-in [core, profiles and engines](core-semantics.md#core-profiles-and-engines),
-and what a proof under the reference guarantees in
-[core-semantics.md](core-semantics.md#what-a-proof-under-the-reference-guarantees). This page collects the choices
-the reference makes and says for each row whether it holds on `main`.
+in [The core and the profiles](core-and-profiles.md), and what a result
+rests on in [trusted-base.md](trusted-base.md). This page collects the
+choices the reference makes, the options where it leaves a choice open
+([Open choices](#open-choices)), each option's value
+([Options](#options)), and says for each row whether it holds on `main`.
+The reasons behind each choice are in the [decision log](decisions.md), for
+contributors.
 
 Status marks: ✓ holds on `main`. A row that holds "on DuckDB" runs there
 only: the other engines refuse it until their lowerings exist, tracked in
@@ -29,7 +32,7 @@ The reference is a relation: for each input it allows a set of results
 (`Rel.Allowed`, `core/Sverify/Core/Allowed.lean`). An engine runs a plan
 correctly when, on every input, it returns an allowed result, or raises
 only where the reference may raise; resource errors, such as running out of
-memory, are excluded ([engine correctness](core-semantics.md#d16-engine-correctness)). Lean
+memory, are excluded. Lean
 proves partial correctness today, an allowed result or an error
 (`Rel.duckdb_shim_sound`); for a plan proved to never raise the two agree
 (`Rel.duckdb_sound`). `Rel.eval` (`core/Sverify/Core/Rel.lean`) computes one allowed result, a
@@ -53,7 +56,7 @@ of every allowed result. Where a plan leaves ties open, the contract checker
 proves its postconditions and keys over every order
 (`Rel.OrderAllowed`, `contract_sound_all`, `core/Sverify/Core/OrderAllowed.lean`, `analysis/Sverify/Analysis/Contracts.lean`), and
 `Rel.eval`'s order is the
-[deterministic profile's](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile).
+[deterministic profile's](#tie-order-and-the-deterministic-profile).
 `Report.deterministic` is false where rows may tie in the order of a window,
 of `FIRST`, `LAST`, `STRING_AGG` or `MODE`, or of a `FETCH`
 (`Rel.windowsTotal`, `Rel.fetchesTotal`), `str(report)` names each place, and
@@ -77,6 +80,44 @@ Lean, and that each engine matches its profile is tested; both are in
 New functions run on DuckDB first, and the other engines refuse them until
 their lowerings exist.
 
+## Open choices
+
+The reference leaves a choice to the engine at these options, and allows
+every value an option admits. Sverify proves a contract for every allowed
+result, so a proved postcondition holds whichever value the engine picks.
+
+| Option | What is open | What the reference allows |
+|---|---|---|
+| `tie_order` | the order of rows that tie in an `ORDER BY` or a window's order, and of the values `STRING_AGG` and `collect` gather | any order |
+| `tie_pick` | the row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value` and `MODE` take among ties | any row of the tie |
+| `sum_order` | the order and grouping in which a `SUM` or `AVG` of doubles adds | any, within the plan's bound of the correctly rounded sum ([float-bounds.md](float-bounds.md)) |
+| `stat_algo` | how an engine computes `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` | any value with the generic properties ([Statistical aggregates](#statistical-aggregates)); the reference's own value is the exact moments rounded once |
+| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them |
+| `round_zero_sign` | which zero `round` and `ceil` give a negative value that rounds to zero | either |
+| one zero, one NaN | which member a `GROUP BY` key, a `DISTINCT` row, a `MIN` or a `MAX` returns when its class holds `-0.0` and `0.0`, or NaNs of both signs | any member present, or the canonical value |
+| the sign of a NaN | the sign of a NaN an operation produces (under a profile that lets one be created) | either |
+
+Every other option has one value in the reference, listed in
+[Options](#options). An engine whose pick is one the reference allows runs
+the plan natively at that option; elsewhere its result is within the plan's
+bound of an allowed one, or the plan is refused there
+([Verifying: the two paths](verifying.md)).
+
+### Tie order and the deterministic profile
+
+Rows that tie come in any order, so a `FETCH` or `LIMIT` takes the first
+rows of any order the plan allows, and a window or ordered aggregate sees
+ties in any order. `Report.deterministic` is false where that happens, and
+`str(report)` names each place and `Report.ties` the keys that would close
+it.
+
+The deterministic profile is the reference with one order fixed: a stable
+sort, rows in the order the model holds them. A consumer that needs a rerun
+to give the same rows asks for it with `run(reproducible=sv.equivalent())`
+or a sink's `reproducible=`. Engines read tables in an order of their own,
+so the deterministic profile needs a plan whose order is total, by a
+tie-break key or a uniqueness precondition, and refuses a plan without one.
+
 ## Principles
 
 The reference follows four principles:
@@ -94,14 +135,14 @@ Where the reference departs from Substrait, and why:
 
 | Override | What the reference does | Why |
 |---|---|---|
-| One zero | `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`, and `GROUP BY`, `DISTINCT` and joins see one zero. | SQL users expect `-0.0 >= 0`. DuckDB, Polars and Spark keep IEEE's two zeros in arithmetic (`zero_sign` `IEEE` in their tables; [duckdb-R14](../characterization/duckdb/facts/duckdb-R14.json), [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json)), and their writers read results with one zero (`canon`); DataFusion keeps them apart in its order ([one zero and one NaN](core-semantics.md#d36-doubles-have-one-zero-and-one-nan)). |
+| One zero at identity boundaries | Values stay IEEE's, `-0.0` included, and arithmetic gives IEEE's signed zeros. Where rows are compared or grouped (`=`, `<`, `ORDER BY`, the keys of `GROUP BY`, `DISTINCT`, joins and window partitions), `-0.0` and `0.0` are one value. | SQL users expect `-0.0 = 0.0`, and DuckDB, Polars and Spark normalise the zeros exactly there ([duckdb-R14](../characterization/duckdb/facts/duckdb-R14.json), [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json)); DataFusion keeps them apart in its order. Substrait leaves the grouping and order of `-0.0` unspecified. |
 | One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Polars and Spark compare, group and sort NaN this way (`nan_equality` `NAN_IS_NAN`, `nan_order` `GREATEST` in their tables); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
 | The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), every relation a window reads fewer than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³ rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes, no machine's memory holds 2⁶² rows, `COUNT(*)` is a 64-bit integer in the reference and in every engine, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER` and `SUM`. |
 
 Engine quirks belong in profiles, never in the reference. While sverify is on
 0.x, a change to the reference ships in a minor version bump, with a
 `changelog.d/` fragment that says what changed
-([changing the reference](core-semantics.md#d17-changing-the-reference)).
+([changing the reference](decisions.md#d17-changing-the-reference)).
 
 ## Errors
 
@@ -122,7 +163,11 @@ fires, `Rel.eval`'s value is not the answer.
   `Rel.refines_of_same`); `optimize`'s rewrites do (`Rel.optimize_refines`).
   An unsorted plan refines its `ORDER BY` twin up to the order of rows and
   not exactly (`Rel.unsorted_refinesBag_not_refines`). ✓
-* An error that can't be ruled out makes the report unproved.
+* An error that can't be ruled out makes the report unproved. A
+  precondition sverify infers to rule one out (`total // qty` needs
+  `qty != 0`) leaves the report unproved until `requires` states it, by
+  default (`on_inferred="error"`); `"warn"` and `"ignore"` assume it and
+  check it on the data, and `"off"` infers nothing.
   `Report.proved` is false until a precondition excludes it. ✓ for division
   by zero, casts out of range, domain errors, decimal precision and the
   other error issues, and for integer `+ - *` and negation overflow at the
@@ -172,14 +217,15 @@ fires, `Rel.eval`'s value is not the answer.
 
 | Topic | Reference | Status |
 |---|---|---|
-| `fp64` | IEEE 754 binary64. `+ − × ÷` are the exact result rounded once, to nearest, ties to even ([double arithmetic](core-semantics.md#d31-double-arithmetic-is-exact-rounded-once), `FloatArith.lean`); `pow`, `log` and the other libm functions use Lean's native `Float`. | ✓ |
+| `fp64` | IEEE 754 binary64. `+ − × ÷` are the exact result rounded once, to nearest, ties to even (`FloatArith.lean`), with IEEE 754's rules for infinities, NaN and the sign of zero; `pow`, `log` and the other libm functions use Lean's native `Float`. | ✓ |
 | `fp32` | IEEE binary32. | Not yet. `fp32` arithmetic is refused (fact [duckdb-R12](../characterization/duckdb/facts/duckdb-R12.json)); modelling it is tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/417). |
-| Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([one zero and one NaN](core-semantics.md#d36-doubles-have-one-zero-and-one-nan)) |
+| Zero | Values keep their sign: a read gives the stored double, and every scalar function gives IEEE's result, so `0.0 * -1.0` is `-0.0` and `atan2(-0.0, -1.0)` is `-π`. At the identity boundaries (`=`, `<`, `ORDER BY` and the keys of `GROUP BY`, `DISTINCT`, joins and partitions) `-0.0` equals `0.0`. A `GROUP BY` key, a `DISTINCT` row, a `MIN` or a `MAX` over both zeros may be either zero, as the engines differ there: DuckDB and Spark give `0.0`, Polars the one present. Where the engines disagree on a value, the reference raises: `x / -0.0` and `x % -0.0` raise as `x / 0.0` does. Domains read one zero: `ln(-0.0)` raises as `ln(0.0)` does. `CAST(-0.0 AS BIGINT)` is `0`. | ✓ |
+| Rounding to zero | `round` and `ceil` of a negative value that rounds to zero may give either zero: DuckDB and Polars give `-0.0`, Spark `0.0` ([spark-round](../engines/spark/facts/spark-round.json)). The option is `round_zero_sign`, open in the reference. | ✓ |
 | NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. A NaN's sign is no value of the reference: the sign of a NaN an operation creates depends on the platform, negative on Linux x86_64 and positive on macOS arm64, in DuckDB and Polars alike ([duckdb-exec-platform](../characterization/duckdb/facts/duckdb-exec-platform.json)). | ✓ |
-| No operation creates a NaN | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓: `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. One exception: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it. DuckDB, Polars, Spark and Snowflake raise ([no operation creates a NaN](core-semantics.md#d37-no-operation-creates-a-nan)). |
+| No operation creates a NaN | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓: `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. One exception: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it. DuckDB, Polars, Spark and Snowflake raise ([no operation creates a NaN](decisions.md#d37-no-operation-creates-a-nan)). |
 | `power(-inf, y)`, `y` finite and not an integer | A domain error, as for a finite negative base. IEEE 754 gives `+inf` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5` is a square root and gives NaN; raising keeps every engine within the reference with no shim, and a plan meets it only where `-inf` reaches a fractional power. `power(-inf, 2.0)` is `+inf` and `power(-inf, 3.0)` is `-inf`. | ✓ (`negInfPow` in `Safety.lean`; DuckDB's value in `Profile.duckdb`, fact [duckdb-R15-power-neginf](../characterization/duckdb/facts/duckdb-R15-power-neginf.json)) |
-| No operation creates `±∞` | A `±∞` from the data passes through. An operation on finite doubles whose IEEE result is `±∞` raises: `+`, `-`, `*`, `/` and `power` that overflow (`1e308 * 10`, `power(10, 400)`, `power(0, -1)`), `exp` past `709.78`, and a `SUM`, `AVG`, variance, covariance or correlation of finite values that overflows. As for a `SUM` that leaves 64 bits, `verify` rules the error out by an inferred precondition: proved from the bounds where they do it, otherwise listed in `Report.assumed` ("stays finite where its inputs are") and checked on the data, where the SQL sverify writes raises `overflow to infinity`. With no NaN and no `±∞` in the inputs, there is none in the outputs. | ✓: `Issue.infinite` (`BinFn.infIssue`, `UnFn.infIssue`, `Measure.makesInf` in `Safety.lean`), on DuckDB and Polars. A `SUM` or `AVG` of values within `2⁴⁰⁰` over at most `2³²` rows (`max_rows`) is proved finite (`floatBound`); a single `+`, `-`, `*`, `/` or `exp` is proved finite where its arguments' bounds keep the result finite (`BinFn.finiteResult`, `expFinite`), and its precondition is checked on the data elsewhere. `Rel.eval` keeps the IEEE value on the rows the precondition excludes, which is what DuckDB and Polars give without the check ([duckdb-double-overflow](../characterization/duckdb/facts/duckdb-double-overflow.json)), so the lift of DuckDB's SQL with `semantics="duckdb"` states it exactly. Substrait's YAMLs leave it unspecified ([ST-9](../upstream/bugs/ST-9.json)); [no overflow to infinity](core-semantics.md#d38-no-operation-on-finite-doubles-overflows-to-infinity). |
-| Division by zero | An error when `on_division_by_zero` is omitted or `ERROR`. `IEEE`, `LIMIT` and `NULL` when the plan asks. | ✓ |
+| No operation creates `±∞` | A `±∞` from the data passes through. An operation on finite doubles whose IEEE result is `±∞` raises: `+`, `-`, `*`, `/` and `power` that overflow (`1e308 * 10`, `power(10, 400)`, `power(0, -1)`), `exp` past `709.78`, and a `SUM`, `AVG`, variance, covariance or correlation of finite values that overflows. As for a `SUM` that leaves 64 bits, `verify` rules the error out by an inferred precondition: proved from the bounds where they do it, otherwise listed in `Report.assumed` ("stays finite where its inputs are") and checked on the data, where the SQL sverify writes raises `overflow to infinity`. With no NaN and no `±∞` in the inputs, there is none in the outputs. | ✓: `Issue.infinite` (`BinFn.infIssue`, `UnFn.infIssue`, `Measure.makesInf` in `Safety.lean`), on DuckDB and Polars. A `SUM` or `AVG` of values within `2⁴⁰⁰` over at most `2³²` rows (`max_rows`) is proved finite (`floatBound`); a single `+`, `-`, `*`, `/` or `exp` is proved finite where its arguments' bounds keep the result finite (`BinFn.finiteResult`, `expFinite`), and its precondition is checked on the data elsewhere. `Rel.eval` keeps the IEEE value on the rows the precondition excludes, which is what DuckDB and Polars give without the check ([duckdb-double-overflow](../characterization/duckdb/facts/duckdb-double-overflow.json)), so the lift of DuckDB's SQL with `semantics="duckdb"` states it exactly. Substrait's YAMLs leave it unspecified ([ST-9](../upstream/bugs/ST-9.json)); [no overflow to infinity](decisions.md#d38-no-operation-on-finite-doubles-overflows-to-infinity). |
+| Division by zero | An error when `on_division_by_zero` is omitted or `ERROR`. `IEEE`, `LIMIT` and `NULL` when the plan asks. With `IEEE`, `x / ±0.0` is `±∞` with the sign of the dividend times the sign of the divisor, read from the divisor's own zero; `0 / 0` and `±∞ / ±∞` would create a NaN, so they still raise under the reference. DuckDB's `/` is this division, and the lift of DuckDB's SQL under `semantics="duckdb"` states it. | ✓ |
 | Domain errors | `sqrt`, `log`, `asin`, `acos`, `logb`, `atan2(0, 0)` and shifts outside their domain raise (`on_domain_error`, `on_log_zero` = `ERROR`). | ✓ |
 | `round(x, d)` | Halves away from zero, as DuckDB 2.0 computes it ([`duckdb-round-digits-2`](../characterization/duckdb/facts/duckdb-round-digits-2.json)): with `m = 10^abs(d)`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m` for `d < 0`, `x` itself where that is not finite (`round(1.5e308, -308)` is `1.5e308`), and 0 for `d < 0` when `m` is infinite (`round(42, -1000)` is 0). `±∞` and NaN stay. DataFusion's `round(x · 10ᵈ) / 10ᵈ` differs. | ✓ |
 | `%` on doubles | Substrait has no such function, so the reference defines its own, `sverify_fmod`: C's `fmod`, exact, with the dividend's sign. A zero divisor is an error (`NULL` if the plan asks), an infinite dividend is an error, an infinite divisor gives the dividend, and a NaN passes through. Lean also reads the `modulus` of doubles that DataFusion writes, as the same function. DuckDB's own `%` of doubles gives NaN for a zero divisor, where its documentation says it raises ([DD-8](../upstream/bugs/DD-8.json), [duckdb-R15-double-modulus](../characterization/duckdb/facts/duckdb-R15-double-modulus.json)). | ✓: Lean writes `sverify_fmod`, the Ibis producer and the SQLGlot lift emit it for `%` of doubles |
@@ -216,11 +262,11 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | Topic | Reference | Status |
 |---|---|---|
 | Logic | Three-valued (Kleene): `AND`, `OR`, `NOT`, comparisons. | ✓ |
-| Constants that raise | A constant subexpression that raises (`1 // 0 = 1`, in any branch of a `CASE`, in a `WHERE`) raises for the whole plan, on any data, an empty table included ([the reference tightens where it stays practical](core-semantics.md#d21-tighten-the-reference-where-it-stays-practical)): DuckDB evaluates a `CASE`'s constant conditions when it plans the query (DD-7). No precondition rules one out; the report names the constant (`Issue.constant`). | ✓ (`Rel.constIssues`) |
-| Errors under `AND`, `OR` | Eager: an error in either operand may raise, whatever the other operand's value, as DuckDB and Polars evaluate both ([`AND` and `OR` raise eagerly](core-semantics.md#d19-and-and-or-raise-eagerly)). `x <> 0 AND 10 // x > 1` may divide by zero; `(CASE WHEN x <> 0 THEN 10 // x END) > 1` does not. A boolean `CASE` is evaluated whole, as `AND`/`OR` (`Parse.eagerly`); another `CASE` evaluates only the branch it takes. The report flags an error inside an `AND` or `OR` and suggests the `CASE`. | ✓ (`Expr.issues` of `.bin`; the hint: `Issue.under_and_or`) |
+| Constants that raise | A constant subexpression that raises (`1 // 0 = 1`, in any branch of a `CASE`, in a `WHERE`) raises for the whole plan, on any data, an empty table included: DuckDB evaluates a `CASE`'s constant conditions when it plans the query (DD-7). No precondition rules one out; the report names the constant (`Issue.constant`). | ✓ (`Rel.constIssues`) |
+| Errors under `AND`, `OR` | Eager: an error in either operand may raise, whatever the other operand's value, as DuckDB and Polars evaluate both. `x <> 0 AND 10 // x > 1` may divide by zero; `(CASE WHEN x <> 0 THEN 10 // x END) > 1` does not. A boolean `CASE` is evaluated whole, as `AND`/`OR` (`Parse.eagerly`); another `CASE` evaluates only the branch it takes. The report flags an error inside an `AND` or `OR` and suggests the `CASE`. | ✓ (`Expr.issues` of `.bin`; the hint: `Issue.under_and_or`) |
 | `WHERE`, `ON`, `HAVING`-style conditions | Keep a row only when the condition `IS TRUE` (`Value.isTrue`). | ✓ |
 | Functions | Propagate NULL, unless Substrait says otherwise (`COALESCE`, `IS NULL`, `CASE`, `any_match`…). | ✓ |
-| Equality for grouping | `GROUP BY`, `DISTINCT` and list equality treat NULLs as equal (`[1, NULL] = [1, NULL]` is TRUE). | ✓ |
+| Equality for grouping | `GROUP BY`, `DISTINCT`, `UNION`, `EXCEPT`, `INTERSECT`, a window's `PARTITION BY`, `IS NOT DISTINCT FROM` and list equality treat NULLs as equal (`[1, NULL] = [1, NULL]` is TRUE). In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition) a NULL never matches. A key (`sv.unique`) uses the first: two rows with NULL in a key column collide, which is stricter than SQL's `UNIQUE`. | ✓ |
 
 ## Strings
 
@@ -253,7 +299,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `epoch`, `extract(epoch …)` | The seconds since 1970-01-01, a DOUBLE: the microseconds as a double, divided by 10⁶, as DuckDB computes them. `epoch_us` is the microseconds. | ✓ on DuckDB |
 | `make_date`, `last_day` | `make_date(y, m, d)`: the date by `days_from_civil`, NULL if an argument is; an error for a month or day outside the calendar, as in DuckDB, and for a year outside 1 to 9999, where DuckDB gives a date. `last_day(d)` is the last day of the month, a DATE. | ✓; `make_date` of columns on DuckDB only |
 | Names and ISO parts | `dayname` and `monthname` in English, `isodow` from Monday 1 to Sunday 7, `isoyear` the year of the week's Thursday. | ✓ |
-| Range | Dates: the SQL standard's, 0001-01-01 to 9999-12-31 (`Time.dayMin`, `Time.dayMax`). Every engine represents them. Date arithmetic (adding days or months) whose operand or result leaves them is an error, reported by `verify` and raised by the engines as "outside the reference's dates". With constant operands (TPC-H Q6's `DATE '1994-01-01' + INTERVAL 1 YEAR`) this is decided when the plan is written, and the SQL has no guard. Timestamps are those of the dates, 0001-01-01 00:00:00 to 9999-12-31 23:59:59.999999 (`Time.tsMin`, `Time.tsMax`; [calendar functions](core-semantics.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)): `date_part`, `strftime`, adding months, truncation to a week or longer and `date_bin` raise outside them, "outside the reference's timestamps". | ✓ date arithmetic and calendar functions |
+| Range | Dates: the SQL standard's, 0001-01-01 to 9999-12-31 (`Time.dayMin`, `Time.dayMax`). Every engine represents them. Date arithmetic (adding days or months) whose operand or result leaves them is an error, reported by `verify` and raised by the engines as "outside the reference's dates". With constant operands (TPC-H Q6's `DATE '1994-01-01' + INTERVAL 1 YEAR`) this is decided when the plan is written, and the SQL has no guard. Timestamps are those of the dates, 0001-01-01 00:00:00 to 9999-12-31 23:59:59.999999 (`Time.tsMin`, `Time.tsMax`; [calendar functions](decisions.md#d32-calendar-functions-work-on-the-references-timestamps-0001-to-9999)): `date_part`, `strftime`, adding months, truncation to a week or longer and `date_bin` raise outside them, "outside the reference's timestamps". | ✓ date arithmetic and calendar functions |
 
 ## Nested: lists and structs
 
@@ -261,7 +307,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 |---|---|---|
 | Representation | A struct is the list of its fields, in order. Equality is structural. | ✓ |
 | Order of lists | Lexicographic, element by element; a proper prefix sorts first. `lt`, `gt`, `lte` and `gte` are three-valued: a NULL element that decides the result makes it NULL (`[1, NULL] < [2]` is TRUE, `[1, NULL] < [1, 3]` is NULL). In `ORDER BY` and `MIN`/`MAX`, NULL elements sort after every other value. | ✓ |
-| Lambdas | `any_match`, `all_match`, `transform` and `filter` take a lambda that reads its parameter and the enclosing row ([lexical scope](core-semantics.md#d28-lambdas-have-lexical-scope)). `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ |
+| Lambdas | `any_match`, `all_match`, `transform` and `filter` take a lambda that reads its parameter and the enclosing row, with lexical scope: a nested lambda reads its own parameter, the outer one and the row. `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ |
 | `UNNEST` | One row per element, none for an empty list or NULL (sverify's own extension). | ✓ |
 | `list_prepend`, `[a, b]` | `list_prepend(x, l)` is `x` before `l`'s elements, NULL elements kept; a NULL `l` is empty (`BinFn.listPrepend`). A list of computed elements `[a, b]` is `list_prepend(a, list_prepend(b, []))` at the elements' common type. | ✓ on DuckDB; other engines refuse it |
 | `list_concat` | The elements of both lists; a NULL list is empty, so two NULLs give `[]` (DuckDB 2.0, `BinFn.listConcat`). | ✓ on DuckDB; other engines refuse it |
@@ -300,7 +346,7 @@ Design notes: [nested-values.md](nested-values.md).
 
 | Topic | Reference | Status |
 |---|---|---|
-| `SUM` / `AVG` | The exact sum of the values as dyadic rationals, rounded once to the nearest double, ties to even; `AVG` the exact sum divided by the count, rounded once (`floatSumCR`, `floatAvgCR`, [correctly rounded exact sums](core-semantics.md#d25-float-aggregates-are-correctly-rounded-exact-sums)). A NaN, or `+∞` with `-∞`, gives NaN; one kind of infinity gives it; a sum past the largest double is `±∞`. The value does not depend on the order of the rows (`floatSumCR_perm`), and the mean of three `0.1` is `0.1`. Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by half an ulp (`floatSumCR_mem`, `floatAvgCR_mem`, proved without axioms). An engine adds in its own order, within the plan's bound of this value (`epsilon_sum_cr` in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `reproducible=` accepts a tolerance on doubles, and `tolerance=True` reports a proved bound on the difference (`floatSplit_sum`); engines that don't fix the order are refused unless `deterministic=True` justifies it. | ✓ order; error bounds tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+| `SUM` / `AVG` | The exact sum of the values as dyadic rationals, rounded once to the nearest double, ties to even; `AVG` the exact sum divided by the count, rounded once (`floatSumCR`, `floatAvgCR`). A NaN, or `+∞` with `-∞`, gives NaN; one kind of infinity gives it; a sum past the largest double is `±∞`. The value does not depend on the order of the rows (`floatSumCR_perm`), and the mean of three `0.1` is `0.1`. Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by half an ulp (`floatSumCR_mem`, `floatAvgCR_mem`, proved without axioms). An engine adds in its own order, within the plan's bound of this value (`epsilon_sum_cr` in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `reproducible=` accepts a tolerance on doubles, and `tolerance=True` reports a proved bound on the difference (`floatSplit_sum`); engines that don't fix the order are refused unless `deterministic=True` justifies it. | ✓ order; error bounds tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
 | `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. The exact moments rounded once; each engine's own algorithm is within the plan's bound of it ([Statistical aggregates](#statistical-aggregates)): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate; over a window on DuckDB, tested ([Windows](#windows)); `Report.epsilon` bounds a `VAR_*` column, proved on DuckDB and Spark (`epsilon_var_cr`) and tested on Polars ([`float-bounds.md`](float-bounds.md)); Snowflake runs it on values shifted by their group's mean, a `DISTINCT` one refused; the checker keeps "a double ≥ 0 or NULL" |
 | `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). The exact co-moments rounded once; each engine's own algorithm is within the plan's bound of it ([Statistical aggregates](#statistical-aggregates)): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there, and so does the SQL lift with `semantics="duckdb"`, `duckdb-corr`). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB; `Report.epsilon` bounds a `COVAR_*` column from the pair's two ranges (`epsilon_cov_cr`), and gives `CORR` none: its error grows as a side's variance shrinks; other engines refuse it; refused over windows |
 | `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB and Polars, whose `max` skips NaN, by the shim `max_nan_greatest` |
@@ -314,7 +360,7 @@ ungrouped and Welford when grouped (`characterization/*/facts/`, ids
 `duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std`,
 `polars-cov`, `polars-corr`, `spark-var-stddev`, `spark-covar`, `spark-corr`).
 The reference picks none. Its value is the
-[exact moments rounded once](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)
+exact moments rounded once
 (`varOf`, `covOf`, `corrOf`): one value, whatever the order of the rows. The
 generic properties below are what an engine's algorithm may
 give (`StatProps` in `core/Sverify/Core/StatProps.lean`, `StatAlgo` in
@@ -365,7 +411,7 @@ literal, which DuckDB reads exactly. Approximate quantiles are refused, tracked 
 | Topic | Reference | Status |
 |---|---|---|
 | `QUANTILE_DISC(x, q)` | Of the `n` values in `ORDER BY` order (doubles: `-∞ < … < +∞ < NaN`), the one at position `⌈n·q⌉`, counting from 1, and the first where `n·q ≤ 1` (`discIndex`). Any type `MIN` takes; the result has the argument's type and is one of its values, so contracts keep the argument's range. DuckDB's `QUANTILE` and the `MEDIAN` of a value that is not a number are `QUANTILE_DISC(x, 0.5)`. | ✓ on DuckDB (`duckdb-quantile-disc`); other engines refuse it; refused over windows |
-| `QUANTILE_CONT(x, q)`, `MEDIAN(x)` | Of doubles, integers converted first; the result is a double. With `lo` and `hi` the values at 0-based positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`: `lo` where they coincide, else a double between `lo` and `hi` (`contAllowed`). Engines round the interpolation their own way; the model computes DuckDB's `lo·(1−d) + hi·d`, `d = frac((n−1)·q)`, kept between the two. Contracts know the result lies within the argument's range. `MEDIAN` is `QUANTILE_CONT(x, 0.5)`. Between `lo = -∞` and `hi = +∞` the interpolation is NaN (IEEE, DuckDB), a NaN created from numbers: the reference raises there, a domain error ruled out by a precondition ([the reference tightens where it stays practical](core-semantics.md#d21-tighten-the-reference-where-it-stays-practical)). DECIMAL, DATE and TIMESTAMP arguments are refused (DuckDB interpolates them in their own types). | ✓ on DuckDB, which may round past the neighbours: the written SQL clamps, and raises where the interpolation is NaN and no value is (`duckdb-quantile-cont-interpolation`); other engines refuse it |
+| `QUANTILE_CONT(x, q)`, `MEDIAN(x)` | Of doubles, integers converted first; the result is a double. With `lo` and `hi` the values at 0-based positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉`: `lo` where they coincide, else a double between `lo` and `hi` (`contAllowed`). Engines round the interpolation their own way; the model computes DuckDB's `lo·(1−d) + hi·d`, `d = frac((n−1)·q)`, kept between the two. Contracts know the result lies within the argument's range. `MEDIAN` is `QUANTILE_CONT(x, 0.5)`. Between `lo = -∞` and `hi = +∞` the interpolation is NaN (IEEE, DuckDB), a NaN created from numbers: the reference raises there, a domain error ruled out by a precondition ([the reference tightens where it stays practical](decisions.md#d21-tighten-the-reference-where-it-stays-practical)). DECIMAL, DATE and TIMESTAMP arguments are refused (DuckDB interpolates them in their own types). | ✓ on DuckDB, which may round past the neighbours: the written SQL clamps, and raises where the interpolation is NaN and no value is (`duckdb-quantile-cont-interpolation`); other engines refuse it |
 | `MODE(x ORDER BY …)` | The most frequent value; of the values that tie, the first in the aggregate's own `ORDER BY`, rows tied there in list order (`modeOf`). Refused without an `ORDER BY`, as DuckDB's ties then follow its scan. `MODE(x ORDER BY x)` takes the smallest of the most frequent values, and Ibis's `mode()` is written so; a report is `deterministic` when the order includes `x`'s column, or when the group's and the order's columns contain a key. | ✓ on DuckDB (`duckdb-mode-ties`); other engines refuse it |
 | `ARG_MIN(x, y)` / `ARG_MAX(x, y)` | `x` at the row with the smallest (largest) `y`, over the rows where neither is NULL: `FIRST(x ORDER BY y)` (`DESC`) with the filter `y IS NOT NULL`, which the parser makes it. `y` is a column. The result is one of `x`'s values. Ties are the engine's, as for `FIRST`: a report is `deterministic` only when the group's and `y`'s columns contain a key. | ✓ on DuckDB (`duckdb-arg-min-nulls`); other engines refuse it |
 
@@ -406,8 +452,8 @@ The rules for decimals are in [Decimals](#decimals).
 | Bags | A relation is a list of rows read as a bag: two relations are equal when they are permutations of each other (`Rel.Equiv`). | ✓ |
 | Operators | `read`, `values`, `filter`, `project`, `emit`, `cross`, inner and left `join`, `semi` and `anti`, `fetch`, `orderBy`, `distinct`, `aggregate` (one grouping set), `window`, `unnest`, `UNION ALL`. | ✓ |
 | Set operations | `UNION ALL` is bag union and `UNION DISTINCT` is `distinct` of it. The SQL lift writes `INTERSECT` and `EXCEPT` as the left rows with (without) an equal right row, NULLs equal, by a semi (anti) join, and `DISTINCT`; with `ALL` it numbers each side's equal rows (`ROW_NUMBER() OVER (PARTITION BY` every column`)`) and joins on the number too, so `m` and `n` copies leave `min(m, n)` and `max(m − n, 0)`. The window has no order, but the rows it ties are equal, so `INTERSECT ALL` and `EXCEPT ALL` are deterministic without keys (`Rel.window_allColumns`). Substrait's `SET_OP_INTERSECTION_*`/`SET_OP_MINUS_*` are not read yet. | ✓ |
-| Ties | Any order: rows that tie in a sort or a window's order, the rows a `fetch` takes and the rows `FIRST`, `STRING_AGG` and `MODE` take where their order ties (`Rel.OrderAllowed`). Postconditions and keys are proved for every order (`contract_sound_all`, `Rel.keys_sound_all`). `Rel.eval` sorts stably and takes `fetch` rows in list order, the [deterministic profile's order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile). A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys, and `str(report)` names each place where they are not; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `deterministic=True` is justified by it. | ✓ |
-| Sort keys | A key states where NULLs go with `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}`. A sort relation's key may also leave it open: an `UNSPECIFIED` or missing direction puts NULLs last ([the reference's NULL order](core-semantics.md#d8-the-references-null-order)), and `CLUSTERED` keeps equal keys adjacent with the groups in any order ([sort keys without a NULL order](core-semantics.md#d6-sort-keys-without-a-null-order)). A window's or a measure's key must state its direction. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`) |
+| Ties | Any order: rows that tie in a sort or a window's order, the rows a `fetch` takes and the rows `FIRST`, `STRING_AGG` and `MODE` take where their order ties (`Rel.OrderAllowed`). Postconditions and keys are proved for every order (`contract_sound_all`, `Rel.keys_sound_all`). `Rel.eval` sorts stably and takes `fetch` rows in list order, the [deterministic profile's order](#tie-order-and-the-deterministic-profile). A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys, and `str(report)` names each place where they are not; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `deterministic=True` is justified by it. | ✓ |
+| Sort keys | A key states where NULLs go with `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}`. A sort relation's key may also leave it open: an `UNSPECIFIED` or missing direction puts NULLs last, in both directions, and `CLUSTERED` keeps equal keys adjacent with the groups in any order. A window's or a measure's key must state its direction. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`) |
 
 ## Black boxes
 
@@ -494,7 +540,7 @@ Ibis writes as `FIRST` (or `LAST`) of each other column, take any row's
 value. `verify` proves what holds for every row an engine may take,
 and reports the result as not `deterministic` unless the grouping (`on`)
 columns form a key
-([tie order](core-semantics.md#d24-tie-order-belongs-to-the-deterministic-profile)). Each column is chosen on its own: `FIRST` skips NULLs column by column,
+([tie order](#tie-order-and-the-deterministic-profile)). Each column is chosen on its own: `FIRST` skips NULLs column by column,
 so `distinct(on="name")` may keep `a` from one row and `b` from another, and
 a fact about every input row, such as `a <= b`, need not hold of the result.
 `keep=None` keeps the groups of one row, but the report still calls it
@@ -510,6 +556,80 @@ The report is then about the expression with those values, and says so
 parameter left unbound is refused. Proving a contract for every value of a
 parameter, as an unknown value of its type, is tracked in
 [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/354).
+
+## Options
+
+Each row is one option. "Core" is the set of behaviours the core allows;
+"Substrait" is what the extension YAMLs at `v0.106.0` (the
+`substrait-extensions` package `python/uv.lock` pins) list, none with a
+default; "Reference" is the reference's choice; "DuckDB" is DuckDB
+2.0 under its default settings, with the fact that records it. The ids in
+the first column are the names the tables below use.
+
+### Integers and decimals
+
+| Option | Core | Substrait | Reference | DuckDB |
+|---|---|---|---|---|
+| `overflow` (`+ - ×`, negate) | `ERROR`, `SILENT`, `SATURATE` | the three | `ERROR` at the declared width; `SILENT`/`SATURATE` when the plan asks | `ERROR` native; `SILENT`/`SATURATE` shimmed in `HUGEINT` ([R1](../characterization/duckdb/facts/duckdb-R1.json), [R15-int-arith](../characterization/duckdb/facts/duckdb-R15-int-arith.json)) |
+| `overflow` (`abs`, `divide` at `MIN / -1`) | `ERROR`, `SILENT`, `SATURATE` | the three | `ERROR` | `ERROR` native ([R1-min](../characterization/duckdb/facts/duckdb-R1-min.json)) |
+| `overflow` (`sum`, integer and decimal) | `ERROR`, `SILENT`, `SATURATE` | the three | `ERROR`, an inferred precondition checked on the data | a `HUGEINT` sum, never past 64 bits; the written plan casts back and raises ([R6](../characterization/duckdb/facts/duckdb-R6.json)) |
+| `on_division_by_zero` (integers) | `ERROR`, `NULL` | the two | `ERROR`; `NULL` when asked | `ERROR` native; `NULL` with `error_on_division_by_zero` off ([R2](../characterization/duckdb/facts/duckdb-R2.json), [R15-int-divide](../characterization/duckdb/facts/duckdb-R15-int-divide.json)) |
+| `division_type` (`modulus`) | `TRUNCATE`, `FLOOR` | the two | `TRUNCATE`; `FLOOR` refused | `TRUNCATE` native ([R3](../characterization/duckdb/facts/duckdb-R3.json)) |
+| `min_mod_neg_one` (sverify's: `MIN % -1`) | `0`, raise | not an option: the remainder, `0`, fits | `0` | raises, written out ([R15-int-modulus](../characterization/duckdb/facts/duckdb-R15-int-modulus.json)) |
+| `shift_range` (sverify's: `<<`, `>>` by `< 0` or `≥ 64`, bits shifted out) | raise, `0`, drop the bits | `shift_left` drops the bits shifted out | drop the bits; raise outside `[0, 63]` | `<<` raises on a negative operand and on lost bits, `>>` gives `0` outside `[0, 63]`; both shimmed ([R15-shift-left](../characterization/duckdb/facts/duckdb-R15-shift-left.json), [R15-shift-right](../characterization/duckdb/facts/duckdb-R15-shift-right.json)) |
+| `decimal_rescale` (sverify's: a result scale smaller than the exact one) | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `functions_arithmetic_decimal.yaml` gives result types, no rounding | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`; its own result types, which the translation compensates ([engine-profiles.md](engine-profiles.md#decimals-27), [decimal-arith](../characterization/duckdb/facts/duckdb-decimal-arith.json)) |
+
+### Doubles
+
+| Option | Core | Substrait | Reference | DuckDB |
+|---|---|---|---|---|
+| `rounding` (`+ - × /`, the elementary functions, `sum`, `avg`, `variance`, `std_dev`) | the five of the YAML | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN`: the exact result rounded once for `+ - × /` and the aggregates, native `Float` for the elementary functions | `TIE_TO_EVEN` (native IEEE; no fact records it) |
+| `rounding` (`round`) | the ten of the YAML | ten modes | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` ([R15-round](../characterization/duckdb/facts/duckdb-R15-round.json), [R15-round-digits](../characterization/duckdb/facts/duckdb-R15-round-digits.json)) |
+| `on_division_by_zero` (doubles) | `IEEE`, `LIMIT`, `NULL`, `ERROR` | the four | `ERROR`; the others when asked | `IEEE` under `ieee_floating_point_ops`, `ERROR` with it off ([R5](../characterization/duckdb/facts/duckdb-R5.json)) |
+| `on_domain_error` (`sqrt`, `asin`, `acos`, `atanh`, `acosh`, logs, `atan2`, `divide`) | `NAN`, `NULL`, `ERROR` | `NAN`, `ERROR` (logs and integer `divide` add `NULL`) | `ERROR` | `NAN` ([R15-math-domain](../characterization/duckdb/facts/duckdb-R15-math-domain.json)); `atan2(0, 0)` is `0` ([R15-atan2](../characterization/duckdb/facts/duckdb-R15-atan2.json)) |
+| `on_log_zero` | `NAN`, `ERROR`, `MINUS_INFINITY` | the three | `ERROR` | `MINUS_INFINITY` (R15-math-domain) |
+| `nan_creation` (sverify's: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `fmod(±∞, y)`, a `SUM` of `+∞` and `−∞`) | `NAN`, raise | IEEE: NaN | raise | `NAN` ([R15-double-arith](../characterization/duckdb/facts/duckdb-R15-double-arith.json), [R15-double-modulus](../characterization/duckdb/facts/duckdb-R15-double-modulus.json), [nonfinite-aggregates](../characterization/duckdb/facts/duckdb-nonfinite-aggregates.json)) |
+| `zero_sign` (sverify's) | `IEEE` (two zeros), `ONE_ZERO` | IEEE; grouping and order of `-0.0` unspecified | `ONE_ZERO` at the identity boundaries, IEEE's signed zeros elsewhere (an override) | `IEEE` in arithmetic (`1.0 / -0.0 = -∞`) and kept through a sort, where `-0.0` and `0.0` are peers; the written plan canonicalises (`Dialect.canon`, [R14](../characterization/duckdb/facts/duckdb-R14.json)) |
+| `round_zero_sign` (sverify's: which zero `round` and `ceil` give a negative value that rounds to zero) | `ANY`, `IEEE` (`-0.0`), `POSITIVE` (`+0.0`) | unspecified | `ANY`, observed up to `canon`; `eval` gives `+0.0` | `IEEE` (`round(-0.4)` is `-0.0`, [R15-round](../characterization/duckdb/facts/duckdb-R15-round.json)); the written plan canonicalises (`Dialect.canon`). Polars too; Spark gives `+0.0` ([spark-round](../engines/spark/facts/spark-round.json)), and its `ceil` is a `BIGINT` ([spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json)) |
+| `nan_equality` (sverify's for `=`, grouping, `DISTINCT`, joins; Substrait's for `index_in`) | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | IEEE `=` (NaN unequal); `index_in` takes the option | `NAN_IS_NAN` (an override) | `NAN_IS_NAN`, either sign ([nan-equality](../characterization/duckdb/facts/duckdb-nan-equality.json)) |
+| `nan_order` (sverify's: sort, `MIN`, `MAX`, `<`) | `GREATEST`, `UNORDERED` | IEEE comparisons (`NaN < x` false) | `GREATEST`, above `+∞` | `GREATEST` ([arg-min-nulls](../characterization/duckdb/facts/duckdb-arg-min-nulls.json), [quantile-disc](../characterization/duckdb/facts/duckdb-quantile-disc.json)) |
+| `nan_kind` (sverify's: a NaN's sign and payload) | `IEEE`, `ONE_NAN` | IEEE | `ONE_NAN` | the sign survives (`signbit(-'nan')` is TRUE, [signbit](../characterization/duckdb/facts/duckdb-signbit.json)) |
+
+### Strings, dates and lists
+
+| Option | Core | Substrait | Reference | DuckDB |
+|---|---|---|---|---|
+| `negative_start` (`substring`) | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`, `ERROR` | the three | `WRAP_FROM_END` | `WRAP_FROM_END` native ([R13](../characterization/duckdb/facts/duckdb-R13.json)) |
+| `substring_range` (sverify's: an offset outside `[-2³², 2³²)`) | raise, compute | no limit | raise | raises ([substring-range](../characterization/duckdb/facts/duckdb-substring-range.json)) |
+| `case_sensitivity` (`like`, `contains`, `starts_with`, `ends_with`, `strpos`, regexes) | the three of the YAML | `CASE_SENSITIVE`, `CASE_INSENSITIVE`, `CASE_INSENSITIVE_ASCII` | `CASE_SENSITIVE` | `CASE_SENSITIVE` (no fact) |
+| `char_set` (`upper`, `lower`) | `UTF8`, `ASCII_ONLY` | the two | `UTF8`, a black box (Rust's `str::to_uppercase`) | `UTF8` with simple one-to-one mappings (`ß` → `ẞ`); the written plan raises on non-ASCII text ([case-mapping](../characterization/duckdb/facts/duckdb-case-mapping.json), [ST-10](../upstream/bugs/ST-10.json)) |
+| `null_handling` (`concat`) | `IGNORE_NULLS`, `ACCEPT_NULLS` | the two | `ACCEPT_NULLS`; the other refused | `ACCEPT_NULLS` for `\|\|`; `concat` skips NULLs ([null-concat](../characterization/duckdb/facts/duckdb-null-concat.json)) |
+| `date_range` (sverify's: date arithmetic past 0001-01-01 … 9999-12-31) | raise, compute | no limit | raise | wider dates, to 5881580 AD; the written plan guards ([date-range](../characterization/duckdb/facts/duckdb-date-range.json)) |
+| `time_interval_months` (sverify's: `TIME ± INTERVAL` with months) | drop the months, raise | not specified | refused | drops them ([time-plus-interval](../characterization/duckdb/facts/duckdb-time-plus-interval.json)) |
+| `list_null_order` (sverify's: a NULL element deciding `<` of lists) | `NULL`, `GREATEST`, `LEAST` | `lt` of lists not defined | `NULL` in `<`, `GREATEST` in `ORDER BY` | `GREATEST` in both; shimmed ([R11](../characterization/duckdb/facts/duckdb-R11.json)) |
+
+### Aggregates, windows and relations
+
+| Option | Core | Substrait | Reference | DuckDB |
+|---|---|---|---|---|
+| `sum_order` (sverify's: `SUM`, `AVG` of doubles) | any order and grouping (`FloatSums`) | not specified | any order and grouping, within the plan's bound | sequential, partial states merged by addition ([sum-double](../characterization/duckdb/facts/duckdb-sum-double.json), [avg-double](../characterization/duckdb/facts/duckdb-avg-double.json)) |
+| `stat_algo` (sverify's: `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`) | `EXACT`: the exact moments rounded once | not specified | `EXACT`: the exact moments rounded once; an engine's value has the generic properties | Welford with Chan's merge ([var-stddev](../characterization/duckdb/facts/duckdb-var-stddev.json), [covar](../characterization/duckdb/facts/duckdb-covar.json), [corr](../characterization/duckdb/facts/duckdb-corr.json)); `VAR_POP` of one NaN is `0` ([one-value](../characterization/duckdb/facts/duckdb-var-pop-one-value.json), [DD-3](../upstream/bugs/DD-3.json)), shimmed by the writer's NaN guard (`Stat.nanGuard_varStat`) |
+| `stat_degenerate` (sverify's: `CORR` of one pair or a constant side; a statistical aggregate of `±∞`) | `NULL`, `NAN`, raise | not specified | `NULL` for `CORR`; raise for `±∞` | `NAN` for both (duckdb-corr, nonfinite-aggregates) |
+| `avg_int_result` (sverify's: `avg` of integers) | the declared output type: `fp64` or `i64` truncated | `avg` of `i64` returns `i64` | follows the declared type | `DOUBLE` natively, the exact sum divided in `double` or `long double` ([avg-int](../characterization/duckdb/facts/duckdb-avg-int.json)); sverify's SQL writes the `HUGEINT` sum `//` the count for `i64` ([R6](../characterization/duckdb/facts/duckdb-R6.json)) |
+| `quantile_interp` (sverify's: `QUANTILE_CONT` between neighbours) | any double between them | `quantile` has `rounding` | any double between them (`contAllowed`) | `lo·(1−d) + hi·d`, may round past; clamped ([quantile-cont-interpolation](../characterization/duckdb/facts/duckdb-quantile-cont-interpolation.json)) |
+| `tie_pick` (sverify's: `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value`, `MODE`, ranks over ties) | any row of the tie | `any_value` "selects an arbitrary value" | any row; each measure may take its own | the row it read first, which depends on parallelism ([mode-ties](../characterization/duckdb/facts/duckdb-mode-ties.json), arg-min-nulls) |
+| `tie_order` (sverify's: `STRING_AGG`, `collect`, a sort, a window's order) | any order of the ties | not specified | any order | not stable (mode-ties) |
+| `null_order` (a sort key) | `NULLS_FIRST`, `NULLS_LAST` | stated by the key's direction; `UNSPECIFIED` leaves it open | as the key states; `NULLS_LAST` for `UNSPECIFIED` | `NULLS_LAST` by default ([F2](../characterization/duckdb/facts/duckdb-F2.json)); either when the SQL states it |
+| `clustered` (a sort key's `CLUSTERED` direction) | equal keys adjacent, the groups in any order | `SORT_DIRECTION_CLUSTERED` | the same relation | an `ORDER BY` on the keys, which clusters them ([clustered](../characterization/duckdb/facts/duckdb-clustered.json)) |
+| `ntile_spread` (sverify's) | the SQL standard's, spread out | not specified | the SQL standard's | the SQL standard's ([ntile](../characterization/duckdb/facts/duckdb-ntile.json); DataFusion spreads, [DF-11](../upstream/bugs/DF-11.json)) |
+| `float_to_int` (casts) | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not specified | `TRUNCATE` | `TIE_TO_EVEN` from `FLOAT`/`DOUBLE`, `TIE_AWAY_FROM_ZERO` from `DECIMAL`; shimmed with `trunc` ([R9](../characterization/duckdb/facts/duckdb-R9.json)) |
+| `cast_failure` | `THROW_EXCEPTION`, `RETURN_NULL` | the cast's `failureBehavior`; `UNSPECIFIED` exists | `THROW_EXCEPTION` for `UNSPECIFIED` | both native ([R8](../characterization/duckdb/facts/duckdb-R8.json)) |
+
+Opaque functions need no option: the black boxes, the regexes and the
+digests have one meaning each, the function itself, and every profile shares
+it. The conversions between integers, decimals and doubles stay opaque
+constants with proved properties (`core/Sverify/Core/Conversions.lean`), the same
+in every profile.
 
 ## How the model holds a plan
 
@@ -608,10 +728,9 @@ states each, with its status.
 | What | Where |
 |---|---|
 | Principles, defaults and overrides | [Principles](#principles), [Overrides](#overrides) and the tables on this page |
+| Each option's value | [Options](#options) |
 | Overflow and `SUM` | [Errors](#errors), [Integers](#integers) |
-| Engine tiers | [the engines](stability.md#engines) |
+| The engines | [the engines](stability.md#engines) |
 | DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
-| Float aggregates as correctly rounded exact sums, two NULL equalities, the size hypothesis, lexical lambdas | [core-semantics.md](core-semantics.md#decisions) |
-| Statistical aggregates as correctly rounded exact moments | [core-semantics.md](core-semantics.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments) |
-| Options differ from the reference only on their scopes | [core-semantics.md](core-semantics.md#d34-an-option-differs-from-the-reference-only-on-its-scope) |
-| The loose core and profiles as constraints (design) | [core-semantics.md](core-semantics.md) |
+| The core and the profiles | [core-and-profiles.md](core-and-profiles.md) |
+| Why each choice was made, for contributors | [the decision log](decisions.md), [core-semantics.md](core-semantics.md) |
