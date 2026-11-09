@@ -674,6 +674,15 @@ jobs:
       - uses: ./.github/actions/setup-lean
         with:
           cache: "false"
+      # The package's own build, by its sources: unchanged, `lake build` only
+      # checks the traces (Mathlib comes from `lake exe cache get` each time).
+      # Lake rebuilds every module whose inputs differ, so a restored build of
+      # other sources (the restore key) is safe too.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: float-bounds/.lake/build
+          key: float-bounds-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('float-bounds/lean-toolchain', 'float-bounds/lake-manifest.json', 'float-bounds/lakefile.toml', 'float-bounds/**/*.lean') }}
+          restore-keys: float-bounds-${{ runner.os }}-${{ runner.arch }}-
       - working-directory: float-bounds
         run: lake exe cache get && lake build --wfail
 
