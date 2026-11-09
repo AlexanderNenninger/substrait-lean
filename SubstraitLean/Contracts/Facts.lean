@@ -51,6 +51,48 @@ theorem FactsHold.append {fs gs : List Fact} {row : Row} (h₁ : FactsHold fs ro
   · exact h₁ f hf
   · exact h₂ f hf
 
+/-- A fact that holds on every row of a class of rows equal up to canonical
+codes (`-0.0` and `0.0`, D31): all but a whole condition, which may tell the
+members apart (`atan2(-0.0, -1) < 0 < atan2(0.0, -1)`). -/
+def Fact.classSafe : Fact → Bool
+  | .holds _ => false
+  | _ => true
+
+/-- A number of kind `k` up to `canonV` is a number of kind `k` with the same
+normal form. -/
+theorem NumKind.val_of_canonV {k : NumKind} {v : Value} {a : Int}
+    (h : v.canonV = (k.val a).canonV) : ∃ b, v = k.val b ∧ k.norm b = k.norm a := by
+  cases k <;> cases v <;>
+    simp only [NumKind.val, Value.canonV, Value.float.injEq, Value.int.injEq, Value.date.injEq,
+      Value.ts.injEq, Value.tod.injEq, Value.dec.injEq, reduceCtorEq] at h ⊢
+  all_goals first
+    | exact ⟨_, rfl, h⟩
+    | (subst h; exact ⟨_, rfl, rfl⟩)
+    | (obtain ⟨rfl, rfl⟩ := h; exact ⟨_, ⟨rfl, rfl⟩, rfl⟩)
+
+theorem Fact.holds_of_canon {f : Fact} (hs : f.classSafe = true) {x y : Row}
+    (h : x.canon = y.canon) (hy : f.Holds y) : f.Holds x := by
+  have hc := getD_canonV_of_canon h
+  cases f with
+  | diff i j b =>
+    intro k a a' ha ha'
+    obtain ⟨c, hc1, hn⟩ := NumKind.val_of_canonV (by rw [← hc i, ha])
+    obtain ⟨c', hc1', hn'⟩ := NumKind.val_of_canonV (by rw [← hc j, ha'])
+    rw [← hn, ← hn']; exact hy k c c' hc1 hc1'
+  | ne i k c =>
+    intro a ha
+    obtain ⟨b, hb, hn⟩ := NumKind.val_of_canonV (by rw [← hc i, ha])
+    rw [← hn]; exact hy b hb
+  | ratio s c b =>
+    have hu : ∀ i, (x.getD i .null).unscaled? = (y.getD i .null).unscaled? := fun i => by
+      have := hc i
+      generalize x.getD i .null = u at this ⊢
+      generalize y.getD i .null = w at this ⊢
+      cases u <;> cases w <;> simp_all [Value.canonV]
+    intro a n ha hn
+    exact hy a n (by rw [← hu]; exact ha) (by rw [← hu]; exact hn)
+  | holds e => simp [Fact.classSafe] at hs
+
 theorem FactsHold.filter {fs : List Fact} {row : Row} (h : FactsHold fs row) (p : Fact → Bool) :
     FactsHold (fs.filter p) row := fun f hf => h f (List.mem_filter.mp hf).1
 
@@ -594,7 +636,10 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
         winFacts part sort (T r part sort) (r.arity cat) fns
   -- Some of the left rows, or all of the rows in another order or once each.
   | .semi a _ _ _ => a.facts cat F T
-  | .orderBy r _ | .distinct r => r.facts cat F T
+  | .orderBy r _ => r.facts cat F T
+  -- `DISTINCT` may give any row of a present class (D31): the facts that
+  -- read numbers by their canonical codes.
+  | .distinct r => (r.facts cat F T).filter Fact.classSafe
   | .aggregate _ gs ms => aggFacts gs.length ms
   | .unnest _ _ => []
 
@@ -1234,12 +1279,17 @@ theorem Rel.facts_sound_all {cat : Catalog} (hcat : cat.WF) {F : String → List
       facts_sound_all hcat hF hT hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
       facts_sound_all hcat hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
-  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr =>
-      facts_sound_all hcat hF hT (r := r) hwf hi row (hd.sub (h.mem_iff.mp hr))
+  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr => by
+      obtain ⟨y, hy, he⟩ := hd.class_mem (h.mem_iff.mp hr)
+      intro f hf
+      obtain ⟨hf, hs⟩ := List.mem_filter.mp hf
+      exact Fact.holds_of_canon hs he (facts_sound_all hcat hF hT (r := r) hwf hi y hy f hf)
   | .aggregate _ gs ms, _, _, ⟨_, _, _, h, ho⟩, row, hr => by
       obtain ⟨k, vs, grp, rfl, hv, _, hk, _⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
       have hkl : k.length = gs.length := by
-        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
+        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, he⟩
+        · rfl
+        · rw [Row.length_of_canon he]; simp [groupKey]
       simp only [Rel.facts]
       exact aggFacts_sound_of (grp := grp) (hkl ▸ aggCol hv)
   | .unnest _ _, _, _, _, _, _ => fun f hf => by simp [Rel.facts] at hf

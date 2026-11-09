@@ -491,41 +491,58 @@ section
 
 variable {α : Type} {c : α → α}
 
-/-- `reps` keeps one member of each class of `l`, any member: what the
-reference allows for `DISTINCT` and `GROUP BY` keys (D31). `canonReps`
-keeps the least. -/
+/-- `reps` keeps one value of each class of `l`, any value of the class:
+what the reference allows for `DISTINCT` and `GROUP BY` keys (D31). The
+class must be present in `l`; the value need not be, since engines emit a
+class's canonical value (`+0.0` for a group of `-0.0`s). `canonReps` keeps
+the least member. -/
 def IsReps (c' : α → α) (l reps : List α) : Prop :=
-  reps.Pairwise (fun a b => c' a ≠ c' b) ∧ (∀ x ∈ reps, x ∈ l) ∧ ∀ x ∈ l, ∃ y ∈ reps, c' y = c' x
+  reps.Pairwise (fun a b => c' a ≠ c' b) ∧ (∀ x ∈ reps, ∃ y ∈ l, c' x = c' y) ∧
+    ∀ x ∈ l, ∃ y ∈ reps, c' y = c' x
 
 theorem canonReps_isReps [DecidableEq α] {le : α → α → Bool} (h : RawOrder le) (l : List α) :
     IsReps c l (canonReps c le l) :=
-  ⟨canonReps_pairwise h l, fun _ hx => canonReps_sub hx,
+  ⟨canonReps_pairwise h l, fun x hx => ⟨x, canonReps_sub hx, rfl⟩,
     fun _ hx => ⟨_, classRep_mem_canonReps hx, classRep_canon _ _⟩⟩
 
-theorem IsReps.sub {l reps : List α} (h : IsReps c l reps) {x : α} (hx : x ∈ reps) : x ∈ l :=
+/-- Each representative's class is present. -/
+theorem IsReps.class_mem {l reps : List α} (h : IsReps c l reps) {x : α} (hx : x ∈ reps) :
+    ∃ y ∈ l, c x = c y :=
   h.2.1 x hx
+
+/-- A representative of a class with one member is that member. -/
+theorem IsReps.mem_of_lone {l reps : List α} (h : IsReps c l reps)
+    (hf : ∀ y ∈ l, ∀ z, c z = c y → z = y) {x : α} (hx : x ∈ reps) : x ∈ l := by
+  obtain ⟨y, hy, he⟩ := h.class_mem hx
+  rwa [hf y hy x he]
 
 theorem IsReps.nodup {l reps : List α} (h : IsReps c l reps) : reps.Nodup :=
   List.nodup_iff_pairwise_ne.mpr (h.1.imp fun hne he => hne (congrArg c he))
 
-theorem IsReps.length_le {l reps : List α} (h : IsReps c l reps) : reps.length ≤ l.length :=
-  List.Nodup.length_le_of_subset h.nodup fun _ hx => h.sub hx
+theorem IsReps.length_le {l reps : List α} (h : IsReps c l reps) : reps.length ≤ l.length := by
+  have hn : (reps.map c).Nodup := List.nodup_iff_pairwise_ne.mpr (List.pairwise_map.mpr h.1)
+  have := List.Nodup.length_le_of_subset hn fun z hz => by
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hz
+    obtain ⟨y, hy, he⟩ := h.class_mem hx
+    exact List.mem_map.mpr ⟨y, hy, he.symm⟩
+  simpa using this
 
-/-- On members that are their own canonical forms, the one choice of
-representatives is `dedup`'s, up to order. -/
+/-- On classes with one member each, the one choice of representatives is
+`dedup`'s, up to order. -/
 theorem IsReps.perm_dedup [DecidableEq α] {l reps : List α} (h : IsReps c l reps)
-    (hf : ∀ x ∈ l, c x = x) : reps.Perm (dedup l) :=
+    (hf : ∀ y ∈ l, ∀ z, c z = c y → z = y) : reps.Perm (dedup l) :=
   (List.perm_ext_iff_of_nodup h.nodup (nodup_dedup l)).mpr fun x => by
     rw [mem_dedup]
     constructor
-    · exact fun hx => h.sub hx
+    · exact fun hx => h.mem_of_lone hf hx
     · intro hx
       obtain ⟨y, hy, he⟩ := h.2.2 x hx
-      rwa [← hf y (h.sub hy), he, hf x hx] at hy
+      rwa [hf x hx y he] at hy
 
 theorem IsReps.congr {l l' reps : List α} (h : IsReps c l reps) (hm : ∀ y, y ∈ l ↔ y ∈ l') :
     IsReps c l' reps :=
-  ⟨h.1, fun x hx => (hm x).mp (h.2.1 x hx), fun x hx => h.2.2 x ((hm x).mpr hx)⟩
+  ⟨h.1, fun x hx => by obtain ⟨y, hy, he⟩ := h.2.1 x hx; exact ⟨y, (hm y).mp hy, he⟩,
+    fun x hx => h.2.2 x ((hm x).mpr hx)⟩
 
 theorem IsReps.perm {l reps reps' : List α} (h : IsReps c l reps) (hp : reps'.Perm reps) :
     IsReps c l reps' :=

@@ -78,7 +78,7 @@ the group's rows, in some order of them. -/
 theorem mem_aggOrderAllowed {gs : List Expr} {ms : List Measure} {rows out : Relation}
     {row : Row} (h : aggOrderAllowed gs ms rows out) (hr : row ∈ out) :
     ∃ k vs grp, row = k ++ vs ∧ Forall2 (fun m v => m.OrderAllowed grp v) ms vs ∧
-      (∀ y ∈ grp, y ∈ rows) ∧ ((gs = [] ∧ k = []) ∨ ∃ x ∈ rows, k = groupKey gs x) ∧
+      (∀ y ∈ grp, y ∈ rows) ∧ ((gs = [] ∧ k = []) ∨ ∃ x ∈ rows, k.canon = (groupKey gs x).canon) ∧
       (gs ≠ [] → grp ≠ []) ∧ grp.length ≤ rows.length := by
   unfold aggOrderAllowed at h
   split at h
@@ -89,9 +89,10 @@ theorem mem_aggOrderAllowed {gs : List Expr} {ms : List Measure} {rows out : Rel
       fun hne => absurd (List.isEmpty_iff.mp hg) hne, Nat.le_refl _⟩
   · obtain ⟨ks, hks, h⟩ := h
     obtain ⟨k, hk, vs, rfl, hv⟩ := Forall2.mem_right h hr
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (hks.sub hk)
-    refine ⟨_, vs, _, rfl, hv, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩,
-      fun _ => List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩),
+    obtain ⟨_, hy, he⟩ := hks.class_mem hk
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hy
+    refine ⟨_, vs, _, rfl, hv, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, he⟩,
+      fun _ => List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp [he]⟩),
       List.length_filter_le _ _⟩
 
 /-! ## Plans -/
@@ -211,12 +212,15 @@ theorem Rel.orderAllowed_arity {cat : Catalog} (hcat : cat.WF) :
     orderAllowed_arity hcat hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
     orderAllowed_arity hcat hwf.1 hi row (h.mem_iff.mp hr)
-  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr =>
-    orderAllowed_arity hcat (r := r) hwf hi row (hd.sub (h.mem_iff.mp hr))
+  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr => by
+    obtain ⟨y, hy, he⟩ := hd.class_mem (h.mem_iff.mp hr)
+    rw [Row.length_of_canon he]; exact orderAllowed_arity hcat (r := r) hwf hi y hy
   | .aggregate _ gs ms, _, _, ⟨_, _, _, h, ho⟩, row, hr => by
     obtain ⟨k, vs, _, rfl, hv, _, hk, _⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
     have hkl : k.length = gs.length := by
-      rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
+      rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, he⟩
+      · rfl
+      · rw [Row.length_of_canon he]; simp [groupKey]
     simp [arity, hkl, ← hv.length_eq]
   | .unnest r _, hwf, _, ⟨i, hi, h⟩, row, hr => by
     obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)

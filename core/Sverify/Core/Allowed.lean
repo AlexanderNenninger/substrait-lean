@@ -99,9 +99,9 @@ theorem Measure.allowed_picks {m : Measure} (hm : m.orderFree = true) {rows : Re
   have he : m.fn.apply (m.inputs s) = m.fn.apply (m.inputs rows) := by
     rw [← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm),
       ← Measure.eval_eq (AggFn.ne_collect_of_orderFree hm), Measure.eval_perm hm hs]
-  rcases hv with hv | ⟨hf, hmem, hc⟩
+  rcases hv with hv | ⟨hf, hc⟩
   · exact .inl (hv.trans he)
-  · exact .inr ⟨hf, hp.mem_iff.mp hmem, hc.trans (by rw [he])⟩
+  · exact .inr ⟨hf, hc.trans (by rw [he])⟩
 
 /-- An order-free measure other than `MIN` and `MAX` allows only its value. -/
 theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) (hmin : m.fn ≠ .min)
@@ -128,11 +128,11 @@ theorem aggregateEval_allowed (gs : List Expr) (ms : List Measure) (rows : Relat
       ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_allowed m _⟩⟩
 
 /-- **An aggregate of order-free measures allows only its rows**, in some
-order, where its keys and its measures' arguments hold no second member of a
-class (no `-0.0`, no negative NaN): then there is no member to choose (D31). -/
+order, where its keys and its measures' arguments are alone in their classes
+(no doubles): then there is no value to choose (D31). -/
 theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, m.orderFree = true)
-    {rows out : Relation} (hk : ∀ r ∈ rows, (groupKey gs r).canon = groupKey gs r)
-    (ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ r ∈ rows, (m.arg.eval r).canonV = m.arg.eval r)
+    {rows out : Relation} (hk : ∀ r ∈ rows, (groupKey gs r).Lone)
+    (ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ r ∈ rows, (m.arg.eval r).Lone)
     (h : aggAllowed gs ms rows out) : out.Perm (aggregateEval gs ms rows) := by
   have hvals : ∀ {grp : Relation}, (∀ r ∈ grp, r ∈ rows) → ∀ {vs : List Value},
       Forall2 (fun m v => m.Allowed grp v) ms vs → vs = ms.map (·.eval grp) := by
@@ -172,17 +172,11 @@ theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, 
         obtain ⟨vs, rfl, hv⟩ := hk
         exact .cons (by rw [hvals (fun _ h => (List.mem_filter.mp h).1) hv]; rfl) ih
     rw [hrow h]
-    -- Canonical keys: the representatives are the keys, once each.
-    have hkc : ∀ k ∈ rows.map (groupKey gs), Row.canon k = k := fun k hk' => by
+    -- Keys alone in their classes: the representatives are the keys, once each.
+    have hkl : ∀ k ∈ rows.map (groupKey gs), ∀ z, Row.canon z = Row.canon k → z = k := fun k hk' => by
       obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hk'; exact hk r hr
-    refine List.Perm.map _ ((List.perm_ext_iff_of_nodup hks.nodup (canonReps_nodup _)).mpr
-      fun k => ?_)
-    rw [canonReps_of_inj fun x hx y hy he => by rw [← hkc x hx, ← hkc y hy, he], mem_dedup]
-    constructor
-    · exact fun h => hks.sub h
-    · intro h
-      obtain ⟨y, hy, he⟩ := hks.2.2 k h
-      rwa [← hkc y (hks.sub hy), he, hkc k h] at hy
+    refine List.Perm.map _ ((hks.perm_dedup hkl).trans ?_)
+    rw [distinctRows, canonReps_of_inj fun x hx y hy he => hkl y hy x he]
 
 /-! ## Plans -/
 

@@ -1014,8 +1014,9 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
       aeval_sound_all hcat hA hF hT hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
   | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
       aeval_sound_all hcat hA hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
-  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr =>
-      aeval_sound_all hcat hA hF hT (r := r) hwf hi row (hd.sub (h.mem_iff.mp hr))
+  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr => by
+      obtain ⟨y, hy, he⟩ := hd.class_mem (h.mem_iff.mp hr)
+      exact (aeval_sound_all hcat hA hF hT (r := r) hwf hi y hy).of_canon he
   | .unnest r c, hwf, _, ⟨i, hi, h⟩, row, hr => by
       obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
       obtain ⟨_, v, hc, hv, rfl⟩ := mem_unnestRow h
@@ -1027,10 +1028,11 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
       have hm := EnvMem.measures_all hall hv (!gs.isEmpty) (fun hg => hne (by simpa using hg))
         (rows := r.maxRows) (fun n hn => Nat.le_trans hglen (Rel.maxRows_sound_all hn hi))
-      rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
+      rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, he⟩
       · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
-      · exact (EnvMem.mapD (aeval_sound_all hcat hA hF hT hwf.1 hi x hx)
-          (Rel.facts_sound_all hcat hF hT hwf.1 hi x hx) gs).append hm (by simp)
+      · exact ((EnvMem.mapD (aeval_sound_all hcat hA hF hT hwf.1 hi x hx)
+          (Rel.facts_sound_all hcat hF hT hwf.1 hi x hx) gs).of_canon he).append hm
+          (by rw [Row.length_of_canon he]; simp [groupKey])
   | .unionAll a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
       rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
       · exact (aeval_sound_all hcat hA hF hT hwf.1 hx row h).zip_left
@@ -1051,7 +1053,9 @@ theorem Rel.ratioPart_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → 
   | .aggregate r gs ms, hwf, _, ⟨i, hi, o, h, ho⟩, row, hr => by
       obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, -⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
       have hkl : k.length = gs.length := by
-        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
+        rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, he⟩
+        · rfl
+        · rw [Row.length_of_canon he]; simp [groupKey]
       exact ratioFacts_sound_of (hkl ▸ aggCol_eq hv) fun y hy =>
         ⟨aeval_sound_all hcat hA hF hT hwf.1 hi y (hgrp y hy),
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩

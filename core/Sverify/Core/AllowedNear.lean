@@ -248,10 +248,12 @@ theorem aggAllowed_near {gs : List Expr} {ms : List Measure} {rows out : Relatio
       refine Forall2.lift (fun k hk row ⟨vs, he, hv⟩ => ?_) h
       obtain ⟨vs', hv', e⟩ := measures_near (g := gs.length) (grp := groupRows gs rows k) hms ms 0 vs
         hidx hv
-      obtain ⟨x, -, hx⟩ := List.mem_map.mp (hks.sub hk)
+      obtain ⟨_, hy, hkc⟩ := hks.class_mem hk
+      obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy
       refine ⟨k ++ vs', ⟨vs', rfl, hv'⟩, ?_⟩
       rw [he]
-      exact Row.EquivFrom.append_left hc _ (i := 0) (by simpa [← hx, groupKey] using e)
+      exact Row.EquivFrom.append_left hc _ (i := 0)
+        (by simpa [Row.length_of_canon hkc, groupKey] using e)
     exact ⟨out', ⟨ks, hks, h1⟩, h2⟩
 
 /-- **An aggregate over a plan without open measures is safe**: its double

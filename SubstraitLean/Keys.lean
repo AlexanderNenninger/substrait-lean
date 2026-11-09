@@ -47,13 +47,18 @@ theorem KeyOn.superset {k k' : List Nat} {rows : Relation} (hk : KeyOn k rows)
     simp only [keyOf, List.map_inj_left] at heq ⊢
     exact fun c hc => heq c (hsub c hc))
 
-/-- A column of rows equal up to canonical codes is equal up to them. -/
-theorem getD_canonV_of_canon {a b : Row} (h : a.canon = b.canon) (c : Nat) :
-    (a.getD c .null).canonV = (b.getD c .null).canonV := by
-  have := congrArg (·[c]?) h
-  simp only [Row.canon, List.getElem?_map] at this
-  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD]
-  cases ha : a[c]? <;> cases hb : b[c]? <;> simp_all [Value.canonV]
+/-- A symmetric relation that holds pairwise along a list holds between any
+two of its different members. -/
+theorem pairwise_of_mem {α : Type} {R : α → α → Prop} (hs : ∀ {a b}, R a b → R b a) :
+    ∀ {l : List α}, l.Pairwise R → ∀ {a b}, a ∈ l → b ∈ l → a ≠ b → R a b
+  | [], _, _, _, ha, _, _ => nomatch ha
+  | x :: _, h, a, b, ha, hb, hne => by
+    rw [List.pairwise_cons] at h
+    rcases List.mem_cons.1 ha with ea | ha' <;> rcases List.mem_cons.1 hb with eb | hb'
+    · exact absurd (ea.trans eb.symm) hne
+    · rw [ea]; exact h.1 _ hb'
+    · rw [eb]; exact hs (h.1 _ ha')
+    · exact pairwise_of_mem hs h.2 ha' hb' hne
 
 /-- Keys read rows up to canonical codes. -/
 theorem keyOf_eq_of_canon {k : List Nat} {a b : Row} (h : a.canon = b.canon) :
@@ -473,6 +478,31 @@ theorem Row.canon_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
   rw [he, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h₂] at this
   simpa using AVal.canonV_of_noDoubles (List.all_eq_true.mp h _ (List.getElem_mem _)) this
 
+/-- A value of an abstract value without doubles is alone in its class. -/
+theorem AVal.lone_of_noDoubles {a : AVal} {v : Value} (h : a.noDoubles = true) (hm : a.Mem v) :
+    v.Lone := by
+  simp only [AVal.noDoubles, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true,
+    Option.isNone_iff_eq_none, Option.any_eq_true, bne_iff_ne] at h
+  obtain ⟨⟨hl, hs⟩, hn⟩ := h
+  refine Value.lone_of_ne (fun c hc => ?_) (fun vs hc => ?_) (fun vs hc => ?_) <;> subst hc
+  · obtain ⟨b, hb, -, hk⟩ := hm
+    rcases hn with hn | ⟨k, hk', hne⟩
+    · simp [hn] at hb
+    · simp [hk'] at hk; exact absurd hk hne
+  · exact absurd hm.1 (by simp [hl])
+  · exact absurd hm.1 (by simp [hs])
+
+/-- A row of an environment without doubles is alone in its class. -/
+theorem Row.lone_of_env {env : List AVal} {row : Row} (hm : EnvMem env row)
+    (h : env.all AVal.noDoubles = true) (hl : row.length = env.length) : row.Lone := by
+  refine Row.lone_of_forall fun v hv => ?_
+  obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hv
+  have he : env.getD i AVal.top = env[i]'(hl ▸ hi) := by
+    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (hl ▸ hi)]
+  have := hm i
+  rw [he, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi] at this
+  exact AVal.lone_of_noDoubles (List.all_eq_true.mp h _ (List.getElem_mem _)) (by simpa using this)
+
 theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (ha : a.Mem v)
     (hb : b.Mem w) : v ≠ w := by
   rintro rfl
@@ -797,7 +827,9 @@ theorem aggOrderAllowed_key {gs : List Expr} {ms : List Measure} {rows out : Rel
         rw [← hlk]; exact keyOf_range_append
     obtain ⟨ks, hks, h⟩ := h
     have hl : ∀ k ∈ ks, k.length = gs.length := fun k hk => by
-      obtain ⟨x, _, rfl⟩ := List.mem_map.mp (hks.sub hk); simp [groupKey]
+      obtain ⟨_, hy, he⟩ := hks.class_mem hk
+      obtain ⟨x, _, rfl⟩ := List.mem_map.mp hy
+      rw [Row.length_of_canon he]; simp [groupKey]
     unfold KeyOn
     rw [← List.pairwise_map, hmap hl h, List.pairwise_map]
     exact hks.1
@@ -972,11 +1004,18 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
       simp only [Rel.keys, List.mem_cons] at hk
       rcases hk with rfl | hk
       · refine hd.1.imp_of_mem fun hx hy hne => ?_
-        rw [keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (hd.sub hx)),
-          keyOf_range (orderAllowed_arity hcat (r := r) hwf hi _ (hd.sub hy))]
+        obtain ⟨x', hx', ex⟩ := hd.class_mem hx
+        obtain ⟨y', hy', ey⟩ := hd.class_mem hy
+        rw [keyOf_range ((Row.length_of_canon ex).trans (orderAllowed_arity hcat (r := r) hwf hi _ hx')),
+          keyOf_range ((Row.length_of_canon ey).trans (orderAllowed_arity hcat (r := r) hwf hi _ hy'))]
         exact hne
-      · exact (keys_sound_all hcat hA hF hK (r := r) hwf k hk hi).of_subset
-          (fun _ h => hd.sub h) hd.nodup
+      · -- Each row of `d` is in the class of a row of `i`, a different one for each.
+        have hi' := keys_sound_all hcat hA hF hK (r := r) hwf k hk hi
+        refine hd.1.imp_of_mem fun hx hy hne => ?_
+        obtain ⟨x', hx', ex⟩ := hd.class_mem hx
+        obtain ⟨y', hy', ey⟩ := hd.class_mem hy
+        rw [keyOf_eq_of_canon ex, keyOf_eq_of_canon ey]
+        exact pairwise_of_mem (fun h e => h e.symm) hi' hx' hy' fun e => hne (by rw [ex, ey, e])
   | .aggregate _ gs _, _, k, hk, _, ⟨_, _, _, h, ho⟩ => by
       simp only [Rel.keys, List.mem_singleton] at hk
       subst hk

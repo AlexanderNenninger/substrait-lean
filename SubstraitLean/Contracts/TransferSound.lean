@@ -1450,6 +1450,10 @@ theorem Value.eq_true_of_isTrue {v : Value} (h : v.isTrue = true) : v = .bool tr
 def EnvMem (env : List AVal) (row : Row) : Prop :=
   ∀ i, (env.getD i AVal.top).Mem (row.getD i .null)
 
+/-- Abstract values read rows up to canonical codes. -/
+theorem EnvMem.of_canon {env : List AVal} {x y : Row} (h : EnvMem env y) (he : x.canon = y.canon) :
+    EnvMem env x := fun i => AVal.mem_of_canonV_eq (getD_canonV_of_canon he i) (h i)
+
 /-- A lambda's body reads its parameter in front of the row (D28). -/
 theorem EnvMem.cons {env : List AVal} {row : Row} {e : AVal} {x : Value} (hx : e.Mem x)
     (h : EnvMem env row) : EnvMem (e :: env) (x :: row)

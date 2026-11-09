@@ -524,6 +524,52 @@ theorem Value.leRaw_rawOrder : RawOrder Value.leRaw :=
 /-- A row with its doubles canonical. -/
 def Row.canon (r : Row) : Row := r.map Value.canonV
 
+/-- `v` is the one value of its class: no other value has its canonical
+form. Values without doubles are (`Value.lone_of_ne`). -/
+def Value.Lone (v : Value) : Prop := ∀ z : Value, z.canonV = v.canonV → z = v
+
+theorem Value.lone_of_ne {v : Value} (hf : ∀ c, v ≠ .float c) (hl : ∀ vs, v ≠ .list vs)
+    (hs : ∀ vs, v ≠ .struct vs) : v.Lone := by
+  intro z hz
+  have hv : v.canonV = v := by
+    cases v with
+    | float c => exact absurd rfl (hf c)
+    | list vs => exact absurd rfl (hl vs)
+    | struct vs => exact absurd rfl (hs vs)
+    | _ => simp only [Value.canonV]
+  rw [hv] at hz
+  cases z with
+  | float c => rw [Value.canonV_float] at hz; exact absurd hz.symm (hf _)
+  | list vs => rw [Value.canonV_list] at hz; exact absurd hz.symm (hl _)
+  | struct vs => rw [Value.canonV_struct] at hz; exact absurd hz.symm (hs _)
+  | _ => simpa only [Value.canonV] using hz
+
+theorem Row.length_of_canon {z r : Row} (h : z.canon = r.canon) : z.length = r.length := by
+  simpa [Row.canon] using congrArg List.length h
+
+/-- A column of rows equal up to canonical codes is equal up to them. -/
+theorem getD_canonV_of_canon {a b : Row} (h : a.canon = b.canon) (c : Nat) :
+    (a.getD c .null).canonV = (b.getD c .null).canonV := by
+  have := congrArg (·[c]?) h
+  simp only [Row.canon, List.getElem?_map] at this
+  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD]
+  cases ha : a[c]? <;> cases hb : b[c]? <;> simp_all [Value.canonV]
+
+/-- `r` is the one row of its class. -/
+def Row.Lone (r : Row) : Prop := ∀ z : Row, z.canon = r.canon → z = r
+
+theorem Row.lone_of_forall : ∀ {r : Row}, (∀ v ∈ r, v.Lone) → r.Lone
+  | [], _, z, hz => by cases z with
+    | nil => rfl
+    | cons _ _ => simp [Row.canon] at hz
+  | v :: vs, h, z, hz => by
+    cases z with
+    | nil => simp [Row.canon] at hz
+    | cons w ws =>
+      simp only [Row.canon, List.map_cons, List.cons.injEq] at hz
+      rw [h v List.mem_cons_self w hz.1,
+        Row.lone_of_forall (fun u hu => h u (List.mem_cons_of_mem _ hu)) ws hz.2]
+
 /-- Rows in the raw order of their values, lexicographically. -/
 def Row.leRaw (a b : Row) : Bool := Value.leListRaw a b
 

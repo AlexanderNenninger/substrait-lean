@@ -762,30 +762,35 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
 /-- What the reference allows an aggregate to give on `vs`: its value, or for
-`MIN` and `MAX` any member of the value's class (`-0.0` for `0.0`, the
-negative NaN for the NaN, D31). `AggFn.apply` picks the raw-least. -/
+`MIN` and `MAX` any value of the value's class (`-0.0` for `0.0`, the
+negative NaN for the NaN, D31), present in `vs` or not: engines emit a
+class's canonical value. `AggFn.apply` picks the raw-least member. -/
 def AggFn.Picks (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v ∈ vs ∧ v.canonV = (f.apply vs).canonV)
+  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v.canonV = (f.apply vs).canonV)
 
 theorem AggFn.picks_apply (f : AggFn) (vs : List Value) : f.Picks vs (f.apply vs) := .inl rfl
 
 theorem AggFn.Picks.canon {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v) :
     v.canonV = (f.apply vs).canonV := by
-  rcases h with rfl | ⟨-, -, h⟩
+  rcases h with rfl | ⟨-, h⟩
   · rfl
   · exact h
 
-/-- On values without a second member in their class, `MIN` and `MAX` have
-one allowed value. -/
+/-- On values alone in their classes, `MIN` and `MAX` have one allowed
+value. -/
 theorem AggFn.Picks.eq {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v)
-    (hcan : ∀ w ∈ vs, w.canonV = w) : v = f.apply vs := by
-  rcases h with h | ⟨hf, hv, hc⟩
+    (hlone : ∀ w ∈ vs, w.Lone) : v = f.apply vs := by
+  rcases h with h | ⟨hf, hc⟩
   · exact h
-  · have hmem : f.apply vs ∈ vs := by
-      cases vs with
-      | nil => simp at hv
-      | cons w ws => rcases hf with rfl | rfl <;> exact pickFold_mem _ _ _
-    rw [← hcan v hv, hc, hcan _ hmem]
+  · cases vs with
+    | nil =>
+      have hn : (f.apply []) = .null := by rcases hf with rfl | rfl <;> rfl
+      rw [hn] at hc ⊢
+      exact Value.lone_of_ne (by simp) (by simp) (by simp) v hc
+    | cons w ws =>
+      have hmem : f.apply (w :: ws) ∈ w :: ws := by
+        rcases hf with rfl | rfl <;> exact pickFold_mem _ _ _
+      exact hlone _ hmem v hc
 
 theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=
   Value.le_val .int

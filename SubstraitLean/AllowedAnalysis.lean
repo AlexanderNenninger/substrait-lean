@@ -115,14 +115,14 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
   | .distinct r, hwf, hd, _, ⟨i, hi, d, hdr, h⟩ => by
     simp only [detPlan, Bool.and_eq_true] at hd
     have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf hd.1 hi
-    -- Rows without doubles are their own canonical forms.
-    have hfix : ∀ x ∈ r.eval cat, Row.canon x = x := fun x hx =>
-      Row.canon_of_env (Rel.aeval_sound (sz := false) (r := r) hcat hA hF (WindowKeys.none_soundAll cat) hwf
+    -- Rows without doubles are alone in their classes.
+    have hlone : ∀ x ∈ r.eval cat, x.Lone := fun x hx =>
+      Row.lone_of_env (Rel.aeval_sound (sz := false) (r := r) hcat hA hF (WindowKeys.none_soundAll cat) hwf
         (fun h => by cases h) x hx) hd.2
         (by rw [Rel.aeval_length (r := r) hwf, Rel.eval_arity hcat (r := r) hwf x hx])
-    refine h.trans ((hdr.perm_dedup fun x hx => hfix x (hp.mem_iff.mp hx)).trans ?_)
+    refine h.trans ((hdr.perm_dedup fun x hx => hlone x (hp.mem_iff.mp hx)).trans ?_)
     simp only [eval, distinctRows]
-    rw [canonReps_of_inj fun x hx y hy he => by rw [← hfix x hx, ← hfix y hy, he]]
+    rw [canonReps_of_inj fun x hx y hy he => hlone y hy x he]
     exact dedup_perm_of_mem fun _ => hp.mem_iff
   | .aggregate r gs ms, hwf, hd, _, ⟨i, hi, o, h, ho⟩ => by
     simp only [detPlan, Bool.and_eq_true, List.all_eq_true] at hd
@@ -131,15 +131,15 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     have henv : ∀ x ∈ i, EnvMem (r.aeval cat A F .none) x := fun x hx =>
       Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
         (fun h => by cases h) x (hp.mem_iff.mp hx)
-    have hk : ∀ x ∈ i, (groupKey gs x).canon = groupKey gs x := fun x hx => by
-      simp only [Row.canon, groupKey, List.map_map]
-      exact List.map_congr_left fun g hg =>
-        AVal.canonV_of_noDoubles (hgs g hg) (Expr.abs_sound (henv x hx) g)
+    have hk : ∀ x ∈ i, (groupKey gs x).Lone := fun x hx => by
+      refine Row.lone_of_forall fun v hv => ?_
+      obtain ⟨g, hg, rfl⟩ := List.mem_map.mp hv
+      exact AVal.lone_of_noDoubles (hgs g hg) (Expr.abs_sound (henv x hx) g)
     have ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ x ∈ i,
-        (m.arg.eval x).canonV = m.arg.eval x := fun m hm hf x hx => by
+        (m.arg.eval x).Lone := fun m hm hf x hx => by
       have := hmm m hm
       rcases hf with hf | hf <;> simp only [hf, Bool.not_true, Bool.false_or] at this <;>
-        exact AVal.canonV_of_noDoubles this (Expr.abs_sound (henv x hx) m.arg)
+        exact AVal.lone_of_noDoubles this (Expr.abs_sound (henv x hx) m.arg)
     exact h.trans ((aggAllowed_eq hof hk ha ho).trans (aggregateEval_perm hof hp))
   | .unnest r _, hwf, hd, _, ⟨i, hi, h⟩ =>
     h.trans ((allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).flatMap_right _)

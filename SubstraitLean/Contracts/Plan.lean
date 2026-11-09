@@ -494,8 +494,10 @@ def Rel.laneStep (cat : Catalog) (A : String → List AVal) (F : String → List
         l.env ++ fns.map (WinFn.abs sz l.env), [], l.rows⟩
   | .semi _ _ _ _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
-  | .orderBy _ _, l, _ | .distinct _, l, _ =>
+  | .orderBy _ _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
+  | .distinct _, l, _ =>
+      ⟨l.arity, l.facts.filter Fact.classSafe, l.env, [], l.rows⟩
   | .aggregate _ gs ms, l, _ =>
       ⟨gs.length + ms.length, aggFacts gs.length ms,
         gs.map (·.absD l.env l.facts) ++ ms.map fun m => Measure.abs l.env l.facts m (!gs.isEmpty) l.rows,
