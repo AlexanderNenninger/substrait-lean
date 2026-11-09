@@ -1,4 +1,4 @@
-import SubstraitLean.SparkShims
+import Sverify.Spark.Shims
 
 /-!
 # Spark's profile (#271, #739)

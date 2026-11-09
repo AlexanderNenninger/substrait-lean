@@ -1,0 +1,24 @@
+name = "sverify-spark"
+defaultTargets = ["SverifySpark"]
+
+# Spark's Lean half (#1189, step 5): its choice table, its shims and their
+# lemmas, `Profile.spark`, and its `Engine` value. It
+# imports only the core, the analysis and engines-common. A standalone
+# `lake build --wfail` here is the guard (CI runs it): inside the root
+# workspace an import of another engine's module would resolve.
+
+[[require]]
+name = "sverify-core"
+path = "../../core"
+
+[[require]]
+name = "sverify-analysis"
+path = "../../analysis"
+
+[[require]]
+name = "sverify-engines"
+path = "../../engines"
+
+[[lean_lib]]
+name = "SverifySpark"
+roots = ["Sverify.Spark"]

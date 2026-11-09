@@ -393,11 +393,11 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.SparkProfile": {
+  "Sverify.Spark.Profile": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.SparkShims": {
+  "Sverify.Spark.Shims": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

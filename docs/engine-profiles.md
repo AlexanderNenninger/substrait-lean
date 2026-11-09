@@ -382,7 +382,7 @@ translation writes the stated calls as Polars's operators.
 
 ### Spark as a profile
 
-`Profile.spark` ([SparkProfile.lean](../SubstraitLean/SparkProfile.lean)) is
+`Profile.spark` ([Spark/Profile.lean](../engines/spark/Sverify/Spark/Profile.lean)) is
 what Spark computes, from its facts: the reference's functions with Spark's
 own values where they differ (`sparkBin`, `sparkUn`), as DuckDB's profile is
 built. `Engine.spark` runs them where they do not raise, and each value of
@@ -414,7 +414,7 @@ the writer refuses double `atan2`. Once the checker reports under the profile, a
 under it runs on Spark by `native`, and on DuckDB by `transfer` where
 DuckDB's choices are within Spark's at every option the proof depends on.
 What is proved
-([SparkShims.lean](../SubstraitLean/SparkShims.lean)):
+([Spark/Shims.lean](../engines/spark/Sverify/Spark/Shims.lean)):
 
 - `Shim.sum_empty_null`, with `Spark.partial_sums_fit`: a `BIGINT` `SUM`
   on Spark raises as soon as a partial sum leaves 64 bits, which depends on

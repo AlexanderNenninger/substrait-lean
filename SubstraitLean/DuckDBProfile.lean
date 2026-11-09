@@ -11,7 +11,7 @@ wherever it does not raise (`Profile.duckdbWritten_faithful`). The profile
 itself, `Profile.duckdb` and `Profile.duckdbWritten`, is in
 `DuckDBFunctions.lean`, on the core alone. Polars's
 and Spark's profiles have their own modules (`Polars/Profile.lean`,
-`SparkProfile.lean`); the core (`Profile.lean`, `Allowed`, `AllowedNear`)
+`Spark/Profile.lean`); the core (`Profile.lean`, `Allowed`, `AllowedNear`)
 does not import this one.
 -/
 

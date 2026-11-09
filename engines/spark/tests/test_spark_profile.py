@@ -1,5 +1,5 @@
 """Spark as a profile (#739): `Profile.spark.table` and its shims
-(`SubstraitLean/EngineTables.lean`, `SparkShims.lean`), `semantics="spark"`,
+(`SubstraitLean/EngineTables.lean`, `Spark/Shims.lean`), `semantics="spark"`,
 the routes to Spark, and the settings and version a run checks.
 
 Lean proves each shim against a model of Spark from its facts

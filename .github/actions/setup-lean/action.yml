@@ -21,7 +21,8 @@ runs:
           analysis/.lake
           engines/.lake
           engines/polars/.lake
-        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', '**/*.lean') }}
+          engines/spark/.lake
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', 'engines/spark/lake-manifest.json', '**/*.lean') }}
         restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
     - name: Restore elan and the lake build
       if: inputs.cache == 'true' && inputs.save != 'true'
@@ -34,7 +35,8 @@ runs:
           analysis/.lake
           engines/.lake
           engines/polars/.lake
-        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', '**/*.lean') }}
+          engines/spark/.lake
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', 'engines/spark/lake-manifest.json', '**/*.lean') }}
         restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
     - name: Install elan
       shell: bash
