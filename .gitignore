@@ -1,5 +1,7 @@
 /.lake
 /core/.lake
+/analysis/.lake
+/engines/.lake
 /float-bounds/.lake
 /python/.venv
 .hypothesis/
