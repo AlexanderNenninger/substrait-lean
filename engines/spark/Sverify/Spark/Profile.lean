@@ -6,7 +6,7 @@ import Sverify.Spark.Shims
 `Profile.spark` states what Spark 4.3.0 computes under
 `sverify_spark.dialect.SPARK_CONF` (ANSI mode on), as its facts record it
 (`engines/spark/facts/`): a diff against the reference, `sparkBin` and
-`sparkUn`, as DuckDB's profile is (`DuckDBProfile.lean`). It is an engine
+`sparkUn`, as DuckDB's profile is (`DuckDB/Profile.lean`). It is an engine
 fact, a sibling of the reference: no profile refines another
 (`docs/core-semantics.md`, "Terminology").
 

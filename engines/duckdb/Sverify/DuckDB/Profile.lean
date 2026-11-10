@@ -1,4 +1,4 @@
-import SubstraitLean.DuckDBFunctions
+import Sverify.DuckDB.Functions
 import Sverify.Analysis.ProfileImpl
 import Sverify.Analysis.Knowledge
 
@@ -9,7 +9,7 @@ The soundness of running a verified plan on DuckDB (`Rel.duckdb_sound`):
 DuckDB's functions, as the SQL printer writes them, agree with the reference
 wherever it does not raise (`Profile.duckdbWritten_faithful`). The profile
 itself, `Profile.duckdb` and `Profile.duckdbWritten`, is in
-`DuckDBFunctions.lean`, on the core alone. Polars's
+`DuckDB/Functions.lean`, on the core alone. Polars's
 and Spark's profiles have their own modules (`Polars/Profile.lean`,
 `Spark/Profile.lean`); the core (`Profile.lean`, `Allowed`, `AllowedNear`)
 does not import this one.

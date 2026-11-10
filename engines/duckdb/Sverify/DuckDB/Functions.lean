@@ -8,7 +8,7 @@ the reference (`Profile.duckdb`, from `engines/duckdb/facts/`), and the
 profile as the SQL printer writes it (`Profile.duckdbWritten`). Definitions
 over the core alone, so the lowering's lemmas and the engine tables need not
 wait for the analysis; the soundness of running a verified plan on it
-(`Rel.duckdb_sound`) is in `DuckDBProfile.lean`.
+(`Rel.duckdb_sound`) is in `DuckDB/Profile.lean`.
 -/
 
 namespace Substrait

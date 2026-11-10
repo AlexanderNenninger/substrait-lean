@@ -1,5 +1,5 @@
 """Black-box functions (#325): DuckDB functions the checker treats as opaque,
-with the laws their row declares (`SubstraitLean/DuckDBBoxes.lean`,
+with the laws their row declares (`engines/duckdb/Sverify/DuckDB/Boxes.lean`,
 `sverify.black_box`).
 
 Each example, `base64` (a scalar) and `entropy` (an aggregate), is lifted,

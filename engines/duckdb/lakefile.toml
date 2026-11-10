@@ -1,0 +1,26 @@
+name = "sverify-duckdb"
+defaultTargets = ["SverifyDuckDB"]
+
+# DuckDB's Lean half (#1189, step 5): `Profile.duckdb` under its settings, the
+# SQL printer's model (`Profile.duckdbWritten`) and its soundness, the black
+# boxes and the casts from VARCHAR, its choice table, and the lowering's
+# hand-written lemmas. It imports only the core, the analysis and
+# engines-common. The lowering's generated entries, `Engine.duckdb` and the
+# lift stay in the root package until the generators move. A standalone
+# `lake build --wfail` here is the guard (CI runs it).
+
+[[require]]
+name = "sverify-core"
+path = "../../core"
+
+[[require]]
+name = "sverify-analysis"
+path = "../../analysis"
+
+[[require]]
+name = "sverify-engines"
+path = "../../engines"
+
+[[lean_lib]]
+name = "SverifyDuckDB"
+roots = ["Sverify.DuckDB"]

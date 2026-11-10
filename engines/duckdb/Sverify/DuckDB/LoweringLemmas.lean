@@ -1,5 +1,5 @@
 import Sverify.Engines.Lowering
-import SubstraitLean.DuckDBFunctions
+import Sverify.DuckDB.Functions
 
 /-!
 # Lemmas the DuckDB lowering's proofs compute with (#241)
@@ -295,8 +295,9 @@ theorem Lowering.fpow_float (e' : Bool) (a b : Int) :
   have href : Profile.reference.bin .fpow (.float a) (.float b) =
       if negInfPow a b || nanCase .fpow a b then .error .domain
       else .ok (.float (FloatCode.lift₂ Float.pow a b)) := by
+    have hap : BinFn.apply .fpow (.float a) (.float b) = .float (FloatCode.lift₂ Float.pow a b) := rfl
     by_cases h1 : negInfPow a b <;> by_cases h2 : nanCase .fpow a b <;>
-      simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, h1, h2, Issue.isError]
+      simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, hap, h1, h2, Issue.isError]
   -- The guard is true exactly where the reference raises, on every code.
   have hguard : ∀ G : Bool, G = (negInfPow a b || nanCase .fpow a b) →
       (Expr.ifThen (.lit (.bool G)) (.un (.raise "domain error") (.field 1))

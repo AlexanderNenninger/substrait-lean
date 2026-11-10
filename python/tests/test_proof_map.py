@@ -22,8 +22,9 @@ MAP = MAP_PATH.read_text() if MAP_PATH.is_file() else ""
 CORE = ROOT / "core" / "Sverify" / "Core"
 ENGINES = ROOT / "engines" / "Sverify" / "Engines"
 ANALYSIS = ROOT / "analysis" / "Sverify" / "Analysis"
-# The engines' packages: their rows are `Polars/<module>.lean` and
-# `Spark/<module>.lean`, apart from engines-common's.
+# The engines' packages: their rows are `DuckDB/<module>.lean`,
+# `Polars/<module>.lean` and `Spark/<module>.lean`, apart from engines-common's.
+DUCKDB = ROOT / "engines" / "duckdb" / "Sverify"
 POLARS = ROOT / "engines" / "polars" / "Sverify"
 SPARK = ROOT / "engines" / "spark" / "Sverify"
 GENERATED_DIRS = [
@@ -42,6 +43,7 @@ def _modules() -> list[Path]:
         *ANALYSIS.rglob("*.lean"),
         *(POLARS / "Polars").glob("*.lean"),
         *(SPARK / "Spark").glob("*.lean"),
+        *(DUCKDB / "DuckDB").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]
@@ -64,6 +66,7 @@ def test_every_module_has_a_line(module):
             ANALYSIS,
             POLARS,
             SPARK,
+            DUCKDB,
             ROOT / "float-bounds" / "FloatBounds",
             ROOT / "SubstraitLean",
         ]
@@ -93,6 +96,7 @@ def _theorems() -> set[str]:
         *ANALYSIS.rglob("*.lean"),
         *(POLARS / "Polars").glob("*.lean"),
         *(SPARK / "Spark").glob("*.lean"),
+        *(DUCKDB / "DuckDB").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
     ]:

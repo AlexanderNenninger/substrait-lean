@@ -173,7 +173,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   it is deprecated, and it needs Lean 4.30 and Rust.
 
 * The lift is generated too: the lowering search run backwards.
-  `SubstraitLean/DuckDBSQL.lean` states what DuckDB's SQL functions mean
+  `engines/duckdb/Sverify/DuckDB/SQL.lean` states what DuckDB's SQL functions mean
   (`DuckFn`, at one signature each) under `semantics="duckdb"` and
   `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
   `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where

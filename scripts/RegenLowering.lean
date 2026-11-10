@@ -1,6 +1,6 @@
 import SubstraitLean.LoweringSearch
 import SubstraitLean.LoweringCache
-import SubstraitLean.LoweringDuckDB.Lemmas
+import Sverify.DuckDB.LoweringLemmas
 import SubstraitLean.LoweringDuckDB.Schemas
 
 /-!
