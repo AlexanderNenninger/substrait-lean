@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[datafusion]==0.7.1",
+#     "sverify==0.8.0",
 # ]
 # ///
 
@@ -111,7 +111,7 @@ def _(mo):
       largest 64-bit integer overflows and the reference raises, so the
       plan needs an upper bound on `amount`. Without one, Sverify works out
       the weakest, `amount < 2**62`, and reports the plan as not proved
-      until you declare a bound (D23). Like every precondition, it is
+      until you declare a bound. Like every precondition, it is
       checked on your data, or proved from table metadata.
 
     `sv.verify(expr, requires=..., ensures=...)` does the same for an
@@ -241,7 +241,7 @@ def _(mo):
     mo.md(r"""
     ### What backs a proof
 
-    Theorem `contract_sound` in `SubstraitLean/Contracts.lean` says: if every
+    Theorem `contract_sound` in `analysis/Sverify/Analysis/Contracts.lean` says: if every
     input row matches its schema and satisfies the preconditions, and the
     abstract interpretation says every postcondition is certainly TRUE, then
     every postcondition is TRUE on every output row. Sverify checks the
@@ -342,7 +342,7 @@ def _(PreconditionError, ibis, mo, sv, with_city):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Keys come from other places too, all proved in `SubstraitLean/Keys.lean`
+    Keys come from other places too, all proved in `analysis/Sverify/Analysis/Keys.lean`
     (`Rel.keys_sound`).
 
     * `DISTINCT` rows are a key: all their columns together.
@@ -364,6 +364,80 @@ def _(orders, sv):
         requires={"orders": [sv.unique("id", "customer")]},
         ensures=[sv.unique("id")],
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Foreign keys and row caps
+
+    An order for a customer who isn't in `customers` drops out of the join,
+    and its revenue with it. `sv.references` states that every customer an
+    order names exists, and `sv.key` is a key whose columns are never NULL.
+    We'll add an order for Cy, whom `customers` doesn't know:
+    """)
+    return
+
+
+@app.cell
+def _(PreconditionError, ibis, mo, sv, with_city):
+    con_refs = sv.connect()
+    con_refs.create(
+        "orders",
+        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 30), (2, "bob", 5), (3, "cy", 12)],
+    )
+    con_refs.create(
+        "customers",
+        ibis.schema({"name": "string", "city": "string"}),
+        [("ada", "Paris"), ("bob", "Oslo")],
+    )
+    _with_city = sv.transform(
+        requires={
+            "orders": [sv.key("id"), sv.references("customer", to=("customers", "name"))],
+            "customers": [sv.key("name")],
+        },
+        ensures=[sv.key("id")],
+    )(with_city)
+    try:
+        _with_city(con_refs.table("orders"), con_refs.table("customers"))
+    except PreconditionError as _e:
+        _err = _e
+    mo.callout(mo.md(f"PreconditionError: {_err}"), kind="danger")
+    return (con_refs,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Cy's order is caught before the join drops it. Nothing proves a foreign
+    key in `ensures`: it stays a precondition, checked on the data.
+
+    A row cap works the other way round. `sv.max_rows(n)` in `requires` is
+    checked on the data, and Lean carries it through the plan
+    (`Rel.maxRows_sound`). With it, a sum of amounts per customer is proved
+    to fit 64 bits, and the cap on the output is proved too. Without it, the
+    report assumes the sum fits and checks it as the job runs:
+    """)
+    return
+
+
+@app.cell
+def _(con_refs, sv):
+    from ibis import _
+
+    _orders = con_refs.table("orders")
+    _totals = _orders.group_by("customer").aggregate(total=_orders.amount.sum())
+    _amounts = [_.amount >= 0, _.amount <= 1_000_000]
+    capped = sv.verify(
+        _totals,
+        requires={"orders": [*_amounts, sv.max_rows(1_000_000)]},
+        ensures=[_.total >= 0, sv.max_rows(1_000_000)],
+    )
+    uncapped = sv.verify(_totals, requires={"orders": _amounts}, ensures=[_.total >= 0])
+    assert capped.proved and not capped.assumed
+    {"with sv.max_rows": capped.rows, "assumed without it": [str(a) for a in uncapped.assumed]}
     return
 
 
@@ -450,7 +524,7 @@ def _(mo):
       `t0` repeats. The relations still hold, since they are about each row.
 
     The facts are `Expr.factsOf_sound` and `Rel.facts_sound` in
-    `SubstraitLean/Contracts.lean`: a fact `x − y ∈ [lo, hi]` or `x ≠ k`
+    `analysis/Sverify/Analysis/Contracts.lean`: a fact `x − y ∈ [lo, hi]` or `x ≠ k`
     taken from a condition holds on every row that passes it, and every
     operator above keeps it.
 
@@ -460,25 +534,24 @@ def _(mo):
     crashes on a row nobody expected, and it pages you. A pipeline that
     quietly writes a wrong number is worse, because nobody gets paged.
 
-    Some operations can fail, and the reference fails on a few more than
-    DataFusion does.
+    Some operations can fail. The reference raises on each of these, and
+    the report lists every one a plan may hit
+    ([Runtime errors](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#runtime-errors)).
 
     * Integer `/` or `%` by zero, and `-9223372036854775808 / -1`, which
       does not fit in 64 bits.
     * `CAST(x AS BIGINT)` of NaN, ±∞ or a huge double, also after `ROUND`.
     * Integer `POWER` with a negative exponent or a huge result.
     * A regular expression that does not compile.
-    * Truncating a timestamp near the ends of its range to a month or year:
-      DataFusion panics or returns garbage.
+    * Truncating a timestamp near the ends of its range to a month or year.
     * `+`, `-`, `*` leaving the declared width (64 bits for `BIGINT`). The
-      reference raises and DataFusion wraps around (`2⁶² + 2⁶²` gives
-      `-2⁶³`), which an error allows.
+      reference raises, and so do the DuckDB and Polars translations.
     * An integer `SUM` leaving 64 bits. Sverify rules it out where the plan
       bounds a group's rows (a `FETCH` count) and `requires` bounds the
       column. Elsewhere it assumes each sum fits, and the job checks it on
       the data before the run (`Report.assumed`).
 
-    Lean's model computes with exact integers, and `SubstraitLean/Safety.lean`
+    Lean's model computes with exact integers, and `analysis/Sverify/Analysis/Safety.lean`
     lists, for every operation of a plan, which of these can happen. Theorem
     `Rel.mayIssues_sound` proves the list complete: if the report lists no
     error, no input can trigger one. `@sv.transform` refuses a transformation
@@ -529,8 +602,8 @@ def _(VARIANTS, mo, sv, variant):
     _report = sv.verify(VARIANTS[variant.value])
     if _report.errors:
         _summary = mo.callout(mo.md("Lean cannot rule out a runtime error."), kind="warn")
-    elif _report.needed:
-        _needs = ", ".join(f"`{c}`" for cs in _report.needed.values() for c in cs)
+    elif _report.needs:
+        _needs = ", ".join(f"`{n.label}`" for n in _report.needs)
         _summary = mo.callout(
             mo.md(f"Lean proves this cannot fail once you declare {_needs} in `requires`."),
             kind="warn",
@@ -553,11 +626,11 @@ def _(mo):
       sees rows that passed. `n != 0` leaves `MIN / -1` open, and `n > 0`
       closes it.
     * The same `AND` is no guard: DuckDB and Polars evaluate both operands,
-      so `qty % n` runs on the `n = 0` row (D19 in
-      [core-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md)). The report flags the error inside the
+      so `qty % n` runs on the `n = 0` row
+      ([eager AND and OR](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#guards)). The report flags the error inside the
       `AND` and suggests guarding the operation itself with the `CASE` above.
-    * An earlier filter is no guard either. DataFusion's optimizer merges the
-      two filters into one `AND`. Lean models that (`Rel.loose`) and reports
+    * An earlier filter is no guard either. An optimizer may merge the two
+      filters into one `AND`. Lean models that (`Rel.loose`) and reports
       the error.
     * `round(amount)` becomes a cast to `BIGINT`, which fails on `1e30` and
       NaN. Bounding `amount` first makes it safe, because `ROUND` is exact
@@ -572,12 +645,10 @@ def _(mo):
     works out the precondition `(_.n != 0)` and reports the plan as not
     proved until you declare it in `requires`. Declared, it is checked on
     each batch before the run, so `report.run` and `refresh` refuse a batch
-    with `n = 0` with a `PreconditionError` and nothing runs
-    ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
+    with `n = 0` with a `PreconditionError` and nothing runs.
     A `SUM` that may overflow, or an operation on doubles that may overflow
     to ±∞, does not block the proof: the assumption is listed in
-    `Report.assumed` and checked at run time, on the data before the run
-    ([#575](https://github.com/AlexanderNenninger/substrait-lean/issues/575)).
+    `Report.assumed` and checked at run time, on the data before the run.
     """)
     return
 
@@ -619,9 +690,8 @@ def _(mo):
     expression (lazy `CASE`, eager `AND`/`OR`, merged filters, and the
     constant conditions DuckDB evaluates while it plans the query). A
     constant that raises, such as `1 // 0 = 1` in a later `WHEN`, makes
-    Sverify report the whole plan as raising, on any data
-    ([#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609),
-    D21). The test suite runs plans on random data, extreme values included,
+    Sverify report the whole plan as raising, on any data. The test suite
+    runs plans on random data, extreme values included,
     and checks that they fail only where Lean reported an error.
 
     ## Windows and ASOF joins
@@ -638,7 +708,7 @@ def _(mo):
     This reads: for each row, the `ts` of the previous row of the same
     sensor, in `ts` order, and NULL for the first one. The model supports
     `LAG`, `LEAD` and `ROW_NUMBER` with any sort direction, NULLs first or
-    last, offsets and defaults (`SubstraitLean/Window.lean`).
+    last, offsets and defaults (`core/Sverify/Core/Window.lean`).
     """)
     return
 
@@ -692,7 +762,7 @@ def _(mo):
     picks, and may pick differently on the next run, so Lean proves only
     what holds for every pick. Unless `requires` gives a key on the
     partition and order columns, `report.deterministic` is `False` and
-    `report.tie_places` names the window. With the key, earlier means
+    `report.ties` names the key that would close the ties. With the key, earlier means
     strictly earlier: `prev_ts < ts`.
     """)
     return
@@ -727,19 +797,71 @@ def _(ibis, keyed, mo, sv, with_neighbours):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Theorem `window_tiebreak` (`SubstraitLean/Keys.lean`) makes the keyed
+    Theorem `window_tiebreak` (`analysis/Sverify/Analysis/Keys.lean`) makes the keyed
     case trustworthy: when a window's partition and sort columns contain a
     key of its input, every way of sorting the input by the window's keys
     gives the same rows. The proof therefore describes what the engine
     computes, however it breaks ties.
 
+    A run can ask for more: `report.run(con, engine,
+    reproducible=sv.equivalent())` refuses a plan whose result a rerun may
+    change, and names the key that would fix it. We'll take the largest
+    order, where two orders tie on the amount:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from sverify.errors import RouteError as _RouteError
+
+    con_ties = sv.connect()
+    con_ties.create(
+        "orders",
+        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 30), (2, "bob", 30), (3, "cy", 5)],
+    )
+    _orders = con_ties.table("orders")
+    _largest = sv.verify(_orders.order_by(ibis.desc("amount")).limit(1))
+    try:
+        _largest.run(con_ties, "duckdb", reproducible=sv.equivalent())
+    except _RouteError as _e:
+        print(f"RouteError: {_e}")
+    return (con_ties,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The fix is the one the refusal names: a key in the order. With `id` as
+    the tiebreak and `sv.key("id")` in `requires`, the result is
+    determined, and the run goes ahead:
+    """)
+    return
+
+
+@app.cell
+def _(con_ties, ibis, sv):
+    _orders = con_ties.table("orders")
+    _largest = sv.verify(
+        _orders.order_by([ibis.desc("amount"), "id"]).limit(1),
+        requires={"orders": [sv.key("id")]},
+    )
+    assert _largest.deterministic
+    _largest.run(con_ties, "duckdb", reproducible=sv.equivalent()).to_pylist()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### ASOF joins
 
     An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their
     timestamps rarely line up. To train a model on both, each accelerometer
     sample needs the latest gyroscope sample at or before it, and only if
-    that one is recent enough. This is an ASOF join. DataFusion has none, and
-    Ibis's `asof_join` compiles to DuckDB syntax, so `sv.asof_join` builds it
+    that one is recent enough. This is an ASOF join. Not every engine has one,
+    and Ibis's `asof_join` compiles to DuckDB syntax, so `sv.asof_join` builds it
     from parts Lean understands: a range join, then `ROW_NUMBER` to keep the
     latest match.
 
@@ -811,8 +933,8 @@ def _(mo):
     One row per sample comes from the key analysis: `ROW_NUMBER()` over a
     partition is a key together with the partition columns, and the filter
     `rank = 0` drops the rank from that key. Framed window aggregates
-    (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums are not
-    supported yet.
+    (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums verify too
+    ([Ibis coverage](https://github.com/AlexanderNenninger/substrait-lean/blob/main/README.md#ibis-coverage)).
 
     ## Composing contracts
 
@@ -941,7 +1063,85 @@ def _(mo):
     On bound tables only the base tables are checked: `paid`'s preconditions
     on `orders`. The intermediate result is never inspected, because
     `doubled_paid`'s preconditions were proved.
+
+    ### Handing the contract to another team
+
+    The billing team may run its steps on an engine sverify doesn't drive.
+    `to_substrait()` writes the proved plan as Substrait, which any
+    conforming consumer runs, with the contract inside it: the
+    preconditions the consumer must meet, the postconditions it may rely
+    on, and a manifest of how the proof reaches Substrait. We'll export
+    `paid` and read it back, which proves its contract again:
     """)
+    return
+
+
+@app.cell
+def _(paid, sv):
+    exported = paid.to_substrait()
+    _manifest = paid.report.substrait_contract()["manifest"]
+    _back = sv.Report.from_substrait(exported)
+    assert _back.proved
+    {
+        "class": _manifest["class"],
+        "evidence": _manifest["evidence"],
+        "proved again": [c.label for c in _back.ensures],
+    }
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The class `exact` says a consumer that follows Substrait's spec gives
+    the reference's rows. Where the spec leaves a choice open that the proof
+    needs, the export says so and refuses: Substrait doesn't say how
+    `upper` treats non-ASCII text (ST-10 on the
+    [upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)),
+    and the refusal names the way out:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    @sv.transform()
+    def shouty(orders):
+        return orders.select(orders.id, name=orders.customer.upper())
+
+    shouty(ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders"))
+    try:
+        shouty.to_substrait()
+    except sv.errors.ExportError as _e:
+        print(f"ExportError: {_e}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    A team that keeps its contracts in a data catalog rather than beside the
+    plan reads them as ODCS, the Open Data Contract Standard. `sverify.odcs`
+    writes a node's contract as an ODCS document, with the proved
+    guarantees as its schema and quality rules, and reads one back as
+    conditions for the next team's `requires`. We'll run `paid` over a
+    small source, export the node's contract, and read it back:
+    """)
+    return
+
+
+@app.cell
+def _(paid):
+    import pyarrow as _pa
+    from sverify import odcs
+    from sverify.io import StaticSource as _StaticSource
+
+    _source = _StaticSource(
+        _pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, None]}),
+        name="orders",
+    )
+    paid_odcs = odcs.export(_source.pipe(paid), descriptions={"amount": "in cents"})
+    odcs.read(paid_odcs).conditions()
     return
 
 

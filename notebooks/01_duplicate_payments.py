@@ -6,7 +6,7 @@
 #     "marimo",
 #     "pyarrow==26.0.1",
 #     "sqlglot",
-#     "sverify[datafusion,polars,delta]==0.7.1",
+#     "sverify[polars,delta,spark]==0.8.0",
 # ]
 # ///
 
@@ -43,7 +43,7 @@ def _(mo):
     the same amount at the same merchant twice within five minutes, and
     refund them first.
 
-    The rule comes from the [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md)
+    The rule comes from the [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md)
     (`fin-duplicate-payments`). Stream processors write it as an interval
     join; here it is a self-join on a Delta Lake table of card transactions.
     The refund queue relies on what you hand it: no pair twice, no charge
@@ -55,10 +55,9 @@ def _(mo):
     2. write the rule in Ibis and state its contract: what it assumes about
        the input and what the refund queue may rely on;
     3. have the checker prove the contract before any data runs;
-    4. run the checked plan on DuckDB, Polars and DataFusion, and see the
-       SQL a warehouse would run (the Snowflake and Spark dialects are a
-       preview: they run on an emulator and a local session, and work on
-       them waits on [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271));
+    4. run the checked plan on DuckDB and Polars, and see the
+       SQL a warehouse would run ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) says what each
+       engine runs and which SQL sverify writes);
     5. maintain the result from the change feed when new transactions arrive
        and old ones are reversed, next to the usual "process the new rows"
        job;
@@ -93,7 +92,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import DUCKDB, ENGINES, SNOWFLAKE, SPARK, to_sql
+    from sverify.engines import ENGINES, to_sql
     from sverify.io import DeltaSink, DeltaSource
 
     lake = Path(tempfile.mkdtemp())  # a local "lake"; any Delta URI works, with storage_options
@@ -131,13 +130,10 @@ def _():
     )
     DeltaTable(lake / "transactions").alter.add_constraint({"non_negative": "amount_cents >= 0"})
     return (
-        DUCKDB,
         DeltaSink,
         DeltaSource,
         DeltaTable,
         ENGINES,
-        SNOWFLAKE,
-        SPARK,
         at,
         dt,
         first_load,
@@ -380,12 +376,11 @@ def _(mo):
     production. The node's plan is the one Lean checked. Sverify runs it on
     each engine through its own translation, which keeps Lean's semantics
     (NULL keys never match, integers don't wrap around, ties break one way)
-    or refuses the plan. DuckDB is the reference engine (Tier 1), and Polars
-    is characterized fact by fact with proved shims; CI tests the others
-    against the Lean model, and their known deviations are documented. With
-    `route="auto"`, `refresh` also says how the proof reaches DuckDB or
-    Polars ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles); see the
-    [engine tiers](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md)).
+    or refuses the plan. Lean's reference profile is the reference, one of
+    the [profiles that refine the core](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines), and
+    [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists which engines run plans, each with a proved
+    profile. With `route="auto"`, `refresh` also says how the proof reaches
+    the engine ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)).
     A node refreshed with `engine=` has the same rows on each:
     """)
     return
@@ -407,9 +402,10 @@ def _(ENGINES, duplicate_payments, dups, transactions):
 def _(mo):
     mo.md(r"""
     For a warehouse, sverify writes the plan as SQL. The SQL is long because
-    it spells out every choice an engine would otherwise make. The Snowflake
-    and Spark dialects are a preview, checked on an emulator and a local
-    session:
+    it spells out every choice an engine would otherwise make. The Spark
+    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your
+    account, from the written SQL
+    ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)):
     """)
     return
 
@@ -422,15 +418,12 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(DUCKDB, SNOWFLAKE, SPARK, dialect, dups, mo, to_sql):
+def _(dialect, dups, mo, to_sql):
     import json
 
     import sqlglot
 
-    _sql = to_sql(
-        json.loads(dups.internal_plan),
-        {"snowflake": SNOWFLAKE, "spark": SPARK, "duckdb": DUCKDB}[dialect.value],
-    )
+    _sql = to_sql(json.loads(dups.internal_plan), dialect.value)
     mo.md(f"```sql\n{sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]}\n```")
     return
 
@@ -596,8 +589,8 @@ def _(mo):
     assumptions before a single row ran and would have caught a self-join
     bug at definition time. The preconditions came from Delta's constraints
     and file statistics where it has them and from the data where it
-    doesn't. The same plan gives the same rows on DuckDB, Polars and
-    DataFusion, and it stays right as charges arrive and get reversed, where
+    doesn't. The same plan gives the same rows on DuckDB and Polars, and it
+    stays right as charges arrive and get reversed, where
     the watermark job got two rows wrong. The next job builds on the stored
     table without checking again.
 

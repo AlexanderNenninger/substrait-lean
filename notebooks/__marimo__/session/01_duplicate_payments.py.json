@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "f76f5f24fa7d9804b7386c976e324268"
+    "script_metadata_hash": "a612966b18b9a10cd1b3803bae20af10"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "517826098c832efdcf284dc7ab428bb3",
+      "code_hash": "d8dc1cb53c568244d0dfb5fe9fa85232",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these double charges, the same card paying\nthe same amount at the same merchant twice within five minutes, and\nrefund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>). Stream processors write it as an interval\njoin; here it is a self-join on a Delta Lake table of card transactions.\nThe refund queue relies on what you hand it: no pair twice, no charge\nmatched with itself, and nothing left over when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its contract: what it assumes about\n   the input and what the refund queue may rely on;</li>\n<li>have the checker prove the contract before any data runs;</li>\n<li>run the checked plan on DuckDB, Polars and DataFusion, and see the\n   SQL a warehouse would run (the Snowflake and Spark dialects are a\n   preview: they run on an emulator and a local session, and work on\n   them waits on <a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/271\" rel=\"noopener noreferrer\" target=\"_blank\">#271</a>);</li>\n<li>maintain the result from the change feed when new transactions arrive\n   and old ones are reversed, next to the usual \"process the new rows\"\n   job;</li>\n<li>write the result to a Delta table that carries the contract, so the\n   next job can build on it.</li>\n</ol></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these double charges, the same card paying\nthe same amount at the same merchant twice within five minutes, and\nrefund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>). Stream processors write it as an interval\njoin; here it is a self-join on a Delta Lake table of card transactions.\nThe refund queue relies on what you hand it: no pair twice, no charge\nmatched with itself, and nothing left over when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its contract: what it assumes about\n   the input and what the refund queue may rely on;</li>\n<li>have the checker prove the contract before any data runs;</li>\n<li>run the checked plan on DuckDB and Polars, and see the\n   SQL a warehouse would run (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> says what each\n   engine runs and which SQL sverify writes);</li>\n<li>maintain the result from the change feed when new transactions arrive\n   and old ones are reversed, next to the usual \"process the new rows\"\n   job;</li>\n<li>write the result to a Delta table that carries the contract, so the\n   next job can build on it.</li>\n</ol></span>"
           }
         }
       ],
@@ -59,7 +59,7 @@
     },
     {
       "id": "lEQa",
-      "code_hash": "1b200ba2dcc316b506464a77c2d67dcd",
+      "code_hash": "b53db17e65029dbb323097f59c474380",
       "outputs": [
         {
           "type": "data",
@@ -220,7 +220,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='2992f357-4efc-97a9-936a-84b9a1b0dd6e'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='22afb8e2-4ff8-3af1-7676-dcf197cd992f'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
@@ -241,12 +241,12 @@
     },
     {
       "id": "TqIu",
-      "code_hash": "e0b5ab06e0bdce4ee8e34517a76c6ab5",
+      "code_hash": "d8a5336ecb282d67ec4328da553fb01a",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>&lt;=</code>, every transaction is its own duplicate, and\n<code>first_txn &lt; duplicate_txn</code> is refused because it is false. With no\ncondition at all, each pair also appears in both orders, and each double\ncharge would be refunded twice. The checker catches both without running\nanything and without test data that contains the bad case.</span>\n<h2 id=\"3-one-plan-every-engine\">3. One plan, every engine</h2>\n<span class=\"paragraph\">You might develop on DuckDB on a laptop and run the job elsewhere in\nproduction. The node's plan is the one Lean checked. Sverify runs it on\neach engine through its own translation, which keeps Lean's semantics\n(NULL keys never match, integers don't wrap around, ties break one way)\nor refuses the plan. DuckDB is the reference engine (Tier 1), and Polars\nis characterized fact by fact with proved shims; CI tests the others\nagainst the Lean model, and their known deviations are documented. With\n<code>route=\"auto\"</code>, <code>refresh</code> also says how the proof reaches DuckDB or\nPolars (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>; see the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md\" rel=\"noopener noreferrer\" target=\"_blank\">engine tiers</a>).\nA node refreshed with <code>engine=</code> has the same rows on each:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>&lt;=</code>, every transaction is its own duplicate, and\n<code>first_txn &lt; duplicate_txn</code> is refused because it is false. With no\ncondition at all, each pair also appears in both orders, and each double\ncharge would be refunded twice. The checker catches both without running\nanything and without test data that contains the bad case.</span>\n<h2 id=\"3-one-plan-every-engine\">3. One plan, every engine</h2>\n<span class=\"paragraph\">You might develop on DuckDB on a laptop and run the job elsewhere in\nproduction. The node's plan is the one Lean checked. Sverify runs it on\neach engine through its own translation, which keeps Lean's semantics\n(NULL keys never match, integers don't wrap around, ties break one way)\nor refuses the plan. Lean's reference profile is the reference, one of\nthe <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines\" rel=\"noopener noreferrer\" target=\"_blank\">profiles that refine the core</a>, and\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> lists which engines run plans, each with a proved\nprofile. With <code>route=\"auto\"</code>, <code>refresh</code> also says how the proof reaches\nthe engine (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>).\nA node refreshed with <code>engine=</code> has the same rows on each:</span></span>"
           }
         }
       ],
@@ -259,7 +259,7 @@
         {
           "type": "data",
           "data": {
-            "application/json": "{\"duckdb\": 1, \"polars\": 1, \"datafusion\": 1}"
+            "application/json": "{\"duckdb\": 1, \"polars\": 1}"
           }
         }
       ],
@@ -267,12 +267,12 @@
     },
     {
       "id": "DnEU",
-      "code_hash": "e91431c7b9f8e0c83e06a1191993066f",
+      "code_hash": "d72d7707038647fee98d308965f0329a",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For a warehouse, sverify writes the plan as SQL. The SQL is long because\nit spells out every choice an engine would otherwise make. The Snowflake\nand Spark dialects are a preview, checked on an emulator and a local\nsession:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For a warehouse, sverify writes the plan as SQL. The SQL is long because\nit spells out every choice an engine would otherwise make. The Spark\nSQL is what <code>engine=\"spark\"</code> runs, and the Snowflake SQL runs in your\naccount, from the written SQL\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a>):</span></span>"
           }
         }
       ],
@@ -285,7 +285,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='951469dc-7fd5-245e-b72f-18aca03eda0b'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='342ba825-f5e3-f1a7-ab42-60fdf5427a01'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
@@ -293,7 +293,7 @@
     },
     {
       "id": "ecfG",
-      "code_hash": "5d84f1e677f3f2fb162051b660d91a23",
+      "code_hash": "3e4f2b6e3122f84d17ee2451398ecadb",
       "outputs": [
         {
           "type": "data",
@@ -384,7 +384,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "duplicate_payments:\n  route on duckdb: exact; evidence tested\n  transactions@v1\u2192v3: 1 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3 (new files))\n  requires transactions: unique(txn_id) (checked on data)\n  view duplicate_payments: transactions@v3\n",
+          "text": "duplicate_payments:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-null-keys; #241)\n  transactions@v1\u2192v3: 1 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3 (new files))\n  requires transactions: unique(txn_id) (checked on data)\n  view duplicate_payments: transactions@v3\n",
           "mimetype": "text/plain"
         }
       ]
@@ -430,7 +430,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "duplicate_payments:\n  computed\n  requires transactions: unique(txn_id) (checked on data)\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3)\n  route on duckdb: exact; evidence tested\n  wrote duplicate_payments from transactions@v3: created v2, 1 row(s) written, 0 deleted\nduplicate_payments:\n  route on duckdb: exact; evidence tested\n  transactions@v3: no new version\n  view duplicate_payments: transactions@v3\n  wrote duplicate_payments from transactions@v3: already committed (v2)\n",
+          "text": "duplicate_payments:\n  computed\n  requires transactions: unique(txn_id) (checked on data)\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-null-keys; #241)\n  wrote duplicate_payments from transactions@v3: created v2, 1 row(s) written, 0 deleted\nduplicate_payments:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-null-keys; #241)\n  transactions@v3: no new version\n  view duplicate_payments: transactions@v3\n  wrote duplicate_payments from transactions@v3: already committed (v2)\n",
           "mimetype": "text/plain"
         }
       ]
@@ -442,7 +442,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<pre class='text-xs'>Contract(view=&#x27;duplicate_payments&#x27;, plan=&#x27;5c1f9a356b42351e163865e537ba9cf2e99413db7657de5792b3059e7b72d00d&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;, &#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;, &#x27;card_id&#x27;, &#x27;amount_cents&#x27;, &#x27;first_ts&#x27;, &#x27;duplicate_ts&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={}, cursors={}, table_ids={&#x27;transactions&#x27;: &#x27;b1a2035f-340e-402b-860d-e804efbabc2a&#x27;}, format=1)</pre>"
+            "text/html": "<pre class='text-xs'>Contract(node=&#x27;duplicate_payments&#x27;, plan=&#x27;07757e24e7d440d253a1a02538d68f51cefdd802c816af505cc897383bc18ed7&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;, &#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;, &#x27;card_id&#x27;, &#x27;amount_cents&#x27;, &#x27;first_ts&#x27;, &#x27;duplicate_ts&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={}, cursors={}, table_ids={&#x27;transactions&#x27;: &#x27;b497ad56-668c-4c0c-93e2-a4c670601657&#x27;}, format=2)</pre>"
           }
         }
       ],
@@ -476,12 +476,12 @@
     },
     {
       "id": "yCnT",
-      "code_hash": "030219e98764d069fd697489a3308cf7",
+      "code_hash": "381b8c2dcc0d287141563eea925d5467",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a refund queue you can rely on. The checker proved its\nassumptions before a single row ran and would have caught a self-join\nbug at definition time. The preconditions came from Delta's constraints\nand file statistics where it has them and from the data where it\ndoesn't. The same plan gives the same rows on DuckDB, Polars and\nDataFusion, and it stays right as charges arrive and get reversed, where\nthe watermark job got two rows wrong. The next job builds on the stored\ntable without checking again.</span>\n<span class=\"paragraph\">Next up: <a href=\"?file=02_sensor_alerts.py\">Sensor alerts from an Iceberg table</a>,\nwhere ties and NaN get involved. <a href=\"?file=04_contracts.py\">Contracts</a> and\n<a href=\"?file=05_pipelines_and_engines.py\">Pipelines and engines</a> explain the\nfeatures used here.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a refund queue you can rely on. The checker proved its\nassumptions before a single row ran and would have caught a self-join\nbug at definition time. The preconditions came from Delta's constraints\nand file statistics where it has them and from the data where it\ndoesn't. The same plan gives the same rows on DuckDB and Polars, and it\nstays right as charges arrive and get reversed, where\nthe watermark job got two rows wrong. The next job builds on the stored\ntable without checking again.</span>\n<span class=\"paragraph\">Next up: <a href=\"?file=02_sensor_alerts.py\">Sensor alerts from an Iceberg table</a>,\nwhere ties and NaN get involved. <a href=\"?file=04_contracts.py\">Contracts</a> and\n<a href=\"?file=05_pipelines_and_engines.py\">Pipelines and engines</a> explain the\nfeatures used here.</span></span>"
           }
         }
       ],

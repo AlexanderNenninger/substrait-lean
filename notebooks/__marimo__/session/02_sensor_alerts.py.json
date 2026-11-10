@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "e2d5bdbbf77cae300a61d8c75bd9333a"
+    "script_metadata_hash": "c3232b4dc756dcabc21c3c03fd69d3d9"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "214624fd525e4dd255fd0e074285da08",
+      "code_hash": "5975ab39be117aa52d61d4b46e1c429c",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"2-sensor-alerts-from-an-iceberg-table\">2. Sensor alerts from an Iceberg table</h1>\n<span class=\"paragraph\">Say you look after a plant's temperature sensors. When a machine runs\nhot for three minutes in a row, someone on call gets paged, and if the\nalert is wrong in either direction, it's their night or the machine\nthat pays for it. You want an alert at every reading that is the third\nor more in a row above 30 \u00b0C.</span>\n<span class=\"paragraph\">The sensors write a reading per device per minute to an Iceberg table,\nand the rule is <code>iot-consecutive-threshold</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> (Azure Stream Analytics'\n<code>MATCH_RECOGNIZE</code> example). In SQL that is two <code>LAG</code>s over a window.\nWindow queries are where engines disagree, and we'll run into three\ncauses:</span>\n<ul>\n<li>ties: two readings of a device at the same instant make \"previous\n  reading\" ambiguous, and each engine picks one;</li>\n<li>NaN: a glitching sensor sends NaN. In SQL <code>NaN &gt; 30</code> is TRUE, because\n  NaN sorts above every number, and in Python and pandas it is False, so\n  a prototype and the production job disagree;</li>\n<li>warehouses without row order: Snowflake and Spark tables have no order\n  to break ties with.</li>\n</ul>\n<span class=\"paragraph\">As in the <a href=\"?file=01_duplicate_payments.py\">first notebook</a>, the job\nreads the source, states and proves a contract, runs on several engines,\nkeeps up with new data and writes a sink.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"2-sensor-alerts-from-an-iceberg-table\">2. Sensor alerts from an Iceberg table</h1>\n<span class=\"paragraph\">Say you look after a plant's temperature sensors. When a machine runs\nhot for three minutes in a row, someone on call gets paged, and if the\nalert is wrong in either direction, it's their night or the machine\nthat pays for it. You want an alert at every reading that is the third\nor more in a row above 30 \u00b0C.</span>\n<span class=\"paragraph\">The sensors write a reading per device per minute to an Iceberg table,\nand the rule is <code>iot-consecutive-threshold</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> (Azure Stream Analytics'\n<code>MATCH_RECOGNIZE</code> example). In SQL that is two <code>LAG</code>s over a window.\nWindow queries are where engines disagree, and we'll run into three\ncauses:</span>\n<ul>\n<li>ties: two readings of a device at the same instant make \"previous\n  reading\" ambiguous, and each engine picks one;</li>\n<li>NaN: a glitching sensor sends NaN. In SQL <code>NaN &gt; 30</code> is TRUE, because\n  NaN sorts above every number, and in Python and pandas it is False, so\n  a prototype and the production job disagree;</li>\n<li>warehouses without row order: Snowflake and Spark tables have no order\n  to break ties with.</li>\n</ul>\n<span class=\"paragraph\">As in the <a href=\"?file=01_duplicate_payments.py\">first notebook</a>, the job\nreads the source, states and proves a contract, runs on several engines,\nkeeps up with new data and writes a sink.</span></span>"
           }
         }
       ],
@@ -59,7 +59,7 @@
     },
     {
       "id": "lEQa",
-      "code_hash": "82f75f3fc0c7553324bfc23743b79851",
+      "code_hash": "4bde079eb26abfa8c12645489e082e36",
       "outputs": [
         {
           "type": "data",
@@ -150,12 +150,12 @@
     },
     {
       "id": "emfo",
-      "code_hash": "551a031d97bff77525c0612d86eff9d5",
+      "code_hash": "b14213264766959b7f8baca05c15c1bc",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>temperature &gt; 30</code> is proved: it holds whichever reading the engine takes\nas the previous one. One alert per device and minute is not, and the\nreport warns that the result is not deterministic. If a device can send\ntwo readings with the same <code>ts</code>, which one is \"previous\" depends on how\nthe engine breaks the tie, and a rerun may page you twice. The catalogue\nfound this in 44 of its 139 queries (dedup, top-N, <code>LAG</code> over equal\ntimestamps; see its <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/FINDINGS.md\" rel=\"noopener noreferrer\" target=\"_blank\">findings</a>), and it is the\nmost common way for engines to disagree.</span>\n<span class=\"paragraph\">The fix is to state what the source promises: at most one reading per\ndevice and minute. The sensor team can make that promise, and the job\nchecks it on every batch.</span>\n<h2 id=\"3-the-nan-glitch\">3. The NaN glitch</h2>\n<span class=\"paragraph\">With that key we try again, and also ask that no alert is a NaN, since\nthe person paged needs a temperature:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>temperature &gt; 30</code> is proved: it holds whichever reading the engine takes\nas the previous one. One alert per device and minute is not, and the\nreport warns that the result is not deterministic. If a device can send\ntwo readings with the same <code>ts</code>, which one is \"previous\" depends on how\nthe engine breaks the tie, and a rerun may page you twice. The catalogue\nfound this in 44 of its 139 queries (dedup, top-N, <code>LAG</code> over equal\ntimestamps; see its <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/FINDINGS.md\" rel=\"noopener noreferrer\" target=\"_blank\">findings</a>), and it is the\nmost common way for engines to disagree.</span>\n<span class=\"paragraph\">The fix is to state what the source promises: at most one reading per\ndevice and minute. The sensor team can make that promise, and the job\nchecks it on every batch.</span>\n<h2 id=\"3-the-nan-glitch\">3. The NaN glitch</h2>\n<span class=\"paragraph\">With that key we try again, and also ask that no alert is a NaN, since\nthe person paged needs a temperature:</span></span>"
           }
         }
       ],
@@ -280,12 +280,12 @@
     },
     {
       "id": "ulZA",
-      "code_hash": "51840e1b7c8af59a4374179864eca0eb",
+      "code_hash": "20ad69bef29ff4b0949da0acefc2b7d0",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"5-every-engine-and-the-warehouses\">5. Every engine, and the warehouses</h2>\n<span class=\"paragraph\">The alerts may run on a laptop today and in a warehouse tomorrow.\nDuckDB (Tier 1), Polars and DataFusion run the checked plan with the\nsame rows, whichever <code>engine=</code> the node is refreshed with. Snowflake\nand Spark tables have no row order, so sverify refuses to write a window\nfor them unless you promise that the order keys have no ties. The\nreport's <code>deterministic</code> is that promise, proved from the key, so it can\nbe passed on:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"5-every-engine-and-the-warehouses\">5. Every engine, and the warehouses</h2>\n<span class=\"paragraph\">The alerts may run on a laptop today and in a warehouse tomorrow.\nDuckDB and Polars run the checked plan with the same rows, whichever\n<code>engine=</code> the node is refreshed with (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a>). Snowflake\nand Spark tables have no row order, so sverify refuses to write a window\nfor them unless you promise that the order keys have no ties. The\nreport's <code>deterministic</code> is that promise, proved from the key, so it can\nbe passed on:</span></span>"
           }
         }
       ],
@@ -293,7 +293,7 @@
     },
     {
       "id": "ecfG",
-      "code_hash": "979df5bb32130855460d613247765f80",
+      "code_hash": "b1b8ee7bd7ebe25fba1aaa4943dd7cad",
       "outputs": [
         {
           "type": "data",
@@ -306,12 +306,12 @@
     },
     {
       "id": "Pvdt",
-      "code_hash": "bc49b5629eb9726c10f3dd29eba5b3d6",
+      "code_hash": "c2d1f80650519603970ec9752b6f9504",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>deterministic=True</code> the SQL is written. Without the key, <code>deterministic</code>\nwould be <code>False</code>, and passing <code>deterministic=True</code> anyway would be an\nunproved promise.</span>\n<h2 id=\"6-new-readings-and-a-sensor-that-sends-twice\">6. New readings, and a sensor that sends twice</h2>\n<span class=\"paragraph\">Windows aren't incrementally maintained yet, and the node says so. A\nnode like this is recomputed and diffed on each refresh, and its change\nstill flows to the sink and to nodes downstream:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>deterministic=True</code> the SQL is written. Without the key, <code>deterministic</code>\nwould be <code>False</code>, and passing <code>deterministic=True</code> anyway would be an\nunproved promise.</span>\n<h2 id=\"6-new-readings-and-a-sensor-that-sends-twice\">6. New readings, and a sensor that sends twice</h2>\n<span class=\"paragraph\">Windows that share one <code>PARTITION BY</code> recompute only the partitions a\nbatch touches, for inputs without ties on the partition and sort columns\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>). The\nnode's status says how it is refreshed, and its change flows to the\nsink and to nodes downstream:</span></span>"
           }
         }
       ],
@@ -365,7 +365,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "alerts:\n  computed\n  requires readings: unique(device_id, ts) (checked on data)\n  route on duckdb: shim (Dialect.canon); evidence tested\n  wrote alerts from readings@v1: created v1, 1 row(s) written, 0 deleted\n",
+          "text": "alerts:\n  computed\n  requires readings: unique(device_id, ts) (checked on data)\n  route on duckdb: shim (Dialect.canon); evidence tested at 2.0.0 (facts duckdb-F2, duckdb-nan-equality, duckdb-arg-min-nulls, duckdb-R14; #241)\n  wrote alerts from readings@v1: created v1, 1 row(s) written, 0 deleted\n",
           "mimetype": "text/plain"
         }
       ]
@@ -398,7 +398,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "alerts:\n  route on duckdb: shim (Dialect.canon); evidence tested\n  readings@v1\u2192v2: 2 insert(s), 0 delete(s); \u0394 trusted as the files Iceberg appends v1\u2192v2 added\n  requires readings: unique(device_id, ts) (checked on data)\n  view alerts: readings@v2\n  view alerts: 1 touched group(s) recomputed\n  wrote alerts from readings@v2: append v2, 1 row(s) written, 0 deleted\n",
+          "text": "alerts:\n  route on duckdb: shim (Dialect.canon); evidence tested at 2.0.0 (facts duckdb-F2, duckdb-nan-equality, duckdb-arg-min-nulls, duckdb-R14; #241)\n  readings@v1\u2192v2: 2 insert(s), 0 delete(s); \u0394 trusted as the files Iceberg appends v1\u2192v2 added\n  requires readings: unique(device_id, ts) (checked on data)\n  view alerts: readings@v2\n  view alerts: 1 touched group(s) recomputed\n  wrote alerts from readings@v2: append v2, 1 row(s) written, 0 deleted\n",
           "mimetype": "text/plain"
         }
       ]
@@ -444,12 +444,12 @@
     },
     {
       "id": "TRpd",
-      "code_hash": "8c6a25d48f41cdf87da16499a0f3589d",
+      "code_hash": "5242f0e7f3dd8aea5869bec7ef9cc6a4",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have alerts the on-call engineer can rely on. The checker found\ntwo bugs before anything ran, an alert that depended on how ties were\nbroken and a NaN reading that would have paged someone. The key is\nchecked on every batch, so a sensor that sends twice stops the job and\nleaves the alerts as they were. The same plan runs on DuckDB, Polars and\nDataFusion, and Snowflake or Spark SQL is written once the tie-freedom\nit needs is proved. The window node says it isn't incremental and stays\nup to date by recomputation, with its change written to the sink.</span>\n<span class=\"paragraph\">Next up: <a href=\"?file=03_orders_mart.py\">An orders mart in SQL and Ibis</a>,\nwhere a dashboard's dbt tests become a contract.\n<a href=\"?file=04_contracts.py\">Contracts</a> covers windows, ties and the other\ndouble semantics in depth.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have alerts the on-call engineer can rely on. The checker found\ntwo bugs before anything ran, an alert that depended on how ties were\nbroken and a NaN reading that would have paged someone. The key is\nchecked on every batch, so a sensor that sends twice stops the job and\nleaves the alerts as they were. The same plan runs on DuckDB and Polars,\nand Snowflake or Spark SQL is written once the tie-freedom\nit needs is proved. The window node says how it stays up to date, and\nits change is written to the sink.</span>\n<span class=\"paragraph\">Next up: <a href=\"?file=03_orders_mart.py\">An orders mart in SQL and Ibis</a>,\nwhere a dashboard's dbt tests become a contract.\n<a href=\"?file=04_contracts.py\">Contracts</a> covers windows, ties and the other\ndouble semantics in depth.</span></span>"
           }
         }
       ],

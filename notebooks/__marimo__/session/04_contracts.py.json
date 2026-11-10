@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "a78cf47e9fb4363a4dce04428db161eb"
+    "script_metadata_hash": "3797b2f40b4f22a177b39beaf5a6cc97"
   },
   "cells": [
     {
@@ -59,12 +59,12 @@
     },
     {
       "id": "lEQa",
-      "code_hash": "ea45a9284533b31ee437f39a5268d9e4",
+      "code_hash": "09812f659e2c678e7e73f925caebe344",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>requires</code> maps each parameter of the function to conditions on that\n  input. <code>ensures</code> lists conditions on the output.</li>\n<li>Conditions are Ibis expressions over the table's columns\n  (<code>_.amount &gt;= 0</code>, using Ibis's <code>_</code> placeholder) or SQL snippets\n  (<code>\"id IS NOT NULL\"</code>).</li>\n<li>Calling <code>doubled(orders)</code> builds the Ibis expression as usual. Before\n  returning it, sverify sends the plan and the conditions to the Lean\n  checker (<code>substrait-check --contract</code>), which tries to prove every\n  postcondition. The verdicts are in <code>.report</code>.</li>\n<li>The first table of the report holds the verdicts. The second holds\n  everything Lean established about each output column, asked for or not.</li>\n<li><code>amount &lt; 1_000_000_000</code> is there for <code>amount * 2</code>. Doubling the\n  largest 64-bit integer overflows and the reference raises, so the\n  plan needs an upper bound on <code>amount</code>. Without one, Sverify works out\n  the weakest, <code>amount &lt; 2**62</code>, and reports the plan as not proved\n  until you declare a bound (D23). Like every precondition, it is\n  checked on your data, or proved from table metadata.</li>\n</ul>\n<span class=\"paragraph\"><code>sv.verify(expr, requires=..., ensures=...)</code> does the same for an\nexpression without a decorator and returns the report.</span>\n<h2 id=\"how-lean-knows-doubled-22\">How Lean knows <code>doubled \u2265 22</code></h2>\n<span class=\"paragraph\">Lean runs the plan on descriptions of values: for each column, whether it\ncan be NULL and which values it can hold. This is abstract interpretation,\nand each operator updates the descriptions.</span>\n<ul>\n<li>The preconditions make <code>amount &gt;= 0</code> and <code>amount &lt; 1_000_000_000</code>\n  TRUE on every input row, so <code>amount</code> is a non-NULL integer in\n  <code>[0, 10\u2079 - 1]</code>. (<code>NULL &gt;= 0</code> is NULL, which is not TRUE.)</li>\n<li>The filter <code>amount &gt; 10</code> keeps the rows where that is TRUE, so <code>amount</code>\n  is a non-NULL integer \u2265 11 afterwards.</li>\n<li><code>amount * 2</code> is then an integer in <code>[22, 2\u00b710\u2079 - 2]</code>, which fits in\n  64 bits and is never NULL.</li>\n</ul>\n<span class=\"paragraph\">A postcondition is proved when its description allows only TRUE.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>requires</code> maps each parameter of the function to conditions on that\n  input. <code>ensures</code> lists conditions on the output.</li>\n<li>Conditions are Ibis expressions over the table's columns\n  (<code>_.amount &gt;= 0</code>, using Ibis's <code>_</code> placeholder) or SQL snippets\n  (<code>\"id IS NOT NULL\"</code>).</li>\n<li>Calling <code>doubled(orders)</code> builds the Ibis expression as usual. Before\n  returning it, sverify sends the plan and the conditions to the Lean\n  checker (<code>substrait-check --contract</code>), which tries to prove every\n  postcondition. The verdicts are in <code>.report</code>.</li>\n<li>The first table of the report holds the verdicts. The second holds\n  everything Lean established about each output column, asked for or not.</li>\n<li><code>amount &lt; 1_000_000_000</code> is there for <code>amount * 2</code>. Doubling the\n  largest 64-bit integer overflows and the reference raises, so the\n  plan needs an upper bound on <code>amount</code>. Without one, Sverify works out\n  the weakest, <code>amount &lt; 2**62</code>, and reports the plan as not proved\n  until you declare a bound. Like every precondition, it is\n  checked on your data, or proved from table metadata.</li>\n</ul>\n<span class=\"paragraph\"><code>sv.verify(expr, requires=..., ensures=...)</code> does the same for an\nexpression without a decorator and returns the report.</span>\n<h2 id=\"how-lean-knows-doubled-22\">How Lean knows <code>doubled \u2265 22</code></h2>\n<span class=\"paragraph\">Lean runs the plan on descriptions of values: for each column, whether it\ncan be NULL and which values it can hold. This is abstract interpretation,\nand each operator updates the descriptions.</span>\n<ul>\n<li>The preconditions make <code>amount &gt;= 0</code> and <code>amount &lt; 1_000_000_000</code>\n  TRUE on every input row, so <code>amount</code> is a non-NULL integer in\n  <code>[0, 10\u2079 - 1]</code>. (<code>NULL &gt;= 0</code> is NULL, which is not TRUE.)</li>\n<li>The filter <code>amount &gt; 10</code> keeps the rows where that is TRUE, so <code>amount</code>\n  is a non-NULL integer \u2265 11 afterwards.</li>\n<li><code>amount * 2</code> is then an integer in <code>[22, 2\u00b710\u2079 - 2]</code>, which fits in\n  64 bits and is never NULL.</li>\n</ul>\n<span class=\"paragraph\">A postcondition is proved when its description allows only TRUE.</span></span>"
           }
         }
       ],
@@ -150,12 +150,12 @@
     },
     {
       "id": "emfo",
-      "code_hash": "12a869f8f5dcf28fa092d9654bf5217a",
+      "code_hash": "8ca7667c35f3c27c76dc2a22fe0c758b",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"what-backs-a-proof\">What backs a proof</h3>\n<span class=\"paragraph\">Theorem <code>contract_sound</code> in <code>SubstraitLean/Contracts.lean</code> says: if every\ninput row matches its schema and satisfies the preconditions, and the\nabstract interpretation says every postcondition is certainly TRUE, then\nevery postcondition is TRUE on every output row. Sverify checks the\nhypotheses about the data when the data is there.</span>\n<h3 id=\"what-lean-tracks\">What Lean tracks</h3>\n<span class=\"paragraph\">Per column: whether it can be NULL, integer and double ranges, timestamps,\nwhich booleans it can be, and which strings it can be while they are few.\nFilters such as <code>amount &gt; 10</code>, <code>x = 3</code>, <code>x IN (1, 2, 3)</code>,\n<code>status &lt;&gt; 'cancelled'</code> and <code>x IS NOT NULL</code> refine those facts. Arithmetic, comparisons, <code>AND</code>/<code>OR</code>/<code>NOT</code> with SQL's NULL\nsemantics, <code>CASE</code>, <code>COALESCE</code>, joins and <code>UNION ALL</code> carry them through.\nKeys and relations between columns come next. Not tracked yet: relations\nthat need more than a column plus a constant (<code>a &lt; 2 * b</code>), what is\ninside a string and counts across rows. For those,\n<code>on_unproved=\"check\"</code> checks the condition on the data.</span>\n<h2 id=\"keys\">Keys</h2>\n<span class=\"paragraph\">Say you add each customer's city to the orders so finance can sum revenue\nby city. If a customer appears twice in <code>customers</code>, their orders are\ncounted twice, and the totals stop matching the ledger.</span>\n<span class=\"paragraph\"><code>sv.unique(\"id\")</code> says the listed columns identify a row. In <code>requires</code>\nit is an assumption about an input, checked on the data when the input is\nbound. In <code>ensures</code> it is proved: keys survive filters and projections,\nand joins whose condition pins down at most one partner on the other\nside. We'll join orders with customers, with and without a key on the\ncustomer names.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"what-backs-a-proof\">What backs a proof</h3>\n<span class=\"paragraph\">Theorem <code>contract_sound</code> in <code>analysis/Sverify/Analysis/Contracts.lean</code> says: if every\ninput row matches its schema and satisfies the preconditions, and the\nabstract interpretation says every postcondition is certainly TRUE, then\nevery postcondition is TRUE on every output row. Sverify checks the\nhypotheses about the data when the data is there.</span>\n<h3 id=\"what-lean-tracks\">What Lean tracks</h3>\n<span class=\"paragraph\">Per column: whether it can be NULL, integer and double ranges, timestamps,\nwhich booleans it can be, and which strings it can be while they are few.\nFilters such as <code>amount &gt; 10</code>, <code>x = 3</code>, <code>x IN (1, 2, 3)</code>,\n<code>status &lt;&gt; 'cancelled'</code> and <code>x IS NOT NULL</code> refine those facts. Arithmetic, comparisons, <code>AND</code>/<code>OR</code>/<code>NOT</code> with SQL's NULL\nsemantics, <code>CASE</code>, <code>COALESCE</code>, joins and <code>UNION ALL</code> carry them through.\nKeys and relations between columns come next. Not tracked yet: relations\nthat need more than a column plus a constant (<code>a &lt; 2 * b</code>), what is\ninside a string and counts across rows. For those,\n<code>on_unproved=\"check\"</code> checks the condition on the data.</span>\n<h2 id=\"keys\">Keys</h2>\n<span class=\"paragraph\">Say you add each customer's city to the orders so finance can sum revenue\nby city. If a customer appears twice in <code>customers</code>, their orders are\ncounted twice, and the totals stop matching the ledger.</span>\n<span class=\"paragraph\"><code>sv.unique(\"id\")</code> says the listed columns identify a row. In <code>requires</code>\nit is an assumption about an input, checked on the data when the input is\nbound. In <code>ensures</code> it is proved: keys survive filters and projections,\nand joins whose condition pins down at most one partner on the other\nside. We'll join orders with customers, with and without a key on the\ncustomer names.</span></span>"
           }
         }
       ],
@@ -181,7 +181,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='nWHF-0' random-id='ceacd7ad-b21a-5e86-4613-ba981351cec4'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires customers: unique(name)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='nWHF-0' random-id='51e75425-ac75-abdc-0214-ce827e02a8ed'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires customers: unique(name)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
           }
         }
       ],
@@ -228,12 +228,12 @@
     },
     {
       "id": "qnkX",
-      "code_hash": "be9b0ddb381f206a791ddb06dd2af1ec",
+      "code_hash": "b5f58eaa5afb3a523e3a03035f952a17",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Keys come from other places too, all proved in <code>SubstraitLean/Keys.lean</code>\n(<code>Rel.keys_sound</code>).</span>\n<ul>\n<li><code>DISTINCT</code> rows are a key: all their columns together.</li>\n<li>Semi and anti joins keep the left side's keys.</li>\n<li>A filter <code>x = 3</code> drops <code>x</code> from a key: <code>unique(id, customer)</code> and\n  <code>customer = 'ada'</code> give <code>unique(id)</code>.</li>\n<li><code>ROW_NUMBER()</code> with the partition columns is a key (see Windows below).</li>\n<li><code>sv.references(\"cust\", to=(\"customers\", \"id\"))</code> in <code>requires</code> says every\n  non-NULL <code>cust</code> occurs in <code>customers.id</code>. It is an assumption, checked\n  on the data, and nothing proves it in <code>ensures</code>.</li>\n</ul></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Keys come from other places too, all proved in <code>analysis/Sverify/Analysis/Keys.lean</code>\n(<code>Rel.keys_sound</code>).</span>\n<ul>\n<li><code>DISTINCT</code> rows are a key: all their columns together.</li>\n<li>Semi and anti joins keep the left side's keys.</li>\n<li>A filter <code>x = 3</code> drops <code>x</code> from a key: <code>unique(id, customer)</code> and\n  <code>customer = 'ada'</code> give <code>unique(id)</code>.</li>\n<li><code>ROW_NUMBER()</code> with the partition columns is a key (see Windows below).</li>\n<li><code>sv.references(\"cust\", to=(\"customers\", \"id\"))</code> in <code>requires</code> says every\n  non-NULL <code>cust</code> occurs in <code>customers.id</code>. It is an assumption, checked\n  on the data, and nothing proves it in <code>ensures</code>.</li>\n</ul></span>"
           }
         }
       ],
@@ -254,6 +254,58 @@
     },
     {
       "id": "Vxnm",
+      "code_hash": "2fabd23763be7e45195392d23f0a9f46",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"foreign-keys-and-row-caps\">Foreign keys and row caps</h3>\n<span class=\"paragraph\">An order for a customer who isn't in <code>customers</code> drops out of the join,\nand its revenue with it. <code>sv.references</code> states that every customer an\norder names exists, and <code>sv.key</code> is a key whose columns are never NULL.\nWe'll add an order for Cy, whom <code>customers</code> doesn't know:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "0e6c8e84c670108555b86727aaee1bf1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ePreconditionError: 1 row(s) of orders violate references(customer, customers.name)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ulZA",
+      "code_hash": "e62baa51d22d64acd8884d4ff08a5600",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Cy's order is caught before the join drops it. Nothing proves a foreign\nkey in <code>ensures</code>: it stays a precondition, checked on the data.</span>\n<span class=\"paragraph\">A row cap works the other way round. <code>sv.max_rows(n)</code> in <code>requires</code> is\nchecked on the data, and Lean carries it through the plan\n(<code>Rel.maxRows_sound</code>). With it, a sum of amounts per customer is proved\nto fit 64 bits, and the cap on the output is proved too. Without it, the\nreport assumes the sum fits and checks it as the job runs:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ecfG",
+      "code_hash": "c25af559336dd064ebb692b06d5fbfeb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"with sv.max_rows\": 1000000, \"assumed without it\": [\"SUM overflow: sum(amount)\"]}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Pvdt",
       "code_hash": "01c23ec5e9ea3050f5b6c63a8096c082",
       "outputs": [
         {
@@ -266,7 +318,7 @@
       "console": []
     },
     {
-      "id": "DnEU",
+      "id": "ZBYS",
       "code_hash": "a6f20d117189f09494a54df9f76b81b7",
       "outputs": [
         {
@@ -279,20 +331,20 @@
       "console": []
     },
     {
-      "id": "ulZA",
+      "id": "aLJB",
       "code_hash": "f427d5409abbcecd5eb9107c8d92fc65",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='ulZA-0' random-id='2d8bef9f-2f4e-9b1f-ad5a-e3e8d35a93e9'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires minute IS NOT NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='ulZA-1' random-id='c664264a-d0ca-4b30-f1ea-376a1de10091'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, minute)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='ulZA-2' random-id='ad1c510c-a797-8182-2a5c-8610f2babb53'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline keeps only sensor &#x27;a&#x27;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='aLJB-0' random-id='1fd21d1f-cfb5-dc10-c575-628245d67afb'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires minute IS NOT NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='aLJB-1' random-id='57f2bacf-6a80-a345-6926-9eb6517a2fc4'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, minute)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='aLJB-2' random-id='40cb1d8c-bb08-5c24-dcbe-7c3e0ad6d56b'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline keeps only sensor &#x27;a&#x27;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "ecfG",
+      "id": "nHfw",
       "code_hash": "90ce8944abc9e15cbd5954a05e996a03",
       "outputs": [
         {
@@ -305,20 +357,20 @@
       "console": []
     },
     {
-      "id": "Pvdt",
-      "code_hash": "1cc8db092d989aab6d6bafb07ad71899",
+      "id": "xXTn",
+      "code_hash": "30787bc778a61b078d446807bab5b112",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What each switch does:</span>\n<ul>\n<li><code>minute IS NOT NULL</code>: without it, <code>t1 - t0 == 1</code> is \"TRUE or NULL\". The\n  join condition <code>w1.minute = w0.minute + 1</code> is TRUE only for non-NULL\n  values, but Lean derives that for plain column comparisons and not\n  through the <code>+ 1</code>. When Lean sees no reason, it says so.</li>\n<li><code>unique(sensor, minute)</code>: one reading per sensor and minute. Within\n  sensor <code>a</code> that makes <code>minute</code> a key, and the join finds at most one\n  <code>t1</code> per <code>t0</code>, so <code>unique(t0)</code> holds.</li>\n<li>Only sensor <code>a</code>: with several sensors the join also pairs readings of\n  different sensors, because <code>sensor</code> is not in the join condition, and\n  <code>t0</code> repeats. The relations still hold, since they are about each row.</li>\n</ul>\n<span class=\"paragraph\">The facts are <code>Expr.factsOf_sound</code> and <code>Rel.facts_sound</code> in\n<code>SubstraitLean/Contracts.lean</code>: a fact <code>x \u2212 y \u2208 [lo, hi]</code> or <code>x \u2260 k</code>\ntaken from a condition holds on every row that passes it, and every\noperator above keeps it.</span>\n<h2 id=\"runtime-errors\">Runtime errors</h2>\n<span class=\"paragraph\">Say you are on call this week. At 3 a.m. a pipeline that was correct\ncrashes on a row nobody expected, and it pages you. A pipeline that\nquietly writes a wrong number is worse, because nobody gets paged.</span>\n<span class=\"paragraph\">Some operations can fail, and the reference fails on a few more than\nDataFusion does.</span>\n<ul>\n<li>Integer <code>/</code> or <code>%</code> by zero, and <code>-9223372036854775808 / -1</code>, which\n  does not fit in 64 bits.</li>\n<li><code>CAST(x AS BIGINT)</code> of NaN, \u00b1\u221e or a huge double, also after <code>ROUND</code>.</li>\n<li>Integer <code>POWER</code> with a negative exponent or a huge result.</li>\n<li>A regular expression that does not compile.</li>\n<li>Truncating a timestamp near the ends of its range to a month or year:\n  DataFusion panics or returns garbage.</li>\n<li><code>+</code>, <code>-</code>, <code>*</code> leaving the declared width (64 bits for <code>BIGINT</code>). The\n  reference raises and DataFusion wraps around (<code>2\u2076\u00b2 + 2\u2076\u00b2</code> gives\n  <code>-2\u2076\u00b3</code>), which an error allows.</li>\n<li>An integer <code>SUM</code> leaving 64 bits. Sverify rules it out where the plan\n  bounds a group's rows (a <code>FETCH</code> count) and <code>requires</code> bounds the\n  column. Elsewhere it assumes each sum fits, and the job checks it on\n  the data before the run (<code>Report.assumed</code>).</li>\n</ul>\n<span class=\"paragraph\">Lean's model computes with exact integers, and <code>SubstraitLean/Safety.lean</code>\nlists, for every operation of a plan, which of these can happen. Theorem\n<code>Rel.mayIssues_sound</code> proves the list complete: if the report lists no\nerror, no input can trigger one. <code>@sv.transform</code> refuses a transformation\nthat may fail, even with no postconditions.</span>\n<h3 id=\"guards\">Guards</h3>\n<span class=\"paragraph\">The usual fix is a guard that keeps the divisor away from zero. Whether a\nguard works depends on when the engine evaluates each part. The variants\nbelow cover a zero divisor, <code>MIN</code> divided by <code>-1</code> and doubles a <code>BIGINT</code>\ncannot hold. Pick one, and we'll read Lean's report.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What each switch does:</span>\n<ul>\n<li><code>minute IS NOT NULL</code>: without it, <code>t1 - t0 == 1</code> is \"TRUE or NULL\". The\n  join condition <code>w1.minute = w0.minute + 1</code> is TRUE only for non-NULL\n  values, but Lean derives that for plain column comparisons and not\n  through the <code>+ 1</code>. When Lean sees no reason, it says so.</li>\n<li><code>unique(sensor, minute)</code>: one reading per sensor and minute. Within\n  sensor <code>a</code> that makes <code>minute</code> a key, and the join finds at most one\n  <code>t1</code> per <code>t0</code>, so <code>unique(t0)</code> holds.</li>\n<li>Only sensor <code>a</code>: with several sensors the join also pairs readings of\n  different sensors, because <code>sensor</code> is not in the join condition, and\n  <code>t0</code> repeats. The relations still hold, since they are about each row.</li>\n</ul>\n<span class=\"paragraph\">The facts are <code>Expr.factsOf_sound</code> and <code>Rel.facts_sound</code> in\n<code>analysis/Sverify/Analysis/Contracts.lean</code>: a fact <code>x \u2212 y \u2208 [lo, hi]</code> or <code>x \u2260 k</code>\ntaken from a condition holds on every row that passes it, and every\noperator above keeps it.</span>\n<h2 id=\"runtime-errors\">Runtime errors</h2>\n<span class=\"paragraph\">Say you are on call this week. At 3 a.m. a pipeline that was correct\ncrashes on a row nobody expected, and it pages you. A pipeline that\nquietly writes a wrong number is worse, because nobody gets paged.</span>\n<span class=\"paragraph\">Some operations can fail. The reference raises on each of these, and\nthe report lists every one a plan may hit\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#runtime-errors\" rel=\"noopener noreferrer\" target=\"_blank\">Runtime errors</a>).</span>\n<ul>\n<li>Integer <code>/</code> or <code>%</code> by zero, and <code>-9223372036854775808 / -1</code>, which\n  does not fit in 64 bits.</li>\n<li><code>CAST(x AS BIGINT)</code> of NaN, \u00b1\u221e or a huge double, also after <code>ROUND</code>.</li>\n<li>Integer <code>POWER</code> with a negative exponent or a huge result.</li>\n<li>A regular expression that does not compile.</li>\n<li>Truncating a timestamp near the ends of its range to a month or year.</li>\n<li><code>+</code>, <code>-</code>, <code>*</code> leaving the declared width (64 bits for <code>BIGINT</code>). The\n  reference raises, and so do the DuckDB and Polars translations.</li>\n<li>An integer <code>SUM</code> leaving 64 bits. Sverify rules it out where the plan\n  bounds a group's rows (a <code>FETCH</code> count) and <code>requires</code> bounds the\n  column. Elsewhere it assumes each sum fits, and the job checks it on\n  the data before the run (<code>Report.assumed</code>).</li>\n</ul>\n<span class=\"paragraph\">Lean's model computes with exact integers, and <code>analysis/Sverify/Analysis/Safety.lean</code>\nlists, for every operation of a plan, which of these can happen. Theorem\n<code>Rel.mayIssues_sound</code> proves the list complete: if the report lists no\nerror, no input can trigger one. <code>@sv.transform</code> refuses a transformation\nthat may fail, even with no postconditions.</span>\n<h3 id=\"guards\">Guards</h3>\n<span class=\"paragraph\">The usual fix is a guard that keeps the divisor away from zero. Whether a\nguard works depends on when the engine evaluates each part. The variants\nbelow cover a zero divisor, <code>MIN</code> divided by <code>-1</code> and doubles a <code>BIGINT</code>\ncannot hold. Pick one, and we'll read Lean's report.</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "ZBYS",
+      "id": "AjVT",
       "code_hash": "0cb5382aaa3e6a2fbe6dcf4838791070",
       "outputs": [
         {
@@ -331,21 +383,21 @@
       "console": []
     },
     {
-      "id": "aLJB",
+      "id": "pHFh",
       "code_hash": "b33cadcffbec3c4752ef0027fa6fcda7",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='aLJB-0' random-id='7a83a148-706b-b2d8-e8ed-1472cbdc2090'><marimo-dropdown data-initial-value='[&quot;qty // n (no guard)&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;qty // n (no guard)&quot;,&quot;filter n != 0, then select qty // n&quot;,&quot;filter n &#92;u003e 0, then select qty // n&quot;,&quot;select qty % nullif(n, 0)&quot;,&quot;select CASE WHEN n != 0 THEN qty % n ELSE 0 END&quot;,&quot;filter (n != 0) AND (qty % n &#92;u003e 1)&quot;,&quot;filter n != 0, then filter qty % n &#92;u003e 1&quot;,&quot;select round(amount) (a cast to BIGINT)&quot;,&quot;filter 0 &#92;u003c= amount &#92;u003c= 100, then round(amount)&quot;,&quot;select qty + 1&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='pHFh-0' random-id='496a35eb-8a31-c55b-dc38-92d43a0eb21f'><marimo-dropdown data-initial-value='[&quot;qty // n (no guard)&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;qty // n (no guard)&quot;,&quot;filter n != 0, then select qty // n&quot;,&quot;filter n &#92;u003e 0, then select qty // n&quot;,&quot;select qty % nullif(n, 0)&quot;,&quot;select CASE WHEN n != 0 THEN qty % n ELSE 0 END&quot;,&quot;filter (n != 0) AND (qty % n &#92;u003e 1)&quot;,&quot;filter n != 0, then filter qty % n &#92;u003e 1&quot;,&quot;select round(amount) (a cast to BIGINT)&quot;,&quot;filter 0 &#92;u003c= amount &#92;u003c= 100, then round(amount)&quot;,&quot;select qty + 1&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "nHfw",
-      "code_hash": "528c56fc6c341ff3306e6cad7852ef21",
+      "id": "NCOB",
+      "code_hash": "64cf209150ac9e26f0956c2576d4c709",
       "outputs": [
         {
           "type": "data",
@@ -357,20 +409,20 @@
       "console": []
     },
     {
-      "id": "xXTn",
-      "code_hash": "fce433fcc3b2377eb873270fa8e746fe",
+      "id": "aqbW",
+      "code_hash": "4fa0d22ebcffc622270df1a92b8b02c2",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What the variants show:</span>\n<ul>\n<li><code>nullif(n, 0)</code> and <code>CASE</code> are guards. The engines evaluate a <code>CASE</code>\n  branch only when its condition holds, <code>NULLIF</code> is a <code>CASE</code> underneath,\n  and Lean evaluates each branch knowing its condition.</li>\n<li>A filter below a projection guards too, because the projection only\n  sees rows that passed. <code>n != 0</code> leaves <code>MIN / -1</code> open, and <code>n &gt; 0</code>\n  closes it.</li>\n<li>The same <code>AND</code> is no guard: DuckDB and Polars evaluate both operands,\n  so <code>qty % n</code> runs on the <code>n = 0</code> row (D19 in\n  <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md\" rel=\"noopener noreferrer\" target=\"_blank\">core-semantics.md</a>). The report flags the error inside the\n  <code>AND</code> and suggests guarding the operation itself with the <code>CASE</code> above.</li>\n<li>An earlier filter is no guard either. DataFusion's optimizer merges the\n  two filters into one <code>AND</code>. Lean models that (<code>Rel.loose</code>) and reports\n  the error.</li>\n<li><code>round(amount)</code> becomes a cast to <code>BIGINT</code>, which fails on <code>1e30</code> and\n  NaN. Bounding <code>amount</code> first makes it safe, because <code>ROUND</code> is exact\n  and monotone in the model (<code>FloatCode.round_mono</code>).</li>\n<li><code>qty + 1</code> may fail on <code>MAX</code>, where the result does not fit in 64 bits\n  and the reference raises. A precondition such as <code>qty &lt; 1000</code> rules it\n  out.</li>\n</ul>\n<span class=\"paragraph\">A contracted transformation has to be proved free of runtime errors, and\ncorrectness on the inputs that happen to arrive does not count. We pass\n<code>on_inferred=\"off\"</code> to <code>ratio</code> to see the error itself: by default Sverify\nworks out the precondition <code>(_.n != 0)</code> and reports the plan as not\nproved until you declare it in <code>requires</code>. Declared, it is checked on\neach batch before the run, so <code>report.run</code> and <code>refresh</code> refuse a batch\nwith <code>n = 0</code> with a <code>PreconditionError</code> and nothing runs\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/604\" rel=\"noopener noreferrer\" target=\"_blank\">#604</a>).\nA <code>SUM</code> that may overflow, or an operation on doubles that may overflow\nto \u00b1\u221e, does not block the proof: the assumption is listed in\n<code>Report.assumed</code> and checked at run time, on the data before the run\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/575\" rel=\"noopener noreferrer\" target=\"_blank\">#575</a>).</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What the variants show:</span>\n<ul>\n<li><code>nullif(n, 0)</code> and <code>CASE</code> are guards. The engines evaluate a <code>CASE</code>\n  branch only when its condition holds, <code>NULLIF</code> is a <code>CASE</code> underneath,\n  and Lean evaluates each branch knowing its condition.</li>\n<li>A filter below a projection guards too, because the projection only\n  sees rows that passed. <code>n != 0</code> leaves <code>MIN / -1</code> open, and <code>n &gt; 0</code>\n  closes it.</li>\n<li>The same <code>AND</code> is no guard: DuckDB and Polars evaluate both operands,\n  so <code>qty % n</code> runs on the <code>n = 0</code> row\n  (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#guards\" rel=\"noopener noreferrer\" target=\"_blank\">eager AND and OR</a>). The report flags the error inside the\n  <code>AND</code> and suggests guarding the operation itself with the <code>CASE</code> above.</li>\n<li>An earlier filter is no guard either. An optimizer may merge the two\n  filters into one <code>AND</code>. Lean models that (<code>Rel.loose</code>) and reports\n  the error.</li>\n<li><code>round(amount)</code> becomes a cast to <code>BIGINT</code>, which fails on <code>1e30</code> and\n  NaN. Bounding <code>amount</code> first makes it safe, because <code>ROUND</code> is exact\n  and monotone in the model (<code>FloatCode.round_mono</code>).</li>\n<li><code>qty + 1</code> may fail on <code>MAX</code>, where the result does not fit in 64 bits\n  and the reference raises. A precondition such as <code>qty &lt; 1000</code> rules it\n  out.</li>\n</ul>\n<span class=\"paragraph\">A contracted transformation has to be proved free of runtime errors, and\ncorrectness on the inputs that happen to arrive does not count. We pass\n<code>on_inferred=\"off\"</code> to <code>ratio</code> to see the error itself: by default Sverify\nworks out the precondition <code>(_.n != 0)</code> and reports the plan as not\nproved until you declare it in <code>requires</code>. Declared, it is checked on\neach batch before the run, so <code>report.run</code> and <code>refresh</code> refuse a batch\nwith <code>n = 0</code> with a <code>PreconditionError</code> and nothing runs.\nA <code>SUM</code> that may overflow, or an operation on doubles that may overflow\nto \u00b1\u221e, does not block the proof: the assumption is listed in\n<code>Report.assumed</code> and checked at run time, on the data before the run.</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "AjVT",
+      "id": "TRpd",
       "code_hash": "2cf9e42b644900837224b21fe74c1c52",
       "outputs": [
         {
@@ -383,20 +435,20 @@
       "console": []
     },
     {
-      "id": "pHFh",
-      "code_hash": "fb085f8ae5341f473ff9eedad9096090",
+      "id": "TXez",
+      "code_hash": "ac8b3070db2f601649caab5d23e63104",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>Report.errors</code> lists the issues a proof has to rule out. <code>Report.proved</code>\nis true when every postcondition is proved and there are no errors.</span>\n<span class=\"paragraph\">The timing of evaluation is trusted: when an engine evaluates an\nexpression (lazy <code>CASE</code>, eager <code>AND</code>/<code>OR</code>, merged filters, and the\nconstant conditions DuckDB evaluates while it plans the query). A\nconstant that raises, such as <code>1 // 0 = 1</code> in a later <code>WHEN</code>, makes\nSverify report the whole plan as raising, on any data\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/609\" rel=\"noopener noreferrer\" target=\"_blank\">#609</a>,\nD21). The test suite runs plans on random data, extreme values included,\nand checks that they fail only where Lean reported an error.</span>\n<h2 id=\"windows-and-asof-joins\">Windows and ASOF joins</h2>\n<span class=\"paragraph\">Say the maintenance team asks how long each sensor went quiet between\nreadings, because a long silence marks a unit to replace before it fails.\nEach reading needs the one before it. SQL looks at neighbouring rows with\nwindow functions:</span>\n<div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"n\">LAG</span><span class=\"p\">(</span><span class=\"n\">ts</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"n\">OVER</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">PARTITION</span><span class=\"w\"> </span><span class=\"k\">BY</span><span class=\"w\"> </span><span class=\"n\">sensor</span><span class=\"w\"> </span><span class=\"k\">ORDER</span><span class=\"w\"> </span><span class=\"k\">BY</span><span class=\"w\"> </span><span class=\"n\">ts</span><span class=\"p\">)</span>\n</code></pre></div>\n<span class=\"paragraph\">This reads: for each row, the <code>ts</code> of the previous row of the same\nsensor, in <code>ts</code> order, and NULL for the first one. The model supports\n<code>LAG</code>, <code>LEAD</code> and <code>ROW_NUMBER</code> with any sort direction, NULLs first or\nlast, offsets and defaults (<code>SubstraitLean/Window.lean</code>).</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>Report.errors</code> lists the issues a proof has to rule out. <code>Report.proved</code>\nis true when every postcondition is proved and there are no errors.</span>\n<span class=\"paragraph\">The timing of evaluation is trusted: when an engine evaluates an\nexpression (lazy <code>CASE</code>, eager <code>AND</code>/<code>OR</code>, merged filters, and the\nconstant conditions DuckDB evaluates while it plans the query). A\nconstant that raises, such as <code>1 // 0 = 1</code> in a later <code>WHEN</code>, makes\nSverify report the whole plan as raising, on any data. The test suite\nruns plans on random data, extreme values included,\nand checks that they fail only where Lean reported an error.</span>\n<h2 id=\"windows-and-asof-joins\">Windows and ASOF joins</h2>\n<span class=\"paragraph\">Say the maintenance team asks how long each sensor went quiet between\nreadings, because a long silence marks a unit to replace before it fails.\nEach reading needs the one before it. SQL looks at neighbouring rows with\nwindow functions:</span>\n<div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"n\">LAG</span><span class=\"p\">(</span><span class=\"n\">ts</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"n\">OVER</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">PARTITION</span><span class=\"w\"> </span><span class=\"k\">BY</span><span class=\"w\"> </span><span class=\"n\">sensor</span><span class=\"w\"> </span><span class=\"k\">ORDER</span><span class=\"w\"> </span><span class=\"k\">BY</span><span class=\"w\"> </span><span class=\"n\">ts</span><span class=\"p\">)</span>\n</code></pre></div>\n<span class=\"paragraph\">This reads: for each row, the <code>ts</code> of the previous row of the same\nsensor, in <code>ts</code> order, and NULL for the first one. The model supports\n<code>LAG</code>, <code>LEAD</code> and <code>ROW_NUMBER</code> with any sort direction, NULLs first or\nlast, offsets and defaults (<code>core/Sverify/Core/Window.lean</code>).</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "NCOB",
+      "id": "dNNg",
       "code_hash": "3d6bae66b52d64fada4208442c44df3e",
       "outputs": [
         {
@@ -409,33 +461,33 @@
       "console": []
     },
     {
-      "id": "aqbW",
-      "code_hash": "13d282f57b8793e8e035965edb9a102c",
+      "id": "yCnT",
+      "code_hash": "2eca51eb1a3a62c6b6007c7c47e4263b",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Ibis numbers rows from 0. Lean knows that <code>LAG(ts)</code> comes from an earlier\nrow of the same partition, so <code>prev_ts &lt;= ts</code>, that a lagged partition\ncolumn equals the row's own, and that <code>ROW_NUMBER()</code> is never negative.\nThe first row's NULL is guarded with <code>isnull() | \u2026</code> in the contract below.</span>\n<h3 id=\"ties\">Ties</h3>\n<span class=\"paragraph\">Sensors sometimes report twice in the same instant. If two readings of a\nsensor share a <code>ts</code>, SQL does not say which is previous. The engine\npicks, and may pick differently on the next run, so Lean proves only\nwhat holds for every pick. Unless <code>requires</code> gives a key on the\npartition and order columns, <code>report.deterministic</code> is <code>False</code> and\n<code>report.tie_places</code> names the window. With the key, earlier means\nstrictly earlier: <code>prev_ts &lt; ts</code>.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Ibis numbers rows from 0. Lean knows that <code>LAG(ts)</code> comes from an earlier\nrow of the same partition, so <code>prev_ts &lt;= ts</code>, that a lagged partition\ncolumn equals the row's own, and that <code>ROW_NUMBER()</code> is never negative.\nThe first row's NULL is guarded with <code>isnull() | \u2026</code> in the contract below.</span>\n<h3 id=\"ties\">Ties</h3>\n<span class=\"paragraph\">Sensors sometimes report twice in the same instant. If two readings of a\nsensor share a <code>ts</code>, SQL does not say which is previous. The engine\npicks, and may pick differently on the next run, so Lean proves only\nwhat holds for every pick. Unless <code>requires</code> gives a key on the\npartition and order columns, <code>report.deterministic</code> is <code>False</code> and\n<code>report.ties</code> names the key that would close the ties. With the key, earlier means\nstrictly earlier: <code>prev_ts &lt; ts</code>.</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "TRpd",
+      "id": "wlCL",
       "code_hash": "f8b7510b7464f11e17a87b0501d18bab",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='TRpd-0' random-id='dbba2a07-25e4-45c5-0dc8-4e7dba8df32a'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='wlCL-0' random-id='a0eb503c-f308-7764-bc6d-3e92104c7626'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "TXez",
+      "id": "kqZH",
       "code_hash": "375649b34345d041be98fc561819ea2d",
       "outputs": [
         {
@@ -448,66 +500,118 @@
       "console": []
     },
     {
-      "id": "dNNg",
-      "code_hash": "3c17d931342482045f2372854f83a028",
+      "id": "wAgl",
+      "code_hash": "37f3b41fee54f4904b0884e97be619ea",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Theorem <code>window_tiebreak</code> (<code>SubstraitLean/Keys.lean</code>) makes the keyed\ncase trustworthy: when a window's partition and sort columns contain a\nkey of its input, every way of sorting the input by the window's keys\ngives the same rows. The proof therefore describes what the engine\ncomputes, however it breaks ties.</span>\n<h3 id=\"asof-joins\">ASOF joins</h3>\n<span class=\"paragraph\">An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their\ntimestamps rarely line up. To train a model on both, each accelerometer\nsample needs the latest gyroscope sample at or before it, and only if\nthat one is recent enough. This is an ASOF join. DataFusion has none, and\nIbis's <code>asof_join</code> compiles to DuckDB syntax, so <code>sv.asof_join</code> builds it\nfrom parts Lean understands: a range join, then <code>ROW_NUMBER</code> to keep the\nlatest match.</span>\n<span class=\"paragraph\">A gyroscope reading from the future would leak information the model\ncannot have in production. The contract states what an ASOF join\npromises: one output row per accelerometer sample, no gyroscope sample\nfrom the future, and none older than the tolerance.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Theorem <code>window_tiebreak</code> (<code>analysis/Sverify/Analysis/Keys.lean</code>) makes the keyed\ncase trustworthy: when a window's partition and sort columns contain a\nkey of its input, every way of sorting the input by the window's keys\ngives the same rows. The proof therefore describes what the engine\ncomputes, however it breaks ties.</span>\n<span class=\"paragraph\">A run can ask for more: <code>report.run(con, engine,\nreproducible=sv.equivalent())</code> refuses a plan whose result a rerun may\nchange, and names the key that would fix it. We'll take the largest\norder, where two orders tie on the amount:</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "yCnT",
-      "code_hash": "a386d631c54a9134e0008273d13b7eec",
+      "id": "rEll",
+      "code_hash": "9734c5d6d82d51680977a82abec75158",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='yCnT-0' random-id='ee26f1a4-df22-7833-4638-db600e6d631d'><marimo-slider data-initial-value='10' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003etolerance (ms)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='20' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='yCnT-1' random-id='b2b5842f-e984-f911-4af6-e1c840cb0669'><marimo-radio data-initial-value='&quot;left&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ehow&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;left&quot;,&quot;inner&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element><marimo-ui-element object-id='yCnT-2' random-id='e41ce007-155d-a4b0-0d31-f2973f6d2180'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires gyr: unique(device, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
-          }
-        }
-      ],
-      "console": []
-    },
-    {
-      "id": "wlCL",
-      "code_hash": "6093794a392cc67fcf2e115447e3955b",
-      "outputs": [
-        {
-          "type": "data",
-          "data": {
-            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>NOT proved: 1 precondition needed</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(device, ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.ts_right.isnull() | (_.ts_right &lt;= _.ts))</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>ts_right IS NULL OR ts_right &gt;= ts - INTERVAL '10 milliseconds'</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>needs</td>\n<td>\u274c (_.ts &gt;= datetime(1, 1, 1)) on acc, inferred from <code>ts - ibis.interval(milliseconds=10)</code> (overflow otherwise): declare it in requires (each run then checks it on the data), or rewrite so no row needs it (<code>acc.filter((_.ts &gt;= datetime(1, 1, 1)))</code> first, or a CASE); on_inferred='warn' assumes it instead</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>device</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>a timestamp \u2265 0001-01-01 00:00:00</td>\n</tr>\n<tr>\n<td><code>a</code></td>\n<td>any double or NULL</td>\n</tr>\n<tr>\n<td><code>ts_right</code></td>\n<td>any timestamp or NULL</td>\n</tr>\n<tr>\n<td><code>g</code></td>\n<td>any double or NULL</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/plain": ""
           }
         }
       ],
       "console": [
         {
           "type": "stream",
-          "name": "stderr",
-          "text": "/tmp/marimo_3246/__marimo__cell_wlCL_.py:29: UserWarning: 1 precondition needed (e.report has the details)\n  needs: (_.ts >= datetime(1, 1, 1)) on acc, inferred from `ts - ibis.interval(milliseconds=10)` (overflow otherwise): declare it in requires (each run then checks it on the data), or rewrite so no row needs it (`acc.filter((_.ts >= datetime(1, 1, 1)))` first, or a CASE); on_inferred='warn' assumes it instead\n  aligned(con_w.table(\"acc\"), con_w.table(\"gyr\")).order_by(\"ts\").to_pyarrow()\n",
+          "name": "stdout",
+          "text": "RouteError: refused on duckdb: a rerun must give the same result: the result is not determined up to row order: the deterministic profile needs a total order, and ties stay open at the fetch at relation 0: the rows it takes tie in ORDER BY [$2], with no key among those columns, so no rerun is sure to reproduce it; declare `unique(...)` on the partition (or grouping) and order columns of the input, or give first(), last() and windows a total order\n",
           "mimetype": "text/plain"
         }
       ]
     },
     {
-      "id": "kqZH",
-      "code_hash": "df36c53bc5d93a4868dc01f1e5db83c8",
+      "id": "dGlV",
+      "code_hash": "e786e55b501fc17a3320c9e701f7a49e",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Two things to try.</span>\n<ul>\n<li>Lower the tolerance below 8 ms. The gyroscope samples every 7.7 ms, so\n  some accelerometer samples find no partner. With <code>how=\"left\"</code> they stay\n  with NULLs, with <code>\"inner\"</code> they disappear, and the proofs hold either\n  way.</li>\n<li>Drop the key on <code>gyr</code>. Two gyroscope readings at the same instant tie\n  for \"latest\". The guarantees hold for either one, and the result is\n  not deterministic: a rerun may pair the sample with the other reading.</li>\n</ul>\n<span class=\"paragraph\">One row per sample comes from the key analysis: <code>ROW_NUMBER()</code> over a\npartition is a key together with the partition columns, and the filter\n<code>rank = 0</code> drops the rank from that key. Framed window aggregates\n(<code>AVG(v) OVER (ROWS 5 PRECEDING)</code>), <code>RANK</code> and running sums are not\nsupported yet.</span>\n<h2 id=\"composing-contracts\">Composing contracts</h2>\n<span class=\"paragraph\">Say the billing team owns a step that cleans up <code>orders</code>, and you own the\nstep after it, which doubles the amounts for a promotion. You have never\nread their code and you should not have to. If a negative amount slips\npast them, your step doubles it and your name is on the incident.</span>\n<span class=\"paragraph\">What you rely on is their contract. When the input of a contracted\nfunction is the result of another contracted function, sverify proves the\ndownstream preconditions from the upstream contract, so the intermediate\ndata is never checked. It also proves the downstream postconditions from\nwhat the upstream step guarantees, whatever its code happens to do.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The fix is the one the refusal names: a key in the order. With <code>id</code> as\nthe tiebreak and <code>sv.key(\"id\")</code> in <code>requires</code>, the result is\ndetermined, and the run goes ahead:</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "wAgl",
+      "id": "SdmI",
+      "code_hash": "1006b84365dfff9e00b29cdcc667662f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "[{\"id\": 1, \"customer\": \"ada\", \"amount\": 30}]"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lgWD",
+      "code_hash": "60222ffc7c8df95753f8a6c0a28c4a11",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"asof-joins\">ASOF joins</h3>\n<span class=\"paragraph\">An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their\ntimestamps rarely line up. To train a model on both, each accelerometer\nsample needs the latest gyroscope sample at or before it, and only if\nthat one is recent enough. This is an ASOF join. Not every engine has one,\nand Ibis's <code>asof_join</code> compiles to DuckDB syntax, so <code>sv.asof_join</code> builds it\nfrom parts Lean understands: a range join, then <code>ROW_NUMBER</code> to keep the\nlatest match.</span>\n<span class=\"paragraph\">A gyroscope reading from the future would leak information the model\ncannot have in production. The contract states what an ASOF join\npromises: one output row per accelerometer sample, no gyroscope sample\nfrom the future, and none older than the tolerance.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "yOPj",
+      "code_hash": "a386d631c54a9134e0008273d13b7eec",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='yOPj-0' random-id='50cfad44-f44f-0aa8-e130-63c4dbfed140'><marimo-slider data-initial-value='10' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003etolerance (ms)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='20' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='yOPj-1' random-id='5c97f4a9-e6f9-30bb-7d9d-8df1f14fb35f'><marimo-radio data-initial-value='&quot;left&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ehow&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;left&quot;,&quot;inner&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element><marimo-ui-element object-id='yOPj-2' random-id='7f47f5c7-276d-d8fc-661b-a49c6be86488'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires gyr: unique(device, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "fwwy",
+      "code_hash": "6093794a392cc67fcf2e115447e3955b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(device, ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.ts_right.isnull() | (_.ts_right &lt;= _.ts))</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>ts_right IS NULL OR ts_right &gt;= ts - INTERVAL '10 milliseconds'</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>device</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>a</code></td>\n<td>any double or NULL</td>\n</tr>\n<tr>\n<td><code>ts_right</code></td>\n<td>any timestamp or NULL</td>\n</tr>\n<tr>\n<td><code>g</code></td>\n<td>any double or NULL</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "LJZf",
+      "code_hash": "6af3e7999451bb87ba93ead5aa4d5293",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Two things to try.</span>\n<ul>\n<li>Lower the tolerance below 8 ms. The gyroscope samples every 7.7 ms, so\n  some accelerometer samples find no partner. With <code>how=\"left\"</code> they stay\n  with NULLs, with <code>\"inner\"</code> they disappear, and the proofs hold either\n  way.</li>\n<li>Drop the key on <code>gyr</code>. Two gyroscope readings at the same instant tie\n  for \"latest\". The guarantees hold for either one, and the result is\n  not deterministic: a rerun may pair the sample with the other reading.</li>\n</ul>\n<span class=\"paragraph\">One row per sample comes from the key analysis: <code>ROW_NUMBER()</code> over a\npartition is a key together with the partition columns, and the filter\n<code>rank = 0</code> drops the rank from that key. Framed window aggregates\n(<code>AVG(v) OVER (ROWS 5 PRECEDING)</code>), <code>RANK</code> and running sums verify too\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/README.md#ibis-coverage\" rel=\"noopener noreferrer\" target=\"_blank\">Ibis coverage</a>).</span>\n<h2 id=\"composing-contracts\">Composing contracts</h2>\n<span class=\"paragraph\">Say the billing team owns a step that cleans up <code>orders</code>, and you own the\nstep after it, which doubles the amounts for a promotion. You have never\nread their code and you should not have to. If a negative amount slips\npast them, your step doubles it and your name is on the incident.</span>\n<span class=\"paragraph\">What you rely on is their contract. When the input of a contracted\nfunction is the result of another contracted function, sverify proves the\ndownstream preconditions from the upstream contract, so the intermediate\ndata is never checked. It also proves the downstream postconditions from\nwhat the upstream step guarantees, whatever its code happens to do.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "urSm",
       "code_hash": "330c5f312790a86b54635c8de482b8dd",
       "outputs": [
         {
@@ -520,7 +624,7 @@
       "console": []
     },
     {
-      "id": "rEll",
+      "id": "jxvo",
       "code_hash": "f7b7576a082d5c2455c4542d30ca8bad",
       "outputs": [
         {
@@ -533,20 +637,20 @@
       "console": []
     },
     {
-      "id": "dGlV",
+      "id": "mWxS",
       "code_hash": "1ee3a6c68dbf2cf71cfe254091408fe8",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='dGlV-0' random-id='b4f8f35d-0f27-bfac-6cfb-6c49d20690f0'><marimo-radio data-initial-value='&quot;not_null (guarantees only that amount is not NULL)&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eupstream step&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;paid (guarantees amount \u2265 0 and not NULL)&quot;,&quot;not_null (guarantees only that amount is not NULL)&quot;,&quot;a plain Ibis filter: amount &#92;u003e 0&quot;,&quot;a plain Ibis filter: amount IS NOT NULL&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='mWxS-0' random-id='586a2308-bc44-3472-d17c-fd38181edb31'><marimo-radio data-initial-value='&quot;not_null (guarantees only that amount is not NULL)&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eupstream step&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;paid (guarantees amount \u2265 0 and not NULL)&quot;,&quot;not_null (guarantees only that amount is not NULL)&quot;,&quot;a plain Ibis filter: amount &#92;u003e 0&quot;,&quot;a plain Ibis filter: amount IS NOT NULL&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "SdmI",
+      "id": "CcZR",
       "code_hash": "e25099bb9137ecb13a223f828d793bcb",
       "outputs": [
         {
@@ -559,20 +663,92 @@
       "console": []
     },
     {
-      "id": "lgWD",
-      "code_hash": "d0095ac934cf787a95561e30d07aaa2f",
+      "id": "YWSi",
+      "code_hash": "1b591080b773fec813ae17aec2fcb140",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>not_null</code> guarantees too little: <code>doubled_paid</code> needs <code>amount \u2265 0</code> and\n  nothing upstream promises it. The error names both sides of the broken\n  link. Only the contract counts, even though <code>not_null</code>'s code would\n  happen to keep negative amounts.</li>\n<li>A plain Ibis step carries no contract, and what follows from its\n  operations is still proved: <code>amount &gt; 0</code> implies both preconditions of\n  <code>doubled_paid</code>. With only <code>amount IS NOT NULL</code>, the missing\n  <code>amount \u2265 0</code> is treated like a precondition on a base table: checked on\n  the data if there is data, assumed otherwise.</li>\n<li>A precondition can follow from more than the upstream <code>ensures</code>. It is\n  then proved as an extra postcondition of the upstream function, from\n  that function's own preconditions. Keys (<code>sv.unique</code>) propagate the same\n  way.</li>\n</ul>\n<span class=\"paragraph\">On bound tables only the base tables are checked: <code>paid</code>'s preconditions\non <code>orders</code>. The intermediate result is never inspected, because\n<code>doubled_paid</code>'s preconditions were proved.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>not_null</code> guarantees too little: <code>doubled_paid</code> needs <code>amount \u2265 0</code> and\n  nothing upstream promises it. The error names both sides of the broken\n  link. Only the contract counts, even though <code>not_null</code>'s code would\n  happen to keep negative amounts.</li>\n<li>A plain Ibis step carries no contract, and what follows from its\n  operations is still proved: <code>amount &gt; 0</code> implies both preconditions of\n  <code>doubled_paid</code>. With only <code>amount IS NOT NULL</code>, the missing\n  <code>amount \u2265 0</code> is treated like a precondition on a base table: checked on\n  the data if there is data, assumed otherwise.</li>\n<li>A precondition can follow from more than the upstream <code>ensures</code>. It is\n  then proved as an extra postcondition of the upstream function, from\n  that function's own preconditions. Keys (<code>sv.unique</code>) propagate the same\n  way.</li>\n</ul>\n<span class=\"paragraph\">On bound tables only the base tables are checked: <code>paid</code>'s preconditions\non <code>orders</code>. The intermediate result is never inspected, because\n<code>doubled_paid</code>'s preconditions were proved.</span>\n<h3 id=\"handing-the-contract-to-another-team\">Handing the contract to another team</h3>\n<span class=\"paragraph\">The billing team may run its steps on an engine sverify doesn't drive.\n<code>to_substrait()</code> writes the proved plan as Substrait, which any\nconforming consumer runs, with the contract inside it: the\npreconditions the consumer must meet, the postconditions it may rely\non, and a manifest of how the proof reaches Substrait. We'll export\n<code>paid</code> and read it back, which proves its contract again:</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "yOPj",
+      "id": "zlud",
+      "code_hash": "5d9e221d8e2e98756740f1e8e272ff69",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"class\": \"exact\", \"evidence\": \"proved\", \"proved again\": [\"(_.amount >= 0)\", \"(_.amount < 1000000000)\", \"_.amount.notnull()\", \"unique(id)\"]}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "tZnO",
+      "code_hash": "d9c850bfccdd1f97fcbab351552a5dac",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The class <code>exact</code> says a consumer that follows Substrait's spec gives\nthe reference's rows. Where the spec leaves a choice open that the proof\nneeds, the export says so and refuses: Substrait doesn't say how\n<code>upper</code> treats non-ASCII text (ST-10 on the\n<a href=\"https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html\" rel=\"noopener noreferrer\" target=\"_blank\">upstream ledger</a>),\nand the refusal names the way out:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "xvXZ",
+      "code_hash": "e18c86fc13b4fbcaca55dc6bfec2c7a4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "ExportError: upper maps non-ASCII text by a rule Substrait leaves open (ST-10, upstream/bugs/ST-10.json); report.to_sql(dialect) writes the proved plan for an engine instead\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "CLip",
+      "code_hash": "35ad72ab8d720a0d45aecbfae43f24a7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">A team that keeps its contracts in a data catalog rather than beside the\nplan reads them as ODCS, the Open Data Contract Standard. <code>sverify.odcs</code>\nwrites a node's contract as an ODCS document, with the proved\nguarantees as its schema and quality rules, and reads one back as\nconditions for the next team's <code>requires</code>. We'll run <code>paid</code> over a\nsmall source, export the node's contract, and read it back:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "YECM",
+      "code_hash": "b813cf548f94df05a0998547ec793f4b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "[\"text/plain:Unique(cols=('id',))\", \"NOT \\\"amount\\\" IS NULL\", \"amount >= 0\", \"amount < 1000000000\"]"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "cEAS",
       "code_hash": "137a799a41d53d1557bee1b7c4dcabf3",
       "outputs": [
         {
@@ -585,7 +761,7 @@
       "console": []
     },
     {
-      "id": "fwwy",
+      "id": "iXej",
       "code_hash": "f3b884fabd28e50175e52b46ceab8e00",
       "outputs": [
         {

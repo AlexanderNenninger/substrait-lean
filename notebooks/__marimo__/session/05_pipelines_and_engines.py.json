@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "a0add862cc3fb5d061c26bcc542cc70e"
+    "script_metadata_hash": "860e8b077a2f8226418f7ae473caeef7"
   },
   "cells": [
     {
@@ -51,7 +51,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='bkHC-0' random-id='771756ef-95ff-89a0-c891-b25754cecccc'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;id&#92;&quot;:3,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;},{&#92;&quot;id&#92;&quot;:1,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;},{&#92;&quot;id&#92;&quot;:2,&#92;&quot;city&#92;&quot;:&#92;&quot;Oslo&#92;&quot;}]&quot;' data-total-rows='3' data-total-columns='2' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-field-types='[[&quot;id&quot;,[&quot;integer&quot;,&quot;int64&quot;]],[&quot;city&quot;,[&quot;string&quot;,&quot;str&quot;]]]' data-show-filters='true' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='bkHC-0' random-id='957d29b2-26b8-8baf-45d1-76aff383da42'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;id&#92;&quot;:1,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;},{&#92;&quot;id&#92;&quot;:2,&#92;&quot;city&#92;&quot;:&#92;&quot;Oslo&#92;&quot;},{&#92;&quot;id&#92;&quot;:3,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;}]&quot;' data-total-rows='3' data-total-columns='2' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-field-types='[[&quot;id&quot;,[&quot;integer&quot;,&quot;int64&quot;]],[&quot;city&quot;,[&quot;string&quot;,&quot;str&quot;]]]' data-show-filters='true' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
           }
         }
       ],
@@ -77,7 +77,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='3a3113de-f2bd-c820-2eda-ae34a974e734'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eApply a random batch of changes&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='635ef17b-8eac-e877-b387-4dd67550a947'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eApply a random batch of changes&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element>"
           }
         }
       ],
@@ -85,12 +85,12 @@
     },
     {
       "id": "Xref",
-      "code_hash": "ff54bdc09ff69af6523b713d65963869",
+      "code_hash": "39ddc1dc59ad530f0e6b9f472c675e44",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 1rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><em>Press the button to change both tables at once.</em></span></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>maintained view</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>recomputed from scratch</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eAfter 0 batch(es) the maintained view equals full recomputation. Each batch runs 3 Lean-generated update plans on DuckDB.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 1rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><em>Press the button to change both tables at once.</em></span></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>maintained view</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>recomputed from scratch</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eAfter 0 batch(es) the maintained view equals full recomputation. Each batch runs the Lean-generated update plan on DuckDB as one query.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
           }
         }
       ],
@@ -98,12 +98,12 @@
     },
     {
       "id": "SFPL",
-      "code_hash": "5b544660d1aec7ded96da8fe4ad76c72",
+      "code_hash": "0765bc0c84984a4266e8230b1901ea6b",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"what-is-maintained-and-what-is-recomputed\">What is maintained, and what is recomputed</h3>\n<span class=\"paragraph\">Filters, computed columns, inner joins (self-joins too), cross joins,\n<code>UNION ALL</code> and <code>ORDER BY</code> are maintained from their changes. Left,\nsemi and anti joins (a left join's NULL-padded rows must be retracted\nwhen a match turns up later), <code>DISTINCT</code>, <code>LIMIT</code> (it depends on row\norder), windows and aggregates are recomputed and diffed on every\nrefresh. Contracts work on all of them, and the result is correct; the\ncost is a full run per refresh. <code>node.status()</code> says which kind of node\nyou have:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"what-is-maintained-and-what-is-recomputed\">What is maintained, and what is recomputed</h3>\n<span class=\"paragraph\">Filters, computed columns, inner joins (self-joins too), cross joins,\nsemi and anti joins on equal keys, <code>UNION ALL</code>, <code>ORDER BY</code> and\n<code>DISTINCT</code> are maintained from their changes, and so are <code>COUNT</code>, exact\n<code>SUM</code> and <code>AVG</code>, <code>MIN</code> and <code>MAX</code> per group. Other aggregates recompute\nonly the groups a batch touches, windows that share one <code>PARTITION BY</code>\nthe partitions it touches (for inputs without ties), and bounded <code>RANGE</code>\nframes the frames it touches. Left joins (a left join's NULL-padded rows\nmust be retracted when a match turns up later), <code>LIMIT</code> (it depends on\nrow order) and the rest are recomputed and diffed on every refresh\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>). Contracts work on all of them, and the result is\ncorrect; a recomputed node costs a full run per refresh. <code>node.status()</code>\nsays which kind of node you have:</span></span>"
           }
         }
       ],
@@ -116,7 +116,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='BYtC-0' random-id='e0847120-bc47-a732-6cc0-421ece824891'><marimo-dropdown data-initial-value='[&quot;a left join&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;the inner join above&quot;,&quot;orders.limit(2)&quot;,&quot;a left join&quot;,&quot;orders.distinct()&quot;,&quot;total amount per customer&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='BYtC-0' random-id='996eebde-0a75-4e26-81b2-4318d32305bc'><marimo-dropdown data-initial-value='[&quot;a left join&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;the inner join above&quot;,&quot;orders.limit(2)&quot;,&quot;a left join&quot;,&quot;orders.distinct()&quot;,&quot;total amount per customer&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
           }
         }
       ],
@@ -137,12 +137,12 @@
     },
     {
       "id": "Kclp",
-      "code_hash": "7a643a8f835b2e1f57723dd210b2cbbe",
+      "code_hash": "e67bd2bed750583ebc5fabbe56744159",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">A recomputed node's change, the difference between its new and its old\nresult, still flows to the nodes that read it. The view is a table like\nany other: <code>view.table</code> is an Ibis table to query further, and\n<code>to_arrow()</code>, <code>to_polars()</code> and <code>to_pandas()</code> return its rows. Nodes\nare built from Ibis transforms; a view written as a SQL string has no\npublic counterpart yet.</span>\n<h3 id=\"delta-rules-in-brief\">Delta rules in brief</h3>\n<span class=\"paragraph\">Every row carries a weight: <code>+1</code> for an inserted row, <code>-1</code> for a\ndeleted one, and an update is a delete plus an insert. A table with\nweights is a Z-set, and adding a batch of changes means summing the\nweights per row. Filter and project treat each row on its own, so\ntheir change is the same query run on the changes only (theorem\n<code>Rel.zeval_add</code>).</span>\n<span class=\"paragraph\">A join pairs rows from two tables. If both change, the new result has\nfour kinds of pairs:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\"></th>\n<th style=\"text-align: left;\">old customers <code>B</code></th>\n<th style=\"text-align: left;\">new customers <code>\u0394B</code></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\">old orders <code>A</code></td>\n<td style=\"text-align: left;\"><code>A \u00d7 B</code>: in the old result</td>\n<td style=\"text-align: left;\"><code>A \u00d7 \u0394B</code>: new</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">new orders <code>\u0394A</code></td>\n<td style=\"text-align: left;\"><code>\u0394A \u00d7 B</code>: new</td>\n<td style=\"text-align: left;\"><code>\u0394A \u00d7 \u0394B</code>: new</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">The change to the join is <code>\u0394A \u00d7 B + \u0394A \u00d7 \u0394B + A \u00d7 \u0394B</code>. Hand-written\npipelines often forget the corner term. We'll apply the changes\n\"delete order 1, update order 2 from 5 to 20, insert order 4\" to the\norders, and \"insert <code>cy</code>, delete <code>bob</code>\" to the customers, with the\ncorner term on and off:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">A recomputed node's change, the difference between its new and its old\nresult, still flows to the nodes that read it. The view is a table like\nany other: <code>view.table</code> is an Ibis table to query further, and\n<code>to_arrow()</code>, <code>to_polars()</code> and <code>to_pandas()</code> return its rows. Nodes\nare built from Ibis transforms, or from a SQL string with <code>sv.sql(query)</code>\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>).</span>\n<h3 id=\"delta-rules-in-brief\">Delta rules in brief</h3>\n<span class=\"paragraph\">Every row carries a weight: <code>+1</code> for an inserted row, <code>-1</code> for a\ndeleted one, and an update is a delete plus an insert. A table with\nweights is a Z-set, and adding a batch of changes means summing the\nweights per row. Filter and project treat each row on its own, so\ntheir change is the same query run on the changes only (theorem\n<code>Rel.zeval_add</code>).</span>\n<span class=\"paragraph\">A join pairs rows from two tables. If both change, the new result has\nfour kinds of pairs:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\"></th>\n<th style=\"text-align: left;\">old customers <code>B</code></th>\n<th style=\"text-align: left;\">new customers <code>\u0394B</code></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\">old orders <code>A</code></td>\n<td style=\"text-align: left;\"><code>A \u00d7 B</code>: in the old result</td>\n<td style=\"text-align: left;\"><code>A \u00d7 \u0394B</code>: new</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">new orders <code>\u0394A</code></td>\n<td style=\"text-align: left;\"><code>\u0394A \u00d7 B</code>: new</td>\n<td style=\"text-align: left;\"><code>\u0394A \u00d7 \u0394B</code>: new</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">The change to the join is <code>\u0394A \u00d7 B + \u0394A \u00d7 \u0394B + A \u00d7 \u0394B</code>. Hand-written\npipelines often forget the corner term. We'll apply the changes\n\"delete order 1, update order 2 from 5 to 20, insert order 4\" to the\norders, and \"insert <code>cy</code>, delete <code>bob</code>\" to the customers, with the\ncorner term on and off:</span></span>"
           }
         }
       ],
@@ -155,7 +155,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='emfo-0' random-id='91279179-d995-1406-3d42-8615d17fe020'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003einclude the \u0394A \u00d7 \u0394B term&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='emfo-0' random-id='6253e027-2d4c-be58-00bd-32e5d079b8b5'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003einclude the \u0394A \u00d7 \u0394B term&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
           }
         }
       ],
@@ -163,7 +163,7 @@
     },
     {
       "id": "Hstk",
-      "code_hash": "f147339a9524ec227cc4bbc7b32b4258",
+      "code_hash": "c462b881969c88d99e93309d28382783",
       "outputs": [
         {
           "type": "data",
@@ -176,12 +176,12 @@
     },
     {
       "id": "nWHF",
-      "code_hash": "d5e44d6d1ec815230df1dd200df8a6f0",
+      "code_hash": "63258c60c15b56f4733d10287f016ba8",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With the switch off, the pair \"order 4 and customer <code>cy</code>\" is missing,\nsince both are new and only the corner term produces it. Phantom <code>bob</code>\nrows appear too, one with weight <code>-1</code>: the updated order 2 was paired\nwith the old <code>bob</code>, and only the corner term cancels that pairing with\n<code>bob</code>'s deletion.</span>\n<span class=\"paragraph\">Lean proves the full rule once. <code>Rel.delta</code> generates the update plan\nas an ordinary plan that reads the old tables and the change tables,\nand <code>Rel.delta_correct</code> proves it computes exactly the change. Any\nengine can run it. <code>sverify.engines.delta_plans(view.internal_plan)</code> returns the\nplans of our view. <code>orders$delta</code> and <code>customers$delta</code> are the change\ntables, with a trailing <code>__weight</code> column; old tables get weight 1\n(<code>Project +[1]</code>), and the join multiplies weights (<code>$3 * $6</code>):</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With the switch off, the pair \"order 4 and customer <code>cy</code>\" is missing,\nsince both are new and only the corner term produces it. Phantom <code>bob</code>\nrows appear too, one with weight <code>-1</code>: the updated order 2 was paired\nwith the old <code>bob</code>, and only the corner term cancels that pairing with\n<code>bob</code>'s deletion.</span>\n<span class=\"paragraph\">Lean proves the full rule once. <code>Rel.delta</code> generates the update plan\nas an ordinary plan that reads the old tables and the change tables,\nand <code>Rel.delta_correct</code> proves it computes exactly the change. Any\nengine can run it. <code>sverify.engines.delta_plans(view.internal_plan)</code> returns the\nplan of our view. <code>orders$delta</code> and <code>customers$delta</code> are the change\ntables, with a trailing <code>__weight</code> column; old tables get weight 1\n(<code>Project +[1]</code>), and the join multiplies weights (<code>$3 * $6</code>):</span></span>"
           }
         }
       ],
@@ -194,7 +194,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [0, 5, 7]\n  Project +[($3 * $6)]\n    InnerJoin ($1 = $4)\n      Read orders$delta\n      Project +[1]\n        Read customers\n</code></pre></div></span><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [0, 5, 7]\n  Project +[($3 * $6)]\n    InnerJoin ($1 = $4)\n      Read orders$delta\n      Read customers$delta\n</code></pre></div></span><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [0, 5, 7]\n  Project +[($3 * $6)]\n    InnerJoin ($1 = $4)\n      Project +[1]\n        Read orders\n      Read customers$delta\n</code></pre></div></span></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [0, 4, 5]\n  UnionAll\n    Emit [0, 1, 2, 4, 5, 7]\n      Project +[($3 * $6)]\n        InnerJoin ($1 = $4)\n          Read orders$delta\n          UnionAll\n            Project +[1]\n              Read customers\n            Read customers$delta\n    Emit [0, 1, 2, 4, 5, 7]\n      Project +[($3 * $6)]\n        InnerJoin ($1 = $4)\n          Project +[1]\n            Read orders\n          Read customers$delta\n</code></pre></div></span></div>"
           }
         }
       ],
@@ -202,12 +202,12 @@
     },
     {
       "id": "ZHCJ",
-      "code_hash": "6af7d71ebf7559191c8986104ce077e3",
+      "code_hash": "9779765be13550868864b6717a2b602c",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">On each refresh, <code>substrait-check --delta</code> builds the update plan\n(<code>Rel.delta</code>), splits it into pieces without <code>UNION ALL</code> (<code>Rel.terms</code>)\nand encodes each row's weight as the <code>__weight</code> column\n(<code>Rel.weighted</code>, with <code>Rel.weighted_eval</code> covering an ordinary engine).\nSverify registers the change tables, runs the plans, sums the weights\nper row and merges the result into the view. A batch is computed\ncompletely before anything is replaced, so a failure changes nothing.\nA change that can't happen, such as deleting a row that doesn't exist,\nis refused by the source, and neither the source nor the view moves:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">On each refresh, <code>substrait-check --delta</code> builds the update plan\n(<code>Rel.delta</code>) and encodes each row's weight as the <code>__weight</code> column\n(<code>Rel.weighted</code>, with <code>Rel.weighted_eval</code> covering an ordinary engine).\nSverify registers the change tables, runs the plan as one query, sums the weights\nper row and merges the result into the view. A batch is computed\ncompletely before anything is replaced, so a failure changes nothing.\nA change that can't happen, such as deleting a row that doesn't exist,\nis refused by the source, and neither the source nor the view moves:</span></span>"
           }
         }
       ],
@@ -254,7 +254,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "doubled \u2192 base:\n  computed\n  requires orders: unique(id) (checked on data)\n  requires orders: (_.amount >= 0) (checked on data)\n  requires orders: (_.amount < 1000000000) (checked on data)\n  route on duckdb: exact; evidence tested\n  wrote base from orders@v0: created v2, 3 row(s) written, 0 deleted\ncities:\n  computed\n  route on duckdb: exact\nlocations:\n  computed\n  route on duckdb: exact\n",
+          "text": "doubled \u2192 base:\n  computed\n  requires orders: unique(id) (checked on data)\n  requires orders: (_.amount >= 0) (checked on data)\n  requires orders: (_.amount < 1000000000) (checked on data)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith; #241)\n  wrote base from orders@v0: created v2, 3 row(s) written, 0 deleted\ncities:\n  computed\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys; #241)\nlocations:\n  computed\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys; #241)\n",
           "mimetype": "text/plain"
         }
       ]
@@ -279,7 +279,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>paid</code> and <code>doubled</code> have no <code>.write</code> between them, so they fuse into one plan; <code>.write(DeltaSink(...))</code> stores the result as <code>base</code>. <code>cities</code> and <code>locations</code> read <code>base</code>'s Delta table.</li>\n<li>A contracted transform piped from a stored node builds on what that node's plan proved, as in a direct composition. <code>cities</code> requires <code>_.doubled.notnull()</code> of <code>base</code>, which <code>doubled</code> guarantees, so Lean proves it once, when the node is built, and the data is never checked. A precondition <code>base</code> doesn't guarantee raises <code>CompositionError</code> right there.</li>\n<li><code>sv.group(by_city, by_location)</code> refreshes both reports against the same source versions. <code>base</code> is refreshed and written once for the two of them, upstream first. Its first refresh checked <code>paid</code>'s preconditions on all of <code>orders</code> (the <code>requires \u2026 (checked on data)</code> lines above).</li>\n<li><code>locations</code> is a left join, so each refresh recomputes and diffs it. <code>status()</code> says so:</li>\n</ul>\n<div class=\"language-text codehilite\"><pre><span></span><code>cities: base@v2, customers@v0\nlocations: base@v2, customers@v0; recomputed (not incrementally maintainable (left join, fetch or window))\nbase: orders@v0; stored in /tmp/tmptix37x8q/base\n</code></pre></div></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>paid</code> and <code>doubled</code> have no <code>.write</code> between them, so they fuse into one plan; <code>.write(DeltaSink(...))</code> stores the result as <code>base</code>. <code>cities</code> and <code>locations</code> read <code>base</code>'s Delta table.</li>\n<li>A contracted transform piped from a stored node builds on what that node's plan proved, as in a direct composition. <code>cities</code> requires <code>_.doubled.notnull()</code> of <code>base</code>, which <code>doubled</code> guarantees, so Lean proves it once, when the node is built, and the data is never checked. A precondition <code>base</code> doesn't guarantee raises <code>CompositionError</code> right there.</li>\n<li><code>sv.group(by_city, by_location)</code> refreshes both reports against the same source versions. <code>base</code> is refreshed and written once for the two of them, upstream first. Its first refresh checked <code>paid</code>'s preconditions on all of <code>orders</code> (the <code>requires \u2026 (checked on data)</code> lines above).</li>\n<li><code>locations</code> is a left join, so each refresh recomputes and diffs it. <code>status()</code> says so:</li>\n</ul>\n<div class=\"language-text codehilite\"><pre><span></span><code>cities: base@v2, customers@v0\nlocations: base@v2, customers@v0; recomputed (not incrementally maintainable (left join, fetch or window))\nbase: orders@v0; stored in /tmp/tmpn6hjzbhc/base\n</code></pre></div></span>"
           }
         }
       ],
@@ -305,7 +305,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='ecfG-0' random-id='e7631954-9d13-858c-4c70-1caf1783f251'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eNew orders and a new customer&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='ecfG-1' random-id='d7e8e68e-e98d-1238-89a0-6f41afd65774'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with an existing id&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='ecfG-2' random-id='6ae73ada-6372-19f4-f87e-681ec15a6c7a'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with a negative amount&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='ecfG-0' random-id='c9310027-c29b-120e-1e06-78a61cfe19fa'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eNew orders and a new customer&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='ecfG-1' random-id='46102314-5d9f-561e-bf0e-05e2733982c2'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with an existing id&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='ecfG-2' random-id='d9231ec6-c324-e05f-4115-1c09e362ad45'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with a negative amount&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element></div>"
           }
         }
       ],
@@ -352,12 +352,12 @@
     },
     {
       "id": "nHfw",
-      "code_hash": "1cc80a3375b621d1c8515745d62cc444",
+      "code_hash": "08c7ddea4d853154dde5f1418fd915d7",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"when-the-data-breaks-the-contract\">When the data breaks the contract</h3>\n<span class=\"paragraph\">A refused batch stops the report until someone fixes the feed. For a\nfew bad rows among thousands, you may rather set them aside and let the\nrest through. With <code>on_violation=\"quarantine\"</code> on the transform (or on\nthe source), the refresh sets aside the rows that break a precondition,\nwith the reason, and the node runs on the others\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/184\" rel=\"noopener noreferrer\" target=\"_blank\">#184</a>).\nA row is set aside when a row condition is not TRUE on it, or when\nanother row shares its key: both rows of a repeated <code>id</code> go, so the rule\nneeds no order between them. Every precondition holds on the rows that\nstay (<code>Catalog.kept_sound</code> in\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Quarantine.lean\" rel=\"noopener noreferrer\" target=\"_blank\"><code>Quarantine.lean</code></a>),\nso <code>paid</code>'s proof holds as before. We feed a Delta table an order with a\nnegative amount and one with an id that exists already:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"when-the-data-breaks-the-contract\">When the data breaks the contract</h3>\n<span class=\"paragraph\">A refused batch stops the report until someone fixes the feed. For a\nfew bad rows among thousands, you may rather set them aside and let the\nrest through. With <code>on_violation=\"quarantine\"</code> on the transform (or on\nthe source), the refresh sets aside the rows that break a precondition,\nwith the reason, and the node runs on the others\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#bad-rows-quarantine-and-hold\" rel=\"noopener noreferrer\" target=\"_blank\">quarantine and hold</a>).\nA row is set aside when a row condition is not TRUE on it, or when\nanother row shares its key: both rows of a repeated <code>id</code> go, so the rule\nneeds no order between them. Every precondition holds on the rows that\nstay (<code>Catalog.kept_sound</code> in\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Quarantine.lean\" rel=\"noopener noreferrer\" target=\"_blank\"><code>Quarantine.lean</code></a>),\nso <code>paid</code>'s proof holds as before. We feed a Delta table an order with a\nnegative amount and one with an id that exists already:</span></span>"
           }
         }
       ],
@@ -378,7 +378,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "clean:\n  route on duckdb: exact; evidence tested\n  orders@v0\u2192v1: 3 insert(s), 0 delete(s); \u0394 trusted as coming from Delta CDF v0\u2192v1\n  requires orders: (_.amount >= 0) (checked on data)\n  requires orders: unique(id) (checked on data)\n  view clean: orders@v1\n  quarantine: orders: 3 row(s) quarantined (2 \u00d7 unique(id), 1 \u00d7 (_.amount >= 0)), 3 in quarantine at /tmp/tmptix37x8q/clean_quarantine\n  wrote clean from orders@v1: merge v3, 1 row(s) written, 1 deleted\n",
+          "text": "clean:\n  route on duckdb: exact; evidence tested at 2.0.0\n  orders@v0\u2192v1: 3 insert(s), 0 delete(s); \u0394 trusted as coming from Delta CDF v0\u2192v1\n  requires orders: (_.amount >= 0) (checked on data)\n  requires orders: unique(id) (checked on data)\n  view clean: orders@v1\n  quarantine: orders: 3 row(s) quarantined (2 \u00d7 unique(id), 1 \u00d7 (_.amount >= 0)), 3 in quarantine at /tmp/tmpn6hjzbhc/clean_quarantine\n  wrote clean from orders@v1: merge v3, 1 row(s) written, 1 deleted\n",
           "mimetype": "text/plain"
         }
       ]
@@ -390,7 +390,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The refresh completed (<code>outcome</code> is <code>'quarantined'</code>). Order 4 went through. Order 5 breaks <code>amount &gt;= 0</code>. Order 2 is now on two rows, so both copies are set aside, the one <code>clean</code> held before included, until the feed says which is right. The rows sit in a Delta table next to the sink, <code>clean_quarantine</code>, with the reason and the source version, and <code>clean_orders.quarantined()</code> returns them. A scheduled job posts <code>flagged.alert()</code> to whoever is on call, for example as a GitHub issue:</span>\n<h3 id=\"clean\">clean</h3>\n<span class=\"paragraph\">orders: 3 row(s) quarantined (2 \u00d7 unique(id), 1 \u00d7 (_.amount &gt;= 0)), 3 in quarantine at /tmp/tmptix37x8q/clean_quarantine.</span>\n<table>\n<thead>\n<tr>\n<th>id</th>\n<th>customer</th>\n<th>amount</th>\n<th>_conditions</th>\n<th>_reason</th>\n<th>_source_version</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>2</td>\n<td>bob</td>\n<td>5</td>\n<td>['unique(id)']</td>\n<td>id = 2 is on 2 rows</td>\n<td>1</td>\n</tr>\n<tr>\n<td>2</td>\n<td>fay</td>\n<td>9</td>\n<td>['unique(id)']</td>\n<td>id = 2 is on 2 rows</td>\n<td>1</td>\n</tr>\n<tr>\n<td>5</td>\n<td>eve</td>\n<td>-5</td>\n<td>['(_.amount &gt;= 0)']</td>\n<td>breaks (_.amount &gt;= 0)</td>\n<td>1</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">3 row(s) are quarantined in /tmp/tmptix37x8q/clean_quarantine. The rest went through, and the node's contract holds on them. A fix upstream (an update or delete of the rows) releases them at the next refresh.</span>\n<span class=\"paragraph\"><code>clean</code> now holds:</span>\n<div class=\"language-text codehilite\"><pre><span></span><code>   id customer  amount\n0   1      ada      30\n1   3       cy       0\n2   4      dee      12\n</code></pre></div></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The refresh completed (<code>outcome</code> is <code>'quarantined'</code>). Order 4 went through. Order 5 breaks <code>amount &gt;= 0</code>. Order 2 is now on two rows, so both copies are set aside, the one <code>clean</code> held before included, until the feed says which is right. The rows sit in a Delta table next to the sink, <code>clean_quarantine</code>, with the reason and the source version, and <code>clean_orders.quarantined()</code> returns them. A scheduled job posts <code>flagged.alert()</code> to whoever is on call, for example as a GitHub issue:</span>\n<h3 id=\"clean\">clean</h3>\n<span class=\"paragraph\">orders: 3 row(s) quarantined (2 \u00d7 unique(id), 1 \u00d7 (_.amount &gt;= 0)), 3 in quarantine at /tmp/tmpn6hjzbhc/clean_quarantine.</span>\n<span class=\"paragraph\">3 row(s) are quarantined in /tmp/tmpn6hjzbhc/clean_quarantine. The rest went through, and the node's contract holds on them. A fix upstream (an update or delete of the rows) releases them at the next refresh.</span>\n<span class=\"paragraph\"><code>clean</code> now holds:</span>\n<div class=\"language-text codehilite\"><pre><span></span><code>   id customer  amount\n1   1      ada      30\n0   3       cy       0\n2   4      dee      12\n</code></pre></div></span>"
           }
         }
       ],
@@ -424,7 +424,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "clean:\n  route on duckdb: exact; evidence tested\n  orders@v1\u2192v3: 1 insert(s), 2 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires orders: (_.amount >= 0) (checked on data)\n  requires orders: unique(id) (checked on data)\n  view clean: orders@v3\n  quarantine: orders: 1 released, 2 deleted upstream, 0 in quarantine at /tmp/tmptix37x8q/clean_quarantine\n  wrote clean from orders@v3: merge v4, 2 row(s) written, 0 deleted\nok 0\n",
+          "text": "clean:\n  route on duckdb: exact; evidence tested at 2.0.0\n  orders@v1\u2192v3: 1 insert(s), 2 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires orders: (_.amount >= 0) (checked on data)\n  requires orders: unique(id) (checked on data)\n  view clean: orders@v3\n  quarantine: orders: 1 released, 2 deleted upstream, 0 in quarantine at /tmp/tmpn6hjzbhc/clean_quarantine\n  wrote clean from orders@v3: merge v4, 2 row(s) written, 0 deleted\nok 0\n",
           "mimetype": "text/plain"
         }
       ]
@@ -490,7 +490,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "doubled \u2192 base:\n  route on duckdb: exact; evidence tested\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncities \u2192 city_report:\n  computed\n  route on duckdb: exact\n  wrote city_report from base@v2, crm@v1: overwrite, 2 row(s) written, 0 deleted\ndoubled \u2192 base:\n  route on duckdb: exact; evidence tested\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncities \u2192 city_report:\n  route on duckdb: exact\n  base@v2: no new version\n  crm@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as rows appended to crm v1\u2192v2, assuming rows only arrive with a greater signed_up\n  view city_report: base@v2, crm@v2\n  wrote city_report from base@v2, crm@v2: update, 1 row(s) written, 0 deleted\n",
+          "text": "doubled \u2192 base:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith; #241)\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncities \u2192 city_report:\n  computed\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys; #241)\n  wrote city_report from base@v2, crm@v1: overwrite, 2 row(s) written, 0 deleted\ndoubled \u2192 base:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith; #241)\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncities \u2192 city_report:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys; #241)\n  base@v2: no new version\n  crm@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as rows appended to crm v1\u2192v2, assuming rows only arrive with a greater signed_up\n  view city_report: base@v2, crm@v2\n  wrote city_report from base@v2, crm@v2: update, 1 row(s) written, 0 deleted\n",
           "mimetype": "text/plain"
         }
       ]
@@ -523,19 +523,19 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "doubled \u2192 base:\n  route on duckdb: exact; evidence tested\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncities \u2192 city_report:\n  route on duckdb: exact\n  base@v2: no new version\n  crm@v2: no new version\n  view city_report: base@v2, crm@v2\n  wrote city_report from base@v2, crm@v2: already committed\nAuditError: crm@v2 differs from the table read again in full: its batches missed rows; nothing was applied\n",
+          "text": "doubled \u2192 base:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith; #241)\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncities \u2192 city_report:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys; #241)\n  base@v2: no new version\n  crm@v2: no new version\n  view city_report: base@v2, crm@v2\n  wrote city_report from base@v2, crm@v2: already committed\nAuditError: crm@v2 differs from the table read again in full: its batches missed rows; nothing was applied. Check the source's batches, or report it at https://github.com/AlexanderNenninger/substrait-lean/issues/new\n",
           "mimetype": "text/plain"
         }
       ]
     },
     {
       "id": "kqZH",
-      "code_hash": "e99a3222bb17162b09ca7ba494720c9e",
+      "code_hash": "c642e61518da0d6a0e4544ed9ea35422",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The plain refresh saw nothing new, and the audit caught the row the\ncursor skipped and applied nothing. A source can promise no more than\nits reads do, so give it an <code>assumes=</code> that says what its batches rely\non, and audit now and then. The rest of the toolkit, in <code>sverify.io</code>:</span>\n<ul>\n<li><code>from_frame(fn)</code> reads the whole table on every refresh and diffs it\n  against the last read, so the change is exact and nothing is assumed.\n  <code>from_files(path)</code> reads the files that are new in a directory.\n  Subclass <code>Source</code> for anything else. A batch can be a whole table\n  (<code>kind=\"snapshot\"</code>) or rows added and removed (<code>kind=\"changes\"</code>).</li>\n<li>A sink's <code>write</code> gets a <code>SinkChange</code>: the rows added and removed\n  since its last write, or the whole table on the first, with the\n  contract to record. <code>contract()</code> reads that contract back, so each\n  state is written once even across restarts; without it sverify\n  remembers for the life of the process. <code>sink_from(fn)</code> hands the\n  whole table to a function.</li>\n<li>These sources have no metadata, so preconditions on them are checked\n  on the rows, and they keep the table in memory. A restarted job reads\n  them in full again and numbers its versions above the ones its sinks\n  recorded. A table format with statistics and a change feed\n  implements the full <code>VersionedSource</code> protocol, as Delta and Iceberg\n  do.</li>\n<li><code>Storage</code> holds object store options, or a function that fetches\n  fresh ones, shared by every table that needs them.</li>\n</ul>\n<h2 id=\"engines-and-sql\">Engines and SQL</h2>\n<span class=\"paragraph\">A proof is about the Lean model. Whether an engine computes what the\nmodel says is a separate question, and engines disagree about NULL join\nkeys, NaN, integer overflow, the rounding of integer division and the\norder of ties. Plans come from one producer: the vendored Ibis\nproducer, or sverify's lift of DuckDB's SQL (SQLGlot) for SQL strings.\nThey run on these engines:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\">engine</th>\n<th style=\"text-align: left;\">how the plan runs</th>\n<th style=\"text-align: left;\">status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\"><code>\"duckdb\"</code> (default)</td>\n<td style=\"text-align: left;\">the SQL generator (<code>sverify.engines.to_sql</code>) writes the plan as DuckDB SQL</td>\n<td style=\"text-align: left;\">Tier 1: characterized against the model, translation proved</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"polars\"</code></td>\n<td style=\"text-align: left;\">a translator turns the plan into a Polars <code>LazyFrame</code>, run on Polars's streaming engine</td>\n<td style=\"text-align: left;\">Tier 2: characterized, shims proved</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"datafusion\"</code></td>\n<td style=\"text-align: left;\">DataFusion's Substrait consumer (the <code>sverify[datafusion]</code> extra)</td>\n<td style=\"text-align: left;\">Tier 2</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"spark\"</code>, or a Spark session</td>\n<td style=\"text-align: left;\">the SQL generator writes Spark SQL (the <code>sverify[spark]</code> extra)</td>\n<td style=\"text-align: left;\">Tier 2</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Snowflake</td>\n<td style=\"text-align: left;\">SQL only, checked on the <a href=\"https://github.com/tekumara/fakesnow\" rel=\"noopener noreferrer\" target=\"_blank\">fakesnow</a> emulator</td>\n<td style=\"text-align: left;\">Tier 3</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">The tiers are explained in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md\" rel=\"noopener noreferrer\" target=\"_blank\">README</a>.\nWork on DataFusion, Spark and Snowflake is paused until the generated\nlowerings land (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/241\" rel=\"noopener noreferrer\" target=\"_blank\">#241</a>,\nthen <a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/271\" rel=\"noopener noreferrer\" target=\"_blank\">#271</a>),\nand the tests use DuckDB as their oracle. DuckDB and Polars are\ncharacterized fact by fact, each fact with its evidence\n(<a href=\"https://alexandernenninger.github.io/substrait-lean/ledgers/\" rel=\"noopener noreferrer\" target=\"_blank\">the ledgers</a>). DuckDB and Polars run Lean's\nwritten form of the plan (<code>sverify.engines.written_plan</code>), so what runs\nis what was checked, and their translators spell out the model's\nsemantics instead of taking engine defaults.</span>\n<span class=\"paragraph\">We'll line the engines up. Pick a query, and each engine runs the same\nchecked plan (<code>sverify.engines.run(con, plan, engine)</code>) next to Lean's\nreference interpreter:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The plain refresh saw nothing new, and the audit caught the row the\ncursor skipped and applied nothing. A source can promise no more than\nits reads do, so give it an <code>assumes=</code> that says what its batches rely\non, and audit now and then. The rest of the toolkit, in <code>sverify.io</code>:</span>\n<ul>\n<li><code>from_frame(fn)</code> reads the whole table on every refresh and diffs it\n  against the last read, so the change is exact and nothing is assumed.\n  <code>from_files(path)</code> reads the files that are new in a directory.\n  Subclass <code>Source</code> for anything else. A batch can be a whole table\n  (<code>kind=\"snapshot\"</code>) or rows added and removed (<code>kind=\"changes\"</code>).</li>\n<li>A sink's <code>write</code> gets a <code>SinkChange</code>: the rows added and removed\n  since its last write, or the whole table on the first, with the\n  contract to record. <code>contract()</code> reads that contract back, so each\n  state is written once even across restarts; without it sverify\n  remembers for the life of the process. <code>sink_from(fn)</code> hands the\n  whole table to a function.</li>\n<li>These sources have no metadata, so preconditions on them are checked\n  on the rows, and they keep the table in memory. A restarted job reads\n  them in full again and numbers its versions above the ones its sinks\n  recorded. A table format with statistics and a change feed\n  implements the full <code>VersionedSource</code> protocol, as Delta and Iceberg\n  do.</li>\n<li><code>Storage</code> holds object store options, or a function that fetches\n  fresh ones, shared by every table that needs them.</li>\n</ul>\n<h2 id=\"engines-and-sql\">Engines and SQL</h2>\n<span class=\"paragraph\">A proof is about the Lean model. Whether an engine computes what the\nmodel says is a separate question, and engines disagree about NULL join\nkeys, NaN, integer overflow, the rounding of integer division and the\norder of ties. Plans come from one producer: the vendored Ibis\nproducer, or sverify's lift of DuckDB's SQL (SQLGlot) for SQL strings.\nDuckDB (the default), Polars on its streaming engine and Spark 4.x run\nplans, each with a proved profile, and sverify writes DuckDB, Spark and\nSnowflake SQL; Snowflake's profile and running plans on it come before\n1.0.\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">The engines</a> has the details. Lean's reference profile is the reference,\none of the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines\" rel=\"noopener noreferrer\" target=\"_blank\">profiles that refine the core</a>,\nand the tests use DuckDB as their default oracle. DuckDB and Polars are\ncharacterized fact by fact, each fact with its evidence\n(<a href=\"https://alexandernenninger.github.io/substrait-lean/ledgers/\" rel=\"noopener noreferrer\" target=\"_blank\">the ledgers</a>). DuckDB and Polars run Lean's\nwritten form of the plan (<code>sverify.engines.written_plan</code>), so what runs\nis what was checked, and their translators spell out the reference's\nsemantics explicitly, whatever the engine's defaults.</span>\n<span class=\"paragraph\">We'll line the engines up. Pick a query, and each engine runs the same\nchecked plan (<code>sverify.engines.run(con, plan, engine)</code>) next to Lean's\nreference interpreter:</span></span>"
           }
         }
       ],
@@ -574,7 +574,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='dGlV-0' random-id='36cc64d2-4683-4ddc-32c3-fb469a093ffe'><marimo-dropdown data-initial-value='[&quot;join on a key that can be NULL&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;join on a key that can be NULL&quot;,&quot;integer division (truncates)&quot;,&quot;doubles: NaN&quot;,&quot;qty + 1 (MAX overflows)&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='dGlV-0' random-id='a1dec4ae-1243-cbfb-6d59-0cdf867dbb81'><marimo-dropdown data-initial-value='[&quot;join on a key that can be NULL&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;join on a key that can be NULL&quot;,&quot;integer division (truncates)&quot;,&quot;doubles: NaN&quot;,&quot;qty + 1 (MAX overflows)&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
           }
         }
       ],
@@ -587,7 +587,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">select</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">k</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">qty</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"p\">.</span><span class=\"n\">label</span><span class=\"w\"> </span><span class=\"k\">from</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"w\"> </span><span class=\"k\">join</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"w\"> </span><span class=\"k\">on</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">k</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"p\">.</span><span class=\"n\">k</span>\n</code></pre></div></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>Lean's Rel.eval</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>duckdb</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>polars</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>datafusion</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eAll three engines agree.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">select</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">k</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">qty</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"p\">.</span><span class=\"n\">label</span><span class=\"w\"> </span><span class=\"k\">from</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"w\"> </span><span class=\"k\">join</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"w\"> </span><span class=\"k\">on</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">k</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"p\">.</span><span class=\"n\">k</span>\n</code></pre></div></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>Lean's Rel.eval</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>duckdb</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>polars</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eThe engines disagree; see below.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;warn&quot;'></marimo-callout-output></div>"
           }
         }
       ],
@@ -595,12 +595,12 @@
     },
     {
       "id": "lgWD",
-      "code_hash": "5b16799503b4798a0ae743d47ab65e2b",
+      "code_hash": "368b739911a9e68380c97c99303f137c",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What to look for:</span>\n<ul>\n<li>NULL join keys never match, because <code>NULL = NULL</code> is not TRUE. Each\n  translator says so explicitly.</li>\n<li>Integer division truncates toward zero, as in DuckDB's <code>//</code> and in\n  Lean (<code>-7 // 2 = -3</code>). Polars' own <code>//</code> floors to <code>-4</code>, so its\n  translator truncates.</li>\n<li>NaN is one value, equal to itself and above every number, so\n  <code>NaN &gt; 0</code> is TRUE. The next section covers doubles.</li>\n<li><code>qty + 1</code> on the largest integer is where engines differ most:\n  DataFusion wraps around to the smallest integer, while the Polars and\n  DuckDB translators raise, as the reference does. An integer that\n  leaves its declared width is an error, and <code>verify</code> reports it\n  beforehand.</li>\n</ul>\n<span class=\"paragraph\">Lean's column is missing for the last two queries. The model stores a\ndouble as a very large integer code (<code>SubstraitLean/Float.lean</code>), so\nthe checker's printer can't tell a double from an integer beyond 64\nbits. The test suite compares doubles through the engines.</span>\n<h3 id=\"choosing-the-engine-for-a-node\">Choosing the engine for a node</h3>\n<span class=\"paragraph\">A node doesn't fix its engine. The plan is the same everywhere, and\n<code>node.refresh(engine=\"polars\")</code> (or <code>\"datafusion\"</code>, <code>\"spark\"</code>, a Spark\nsession) picks where it runs; DuckDB in memory is the default. A node\nkeeps its state between refreshes, so the next refresh may use another\nengine. Contracts checked on data take <code>engine=</code> too:\n<code>@sv.transform(ensures=[...], on_unproved=\"check\", check_engine=\"duckdb\")</code>.\nWe refresh a fresh node of the NULL-key join on each engine:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What to look for:</span>\n<ul>\n<li>NULL join keys never match, because <code>NULL = NULL</code> is not TRUE. Each\n  translator says so explicitly.</li>\n<li>Integer division truncates toward zero, as in DuckDB's <code>//</code> and in\n  Lean (<code>-7 // 2 = -3</code>). Polars' own <code>//</code> floors to <code>-4</code>, so its\n  translator truncates.</li>\n<li>NaN is one value, equal to itself and above every number, so\n  <code>NaN &gt; 0</code> is TRUE. The next section covers doubles.</li>\n<li><code>qty + 1</code> on the largest integer is where engines differ most:\n  Polars' own <code>+</code> wraps around to the smallest integer, while the\n  Polars and DuckDB translators raise, as the reference does. An integer that\n  leaves its declared width is an error, and <code>verify</code> reports it\n  beforehand.</li>\n</ul>\n<span class=\"paragraph\">Lean's column is missing for the last two queries. The model stores a\ndouble as a very large integer code (<code>core/Sverify/Core/Float.lean</code>), so\nthe checker's printer can't tell a double from an integer beyond 64\nbits. The test suite compares doubles through the engines.</span>\n<h3 id=\"choosing-the-engine-for-a-node\">Choosing the engine for a node</h3>\n<span class=\"paragraph\">A node doesn't fix its engine. The plan is the same everywhere, and\n<code>node.refresh(engine=\"polars\")</code> (or <code>\"spark\"</code>, a Spark session) picks where it runs; DuckDB in memory is the default. A node\nkeeps its state between refreshes, so the next refresh may use another\nengine. Contracts checked on data take <code>engine=</code> too:\n<code>@sv.transform(ensures=[...], on_unproved=\"check\", check_engine=\"duckdb\")</code>.\nWe refresh a fresh node of the NULL-key join on each engine:</span></span>"
           }
         }
       ],
@@ -613,7 +613,7 @@
         {
           "type": "data",
           "data": {
-            "application/json": "{\"duckdb\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]], \"polars\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]], \"datafusion\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]]}"
+            "application/json": "{\"duckdb\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]], \"polars\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]]}"
           }
         }
       ],
@@ -621,12 +621,12 @@
     },
     {
       "id": "fwwy",
-      "code_hash": "86645667b5554f5fb317dbbe6afc1fa9",
+      "code_hash": "612e9b2c2385b88817c5c34673c50b29",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Every engine returns the same rows, and the NULL key matches nothing.</span>\n<h3 id=\"routes-how-a-proof-reaches-an-engine\">Routes: how a proof reaches an engine</h3>\n<span class=\"paragraph\">A proof is about the plan under one semantics, the reference by default.\n<code>report.run(con, engine, route=\"auto\")</code> and\n<code>node.refresh(engine=..., route=\"auto\")</code> choose how it reaches the\nengine, and refuse the plan with the reason where nothing does (D13 in\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#d13-choosing-the-route\" rel=\"noopener noreferrer\" target=\"_blank\">core-semantics.md</a>).\nThe route names the plan's class on the engine: <code>exact</code> (every result\nthe engine gives, the reference allows), <code>observed</code> (equal under an\nobservation the postcondition states, a float tolerance included),\n<code>shim</code> (after a proved translation) or <code>refused</code>. Before the plan runs, its preconditions\nare checked on the data. We take the join to Polars:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Every engine returns the same rows, and the NULL key matches nothing.</span>\n<h3 id=\"splitting-a-plan-across-machines\">Splitting a plan across machines</h3>\n<span class=\"paragraph\">When a table outgrows one machine, its rows live in pieces, and the plan\nhas to run piece by piece. <code>sverify.engines.run_sharded</code> asks the\nchecker how the plan splits: what each shard computes, and how the\nparts combine into the plan's result on all the rows\n(<code>Rel.shardSplit_sound</code>). It runs each shard on Polars and refuses a\nplan whose result would depend on the split. We'll total each meter's\nreadings, kept in two regions:</span></span>"
           }
         }
       ],
@@ -634,12 +634,12 @@
     },
     {
       "id": "LJZf",
-      "code_hash": "d91bc89985cc7c9612bf7648bcd1361e",
+      "code_hash": "bb7fc734ab4ae47792abd07d29fd68c1",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Route on Polars: exact; evidence tested</span></span>"
+            "application/json": "[{\"meter\": 1, \"wh\": 200}, {\"meter\": 2, \"wh\": 350}, {\"meter\": 3, \"wh\": 10}]"
           }
         }
       ],
@@ -647,6 +647,91 @@
     },
     {
       "id": "urSm",
+      "code_hash": "43c139885792843294880a282993e5ae",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">An integer sum splits exactly: each region sums its meters, and the\nparts add up. A sum of doubles doesn't, since each region rounds its\npartial sum, and the rounding depends on which rows land where. The\nplan is refused, and the refusal names the way through:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "jxvo",
+      "code_hash": "004ad9a415435ba675985ce9d83b15af",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "NotShardable: SUM or AVG of doubles: floating-point addition is not associative, so the rounding depends on how the rows are split (run_sharded(reproducible=sv.equivalent(floats=\"plan\")) splits them anyway, within a proved tolerance)\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "mWxS",
+      "code_hash": "64e1b61063b5555d8cb31131006044a7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>reproducible=sv.equivalent(floats=\"plan\")</code> we accept doubles\nwithin the bound the proof gives for this split\n(<code>StdModel.sharded_near</code>), and <code>tolerance=True</code> reports it per row:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "CcZR",
+      "code_hash": "3ac790542d709e5c6d5c38bb60e74367",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"kwh\": [{\"meter\": 1, \"kwh\": \"text/plain+float:0.2\"}, {\"meter\": 2, \"kwh\": \"text/plain+float:0.35\"}, {\"meter\": 3, \"kwh\": \"text/plain+float:0.01\"}], \"within\": [\"text/plain+float:1.7763568394002506e-16\", \"text/plain+float:3.1086244689504386e-16\", \"text/plain+float:8.881784197001253e-18\"]}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "YWSi",
+      "code_hash": "fc2502c6c95db2bc01d3352712379b79",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Each meter's total is within a few units of 10\u207b\u00b9\u2076 of the sum on one\nmachine, and the bound comes with the result.</span>\n<h3 id=\"routes-how-a-proof-reaches-an-engine\">Routes: how a proof reaches an engine</h3>\n<span class=\"paragraph\">A proof is about the plan under one semantics, the reference by default.\n<code>report.run(con, engine, route=\"auto\")</code> and\n<code>node.refresh(engine=..., route=\"auto\")</code> choose how it reaches the\nengine, and refuse the plan with the reason where nothing does\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/verifying.md\" rel=\"noopener noreferrer\" target=\"_blank\">how a route is chosen</a>).\nThe route names the plan's class on the engine: <code>exact</code> (every result\nthe engine gives, the reference allows), <code>observed</code> (equal under an\nobservation the postcondition states, a float tolerance included),\n<code>shim</code> (after a proved translation) or <code>refused</code>. Before the plan runs, its preconditions\nare checked on the data. We take the join to Polars:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "zlud",
+      "code_hash": "d91bc89985cc7c9612bf7648bcd1361e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Route on Polars: exact; evidence tested at 2.1.0 (facts polars-null-keys; #271)</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "tZnO",
       "code_hash": "e9a54c3afed0d23e43b07e1de68920a9",
       "outputs": [
         {
@@ -659,7 +744,7 @@
       "console": []
     },
     {
-      "id": "jxvo",
+      "id": "xvXZ",
       "code_hash": "1f2384dd524d1f143ea03d346c3b65db",
       "outputs": [
         {
@@ -672,21 +757,21 @@
       "console": []
     },
     {
-      "id": "mWxS",
+      "id": "CLip",
       "code_hash": "a526e419199084a1379d4f4176fdd4d9",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='mWxS-1' random-id='9dfd5ea0-0aa0-b085-99fb-1b205776edbc'><marimo-text-area data-initial-value='&quot;select k, qty * 2 as doubled from t where qty &#92;u003e 0&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery over t(k, qty, v)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-placeholder='&quot;&quot;' data-disabled='false' data-debounce='true' data-full-width='true' data-rows='2'></marimo-text-area></marimo-ui-element><marimo-ui-element object-id='mWxS-0' random-id='875fdd8a-21be-3a43-a06f-c4cb5e48a7f2'><marimo-radio data-initial-value='&quot;duckdb&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003edialect&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;duckdb&quot;,&quot;snowflake&quot;,&quot;spark&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='CLip-1' random-id='a89eda00-8c27-4c1c-98aa-06e96f8c8628'><marimo-text-area data-initial-value='&quot;select k, qty * 2 as doubled from t where qty &#92;u003e 0&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery over t(k, qty, v)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-placeholder='&quot;&quot;' data-disabled='false' data-debounce='true' data-full-width='true' data-rows='2'></marimo-text-area></marimo-ui-element><marimo-ui-element object-id='CLip-0' random-id='8b23361f-826d-7632-ed20-3f57f7895799'><marimo-radio data-initial-value='&quot;duckdb&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003edialect&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;duckdb&quot;,&quot;snowflake&quot;,&quot;spark&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element></div>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "CcZR",
-      "code_hash": "e10029d2d6e868cf8943db7f3fe475f0",
+      "id": "YECM",
+      "code_hash": "fbc43c08018f27491780e18a524c8ecf",
       "outputs": [
         {
           "type": "data",
@@ -698,20 +783,20 @@
       "console": []
     },
     {
-      "id": "YWSi",
-      "code_hash": "5e8da56e5b0550d377be106ef4ad0832",
+      "id": "cEAS",
+      "code_hash": "f565e6a2043cb4cd3198d73fe45b6fc6",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Try <code>select k, row_number() over (partition by k order by qty) as rn from t</code>\nin each dialect. DuckDB gets an ordinal column, so ties break the way\nLean's stable sort breaks them. Snowflake and Spark refuse, because\ntheir tables have no row order. When a contract report says\n<code>deterministic</code> (chapter 4), <code>deterministic=True</code> promises there are no ties\nand the SQL is written.</span>\n<span class=\"paragraph\">Snowflake: integers are <code>NUMBER(38,0)</code> checked against the 64-bit\nrange, timestamps are <code>TIMESTAMP_NTZ(6)</code>, every identifier is quoted,\nand interval-valued result columns are refused because Snowflake has no\ninterval type.</span>\n<span class=\"paragraph\">Spark and Databricks: the dialect (<code>sverify.engines.SPARK</code>) targets\nSpark 4 and is also what <code>node.refresh(engine=\"spark\")</code> runs. It\nassumes the session settings of <code>sverify.engines.SPARK_CONF</code>, above all\n<code>spark.sql.ansi.enabled</code>: without ANSI mode an overflow wraps around\nand a bad cast gives NULL. Spark answers several questions its own way,\nand the SQL spells out or refuses each:</span>\n<ul>\n<li><code>/</code> of integers is a double, so division is <code>div</code>. <code>/</code> of doubles\n  raises on a zero divisor, as the reference does; a plan that asks for\n  IEEE gets \u00b1inf or NaN from a <code>CASE</code>.</li>\n<li><code>CAST(9.3e18 AS BIGINT)</code> saturates, and <code>FLOOR</code> and <code>CEIL</code> return\n  integers. Each is range-checked or repaired.</li>\n<li><code>SUM</code> of <code>BIGINT</code> raises on an overflowing partial sum even when the\n  total fits, so it adds <code>DECIMAL(38,0)</code>.</li>\n<li><code>TIMESTAMP</code> is the session time zone's, and so is what <code>date_trunc</code>\n  returns, so the SQL stays in <code>TIMESTAMP_NTZ</code>.</li>\n<li><code>POWER</code> of doubles is Java's <code>Math.pow</code> (within 1 ulp of C's) and is\n  refused, as are sorts and windows over a table without\n  <code>deterministic=True</code>.</li>\n</ul>\n<span class=\"paragraph\">Spark runs locally, unlike Snowflake. The tests run every coverage case\nand every query of the Snowflake suite on a local Spark session\n(Java 17 or 21) and compare them with <code>Rel.eval</code>. The Lean evaluator is\nthe specification: the suite runs every fixture and every update plan\non DataFusion, Polars and DuckDB with random tables, and compares them\nwith each other and with <code>Rel.eval</code>, row for row in Lean's order where\norder matters. The Snowflake SQL is parsed and run on fakesnow. The\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/engine-profiles.md\" rel=\"noopener noreferrer\" target=\"_blank\">engine profiles</a>\nlist where each engine departs from the model.</span>\n<h2 id=\"doubles-time-and-text\">Doubles, time and text</h2>\n<span class=\"paragraph\">Say one of your sensors sends NaN, or a timestamp lands at the edge of\nthe calendar. Floating-point measurements, timestamps and strings each\nhave traps, and the Lean model pins them down bit for bit where it\nmatters, because a proof about the wrong semantics proves nothing.</span>\n<h3 id=\"doubles-nan-infinities-and-one-zero\">Doubles: NaN, infinities and one zero</h3>\n<span class=\"paragraph\">In IEEE 754 comparisons and in Python, NaN equals nothing, itself\nincluded. SQL engines (PostgreSQL, DuckDB, Spark, Snowflake) order\ndoubles differently, and so does the model:</span>\n<blockquote>\n<span class=\"paragraph\">\u2212\u221e &lt; \u2026 &lt; 0.0 &lt; \u2026 &lt; +\u221e &lt; NaN</span>\n</blockquote>\n<span class=\"paragraph\">There is one NaN, equal to itself and larger than every number, and one\nzero: \u22120.0 is 0.0, so <code>-0.0 &gt;= 0</code> holds and \u22120.0 never shows in a\nresult. DataFusion's own order, <code>f64::total_cmp</code>, splits both, so\nsverify stores DataFusion's tables the model's way\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#doubles-one-zero-and-one-nan\" rel=\"noopener noreferrer\" target=\"_blank\"><code>docs/how-it-works.md</code></a>).\nHere is a table with both zeros and NaN:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Try <code>select k, row_number() over (partition by k order by qty) as rn from t</code>\nin each dialect. DuckDB gets an ordinal column, so ties break the way\nLean's stable sort breaks them. Snowflake and Spark refuse, because\ntheir tables have no row order. When a contract report says\n<code>deterministic</code> (chapter 4), <code>deterministic=True</code> promises there are no ties\nand the SQL is written.</span>\n<span class=\"paragraph\">Snowflake: integers are <code>NUMBER(38,0)</code> checked against the 64-bit\nrange, timestamps are <code>TIMESTAMP_NTZ(6)</code>, every identifier is quoted,\nand interval-valued result columns are refused because Snowflake has no\ninterval type.</span>\n<span class=\"paragraph\">Spark and Databricks: the <code>\"spark\"</code> dialect targets\nSpark 4 and is also what <code>node.refresh(engine=\"spark\")</code> runs. It\nassumes the session settings of <code>sverify_spark.dialect.SPARK_CONF</code>, above all\n<code>spark.sql.ansi.enabled</code>: without ANSI mode an overflow wraps around\nand a bad cast gives NULL. Spark answers several questions its own way,\nand the SQL spells out or refuses each:</span>\n<ul>\n<li><code>/</code> of integers is a double, so division is <code>div</code>. <code>/</code> of doubles\n  raises on a zero divisor, as the reference does; a plan that asks for\n  IEEE gets \u00b1inf or NaN from a <code>CASE</code>.</li>\n<li><code>CAST(9.3e18 AS BIGINT)</code> saturates, and <code>FLOOR</code> and <code>CEIL</code> return\n  integers. Each is range-checked or repaired.</li>\n<li><code>SUM</code> of <code>BIGINT</code> raises on an overflowing partial sum even when the\n  total fits, so it adds <code>DECIMAL(38,0)</code>.</li>\n<li><code>TIMESTAMP</code> is the session time zone's, and so is what <code>date_trunc</code>\n  returns, so the SQL stays in <code>TIMESTAMP_NTZ</code>.</li>\n<li><code>POWER</code> of doubles is Java's <code>Math.pow</code> (within 1 ulp of C's) and is\n  refused, as are sorts and windows over a table without\n  <code>deterministic=True</code>.</li>\n</ul>\n<span class=\"paragraph\">Spark runs locally, unlike Snowflake. The tests run every coverage case\nand every query of the Snowflake suite on a local Spark session\n(Java 17 or 21) and compare them with <code>Rel.eval</code>. The Lean evaluator is\nthe specification: the suite runs every fixture and every update plan\non Polars and DuckDB with random tables, and compares them\nwith each other and with <code>Rel.eval</code>, row for row in Lean's order where\norder matters. The Snowflake SQL is parsed and run on fakesnow. The\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/engine-profiles.md\" rel=\"noopener noreferrer\" target=\"_blank\">engine profiles</a>\nlist where each engine departs from the reference.</span>\n<h2 id=\"doubles-time-and-text\">Doubles, time and text</h2>\n<span class=\"paragraph\">Say one of your sensors sends NaN, or a timestamp lands at the edge of\nthe calendar. Floating-point measurements, timestamps and strings each\nhave traps, and the Lean model pins them down bit for bit where it\nmatters, because a proof about the wrong semantics proves nothing.</span>\n<h3 id=\"doubles-nan-infinities-and-one-zero\">Doubles: NaN, infinities and one zero</h3>\n<span class=\"paragraph\">In IEEE 754 comparisons and in Python, NaN equals nothing, itself\nincluded. SQL engines (PostgreSQL, DuckDB, Spark, Snowflake) order\ndoubles differently, and so does sverify's reference profile:</span>\n<blockquote>\n<span class=\"paragraph\">\u2212\u221e &lt; \u2026 &lt; 0.0 &lt; \u2026 &lt; +\u221e &lt; NaN</span>\n</blockquote>\n<span class=\"paragraph\">There is one NaN, equal to itself and larger than every number, and one\nzero: \u22120.0 is 0.0, so <code>-0.0 &gt;= 0</code> holds and \u22120.0 never shows in a\nresult. Lean's core keeps both zeros and signed NaNs, and the reference\nprofile reads them this way\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines\" rel=\"noopener noreferrer\" target=\"_blank\">core, profiles and engines</a>).\nAn order like Rust's <code>f64::total_cmp</code> splits both\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#doubles-under-the-reference-profile\" rel=\"noopener noreferrer\" target=\"_blank\"><code>docs/how-it-works.md</code></a>).\nHere is a table with both zeros and NaN:</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "zlud",
+      "id": "iXej",
       "code_hash": "1038467b9eba70b0b9c08da5096904c8",
       "outputs": [
         {
@@ -724,7 +809,7 @@
       "console": []
     },
     {
-      "id": "tZnO",
+      "id": "EJmg",
       "code_hash": "b292e443016237f362db1b8b99d06fba",
       "outputs": [
         {
@@ -737,7 +822,7 @@
       "console": []
     },
     {
-      "id": "xvXZ",
+      "id": "UmEG",
       "code_hash": "818c3254f54780e70015ac69984089e1",
       "outputs": [
         {
@@ -750,20 +835,20 @@
       "console": []
     },
     {
-      "id": "CLip",
+      "id": "vEBW",
       "code_hash": "6c7e81f8109faee27097394ebbdd937e",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='CLip-0' random-id='a85bb3b9-816d-763e-f42d-efce7bebb0c3'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ekeep v &amp;gt; 0&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='CLip-1' random-id='7b178430-1371-b9f8-814b-1289cd4a0218'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ekeep v &amp;lt; 1e9&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='CLip-2' random-id='053198d0-0abd-4a8c-591e-ed6f6a24dcd6'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003edrop the error code v = -9999&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='vEBW-0' random-id='4000ce8d-4673-037e-29f5-3214f3b66491'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ekeep v &amp;gt; 0&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='vEBW-1' random-id='859a9518-40d6-f19d-28fd-0bba144ee74d'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ekeep v &amp;lt; 1e9&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='vEBW-2' random-id='68259cae-4bf7-6dfb-cd50-37cafb34aee1'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003edrop the error code v = -9999&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "YECM",
+      "id": "kLmu",
       "code_hash": "de817c5154c2436b281b3557b1ec6f30",
       "outputs": [
         {
@@ -776,20 +861,20 @@
       "console": []
     },
     {
-      "id": "cEAS",
-      "code_hash": "12d941ba05596a53972350ea43f68fe8",
+      "id": "IpqN",
+      "code_hash": "81f54143cfe297c18d7e877e4a170521",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Comparisons with constants are exact, sentinels like <code>-9999.0</code> and the\nboundary between <code>v &gt; 0.5</code> and <code>v &gt;= 0.5</code> included. Arithmetic on\ndoubles (<code>v * 2.5</code>) is known only to give some double, because rounding\nisn't modelled. The reference raises where an operation on finite\ndoubles overflows to \u00b1\u221e, so the report assumes <code>v * 2.5</code> stays finite and\nthe run checks it on the data first: a \u00b1\u221e in a result came from the\ndata (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/issues/575\" rel=\"noopener noreferrer\" target=\"_blank\">#575</a>). For the same reason <code>power(-inf, 0.5)</code>\nand a <code>MEDIAN</code> between \u2212\u221e and +\u221e raise, where engines disagree. <code>FLOOR</code>, <code>CEIL</code>, <code>ROUND</code> and the cast to an integer are\nexact and monotone, so a bounded double rounds to a bounded integer:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Comparisons with constants are exact, sentinels like <code>-9999.0</code> and the\nboundary between <code>v &gt; 0.5</code> and <code>v &gt;= 0.5</code> included. Arithmetic on\ndoubles (<code>v * 2.5</code>) rounds, and the checker bounds <code>+</code>, <code>-</code>, <code>*</code> and <code>/</code>\nfrom their inputs' bounds with a proved rounding error\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/float-bounds.md#one-operations-bounds-and-overflow\" rel=\"noopener noreferrer\" target=\"_blank\">float bounds</a>).\nThe reference raises where an operation on finite doubles overflows to\n\u00b1\u221e, so where no bound keeps <code>v * 2.5</code> finite, the report assumes it\nstays finite and the run checks it on the data first: a \u00b1\u221e in a result came from the\ndata. For the same reason <code>power(-inf, 0.5)</code>\nand a <code>MEDIAN</code> between \u2212\u221e and +\u221e raise, where engines disagree. <code>FLOOR</code>, <code>CEIL</code>, <code>ROUND</code> and the cast to an integer are\nexact and monotone, so a bounded double rounds to a bounded integer:</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "iXej",
+      "id": "dxZZ",
       "code_hash": "d17ab4cf157f1438f4cc7635700892b8",
       "outputs": [
         {
@@ -802,33 +887,99 @@
       "console": []
     },
     {
-      "id": "EJmg",
-      "code_hash": "286a769363624e76ded06026c8f8bfe8",
+      "id": "dlnW",
+      "code_hash": "6bfcdd2173a0b90c4e4a30c6f79a7d1f",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"timestamps-and-intervals\">Timestamps and intervals</h3>\n<span class=\"paragraph\">Timestamps are microseconds since 1970 (UTC) in the model, and\nintervals are durations. Comparisons with literals, <code>ts + interval</code>,\n<code>ts1 - ts0</code> and joins on time are tracked like integers. The calendar\nfunctions are computed exactly on the Gregorian calendar\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Time.lean\" rel=\"noopener noreferrer\" target=\"_blank\"><code>Time.lean</code></a>),\nand Lean proves they grow with the timestamp, so a range of timestamps\ngives a range of years and of truncated months. Pick a time window and\nsee what Lean derives:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"averages-round\">Averages round</h3>\n<span class=\"paragraph\">A sum or average of doubles rounds, and each engine adds in its own\norder. Say every reading is at most 60. The reference rounds the exact\naverage once, so its average is at most 60 too, and the claim is\nproved. An engine's average can land a few units of 10\u207b\u2079 above it. With\na row cap, Lean bounds how far (<code>StdModel.epsilon_avg_cr</code>), and the\nroute to an engine says how close the claim comes:</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "UmEG",
+      "id": "TTti",
+      "code_hash": "2b0e2b9f567a239ab2c6dbc5d92f64fc",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "refused: agg.fsum's sum_order: the postcondition (_.avg_temp <= 60.0) reads avg_temp, which is within abs=6.66137e-09 of the reference: write it as sv.approx((_.avg_temp <= 60.0)), or state sv.equivalent(floats=sv.within(abs=7e-09)) in ensures (duckdb-sum-double, duckdb-avg-double)\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "RKFZ",
+      "code_hash": "12a34868944b63033247b9839de900bd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The hint names the exit, <code>sv.approx</code>, which states the claim up to that\nrounding. With it the claim is proved, and the report's <code>observes:</code> line\nsays which results count as the same: the doubles within the plan's\nbound (<code>floats=\"plan\"</code>, the default of <code>sv.equivalent</code>):</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "IaQp",
+      "code_hash": "961b6b47dff61b8fd988fc8bc5597cbf",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "equivalent(floats=plan, \u2264 6.7e-09)\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "IWgg",
+      "code_hash": "dac7902fe41ed0793df5e3464756aba1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"timestamps-and-intervals\">Timestamps and intervals</h3>\n<span class=\"paragraph\">Timestamps are microseconds since 1970 (UTC) in the model, and\nintervals are durations. Comparisons with literals, <code>ts + interval</code>,\n<code>ts1 - ts0</code> and joins on time are tracked like integers. The calendar\nfunctions are computed exactly on the Gregorian calendar\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/core/Sverify/Core/Time.lean\" rel=\"noopener noreferrer\" target=\"_blank\"><code>Time.lean</code></a>),\nand Lean proves they grow with the timestamp, so a range of timestamps\ngives a range of years and of truncated months. Pick a time window and\nsee what Lean derives:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "fCoF",
       "code_hash": "737fb9d0c701a96069eb3e24a81fb8b7",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='UmEG-0' random-id='a1342517-6e84-fe47-fedf-2b33c9629c4e'><marimo-date data-initial-value='&quot;2024-03-01&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003efrom&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='&quot;0001-01-01&quot;' data-stop='&quot;9999-12-31&quot;' data-full-width='false' data-disabled='false'></marimo-date></marimo-ui-element><marimo-ui-element object-id='UmEG-1' random-id='e1b13978-53c2-9951-8a35-0c5045df7f86'><marimo-date data-initial-value='&quot;2024-04-01&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003euntil (exclusive)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='&quot;0001-01-01&quot;' data-stop='&quot;9999-12-31&quot;' data-full-width='false' data-disabled='false'></marimo-date></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='fCoF-0' random-id='6a45b4ef-f4f3-e4bf-cff5-2e3ddb3ed782'><marimo-date data-initial-value='&quot;2024-03-01&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003efrom&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='&quot;0001-01-01&quot;' data-stop='&quot;9999-12-31&quot;' data-full-width='false' data-disabled='false'></marimo-date></marimo-ui-element><marimo-ui-element object-id='fCoF-1' random-id='344b7d98-efc7-7ae0-bf73-ae2cb5fb48c7'><marimo-date data-initial-value='&quot;2024-04-01&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003euntil (exclusive)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='&quot;0001-01-01&quot;' data-stop='&quot;9999-12-31&quot;' data-full-width='false' data-disabled='false'></marimo-date></marimo-ui-element></div>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "vEBW",
+      "id": "LkGn",
       "code_hash": "8589d05e2c1072f18e985ca42c135026",
       "outputs": [
         {
@@ -841,7 +992,7 @@
       "console": []
     },
     {
-      "id": "kLmu",
+      "id": "zVRe",
       "code_hash": "4eafe2d1d81e2265863a9ddf80590184",
       "outputs": [
         {
@@ -854,20 +1005,79 @@
       "console": []
     },
     {
-      "id": "IpqN",
+      "id": "woaO",
       "code_hash": "320955f4627e7fda6698f9221677a879",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>NOT proved: 2 preconditions needed</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>needs</td>\n<td>\u274c (<em>.ts &gt;= datetime(1678, 1, 1)) and (</em>.ts &lt; datetime(2262, 1, 1)) on events, inferred from <code>ts.truncate('month')</code> (overflow otherwise): declare them in requires (each run then checks them on the data), or rewrite so no row needs them (<code>events.filter((_.ts &gt;= datetime(1678, 1, 1)) &amp; (_.ts &lt; datetime(2262, 1, 1)))</code> first, or a CASE); on_inferred='warn' assumes them instead</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>month_start</code></td>\n<td>a timestamp in [1678-01-01 00:00:00, 2261-12-01 00:00:00] or NULL</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td></td>\n<td></td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>month_start</code></td>\n<td>a timestamp \u2264 9999-12-01 00:00:00 or NULL</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "dxZZ",
+      "id": "HnMC",
+      "code_hash": "a2a683b9e0cdf065de759495920baffe",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"decimals-and-the-types-sverify-reads\">Decimals, and the types sverify reads</h3>\n<span class=\"paragraph\">Money is a decimal, and a scale that drops a cent is a wrong answer that\nlooks right. Sverify reads each column's type and keeps a decimal's\nprecision and scale through the plan: a price of <code>DECIMAL(10, 2)</code> times\na quantity is still in cents. A type it doesn't model yet is refused\nwhen it reads the table, with the cast that gets you through. We'll load\norder lines whose ids came in as unsigned integers:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "wadT",
+      "code_hash": "f031344e979aa3bbbe49a6dfecebea1c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "UnsupportedError: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "VCRE",
+      "code_hash": "7337f0b823fb07bb96a8932f33dac562",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With the ids cast to a signed integer before sverify reads the table,\nthe plan is proved, and the total keeps the price's scale\n(<code>Rel.kinds_sound</code>):</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "hgqU",
+      "code_hash": "408fdeeb88758fd0947fcebafc534d3d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"total\": \"decimal(10, 2)\", \"rows\": [{\"id\": 1, \"total\": \"text/plain:29.97\"}, {\"id\": 2, \"total\": \"text/plain:0.70\"}]}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PSUk",
       "code_hash": "219663b60b88b3572375c0df5280905b",
       "outputs": [
         {
@@ -880,7 +1090,7 @@
       "console": []
     },
     {
-      "id": "dlnW",
+      "id": "mfOT",
       "code_hash": "c4c16a42bc27811a251ca7adf0431acb",
       "outputs": [
         {
@@ -893,20 +1103,20 @@
       "console": []
     },
     {
-      "id": "TTti",
-      "code_hash": "a9a9581a760193b8e279e48192019a0d",
+      "id": "vGiW",
+      "code_hash": "ee5ff1820fa7dafc73b01a79bf5e8467",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>UPPER</code>, <code>LOWER</code> and regular expressions are black boxes: Lean knows\nthey return a string (or a boolean), and no proof depends on which one,\nbecause Unicode case mapping and regex engines are large and\nengine-specific. A regular expression is a possible runtime error\nunless Lean can see that it compiles. Patterns in a conservative subset\nof Rust's syntax are accepted, and anything fancier is reported. A\nback-reference like <code>\\1</code> isn't supported by DataFusion's engine at\nall:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>UPPER</code>, <code>LOWER</code> and regular expressions are black boxes: Lean knows\nthey return a string (or a boolean), and no proof depends on which one,\nbecause Unicode case mapping and regex engines are large and\nengine-specific. A regular expression is a possible runtime error\nunless Lean can see that it compiles. Patterns in a conservative subset\nof Rust's syntax are accepted, and anything fancier is reported. A\nback-reference like <code>\\1</code> isn't supported by Rust's <code>regex</code> crate at\nall:</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "RKFZ",
+      "id": "SYQT",
       "code_hash": "758415c59cfd7cddf9ce974956361287",
       "outputs": [
         {
@@ -919,26 +1129,26 @@
       "console": []
     },
     {
-      "id": "IaQp",
-      "code_hash": "a4eb06448bfb1fa72a74d0d096fb26df",
+      "id": "bMrW",
+      "code_hash": "b4b92508543cfd2b4e8b4558f81d120d",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Contracts don't track string contents yet: <code>startswith('acc')</code> in a\nfilter doesn't let Lean prove <code>startswith('ac')</code> afterwards. Lengths,\nNULLs and errors are tracked.</span>\n<span class=\"paragraph\">You can now keep a join up to date from its changes, stack contracted\ntransforms into layers that pass only their changes along, and rely on\ntheir guarantees in every state while only each batch is checked. You\ncan refresh a node on DuckDB, Polars, DataFusion or Spark, hand a plan\nto Snowflake as SQL, and tell where an engine could depart from the\nmodel. That is the end of the tour. The\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md\" rel=\"noopener noreferrer\" target=\"_blank\">guide</a>\ncovers every feature in more detail, and\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md\" rel=\"noopener noreferrer\" target=\"_blank\">how it works</a>\ngoes under the hood: the checker, the producers and engines, and what\nis proved and what is trusted.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Contracts don't track string contents yet: <code>startswith('acc')</code> in a\nfilter doesn't let Lean prove <code>startswith('ac')</code> afterwards. Lengths,\nNULLs and errors are tracked.</span>\n<span class=\"paragraph\">You can now keep a join up to date from its changes, stack contracted\ntransforms into layers that pass only their changes along, and rely on\ntheir guarantees in every state while only each batch is checked. You\ncan refresh a node on DuckDB, Polars or Spark, hand a plan\nto Snowflake as SQL, and tell where an engine could depart from the\nmodel. The last chapter, <a href=\"?file=06_running_in_production.py\">Running it in production</a>,\ncovers the work around a proved pipeline: checking its file in CI,\ntesting it, its credentials, its lineage and a bound on its state.</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "IWgg",
-      "code_hash": "bf34b8a874bdc9cfa3d784ba421e74d8",
+      "id": "PSQn",
+      "code_hash": "477a3d65015907ff80fca1949e0d4c96",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 4. <a href=\"?file=04_contracts.py\">Contracts</a></span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 4. <a href=\"?file=04_contracts.py\">Contracts</a> \u00b7 6. <a href=\"?file=06_running_in_production.py\">Running it in production</a> \u2192</span></span>"
           }
         }
       ],

@@ -6,7 +6,7 @@
 #     "marimo",
 #     "pyarrow==26.0.1",
 #     "pyiceberg[sql-sqlite]",
-#     "sverify[datafusion,polars,iceberg]==0.7.1",
+#     "sverify[polars,iceberg]==0.8.0",
 # ]
 # ///
 
@@ -45,7 +45,7 @@ def _(mo):
 
     The sensors write a reading per device per minute to an Iceberg table,
     and the rule is `iot-consecutive-threshold` in the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md) (Azure Stream Analytics'
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md) (Azure Stream Analytics'
     `MATCH_RECOGNIZE` example). In SQL that is two `LAG`s over a window.
     Window queries are where engines disagree, and we'll run into three
     causes:
@@ -88,7 +88,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from pyiceberg.catalog.sql import SqlCatalog
-    from sverify.engines import ENGINES, SNOWFLAKE, Unsupported, to_sql
+    from sverify.engines import ENGINES, UnsupportedError, to_sql
     from sverify.errors import PreconditionError
     from sverify.io import IcebergSink, IcebergSource
 
@@ -133,8 +133,7 @@ def _():
         IcebergSource,
         PreconditionError,
         READING,
-        SNOWFLAKE,
-        Unsupported,
+        UnsupportedError,
         catalog,
         first,
         ibis,
@@ -215,7 +214,7 @@ def _(mo):
     two readings with the same `ts`, which one is "previous" depends on how
     the engine breaks the tie, and a rerun may page you twice. The catalogue
     found this in 44 of its 139 queries (dedup, top-N, `LAG` over equal
-    timestamps; see its [findings](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/FINDINGS.md)), and it is the
+    timestamps; see its [findings](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/FINDINGS.md)), and it is the
     most common way for engines to disagree.
 
     The fix is to state what the source promises: at most one reading per
@@ -348,8 +347,8 @@ def _(mo):
     ## 5. Every engine, and the warehouses
 
     The alerts may run on a laptop today and in a warehouse tomorrow.
-    DuckDB (Tier 1), Polars and DataFusion run the checked plan with the
-    same rows, whichever `engine=` the node is refreshed with. Snowflake
+    DuckDB and Polars run the checked plan with the same rows, whichever
+    `engine=` the node is refreshed with ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)). Snowflake
     and Spark tables have no row order, so sverify refuses to write a window
     for them unless you promise that the order keys have no ties. The
     report's `deterministic` is that promise, proved from the key, so it can
@@ -359,7 +358,7 @@ def _(mo):
 
 
 @app.cell
-def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to_sql):
+def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -368,10 +367,10 @@ def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to
     assert len({repr(r) for r in _rows.values()}) == 1
 
     try:
-        to_sql(alerts_node.internal_plan, SNOWFLAKE)
-    except Unsupported as e:
+        to_sql(alerts_node.internal_plan, "snowflake")
+    except UnsupportedError as e:
         refused = str(e)
-    _sql = to_sql(alerts_node.internal_plan, SNOWFLAKE, deterministic=report.deterministic)
+    _sql = to_sql(alerts_node.internal_plan, "snowflake", deterministic=report.deterministic)
     assert _sql.startswith("SELECT")
     refused
     return
@@ -386,9 +385,11 @@ def _(mo):
 
     ## 6. New readings, and a sensor that sends twice
 
-    Windows aren't incrementally maintained yet, and the node says so. A
-    node like this is recomputed and diffed on each refresh, and its change
-    still flows to the sink and to nodes downstream:
+    Windows that share one `PARTITION BY` recompute only the partitions a
+    batch touches, for inputs without ties on the partition and sort columns
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). The
+    node's status says how it is refreshed, and its change flows to the
+    sink and to nodes downstream:
     """)
     return
 
@@ -479,10 +480,10 @@ def _(mo):
     two bugs before anything ran, an alert that depended on how ties were
     broken and a NaN reading that would have paged someone. The key is
     checked on every batch, so a sensor that sends twice stops the job and
-    leaves the alerts as they were. The same plan runs on DuckDB, Polars and
-    DataFusion, and Snowflake or Spark SQL is written once the tie-freedom
-    it needs is proved. The window node says it isn't incremental and stays
-    up to date by recomputation, with its change written to the sink.
+    leaves the alerts as they were. The same plan runs on DuckDB and Polars,
+    and Snowflake or Spark SQL is written once the tie-freedom
+    it needs is proved. The window node says how it stays up to date, and
+    its change is written to the sink.
 
     Next up: [An orders mart in SQL and Ibis](?file=03_orders_mart.py),
     where a dashboard's dbt tests become a contract.

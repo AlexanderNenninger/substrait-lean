@@ -1,13 +1,12 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "datafusion==51.0.0",
 #     "deltalake",
 #     "duckdb",
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "pyarrow==26.0.1",
-#     "sverify[datafusion,polars,delta]==0.7.1",
+#     "sverify[polars,delta,spark]==0.8.0",
 # ]
 # ///
 
@@ -47,7 +46,7 @@ def _(mo):
     Customers move, so the city comes from a type-2 slowly changing
     dimension (dbt snapshots build these), and the join is a point-in-time
     join (`dbt-scd2-point-in-time` in the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.7.1/catalogue/INDEX.md)).
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md)).
 
     In dbt this model would come with tests: `not_null(city)`,
     `unique(city, day)`, `revenue >= 0`. They run after the model is built,
@@ -81,7 +80,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import ENGINES, SNOWFLAKE, SPARK, to_sql
+    from sverify.engines import ENGINES, to_sql
     from sverify.io import DeltaSink, DeltaSource
 
     lake = Path(tempfile.mkdtemp())
@@ -137,8 +136,6 @@ def _():
         ENGINES,
         HISTORY,
         ORDERS,
-        SNOWFLAKE,
-        SPARK,
         dt,
         history_v0,
         ibis,
@@ -307,21 +304,43 @@ def _(history_t, orders_t, sv):
     )
     assert all(c.proved for c in sql_report.ensures)
     print(sql_report)
+    return (MODEL_SQL,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The SQL can be a transform too. `sv.sql` makes the query the body of
+    one, over its inputs by name, and the transform carries the same
+    contract as the Ibis version. We'll check it against the same schemas:
+    """)
+    return
+
+
+@app.cell
+def _(ENSURES, MODEL_SQL, REQUIRES, history_t, orders_t, sv):
+    @sv.transform(requires=REQUIRES, ensures=ENSURES)
+    def daily_city_revenue_sql(orders, history):
+        return sv.sql(MODEL_SQL, orders=orders, history=history)
+
+    sql_transform = daily_city_revenue_sql.check(orders=orders_t, history=history_t)
+    assert sql_transform.proved
+    print(sql_transform)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The job below uses the Ibis version, because nodes are built from
-    transforms and contracts travel from one step to the next through them.
+    Either transform builds the node below; we use the Ibis one, and
+    contracts travel from one step to the next through it.
 
     ## 3. Build it from the Delta tables
 
     Now we wire it up. The model reads both tables as sources, and piping
-    them into it builds a node. A left join and an aggregate have no proved
-    delta rules yet, so the node is recomputed on each refresh, and its
-    status says so:
+    them into it builds a node. A left join has no proved delta rules yet,
+    so the aggregate over it is recomputed on each refresh, and its status
+    says so:
     """)
     return
 
@@ -361,14 +380,13 @@ def _(mo):
 
 @app.cell
 def _():
-    import datafusion
+    import sqlite3
+
     import duckdb
 
     {
         "DuckDB": duckdb.sql("select 4699 / 2 as avg").fetchall()[0][0],
-        "DataFusion": datafusion.SessionContext()
-        .sql("select 4699 / 2 as avg")
-        .to_pylist()[0]["avg"],
+        "SQLite": sqlite3.connect(":memory:").execute("select 4699 / 2").fetchone()[0],
     }
     return
 
@@ -376,23 +394,21 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    DuckDB's `/` on integers gives a double, DataFusion's (and
+    DuckDB's `/` on integers gives a double, SQLite's (and
     PostgreSQL's) truncates, Snowflake's gives a NUMBER with extra decimals,
     and Spark's gives a double. A model moved from DuckDB in development to
     Snowflake in production changes its numbers without an error, and
     whoever reconciles the dashboard with finance notices first. Sverify's
     translations write out what the plan means (integer division truncates
     on every engine), so the checked plan gives the same rows on each,
-    whichever `engine=` the node is refreshed with. DuckDB is the reference
-    engine (Tier 1); see the
-    [engine tiers](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md)
-    for the others:
+    whichever `engine=` the node is refreshed with. Lean's model is the
+    reference; [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists what each engine runs:
     """)
     return
 
 
 @app.cell
-def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_sql):
+def _(ENGINES, daily_city_revenue, history, mart, orders, to_sql):
     _results = {}
     for _engine in ENGINES:
         _node = orders.pipe(daily_city_revenue, history=history)
@@ -401,8 +417,8 @@ def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_s
     assert len({repr(r) for r in _results.values()}) == 1
     {
         "engines that agree": list(_results),
-        "Snowflake SQL": f"{len(to_sql(mart.internal_plan, SNOWFLAKE))} characters",
-        "Spark SQL": f"{len(to_sql(mart.internal_plan, SPARK))} characters",
+        "Snowflake SQL": f"{len(to_sql(mart.internal_plan, 'snowflake'))} characters",
+        "Spark SQL": f"{len(to_sql(mart.internal_plan, 'spark'))} characters",
     }
     return
 
@@ -474,7 +490,7 @@ def _(mo):
     before the model runs. The one that would have failed in production,
     `not_null(city)` after a left join, failed at definition time instead.
     The preconditions came from Delta metadata where possible, and the
-    checked plan gives the same rows on DuckDB, Polars and DataFusion, and
+    checked plan gives the same rows on DuckDB and Polars, and
     can be written as Snowflake or Spark SQL, where the same SQL text would
     not. The model is outside the incremental fragment, so it runs as a node
     that is recomputed and diffed, with its sink merged exactly once per
