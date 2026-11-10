@@ -135,7 +135,7 @@ Where the reference departs from Substrait, and why:
 
 | Override | What the reference does | Why |
 |---|---|---|
-| One zero at identity boundaries | Values stay IEEE's, `-0.0` included, and arithmetic gives IEEE's signed zeros. Where rows are compared or grouped (`=`, `<`, `ORDER BY`, the keys of `GROUP BY`, `DISTINCT`, joins and window partitions), `-0.0` and `0.0` are one value. | SQL users expect `-0.0 = 0.0`, and DuckDB, Polars and Spark normalise the zeros exactly there ([duckdb-R14](../engines/duckdb/facts/duckdb-R14.json), [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json)); DataFusion keeps them apart in its order. Substrait leaves the grouping and order of `-0.0` unspecified. |
+| One zero at identity boundaries | Values stay IEEE's, `-0.0` included, and arithmetic gives IEEE's signed zeros. Where rows are compared or grouped (`=`, `<`, `ORDER BY`, the keys of `GROUP BY`, `DISTINCT`, joins and window partitions), `-0.0` and `0.0` are one value. | SQL users expect `-0.0 = 0.0`, and DuckDB, Polars and Spark normalise the zeros exactly there ([duckdb-R14](../engines/duckdb/facts/duckdb-R14.json), [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json)). Substrait leaves the grouping and order of `-0.0` unspecified. |
 | One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Polars and Spark compare, group and sort NaN this way (`nan_equality` `NAN_IS_NAN`, `nan_order` `GREATEST` in their tables); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
 | The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), every relation a window reads fewer than 2⁶² rows, and every relation an aggregate reads fewer than 2⁶³ rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes, no machine's memory holds 2⁶² rows, `COUNT(*)` is a 64-bit integer in the reference and in every engine, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER` and `SUM`. |
 
@@ -228,8 +228,8 @@ fires, `Rel.eval`'s value is not the answer.
 | No operation creates `±∞` | A `±∞` from the data passes through. An operation on finite doubles whose IEEE result is `±∞` raises: `+`, `-`, `*`, `/` and `power` that overflow (`1e308 * 10`, `power(10, 400)`, `power(0, -1)`), `exp` past `709.78`, and a `SUM`, `AVG`, variance, covariance or correlation of finite values that overflows. As for a `SUM` that leaves 64 bits, `verify` rules the error out by an inferred precondition: proved from the bounds where they do it, otherwise listed in `Report.assumed` ("stays finite where its inputs are") and checked on the data, where the SQL sverify writes raises `overflow to infinity`. With no NaN and no `±∞` in the inputs, there is none in the outputs. | ✓: `Issue.infinite` (`BinFn.infIssue`, `UnFn.infIssue`, `Measure.makesInf` in `Safety.lean`), on DuckDB and Polars. A `SUM` or `AVG` of values within `2⁴⁰⁰` over at most `2³²` rows (`max_rows`) is proved finite (`floatBound`); a single `+`, `-`, `*`, `/` or `exp` is proved finite where its arguments' bounds keep the result finite (`BinFn.finiteResult`, `expFinite`), and its precondition is checked on the data elsewhere. `Rel.eval` keeps the IEEE value on the rows the precondition excludes, which is what DuckDB and Polars give without the check ([duckdb-double-overflow](../engines/duckdb/facts/duckdb-double-overflow.json)), so the lift of DuckDB's SQL with `semantics="duckdb"` states it exactly. Substrait's YAMLs leave it unspecified ([ST-9](../upstream/bugs/ST-9.json)); [no overflow to infinity](decisions.md#d38-no-operation-on-finite-doubles-overflows-to-infinity). |
 | Division by zero | An error when `on_division_by_zero` is omitted or `ERROR`. `IEEE`, `LIMIT` and `NULL` when the plan asks. With `IEEE`, `x / ±0.0` is `±∞` with the sign of the dividend times the sign of the divisor, read from the divisor's own zero; `0 / 0` and `±∞ / ±∞` would create a NaN, so they still raise under the reference. DuckDB's `/` is this division, and the lift of DuckDB's SQL under `semantics="duckdb"` states it. | ✓ |
 | Domain errors | `sqrt`, `log`, `asin`, `acos`, `logb`, `atan2(0, 0)` and shifts outside their domain raise (`on_domain_error`, `on_log_zero` = `ERROR`). | ✓ |
-| `round(x, d)` | Halves away from zero, as DuckDB 2.0 computes it ([`duckdb-round-digits-2`](../engines/duckdb/facts/duckdb-round-digits-2.json)): with `m = 10^abs(d)`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m` for `d < 0`, `x` itself where that is not finite (`round(1.5e308, -308)` is `1.5e308`), and 0 for `d < 0` when `m` is infinite (`round(42, -1000)` is 0). `±∞` and NaN stay. DataFusion's `round(x · 10ᵈ) / 10ᵈ` differs. | ✓ |
-| `%` on doubles | Substrait has no such function, so the reference defines its own, `sverify_fmod`: C's `fmod`, exact, with the dividend's sign. A zero divisor is an error (`NULL` if the plan asks), an infinite dividend is an error, an infinite divisor gives the dividend, and a NaN passes through. Lean also reads the `modulus` of doubles that DataFusion writes, as the same function. DuckDB's own `%` of doubles gives NaN for a zero divisor, where its documentation says it raises ([DD-8](../upstream/bugs/DD-8.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json)). | ✓: Lean writes `sverify_fmod`, the Ibis producer and the SQLGlot lift emit it for `%` of doubles |
+| `round(x, d)` | Halves away from zero, as DuckDB 2.0 computes it ([`duckdb-round-digits-2`](../engines/duckdb/facts/duckdb-round-digits-2.json)): with `m = 10^abs(d)`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m` for `d < 0`, `x` itself where that is not finite (`round(1.5e308, -308)` is `1.5e308`), and 0 for `d < 0` when `m` is infinite (`round(42, -1000)` is 0). `±∞` and NaN stay. | ✓ |
+| `%` on doubles | Substrait has no such function, so the reference defines its own, `sverify_fmod`: C's `fmod`, exact, with the dividend's sign. A zero divisor is an error (`NULL` if the plan asks), an infinite dividend is an error, an infinite divisor gives the dividend, and a NaN passes through. Lean also reads a `modulus` of doubles as the same function. DuckDB's own `%` of doubles gives NaN for a zero divisor, where its documentation says it raises ([DD-8](../upstream/bugs/DD-8.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json)). | ✓: Lean writes `sverify_fmod`, the Ibis producer and the SQLGlot lift emit it for `%` of doubles |
 | Casts to and from decimals | See [Decimals](#decimals) and [Casts](#casts). | ✓ |
 
 ### Decimals
@@ -440,7 +440,7 @@ The rules for decimals are in [Decimals](#decimals).
 
 | Topic | Reference | Status |
 |---|---|---|
-| `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars. DataFusion spreads the larger buckets out ([DF-11](../upstream/bugs/DF-11.json)) |
+| `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars |
 | `FIRST_VALUE(x IGNORE NULLS)`, `LAST_VALUE(…)` | The frame's first (last) non-NULL `x` in the window's order, NULL without one: the measure `FIRST` (`LAST`) over the frame, whose rows come in that order (`Parse.parseWindow`). Last observation carried forward is `LAST_VALUE(x IGNORE NULLS)` over `ROWS UNBOUNDED PRECEDING`. | ✓ on DuckDB; other engines refuse it |
 | `RANGE` frames with an `INTERVAL` | A constant interval of days or less, over one timestamp (in microseconds) or date (whole days) sort key; months and years have no fixed length and are refused. | ✓ |
 | `SUM` and `AVG` of doubles over a frame | The measure over the frame's rows, as the aggregate. | ✓: the engine's own sum, within the plan's bound for the input's row cap. Each engine's window algorithm (`window_sum_algo`) sums the frame's values: DuckDB a segment tree, a running sum or each frame anew (duckdb-window-sum-order), Polars each frame anew (polars-window-agg), Spark each frame anew or a running sum (spark-window-agg); the probe is `sverify_dev.probe_window_sums`. Snowflake's SQL claims no class (its window algorithm has no public fact) |
@@ -501,35 +501,34 @@ Where Ibis backends disagree (see
 `verify` takes. `python/tests/test_ibis_semantics.py` runs each row through the
 producer and checks Lean's evaluation against it.
 
-| operation | meaning in `verify` | DataFusion | DuckDB | Polars |
-|---|---|---|---|---|
-| `a % b` (integers) | truncating: `-7 % 2 = -1` | same | same | floor (`+1`) |
-| `a // b` (integers) | floor, exact in 64 bits: `-7 // 2 = -4` | same | same | same |
-| `a % 0`, `a // 0` | error (division by zero) | error | conversion error | NULL |
-| `s.length()` | code points: `'é'` is 1, `'🎉'` is 1 | same | same | bytes |
-| `s.find(t)` | 0-based, −1 if absent, NULL for a NULL string | same | same | −1 for NULL |
-| `s.substr(i, n)` | 0-based start | same | same | same |
-| `s.like(p)` | `\` escapes the next character | same | no escape | no LIKE |
-| `x.nunique()` | NULL is not a value | same | same | counts NULL |
-| `v.round()` | half away from zero: `2.5 → 3` | same | same | half to even |
-| `v.cast("int64")` (double) | truncates; NaN, ±inf and out-of-range values are an error | same (error) | rounds half to even | truncates |
-| `v == 0.0` with `v = -0.0` | true: one zero | false (total order) | true | true |
-| `x == ibis.null()` | `x IS NULL` (TRUE for NULL rows) | same | same | same |
-| `ibis.row_number()` | 0-based | same | same | same |
-| `order_by(...)` | NULLs last in both directions | same | same | same |
-| window with `order_by`, no frame | the whole partition | same | same | same |
-| 64-bit overflow of `+ - *` | an error at the declared width; DataFusion wraps around, which an error allows | wraps | error | wraps |
-| `v.max()` of doubles | NaN, the greatest double | NaN | NaN | skips NaN |
-| `ts.day_of_week.index()` | Monday = 0 | same | same | same |
-| `s.upper()`, `s.lower()`, `re_search` | Rust's case mapping and `regex` classes; SQL engines raise on non-ASCII text | same | utf8proc, RE2 | same |
+| operation | meaning in `verify` | DuckDB | Polars |
+|---|---|---|---|
+| `a % b` (integers) | truncating: `-7 % 2 = -1` | same | floor (`+1`) |
+| `a // b` (integers) | floor, exact in 64 bits: `-7 // 2 = -4` | same | same |
+| `a % 0`, `a // 0` | error (division by zero) | conversion error | NULL |
+| `s.length()` | code points: `'é'` is 1, `'🎉'` is 1 | same | bytes |
+| `s.find(t)` | 0-based, −1 if absent, NULL for a NULL string | same | −1 for NULL |
+| `s.substr(i, n)` | 0-based start | same | same |
+| `s.like(p)` | `\` escapes the next character | no escape | no LIKE |
+| `x.nunique()` | NULL is not a value | same | counts NULL |
+| `v.round()` | half away from zero: `2.5 → 3` | same | half to even |
+| `v.cast("int64")` (double) | truncates; NaN, ±inf and out-of-range values are an error | rounds half to even | truncates |
+| `v == 0.0` with `v = -0.0` | true: one zero | true | true |
+| `x == ibis.null()` | `x IS NULL` (TRUE for NULL rows) | same | same |
+| `ibis.row_number()` | 0-based | same | same |
+| `order_by(...)` | NULLs last in both directions | same | same |
+| window with `order_by`, no frame | the whole partition | same | same |
+| 64-bit overflow of `+ - *` | an error at the declared width | error | wraps |
+| `v.max()` of doubles | NaN, the greatest double | NaN | skips NaN |
+| `ts.day_of_week.index()` | Monday = 0 | same | same |
+| `s.upper()`, `s.lower()`, `re_search` | Rust's case mapping and `regex` classes; SQL engines raise on non-ASCII text | utf8proc, RE2 | same |
 
 "Same" means the backend's Ibis result agrees with `verify`'s meaning on the
 notebook's edge rows. A refused operation is outside what `verify` can
 give a backend-independent meaning today.
 
 Which Ibis backends implement this semantics fully: none of them on every
-row. Ibis-on-DataFusion is closest (it differs on `-0.0 == 0.0` and on
-`max` of NaN). To run a proved expression with exactly this meaning, run
+row. To run a proved expression with exactly this meaning, run
 the plan: `sverify.engines.run(con, plan, engine)` on DuckDB, Polars or
 Spark ([the engines](stability.md#engines)), whose translations raise where
 they would differ.
@@ -636,8 +635,7 @@ in every profile.
 ## How the model holds a plan
 
 Choices of the Lean model that shape how a plan is represented and
-evaluated. Where an entry names DataFusion, it records how that engine
-differs.
+evaluated.
 
 * Positional schemas. Substrait field references are ordinals, so a
   schema is an arity, with a kind per column that the kind checker keeps
@@ -649,19 +647,17 @@ differs.
 * Semi joins and `DISTINCT` are their own operators. `Rel.semi` keeps the left
   rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
   the first occurrence of every row (NULLs equal, doubles by their codes as
-  the reference reads them: one zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
-  `DISTINCT` as an aggregate with one empty grouping, which its own consumer
-  rejects; the parser reads it as "all columns".
+  the reference reads them: one zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). The parser
+  reads an aggregate with one empty grouping and no measures as `DISTINCT`
+  of all columns.
 * Aggregates have one grouping set. `Rel.aggregate` outputs one row per
   distinct grouping value (NULLs group together; doubles by their codes, so
   -0.0 and 0.0 are one group), or exactly one row without
   grouping expressions, even on an empty input. Measures skip NULLs; on no
-  values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
-  wraps around; the reference raises outside 64 bits, checked while the job runs), double `SUM`/`AVG` are the correctly
+  values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (the reference raises outside 64 bits, checked while the job runs), double `SUM`/`AVG` are the correctly
   rounded exact sum and mean ([Of doubles](#of-doubles)), and `AVG` of integers is the `AVG` of their
   conversion to double. `MIN`/`MAX` of doubles compare by the
-  codes, as DuckDB does; DataFusion's grouped version turns a group of +∞ into
-  the largest finite double and skips NaN next to other values. Contracts see `MIN`, `MAX`, an integer `AVG` and a decimal `AVG` within
+  codes, as DuckDB does. Contracts see `MIN`, `MAX`, an integer `AVG` and a decimal `AVG` within
   the values' bounds, measures over a group of a column that is never NULL as
   never NULL, and `MIN ≤ MAX`. An `AVG` of doubles rounds, so it is some
   double.
@@ -675,11 +671,11 @@ differs.
   padded with NULLs; `x IN (subquery)` in a filter becomes a semi join on `=`;
   `UNION` is `DISTINCT` of `UNION ALL`; `IS NOT DISTINCT FROM` becomes a
   conditional. The rewrites are trusted code, checked against DuckDB by
-  `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
-  DataFusion; here it is reported as an overflow.)
+  `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` is
+  reported as an overflow.)
 * Overflow is an error at the declared width. `Rel.eval` computes exact
   integers, and [Safety.lean](../analysis/Sverify/Analysis/Safety.lean) reports every operation whose
-  result may not fit its declared width (64 bits, or narrower integers). Where DataFusion fails instead (division, `POWER`, casts), the
+  result may not fit its declared width (64 bits, or narrower integers). Where division, `POWER` or a cast fails, the
   value in the model is `NULL`.
 * Strings are Unicode scalar values. `substring`, `strpos`, `LIKE`, `btrim`, `||`,
   `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
@@ -690,7 +686,7 @@ differs.
   depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
   regular expressions with RE2's leftmost-first matching ([Regex.lean](../core/Sverify/Core/Regex.lean))
   where RE2 and Rust agree, checked against DuckDB by `python/tests/test_regex.py`.
-  `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error
+  `translate` is refused. A pattern is an error
   (for `regexp_match`) or refused (for `regexp_extract` and `regexp_replace`) unless
   `Text.simpleRegex` accepts it, a conservative subset of Rust's and RE2's syntax that is
   tested to compile in both.
@@ -703,8 +699,7 @@ differs.
   Substrait's `on_domain_error` = ERROR when a plan omits the option; NaN is in every
   domain. Bitwise operations are exact in 64-bit two's complement, and a shift count
   outside 0–63, which Substrait leaves open, is an error too. Polars and the SQL of
-  DuckDB raise where Lean reports a domain error; DataFusion returns NaN, ±∞ or a
-  wrapped shift there, which an error allows. Spark runs `sqrt` and the bitwise
+  DuckDB raise where Lean reports a domain error. Spark runs `sqrt` and the bitwise
   operations (its other functions are Java's `StrictMath`); Snowflake runs `&`, `|` and
   `^` only (its shifts are not 64-bit, and its libm is not documented). Checked by
   `python/tests/test_math.py`.

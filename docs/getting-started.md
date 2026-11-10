@@ -480,8 +480,8 @@ shows what goes wrong without the checker.
 
 ## What goes wrong without it
 
-The catalogue probed its 139 queries on DataFusion, DuckDB, Polars and
-Snowflake SQL and recorded each query's cross-engine pitfalls
+The catalogue probed its 139 queries on DuckDB, Polars and Snowflake SQL
+and recorded each query's cross-engine pitfalls
 ([`pitfalls.toml`](../catalogue/pitfalls.toml), [FINDINGS](../catalogue/FINDINGS.md)).
 The most common, and what sverify does about each:
 
@@ -489,13 +489,13 @@ The most common, and what sverify does about each:
 |---|---|---|
 | Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Snowflake and Spark SQL is only written with a proved `deterministic=True` |
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the reference's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
-| Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
-| Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
+| Integer division | PostgreSQL truncates; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
+| Division by zero (14 queries) | Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
+| Integer overflow | Polars wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
-| `NOT IN` with a NULL | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
-| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, and DataFusion merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](tasks.md#guards)); a constant that raises makes the whole plan raise |
-| NULL ordering | DataFusion, PostgreSQL and Snowflake put NULLs last ascending and first descending, DuckDB last both ways, Spark first ascending, a Polars sort first | every `ORDER BY` says where NULLs go |
+| `NOT IN` with a NULL | standard SQL returns no rows | refused; write an anti join |
+| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](tasks.md#guards)); a constant that raises makes the whole plan raise |
+| NULL ordering | PostgreSQL and Snowflake put NULLs last ascending and first descending, DuckDB last both ways, Spark first ascending, a Polars sort first | every `ORDER BY` says where NULLs go |
 
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
 threshold (a total over all parts) into each part's own sum, so the query

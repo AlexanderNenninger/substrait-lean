@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.7.1"
+version = "0.8.0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, Spark and Snowflake"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
@@ -18,7 +18,7 @@ dependencies = [
     # before. For now the base needs it, and DuckDB with it: an engine-free
     # base (#1288) waits on a table store that does not.
     "duckdb>=2.0.0",
-    "sverify-duckdb[run]==0.7.1",
+    "sverify-duckdb[run]==0.8.0",
     "ibis-framework[duckdb]>=12.0.0",
     "pyarrow>=26.0.0",
     # sverify's SQL lift is built on SQLGlot. From 30.18, SQLGlot reads a
@@ -35,10 +35,10 @@ dependencies = [
 [project.optional-dependencies]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
 # sverify at its version; `run` brings `polars` and `numpy`.
-polars = ["sverify-polars[run]==0.7.1"]
+polars = ["sverify-polars[run]==0.8.0"]
 # Spark is a package of its own (`engines/spark/`, #1189), released with
 # sverify at its version; `run` brings PySpark.
-spark = ["sverify-spark[run]==0.7.1"]
+spark = ["sverify-spark[run]==0.8.0"]
 delta = ["deltalake>=1.6.6"]
 # `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
 iceberg = ["pyiceberg[pyarrow,sql-sqlite]>=0.12.0"]
