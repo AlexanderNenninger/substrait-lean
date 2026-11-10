@@ -93,7 +93,7 @@ class DuckDBDialect(Dialect):
         return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
 
     def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
-        # The generated, proved templates (`SubstraitLean/LoweringDuckDB.lean`).
+        # The generated, proved templates (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
         from sverify.sql import lowering
 
         sql = lowering.render(

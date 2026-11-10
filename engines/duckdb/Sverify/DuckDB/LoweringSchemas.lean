@@ -1,4 +1,4 @@
-import SubstraitLean.LoweringSearch
+import Sverify.Engines.LoweringSearch
 import Sverify.DuckDB.LoweringLemmas
 
 /-!

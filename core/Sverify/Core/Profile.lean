@@ -15,10 +15,10 @@ characterization (`engines/duckdb/facts/` for DuckDB). A **shim**
 rewrites a plan into one the engine evaluates to the reference's outcome,
 adding guards (`UnFn.raise`, DuckDB's `error()`) where the engine is laxer,
 or refuses it. A shimmed plan is an ordinary plan, so it is written and run
-like any other. Shims are generated: `SubstraitLean/LoweringSearch.lean`
+like any other. Shims are generated: `engines/Sverify/Engines/LoweringSearch.lean`
 searches, for each function, for a template the engine evaluates to the
 reference's outcome, and proves it (#241). `engines/Sverify/Engines/Lowering.lean` proves
-lowering with such a table correct, and `SubstraitLean/LoweringDuckDB.lean`
+lowering with such a table correct, and `engines/duckdb/Sverify/DuckDB/Lowering.lean`
 holds DuckDB's tables, with `Rel.duckdb_shim_sound`.
 
 Trusted, and tested rather than proved: that the profile matches the engine

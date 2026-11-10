@@ -28,12 +28,15 @@ DUCKDB = ROOT / "engines" / "duckdb" / "Sverify"
 POLARS = ROOT / "engines" / "polars" / "Sverify"
 SPARK = ROOT / "engines" / "spark" / "Sverify"
 GENERATED_DIRS = [
-    ROOT / "SubstraitLean" / "LoweringDuckDB" / "On",
+    ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "LoweringOn",
     ROOT / "SubstraitLean" / "LiftDuckDB" / "Duckdb",
     ROOT / "SubstraitLean" / "LiftDuckDB" / "Reference",
 ]
 GENERATED = [p for d in GENERATED_DIRS for p in sorted(d.glob("*.lean"))]
-CACHES = [ROOT / "SubstraitLean" / "LoweringCache.lean", ROOT / "SubstraitLean" / "LiftCache.lean"]
+CACHES = [
+    ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "LoweringCache.lean",
+    ROOT / "SubstraitLean" / "LiftCache.lean",
+]
 
 
 def _modules() -> list[Path]:
@@ -79,7 +82,7 @@ def test_every_module_has_a_line(module):
 def test_generated_globs_have_lines():
     modules = _section("The modules")
     for glob in [
-        "LoweringDuckDB/On/*.lean",
+        "DuckDB/LoweringOn/*.lean",
         "LiftDuckDB/Duckdb/*.lean",
         "LiftDuckDB/Reference/*.lean",
     ]:
