@@ -76,8 +76,7 @@ translation from the reference proved (`Rel.duckdb_refines`,
 SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
 whose two profiles are generated Lean modules
-(`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). DataFusion's SQL planner
-is not a frontend, and sverify does not run DataFusion. The reference is
+(`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). The reference is
 Lean's reference profile, and DuckDB is the default oracle.
 
 <a id="profiles-and-shims-in-lean-185-first-slice"></a>
@@ -575,7 +574,7 @@ translator pins the semantics and takes no Polars defaults:
   occurrence (or exactly one without `GROUP BY`), grouping as `DISTINCT`
   compares. Each measure skips NULLs and the rows its `FILTER` drops;
   `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
-  and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
+  and raises `IntegerOverflow` outside 64 bits. `SUM`
   and `AVG` of doubles are the exact sum and mean rounded once
   ([correctly rounded sums](reference-semantics.md#of-doubles)),
   whatever the order of the rows.
@@ -583,15 +582,15 @@ translator pins the semantics and takes no Polars defaults:
   `strpos` and `substring` count characters, and `substring` with
   a start below 1 keeps only the positions that exist. `LIKE` escapes with a
   backslash, and a trailing one stands for itself. `UPPER`, `LOWER` and
-  regular expressions are black boxes in Lean; Polars computes them with the
-  Rust code DataFusion uses.
+  regular expressions are black boxes in Lean; Polars computes regular
+  expressions with Rust's `regex` crate
+  ([polars-regex](../engines/polars/facts/polars-regex.json)).
 * `date_part` and `date_trunc` follow `core/Sverify/Core/Time.lean`: parts
   within a day are integer arithmetic on the microseconds, the calendar comes
-  from chrono (as in DataFusion), and `date_part` is NULL outside the years
+  from chrono, and `date_part` is NULL outside the years
   chrono represents.
 * Integers are unbounded in Lean. Polars computes on 128 bits, and a result
-  outside 64 bits raises `IntegerOverflow`, where DataFusion wraps silently
-  (`2^62 + 2^62` gives `-2^63`). Integer division and remainder truncate
+  outside 64 bits raises `IntegerOverflow`. Integer division and remainder truncate
   toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
 * Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`: division by
   zero, `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions
@@ -600,8 +599,8 @@ translator pins the semantics and takes no Polars defaults:
   carries a per-row flag for each one, masked by `CASE` as `Expr.issues`
   masks it. The operator raises the matching error if a flag is set on a row
   it evaluates. Polars runs filters where the plan puts them, so a filter
-  guards the projections above it. DataFusion merges filters, which is what
-  `Rel.loose` models.
+  guards the projections above it. `Rel.loose` models an engine that merges
+  filters.
 * Doubles divide in numpy: Polars divides a column by a constant by
   multiplying with its reciprocal, which rounds differently.
 
@@ -620,8 +619,7 @@ Ibis's own SQL, and generates its Snowflake SQL and runs its Spark SQL on a loca
 cases on all three engines.
 
 Known gaps: the writer gives virtual tables placeholder `i64` column types and
-writes `FetchRel`'s deprecated `offset`/`count`, both of which DataFusion's
-consumer rejects. Doubles in a
+writes `FetchRel`'s deprecated `offset`/`count`. Doubles in a
 virtual table come out as their integer codes. The translator refuses `lt`
 on strings and booleans; the model compares strings by code point
 ([reference semantics](reference-semantics.md#strings)).
@@ -641,10 +639,10 @@ raises `UnsupportedError` on everything else. It then writes SQL whose result is
 the engine:
 
 * subqueries name their columns `c0, c1, …`;
-* integers are `BIGINT`, and overflow raises (DataFusion wraps around);
-* division and remainder truncate; where DataFusion fails at run time
-  (division by zero, `MIN / -1`, bad `POWER` or `CAST(double AS BIGINT)`),
-  Lean's value is NULL and the SQL raises;
+* integers are `BIGINT`, and overflow raises;
+* division and remainder truncate; on division by zero, `MIN / -1`, a bad
+  `POWER` or `CAST(double AS BIGINT)`, Lean's value is NULL and the SQL
+  raises;
 * doubles have one zero and one NaN (`-inf < … < 0.0 < … < inf < NaN`) in
   comparisons, joins, partitions and sorts, and −0.0 is made 0.0 wherever it
   could arise;
@@ -664,7 +662,7 @@ the engine:
   `LIKE` names its escape character;
 * `date_part` and `date_trunc` use the engine's calendar functions where they
   agree with `core/Sverify/Core/Time.lean` (ISO weeks, `dow` from Sunday,
-  milliseconds within the minute), and the SQL raises where DataFusion's
+  milliseconds within the minute), and the SQL raises where the reference's
   calendar truncation fails;
 * below a `FETCH`, a window or a sort, an ordinal column carries Lean's list
   order, so `LIMIT` and ties in sorts and windows pick Lean's rows, and a

@@ -16,13 +16,13 @@ by what engines cannot already do. Two of them are implemented and public:
 These optimizations need no proof from us. Engines apply them to any plan we
 emit.
 
-| | DataFusion | DuckDB | Polars | Snowflake | Spark |
-|---|---|---|---|---|---|
-| Predicate and projection pushdown | yes | yes | yes | yes | yes |
-| Join reordering | partly (statistics-based join selection and side swaps) | yes (cost-based) | no | yes | with CBO (off by default) |
-| Min/max file and row-group pruning | Parquet row groups and pages | zone maps, Parquet statistics | Parquet statistics | micro-partitions | Parquet, Delta data skipping |
-| Hash-partitioned parallelism inside the engine | yes | yes | yes | yes | yes |
-| Partial/final (two-phase) aggregation inside the engine | yes | yes | yes | yes | yes |
+| | DuckDB | Polars | Snowflake | Spark |
+|---|---|---|---|---|
+| Predicate and projection pushdown | yes | yes | yes | yes |
+| Join reordering | yes (cost-based) | no | yes | with CBO (off by default) |
+| Min/max file and row-group pruning | zone maps, Parquet statistics | Parquet statistics | micro-partitions | Parquet, Delta data skipping |
+| Hash-partitioned parallelism inside the engine | yes | yes | yes | yes |
+| Partial/final (two-phase) aggregation inside the engine | yes | yes | yes | yes |
 
 The useful question is what the checker knows that the engine does not.
 The checker knows three things:
@@ -154,9 +154,8 @@ Proved (`analysis/Sverify/Analysis/Partition.lean`, all without `sorry`):
   measure except `SUM`/`AVG` of doubles (they add in row order, and neither
   sharding nor engines keep the order). `COUNT(DISTINCT …)` grouped by the
   key is therefore fine. `Rel.keyCols` follows the key's columns through
-  filters, projections (and their copies of a column, which DataFusion's
-  `SELECT` lists emit), emits, joins with broadcast tables, unions and
-  aggregates. `Rel.keyRows` proves that every output row carries the key of
+  filters, projections (and their copies of a column), emits, joins with
+  broadcast tables, unions and aggregates. `Rel.keyRows` proves that every output row carries the key of
   a row on its own shard.
 * Co-partitioned joins. An inner, left, semi or anti join of two linear
   plans, both with split keys that the condition equates (`ON r.k = s.k`,
@@ -214,7 +213,7 @@ The exact-semantics catches, and what we do with each:
 
 * A 64-bit partial sum can overflow when the total does not, or the
   reverse. Example: a shard with `2^62, 2^62` next to one with
-  `-2^62, -2^62`. Engines differ here. DataFusion and Polars wrap, and since
+  `-2^62, -2^62`. Engines differ here. Polars wraps, and since
   wrapping addition is associative the wrapped total is still right
   mod 2⁶⁴. Spark in ANSI mode raises on an overflowing partial sum, as
   seen while building the Spark dialect. DuckDB sums `BIGINT` into `HUGEINT`. Our dialects
@@ -281,8 +280,7 @@ NOT NULL. Its optimizer eliminates joins only for constraints marked `RELY`,
 which the user asserts and does not check. BigQuery's PK/FK constraints are
 unenforced, Databricks' are informational (`RELY` again), and Spark itself
 has none. DuckDB enforces PK, UNIQUE and FK but uses them little in its
-optimizer. DataFusion uses primary keys for functional dependencies in
-`GROUP BY`. Polars has no constraints. Our contracts are checked at ingestion
+optimizer. Polars has no constraints. Our contracts are checked at ingestion
 or proved through composition, so each rewrite below rests on facts we know
 hold:
 
@@ -516,8 +514,7 @@ A view is maintained this way when it ends in such an aggregate or
 keys, and the aggregate's input has delta rules. `status()` reports it as
 maintained, like a view with delta rules. The tests
 ([`test_linear.py`](../python/tests/test_linear.py)) compare every refresh
-with a full recompute over random change streams on DuckDB, Polars and
-DataFusion.
+with a full recompute over random change streams on DuckDB and Polars.
 
 `AVG` of exact types is a `SUM`, a `COUNT` and a division. A
 `DECIMAL` `AVG` is, in the model, an aggregate of the `SUM` and the `COUNT`
@@ -565,8 +562,8 @@ side only for the keys whose count crosses 0. The filters and projections
 above the join pass the weights through. A condition other than equal keys,
 or a key that is a double, is recomputed and diffed. The tests
 ([`test_semi.py`](../python/tests/test_semi.py)) compare every refresh with
-a full recompute over random change streams on both sides, on DuckDB,
-Polars and DataFusion.
+a full recompute over random change streams on both sides, on DuckDB
+and Polars.
 
 A failed commit leaves the state of every view as it was, the counts per
 key and the extremes included: the commit swaps them in with the
