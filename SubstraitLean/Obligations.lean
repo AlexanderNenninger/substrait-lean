@@ -3,7 +3,7 @@ import SubstraitLean.EngineTables
 import Sverify.Polars.Shims
 import Sverify.Spark.Shims
 import Sverify.Core.Allowed
-import SubstraitLean.LoweringDuckDB
+import Sverify.DuckDB.Lowering
 
 /-!
 # The realizability table: `obligations reference E` (#444, step 3b)
@@ -361,13 +361,6 @@ theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) {
     (fun _ h => Rel.evalI_reference h) h
 
 /-! ## DuckDB: the translation refines the reference -/
-
-/-- The DuckDB shim: unless the shimmed plan raises, DuckDB returns an allowed
-result. -/
-theorem Rel.duckdb_shim_allowed {cat : Catalog} {r : Rel}
-    (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
-    r.Allowed cat ((Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).impl) := by
-  rw [Rel.duckdb_shim_sound h]; exact r.eval_allowed cat
 
 /-- **`(duckdb, T r) ⊑ (reference, r)`**, for `T = Lowering.duckdb.lowerRel`
 (`docs/core-semantics.md`, "Soundness"): unless the translated plan raises,

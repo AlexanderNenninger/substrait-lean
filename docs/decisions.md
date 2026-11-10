@@ -237,7 +237,7 @@ consequences:
    give counterexamples that rule candidates out cheaply, and the finest
    candidate left is confirmed by a Lean proof against the engine's
    modelled behaviour (the search-and-prove machinery of the lowering
-   search, `SubstraitLean/LoweringSearch.lean`), or by fuzzing where the
+   search, `engines/Sverify/Engines/LoweringSearch.lean`), or by fuzzing where the
    engine is not modelled.
 
 This makes D11 and D12 one comparison: the route's `q`, carried through the

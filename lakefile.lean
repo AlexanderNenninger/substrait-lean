@@ -16,12 +16,16 @@ require «sverify-analysis» from "analysis"
 require «sverify-engines» from "engines"
 require «sverify-polars» from "engines/polars"
 require «sverify-spark» from "engines/spark"
-require «sverify-duckdb» from "engines/duckdb"
+/-- DuckDB's package holds the generated lowering (`Sverify.DuckDB.LoweringOn`),
+and reads `check_generated` from the options it is required with. -/
+require «sverify-duckdb» from "engines/duckdb" with
+  NameMap.empty.insert `check_generated (if checkGenerated then "true" else "false")
 
 @[default_target]
 lean_lib SubstraitLean
 
-/-- The generated modules, which `check_generated` applies to. Declared after
+/-- The generated lift, which `check_generated` applies to (the generated
+lowering is DuckDB's package's). Declared after
 `SubstraitLean`: within a package, Lake gives a module to the last library
 that contains it. Across packages a library claims every module under its
 root's prefix, which is why each package has a root of its own (`Sverify.Core`,
@@ -29,8 +33,7 @@ root's prefix, which is why each package has a root of its own (`Sverify.Core`,
 and none is rooted at `Sverify` alone. -/
 lean_lib SubstraitLeanGenerated where
   roots := #[]
-  globs := #[.submodules `SubstraitLean.LoweringDuckDB.On,
-    .submodules `SubstraitLean.LiftDuckDB.Duckdb, .submodules `SubstraitLean.LiftDuckDB.Reference]
+  globs := #[.submodules `SubstraitLean.LiftDuckDB.Duckdb, .submodules `SubstraitLean.LiftDuckDB.Reference]
   leanOptions := #[⟨`weak.substrait.checkGenerated, checkGenerated⟩]
 
 /-- The checker's modes as a library, `Substrait.Checker.checkerMain`, so a

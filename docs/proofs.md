@@ -49,15 +49,15 @@ contract's preconditions.
 | The generated DuckDB lowering computes the reference | `eval`, `AllowedP` | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | A DuckDB SQL function the lift reads means what DuckDB computes: the template it lifts to agrees with `DuckDB/SQL.lean`'s meaning under each semantics, the proof in each generated `LiftEntry`'s `agree` field (checked when `check_generated` is on) | `eval` | `LiftEntry.of₁`, `LiftEntry.of₂` | `LiftSearch.lean`, `LiftDuckDB/Duckdb/*.lean`, `LiftDuckDB/Reference/*.lean` |
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
-| DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `LoweringDuckDB.lean`, `LoweringDuckDB/On/Guards.lean` |
-| Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `Obligations.lean` |
+| DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `DuckDB/Lowering.lean`, `DuckDB/LoweringOn/Guards.lean` |
+| Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `DuckDB/Lowering.lean` |
 | Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `Polars/Shims.lean`, `Shims.lean` |
 | Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Shims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `DuckDB/Tables.lean`, `Polars/Tables.lean`, `SubstraitProfile.lean` |
-| An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `Engine.lean`, `Polars/Engine.lean` |
-| A proved contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `Sound.lean`, `EngineSound.lean`, `Polars/Engine.lean`, `Spark/Engine.lean` |
+| An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `DuckDB/Engine.lean`, `Polars/Engine.lean` |
+| A proved contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `Sound.lean`, `DuckDB/Engine.lean`, `Polars/Engine.lean`, `Spark/Engine.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `AllowedAnalysis.lean`, `Semantic.lean` |
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25), or an aggregate over one | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed`, `Rel.floatOpenSafe_aggregate` | `AllowedNear.lean`, `AllowedAnalysis.lean` |
@@ -89,7 +89,7 @@ contract's preconditions.
 | Skipping files by their statistics changes no result | `eval` | `Rel.eval_pruned`, `stats_prune`, `strStats_prune`, `prune_sound` | `Pruning.lean`, `TableFormat.lean` |
 | An implied predicate on a base table keeps every output row | `eval` | `Rel.need_sound` | `Implied.lean` |
 | Contracts compose across a pipeline | `eval`, `zeval` | `Rel.stack_sound`, `Rel.chain_sound` | `Compose.lean` |
-| A dbt test sverify-dbt proves holds on every run whose inputs pass their tests: the model's compiled SQL is a plan verified under `semantics="duckdb"`, the tests on its inputs are its preconditions and its own tests its postconditions | `eval` | `contract_sound`, `Rel.keys_sound`, `Engine.duckdb_sound` | `Contracts/Sound.lean`, `Keys.lean`, `EngineSound.lean` |
+| A dbt test sverify-dbt proves holds on every run whose inputs pass their tests: the model's compiled SQL is a plan verified under `semantics="duckdb"`, the tests on its inputs are its preconditions and its own tests its postconditions | `eval` | `contract_sound`, `Rel.keys_sound`, `Engine.duckdb_sound` | `Contracts/Sound.lean`, `Keys.lean`, `DuckDB/Engine.lean` |
 | The rows quarantine keeps meet every precondition and key | `eval` | `Catalog.kept_sound`, `kept_pre`, `kept_keys` | `Quarantine.lean` |
 | Algebraic rewrites keep the result: filters merge (`Filter(Filter(r,p),q) = Filter(r, p AND q)`, under three-valued logic too), a true filter and a fetch of zero rows go, filters distribute over `UNION ALL` and push below a `ProjectRel` or into a side of a `CrossRel`, `UNION ALL` commutes up to bag equivalence, an inner join is a filtered cross product, and emitting a `ProjectRel`'s input columns removes it | `eval` | `filter_filter`, `filter_true`, `fetch_zero_none`, `filter_unionAll`, `unionAll_comm`, `join_inner_eq_filter_cross`, `filter_project_pushdown`, `filter_cross_pushdown_left`, `emit_project_identity` | `Rewrites.lean` |
 | Rewrites from contract facts and keys keep the result | `eval` | `Rel.optimize_sound` | `Semantic.lean` |
@@ -208,6 +208,8 @@ the guard. The modules below it import it as
 |---|---|
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `Profile.okImpl`, `AllowedE`, `Engine.reference`, the per-plan `Refines` certificate |
 | `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
+| `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
+| `LoweringSearch.lean` | `generate_lowering`, the lowering search |
 | `Generated.lean` | The `check_generated` switch for the generated modules |
 | `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
 | `Sound.lean` | What an engine's model is sound for (`Engine.Sound`), guard elimination's side condition, and verified contracts on an engine (#900) |
@@ -220,9 +222,9 @@ DuckDB's Lean half, in the Lake package `sverify-duckdb` beside its Python
 distribution (#1189, step 5). It imports only the core, the analysis and
 engines-common: `lake build` in `engines/duckdb/` builds it on those alone,
 and CI runs that build as the guard. The modules below import it as
-`Sverify.DuckDB.*`. The lowering's generated entries (`LoweringDuckDB/On`),
-`Engine.duckdb` and the lift stay in the root package until the generators
-move to engines-common.
+`Sverify.DuckDB.*`. The lift stays in the root package until the parser it
+reads with has a package; its generator is the lowering's, which is
+engines-common.
 
 | Module | Job |
 |---|---|
@@ -233,6 +235,11 @@ move to engines-common.
 | `DuckDB/VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `DuckDB/SQL.lean` | What each DuckDB SQL function means under each semantics |
 | `DuckDB/LoweringLemmas.lean` | Lemmas the generated DuckDB lowering computes with |
+| `DuckDB/LoweringSchemas.lean` | DuckDB's hand-written template schemas, for the search |
+| `DuckDB/LoweringCache.lean` | The lowering hints (generated) |
+| `DuckDB/Lowering.lean` | The DuckDB lowering's table and its exports |
+| `DuckDB/LoweringOn/*.lean` | The DuckDB lowering's entries, one module per area, and their guards (generated) |
+| `DuckDB/Engine.lean` | `Engine.duckdb`, its functions within DuckDB's table (`Profile.duckdb_withinOk`), and `Engine.duckdb_sound` |
 
 ### Polars: `engines/polars/Sverify/Polars/`
 
@@ -320,8 +327,7 @@ and CI runs that build as the guard. The modules below import it as
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
-| `Engine.lean` | DuckDB's `Engine` value (#900), with the proof that its functions are within its table (`Profile.duckdb_withinOk`) |
-| `EngineSound.lean` | DuckDB's run is sound (#900): `Engine.duckdb_sound` |
+| `Engine.lean` | The engines' `Engine` values together: the check that each one's certificate is non-empty |
 | `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
 | `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, and the range of an engine's double `AVG` (`AvgOrder.bound`) |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
@@ -341,12 +347,6 @@ and CI runs that build as the guard. The modules below import it as
 | Module | Job |
 |---|---|
 | `Bind.lean` | Binding nested call arguments to projected columns before a plan is written (#821) |
-| `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
-| `LoweringCache.lean` | The lowering hints (generated) |
-| `LoweringSearch.lean` | `generate_lowering`, the lowering search |
-| `LoweringDuckDB.lean` | The DuckDB lowering's table and its exports |
-| `LoweringDuckDB/Schemas.lean` | DuckDB's hand-written template schemas, for the search |
-| `LoweringDuckDB/On/*.lean` | The DuckDB lowering's entries, one module per area, and their guards (generated) |
 | `LiftHint.lean` | The hints that tell the lift search which template to try first |
 | `LiftCache.lean` | The lift hints (generated) |
 | `LiftSearch.lean` | `generate_lift`, the lift search |
@@ -402,11 +402,12 @@ regenerate it. Don't edit them by hand.
 
 | Modules | Regenerate with | When |
 |---|---|---|
-| `LoweringDuckDB/On/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.duckdb`, the generator or the model's functions change |
+| `DuckDB/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.duckdb`, the generator or the model's functions change |
 | `LiftDuckDB/Duckdb/*.lean`, `LiftDuckDB/Reference/*.lean` | `poe regen-lift` (from `python/`) | `DuckDB/SQL.lean`, the generator or the model's functions change |
-| `LoweringCache.lean` | `.lake/build/bin/substrait-check --lowering-cache > SubstraitLean/LoweringCache.lean` | after a regenerated lowering, to keep the search quick |
+| `DuckDB/LoweringCache.lean` | `.lake/build/bin/substrait-check --lowering-cache > engines/duckdb/Sverify/DuckDB/LoweringCache.lean` | after a regenerated lowering, to keep the search quick |
 | `LiftCache.lean` | `.lake/build/bin/substrait-check --lift-cache > SubstraitLean/LiftCache.lean` | after a regenerated lift |
 
 A build only checks the generated entries, and only when `check_generated`
 is on (`Generated.lean`); CI turns it on whenever a Lean input changes. Both
-regeneration tasks cap Lean at 6 GB.
+regeneration tasks cap Lean at 8 GB (the lowering's search peaks near 7 GB),
+so they run on homelab (`homelab-run`), past the laptop's memory rule.

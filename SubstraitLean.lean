@@ -49,11 +49,12 @@ import Sverify.DuckDB.Functions
 import Sverify.DuckDB.Profile
 import Sverify.Engines.Lowering
 import SubstraitLean.Bind
-import SubstraitLean.LoweringHint
-import SubstraitLean.LoweringCache
-import SubstraitLean.LoweringSearch
-import SubstraitLean.LoweringDuckDB.Schemas
-import SubstraitLean.LoweringDuckDB
+import Sverify.Engines.LoweringHint
+import Sverify.DuckDB.LoweringCache
+import Sverify.Engines.LoweringSearch
+import Sverify.DuckDB.LoweringSchemas
+import Sverify.DuckDB.Lowering
+import Sverify.DuckDB.Engine
 import Sverify.Core.StatProps
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Core.Allowed
@@ -110,4 +111,3 @@ import SubstraitLean.Pretty
 import SubstraitLean.Examples
 import SubstraitLean.Refresh
 import SubstraitLean.Engine
-import SubstraitLean.EngineSound

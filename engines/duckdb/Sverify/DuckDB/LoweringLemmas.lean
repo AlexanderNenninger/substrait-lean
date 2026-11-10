@@ -4,7 +4,7 @@ import Sverify.DuckDB.Functions
 /-!
 # Lemmas the DuckDB lowering's proofs compute with (#241)
 
-The generated modules (`SubstraitLean/LoweringDuckDB/On`) use them;
+The generated modules (`engines/duckdb/Sverify/DuckDB/LoweringOn`) use them;
 `scripts/RegenLowering.lean` passes them to the generator (`using`).
 -/
 

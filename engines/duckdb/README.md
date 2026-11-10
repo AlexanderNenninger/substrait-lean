@@ -23,7 +23,7 @@ The directory is one engine package of #1189:
   (`python/pyproject.toml`'s `testpaths`);
 - `Sverify/DuckDB/` and `lakefile.toml`: its Lean half, the Lake package
   `sverify-duckdb`: `Profile.duckdb` and the SQL printer's model, the black
-  boxes, the choice table and the lowering's lemmas, on the core, the
-  analysis and engines-common alone ([docs/proofs.md](../../docs/proofs.md)).
-  The generated lowering, `Engine.duckdb` and the lift follow once the
-  generators move to engines-common.
+  boxes, the choice table, the lowering (its generated entries and the
+  lemmas they compute with) and `Engine.duckdb`, on the core, the analysis
+  and engines-common alone ([docs/proofs.md](../../docs/proofs.md)). The
+  lift follows once its parser has a package.

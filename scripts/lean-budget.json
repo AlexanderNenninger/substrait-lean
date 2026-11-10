@@ -101,10 +101,6 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.EngineSound": {
-   "cpu_s": 30,
-   "rss_mb": 2658
-  },
   "SubstraitLean.EngineTables": {
    "cpu_s": 30,
    "rss_mb": 1536
@@ -257,11 +253,11 @@
    "cpu_s": 86,
    "rss_mb": 1536
   },
-  "SubstraitLean.LoweringCache": {
+  "Sverify.DuckDB.LoweringCache": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.LoweringDuckDB": {
+  "Sverify.DuckDB.Lowering": {
    "cpu_s": 30,
    "rss_mb": 2626
   },
@@ -269,47 +265,47 @@
    "cpu_s": 58,
    "rss_mb": 1536
   },
-  "SubstraitLean.LoweringDuckDB.On.Arith": {
+  "Sverify.DuckDB.LoweringOn.Arith": {
    "cpu_s": 400,
    "rss_mb": 7155
   },
-  "SubstraitLean.LoweringDuckDB.On.Bits": {
+  "Sverify.DuckDB.LoweringOn.Bits": {
    "cpu_s": 33,
    "rss_mb": 3040
   },
-  "SubstraitLean.LoweringDuckDB.On.Guards": {
+  "Sverify.DuckDB.LoweringOn.Guards": {
    "cpu_s": 188,
    "rss_mb": 5240
   },
-  "SubstraitLean.LoweringDuckDB.On.Integers": {
+  "Sverify.DuckDB.LoweringOn.Integers": {
    "cpu_s": 104,
    "rss_mb": 3129
   },
-  "SubstraitLean.LoweringDuckDB.On.Math": {
+  "Sverify.DuckDB.LoweringOn.Math": {
    "cpu_s": 78,
    "rss_mb": 3124
   },
-  "SubstraitLean.LoweringDuckDB.On.Native": {
+  "Sverify.DuckDB.LoweringOn.Native": {
    "cpu_s": 74,
    "rss_mb": 2878
   },
-  "SubstraitLean.LoweringDuckDB.On.Powers": {
+  "Sverify.DuckDB.LoweringOn.Powers": {
    "cpu_s": 30,
    "rss_mb": 2870
   },
-  "SubstraitLean.LoweringDuckDB.On.Table": {
+  "Sverify.DuckDB.LoweringOn.Table": {
    "cpu_s": 30,
    "rss_mb": 2608
   },
-  "SubstraitLean.LoweringDuckDB.Schemas": {
+  "Sverify.DuckDB.LoweringSchemas": {
    "cpu_s": 30,
    "rss_mb": 2577
   },
-  "SubstraitLean.LoweringHint": {
+  "Sverify.Engines.LoweringHint": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.LoweringSearch": {
+  "Sverify.Engines.LoweringSearch": {
    "cpu_s": 30,
    "rss_mb": 2790
   },

@@ -27,14 +27,14 @@ import Sverify.Core.Allowed
 import Sverify.Core.Ties
 import Sverify.Analysis.Knowledge
 import Sverify.Analysis.Guards
-import SubstraitLean.LoweringDuckDB
+import Sverify.DuckDB.Lowering
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
 import SubstraitLean.Obligations
 import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
-import SubstraitLean.EngineSound
+import SubstraitLean.Engine
 import SubstraitLean.ContractCheck
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatMoments

@@ -3,7 +3,7 @@ import Lean
 /-!
 # Checking the generated tables (`check_generated`)
 
-The DuckDB lowering (`SubstraitLean/LoweringDuckDB/On`) and the lift
+The DuckDB lowering (`engines/duckdb/Sverify/DuckDB/LoweringOn`) and the lift
 (`SubstraitLean/LiftDuckDB/Duckdb`, `Reference`) are generated modules: each
 entry is a theorem whose proof the generator wrote out, which takes most of a
 cold build to check. The lakefile's `check_generated` option sets
