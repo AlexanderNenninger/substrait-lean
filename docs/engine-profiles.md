@@ -107,7 +107,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   of the model: `UnFn.raise` (always an error, `Issue.raised`; DuckDB's
   `error()`) and `UnFn.isNum` (written `x IS NOT NULL`). So a shimmed plan is
   an ordinary plan, written and run like any other. `generate_lowering`
-  (`SubstraitLean/LoweringSearch.lean`) is a metaprogram that runs at build
+  (`engines/Sverify/Engines/LoweringSearch.lean`) is a metaprogram that runs at build
   time. For each construct (each constructor of `UnFn` and `BinFn`, its
   parameters being the signature and options) it first tries to prove the
   engine's function equal to the reference's. Where that fails it searches
@@ -134,7 +134,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   NaN, `±1`) to variables with their order first, so that nothing evaluates
   their 600-digit values. The search does not run in a build: `poe regen-lowering`
   (`scripts/RegenLowering.lean`) runs it and writes each entry it found, with
-  its proof, to `SubstraitLean/LoweringDuckDB/On`, one module per area
+  its proof, to `engines/duckdb/Sverify/DuckDB/LoweringOn`, one module per area
   (`Native`, `Integers`, `Doubles`, `Math`, `Bits`) and a `Table`, which `lake
   build` checks in parallel. The table is for DuckDB's default settings
   (`error_on_division_by_zero` and `ieee_floating_point_ops` on), the only
@@ -146,7 +146,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   proved unless run as `lake -R -Kcheck_generated=true build`
   (`engines/Sverify/Engines/Generated.lean`). A committed table that no longer fits fails the
   build: a proof stops checking when `Profile.duckdb` changes, and the table's
-  `match` is not exhaustive when a function is added. `SubstraitLean/LoweringCache.lean`
+  `match` is not exhaustive when a function is added. `engines/duckdb/Sverify/DuckDB/LoweringCache.lean`
   records each construct's template for the regeneration, which tries it first. `substrait-check --lowering-table` exports the
   templates, and `sverify.sql.lowering`, a small interpreter in the trusted path,
   writes them as DuckDB SQL: the DuckDB printer asks it first (`Dialect.lowered`),
@@ -164,11 +164,11 @@ Lean's reference profile, and DuckDB is the default oracle.
   `Rel.mayIssues`, as `Rel.guardFree_sound` does. The kept guards need no new
   proof: the template with all its guards has the reference's outcome. DuckDB's
   generated guards are proved exact (`duckdbOn.guardsFor_none`, in
-  `SubstraitLean/LoweringDuckDB/On/Guards.lean`), so its SQL without guards
+  `engines/duckdb/Sverify/DuckDB/LoweringOn/Guards.lean`), so its SQL without guards
   (`to_sql(guards=False)`) is `Rel.duckdb_guardFree_sound`. The
   search is the same for every engine; an engine's hand-written schemas are an
   argument of `generate_lowering` (DuckDB's in
-  `SubstraitLean/LoweringDuckDB/Schemas.lean`). Equality saturation (lean-egg) was
+  `engines/duckdb/Sverify/DuckDB/LoweringSchemas.lean`). Equality saturation (lean-egg) was
   considered and not used: it proves equalities rather than finding terms,
   it is deprecated, and it needs Lean 4.30 and Rust.
 

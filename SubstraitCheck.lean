@@ -27,12 +27,12 @@ why it cannot be split.
 
 `substrait-check --lowering-coverage`: print how each construct is lowered to
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
-natively, or the generated template (`SubstraitLean/LoweringDuckDB.lean`).
+natively, or the generated template (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
 
 `substrait-check --lowering-table`: print, as JSON, the DuckDB lowering's
 templates that are not the native call, for `sverify.sql.lowering`.
 
-`substrait-check --lowering-cache`: print a new `SubstraitLean/LoweringCache.lean`
+`substrait-check --lowering-cache`: print a new `engines/duckdb/Sverify/DuckDB/LoweringCache.lean`
 from this build's coverage, the templates the next build tries first.
 
 `substrait-check --lift-table`: print, as JSON, what each DuckDB SQL function
@@ -416,7 +416,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     IO.println Lift.tableJson.pretty
     return 0
   | ["--lowering-cache"] => do
-    -- A new SubstraitLean/LoweringCache.lean from this build's coverage (#242).
+    -- A new engines/duckdb/Sverify/DuckDB/LoweringCache.lean from this build's coverage (#242).
     IO.print loweringCacheSource
     return 0
   | ["--lowering-table"] => do

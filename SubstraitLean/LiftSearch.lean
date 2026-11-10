@@ -1,7 +1,8 @@
 import Lean
 import SubstraitLean.Parse
 import Sverify.DuckDB.SQL
-import SubstraitLean.LoweringSearch
+import Sverify.DuckDB.Boxes
+import Sverify.Engines.LoweringSearch
 import SubstraitLean.LiftHint
 
 /-!
@@ -11,7 +12,7 @@ import SubstraitLean.LiftHint
 DuckDB's SQL functions (`DuckFn`, `engines/duckdb/Sverify/DuckDB/SQL.lean`) lift to under
 the semantics `s`: for each, a Substrait expression over its arguments that
 the parser (`Parse.parseExpr`) reads as the same function. It is the lowering
-search (`SubstraitLean/LoweringSearch.lean`) run backwards.
+search (`engines/Sverify/Engines/LoweringSearch.lean`) run backwards.
 
 For each `DuckFn` it builds templates around a **core**:
 
@@ -855,7 +856,7 @@ def elabGenerateLift : CommandElab := fun stx => do
   let sSrc ← liftTermElabM do
     LoweringSearch.ppSource (← instantiateMVars (← elabTermEnsuringType sStx (Lean.mkConst ``Semantics)))
   let chunks ← sink.get
-  let modOf (area : String) : String := (dir.replace "/" ".") ++ "." ++ area
+  let modOf (area : String) : String := LoweringSearch.moduleOfDir dir ++ "." ++ area
   let env ← getEnv
   let moduleOf (n : Name) : Option Name :=
     (env.getModuleIdxFor? n).map fun i => env.header.moduleNames[i.toNat]!

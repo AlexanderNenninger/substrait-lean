@@ -128,7 +128,7 @@ exclude = ["build", "src/sverify/_bin"]
 "../engines/spark/lake-manifest.json" = "lean/engines/spark/lake-manifest.json"
 "../engines/spark/lean-toolchain" = "lean/engines/spark/lean-toolchain"
 "../engines/spark/Sverify" = "lean/engines/spark/Sverify"
-"../engines/duckdb/lakefile.toml" = "lean/engines/duckdb/lakefile.toml"
+"../engines/duckdb/lakefile.lean" = "lean/engines/duckdb/lakefile.lean"
 "../engines/duckdb/lake-manifest.json" = "lean/engines/duckdb/lake-manifest.json"
 "../engines/duckdb/lean-toolchain" = "lean/engines/duckdb/lean-toolchain"
 "../engines/duckdb/Sverify" = "lean/engines/duckdb/Sverify"
@@ -216,17 +216,17 @@ cwd = "${POE_ROOT}/.."
 # search path finds `Sverify.Engines.*` in `core/`'s build, the first one
 # with a `Sverify` directory (#1189).
 [tool.poe.tasks.regen-lowering]
-help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
+help = "Search for the DuckDB lowering again and write it to engines/duckdb/Sverify/DuckDB/LoweringOn (a build only checks it); Lean capped at 8 GB, so run it on homelab (homelab-run)"
 shell = """
-lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache Sverify.DuckDB.LoweringLemmas \
-  SubstraitLean.LoweringDuckDB.Schemas \
-  && lake lean scripts/RegenLowering.lean -- -M 6144
+lake build Sverify.Engines.LoweringSearch Sverify.DuckDB.LoweringCache Sverify.DuckDB.LoweringLemmas \
+  Sverify.DuckDB.LoweringSchemas Sverify.DuckDB.Boxes \
+  && lake lean scripts/RegenLowering.lean -- -M 8192
 """
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.regen-lift]
-help = "Search for the DuckDB SQL lift again and write it to SubstraitLean/LiftDuckDB (a build only checks it); Lean capped at 6 GB"
-shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake lean scripts/RegenLift.lean -- -M 6144"
+help = "Search for the DuckDB SQL lift again and write it to SubstraitLean/LiftDuckDB (a build only checks it); Lean capped at 8 GB, so run it on homelab (homelab-run)"
+shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake lean scripts/RegenLift.lean -- -M 8192"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.prove-floats]

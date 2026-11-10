@@ -44,16 +44,31 @@ def _imports(path: Path) -> list[str]:
     return re.findall(r"^import (\S+)", path.read_text(), re.M)
 
 
+def _lakefile(layer: str) -> tuple[str, list[list[str]], dict[str, str]]:
+    """A layer's package name, its libraries' roots and its requires, from its
+    `lakefile.toml`, or from its `lakefile.lean` (DuckDB's, which reads
+    `check_generated` for its generated lowering)."""
+    toml = ROOT / layer / "lakefile.toml"
+    if toml.is_file():
+        conf = tomllib.loads(toml.read_text())
+        roots = [lib["roots"] for lib in conf["lean_lib"]]
+        return conf["name"], roots, {r["name"]: r["path"] for r in conf.get("require", [])}
+    text = (ROOT / layer / "lakefile.lean").read_text()
+    [name] = re.findall(r"^package «([^»]+)»", text, re.M)
+    roots = [re.findall(r"`([\w.]+)", r) for r in re.findall(r"roots := #\[([^\]]*)\]", text)]
+    requires = dict(re.findall(r'^require «([^»]+)» from "([^"]+)"', text, re.M))
+    return name, roots, requires
+
+
 @pytest.mark.parametrize("layer", LAYERS)
 def test_lakefile(layer):
     package, root, below = LAYERS[layer]
-    conf = tomllib.loads((ROOT / layer / "lakefile.toml").read_text())
-    assert conf["name"] == package
-    [lib] = conf["lean_lib"]
-    assert lib["roots"] == [root]
+    name, roots, requires = _lakefile(layer)
+    assert name == package
+    # One library with the layer's root; a library of generated modules has no root.
+    assert [r for r in roots if r] == [[root]]
     # Never a library rooted at the umbrella alone: it would claim every layer's modules.
-    assert all(r != "Sverify" for r in lib["roots"])
-    requires = {r["name"]: r["path"] for r in conf.get("require", [])}
+    assert all("Sverify" not in r for r in roots)
     up = "../" * len(Path(layer).parts)
     assert requires == {LAYERS[b][0]: f"{up}{b}" for b in below}
 

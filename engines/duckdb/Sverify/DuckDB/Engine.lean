@@ -1,0 +1,216 @@
+import Sverify.DuckDB.Lowering
+import Sverify.DuckDB.Tables
+import Sverify.DuckDB.Profile
+import Sverify.Engines.Sound
+
+/-!
+# DuckDB's Engine value (#900)
+
+`Engine.duckdb` (IEEE operations, `ieee_floating_point_ops` on, the default)
+runs the plan through its lowering (`Lowering.duckdb`), with its profile's
+functions where they do not raise (`impl := profile.okImpl`).
+`Profile.duckdb_withinOk` proves those within DuckDB's table, and
+`Engine.duckdb_sound` that the run is sound: where the lowered plan does not
+raise, `okImpl` computes DuckDB's run (`Rel.eval_okImpl`), which the reference
+allows (`Rel.duckdb_shim_allowed`).
+-/
+
+namespace Substrait
+
+/-- The options at which `Profile.duckdb_withinOk` uses DuckDB's table. -/
+def Profile.duckdbExtras : List (Functions.Ctor × String) :=
+  FMath.all.map (fun g => (.un (.fmath g), "on_domain_error")) ++
+    [(.un .fround, "round_zero_sign"), (.un .fceil, "round_zero_sign"),
+     (.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"), (.bin .fmul, "nan_creation"),
+     (.bin .fdiv, "on_division_by_zero"), (.bin .fdiv, "nan_creation"),
+     (.bin .fmod, "nan_creation"), (.bin .fpow, "on_domain_error"),
+     (.bin .fatan2, "on_domain_error"), (.bin (.bit .shl), "shift_range"),
+     (.bin (.bit .shr), "shift_range")]
+
+theorem Profile.duckdb_extras (e : Bool) :
+    (Profile.duckdbExtras.all fun p => extraAtB (Profile.duckdb.table ⟨e, true⟩) p.1 p.2) = true := by
+  cases e <;> decide
+
+variable [Boxes.Ambient]
+
+/-- **DuckDB's functions are within its table**, with IEEE operations on:
+each value `duckBin` and `duckUn` change is in the scope of an option the
+table allows another behaviour (D34): a domain error's NaN, a zero divisor's
+`±∞` or NaN or NULL, a created NaN, a shift out of range. With
+`ieee_floating_point_ops` off, `(-∞) ^ y` has no row (#900). -/
+theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
+    (Profile.duckdb s).WithinOk (Profile.duckdb.table s) := by
+  obtain ⟨e, i⟩ := s
+  simp only at hs; subst hs
+  refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
+  · simp only [Profile.duckdb] at h
+    cases v with
+    | float a =>
+      simp only at h
+      cases hd : duckUn ⟨e, true⟩ f a with
+      | none => rw [hd] at h; exact .inl (raiseIf_ok h)
+      | some o =>
+        right
+        cases f <;> simp only [duckUn, reduceCtorEq] at hd
+        case fmath g =>
+          split at hd
+          · rename_i hc
+            refine callExtra_of_at (o := "on_domain_error") (by cases g <;> exact extraAt_of_all (Profile.duckdb_extras _) (by decide)) ?_
+            simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
+          · cases hd
+        -- IEEE's `-0.0` where the reference's result is a zero (`round_zero_sign`).
+        case fround | fceil =>
+          split at hd
+          · rename_i hc
+            refine callExtra_of_at (o := "round_zero_sign") (extraAt_of_all (Profile.duckdb_extras _) (by decide)) ?_
+            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero, FloatCode.isZeroCode, hc.2]
+          · cases hd
+    | _ => exact .inl (raiseIf_ok h)
+  · -- Each deviation, with the option whose scope it is in.
+    have hfl : ∀ {a b : Int}, f.onFloats = true →
+        (duckBin ⟨e, true⟩ f a b).getD (Profile.reference.bin f (.float a) (.float b)) = .ok x →
+        x = f.apply (.float a) (.float b) ∨
+          CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.float a, .float b] := by
+      intro a b hf h
+      cases hd : duckBin ⟨e, true⟩ f a b with
+      | none => rw [hd] at h; exact .inl (raiseIf_ok h)
+      | some o =>
+        -- IEEE division's NaN is its own value (D39).
+        by_cases hi : f = .fdivIeee
+        · subst hi; left
+          simp only [duckBin] at h hd
+          split at h
+          · rename_i hn; cases h; simp only [BinFn.apply, fdiv_of_nanCase_ieee hn]
+          · rename_i hn; simp [hn] at hd
+        right
+        have nanC : nanCase f a b = true → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+            "nan_creation" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+              [.float a, .float b] := fun hn hx => callExtra_of_at hx (by simp [optionScope, hn])
+        have dom : (f.issue (.float a) (.float b)) = some .domain → extraAtB
+            (Profile.duckdb.table ⟨e, true⟩) (.bin f) "on_domain_error" = true →
+            CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.float a, .float b] :=
+          fun hi hx => callExtra_of_at hx (by
+            simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, hi])
+        have zero : FloatCode.canon b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+            "on_division_by_zero" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+              [.float a, .float b] := fun hb hx => callExtra_of_at hx (by
+            simp [optionScope, divisorZero, hb])
+        cases f <;> simp only [BinFn.onFloats, Bool.false_eq_true] at hf <;>
+          simp only [duckBin] at hd
+        case fdivIeee => exact absurd rfl hi
+        case fadd | fsub | fmul =>
+          split at hd
+          · exact nanC (by assumption) (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+          · cases hd
+        case fdiv =>
+          split at hd
+          · exact zero (by assumption) (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+          · split at hd
+            · exact nanC (by assumption) (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+            · cases hd
+        case fmod =>
+          split at hd
+          · rename_i hb
+            exact callExtra_of_at (o := "nan_creation") (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+              (by simp [optionScope, hb])
+          · split at hd
+            · exact nanC (by assumption) (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+            · cases hd
+        case fpow =>
+          split at hd
+          · exact dom (by simp_all [BinFn.issue]) (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+          · split at hd
+            · rename_i hn hn'
+              exact dom (by simp [BinFn.issue, nanIssue, hn', Bool.not_eq_true _ |>.mp hn])
+                (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+            · cases hd
+        case fatan2 =>
+          split at hd
+          · rename_i hz
+            obtain ⟨rfl, rfl⟩ := hz
+            exact dom (by simp [BinFn.issue, domainIssue, atan2?, FloatCode.canon_zero])
+              (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+          · split at hd
+            · rename_i _ hz
+              exact dom (by simp [BinFn.issue, domainIssue, atan2?, hz.1, hz.2]) (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+            · cases hd
+    have hint : ∀ {a b : Int}, f.onFloats = false →
+        (duckBin ⟨e, true⟩ f a b).getD (Profile.reference.bin f (.int a) (.int b)) = .ok x →
+        x = f.apply (.int a) (.int b) ∨
+          CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f) [.int a, .int b] := by
+      intro a b hnf h
+      cases hd : duckBin ⟨e, true⟩ f a b with
+      | none => rw [hd] at h; exact .inl (raiseIf_ok h)
+      | some o =>
+        rw [hd] at h
+        simp only [Option.getD] at h
+        have zero : b = 0 → extraAtB (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+            "on_division_by_zero" = true → CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin f)
+              [.int a, .int b] := fun hb hx => callExtra_of_at hx (by
+            subst hb; simp [optionScope, divisorZero])
+        cases f
+        case idiv =>
+          simp only [duckBin] at hd
+          split at hd
+          · rename_i hb
+            cases hd; cases e <;> simp only [duckZero, reduceCtorEq, Bool.false_eq_true,
+              ↓reduceIte, Except.ok.injEq] at h
+            -- NULL for a zero divisor only with `error_on_division_by_zero` off.
+            exact .inr (zero hb (by decide))
+          · cases hd
+        case imod =>
+          simp only [duckBin] at hd
+          split at hd
+          · rename_i hb
+            cases hd; cases e <;> simp only [duckZero, reduceCtorEq, Bool.false_eq_true,
+              ↓reduceIte, Except.ok.injEq] at h
+            -- NULL for a zero divisor only with `error_on_division_by_zero` off.
+            exact .inr (zero hb (by decide))
+          · split at hd
+            · cases hd; simp at h
+            · cases hd
+        case bit g =>
+          have sh : CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin (.bit g)) [.int a, .int b] →
+              x = (BinFn.bit g).apply (.int a) (.int b) ∨
+                CallExtra (Profile.duckdb.table ⟨e, true⟩) (.bin (.bit g)) [.int a, .int b] := .inr
+          cases g with
+          | shl => exact sh (callExtra_of_at (o := "shift_range") (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+              (by simp [optionScope]))
+          | shr => exact sh (callExtra_of_at (o := "shift_range") (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+              (by simp [optionScope]))
+          | _ => simp [duckBin] at hd
+        all_goals first
+          | (simp [BinFn.onFloats] at *; done)
+          | simp [duckBin] at hd
+    simp only [Profile.duckdb] at h
+    cases v <;> cases w <;> simp only at h <;> try exact .inl (raiseIf_ok h)
+    case float.float a b =>
+      split at h
+      · exact hfl (by assumption) h
+      · exact .inl (raiseIf_ok h)
+    case int.int a b =>
+      split at h
+      · exact .inl (raiseIf_ok h)
+      · exact hint (by simp_all) h
+
+/-- DuckDB with IEEE operations (`ieee_floating_point_ops`, the default),
+through its lowering (`Lowering.duckdb`, written for the default settings). -/
+def Engine.duckdb (s : DuckDBSettings) (hs : s.ieeeOps = true) : Engine where
+  name := "duckdb"
+  profile := Profile.duckdb s
+  table := Profile.duckdb.table s
+  obs := Profile.duckdb.obs
+  lower r := some (Lowering.duckdb.lowerRel r)
+  impl := (Profile.duckdb s).okImpl
+  within := Profile.okImpl_within (Profile.duckdb_withinOk hs)
+
+/-- DuckDB at its default settings: where the lowered plan does not raise,
+`okImpl` computes DuckDB's run (`Rel.eval_okImpl`), which the reference
+allows (`Rel.duckdb_shim_allowed`). -/
+theorem Engine.duckdb_sound : (Engine.duckdb {} rfl).Sound fun _ _ => True := by
+  intro cat r r' hl hr _
+  cases hl
+  show r.Allowed cat ((Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).okImpl)
+  rw [Rel.eval_okImpl (p := Profile.duckdb {}) hr]; exact Rel.duckdb_shim_allowed hr
+
+end Substrait

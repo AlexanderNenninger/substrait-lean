@@ -158,13 +158,13 @@ time on the runner.
 
 | module | CPU s | wall s | RSS MB | CI CPU s |
 |---|---:|---:|---:|---:|
-| `SubstraitLean.LoweringDuckDB.On.Doubles` | 733 | 179 | 2550 | 587 |
-| `SubstraitLean.LoweringDuckDB.On.Integers` | 145 | 83 | 1946 | 105 |
+| `Sverify.DuckDB.LoweringOn.Doubles` | 733 | 179 | 2550 | 587 |
+| `Sverify.DuckDB.LoweringOn.Integers` | 145 | 83 | 1946 | 105 |
 | `Sverify.DuckDB.SQL` | 133 | 33 | 930 | 100 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Arith` | 88 | 109 | 1981 | 69 |
-| `SubstraitLean.LoweringDuckDB.On.Math` | 75 | 42 | 1926 | 53 |
-| `SubstraitLean.LoweringDuckDB.On.Guards` | 64 | 28 | 2406 | 51 |
-| `SubstraitLean.LoweringDuckDB.On.Native` | 51 | 11 | 1881 | 36 |
+| `Sverify.DuckDB.LoweringOn.Math` | 75 | 42 | 1926 | 53 |
+| `Sverify.DuckDB.LoweringOn.Guards` | 64 | 28 | 2406 | 51 |
+| `Sverify.DuckDB.LoweringOn.Native` | 51 | 11 | 1881 | 36 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Compare` | 49 | 70 | 1874 | 37 |
 | `Sverify.Analysis.Safety` | 44 | 18 | 1219 | 46 |
 | `SubstraitLean.LiftDuckDB.Duckdb.Math` | 43 | 61 | 1858 | 32 |

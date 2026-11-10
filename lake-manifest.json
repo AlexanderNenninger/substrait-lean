@@ -8,7 +8,7 @@
    "inherited": false,
    "dir": "engines/duckdb",
    "copy": false,
-   "configFile": "lakefile.toml"},
+   "configFile": "lakefile.lean"},
   {"type": "path",
    "scope": "",
    "name": "«sverify-spark»",

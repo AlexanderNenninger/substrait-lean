@@ -2,7 +2,7 @@
 
 For each function DuckDB does not compute as the reference does, the Lean
 build generates a template and proves it gives the reference's outcome under
-DuckDB's profile (`SubstraitLean/LoweringDuckDB.lean`, `Lowering.duckdb_exact`).
+DuckDB's profile (`engines/duckdb/Sverify/DuckDB/Lowering.lean`, `Lowering.duckdb_exact`).
 `substrait-check --lowering-table` exports those templates, and this module
 writes one as SQL: its fields are the arguments' SQL, its calls DuckDB's own
 operators, its `CASE`s SQL's. The DuckDB printer (`sverify_duckdb.dialect`) asks
@@ -73,7 +73,7 @@ def render(
     (`to_sql(..., guards=False)`, for plans proved not to raise) the arms of
     a `CASE` that raise are left out: they would never be taken. That the
     templates without them still give the reference's rows is
-    `Rel.duckdb_guardFree_sound` (`SubstraitLean/LoweringDuckDB.lean`)."""
+    `Rel.duckdb_guardFree_sound` (`engines/duckdb/Sverify/DuckDB/Lowering.lean`)."""
     tmpl = table().get(fn)
     if tmpl is None:
         return None

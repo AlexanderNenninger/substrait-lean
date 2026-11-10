@@ -1,7 +1,6 @@
 import Lean
-import SubstraitLean.LoweringHint
+import Sverify.Engines.LoweringHint
 import Sverify.Engines.Generated
-import Sverify.DuckDB.Boxes
 
 /-!
 # The lowering generator (#241)
@@ -274,7 +273,7 @@ def isInfT (x : Tm) : Tm := orFn (eqFn x posInfT) (eqFn x negInfT)
 /-- **An engine's hand-written template schemas** (#241, #242), for the
 constructs the search does not reach: a construct's schema is tried before the
 search. Each instance is still proved, by the kernel. DuckDB's are
-`duckdbSchemas` (`SubstraitLean/LoweringDuckDB/Schemas.lean`). -/
+`duckdbSchemas` (`engines/duckdb/Sverify/DuckDB/LoweringSchemas.lean`). -/
 structure Schemas where
   un : UnFn → Option Tm := fun _ => none
   bin : BinFn → Option Tm := fun _ => none
@@ -344,6 +343,14 @@ unsafe def evalProfileImpl (e : Lean.Expr) : TermElabM Profile :=
 @[implemented_by evalProfileImpl]
 opaque evalProfile (e : Lean.Expr) : TermElabM Profile
 
+unsafe def evalBoxesImpl (e : Lean.Expr) : TermElabM Boxes.Ambient :=
+  Meta.evalExpr Boxes.Ambient (Lean.mkConst ``Boxes.Ambient) e
+
+/-- The black-box catalogue in scope where the search runs (DuckDB's, in
+`scripts/RegenLowering.lean`), as a value the samples evaluate with. -/
+@[implemented_by evalBoxesImpl]
+opaque evalBoxes (e : Lean.Expr) : TermElabM Boxes.Ambient
+
 unsafe def evalUnFnImpl (e : Lean.Expr) : TermElabM UnFn := Meta.evalExpr UnFn (Lean.mkConst ``UnFn) e
 @[implemented_by evalUnFnImpl] opaque evalUnFn (e : Lean.Expr) : TermElabM UnFn
 
@@ -362,19 +369,18 @@ def sampleCtor (c : Name) : TermElabM (Option Lean.Expr) := do
       | none => return none
     return some (mkAppN (Lean.mkConst c) args)
 
--- The samples run with DuckDB's black boxes (#1189).
-open scoped Substrait.DuckDB in
+-- The samples run with the catalogue in scope where the search runs (#1189).
 /-- The construct's reference outcome on a row of arguments, and the construct
 applied to expressions, for the closed instance `e` (a `UnFn` if `unary`). -/
-def sampleFns (e : Lean.Expr) (unary : Bool) :
+def sampleFns (boxes : Boxes.Ambient) (e : Lean.Expr) (unary : Bool) :
     TermElabM (RefFn × (List Substrait.Expr → Substrait.Expr)) := do
   if unary then
     let f ← evalUnFn e
-    return (fun row => Profile.reference.un f (row.getD 0 .null),
+    return (fun row => letI := boxes; Profile.reference.un f (row.getD 0 .null),
       fun args => .un f (args.getD 0 (.lit .null)))
   else
     let f ← evalBinFn e
-    return (fun row => Profile.reference.bin f (row.getD 0 .null) (row.getD 1 .null),
+    return (fun row => letI := boxes; Profile.reference.bin f (row.getD 0 .null) (row.getD 1 .null),
       fun args => .bin f (args.getD 0 (.lit .null)) (args.getD 1 (.lit .null)))
 
 /-- `[ns,*]` as simp arguments. -/
@@ -597,6 +603,15 @@ def areaOf (c : Name) : String :=
   | "bit" => "Bits"
   | _ => "Other"
 
+/-- The module a generated file in `dir` is, under its Lake package's source
+root: `engines/duckdb/Sverify/DuckDB/LoweringOn` is
+`Sverify.DuckDB.LoweringOn`, a path in the root package its own name. -/
+def moduleOfDir (dir : String) : String :=
+  let path := match dir.splitOn "/Sverify/" with
+    | [_, rest] => "Sverify/" ++ rest
+    | _ => dir
+  path.replace "/" "."
+
 /-- Generated source by module (`"Native"`, an area), in order. -/
 abbrev Sink := IO.Ref (Array (String × String))
 
@@ -745,7 +760,7 @@ elab "finite_values% " t:ident : term => do
 samples, prove the first that passes, and emit `tbl.k_agree` and the entry
 `tbl.k`. Hand-written schemas come first; a construct the engine does not
 have (`excluded`) gets no template that calls it. -/
-def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) (tac : Syntax)
+def lowerSearch (boxes : Boxes.Ambient) (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) (tac : Syntax)
     (excluded : Bool) (k : Construct) (hint? : Option String := none) (sink : Option Sink := none)
     (guards : Option ((Name → TermElabM Syntax) × IO.Ref (Array String)) := none) :
     TermElabM (Except String String) := do
@@ -757,7 +772,7 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (schemas : Schemas) 
     let selfE := mkAppN (Lean.mkConst k.ctor) (fixed ++ ps)
     let some sample ← if ps.isEmpty then pure (some selfE)
       else sampleCtor k.ctor | return .error "missing: a parameter without a sample value"
-    let (ref, mk) ← sampleFns sample unary
+    let (ref, mk) ← sampleFns boxes sample unary
     let rows := if unary then (samples ++ boundarySamples).map ([·]) else sampleRows n
     let msg := rows.findSome? fun row => match ref row with | .error k => some k.name | .ok _ => none
     let schema ← if unary then pure ((schemas.un (← evalUnFn sample)).map (·, true))
@@ -922,6 +937,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let (results, natives, pSrc) ← liftTermElabM do
     let pE ← instantiateMVars (← elabTermEnsuringType pStx (Lean.mkConst ``Profile))
     let p ← evalProfile pE
+    let boxes ← evalBoxes (← synthInstance (Lean.mkConst ``Boxes.Ambient))
     let hints ← match cacheName with | some n => evalHints n | none => pure []
     let schemas ← match schemasName with | some n => evalSchemas n | none => pure ({} : Schemas)
     let hintOf (k : Construct) : Option String :=
@@ -952,7 +968,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
       for k in ks do
         let t0 ← IO.monoMsNow
         let t := tac
-        let how ← withCurrHeartbeats (lowerSearch tbl pE p schemas t (excluded.contains c) k (hintOf k) sink guards)
+        let how ← withCurrHeartbeats (lowerSearch boxes tbl pE p schemas t (excluded.contains c) k (hintOf k) sink guards)
         done := done.push (k, how, (← IO.monoMsNow) - t0)
       results := results.push (c, some done)
     return (results, natives, ← ppSource pE)
@@ -1001,7 +1017,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let some sink := sink | return
   unless missing.isEmpty do return
   let chunks ← sink.get
-  let modOf (area : String) : String := (dir.replace "/" ".") ++ "." ++ area
+  let modOf (area : String) : String := moduleOfDir dir ++ "." ++ area
   let env ← getEnv
   let moduleOf (n : Name) : Option Name :=
     (env.getModuleIdxFor? n).map fun i => env.header.moduleNames[i.toNat]!
@@ -1015,11 +1031,11 @@ def elabGenerateLowering : CommandElab := fun stx => do
     s!"    [{names extra}])\n"
   let header (imports : List String) (what : String) : String :=
     "\n".intercalate (imports.map (s!"import {·}")) ++ "\n\n" ++
-    s!"/-!\n# {what}\n\nGenerated by `generate_lowering … writing` (`SubstraitLean/LoweringSearch.lean`): do not edit. To regenerate,\n" ++
+    s!"/-!\n# {what}\n\nGenerated by `generate_lowering … writing` (`engines/Sverify/Engines/LoweringSearch.lean`): do not edit. To regenerate,\n" ++
     "run `poe regen-lowering` from `python/` (`docs/proofs.md`, \"Generated modules\"). A build\n" ++
     "checks these entries; it does not search for them.\n-/\n\ngenerated_entries\n\nopen Substrait\n\n" ++
     "variable [Boxes.Ambient]\n\n" ++ macros ++ "\n"
-  let base := ["SubstraitLean.LoweringSearch"] ++ deps.map toString
+  let base := ["Sverify.Engines.LoweringSearch"] ++ deps.map toString
   let areas := (chunks.toList.map (·.1)).eraseDups.filter fun a => a != "Native" && a != "Guards"
   IO.FS.createDirAll dir
   let body (area : String) := String.join ((chunks.toList.filter (·.1 == area)).map (·.2))

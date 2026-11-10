@@ -1,14 +1,15 @@
-import SubstraitLean.LoweringSearch
-import SubstraitLean.LoweringCache
+import Sverify.Engines.LoweringSearch
+import Sverify.DuckDB.LoweringCache
 import Sverify.DuckDB.LoweringLemmas
-import SubstraitLean.LoweringDuckDB.Schemas
+import Sverify.DuckDB.LoweringSchemas
+import Sverify.DuckDB.Boxes
 
 /-!
 # Regenerating the DuckDB lowering (`poe regen-lowering`)
 
-Runs the lowering generator's search (`SubstraitLean/LoweringSearch.lean`)
+Runs the lowering generator's search (`engines/Sverify/Engines/LoweringSearch.lean`)
 for DuckDB's profile under its default settings, and writes what it finds,
-entries and proofs, to `SubstraitLean/LoweringDuckDB/On`. A build checks those
+entries and proofs, to `engines/duckdb/Sverify/DuckDB/LoweringOn`. A build checks those
 modules and never searches; run this when `Profile.duckdb`, the generator or
 the model's functions change (a build that fails in those modules, or
 `tests/lowering/duckdb.expected`, says so). Not part of the library: `lake
@@ -42,7 +43,7 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
   excluding [UnFn.fit]
   hand_written LoweringSearch.duckdbSchemas
   cache loweringCache
-  writing "SubstraitLean/LoweringDuckDB/On"
+  writing "engines/duckdb/Sverify/DuckDB/LoweringOn"
   proving_guards
 
 end Substrait
