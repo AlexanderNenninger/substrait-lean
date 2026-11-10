@@ -1,5 +1,5 @@
 import SubstraitCheck
-import SubstraitLean.DuckDBBoxes
+import Sverify.DuckDB.Boxes
 
 /-!
 # An engine profile from outside, as a package adds one (test)

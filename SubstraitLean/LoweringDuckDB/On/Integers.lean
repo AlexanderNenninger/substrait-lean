@@ -1,8 +1,8 @@
 import SubstraitLean.LoweringSearch
-import SubstraitLean.DuckDBFunctions
+import Sverify.DuckDB.Functions
 import Sverify.Core.Issue
 import Sverify.Core.Numeric
-import SubstraitLean.LoweringDuckDB.Lemmas
+import Sverify.DuckDB.LoweringLemmas
 import Sverify.Core.Expr
 import Sverify.Engines.Lowering
 import Lean.Meta.Tactic.Simp.BuiltinSimprocs.Int

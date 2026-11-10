@@ -1,4 +1,4 @@
-import SubstraitLean.DuckDBSQL
+import Sverify.DuckDB.SQL
 
 /-!
 # Known lifts: the generator's cache (#268)

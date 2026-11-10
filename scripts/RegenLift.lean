@@ -7,7 +7,7 @@ import SubstraitLean.LiftCache
 Runs the lift generator's search (`SubstraitLean/LiftSearch.lean`) under each
 semantics and writes what it finds, entries and proofs, to
 `SubstraitLean/LiftDuckDB/Duckdb` and `Reference`. A build checks those
-modules and never searches; run this when `DuckDBSQL.lean`, the generator or
+modules and never searches; run this when `DuckDB/SQL.lean`, the generator or
 the model's functions change (a build that fails in those modules says so).
 Not part of the library: `lake build` does not elaborate it.
 -/

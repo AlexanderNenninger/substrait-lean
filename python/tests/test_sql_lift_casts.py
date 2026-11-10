@@ -121,7 +121,7 @@ def test_a_microsecond_precision_is_the_models(p):
 
 
 #: Strings of numbers in the subset Lean evaluates, and strings DuckDB
-#: rejects for sure: a character no number has (`VarcharCasts.lean`).
+#: rejects for sure: a character no number has (`DuckDB/VarcharCasts.lean`).
 _NUMBERS = st.from_regex(r"\A *[+-]?(\d{1,8}(\.\d{0,5})?|\.\d{1,5})([eE][+-]?\d{1,2})? *\Z")
 _NOT_NUMBERS = st.from_regex(r"\A[0-9.]{0,3}[:,%p]{1,2}[0-9]{0,3}\Z")
 _BOOLEANS = st.sampled_from(["true", "T", "yes", "Y", "1", "false", "f", "No", "n", "0", " t",

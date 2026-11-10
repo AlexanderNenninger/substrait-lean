@@ -1,5 +1,5 @@
 import SubstraitCheck
-import SubstraitLean.DuckDBBoxes
+import Sverify.DuckDB.Boxes
 
 /-! `substrait-check`, over this repository's engine profiles. The modes are
 `SubstraitCheck.lean`'s. -/

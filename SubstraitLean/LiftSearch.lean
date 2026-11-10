@@ -1,6 +1,6 @@
 import Lean
 import SubstraitLean.Parse
-import SubstraitLean.DuckDBSQL
+import Sverify.DuckDB.SQL
 import SubstraitLean.LoweringSearch
 import SubstraitLean.LiftHint
 
@@ -8,7 +8,7 @@ import SubstraitLean.LiftHint
 # The lift generator (#268)
 
 `generate_lift L : s using [lemmas]` builds, at build time, the table of what
-DuckDB's SQL functions (`DuckFn`, `SubstraitLean/DuckDBSQL.lean`) lift to under
+DuckDB's SQL functions (`DuckFn`, `engines/duckdb/Sverify/DuckDB/SQL.lean`) lift to under
 the semantics `s`: for each, a Substrait expression over its arguments that
 the parser (`Parse.parseExpr`) reads as the same function. It is the lowering
 search (`SubstraitLean/LoweringSearch.lean`) run backwards.

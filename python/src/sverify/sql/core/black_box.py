@@ -1,5 +1,5 @@
 """Black boxes (#325): the functions of `sverify.black_box`'s table, which the
-checker treats as opaque (`SubstraitLean/DuckDBBoxes.lean`).
+checker treats as opaque (`engines/duckdb/Sverify/DuckDB/Boxes.lean`).
 
 `mkCall` reads a call of a scalar black box as `Un`/`Bin` `black_box` with its
 name in `param`; its SQL is the dialect's (`Dialect.black_box`), which only

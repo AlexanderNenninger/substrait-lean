@@ -1,5 +1,5 @@
 """The lift's black boxes (#325): DuckDB functions the checker treats as
-opaque, from the table of `sverify.black_box` (`SubstraitLean/DuckDBBoxes.lean`).
+opaque, from the table of `sverify.black_box` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`).
 
 A call of a black box lifts to a call of the extension function of its name,
 under sverify's URN (`black_box.URN`), with its row's argument and result

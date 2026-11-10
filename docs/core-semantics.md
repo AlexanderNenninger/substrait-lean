@@ -152,7 +152,7 @@ Three kinds of semantics, each with one job.
 
 Black boxes are rows of a black-box catalogue (`Boxes`,
 `core/Sverify/Core/BlackBox.lean`) that engine packages supply: DuckDB's is
-`Boxes.duckdb` (`SubstraitLean/DuckDBBoxes.lean`). The core holds the
+`Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`). The core holds the
 mechanism and no rows, and the reference is parametric in the catalogue
 (`Rel.Allowed B cat`). A proof uses only a row's laws, and they hold by
 construction: the model's value is the row's function where that keeps the

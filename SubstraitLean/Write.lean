@@ -1,6 +1,6 @@
 import SubstraitLean.Parse
 import Sverify.Analysis.Weighted
-import SubstraitLean.DuckDBBoxes
+import Sverify.DuckDB.Boxes
 
 /-!
 # Writing `Rel` back out as Substrait JSON
@@ -23,7 +23,7 @@ open Lean (Json toJson)
 
 Every function the writer can emit has a fixed anchor, from its area's table
 in `core/Sverify/Core/Functions.lean` (black boxes from the black-box
-catalogue in scope, DuckDB's in `SubstraitLean/DuckDBBoxes.lean`). Anchors below 100 predate the areas' ranges
+catalogue in scope, DuckDB's in `engines/duckdb/Sverify/DuckDB/Boxes.lean`). Anchors below 100 predate the areas' ranges
 and stay as they are. The checks below reject a duplicate anchor or name and
 an anchor outside its area's range; `Functions.lean` checks its rows.
 

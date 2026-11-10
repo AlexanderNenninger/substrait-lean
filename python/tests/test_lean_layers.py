@@ -1,5 +1,5 @@
 """The Lean packages' layers (#1189): the core, the analysis, engines-common,
-and the engines' own packages (Polars's, Spark's).
+and the engines' own packages (DuckDB's, Polars's, Spark's).
 
 Each layer is a Lake package of its own, rooted at a prefix of its own under
 the `Sverify` umbrella, and imports only the layers below it. The standalone
@@ -27,6 +27,7 @@ LAYERS = {
     "engines": ("sverify-engines", "Sverify.Engines", ["core", "analysis"]),
     "engines/polars": ("sverify-polars", "Sverify.Polars", ["core", "analysis", "engines"]),
     "engines/spark": ("sverify-spark", "Sverify.Spark", ["core", "analysis", "engines"]),
+    "engines/duckdb": ("sverify-duckdb", "Sverify.DuckDB", ["core", "analysis", "engines"]),
 }
 
 

@@ -20,7 +20,7 @@ and a bound on its rows (`Rel.maxRows`). `Knowledge` holds the four, and
   order (`Rel.OrderAllowed`, D24); `Rel.analyse_sound` of `Rel.eval`.
 * The consumers, stated on one hypothesis: `Knowledge.contract_sound`,
   `Knowledge.contract_sound_all`, `Knowledge.mayIssues_sound`,
-  `Knowledge.guardFree_sound`, `Knowledge.duckdb_sound` (`DuckDBProfile.lean`),
+  `Knowledge.guardFree_sound`, `Knowledge.duckdb_sound` (`DuckDB/Profile.lean`),
   `Knowledge.allowed_perm_eval`, `Knowledge.refines_of_perm` and
   `Knowledge.eval_sharded`.
 

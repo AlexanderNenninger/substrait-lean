@@ -128,6 +128,10 @@ exclude = ["build", "src/sverify/_bin"]
 "../engines/spark/lake-manifest.json" = "lean/engines/spark/lake-manifest.json"
 "../engines/spark/lean-toolchain" = "lean/engines/spark/lean-toolchain"
 "../engines/spark/Sverify" = "lean/engines/spark/Sverify"
+"../engines/duckdb/lakefile.toml" = "lean/engines/duckdb/lakefile.toml"
+"../engines/duckdb/lake-manifest.json" = "lean/engines/duckdb/lake-manifest.json"
+"../engines/duckdb/lean-toolchain" = "lean/engines/duckdb/lean-toolchain"
+"../engines/duckdb/Sverify" = "lean/engines/duckdb/Sverify"
 
 [dependency-groups]
 dev = [
@@ -214,7 +218,7 @@ cwd = "${POE_ROOT}/.."
 [tool.poe.tasks.regen-lowering]
 help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
 shell = """
-lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLean.LoweringDuckDB.Lemmas \
+lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache Sverify.DuckDB.LoweringLemmas \
   SubstraitLean.LoweringDuckDB.Schemas \
   && lake lean scripts/RegenLowering.lean -- -M 6144
 """

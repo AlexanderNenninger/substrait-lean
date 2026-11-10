@@ -65,7 +65,7 @@ _KNOWN = {"date_part", "datepart", "prefix", "suffix"}
 class Profile:
     """What DuckDB SQL means, as data the lift reads (#231: "keep it
     simple"). The Lean side is `Profile.reference` (`core/Sverify/Core/Profile.lean`)
-    and `Profile.duckdb` (`SubstraitLean/DuckDBProfile.lean`).
+    and `Profile.duckdb` (`engines/duckdb/Sverify/DuckDB/Profile.lean`).
 
     The first group of fields is how the SQL text reads, which is DuckDB's
     in both profiles; the second is what the functions do.
