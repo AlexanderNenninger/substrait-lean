@@ -20,11 +20,11 @@ inductive Value where
 * Equality is structural (`DecidableEq`, written by hand: `deriving` does not
   handle the nested inductive). Two lists are equal when they have the same
   length and equal elements, NULL elements equal to NULL. That is what
-  DataFusion 51 and DuckDB give for `=`, `GROUP BY` and `DISTINCT` on lists
-  (`[1, NULL] = [1, NULL]` is TRUE in both).
+  DuckDB gives for `=`, `GROUP BY` and `DISTINCT` on lists
+  (`[1, NULL] = [1, NULL]` is TRUE).
 * Order (`Value.le`, used by `ORDER BY`, windows and `MIN`/`MAX`): lists
   compare lexicographically, a prefix first, NULL elements after every other
-  value. Both engines sort `[] < [1] < [1, 2] < [1, NULL] < [NULL]`. NULL moves
+  value. DuckDB sorts `[] < [1] < [1, 2] < [1, NULL] < [NULL]`. NULL moves
   to the end of the type order (booleans < integers < strings < lists < NULL);
   only nested NULLs see it, since sort keys place top-level NULLs by
   `NULLS FIRST/LAST` before comparing values, and `MIN`/`MAX` skip them.
@@ -33,8 +33,7 @@ inductive Value where
 * Comparison operators `<`, `<=` on lists are three-valued, and
   `MIN`/`MAX` of lists order them as `ORDER BY` does
   ([reference-semantics.md](reference-semantics.md#nested-lists-and-structs)).
-  Engines disagree here: DataFusion says `[1, NULL] < [1, 2]` and
-  `[NULL] < [1]` are TRUE, DuckDB FALSE.
+  DuckDB says `[1, NULL] < [1, 2]` and `[NULL] < [1]` are FALSE.
 
 ## Abstract values
 
@@ -78,9 +77,9 @@ functions (`list_prepend`, `list_concat`, `list_contains`,
 ## Collect
 
 `AggFn.collect`: the list of a group's non-NULL values, NULL when there are
-none. That is Ibis's `collect()` on DataFusion
-(`ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`; `ARRAY_AGG` of no rows is NULL
-in DataFusion and DuckDB). `include_null=True` and `distinct=True` are
+none. That is Ibis's `collect()`,
+`ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)` (`ARRAY_AGG` of no rows is NULL
+in DuckDB). `include_null=True` and `distinct=True` are
 refused.
 
 Order. A list built from rows is only determined when the aggregate
@@ -115,7 +114,7 @@ so the plan carries it as an `ExtensionSingleRel` with our own detail:
 `Rel.unnest (input : Rel) (col : Nat)`: each input row gives one output row
 per element of its list in column `col`, with the element in that column's
 place (Ibis `t.unnest("xs")` keeps the column where it was); an empty list or
-NULL gives no rows. That is `UNNEST` in DataFusion and DuckDB. Polars'
+NULL gives no rows. That is `UNNEST` in DuckDB. Polars'
 `explode` gives one row of NULL for both, so the Polars engine filters those
 rows first. `keep_empty=True` and `offset=` are refused.
 
@@ -124,7 +123,7 @@ It is a new `Rel` constructor, so every analysis gets a case:
 * arity: the input's; well-formed: `col` in range (and a list, in the parser);
 * keys and facts: none (an element can repeat); abstract values: the input's,
   with `col` an element of its list (`EnvMem.set_elem`);
-* runtime errors: none of its own. DataFusion pushes filters on the other
+* runtime errors: none of its own. An engine may push filters on the other
   columns below an `UNNEST`, onto rows whose lists may be empty, so
   `Rel.loose` of an unnest is the unnested loose input together with the
   loose input itself;
@@ -134,18 +133,16 @@ It is a new `Rel` constructor, so every analysis gets a case:
   `Rel.shardSplit_sound` could extend to it (weights copy to each element's
   row).
 
-Ibis's DataFusion compiler has no rule for `TableUnnest`, so the differential
-test compares with DuckDB running Ibis's DuckDB SQL.
+The differential test compares with DuckDB running Ibis's DuckDB SQL.
 
 ## Field and element access
 
 The rules follow Substrait's spec and the backends (DuckDB,
-Polars, Spark, DataFusion):
+Polars, Spark):
 
 * A struct field is `UnFn.structField i`, Substrait's `StructField`
   reference segment. A struct is the list of its fields, so this is element
-  `i` of it. A NULL struct's fields are NULL (DataFusion 51 gives a
-  non-NULL value there, see Engines).
+  `i` of it. A NULL struct's fields are NULL.
 * A list element is `UnFn.listElement off`, Substrait's `ListElement`
   segment. It is zero-based, a negative offset counts from the end (`-1` is
   the last element), and it is NULL out of range in either direction, without
@@ -215,11 +212,8 @@ Snowflake and Spark refuse them; running them there is tracked in
 Polars also runs struct fields, list elements, `cardinality` and the
 higher-order functions (the body on `pl.element()` in `list.eval`; a body's
 errors are checked over every element). The SQL
-dialects refuse struct columns and struct fields. DataFusion 51's consumer
-reads a reference into an expression's value as a reference into the row,
-which gives a wrong column, its `cardinality([])` is NULL, and it has no
-lambdas. The SQL
-dialects refuse lambdas too, DuckDB's included.
+dialects refuse struct columns and struct fields. They refuse lambdas too,
+DuckDB's included.
 
 ## Types in plans
 
