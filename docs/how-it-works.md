@@ -53,7 +53,7 @@ Substrait works.
 
 `substrait-check plan.json` reads a Substrait plan in protobuf-JSON form, as
 produced by `sverify`'s Ibis producer or its SQL lift, or by another
-Substrait producer such as DataFusion's (Substrait 0.77). It then:
+Substrait producer (Substrait 0.77). It then:
 
 1. translates it into the formal `Rel` model, or rejects anything outside the fragment (exit 1);
 2. decides `Rel.WF` with `checkWF`, which is proved equivalent (`checkWF_iff`), and
@@ -92,8 +92,7 @@ proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
 `df_*.json` fixtures are real plans that DataFusion's Substrait producer wrote
 for the Ibis pipelines in `sverify_dev/examples.py`, kept as static golden
-inputs since sverify stopped planning SQL with DataFusion
-([`tests/fixtures/README.md`](../tests/fixtures/README.md)). The others are
+inputs ([`tests/fixtures/README.md`](../tests/fixtures/README.md)). The others are
 hand-written.
 
 ## How incremental views work
@@ -233,8 +232,7 @@ Ibis expressions become Substrait directly, without SQL:
 writes the functions and encodings the Lean parser reads, and each operation
 means what [the Ibis frontend](reference-semantics.md#the-ibis-frontend) says, with Ibis's
 type promotions written as explicit casts. That makes plans typed: `qty >
-amount` compares as doubles, where DataFusion's producer (from its unanalysed
-plan) once left an integer next to a double's code. Upstream's mistakes are fixed
+amount` compares as doubles. Upstream's mistakes are fixed
 (integer `/` divided integers, `where=` filters were dropped, sorts were always
 `NULLS FIRST`, promotions could cast a double down to an integer, timestamp
 literals were read in local time), and anything outside the model raises
@@ -250,22 +248,18 @@ spliced in, with reads of the alias replaced by its plan.
 `INTERSECT ALL` and `EXCEPT ALL` number the copies of each row
 (`ROW_NUMBER() OVER (PARTITION BY` every column`)`) and semi- or anti-join on the
 rows and their numbers, which keeps min(m, n) or max(m − n, 0) copies: SQL's
-meaning, as DuckDB computes it (DataFusion 51's own SQL plans them as a plain
-semi and anti join, keeping or dropping every copy). Ibis writes a `LIMIT`
+meaning, as DuckDB computes it. Ibis writes a `LIMIT`
 that is not an integer as a subquery over the table, which is refused.
 
 Subqueries: a correlated `[NOT] EXISTS` in a filter becomes a semi (anti) join
-on the subquery's condition, as DataFusion decorrelates it; other correlated
+on the subquery's condition; other correlated
 subqueries are refused. Uncorrelated ones go into the plan as Substrait
 subquery expressions, which the checker lifts into joins (`liftSubquery` in
 `SubstraitLean/Parse.lean`): a scalar subquery is a left join on `TRUE`, and
-because DataFusion fails when one returns several rows, the checker accepts it
-only where `Rel.keys` proves at most one row (an aggregate without groups,
+the checker accepts it only where `Rel.keys` proves at most one row (an aggregate without groups,
 `LIMIT 1`); `x IN (subquery)` outside a filter's conjuncts is a left join with
 the subquery's distinct values plus a count of its `NULL`s, which gives SQL's
-three-valued answer; `EXISTS` compares a `COUNT(*)` with 0. (DataFusion 51's
-own SQL cannot run `IN` or `EXISTS` subqueries in a projection, and its
-`NOT IN (subquery)` ignores the subquery's `NULL`s.)
+three-valued answer; `EXISTS` compares a `COUNT(*)` with 0.
 
 ### The SQL lift
 
@@ -461,8 +455,7 @@ group (checked at run time: the job raises if it does not …)` (or
   0001-01-01 to 9999-12-31.
 * `+`, `-`, `*` and negation leaving their declared width (64 bits, or narrower
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
-  reference raises, while DataFusion wraps around silently, which an error
-  allows.
+  reference raises.
 * An integer `SUM` leaving 64 bits, or a decimal `SUM` leaving its precision
   (`Measure.sumOk`), is ruled out where the plan bounds a group's
   rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
@@ -488,8 +481,8 @@ group (checked at run time: the job raises if it does not …)` (or
 * `Rel.mayIssues_sound`: every issue that can happen on any input is reported. Guards
   are understood where every engine respects them: in a `CASE` branch (and so
   `NULLIF(b, 0)`), or in a filter below a *projection*. They are not respected in the
-  same `AND`, nor in an earlier *filter*: an engine may merge filters (`Rel.loose`;
-  DataFusion does), so `t.filter(n != 0).filter(q % n > 1)` can fail.
+  same `AND`, nor in an earlier *filter*: an engine may merge filters (`Rel.loose`),
+  so `t.filter(n != 0).filter(q % n > 1)` can fail.
 * `FloatCode.floor_mono`, `round_mono`, `toInt?_mono`, `toInt?_of_range`
   ([Rounding.lean](../core/Sverify/Core/Rounding.lean)): `FLOOR`, `CEIL`, `ROUND` and the cast
   to `BIGINT` are exact on double codes and monotone, so `amount ∈ [0, 100]` proves
