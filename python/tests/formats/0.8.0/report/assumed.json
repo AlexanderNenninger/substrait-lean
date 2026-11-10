@@ -1,0 +1,358 @@
+{
+  "assumed": [
+    {
+      "kind": "informational",
+      "level": "note",
+      "message": {
+        "text": "SUM overflow: sum(total) (the job also checks it while it runs and raises if it happens; a bound on the column and on the rows of a group rules it out)"
+      },
+      "properties": {
+        "assumption": "SUM of total fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)",
+        "column": "total",
+        "constant": false,
+        "hint": null,
+        "needs": [],
+        "shown": "sum(total)",
+        "under_and_or": false
+      },
+      "ruleId": "sum_overflow"
+    }
+  ],
+  "depends": [
+    {
+      "behaviours": [
+        "ERROR"
+      ],
+      "group": "agg.isum",
+      "option": "overflow",
+      "stated": false
+    },
+    {
+      "behaviours": [
+        "NULL"
+      ],
+      "group": "agg.isum",
+      "option": "empty_group_aggregates",
+      "stated": false
+    }
+  ],
+  "deterministic": true,
+  "dialect": "ibis",
+  "engines": {
+    "duckdb": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "tested",
+      "facts": [
+        "duckdb-R6",
+        "duckdb-sum-double",
+        "duckdb-avg-int"
+      ],
+      "guard_free_theorem": null,
+      "issues": [
+        241
+      ],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [],
+      "rows": 2,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [],
+      "transfer": {
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "duckdb-R6"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "agg.isum",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "duckdb-sum-double",
+                "duckdb-avg-int"
+              ],
+              "from": [
+                "ZERO"
+              ],
+              "group": "agg.isum",
+              "option": "empty_group_aggregates",
+              "preferences": [],
+              "to": [
+                "NULL"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [],
+          "ok": true
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "tested",
+      "version": "2.0.0",
+      "without_row": []
+    },
+    "polars": {
+      "class": "shim",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "proved",
+      "facts": [
+        "polars-sum-int"
+      ],
+      "guard_free_theorem": "Rel.polars_sound",
+      "issues": [],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "polars-sum-int"
+      ],
+      "rows": 2,
+      "shims": [
+        {
+          "group": "agg.isum",
+          "option": "empty_group_aggregates",
+          "shim": "sum_empty_null"
+        }
+      ],
+      "tested_because": [],
+      "theorems": [
+        "Polars.sum_leaves_i64",
+        "Shim.sum_empty_null"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [
+            {
+              "facts": [
+                "polars-sum-int"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "agg.isum",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            },
+            {
+              "facts": [
+                "polars-sum-int"
+              ],
+              "from": [
+                "NULL"
+              ],
+              "group": "agg.isum",
+              "option": "empty_group_aggregates",
+              "preferences": [],
+              "to": [
+                "ZERO"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [
+            {
+              "facts": [
+                "polars-sum-int"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "agg.isum",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            },
+            {
+              "facts": [
+                "polars-sum-int"
+              ],
+              "from": [
+                "NULL"
+              ],
+              "group": "agg.isum",
+              "option": "empty_group_aggregates",
+              "preferences": [],
+              "to": [
+                "ZERO"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [
+            {
+              "facts": [
+                "polars-sum-int"
+              ],
+              "from": [
+                "NULL"
+              ],
+              "group": "agg.isum",
+              "option": "empty_group_aggregates",
+              "preferences": [],
+              "to": [
+                "ZERO"
+              ]
+            }
+          ],
+          "ok": false
+        }
+      },
+      "translated_evidence": "proved",
+      "version": "2.1.0",
+      "without_row": []
+    },
+    "spark": {
+      "class": "shim",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "tested",
+      "facts": [
+        "spark-sum-int",
+        "spark-exec-parallel",
+        "spark-sum-double"
+      ],
+      "guard_free_theorem": null,
+      "issues": [
+        271
+      ],
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "spark-sum-int",
+        "spark-exec-parallel"
+      ],
+      "rows": 2,
+      "shims": [
+        {
+          "group": "agg.isum",
+          "option": "overflow",
+          "shim": "int_sum_decimal"
+        }
+      ],
+      "tested_because": [],
+      "theorems": [
+        "Shim.sum_empty_null"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [],
+          "ok": true
+        },
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "spark-sum-int",
+                "spark-exec-parallel"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "agg.isum",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            },
+            {
+              "facts": [
+                "spark-sum-int",
+                "spark-sum-double"
+              ],
+              "from": [
+                "ZERO"
+              ],
+              "group": "agg.isum",
+              "option": "empty_group_aggregates",
+              "preferences": [],
+              "to": [
+                "NULL"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "tested",
+      "version": "4.3.0",
+      "without_row": []
+    }
+  },
+  "ensures": [],
+  "equivalence": {
+    "components": {
+      "decimals": "exact",
+      "elements": "sequence",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "exact"
+    },
+    "text": "equivalent(floats=plan)"
+  },
+  "facts": {
+    "s": "any integer or NULL"
+  },
+  "floats_on": {},
+  "format": 2,
+  "implied": {},
+  "inferred": {},
+  "issues": [],
+  "needs": [],
+  "not_null": [],
+  "on_inferred": "error",
+  "output": {
+    "s": "int64"
+  },
+  "params": [],
+  "proved": true,
+  "requires": {},
+  "rewrites": [],
+  "routes": {},
+  "rows": 1,
+  "semantics": "reference",
+  "sorted": false,
+  "sverify": "0.8.0",
+  "ties": {
+    "needs": [],
+    "places": []
+  },
+  "transfer": null,
+  "verdict": "proved"
+}

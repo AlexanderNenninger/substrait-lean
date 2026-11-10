@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -1657,7 +1657,7 @@ wheels = [
 
 [[package]]
 name = "sverify"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "../python" }
 dependencies = [
     { name = "duckdb" },
@@ -1665,28 +1665,34 @@ dependencies = [
     { name = "pyarrow" },
     { name = "sqlglot" },
     { name = "substrait" },
+    { name = "sverify-duckdb", extra = ["run"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "datafusion", marker = "extra == 'datafusion'", specifier = "==51.0.0" },
+    { name = "azure-identity", marker = "extra == 'secrets-azure'", specifier = ">=1.17" },
+    { name = "azure-keyvault-secrets", marker = "extra == 'secrets-azure'", specifier = ">=4.8" },
+    { name = "boto3", marker = "extra == 'secrets-aws'", specifier = ">=1.35" },
     { name = "deltalake", marker = "extra == 'delta'", specifier = ">=1.6.6" },
     { name = "duckdb", specifier = ">=2.0.0" },
+    { name = "google-cloud-secret-manager", marker = "extra == 'secrets-gcp'", specifier = ">=2.20" },
     { name = "hypothesis", marker = "extra == 'testing'", specifier = ">=6.170.14" },
     { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
-    { name = "numpy", marker = "extra == 'polars'", specifier = ">=2.5.4" },
-    { name = "polars", marker = "extra == 'polars'", specifier = ">=2.1.0" },
+    { name = "keyring", marker = "extra == 'secrets-keychain'", specifier = ">=25" },
+    { name = "openlineage-python", marker = "extra == 'openlineage'", specifier = ">=1.55.0,<2" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
-    { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
-    { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
+    { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
     { name = "sqlglot", specifier = "~=30.17.0" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs"], marker = "extra == 'all'" },
+    { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
+    { name = "sverify-duckdb", extras = ["run"], editable = "../engines/duckdb" },
+    { name = "sverify-polars", extras = ["run"], marker = "extra == 'polars'", editable = "../engines/polars" },
+    { name = "sverify-spark", extras = ["run"], marker = "extra == 'spark'", editable = "../engines/spark" },
 ]
-provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "all"]
+provides-extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "secrets-aws", "secrets-gcp", "secrets-azure", "secrets-keychain", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1700,6 +1706,7 @@ dev = [
     { name = "pyiceberg", extras = ["sql-sqlite"], specifier = ">=0.12.0" },
     { name = "pyrefly", specifier = ">=1.4.0" },
     { name = "pytest", specifier = ">=9.2.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.17.3" },
     { name = "snowflake-connector-python", specifier = "<5" },
@@ -1710,7 +1717,7 @@ docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 
 [[package]]
 name = "sverify-dbt"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
@@ -1742,6 +1749,26 @@ dev = [
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.3" },
 ]
+
+[[package]]
+name = "sverify-duckdb"
+version = "0.8.0"
+source = { editable = "../engines/duckdb" }
+dependencies = [
+    { name = "sverify" },
+]
+
+[package.optional-dependencies]
+run = [
+    { name = "duckdb" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb", marker = "extra == 'run'", specifier = ">=2.0.0" },
+    { name = "sverify", editable = "../python" },
+]
+provides-extras = ["run"]
 
 [[package]]
 name = "tabulate"

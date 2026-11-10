@@ -1,6 +1,6 @@
 [project]
 name = "sverify-polars"
-version = "0.7.1"
+version = "0.8.0"
 description = "Polars as an engine of sverify: plans verified in Lean, run as Polars lazy frames"
 readme = "README.md"
 license = "MPL-2.0"
@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 dependencies = [
     # Released with sverify, at its version (#1189;
     # .claude/skills/release-sverify/SKILL.md bumps both).
-    "sverify==0.7.1",
+    "sverify==0.8.0",
 ]
 
 [project.optional-dependencies]

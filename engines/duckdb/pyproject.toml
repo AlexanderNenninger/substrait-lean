@@ -1,6 +1,6 @@
 [project]
 name = "sverify-duckdb"
-version = "0.7.1"
+version = "0.8.0"
 description = "DuckDB as an engine of sverify: plans verified in Lean, written as DuckDB SQL"
 readme = "README.md"
 license = "MPL-2.0"
@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 dependencies = [
     # Released with sverify, at its version (#1189;
     # .claude/skills/release-sverify/SKILL.md bumps both).
-    "sverify==0.7.1",
+    "sverify==0.8.0",
 ]
 
 [project.optional-dependencies]
