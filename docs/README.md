@@ -65,6 +65,7 @@ release on PyPI.
 | [verifying.md](verifying.md) | Verifying under the reference or under an engine's profile, the routes each takes, and what the report says | Design |
 | [report.md](report.md) | What a report holds, and how a verdict traces to what supports it | Design |
 | [rejections.md](rejections.md) | Where the reference raises, the precondition that rules each case out, and how to read a refusal | Design |
+| [engines.md](engines.md) | The engines, how to choose one, and what to install | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers, what is proved | Design |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
