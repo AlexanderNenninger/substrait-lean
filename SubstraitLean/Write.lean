@@ -1,4 +1,4 @@
-import SubstraitLean.Parse
+import Sverify.Frontend.Parse
 import Sverify.Analysis.Weighted
 import Sverify.DuckDB.Boxes
 

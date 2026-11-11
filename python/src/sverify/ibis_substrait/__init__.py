@@ -10,7 +10,7 @@ field offsets threaded through join chains, follow upstream's
 
 * ported from Ibis 9 to the Ibis version `sverify` pins;
 * writes plain protobuf JSON with the functions and encodings
-  `SubstraitLean/Parse.lean` reads, instead of resolving signatures from
+  `frontend/Sverify/Frontend/Parse.lean` reads, instead of resolving signatures from
   Substrait's extension YAMLs;
 * every operation means what Ibis's DataFusion SQL compiler makes of it
   (`ibis/backends/sql/compilers/{base,datafusion}.py`, plus `sverify.engine`'s

@@ -54,7 +54,7 @@ def test_the_scan_finds_refusals():
 
 
 def test_no_lean_parser_refusal_cites_datafusion():
-    text = (ROOT / "SubstraitLean" / "Parse.lean").read_text()
+    text = (ROOT / "frontend" / "Sverify" / "Frontend" / "Parse.lean").read_text()
     # A `throw` and the string literal after it, which may continue over
     # lines with a trailing backslash.
     throws = re.findall(r'throw s?!?"((?:[^"\\]|\\.)*)"', text)

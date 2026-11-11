@@ -260,7 +260,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: checker-bin
-          key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', '**/*.lean') }}
+          key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'frontend/lakefile.toml', 'frontend/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', '**/*.lean') }}
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup-lean
         with:
@@ -309,7 +309,7 @@ jobs:
           BASE: ${{ steps.base.outputs.sha }}
         run: |
           git worktree add -q /tmp/main "$BASE"
-          for d in .lake core/.lake analysis/.lake engines/.lake engines/polars/.lake engines/spark/.lake engines/duckdb/.lake; do
+          for d in .lake core/.lake analysis/.lake frontend/.lake engines/.lake engines/polars/.lake engines/spark/.lake engines/duckdb/.lake; do
             if [ -d "$d" ]; then mkdir -p "/tmp/main/$(dirname "$d")" && cp -a "$d" "/tmp/main/$d"; fi
           done
           (cd /tmp/main && lake build substrait-check)
@@ -336,7 +336,8 @@ jobs:
       - run: python3 scripts/lean_timings.py sysroot "$RUNNER_TEMP/lean-sysroot"
       # The layer guards (#1189, #1162): each package builds on the layers
       # below it alone. The core imports no analysis and no engine, the
-      # analysis no engine, engines-common no single engine, an engine's package (DuckDB,
+      # analysis no engine, the frontend neither engines-common nor an engine,
+      # engines-common no single engine, an engine's package (DuckDB,
       # Polars, Spark) no other engine. In the root
       # workspace such an import would resolve. The root build below reuses
       # each package's .lake.
@@ -348,6 +349,12 @@ jobs:
           LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
       - run: lake build --wfail
         working-directory: analysis
+        env:
+          LAKE_OVERRIDE_LEAN: "true"
+          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
+          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+      - run: lake build --wfail
+        working-directory: frontend
         env:
           LAKE_OVERRIDE_LEAN: "true"
           LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
@@ -380,8 +387,8 @@ jobs:
       # black-box catalogue: they declare no `Boxes.Ambient` instance. Only an
       # engine package does, as a `scoped instance` (#1189).
       - run: |
-          if git grep -nE 'instance[^:]*:[^=]*Boxes\.Ambient' -- core analysis engines/Sverify; then
-            echo "a Boxes.Ambient instance in the core, the analysis or engines-common" >&2
+          if git grep -nE 'instance[^:]*:[^=]*Boxes\.Ambient' -- core analysis frontend engines/Sverify; then
+            echo "a Boxes.Ambient instance in the core, the analysis, the frontend or engines-common" >&2
             exit 1
           fi
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3

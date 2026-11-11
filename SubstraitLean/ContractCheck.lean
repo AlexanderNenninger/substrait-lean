@@ -3,7 +3,7 @@ import Sverify.Analysis.Safety
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
 import SubstraitLean.Check
-import SubstraitLean.Parse
+import Sverify.Frontend.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Semantic
 import SubstraitLean.Write

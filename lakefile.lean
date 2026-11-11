@@ -13,28 +13,25 @@ package «substrait-lean»
 
 require «sverify-core» from "core"
 require «sverify-analysis» from "analysis"
+require «sverify-frontend» from "frontend"
 require «sverify-engines» from "engines"
 require «sverify-polars» from "engines/polars"
 require «sverify-spark» from "engines/spark"
-/-- DuckDB's package holds the generated lowering (`Sverify.DuckDB.LoweringOn`),
-and reads `check_generated` from the options it is required with. -/
+/-- DuckDB's package holds the generated modules (`Sverify.DuckDB.LoweringOn`,
+`Sverify.DuckDB.Lift`), and reads `check_generated` from the options it is
+required with. -/
 require «sverify-duckdb» from "engines/duckdb" with
   NameMap.empty.insert `check_generated (if checkGenerated then "true" else "false")
 
 @[default_target]
 lean_lib SubstraitLean
 
-/-- The generated lift, which `check_generated` applies to (the generated
-lowering is DuckDB's package's). Declared after
-`SubstraitLean`: within a package, Lake gives a module to the last library
-that contains it. Across packages a library claims every module under its
-root's prefix, which is why each package has a root of its own (`Sverify.Core`,
-`Sverify.Analysis`, `Sverify.Engines`, `Sverify.DuckDB`, `Sverify.Polars`, `Sverify.Spark`)
-and none is rooted at `Sverify` alone. -/
-lean_lib SubstraitLeanGenerated where
-  roots := #[]
-  globs := #[.submodules `SubstraitLean.LiftDuckDB.Duckdb, .submodules `SubstraitLean.LiftDuckDB.Reference]
-  leanOptions := #[⟨`weak.substrait.checkGenerated, checkGenerated⟩]
+/- Across packages a library claims every module under its root's prefix,
+which is why each package has a root of its own (`Sverify.Core`,
+`Sverify.Analysis`, `Sverify.Frontend`, `Sverify.Engines`, `Sverify.DuckDB`,
+`Sverify.Polars`, `Sverify.Spark`) and none is rooted at `Sverify` alone. The
+generated modules (the lowering and the lift) are DuckDB's package's, which
+applies `check_generated` to them. -/
 
 /-- The checker's modes as a library, `Substrait.Checker.checkerMain`, so a
 package with an engine profile of its own can build a checker over

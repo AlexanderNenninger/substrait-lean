@@ -27,7 +27,7 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   that module's `CASES`, and put its refusals in the same module's `REFUSED`,
   `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
   listed in `coverage_cases.AREAS`.
-- **Parse** (`SubstraitLean/Parse.lean`): a row marked `reads := .plain`
+- **Parse** (`frontend/Sverify/Frontend/Parse.lean`): a row marked `reads := .plain`
   (`.float` for doubles) is read as its constructor with nothing more.
   Otherwise the function's arm in its area's `mkCoreCall?`, `mkStringCall?`,
   `mkTemporalCall?` or `mkNestedCall?`, before its last arm, which reads the

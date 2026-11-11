@@ -419,6 +419,7 @@ def stale_checker(path: Path | None = None) -> str | None:
             *(root / "SubstraitLean").rglob("*.lean"),
             *(root / "core").rglob("*.lean"),
             *(root / "analysis").rglob("*.lean"),
+            *(root / "frontend").rglob("*.lean"),
             *(root / "engines").rglob("*.lean"),
         ]
         built = path.stat().st_mtime

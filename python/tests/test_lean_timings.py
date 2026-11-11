@@ -77,6 +77,6 @@ def test_the_budget_names_existing_modules(timings):
     for module in budget["modules"]:
         path = module.replace(".", "/") + ".lean"
         engines = ("engines/duckdb", "engines/polars", "engines/spark")
-        packages = ("core", "analysis", "engines", *engines)
+        packages = ("core", "analysis", "frontend", "engines", *engines)
         roots = (ROOT, *(ROOT / d for d in packages))
         assert any((root / path).is_file() for root in roots), module

@@ -165,67 +165,67 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.LiftCache": {
+  "Sverify.DuckDB.LiftCache": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.LiftDuckDB": {
+  "Sverify.DuckDB.Lift": {
    "cpu_s": 30,
    "rss_mb": 2638
   },
-  "SubstraitLean.LiftDuckDB.Duckdb.Aggregates": {
+  "Sverify.DuckDB.Lift.Duckdb.Aggregates": {
    "cpu_s": 30,
    "rss_mb": 2586
   },
-  "SubstraitLean.LiftDuckDB.Duckdb.Arith": {
+  "Sverify.DuckDB.Lift.Duckdb.Arith": {
    "cpu_s": 264,
    "rss_mb": 4132
   },
-  "SubstraitLean.LiftDuckDB.Duckdb.Casts": {
+  "Sverify.DuckDB.Lift.Duckdb.Casts": {
    "cpu_s": 30,
    "rss_mb": 2638
   },
-  "SubstraitLean.LiftDuckDB.Duckdb.Compare": {
+  "Sverify.DuckDB.Lift.Duckdb.Compare": {
    "cpu_s": 187,
    "rss_mb": 3224
   },
-  "SubstraitLean.LiftDuckDB.Duckdb.Math": {
+  "Sverify.DuckDB.Lift.Duckdb.Math": {
    "cpu_s": 98,
    "rss_mb": 3024
   },
-  "SubstraitLean.LiftDuckDB.Duckdb.Table": {
+  "Sverify.DuckDB.Lift.Duckdb.Table": {
    "cpu_s": 30,
    "rss_mb": 2638
   },
-  "SubstraitLean.LiftDuckDB.Reference.Aggregates": {
+  "Sverify.DuckDB.Lift.Reference.Aggregates": {
    "cpu_s": 30,
    "rss_mb": 2610
   },
-  "SubstraitLean.LiftDuckDB.Reference.Arith": {
+  "Sverify.DuckDB.Lift.Reference.Arith": {
    "cpu_s": 30,
    "rss_mb": 2640
   },
-  "SubstraitLean.LiftDuckDB.Reference.Casts": {
+  "Sverify.DuckDB.Lift.Reference.Casts": {
    "cpu_s": 30,
    "rss_mb": 2638
   },
-  "SubstraitLean.LiftDuckDB.Reference.Compare": {
+  "Sverify.DuckDB.Lift.Reference.Compare": {
    "cpu_s": 59,
    "rss_mb": 2919
   },
-  "SubstraitLean.LiftDuckDB.Reference.Math": {
+  "Sverify.DuckDB.Lift.Reference.Math": {
    "cpu_s": 30,
    "rss_mb": 2662
   },
-  "SubstraitLean.LiftDuckDB.Reference.Table": {
+  "Sverify.DuckDB.Lift.Reference.Table": {
    "cpu_s": 30,
    "rss_mb": 2620
   },
-  "SubstraitLean.LiftHint": {
+  "Sverify.DuckDB.LiftHint": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.LiftSearch": {
+  "Sverify.DuckDB.LiftSearch": {
    "cpu_s": 30,
    "rss_mb": 2736
   },
@@ -321,7 +321,7 @@
    "cpu_s": 30,
    "rss_mb": 3482
   },
-  "SubstraitLean.Parse": {
+  "Sverify.Frontend.Parse": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

@@ -3,13 +3,13 @@ import Sverify.DuckDB.SQL
 /-!
 # Known lifts: the generator's cache (#268)
 
-A hint tells `generate_lift` (`SubstraitLean/LiftSearch.lean`) which template
+A hint tells `generate_lift` (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`) which template
 to try first for one DuckDB function under one semantics. It is only a hint:
 the template is read by the parser, tested on the samples and proved by the
 kernel like any candidate, and if it no longer proves, the search runs as
 without it. So a stale hint can make a build slower, never an entry wrong.
 
-`SubstraitLean/LiftCache.lean` holds the hints. `substrait-check --lift-cache`
+`engines/duckdb/Sverify/DuckDB/LiftCache.lean` holds the hints. `substrait-check --lift-cache`
 prints a new one from the tables a build found: each entry's template, where
 it came from (`searched`, or `seeded: …` for one written by hand where the
 search does not reach), and, for a function without an entry, why its first
