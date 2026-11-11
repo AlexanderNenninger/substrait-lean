@@ -1,0 +1,79 @@
+{
+  "id": "polars-string-natives",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Native forms of `replace`, `reverse`, `ascii` and `repeat`; `replace` takes no pattern per row",
+  "verdict": "exact with a literal pattern; a pattern per row is refused by Polars",
+  "area": "strings",
+  "options": [
+    "char_set"
+  ],
+  "constructs": [
+    "str.replace_all(literal=True)",
+    "str.split(\"\")",
+    "str.encode(\"hex\")",
+    "str.to_integer(base=16)",
+    "repeat_by",
+    "list.join"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": "Polars has no `ascii` or `repeat` and reverses grapheme clusters (polars-string-functions-missing, polars-reverse), but these expressions give the reference's values. `str.replace_all(p, r, literal=True)` with a literal `p` replaces every occurrence as Python's `str.replace` does: the empty pattern matches at every character boundary (`-a-b-c-`), and `r` is taken literally (`\\1` stays). `str.split(\"\")` splits into code points (`split_chars`), so `list.reverse` and `list.join(\"\")` reverse by code point. `str.slice(0, 1).str.encode(\"hex\").str.to_integer(base=16)` is the first character's UTF-8 bytes as an integer, NULL for `''`, which decodes exactly to its code point. `repeat_by(n).list.join(\"\")` is `s` repeated `n` times, `''` for `n` = 0, but `''` (not NULL) for a NULL `s`. A pattern per row is refused: `replace_all` with a column pattern raises `ComputeError: dynamic pattern length in 'str.replace' expressions is not supported yet` (a six-row frame once did not raise; 20,000 rows did, on both engines).",
+  "reference": "`Text.replace` is `str.replace`, `Text.reverse` reverses the code points, `Text.ascii` is the first code point (0 for `''`), `Text.repeatStr` repeats `n` times (`''` for `n` ≤ 0); NULL in, NULL out.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-11",
+      "method": "probe",
+      "checked_by": "session brave-edison-d2a175 (#1270)",
+      "evidence": [
+        {
+          "file": "engines/polars/tests/test_polars_natives.py",
+          "test": "engines/polars/tests/test_polars_natives.py::test_replace_of_a_literal_pattern_is_pythons"
+        },
+        {
+          "file": "engines/polars/tests/test_polars_natives.py",
+          "test": "engines/polars/tests/test_polars_natives.py::test_reverse_and_ascii_are_by_code_point"
+        },
+        {
+          "file": "engines/polars/tests/test_polars_natives.py",
+          "test": "engines/polars/tests/test_polars_natives.py::test_repeat_is_pythons"
+        }
+      ],
+      "notes": "Each test compares the expression with the Python it replaced on 4,000 strings of a, b, é, 日, e+U+0301, a flag's two regional indicators, %, _, backslash, ., (, space, newline, A and É, with NULLs, on the streaming engine. The same checks on 20,000 rows ran on both engines with no mismatch. Polars 2.1.0 (Python), macOS arm64."
+    },
+    {
+      "checked_at": "2026-11-11",
+      "method": "source-reading",
+      "checked_by": "session brave-edison-d2a175 (#1270)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/dispatch/strings.rs#L703-L755",
+          "note": "replace_all: a scalar pattern and value take replace_literal_all; a scalar pattern with a value per row, an escaped regex with NoExpand; a pattern per row bails out"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/namespace.rs#L656-L689",
+          "note": "replace_literal_all: Rust's `match_indices`, as `str.replace`"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/split.rs#L156-L215",
+          "note": "an empty separator splits into characters (`split_chars`)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/namespace.rs#L347-L349",
+          "note": "hex_encode: the string's UTF-8 bytes as hex"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/repeat_by.rs#L63-L80",
+          "note": "repeat_by of strings and binaries"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ]
+}
