@@ -53,3 +53,59 @@ def test_round_digits_is_the_exact_division(d):
     got, want = _run(df, after), _run(df, E.canon(before))
     same = [(g == w) or (math.isnan(g) and math.isnan(w)) for g, w in zip(got, want, strict=True)]
     assert all(same)
+
+
+_ALPHABET = ["a", "b", "é", "日", "é", "🇩🇪", "%", "_", "\\", ".", "(", " ", "\n", "A", "É"]
+
+
+def _strings(n: int = 4000) -> list[str | None]:
+    rng = random.Random(1270)
+    words = ["".join(rng.choice(_ALPHABET) for _ in range(rng.randint(0, 6))) for _ in range(n)]
+    return [None if rng.random() < 0.02 else w for w in words]
+
+
+def _frame(**cols) -> pl.DataFrame:
+    return pl.DataFrame(cols, schema={k: (pl.Int64 if k == "n" else pl.String) for k in cols})
+
+
+@pytest.mark.parametrize("pat, val", [("", "-"), ("a", "zz"), ("é", ""), ("%", "\\1"), ("é", "E")])
+def test_replace_of_a_literal_pattern_is_pythons(pat, val):
+    """`replace(s, p, r)` with a literal `p`: Polars's literal `replace_all`
+    (polars-string-natives), the empty pattern at every character boundary."""
+    s = _strings()
+    got = _run(_frame(s=s), pl.col("s").str.replace_all(pl.lit(pat), pl.lit(val), literal=True))
+    assert got == [None if v is None else v.replace(pat, val) for v in s]
+
+
+def test_reverse_and_ascii_are_by_code_point():
+    """`Text.reverse` and `Text.ascii` (polars-string-natives)."""
+    s = _strings()
+    df = _frame(s=s)
+    assert _run(df, E.reverse_chars(pl.col("s"))) == [None if v is None else v[::-1] for v in s]
+    assert _run(df, E.first_code_point(pl.col("s"))) == [
+        None if v is None else (ord(v[0]) if v else 0) for v in s
+    ]
+
+
+def test_repeat_is_pythons():
+    """`Text.repeatStr` for counts below 1 and above (polars-string-natives)."""
+    rng = random.Random(1270)
+    s = _strings()
+    n = [None if rng.random() < 0.02 else rng.randint(-2, 4) for _ in s]
+    k, x = pl.col("n").clip(lower_bound=0), pl.col("s")
+    got = _run(_frame(s=s, n=n), pl.when(x.is_null() | pl.col("n").is_null()).then(None)
+               .otherwise(x.repeat_by(k).list.join("")))  # fmt: skip
+    assert got == [
+        None if v is None or m is None else v * max(m, 0) for v, m in zip(s, n, strict=True)
+    ]
+
+
+@pytest.mark.parametrize(
+    "pattern", ["a%", "%é_", "\\%%", "%\\_b", "_", "", "%", "a\\", "日%本", "%.%", "(%"]
+)
+def test_like_of_a_literal_pattern_is_text_like(pattern):
+    """`LIKE` with a literal pattern, as one regular expression Polars matches
+    (`like_regex`), against `Text.like`'s Python transcription (`like`)."""
+    s = _strings()
+    got = _run(_frame(s=s), pl.col("s").str.contains(E.like_regex(pattern)))
+    assert got == [None if v is None else E.like(v, pattern) for v in s]

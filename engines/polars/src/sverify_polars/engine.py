@@ -758,10 +758,13 @@ def like(s: str, p: str) -> bool:
     return _LIKE[p].fullmatch(s) is not None
 
 
-def ilike_regex(p: str) -> str:
-    """`Text.ilike`'s pattern as a regular expression of the `regex` crate,
-    whose `(?i)` folds case as DataFusion's `ILIKE` does (Unicode's simple
-    case folding). Every literal character is an escape `\\x{…}`."""
+def like_regex(p: str, fold: bool = False) -> str:
+    """`Text.like`'s pattern, or with `fold` `Text.ilike`'s, as a regular
+    expression of the `regex` crate (polars-regex): `%` any characters, `_`
+    one, a backslash makes the next character literal (a trailing one is
+    itself). `(?i)` folds case as DataFusion's `ILIKE` does (Unicode's simple
+    case folding); `(?s)` lets `.` match a newline; `$` is the end of the
+    text. Every literal character is an escape `\\x{…}`."""
     out, k = [], 0
     while k < len(p):
         c = p[k]
@@ -771,17 +774,43 @@ def ilike_regex(p: str) -> str:
         else:
             out.append(".*" if c == "%" else "." if c == "_" else f"\\x{{{ord(c):X}}}")
         k += 1
-    return "(?is)^" + "".join(out) + "$"
+    return ("(?is)^" if fold else "(?s)^") + "".join(out) + "$"
 
 
-def repeat(s: str, n: int) -> str:
-    """`Text.repeatStr`, '' where it does not fit (the row raises)."""
-    return s * n if n > 0 and len(s.encode()) * n <= REPEAT_MAX else ""
+def ilike_regex(p: str) -> str:
+    """`Text.ilike`'s pattern as a regular expression (`like_regex`)."""
+    return like_regex(p, fold=True)
 
 
-def ascii_code(s: str) -> int:
-    """`Text.ascii`: the first code point, 0 for ''."""
-    return ord(s[0]) if s else 0
+def reverse_chars(s: pl.Expr) -> pl.Expr:
+    """`Text.reverse`, by code points. Polars's `str.reverse` reverses
+    grapheme clusters (polars-reverse); `split("")` gives the code points
+    (polars-string-natives), whose list is reversed and joined."""
+    return pl.when(s.is_null()).then(None).otherwise(s.str.split("").list.reverse().list.join(""))
+
+
+def first_code_point(s: pl.Expr) -> pl.Expr:
+    """`Text.ascii`: the first code point, 0 for ''. Polars has no `ascii`
+    (polars-string-functions-missing); the first character's UTF-8 bytes, as
+    hex and then as an integer `b` (polars-string-natives), decode exactly:
+    `L` bytes, the first with `L` marker bits, the rest with two."""
+    first = s.str.slice(0, 1)
+    n = first.str.len_bytes().cast(pl.Int64)
+    b = first.str.encode("hex").str.to_integer(base=16, strict=False)
+
+    def byte(i: int) -> pl.Expr:
+        shift = pl.lit(256, pl.Int64).pow((n - 1 - i).clip(0, 3).cast(pl.UInt32))
+        return (b // shift) % 256
+
+    cp = (
+        pl.when(n == 0).then(0)
+        .when(n == 1).then(b)
+        .when(n == 2).then((byte(0) % 32) * 64 + byte(1) % 64)
+        .when(n == 3).then((byte(0) % 16) * 4096 + (byte(1) % 64) * 64 + byte(2) % 64)
+        .otherwise((byte(0) % 8) * 262144 + (byte(1) % 64) * 4096 + (byte(2) % 64) * 64
+                   + byte(3) % 64)
+    )  # fmt: skip
+    return pl.when(s.is_null()).then(None).otherwise(cp).cast(pl.Int64)
 
 
 def levenshtein(s: str, t: str) -> int:
@@ -1116,8 +1145,21 @@ class Exprs:
                 s_, p_, r_ = (self(a) for a in arg_js)
                 if any(v.dtype not in (pl.String, pl.Null) for v in (s_, p_, r_)):
                     raise Unsupported(f"replace of {[s_.dtype, p_.dtype, r_.dtype]}")
-                out = _rows(str.replace, pl.String, s_, p_, r_)
+                if "literal" in arg_js[1]:
+                    # Polars's literal `replace_all` matches as `str.replace`
+                    # does, the empty pattern at every character boundary
+                    # (polars-string-natives).
+                    p = literal(arg_js[1]["literal"])[0]
+                    x, r = s_.expr, r_.expr
+                    out = pl.when(x.is_null() | r.is_null() | pl.lit(p is None)).then(None)
+                    if p is not None:
+                        out = out.otherwise(x.str.replace_all(pl.lit(p), r, literal=True))
+                else:
+                    # A pattern per row: Polars has none (#1270).
+                    out = _rows(str.replace, pl.String, s_, p_, r_)
                 return Val(out, pl.String, issues(s_, p_, r_))
+            if name in ("like", "ilike") and len(arg_js) == 2 and "literal" in arg_js[1]:
+                return self.like(name, self(arg_js[0]), literal(arg_js[1]["literal"])[0])
 
             if name in ("date_part", "date_trunc") and len(arg_js) == 2:
                 which, ts = self.constant(arg_js[0], f"{name}'s unit"), self(arg_js[1])
@@ -1521,9 +1563,9 @@ class Exprs:
             if name == "character_length":
                 return Val(e.str.len_chars().cast(pl.Int64), pl.Int64, a.issues)
             if name == "reverse":
-                return Val(_rows(lambda s: s[::-1], pl.String, a), pl.String, a.issues)
+                return Val(reverse_chars(e), pl.String, a.issues)
             if name == "ascii":
-                return Val(_rows(ascii_code, pl.Int64, a), pl.Int64, a.issues)
+                return Val(first_code_point(e), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
             # A zero result is the one zero, as in `onMag`.
@@ -1736,7 +1778,12 @@ class Exprs:
             n = pl.when(b.expr > cap).then(cap).otherwise(b.expr)
             big = issue(n * a.expr.str.len_bytes().cast(pl.Int64) > REPEAT_MAX, Overflow,
                         "repeat beyond 2^31 - 1 bytes")  # fmt: skip
-            return Val(_rows(repeat, pl.String, a, b), pl.String, (*issues(a, b), big))
+            # `Text.repeatStr`, natively (polars-string-natives): '' where the
+            # count is not positive, and where it does not fit (the row raises).
+            k = pl.when(big.flag).then(0).otherwise(n.clip(lower_bound=0))
+            x = a.expr
+            out = pl.when(x.is_null() | b.expr.is_null()).then(None)
+            return Val(out.otherwise(x.repeat_by(k).list.join("")), pl.String, (*issues(a, b), big))
         if unify(a.dtype, b.dtype, name) not in (pl.String, pl.Null):
             raise Unsupported(f"{name} of {a.dtype} and {b.dtype}")
         x, y, found = a.expr, b.expr, issues(a, b)
@@ -1757,6 +1804,16 @@ class Exprs:
         strip = {"btrim": x.str.strip_chars, "ltrim": x.str.strip_chars_start,
                  "rtrim": x.str.strip_chars_end}[name]  # fmt: skip
         return Val(pl.when(y.is_not_null()).then(strip(y)), pl.String, found)
+
+    def like(self, name: str, a: Val, p: str | None) -> Val:
+        """`LIKE`, `ILIKE` with a literal pattern: its regular expression is
+        written once here (`like_regex`) and Polars matches it."""
+        if a.dtype not in (pl.String, pl.Null):
+            raise Unsupported(f"{name} of {a.dtype}")
+        if p is None:
+            return Val(pl.lit(None, pl.Boolean), pl.Boolean, a.issues)
+        regex = like_regex(p, fold=name == "ilike")
+        return Val(a.expr.str.contains(regex), pl.Boolean, a.issues)
 
     @staticmethod
     def round_to(a: Val, digits: dict) -> Val:
