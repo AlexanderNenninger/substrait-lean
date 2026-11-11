@@ -1,12 +1,12 @@
-import SubstraitLean.LiftSearch
-import SubstraitLean.LiftCache
+import Sverify.DuckDB.LiftSearch
+import Sverify.DuckDB.LiftCache
 
 /-!
 # Regenerating the lift from DuckDB SQL (`poe regen-lift`)
 
-Runs the lift generator's search (`SubstraitLean/LiftSearch.lean`) under each
+Runs the lift generator's search (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`) under each
 semantics and writes what it finds, entries and proofs, to
-`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`. A build checks those
+`engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference`. A build checks those
 modules and never searches; run this when `DuckDB/SQL.lean`, the generator or
 the model's functions change (a build that fails in those modules says so).
 Not part of the library: `lake build` does not elaborate it.
@@ -24,12 +24,12 @@ set_option maxHeartbeats 800000 in
 generate_lift liftDuckDB : Semantics.duckdb
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
-  writing "SubstraitLean/LiftDuckDB/Duckdb"
+  writing "engines/duckdb/Sverify/DuckDB/Lift/Duckdb"
 
 set_option maxHeartbeats 400000 in
 generate_lift liftReference : Semantics.reference
   using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
-  writing "SubstraitLean/LiftDuckDB/Reference"
+  writing "engines/duckdb/Sverify/DuckDB/Lift/Reference"
 
 end Substrait

@@ -57,7 +57,7 @@ It prints:
 | choices | `substrait-check --options` | each profile's row: allowed behaviours, default, class, `q`, shim, rerun, facts |
 | facts | `characterization/<engine>/facts/*.json` | the facts for those options (by `rows` where a fact has them, else `options`) and functions, with evidence (`docs` < `source` < `engine_test` < `probe` < `fuzz` < `proof`) and status |
 | ledger | `upstream/bugs/*.json` | engine bugs and spec gaps (`ST-*`, `kind: spec-gap`) linked to those facts or naming the functions |
-| parser | `SubstraitLean/Parse.lean` | how the Substrait function is read, or refused |
+| parser | `frontend/Sverify/Frontend/Parse.lean` | how the Substrait function is read, or refused |
 | prose (`--prose`) | `catalogue/pitfalls.toml`, `features.toml`, `backend_semantics.py`, engine module docstrings, `status.json` | older notes, from before the facts; the facts win where they disagree |
 
 Then read the cited facts and lines before answering: the lookup finds candidates. A fact's `description`, `reference` and `provenance` say what the engine does, what the reference does, and how that is known. `python -m sverify_dev.facts --coverage <engine>` (from `python/`) lists the checklist items and choice-table rows that have no fact yet.

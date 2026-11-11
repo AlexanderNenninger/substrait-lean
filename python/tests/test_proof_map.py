@@ -22,6 +22,7 @@ MAP = MAP_PATH.read_text() if MAP_PATH.is_file() else ""
 CORE = ROOT / "core" / "Sverify" / "Core"
 ENGINES = ROOT / "engines" / "Sverify" / "Engines"
 ANALYSIS = ROOT / "analysis" / "Sverify" / "Analysis"
+FRONTEND = ROOT / "frontend" / "Sverify" / "Frontend"
 # The engines' packages: their rows are `DuckDB/<module>.lean`,
 # `Polars/<module>.lean` and `Spark/<module>.lean`, apart from engines-common's.
 DUCKDB = ROOT / "engines" / "duckdb" / "Sverify"
@@ -29,13 +30,13 @@ POLARS = ROOT / "engines" / "polars" / "Sverify"
 SPARK = ROOT / "engines" / "spark" / "Sverify"
 GENERATED_DIRS = [
     ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "LoweringOn",
-    ROOT / "SubstraitLean" / "LiftDuckDB" / "Duckdb",
-    ROOT / "SubstraitLean" / "LiftDuckDB" / "Reference",
+    ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "Lift" / "Duckdb",
+    ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "Lift" / "Reference",
 ]
 GENERATED = [p for d in GENERATED_DIRS for p in sorted(d.glob("*.lean"))]
 CACHES = [
     ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "LoweringCache.lean",
-    ROOT / "SubstraitLean" / "LiftCache.lean",
+    ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "LiftCache.lean",
 ]
 
 
@@ -44,6 +45,7 @@ def _modules() -> list[Path]:
         *CORE.glob("*.lean"),
         *ENGINES.glob("*.lean"),
         *ANALYSIS.rglob("*.lean"),
+        *FRONTEND.glob("*.lean"),
         *(POLARS / "Polars").glob("*.lean"),
         *(SPARK / "Spark").glob("*.lean"),
         *(DUCKDB / "DuckDB").glob("*.lean"),
@@ -67,6 +69,7 @@ def test_every_module_has_a_line(module):
             CORE,
             ENGINES,
             ANALYSIS,
+            FRONTEND,
             POLARS,
             SPARK,
             DUCKDB,
@@ -83,8 +86,8 @@ def test_generated_globs_have_lines():
     modules = _section("The modules")
     for glob in [
         "DuckDB/LoweringOn/*.lean",
-        "LiftDuckDB/Duckdb/*.lean",
-        "LiftDuckDB/Reference/*.lean",
+        "DuckDB/Lift/Duckdb/*.lean",
+        "DuckDB/Lift/Reference/*.lean",
     ]:
         assert f"`{glob}`" in modules
 
@@ -97,6 +100,7 @@ def _theorems() -> set[str]:
         *CORE.glob("*.lean"),
         *ENGINES.glob("*.lean"),
         *ANALYSIS.rglob("*.lean"),
+        *FRONTEND.glob("*.lean"),
         *(POLARS / "Polars").glob("*.lean"),
         *(SPARK / "Spark").glob("*.lean"),
         *(DUCKDB / "DuckDB").glob("*.lean"),

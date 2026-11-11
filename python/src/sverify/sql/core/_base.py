@@ -1641,7 +1641,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
 
 
 # --------------------------------------------------------------------------
-# Parsing: a transcription of `SubstraitLean/Parse.lean`
+# Parsing: a transcription of `frontend/Sverify/Frontend/Parse.lean`
 
 
 def _field(j: dict, k: str) -> Any:

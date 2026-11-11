@@ -86,7 +86,7 @@ The CLI also reports whether the plan is in the incremental fragment
 (`isIncremental`, proved equivalent to `Rel.Incremental`) and whether writing
 it back out as JSON and re-parsing gives the same `Rel` (`roundtrip: ok`).
 
-The parser ([Parse.lean](../SubstraitLean/Parse.lean)) and writer
+The parser ([Parse.lean](../frontend/Sverify/Frontend/Parse.lean)) and writer
 ([Write.lean](../SubstraitLean/Write.lean)) are trusted, unproved code. The
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
@@ -255,7 +255,7 @@ Subqueries: a correlated `[NOT] EXISTS` in a filter becomes a semi (anti) join
 on the subquery's condition; other correlated
 subqueries are refused. Uncorrelated ones go into the plan as Substrait
 subquery expressions, which the checker lifts into joins (`liftSubquery` in
-`SubstraitLean/Parse.lean`): a scalar subquery is a left join on `TRUE`, and
+`frontend/Sverify/Frontend/Parse.lean`): a scalar subquery is a left join on `TRUE`, and
 the checker accepts it only where `Rel.keys` proves at most one row (an aggregate without groups,
 `LIMIT 1`); `x IN (subquery)` outside a filter's conjuncts is a left join with
 the subquery's distinct values plus a count of its `NULL`s, which gives SQL's

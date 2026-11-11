@@ -19,7 +19,7 @@
   "description": "DuckDB's conversions are the standard ones (native).",
   "reference": [
     "Substrait: a `date` is a day, and a `precision_timestamp` a point in time. A cast from date to timestamp is that day at midnight.",
-    "Lean: a date or timestamp literal was an integer in the model (`argKind`, [`Parse.lean:833`](../../SubstraitLean/Parse.lean#L833)), so `CAST(DATE '2020-05-05' AS TIMESTAMP)` took the `.int → .time` branch ([`Parse.lean:1248`](../../SubstraitLean/Parse.lean#L1248)) and read 18387 days as 18387 µs. `(TIMESTAMP …)::DATE` kept the microsecond count as days. Then `ts >= DATE '1993-08-15'` compared microseconds with days, and `COALESCE(date, timestamp)` mixed both codes. A deviation and a soundness bug.",
+    "Lean: a date or timestamp literal was an integer in the model (`argKind`, [`Parse.lean:833`](../../frontend/Sverify/Frontend/Parse.lean#L833)), so `CAST(DATE '2020-05-05' AS TIMESTAMP)` took the `.int → .time` branch ([`Parse.lean:1248`](../../frontend/Sverify/Frontend/Parse.lean#L1248)) and read 18387 days as 18387 µs. `(TIMESTAMP …)::DATE` kept the microsecond count as days. Then `ts >= DATE '1993-08-15'` compared microseconds with days, and `COALESCE(date, timestamp)` mixed both codes. A deviation and a soundness bug.",
     "Fixed (#206): date and timestamp constants keep their kinds; a cast from a date is that day at midnight, a cast from a timestamp floors to its day, and a comparison of a date with a timestamp that the plan does not cast is refused. A cast of a date column to a timestamp is still refused, as before."
   ],
   "status": "fixed",

@@ -49,7 +49,7 @@ description: Work on sverify's Lean model and proofs (SubstraitLean/): state and
   it rather than raising the limit.
 - Full builds with the generated proofs (`lake -R -Kcheck_generated=true build`)
   go to homelab via `python/scripts/homelab_qa.sh`, one run at a time.
-- Generated modules (`DuckDB/LoweringOn`, `LiftDuckDB/Duckdb`, `Reference`)
+- Generated modules (`DuckDB/LoweringOn`, `DuckDB/Lift/Duckdb`, `Reference`)
   are regenerated with `poe regen-lowering` / `poe regen-lift`, never edited
   by hand. A changed constructor list usually needs both, plus the lowering
   golden (`tests/lowering/duckdb.expected`).

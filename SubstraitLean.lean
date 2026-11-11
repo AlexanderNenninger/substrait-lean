@@ -63,10 +63,10 @@ import SubstraitLean.Seam
 import Sverify.Analysis.Knowledge
 import SubstraitLean.Choices
 import Sverify.DuckDB.SQL
-import SubstraitLean.LiftHint
-import SubstraitLean.LiftCache
-import SubstraitLean.LiftSearch
-import SubstraitLean.LiftDuckDB
+import Sverify.DuckDB.LiftHint
+import Sverify.DuckDB.LiftCache
+import Sverify.DuckDB.LiftSearch
+import Sverify.DuckDB.Lift
 import Sverify.Analysis.Keys
 import SubstraitLean.AnalysisCongr
 import SubstraitLean.Quarantine
@@ -106,7 +106,7 @@ import SubstraitLean.Obligations
 import SubstraitLean.Epsilon
 import SubstraitLean.EngineRobust
 import SubstraitLean.Realize
-import SubstraitLean.Parse
+import Sverify.Frontend.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples
 import SubstraitLean.Refresh

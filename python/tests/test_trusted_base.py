@@ -28,6 +28,7 @@ SOURCES = [
     "SubstraitLean",
     "core",
     "analysis",
+    "frontend",
     "engines",
 ]
 #: A declaration the kernel takes on trust, and its name.

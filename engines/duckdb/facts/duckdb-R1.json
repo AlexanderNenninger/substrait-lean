@@ -29,7 +29,7 @@
   ],
   "reference": [
     "Substrait and the reference: `add`, `subtract`, `multiply`, `negate` and `abs` on `i8`/`i16`/`i32`/`i64` return the same type; `divide` on integers overflows for `MIN / -1`. With `overflow` omitted, the reference raises when the result does not fit the declared type.",
-    "Lean, `+ - *` and negation: deviation. `Rel.eval`'s integers are unbounded, and `UnFn.wrap n`, which marks arithmetic narrower than 64 bits, is the identity ([`Expr.lean:134`](../../core/Sverify/Core/Expr.lean#L134)). `verify` reports the overflow only as a warning (`may wrap around`, not an error), and the parser accepts only `SILENT` for `+ - *` ([`Parse.lean:770`](../../SubstraitLean/Parse.lean#L770)). So `9223372036854775800 + 5000` and `100::TINYINT + 50::TINYINT` answer `9223372036854780800` and `150`, with no error, where the reference raises. The fix: report overflow at the declared width as an error, and accept `overflow: ERROR` (and the omitted option) rather than only `SILENT`."
+    "Lean, `+ - *` and negation: deviation. `Rel.eval`'s integers are unbounded, and `UnFn.wrap n`, which marks arithmetic narrower than 64 bits, is the identity ([`Expr.lean:134`](../../core/Sverify/Core/Expr.lean#L134)). `verify` reports the overflow only as a warning (`may wrap around`, not an error), and the parser accepts only `SILENT` for `+ - *` ([`Parse.lean:770`](../../frontend/Sverify/Frontend/Parse.lean#L770)). So `9223372036854775800 + 5000` and `100::TINYINT + 50::TINYINT` answer `9223372036854780800` and `150`, with no error, where the reference raises. The fix: report overflow at the declared width as an error, and accept `overflow: ERROR` (and the omitted option) rather than only `SILENT`."
   ],
   "status": "deviation",
   "ledger_entries": 80,

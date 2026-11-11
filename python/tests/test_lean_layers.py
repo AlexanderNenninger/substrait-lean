@@ -20,14 +20,19 @@ pytestmark = needs_repo
 ROOT = Path(__file__).resolve().parents[2]
 LEAN = ("Init", "Std", "Lean")
 
-# Each layer: its directory, package, library root and the layers it may import.
+# What an engine package may import (Fable, #1189).
+ENGINE = ["core", "analysis", "frontend", "engines"]
+
+# Each layer: its directory, package, library root and the layers it may import
+# (an engine package also the frontend, which it requires only where it reads plans).
 LAYERS = {
     "core": ("sverify-core", "Sverify.Core", []),
     "analysis": ("sverify-analysis", "Sverify.Analysis", ["core"]),
+    "frontend": ("sverify-frontend", "Sverify.Frontend", ["core", "analysis"]),
     "engines": ("sverify-engines", "Sverify.Engines", ["core", "analysis"]),
-    "engines/polars": ("sverify-polars", "Sverify.Polars", ["core", "analysis", "engines"]),
-    "engines/spark": ("sverify-spark", "Sverify.Spark", ["core", "analysis", "engines"]),
-    "engines/duckdb": ("sverify-duckdb", "Sverify.DuckDB", ["core", "analysis", "engines"]),
+    "engines/polars": ("sverify-polars", "Sverify.Polars", ENGINE),
+    "engines/spark": ("sverify-spark", "Sverify.Spark", ENGINE),
+    "engines/duckdb": ("sverify-duckdb", "Sverify.DuckDB", ENGINE),
 }
 
 
@@ -70,7 +75,10 @@ def test_lakefile(layer):
     # Never a library rooted at the umbrella alone: it would claim every layer's modules.
     assert all("Sverify" not in r for r in roots)
     up = "../" * len(Path(layer).parts)
-    assert requires == {LAYERS[b][0]: f"{up}{b}" for b in below}
+    allowed = {LAYERS[b][0]: f"{up}{b}" for b in below}
+    # The layers directly below, required; the frontend, where the package reads plans.
+    assert {k: v for k, v in allowed.items() if k != "sverify-frontend"}.items() <= requires.items()
+    assert requires.items() <= allowed.items()
 
 
 @pytest.mark.parametrize("layer", LAYERS)

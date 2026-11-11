@@ -43,7 +43,7 @@ the project's one axiom (the trusted table below).
 | `Rel.guardFree_sound` | Dropping the guards of a plan whose only issues are assumed changes no result | `Guards.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.duckdb_refines` | The generated DuckDB lowering computes the reference | `Obligations.lean` | propext, Classical.choice, Quot.sound |
 | `Lowering.duckdb_exact` | Each generated lowering entry is exact | `DuckDB/LoweringOn.lean` | propext, Classical.choice, Quot.sound |
-| `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `LiftDuckDB/Duckdb.lean` | propext, Classical.choice, Quot.sound |
+| `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `DuckDB/Lift/Duckdb.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.polars_sound` | … on the model of Polars | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
@@ -83,7 +83,7 @@ place, and what retires it.
 | structure | `DoubleStats.Correct` | `SubstraitLean/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
 | opaque | `intToDouble` | `core/Sverify/Core/Float.lean` | A conversion given with the property the proofs use; the proofs see only the property | |
 | opaque | `decToDouble`, `doubleToDecimal` | `core/Sverify/Core/Conversions.lean` | The same, for decimals and doubles | |
-| opaque, `implemented_by`, unsafe def | `evalSemantics`, `evalDuckAgg`, `evalDuckFn`, `evalHints`, `evalSemanticsImpl`, `evalDuckAggImpl`, `evalDuckFnImpl`, `evalHintsImpl` | `SubstraitLean/LiftSearch.lean` | The lift generator's evaluation of Lean terms while it elaborates; what it writes is a theorem the kernel checks (with `check_generated`) | |
+| opaque, `implemented_by`, unsafe def | `evalSemantics`, `evalDuckAgg`, `evalDuckFn`, `evalHints`, `evalSemanticsImpl`, `evalDuckAggImpl`, `evalDuckFnImpl`, `evalHintsImpl` | `engines/duckdb/Sverify/DuckDB/LiftSearch.lean` | The lift generator's evaluation of Lean terms while it elaborates; what it writes is a theorem the kernel checks (with `check_generated`) | |
 | opaque, `implemented_by`, unsafe def | `evalProfile`, `evalBoxes`, `evalUnFn`, `evalBinFn`, `evalHints`, `evalSchemas`, `evalProfileImpl`, `evalBoxesImpl`, `evalUnFnImpl`, `evalBinFnImpl`, `evalHintsImpl`, `evalSchemasImpl` | `engines/Sverify/Engines/LoweringSearch.lean` | The lowering generator's, the same | |
 | opaque, `implemented_by`, unsafe def | `evalEngines`, `evalEnginesUnsafe` | `SubstraitLean/Obligations.lean` | The engine profiles' evaluation while the obligations elaborate | |
 | sorry | `checkGenerated` | `engines/Sverify/Engines/Generated.lean` | With `check_generated` off (a plain `lake build`, every editable install), the generated entries' proofs are `sorryAx`; CI, the wheels and `poe prove` check them. `substrait-check --build` says which build it is (`generated proofs checked` or `unchecked`) | |
@@ -248,6 +248,6 @@ place, and what retires it.
   `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256`) are
   read by no proof;
   the proofs use only each black box's declared laws. The search evaluators
-  (`implemented_by` in `LoweringSearch.lean`, `LiftSearch.lean` and
+  (`implemented_by` in `LoweringSearch.lean`, `DuckDB/LiftSearch.lean` and
   `Obligations.lean`) read profiles, functions and hints while a generator
   or a table check elaborates; no theorem reads them.

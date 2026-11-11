@@ -1,0 +1,20 @@
+name = "sverify-frontend"
+defaultTargets = ["SverifyFrontend"]
+
+# The frontend (#1189): what reads a plan into the model, the Substrait JSON
+# parser first. It imports only the core and the analysis, never
+# engines-common or an engine (Fable's decision for #1189's Substrait step).
+# Engines-common and the engine packages may import it. A standalone
+# `lake build --wfail` here is the guard (CI runs it).
+
+[[require]]
+name = "sverify-core"
+path = "../core"
+
+[[require]]
+name = "sverify-analysis"
+path = "../analysis"
+
+[[lean_lib]]
+name = "SverifyFrontend"
+roots = ["Sverify.Frontend"]

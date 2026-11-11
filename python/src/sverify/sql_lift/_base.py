@@ -136,7 +136,7 @@ PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
 #
 # With DuckDB's semantics, the constructs the generated lift table covers are
 # lifted as the table says: Lean generates each entry and proves it means
-# what DuckDB computes (`SubstraitLean/LiftDuckDB.lean`), NaN and ±inf
+# what DuckDB computes (`engines/duckdb/Sverify/DuckDB/Lift.lean`), NaN and ±inf
 # included, and `substrait-check --lift-table` exports it. The rules below
 # that say "pending generation" are still written by hand.
 
