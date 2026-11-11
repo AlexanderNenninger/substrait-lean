@@ -162,6 +162,12 @@ def Profile.polars.obs : ObsTable := [
   (some "fp.div", "rounding", ({ ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
     precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
     note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound still uses u per division; a per-engine bound (2u for Polars) is a follow-up." }).tracking 271),
+  -- `log10` and `log2` are `ln x / ln b` (polars-log-base), where the
+  -- reference takes the platform's `libm`: within 2.1 ulp (polars-ulp-libm),
+  -- which the plan's bound adds per call (`Epsilon.opExtra`). Tested, not
+  -- proved (#1270).
+  (some "fp.log", "rounding", ({ ObsRow.approxWithin "plan" ["polars-log-base", "polars-ulp-libm"] with
+    note := "Polars has no libm log10 or log2: both divide natural logarithms, log10 as x.log(10), log2 as x.log(2), within 2.1 ulp of libm's (polars-ulp-libm, measured). The translation runs them natively (#1270); the plan's bound adds 2.1 ulp per call (Epsilon.opExtra). A bound tested, not proved." }).tracking 1270),
   (some "fp.mod", "division_type", ({ ObsRow.shimmed "column_divisor"
       ["polars-double-modulus", "polars-scalar-divisor"] with
     note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0): the translation broadcasts the divisor to a column, where Polars divides as IEEE does." }).tracking 271),

@@ -675,8 +675,11 @@ FMATH_NATIVE = {
     "cos": pl.Expr.cos, "tan": pl.Expr.tan, "asin": pl.Expr.arcsin, "acos": pl.Expr.arccos,
     "atan": pl.Expr.arctan,
 }  # fmt: skip
-#: Polars' `log10` is not libm's, and it has no `log2`: Python's `math` calls libm.
-FMATH_ROWS = {"log10": math.log10, "log2": math.log2}
+#: `FMath.name`s Polars computes as `ln(x) / ln(b)` (polars-log-base), not as
+#: libm's `log10` and `log2`: within 2.1 ulp of them (polars-ulp-libm), the
+#: bound Polars's `fp.log` row states and the plan's bound adds per call
+#: (`Epsilon.opExtra`), tested, not proved (#1270).
+FMATH_LOGS = {"log10": pl.Expr.log10, "log2": lambda e: e.log(2.0)}
 
 
 def fmath_domain_error(name: str, e: pl.Expr) -> pl.Expr | None:
@@ -1578,7 +1581,7 @@ class Exprs:
             # `|x|`, which a split double's partial rows report (#428).
             if name == "abs":
                 return Val(canon(e.abs()), t, a.issues)
-            if name in FMATH_NATIVE or name in FMATH_ROWS:
+            if name in FMATH_NATIVE or name in FMATH_LOGS:
                 return self.fmath(name, a)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
 
@@ -1587,11 +1590,7 @@ class Exprs:
         e = a.expr
         bad = fmath_domain_error(name, e)
         safe = e if bad is None else pl.when(bad).then(1.0).otherwise(e)
-        if name in FMATH_NATIVE:
-            y = FMATH_NATIVE[name](safe)
-        else:
-            y = _rows(FMATH_ROWS[name], pl.Float64, Val(safe, pl.Float64))
-        y = canon(y)
+        y = canon((FMATH_NATIVE | FMATH_LOGS)[name](safe))
         # Only `exp` of a finite double overflows (`UnFn.infIssue`, #575).
         inf = (
             (issue(shims.makes_infinite(y, e), InfiniteResult, f"{name} overflows to infinity"),)
