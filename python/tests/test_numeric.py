@@ -21,6 +21,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify._unsupported import Unsupported
 from sverify.contracts import decode_double
 from sverify.engine import (
     connect,
@@ -346,6 +347,12 @@ def test_round_to_digits_is_duckdbs(xs, d):
 
     want = [("ok", code(v)) for (v,) in native.execute(sql, [xs]).fetchall()]
     for engine in ("duckdb", "polars"):
+        if engine == "polars" and d < 0 and d > -309:
+            # Negative digits with a finite `10^|d|` have no exact native form
+            # on Polars (polars-round-digits, #1270): refused.
+            with pytest.raises(Unsupported, match="negative digits"):
+                run_plan(con, plan, engine)
+            continue
         got = [r["x"] for r in run_plan(con, plan, engine).to_pylist()]
         assert [("ok", code(v)) for v in got] == want, engine
 
