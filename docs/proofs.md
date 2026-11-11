@@ -55,7 +55,7 @@ contract's preconditions.
 | Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Shims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
-| Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `DuckDB/Tables.lean`, `Polars/Tables.lean`, `SubstraitProfile.lean` |
+| Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `DuckDB/Tables.lean`, `Polars/Tables.lean`, `Substrait/Profile.lean` |
 | An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `DuckDB/Engine.lean`, `Polars/Engine.lean` |
 | A proved contract holds on each engine's model (#900): where the translated plan does not raise, the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim, where the engine's choices are the reference's at the plan's options (`htr`) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs` | `Sound.lean`, `DuckDB/Engine.lean`, `Polars/Engine.lean`, `Spark/Engine.lean` |
 | Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
@@ -287,6 +287,18 @@ and CI runs that build as the guard. The modules below import it as
 | `Spark/Profile.lean` | `Profile.spark`, the semantics under `semantics="spark"` |
 | `Spark/Engine.lean` | `Engine.spark`, its functions within Spark's table and faithful where they do not raise, and `Engine.spark_sound` |
 
+### Substrait's profile: `engines/substrait/Sverify/Substrait/`
+
+`Profile.substrait`, the YAMLs' own looseness, a sibling of the reference
+and the engines' profiles, in the Lake package `sverify-substrait` (#1189,
+step 5). It has no `Engine` value: nothing runs it. It imports only the core:
+`lake build` in `engines/substrait/` builds it on that alone, and CI runs that
+build as the guard.
+
+| Module | Job |
+|---|---|
+| `Substrait/Profile.lean` | Substrait's own semantics as a profile |
+
 ### Values and scalar functions
 
 | Module | Job |
@@ -352,7 +364,6 @@ and CI runs that build as the guard. The modules below import it as
 | `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
 | `EngineTables.lean` | `builtinEngines`, the engines' tables together, and the dependency and transfer reports over them |
-| `SubstraitProfile.lean` | Substrait's own semantics as a profile |
 | `Obligations.lean` | The realizability table: how each engine discharges each option |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
 | `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |

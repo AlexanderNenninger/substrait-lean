@@ -1,0 +1,16 @@
+name = "sverify-substrait"
+defaultTargets = ["SverifySubstrait"]
+
+# Substrait's profile (#1189, step 5): `Profile.substrait`, the YAMLs' own
+# looseness, a sibling of the reference and the engine profiles. No Engine
+# value and no Python runner (`semantics="substrait"` is sverify's plugin).
+# It imports only the core. A standalone `lake build --wfail` here is the
+# guard (CI runs it).
+
+[[require]]
+name = "sverify-core"
+path = "../../core"
+
+[[lean_lib]]
+name = "SverifySubstrait"
+roots = ["Sverify.Substrait"]
