@@ -36,7 +36,7 @@ templates that are not the native call, for `sverify.sql.lowering`.
 from this build's coverage, the templates the next build tries first.
 
 `substrait-check --lift-table`: print, as JSON, what each DuckDB SQL function
-lifts to under each semantics, generated and proved (`SubstraitLean/LiftDuckDB.lean`).
+lifts to under each semantics, generated and proved (`engines/duckdb/Sverify/DuckDB/Lift.lean`).
 
 `substrait-check --outcomes plan.json`: for a plan that projects expressions
 over a `VALUES`, each row's outcomes under the reference profile
@@ -408,7 +408,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     IO.println s!"generated proofs {if generatedChecked then "checked" else "unchecked"}"
     return 0
   | ["--lift-cache"] => do
-    -- A new SubstraitLean/LiftCache.lean from this build's tables (#268).
+    -- A new engines/duckdb/Sverify/DuckDB/LiftCache.lean from this build's tables (#268).
     IO.print Lift.cacheSource
     return 0
   | ["--lift-table"] => do

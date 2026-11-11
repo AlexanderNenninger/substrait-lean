@@ -76,7 +76,7 @@ translation from the reference proved (`Rel.duckdb_refines`,
 SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
 whose two profiles are generated Lean modules
-(`SubstraitLean/LiftDuckDB/Duckdb` and `Reference`). The reference is
+(`engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference`). The reference is
 Lean's reference profile, and DuckDB is the default oracle.
 
 <a id="profiles-and-shims-in-lean-185-first-slice"></a>
@@ -178,7 +178,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
   `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where
   DuckDB gives them. It is trusted, like a profile, and tested against the
-  engine (oracle A). `generate_lift` (`SubstraitLean/LiftSearch.lean`)
+  engine (oracle A). `generate_lift` (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`)
   searches Substrait calls (a function, its arguments as they are or cast,
   every assignment of the options the parser accepts) and calls under one or
   two guards with constants, reads each with the parser itself, tests it on
@@ -187,13 +187,13 @@ Lean's reference profile, and DuckDB is the default oracle.
   (golden: `tests/lowering/duckdb-lift.expected`) for `sverify.sql_lift` to
   read. A DuckDB function without an entry fails the build, unless the spec
   refuses it with a reason (`DuckFn.refused`). The search keeps a cache,
-  `SubstraitLean/LiftCache.lean` (`substrait-check --lift-cache`), of the
+  `engines/duckdb/Sverify/DuckDB/LiftCache.lean` (`substrait-check --lift-cache`), of the
   templates it found and of why a function's first candidate failed; it tries
   a cached template first. A cache entry is only a hint, still read by the
   parser and proved, and one the search does not reach can be seeded by hand
   (`source = "seeded: …"`). As for the lowering, a build does not search:
   `poe regen-lift` (`scripts/RegenLift.lean`) writes each entry with its proof
-  to `SubstraitLean/LiftDuckDB/Duckdb` and `Reference`, one module per area
+  to `engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference`, one module per area
   (`Arith`, `Math`, `Compare`, `Casts`, `Aggregates`) and a `Table`, which
   `lake build` checks in parallel; an entry that no longer fits fails there.
   The parser is `partial`, so its reading of an entry is computed when the

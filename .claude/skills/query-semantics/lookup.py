@@ -16,7 +16,7 @@ and prints:
              functions, with evidence level and status
   ledger     upstream/bugs/*.json linked to those facts or naming the
              functions: engine bugs and spec gaps (kind "spec-gap")
-  parser     SubstraitLean/Parse.lean: how the function is read, or refused
+  parser     frontend/Sverify/Frontend/Parse.lean: how the function is read, or refused
   producer   with --ibis: where the vendored Ibis producer translates each
              operation (sverify/ibis_substrait), or that it doesn't
   prose      catalogue/pitfalls.toml, features.toml, backend_semantics.py,
@@ -524,8 +524,8 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
             f"{' '.join(d.get('summary', '').split())[:120]}  [{d['_why']}]"
         )
 
-    parse = ROOT / "SubstraitLean/Parse.lean"
-    print("\n== SubstraitLean/Parse.lean (how the Substrait function is read)")
+    parse = ROOT / "frontend/Sverify/Frontend/Parse.lean"
+    print("\n== frontend/Sverify/Frontend/Parse.lean (how the Substrait function is read)")
     for f in sorted(fns):
         lines = grep(parse, rf'"{f}"', 3)
         print(

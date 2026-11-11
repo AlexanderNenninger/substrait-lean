@@ -19,11 +19,12 @@ runs:
           .lake
           core/.lake
           analysis/.lake
+          frontend/.lake
           engines/.lake
           engines/polars/.lake
           engines/spark/.lake
           engines/duckdb/.lake
-        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', 'engines/spark/lake-manifest.json', 'engines/duckdb/lake-manifest.json', '**/*.lean') }}
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'frontend/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', 'engines/spark/lake-manifest.json', 'engines/duckdb/lake-manifest.json', '**/*.lean') }}
         restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
     - name: Restore elan and the lake build
       if: inputs.cache == 'true' && inputs.save != 'true'
@@ -34,11 +35,12 @@ runs:
           .lake
           core/.lake
           analysis/.lake
+          frontend/.lake
           engines/.lake
           engines/polars/.lake
           engines/spark/.lake
           engines/duckdb/.lake
-        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', 'engines/spark/lake-manifest.json', 'engines/duckdb/lake-manifest.json', '**/*.lean') }}
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', 'core/lake-manifest.json', 'analysis/lake-manifest.json', 'frontend/lake-manifest.json', 'engines/lake-manifest.json', 'engines/polars/lake-manifest.json', 'engines/spark/lake-manifest.json', 'engines/duckdb/lake-manifest.json', '**/*.lean') }}
         restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
     - name: Install elan
       shell: bash

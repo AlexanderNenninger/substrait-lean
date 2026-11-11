@@ -1,7 +1,7 @@
 """Substrait plans as SQL, with the semantics of the Lean `Rel` model.
 
 `to_sql(plan, dialect)` reads a Substrait JSON plan the way
-`SubstraitLean/Parse.lean` does, so it accepts exactly the plans the checker
+`frontend/Sverify/Frontend/Parse.lean` does, so it accepts exactly the plans the checker
 accepts: the same operators, the same functions and the same constant folding,
 with every other construct rejected (`Unsupported`). It then writes one SQL
 query whose result is `Rel.eval` of the plan. Nothing is left to engine

@@ -10,7 +10,7 @@ wrote, with `datafusion==51.0.0`, for the Ibis pipelines in
 captured by `python/scripts/capture_fixtures.py`, which was deleted once
 sverify stopped planning SQL with DataFusion (#211): its last version is in
 the history at commit `4740130`. They are static golden inputs now. They keep
-DataFusion's encodings in the golden tests, which `SubstraitLean/Parse.lean`
+DataFusion's encodings in the golden tests, which `frontend/Sverify/Frontend/Parse.lean`
 still reads; don't regenerate them.
 
 The other plans are written by hand.

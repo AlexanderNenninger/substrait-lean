@@ -1,6 +1,7 @@
 /.lake
 /core/.lake
 /analysis/.lake
+/frontend/.lake
 /engines/.lake
 /engines/polars/.lake
 /engines/spark/.lake

@@ -116,6 +116,10 @@ exclude = ["build", "src/sverify/_bin"]
 "../analysis/lake-manifest.json" = "lean/analysis/lake-manifest.json"
 "../analysis/lean-toolchain" = "lean/analysis/lean-toolchain"
 "../analysis/Sverify" = "lean/analysis/Sverify"
+"../frontend/lakefile.toml" = "lean/frontend/lakefile.toml"
+"../frontend/lake-manifest.json" = "lean/frontend/lake-manifest.json"
+"../frontend/lean-toolchain" = "lean/frontend/lean-toolchain"
+"../frontend/Sverify" = "lean/frontend/Sverify"
 "../engines/lakefile.toml" = "lean/engines/lakefile.toml"
 "../engines/lake-manifest.json" = "lean/engines/lake-manifest.json"
 "../engines/lean-toolchain" = "lean/engines/lean-toolchain"
@@ -225,8 +229,8 @@ lake build Sverify.Engines.LoweringSearch Sverify.DuckDB.LoweringCache Sverify.D
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.regen-lift]
-help = "Search for the DuckDB SQL lift again and write it to SubstraitLean/LiftDuckDB (a build only checks it); Lean capped at 8 GB, so run it on homelab (homelab-run)"
-shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake lean scripts/RegenLift.lean -- -M 8192"
+help = "Search for the DuckDB SQL lift again and write it to engines/duckdb/Sverify/DuckDB/Lift (a build only checks it); Lean capped at 8 GB, so run it on homelab (homelab-run)"
+shell = "lake build Sverify.DuckDB.LiftSearch Sverify.DuckDB.LiftCache && lake lean scripts/RegenLift.lean -- -M 8192"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.prove-floats]

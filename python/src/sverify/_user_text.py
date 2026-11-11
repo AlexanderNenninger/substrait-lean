@@ -447,7 +447,7 @@ def _minus_one(s: str) -> str | None:
 
 def floor_fold(s: str) -> str:
     """`s` with the reference's form of a floor division or modulus
-    (`Expr.floorDivOf`, `floorModOf` in `SubstraitLean/Parse.lean`) as the
+    (`Expr.floorDivOf`, `floorModOf` in `core/Sverify/Core/Expr.lean`) as the
     `a / b` or `a % b` the user wrote, wherever `s` is one of its branches:
     `(((a + 1) / b) - 1)`, `((a - 1) / b)`, `((b - 1) - ((-1 - a) % b))`,
     `(((a - 1) % b) + (b + 1))`."""

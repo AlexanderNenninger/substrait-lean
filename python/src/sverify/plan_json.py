@@ -1,7 +1,7 @@
 """Substrait plans as protobuf JSON: the types, literals, calls and
 relations that sverify's producers write (the Ibis producer,
 `sverify.ibis_substrait`, and the SQL lift, `sverify.sql_lift`), with the
-functions and encodings `SubstraitLean/Parse.lean` reads.
+functions and encodings `frontend/Sverify/Frontend/Parse.lean` reads.
 
 Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 `sverify.engines` and `sverify.errors`; it may change in any release.

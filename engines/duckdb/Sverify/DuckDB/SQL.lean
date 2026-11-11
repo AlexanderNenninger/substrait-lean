@@ -7,7 +7,7 @@ The SQL lift (`sverify.sql_lift`) reads DuckDB SQL into a Substrait plan, with
 DuckDB's own semantics (`semantics="duckdb"`) or the reference's
 (`semantics="reference"`). This file states, for each DuckDB function at one
 signature (`DuckFn`), what it means under each: the **target** the lift's
-generator (`SubstraitLean/LiftSearch.lean`) searches towards. For each, it
+generator (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`) searches towards. For each, it
 finds a Substrait expression that the parser (`Parse.parseExpr`) reads as the
 same function, and proves it.
 

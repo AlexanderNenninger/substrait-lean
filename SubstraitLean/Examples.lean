@@ -28,7 +28,7 @@ import Sverify.Core.Ties
 import Sverify.Analysis.Knowledge
 import Sverify.Analysis.Guards
 import Sverify.DuckDB.Lowering
-import SubstraitLean.LiftDuckDB
+import Sverify.DuckDB.Lift
 import SubstraitLean.Semantic
 import SubstraitLean.Obligations
 import Sverify.Core.Robust

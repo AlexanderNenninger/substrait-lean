@@ -1,6 +1,6 @@
 import Sverify.Engines.Lowering
 import Sverify.Analysis.Partition
-import SubstraitLean.Parse
+import Sverify.Frontend.Parse
 import Sverify.Core.AllowedP
 
 /-!
