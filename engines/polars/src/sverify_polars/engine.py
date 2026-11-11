@@ -574,24 +574,6 @@ def subnormal_divisor(y: pl.Expr) -> pl.Expr:
     return (y != 0.0) & (y.abs() < MIN_NORMAL)
 
 
-def _fmod(s: pl.Series) -> pl.Series:
-    np = _numpy()
-    x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
-    y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        return pl.Series(np.fmod(x, y), dtype=pl.Float64)
-
-
-def fmod(x: pl.Expr, y: pl.Expr) -> pl.Expr:
-    """C's `fmod` (`FloatCode.fmod`), the sign of `x`, which is exact. Polars'
-    `%` floors (the sign of `y`), makes `x % inf` NaN, and goes through the
-    reciprocal of a constant divisor (PL-3: `49.0 % 49.0` is `49.0`); no
-    Polars expression gives an exact remainder, and numpy's `fmod` is C's."""
-    both = pl.struct(x.alias("x"), y.alias("y"))
-    r = both.map_batches(_fmod, return_dtype=pl.Float64, is_elementwise=True)
-    return pl.when(x.is_null() | y.is_null()).then(None).otherwise(r)
-
-
 def _ipow(a: pl.Expr, b: pl.Expr) -> pl.Expr:
     """`BinFn.ipow` where it is defined and fits 64 bits, else NULL. For
     `|a| ≥ 2` a power past `2^64.5` (by `b · log2 |a|`, far from the
@@ -652,21 +634,6 @@ def is_true(e: pl.Expr) -> pl.Expr:
 
 
 # --- Strings (`core/Sverify/Core/Text.lean`) ------------------------------------
-
-
-def _rows(fn, out: DType, *vals: Val) -> pl.Expr:
-    """`fn` on each row's Python values, NULL if any argument is NULL. For
-    the functions whose Polars counterparts count bytes or differ in edge
-    cases; Python strings are sequences of code points, as Lean's are."""
-
-    def apply(s: pl.Series) -> pl.Series:
-        cols = [s.struct.field(f"a{k}").to_list() for k in range(len(vals))]
-        return pl.Series(
-            [None if None in xs else fn(*xs) for xs in zip(*cols, strict=True)], dtype=out
-        )
-
-    args = pl.struct([v.expr.alias(f"a{k}") for k, v in enumerate(vals)])
-    return args.map_batches(apply, return_dtype=out, is_elementwise=True)
 
 
 #: `FMath.name`s whose Polars counterparts are C's libm (as Lean's are).
@@ -741,26 +708,6 @@ def shift_right(a: pl.Expr, k: pl.Expr) -> pl.Expr:
     return pl.when(k == 63).then(sign).otherwise(a // pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32)))
 
 
-_LIKE: dict[str, re.Pattern] = {}
-
-
-def like(s: str, p: str) -> bool:
-    """`Text.like`: `%` any characters, `_` one, a backslash makes the next
-    character literal (a trailing one is itself)."""
-    if p not in _LIKE:
-        out, k = [], 0
-        while k < len(p):
-            c = p[k]
-            if c == "\\" and k + 1 < len(p):
-                out.append(re.escape(p[k + 1]))
-                k += 2
-                continue
-            out.append(".*" if c == "%" else "." if c == "_" else re.escape(c))
-            k += 1
-        _LIKE[p] = re.compile("".join(out), re.DOTALL)
-    return _LIKE[p].fullmatch(s) is not None
-
-
 def like_regex(p: str, fold: bool = False) -> str:
     """`Text.like`'s pattern, or with `fold` `Text.ilike`'s, as a regular
     expression of the `regex` crate (polars-regex): `%` any characters, `_`
@@ -778,11 +725,6 @@ def like_regex(p: str, fold: bool = False) -> str:
             out.append(".*" if c == "%" else "." if c == "_" else f"\\x{{{ord(c):X}}}")
         k += 1
     return ("(?is)^" if fold else "(?s)^") + "".join(out) + "$"
-
-
-def ilike_regex(p: str) -> str:
-    """`Text.ilike`'s pattern as a regular expression (`like_regex`)."""
-    return like_regex(p, fold=True)
 
 
 def reverse_chars(s: pl.Expr) -> pl.Expr:
@@ -814,17 +756,6 @@ def first_code_point(s: pl.Expr) -> pl.Expr:
                    + byte(3) % 64)
     )  # fmt: skip
     return pl.when(s.is_null()).then(None).otherwise(cp).cast(pl.Int64)
-
-
-def levenshtein(s: str, t: str) -> int:
-    """`Text.levenshtein`: insertions, deletions and substitutions of characters."""
-    prev = list(range(len(t) + 1))
-    for i, c in enumerate(s, 1):
-        cur = [i]
-        for j, d in enumerate(t, 1):
-            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (c != d)))
-        prev = cur
-    return prev[-1]
 
 
 def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
@@ -1158,8 +1089,11 @@ class Exprs:
                     if p is not None:
                         out = out.otherwise(x.str.replace_all(pl.lit(p), r, literal=True))
                 else:
-                    # A pattern per row: Polars has none (#1270).
-                    out = _rows(str.replace, pl.String, s_, p_, r_)
+                    raise Unsupported(
+                        "replace with a pattern that is not a literal on Polars: Polars "
+                        "refuses a pattern per row (polars-string-natives); run it on DuckDB "
+                        "or Spark"
+                    )
                 return Val(out, pl.String, issues(s_, p_, r_))
             if name in ("like", "ilike") and len(arg_js) == 2 and "literal" in arg_js[1]:
                 return self.like(name, self(arg_js[0]), literal(arg_js[1]["literal"])[0])
@@ -1642,16 +1576,24 @@ class Exprs:
             if unify(ta, tb, name) != pl.Float64:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             x, y = a.expr, b.expr
+            if name == "modulus":
+                # The reference's `%` of doubles is C's `fmod`, exact and with the
+                # dividend's sign; Polars's floors, is NaN for a finite `x % ±inf`
+                # (polars-double-modulus) and goes through the reciprocal of a
+                # literal divisor (polars-scalar-divisor): no exact native form
+                # (#1270).
+                raise Unsupported(
+                    "% of doubles on Polars: Polars's % floors (polars-double-modulus), "
+                    "where the reference's truncates as C's fmod; run it on DuckDB or Spark"
+                )
             # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
             # in-memory engine (polars-zero-sign), so a sum or difference can
             # be `-0.0` too.
             ops = {"add": canon(x + y), "subtract": canon(x - y), "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "divide_ieee": canon(fdiv(x, y)),
-                   "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
             nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
-            # `fmod` is exact: it never overflows (#575).
-            inf = () if name == "modulus" else (
+            inf = (
                 issue(shims.makes_infinite(ops[name], x, y) & y.ne(0.0), InfiniteResult,
                       f"{name} overflows to infinity"),
             )  # fmt: skip
@@ -1663,9 +1605,9 @@ class Exprs:
             if name == "divide_ieee":
                 # IEEE division (D39): `±∞` by a zero, NaN for `0 / 0` too.
                 return Val(ops[name], pl.Float64, (*issues(a, b), *tiny, nan, *inf))
-            if name not in ("divide", "modulus"):
+            if name != "divide":
                 return Val(ops[name], pl.Float64, (*issues(a, b), nan, *inf))
-            # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
+            # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv`;
             # `NULL / 0.0` is NULL.
             zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
             return Val(ops[name], pl.Float64, (*issues(a, b), zero, *tiny, nan, *inf))
@@ -1794,11 +1736,19 @@ class Exprs:
         if name == "strpos":
             return Val(shims.strpos_chars(x, y), pl.Int64, found)
         if name == "levenshtein":
-            return Val(_rows(levenshtein, pl.Int64, a, b), pl.Int64, found)
-        if name == "ilike":
-            return Val(x.str.contains(_rows(ilike_regex, pl.String, b)), pl.Boolean, found)
-        if name == "like":
-            return Val(_rows(like, pl.Boolean, a, b), pl.Boolean, found)
+            raise Unsupported(
+                "levenshtein on Polars: Polars has no levenshtein "
+                "(polars-string-functions-missing); run it on DuckDB or Spark"
+            )
+        if name in ("like", "ilike"):
+            # A literal pattern is `Exprs.like`'s. One per row would need its
+            # regular expression built per row, its backslash escapes
+            # included, which Polars's string expressions cannot do exactly
+            # (#1270).
+            raise Unsupported(
+                f"{name.upper()} with a pattern that is not a literal on Polars; run it on "
+                "DuckDB or Spark"
+            )
         # Trimming: Polars strips whitespace for a NULL set, Lean gives NULL.
         strip = {"btrim": x.str.strip_chars, "ltrim": x.str.strip_chars_start,
                  "rtrim": x.str.strip_chars_end}[name]  # fmt: skip
@@ -1843,7 +1793,13 @@ class Exprs:
         elif d >= 0:
             r = exact_div(shims.round_half_away(x * ml), ml)
         else:
-            r = shims.round_half_away(exact_div(x, ml)) * ml
+            # Polars rounds to no negative digits (polars-round-digits), and
+            # `x / 10^k` by a literal goes through its reciprocal
+            # (polars-scalar-divisor): no exact native form (#1270).
+            raise Unsupported(
+                f"ROUND to {d} digits on Polars: Polars rounds to no negative digits "
+                "(polars-round-digits); run it on DuckDB or Spark"
+            )
         out = pl.when(~x.is_finite() | ~r.is_finite()).then(x).otherwise(r)
         return Val(canon(out), pl.Float64, a.issues)
 

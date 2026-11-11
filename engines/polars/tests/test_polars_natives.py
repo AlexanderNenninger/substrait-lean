@@ -3,10 +3,14 @@ Python and numpy code they replace, on the streaming engine."""
 
 import math
 import random
+import re
 
+import ibis
 import polars as pl
 import pytest
 
+from sverify.engine import connect, run_plan, substrait_json, written_plan
+from sverify.ibis_substrait import to_substrait_json
 from sverify_polars import engine as E
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -100,12 +104,65 @@ def test_repeat_is_pythons():
     ]
 
 
+def _like(s: str, p: str) -> bool:
+    """`Text.like`, transcribed: `%` any characters, `_` one, a backslash
+    makes the next character literal (a trailing one is itself)."""
+    out, k = [], 0
+    while k < len(p):
+        c = p[k]
+        if c == "\\" and k + 1 < len(p):
+            out.append(re.escape(p[k + 1]))
+            k += 2
+            continue
+        out.append(".*" if c == "%" else "." if c == "_" else re.escape(c))
+        k += 1
+    return re.fullmatch("".join(out), s, re.DOTALL) is not None
+
+
 @pytest.mark.parametrize(
     "pattern", ["a%", "%é_", "\\%%", "%\\_b", "_", "", "%", "a\\", "日%本", "%.%", "(%"]
 )
 def test_like_of_a_literal_pattern_is_text_like(pattern):
     """`LIKE` with a literal pattern, as one regular expression Polars matches
-    (`like_regex`), against `Text.like`'s Python transcription (`like`)."""
+    (`like_regex`), against `Text.like`'s Python transcription (`_like`)."""
     s = _strings()
     got = _run(_frame(s=s), pl.col("s").str.contains(E.like_regex(pattern)))
-    assert got == [None if v is None else E.like(v, pattern) for v in s]
+    assert got == [None if v is None else _like(v, pattern) for v in s]
+
+
+_TEXTS = ibis.schema({"s": "string", "t": "string"})
+_FLOATS = ibis.schema({"x": "float64"})
+
+
+def _refused(schema, rows, plan: str, message: str) -> None:
+    con = connect()
+    con.create("r", schema, rows)
+    with pytest.raises(E.Unsupported, match=message):
+        run_plan(con, written_plan(plan), "polars")
+
+
+@pytest.mark.parametrize(
+    "sql, message",
+    [("SELECT ROUND(x, -1) AS r FROM r", "negative digits"),
+     ("SELECT x % 3.0 AS m FROM r", "% of doubles")],
+)  # fmt: skip
+def test_rounding_and_remainders_polars_cannot_match_are_refused(sql, message):
+    """#1270, Fable's decisions: `ROUND` to negative digits and `%` of doubles
+    have no exact native form; the run is refused, never computed by Python."""
+    con = connect()
+    con.create("r", _FLOATS, [(1.5,), (-2.25,)])
+    _refused(_FLOATS, [(1.5,), (-2.25,)], substrait_json(con, sql, "reference"), message)
+
+
+@pytest.mark.parametrize(
+    "build, message",
+    [(lambda t: t.s.like(t.t), "LIKE with a pattern"),
+     (lambda t: t.s.ilike(t.t), "ILIKE with a pattern"),
+     (lambda t: t.s.levenshtein(t.t), "no levenshtein")],
+)  # fmt: skip
+def test_string_functions_polars_cannot_match_are_refused(build, message):
+    """A pattern per row and `levenshtein` (#1270), from Ibis: refused on
+    Polars with the reason. (`replace` with a pattern per row is refused
+    before Polars by both front ends; its Polars refusal guards raw plans.)"""
+    t = ibis.table(_TEXTS, name="r")
+    _refused(_TEXTS, [("ab", "a%")], to_substrait_json(t.select(o=build(t))), message)
