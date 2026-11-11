@@ -537,6 +537,9 @@ def _numpy() -> Any:
 #: The smallest normal double, 2⁻¹⁰²².
 MIN_NORMAL = 2.0**-1022
 
+#: The largest `d` with `10^d` exact in a double (`5^22 < 2^53`).
+MAX_EXACT_DIGITS = 22
+
 
 def fdiv(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     """Division of doubles, Polars's own. Where the divisor is a constant
@@ -719,9 +722,20 @@ BITWISE = (
 )  # fmt: skip
 
 
-def shift_left(a: int, b: int) -> int:
-    """`BitOp.shl` for `b` in 0–63: the bits shifted out are lost."""
-    return ((a << b) + 2**63) % 2**64 - 2**63
+def shift_left(a: pl.Expr, k: pl.Expr) -> pl.Expr:
+    """`BitOp.shl` for `k` in 0–63: the bits shifted out are lost. Polars has
+    no shift (polars-int-shift); `a · 2^k` wraps at 64 bits (polars-int-arith),
+    which drops them, and `2^63` itself wraps to `-2^63`, the same factor
+    modulo `2^64`."""
+    return a * pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32))
+
+
+def shift_right(a: pl.Expr, k: pl.Expr) -> pl.Expr:
+    """`BitOp.shr` for `k` in 0–63: the arithmetic shift, `a` divided by `2^k`
+    rounding down, which Polars's integer `//` does (polars-int-divide). At
+    `k = 63`, where `2^63` does not fit, the shift leaves the sign."""
+    sign = pl.when(a < 0).then(-1).otherwise(0).cast(pl.Int64)
+    return pl.when(k == 63).then(sign).otherwise(a // pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32)))
 
 
 _LIKE: dict[str, re.Pattern] = {}
@@ -1565,8 +1579,10 @@ class Exprs:
             bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
             sx = pl.when(bad).then(2.0).otherwise(x)
             sy = pl.when(bad).then(2.0).otherwise(y)
-            # `logb?` divides once, exactly: no reciprocal (`exact_div`).
-            return self.domain(bad, canon(exact_div(sx.log(), sy.log())), pl.Float64, name, a, b)
+            # `logb?` divides once, exactly: Polars's `log` with a column base
+            # is `ln x / ln b` per element, one IEEE division in the kernel
+            # (polars-log-base), with no reciprocal.
+            return self.domain(bad, canon(sx.log(sy)), pl.Float64, name, a, b)
         if name in BITWISE:
             if unify(ta, tb, name) not in (pl.Int64, pl.Null):
                 raise Unsupported(f"{name} of {ta} and {tb}")
@@ -1577,10 +1593,8 @@ class Exprs:
             # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.
             bad = x.is_not_null() & ((y < 0) | (y > 63))
             n = pl.when(bad).then(0).otherwise(y)
-            if name == "bitwise_shift_right":
-                shifted = _rows(lambda v, k: v >> k, pl.Int64, a, Val(n, pl.Int64))
-            else:
-                shifted = _rows(shift_left, pl.Int64, a, Val(n, pl.Int64))
+            shift = shift_right if name == "bitwise_shift_right" else shift_left
+            shifted = pl.when(x.is_null() | n.is_null()).then(None).otherwise(shift(x, n))
             return self.domain(bad, shifted, pl.Int64, name, a, b)
         floats = ("add", "subtract", "multiply", "divide", "divide_ieee", "modulus", "power")
         if name in floats and pl.Float64 in (ta, tb):
@@ -1744,7 +1758,8 @@ class Exprs:
                  "rtrim": x.str.strip_chars_end}[name]  # fmt: skip
         return Val(pl.when(y.is_not_null()).then(strip(y)), pl.String, found)
 
-    def round_to(self, a: Val, digits: dict) -> Val:
+    @staticmethod
+    def round_to(a: Val, digits: dict) -> Val:
         """`ROUND(x, d)`, as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
         `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m`
         for `d < 0`, `x` where that is not finite; 0 for `d < 0` when `m` is
@@ -1762,7 +1777,14 @@ class Exprs:
         if d < 0 and math.isinf(m):
             out = pl.when(x.is_null() | ~x.is_finite()).then(x).otherwise(pl.lit(0.0, pl.Float64))
             return Val(canon(out), pl.Float64, a.issues)
-        if d >= 0:
+        if 0 <= d <= MAX_EXACT_DIGITS:
+            # Polars's own `round(d)`: `round(x · 10^d) / 10^d` in the kernel,
+            # halves away from zero, and `x` where that is not finite, as
+            # `FloatCode.roundTo`; `10^d` is exact up to `d = 22`, so Polars's
+            # multiplier (`powi`) and the reference's (`pow`) agree
+            # (polars-round-digits).
+            r = x.round(d, mode="half_away_from_zero")
+        elif d >= 0:
             r = exact_div(shims.round_half_away(x * ml), ml)
         else:
             r = shims.round_half_away(exact_div(x, ml)) * ml
@@ -1777,12 +1799,16 @@ _FLAG_IDS = itertools.count()
 
 
 def _raise_issues(issues: tuple[Issue, ...]):
+    """The one callback left in the engine path: Polars has no expression that
+    raises (#1270). It runs once per batch and reads the flags natively; the
+    rows it keeps are a native constant column, with no Python per row."""
+
     def check(s: pl.Series) -> pl.Series:
         for k, i in enumerate(issues):
             hits = s.struct.field(f"i{k}")
             if hits.any():
                 raise i.kind(f"{i.message} ({hits.sum()} row(s))")
-        return pl.Series([True] * len(s), dtype=pl.Boolean)
+        return pl.repeat(True, len(s), dtype=pl.Boolean, eager=True)
 
     return check
 
@@ -1865,83 +1891,9 @@ def materialize(t: DType) -> DType:
     return pl.Int64 if t == pl.Null else t
 
 
-def _dedup_key(v: Any) -> Any:
-    """Values as `Value` equality tells them apart: one zero and one NaN."""
-    if isinstance(v, float):
-        return "nan" if math.isnan(v) else v + 0.0
-    return v
-
-
 def _int_output(f: dict) -> bool:
     """Does an `avg` declare an integer output type (`AggFn.iavg`)?"""
     return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
-
-
-def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
-    """`Measure.eval` on the values a measure aggregates (NULLs dropped), with
-    Polars's profile's choices: doubles added in turn (`SEQUENTIAL`), the
-    variance by Polars. A double sum of `+∞` and `-∞` raises (#257)."""
-    if distinct:
-        seen: set = set()
-        vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
-    if fn == "count":
-        return len(vs)
-    if not vs:
-        return None
-    if fn == "sum":
-        total = sum(vs)
-        if not I64_MIN <= total <= I64_MAX:
-            # DataFusion wraps around; Lean's sum is the true one (`Issue.sumWraps`).
-            raise IntegerOverflow("SUM leaves 64 bits")
-        return total
-    if fn == "collect":
-        return list(vs)
-    if fn == "iavg":
-        # `AggFn.iavg`: the exact mean, truncated toward zero (#209).
-        q = abs(sum(vs)) // len(vs)
-        return q if sum(vs) >= 0 else -q
-    if fn in ("bit_and", "bit_or", "bit_xor"):
-        # `AggFn.bit`: the operation folded over the 64-bit values (#53).
-        acc = -1 if fn == "bit_and" else 0
-        for v in vs:
-            acc = acc & v if fn == "bit_and" else acc | v if fn == "bit_or" else acc ^ v
-        return acc
-    if fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
-        # `AggFn.var` (#54), with Polars' own algorithm; an infinity would make
-        # a deviation NaN (#257).
-        if math.inf in vs or -math.inf in vs:
-            raise DomainError(f"{fn} of an infinity would make a NaN")
-        if fn.endswith("_samp") and len(vs) == 1:
-            return None
-        s = pl.Series(vs, dtype=pl.Float64)
-        ddof = 1 if fn.endswith("_samp") else 0
-        r = float(s.std(ddof=ddof) if fn.startswith("std") else s.var(ddof=ddof))  # pyrefly: ignore
-        # D30's clamp shim: at least 0, NaN kept (`Stat.clamp_near`, `FloatMoments.lean`).
-        r = r if math.isnan(r) else max(0.0, r)
-        if math.isinf(r):
-            # Finite values whose variance overflows (`Measure.makesInf`, #575).
-            raise InfiniteResult(f"{fn} overflows to infinity")
-        return r + 0.0
-    if fn in ("fsum", "avg"):
-        if math.inf in vs and -math.inf in vs:
-            raise DomainError(f"{fn} of +inf and -inf would make a NaN")
-        acc = 0.0
-        # In list order (`sum_order = SEQUENTIAL`), within the plan's bound of
-        # the reference's `floatSumCR` and `floatAvgCR` (D25).
-        for v in vs:
-            acc = acc + v
-        if math.isinf(acc) and all(math.isfinite(v) for v in vs):
-            # Finite values whose sum overflows (`Measure.makesInf`, #575).
-            raise InfiniteResult(f"{fn} overflows to infinity")
-        return acc / len(vs) + 0.0 if fn == "avg" else acc
-    if fn in ("fmin", "fmax"):
-        # By the codes' order: NaN above every double, and one zero.
-        nums = [v for v in vs if not math.isnan(v)]
-        if not nums or (fn == "fmax" and len(nums) < len(vs)):
-            return math.nan
-        return (min(nums) if fn == "fmin" else max(nums)) + 0.0
-    # `pickFold` keeps the first extreme; equal values are the same value here.
-    return min(vs) if fn == "min" else max(vs)
 
 
 #: `(descending, nulls_last)` per direction (`shims.null_order`).
@@ -1986,20 +1938,11 @@ class Measure:
         return a if self.filter is None else pl.when(is_true(self.filter.expr)).then(a)
 
     def result(self, values: pl.Expr) -> pl.Expr:
-        """The measure from the list of each group's values."""
-        fn, distinct = self.fn, self.distinct
-        t = self.arg.dtype
-        physical = pl.Int64 if t == US else pl.Int32 if t == pl.Date else None
-        out = physical or self.dtype
-
-        def apply(s: pl.Series) -> pl.Series:
-            return pl.Series([_aggregate(fn, distinct, vs) for vs in s.to_list()], dtype=out)
-
-        if fn == "collect":
-            # `ARRAY_AGG` of no values is NULL; Polars's list is empty.
-            return pl.when(values.list.len() == 0).then(None).otherwise(values)
-        r = values.map_batches(apply, return_dtype=out)
-        return r.cast(self.arg.dtype) if physical else r
+        """`ARRAY_AGG`, the one measure without a native aggregation: the
+        group's list of values, NULL for no values (Polars's list is empty).
+        Every other measure is `native`'s."""
+        assert self.fn == "collect", self.fn
+        return pl.when(values.list.len() == 0).then(None).otherwise(values)
 
     def native(self, name: str) -> NativeAgg | None:
         """The measure as Polars's own aggregation of the column `name` (the
@@ -2367,7 +2310,7 @@ class Windows:
         return self.aggregate(f)
 
     def aggregate(self, f: WindowSpec) -> pl.Expr:
-        """`Measure.eval` of the frame's rows, with `_aggregate`'s choices."""
+        """`Measure.eval` of the frame's rows, with the choices of `Measure.native`."""
         fr = f.frame
         _, _, w = self.frame(fr)
         if f.col is None:
