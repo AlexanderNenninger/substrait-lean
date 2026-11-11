@@ -6,6 +6,7 @@
 /engines/polars/.lake
 /engines/spark/.lake
 /engines/duckdb/.lake
+/engines/substrait/.lake
 /float-bounds/.lake
 /python/.venv
 .hypothesis/

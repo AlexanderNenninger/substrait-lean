@@ -17,6 +17,7 @@ require «sverify-frontend» from "frontend"
 require «sverify-engines» from "engines"
 require «sverify-polars» from "engines/polars"
 require «sverify-spark» from "engines/spark"
+require «sverify-substrait» from "engines/substrait"
 /-- DuckDB's package holds the generated modules (`Sverify.DuckDB.LoweringOn`,
 `Sverify.DuckDB.Lift`), and reads `check_generated` from the options it is
 required with. -/
@@ -29,7 +30,7 @@ lean_lib SubstraitLean
 /- Across packages a library claims every module under its root's prefix,
 which is why each package has a root of its own (`Sverify.Core`,
 `Sverify.Analysis`, `Sverify.Frontend`, `Sverify.Engines`, `Sverify.DuckDB`,
-`Sverify.Polars`, `Sverify.Spark`) and none is rooted at `Sverify` alone. The
+`Sverify.Polars`, `Sverify.Spark`, `Sverify.Substrait`) and none is rooted at `Sverify` alone. The
 generated modules (the lowering and the lift) are DuckDB's package's, which
 applies `check_generated` to them. -/
 
