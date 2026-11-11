@@ -15,6 +15,7 @@ import pytest
 
 import sverify as sv
 from _engines import PROFILED
+from sverify._unsupported import Unsupported
 from sverify.engine import (
     connect,
     put_table,
@@ -140,6 +141,11 @@ def test_the_written_remainder_of_doubles_is_sverify_fmod(con):
     assert "sverify_fmod" in declared(written)
     assert lean_values(json.dumps(inline_tables(json.loads(written), ROWS))) == [(1.5,), (0.0,)]
     for engine in ENGINES:
+        if engine == "polars":
+            # No exact remainder of doubles on Polars (polars-double-modulus, #1270).
+            with pytest.raises(Unsupported, match="% of doubles"):
+                run_plan(con, written, engine)
+            continue
         assert arrow_rows(run_plan(con, written, engine)) == [(1.5,), (0.0,)], engine
 
 

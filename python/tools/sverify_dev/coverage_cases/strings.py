@@ -66,6 +66,8 @@ REFUSED: dict[str, dict[str, str]] = {
     "re_extract": DUCKDB_ONLY,
     "re_replace": DUCKDB_ONLY,
     "hexdigest": DUCKDB_ONLY,
+    # Polars has no levenshtein (polars-string-functions-missing, #1270).
+    "levenshtein": {"polars": "no levenshtein"},
 }
 
 NO_DUCKDB_SQL = {

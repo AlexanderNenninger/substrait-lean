@@ -157,7 +157,9 @@ def test_lean_agrees_with_duckdb_and_engines(con, label):
 
 def test_log10_and_log2_are_libm():
     """`ln x / ln b` is not libm's `log10` and `log2` (the last bit differs);
-    Lean and the engines compute `log10` and `log2`."""
+    Lean and the engines compute `log10` and `log2`, but for Polars, which has
+    only `ln x / ln b`: its `fp.log` row bounds it to 2.1 ulp of libm's
+    (polars-ulp-libm, #1270)."""
     con = connect()
     ps = [*POSITIVE, 3.0, 5.5, 1e-5]
     rs = [(k, None, p, None, None, None, None, None) for k, p in enumerate(ps)]
@@ -174,7 +176,14 @@ def test_log10_and_log2_are_libm():
     written = written_plan(to_substrait_json(expr))
     for engine in ENGINES:
         ran = run_plan(con, written, engine)
-        assert table_rows(expr, [tuple(r.values()) for r in ran.to_pylist()], False) == want
+        got = table_rows(expr, [tuple(r.values()) for r in ran.to_pylist()], False)
+        if engine != "polars":
+            assert got == want
+            continue
+        for g, w in zip(got, want, strict=True):
+            for a, b in zip(g, w, strict=True):
+                near = isinstance(a, float) and isinstance(b, float)
+                assert a == b or (near and abs(a - b) <= 2.1 * math.ulp(b)), (g, w)
 
 
 #: An expression outside its domain on some row, and that row's `x`, `i`, `n`.
