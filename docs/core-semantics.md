@@ -611,7 +611,7 @@ negation, which keeps NaN.
 
 ## The Substrait profile
 
-`Profile.substrait.table` (`SubstraitLean/SubstraitProfile.lean`) states
+`Profile.substrait.table` (`engines/substrait/Sverify/Substrait/Profile.lean`) states
 Substrait's semantics as the extension YAMLs at `substrait-extensions`
 0.106.0 and Substrait's docs give it, in the format of the reference's and
 the engines' tables:

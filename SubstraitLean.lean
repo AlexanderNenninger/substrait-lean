@@ -100,7 +100,7 @@ import Sverify.Spark.Shims
 import Sverify.Spark.Profile
 import Sverify.Spark.Tables
 import Sverify.Spark.Engine
-import SubstraitLean.SubstraitProfile
+import Sverify.Substrait.Profile
 import Sverify.Engines.Transfer
 import SubstraitLean.Obligations
 import SubstraitLean.Epsilon

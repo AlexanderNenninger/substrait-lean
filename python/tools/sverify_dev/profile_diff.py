@@ -1,7 +1,7 @@
 """Where Substrait's choices and the reference's differ (#444, step 2).
 
 `substrait-check --profile-diff` lists the options where `Profile.substrait`
-and `Profile.reference` (`SubstraitLean/SubstraitProfile.lean`) accept other
+and `Profile.reference` (`engines/substrait/Sverify/Substrait/Profile.lean`) accept other
 preferences from a plan, or allow other behaviours where the plan states none.
 This module renders it as the table of `docs/core-semantics.md`'s "The
 Substrait profile", between its markers; `tests/test_substrait_profile.py`

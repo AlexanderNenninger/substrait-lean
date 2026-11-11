@@ -28,6 +28,7 @@ FRONTEND = ROOT / "frontend" / "Sverify" / "Frontend"
 DUCKDB = ROOT / "engines" / "duckdb" / "Sverify"
 POLARS = ROOT / "engines" / "polars" / "Sverify"
 SPARK = ROOT / "engines" / "spark" / "Sverify"
+SUBSTRAIT = ROOT / "engines" / "substrait" / "Sverify"
 GENERATED_DIRS = [
     ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "LoweringOn",
     ROOT / "engines" / "duckdb" / "Sverify" / "DuckDB" / "Lift" / "Duckdb",
@@ -48,6 +49,7 @@ def _modules() -> list[Path]:
         *FRONTEND.glob("*.lean"),
         *(POLARS / "Polars").glob("*.lean"),
         *(SPARK / "Spark").glob("*.lean"),
+        *(SUBSTRAIT / "Substrait").glob("*.lean"),
         *(DUCKDB / "DuckDB").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
@@ -72,6 +74,7 @@ def test_every_module_has_a_line(module):
             FRONTEND,
             POLARS,
             SPARK,
+            SUBSTRAIT,
             DUCKDB,
             ROOT / "float-bounds" / "FloatBounds",
             ROOT / "SubstraitLean",
@@ -103,6 +106,7 @@ def _theorems() -> set[str]:
         *FRONTEND.glob("*.lean"),
         *(POLARS / "Polars").glob("*.lean"),
         *(SPARK / "Spark").glob("*.lean"),
+        *(SUBSTRAIT / "Substrait").glob("*.lean"),
         *(DUCKDB / "DuckDB").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),

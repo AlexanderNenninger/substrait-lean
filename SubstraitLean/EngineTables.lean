@@ -1,6 +1,6 @@
 import Sverify.Engines.Transfer
 import Sverify.DuckDB.Tables
-import SubstraitLean.SubstraitProfile
+import Sverify.Substrait.Profile
 import Sverify.Spark.Tables
 import Sverify.Polars.Tables
 

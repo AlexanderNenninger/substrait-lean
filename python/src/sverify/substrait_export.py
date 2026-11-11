@@ -60,7 +60,7 @@ Shims = Literal["apply", "annotate", "refuse"]
 SHIMS: tuple[Shims, ...] = ("apply", "annotate", "refuse")
 
 #: The spec gaps behind the options Substrait leaves open
-#: (`SubstraitLean/SubstraitProfile.lean`, `docs/core-semantics.md`).
+#: (`engines/substrait/Sverify/Substrait/Profile.lean`, `docs/core-semantics.md`).
 GAPS: Mapping[str, str] = {
     "shift_range": "ST-1",
     "stat_degenerate": "ST-3",

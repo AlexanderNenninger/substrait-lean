@@ -397,7 +397,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.SubstraitProfile": {
+  "Sverify.Substrait.Profile": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

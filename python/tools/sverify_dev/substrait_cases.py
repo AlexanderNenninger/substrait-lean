@@ -18,7 +18,7 @@ expected result. A case that states no value for an option of its function
 combination of the values it leaves open (the README: "the test should be run
 for all permutations of the options").
 
-`Profile.substrait.table` (`SubstraitLean/SubstraitProfile.lean`) chooses, at
+`Profile.substrait.table` (`engines/substrait/Sverify/Substrait/Profile.lean`) chooses, at
 every option of the YAMLs, the plan's first preference. Each run states every
 option, so the reference's evaluator gives Substrait's outcome wherever the
 parser accepts the preference (`Parse.optionAccepts`, which refuses the
@@ -72,7 +72,7 @@ from sverify.engine import run_checker
 Json = dict[str, Any]
 
 #: `substrait-io/substrait` at v0.106.0, the extensions `Profile.substrait`
-#: reads (`SubstraitLean/SubstraitProfile.lean`).
+#: reads (`engines/substrait/Sverify/Substrait/Profile.lean`).
 TAG = "v0.106.0"
 COMMIT = "b5aeda418813f657011bb82dd1300f996525c3ae"
 REPO = "https://github.com/substrait-io/substrait.git"
