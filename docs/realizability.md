@@ -40,7 +40,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 24 | 1 | 4 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 15 | 14 | 1 | 5 | 8 | 0 | 15 | 7 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 15 | 14 | 1 | 6 | 8 | 0 | 15 | 7 |
 | Spark | 4.3.0 | `Rel.spark_sound` | 6 | 25 | 1 | 5 | 3 | 1 | 14 | 0 |
 
 Rows per evidence level:
@@ -48,7 +48,7 @@ Rows per evidence level:
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 6 | 12 | 18 | 2 | 0 | 0 | 15 |
-| Polars | 29 | 2 | 16 | 0 | 0 | 0 | 15 |
+| Polars | 29 | 2 | 17 | 0 | 0 | 0 | 15 |
 | Spark | 18 | 11 | 12 | 0 | 0 | 0 | 14 |
 
 ## Shims
@@ -165,6 +165,7 @@ Rows per evidence level:
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../engines/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json) |
 | agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json), [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
+| fp.log | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | probe | tested: [polars-log-base](../engines/polars/facts/polars-log-base.json), [polars-ulp-libm](../engines/polars/facts/polars-ulp-libm.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
