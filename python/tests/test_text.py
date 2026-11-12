@@ -222,6 +222,12 @@ def test_repeat_reverse_replace_match_the_reference(sql, rows):
         got = run_plan(con, plan, "polars").to_pylist()
         assert canonical(tuple(x.values()) for x in got) == expected
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
+    if sql == LEVENSHTEIN:
+        # DuckDB's guard reads `s || t`, NULL where either is: only rows with
+        # both raise.
+        non_ascii = any(
+            not (r[0] + r[1]).isascii() for r in rows if r[0] is not None and r[1] is not None
+        )
     if sql == EMPTY_PATTERN:
         with pytest.raises(Unsupported, match="empty pattern"):
             run_plan(con, plan, "duckdb")
