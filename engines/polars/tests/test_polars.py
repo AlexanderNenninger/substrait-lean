@@ -570,13 +570,16 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
     con = connect()
     xs = [*DOUBLES, -0.0, -0.4, 521924.88982515107, 1e308, math.nan, math.inf, -math.inf, None]
     con.create("r", F, [(x,) for x in xs])
-    sql = (
-        "SELECT f, round(f, 1) AS x, round(f, -1) AS y, round(f, -5) AS z, round(f, 400) AS w,"
-        " round(f, -400) AS v FROM r"
-    )
+    sql = "SELECT f, round(f, 1) AS x, round(f, 22) AS w FROM r"
     plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     duck = rows_of(run_plan(con, plan, "duckdb"))
     assert repr(rows_of(run_plan(con, plan, "polars"))) == repr(duck)
+    # Polars is exact for 0 ≤ d ≤ 22 only; other digits are refused
+    # (polars-round-digits, #1270).
+    for d in (-1, -5, -400, 23, 400):
+        plan = written_plan(substrait_json(con, f"SELECT round(f, {d}) AS y FROM r", "duckdb"))
+        with pytest.raises(polars_engine.Unsupported, match="polars-round-digits"):
+            run_plan(con, plan, "polars")
 
 
 def test_casts_to_bigint_truncate_and_refuse_nan():
@@ -598,7 +601,8 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
     [
         ("SELECT a // b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
         ("SELECT a % b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
-        ("SELECT a % CAST(b AS DOUBLE) AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
+        # `%` of doubles: refused before it runs (polars-double-modulus, #1270).
+        ("SELECT a % CAST(b AS DOUBLE) AS q FROM r WHERE a = 5", polars_engine.Unsupported),
         ("SELECT a // b AS q FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, 2) AS p FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, b) AS p FROM r WHERE b = -1", polars_engine.NegativeExponent),

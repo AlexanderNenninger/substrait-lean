@@ -33,6 +33,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify._unsupported import UnsupportedError
 from sverify.engine import (
     connect,
     put_table,
@@ -141,6 +142,11 @@ def test_engines_match_the_oracle(engine, sql, rows):
         with pytest.raises(Exception, match="non-ASCII text differs between engines"):
             run_plan(con, plan, engine)
         return
+    if engine == "polars" and sql == QUERIES[2]:
+        # A pattern per row has no exact native form on Polars (#1270).
+        with pytest.raises(UnsupportedError, match="LIKE with a pattern"):
+            run_plan(con, plan, engine)
+        return
     got = run_plan(con, plan, engine)
     assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
 
@@ -174,14 +180,13 @@ def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
 marked = st.one_of(st.none(), st.text(alphabet="ab %\u0301é", max_size=6))
 counts = st.one_of(st.none(), st.integers(-2, 3))
 #: Engines that compute these as Rust does on ASCII text only raise on others.
-ASCII_IN_DUCKDB = (
-    "SELECT repeat(s, a) AS r, reverse(s) AS v, ascii(t) AS c, levenshtein(s, t) AS d FROM r"
-)
+ASCII_IN_DUCKDB = "SELECT repeat(s, a) AS r, reverse(s) AS v, ascii(t) AS c FROM r"
 # DuckDB reverses grapheme clusters, and the lift reads no `ascii` or
 # `levenshtein`: in Ibis.
-PLANS[ASCII_IN_DUCKDB] = lambda r: r.select(
-    r=r.s.repeat(r.a), v=r.s.reverse(), c=r.t.ascii_str(), d=r.s.levenshtein(r.t)
-)
+PLANS[ASCII_IN_DUCKDB] = lambda r: r.select(r=r.s.repeat(r.a), v=r.s.reverse(), c=r.t.ascii_str())
+#: Polars has no `levenshtein` and refuses it (#1270).
+LEVENSHTEIN = "SELECT levenshtein(s, t) AS d FROM r"
+PLANS[LEVENSHTEIN] = lambda r: r.select(d=r.s.levenshtein(r.t))
 REPLACE = (
     "SELECT replace(s, 'a', 'xy') AS p, replace(s, 'é', '') AS e, replace(s, ' ', '') AS t FROM r"
 )
@@ -193,7 +198,7 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
     return canonical(lean_values(json.dumps(plan)))
 
 
-@pytest.mark.parametrize("sql", [ASCII_IN_DUCKDB, REPLACE, EMPTY_PATTERN])
+@pytest.mark.parametrize("sql", [ASCII_IN_DUCKDB, LEVENSHTEIN, REPLACE, EMPTY_PATTERN])
 @settings(
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
@@ -210,14 +215,23 @@ def test_repeat_reverse_replace_match_the_reference(sql, rows):
     if sql == REPLACE:
         assert canonical(oracle(con, sql)) == expected
     plan = written_plan(plan_of(con, sql))
-    assert (
-        canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist()) == expected
-    )
+    if sql == LEVENSHTEIN:
+        with pytest.raises(UnsupportedError, match="no levenshtein"):
+            run_plan(con, plan, "polars")
+    else:
+        got = run_plan(con, plan, "polars").to_pylist()
+        assert canonical(tuple(x.values()) for x in got) == expected
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
+    if sql == LEVENSHTEIN:
+        # DuckDB's guard reads `s || t`, NULL where either is: only rows with
+        # both raise.
+        non_ascii = any(
+            not (r[0] + r[1]).isascii() for r in rows if r[0] is not None and r[1] is not None
+        )
     if sql == EMPTY_PATTERN:
         with pytest.raises(Unsupported, match="empty pattern"):
             run_plan(con, plan, "duckdb")
-    elif sql == ASCII_IN_DUCKDB and non_ascii:
+    elif sql in (ASCII_IN_DUCKDB, LEVENSHTEIN) and non_ascii:
         with pytest.raises(Exception, match="non-ASCII text differs between engines"):
             run_plan(con, plan, "duckdb")
     else:
@@ -243,12 +257,13 @@ def test_ilike_matches_the_reference(rows):
     con = connect()
     con.create("r", R, rows)
     plan = written_plan(plan_of(con, ILIKE))
-    polars = canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist())
+    # `s ILIKE t`, a pattern per row, has no exact native form on Polars (#1270).
+    with pytest.raises(UnsupportedError, match="ILIKE with a pattern"):
+        run_plan(con, plan, "polars")
     ascii = all(v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
     if not ascii:
         return
     expected = lean_rows(con, ILIKE, rows)
-    assert polars == expected
     try:
         got = run_plan(con, plan, "duckdb")
     except Exception as e:  # noqa: BLE001 - DuckDB's error type

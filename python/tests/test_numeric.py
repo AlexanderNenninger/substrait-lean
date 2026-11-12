@@ -21,6 +21,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify._unsupported import Unsupported
 from sverify.contracts import decode_double
 from sverify.engine import (
     connect,
@@ -346,6 +347,12 @@ def test_round_to_digits_is_duckdbs(xs, d):
 
     want = [("ok", code(v)) for (v,) in native.execute(sql, [xs]).fetchall()]
     for engine in ("duckdb", "polars"):
+        if engine == "polars" and not 0 <= d <= 22:
+            # Polars rounds exactly for 0 ≤ d ≤ 22 only (polars-round-digits,
+            # #1270): other digits are refused.
+            with pytest.raises(Unsupported, match="polars-round-digits"):
+                run_plan(con, plan, engine)
+            continue
         got = [r["x"] for r in run_plan(con, plan, engine).to_pylist()]
         assert [("ok", code(v)) for v in got] == want, engine
 

@@ -628,30 +628,26 @@ def _ulps(a: float, b: float) -> float:
 
 
 @pytest.mark.parametrize("n", [2])
-def test_double_division_is_within_two_ulps_and_the_remainder_exact(n):
+def test_double_division_is_within_two_ulps(n):
     """PL-3 (polars-double-scalar-divisor): Polars divides by a constant
     through its reciprocal, on both engines and from 2 rows on. The
     reference's `/` is `approx` there, 2 ulps per division, for a divisor
-    that is not subnormal; `%` stays C's `fmod`, exact, and `ROUND`'s
-    division by `10^d` exact."""
+    that is not subnormal; `ROUND`'s division by `10^d` is exact. (`%` of
+    doubles is refused on Polars, #1270.)"""
     xs = [49.0, 0.0, 1e-300, 7.0, -3.3, 1e308, 5e-324]
     lf = pl.LazyFrame({"x": xs * n})
     out = polars_engine.collect(
         lf.select(
             q=polars_engine.fdiv(pl.col("x"), pl.lit(49.0)),
-            m=polars_engine.fmod(pl.col("x"), pl.lit(49.0)),
-            r=polars_engine.exact_div(pl.col("x"), pl.lit(49.0)),
         )
     )
-    for x, (q, m, r) in zip(xs, out.rows()[: len(xs)], strict=True):
+    for x, (q,) in zip(xs, out.rows()[: len(xs)], strict=True):
         assert _ulps(q, x / 49.0) <= 2
-        assert m == math.fmod(x, 49.0)
-        assert r == x / 49.0
     rows = [(0, 49.0), (1, 0.0), (2, 1e-300)] * n
-    sql = "SELECT g, x / 49.0 AS q, x % 49.0 AS m, ROUND(x / 7.0, 2) AS r FROM r"
+    sql = "SELECT g, x / 49.0 AS q, ROUND(x / 7.0, 2) AS r FROM r"
     lean, polars = lean_and_polars(FLOATS, rows[:6], sql, doubles=True)
-    for (g, q, m, r), (h, q2, m2, r2) in zip(polars, lean, strict=True):
-        assert g == h and math.isclose(q, q2, abs_tol=1e-6) and math.isclose(m, m2, abs_tol=1e-6)
+    for (g, q, r), (h, q2, r2) in zip(polars, lean, strict=True):
+        assert g == h and math.isclose(q, q2, abs_tol=1e-6)
         assert math.isclose(r, r2, abs_tol=1e-6)
 
 
