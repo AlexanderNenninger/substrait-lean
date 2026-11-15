@@ -1187,3 +1187,4 @@ to it, so links to an entry here still land.
 - <a id="d38-no-operation-on-finite-doubles-overflows-to-infinity"></a>[D38. No operation on finite doubles overflows to infinity](decisions.md#d38-no-operation-on-finite-doubles-overflows-to-infinity)
 - <a id="d39-division-by-zero-has-an-ieee-value"></a>[D39. Division by zero has an IEEE value](decisions.md#d39-division-by-zero-has-an-ieee-value)
 - <a id="d40-power1--is-cs-pow"></a>[D40. `power(±1, ±∞)` is C's `pow`](decisions.md#d40-power1--is-cs-pow)
+- <a id="d41-modulus-of-doubles-accepts-division_type-floor"></a>[D41. `modulus` of doubles accepts `division_type: FLOOR`](decisions.md#d41-modulus-of-doubles-accepts-division_type-floor)

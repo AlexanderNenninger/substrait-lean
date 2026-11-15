@@ -14,7 +14,8 @@ from __future__ import annotations
 import json
 import math
 
-import ibis
+import numpy as np
+import polars as pl
 import pyarrow as pa
 import pytest
 from hypothesis import given, settings
@@ -167,43 +168,65 @@ def test_double_modulus_floors_natively() -> None:
     assert report.routes["polars"].kind == "native"
 
 
-@pytest.mark.parametrize(
-    "divisor",
-    [
-        pytest.param(lambda t: 3.0, id="literal"),
-        # `with_columns(w=lit(49.0))` keeps `w` a scalar (polars-scalar-divisor).
-        pytest.param(lambda t: ibis.literal(49.0), id="projected literal"),
-    ],
-)
-def test_double_modulus_by_a_scalar_is_refused(divisor) -> None:
-    """A divisor that may reach the kernel as a scalar takes Polars's
-    reciprocal kernel, where `49.0 % 49.0` is 49.0 (polars-scalar-divisor): the
-    translation refuses it and says so."""
+def test_double_modulus_is_the_floor_formula_over_divide() -> None:
+    """Polars's `%` of doubles is `x - d * floor(x / d)` over its own `/`,
+    whichever kernel `/` takes (polars-double-modulus): no row differs, for a
+    column and a literal divisor, in memory and on streaming."""
+    rng = np.random.default_rng(0)
+    n = 20_000
+    x = rng.standard_normal(n) * 10.0 ** rng.integers(-5, 6, n)
+    y = rng.standard_normal(n) * 10.0 ** rng.integers(-5, 6, n)
+    df = pl.DataFrame({"x": x, "y": y})
+    divisors = (pl.col("y"), pl.lit(7.3), pl.col("y") * 2, pl.col("y").abs(), pl.col("y").max())
+    for divisor in divisors:
+        for engine in ("in-memory", "streaming"):
+            out = (
+                df.lazy()
+                .select(
+                    m=pl.col("x") % divisor,
+                    f=pl.col("x") - divisor * (pl.col("x") / divisor).floor(),
+                )
+                .collect(engine=engine)
+            )
+            both = out.filter(out["m"].is_not_nan() | out["f"].is_not_nan())
+            assert (both["m"] == both["f"]).all(), (divisor, engine)
+
+
+def test_double_modulus_by_a_literal_is_native() -> None:
+    """A literal divisor is `/` by a scalar (`approx`, polars-scalar-divisor): the
+    written plan runs its four calls."""
     con = sv.connect()
     con.put("t", _double_table())
     t = con.table("t")
     report = sv.verify(
-        t.mutate(w=divisor(t)).select(m=_.x % _.w),
-        requires={"t": [_.y != 0, _.x > -1e300, _.x < 1e300, _.y > -1e300, _.y < 1e300]},
-        semantics="polars",
-    )
-    with pytest.raises(Exception, match="may be a scalar"):
-        report.run(con, "polars")
-
-
-def test_double_modulus_by_a_projected_column_is_native() -> None:
-    """A column projected from a column stays one."""
-    xs, ys = [7.0, -7.0, 5.5, 0.0, -0.0, 49.0], [3.0, 3.0, 2.0, 3.0, 3.0, 49.0]
-    con = sv.connect()
-    con.put("t", pa.table({"x": pa.array(xs), "y": pa.array(ys)}))
-    t = con.table("t")
-    report = sv.verify(
-        t.mutate(w=t.y * 1.0).select(m=_.x % _.w),
-        requires={"t": [_.y >= 1.0, _.y <= 1000.0, _.x > -1e300, _.x < 1e300]},
+        t.select(m=t.x % 3.0),
+        requires={"t": [_.x > -1e300, _.x < 1e300]},
         semantics="polars",
     )
     out = report.run(con, "polars", route="native").column("m").to_pylist()
-    assert out == [x - y * math.floor(x / y) for x, y in zip(xs, ys, strict=True)]
+    assert out == [x - 3.0 * math.floor(x / 3.0) for x, _y, _m in DOUBLE_ROWS]
+
+
+@pytest.mark.parametrize(
+    ("x", "y"),
+    [
+        (1.0, 0.0),  # a zero divisor: Polars gives NaN, the profile raises (D21)
+        (1.0, math.inf),
+        (math.inf, 3.0),
+        (1e308, 1e-10),  # an intermediate that overflows: `-inf`
+        (1.7976931348623157e308, 3.0),
+        (2.0, 5e-324),  # a subnormal divisor
+    ],
+)
+def test_double_modulus_error_rows_are_refused(x: float, y: float) -> None:
+    con = sv.connect()
+    con.put("t", pa.table({"x": pa.array([x]), "y": pa.array([y])}))
+    t = con.table("t")
+    report = sv.verify(
+        t.select(m=t.x % t.y), requires={"t": [_.y != 0]}, semantics="polars", on_inferred="warn"
+    )
+    with pytest.raises(Exception, match="(?i)zero|infinite|overflow|subnormal|domain|precondition"):
+        report.run(con, "polars")
 
 
 def test_double_modulus_is_refused_under_the_reference() -> None:
