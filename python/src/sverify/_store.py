@@ -15,6 +15,7 @@ from typing import Any
 import pyarrow as pa
 
 from sverify._scan import Native
+from sverify._weighted import _indices
 
 type State = Any
 """A weighted table as the engine holds it: its store's handle (`Store`'s
@@ -95,7 +96,7 @@ def by_keys(
         )
         codes = both.dictionary_encode(null_encoding="encode").combine_chunks().indices
         left[f"__k{i}"], right[f"__k{i}"] = codes[:n], codes[n:]
-    marked = state.append_column("__row", pa.array(range(n), pa.int64()))
+    marked = state.append_column("__row", _indices(n))
     for k, v in left.items():
         marked = marked.append_column(k, v)
     hits = marked.join(pa.table(right), list(right), join_type="left semi" if keep else "left anti")

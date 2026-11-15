@@ -56,7 +56,9 @@ from fractions import Fraction
 from typing import Any, Literal, overload
 
 import pyarrow as pa
+import pyarrow.compute as pc
 
+from sverify._weighted import _call, _indices, _is_in
 from sverify.engine import checker_failed, run_checker
 from sverify.observation import Observation, Within
 
@@ -410,43 +412,90 @@ def tolerances(s: Split, partials: pa.Table, result: pa.Table) -> Sharded:
     return Sharded(result, tol, not fb["filters_read_doubles"])
 
 
-def _key_value(v: Any) -> Any:
-    """A key value compared as Lean compares values: doubles by their bits
-    (so NaN equals itself and -0.0 differs from 0.0)."""
-    return ("f", struct.pack("<d", v)) if isinstance(v, float) else v
+def _key_columns(table: pa.Table, names: Sequence[str]) -> tuple[list[str], list[pa.Array]]:
+    """The key columns `names` of `table` as Lean compares them: doubles by
+    their bits (so NaN equals itself and `-0.0` differs from `0.0`), integers
+    as one width, each with a tag of its kind so that kinds never meet."""
+    kinds: list[str] = []
+    arrays: list[pa.Array] = []
+    for n in names:
+        col = table.column(n).combine_chunks()
+        if pa.types.is_floating(col.type):
+            kinds.append("f")
+            col = col.cast(pa.float64()).view(pa.int64())
+        elif pa.types.is_signed_integer(col.type):
+            kinds.append("i")
+            col = col.cast(pa.int64())
+        else:
+            kinds.append(str(col.type))
+        arrays.append(col)
+    return kinds, arrays
+
+
+def _codes(columns: Sequence[pa.ChunkedArray]) -> list[pa.Array]:
+    """Each key column as dictionary indices, NULL its own value, so that a
+    grouping or a join treats NULLs as equal."""
+    return [c.dictionary_encode(null_encoding="encode").combine_chunks().indices for c in columns]
 
 
 def check_keys(shards: Sequence[Mapping[str, pa.Table]], keys: Mapping[str, Sequence[str]]) -> None:
     """Raise unless rows with equal split keys, in any of the keyed tables,
-    are on the same shard (`Sharding.keyDisj`)."""
-    owner: dict[tuple, int] = {}
+    are on the same shard (`Sharding.keyDisj`). Names the first row, in shard,
+    table and row order, whose key an earlier shard holds."""
+    # (shard, table, first row number) in shard and table order, and the
+    # key columns of those with the same kinds.
+    parts: list[tuple[int, str, int]] = []
+    by_kind: dict[tuple[str, ...], list[tuple[int, int, int, list[pa.Array]]]] = {}
+    start = 0
     for i, shard in enumerate(shards):
         for t, names in keys.items():
-            columns = [shard[t].column(n).to_pylist() for n in names]
-            for key in zip(*columns, strict=True):
-                k = tuple(map(_key_value, key))
-                j = owner.setdefault(k, i)
-                if j != i:
-                    raise ValueError(
-                        f"split key {key} (columns {list(names)} of {t}) is on shards {j} and {i}"
-                    )
+            n = shard[t].num_rows
+            kinds, arrays = _key_columns(shard[t], names)
+            by_kind.setdefault(tuple(kinds), []).append((i, start, n, arrays))
+            parts.append((i, t, start))
+            start += n
+    first: tuple[int, int, int] | None = None  # (row number, shard, the earlier shard)
+    for kind, group in by_kind.items():
+        names = [f"k{c}" for c in range(len(kind))]
+        codes = _codes([pa.chunked_array([g[3][c] for g in group]) for c in range(len(kind))])
+        shard = pa.concat_arrays([pa.repeat(pa.scalar(i, pa.int64()), n) for i, _, n, _ in group])
+        seq = pa.concat_arrays([_call("add", _indices(n), s) for _, s, n, _ in group])
+        enc = pa.table([*codes, shard, seq], names=[*names, "shard", "seq"])
+        low = enc.group_by(names).aggregate([("shard", "min")])
+        bad = enc.join(low, names).filter(pc.field("shard") > pc.field("shard_min"))
+        if bad.num_rows:
+            row = bad.sort_by("seq").slice(0, 1).to_pylist()[0]
+            if first is None or row["seq"] < first[0]:
+                first = (row["seq"], row["shard"], row["shard_min"])
+    if first is not None:
+        seq, i, j = first
+        _, t, begin = next(p for p in reversed(parts) if p[2] <= seq and p[0] == i)
+        cols = list(keys[t])
+        key = tuple(shards[i][t].select(cols).slice(seq - begin, 1).to_pylist()[0].values())
+        raise ValueError(f"split key {key} (columns {cols} of {t}) is on shards {j} and {i}")
 
 
 def check_unique(
     tables: Mapping[str, Sequence[pa.Table]], unique: Mapping[str, Sequence[Sequence[str]]]
 ) -> None:
     """Raise unless no two rows of a table (all its pieces together) agree
-    on any of its `unique` column sets."""
+    on any of its `unique` column sets. Names the first repeated row's key."""
     for t, sets in unique.items():
+        pieces = [p for p in tables[t] if p.num_rows]
+        if not pieces:
+            continue
+        whole = pa.concat_tables(pieces)
         for names in sets:
-            seen: set[tuple] = set()
-            for piece in tables[t]:
-                columns = [piece.column(n).to_pylist() for n in names]
-                for key in zip(*columns, strict=True):
-                    k = tuple(map(_key_value, key))
-                    if k in seen:
-                        raise ValueError(f"{t} has two rows with {list(names)} = {key}")
-                    seen.add(k)
+            _, arrays = _key_columns(whole, names)
+            codes = _codes([pa.chunked_array([a]) for a in arrays])
+            cols = [f"k{c}" for c in range(len(names))]
+            enc = pa.table([*codes, pa.array(range(whole.num_rows))], names=[*cols, "row"])
+            first = enc.group_by(cols).aggregate([("row", "min")]).column("row_min")
+            repeats = enc.filter(_call("invert", _is_in(enc.column("row"), first)))
+            if repeats.num_rows:
+                r = _call("min", repeats.column("row")).as_py()
+                key = tuple(whole.select(list(names)).slice(r, 1).to_pylist()[0].values())
+                raise ValueError(f"{t} has two rows with {list(names)} = {key}")
 
 
 @overload

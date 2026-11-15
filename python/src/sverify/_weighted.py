@@ -80,6 +80,11 @@ def _call(name: str, *args: object) -> Any:
     return pc.call_function(name, list(args))
 
 
+def _is_in(values: Any, value_set: Any) -> Any:
+    """Whether each of `values` is in `value_set`."""
+    return pc.call_function("is_in", [values], pc.SetLookupOptions(value_set=value_set))
+
+
 def _indices(n: int) -> pa.Array:
     ones = pa.repeat(pa.scalar(1, pa.int64()), n)
     return _call("subtract", _call("cumulative_sum", ones), 1)
@@ -316,7 +321,7 @@ def split_matching(table: pa.Table, rows: pa.Table) -> tuple[pa.Table, pa.Table]
         f"SELECT {_q(_ROW)} FROM t WHERE EXISTS (SELECT 1 FROM r WHERE {same})", t=indexed, r=rows
     )
     rows_hit = hit.column(_ROW)
-    mask = pc.call_function("is_in", [_indices(n)], pc.SetLookupOptions(value_set=rows_hit))
+    mask = _is_in(_indices(n), rows_hit)
     return table.take(rows_hit), table.filter(_call("invert", mask))
 
 
