@@ -11,7 +11,7 @@
   ],
   "rows": [
     {"group": "int.div", "option": "on_domain_error", "types": ["i8", "i16", "i32", "i64"]},
-    {"group": "int.div", "option": "division_type", "types": ["i8", "i16", "i32", "i64"], "evidence": "source"}
+    {"group": "int.div", "option": "division_type", "types": ["i8", "i16", "i32", "i64"], "evidence": "probe"}
   ],
   "constructs": [
     "//",
@@ -30,7 +30,7 @@
   ],
   "reference": "`divide` on integers: `on_domain_error` never applies (docs/core-semantics.md, `int.div`).",
   "status": "no-finding",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -71,6 +71,21 @@
         }
       ],
       "notes": "The tests run `//` at every signed width on both failure paths of BinaryNumericDivideWrapper and expect no other error. A test cannot show that no input fails; with the source reading it pins that the two failures are the only ones."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (DuckDB evidence), sverify_dev.probe observations, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT (-7)::TINYINT // 2::TINYINT, (-7)::SMALLINT // 2::SMALLINT, (-7)::INTEGER // 2::INTEGER, (-7)::BIGINT // 2::BIGINT, 7::TINYINT // (-2)::TINYINT, 7::SMALLINT // (-2)::SMALLINT, 7::INTEGER // (-2)::INTEGER, 7::BIGINT // (-2)::BIGINT, (-7)::TINYINT % 2::TINYINT, (-7)::SMALLINT % 2::SMALLINT, (-7)::INTEGER % 2::INTEGER, (-7)::BIGINT % 2::BIGINT",
+          "observed": "-3 for every `//` at every width; -1 for every `%`: quotients truncate toward zero"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "note": "constructs int-div-truncates (row int.div division_type, i8 to i64)"
+        }
+      ]
     }
   ]
 }
