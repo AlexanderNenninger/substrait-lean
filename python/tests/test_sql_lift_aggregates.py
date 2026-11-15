@@ -281,6 +281,17 @@ def test_sum_of_both_infinities_is_no_domain_error_under_duckdbs_semantics():
         assert [i for i in ref.issues if "domain error" in str(i)], (fn, ref)
 
 
+def test_sum_of_an_expression_is_proved_under_duckdbs_semantics():
+    """The guarded sum's argument is the expression itself (`SUM(f + 1.0)`), not only a column."""
+    import ibis
+
+    import sverify as sv
+
+    t = ibis.table({"f": "float64"}, name="f")
+    report = sv.verify(sv.sql("SELECT sum(f + 1.0) AS v FROM f", f=t, semantics="duckdb"))
+    assert report.proved and not report.issues, report
+
+
 def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measures_for_duckdb():
     import subprocess
 

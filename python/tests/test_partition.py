@@ -557,7 +557,8 @@ def test_cancellation_is_within_the_tolerance():
 
 def test_no_bound_where_it_does_not_carry_over():
     """An expression of a split double has no bound, a `HAVING` on one may
-    keep other rows, and a group with NaN or near overflow has none."""
+    keep other rows, and a group near overflow has none; a group of NaN is exactly the literal
+    NaN the lift's finish gives (#341), so its tolerance is 0."""
     plan = float_plan("SELECT g, SUM(x) * 2 AS s2 FROM f GROUP BY g HAVING SUM(x) > 1")
     shards = [{"f": f_arrow([(0, 1.5), (1, 3.0)])}, {"f": f_arrow([(0, 1.0)])}]
     got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN, tolerance=True)
@@ -568,7 +569,7 @@ def test_no_bound_where_it_does_not_carry_over():
     shards = [{"f": f_arrow([(0, math.nan), (1, 1e308), (2, 1.0)])}, {"f": f_arrow([(1, 7e307)])}]
     got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN, tolerance=True)
     tau = {r["g"]: t for r, t in zip(got.table.to_pylist(), got.tolerance["s"], strict=True)}
-    assert tau[0] == math.inf and tau[1] == math.inf and math.isfinite(tau[2])
+    assert tau[0] == 0.0 and tau[1] == math.inf and math.isfinite(tau[2])
 
 
 def test_tolerance_without_the_keys_in_the_output():
