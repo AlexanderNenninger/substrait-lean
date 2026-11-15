@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]},
-    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"}
+    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"], "evidence": "probe"}
   ],
   "constructs": [
     "arctan2"
@@ -85,6 +85,18 @@
           "note": "`test_arctan2`: only (±√2/2, ±√2/2) → ±45°, ±135° (eager, in memory); no upstream test pins (0, 0) or ±inf"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float-atan2-edges: [[0.0, -3.141592502593994, 1.5707963705062866, 0.7853981852531433, nan], [0.0, -3.141592653589793, 1.5707963267948966, 0.7853981633974483, nan]]"
+        }
+      ],
+      "notes": "Float32 and Float64 `atan2`: `atan2(0, 0)` is 0, the infinities give the IEEE angles, no error."
     }
   ]
 }

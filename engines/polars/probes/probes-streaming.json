@@ -798,6 +798,150 @@
    "streaming": "[1.5, 0.5, -0.5, -1.5, nan, nan]"
   },
   {
+   "construct": "int-pow-wraps-widths",
+   "area": "integers",
+   "code": "{b: df(x=([2], t)).select(pl.col('x') ** (b - 1)).item() for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+   "differ": 0,
+   "in-memory": "{8: -128, 16: -32768, 32: -2147483648, 64: -9223372036854775808}",
+   "streaming": "{8: -128, 16: -32768, 32: -2147483648, 64: -9223372036854775808}"
+  },
+  {
+   "construct": "int-pow-negative-widths",
+   "area": "integers",
+   "code": "{b: attempt(lambda: df(x=([2], t)).select(pl.col('x') ** -1).item()) for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+   "differ": 0,
+   "in-memory": "{8: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\", 16: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\", 32: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\", 64: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\"}",
+   "streaming": "{8: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\", 16: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\", 32: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\", 64: \"error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]\"}"
+  },
+  {
+   "construct": "int-floordiv-widths",
+   "area": "integers",
+   "code": "{b: df(a=([-7, 7, -2**(b-1), 5], t), d=([2, -2, -1, 0], t)).select(pl.col('a') // pl.col('d')).to_series().to_list() for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+   "differ": 0,
+   "in-memory": "{8: [-4, -4, -128, None], 16: [-4, -4, -32768, None], 32: [-4, -4, -2147483648, None], 64: [-4, -4, -9223372036854775808, None]}",
+   "streaming": "{8: [-4, -4, -128, None], 16: [-4, -4, -32768, None], 32: [-4, -4, -2147483648, None], 64: [-4, -4, -9223372036854775808, None]}"
+  },
+  {
+   "construct": "int-modulus-widths",
+   "area": "integers",
+   "code": "{b: df(a=([-7, 7, -2**(b-1), 5], t), d=([2, -2, -1, 0], t)).select(pl.col('a') % pl.col('d')).to_series().to_list() for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+   "differ": 0,
+   "in-memory": "{8: [1, -1, 0, None], 16: [1, -1, 0, None], 32: [1, -1, 0, None], 64: [1, -1, 0, None]}",
+   "streaming": "{8: [1, -1, 0, None], 16: [1, -1, 0, None], 32: [1, -1, 0, None], 64: [1, -1, 0, None]}"
+  },
+  {
+   "construct": "int-shift-operators",
+   "area": "integers",
+   "code": "[hasattr(pl.Expr, '__lshift__'), hasattr(pl.Expr, '__rshift__'), [m for m in dir(pl.Expr) if 'shift' in m]]",
+   "differ": 0,
+   "in-memory": "[False, False, ['shift']]",
+   "streaming": "[False, False, ['shift']]"
+  },
+  {
+   "construct": "int-mean-empty-widths",
+   "area": "integers",
+   "code": "{b: [df(x=([], t)).select(pl.col('x').mean()).item(), df(x=([None], t)).select(pl.col('x').mean()).item(), df(g=[1], x=([None], t)).group_by('g').agg(pl.col('x').mean()).item(0, 'x')] for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+   "differ": 0,
+   "in-memory": "{8: [None, None, None], 16: [None, None, None], 32: [None, None, None], 64: [None, None, None]}",
+   "streaming": "{8: [None, None, None], 16: [None, None, None], 32: [None, None, None], 64: [None, None, None]}"
+  },
+  {
+   "construct": "float-sum-mean-empty",
+   "area": "aggregates",
+   "code": "{str(t): [df(x=([], t)).select(pl.col('x').sum()).item(), df(x=([], t)).select(pl.col('x').mean()).item(), df(x=([None], t)).select(pl.col('x').sum()).item(), df(g=[1], x=([None], t)).group_by('g').agg(pl.col('x').sum()).item(0, 'x'), df(g=[1], x=([None], t)).group_by('g').agg(pl.col('x').mean()).item(0, 'x')] for t in (pl.Float32, pl.Float64)}",
+   "differ": 0,
+   "in-memory": "{'Float32': [0.0, None, 0.0, 0.0, None], 'Float64': [0.0, None, 0.0, 0.0, None]}",
+   "streaming": "{'Float32': [0.0, None, 0.0, 0.0, None], 'Float64': [0.0, None, 0.0, 0.0, None]}"
+  },
+  {
+   "construct": "float32-nan-creation",
+   "area": "doubles",
+   "code": "df(a=([inf, inf, 0.0, 1.0], pl.Float32), b=([inf, -inf, inf, 2.0], pl.Float32)).select((pl.col('a') - pl.col('b')).alias('sub'), (pl.col('a') + pl.col('b')).alias('add'), (pl.col('a') * pl.col('b')).alias('mul'), (pl.col('a') / pl.col('b')).alias('div'), (pl.col('a') % pl.col('b')).alias('mod')).rows()",
+   "differ": 0,
+   "in-memory": "[(nan, inf, inf, nan, nan), (inf, nan, -inf, nan, nan), (-inf, inf, nan, 0.0, nan), (-1.0, 3.0, 2.0, 0.5, 1.0)]",
+   "streaming": "[(nan, inf, inf, nan, nan), (inf, nan, -inf, nan, nan), (-inf, inf, nan, 0.0, nan), (-1.0, 3.0, 2.0, 0.5, 1.0)]"
+  },
+  {
+   "construct": "float32-zero-sign",
+   "area": "doubles",
+   "code": "df(z=([-0.0, 0.0], pl.Float32)).select((1.0 / pl.col('z')).alias('inv'), (-pl.col('z')).alias('neg'), (pl.col('z') * -1.0).alias('mul'), (pl.col('z') + 0.0).alias('add0'), (pl.col('z') - 0.0).alias('sub0'), (pl.col('z') % 2.0).alias('mod')).rows()",
+   "differ": 0,
+   "in-memory": "[(-inf, 0.0, 0.0, -0.0, -0.0, 0.0), (inf, -0.0, -0.0, 0.0, 0.0, 0.0)]",
+   "streaming": "[(-inf, 0.0, 0.0, -0.0, -0.0, 0.0), (inf, -0.0, -0.0, 0.0, 0.0, 0.0)]"
+  },
+  {
+   "construct": "float-modulus-zero-sign",
+   "area": "doubles",
+   "code": "[df(a=([-4.0, 4.0, -0.0], t), b=([2.0, -2.0, 3.0], t)).select(pl.col('a') % pl.col('b')).to_series().to_list() for t in (pl.Float32, pl.Float64)]",
+   "differ": 0,
+   "in-memory": "[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]",
+   "streaming": "[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]"
+  },
+  {
+   "construct": "float32-domain-edges",
+   "area": "doubles",
+   "code": "df(x=([-1.0, 0.0, 2.0, inf, nan], pl.Float32)).select(pl.col('x').sqrt().alias('sqrt'), pl.col('x').log().alias('ln'), pl.col('x').log(10).alias('log10'), pl.col('x').arcsin().alias('asin'), pl.col('x').sin().alias('sin')).rows()",
+   "differ": 0,
+   "in-memory": "[(nan, nan, nan, -1.570796251296997, -0.8414709568023682), (0.0, -inf, -inf, 0.0, 0.0), (1.4142135381698608, 0.6931472420692444, 0.3010299801826477, nan, 0.9092974066734314), (inf, inf, inf, nan, nan), (nan, nan, nan, nan, nan)]",
+   "streaming": "[(nan, nan, nan, -1.570796251296997, -0.8414709568023682), (0.0, -inf, -inf, 0.0, 0.0), (1.4142135381698608, 0.6931472420692444, 0.3010299801826477, nan, 0.9092974066734314), (inf, inf, inf, nan, nan), (nan, nan, nan, nan, nan)]"
+  },
+  {
+   "construct": "float-atan2-edges",
+   "area": "doubles",
+   "code": "[df(y=([0.0, -0.0, 1.0, inf, nan], t), x=([0.0, -1.0, 0.0, inf, 1.0], t)).select(pl.arctan2(pl.col('y'), pl.col('x'))).to_series().to_list() for t in (pl.Float32, pl.Float64)]",
+   "differ": 0,
+   "in-memory": "[[0.0, -3.141592502593994, 1.5707963705062866, 0.7853981852531433, nan], [0.0, -3.141592653589793, 1.5707963267948966, 0.7853981633974483, nan]]",
+   "streaming": "[[0.0, -3.141592502593994, 1.5707963705062866, 0.7853981852531433, nan], [0.0, -3.141592653589793, 1.5707963267948966, 0.7853981633974483, nan]]"
+  },
+  {
+   "construct": "var-std-int-decimal",
+   "area": "aggregates",
+   "code": "{n: [df(x=(v, t)).select(pl.col('x').var()).item(), df(x=(v, t)).select(pl.col('x').std()).item(), df(x=(v[:1], t)).select(pl.col('x').var()).item(), df(g=[1] * len(v), x=(v, t)).group_by('g').agg(pl.col('x').var()).item(0, 'x'), df(x=(v[:0], t)).select(pl.col('x').var()).item()] for n, t, v in [('int64', pl.Int64, [1, 2, 4, 8]), ('decimal', pl.Decimal(18, 2), [Decimal('1.10'), Decimal('2.20'), Decimal('4.40'), Decimal('8.80')])]}",
+   "differ": 0,
+   "in-memory": "{'int64': [9.583333333333334, 3.095695936834452, None, 9.583333333333334, None], 'decimal': [11.595833333333337, 3.405265530517897, None, 11.595833333333337, None]}",
+   "streaming": "{'int64': [9.583333333333334, 3.095695936834452, None, 9.583333333333334, None], 'decimal': [11.595833333333337, 3.405265530517897, None, 11.595833333333337, None]}"
+  },
+  {
+   "construct": "float32-nan-sign",
+   "area": "doubles",
+   "code": "[hex(struct.unpack('<I', struct.pack('<f', v))[0]) for v in df(z=([nan], pl.Float32)).select(pl.col('z').neg().alias('neg'), pl.col('z').abs()).row(0)]",
+   "differ": 0,
+   "in-memory": "['0xffc00000', '0x7fc00000']",
+   "streaming": "['0xffc00000', '0x7fc00000']"
+  },
+  {
+   "construct": "float32-mean-grouped",
+   "area": "aggregates",
+   "code": "[df(g=[1] * 3, x=([16777216.0, 1.0, 1.0], pl.Float32)).group_by('g').agg(pl.col('x').mean()).item(0, 'x'), df(x=([16777216.0, 1.0, 1.0], pl.Float32)).select(pl.col('x').mean()).item()]",
+   "differ": 0,
+   "in-memory": "[5592406.0, 5592406.0]",
+   "streaming": "[5592406.0, 5592406.0]"
+  },
+  {
+   "construct": "var-std-ddof-and-cast",
+   "area": "aggregates",
+   "code": "{n: [df(x=(v, t)).select(pl.col('x').var(0)).item(), df(x=(v, t)).select(pl.col('x').var(1)).item(), df(x=(v, t)).select(pl.col('x').var(1)).item() == df(x=([float(x) for x in v], pl.Float64)).select(pl.col('x').var(1)).item(), df(x=(v, t)).select(pl.col('x').std(1)).item() == df(x=([float(x) for x in v], pl.Float64)).select(pl.col('x').std(1)).item(), str(df(x=(v, t)).select(pl.col('x').var()).dtypes[0])] for n, t, v in [('int64', pl.Int64, [1, 2, 4, 8]), ('decimal', pl.Decimal(18, 2), [Decimal('1.10'), Decimal('2.20'), Decimal('4.40'), Decimal('8.80')])]}",
+   "differ": 0,
+   "in-memory": "{'int64': [7.1875, 9.583333333333334, True, True, 'Float64'], 'decimal': [8.696875000000002, 11.595833333333337, True, True, 'Float64']}",
+   "streaming": "{'int64': [7.1875, 9.583333333333334, True, True, 'Float64'], 'decimal': [8.696875000000002, 11.595833333333337, True, True, 'Float64']}"
+  },
+  {
+   "construct": "ntile-sql-ties",
+   "area": "windows",
+   "code": "pl.SQLContext(t=pl.DataFrame({'id': [1, 2, 3, 4, 5], 'k': [1, 1, 1, 2, 2]})).execute('SELECT id, k, NTILE(2) OVER (ORDER BY k) AS n FROM t').collect().rows()",
+   "differ": 0,
+   "in-memory": "[(1, 1, 1), (2, 1, 1), (3, 1, 1), (4, 2, 2), (5, 2, 2)]",
+   "streaming": "[(1, 1, 1), (2, 1, 1), (3, 1, 1), (4, 2, 2), (5, 2, 2)]"
+  },
+  {
+   "construct": "ntile-expression",
+   "area": "windows",
+   "code": "[hasattr(pl.Expr, 'ntile'), hasattr(pl.Expr, 'percent_rank'), hasattr(pl.Expr, 'cume_dist')]",
+   "differ": 0,
+   "in-memory": "[False, False, False]",
+   "streaming": "[False, False, False]"
+  },
+  {
    "construct": "round-digits-negative",
    "area": "doubles",
    "code": "df(x=[123.0]).select(pl.col('x').round(-1)).item()",
