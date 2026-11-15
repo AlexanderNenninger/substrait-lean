@@ -670,7 +670,7 @@ def noNanTac : TermElabM Syntax :=
     | exact absurd hs (by decide)
     | exact SumGuard.noNan_all .fsum (Or.inl rfl) vs hvs
     | exact SumGuard.noNan_all .avg (Or.inr rfl) vs hvs
-    | simp [List.all, AggFn.makesNan]))
+    | simp [List.all, AggFn.makesNan, AggFn.nanCase]))
 
 open Tactic in
 @[tactic liftNoNanTac] def evalLiftNoNan : Tactic := fun _ => do
