@@ -48,7 +48,7 @@
         "i32",
         "i64"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -177,6 +177,21 @@
       "evidence": [
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L8-L17", "note": "sum(9007199254740992.0, 1.0) → 9007199254740992: plain sequential double sum"},
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_sum.test#L82-L92", "note": "sum(n ORDER BY ABS(n)) of 2^53, 1, 1, 0 → 9007199254740994; no test of the constant-run product"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (DuckDB evidence), sverify_dev.probe observations, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT avg(x) FROM (SELECT 1::T x) WHERE false, and sum(x), for T in TINYINT, SMALLINT, INTEGER, BIGINT",
+          "observed": "NULL for all eight; typeof: avg DOUBLE, sum HUGEINT"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "note": "constructs int-empty-aggregates (row agg.isum empty_group_aggregates, i16 to i64)"
+        }
       ]
     }
   ],
