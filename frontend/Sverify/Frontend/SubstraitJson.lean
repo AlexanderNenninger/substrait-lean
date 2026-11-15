@@ -61,7 +61,9 @@ def functions : List (Nat × String × String) :=
   let aggs := ["avg:i64", "avg:fp64", "sum:i64", "sum:fp64", "count:any"]
   -- Last, so the anchors before them stay: only seeded templates call them.
   let arith := ["add:fp64_fp64", "subtract:fp64_fp64", "multiply:fp64_fp64"]
-  (typed ++ unary ++ guards ++ aggs ++ arith).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
+  -- After them as well: the extremes `SUM` and `AVG` of doubles are finished with (#341).
+  let extremes := ["max:fp64", "min:fp64"]
+  (typed ++ unary ++ guards ++ aggs ++ arith ++ extremes).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
 
 def fns : List (Nat × String) := functions.map fun (a, n, _) => (a, n)
 

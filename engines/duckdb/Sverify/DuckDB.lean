@@ -31,6 +31,7 @@ import Sverify.DuckDB.LoweringOn.Table
 import Sverify.DuckDB.LoweringSchemas
 import Sverify.DuckDB.Profile
 import Sverify.DuckDB.SQL
+import Sverify.DuckDB.SumGuard
 import Sverify.DuckDB.Tables
 import Sverify.DuckDB.VarcharCasts
 
