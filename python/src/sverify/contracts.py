@@ -378,7 +378,12 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
         scale = dtype.scale
 
         def dec(k: int) -> str:
-            return f"{Decimal(k).scaleb(-scale):.{scale}f}"
+            text = f"{Decimal(k).scaleb(-scale):.{scale}f}"
+            if scale == 0 and abs(k) >= 2**63:
+                # A whole number past 64 bits reads as a HUGEINT, which the
+                # lift refuses (#1252); cast from a string it stays a decimal.
+                return f"CAST('{text}' AS DECIMAL(38, 0))"
+            return text
 
         # Large bounds as round whole numbers (`5 * 10**35`), small ones exactly.
         if lo is not None:
