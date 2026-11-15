@@ -336,6 +336,24 @@ def _double_probes() -> list[Obs]:
             "float-divide-zero",
             "SELECT a / CAST(0 AS FLOAT), a % CAST(0 AS FLOAT) FROM VALUES (CAST(1 AS FLOAT)) AS s(a)",
         ),
+        Obs(
+            "float-round-floor",
+            "SELECT a, round(a), bround(a), floor(a), ceil(a), typeof(round(a)), typeof(floor(a)), "
+            "typeof(ceil(a)), CAST(ceil(a) AS DOUBLE) FROM VALUES (CAST(-0.4 AS FLOAT)), "
+            "(CAST(-0.0 AS FLOAT)), (CAST(0.5 AS FLOAT)), (CAST(-2.5 AS FLOAT)), "
+            f"(CAST({nan} AS FLOAT)), (CAST({inf} AS FLOAT)), (CAST(3e38 AS FLOAT)) AS s(a)",
+            note="round_zero_sign and float_to_int, fp32 (and fp64's round, whose type shows in double-round)",
+        ),
+        Obs(
+            "float-power-atan2",
+            "SELECT a, b, power(a, b), typeof(power(a, b)), atan2(a - a, b), typeof(atan2(a, b)) "
+            "FROM VALUES (CAST(1.0 AS FLOAT), CAST('NaN' AS FLOAT)), "
+            "(CAST(1.0 AS FLOAT), CAST('Infinity' AS FLOAT)), "
+            "(CAST(-1.0 AS FLOAT), CAST('Infinity' AS FLOAT)), "
+            "(CAST('NaN' AS FLOAT), CAST(0.0 AS FLOAT)), (CAST(0.0 AS FLOAT), CAST(0.0 AS FLOAT)), "
+            "(CAST(-0.0 AS FLOAT), CAST(-1.0 AS FLOAT)) AS s(a, b)",
+            note="pow_one_inf and zero_sign, fp32",
+        ),
         Obs("float-cast-overflow", "SELECT CAST(1e40D AS FLOAT), CAST('1e40' AS FLOAT)"),
         Obs(
             "float-literal",
