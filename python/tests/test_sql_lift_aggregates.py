@@ -244,3 +244,49 @@ def test_corr_of_one_pair_is_nan_with_duckdbs_semantics_and_null_with_the_refere
     ((r,),) = lean("duckdb")
     assert math.isnan(r)
     assert lean("reference") == [(None,)]
+
+
+# `SUM` and `AVG` of doubles with infinities and NaN (#341), through oracles A and C.
+_NONFINITE = [
+    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('inf'::DOUBLE), ('-inf'::DOUBLE), (1.0)) t(x)",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('inf'::DOUBLE), (1.0), (2.5)) t(x)",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('-inf'::DOUBLE), (1.0), (NULL)) t(x)",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('nan'::DOUBLE), ('inf'::DOUBLE)) t(x)",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES (1.5), (NULL), (2.0)) t(x)",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES (1.5), (2.0)) t(x) WHERE x > 10",
+]
+
+
+@pytest.mark.parametrize("query", _NONFINITE)
+def test_sum_and_avg_of_doubles_with_infinities_agree_with_duckdb(query):
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_sum_of_both_infinities_is_no_domain_error_under_duckdbs_semantics():
+    import ibis
+
+    import sverify as sv
+
+    t = ibis.table({"f": "float64"}, name="f")
+    for fn in ("sum", "avg"):
+        query = f"SELECT {fn}(f) AS v FROM f"
+        duck = sv.verify(sv.sql(query, f=t, semantics="duckdb"))
+        ref = sv.verify(sv.sql(query, f=t, semantics="reference"))
+        assert not [i for i in duck.issues if "domain error" in str(i)], (fn, duck)
+        assert [i for i in ref.issues if "domain error" in str(i)], (fn, ref)
+
+
+def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measures_for_duckdb():
+    import subprocess
+
+    from sverify._checker import checker_path
+
+    out = subprocess.run(
+        [str(checker_path()), "--lift-table"], capture_output=True, text=True, check=True
+    ).stdout
+    aggregates = {
+        (e["semantics"], e["construct"]): e["aggregate"] for e in json.loads(out)["aggregates"]
+    }
+    assert len(aggregates[("reference", "sum(DOUBLE)")]["measures"]) == 1
+    assert len(aggregates[("duckdb", "sum(DOUBLE)")]["measures"]) == 3

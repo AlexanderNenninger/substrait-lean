@@ -242,29 +242,38 @@ class Measures:
     finish: Callable[[list[Json]], E]
 
 
-def _generated_avg(lf: _Lift, a: E) -> Measures | None:
-    """DuckDB's `avg` of an integer as the generated table lifts it (the
-    exact sum and the count, divided as doubles), or None with the
-    reference's semantics."""
-    if lf.profile is not DUCKDB or not a.type.is_integer():
+def _generated_agg(lf: _Lift, name: str, a: E) -> Measures | None:
+    """DuckDB's `avg` of an integer (the exact sum and the count, divided as
+    doubles), and its `sum` and `avg` of a double (a sum that raises nothing
+    and the extremes, #341), as the generated table lifts them, or None with
+    the reference's semantics, whose rules are written by hand."""
+    if lf.profile is not DUCKDB:
+        return None
+    if name == "avg" and a.type.is_integer():
+        key, arg = "avg(BIGINT)", dt.int64
+    elif name in ("sum", "avg") and a.type.is_floating():
+        key, arg = f"{name}(DOUBLE)", dt.float64
+    else:
         return None
     table = lift_table()
-    agg = table.aggregates["avg(BIGINT)"]
-    x = lf.to(a, dt.int64).json
+    agg = table.aggregates[key]
+    x = lf.to(a, arg).json
     parts = []
     for m in agg["measures"]:
         m = m["measure"]
         args = [_instantiate(v["value"], [x]) for v in m["arguments"]]
         out = _TABLE_TYPES[next(iter(m["outputType"]))]
         parts.append((table.functions[m["functionReference"]], args, out))
-    count = [f for f, _, _ in parts].index("count")
+    names = [f for f, _, _ in parts]
 
     def finish(refs: list[Json]) -> E:
+        value = _instantiate(agg["finish"], refs)
+        if "count" not in names:
+            return E(value, dt.float64)
         # A group whose values are all NULL has a count of 0 and a NULL sum,
         # so the quotient is NULL; the guard says so, for the check that
         # nothing divides by zero (#434).
-        value = _instantiate(agg["finish"], refs)
-        nonempty = call("gt", [refs[count], literal(0, dt.int64)])
+        nonempty = call("gt", [refs[names.index("count")], literal(0, dt.int64)])
         return E(if_then([(nonempty, value)], literal(None, dt.float64)), dt.float64)
 
     return Measures(parts, finish)
@@ -1314,7 +1323,7 @@ class _Lift:
                 # and Lean divides the exact sum by the count in doubles.
                 out = dt.float64
         invocation = "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
-        if name == "avg" and (gen := _generated_avg(self, args[0])):
+        if gen := _generated_agg(self, name, args[0]):
             # DISTINCT and FILTER apply to each measure alike.
             parts = [
                 {
@@ -1329,7 +1338,8 @@ class _Lift:
         elif name == "corr" and self.profile.corr_degenerate == "NAN":
             return _nan_corr(args, out, invocation, where)
         else:
-            # Pending generation (#268), but for `avg` of an integer.
+            # Pending generation (#268), but for `avg` of an integer, and `sum` and
+            # `avg` of a double.
             parts = [
                 {
                     "functionReference": anchor(name),
