@@ -651,6 +651,16 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un (.listElement off) a => reference (obj [("listElement", obj [("offset", toJson off)])])
       (writeExpr cols (wkind cols a) a)
   | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
+  -- Double `%` with `division_type` = `FLOOR` (`Expr.floorFmodOf`), written
+  -- back as the call; any other `a - b * floor(c / d)` is the operations.
+  | .bin .fsub a (.bin .fmul b (.un .ffloor (.bin .fdiv a' b'))) =>
+    if a' == a && b' == b then
+      callOpt (BinFn.anchor .fmod) [writeExpr cols .float a, writeExpr cols .float b]
+        "division_type" "FLOOR"
+    else
+      call (BinFn.anchor .fsub) [writeExpr cols .float a, call (BinFn.anchor .fmul)
+        [writeExpr cols .float b, call (UnFn.anchor .ffloor)
+          [call (BinFn.anchor .fdiv) [writeExpr cols .float a', writeExpr cols .float b']]]]
   | .bin f a b =>
     let ka := if isConst a then wkind cols b else wkind cols a
     let kb := if isConst b then wkind cols a else wkind cols b

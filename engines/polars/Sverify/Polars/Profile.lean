@@ -63,6 +63,15 @@ theorem floorDivT_subst (a b : Expr) : floorDivT.subst [a, b] = Expr.floorDivOf 
 
 theorem floorModT_subst (a b : Expr) : floorModT.subst [a, b] = Expr.floorModOf a b := rfl
 
+/-- Polars's `%` of doubles over the arguments as fields 0 and 1:
+`x - y * floor(x / y)` in the reference's double operations
+(polars-double-modulus). A zero divisor raises (`fdiv`), and so does a finite
+`x % ±∞` (`y * 0` is `∞ * 0`, a NaN), where Polars gives NaN: the error side
+stays the reference's (D21). -/
+def floorFmodT : Expr := Expr.floorFmodOf (.field 0) (.field 1)
+
+theorem floorFmodT_subst (a b : Expr) : floorFmodT.subst [a, b] = Expr.floorFmodOf a b := rfl
+
 end Polars
 
 /-- The functions where Polars's profile differs from the reference: its
@@ -70,11 +79,12 @@ template, in the reference's operations. -/
 def BinFn.polarsTmpl : BinFn → Option Expr
   | .idiv => some Polars.floorDivT
   | .imod => some Polars.floorModT
+  | .fmod => some Polars.floorFmodT
   | _ => none
 
 variable [Boxes.Ambient]
-/-- **Polars's profile**: integer `//` and `%` floor (`division_type` =
-`FLOOR`), every other function is the reference's. -/
+/-- **Polars's profile**: `//` and `%` floor (`division_type` =
+`FLOOR`), of integers and, for `%`, of doubles, every other function is the reference's. -/
 def Profile.polars : Profile where
   un := Profile.reference.un
   bin f x y := match f.polarsTmpl with
@@ -288,14 +298,16 @@ theorem tmpl_subst_eval {f : BinFn} {t : Expr} (h : f.polarsTmpl = some t) (a b 
   cases ha : a.evalP Profile.reference row with
   | error k =>
     cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-      simp [floorDivT, floorModT, Expr.floorDivOf, Expr.floorModOf, Expr.subst, Expr.evalP, ha,
-        bind, Except.bind]
+      simp [floorDivT, floorModT, floorFmodT, Expr.floorDivOf, Expr.floorModOf, Expr.floorFmodOf,
+        Expr.subst, Expr.evalP,
+        ha, bind, Except.bind]
   | ok x =>
     cases hb : b.evalP Profile.reference row with
     | error k =>
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-        simp [floorDivT, floorModT, Expr.floorDivOf, Expr.floorModOf, Expr.subst, Expr.evalP, ha, hb,
-          bind, Except.bind, Lowering.ref_lt]
+        simp [floorDivT, floorModT, floorFmodT, Expr.floorDivOf, Expr.floorModOf, Expr.floorFmodOf,
+        Expr.subst, Expr.evalP,
+          ha, hb, bind, Except.bind, Lowering.ref_lt]
       all_goals split <;> rfl
     | ok y =>
       simp only [bind, Except.bind]
@@ -327,11 +339,44 @@ theorem elaborate_eq : ∀ (e : Expr) (row : Row),
 
 omit [Boxes.Ambient] in
 /-- The parser reads a call that states `division_type: FLOOR` as the
-template of Polars's `//` or `%`: the elaboration of the native call. -/
+template of Polars's `//` or `%` (of doubles too): the elaboration of the native call. -/
 theorem elaborate_floor (a b : Expr) :
     elaborate (.bin .idiv a b) = Expr.floorDivOf (elaborate a) (elaborate b) ∧
-    elaborate (.bin .imod a b) = Expr.floorModOf (elaborate a) (elaborate b) := ⟨rfl, rfl⟩
+    elaborate (.bin .imod a b) = Expr.floorModOf (elaborate a) (elaborate b) ∧
+    elaborate (.bin .fmod a b) = Expr.floorFmodOf (elaborate a) (elaborate b) := ⟨rfl, rfl, rfl⟩
 
 end Polars
+
+/-! ## Doubles: Polars's `%` is the floored remainder
+
+`x % y` of doubles under `Profile.polars` is `x - y * floor(x / y)` in the
+reference's double operations, which is Polars's `%` for a column divisor
+(polars-double-modulus; a literal divisor takes another kernel,
+polars-scalar-divisor, and the translation refuses it). Where Polars gives NaN
+(`x % 0`, a finite `x % ±∞`) the profile raises, as the reference does
+(D21). The numeric rows of the fact are checked against Polars in
+`engines/polars/tests/test_polars_profile.py`. -/
+
+/-- **Polars's `%` of doubles** is `x - y * floor(x / y)`, in the reference's
+operations. -/
+theorem Profile.polars_fmod (a b : Int) :
+    Profile.polars.bin .fmod (.float a) (.float b) =
+      (do let q ← Profile.reference.bin .fdiv (.float a) (.float b)
+          let q ← Profile.reference.un .ffloor q
+          let p ← Profile.reference.bin .fmul (.float b) q
+          Profile.reference.bin .fsub (.float a) p) := by
+  simp only [Profile.polars, BinFn.polarsTmpl, Polars.floorFmodT, Expr.floorFmodOf, Expr.evalP, List.getD,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, bind, Except.bind]
+  rcases h1 : Profile.reference.bin .fdiv (.float a) (.float b) with _ | q <;> simp only []
+  rcases h2 : Profile.reference.un .ffloor q with _ | f <;> simp only []
+
+/-- A zero divisor of a double `%` raises under `Profile.polars`, as in the
+reference (D21: Polars gives NaN, which a verified plan never reaches). -/
+theorem Profile.polars_fmod_zero_divisor (a b : Int) (h : FloatCode.canon b = 0) :
+    Profile.polars.bin .fmod (.float a) (.float b) = .error .divByZero := by
+  rw [Profile.polars_fmod]
+  have : Profile.reference.bin .fdiv (.float a) (.float b) = .error .divByZero := by
+    simp [Profile.reference, BinFn.issue, h, raiseIf]; rfl
+  simp [this, bind, Except.bind]
 
 end Substrait

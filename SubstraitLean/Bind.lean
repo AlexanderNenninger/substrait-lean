@@ -169,7 +169,14 @@ worth binding (`Expr.worthBinding`). Arguments inside them come first, so
 an argument is bound before the calls that read it. -/
 def Expr.toBind : Expr → List Expr
   | .un f a => if f.pinsArg then a.toBind else Expr.argToBind f.copies a
-  | .bin f a b => Expr.argToBind f.copies a ++ Expr.argToBind f.copies b
+  | .bin f a b =>
+    let generic := Expr.argToBind f.copies a ++ Expr.argToBind f.copies b
+    -- Double `%` with `division_type` = `FLOOR` (`Expr.floorFmodOf`) stays one
+    -- call, as `Write` writes it: only its operands may be bound.
+    match f, b with
+    | .fsub, .bin .fmul c (.un .ffloor (.bin .fdiv a' c')) =>
+      if a' == a && c' == c then Expr.argToBind 1 a ++ Expr.argToBind 1 c else generic
+    | _, _ => generic
   | _ => []
 
 def Expr.argToBind (k : Nat) (a : Expr) : List Expr :=

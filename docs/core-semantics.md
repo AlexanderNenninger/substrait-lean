@@ -668,7 +668,7 @@ is a choice that accepts every value the plan states.
 | `on_division_by_zero` | `fp.mod` | `IEEE`, `LIMIT`, `NULL`, `ERROR` | `ERROR`, `NULL`; `ERROR` by default | raise |
 | `division_type` | all others | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
 | `division_type` | `int.div` | `TRUNCATE` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
-| `division_type` | `fp.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
+| `division_type` | `fp.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
 | `division_type` | `int.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
 | `shift_range` | all others | `ERROR`, `ZERO`, `DROP_BITS` | `DROP_BITS` | raise |
 | `decimal_rescale` | all others | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `TIE_AWAY_FROM_ZERO` | choose |

@@ -1344,6 +1344,8 @@ class Exprs:
         with no shim (`Profile.polars`, `engines/polars/Sverify/Polars/Profile.lean`).
         A zero divisor and `MIN // -1` raise, as under `Profile.polars`; the
         guards check them."""
+        if name == "modulus" and pl.Float64 in (a.dtype, b.dtype):
+            return self.floor_fmod(a, b)
         if unify(a.dtype, b.dtype, name) not in (pl.Int64, pl.Null):
             raise Unsupported(f"{name} with division_type FLOOR of {a.dtype} and {b.dtype}")
         x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
@@ -1352,6 +1354,27 @@ class Exprs:
             return Val(x % y, pl.Int64, (*issues(a, b), by_zero))
         wraps = issue(shims.div_overflows(x, y), Overflow, "division leaves 64 bits")
         return Val(x // y, pl.Int64, (*issues(a, b), wraps, by_zero))
+
+    def floor_fmod(self, a: Val, b: Val) -> Val:
+        """`%` of doubles with `division_type` = `FLOOR`: Polars's own, `x - y * floor(x / y)`
+        (`Profile.polars_fmod`, polars-double-modulus). A column divisor only:
+        against a literal, Polars multiplies by the reciprocal and `49.0 % 49.0`
+        is `49.0` (polars-scalar-divisor). A zero divisor and an infinite
+        operand raise, as under `Profile.polars`, where Polars gives NaN."""
+        if unify(a.dtype, b.dtype, "modulus") != pl.Float64:
+            raise Unsupported(f"modulus with division_type FLOOR of {a.dtype} and {b.dtype}")
+        x, y = a.expr.cast(pl.Float64), b.expr.cast(pl.Float64)
+        if not y.meta.root_names():
+            raise Unsupported(
+                "% of doubles by a literal divisor on Polars: Polars computes "
+                "`x - c·floor(x·(1/c))` for a scalar (polars-scalar-divisor), so pass the "
+                "divisor as a column"
+            )
+        by_zero = issue(y == 0.0, DivisionByZero, "modulus by zero")
+        infinite = issue(
+            x.is_infinite() | y.is_infinite(), DomainError, "modulus of an infinite double"
+        )
+        return Val(x % y, pl.Float64, (*issues(a, b), by_zero, infinite))
 
     def call(self, name: str, args: list[Val]) -> Val:
         types = [v.dtype for v in args]
@@ -1554,7 +1577,8 @@ class Exprs:
                 # (#1270).
                 raise Unsupported(
                     "% of doubles on Polars: Polars's % floors (polars-double-modulus), "
-                    "where the reference's truncates as C's fmod; run it on DuckDB or Spark"
+                    "where the reference's truncates as C's fmod; run it on DuckDB or Spark, "
+                    "or state division_type FLOOR with a column divisor"
                 )
             # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
             # in-memory engine (polars-zero-sign), so a sum or difference can

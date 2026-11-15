@@ -1,5 +1,5 @@
-"""`Profile.polars` (#444, `engines/polars/Sverify/Polars/Profile.lean`): integer `//`
-and `%` floor, as Polars's own do.
+"""`Profile.polars` (#444, `engines/polars/Sverify/Polars/Profile.lean`): `//` and
+`%` floor, as Polars's own do.
 
 Lean proves that the checker's reading of a call that states
 `division_type: FLOOR` is `Polars.floorDiv` and `Polars.floorMod` on 64-bit
@@ -127,3 +127,59 @@ def test_routes_from_polars(report: sv.Report) -> None:
     assert s.refused and "semantics='reference'" in s.reason, s
     r = routes.choose(report, "duckdb")
     assert r.refused and "division_type: polars gives FLOOR" in r.reason, r
+
+
+# --- `%` of doubles ------------------------------------------------------------
+
+#: The rows of polars-double-modulus: `x - y * floor(x / y)`, the divisor's sign,
+#: and a zero remainder of +0.0 (`-0.0 % y` too).
+DOUBLE_ROWS = [
+    (7.0, -3.0, -2.0), (-7.0, 3.0, 2.0), (7.0, 3.0, 1.0), (-7.0, -3.0, -1.0),
+    (5.5, -2.0, -0.5), (0.0, 3.0, 0.0), (-0.0, 3.0, 0.0), (-4.0, 2.0, 0.0), (49.0, 49.0, 0.0),
+]  # fmt: skip
+
+
+def _double_table() -> pa.Table:
+    x, y, _ = zip(*DOUBLE_ROWS, strict=True)
+    return pa.table({"x": pa.array(x, pa.float64()), "y": pa.array(y, pa.float64())})
+
+
+def _double_report(con: sv.Connection, semantics: str, divisor) -> sv.Report:
+    t = con.table("t")
+    return sv.verify(
+        t.select(m=t.x % (t.y if divisor is None else divisor)),
+        requires={"t": [_.y != 0, _.x > -1e300, _.x < 1e300, _.y > -1e300, _.y < 1e300]},
+        semantics=semantics,
+    )
+
+
+def test_double_modulus_floors_natively() -> None:
+    """Under `semantics="polars"`, `%` of doubles by a column is Polars's own:
+    the rows of polars-double-modulus (`Profile.polars_fmod`), zeros +0.0."""
+    con = sv.connect()
+    con.put("t", _double_table())
+    report = _double_report(con, "polars", None)
+    out = report.run(con, "polars", route="native").column("m").to_pylist()
+    assert out == [r[2] for r in DOUBLE_ROWS]
+    assert all(str(v) == str(float(r[2])) for v, r in zip(out, DOUBLE_ROWS, strict=True))
+    assert report.routes["polars"].kind == "native"
+
+
+def test_double_modulus_by_a_literal_is_refused() -> None:
+    """A literal divisor takes Polars's reciprocal kernel, where `49.0 % 49.0`
+    is 49.0 (polars-scalar-divisor): the translation refuses it and says so."""
+    con = sv.connect()
+    con.put("t", _double_table())
+    report = _double_report(con, "polars", 3.0)
+    with pytest.raises(Exception, match="literal divisor"):
+        report.run(con, "polars")
+
+
+def test_double_modulus_is_refused_under_the_reference() -> None:
+    """The reference's `%` of doubles truncates (C's `fmod`): no exact form on
+    Polars (#1270)."""
+    con = sv.connect()
+    con.put("t", _double_table())
+    report = _double_report(con, "reference", None)
+    with pytest.raises(Exception, match="polars-double-modulus"):
+        report.run(con, "polars")
