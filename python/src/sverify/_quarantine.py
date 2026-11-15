@@ -40,6 +40,7 @@ from sverify._weighted import (
     WEIGHT,
     _call,
     _indices,
+    _is_in,
     _q,
     _sql,
     concat,
@@ -178,18 +179,19 @@ class Quarantined:
 # -- classifying rows ----------------------------------------------------------
 
 
-def row_failures(con: Any, rows: pa.Table, conds: Sequence[Any]) -> list[list[str]]:
-    """For each row of the plain table `rows`, the labels of the row
-    conditions that are not TRUE on it (FALSE or NULL), in `conds`' order.
-    Runs on `con` (a `sverify.connect()` connection), as the checks do."""
+def row_failures(con: Any, rows: pa.Table, conds: Sequence[Any]) -> list[tuple[str, pa.Array]]:
+    """For each row condition, its label and the positions in the plain table
+    `rows` of the rows on which it is not TRUE (FALSE or NULL), as an int64
+    array, in `conds`' order. Runs on `con` (a `sverify.connect()` connection),
+    as the checks do."""
     from sverify.conditions import label
     from sverify.conditions import resolve as resolve_cond
     from sverify.engine import put_table
 
     n = rows.num_rows
-    out: list[list[str]] = [[] for _ in range(n)]
     if not n or not conds:
-        return out
+        return []
+    out: list[tuple[str, pa.Array]] = []
     name = "__sverify_quarantine"
     put_table(con, name, rows.append_column(_IDX, _indices(n)))
     try:
@@ -201,13 +203,12 @@ def row_failures(con: Any, rows: pa.Table, conds: Sequence[Any]) -> list[list[st
                 backend: Any = ibis.get_backend(table)
                 sql = ibis.to_sql(table, dialect=backend.name)
                 query = f'SELECT "{_IDX}" FROM ({sql}) AS "t" WHERE NOT coalesce(({c}), FALSE)'
-                hit = [r[0] for r in backend.raw_sql(query).fetchall()]
+                hit = backend.raw_sql(query).to_arrow_table().column(0).combine_chunks()
             else:
                 pred: Any = resolve_cond(c, table)
                 bad = table.filter(~pred.fill_null(False)).select(_IDX)
-                hit = bad.to_pyarrow().column(0).to_pylist()
-            for i in hit:
-                out[i].append(label(c))
+                hit = bad.to_pyarrow().column(0).combine_chunks()
+            out.append((label(c), hit.cast(pa.int64())))
     finally:
         con.drop(name)
     return out
@@ -272,8 +273,17 @@ def _row_reason(labels: Sequence[str]) -> str:
 def split_rows(con: Any, rows: pa.Table, row_conds: Sequence[Any]) -> _Split:
     """The consolidated weighted table `rows` split by the row conditions."""
     fails = row_failures(con, rows_of(rows), row_conds)
-    mask = pa.array([bool(f) for f in fails], pa.bool_())
-    bad_fails = [f for f in fails if f]
+    if not fails:
+        return _Split(rows, rows.slice(0, 0), [], [])
+    failing = _call("unique", pa.concat_arrays([hit for _, hit in fails]))
+    failing = failing.take(_call("sort_indices", failing))
+    mask = _is_in(_indices(rows.num_rows), failing)
+    # Which conditions each set-aside row breaks, in `row_conds`' order.
+    breaks = [_is_in(failing, hit).to_pylist() for _, hit in fails]
+    bad_fails = [
+        [label for (label, _), b in zip(fails, row, strict=True) if b]
+        for row in zip(*breaks, strict=True)
+    ]
     return _Split(
         rows.filter(_call("invert", mask)),
         rows.filter(mask),
