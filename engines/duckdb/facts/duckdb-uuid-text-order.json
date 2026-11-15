@@ -1,0 +1,38 @@
+{
+  "id": "duckdb-uuid-text-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "UUID order equals the canonical text order",
+  "verdict": "a `UUID` orders as its lower-case hyphenated text does",
+  "area": "strings",
+  "description": [
+    "`ORDER BY`, `min` and `max` of a `UUID` column agree with the same over `CAST(id AS VARCHAR)`, including values whose first bit is set (`80000000-…`, `ffffffff-…`)."
+  ],
+  "reference": "sverify refuses the column by its declared type (`sverify_duckdb.declared`, #1253): Arrow exports it as another kind, and the lift would compare it as that kind. The exit is a cast to text in the source query.",
+  "status": "decided",
+  "evidence": "probe",
+  "issues": [
+    1253
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #1253, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT id::VARCHAR FROM u ORDER BY id  -- u holds ffffffff-0000-…, 00000000-…-000000000001, 7fffffff-…, 80000000-…, 0a000000-…",
+          "observed": "00000000-0000-0000-0000-000000000001, 0a000000-0000-0000-0000-000000000000, 7fffffff-ffff-ffff-ffff-ffffffffffff, 80000000-0000-0000-0000-000000000000, ffffffff-0000-0000-0000-000000000000"
+        },
+        {
+          "sql": "SELECT id::VARCHAR FROM u ORDER BY id::VARCHAR",
+          "observed": "the same five rows in the same order"
+        },
+        {
+          "sql": "SELECT min(id)::VARCHAR, max(id)::VARCHAR, min(id::VARCHAR), max(id::VARCHAR) FROM u",
+          "observed": "00000000-0000-0000-0000-000000000001, ffffffff-0000-0000-0000-000000000000, and the same two"
+        }
+      ]
+    }
+  ]
+}

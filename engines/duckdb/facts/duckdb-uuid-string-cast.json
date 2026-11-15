@@ -1,0 +1,42 @@
+{
+  "id": "duckdb-uuid-string-cast",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "A string compared with a UUID is cast to UUID",
+  "verdict": "`uuid = 'text'` casts the text to `UUID`; a malformed text raises",
+  "area": "casts",
+  "description": [
+    "Comparing a `UUID` with a string casts the string to `UUID`, so any spelling `CAST(s AS UUID)` accepts is equal to the same value: upper case, no hyphens, in braces. A text that is no UUID raises a ConversionException. Read as text, `id = upper(id::VARCHAR)` matches every row in DuckDB and none in a text model."
+  ],
+  "reference": "sverify refuses the column by its declared type (`sverify_duckdb.declared`, #1253): Arrow exports it as another kind, and the lift would compare it as that kind. The exit is a cast to text in the source query.",
+  "status": "decided",
+  "evidence": "probe",
+  "issues": [
+    1253
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #1253, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT '550e8400-e29b-41d4-a716-446655440000'::UUID = '550E8400-E29B-41D4-A716-446655440000', '550e8400e29b41d4a716446655440000'::UUID = '550e8400-e29b-41d4-a716-446655440000'",
+          "observed": "true, true"
+        },
+        {
+          "sql": "SELECT '550e8400-e29b-41d4-a716-446655440000'::UUID = '{550e8400-e29b-41d4-a716-446655440000}'",
+          "observed": "true"
+        },
+        {
+          "sql": "SELECT '550e8400-e29b-41d4-a716-446655440000'::UUID = 'nope'",
+          "observed": "ConversionException: Could not convert string 'nope' to UUID"
+        },
+        {
+          "sql": "SELECT count(*) FROM u WHERE id = upper(id::VARCHAR)",
+          "observed": "5 (of 5 rows)"
+        }
+      ]
+    }
+  ]
+}

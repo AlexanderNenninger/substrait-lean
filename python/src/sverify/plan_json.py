@@ -98,6 +98,11 @@ def _type_json(dtype: Any) -> Json:
         return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     if dtype.is_struct():
         return {"struct": {"types": [type_json(t) for t in dtype.types], **NULLABLE}}
+    if dtype.is_uuid():
+        raise Unsupported(
+            "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
+            "source query, and compare it with the lower-case hyphenated form"
+        )
     raise Unsupported(f"type {dtype} is not supported")
 
 
