@@ -32,7 +32,7 @@ def builtinEngines : List EngineProfile := [
     shims := [("MIN % -1 written out", .expression), ("Dialect.canon", .expression),
       ("ORDER BY the keys", .sort), ("nan_through", .expression)] },
   { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
-    translationTheorem := "Rel.polars_sound", executes := "streaming", asReference := true,
+    translationTheorem := "Rel.polars_sound", executes := "streaming",
     shims := [("null_order", .argument), ("round_half_away", .argument),
       ("int_div_trunc", .expression), ("int_mod_trunc", .expression),
       ("sum_empty_null", .expression), ("avg_int_declared", .expression),

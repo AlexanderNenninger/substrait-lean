@@ -351,8 +351,9 @@ end Polars
 
 `x % y` of doubles under `Profile.polars` is `x - y * floor(x / y)` in the
 reference's double operations, which is Polars's `%` for a column divisor
-(polars-double-modulus; a literal divisor takes another kernel,
-polars-scalar-divisor, and the translation refuses it). Where Polars gives NaN
+(polars-double-modulus). A literal divisor takes the reciprocal kernel for
+`/`, and `%` is that same formula over it (polars-scalar-divisor), so the
+engine runs it natively too. Where Polars gives NaN
 (`x % 0`, a finite `x % ±∞`) the profile raises, as the reference does
 (D21). The numeric rows of the fact are checked against Polars in
 `engines/polars/tests/test_polars_profile.py`. -/
