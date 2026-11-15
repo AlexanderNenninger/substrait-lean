@@ -1,0 +1,112 @@
+{
+  "id": "polars-float-round-floor-elem",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`round`, `floor`, `ceil`, `arctan2`, `sqrt` and `pow` on Float32 and Float64: zero signs, types and `pow(1, ±inf)`",
+  "verdict": "as the profile: `round_zero_sign` = `IEEE`, `zero_sign` = `IEEE`, `pow_one_inf` = `ONE`; no integer conversion (`float_to_int` does not arise)",
+  "area": "doubles",
+  "options": [
+    "round_zero_sign",
+    "float_to_int",
+    "zero_sign",
+    "pow_one_inf"
+  ],
+  "rows": [
+    {
+      "group": "fp.round",
+      "option": "round_zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.floor",
+      "option": "round_zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.round",
+      "option": "float_to_int",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.floor",
+      "option": "float_to_int",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.elem",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.elem",
+      "option": "pow_one_inf",
+      "types": [
+        "fp32"
+      ]
+    }
+  ],
+  "constructs": [
+    "round",
+    "ceil",
+    "floor",
+    "arctan2",
+    "sqrt",
+    "pow"
+  ],
+  "settings": {
+    "engine": [
+      "streaming"
+    ]
+  },
+  "description": [
+    "`round(0)`, `ceil` and `floor` keep the column's type (Float32 stays Float32, Float64 Float64) and never return an integer: `float_to_int` does not arise for them (`round(1e30)` stays 1e30). A negative value that reaches zero gives `-0.0` (`round(-0.4)`, `ceil(-0.4)`, `ceil(-0.6)`), and `-0.0` stays `-0.0` through all three, on both widths. NaN and ±inf come back unchanged.",
+    "`pl.arctan2` and `sqrt` keep the sign of a zero argument: `arctan2(-0.0, 1)` and `sqrt(-0.0)` are `-0.0`, `arctan2(0.0, -1)` is π and `arctan2(±0.0, -0.0)` is -π, in the column's own width (Float32 π is 3.141592502593994).",
+    "`pow(1, ±inf)`, `pow(-1, ±inf)`, `pow(1, NaN)` and `pow(NaN, 0)` are 1.0 on Float32 as on Float64 (polars-pow-one-inf)."
+  ],
+  "reference": "`round_zero_sign` = `IEEE`, `zero_sign` = `IEEE`, `pow_one_inf` = `ONE` (D40). `round`, `floor` and `ceil` return the float, so `float_to_int` does not arise.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session optimistic-hopper-2d1785 (#746), polars Python 2.1.0, streaming engine",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'x': [-0.4,-0.6,0.4,-0.0,1e30,inf,-inf,nan]}, schema={'x': pl.Float64}).lazy().select(round(0), ceil, floor).collect(engine='streaming')",
+          "observed": "schema Float64 x3; round -0.0 -1.0 0.0 -0.0 1e30 inf -inf nan; ceil -0.0 -0.0 1.0 -0.0 1e30 inf -inf nan; floor -1.0 -1.0 0.0 -0.0 1e30 inf -inf nan; negative zeros confirmed with copysign"
+        },
+        {
+          "sql": "the same with schema Float32",
+          "observed": "schema Float32 x3; the same values (1e30 as 1.0000000150474662e+30)"
+        },
+        {
+          "sql": "pl.DataFrame({'y':[-0.0,-0.0,0.0,-0.0],'x':[1.0,-1.0,-1.0,-0.0]}).lazy().select(pl.arctan2('y','x'), pl.col('y').sqrt()).collect(engine='streaming')",
+          "observed": "Float64: atan2 -0.0, -π, π, -π; sqrt -0.0, -0.0, 0.0, -0.0. Float32: the same in Float32"
+        },
+        {
+          "sql": "pl.DataFrame({'a':[1,1,-1,-1,1,nan],'b':[inf,-inf,inf,-inf,nan,0.0]}, schema=Float32).lazy().select(pl.col('a').pow(pl.col('b'))).collect(engine='streaming')",
+          "observed": "Float32: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    746
+  ]
+}

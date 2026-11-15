@@ -661,7 +661,7 @@ jobs:
           tests/test_facts.py tests/test_bugs.py tests/test_functions.py
           tests/test_probe.py ../engines/polars/tests/test_probe_polars.py
           ../engines/polars/tests/test_polars_shims.py
-          tests/test_substrait_cases.py engines/duckdb/tests/test_unexplained.py
+          tests/test_substrait_cases.py ../engines/duckdb/tests/test_unexplained.py
       # A change to the lift's backlog changes how its tests report
       # (tests/conftest.py): run every test it lists before or after.
       - if: needs.changes.outputs.backlog == 'true'
