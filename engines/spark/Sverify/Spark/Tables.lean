@@ -133,7 +133,6 @@ def Profile.spark.obs : ObsTable := [
   (none, "case_sensitivity", (ObsRow.native ["spark-match-functions"]).tracking 271),
   (none, "string_positions", (ObsRow.native ["spark-strpos", "spark-substring"]).tracking 271),
   (none, "null_join_keys", (ObsRow.native ["spark-null-keys"]).tracking 271),
-  (some "time.arith", "date_range", (ObsRow.native ["spark-date-range"]).tracking 739),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 900),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
