@@ -57,7 +57,7 @@
         "fp64",
         "decimal"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     },
     {
       "group": "agg.var",
@@ -65,7 +65,7 @@
       "types": [
         "decimal"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -202,6 +202,25 @@
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
         {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "statistical aggregates listed without types; the cast to DOUBLE is not stated"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (DuckDB evidence), sverify_dev.probe observations, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT typeof(var_samp(d)), var_samp(d) = var_samp(d::DOUBLE), var_pop(d) = var_pop(d::DOUBLE), stddev_samp(d) = stddev_samp(d::DOUBLE), typeof(var_samp(b)), var_samp(b) = var_samp(b::DOUBLE) FROM (SELECT x::DECIMAL(18,3) d, x::BIGINT b FROM (VALUES (1.1), (2.2), (3.3), (4.7), (9.9)) t(x))",
+          "observed": "DOUBLE, true, true, true, DOUBLE, true: a DECIMAL or BIGINT argument gives the doubles' result bit for bit"
+        },
+        {
+          "sql": "SELECT var_samp(x), var_pop(x), stddev_samp(x) FROM (VALUES (0.1::DOUBLE), (0.2), (0.3), (0.4), (1e-3)) t(x)",
+          "observed": "0.024900199999999997, 0.01992016, 0.157797972103573; the same bits as Welford's update (m += d/n, M2 += d*(x-m)) in IEEE doubles, run in Python"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "note": "constructs stat-decimal-cast, stat-double-bits (rows agg.var rounding fp64 and decimal, stat_algo decimal)"
+        }
       ]
     }
   ],

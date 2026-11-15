@@ -12,7 +12,7 @@
   "rows": [
     {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i64"]},
     {"group": "agg.isum", "option": "avg_int_result", "types": ["i32"], "evidence": "engine_test"},
-    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i8", "i16", "i32", "i64"], "evidence": "source"}
+    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i8", "i16", "i32", "i64"], "evidence": "probe"}
   ],
   "constructs": [
     "avg",
@@ -127,6 +127,21 @@
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/list/aggregates/bigints_sum_avg.test#L26-L40", "note": "list_sum of [1, 2, 3, 9223372036854775806] → 9223372036854775812, list_avg → 2305843009213693952: exact hugeint sum, floating mean; no test of the platform-dependent last bit"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (DuckDB evidence), sverify_dev.probe observations, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT avg(x) FROM (SELECT 1::T x) WHERE false, and sum(x), for T in TINYINT, SMALLINT, INTEGER, BIGINT",
+          "observed": "NULL for all eight; typeof: avg DOUBLE, sum HUGEINT"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "note": "constructs int-empty-aggregates (row agg.isum empty_group_aggregates, i8 to i64)"
+        }
       ]
     }
   ],

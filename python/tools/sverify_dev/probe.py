@@ -747,6 +747,40 @@ OBSERVATIONS: list[Observation] = [
     _o("default-collation-nocase-sort", "strings",
        "SELECT list(w ORDER BY w), count(DISTINCT w) FROM (VALUES ('b'), ('A'), ('a'), ('B')) t(w)",
        "SET default_collation = 'nocase'"),
+    # Integers that DuckDB computes without a native integer power, with a truncating
+    # division, and aggregates of no rows (#746).
+    _o("int-pow-doubles", "integers",
+       "SELECT typeof(power(2147483647::INTEGER, 2::INTEGER)),"
+       " power(2147483647::INTEGER, 2::INTEGER), power(65536::INTEGER, 2::INTEGER),"
+       " power(0::BIGINT, -1::BIGINT), power(9223372036854775807::BIGINT, 2::BIGINT)"),
+    _o("int-div-truncates", "integers",
+       "SELECT (-7)::TINYINT // 2::TINYINT, (-7)::SMALLINT // 2::SMALLINT,"
+       " (-7)::INTEGER // 2::INTEGER, (-7)::BIGINT // 2::BIGINT, 7::TINYINT // (-2)::TINYINT,"
+       " 7::SMALLINT // (-2)::SMALLINT, 7::INTEGER // (-2)::INTEGER, 7::BIGINT // (-2)::BIGINT,"
+       " (-7)::TINYINT % 2::TINYINT, (-7)::SMALLINT % 2::SMALLINT, (-7)::INTEGER % 2::INTEGER,"
+       " (-7)::BIGINT % 2::BIGINT"),
+    _o("int-empty-aggregates", "aggregates",
+       "SELECT "
+       + ", ".join(
+           f"(SELECT {f}(x) FROM (SELECT 1::{t} x) WHERE false)"
+           for f in ("avg", "sum")
+           for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")
+       )
+       + ", "
+       + ", ".join(
+           f"(SELECT typeof({f}(x)) FROM (SELECT 1::{t} x) WHERE false)"
+           for f in ("avg", "sum")
+           for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")
+       )),
+    _o("stat-decimal-cast", "aggregates",
+       "SELECT typeof(var_samp(d)), var_samp(d) = var_samp(d::DOUBLE),"
+       " var_pop(d) = var_pop(d::DOUBLE), stddev_samp(d) = stddev_samp(d::DOUBLE),"
+       " typeof(var_samp(b)), var_samp(b) = var_samp(b::DOUBLE)"
+       " FROM (SELECT x::DECIMAL(18,3) d, x::BIGINT b"
+       " FROM (VALUES (1.1), (2.2), (3.3), (4.7), (9.9)) t(x))"),
+    _o("stat-double-bits", "aggregates",
+       "SELECT var_samp(x), var_pop(x), stddev_samp(x)"
+       " FROM (VALUES (0.1::DOUBLE), (0.2), (0.3), (0.4), (1e-3)) t(x)"),
     _o("default-collation-binary", "strings",
        "SELECT v = 'hello', v LIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'), strpos(v, 'EL')"
        " FROM s", "CREATE TABLE s AS SELECT 'Hello' v"),
