@@ -1,0 +1,112 @@
+{
+  "id": "duckdb-float-round-floor-fp32",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`round`, `floor`, `ceil`, `atan2`, `sqrt` and `power` on FLOAT and DOUBLE: zero signs, types and `power(1, ±inf)`",
+  "verdict": "as the profile: `round_zero_sign` = `IEEE`, `zero_sign` = `IEEE`, `pow_one_inf` = `ONE`; no integer conversion (`float_to_int` does not arise)",
+  "area": "doubles",
+  "options": [
+    "round_zero_sign",
+    "float_to_int",
+    "zero_sign",
+    "pow_one_inf"
+  ],
+  "rows": [
+    {
+      "group": "fp.round",
+      "option": "round_zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.floor",
+      "option": "round_zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.round",
+      "option": "float_to_int",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.floor",
+      "option": "float_to_int",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.elem",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.elem",
+      "option": "pow_one_inf",
+      "types": [
+        "fp32"
+      ]
+    }
+  ],
+  "constructs": [
+    "round",
+    "ceil",
+    "floor",
+    "atan2",
+    "sqrt",
+    "power"
+  ],
+  "settings": {},
+  "description": [
+    "`round`, `ceil` and `floor` return the argument's own type, DOUBLE for DOUBLE and FLOAT for FLOAT, never an integer: `float_to_int` does not arise for them (past 2^63 the value stays a float: `round(1e30)` is 1e30). A negative value that reaches zero gives `-0.0` (`round(-0.4)`, `ceil(-0.4)`, `ceil(-0.6)`), and `-0.0` stays `-0.0` through all three, for FLOAT as for DOUBLE. NaN and ±inf come back unchanged.",
+    "`atan2` and `sqrt` keep the sign of a zero argument: `atan2(-0.0, 1)` and `sqrt(-0.0)` are `-0.0`, `atan2(0.0, -1)` is π and `atan2(±0.0, -0.0)` is -π. `atan2` of FLOATs is typed DOUBLE (the arguments are cast); `sqrt` and `power` of FLOATs likewise give DOUBLE.",
+    "`power(1, ±inf)`, `power(-1, ±inf)`, `power(1, NaN)` and `power(NaN, 0)` are 1.0 on FLOAT arguments, as on DOUBLE (duckdb-pow-one-inf)."
+  ],
+  "reference": "`round_zero_sign` = `IEEE` (D-ruling of 2026-11-09), `zero_sign` = `IEEE`, `pow_one_inf` = `ONE` (D40). `round`, `floor` and `ceil` return the double, so `float_to_int` does not arise.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session optimistic-hopper-2d1785 (#746), duckdb Python 2.0.0",
+      "evidence": [
+        {
+          "sql": "SELECT typeof(round(x)), round(x), ceil(x), floor(x) FROM (VALUES (-0.4::DOUBLE),(-0.6::DOUBLE),(0.4::DOUBLE),(-0.0::DOUBLE)) t(x)",
+          "observed": "DOUBLE -0.0 -0.0 -1.0; DOUBLE -1.0 -0.0 -1.0; DOUBLE 0.0 1.0 0.0; DOUBLE -0.0 -0.0 -0.0"
+        },
+        {
+          "sql": "SELECT typeof(round(x)), round(x), ceil(x), floor(x) FROM (VALUES (-0.4::FLOAT),(-0.6::FLOAT),(0.4::FLOAT),(-0.0::FLOAT)) t(x)",
+          "observed": "FLOAT -0.0 -0.0 -1.0; FLOAT -1.0 -0.0 -1.0; FLOAT 0.0 1.0 0.0; FLOAT -0.0 -0.0 -0.0"
+        },
+        {
+          "sql": "SELECT round(x), ceil(x), floor(x) FROM (VALUES (1e30::DOUBLE),('inf'::DOUBLE),('-inf'::DOUBLE),('nan'::DOUBLE)) t(x)",
+          "observed": "1e30 1e30 1e30; inf inf inf; -inf -inf -inf; nan nan nan (FLOAT the same, 1e30 as 1.0000000150474662e+30)"
+        },
+        {
+          "sql": "SELECT atan2(y,x), signbit(atan2(y,x)), sqrt(y), signbit(sqrt(y)), typeof(atan2(y,x)) FROM (VALUES (-0.0::FLOAT,1.0::FLOAT),(-0.0::FLOAT,-1.0::FLOAT),(0.0::FLOAT,-1.0::FLOAT),(-0.0::FLOAT,-0.0::FLOAT)) t(y,x)",
+          "observed": "(-0.0, true, -0.0, true, DOUBLE), (-3.141592653589793, true, -0.0, true), (3.141592653589793, false, 0.0, false), (-3.141592653589793, true, -0.0, true); the DOUBLE case gives the same"
+        },
+        {
+          "sql": "SELECT power(a,b), typeof(power(a,b)) FROM (VALUES (1::FLOAT,'inf'::FLOAT),(1::FLOAT,'-inf'::FLOAT),(-1::FLOAT,'inf'::FLOAT),(-1::FLOAT,'-inf'::FLOAT),(1::FLOAT,'nan'::FLOAT),('nan'::FLOAT,0::FLOAT)) t(a,b)",
+          "observed": "1.0 (DOUBLE) in all six rows"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    746
+  ]
+}
