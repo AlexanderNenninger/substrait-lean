@@ -44,7 +44,7 @@ def builtinEngines : List EngineProfile := [
   { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
     translationTheorem := "Rel.spark_sound", executes := "batch",
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-      ("null_order", .argument), ("sort on the keys", .sort),
+      ("atan2 refused", .expression), ("null_order", .argument), ("sort on the keys", .sort),
       ("decimal_negate_sub", .expression)] }]
 
 variable [Boxes.Ambient]

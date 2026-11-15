@@ -36,7 +36,7 @@ def dummy : EngineProfile :=
     translationTheorem := "DummyEngine.dummy_sound",
     executes := "batch", asReference := true,
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-      ("null_order", .argument), ("sort on the keys", .sort),
+      ("atan2 refused", .expression), ("null_order", .argument), ("sort on the keys", .sort),
       ("decimal_negate_sub", .expression)] }
 
 #check_engine_profiles [dummy]

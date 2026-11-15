@@ -132,7 +132,7 @@ def test_shim_counts(table):
     assert {k: len(e["shims"]) for k, e in table.items()} == {
         "duckdb": 4,
         "polars": 14,
-        "spark": 5,
+        "spark": 6,
     }
 
 
