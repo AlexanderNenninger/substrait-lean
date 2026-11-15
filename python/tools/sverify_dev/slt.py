@@ -71,6 +71,8 @@ from typing import Any, cast
 import duckdb
 import pyarrow as pa
 
+from sverify_duckdb.declared import refuse_unmodelled
+
 REPO = Path(__file__).resolve().parents[3]
 CACHE = Path(os.environ.get("SVERIFY_SLT_CACHE", Path.home() / ".cache" / "sverify" / "duckdb-slt"))
 REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
@@ -624,7 +626,9 @@ class Replay:
         return bool(self.db.sql(sql).fetchall()[0][0])
 
     def check_types(self, name: str) -> None:
-        """Refuse a table holding a `UUID`, which Arrow exports as text, a
+        """Refuse a table with a column of a type sverify does not model
+        (`sverify_duckdb.declared`: a `UUID` or `ENUM`, which Arrow exports as
+        text, a `BIT`, a `BIGNUM`), a
         `TIMETZ` with an offset but 0, which Arrow drops, or whose `HUGEINT`
         or `UHUGEINT` values Arrow cannot hold (#618). DuckDB exports both
         as `decimal128(38, 0)` without a range check (DD-5): a value of 10^38
@@ -633,13 +637,10 @@ class Replay:
         A 128-bit integer inside a list or struct is refused whatever its
         value."""
         rel = self.db.sql(f'SELECT * FROM "{name}" LIMIT 0')
+        refuse_unmodelled(rel.columns, rel.types, f" of {name}")
         limit = 10**38
         for col, t in zip(rel.columns, rel.types, strict=True):
             kind = str(t).upper()
-            if re.search(r"\bUUID\b", kind):
-                # Arrow exports a UUID as text: the lift would compare it with
-                # a string as text, where DuckDB casts the string to a UUID.
-                raise ValueError(f"column {col} of {name} is {t}, which Arrow exports as text")
             if "TIME WITH TIME ZONE" in kind and self._offsets(name, col):
                 # Arrow exports a TIMETZ as a TIME without its offset: the
                 # lift would order and compare wall clocks, which are the

@@ -1,0 +1,38 @@
+{
+  "id": "duckdb-enum-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "An ENUM orders by declaration position",
+  "verdict": "`ENUM` compares, orders and aggregates by declaration position, not by text",
+  "area": "strings",
+  "description": [
+    "An `ENUM` column orders by the position of its value in the type's declaration. For `ENUM('sad', 'ok', 'happy')`, `ORDER BY` gives sad, ok, happy; `min` is sad and `max` happy; `'happy' < 'sad'` is false. Arrow exports the column as `dictionary<string>`, which a text model orders by spelling."
+  ],
+  "reference": "sverify refuses the column by its declared type (`sverify_duckdb.declared`, #1253): Arrow exports it as another kind, and the lift would compare it as that kind. The exit is a cast to text in the source query.",
+  "status": "decided",
+  "evidence": "probe",
+  "issues": [
+    1253
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #1253, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "CREATE TYPE mood AS ENUM ('sad','ok','happy'); CREATE TABLE e(m mood); INSERT INTO e VALUES ('happy'),('sad'),('ok'); SELECT m::VARCHAR FROM e ORDER BY m",
+          "observed": "sad, ok, happy"
+        },
+        {
+          "sql": "SELECT min(m)::VARCHAR, max(m)::VARCHAR FROM e",
+          "observed": "sad, happy"
+        },
+        {
+          "sql": "SELECT 'happy'::mood < 'sad'::mood, 'sad'::mood < 'ok'::mood",
+          "observed": "false, true"
+        }
+      ]
+    }
+  ]
+}

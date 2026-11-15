@@ -18,7 +18,7 @@
     {"file": "types/enum/create_enum_collection_alias.test", "line": 86, "sql": "SELECT ['invalid']::enum_list", "cls": "skipped", "reason": "setting collation or macro"},
     {"file": "types/enum/create_enum_collection_alias.test", "line": 91, "sql": "SELECT ['happy']::enum_array", "cls": "skipped", "reason": "setting collation or macro"},
     {"file": "types/enum/standalone_enum.test", "line": 5, "sql": "SELECT 'hello'::ENUM('world', 'hello');", "expected": "[\"hello\"]", "duckdb": "[[\"hello\"]]", "lean": "[[\"hello\"]]", "engine": "[[\"hello\"]]", "cls": "agree"},
-    {"file": "types/enum/standalone_enum.test", "line": 13, "sql": "SELECT * FROM test", "expected": "[\"hello\"]", "duckdb": "[[\"hello\"]]", "lean": "[[\"hello\"]]", "engine": "[[\"hello\"]]", "cls": "agree"},
+    {"file": "types/enum/standalone_enum.test", "line": 13, "sql": "SELECT * FROM test", "cls": "refused", "reason": "tables: column h of test is ENUM('world', 'hello'); read it as text with CAST(h AS VARCHAR) in the source query; DuckDB orders an ENUM by declaration position, text by spelling"},
     {"file": "types/enum/standalone_enum.test", "line": 18, "sql": "SELECT 'hello'::ENUM;", "cls": "skipped", "reason": "DuckDB frontend error"},
     {"file": "types/enum/standalone_enum.test", "line": 23, "sql": "SELECT ENUM 'a';", "cls": "skipped", "reason": "DuckDB frontend error"},
     {"file": "types/enum/standalone_enum.test", "line": 28, "sql": "SELECT 'hello'::ENUM(42);", "cls": "skipped", "reason": "DuckDB frontend error"},
