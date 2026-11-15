@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "int.mod", "option": "overflow", "types": ["i8"]},
-    {"group": "int.mod", "option": "overflow", "types": ["i16", "i32", "i64"], "evidence": "source"}
+    {"group": "int.mod", "option": "overflow", "types": ["i16", "i32", "i64"], "evidence": "probe"}
   ],
   "constructs": [
     "%",
@@ -25,7 +25,7 @@
   "description": "`%` on integers has no overflowing input. The kernel takes `wrapping_rem` and, when the remainder is nonzero and its sign differs from the divisor's, adds the divisor: the sum lies strictly between 0 and the divisor, so it fits. `MIN % -1` is 0 (`wrapping_rem`), and a literal divisor of ±1 fills 0. One macro instantiates the kernels for `Int8` to `Int64`, so every width behaves the same. The floor remainder and NULL for a zero divisor are in polars-int-modulus.",
   "reference": "`modulus` on integers is the truncated remainder (`Int.tmod`), which never overflows either; `MIN % -1` is 0 (`min_mod_neg_one`).",
   "status": "no-finding",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -73,6 +73,18 @@
         "The Rust unit test runs `wrapping_floor_div_mod`, the kernel of `%` and `//` between two integer columns, on all 65 536 `Int8` pairs: `MIN % -1` is 0 and every remainder fits. It is a test of the kernel, below either engine; both engines call it. It covers `i8` only (its comment says the result should transfer to other widths), so `i16` to `i64` stay at the source reading of the macro. The path of a literal divisor (`prim_wrapping_mod_scalar`, strength reduction) is not covered by it.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct int-modulus-widths: {8: [1, -1, 0, None], 16: [1, -1, 0, None], 32: [1, -1, 0, None], 64: [1, -1, 0, None]}"
+        }
+      ],
+      "notes": "`%` at every width: `MIN % -1` is 0, no overflowing input."
     }
   ]
 }

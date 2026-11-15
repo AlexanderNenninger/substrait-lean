@@ -325,6 +325,100 @@ OBSERVATIONS: list[Observation] = [
     _o("double-modulus-sign", "doubles",
        "df(a=[5.5, -5.5, 5.5, -5.5, 5.0, -5.0], b=[2.0, 2.0, -2.0, -2.0, inf, inf])"
        ".select(pl.col('a') % pl.col('b')).to_series().to_list()"),
+    # Every width and the Float32 variants of the rows that rested on source reading (#746).
+    _o("int-pow-wraps-widths", "integers",
+       "{b: df(x=([2], t)).select(pl.col('x') ** (b - 1)).item()"
+       " for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}"),
+    _o("int-pow-negative-widths", "integers",
+       "{b: attempt(lambda: df(x=([2], t)).select(pl.col('x') ** -1).item())"
+       " for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}"),
+    _o("int-floordiv-widths", "integers",
+       "{b: df(a=([-7, 7, -2**(b-1), 5], t), d=([2, -2, -1, 0], t))"
+       ".select(pl.col('a') // pl.col('d')).to_series().to_list()"
+       " for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}"),
+    _o("int-modulus-widths", "integers",
+       "{b: df(a=([-7, 7, -2**(b-1), 5], t), d=([2, -2, -1, 0], t))"
+       ".select(pl.col('a') % pl.col('d')).to_series().to_list()"
+       " for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}"),
+    _o("int-shift-operators", "integers",
+       "[hasattr(pl.Expr, '__lshift__'), hasattr(pl.Expr, '__rshift__'),"
+       " [m for m in dir(pl.Expr) if 'shift' in m]]"),
+    _o("int-mean-empty-widths", "integers",
+       "{b: [df(x=([], t)).select(pl.col('x').mean()).item(),"
+       " df(x=([None], t)).select(pl.col('x').mean()).item(),"
+       " df(g=[1], x=([None], t)).group_by('g').agg(pl.col('x').mean()).item(0, 'x')]"
+       " for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+       POLARS_MAX_THREADS="1"),
+    _o("float-sum-mean-empty", "aggregates",
+       "{str(t): [df(x=([], t)).select(pl.col('x').sum()).item(),"
+       " df(x=([], t)).select(pl.col('x').mean()).item(),"
+       " df(x=([None], t)).select(pl.col('x').sum()).item(),"
+       " df(g=[1], x=([None], t)).group_by('g').agg(pl.col('x').sum()).item(0, 'x'),"
+       " df(g=[1], x=([None], t)).group_by('g').agg(pl.col('x').mean()).item(0, 'x')]"
+       " for t in (pl.Float32, pl.Float64)}",
+       POLARS_MAX_THREADS="1"),
+    _o("float32-nan-creation", "doubles",
+       "df(a=([inf, inf, 0.0, 1.0], pl.Float32), b=([inf, -inf, inf, 2.0], pl.Float32))"
+       ".select((pl.col('a') - pl.col('b')).alias('sub'), (pl.col('a') + pl.col('b')).alias('add'),"
+       " (pl.col('a') * pl.col('b')).alias('mul'), (pl.col('a') / pl.col('b')).alias('div'),"
+       " (pl.col('a') % pl.col('b')).alias('mod')).rows()"),
+    _o("float32-zero-sign", "doubles",
+       "df(z=([-0.0, 0.0], pl.Float32)).select((1.0 / pl.col('z')).alias('inv'),"
+       " (-pl.col('z')).alias('neg'), (pl.col('z') * -1.0).alias('mul'),"
+       " (pl.col('z') + 0.0).alias('add0'), (pl.col('z') - 0.0).alias('sub0'),"
+       " (pl.col('z') % 2.0).alias('mod')).rows()",
+       POLARS_MAX_THREADS="1"),
+    _o("float-modulus-zero-sign", "doubles",
+       "[df(a=([-4.0, 4.0, -0.0], t), b=([2.0, -2.0, 3.0], t)).select(pl.col('a') % pl.col('b'))"
+       ".to_series().to_list() for t in (pl.Float32, pl.Float64)]"),
+    # Rounded to four digits: the libm of each platform differs in the last bits.
+    _o("float32-domain-edges", "doubles",
+       "df(x=([-1.0, 0.0, 2.0, inf, nan], pl.Float32))"
+       ".select(pl.col('x').sqrt().round(4).alias('sqrt'),"
+       " pl.col('x').log().round(4).alias('ln'), pl.col('x').log(10).round(4).alias('log10'),"
+       " pl.col('x').arcsin().round(4).alias('asin'), pl.col('x').sin().round(4).alias('sin'))"
+       ".rows()"),
+    _o("float-atan2-edges", "doubles",
+       "[df(y=([0.0, -0.0, 1.0, inf, nan], t), x=([0.0, -1.0, 0.0, inf, 1.0], t))"
+       ".select(pl.arctan2(pl.col('y'), pl.col('x')).round(4)).to_series().to_list()"
+       " for t in (pl.Float32, pl.Float64)]"),
+    _o("var-std-int-decimal", "aggregates",
+       "{n: [df(x=(v, t)).select(pl.col('x').var()).item(),"
+       " df(x=(v, t)).select(pl.col('x').std()).item(),"
+       " df(x=(v[:1], t)).select(pl.col('x').var()).item(),"
+       " df(g=[1] * len(v), x=(v, t)).group_by('g').agg(pl.col('x').var()).item(0, 'x'),"
+       " df(x=(v[:0], t)).select(pl.col('x').var()).item()]"
+       " for n, t, v in [('int64', pl.Int64, [1, 2, 4, 8]),"
+       " ('decimal', pl.Decimal(18, 2), [Decimal('1.10'), Decimal('2.20'), Decimal('4.40'),"
+       " Decimal('8.80')])]}",
+       POLARS_MAX_THREADS="1"),
+    _o("float32-nan-sign", "doubles",
+       "[hex(struct.unpack('<I', struct.pack('<f', v))[0])"
+       " for v in df(z=([nan], pl.Float32))"
+       ".select(pl.col('z').neg().alias('neg'), pl.col('z').abs()).row(0)]"),
+    _o("float32-mean-grouped", "aggregates",
+       "[df(g=[1] * 3, x=([16777216.0, 1.0, 1.0], pl.Float32)).group_by('g')"
+       ".agg(pl.col('x').mean()).item(0, 'x'),"
+       " df(x=([16777216.0, 1.0, 1.0], pl.Float32)).select(pl.col('x').mean()).item()]",
+       POLARS_MAX_THREADS="1"),
+    _o("var-std-ddof-and-cast", "aggregates",
+       "{n: [df(x=(v, t)).select(pl.col('x').var(0)).item(),"
+       " df(x=(v, t)).select(pl.col('x').var(1)).item(),"
+       " df(x=(v, t)).select(pl.col('x').var(1)).item() =="
+       " df(x=([float(x) for x in v], pl.Float64)).select(pl.col('x').var(1)).item(),"
+       " df(x=(v, t)).select(pl.col('x').std(1)).item() =="
+       " df(x=([float(x) for x in v], pl.Float64)).select(pl.col('x').std(1)).item(),"
+       " str(df(x=(v, t)).select(pl.col('x').var()).dtypes[0])]"
+       " for n, t, v in [('int64', pl.Int64, [1, 2, 4, 8]),"
+       " ('decimal', pl.Decimal(18, 2), [Decimal('1.10'), Decimal('2.20'), Decimal('4.40'),"
+       " Decimal('8.80')])]}",
+       POLARS_MAX_THREADS="1"),
+    _o("ntile-sql-ties", "windows",
+       "pl.SQLContext(t=pl.DataFrame({'id': [1, 2, 3, 4, 5], 'k': [1, 1, 1, 2, 2]}))"
+       ".execute('SELECT id, k, NTILE(2) OVER (ORDER BY k) AS n FROM t').collect().rows()"),
+    _o("ntile-expression", "windows",
+       "[hasattr(pl.Expr, 'ntile'), hasattr(pl.Expr, 'percent_rank'),"
+       " hasattr(pl.Expr, 'cume_dist')]"),
     _o("round-digits-negative", "doubles", "df(x=[123.0]).select(pl.col('x').round(-1)).item()"),
     _o("round-digits-ties", "doubles",
        "{d: df(x=[0.125, 0.375, 2.675, 1.005, 0.285]).select(pl.col('x').round(d))"
@@ -842,8 +936,8 @@ def observe(o: Observation) -> Json:
             env={**os.environ, **dict(o.env)}, capture_output=True, text=True, check=True,
         )  # fmt: skip
         return json.loads(run.stdout)
-    env = {"pl": pl, "math": math, "dt": dt, "Decimal": Decimal, "df": df, "bits": bits,
-           "attempt": attempt,
+    env = {"struct": struct, "pl": pl, "math": math, "dt": dt, "Decimal": Decimal, "df": df,
+           "bits": bits, "attempt": attempt,
            "inf": math.inf, "nan": math.nan}  # fmt: skip
     try:
         observed = repr(eval(o.code, env))

@@ -12,10 +12,10 @@
   ],
   "rows": [
     {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]},
-    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32"], "evidence": "source"},
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32"], "evidence": "probe"},
     {"group": "agg.fsum", "option": "rounding", "types": ["fp64"]},
-    {"group": "agg.fsum", "option": "rounding", "types": ["fp32"], "evidence": "source"},
-    {"group": "agg.fsum", "option": "empty_group_aggregates", "types": ["fp32", "fp64"], "evidence": "source"}
+    {"group": "agg.fsum", "option": "rounding", "types": ["fp32"], "evidence": "probe"},
+    {"group": "agg.fsum", "option": "empty_group_aggregates", "types": ["fp32", "fp64"], "evidence": "probe"}
   ],
   "constructs": [
     "mean",
@@ -135,6 +135,22 @@
         }
       ],
       "notes": "Corrected the description: the 4-row grouped mean is not fixed on streaming. The recorded differ 0 is one outcome; the regression-test runs saw it vary on 10 threads, as the sum does (2.0 ×92, 1.0 ×75, 0.0 ×33 over 200 runs; always 0.0 on 1 or 2 threads)."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float32-mean-grouped: [5592406.0, 5592406.0]"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float-sum-mean-empty: {'Float32': [0.0, None, 0.0, 0.0, None], 'Float64': [0.0, None, 0.0, 0.0, None]}"
+        }
+      ],
+      "notes": "A Float32 mean is the f64 sum's quotient rounded (16777218 / 3 = 5592406.0); the mean of no values is NULL, and of a NULL group NULL, at both widths."
     }
   ],
   "issues": [

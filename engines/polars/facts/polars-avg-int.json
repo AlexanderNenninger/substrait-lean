@@ -13,7 +13,7 @@
     {"group": "agg.isum", "option": "avg_int_result", "types": ["i64"]},
     {"group": "agg.isum", "option": "avg_int_result", "types": ["i8", "i16", "i32"], "evidence": "engine_test"},
     {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i64"]},
-    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i8", "i16", "i32"], "evidence": "source"}
+    {"group": "agg.isum", "option": "empty_group_aggregates", "types": ["i8", "i16", "i32"], "evidence": "probe"}
   ],
   "constructs": [
     "mean",
@@ -111,6 +111,18 @@
           "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L3801-L3820"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct int-mean-empty-widths: {8: [None, None, None], 16: [None, None, None], 32: [None, None, None], 64: [None, None, None]}"
+        }
+      ],
+      "notes": "`mean` of no values, of only NULLs and of a NULL group is NULL at every integer width."
     }
   ],
   "issues": [

@@ -11,7 +11,7 @@
   ],
   "rows": [
     {"group": "fp.arith", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.arith", "option": "nan_creation", "types": ["fp32"], "evidence": "probe"},
     {"group": "fp.arith", "option": "float_overflow", "types": ["fp32", "fp64"]}
   ],
   "constructs": [
@@ -133,6 +133,18 @@
           "note": "no upstream test pins inf - inf, inf + (-inf) or 0 * inf (searched py-polars/tests/unit/operations/arithmetic, expr, series, dataframe at py-2.1.0)"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float32-nan-creation: [(nan, inf, inf, nan, nan), (inf, nan, -inf, nan, nan), (-inf, inf, nan, 0.0, nan), (-1.0, 3.0, 2.0, 0.5, 1.0)]"
+        }
+      ],
+      "notes": "Float32: `inf - inf`, `inf + -inf`, `0 * inf` are NaN, no error."
     }
   ],
   "issues": [

@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "int.div", "option": "on_domain_error", "types": ["i8"]},
-    {"group": "int.div", "option": "on_domain_error", "types": ["i16", "i32", "i64"], "evidence": "source"}
+    {"group": "int.div", "option": "on_domain_error", "types": ["i16", "i32", "i64"], "evidence": "probe"}
   ],
   "constructs": [
     "//",
@@ -25,7 +25,7 @@
   "description": "Integer floor division gives a quotient for every pair of operands but two kinds: a zero divisor is NULL (`on_division_by_zero`) and `MIN // -1` wraps to `MIN` (`overflow`), both in polars-int-divide. No input raises or gives a value of its own. The kernels are one macro for `Int8` to `Int64`. `/` on integers divides doubles (polars-int-true-divide).",
   "reference": "`divide` on integers: `on_domain_error` never applies (`int.div` in docs/core-semantics.md, `Choice.any`).",
   "status": "no-finding",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -74,6 +74,18 @@
         "The Rust test shows the floor-division kernel gives a value for every `Int8` pair (the zero divisor's (0, 0) is masked to NULL by the caller), so no `Int8` input raises. `test_floordiv_mod` pins NULL for a zero divisor at `Int8` and `Int32`. `i16` and `i64` rest on the source reading of the shared macro.",
         "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct int-floordiv-widths: {8: [-4, -4, -128, None], 16: [-4, -4, -32768, None], 32: [-4, -4, -2147483648, None], 64: [-4, -4, -9223372036854775808, None]}"
+        }
+      ],
+      "notes": "`-7 // 2`, `7 // -2`, `MIN // -1`, `5 // 0` at every width: no domain error, a zero divisor is NULL."
     }
   ]
 }
