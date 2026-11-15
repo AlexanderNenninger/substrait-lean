@@ -772,6 +772,16 @@ OBSERVATIONS: list[Observation] = [
            for f in ("avg", "sum")
            for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")
        )),
+    _o("avg-bigint-limits", "aggregates",
+       "SELECT (SELECT avg(x) FROM (SELECT 9223372036854775807::BIGINT x UNION ALL"
+       " SELECT 9223372036854775807::BIGINT UNION ALL SELECT 9223372036854775807::BIGINT)),"
+       " (SELECT avg(x) FROM (SELECT 9223372036854775807::BIGINT x UNION ALL"
+       " SELECT (-9223372036854775807 - 1)::BIGINT UNION ALL SELECT 1::BIGINT)),"
+       " (SELECT avg(x) FROM (SELECT (-9223372036854775807 - 1)::BIGINT x UNION ALL"
+       " SELECT (-9223372036854775807 - 1)::BIGINT)),"
+       " (SELECT sum(x) FROM (SELECT 9223372036854775807::BIGINT x UNION ALL"
+       " SELECT 9223372036854775807::BIGINT)),"
+       " (SELECT typeof(sum(x)) FROM (SELECT 1::BIGINT x))"),
     _o("stat-decimal-cast", "aggregates",
        "SELECT typeof(var_samp(d)), var_samp(d) = var_samp(d::DOUBLE),"
        " var_pop(d) = var_pop(d::DOUBLE), stddev_samp(d) = stddev_samp(d::DOUBLE),"
