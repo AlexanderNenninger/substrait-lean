@@ -253,6 +253,7 @@ build as the guard. The modules below import it as `Sverify.DuckDB.*`.
 | `DuckDB/Engine.lean` | `Engine.duckdb`, its functions within DuckDB's table (`Profile.duckdb_withinOk`), and `Engine.duckdb_sound` |
 | `DuckDB/LiftHint.lean` | The hints that tell the lift search which template to try first |
 | `DuckDB/LiftCache.lean` | The lift hints (generated) |
+| `DuckDB/SumGuard.lean` | DuckDB's `SUM` and `AVG` of doubles as a guarded sum and the extremes: `SumGuard.agree` (it is the aggregate's value, for every group) and `SumGuard.noNan` (no measure has a domain error, #341) |
 | `DuckDB/LiftSearch.lean` | `generate_lift`, the lift search |
 | `DuckDB/Lift.lean` | The lift's tables and their exports |
 | `DuckDB/Lift/Duckdb/*.lean`, `DuckDB/Lift/Reference/*.lean` | The lift's entries per semantics, one module per area (generated) |
