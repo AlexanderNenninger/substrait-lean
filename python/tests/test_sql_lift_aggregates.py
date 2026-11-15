@@ -248,10 +248,14 @@ def test_corr_of_one_pair_is_nan_with_duckdbs_semantics_and_null_with_the_refere
 
 # `SUM` and `AVG` of doubles with infinities and NaN (#341), through oracles A and C.
 _NONFINITE = [
-    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('inf'::DOUBLE), ('-inf'::DOUBLE), (1.0)) t(x)",
-    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('inf'::DOUBLE), (1.0), (2.5)) t(x)",
-    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('-inf'::DOUBLE), (1.0), (NULL)) t(x)",
-    "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES ('nan'::DOUBLE), ('inf'::DOUBLE)) t(x)",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (SELECT 'inf'::DOUBLE AS x UNION ALL"
+    " SELECT '-inf'::DOUBLE UNION ALL SELECT 1.0) t",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (SELECT 'inf'::DOUBLE AS x UNION ALL SELECT 1.0"
+    " UNION ALL SELECT 2.5) t",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (SELECT '-inf'::DOUBLE AS x UNION ALL SELECT 1.0"
+    " UNION ALL SELECT NULL::DOUBLE) t",
+    "SELECT sum(x) AS s, avg(x) AS a FROM (SELECT 'nan'::DOUBLE AS x UNION ALL"
+    " SELECT 'inf'::DOUBLE) t",
     "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES (1.5), (NULL), (2.0)) t(x)",
     "SELECT sum(x) AS s, avg(x) AS a FROM (VALUES (1.5), (2.0)) t(x) WHERE x > 10",
 ]
