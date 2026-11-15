@@ -340,8 +340,8 @@ def test_round_to_digits_is_duckdbs(xs, d):
     )
     sql = f"SELECT round(x, ({d})::INT) FROM (SELECT unnest(?::DOUBLE[]) AS x)"
 
-    # The written plan's `round` is the reference's (`Dialect.canon`): DuckDB's
-    # up to the sign of a zero, the observation `round_zero_sign` is open under.
+    # The written plan's `round` is the reference's (the proved template,
+    # `round_zero_sign`): DuckDB's up to the sign of a zero.
     def code(v: float | None) -> int | None:
         return None if v is None else probe.encode_double(0.0 if v == 0 else v)
 

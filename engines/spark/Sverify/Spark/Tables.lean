@@ -90,10 +90,9 @@ def Profile.spark.obs : ObsTable := [
     note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }).tracking 271),
   (none, "nan_creation", (ObsRow.native ["spark-double-arith", "spark-nonfinite-aggregates"]).proved "Rel.spark_sound"),
   (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Shim.makes_infinite"),
-  -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
-  -- after `Dialect.canon`.
-  (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"] with
-    shim := some "Dialect.canon" }).proved "Shim.one_zero"),
+  -- Two zeros, as IEEE has them: the reference's up to one zero. The writer
+  -- prints raw values (D31) and no canon.
+  (none, "zero_sign", (ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"]).tracking 271),
   -- `round` emits `+0.0` through a decimal; `ceil` is a `BIGINT`, which the
   -- written plan casts back to a double.
   (none, "round_zero_sign", (ObsRow.native ["spark-round", "spark-floor-ceil-bigint"]).tracking 271),

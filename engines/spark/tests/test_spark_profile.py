@@ -78,7 +78,6 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
     assert set(shims) == {
         "int_sum_decimal",
         "int_avg_decimal",
-        "Dialect.canon",
         "null_order",
         "sort on the keys",
         "decimal_negate_sub",
@@ -88,7 +87,6 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
         "int_sum_decimal": "Shim.sum_empty_null",
         "int_avg_decimal": "Shim.avg_trunc",
         "null_order": "Shim.null_order",
-        "Dialect.canon": "Shim.one_zero",
         "decimal_negate_sub": "Spark.decimal_negate_sub",
     }
     for name, thm in proofs.items():

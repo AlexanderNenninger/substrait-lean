@@ -351,13 +351,8 @@ class Dialect:
         )
 
     def float_neg(self, a: str) -> str:
-        """IEEE negation; NaN stays NaN (`canon` makes `-0.0` zero)."""
+        """IEEE negation; NaN stays NaN, and `-0.0` is the reference's too (D31)."""
         return f"(- {a})"
-
-    def canon(self, x: str) -> str:
-        """`x` with `-0.0` made `0.0`, the model's one zero: IEEE's
-        `-0.0 + 0.0` is `0.0`, and other values stay (`x` appears once)."""
-        return f"({x} + {self.float_lit(0.0)})"
 
     def int_to_float(self, a: str) -> str:
         return self.cast(a, "float")
@@ -367,7 +362,7 @@ class Dialect:
         return self.cast(a, "str")
 
     def float_floor(self, x: str) -> str:
-        """Exact; NaN/±inf stay (a zero result goes through `canon`)."""
+        """Exact; NaN/±inf stay."""
         return f"FLOOR({x})"
 
     def float_ceil(self, x: str) -> str:
@@ -3760,10 +3755,9 @@ class _Writer:
                     raise Unsupported(
                         f"table {'.'.join(name)} needs one name per column in its baseSchema"
                     )
-                # A table's `-0.0` is the model's one zero.
                 items = [
-                    f"{d.canon(d.quote(col)) if k == 'float' else d.quote(col)} AS {self.c(i)}"
-                    for i, (col, k) in enumerate(zip(columns, r.kinds, strict=True))
+                    f"{d.quote(col)} AS {self.c(i)}"
+                    for i, col in enumerate(columns)
                 ]
                 if ordered:
                     items.append(f"{d.row_ordinal()} AS {d.quote(ORD)}")
@@ -4074,8 +4068,7 @@ class _Writer:
                 return f"COUNT({v})"
             case "black_box":
                 row = black_box.AGGREGATES[m.bbox]
-                sql = d.black_box_agg(row, v)
-                return d.canon(sql) if row.result == "double" else sql
+                return d.black_box_agg(row, v)
             case "dsum" | "davg":
                 if not isinstance(kind, Dec):
                     raise Unsupported(f"{m.fn} of a non-decimal")
@@ -4092,8 +4085,7 @@ class _Writer:
                 num, scale = m.q
                 digits = str(num).rjust(scale + 1, "0")
                 q = f"{digits[: len(digits) - scale]}.{digits[len(digits) - scale :] or '0'}"
-                sql = d.quantile(m.fn == "quantile_cont", v, q)
-                return d.canon(sql) if m.fn == "quantile_cont" else sql
+                return d.quantile(m.fn == "quantile_cont", v, q)
             case "covar_samp" | "covar_pop" | "corr":
                 x, y = f"{v}[1]", f"{v}[2]"
                 n = f"COUNT({v})"
@@ -4106,7 +4098,7 @@ class _Writer:
                     none = f"{n} <= {d.int_lit(1 if m.fn == 'covar_samp' else 0)}"
                 # Finite pairs whose result overflows (#575), kept without
                 # guards; an infinite side raises below.
-                stat = d.canon(d.clamp_stat(m.fn, d.covar(m.fn, v)))
+                stat = d.clamp_stat(m.fn, d.covar(m.fn, v))
                 value = self.agg_finite(d.case_when(none, d.null("float"), stat))
                 if not d.guards:
                     return value
@@ -4128,7 +4120,7 @@ class _Writer:
                         f"a DISTINCT {m.fn.upper()} of doubles on {d.name}: no shift by the "
                         "mean of distinct values yet (#1023)"
                     )
-                body = d.canon(d.clamp_stat(m.fn, d.float_var(m.fn, shifted or v)))
+                body = d.clamp_stat(m.fn, d.float_var(m.fn, shifted or v))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
                 value = d.case_when(none, d.null("float"), d.var_nan(v, "", body))
                 # Finite values whose variance overflows (#575), kept without
@@ -4144,7 +4136,7 @@ class _Writer:
             case "fsum" | "avg":
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
-                    total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v})")))
+                    total = d.float_div(total, d.int_to_float(f"COUNT({v})"))
                 total = d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
                 # Finite values whose sum overflows (#575), kept without guards.
                 top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
@@ -4364,7 +4356,7 @@ class _Writer:
                 # of its rows (`Epsilon.winSrcs`, #1032).
                 total = d.window_float_sum(v, w, moving)
                 if m.fn == "avg":
-                    total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
+                    total = d.float_div(total, d.int_to_float(f"COUNT({v}) {w}"))
                 total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
                 # Finite values whose sum overflows (#575), kept without guards.
                 top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
@@ -4388,7 +4380,7 @@ class _Writer:
         d = self.d
         sample = fn.endswith("_samp")
         name = ("STDDEV_" if fn.startswith("std") else "VAR_") + ("SAMP" if sample else "POP")
-        body = d.canon(d.clamp_stat(fn, f"{name}({v}) {w}"))
+        body = d.clamp_stat(fn, f"{name}({v}) {w}")
         none = f"COUNT({v}) {w} <= {d.int_lit(1 if sample else 0)}"
         value = self.agg_finite(d.case_when(none, d.null("float"), d.var_nan(v, w, body)))
         if not d.guards:
@@ -4488,15 +4480,15 @@ class _Writer:
                 return d.int_neg(self.int_operand(a, ref, cols, "negation"))
             case Un(op="itof", arg=a):
                 return d.int_to_float(self.int_operand(a, ref, cols, "CAST to DOUBLE"))
-            # IEEE makes `-0.0` here from the one zero (negation, rounding
-            # up to zero, a negative times zero, underflow): `canon` it.
+            # Values stay raw: a `-0.0` is the reference's too (D31), and the
+            # engine's identity boundaries treat the two zeros as one.
             case Un(op="fneg", arg=a):
-                return d.canon(d.float_neg(self.float_operand(a, ref, cols)))
+                return d.float_neg(self.float_operand(a, ref, cols))
             case Un(op="ffloor" | "fceil" | "fround" as op, arg=a):
                 f = {"ffloor": d.float_floor, "fceil": d.float_ceil, "fround": d.float_round}[op]
-                return d.canon(f(self.float_operand(a, ref, cols)))
+                return f(self.float_operand(a, ref, cols))
             case Un(op="froundTo", arg=a, digits=digits):
-                return d.canon(d.float_round_to(self.float_operand(a, ref, cols), digits))
+                return d.float_round_to(self.float_operand(a, ref, cols), digits)
             case Un(op="ftoi", arg=a):
                 return d.float_to_int(self.float_operand(a, ref, cols))
             case Un(op="ftoi_or_null", arg=a):
@@ -4528,18 +4520,18 @@ class _Writer:
             case Un(op="fmath", arg=a, param=name):
                 x = self.float_operand(a, ref, cols)
                 if (low := d.lowered(f"fmath:{name}", [x], "float")) is not None:
-                    sql = d.canon(low)
+                    sql = low
                 else:
-                    sql = self.domain(x, self.domain_error(name, x), d.canon(d.fn(name, x)))
+                    sql = self.domain(x, self.domain_error(name, x), d.fn(name, x))
                 # Only `exp` of a finite double overflows (`UnFn.infIssue`).
                 return self.finite(sql, [x]) if name == "exp" else sql
             case Bin(op="fatan2", left=a, right=b):
                 y, x = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
                 if (low := d.lowered("fatan2", [y, x], "float")) is not None:
-                    return d.canon(low)
+                    return low
                 zero = d.float_lit(0.0)
                 bad = f"({d.float_eq(y, zero)} AND {d.float_eq(x, zero)})"
-                return self.domain(y, bad, d.canon(d.fn("atan2", y, x)))
+                return self.domain(y, bad, d.fn("atan2", y, x))
             case Bin(op="flogb", left=a, right=b):
                 x, base = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
                 zero = d.float_lit(0.0)
@@ -4547,7 +4539,7 @@ class _Writer:
                     f"(NOT {d.float_lt(zero, x)} OR NOT {d.float_lt(zero, base)} "
                     f"OR {d.float_eq(base, d.float_lit(1.0))})"
                 )
-                return self.domain(x, bad, d.canon(d.float_logb(x, base)))
+                return self.domain(x, bad, d.float_logb(x, base))
             case Bin(op="bit", left=a, right=b, param=name):
                 sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))
                 if (low := d.lowered(f"bit:{name}", [sa, sb], "int")) is not None:
@@ -4584,11 +4576,8 @@ class _Writer:
                 # the template's guard could not fire: the operator alone.
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
                 if not plain and (low := d.lowered(op, [sa, sb], "float")) is not None:
-                    low = low if op in ("fadd", "fsub") else d.canon(low)
                     return low if op == "fmod" else self.finite(low, unknown, by_zero_ok)
                 sql = f(sa, sb)
-                # A sum or difference of doubles other than -0.0 is never -0.0.
-                sql = sql if op in ("fadd", "fsub") else d.canon(sql)
                 if not d.guards:
                     return sql
                 if op != "fmod":

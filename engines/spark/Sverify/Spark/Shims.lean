@@ -32,8 +32,6 @@ fact.
   truncates: the reference's `AVG` of integers (`Shim.avg_trunc`).
 * `null_order` (spark-null-order): Spark puts NULLs first in an ascending
   key; the writer states the placement on every key (`Shim.null_order`).
-* `one_zero` (spark-zero-sign, spark-zero-order): `-0.0` as `0.0` where a
-  result's zero is observed (`Dialect.canon`, `Shim.one_zero`).
 * `decimal_negate_sub` (spark-decimal-negate, SP-1): Spark's `-x` rounds a
   decimal past 34 significant digits; the writer negates as `0 - x` there,
   exact where its type keeps the scale, and refuses the rest.
