@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 24 | 1 | 4 | 4 | 0 | 15 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 25 | 1 | 4 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Rel.polars_sound` | 14 | 14 | 1 | 6 | 8 | 1 | 15 | 7 |
-| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 25 | 1 | 5 | 3 | 1 | 14 | 0 |
+| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 26 | 1 | 5 | 3 | 1 | 14 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 6 | 12 | 18 | 2 | 0 | 0 | 15 |
+| DuckDB | 6 | 13 | 18 | 2 | 0 | 0 | 15 |
 | Polars | 29 | 2 | 17 | 0 | 0 | 0 | 15 |
-| Spark | 18 | 11 | 12 | 0 | 0 | 0 | 14 |
+| Spark | 18 | 11 | 13 | 0 | 0 | 0 | 14 |
 
 ## Shims
 
@@ -94,6 +94,7 @@ Rows per evidence level:
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
+| fp.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
 | every | `min_mod_neg_one` | choose | `ZERO` | `ERROR` | shim `MIN % -1 written out` (expression) | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-int-modulus](../engines/duckdb/facts/duckdb-R15-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
@@ -236,6 +237,7 @@ Refused on Polars, with no expression there:
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
+| fp.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
