@@ -23,7 +23,8 @@ def Profile.sparkExtras : List (Functions.Ctor × String) :=
      (.bin .fdiv, "nan_creation"), (.bin .fmod, "nan_creation"), (.bin .fpow, "on_domain_error"),
      (.bin .fpow, "pow_one_inf"), (.un .ffloor, "float_to_int"), (.un .fceil, "float_to_int"),
      (.bin .fatan2, "on_domain_error"), (.bin .fatan2, "zero_sign"),
-     (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range")]
+     (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range"),
+     (.bin .dateAdd, "date_range")]
 
 theorem Profile.spark_extras :
     (Profile.sparkExtras.all fun p => extraAtB Profile.spark.table p.1 p.2) = true := by
@@ -121,7 +122,31 @@ theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := b
         split at hs
         · cases hs
         · exact .inr (callExtra_of_at (o := "shift_range") (extraAt_of_all Profile.spark_extras (by decide)) (by simp [optionScope]))
-      case h_11 => cases hs
+      -- `date_add` wraps the sum at 2³¹ days: the reference's value inside its
+      -- date range, a value of `date_range`'s scope past it.
+      case h_11 a b =>
+        split at hs
+        · cases hs; cases h
+          by_cases hr : rangeIssue Time.dayMin Time.dayMax a (a + b) = none
+          · left
+            simp only [rangeIssue] at hr
+            split at hr
+            · rename_i hbt
+              simp only [between, Bool.and_eq_true, decide_eq_true_eq] at hbt
+              have h1 : Time.dayMin = -719162 := rfl
+              have h2 : Time.dayMax = 2932896 := rfl
+              simp only [BinFn.apply]
+              rw [Spark.wrap32_of_small (by omega) (by omega)]
+            · cases hr
+          · right
+            refine callExtra_of_at (o := "date_range")
+              (extraAt_of_all Profile.spark_extras (by decide)) ?_
+            simp [optionScope, Functions.Ctor.issue, BinFn.issueAll, BinFn.issue]
+            left
+            simp only [rangeIssue] at hr ⊢
+            split at hr <;> simp_all
+        · cases hs
+      case h_12 => cases hs
 
 /-- **Spark as the writer writes it is within its table**: the reference's
 functions where the writer shims or refuses (`Profile.sparkWritten`), Spark's
@@ -195,7 +220,34 @@ theorem Profile.sparkWritten_okImpl_faithful : Profile.sparkWritten.okImpl.Faith
         split at hs
         · cases hs
         · rename_i hr; simp [BinFn.issue, domainIssue, BitOp.apply, hr] at h
-      case h_11 => cases hs
+      case h_11 a b =>
+        split at hs
+        · cases hs
+          simp only [BinFn.issue, rangeIssue] at h
+          split at h
+          · rename_i hr
+            simp only [between, Bool.and_eq_true, decide_eq_true_eq] at hr
+            have h1 : Time.dayMin = -719162 := rfl
+            have h2 : Time.dayMax = 2932896 := rfl
+            show Value.date (Spark.wrap32 (a + b)) = BinFn.dateAdd.apply (.date a) (.int b)
+            simp only [BinFn.apply]
+            rw [Spark.wrap32_of_small (by omega) (by omega)]
+          · simp at h
+        · cases hs
+      case h_12 => cases hs
+
+/-- **A verified plan runs on Spark.** When `Rel.mayIssues` reports nothing
+but assumed issues (whose guards the writer keeps), on every catalog that
+satisfies the preconditions, Spark under ANSI as the writer writes it
+(`Profile.sparkWritten`) gives `Rel.eval`'s rows. -/
+theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
+    r.eval cat Profile.sparkWritten.okImpl = r.eval cat :=
+  Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm Profile.sparkWritten_okImpl_faithful
 
 /-- Spark under ANSI, as the writer writes it: its profile's functions where
 they do not raise (`Profile.sparkWritten`), its own choices. -/
@@ -214,6 +266,25 @@ reference's value wherever the reference reports no issue
 theorem Engine.spark_sound : Engine.spark.Sound Engine.GuardFreeSide := by
   intro cat r r' hl _ ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
   cases hl
-  exact Rel.guardFree_allowed hcat hA hF hT hwf hsmall hs hm Profile.sparkWritten_okImpl_faithful
+  show r.Allowed cat (r.eval cat Profile.sparkWritten.okImpl)
+  rw [Rel.spark_sound hcat hA hF hT hwf hsmall hs hm]; exact r.eval_allowed cat
 
+end Substrait
+
+namespace Substrait
+section Example
+local instance : Boxes.Ambient := Boxes.Ambient.none
+
+/-- `Engine.spark_sound` applies to the example of `Sound.lean`: Spark computes
+`Rel.eval`'s rows for it, which the reference allows. -/
+theorem Engine.spark_sound_example :
+    Engine.examplePlan.Allowed Engine.exampleCat
+      (Engine.examplePlan.eval Engine.exampleCat Engine.spark.impl) := by
+  refine Engine.spark_sound (r' := Engine.examplePlan) rfl ?_ Engine.guardFreeSide_example
+  simp [Rel.Raises, Engine.examplePlan]
+  intro x hx
+  have : x = [.int 1] ∨ x = [.int 2] := by simpa [Rel.eval, Engine.exampleCat] using hx
+  rcases this with rfl | rfl <;>
+    (unfold Expr.RaisesOn; decide +kernel)
+end Example
 end Substrait

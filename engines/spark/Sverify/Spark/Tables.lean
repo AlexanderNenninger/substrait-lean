@@ -66,6 +66,9 @@ def Profile.spark.table : ProfileTable where
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),
     (none, "string_positions", .oneOf ["ONE_BASED_CHARS"]),
     (none, "null_join_keys", .oneOf ["NO_MATCH"]),
+    -- Dates and timestamps compute past 9999-12-31, and `date_add` wraps at
+    -- 2³¹ days (spark-date-range, SP-2).
+    (some "time.arith", "date_range", .oneOf ["COMPUTE"]),
     -- Decimals raise past their type under ANSI (spark-decimal-arith).
     (some "dec.arith", "overflow", .oneOf ["ERROR"]),
     -- `ROUND_HALF_UP` on `BigDecimal` (spark-decimal-arith).
@@ -130,6 +133,7 @@ def Profile.spark.obs : ObsTable := [
   (none, "case_sensitivity", (ObsRow.native ["spark-match-functions"]).tracking 271),
   (none, "string_positions", (ObsRow.native ["spark-strpos", "spark-substring"]).tracking 271),
   (none, "null_join_keys", (ObsRow.native ["spark-null-keys"]).tracking 271),
+  (some "time.arith", "date_range", (ObsRow.native ["spark-date-range"]).tracking 739),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 900),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),

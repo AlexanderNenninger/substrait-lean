@@ -423,11 +423,12 @@ What is proved
 - `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
   the reference's value, by the lemmas Polars's shims share
   ([Shims.lean](../engines/Sverify/Engines/Shims.lean)).
-- `Spark.written_faithful` and `Rel.spark_sound`: Spark under ANSI, as the
-  writer writes it, gives `Rel.eval`'s rows for a plan whose only issues are
-  assumed ones, as `Rel.polars_sound` does for Polars. Its own values on the
-  error side (NaN, a `date_add` wrapped past 2³¹ days, SP-2) are where the
-  reference raises.
+- `Profile.sparkWritten_okImpl_faithful` and `Rel.spark_sound`: Spark under
+  ANSI, as the writer writes it (`Profile.sparkWritten`), gives `Rel.eval`'s
+  rows for a plan whose only issues are assumed ones, as `Rel.polars_sound`
+  does for Polars. Its own values on the error side (NaN, a `date_add`
+  wrapped past 2³¹ days, SP-2) are where the reference raises; each is a row
+  of `Profile.spark`.
 - `Spark.decimal_negate_sub`: Spark's `-x` and `abs` round a decimal past 34
   significant digits ([SP-1](../upstream/bugs/SP-1.json)); the writer
   negates as `0 - x` there, exact where its type keeps the scale (up to 37
