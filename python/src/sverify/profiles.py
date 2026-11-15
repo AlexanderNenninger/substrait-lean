@@ -186,6 +186,13 @@ class ProfilePlugin:
     incremental pipeline's views keep their state on the engine, as the
     engine's own handles. None: the engine runs one-shot plans only, and a
     view refreshed on it is an error."""
+    refuse_declared_types: Callable[[Any, Any], None] | None = None
+    """Refuses an Ibis base table (an `ops.DatabaseTable`) of the engine's
+    backend by the types the engine declares for its columns, which Ibis may
+    type as another kind (DuckDB's ENUM is `string` to Ibis): `(backend,
+    table_op)`, raising `ValueError` with the exit. Called once for each base
+    table of an expression that `to_substrait` compiles. None: Ibis's types
+    are the engine's."""
     default: bool = False
     """The engine that runs plans where none is named (`sv.connect()`,
     `Node.refresh()`, `sverify refresh`): `sverify._engines.default`."""
@@ -281,3 +288,18 @@ def checker() -> Path | None:
             + " each name a checker of their own; set SVERIFY_CHECKER to one built over all of them"
         )
     return next(iter(paths), None)
+
+
+def check_declared_types(expr: Any) -> None:
+    """Refuse the base tables of Ibis expression `expr` whose backend's
+    engine declares a type sverify does not model (`refuse_declared_types`).
+    Tables of sverify's own connection are Arrow and are not asked."""
+    import ibis.expr.operations as ops
+
+    for op in expr.op().find(ops.DatabaseTable):
+        backend = getattr(op, "source", None)
+        if backend is None or hasattr(backend, "_sverify_connection"):
+            continue
+        plugin = plugins().get(str(getattr(backend, "name", "")).lower())
+        if plugin is not None and plugin.refuse_declared_types is not None:
+            plugin.refuse_declared_types(backend, op)

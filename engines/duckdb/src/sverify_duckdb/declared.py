@@ -101,3 +101,19 @@ def refuse_unmodelled(columns: Iterable[str], types: Iterable[Any], where: str =
         if bad != str(t.id):
             what += f" (holding {bad.upper()})"
         raise ValueError(f"{what}; {exit_.format(col=col, id=bad.upper())}")
+
+
+def refuse_base_table(backend: Any, op: Any) -> None:
+    """`ProfilePlugin.refuse_declared_types`: raise `Unsupported` for a base
+    table of an Ibis DuckDB `backend` with a column of an unmodelled declared
+    type. Ibis types an ENUM as `string` and so hides it from the producer."""
+    from sverify._unsupported import Unsupported
+
+    ns = op.namespace
+    parts = [p for p in (ns.catalog, ns.database, op.name) if p]
+    q = ".".join('"' + p.replace('"', '""') + '"' for p in parts)
+    rel = backend.con.sql(f"SELECT * FROM {q} LIMIT 0")
+    try:
+        refuse_unmodelled(rel.columns, rel.types, f" of {op.name}")
+    except ValueError as e:
+        raise Unsupported(str(e)) from e
