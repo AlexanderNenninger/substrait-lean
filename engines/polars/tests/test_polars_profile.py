@@ -237,3 +237,15 @@ def test_double_modulus_is_refused_under_the_reference() -> None:
     report = _double_report(con, "reference", None)
     with pytest.raises(Exception, match="polars-double-modulus"):
         report.run(con, "polars")
+
+
+def test_the_floor_templates_are_exported_from_lean() -> None:
+    """The writer renders Lean's `FLOOR` templates (#1202): the export has the
+    three, over fields 0 and 1."""
+    from sverify.sql import lowering
+
+    table = lowering.floor_table()
+    assert set(table) == {"div", "mod", "fmod"}
+    assert table["fmod"]["fn"] == "fsub"
+    assert "if" in table["div"]
+    assert "if" in table["mod"]

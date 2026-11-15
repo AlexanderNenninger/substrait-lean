@@ -48,7 +48,7 @@ def loweringCacheSource : String :=
 /-! ## The table, exported
 
 `substrait-check --lowering-table` prints the entries that are not native as
-JSON, for the SQL printer's table interpreter (`sverify.sql.lowering`, #241),
+JSON (and the core's `FLOOR` templates under `"floor"`), for the SQL printer's table interpreter (`sverify.sql.lowering`, #241),
 which writes each construct as its template says instead of by hand. -/
 
 namespace LoweringExport
@@ -63,7 +63,7 @@ def unName : UnFn → String
   | f => reprStr f
 
 def binName : BinFn → String
-  | .eq => "eq" | .lt => "lt" | .and => "and" | .or => "or"
+  | .eq => "eq" | .lt => "lt" | .and => "and" | .or => "or" | .add => "add" | .sub => "sub"
   | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .imod => "imod" | .idiv => "idiv"
   | .fadd => "fadd" | .fsub => "fsub" | .fmul => "fmul" | .fdiv => "fdiv" | .fmod => "fmod"
   | .fdivIeee => "fdivIeee" | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
@@ -88,6 +88,14 @@ def exprJson : Expr → Json
   | .ifThen c t e => Json.mkObj [("if", exprJson c), ("then", exprJson t),
       ("else", exprJson e)]
   | .hof .. => Json.mkObj [("unsupported", "a higher-order function")]
+
+/-- The `FLOOR` templates of the core (`Expr.floorDivOf`, `Expr.floorModOf`,
+`Expr.floorFmodOf`), with the arguments as fields 0 and 1: the SQL writer's
+`division_type: FLOOR` renders these (#1202). -/
+def floorJson : Json :=
+  Json.mkObj [("div", exprJson (Expr.floorDivOf (.field 0) (.field 1))),
+    ("mod", exprJson (Expr.floorModOf (.field 0) (.field 1))),
+    ("fmod", exprJson (Expr.floorFmodOf (.field 0) (.field 1)))]
 
 /-- The constructs a table's export looks at: every function with finite
 parameters, from the types themselves (`finite_values%`). A function with an
@@ -116,7 +124,7 @@ variable [Boxes.Ambient]
 /-- The DuckDB table, exported. `"on"` names the setting of
 `error_on_division_by_zero` it is for (`sverify.sql.lowering.SETTING`). -/
 def Lowering.duckdbTableJson : Lean.Json :=
-  Lean.Json.mkObj [("on", LoweringExport.tableJson duckdbOn)]
+  Lean.Json.mkObj [("on", LoweringExport.tableJson duckdbOn), ("floor", LoweringExport.floorJson)]
 
 /-- The generated lowering to DuckDB under its default settings. -/
 def Lowering.duckdb : Lowering (Profile.duckdb {}) := duckdbOn
