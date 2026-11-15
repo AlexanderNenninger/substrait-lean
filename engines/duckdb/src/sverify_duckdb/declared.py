@@ -16,7 +16,7 @@ from collections.abc import Iterable
 from typing import Any
 
 #: The type ids (`DuckDBPyType.id`) sverify reads through Arrow as DuckDB
-#: computes them. JSON is a VARCHAR; the unsigned integers and the
+#: computes them. JSON is a VARCHAR and `tuple` the empty struct; the unsigned integers and the
 #: time-zone-aware types have refusals of their own, further on.
 MODELLED = frozenset(
     {
@@ -49,6 +49,7 @@ MODELLED = frozenset(
         "array",
         "struct",
         "map",
+        "tuple",
         "null",
     }
 )
@@ -96,7 +97,7 @@ def refuse_unmodelled(columns: Iterable[str], types: Iterable[Any], where: str =
         exit_ = _EXIT.get(
             bad, "cast it to a modelled type in the source query ({col} is not read as {id})"
         )
-        what = f"column {col}{where} is {str(t).upper()}"
+        what = f"column {col}{where} is {t}"
         if bad != str(t.id):
             what += f" (holding {bad.upper()})"
         raise ValueError(f"{what}; {exit_.format(col=col, id=bad.upper())}")

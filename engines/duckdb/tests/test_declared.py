@@ -110,3 +110,10 @@ def test_enum_orders_by_declaration() -> None:
         "sad",
         "happy",
     )
+
+
+def test_empty_struct_is_modelled() -> None:
+    db = duckdb.connect()
+    db.execute("CREATE TABLE t AS SELECT [row()] AS l FROM range(3)")
+    rel = db.sql("SELECT * FROM t LIMIT 0")
+    refuse_unmodelled(rel.columns, rel.types, " of t")
