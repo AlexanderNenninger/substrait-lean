@@ -62,6 +62,13 @@ REFUSED: dict[str, dict[str, str]] = {
     "shifts": {"snowflake": "not 64-bit"},
 }
 
+#: Polars runs `log10` and `log2` as `ln(x) / ln(b)`, within 2.1 ulp of libm's
+#: (the `fp.log` row, polars-ulp-libm), so its result may differ from DuckDB's
+#: libm in the last bit: `log10(0.5)` is -0.30102999566398114 on Polars 2.1.0
+#: and -0.3010299956639812 on libm, 1 ulp apart. The comparison is to nine
+#: significant digits (`test_backends.approximately`), far wider than 2.1 ulp.
+APPROXIMATE = {"log10, log2"}
+
 NO_DUCKDB_SQL = {
     "sign": "DuckDB's sign of NaN is 0, the plan's NaN",
     "shifts": "DuckDB raises on a left shift of a negative number",
