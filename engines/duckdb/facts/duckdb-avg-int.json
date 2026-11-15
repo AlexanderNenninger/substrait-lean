@@ -143,6 +143,22 @@
           "note": "constructs int-empty-aggregates (row agg.isum empty_group_aggregates, i8 to i64)"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "probe",
+      "checked_by": "session #1459 follow-up (avg of BIGINT near the int64 limits), sverify_dev.probe observations, duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "avg and sum of BIGINT values at the int64 limits: avg of [MAX, MAX, MAX], of [MAX, MIN, 1], of [MIN, MIN]; sum of [MAX, MAX]; typeof(sum)",
+          "observed": "9.223372036854776e+18, 0.0, -9.223372036854776e+18, 18446744073709551614, HUGEINT: the sum is exact in 128 bits and nothing overflows"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "note": "construct avg-bigint-limits"
+        }
+      ],
+      "notes": "The reference's int64 sum measure would leave its type here (`.sumWraps`); DuckDB's avg does not."
     }
   ],
   "issues": [
