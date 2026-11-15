@@ -29,7 +29,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
@@ -120,11 +119,24 @@ def fold(
     return out
 
 
-def _parts(x: np.ndarray, ok: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """`x = (hi · 2²⁷ + lo) · 2^shift` in units of `2⁻¹⁰⁷⁴`, where `ok`."""
-    m, e = np.frexp(np.where(ok, x, 0.0))
-    mant = np.ldexp(m, 53).astype(np.int64)
-    return mant >> _HALF, mant & ((1 << _HALF) - 1), e.astype(np.int64) - 53 + 1074
+def _c(name: str, *args: Any) -> Any:
+    # `pyarrow.compute`'s functions are generated at import, so type checkers
+    # do not see them; `call_function` is typed.
+    return pc.call_function(name, list(args))
+
+
+def _parts(x: pa.Array, ok: pa.Array) -> tuple[pa.Array, pa.Array, pa.Array]:
+    """`x = (hi · 2²⁷ + lo) · 2^shift` in units of `2⁻¹⁰⁷⁴`, where `ok`, from
+    the double's bits: its fraction with the implicit bit (not for a
+    subnormal, whose exponent is 1), signed, split in two halves."""
+    bits = _c("if_else", ok, x, 0.0).view(pa.int64())
+    frac = _c("bit_wise_and", bits, (1 << 52) - 1)
+    exp = _c("bit_wise_and", _c("shift_right", bits, 52), 0x7FF)
+    subnormal = _c("equal", exp, 0)
+    mant = _c("if_else", subnormal, frac, _c("bit_wise_or", frac, 1 << 52))
+    mant = _c("if_else", _c("less", bits, 0), _c("negate", mant), mant)
+    shift = _c("if_else", subnormal, 0, _c("subtract", exp, 1))
+    return _c("shift_right", mant, _HALF), _c("bit_wise_and", mant, (1 << _HALF) - 1), shift
 
 
 def _fold(
@@ -134,14 +146,14 @@ def _fold(
     values: Sequence[pa.Array],
     weights: pa.Array,
 ) -> None:
-    xs = [pc.fill_null(v, 0.0).to_numpy(zero_copy_only=False).astype(np.float64) for v in values]
-    valid = np.ones(keys.num_rows, dtype=bool)
-    for v in values:
-        valid &= np.asarray(v.is_valid().to_numpy(zero_copy_only=False), dtype=bool)
-    w = pc.fill_null(weights, 0).to_numpy(zero_copy_only=False).astype(np.int64)
-    fast = valid & (np.abs(w) < _WEIGHT)
+    xs = [_c("coalesce", v, 0.0).cast(pa.float64()) for v in values]
+    valid = _c("is_valid", values[0])
+    for v in values[1:]:
+        valid = _c("and", valid, _c("is_valid", v))
+    w = _c("coalesce", weights, 0).cast(pa.int64())
+    fast = _c("and", valid, _c("less", _c("abs", w), _WEIGHT))
     for x in xs:
-        fast &= np.isfinite(x)
+        fast = _c("and", fast, _c("is_finite", x))
     parts = {"x": _parts(xs[0], fast)}
     if len(xs) > 1:
         parts["y"] = _parts(xs[1], fast)
@@ -154,14 +166,20 @@ def _fold(
             terms = [(_HALF, hi), (0, lo)]
         else:
             (ha, la, sa), (hb, lb, sb) = parts[term[0]], parts[term[1]]
-            terms = [(2 * _HALF, ha * hb), (_HALF, ha * lb + la * hb), (0, la * lb)]
-            shift = sa + sb
-        tab = keys.append_column("__shift", pa.array(shift))
+            mul = lambda a, b: _c("multiply", a, b)  # noqa: E731
+            terms = [
+                (2 * _HALF, mul(ha, hb)),
+                (_HALF, _c("add", mul(ha, lb), mul(la, hb))),
+                (0, mul(la, lb)),
+            ]
+            shift = _c("add", sa, sb)
+        tab = keys.append_column("__shift", shift)
         cols = []
         for c, (_, t) in enumerate(terms):
-            tab = tab.append_column(f"__t{c}", pa.array(np.where(fast, t * w, 0)).cast(_DEC))
+            weighted = _c("if_else", fast, _c("multiply", t, w), 0)
+            tab = tab.append_column(f"__t{c}", weighted.cast(_DEC))
             cols.append(f"__t{c}")
-        tab = tab.filter(pa.array(fast))
+        tab = tab.filter(fast)
         if not tab.num_rows:
             continue
         agg = tab.group_by([*names, "__shift"]).aggregate([(c, "sum") for c in cols])
@@ -171,16 +189,16 @@ def _fold(
         ):
             part = sum(int(sums[c][i]) << terms[c][0] for c in range(len(cols)))
             acc = _at(out, kind, key_of(list(k.values())))
-            acc[j] += part << sh if sh >= 0 else part >> -sh
+            acc[j] += part << sh
     # The rest one at a time: large weights, NaN and infinities.
-    rest = np.flatnonzero(valid & ~fast)
-    if rest.size:
-        rows = keys.take(pa.array(rest)).to_pylist()
+    rest = _c("indices_nonzero", _c("and", valid, _c("invert", fast)))
+    if len(rest):
+        rows = keys.take(rest).to_pylist()
+        columns = [x.take(rest).to_pylist() for x in xs]
+        ws = w.take(rest).to_pylist()
         nt = len(TERMS[kind])
-        for r, i in zip(rows, rest, strict=True):
+        for r, wi, *vs in zip(rows, ws, *columns, strict=True):
             acc = _at(out, kind, key_of(list(r.values())))
-            vs = [float(x[i]) for x in xs]
-            wi = int(w[i])
             sv = {"x": scaled(vs[0]), "y": scaled(vs[-1])}
             for j, term in enumerate(TERMS[kind]):
                 acc[j] += wi * math.prod(sv[t] for t in term)
