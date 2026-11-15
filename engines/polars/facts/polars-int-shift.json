@@ -77,9 +77,21 @@
           "note": "Operator: no shift; polars-sql has none either"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct int-shift-operators: [False, False, ['shift']]"
+        }
+      ],
+      "notes": "`pl.Expr` has no `__lshift__` or `__rshift__`; `shift` is the only name with `shift`."
     }
   ],
   "rows": [
-    {"group": "int.shift", "option": "shift_range", "types": ["i8", "i16", "i32", "i64"], "evidence": "docs"}
+    {"group": "int.shift", "option": "shift_range", "types": ["i8", "i16", "i32", "i64"], "evidence": "probe"}
   ]
 }

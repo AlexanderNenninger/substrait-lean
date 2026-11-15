@@ -25,7 +25,7 @@
         "i64",
         "decimal"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     },
     {
       "group": "agg.var",
@@ -41,7 +41,7 @@
         "i64",
         "decimal"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     },
     {
       "group": "agg.var",
@@ -57,7 +57,7 @@
         "i64",
         "decimal"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     },
     {
       "group": "agg.var",
@@ -73,7 +73,7 @@
         "i64",
         "decimal"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -262,6 +262,22 @@
         }
       ],
       "notes": "shift-0 … shift-1e+12: {4, 7, 13, 16} + s for s in 0, 1e6, 1e8, 1e9, 1e12. n0 is one row whose value is NULL, alone in the frame."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct var-std-int-decimal: {'int64': [9.583333333333334, 3.095695936834452, None, 9.583333333333334, None], 'decimal': [11.595833333333337, 3.405265530517897, None, 11.595833333333337, None]}"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct var-std-ddof-and-cast: {'int64': [7.1875, 9.583333333333334, True, True, 'Float64'], 'decimal': [8.696875000000002, 11.595833333333337, True, True, 'Float64']}"
+        }
+      ],
+      "notes": "Int64 and Decimal: Float64 results equal to the doubles' bit for bit, sample `ddof=1` by default (`var(0)` is the population variance), NULL for one value and for none, grouped equals ungrouped on four values."
     }
   ],
   "supersedes": [

@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"option": "nan_kind", "types": ["fp64"]},
-    {"option": "nan_kind", "types": ["fp32"], "evidence": "source"}
+    {"option": "nan_kind", "types": ["fp32"], "evidence": "probe"}
   ],
   "constructs": [
     "unary -",
@@ -90,6 +90,18 @@
           "note": "Closest test, `test_hash`: hash(-nan) == hash(nan) (eager). No upstream test reads the sign bit of a NaN from negation, abs, sqrt or inf - inf."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float32-nan-sign: ['0xffc00000', '0x7fc00000']"
+        }
+      ],
+      "notes": "Float32 NaN: negation flips the sign bit (0xffc00000), `abs` clears it (0x7fc00000)."
     }
   ]
 }

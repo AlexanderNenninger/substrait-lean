@@ -11,7 +11,7 @@
   "rows": [
     {"group": "int.arith", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
     {"group": "int.pow", "option": "overflow", "types": ["i64"]},
-    {"group": "int.pow", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "source"}
+    {"group": "int.pow", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "probe"}
   ],
   "constructs": [
     "+",
@@ -194,6 +194,18 @@
           "note": "Expr.pow: an integer to a positive integer is an integer; cast to float for a negative exponent"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct int-pow-wraps-widths: {8: -128, 16: -32768, 32: -2147483648, 64: -9223372036854775808}"
+        }
+      ],
+      "notes": "`2 ** (bits - 1)` wraps to MIN at Int8, Int16, Int32 and Int64."
     }
   ],
   "issues": [

@@ -36,7 +36,7 @@
       "types": [
         "fp32"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     },
     {
       "group": "fp.neg",
@@ -44,7 +44,7 @@
       "types": [
         "fp32"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     },
     {
       "group": "fp.div",
@@ -52,7 +52,7 @@
       "types": [
         "fp32"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -142,6 +142,18 @@
           "note": "'Operations do not guarantee any particular behavior on the sign of zero' (SRC docs/source/user-guide/concepts/data-types-and-structures.md L180-L184). No upstream test of the literal kernels' zero shortcuts or of the sign of a zero result."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float32-zero-sign: [(-inf, 0.0, 0.0, -0.0, -0.0, 0.0), (inf, -0.0, -0.0, 0.0, 0.0, 0.0)]"
+        }
+      ],
+      "notes": "Float32 on a two-row frame, one thread: `1 / -0.0` is -inf, `-(0.0)` and `0.0 * -1` are -0.0, `x + 0.0` and `x - 0.0` return `x`, as for Float64."
     }
   ],
   "issues": [

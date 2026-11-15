@@ -34,7 +34,7 @@
         "fp32",
         "fp64"
       ],
-      "evidence": "source"
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -217,6 +217,18 @@
         }
       ],
       "notes": "Corrected the description: it gave the 4-row grouped sums as fixed. On 10 threads they vary by run (s-group-fsum-cancel over 200 runs: 2.0 ×92, 1.0 ×75, 0.0 ×33); POLARS_MAX_THREADS=1 or 2 always gives 0.0. The recorded `differ` of both probes is one run's outcome."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float-sum-mean-empty: {'Float32': [0.0, None, 0.0, 0.0, None], 'Float64': [0.0, None, 0.0, 0.0, None]}"
+        }
+      ],
+      "notes": "The sum of no values, of only NULLs and of a NULL group is 0.0 at both widths."
     }
   ],
   "issues": [
