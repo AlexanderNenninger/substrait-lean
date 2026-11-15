@@ -36,7 +36,7 @@ theorem Substrait.liftDuckDB.avgBigint_agree : ∀ (vs : List Substrait.Value),
       (Except.ok (Substrait.DuckAgg.eval Substrait.Semantics.duckdb Substrait.DuckAgg.avgBigint vs)) := by
   lift_agg
 
-theorem Substrait.liftDuckDB.avgBigint_quiet : Substrait.Semantics.duckdb = Substrait.Semantics.duckdb →
+theorem Substrait.liftDuckDB.avgBigint_noNan : Substrait.Semantics.duckdb = Substrait.Semantics.duckdb →
   ∀ (vs : List Substrait.Value),
     (∀ (v : Substrait.Value),
         v ∈ vs → Substrait.DuckType.Has (Substrait.DuckAgg.arg Substrait.DuckAgg.avgBigint) v) →
@@ -49,14 +49,14 @@ theorem Substrait.liftDuckDB.avgBigint_quiet : Substrait.Semantics.duckdb = Subs
           !Substrait.AggFn.makesNan (Substrait.Measure.fn m)
               (Substrait.Measure.inputs m (List.map (fun x => [x]) vs))) =
         Bool.true := by
-  lift_quiet
+  lift_noNan
 
 abbrev Substrait.liftDuckDB.avgBigint : Substrait.AggEntry Substrait.Semantics.duckdb Substrait.DuckAgg.avgBigint :=
   ⟨"{\"finish\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":2,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":39,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}},{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":41,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.sum (Substrait.Expr.field 0) Bool.false Option.none [],
   Substrait.Measure.mk Substrait.AggFn.count (Substrait.Expr.field 0) Bool.false Option.none []],
     Substrait.Expr.bin Substrait.BinFn.fdiv
   (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-  (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)), Substrait.liftDuckDB.avgBigint_agree, Substrait.liftDuckDB.avgBigint_quiet⟩
+  (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)), Substrait.liftDuckDB.avgBigint_agree, Substrait.liftDuckDB.avgBigint_noNan⟩
 
 theorem Substrait.liftDuckDB.sumDouble_agree : ∀ (vs : List Substrait.Value),
   (∀ (v : Substrait.Value),
@@ -93,7 +93,7 @@ theorem Substrait.liftDuckDB.sumDouble_agree : ∀ (vs : List Substrait.Value),
       (Except.ok (Substrait.DuckAgg.eval Substrait.Semantics.duckdb Substrait.DuckAgg.sumDouble vs)) := by
   lift_agg
 
-theorem Substrait.liftDuckDB.sumDouble_quiet : Substrait.Semantics.duckdb = Substrait.Semantics.duckdb →
+theorem Substrait.liftDuckDB.sumDouble_noNan : Substrait.Semantics.duckdb = Substrait.Semantics.duckdb →
   ∀ (vs : List Substrait.Value),
     (∀ (v : Substrait.Value),
         v ∈ vs → Substrait.DuckType.Has (Substrait.DuckAgg.arg Substrait.DuckAgg.sumDouble) v) →
@@ -112,7 +112,7 @@ theorem Substrait.liftDuckDB.sumDouble_quiet : Substrait.Semantics.duckdb = Subs
           !Substrait.AggFn.makesNan (Substrait.Measure.fn m)
               (Substrait.Measure.inputs m (List.map (fun x => [x]) vs))) =
         Bool.true := by
-  lift_quiet
+  lift_noNan
 
 abbrev Substrait.liftDuckDB.sumDouble : Substrait.AggEntry Substrait.Semantics.duckdb Substrait.DuckAgg.sumDouble :=
   ⟨"{\"finish\":{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"inf\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":2}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"nan\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"ifThen\":{\"else\":{\"literal\":{\"null\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}]}}}],\"functionReference\":40,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}},{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":45,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}},{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":46,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.fsum
@@ -138,7 +138,7 @@ abbrev Substrait.liftDuckDB.sumDouble : Substrait.AggEntry Substrait.Semantics.d
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
         (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
       (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
-      (Substrait.Expr.field 0))), Substrait.liftDuckDB.sumDouble_agree, Substrait.liftDuckDB.sumDouble_quiet⟩
+      (Substrait.Expr.field 0))), Substrait.liftDuckDB.sumDouble_agree, Substrait.liftDuckDB.sumDouble_noNan⟩
 
 theorem Substrait.liftDuckDB.avgDouble_agree : ∀ (vs : List Substrait.Value),
   (∀ (v : Substrait.Value),
@@ -175,7 +175,7 @@ theorem Substrait.liftDuckDB.avgDouble_agree : ∀ (vs : List Substrait.Value),
       (Except.ok (Substrait.DuckAgg.eval Substrait.Semantics.duckdb Substrait.DuckAgg.avgDouble vs)) := by
   lift_agg
 
-theorem Substrait.liftDuckDB.avgDouble_quiet : Substrait.Semantics.duckdb = Substrait.Semantics.duckdb →
+theorem Substrait.liftDuckDB.avgDouble_noNan : Substrait.Semantics.duckdb = Substrait.Semantics.duckdb →
   ∀ (vs : List Substrait.Value),
     (∀ (v : Substrait.Value),
         v ∈ vs → Substrait.DuckType.Has (Substrait.DuckAgg.arg Substrait.DuckAgg.avgDouble) v) →
@@ -194,7 +194,7 @@ theorem Substrait.liftDuckDB.avgDouble_quiet : Substrait.Semantics.duckdb = Subs
           !Substrait.AggFn.makesNan (Substrait.Measure.fn m)
               (Substrait.Measure.inputs m (List.map (fun x => [x]) vs))) =
         Bool.true := by
-  lift_quiet
+  lift_noNan
 
 abbrev Substrait.liftDuckDB.avgDouble : Substrait.AggEntry Substrait.Semantics.duckdb Substrait.DuckAgg.avgDouble :=
   ⟨"{\"finish\":{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"ifThen\":{\"else\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"inf\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":2}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"-inf\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":34,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"nan\"}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"literal\":{\"fp64\":\"nan\"}}}]}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"ifThen\":{\"else\":{\"literal\":{\"null\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"ifs\":[{\"if\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"literal\":{\"fp64\":\"inf\"}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"boolean\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"then\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}]}}}],\"functionReference\":38,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}},{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":45,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}},{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":46,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.avg
@@ -220,5 +220,5 @@ abbrev Substrait.liftDuckDB.avgDouble : Substrait.AggEntry Substrait.Semantics.d
       (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
         (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf)))
       (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.posInf))
-      (Substrait.Expr.field 0))), Substrait.liftDuckDB.avgDouble_agree, Substrait.liftDuckDB.avgDouble_quiet⟩
+      (Substrait.Expr.field 0))), Substrait.liftDuckDB.avgDouble_agree, Substrait.liftDuckDB.avgDouble_noNan⟩
 

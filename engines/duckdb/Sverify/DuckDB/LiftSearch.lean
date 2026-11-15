@@ -92,10 +92,11 @@ structure AggEntry (s : Semantics) (g : DuckAgg) where
   finish : Expr
   agree : ∀ vs : List Value, (∀ v ∈ vs, g.arg.Has v) →
     (finish.evalP Profile.reference (measures.map (·.eval (vs.map ([·]))))).Agree (.ok (g.eval s vs))
-  /-- Under DuckDB's semantics the aggregate raises nothing: no measure makes a NaN of the values of
-  any group (`AggFn.makesNan`, the checker's domain error, D37). `agree` is about values only
-  (`Measure.eval` carries no issue), so without this a plain `sum` would pass it (#341). -/
-  quiet : s = .duckdb → ∀ vs : List Value, (∀ v ∈ vs, g.arg.Has v) →
+  /-- Under DuckDB's semantics no measure of the entry has a domain error on any group
+  (`AggFn.makesNan`, D37). `agree` is about values only (`Measure.eval` carries no issue), so without
+  this a plain `sum` would pass it (#341). Overflow to `±∞` and an integer `SUM` leaving its type
+  stay inferred preconditions, and the argument expression's own issues are outside the statement. -/
+  noNan : s = .duckdb → ∀ vs : List Value, (∀ v ∈ vs, g.arg.Has v) →
     measures.all (fun m => !m.fn.makesNan (m.inputs (vs.map ([·])))) = true
 
 /-- A lift table: an entry for each function and aggregate under the
@@ -458,7 +459,7 @@ def areaOf (c : Name) : String :=
 
 syntax (name := liftTemplateTac) "lift_template " num " [" ident,* "]" : tactic
 syntax (name := liftAggTac) "lift_agg" : tactic
-syntax (name := liftQuietTac) "lift_quiet" : tactic
+syntax (name := liftNoNanTac) "lift_noNan" : tactic
 
 open Tactic in
 @[tactic liftTemplateTac] def evalLiftTemplate : Tactic := fun stx => do
@@ -562,7 +563,7 @@ def aggCandidates (g : DuckAgg) : List (List Json × Json × List Kind) :=
       (callJ? "divide:fp64_fp64" [castJ "fp64" (fieldJ 0), castJ "fp64" (fieldJ 1)] opts r).map
         fun fin => ([sm, cm], fin, [kindOf t, .int])
     | _, _ => []
-  -- `SUM` and `AVG` of doubles that raise nothing (#341): the guarded measure never makes a NaN,
+  -- `SUM` and `AVG` of doubles with no domain error (#341): the guarded measure never makes a NaN,
   -- and the extremes say which non-finite value the group holds (`SumGuard`).
   let guarded := if t == "fp64" then
       ["sum", "avg"].filterMap fun name =>
@@ -659,21 +660,21 @@ open Tactic in
 @[tactic liftAggTac] def evalLiftAgg : Tactic := fun _ => do
   Generated.proveOrAdmit do evalTactic (← aggTac #[])
 
-/-- The proof that an entry's measures raise nothing under DuckDB's semantics: none under the
-reference's (no claim); the guarded sum and the extremes by `SumGuard.quiet`; any other aggregate's
+/-- The proof that no measure of an entry has a domain error under DuckDB's semantics: none under the
+reference's (no claim); the guarded sum and the extremes by `SumGuard.noNan`; any other aggregate's
 measures are not sums of doubles. -/
-def quietTac : TermElabM Syntax :=
+def noNanTac : TermElabM Syntax :=
   `(tactic| (
     intro hs vs hvs
     first
     | exact absurd hs (by decide)
-    | exact SumGuard.quiet_all .fsum (Or.inl rfl) vs hvs
-    | exact SumGuard.quiet_all .avg (Or.inr rfl) vs hvs
+    | exact SumGuard.noNan_all .fsum (Or.inl rfl) vs hvs
+    | exact SumGuard.noNan_all .avg (Or.inr rfl) vs hvs
     | simp [List.all, AggFn.makesNan]))
 
 open Tactic in
-@[tactic liftQuietTac] def evalLiftQuiet : Tactic := fun _ => do
-  Generated.proveOrAdmit do evalTactic (← quietTac)
+@[tactic liftNoNanTac] def evalLiftNoNan : Tactic := fun _ => do
+  Generated.proveOrAdmit do evalTactic (← noNanTac)
 
 /-- Search for and emit the entry of the aggregate `g` under `s`. -/
 def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAgg)
@@ -685,10 +686,10 @@ def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAg
     let some (measures, finish) := parseAgg g ms fin kinds | continue
     let ok := rows.all fun vs => LoweringSearch.Outcome.agreeB
       (finish.evalP Profile.reference (measures.map (·.eval (vs.map ([·]))))) (.ok (g.eval s vs))
-    -- Under DuckDB's semantics the measures raise nothing: no `AggFn.makesNan` on any sample group.
-    let quiet := s.name != "duckdb" || rows.all fun vs =>
+    -- Under DuckDB's semantics no measure has a domain error: no `AggFn.makesNan` on any sample group.
+    let noNan := s.name != "duckdb" || rows.all fun vs =>
       measures.all fun m => !(m.fn.makesNan (m.inputs (vs.map ([·]))))
-    unless ok && quiet do continue
+    unless ok && noNan do continue
     passed := passed + 1
     let r ← withCurrHeartbeats do
       let mTerm ← mkListLit (Lean.mkConst ``Measure) (← measures.mapM fun m => do return ← measureTerm m)
@@ -710,12 +711,12 @@ def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAg
             (fun m => !m.fn.makesNan (m.inputs (vs.map ([·]))))) = true))
       Term.synthesizeSyntheticMVarsNoPostponing
       let qty ← instantiateMVars qty
-      let some qpf ← prove qty (← quietTac) | return none
-      let quietName := tbl ++ short.appendAfter "_quiet"
-      addDecl <| .thmDecl { name := quietName, levelParams := [], type := qty, value := qpf }
+      let some qpf ← prove qty (← noNanTac) | return none
+      let noNanName := tbl ++ short.appendAfter "_noNan"
+      addDecl <| .thmDecl { name := noNanName, levelParams := [], type := qty, value := qpf }
       let json := Json.mkObj [("measures", Json.arr ms.toArray), ("finish", fin)]
       let entry ← mkAppM ``AggEntry.mk
-        #[toExpr json.compress, mTerm, fTerm, Lean.mkConst agreeName, Lean.mkConst quietName]
+        #[toExpr json.compress, mTerm, fTerm, Lean.mkConst agreeName, Lean.mkConst noNanName]
       let eTy ← inferType entry
       addAndCompile <| .defnDecl {
         name := tbl ++ short, levelParams := [], safety := .safe, hints := .abbrev
@@ -723,10 +724,10 @@ def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAg
       if let some out := sink then
         out.modify (·.push ("Aggregates",
           s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_agg\n\n" ++
-          s!"theorem {quietName} : {← LoweringSearch.ppSource qty} := by\n  lift_quiet\n\n" ++
+          s!"theorem {noNanName} : {← LoweringSearch.ppSource qty} := by\n  lift_noNan\n\n" ++
           s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource eTy} :=\n" ++
           s!"  ⟨{repr json.compress}, {← LoweringSearch.ppSource mTerm},\n" ++
-          s!"    {← LoweringSearch.ppSource fTerm}, {agreeName}, {quietName}⟩\n\n"))
+          s!"    {← LoweringSearch.ppSource fTerm}, {agreeName}, {noNanName}⟩\n\n"))
       return some json.compress
     if let some j := r then return .ok j
   return .error s!"missing: {passed} candidates passed the samples, none proved"

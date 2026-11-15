@@ -244,7 +244,7 @@ class Measures:
 
 def _generated_agg(lf: _Lift, name: str, a: E) -> Measures | None:
     """DuckDB's `avg` of an integer (the exact sum and the count, divided as
-    doubles), and its `sum` and `avg` of a double (a sum that raises nothing
+    doubles), and its `sum` and `avg` of a double (a sum with no domain error
     and the extremes, #341), as the generated table lifts them, or None with
     the reference's semantics, whose rules are written by hand."""
     if lf.profile is not DUCKDB:

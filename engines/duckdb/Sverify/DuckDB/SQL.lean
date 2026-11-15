@@ -783,7 +783,7 @@ def DuckAgg.eval : Semantics → DuckAgg → List Value → Value
     | xs => .float (FloatCode.fdiv (FloatCode.ofInt (intSum xs)) (FloatCode.ofInt xs.length))
   | .reference, .avgBigint, vs => AggFn.apply .avg ((vs.map (UnFn.apply .itof)).filter (· != .null))
   -- DuckDB's `sum` and `avg` of doubles are the reference's: the exact sum, rounded once, NaN and
-  -- `±∞` as IEEE has them. What differs is that they raise nothing (a lift entry's `quiet`).
+  -- `±∞` as IEEE has them. What differs is that no measure has a domain error (a lift entry's `noNan`).
   | _, .sumDouble, vs => AggFn.apply .fsum (vs.filter (· != .null))
   | _, .avgDouble, vs => AggFn.apply .avg (vs.filter (· != .null))
 

@@ -12,7 +12,7 @@ both infinities makes a NaN, which the checker reports as a domain error
 (`AggFn.makesNan`, D37). The lift therefore writes the aggregate as
 
 * `s = fsum(CASE WHEN x < +∞ THEN x END)` (or `avg`): no `+∞`, no NaN, so no NaN
-  is made, whatever the group (`SumGuard.quiet`);
+  is made, whatever the group (`SumGuard.noNan`);
 * `hi = max(x)` and `lo = min(x)`: NaN compares greatest, `-∞` least;
 
 finished by `CASE WHEN hi = NaN THEN NaN WHEN hi = +∞ AND lo = -∞ THEN NaN
@@ -243,9 +243,9 @@ theorem SumGuard.inputs_meas_guard (fn : AggFn) (vs : List Value)
   rw [← SumGuard.inputs_guard vs hv]
   simp [SumGuard.meas, Measure.inputs, Measure.kept]
 
-/-- **No measure of the entry makes a NaN** (`AggFn.makesNan`): the guarded one has
-no `+∞` among its inputs, the others are not sums. -/
-theorem SumGuard.quiet (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Value)
+/-- **No measure of the entry has a domain error** on any group (`AggFn.makesNan`): the guarded one
+has no `+∞` among its inputs, the others are not sums. Overflow to `±∞` is not a domain error. -/
+theorem SumGuard.noNan (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Value)
     (hv : ∀ v ∈ vs, DuckType.double.Has v) :
     ∀ m ∈ [SumGuard.meas f SumGuard.arg, SumGuard.meas .max, SumGuard.meas .min],
       m.fn.makesNan (m.inputs (vs.map ([·]))) = false := by
@@ -260,12 +260,12 @@ theorem SumGuard.quiet (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Valu
   · simp [SumGuard.meas, AggFn.makesNan]
   · simp [SumGuard.meas, AggFn.makesNan]
 
-theorem SumGuard.quiet_all (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Value)
+theorem SumGuard.noNan_all (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Value)
     (hv : ∀ v ∈ vs, DuckType.double.Has v) :
     [SumGuard.meas f SumGuard.arg, SumGuard.meas .max, SumGuard.meas .min].all
       (fun m => !m.fn.makesNan (m.inputs (vs.map ([·])))) = true := by
   simp only [List.all_eq_true, Bool.not_eq_true']
-  exact SumGuard.quiet f hf vs hv
+  exact SumGuard.noNan f hf vs hv
 
 /-- The reference's own entry: the plain measure, whose value is `AggFn.apply`. -/
 theorem SumGuard.agree_plain (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Value) :

@@ -161,17 +161,14 @@ def test_double_aggregates_match_duckdb(sql, t):
 @given(t=f_rows)
 def test_engines_add_doubles_in_lean_order(sql, t):
     """Both engines add in Lean's list order, so they agree bit for bit; with
-    DuckDB running the SQL, whose order is its own, only approximately. A double sum of
-    `+inf` and `-inf` would be NaN, so both raise there (#257)."""
-    if both_infinities(sql, t):
-        for engine in ("duckdb", "polars"):
-            with pytest.raises(Exception, match="(?i)domain|NaN"):
-                engine_rows(sql, F, t, engine)
-        return
+    DuckDB running the SQL, whose order is its own, only approximately. A double sum
+    of `+inf` and `-inf` is NaN on all three, as DuckDB computes it (#341)."""
     out = engine_rows(sql, F, t)
     assert canonical(out["polars"]) == canonical(out["duckdb"])  # bit for bit
     expected = sorted(duckdb_rows_of(sql, F, t), key=repr)
     got = sorted(out["polars"], key=repr)
+    if both_infinities(sql, t):  # NaN on DuckDB itself, and so on both engines
+        assert any(isinstance(v, float) and math.isnan(v) for r in expected for v in r), expected
     assert len(got) == len(expected)
     for g, e in zip(got, expected, strict=True):
         assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)

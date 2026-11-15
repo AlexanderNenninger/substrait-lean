@@ -34,7 +34,7 @@ theorem Substrait.liftReference.avgBigint_agree : ∀ (vs : List Substrait.Value
         (Substrait.DuckAgg.eval Substrait.Semantics.reference Substrait.DuckAgg.avgBigint vs)) := by
   lift_agg
 
-theorem Substrait.liftReference.avgBigint_quiet : Substrait.Semantics.reference = Substrait.Semantics.duckdb →
+theorem Substrait.liftReference.avgBigint_noNan : Substrait.Semantics.reference = Substrait.Semantics.duckdb →
   ∀ (vs : List Substrait.Value),
     (∀ (v : Substrait.Value),
         v ∈ vs → Substrait.DuckType.Has (Substrait.DuckAgg.arg Substrait.DuckAgg.avgBigint) v) →
@@ -46,12 +46,12 @@ theorem Substrait.liftReference.avgBigint_quiet : Substrait.Semantics.reference 
           !Substrait.AggFn.makesNan (Substrait.Measure.fn m)
               (Substrait.Measure.inputs m (List.map (fun x => [x]) vs))) =
         Bool.true := by
-  lift_quiet
+  lift_noNan
 
 abbrev Substrait.liftReference.avgBigint : Substrait.AggEntry Substrait.Semantics.reference Substrait.DuckAgg.avgBigint :=
   ⟨"{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":37,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.avg
     (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)) Bool.false Option.none []],
-    Substrait.Expr.field 0, Substrait.liftReference.avgBigint_agree, Substrait.liftReference.avgBigint_quiet⟩
+    Substrait.Expr.field 0, Substrait.liftReference.avgBigint_agree, Substrait.liftReference.avgBigint_noNan⟩
 
 theorem Substrait.liftReference.sumDouble_agree : ∀ (vs : List Substrait.Value),
   (∀ (v : Substrait.Value),
@@ -66,7 +66,7 @@ theorem Substrait.liftReference.sumDouble_agree : ∀ (vs : List Substrait.Value
         (Substrait.DuckAgg.eval Substrait.Semantics.reference Substrait.DuckAgg.sumDouble vs)) := by
   lift_agg
 
-theorem Substrait.liftReference.sumDouble_quiet : Substrait.Semantics.reference = Substrait.Semantics.duckdb →
+theorem Substrait.liftReference.sumDouble_noNan : Substrait.Semantics.reference = Substrait.Semantics.duckdb →
   ∀ (vs : List Substrait.Value),
     (∀ (v : Substrait.Value),
         v ∈ vs → Substrait.DuckType.Has (Substrait.DuckAgg.arg Substrait.DuckAgg.sumDouble) v) →
@@ -77,11 +77,11 @@ theorem Substrait.liftReference.sumDouble_quiet : Substrait.Semantics.reference 
           !Substrait.AggFn.makesNan (Substrait.Measure.fn m)
               (Substrait.Measure.inputs m (List.map (fun x => [x]) vs))) =
         Bool.true := by
-  lift_quiet
+  lift_noNan
 
 abbrev Substrait.liftReference.sumDouble : Substrait.AggEntry Substrait.Semantics.reference Substrait.DuckAgg.sumDouble :=
   ⟨"{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":40,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.fsum (Substrait.Expr.field 0) Bool.false Option.none []],
-    Substrait.Expr.field 0, Substrait.liftReference.sumDouble_agree, Substrait.liftReference.sumDouble_quiet⟩
+    Substrait.Expr.field 0, Substrait.liftReference.sumDouble_agree, Substrait.liftReference.sumDouble_noNan⟩
 
 theorem Substrait.liftReference.avgDouble_agree : ∀ (vs : List Substrait.Value),
   (∀ (v : Substrait.Value),
@@ -96,7 +96,7 @@ theorem Substrait.liftReference.avgDouble_agree : ∀ (vs : List Substrait.Value
         (Substrait.DuckAgg.eval Substrait.Semantics.reference Substrait.DuckAgg.avgDouble vs)) := by
   lift_agg
 
-theorem Substrait.liftReference.avgDouble_quiet : Substrait.Semantics.reference = Substrait.Semantics.duckdb →
+theorem Substrait.liftReference.avgDouble_noNan : Substrait.Semantics.reference = Substrait.Semantics.duckdb →
   ∀ (vs : List Substrait.Value),
     (∀ (v : Substrait.Value),
         v ∈ vs → Substrait.DuckType.Has (Substrait.DuckAgg.arg Substrait.DuckAgg.avgDouble) v) →
@@ -107,9 +107,9 @@ theorem Substrait.liftReference.avgDouble_quiet : Substrait.Semantics.reference 
           !Substrait.AggFn.makesNan (Substrait.Measure.fn m)
               (Substrait.Measure.inputs m (List.map (fun x => [x]) vs))) =
         Bool.true := by
-  lift_quiet
+  lift_noNan
 
 abbrev Substrait.liftReference.avgDouble : Substrait.AggEntry Substrait.Semantics.reference Substrait.DuckAgg.avgDouble :=
   ⟨"{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":38,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.avg (Substrait.Expr.field 0) Bool.false Option.none []],
-    Substrait.Expr.field 0, Substrait.liftReference.avgDouble_agree, Substrait.liftReference.avgDouble_quiet⟩
+    Substrait.Expr.field 0, Substrait.liftReference.avgDouble_agree, Substrait.liftReference.avgDouble_noNan⟩
 

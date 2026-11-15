@@ -6,7 +6,7 @@ for it ([#341](https://github.com/AlexanderNenninger/substrait-lean/issues/341))
 The generated lift writes the aggregate as a sum that never sees `+∞` or NaN
 and the largest and smallest value, finished by a `CASE` that gives NaN or
 `+∞` where they say so; Lean proves it equals `SUM` or `AVG` of the values,
-and that none of its measures makes a NaN. Under the reference semantics the
+and that none of its measures has a domain error. Under the reference semantics the
 aggregate and its domain error are unchanged. The written SQL has three
 aggregates where DuckDB's has one, until the generated lowering folds the
 pattern back (#271).
