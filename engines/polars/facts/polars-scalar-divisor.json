@@ -17,7 +17,8 @@
   "settings": {},
   "description": [
     "With a length-1 divisor (a literal) against a column of two or more rows, Polars's in-memory engine computes `x / c` as `x * (1 / c)`: `49.0 / 49.0` is `0.9999999999999999`, and `0.0 / 1e-310` is NaN (`1 / 1e-310` is `inf`, and `0 * inf` NaN). `//` and `%` divide the same way. A column divisor of the same length divides as IEEE does. Here the streaming engine gave the IEEE quotient on four rows, because a frame shorter than the thread count streams as one-row morsels; on longer frames, or on one thread, streaming takes the reciprocal too (polars-double-scalar-divisor, PL-3).",
-    "The same finding as polars-double-scalar-divisor (PL-3), which carries the source reading, the streaming probes (the reciprocal path also runs on streaming once a morsel holds two or more rows: `s-scalar-divisor`, 9,000 rows) and the ulp bound (polars-ulp-arith). This fact keeps its id for the engine tables (`SubstraitLean/EngineTables.lean`) that cite it."
+    "The same finding as polars-double-scalar-divisor (PL-3), which carries the source reading, the streaming probes (the reciprocal path also runs on streaming once a morsel holds two or more rows: `s-scalar-divisor`, 9,000 rows) and the ulp bound (polars-ulp-arith). This fact keeps its id for the engine tables (`SubstraitLean/EngineTables.lean`) that cite it.",
+    "Which divisors take the reciprocal kernel (`49.0 % d`, `x` = 49.0 in every row, `d` = 49 in every row; 49.0 is the reciprocal kernel, 0.0 the pure formula). A divisor takes it whenever it reaches the kernel as a scalar, whatever the expression: `lit(7.0) * lit(7.0)`, `lit(49).cast(Float64)`, `when(lit(True)).then(49.0).otherwise(1.0)`, `y.max()`, `when(col(b)).then(49.0).otherwise(49.0)` (which reads a column), `lit(7.0).pow(2)`, `lit(49.0).abs()`, `y.first()`, `coalesce(49.0, y)` and `lit(49.0).fill_null(y)`, in memory and on streaming with one thread. A column divisor takes the pure formula, and so does an expression of one: `y`, `y * 0.0 + 49.0`, `coalesce(y, 49.0)`, `y.fill_null(49.0)`, `when(b).then(y).otherwise(49.0)`; so does a literal dividend (`lit(49.0) % y`). A column that a projection computes from a literal stays a scalar through `with_columns`: `with_columns(w=lit(49.0))` then `x % w` is 49.0 in memory and on streaming. A group aggregate as a window, `y.max().over(g)`, is pure in memory and the reciprocal kernel on streaming. On streaming Polars picks the kernel per morsel, and a one-row morsel takes the pure kernel (PL-3), so probes run with `POLARS_MAX_THREADS=1` set before `polars` is imported. The translation (`Exprs.column_valued`) lets `%` of doubles run natively only where the divisor is known to be a column, and refuses the rest."
   ],
   "reference": "`divide` of doubles rounds the exact quotient once (`TIE_TO_EVEN`), and `0.0 / c` is `0.0` for a finite nonzero `c`. Decided on #444: Polars's `/` is `approx` with 2u per division, under the precondition that a divisor is 0 or not subnormal; `//` and `%` floor the quotient (`49.0 % 49.0` is `49.0`), so the translation refuses `%` of doubles until `Profile.polars` models the floored `%`.",
   "status": "decided",
@@ -74,6 +75,86 @@
         }
       ],
       "notes": "Corrected the description: the four-row streaming result is a thread-count effect; with POLARS_MAX_THREADS=1 the same frame gives 0.9999999999999999 (polars-double-scalar-divisor's reverse-pass repro)."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "Claude session (#1270 PR 4, Fable's rows); POLARS_MAX_THREADS=1, Polars py-2.1.0 on macOS arm64",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % lit(7.0) * lit(7.0)).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % lit(49).cast(Float64)).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % when(lit(True)).then(49.0).otherwise(1.0)).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % y.max()).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % when(col b).then(49.0).otherwise(49.0)).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % lit(7.0).pow(2)).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % lit(49.0).abs()).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % y.first()).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % coalesce(49.0, y)).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.col('x') % lit(49.0).fill_null(y)).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6, 'b': [True]*6}).lazy().select(pl.col('x') % y).collect(engine=eng)",
+          "observed": "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6, 'b': [True]*6}).lazy().select(pl.col('x') % y * 0.0 + 49.0).collect(engine=eng)",
+          "observed": "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6, 'b': [True]*6}).lazy().select(pl.col('x') % coalesce(y, 49.0)).collect(engine=eng)",
+          "observed": "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6, 'b': [True]*6}).lazy().select(pl.col('x') % y.fill_null(49.0)).collect(engine=eng)",
+          "observed": "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6, 'b': [True]*6}).lazy().select(pl.col('x') % when(b).then(y).otherwise(49.0)).collect(engine=eng)",
+          "observed": "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().with_columns(w=pl.lit(49.0)).select(pl.col('x') % pl.col('w')).collect(engine=eng)",
+          "observed": "[49.0, 49.0, 49.0, 49.0, 49.0, 49.0] for eng in ('in-memory', 'streaming')"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6, 'g': [0]*6}).lazy().select(pl.col('x') % pl.col('y').max().over('g')).collect(engine=eng)",
+          "observed": "in-memory: [0.0, ...]; streaming: [49.0, ...]"
+        },
+        {
+          "sql": "pl.DataFrame({'x': [49.0]*6, 'y': [49.0]*6}).lazy().select(pl.lit(49.0) % pl.col('y')).collect(engine='in-memory')",
+          "observed": "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"
+        }
+      ],
+      "notes": "The in-memory-only rows of the first measurement were confirmed on streaming with one thread. Probe scripts: probe_divisor.py and probe_divisor2.py of the #1427 session."
     }
   ]
 }

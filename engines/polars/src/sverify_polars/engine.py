@@ -62,7 +62,7 @@ import itertools
 import json
 import math
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -950,6 +950,14 @@ def narrow_int(v: Val, bits: int) -> Val:
     return Val(value, pl.Int64, (*v.issues, issue(bad, BadCast, message)))
 
 
+#: The elementwise functions a divisor may be built from (`column_valued`).
+_ELEMENTWISE = frozenset({
+    "add", "subtract", "multiply", "divide", "negate", "abs", "power", "sqrt", "exp", "ln",
+    "log10", "log2", "floor", "ceil", "round", "sin", "cos", "tan", "asin", "acos", "atan",
+    "atan2", "modulus",
+})  # fmt: skip
+
+
 def _floors(f: dict) -> bool:
     """Does the call state `division_type` = `FLOOR` (Polars's `//` and `%`)?"""
     return any(
@@ -1025,7 +1033,7 @@ class Exprs:
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
-                return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
+                return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]), arg_js[1])
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name in _PICKS:
@@ -1339,13 +1347,13 @@ class Exprs:
             )
         return out
 
-    def floor_divide(self, name: str, a: Val, b: Val) -> Val:
+    def floor_divide(self, name: str, a: Val, b: Val, divisor: dict | None = None) -> Val:
         """Integer `//` or `%` with `division_type` = `FLOOR`: Polars's own,
         with no shim (`Profile.polars`, `engines/polars/Sverify/Polars/Profile.lean`).
         A zero divisor and `MIN // -1` raise, as under `Profile.polars`; the
         guards check them."""
         if name == "modulus" and pl.Float64 in (a.dtype, b.dtype):
-            return self.floor_fmod(a, b)
+            return self.floor_fmod(a, b, divisor or {})
         if unify(a.dtype, b.dtype, name) not in (pl.Int64, pl.Null):
             raise Unsupported(f"{name} with division_type FLOOR of {a.dtype} and {b.dtype}")
         x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
@@ -1355,18 +1363,54 @@ class Exprs:
         wraps = issue(shims.div_overflows(x, y), Overflow, "division leaves 64 bits")
         return Val(x // y, pl.Int64, (*issues(a, b), wraps, by_zero))
 
-    def floor_fmod(self, a: Val, b: Val) -> Val:
+    def column_valued(self, j: dict) -> bool:
+        """Does the divisor `j` reach Polars's `%` kernel as a column? A
+        scalar takes the reciprocal kernel whatever the plan node is
+        (polars-scalar-divisor). An allow-list, so what is not listed is
+        refused: a column known to be one (`Dtypes.valued`; a window result
+        or an aggregate never is, `y.max().over(g)` is a scalar on streaming),
+        elementwise arithmetic, unary functions and casts where an operand
+        is, and a conditional or `coalesce` where every value branch is."""
+        if "selection" in j:
+            sel = j["selection"]
+            if self.param is not None or "expression" in sel:
+                return False
+            if "child" in sel["directReference"]["structField"]:
+                return False
+            return valued_at(self.dtypes, self.field_index(sel))
+        if "cast" in j:
+            return self.column_valued(j["cast"].get("input", {}))
+        if "ifThen" in j:
+            t = j["ifThen"]
+            values = [i["then"] for i in t.get("ifs", [])] + [t["else"]] if "else" in t else None
+            return values is not None and all(self.column_valued(v) for v in values)
+        f = j.get("scalarFunction")
+        if f is None:
+            return False
+        try:
+            name = self.function(f.get("functionReference"))
+        except Unsupported:
+            return False
+        args = [a["value"] for a in f.get("arguments", []) if "value" in a]
+        if name == "coalesce":
+            return bool(args) and all(self.column_valued(a) for a in args)
+        if name in _ELEMENTWISE:
+            return any(self.column_valued(a) for a in args)
+        return False
+
+    def floor_fmod(self, a: Val, b: Val, divisor: dict) -> Val:
         """`%` of doubles with `division_type` = `FLOOR`: Polars's own, `x - y * floor(x / y)`
-        (`Profile.polars_fmod`, polars-double-modulus). A column divisor only:
-        against a literal, Polars multiplies by the reciprocal and `49.0 % 49.0`
-        is `49.0` (polars-scalar-divisor). A zero divisor and an infinite
-        operand raise, as under `Profile.polars`, where Polars gives NaN."""
+        (`Profile.polars_fmod`, polars-double-modulus). A column divisor only
+        (`column_valued`): against a scalar, Polars multiplies by the
+        reciprocal and `49.0 % 49.0` is `49.0` (polars-scalar-divisor). A zero
+        divisor and an infinite operand raise, as under `Profile.polars`,
+        where Polars gives NaN."""
         if unify(a.dtype, b.dtype, "modulus") != pl.Float64:
             raise Unsupported(f"modulus with division_type FLOOR of {a.dtype} and {b.dtype}")
         x, y = a.expr.cast(pl.Float64), b.expr.cast(pl.Float64)
-        if not y.meta.root_names():
+        if not self.column_valued(divisor):
             raise Unsupported(
-                "% of doubles by a literal divisor on Polars: Polars computes "
+                "% of doubles by a divisor that may be a scalar on Polars: Polars computes "
                 "`x - c·floor(x·(1/c))` for a scalar (polars-scalar-divisor), so pass the "
                 "divisor as a column"
             )
@@ -1819,6 +1863,37 @@ def guard(lf: pl.LazyFrame, vals: list[Val], checks: frozenset[str] = ALL_GUARDS
     return lf.filter(
         flags.map_batches(_raise_issues(found), return_dtype=pl.Boolean, is_elementwise=True)
     ).drop(names)
+
+
+def _reads(j: Any, ex: Exprs) -> list[int]:
+    """The input columns an expression's JSON reads."""
+    if isinstance(j, dict):
+        if "selection" in j:
+            return [ex.field_index(j["selection"])] if "expression" not in j["selection"] else []
+        return [i for v in j.values() for i in _reads(v, ex)]
+    if isinstance(j, list):
+        return [i for v in j for i in _reads(v, ex)]
+    return []
+
+
+class Dtypes(list):
+    """A frame's column dtypes, and which columns are known to reach a kernel
+    as a column and not as a scalar (`valued`). Polars keeps a literal-derived
+    column a scalar through `with_columns` (`with_columns(w=lit(49.0))`, then
+    `x % w` is `49.0`: polars-scalar-divisor), so a column is `valued` only
+    where that is known: one read from a table, or projected from an
+    expression `Exprs.column_valued` admits over `valued` columns. A plain
+    `list` (a join, a union, an aggregate, a window: anything that does not
+    pass the columns through unchanged) marks none."""
+
+    def __init__(self, types: Iterable[DType], valued: Iterable[bool] = ()):
+        super().__init__(types)
+        self.valued = tuple(valued)
+
+
+def valued_at(dtypes: list[DType], i: int) -> bool:
+    """Is column `i` known to be column-valued? Unknown is false."""
+    return isinstance(dtypes, Dtypes) and i < len(dtypes.valued) and dtypes.valued[i]
 
 
 Frame = tuple[pl.LazyFrame, list[DType]]
@@ -2414,7 +2489,7 @@ class Translator:
                 if i >= len(dtypes):
                     raise Unsupported(f"emit refers to column {i} of {len(dtypes)}")
             lf = lf.select([pl.col(col(i)).alias(col(k)) for k, i in enumerate(mapping)])
-            dtypes = [dtypes[i] for i in mapping]
+            dtypes = Dtypes([dtypes[i] for i in mapping], [valued_at(dtypes, i) for i in mapping])
         elif "common" in r and r["common"]:
             raise Unsupported(f"unsupported RelCommon {json.dumps(r['common'])}")
         return lf, dtypes
@@ -2459,7 +2534,7 @@ class Translator:
                     for i, (h, w) in enumerate(zip(have, types, strict=True))
                 ]
             )
-            return lf, types
+            return lf, Dtypes(types, [True] * len(types))
         if "virtualTable" in r:
             return self.values(r["virtualTable"], len(types))
         raise Unsupported(f"unsupported read {json.dumps(r)[:80]}")
@@ -2521,7 +2596,12 @@ class Translator:
                 for k, (v, t) in enumerate(zip(new, out, strict=True))
             ]
         )
-        return lf, dtypes + out
+        # A projected column is column-valued where its expression is, over
+        # columns that are (`Exprs.column_valued`); a literal is not.
+        valued = [
+            ex.column_valued(e) and all(valued_at(dtypes, i) for i in _reads(e, ex)) for e in es
+        ]
+        return lf, Dtypes(dtypes + out, [valued_at(dtypes, i) for i in range(n)] + valued)
 
     def window(self, lf: pl.LazyFrame, dtypes: list[DType], ws: list[dict]) -> Frame:
         """`Rel.window`: sort stably by the keys (NULLs placed per key), then

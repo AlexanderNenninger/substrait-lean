@@ -12,7 +12,9 @@ polars-int-modulus); these tests run it natively against Python's `//` and
 from __future__ import annotations
 
 import json
+import math
 
+import ibis
 import pyarrow as pa
 import pytest
 from hypothesis import given, settings
@@ -165,14 +167,43 @@ def test_double_modulus_floors_natively() -> None:
     assert report.routes["polars"].kind == "native"
 
 
-def test_double_modulus_by_a_literal_is_refused() -> None:
-    """A literal divisor takes Polars's reciprocal kernel, where `49.0 % 49.0`
-    is 49.0 (polars-scalar-divisor): the translation refuses it and says so."""
+@pytest.mark.parametrize(
+    "divisor",
+    [
+        pytest.param(lambda t: 3.0, id="literal"),
+        # `with_columns(w=lit(49.0))` keeps `w` a scalar (polars-scalar-divisor).
+        pytest.param(lambda t: ibis.literal(49.0), id="projected literal"),
+    ],
+)
+def test_double_modulus_by_a_scalar_is_refused(divisor) -> None:
+    """A divisor that may reach the kernel as a scalar takes Polars's
+    reciprocal kernel, where `49.0 % 49.0` is 49.0 (polars-scalar-divisor): the
+    translation refuses it and says so."""
     con = sv.connect()
     con.put("t", _double_table())
-    report = _double_report(con, "polars", 3.0)
-    with pytest.raises(Exception, match="literal divisor"):
+    t = con.table("t")
+    report = sv.verify(
+        t.mutate(w=divisor(t)).select(m=_.x % _.w),
+        requires={"t": [_.y != 0, _.x > -1e300, _.x < 1e300, _.y > -1e300, _.y < 1e300]},
+        semantics="polars",
+    )
+    with pytest.raises(Exception, match="may be a scalar"):
         report.run(con, "polars")
+
+
+def test_double_modulus_by_a_projected_column_is_native() -> None:
+    """A column projected from a column stays one."""
+    xs, ys = [7.0, -7.0, 5.5, 0.0, -0.0, 49.0], [3.0, 3.0, 2.0, 3.0, 3.0, 49.0]
+    con = sv.connect()
+    con.put("t", pa.table({"x": pa.array(xs), "y": pa.array(ys)}))
+    t = con.table("t")
+    report = sv.verify(
+        t.mutate(w=t.y * 1.0).select(m=_.x % _.w),
+        requires={"t": [_.y >= 1.0, _.y <= 1000.0, _.x > -1e300, _.x < 1e300]},
+        semantics="polars",
+    )
+    out = report.run(con, "polars", route="native").column("m").to_pylist()
+    assert out == [x - y * math.floor(x / y) for x, y in zip(xs, ys, strict=True)]
 
 
 def test_double_modulus_is_refused_under_the_reference() -> None:
