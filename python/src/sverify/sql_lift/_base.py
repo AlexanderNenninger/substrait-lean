@@ -1323,7 +1323,7 @@ class _Lift:
                 # and Lean divides the exact sum by the count in doubles.
                 out = dt.float64
         invocation = "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
-        if gen := _generated_agg(self, name, args[0]):
+        if name in ("sum", "avg") and args and (gen := _generated_agg(self, name, args[0])):
             # DISTINCT and FILTER apply to each measure alike.
             parts = [
                 {
