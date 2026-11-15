@@ -668,7 +668,7 @@ is a choice that accepts every value the plan states.
 | `on_division_by_zero` | `fp.mod` | `IEEE`, `LIMIT`, `NULL`, `ERROR` | `ERROR`, `NULL`; `ERROR` by default | raise |
 | `division_type` | all others | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
 | `division_type` | `int.div` | `TRUNCATE` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
-| `division_type` | `fp.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE` | choose |
+| `division_type` | `fp.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
 | `division_type` | `int.mod` | `TRUNCATE`, `FLOOR` | `TRUNCATE`, `FLOOR`; `TRUNCATE` by default | choose |
 | `shift_range` | all others | `ERROR`, `ZERO`, `DROP_BITS` | `DROP_BITS` | raise |
 | `decimal_rescale` | all others | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `TIE_AWAY_FROM_ZERO` | choose |
@@ -1187,3 +1187,4 @@ to it, so links to an entry here still land.
 - <a id="d38-no-operation-on-finite-doubles-overflows-to-infinity"></a>[D38. No operation on finite doubles overflows to infinity](decisions.md#d38-no-operation-on-finite-doubles-overflows-to-infinity)
 - <a id="d39-division-by-zero-has-an-ieee-value"></a>[D39. Division by zero has an IEEE value](decisions.md#d39-division-by-zero-has-an-ieee-value)
 - <a id="d40-power1--is-cs-pow"></a>[D40. `power(±1, ±∞)` is C's `pow`](decisions.md#d40-power1--is-cs-pow)
+- <a id="d41-modulus-of-doubles-accepts-division_type-floor"></a>[D41. `modulus` of doubles accepts `division_type: FLOOR`](decisions.md#d41-modulus-of-doubles-accepts-division_type-floor)

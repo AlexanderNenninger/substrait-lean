@@ -1092,7 +1092,8 @@ private def optionNames : List String :=
   optionAccepts base float o == optionAcceptsBefore base float o ||
     (["variance", "std_dev"].contains base && !float && o == "rounding") ||
     (base == "avg" && !float && o == "overflow") ||
-    (["divide", "modulus"].contains base && !float && o == "division_type")
+    (["divide", "modulus"].contains base && !float && o == "division_type") ||
+    (base == "modulus" && float && o == "division_type")
 
 -- Each group `optionGroup` gives a name with a row is one of that name's rows'.
 #guard optionNames.all fun base => [false, true].all fun float =>
@@ -1873,7 +1874,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       -- `IEEE` reads both operands' raw signs (D39): one operation.
       | "divide", [a, b] =>
         return if mode == "IEEE" then .bin .fdivIeee a b else divByZero mode true (.bin .fdiv) a b
-      | "modulus", [a, b] => return divByZero mode true (.bin .fmod) a b
+      | "modulus", [a, b] =>
+        let floor := divisionTypeMode (← arrD f "options") == "FLOOR"
+        return divByZero mode true (if floor then Expr.floorFmodOf else .bin .fmod) a b
       | _, _ => mkFloatCall (baseName name) args
     else
       let mode := divByZeroMode (← arrD f "options")
