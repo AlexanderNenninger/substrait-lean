@@ -1050,3 +1050,24 @@ Also decided: `float_to_int`'s scope reaches `floor`, `ceil` and one-argument
 is `0`; `±∞` and values past 64 bits overflow,
 [spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json)). The
 reference stays a double, and the `BIGINT` is the writer's cast.
+
+### D41. `modulus` of doubles accepts `division_type: FLOOR`
+
+Decided 2026-11-15 (theory advisor).
+
+`TRUNCATE` stays the default: `sverify_fmod`, C's `fmod`, exact. A plan that
+states `division_type: FLOOR` on `modulus` of doubles means the expression
+`a - b * floor(a / b)` in the reference's own double operations
+(`Expr.floorFmodOf`, `engines/polars/Sverify/Polars/Profile.lean`), each
+operation rounded and raising where it raises. It is not the correctly
+rounded floored remainder: `1e20 % 3.0` is `0.0`. `Rel.eval` and `Rel.Allowed`
+do not change.
+
+Why: Polars's `%` of doubles computes this expression
+([polars-double-modulus](../engines/polars/facts/polars-double-modulus.json)),
+over its own `/` whichever kernel that takes
+([polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json)).
+No engine computes a correctly rounded floored remainder of doubles natively.
+The template uses the reference's own operations, so every engine computes it,
+and no plan the reference accepted before changes meaning.
+

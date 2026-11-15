@@ -211,7 +211,7 @@ fires, `Rel.eval`'s value is not the answer.
 | `overflow: SILENT` / `SATURATE` | Wrap-around / clamp at the declared width, when the plan asks. | ✓ for integer `+ - *` and negation: `UnFn.fit` on the exact result. DuckDB runs them through the generated lowering (128-bit arithmetic); Polars, Spark and Snowflake refuse them. `sum`, `abs` and decimals accept only `ERROR`. |
 | `divide` | Truncates toward zero (`Int.tdiv`). | ✓ |
 | Division or `modulus` by zero | An error when `on_division_by_zero` is omitted or `ERROR`; `NULL` only when the plan asks. | ✓ (`Rel.eval` gives NULL there; `verify` reports the error, so that value is never an answer) |
-| `modulus` | `division_type` TRUNCATE: the remainder takes the dividend's sign (`Int.tmod`). | ✓ A plan may state `division_type: TRUNCATE`. The parser reads `FLOOR` (`Expr.floorModOf`, Polars's `%`), which the reference profile refuses and `semantics="polars"` allows. |
+| `modulus` | `division_type` TRUNCATE: the remainder takes the dividend's sign (`Int.tmod`). | ✓ A plan may state `division_type: TRUNCATE`. The parser reads `FLOOR` on integers (`Expr.floorModOf`, Polars's `%`) and on doubles (`Expr.floorFmodOf`, [D41](decisions.md#d41-modulus-of-doubles-accepts-division_type-floor)). |
 
 ### Floating point
 
@@ -574,7 +574,7 @@ the first column are the names the tables below use.
 | `overflow` (`abs`, `divide` at `MIN / -1`) | `ERROR`, `SILENT`, `SATURATE` | the three | `ERROR` | `ERROR` native ([R1-min](../engines/duckdb/facts/duckdb-R1-min.json)) |
 | `overflow` (`sum`, integer and decimal) | `ERROR`, `SILENT`, `SATURATE` | the three | `ERROR`, an inferred precondition checked on the data | a `HUGEINT` sum, never past 64 bits; the written plan casts back and raises ([R6](../engines/duckdb/facts/duckdb-R6.json)) |
 | `on_division_by_zero` (integers) | `ERROR`, `NULL` | the two | `ERROR`; `NULL` when asked | `ERROR` native; `NULL` with `error_on_division_by_zero` off ([R2](../engines/duckdb/facts/duckdb-R2.json), [R15-int-divide](../engines/duckdb/facts/duckdb-R15-int-divide.json)) |
-| `division_type` (`modulus`) | `TRUNCATE`, `FLOOR` | the two | `TRUNCATE`; `FLOOR` refused | `TRUNCATE` native ([R3](../engines/duckdb/facts/duckdb-R3.json)) |
+| `division_type` (`modulus`) | `TRUNCATE`, `FLOOR` | the two | `TRUNCATE` by default; `FLOOR` when the plan asks (integers, doubles: D41) | `TRUNCATE` native ([R3](../engines/duckdb/facts/duckdb-R3.json)) |
 | `min_mod_neg_one` (sverify's: `MIN % -1`) | `0`, raise | not an option: the remainder, `0`, fits | `0` | raises, written out ([R15-int-modulus](../engines/duckdb/facts/duckdb-R15-int-modulus.json)) |
 | `shift_range` (sverify's: `<<`, `>>` by `< 0` or `≥ 64`, bits shifted out) | raise, `0`, drop the bits | `shift_left` drops the bits shifted out | drop the bits; raise outside `[0, 63]` | `<<` raises on a negative operand and on lost bits, `>>` gives `0` outside `[0, 63]`; both shimmed ([R15-shift-left](../engines/duckdb/facts/duckdb-R15-shift-left.json), [R15-shift-right](../engines/duckdb/facts/duckdb-R15-shift-right.json)) |
 | `decimal_rescale` (sverify's: a result scale smaller than the exact one) | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `functions_arithmetic_decimal.yaml` gives result types, no rounding | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`; its own result types, which the translation compensates ([engine-profiles.md](engine-profiles.md#decimals-27), [decimal-arith](../engines/duckdb/facts/duckdb-decimal-arith.json)) |

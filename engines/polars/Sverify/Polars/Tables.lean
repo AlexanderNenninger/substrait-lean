@@ -168,9 +168,15 @@ def Profile.polars.obs : ObsTable := [
   -- proved (#1270).
   (some "fp.log", "rounding", ({ ObsRow.approxWithin "plan" ["polars-log-base", "polars-ulp-libm"] with
     note := "Polars has no libm log10 or log2: both divide natural logarithms, log10 as x.log(10), log2 as x.log(2), within 2.1 ulp of libm's (polars-ulp-libm, measured). The translation runs them natively (#1270); the plan's bound adds 2.1 ulp per call (Epsilon.opExtra). A bound tested, not proved." }).tracking 1270),
+  -- Polars floors `%` of doubles (`x - y * floor(x / y)`, D41), where the
+  -- reference truncates, and no shim gives the truncating `fmod` exactly
+  -- (polars-double-modulus, #1270): the reference route refuses it. A plan
+  -- that states `division_type: FLOOR`, or is produced for
+  -- `semantics="polars"`, runs natively (`Profile.polars_fmod`), the divisions
+  -- by a scalar taking `/`'s class (polars-scalar-divisor).
   (some "fp.mod", "division_type", ({ ObsRow.native ["polars-double-modulus", "polars-scalar-divisor"] with
     cls := .refused
-    note := "`%` and `//` floor the quotient, so the reciprocal's tiny error becomes a wrong result (49.0 % 49.0 is 49.0), and a finite `x % ±inf` is NaN. The translation refuses `%` of doubles until `Profile.polars` models the floored `%` (#1270)." }).tracking 271),
+    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs natively, as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`)." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),

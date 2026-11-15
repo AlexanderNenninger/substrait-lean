@@ -85,7 +85,11 @@ def _modulus(x: Exprs, op: Any) -> Json:
     """`%`; of doubles, sverify's own `sverify_fmod` (C's `fmod`, #256), as
     Substrait's `modulus` has no double impl."""
     if exact(op).is_floating():
-        return call("sverify_fmod", [x(op.left, exact(op)), x(op.right, exact(op))])
+        args = [x(op.left, exact(op)), x(op.right, exact(op))]
+        if _floors():
+            # The engine's `%` floors the quotient (Polars's, `Profile.polars`).
+            return floor_call("sverify_fmod", args)
+        return call("sverify_fmod", args)
     if _floors() and exact(op).is_integer():
         # The engine's `%` takes the divisor's sign (Polars's, `Profile.polars`).
         return floor_call("modulus", [x(op.left, exact(op)), x(op.right, exact(op))])

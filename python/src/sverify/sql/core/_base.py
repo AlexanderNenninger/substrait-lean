@@ -2363,6 +2363,13 @@ class _Parser:
                     if name == "divide" and len(parsed) == 2 and mode == "IEEE":
                         # IEEE division (`BinFn.fdivIeee`, D39).
                         return Bin("fdivIeee", parsed[0], parsed[1])
+                    if (
+                        name == "modulus"
+                        and len(parsed) == 2
+                        and _option(v, "division_type", "TRUNCATE") == "FLOOR"
+                    ):
+                        # Polars's `%` of doubles (`Expr.floorFmodOf`).
+                        return _div_by_zero(mode, True, _floor_fmod, *parsed)
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                         op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
                         return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
@@ -3518,6 +3525,12 @@ def _floor_mod(a: Expr, b: Expr) -> Expr:
     pos = Bin("add", Bin("imod", Bin("sub", a, one), b), Bin("add", b, one))
     return If(Bin("lt", a, zero), If(Bin("lt", zero, b), neg, r),
               If(Bin("lt", b, zero), If(Bin("lt", zero, a), pos, r), r))  # fmt: skip
+
+
+def _floor_fmod(a: Expr, b: Expr) -> Expr:
+    """`Expr.floorFmodOf`: `a % b` of doubles with `division_type` = `FLOOR`,
+    `a - b * floor(a / b)`. Trusted to mirror `Polars.floorFmodT` (#1202)."""
+    return Bin("fsub", a, Bin("fmul", b, Un("ffloor", Bin("fdiv", a, b))))
 
 
 def _int_div(quotient: bool, floor: bool) -> Callable[[Expr, Expr], Expr]:
