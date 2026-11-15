@@ -47,7 +47,7 @@ Json = dict[str, Any]
 
 I64 = 2**63
 INTS: list[int | None] = [0, 1, -1, 2, -2, 3, 7, -7, I64 - 1, -I64, None]
-# No -0.0: the model has one zero (`canon` keeps -0.0 out of sverify's SQL).
+# No -0.0 here: the probes compare up to the sign of a zero (a follow-up of #1461).
 DOUBLES: list[float | None] = [
     0.0, 0.5, 1.0, -1.0, 2.5, -2.5, 7.0, 1e308, math.inf, -math.inf, math.nan, None
 ]  # fmt: skip
