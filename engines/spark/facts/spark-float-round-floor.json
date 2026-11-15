@@ -1,0 +1,109 @@
+{
+  "id": "spark-float-round-floor",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`round` of a float keeps its type and gives +0.0; `floor` and `ceil` of a FLOAT return a `BIGINT`",
+  "verdict": "`round` and `bround`: no conversion, `-0.4` and `-0.0` give `+0.0`; `floor` and `ceil`: a `BIGINT`, NaN is 0, `±inf` and values past 64 bits saturate (ANSI off) or raise ARITHMETIC_OVERFLOW (ANSI on), as for DOUBLE",
+  "area": "doubles",
+  "options": [
+    "round_zero_sign",
+    "float_to_int"
+  ],
+  "rows": [
+    {
+      "group": "fp.round",
+      "option": "round_zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.round",
+      "option": "round_zero_sign",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.round",
+      "option": "float_to_int",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.round",
+      "option": "float_to_int",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.floor",
+      "option": "round_zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.floor",
+      "option": "float_to_int",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    }
+  ],
+  "constructs": [
+    "round",
+    "bround",
+    "floor",
+    "ceil"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`round(a)` and `bround(a)` of a `FLOAT` stay `FLOAT` and of a `DOUBLE` stay `DOUBLE` (no `float_to_int`): `round(-0.4)` and `round(-0.0)` are `+0.0` (`round_zero_sign` is POSITIVE), as spark-round has them for doubles.",
+    "`floor(a)` and `ceil(a)` of a `FLOAT` return a `BIGINT`, as for a `DOUBLE` (spark-floor-ceil-bigint): `ceil(-0.4F)` is `0` and `CAST(ceil(-0.4F) AS DOUBLE)` is `+0.0`, `floor(-0.0F)` is `0`. NaN gives `0`; with `spark.sql.ansi.enabled` off `+inf` and `3e38F` give `9223372036854775807`; with it on, a query holding them raises ARITHMETIC_OVERFLOW."
+  ],
+  "reference": "`round`, `floor` and `ceil` are floats to floats; the sign of a zero result is `round_zero_sign`, left open by the reference (`eval` gives `+0.0`), and `float_to_int` is Spark's conversion that the writer casts back (`Profile.spark`: `round_zero_sign` POSITIVE, `float_to_int`). The FLOAT results agree with `Profile.spark`; nothing contradicts it.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "issues": [
+    271,
+    746
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Spark facts), sverify_dev.probe_spark on homelab, Spark 4.3.0 local session",
+      "evidence": [
+        {
+          "sql": "SELECT a, round(a), bround(a), floor(a), ceil(a), typeof(round(a)), typeof(floor(a)), typeof(ceil(a)), CAST(ceil(a) AS DOUBLE) FROM VALUES (CAST(-0.4 AS FLOAT)), (-CAST(0 AS FLOAT)), (CAST(0.5 AS FLOAT)), (CAST(-2.5 AS FLOAT)) AS s(a)",
+          "observed": "(-0.4000000059604645, 0.0, 0.0, -1, 0, float, bigint, bigint, 0.0); (-0.0, 0.0, 0.0, 0, 0, float, bigint, bigint, 0.0); (0.5, 1.0, 0.0, 0, 1, float, bigint, bigint, 1.0); (-2.5, -3.0, -2.0, -3, -2, float, bigint, bigint, -2.0), ANSI on and off"
+        },
+        {
+          "sql": "SELECT floor(CAST(NaN AS FLOAT)), ceil(CAST(NaN AS FLOAT)), floor(CAST(Infinity AS FLOAT)), ceil(CAST(3e38 AS FLOAT))",
+          "observed": "ANSI off: (0, 0, 9223372036854775807, 9223372036854775807); ANSI on: error ARITHMETIC_OVERFLOW"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "note": "constructs float-round-floor, float-floor-nonfinite; the double rows are double-round and double-floor-ceil"
+        }
+      ],
+      "notes": [
+        "The FLOAT probes: `sverify_dev.probe_spark`."
+      ]
+    }
+  ]
+}
