@@ -117,3 +117,48 @@ def test_empty_struct_is_modelled() -> None:
     db.execute("CREATE TABLE t AS SELECT [row()] AS l FROM range(3)")
     rel = db.sql("SELECT * FROM t LIMIT 0")
     refuse_unmodelled(rel.columns, rel.types, " of t")
+
+
+def _ibis_table(ddl: str):
+    import ibis
+
+    con = ibis.duckdb.connect()
+    con.raw_sql("CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')")
+    con.raw_sql(f"CREATE TABLE t(id BIGINT, c {ddl})")
+    return con.table("t")
+
+
+def test_ibis_enum_table_is_refused_with_its_exit() -> None:
+    from sverify.ibis_substrait import to_substrait_json
+
+    t = _ibis_table("mood")
+    assert str(t.schema()["c"]) == "string"  # what hides it from the producer
+    with pytest.raises(UnsupportedError, match=r"column c of t is ENUM.*CAST\(c AS VARCHAR\)"):
+        to_substrait_json(t.filter(t.c < "ok"))
+
+
+def test_ibis_modelled_table_is_not_refused() -> None:
+    from sverify.ibis_substrait import to_substrait_json
+
+    t = _ibis_table("VARCHAR")
+    to_substrait_json(t.filter(t.c < "ok"))
+
+
+def test_engines_without_a_hook_are_not_asked() -> None:
+    from sverify.profiles import plugins
+
+    unset = {e for e, p in plugins().items() if p.refuse_declared_types is None}
+    assert {"polars", "spark", "snowflake", "substrait"} <= unset
+    assert plugins()["duckdb"].refuse_declared_types is not None
+
+
+def test_dictionary_encoded_arrow_is_text_not_enum() -> None:
+    """`verify(tables=...)` and `Connection.put` take Arrow: DuckDB reads a
+    dictionary-encoded string as VARCHAR, so that path carries no ENUM."""
+    import pyarrow as pa
+
+    db = duckdb.connect()
+    db.register("t", pa.table({"m": pa.array(["sad", "ok", "happy"]).dictionary_encode()}))
+    rel = db.sql("SELECT * FROM t LIMIT 0")
+    assert [str(t) for t in rel.types] == ["VARCHAR"]
+    assert db.sql("SELECT m FROM t ORDER BY m").fetchall() == [("happy",), ("ok",), ("sad",)]

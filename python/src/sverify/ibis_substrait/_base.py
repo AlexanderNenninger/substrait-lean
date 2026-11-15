@@ -314,6 +314,9 @@ def to_substrait(expr: ir.Table, semantics: str = "reference") -> Json:
     """The Substrait plan of an Ibis table expression, as protobuf JSON. Under
     `semantics="polars"`, integer `//` and `%` are Polars's: they state
     `division_type` = `FLOOR` (`Profile.polars`)."""
+    from sverify.profiles import check_declared_types
+
+    check_declared_types(expr)
     with compiling(semantics) as compiler:
         op: Any = expr.op()
         return plan(compiler, rel(op), list(op.schema.names))

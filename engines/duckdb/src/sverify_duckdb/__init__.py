@@ -32,6 +32,7 @@ from sverify._store import State
 from sverify._unsupported import RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
 from sverify.profiles import ProfilePlugin, Setting
+from sverify_duckdb.declared import refuse_base_table
 
 _R15 = tuple(
     f"duckdb-R15-{n}"
@@ -339,6 +340,7 @@ PLUGIN = ProfilePlugin(
     "duckdb",
     title="DuckDB",
     store=DuckDBStore,
+    refuse_declared_types=refuse_base_table,
     default=True,
     translation="sverify's DuckDB lowering, proved for every plan, and its SQL writer",
     settings=SETTINGS,
