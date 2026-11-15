@@ -944,8 +944,8 @@ def Expr.floorModOf (a b : Expr) : Expr :=
 /-- `a % b` of doubles with `division_type` = `FLOOR` (Polars's `%`,
 `engines/polars/Sverify/Polars/Profile.lean`): `a - b * floor(a / b)`, in the
 reference's double operations. A zero divisor raises, and so does a finite
-`a % ±∞` (`∞ * 0` is a NaN). `Write` recognizes the shape and writes the call
-back. -/
+`a % ±∞` (`∞ * 0` is a NaN). `Write` keeps the four calls: only `floorDivOf` and
+`floorModOf` are written back as one call. -/
 def Expr.floorFmodOf (a b : Expr) : Expr :=
   .bin .fsub a (.bin .fmul b (.un .ffloor (.bin .fdiv a b)))
 

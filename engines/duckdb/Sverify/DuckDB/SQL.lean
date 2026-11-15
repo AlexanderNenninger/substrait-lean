@@ -751,18 +751,25 @@ def DuckFn.eval (s : Semantics) (f : DuckFn) (xs : List Value) : Outcome :=
 inductive DuckAgg where
   /-- `avg(x)` of a `BIGINT`: a `DOUBLE`. -/
   | avgBigint
+  /-- `sum(x)` of a `DOUBLE` (#341). -/
+  | sumDouble
+  /-- `avg(x)` of a `DOUBLE` (#341). -/
+  | avgDouble
   deriving Repr, DecidableEq, Inhabited
 
-def DuckAgg.all : List DuckAgg := [.avgBigint]
+def DuckAgg.all : List DuckAgg := [.avgBigint, .sumDouble, .avgDouble]
 
 def DuckAgg.sql : DuckAgg → String
   | .avgBigint => "avg(BIGINT)"
+  | .sumDouble => "sum(DOUBLE)"
+  | .avgDouble => "avg(DOUBLE)"
 
 def DuckAgg.arg : DuckAgg → DuckType
   | .avgBigint => .bigint
+  | .sumDouble | .avgDouble => .double
 
 def DuckAgg.result : DuckAgg → DuckType
-  | .avgBigint => .double
+  | .avgBigint | .sumDouble | .avgDouble => .double
 
 /-- What the aggregate gives for its argument's values on a group's rows,
 under the semantics. DuckDB's `avg` of integers sums them exactly (in 128
@@ -775,5 +782,9 @@ def DuckAgg.eval : Semantics → DuckAgg → List Value → Value
     | [] => .null
     | xs => .float (FloatCode.fdiv (FloatCode.ofInt (intSum xs)) (FloatCode.ofInt xs.length))
   | .reference, .avgBigint, vs => AggFn.apply .avg ((vs.map (UnFn.apply .itof)).filter (· != .null))
+  -- DuckDB's `sum` and `avg` of doubles are the reference's: the exact sum, rounded once, NaN and
+  -- `±∞` as IEEE has them. What differs is that no measure has a domain error (a lift entry's `noNan`).
+  | _, .sumDouble, vs => AggFn.apply .fsum (vs.filter (· != .null))
+  | _, .avgDouble, vs => AggFn.apply .avg (vs.filter (· != .null))
 
 end Substrait
