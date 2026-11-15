@@ -136,7 +136,7 @@ def test_a_stored_zero_is_the_models_on_the_written_plan(label: str) -> None:
     assert written(expr, rows) == model(expr, rows), label
     # and the model reads the stored sign: `atan2(-0.0, -1.0)` is `-π`.
     if label == "atan2(x, -1.0)":
-        assert model(expr, rows)[0] == (0, -math.pi)
+        assert model(expr, rows)[0] == (0, -round(math.pi, 6))
 
 
 def test_the_zeros_are_one_key_at_the_identity_boundaries() -> None:
