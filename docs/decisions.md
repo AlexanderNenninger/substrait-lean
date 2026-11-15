@@ -842,6 +842,12 @@ Why: the old ranges were DataFusion's, and DataFusion is a tier-3 engine
 (2026-11-08). The SQL standard's timestamps are the reference's dates', which
 every 1.0 engine represents.
 
+### D33. Unused
+
+The number is unused. For an hour on 2026-11-08 it named the decision that is
+now D37 (commits `b7281220` and `b202090f`); D37 took its place, and D33 was
+not reassigned so that the numbers cited in commits stay unambiguous.
+
 ### D34. An option differs from the reference only on its scope
 
 Decided 2026-11-08, by the maintainer after the theory review.
@@ -946,14 +952,16 @@ margin check's theorem over its plan reads the same set.
 
 Decided on [#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), merged 2026-10-31, and on #209.
 
-The reference profile reads doubles with one zero and one NaN:
-`zero_sign` `ONE_ZERO`, `nan_kind` `ONE_NAN`, `nan_equality` `NAN_IS_NAN`
-and `nan_order` `GREATEST`, above `+∞`. `-0.0` is `0.0` everywhere, so
-`1.0 / -0.0 = inf` where the plan asks for IEEE division, and `GROUP BY`,
-`DISTINCT`, joins, partitions and sorts see one zero and one NaN. The core
-keeps both zeros and the signed NaNs ([The value domain](core-semantics.md#the-value-domain));
-the reference applies `FloatFormat.canon` to every input and output, as the
-writers do (`Dialect.canon`). Substrait's YAMLs leave the grouping and
+The reference profile reads doubles with one zero and one NaN where rows are
+compared for identity: `zero_sign` `ONE_ZERO`, `nan_kind` `ONE_NAN`,
+`nan_equality` `NAN_IS_NAN` and `nan_order` `GREATEST`, above `+∞`. `-0.0 = 0.0`
+in a comparison, and `GROUP BY`, `DISTINCT`, joins, partitions and sorts see
+one zero and one NaN. Values stay raw elsewhere: a read gives the stored
+double and a scalar operation gives IEEE's result, so `1.0 / -0.0` under
+IEEE division is `-∞` (D39). The core keeps both zeros and the signed NaNs
+([The value domain](core-semantics.md#the-value-domain)); the reference
+applies `FloatFormat.canon` at the identity boundaries only, as the writers
+do after an operation that can make a `-0.0` (`Dialect.canon`). Substrait's YAMLs leave the grouping and
 order of `-0.0` unspecified and compare NaN by IEEE's rules, so this is an
 override ([Overrides](reference-semantics.md#overrides)).
 
@@ -961,6 +969,14 @@ Why: SQL users expect `-0.0 >= 0` and a NaN equal to itself, and DuckDB,
 Polars and Spark compare NaN so (`nan_equality` `NAN_IS_NAN` in their
 tables); IEEE's NaN, unequal to itself,
 would split `GROUP BY` and `DISTINCT` and drop rows from joins.
+
+**Correction, 2026-11-15** ([#1446](https://github.com/AlexanderNenninger/substrait-lean/issues/1446)):
+as first written, this decision had the reference apply `canon` "to every
+input and output" and give `1.0 / -0.0 = inf`. D31's correction of
+2026-11-09 replaced that rule: `canon` applies only at the identity
+boundaries, values stay raw, and the code follows it (`Expr.lean`'s
+`fdivIeee` is `FloatCode.fdiv`). The text above is D31's rule, which this
+decision's number kept.
 
 ### D37. No operation creates a NaN
 
@@ -1071,3 +1087,41 @@ No engine computes a correctly rounded floored remainder of doubles natively.
 The template uses the reference's own operations, so every engine computes it,
 and no plan the reference accepted before changes meaning.
 
+### Draft: the reference's value of eighteen options
+
+Draft of 2026-11-15 for the theory advisor's sign-off, which assigns its number
+([#1446](https://github.com/AlexanderNenninger/substrait-lean/issues/1446)).
+It states what `Profile.reference.table`
+(`core/Sverify/Core/Options.lean`) does and changes no behaviour.
+
+An option enters the core with the reference's value for it recorded as a
+decision. These eighteen options had none: nine were named nowhere in this
+record, and nine only in D34's scope table, which gives their scope and no
+value. The reference's value of each is:
+
+| Option | The reference's value | Decided by |
+|---|---|---|
+| `division_type` | `TRUNCATE`: the remainder takes the dividend's sign; `FLOOR` when the plan asks (integers and doubles, D41) | `Int.tmod`, `FloatCode.fmod`; D41 for doubles |
+| `min_mod_neg_one` | `ZERO`: `MIN % -1` fits and is `0`; DuckDB's raise is its own (duckdb-R15-int-modulus) | no earlier decision found |
+| `decimal_rescale` | `TIE_AWAY_FROM_ZERO` when a result scale is smaller than the exact one | no earlier decision found |
+| `round_zero_sign` | `ANY`: either zero, observed up to `canon`; `eval` gives `+0.0` | D34 (scope); the ruling of 2026-11-09 in duckdb-R15-round |
+| `negative_start` | `WRAP_FROM_END` (`Text.substrWrap`); `ERROR` is not modelled | #209 |
+| `case_sensitivity` | `CASE_SENSITIVE`: string matching is case-sensitive | no earlier decision found |
+| `null_handling` | `ACCEPT_NULLS` (`concat` with a `NULL` is `NULL`); `IGNORE_NULLS` is refused | no earlier decision found |
+| `date_range` | `ERROR`: date arithmetic past 0001-01-01 … 9999-12-31 raises | D32 |
+| `time_interval_months` | refused: `TIME ± INTERVAL` with months has no value | no earlier decision found |
+| `list_null_order` | `NULL` in `<` of lists; `GREATEST` in `ORDER BY`, `MIN` and `MAX` (`agg.order`) | #207 |
+| `avg_int_result` | `DECLARED_TYPE`: the plan's output type, `fp64` or `i64` truncated | no earlier decision found |
+| `clustered` | `ADJACENT`: equal keys are adjacent, the groups in any order | the `CLUSTERED` direction of Substrait's `relations/basics.md` |
+| `ntile_spread` | `STANDARD`: the SQL standard's spread of the remainder | no earlier decision found |
+| `distribution` | `SAMPLE` unless the plan asks for `POPULATION` | #54 |
+| `empty_group_aggregates` | `NULL`: a `SUM` of no values or of `NULL`s only (the YAML's `sum`; `sum0` is `0`) | no earlier decision found |
+| `null_join_keys` | `NO_MATCH`: a `NULL` key matches nothing, SQL's `=` | no earlier decision found |
+| `string_positions` | `ONE_BASED_CHARS`: characters from 1, the YAML's | no earlier decision found |
+| `substring_range` | `ERROR`: an offset outside `[-2³², 2³²)` raises | #209 |
+
+Why: the rule is that the reference changes only through a recorded decision
+and an option enters the core with its value recorded. The rows marked "no
+earlier decision found" were never ruled on in this record; signing the draft
+records them as they stand. A test (`tests/test_decisions_name_options.py`)
+keeps every option of the core named in this file.

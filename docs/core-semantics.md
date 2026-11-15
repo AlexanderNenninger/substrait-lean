@@ -574,8 +574,8 @@ The core needs every value any profile gives, so each must be at least as
 fine as Substrait's. `Value` has a constructor per kind ([D29](decisions.md#d29-a-value-has-its-kind)):
 `null | bool | int | float | date | ts | tod | dec | str | list | struct`.
 A double is a `float` code, `-0.0` and the negative NaN among them
-(`core/Sverify/Core/FloatFormat.lean`), which the reference profile reads with
-one zero and one NaN through `canon`; a decimal is its scale and unscaled
+(`core/Sverify/Core/FloatFormat.lean`), which the reference profile reads raw, with
+one zero and one NaN at the identity boundaries through `canon`; a decimal is its scale and unscaled
 integer.
 
 | Value | What the core needs | Blocks #444? |
@@ -593,9 +593,10 @@ The extra codes go into the `FloatFormat` layer: one more code for `-0.0`
 and one for the negative NaN, outside the range of the existing ones, so
 that the reference's codes keep their values and their order lemmas.
 `FloatFormat.canon` maps `-0.0` to `+0.0` and the negative NaN to the NaN,
-and `ONE_ZERO`/`ONE_NAN` are "apply `canon` to every input and output",
-which is what DuckDB's written plan does (`Dialect.canon`). The reference
-never meets the new codes, so its proofs do not change. The SQL order of the
+and `ONE_ZERO`/`ONE_NAN` apply `canon` at the identity boundaries (D31's
+correction, D36), where DuckDB's written plan applies it after every operation
+that can make a `-0.0` (`Dialect.canon`). The reference's own codes keep
+their values and order lemmas, so its proofs do not change. The SQL order of the
 full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 `IEEE` behaviour of `zero_sign` and `nan_order`.
 
@@ -709,6 +710,13 @@ is a choice that accepts every value the plan states.
 | `distribution` | all others | `SAMPLE`, `POPULATION` | `SAMPLE`, `POPULATION`; `SAMPLE` by default | choose |
 | `float_overflow` | all others | `ERROR`, `INFINITY` | `ERROR` | raise |
 <!-- substrait-diff:end -->
+
+Three options are the same in the reference and in `Profile.substrait`, so
+the table omits them: `null_join_keys` (`NO_MATCH`: a `NULL` key matches
+nothing, SQL's `=`), `string_positions` (`ONE_BASED_CHARS`: characters from
+1, the YAML's) and `empty_group_aggregates` (`NULL`: a `SUM` of no values is
+`NULL`, the YAML's `sum`; `sum0` is `0`). The reference's value for each is
+recorded in the draft decision at the end of [decisions.md](decisions.md).
 
 ### Substrait's test cases
 

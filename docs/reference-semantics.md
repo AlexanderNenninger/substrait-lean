@@ -90,15 +90,15 @@ result, so a proved postcondition holds whichever value the engine picks.
 |---|---|---|
 | `tie_order` | the order of rows that tie in an `ORDER BY` or a window's order, and of the values `STRING_AGG` and `collect` gather | any order |
 | `tie_pick` | the row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value` and `MODE` take among ties | any row of the tie |
-| `sum_order` | the order and grouping in which a `SUM` or `AVG` of doubles adds | any, within the plan's bound of the correctly rounded sum ([float-bounds.md](float-bounds.md)) |
-| `stat_algo` | how an engine computes `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` | any value with the generic properties ([Statistical aggregates](#statistical-aggregates)); the reference's own value is the exact moments rounded once |
 | `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them |
 | `round_zero_sign` | which zero `round` and `ceil` give a negative value that rounds to zero | either |
 | one zero, one NaN | which member a `GROUP BY` key, a `DISTINCT` row, a `MIN` or a `MAX` returns when its class holds `-0.0` and `0.0`, or NaNs of both signs | any member present, or the canonical value |
 | the sign of a NaN | the sign of a NaN an operation produces (under a profile that lets one be created) | either |
 
 Every other option has one value in the reference, listed in
-[Options](#options). An engine whose pick is one the reference allows runs
+[Options](#options). `sum_order` and `stat_algo` are among them: the
+reference's value is `EXACT` for both (D25, D30), and the engines' own orders
+and algorithms stay bounded choices of the engines (D35). An engine whose pick is one the reference allows runs
 the plan natively at that option; elsewhere its result is within the plan's
 bound of an allowed one, or the plan is refused there
 ([Verifying: the two paths](verifying.md)).
@@ -607,14 +607,16 @@ the first column are the names the tables below use.
 | `null_handling` (`concat`) | `IGNORE_NULLS`, `ACCEPT_NULLS` | the two | `ACCEPT_NULLS`; the other refused | `ACCEPT_NULLS` for `\|\|`; `concat` skips NULLs ([null-concat](../engines/duckdb/facts/duckdb-null-concat.json)) |
 | `date_range` (sverify's: date arithmetic past 0001-01-01 … 9999-12-31) | raise, compute | no limit | raise | wider dates, to 5881580 AD; the written plan guards ([date-range](../engines/duckdb/facts/duckdb-date-range.json)) |
 | `time_interval_months` (sverify's: `TIME ± INTERVAL` with months) | drop the months, raise | not specified | refused | drops them ([time-plus-interval](../engines/duckdb/facts/duckdb-time-plus-interval.json)) |
+| `string_positions` (sverify's: what a string position counts) | characters from 1, characters from 0, bytes from 0 | characters from 1 | characters from 1 | characters from 1 (no fact); Polars's `substring` counts characters from 0 and `strpos` bytes from 0 ([polars-substring](../engines/polars/facts/polars-substring.json), [polars-strpos](../engines/polars/facts/polars-strpos.json)) |
 | `list_null_order` (sverify's: a NULL element deciding `<` of lists) | `NULL`, `GREATEST`, `LEAST` | `lt` of lists not defined | `NULL` in `<`, `GREATEST` in `ORDER BY` | `GREATEST` in both; shimmed ([R11](../engines/duckdb/facts/duckdb-R11.json)) |
 
 ### Aggregates, windows and relations
 
 | Option | Core | Substrait | Reference | DuckDB |
 |---|---|---|---|---|
-| `sum_order` (sverify's: `SUM`, `AVG` of doubles) | any order and grouping (`FloatSums`) | not specified | any order and grouping, within the plan's bound | sequential, partial states merged by addition ([sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [avg-double](../engines/duckdb/facts/duckdb-avg-double.json)) |
+| `sum_order` (sverify's: `SUM`, `AVG` of doubles) | any order and grouping (`FloatSums`) | not specified | `EXACT`: the correctly rounded exact sum, rounded once ([D25](decisions.md#d25-float-aggregates-are-correctly-rounded-exact-sums)); an engine's order is bounded as [D35](decisions.md#d35-engine-summation-orders-are-bounded-sets) states | sequential, partial states merged by addition ([sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [avg-double](../engines/duckdb/facts/duckdb-avg-double.json)) |
 | `stat_algo` (sverify's: `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`) | `EXACT`: the exact moments rounded once | not specified | `EXACT`: the exact moments rounded once; an engine's value has the generic properties | Welford with Chan's merge ([var-stddev](../engines/duckdb/facts/duckdb-var-stddev.json), [covar](../engines/duckdb/facts/duckdb-covar.json), [corr](../engines/duckdb/facts/duckdb-corr.json)); `VAR_POP` of one NaN is `0` ([one-value](../engines/duckdb/facts/duckdb-var-pop-one-value.json), [DD-3](../upstream/bugs/DD-3.json)), shimmed by the writer's NaN guard (`Stat.nanGuard_varStat`) |
+| `empty_group_aggregates` (sverify's: `SUM` of no values or of NULLs only) | `NULL`, `ZERO` | `sum` is `NULL`, `sum0` is `0` | `NULL` | `NULL` natively (no fact); Polars's integer `sum` gives `0` ([polars-sum-int](../engines/polars/facts/polars-sum-int.json)) |
 | `stat_degenerate` (sverify's: `CORR` of one pair or a constant side; a statistical aggregate of `±∞`) | `NULL`, `NAN`, raise | not specified | `NULL` for `CORR`; raise for `±∞` | `NAN` for both (duckdb-corr, nonfinite-aggregates) |
 | `avg_int_result` (sverify's: `avg` of integers) | the declared output type: `fp64` or `i64` truncated | `avg` of `i64` returns `i64` | follows the declared type | `DOUBLE` natively, the exact sum divided in `double` or `long double` ([avg-int](../engines/duckdb/facts/duckdb-avg-int.json)); sverify's SQL writes the `HUGEINT` sum `//` the count for `i64` ([R6](../engines/duckdb/facts/duckdb-R6.json)) |
 | `quantile_interp` (sverify's: `QUANTILE_CONT` between neighbours) | any double between them | `quantile` has `rounding` | any double between them (`contAllowed`) | `lo·(1−d) + hi·d`, may round past; clamped ([quantile-cont-interpolation](../engines/duckdb/facts/duckdb-quantile-cont-interpolation.json)) |
@@ -623,6 +625,7 @@ the first column are the names the tables below use.
 | `null_order` (a sort key) | `NULLS_FIRST`, `NULLS_LAST` | stated by the key's direction; `UNSPECIFIED` leaves it open | as the key states; `NULLS_LAST` for `UNSPECIFIED` | `NULLS_LAST` by default ([F2](../engines/duckdb/facts/duckdb-F2.json)); either when the SQL states it |
 | `clustered` (a sort key's `CLUSTERED` direction) | equal keys adjacent, the groups in any order | `SORT_DIRECTION_CLUSTERED` | the same relation | an `ORDER BY` on the keys, which clusters them ([clustered](../engines/duckdb/facts/duckdb-clustered.json)) |
 | `ntile_spread` (sverify's) | the SQL standard's, spread out | not specified | the SQL standard's | the SQL standard's ([ntile](../engines/duckdb/facts/duckdb-ntile.json); DataFusion spreads, [DF-11](../upstream/bugs/DF-11.json)) |
+| `null_join_keys` (sverify's: a `NULL` key in a join's equality) | `NO_MATCH`, `MATCH` | `equal` is `NULL` on `NULL`: no match | `NO_MATCH`, SQL's `=` | `NO_MATCH` ([null-keys](../engines/duckdb/facts/duckdb-null-keys.json)) |
 | `float_to_int` (casts) | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not specified | `TRUNCATE` | `TIE_TO_EVEN` from `FLOAT`/`DOUBLE`, `TIE_AWAY_FROM_ZERO` from `DECIMAL`; shimmed with `trunc` ([R9](../engines/duckdb/facts/duckdb-R9.json)) |
 | `cast_failure` | `THROW_EXCEPTION`, `RETURN_NULL` | the cast's `failureBehavior`; `UNSPECIFIED` exists | `THROW_EXCEPTION` for `UNSPECIFIED` | both native ([R8](../engines/duckdb/facts/duckdb-R8.json)) |
 
