@@ -120,7 +120,10 @@ print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is 
 `sv.asof_join(left, right, on="ts", by="device", tolerance=...)` matches each
 left row with the latest right row at or before it, at most `tolerance`
 earlier, built from a range join and `ROW_NUMBER` that Lean checks like any
-plan. Without a key on `(by, on)` on the right side, two right rows may tie
+plan. The join compares each left row with every right row of its `by` group, so its cost is
+quadratic: `asof_join` refuses more than `max_pairs` (default 10⁸) of those pairs, counted when both
+tables are held by a `sverify.connect()` connection, and names its exits (more `by` columns, fewer
+rows, a larger cap). Without a key on `(by, on)` on the right side, two right rows may tie
 for "latest": the guarantees hold for either pick, and the result is not
 deterministic. With keys on both sides it is:
 
