@@ -156,3 +156,12 @@ def test_a_divisor_is_checked_on_the_data():
     zero = StaticSource(pa.table({"id": [1], "total": [5], "qty": [0]}), name="zeros")
     with pytest.raises(PreconditionError, match=r"1 row\(s\) of zeros violate \(_.qty != 0\)"):
         zero.pipe(unit_price).refresh()
+
+
+def test_a_decimal_sum_with_scale_zero_is_typed():
+    """#1252: `DECIMAL(38, 0) + DECIMAL(38, 0)` was refused as a HUGEINT, its
+    inferred bound a whole number past 64 bits. The sum is typed, and the
+    possible overflow is the report's issue."""
+    t = ibis.table({"a": "decimal(38, 0)", "b": "decimal(38, 0)"}, name="t")
+    report = verify(t.select(r=t.a + t.b), counterexamples=0)
+    assert [i.kind for i in report.errors] == ["overflow"], report.errors
