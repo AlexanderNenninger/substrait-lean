@@ -3593,14 +3593,14 @@
   {
    "construct": "float32-domain-edges",
    "area": "doubles",
-   "code": "df(x=([-1.0, 0.0, 2.0, inf, nan], pl.Float32)).select(pl.col('x').sqrt().alias('sqrt'), pl.col('x').log().alias('ln'), pl.col('x').log(10).alias('log10'), pl.col('x').arcsin().alias('asin'), pl.col('x').sin().alias('sin')).rows()",
-   "observed": "[(nan, nan, nan, -1.570796251296997, -0.8414709568023682), (0.0, -inf, -inf, 0.0, 0.0), (1.4142135381698608, 0.6931472420692444, 0.3010299801826477, nan, 0.9092974066734314), (inf, inf, inf, nan, nan), (nan, nan, nan, nan, nan)]"
+   "code": "df(x=([-1.0, 0.0, 2.0, inf, nan], pl.Float32)).select(pl.col('x').sqrt().round(4).alias('sqrt'), pl.col('x').log().round(4).alias('ln'), pl.col('x').log(10).round(4).alias('log10'), pl.col('x').arcsin().round(4).alias('asin'), pl.col('x').sin().round(4).alias('sin')).rows()",
+   "observed": "[(nan, nan, nan, -1.5707999467849731, -0.8414999842643738), (0.0, -inf, -inf, 0.0, 0.0), (1.414199948310852, 0.6930999755859375, 0.3009999990463257, nan, 0.9093000292778015), (inf, inf, inf, nan, nan), (nan, nan, nan, nan, nan)]"
   },
   {
    "construct": "float-atan2-edges",
    "area": "doubles",
-   "code": "[df(y=([0.0, -0.0, 1.0, inf, nan], t), x=([0.0, -1.0, 0.0, inf, 1.0], t)).select(pl.arctan2(pl.col('y'), pl.col('x'))).to_series().to_list() for t in (pl.Float32, pl.Float64)]",
-   "observed": "[[0.0, -3.141592502593994, 1.5707963705062866, 0.7853981852531433, nan], [0.0, -3.141592653589793, 1.5707963267948966, 0.7853981633974483, nan]]"
+   "code": "[df(y=([0.0, -0.0, 1.0, inf, nan], t), x=([0.0, -1.0, 0.0, inf, 1.0], t)).select(pl.arctan2(pl.col('y'), pl.col('x')).round(4)).to_series().to_list() for t in (pl.Float32, pl.Float64)]",
+   "observed": "[[0.0, -3.1415998935699463, 1.5707999467849731, 0.7853999733924866, nan], [0.0, -3.1416, 1.5708, 0.7854, nan]]"
   },
   {
    "construct": "var-std-int-decimal",

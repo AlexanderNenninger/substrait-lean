@@ -371,13 +371,16 @@ OBSERVATIONS: list[Observation] = [
     _o("float-modulus-zero-sign", "doubles",
        "[df(a=([-4.0, 4.0, -0.0], t), b=([2.0, -2.0, 3.0], t)).select(pl.col('a') % pl.col('b'))"
        ".to_series().to_list() for t in (pl.Float32, pl.Float64)]"),
+    # Rounded to four digits: the libm of each platform differs in the last bits.
     _o("float32-domain-edges", "doubles",
-       "df(x=([-1.0, 0.0, 2.0, inf, nan], pl.Float32)).select(pl.col('x').sqrt().alias('sqrt'),"
-       " pl.col('x').log().alias('ln'), pl.col('x').log(10).alias('log10'),"
-       " pl.col('x').arcsin().alias('asin'), pl.col('x').sin().alias('sin')).rows()"),
+       "df(x=([-1.0, 0.0, 2.0, inf, nan], pl.Float32))"
+       ".select(pl.col('x').sqrt().round(4).alias('sqrt'),"
+       " pl.col('x').log().round(4).alias('ln'), pl.col('x').log(10).round(4).alias('log10'),"
+       " pl.col('x').arcsin().round(4).alias('asin'), pl.col('x').sin().round(4).alias('sin'))"
+       ".rows()"),
     _o("float-atan2-edges", "doubles",
        "[df(y=([0.0, -0.0, 1.0, inf, nan], t), x=([0.0, -1.0, 0.0, inf, 1.0], t))"
-       ".select(pl.arctan2(pl.col('y'), pl.col('x'))).to_series().to_list()"
+       ".select(pl.arctan2(pl.col('y'), pl.col('x')).round(4)).to_series().to_list()"
        " for t in (pl.Float32, pl.Float64)]"),
     _o("var-std-int-decimal", "aggregates",
        "{n: [df(x=(v, t)).select(pl.col('x').var()).item(),"
