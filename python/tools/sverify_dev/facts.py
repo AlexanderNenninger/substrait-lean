@@ -25,7 +25,9 @@ checks them (`tests/test_facts.py` runs the same check), and
 
 lists, per row (group × option × type), the engine's facts that settle it
 with their evidence, or `missing`, then per area and item of the checklist
-as a rollup.
+as a rollup. `--strict` checks every engine in one run and exits non-zero,
+listing what is missing, when an engine has a missing row or an uncovered item
+(gate #746; the `ledger` job of CI runs it).
 """
 
 from __future__ import annotations
@@ -381,14 +383,41 @@ def report(found: Coverage) -> str:
     return "\n".join(lines)
 
 
+def gaps(docs: dict[Path, Fact], engine: str, root: Path = ROOT) -> list[str]:
+    """What `engine` lacks of gate #746: its missing rows, then its uncovered
+    checklist items, one line each; empty when the engine is complete."""
+    missing = [
+        f"{engine}: row {g} × {o} at {t} has no fact"
+        for (g, o, t), fs in row_coverage(docs, engine, root).items()
+        if not fs
+    ]
+    return missing + [
+        f"{engine}: item {i} ({area}) has no fact"
+        for area, items in coverage(docs, engine, root).items()
+        for i, ids in items.items()
+        if not ids
+    ]
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--coverage", metavar="ENGINE", help="list the checklist's coverage")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit non-zero when an engine has a missing row or an uncovered item",
+    )
     args = parser.parse_args(argv)
     docs = load()
     problems = validate(docs)
     if problems:
         sys.exit("\n".join(problems))
+    if args.strict:
+        found = [g for e in engines() for g in gaps(docs, e)]
+        if found:
+            sys.exit("\n".join(found))
+        print(f"{len(docs)} facts, well-formed; every engine settles every row and item")
+        return
     if args.coverage:
         if args.coverage not in engines():
             sys.exit(f"no engine {args.coverage!r}; the engines are {', '.join(engines())}")
