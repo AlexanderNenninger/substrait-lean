@@ -598,7 +598,8 @@ pairs or a side whose values are all equal, which is `Sxx = 0` or `Syy = 0`
 (`stat_degenerate` `NULL`; `corrOf` gave NULL there before D30 too). NaN and
 infinities as `varOf` had them: a NaN among the values gives NaN, and an
 infinity gives NaN in `Rel.eval` and raises in a plan the checker accepts,
-since its deviation `∞ − ∞` would create a NaN (#257). A finite result past
+since its deviation `∞ − ∞` would create a NaN (#257; `nan_creation`'s scope
+covers it, `AggFn.nanCase`). A finite result past
 the largest double raises (#575).
 
 Engines keep their own algorithms: Welford's update with Chan's merge in
@@ -871,7 +872,7 @@ never narrower; one not pinned down yet is every call.
 | `on_division_by_zero` | the divisor is zero |
 | `division_type` | the operands have opposite signs and the remainder is not zero |
 | `min_mod_neg_one` | `MIN % -1` |
-| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` of `+∞` and `−∞` |
+| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` or `AVG` of `+∞` and `−∞`, a variance, standard deviation, covariance or correlation of an infinity (`AggFn.nanCase`) |
 | `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
 | `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
 | `round_zero_sign` | the reference result is a zero (`round(-0.4)`, `ceil(-0.4)`) |

@@ -541,7 +541,7 @@ theorem fractional_power_of_negative {a : Int} (ha : FloatCode.negInf ≤ a) (b 
 
 /-- `agg_makes_infinite`: finite values, an infinite aggregate. -/
 def aggMakesInfinite (result : Value) (vs : List Value) : Bool :=
-  vs.all finiteValue && isInfValue result
+  vs.all finiteValue && Value.isInf result
 
 /-- **`Polars.agg_makes_infinite`** (A4): on the aggregate the reference
 computes, the guard flags a group exactly where `Measure.makesInf` does.
@@ -550,7 +550,7 @@ Polars it flags the groups whose own sum overflows: the same groups but at
 the edge, where one order's rounding overflows and another's does not. -/
 theorem agg_makes_infinite (m : Measure) (hm : m.fn.infAgg = true) (grp : Relation) :
     aggMakesInfinite (m.eval grp) (m.inputs grp) = m.makesInf grp := by
-  simp [aggMakesInfinite, Measure.makesInf, hm, Bool.and_comm]
+  simp [aggMakesInfinite, Measure.makesInf, hm]
 
 /-! ## The error side: no shim for a verified plan -/
 
