@@ -773,6 +773,33 @@
    }
   },
   {
+   "construct": "float-round-floor",
+   "sql": "SELECT a, round(a), bround(a), floor(a), ceil(a), typeof(round(a)), typeof(floor(a)), typeof(ceil(a)), CAST(ceil(a) AS DOUBLE) FROM VALUES (CAST(-0.4 AS FLOAT)), (-CAST(0 AS FLOAT)), (CAST(0.5 AS FLOAT)), (CAST(-2.5 AS FLOAT)) AS s(a)",
+   "note": "round_zero_sign and float_to_int, fp32",
+   "observed": {
+    "ansi=true": "(-0.4000000059604645, 0.0, 0.0, -1, 0, float, bigint, bigint, 0.0); (-0.0, 0.0, 0.0, 0, 0, float, bigint, bigint, 0.0); (0.5, 1.0, 0.0, 0, 1, float, bigint, bigint, 1.0); (-2.5, -3.0, -2.0, -3, -2, float, bigint, bigint, -2.0)",
+    "ansi=false": "(-0.4000000059604645, 0.0, 0.0, -1, 0, float, bigint, bigint, 0.0); (-0.0, 0.0, 0.0, 0, 0, float, bigint, bigint, 0.0); (0.5, 1.0, 0.0, 0, 1, float, bigint, bigint, 1.0); (-2.5, -3.0, -2.0, -3, -2, float, bigint, bigint, -2.0)"
+   }
+  },
+  {
+   "construct": "float-floor-nonfinite",
+   "sql": "SELECT floor(CAST(CAST('NaN' AS DOUBLE) AS FLOAT)), ceil(CAST(CAST('NaN' AS DOUBLE) AS FLOAT)), floor(CAST(CAST('Infinity' AS DOUBLE) AS FLOAT)), ceil(CAST(3e38 AS FLOAT))",
+   "note": "float_to_int, fp32: NaN, infinity and a value past 64 bits",
+   "observed": {
+    "ansi=true": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] overflow. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(0, 0, 9223372036854775807, 9223372036854775807)"
+   }
+  },
+  {
+   "construct": "float-power-atan2",
+   "sql": "SELECT a, b, power(a, b), typeof(power(a, b)), atan2(a, b), typeof(atan2(a, b)) FROM VALUES (CAST(1.0 AS FLOAT), CAST('NaN' AS FLOAT)), (CAST(1.0 AS FLOAT), CAST('Infinity' AS FLOAT)), (CAST(-1.0 AS FLOAT), CAST('Infinity' AS FLOAT)), (CAST('NaN' AS FLOAT), CAST(0.0 AS FLOAT)), (CAST(0.0 AS FLOAT), CAST(0.0 AS FLOAT)), (-CAST(0 AS FLOAT), -CAST(1 AS FLOAT)), (-CAST(0 AS FLOAT), CAST(1 AS FLOAT)), (CAST(0 AS FLOAT), -CAST(1 AS FLOAT)) AS s(a, b)",
+   "note": "pow_one_inf and zero_sign, fp32",
+   "observed": {
+    "ansi=true": "(1.0, NaN, NaN, double, NaN, double); (1.0, inf, -NaN, double, 0.0, double); (-1.0, inf, -NaN, double, -0.0, double); (NaN, 0.0, 1.0, double, NaN, double); (0.0, 0.0, 1.0, double, 0.0, double); (-0.0, -1.0, -inf, double, 3.141592653589793, double); (-0.0, 1.0, -0.0, double, 0.0, double); (0.0, -1.0, inf, double, 3.141592653589793, double)",
+    "ansi=false": "(1.0, NaN, NaN, double, NaN, double); (1.0, inf, -NaN, double, 0.0, double); (-1.0, inf, -NaN, double, -0.0, double); (NaN, 0.0, 1.0, double, NaN, double); (0.0, 0.0, 1.0, double, 0.0, double); (-0.0, -1.0, -inf, double, 3.141592653589793, double); (-0.0, 1.0, -0.0, double, 0.0, double); (0.0, -1.0, inf, double, 3.141592653589793, double)"
+   }
+  },
+  {
    "construct": "float-cast-overflow",
    "sql": "SELECT CAST(1e40D AS FLOAT), CAST('1e40' AS FLOAT)",
    "observed": {
