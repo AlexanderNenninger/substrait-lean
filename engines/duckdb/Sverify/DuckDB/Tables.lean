@@ -47,7 +47,7 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
-    (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "zero_sign", .oneOf ["ONE_ZERO"]),
     (none, "round_zero_sign", .oneOf ["IEEE"]),
     -- C's `pow`: `power(1, ±∞)` is 1 (D40).
     (none, "pow_one_inf", .oneOf ["ONE"]),
@@ -89,10 +89,10 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 241),
   (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 241),
-  -- Two zeros, as IEEE has them: the reference's up to one zero. The writer
-  -- prints raw values (D31) and no canon: DuckDB's own boundaries (`=`, `<`,
-  -- hashing, sort keys) read the zeros as one.
-  (none, "zero_sign", (ObsRow.upTo { zeros := .canon } ["duckdb-R14"]).tracking 241),
+  -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
+  -- partitions, as the reference has them; MIN, MAX and quantiles return a
+  -- member of the class, which D31 allows.
+  (none, "zero_sign", (ObsRow.native ["duckdb-R14", "duckdb-float-signs", "duckdb-minmax-zero-sign"]).tracking 241),
   -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
   -- exactly through the proved template (`Lowering.zeroTemplate`).
   (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R15-round",

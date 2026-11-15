@@ -355,7 +355,7 @@ def options : List OptionSpec := [
     core := ["ERROR", "SILENT", "SATURATE"], yaml := ["ERROR", "SILENT", "SATURATE"],
     extra := [] },
   { id := "zero_sign", substrait := none, core := ["IEEE", "ONE_ZERO"], yaml := [],
-    extra := [("IEEE", "duckdb-R14")] },
+    extra := [("IEEE", "polars-zero-sign")] },
   … ]
 ```
 

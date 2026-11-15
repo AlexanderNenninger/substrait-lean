@@ -358,6 +358,11 @@ class SparkDialect(Dialect):
             "cast it to DOUBLE",
         )
 
+    def float_lit(self, f: float) -> str:
+        # Spark reads the text `-0.0` as a decimal zero (spark-zero-sign): a double
+        # literal takes the suffix.
+        return "-0.0D" if str(f) == "-0.0" else super().float_lit(f)
+
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         # NaN is the greatest double, and -0.0 equals 0.0, keeping whichever
         # came first (spark-nan-order, spark-zero-order): the codes' order up

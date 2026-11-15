@@ -39,7 +39,9 @@ def Profile.spark.table : ProfileTable where
     (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
-    (none, "zero_sign", .oneOf ["IEEE"]),
+    (none, "zero_sign", .oneOf ["ONE_ZERO"]),
+    -- Spark adds `0.0` to `atan2`'s arguments (spark-zero-sign): `atan2(-0.0, -1)` is `π`.
+    (some "fp.elem", "zero_sign", .oneOf ["IEEE"]),
     (none, "round_zero_sign", .oneOf ["POSITIVE"]),
     -- `StrictMath.pow(1, ±∞)` is NaN (spark-math-domain, D40).
     (none, "pow_one_inf", .oneOf ["NAN"]),
@@ -90,9 +92,13 @@ def Profile.spark.obs : ObsTable := [
     note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }).tracking 271),
   (none, "nan_creation", (ObsRow.native ["spark-double-arith", "spark-nonfinite-aggregates"]).proved "Rel.spark_sound"),
   (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Shim.makes_infinite"),
-  -- Two zeros, as IEEE has them: the reference's up to one zero. The writer
-  -- prints raw values (D31) and no canon.
-  (none, "zero_sign", (ObsRow.upTo { zeros := .canon } ["spark-zero-sign", "spark-zero-order"]).tracking 271),
+  -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
+  -- partitions; MIN and MAX keep whichever zero came first, a member of the class.
+  (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 271),
+  -- `atan2` of a zero: `π` where the reference gives `-π`; the writer refuses
+  -- double `atan2` (`BinFn.sparkWritten`).
+  (some "fp.elem", "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign"] with
+    shim := some "atan2 refused" }).tracking 271),
   -- `round` emits `+0.0` through a decimal; `ceil` is a `BIGINT`, which the
   -- written plan casts back to a double.
   (none, "round_zero_sign", (ObsRow.native ["spark-round", "spark-floor-ceil-bigint"]).tracking 271),

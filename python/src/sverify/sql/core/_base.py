@@ -183,11 +183,11 @@ class Dialect:
         return self.cast(str(i), "int")
 
     def float_lit(self, f: float) -> str:
-        """A double: NaN, ±inf, or a number (`-0.0` is `0.0`)."""
+        """A double: NaN, ±inf, or a number; `-0.0` keeps its sign (D31)."""
         if math.isnan(f):
             return self.cast("'NaN'", "float")
         if f == 0:
-            return self.cast("'0'", "float")
+            return self.cast("'-0.0'" if str(f) == "-0.0" else "'0'", "float")
         if math.isinf(f):
             return self.cast("'Infinity'" if f > 0 else "'-Infinity'", "float")
         return self.cast(f"'{f!r}'", "float")

@@ -3,7 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "`-0.0` and `0.0`",
-  "verdict": "decided: one zero; DuckDB shim",
+  "verdict": "decided: values raw; one zero at every identity boundary; no shim",
   "area": "doubles",
   "options": [
     "zero_sign",
