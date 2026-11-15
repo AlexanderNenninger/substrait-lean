@@ -1,0 +1,38 @@
+{
+  "id": "duckdb-exec-streaming-fallback",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "DuckDB has no second engine: a streamed result equals the materialised one",
+  "verdict": "no fallback; nothing to record beyond the equality of the two result modes",
+  "area": "execution",
+  "options": [
+    "streaming_fallback"
+  ],
+  "rows": [],
+  "constructs": [
+    "to_arrow_reader",
+    "fetchall"
+  ],
+  "settings": {},
+  "description": "DuckDB runs every operator in its one vectorised, push-based pipeline executor; there is no in-memory engine that a streaming one hands operators to (as Polars's streaming engine does, polars-exec-streaming-fallback). Reading a result as a stream of record batches (`to_arrow_reader(1000)`) gives the same rows as `fetchall()` for a grouped aggregate, a window, a join and a sort with a limit, over 300,000 rows.",
+  "reference": "The reference has no engines; sverify runs DuckDB through its own materialised and streamed readers alike.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session optimistic-hopper-2d1785 (#746), duckdb Python 2.0.0",
+      "evidence": [
+        {
+          "sql": "CREATE TABLE t AS SELECT i, (i*7919)%1000 AS k, (i%13)::DOUBLE/7 AS x FROM range(300000) r(i); each of GROUP BY k with sum(x), row_number() OVER (PARTITION BY k ORDER BY x, i), a self-join on k, ORDER BY x DESC, i LIMIT 50000, read with con.execute(q).fetchall() and con.execute(q).to_arrow_reader(1000).read_all()",
+          "observed": "rows equal in all four queries (1000, 300000, 10 and 50000 rows)"
+        }
+      ],
+      "notes": "Source reading of the executor was not done: the claim of no fallback rests on the engine's documented single pipeline executor and the equality above."
+    }
+  ],
+  "issues": [
+    746
+  ]
+}
