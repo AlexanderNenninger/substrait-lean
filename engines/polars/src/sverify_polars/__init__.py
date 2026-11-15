@@ -107,7 +107,6 @@ PLUGIN = ProfilePlugin(
         "int_mod_trunc": "integer remainder rewritten to truncate",
         "one_zero": "-0.0 written as 0.0",
         "avg_int_declared": "the mean of integers cast to its declared type",
-        "column_divisor": "a division by a column guarded",
         "round_half_away": "rounding rewritten to round half away from zero",
         "decimal_round_half_away": "decimal rounding rewritten to round half away from zero",
         "decimal_div_half_away": "decimal division rewritten to round half away from zero",

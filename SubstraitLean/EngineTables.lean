@@ -37,7 +37,7 @@ def builtinEngines : List EngineProfile := [
       ("int_div_trunc", .expression), ("int_mod_trunc", .expression),
       ("sum_empty_null", .expression), ("avg_int_declared", .expression),
       ("one_zero", .expression), ("strpos_chars", .expression),
-      ("substring_wrap", .expression), ("column_divisor", .expression),
+      ("substring_wrap", .expression),
       ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
       ("max_nan_greatest", .expression), ("nan_through", .expression),
       ("sort on the keys", .sort)] },
