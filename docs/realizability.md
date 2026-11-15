@@ -40,7 +40,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 24 | 1 | 4 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 15 | 14 | 1 | 6 | 8 | 0 | 15 | 7 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 14 | 1 | 6 | 8 | 1 | 15 | 7 |
 | Spark | 4.3.0 | `Rel.spark_sound` | 6 | 25 | 1 | 5 | 3 | 1 | 14 | 0 |
 
 Rows per evidence level:
@@ -61,7 +61,6 @@ Rows per evidence level:
 | DuckDB | `ORDER BY the keys` | sort | `clustered` |
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
 | Polars | `int_div_trunc` | expression | int.div: `division_type` |
-| Polars | `column_divisor` | expression | fp.mod: `division_type` |
 | Polars | `decimal_round_half_away` | expression | `decimal_rescale` |
 | Polars | `decimal_div_half_away` | expression | dec.div: `decimal_rescale` |
 | Polars | `round_half_away` | argument | fp.round: `rounding` |
@@ -143,7 +142,7 @@ Rows per evidence level:
 
 ## Polars 2.1.0
 
-15 shims (2 argument, 12 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
+14 shims (2 argument, 11 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
 
 | Group | Option | Reference's tool | Reference | Polars | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -156,7 +155,7 @@ Rows per evidence level:
 | every | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_mod_trunc` (expression) | proof | proved `Polars.int_mod_trunc`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_div_trunc` (expression) | proof | proved `Polars.int_div_trunc`; [polars-int-divide](../engines/polars/facts/polars-int-divide.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_mod_trunc` (expression) | proof | proved `Polars.int_mod_trunc`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
-| fp.mod | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `column_divisor` (expression) | probe | tested: [polars-double-modulus](../engines/polars/facts/polars-double-modulus.json), [polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json) |
+| fp.mod | `division_type` | choose | `TRUNCATE` | `FLOOR` | refused | probe | tested: [polars-double-modulus](../engines/polars/facts/polars-double-modulus.json), [polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json) |
 | every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | proof | proved `Rel.polars_sound`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `decimal_round_half_away` (expression) | proof | proved `Polars.decimal_round_half_away`; [polars-decimal-arith](../engines/polars/facts/polars-decimal-arith.json), [polars-decimal-casts](../engines/polars/facts/polars-decimal-casts.json) |
