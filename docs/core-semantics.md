@@ -594,9 +594,8 @@ and one for the negative NaN, outside the range of the existing ones, so
 that the reference's codes keep their values and their order lemmas.
 `FloatFormat.canon` maps `-0.0` to `+0.0` and the negative NaN to the NaN,
 and `ONE_ZERO`/`ONE_NAN` apply `canon` at the identity boundaries (D31's
-correction, D36), where DuckDB's written plan applies it after every operation
-that can make a `-0.0` (`Dialect.canon`). The reference's own codes keep
-their values and order lemmas, so its proofs do not change. The SQL order of the
+correction, D36); DuckDB's written plan applies it on float reads and after
+every operation that can make a `-0.0` (`Dialect.canon`). The SQL order of the
 full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 `IEEE` behaviour of `zero_sign` and `nan_order`.
 
@@ -716,7 +715,7 @@ the table omits them: `null_join_keys` (`NO_MATCH`: a `NULL` key matches
 nothing, SQL's `=`), `string_positions` (`ONE_BASED_CHARS`: characters from
 1, the YAML's) and `empty_group_aggregates` (`NULL`: a `SUM` of no values is
 `NULL`, the YAML's `sum`; `sum0` is `0`). The reference's value for each is
-recorded in the draft decision at the end of [decisions.md](decisions.md).
+recorded in [D42](decisions.md#d42-the-references-value-of-the-options-no-earlier-decision-states).
 
 ### Substrait's test cases
 
@@ -1196,3 +1195,4 @@ to it, so links to an entry here still land.
 - <a id="d39-division-by-zero-has-an-ieee-value"></a>[D39. Division by zero has an IEEE value](decisions.md#d39-division-by-zero-has-an-ieee-value)
 - <a id="d40-power1--is-cs-pow"></a>[D40. `power(±1, ±∞)` is C's `pow`](decisions.md#d40-power1--is-cs-pow)
 - <a id="d41-modulus-of-doubles-accepts-division_type-floor"></a>[D41. `modulus` of doubles accepts `division_type: FLOOR`](decisions.md#d41-modulus-of-doubles-accepts-division_type-floor)
+- <a id="d42-the-references-value-of-the-options-no-earlier-decision-states"></a>[D42. The reference's value of the options no earlier decision states](decisions.md#d42-the-references-value-of-the-options-no-earlier-decision-states)
