@@ -7,7 +7,7 @@ import functools
 import json
 import math
 import re
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
@@ -3497,21 +3497,12 @@ def var_guard_free(engine: str) -> bool:
     return row is not None and row.get("shim") is None
 
 
-@functools.cache
-def _floor_templates() -> dict[str, Any]:
-    """The core's `FLOOR` templates (`Expr.floorDivOf`, `Expr.floorModOf`,
-    `Expr.floorFmodOf`), from the checker's `--lowering-table` (#1202)."""
-    from sverify.sql import lowering
-
-    return lowering.floor_table()
-
-
 def _floor(kind: str, a: Expr, b: Expr) -> Expr:
     """`a // b`, `a % b` (`kind` `div`, `mod`) of integers or `a % b` of
     doubles (`fmod`) with `division_type` = `FLOOR`: Lean's template with the
     arguments filled in."""
 
-    def go(t: dict[str, Any]) -> Expr:
+    def go(t: Mapping[str, Any]) -> Expr:
         if "field" in t:
             return (a, b)[t["field"]]
         if "int" in t:
@@ -3523,7 +3514,9 @@ def _floor(kind: str, a: Expr, b: Expr) -> Expr:
             return Un("ffloor", args[0])
         return Bin(t["fn"], args[0], args[1])
 
-    return go(_floor_templates()[kind])
+    from sverify.sql import lowering
+
+    return go(lowering.floor_table()[kind])
 
 
 def _int_div(quotient: bool, floor: bool) -> Callable[[Expr, Expr], Expr]:
