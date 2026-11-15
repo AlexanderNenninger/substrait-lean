@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+from typing import Any
 
 import duckdb
 import ibis
@@ -17,7 +18,7 @@ import pytest
 from ibis import _
 
 from sverify._lean_eval import inline_tables, lean_values
-from sverify.engine import connect, written_plan
+from sverify.engine import written_plan
 from sverify.ibis_substrait import to_substrait
 from sverify.sql.core._base import to_sql
 
@@ -27,7 +28,7 @@ X = T.x
 NEG_ZERO = -0.0
 
 
-def signed(v: float | None) -> object:
+def signed(v: float | None) -> Any:
     """A double with the sign of a zero: `-0.0` and `+0.0` differ."""
     if v is None or isinstance(v, bool | int):
         return v
@@ -37,19 +38,19 @@ def signed(v: float | None) -> object:
     return (v, math.copysign(1.0, v)) if v == 0 else round(v, 6)
 
 
-def on_duckdb(sql: str, rows: list[tuple[int, float]]) -> list[tuple[int, object]]:
+def on_duckdb(sql: str, rows: list[tuple[int, float]]) -> list[tuple[int, Any]]:
     db = duckdb.connect()
     db.execute("CREATE TABLE t(k BIGINT, x DOUBLE)")
     db.executemany("INSERT INTO t VALUES (?, ?)", rows)
     return sorted((k, signed(v)) for k, v in db.execute(sql).fetchall())
 
 
-def written(expr, rows) -> list[tuple[int, object]]:
+def written(expr, rows) -> list[tuple[int, Any]]:
     """The written plan's result on DuckDB."""
     return on_duckdb(to_sql(written_plan(json.dumps(to_substrait(expr))), "duckdb"), rows)
 
 
-def model(expr, rows) -> list[tuple[int, object]]:
+def model(expr, rows) -> list[tuple[int, Any]]:
     plan = inline_tables(to_substrait(expr), {"t": rows})
     return sorted((k, signed(v)) for k, v in lean_values(json.dumps(plan)))
 

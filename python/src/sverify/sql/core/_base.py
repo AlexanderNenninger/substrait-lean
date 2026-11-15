@@ -3755,10 +3755,7 @@ class _Writer:
                     raise Unsupported(
                         f"table {'.'.join(name)} needs one name per column in its baseSchema"
                     )
-                items = [
-                    f"{d.quote(col)} AS {self.c(i)}"
-                    for i, col in enumerate(columns)
-                ]
+                items = [f"{d.quote(col)} AS {self.c(i)}" for i, col in enumerate(columns)]
                 if ordered:
                     items.append(f"{d.row_ordinal()} AS {d.quote(ORD)}")
                 return self.select(items, ".".join(d.quote(p) for p in name))
