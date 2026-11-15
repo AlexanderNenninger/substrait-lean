@@ -13,8 +13,8 @@
     {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]},
     {"group": "fp.log", "option": "on_domain_error", "types": ["fp64"]},
     {"group": "fp.log", "option": "on_log_zero", "types": ["fp64"]},
-    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"},
-    {"group": "fp.log", "option": "on_domain_error", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"], "evidence": "probe"},
+    {"group": "fp.log", "option": "on_domain_error", "types": ["fp32"], "evidence": "probe"},
     {"group": "fp.log", "option": "on_log_zero", "types": ["fp32"]}
   ],
   "constructs": [
@@ -174,6 +174,18 @@
           "note": "'Polars generally follows the IEEE 754 floating point standard' (data-types-and-structures.md L178-L179); the function docstrings say nothing on domain errors."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float32-domain-edges: [(nan, nan, nan, -1.570796251296997, -0.8414709568023682), (0.0, -inf, -inf, 0.0, 0.0), (1.4142135381698608, 0.6931472420692444, 0.3010299801826477, nan, 0.9092974066734314), (inf, inf, inf, nan, nan), (nan, nan, nan, nan, nan)]"
+        }
+      ],
+      "notes": "Float32: `sqrt(-1)`, `log(-1)`, `arcsin(2)` NaN, `log(0)` -inf, `sin(inf)` NaN, no error."
     }
   ],
   "issues": [

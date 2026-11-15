@@ -18,7 +18,7 @@
     {"group": "fp.mod", "option": "division_type", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.mod", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
-    {"group": "fp.mod", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "source"}
+    {"group": "fp.mod", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "probe"}
   ],
   "constructs": [
     "%",
@@ -179,6 +179,18 @@
         }
       ],
       "notes": "From the reverse pass's check of PL-1, which this fact records."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "probe",
+      "checked_by": "session #746 (Polars evidence), sverify_dev.probe_polars observations, Polars 2.1.0, streaming engine with POLARS_MAX_THREADS=1 (the observations that depend on it set it; each equals the in-memory result, probes-streaming.json)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes.json",
+          "note": "construct float-modulus-zero-sign: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]"
+        }
+      ],
+      "notes": "Float32 and Float64: `-4 % 2`, `4 % -2` and `-0.0 % 3` are 0.0."
     }
   ]
 }
