@@ -152,3 +152,54 @@ def test_aligning_100hz_with_130hz():
     # The gyroscope samples every 7.7 ms, so every sample finds a partner.
     assert all(r["ts_right"] is not None for r in rows)
     assert max(r["ts"] - r["ts_right"] for r in rows) <= dt.timedelta(milliseconds=10)
+
+
+def _bound(rows_left: int, rows_right: int, groups: int):
+    """Two tables bound to a `sverify.connect()` connection."""
+    import pyarrow as pa
+
+    con = connect()
+    con.put(
+        "l",
+        pa.table({"device": [i % groups for i in range(rows_left)], "ts": list(range(rows_left))}),
+    )
+    con.put(
+        "r",
+        pa.table(
+            {"device": [i % groups for i in range(rows_right)], "ts": list(range(rows_right))}
+        ),
+    )
+    return con.table("l"), con.table("r")
+
+
+def test_the_pairs_the_join_compares_are_per_by_group():
+    import pyarrow as pa
+
+    from sverify.asof import pairs
+
+    left = pa.table({"d": [1, 1, 2, None], "t": [0, 1, 2, 3]})
+    right = pa.table({"d": [1, 2, 2, 3, None], "t": [0, 1, 2, 3, 4]})
+    assert pairs(left, right, []) == 4 * 5
+    assert pairs(left, right, ["d"]) == 2 * 1 + 1 * 2  # NULL and 3 never match
+
+
+def test_the_join_is_refused_above_the_cap_with_its_exits_named():
+    from sverify.errors import UnsupportedError
+
+    left, right = _bound(3000, 3000, 1)
+    with pytest.raises(UnsupportedError, match=r"9,000,000 pairs.*`by`.*`max_pairs`") as e:
+        sv.asof_join(left, right, on="ts", by="device", max_pairs=1_000_000)
+    assert "quadratic" in str(e.value)
+    # More `by` groups: fewer pairs, under the cap; and no cap at all.
+    left, right = _bound(3000, 3000, 30)
+    assert sv.asof_join(left, right, on="ts", by="device", max_pairs=1_000_000) is not None
+    left, right = _bound(3000, 3000, 1)
+    assert sv.asof_join(left, right, on="ts", by="device", max_pairs=None) is not None
+
+
+def test_the_default_cap_leaves_the_usual_joins_alone():
+    from sverify.asof import MAX_PAIRS
+
+    left, right = _bound(2000, 2000, 1)  # 4 · 10⁶ pairs
+    assert MAX_PAIRS > 2000 * 2000
+    assert sv.asof_join(left, right, on="ts", by="device") is not None
