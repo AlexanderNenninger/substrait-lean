@@ -19,6 +19,7 @@ This interpreter is trusted, as the printer is: keep it small.
 
 from __future__ import annotations
 
+import functools
 import json
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
@@ -31,18 +32,30 @@ Json = Any
 #: `error_on_division_by_zero`, which the table is for: DuckDB's default, the only one.
 SETTING = "on"
 
-_TABLE: list[Mapping[str, Json]] = []
+_EXPORT: list[Mapping[str, Json]] = []
 
 
-def table() -> Mapping[str, Json]:
-    """The templates by function (`"fdiv"`, `"fmath:sqrt"`, `"fit:silent:64"`,
-    `"bit:bitwise_shift_left"`), read from the checker once."""
-    if not _TABLE:
+def _export() -> Mapping[str, Json]:
+    """The checker's `--lowering-table`, read once."""
+    if not _EXPORT:
         out = subprocess.run(
             [str(checker_path()), "--lowering-table"], capture_output=True, text=True, check=True
         ).stdout
-        _TABLE.append({e["fn"]: e["template"] for e in json.loads(out)[SETTING]})
-    return _TABLE[0]
+        _EXPORT.append(json.loads(out))
+    return _EXPORT[0]
+
+
+@functools.cache
+def table() -> Mapping[str, Json]:
+    """The templates by function (`"fdiv"`, `"fmath:sqrt"`, `"fit:silent:64"`,
+    `"bit:bitwise_shift_left"`)."""
+    return {e["fn"]: e["template"] for e in _export()[SETTING]}
+
+
+def floor_table() -> Mapping[str, Json]:
+    """The core's `FLOOR` templates as JSON by kind (`"div"`, `"mod"`, `"fmod"`),
+    from the `"floor"` key (`LoweringExport.floorJson`)."""
+    return _export()["floor"]
 
 
 #: DuckDB's operators for the model's functions a template calls.

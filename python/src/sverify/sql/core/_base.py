@@ -7,7 +7,7 @@ import functools
 import json
 import math
 import re
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
@@ -2369,7 +2369,7 @@ class _Parser:
                         and _option(v, "division_type", "TRUNCATE") == "FLOOR"
                     ):
                         # Polars's `%` of doubles (`Expr.floorFmodOf`).
-                        return _div_by_zero(mode, True, _floor_fmod, *parsed)
+                        return _div_by_zero(mode, True, functools.partial(_floor, "fmod"), *parsed)
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                         op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
                         return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
@@ -3497,46 +3497,33 @@ def var_guard_free(engine: str) -> bool:
     return row is not None and row.get("shim") is None
 
 
-def _floor_div(a: Expr, b: Expr) -> Expr:
-    """`Expr.floorDivOf`: `a // b` with `division_type` = `FLOOR`. With the
-    signs apart `(a + 1) / b - 1` or `(a - 1) / b - 1`, so that no step
-    overflows; otherwise the truncated quotient. Trusted to mirror the Lean
-    term (`Polars.floorDivT`) and tested against floor division
-    (`test_written_floor_runs_on_duckdb`); #1202 generates it from Lean."""
-    zero, one = Lit(0, "int"), Lit(1, "int")
-    q = Bin("idiv", a, b)
+def _floor(kind: str, a: Expr, b: Expr) -> Expr:
+    """`a // b`, `a % b` (`kind` `div`, `mod`) of integers or `a % b` of
+    doubles (`fmod`) with `division_type` = `FLOOR`: Lean's template with the
+    arguments filled in."""
 
-    def apart(x: Expr) -> Expr:
-        return Bin("add", Bin("idiv", x, b), Lit(-1, "int"))
+    def go(t: Mapping[str, Any]) -> Expr:
+        if "field" in t:
+            return (a, b)[t["field"]]
+        if "int" in t:
+            return Lit(int(t["int"]), "int")
+        if "if" in t:
+            return If(go(t["if"]), go(t["then"]), go(t["else"]))
+        args = [go(x) for x in t["args"]]
+        if t["fn"] == "ffloor":
+            return Un("ffloor", args[0])
+        return Bin(t["fn"], args[0], args[1])
 
-    return If(Bin("lt", a, zero), If(Bin("lt", zero, b), apart(Bin("add", a, one)), q),
-              If(Bin("lt", b, zero), If(Bin("lt", zero, a), apart(Bin("sub", a, one)), q),
-                 q))  # fmt: skip
+    from sverify.sql import lowering
 
-
-def _floor_mod(a: Expr, b: Expr) -> Expr:
-    """`Expr.floorModOf`: `a % b` with `division_type` = `FLOOR`, the sign of
-    `b`. With the signs apart `(b - 1) - (-1 - a) % b` or
-    `(a - 1) % b + (b + 1)`; otherwise the truncated remainder. Trusted to
-    mirror `Polars.floorModT` and tested, as `_floor_div` (#1202)."""
-    zero, one = Lit(0, "int"), Lit(1, "int")
-    r = Bin("imod", a, b)
-    neg = Bin("sub", Bin("sub", b, one), Bin("imod", Bin("sub", Lit(-1, "int"), a), b))
-    pos = Bin("add", Bin("imod", Bin("sub", a, one), b), Bin("add", b, one))
-    return If(Bin("lt", a, zero), If(Bin("lt", zero, b), neg, r),
-              If(Bin("lt", b, zero), If(Bin("lt", zero, a), pos, r), r))  # fmt: skip
-
-
-def _floor_fmod(a: Expr, b: Expr) -> Expr:
-    """`Expr.floorFmodOf`: `a % b` of doubles with `division_type` = `FLOOR`,
-    `a - b * floor(a / b)`. Trusted to mirror `Polars.floorFmodT` (#1202)."""
-    return Bin("fsub", a, Bin("fmul", b, Un("ffloor", Bin("fdiv", a, b))))
+    return go(lowering.floor_table()[kind])
 
 
 def _int_div(quotient: bool, floor: bool) -> Callable[[Expr, Expr], Expr]:
     """Integer `divide` (`quotient`) or `modulus`, truncating or `FLOOR`."""
     if floor:
-        return _floor_div if quotient else _floor_mod
+        kind = "div" if quotient else "mod"
+        return lambda a, b: _floor(kind, a, b)
     op: Literal["idiv", "imod"] = "idiv" if quotient else "imod"
     return lambda a, b: Bin(op, a, b)
 
