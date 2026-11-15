@@ -143,7 +143,18 @@ def test_evidence_is_the_strongest_method():
 
 
 def test_coverage_of_the_repository():
-    found = facts.coverage(facts.load(), "duckdb")
-    assert found["integers"]["overflow"]
-    assert "items covered" in facts.report(found)
-    assert "rows settled" in facts.row_report(facts.row_coverage(facts.load(), "duckdb"))
+    """Gate #746: every engine settles every row and every checklist item."""
+    docs = facts.load()
+    for engine in facts.engines():  # a loop: a parameter named for an engine selects its backend
+        assert facts.gaps(docs, engine) == []
+        rows = facts.row_coverage(docs, engine)
+        items = facts.coverage(docs, engine)
+        n = sum(len(i) for i in items.values())
+        assert f"{len(rows)}/{len(rows)} rows settled" in facts.row_report(rows)
+        assert f"{n}/{n} items covered; gaps in: none" in facts.report(items)
+
+
+def test_strict_lists_the_gaps(tmp_path):
+    docs = {p: f for p, f in facts.load().items() if f.get("engine") != "polars"}
+    found = facts.gaps(docs, "polars")
+    assert found and all(line.startswith("polars: ") for line in found)

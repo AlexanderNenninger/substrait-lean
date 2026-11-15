@@ -648,7 +648,7 @@ jobs:
           cache-suffix: pruned
       - working-directory: python
         run: |
-          uv run --locked python -m sverify_dev.facts
+          uv run --locked python -m sverify_dev.facts --strict
           uv run --locked python -m sverify_dev.bugs
       # test_functions checks the facts Lean's tables cite; test_probe and
       # test_probe_polars the probes' `probes.json`; test_polars_shims the
