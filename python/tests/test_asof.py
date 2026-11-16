@@ -231,4 +231,6 @@ def test_unique_by_on_is_not_proved_of_the_join():
     ensures = [sv.unique("device", "ts")]
     requires = {"acc": [_.device.notnull()]}
     assert not sv.verify(j, requires=requires, ensures=ensures, on_inferred="ignore").proved
+    # With the left key in `requires` this is the line that flips when the key
+    # analysis carries a left key through the ranking (#1517).
     assert not sv.verify(j, requires=KEYS, ensures=ensures, on_inferred="ignore").proved

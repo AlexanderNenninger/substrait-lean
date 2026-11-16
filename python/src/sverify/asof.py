@@ -22,9 +22,9 @@ them, and names the exits: `by` columns, fewer rows, a larger cap.
 No theorem is about ASOF joins: the plan is proved as any plan is. What an
 ASOF join promises, stated in `ensures`, is proved for each plan by the
 theorems every contract rests on (`docs/proofs.md`): `on_right <= on` and
-`on - on_right <= tolerance` (`contract_sound`), and `unique(*by, on)` of the
-output where `requires` gives the left table that key (`Rel.keys_sound`);
-`tests/test_asof.py` proves the three. The ranking is only
+`on - on_right <= tolerance` (`contract_sound`); `tests/test_asof.py` proves
+the two. The plan computes one output row per left row, but sverify does not
+prove it, nor `unique(*by, on)` of the output, yet (#1517). The ranking is only
 determined when no two right rows tie: without a key on `(*by, on)` on the
 right side these guarantees still hold for every pick of the tied rows,
 and the report is not `deterministic`.
