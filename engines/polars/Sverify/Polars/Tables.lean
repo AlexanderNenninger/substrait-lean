@@ -64,7 +64,7 @@ def Profile.polars.table : ProfileTable where
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     -- Streaming falls back to the in-memory engine; the translation asks for
     -- `linear` (polars-quantile).
-    (none, "quantile_interp", .oneOf ["LINEAR"]),
+    (none, "quantile_interp", .oneOf ["LINEAR_DIFF"]),
     (none, "avg_int_result", .oneOf ["FP64"]),
     (none, "empty_group_aggregates", .oneOf ["ZERO"]),
     (none, "null_order", .asked ["NULLS_FIRST", "NULLS_LAST"] ["NULLS_FIRST"]),
@@ -134,7 +134,13 @@ def Profile.polars.obs : ObsTable := [
     shim := some "nan_through",
     rerun := some { floats := .within "plan" },
     note := "Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan); the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves), within the fuzzed bound of the row for every statistic (polars-var-bound)." }).tracking 918),
-  (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with engine := some "in-memory" }).tracking 900),
+  -- `lo + (hi - lo) · w`: with an infinite neighbour `hi - lo` is infinite and the
+  -- result a NaN where `lo` is `-∞` (polars-quantile), a value the reference does
+  -- not allow at `BETWEEN`; DuckDB's `lo · (1 - w) + hi · w` has none.
+  (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with
+    engine := some "in-memory"
+    cls := .refused
+    note := "`lo + (hi - lo) · w` gives NaN with a `-∞` lower neighbour, where the reference's value lies between the neighbours (`LINEAR_DIFF`, polars-quantile): refused under the reference." }).tracking 900),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
   (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with

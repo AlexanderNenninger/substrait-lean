@@ -14,7 +14,15 @@
     {"group": "agg.fsum", "option": "nan_creation", "types": ["fp32", "fp64"]},
     {"group": "agg.fsum", "option": "float_overflow", "types": ["fp32", "fp64"]},
     {"group": "agg.var", "option": "nan_creation", "types": ["fp64"], "evidence": "probe"},
-    {"group": "agg.stat", "option": "nan_creation", "types": ["fp64"], "evidence": "probe"}
+    {"group": "agg.stat", "option": "nan_creation", "types": ["fp64"], "evidence": "probe"},
+    {
+      "group": "agg.quant",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
+    }
   ],
   "constructs": [
     "sum",
@@ -34,7 +42,8 @@
     "A `sum` of finite values that overflows is `±inf` without raising: `sum` of 1e308 and 1e308 (`Float64`) and of 3e38 and 3e38 (`Float32`, summed in `Float32`) is inf, grouped and not, on both engines. `mean` of the `Float64` pair is inf; `mean` of the `Float32` pair sums in `f64` and is the finite 3.0000000054977558e+38.",
     "The docs are silent on infinities and NaN in `sum`, `mean`, `var` and `std`: a docs gap.",
     "No upstream test pins `inf + (-inf)` or `var` and `std` with an infinity; they may change between versions.",
-    "`var`, `std`, `cov` and `corr` of a group holding `+inf` or `-inf` in `x` are NaN (streaming, one thread): no operation of the plan makes the NaN, so it is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var(x)` finite and makes `cov` and `corr` NaN; a single `inf` alone gives a null sample `var` and `cov` and a NaN `corr`. Grouped, only the group holding the infinity is NaN."
+    "`var`, `std`, `cov` and `corr` of a group holding `+inf` or `-inf` in `x` are NaN (streaming, one thread): no operation of the plan makes the NaN, so it is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var(x)` finite and makes `cov` and `corr` NaN; a single `inf` alone gives a null sample `var` and `cov` and a NaN `corr`. Grouped, only the group holding the infinity is NaN.",
+    "`quantile_cont` and `median` over values holding both `-inf` and `+inf` give NaN at a fraction between the two infinite neighbours: the NaN is `nan_creation`'s (the reference raises, D37)."
   ],
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`nan_creation`). ST-3 and ST-5 record that Substrait leaves both open.",
   "status": "open",
@@ -129,6 +138,16 @@
         }
       ],
       "notes": "Streaming engine, one thread."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (±∞ aggregate cleanup, PR 2), probe scripts pq.py, pq2.py (Polars), spq3.py (Spark on homelab-run)",
+      "evidence": [
+        {
+          "note": "Polars 2.1.0 (streaming engine, POLARS_MAX_THREADS=1): `quantile(p, 'linear')` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] it is NaN at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: NaN at 0.25, 1 at 0.5, +inf at 0.75; of [-inf, -inf, 1]: -inf at 0.25 and 0.5, NaN at 0.75; of [1, +inf]: +inf. `lo + (hi − lo)·w` is NaN wherever `lo` is -inf and `hi` is greater."
+        }
+      ]
     }
   ],
   "issues": [

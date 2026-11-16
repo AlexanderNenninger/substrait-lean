@@ -306,7 +306,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate` |
 | aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate` |
 | aggregates | `agg.order` | `min`, `max`, `quantile_disc`, `median` of non-numbers | `nan_order`, `zero_sign`, `list_null_order` |
-| aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_order` |
+| aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_creation`, `nan_order` |
 | aggregates | `agg.pick` | `first`, `last`, `arg_min`, `arg_max`, `mode` | `tie_pick` |
 | aggregates | `agg.seq` | `string_agg`, `array_agg` | `tie_order` |
 | aggregates | `agg.plain` | `count`, `bit_and`, `bit_or`, `bit_xor` | none (`count`'s `overflow` is out of reach by the size hypothesis) |
@@ -701,7 +701,7 @@ is a choice that accepts every value the plan states.
 | `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `EXACT` | choose |
 | `window_sum_algo` | all others | `RECOMPUTE`, `TREE`, `RUNNING_ADD`, `SLIDING` | `RECOMPUTE` | choose |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
-| `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
+| `quantile_interp` | all others | `BETWEEN`, `LINEAR`, `LINEAR_DIFF` | `BETWEEN` | leave open |
 | `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |
 | `null_order` | all others | `NULLS_FIRST`, `NULLS_LAST` | `NULLS_FIRST`, `NULLS_LAST`; `NULLS_LAST` by default | choose |
 | `float_to_int` | all others | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | `TRUNCATE` | choose |

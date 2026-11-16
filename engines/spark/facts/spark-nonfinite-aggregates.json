@@ -57,6 +57,14 @@
         "fp64"
       ],
       "evidence": "probe"
+    },
+    {
+      "group": "agg.quant",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -77,7 +85,8 @@
   "description": [
     "`sum` and `avg` of inf and -inf are NaN; `variance` and `stddev` of a set with an infinity are NaN; `sum(1e308, 1e308)` and `avg` are +inf, while `variance(1e308, 1e308)` is 0.0. A NaN input makes `sum`, `avg`, `variance` NaN; `min` skips it (it sorts last) and `max` returns it. None of this raises under ANSI.",
     "`COVAR_*` and `CORR` follow `variance`: a NaN or ±inf input makes them NaN, under ANSI too.",
-    "`var_samp`, `var_pop`, `stddev_*`, `covar_*` and `corr` of values holding `+inf` or `-inf` in `x` are NaN, with `spark.sql.ansi.enabled` true and false: the NaN is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var_samp(x)` finite and makes `covar_*` and `corr` NaN; a single `inf` alone gives a null sample moment and `corr`. Grouped, only the group holding the infinity is NaN."
+    "`var_samp`, `var_pop`, `stddev_*`, `covar_*` and `corr` of values holding `+inf` or `-inf` in `x` are NaN, with `spark.sql.ansi.enabled` true and false: the NaN is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var_samp(x)` finite and makes `covar_*` and `corr` NaN; a single `inf` alone gives a null sample moment and `corr`. Grouped, only the group holding the infinity is NaN.",
+    "`quantile_cont` and `median` over values holding both `-inf` and `+inf` give NaN at a fraction between the two infinite neighbours: the NaN is `nan_creation`'s (the reference raises, D37)."
   ],
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`nan_creation`); a sum past the largest double raises (#575). ST-3 and ST-5 record that Substrait leaves both open. Spark needs guards.",
   "status": "open",
@@ -180,6 +189,16 @@
         }
       ],
       "notes": "One local session."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (±∞ aggregate cleanup, PR 2), probe scripts pq.py, pq2.py (Polars), spq3.py (Spark on homelab-run)",
+      "evidence": [
+        {
+          "note": "Spark 4.3.0 local[2], ANSI on: `percentile_cont(p) WITHIN GROUP (ORDER BY x)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] NaN at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: NaN at 0.25, 1 at 0.5, +inf at 0.75; of [-inf, 0, +inf, 5]: NaN, 2.5, +inf; of [1, +inf]: +inf. The same `lo + (hi − lo)·w` as Polars (Spark 4.0.1 gives -inf, not NaN, at [-inf, 1], so the interpolation changed between 4.0 and 4.3)."
+        }
+      ]
     }
   ],
   "issues": [

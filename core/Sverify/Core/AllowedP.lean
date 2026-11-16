@@ -100,9 +100,14 @@ def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
 
 /-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour: a double
-between the neighbours, which DuckDB's linear interpolation is (clamped). -/
+between the neighbours, which DuckDB's linear interpolation is (clamped).
+`LINEAR_DIFF` (`lo + (hi - lo) · w`, Polars and Spark) is that, or a NaN: the
+difference `hi - lo` of an infinite neighbour and a finite one is infinite, and
+`lo + ∞ · w` is NaN where `lo` is `-∞` (polars-quantile, spark-quantile). -/
 def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
-  if b = "BETWEEN" ∨ b = "LINEAR" then contAllowed num scale (sortVals vs) v else True
+  if b = "BETWEEN" ∨ b = "LINEAR" then contAllowed num scale (sortVals vs) v
+  else if b = "LINEAR_DIFF" then contAllowed num scale (sortVals vs) v ∨ v = .float FloatCode.nan
+  else True
 
 /-- The options `AggFn.AllowedP` interprets. -/
 def aggInterpreted : List String := ["sum_order", "stat_algo", "quantile_interp"]
