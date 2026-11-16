@@ -62,6 +62,7 @@ class Unsupported(_Unsupported):
     """
 
 
+RANGE_HINT = "state a precondition that keeps the value in range"
 MALFORMED_PLAN = (
     "the plan is malformed or outside what this writer reads; build it with sverify, or fix it"
 )
@@ -70,14 +71,15 @@ MALFORMED_PLAN = (
 class WriterUnsupported(Unsupported):
     """The SQL writer does not write a construct of the plan. The message ends
     with the `hint` where the site has one (a malformed plan: what to fix),
-    otherwise with what the user can do: rewrite the step, or run the plan on
-    another engine."""
+    otherwise with what the user can do: rewrite the step. A dialect's own
+    refusals (`Dialect.not_written`, `_support.refusal`) name the engine that
+    runs it."""
 
     def __init__(self, message: str, hint: str | None = None):
         if hint:
             message = f"{message}; {hint}"
         elif "engine=" not in message and "#" not in message:
-            message = f"{message}; rewrite this step, or run it with another engine"
+            message = f"{message}; rewrite this step"
         super().__init__(message)
 
 
@@ -1001,7 +1003,7 @@ def _timestamp_text(micros: int) -> str:
     try:
         ts = datetime(1970, 1, 1) + timedelta(microseconds=micros)
     except OverflowError as e:
-        raise WriterUnsupported(f"timestamp {micros}µs is out of range") from e
+        raise WriterUnsupported(f"timestamp {micros}µs is out of range", hint=RANGE_HINT) from e
     # `%Y` is not zero-padded on every platform (glibc writes year 1 as `1`).
     return f"{ts.year:04d}-" + ts.strftime("%m-%d %H:%M:%S.%f")
 
@@ -1010,7 +1012,7 @@ def _date_text(days: int) -> str:
     try:
         return (date(1970, 1, 1) + timedelta(days=days)).isoformat()
     except OverflowError as e:
-        raise WriterUnsupported(f"date {days} is out of range") from e
+        raise WriterUnsupported(f"date {days} is out of range", hint=RANGE_HINT) from e
 
 
 # --------------------------------------------------------------------------
@@ -1943,7 +1945,9 @@ def _cast_const(ty: dict, c: Const) -> Const:
                 )
             bits = _int_bits(ty)
             if not -(2 ** (bits - 1)) <= i < 2 ** (bits - 1):
-                raise WriterUnsupported(f"cast of {i} to a {bits}-bit integer overflows")
+                raise WriterUnsupported(
+                    f"cast of {i} to a {bits}-bit integer overflows", hint=RANGE_HINT
+                )
             return Const("int", i, kind="int")
         case "time" | "date":
             if c.tag == "str":
@@ -1987,7 +1991,7 @@ def _cast_const_decimal(t: Dec, c: Const) -> Const:
             )
         case "flt":
             if not math.isfinite(c.value):
-                raise WriterUnsupported("cannot cast NaN or infinity to a decimal")
+                raise WriterUnsupported("cannot cast NaN or infinity to a decimal", hint=RANGE_HINT)
             m = _round_half_away(Fraction(c.value * 10.0**t.s))
         case _:
             raise WriterUnsupported(
@@ -1995,7 +1999,7 @@ def _cast_const_decimal(t: Dec, c: Const) -> Const:
                 hint=MALFORMED_PLAN,
             )
     if abs(m) >= 10**t.p:
-        raise WriterUnsupported(f"cast to DECIMAL({t.p}, {t.s}) overflows")
+        raise WriterUnsupported(f"cast to DECIMAL({t.p}, {t.s}) overflows", hint=RANGE_HINT)
     return Const("dec", m, t.s, t, t.p)
 
 
@@ -3372,9 +3376,9 @@ def _values_kinds(rows: tuple, schema: tuple[Kind | None, ...]) -> tuple[Kind | 
         seen = {expr_kind(e, []) for e in nonnull} - {None}
         if len(seen) > 1:
             raise WriterUnsupported(
-                f"virtual table column {j} mixes {sorted(seen)}",
+                f"virtual table column {j} mixes {sorted(seen)}",  # type: ignore[type-var]
                 hint=MALFORMED_PLAN,
-            )  # type: ignore[type-var]
+            )
         out.append(seen.pop() if seen else k)
     return tuple(out)
 
@@ -4575,7 +4579,9 @@ class _Writer:
             case "float":
                 return d.float_lit(v)
         if not I64_MIN <= v <= I64_MAX:
-            raise WriterUnsupported(f"integer constant {v} does not fit in 64 bits")
+            raise WriterUnsupported(
+                f"integer constant {v} does not fit in 64 bits", hint=RANGE_HINT
+            )
         match k:
             case "time":
                 return d.timestamp_lit(v)
