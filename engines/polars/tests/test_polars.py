@@ -798,8 +798,10 @@ def test_variance_of_finite_values_that_polars_makes_nan_is_refused(grouped):
     returns NaN (the reference: 0.0, and no NaN from finite values). The
     ungrouped plan raises `VarianceNaN`, the engine's limit, with or without
     guards, as `SubnormalDivisor` does for a division; grouped by a constant key
-    the kernel gives the reference's 0.0 at every size. Run on one thread, as
-    the fact's probe (`POLARS_MAX_THREADS` is read when Polars is imported)."""
+    the kernel gives the reference's 0.0 at every size. At 100,000 values the
+    ungrouped kernel gives NaN on the default thread count and on one thread
+    (`POLARS_MAX_THREADS=1`, read when Polars is imported), so the test holds on both;
+    smaller sizes depend on the thread count (polars-var-bound)."""
     n = 100_000
     con = connect()
     t = pa.table({"g": pa.array([1] * n, pa.int64()), "x": pa.array([1e308] * n, pa.float64())})

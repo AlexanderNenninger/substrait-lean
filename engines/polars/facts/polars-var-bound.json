@@ -27,7 +27,7 @@
     "Polars's `var` merges two-pass blocks of up to 128 values (ungrouped) or Welford states (grouped) by Schubert and Gertz's update (polars-var-std-streaming). Its error has the shape of the leading term of `Stat.varTol`: the computed co-moment `v · d` is within `c · n · u · √(Q' S)` of the exact `S = Σx² − (Σx)²/n`, with `Q' = Σ (|x| + 2⁻¹⁰²²)²` and `u = 2⁻⁵³`.",
     "Fuzzed on the streaming engine, `var(ddof=0)` and `var(ddof=1)`, ungrouped and grouped by one constant key: 8 seeds of 300 columns each (6,033,974 values), sizes 2 to 20,000, shifts 0 to 1e12, spreads 1e-8 to 1e3. The largest `c` was 1.031 ungrouped (seed 2) and 0.588 grouped (seed 918, second run); every other seed stayed under 0.59. Both paths vary run to run with the streaming merge order (polars-var-std-streaming): seed 2 gave 1.031 and 0.756 ungrouped in two runs, seed 918 0.588 and 0.460 ungrouped, 0.429 and 0.588 grouped.",
     "This is a tested bound, not a proof: no Lean theorem covers Schubert and Gertz's merge yet. Its `(mb − m)` term cancels, so a proof needs `tInv_merge` generalised over the merge's correction term (#918).",
-    "Outside the fuzzed range the bound does not hold. `var(ddof=0)` of equal values 1e308, with `POLARS_MAX_THREADS=1` set before Polars is imported, ungrouped, bare `select`, on both `engine=\"streaming\"` and `\"in-memory\"`: NaN over 2, 3, 10 and 100,000 values. Grouped by a constant key: 0.0 at every size on both. The written plan (`var` beside the flags `bad`, `fin`, `nan`, ungrouped) returns NaN over 100,000 values with `fin` true and `nan` false; the reference gives 0.0. The engine raises there (`VarianceNaN`, `fin & r.is_nan()`), the engine's limit under D16. A different thread count or Polars build may give 0.0 at small sizes. The engine has no covariance or correlation path, so `cov` and `corr` stay description.",
+    "Outside the fuzzed range the bound does not hold. `var(ddof=0)` of equal values 1e308, ungrouped, bare `select` (the written plan, `var` beside the flags `bad`, `fin`, `nan`, gives the same): with the default thread count (10 on the probe machine, the setting users and CI run), `engine=\"streaming\"` gives 0.0 over 2, 3 and 10 values and NaN over 1,000 and 100,000; `engine=\"in-memory\"` gives NaN at every size. With `POLARS_MAX_THREADS=1`, set before Polars is imported, both engines give NaN at every size (2, 3, 10, 100,000). Grouped by a constant key: 0.0 at every size, both engines, both thread counts. The written plan over 100,000 values returns NaN with `fin` true and `nan` false; the reference gives 0.0. The engine raises there (`VarianceNaN`, `fin & r.is_nan()`), the engine's limit under D16. The engine has no covariance or correlation path, so `cov` and `corr` stay description.",
     "The fuzz covers shifts up to 1e12, and the bound is claimed inside `Stat.fits` only (at most 2^32 values, each at most 2^398 in magnitude)."
   ],
   "reference": "D30: the reference's `VAR_*` is `S / d` rounded once (`varOf`). Polars's `stat_algo` row is `approxWithin \"plan\"`, tested; `StatProps`' `varTol` (leading constant 160) is what a proof would have to meet, and the fuzz stays two orders of magnitude inside it.",
@@ -49,14 +49,14 @@
     {
       "checked_at": "2026-11-16",
       "method": "probe",
-      "checked_by": "worker for #1486 part (i); polars 2.1.0, Python 3.12, macOS arm64, POLARS_MAX_THREADS=1",
+      "checked_by": "worker for #1486 part (i), probe at POLARS_MAX_THREADS=1 and at the default thread count (10); second reviewer's rerun on the default; polars 2.1.0, Python 3.12, macOS arm64",
       "evidence": [
         {
           "file": "engines/polars/tests/test_polars.py",
           "note": "`test_variance_of_finite_values_that_polars_makes_nan_is_refused`: ungrouped over 100,000 values of 1e308 raises `VarianceNaN` with or without guards; grouped gives 0.0"
         }
       ],
-      "notes": "Bare `var` ungrouped: NaN at sizes 2, 3, 10, 100000 on streaming and in-memory; grouped by a constant key: 0.0 at all sizes."
+      "notes": "Bare `var` ungrouped: with the default threads, streaming 0.0 at n = 2, 3, 10 and NaN at 1,000 and 100,000, in-memory NaN at every n; with POLARS_MAX_THREADS=1, NaN at every n on both engines. Grouped by a constant key: 0.0 at all sizes on both engines and both thread counts."
     }
   ],
   "issues": [
