@@ -19,6 +19,7 @@ from sverify.sql.core._base import (
     Lit,
     Un,
     Unsupported,
+    WriterUnsupported,
     _Writer,
     like_pattern,
     register,
@@ -63,7 +64,7 @@ def call(name: str, args: list[Expr]) -> Expr | None:
             return Bin("substr", a, b)
         case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
             if n < 0:
-                raise Unsupported("a negative substring length always fails")
+                raise WriterUnsupported("a negative substring length always fails")
             return Bin("substr", a, b, length=n)
         case "substring", [_, _, _]:
             raise Unsupported("substring lengths must be constants")
@@ -153,7 +154,7 @@ def expr(
             if not pattern:
                 # Rust puts the replacement around every character; SQL engines
                 # return the string unchanged.
-                raise Unsupported("replace with an empty pattern differs between engines")
+                raise WriterUnsupported("replace with an empty pattern differs between engines")
             x = self.operand(a, "str", ref, cols, "replace")
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):

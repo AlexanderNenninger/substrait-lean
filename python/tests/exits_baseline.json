@@ -13,9 +13,6 @@
   "io/_secrets.py": 4,
   "plan_json.py": 6,
   "report.py": 3,
-  "sql/core/_base.py": 114,
-  "sql/core/strings.py": 2,
-  "sql/core/temporal.py": 3,
   "sql/snowflake.py": 1,
   "sql_model.py": 1,
   "substrait_export.py": 24
