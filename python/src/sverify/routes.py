@@ -521,6 +521,10 @@ def _where(group: str | None, option: str) -> str:
     return f"{group}'s {option}" if group else option
 
 
+#: Engines whose route is not there yet, with the issue that lifts the refusal.
+_PENDING = {"snowflake": 852}
+_ISSUES = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+
 _KINDS = ("abs", "rel", "ulps")
 
 
@@ -1414,4 +1418,7 @@ def choose(
             f"semantics={source!r}, whose proof does not carry over to {e})"
         )
         return refuse(f"{lead}; details: " + "; ".join(why_not), failures)
-    return refuse("; ".join(why_not), failures)
+    reason = "; ".join(why_not)
+    if not failures and e in _PENDING:
+        reason += f" (pending: #{_PENDING[e]}, {_ISSUES}/{_PENDING[e]})"
+    return refuse(reason, failures)
