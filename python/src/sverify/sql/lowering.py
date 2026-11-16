@@ -65,7 +65,14 @@ _BINARY = {
     "bit:bitwise_and": "&", "bit:bitwise_or": "|",
     "bit:bitwise_shift_left": "<<", "bit:bitwise_shift_right": ">>",
 }  # fmt: skip
-_CALLS = {"fpow": "POWER", "fatan2": "ATAN2", "bit:bitwise_xor": "xor", "ffloor": "FLOOR"}
+_CALLS = {
+    "fpow": "POWER",
+    "fatan2": "ATAN2",
+    "bit:bitwise_xor": "xor",
+    "ffloor": "FLOOR",
+    "Substrait.UnFn.fround": "ROUND",
+    "Substrait.UnFn.fceil": "CEIL",
+}
 
 
 def _hugeint(x: str) -> str:

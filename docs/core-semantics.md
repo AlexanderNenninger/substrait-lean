@@ -57,7 +57,7 @@ engines    DuckDB · Polars · Spark · Snowflake
   choices: `ONE_ZERO`, `ONE_NAN`, `NAN_IS_NAN` and NaN `GREATEST`, and
   raises on the edge cases where engines disagree. For each option it picks
   a behaviour every 1.0 engine has natively or reaches with a cheap shim in
-  the writers, such as `Dialect.canon` for `ONE_ZERO` or a stated
+  the writers, such as a stated
   `NULLS LAST` ([principle 3](reference-semantics.md#principles)). Substrait's profile
   (`Profile.substrait`) is strict IEEE: two zeros, signed NaNs, and NaN
   unequal to itself in comparisons. Each engine has a profile of its own, from its facts. The
@@ -354,7 +354,7 @@ def options : List OptionSpec := [
     core := ["ERROR", "SILENT", "SATURATE"], yaml := ["ERROR", "SILENT", "SATURATE"],
     extra := [] },
   { id := "zero_sign", substrait := none, core := ["IEEE", "ONE_ZERO"], yaml := [],
-    extra := [("IEEE", "duckdb-R14")] },
+    extra := [("IEEE", "polars-zero-sign")] },
   … ]
 ```
 
@@ -593,8 +593,9 @@ and one for the negative NaN, outside the range of the existing ones, so
 that the reference's codes keep their values and their order lemmas.
 `FloatFormat.canon` maps `-0.0` to `+0.0` and the negative NaN to the NaN,
 and `ONE_ZERO`/`ONE_NAN` apply `canon` at the identity boundaries (D31's
-correction, D36); DuckDB's written plan applies it on float reads and after
-every operation that can make a `-0.0` (`Dialect.canon`). The SQL order of the
+correction, D36); the written plan prints raw values and no canon, as
+DuckDB's own identity boundaries read the zeros as one (D31's note of
+2026-11-15, #1461). The SQL order of the
 full set (`-0.0` right below `+0.0`, the negative NaN by `nan_order`) is the
 `IEEE` behaviour of `zero_sign` and `nan_order`.
 
@@ -860,7 +861,7 @@ group. For two profiles `P` and `Q`, a group and one of its options, with
 | Case | Realization | Example |
 |---|---|---|
 | `q ⊆ p` | native: the call as it is | `overflow`, reference to DuckDB: both `ERROR` |
-| `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `zero_sign`, reference (`ONE_ZERO`) to DuckDB (`IEEE`): `Dialect.canon`; `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
+| `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
 | `q ⊄ p` only on inputs a precondition excludes | a precondition: proved, or listed in `Report.assumed` and checked on the data | the reference's error-side options to any engine: `nan_creation` (raise) to DuckDB (`NAN`) is sound on the inputs a plan proved to never raise reaches; `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
 | none of these | refused | `FLOOR` modulus anywhere today |
 

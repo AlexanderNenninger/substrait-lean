@@ -167,8 +167,8 @@ def BinFn.duckdbWritten : BinFn → Bool
   | .imod | .bit .shl => true
   | _ => false
 
-/-- `round` and `ceil`, whose IEEE `-0.0` the SQL printer makes `0.0`
-(`Dialect.canon`, `round_zero_sign`). -/
+/-- `round` and `ceil`, whose IEEE `-0.0` the SQL printer makes `0.0` through
+the proved template (`Lowering.zeroTemplate`, `round_zero_sign`). -/
 def UnFn.duckdbWritten : UnFn → Bool
   | .fround | .fceil => true
   | _ => false

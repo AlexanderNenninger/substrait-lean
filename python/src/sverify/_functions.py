@@ -66,7 +66,7 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
                    (("NAN", "duckdb-R15-math-domain"),)),
             Option("on_log_zero", "on_log_zero", ("NAN", "ERROR", "MINUS_INFINITY")),
             Option("pow_one_inf", None, ("ONE", "NAN"), (("NAN", "spark-math-domain"),)),
-            Option("zero_sign", None, ("IEEE", "ONE_ZERO"), (("IEEE", "duckdb-R14"),)),
+            Option("zero_sign", None, ("IEEE", "ONE_ZERO"), (("IEEE", "polars-zero-sign"),)),
             Option("shift_range", None, ("ERROR", "ZERO", "DROP_BITS"),
                    (("ERROR", "duckdb-R15-shift-left"), ("ZERO", "duckdb-R15-shift-right"))),
             Option("negative_start", "negative_start",
@@ -126,7 +126,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "on_domain_error"): Choice(("NAN",)),  # duckdb-R15-math-domain
                 (None, "on_log_zero"): Choice(("MINUS_INFINITY",)),
                 (None, "pow_one_inf"): Choice(("ONE",)),  # duckdb-pow-one-inf
-                (None, "zero_sign"): Choice(("IEEE",)),  # duckdb-R14
+                (None, "zero_sign"): Choice(("ONE_ZERO",)),  # duckdb-R14
                 (None, "shift_range"): Choice(("ERROR", "ZERO")),  # R15-shift-*
                 (None, "negative_start"): Choice(("WRAP_FROM_END",)),  # duckdb-R13
                 (None, "substring_range"): Choice(("ERROR",)),  # duckdb-substring-range

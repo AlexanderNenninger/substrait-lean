@@ -531,7 +531,10 @@ def resolve(name: str, kinds: Sequence[str], args: Sequence[Ty | str]) -> Resolv
         compound = f"{name}:{'_'.join(_short(d) for d in decls)}" if decls else name
         return Resolved(impl["urn"], compound, _return(impl, env), impl.get("options") or {})
     shown = ", ".join(a if isinstance(a, str) else _show(a) for a in args)
-    raise ExportError(f"no impl of {name} in Substrait's YAMLs takes ({shown})")
+    raise ExportError(
+        f"no impl of {name} in Substrait's YAMLs takes ({shown}); "
+        "cast the arguments to the types of one of its impls"
+    )
 
 
 def _show(t: Ty) -> str:

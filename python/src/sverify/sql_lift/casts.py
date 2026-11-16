@@ -45,7 +45,10 @@ def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E | None:
     if t.is_decimal():
         raise Unsupported(f"a cast of a string to {t} is not supported yet (#27)")
     if t.is_timestamp() and t.timezone is not None:
-        raise Unsupported("timestamps with a time zone are not supported")
+        raise Unsupported(
+            "timestamps with a time zone are not supported; "
+            "read the column as a timestamp without one (CAST(column AS TIMESTAMP))"
+        )
     for accepts, name, via in _FROM_VARCHAR:
         if accepts(t):
             row = f"{'try_' if try_ else ''}varchar_{name}"

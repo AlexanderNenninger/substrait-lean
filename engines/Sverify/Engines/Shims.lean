@@ -10,8 +10,8 @@ own shims are in its module (`engines/polars/Sverify/Polars/Shims.lean`,
 `engines/spark/Sverify/Spark/Shims.lean`, DuckDB's lowering); its rows cite these
 where its shim is one of them.
 
-* `one_zero`: `-0.0` as `0.0` (Polars's `one_zero`, `Dialect.canon` on DuckDB
-  and Spark).
+* `one_zero`: `-0.0` as `0.0` (Polars's `one_zero`; the DuckDB and Spark
+  writers print raw values, D31).
 * `null_order`: each key's NULL placement written (`nullsLast`, `sortWith`).
 * `sum_empty_null`: an exact integer `SUM`, NULL for no values (Polars's
   `sum_empty_null`, Spark's `int_sum_decimal`).
@@ -31,8 +31,8 @@ open FloatCode
 
 /-- `one_zero`: `-0.0` as `0.0`, on the full set of codes
 (`FloatFormat.negZero`, #444 step 1b). An engine that compares IEEE doubles,
-where `-0.0 = 0.0`, writes it as `x + 0.0` (`Dialect.canon`) or as Polars's
-`one_zero` (polars-zero-sign, spark-zero-sign, duckdb-R14). -/
+where `-0.0 = 0.0`, writes it as Polars's `one_zero` (polars-zero-sign); the
+DuckDB and Spark writers print no canon (D31, #1461). -/
 def oneZero (c : Int) : Int := if c = 0 ∨ c = FloatCode.negZero then 0 else c
 
 omit [Boxes.Ambient] in

@@ -587,7 +587,7 @@ def test_zeros_and_nans_partition_together():
     sql = "SELECT v, t, ROW_NUMBER() OVER (PARTITION BY v ORDER BY t) AS n FROM f"
     duck = check_three_ways(sql, {"f": f})
     assert sorted((t, n) for _, t, n in duck) == [(1, 1), (2, 2), (3, 3), (4, 1), (5, 2)]
-    assert sorted(repr(v) for v, _, _ in duck) == ["0.0"] * 3 + ["nan"] * 2
+    assert sorted(repr(v + 0.0) for v, _, _ in duck) == ["0.0"] * 3 + ["nan"] * 2
 
 
 def test_fetch_takes_lean_rows_after_a_union_and_join():

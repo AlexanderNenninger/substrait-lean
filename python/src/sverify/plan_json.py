@@ -103,7 +103,9 @@ def _type_json(dtype: Any) -> Json:
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
             "source query, and compare it with the lower-case hyphenated form"
         )
-    raise Unsupported(f"type {dtype} is not supported")
+    raise Unsupported(
+        f"type {dtype} is not supported; cast the column to a supported type in the source query"
+    )
 
 
 def struct_names(schema: Any) -> list[str]:
@@ -128,8 +130,8 @@ def literal(value: Any, dtype: Any) -> Json:
         name = next(iter(key))
         return {"literal": {name: str(value) if name == "i64" else int(value)}}
     if dtype.is_float64():
-        x = float(value) + 0.0  # the model's one zero (and one NaN, below)
-        text: Any = "NaN" if math.isnan(x) else x
+        x = float(value)  # raw (D31): -0.0 as the text "-0.0", a NaN as one below
+        text: Any = "NaN" if math.isnan(x) else "-0.0" if str(x) == "-0.0" else x
         if math.isinf(x):
             text = "Infinity" if x > 0 else "-Infinity"
         return {"literal": {"fp64": text}}

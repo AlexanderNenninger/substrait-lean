@@ -317,14 +317,16 @@ every sink.
 [characterization](https://alexandernenninger.github.io/substrait-lean/ledgers/duckdb-facts.html). A route to Polars then takes the proof
 across only where Polars's choices are within DuckDB's on every option the
 plan reads (the checker's transfer check, `Rel.transfer_of_transferB`), and
-names the options and facts where they are not:
+names the options and facts where they are not. A comparison reads `zero_sign`,
+where DuckDB gives one zero and Polars IEEE's two, so a filter on a double is
+proved again under Polars's profile:
 
 ```python
 t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the plan reads
+# exact; recheck: proved again under semantics="polars"
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -335,13 +337,13 @@ try:
     divided.run(con, "polars", route="transfer")
 except RouteError as e:
     print(e)
-# refused on polars: the transfer check fails on int.arith's overflow: duckdb gives ERROR, polars gives SILENT ...
+# refused on polars: the transfer check fails on cmp's zero_sign: duckdb gives ONE_ZERO, polars gives IEEE ...
 divided.run(con, "polars", route="auto")
 print(divided.routes["polars"])
 # exact; recheck: proved again under semantics="polars"
 ```
 
-The transfer check fails on the division's options, so `route="auto"` goes on to the
+The transfer check fails on the comparison's zero and the division's options, so `route="auto"` goes on to the
 re-check: the checker proves the plan again under `semantics="polars"`, and
 Polars runs it with the shim of example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with

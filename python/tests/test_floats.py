@@ -138,23 +138,28 @@ def test_incremental_view_with_integer_constants(engine):
     assert view.rows() == view.recompute()
 
 
+def one_zero(rows: list[tuple]) -> str:
+    """The rows' text with `-0.0` as `0.0`: values are raw (D31), so an engine
+    may give either zero."""
+    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in rows])
+
+
 @pytest.mark.parametrize("engine", ENGINES)
 def test_signed_zeros_are_one_row(engine):
-    """The model has one zero: -0.0 is stored as 0.0, and deleting -0.0
-    deletes it."""
+    """-0.0 equals 0.0, and deleting -0.0 deletes it."""
     con = sv.connect()
     t = dt.datetime(2024, 1, 1)
     con.create("s1", s1.schema(), [(t, -0.0), (t, 1.0)])
     table = con.table("s1")
     view = IncrementalView(con, table.filter(table.value >= 0), "v", engine)
-    assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 0.0), (t, 1.0)])
+    assert one_zero(view.rows()) == one_zero(view.recompute()) == one_zero([(t, 0.0), (t, 1.0)])
     view.apply({"s1": Changes(inserts=[(t, 2.0)], deletes=[(t, -0.0)])})
-    assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 1.0), (t, 2.0)])
+    assert one_zero(view.rows()) == one_zero(view.recompute()) == one_zero([(t, 1.0), (t, 2.0)])
 
 
 @pytest.mark.parametrize("engine", ENGINES)
 def test_computed_zeros_and_nans_are_canonical(engine):
-    """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `NaN * -1.0` is the one NaN,
+    """`-x` of 0.0 is `-0.0`, which equals 0.0, so `-x >= 0` keeps it; `NaN * -1.0` is the one NaN,
     sorted last, though x86 computes a negative NaN."""
     con = sv.connect()
     sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf, math.nan])}))
@@ -165,7 +170,7 @@ def test_computed_zeros_and_nans_are_canonical(engine):
 
     got = run("SELECT -x AS y FROM f WHERE -x >= 0")
     # NaN sorts above every number, so `-NaN >= 0` keeps it.
-    assert repr(got) == repr([(0.0,), (math.nan,)])
+    assert one_zero(got) == one_zero([(0.0,), (math.nan,)])
     sql = "SELECT x, ROW_NUMBER() OVER (ORDER BY d ASC NULLS LAST, x) AS n "
     got = run(sql + "FROM (SELECT x, x * -1.0 AS d FROM f)")
     assert repr(sorted(got, key=lambda r: r[1])) == repr(
