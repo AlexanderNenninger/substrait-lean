@@ -140,10 +140,10 @@ def Profile.spark.obs : ObsTable := [
     rerun := some { floats := .within "plan" },
     note := "Welford's update with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); a NaN among the values gives NaN, one NaN included (spark-var-pop-one-nan), so the written plan carries no NaN guard; an infinity raises first (#257)." }).proved
     "FloatBounds.StdModel.core_var_chan"),
-  -- `lo + (hi - lo) · w`, as Polars's: NaN with a `-∞` lower neighbour (spark-quantile).
+  -- `lo + (hi - lo) · w`, as Polars's: NaN with a `-∞` lower neighbour, `+∞` where `hi - lo` overflows (spark-quantile).
   (none, "quantile_interp", ({ ObsRow.native ["spark-quantile"] with
     cls := .refused
-    note := "`lo + (hi - lo) · w` gives NaN with a `-∞` lower neighbour, where the reference's value lies between the neighbours (`LINEAR_DIFF`, spark-quantile): refused under the reference." }).tracking 900),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference." }).tracking 900),
   (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
   -- where its type keeps the scale, and a type past 38 digits at a scale

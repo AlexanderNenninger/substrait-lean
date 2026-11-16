@@ -95,7 +95,7 @@ def Profile.polars.obs : ObsTable := [
   (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
   (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
   (none, "rounding", (ObsRow.native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]).tracking 271),
-  (none, "nan_creation", (ObsRow.native ["polars-double-arith"]).proved "Rel.polars_sound"),
+  (none, "nan_creation", (ObsRow.native ["polars-double-arith", "polars-nonfinite-aggregates"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
     with shim := some "one_zero" }).proved "Shim.one_zero"),
@@ -135,12 +135,13 @@ def Profile.polars.obs : ObsTable := [
     rerun := some { floats := .within "plan" },
     note := "Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan); the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves), within the fuzzed bound of the row for every statistic (polars-var-bound)." }).tracking 918),
   -- `lo + (hi - lo) · w`: with an infinite neighbour `hi - lo` is infinite and the
-  -- result a NaN where `lo` is `-∞` (polars-quantile), a value the reference does
-  -- not allow at `BETWEEN`; DuckDB's `lo · (1 - w) + hi · w` has none.
+  -- result a NaN where `lo` is `-∞` and `+∞` where `hi - lo` overflows
+  -- (polars-quantile), values the reference does not allow at `BETWEEN`;
+  -- DuckDB's `lo · (1 - w) + hi · w` has neither.
   (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with
     engine := some "in-memory"
     cls := .refused
-    note := "`lo + (hi - lo) · w` gives NaN with a `-∞` lower neighbour, where the reference's value lies between the neighbours (`LINEAR_DIFF`, polars-quantile): refused under the reference." }).tracking 900),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference." }).tracking 900),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
   (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
