@@ -178,7 +178,9 @@ inductive UnFn where
   and a value of more than `p` digits is an overflow (`Safety.lean`). -/
   | decimal (p s : Nat)
   /-- `DECIMAL(p, s)` without the check, where the value cannot have more
-  digits: an average has no more than the values it averages (#27). -/
+  digits: an average has no more than the values it averages (#27). The parser
+  builds it only where that bound follows from the input's precision
+  (`Parse.decimalAvgs`, `decimalCall`); the theorems that read it assume it. -/
   | dkind (p s : Nat)
   /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
   rounding half away from zero (`roundDiv10`). -/

@@ -280,3 +280,97 @@ def test_report_shows_decimals_at_their_scale():
     assert sv.verify(t.select(b=t.a + t.a)).facts["b"] == (
         "a decimal(11, 2) in [-199999999.98, 199999999.98] or NULL"
     )
+
+
+# -- #1497, #1498: a decimal never reaches a width DuckDB cannot hold ----------------
+
+
+def _run_duckdb(rows: dict, expr, requires=None, **kw):
+    """`verify` of the expression on the table `t`, run on DuckDB (no `unverified`)."""
+    c = sv.connect()
+    c.put("t", pa.table(rows))
+    t = c.table("t")
+    report = sv.verify(expr(t), requires=requires or {}, **kw)
+    return report, report.run(c, "duckdb")
+
+
+BIG = D(10**37 - 1)
+
+
+@pytest.mark.parametrize(
+    ("make", "expected"),
+    [
+        (lambda t: t.select(c=t.a > t.b), [True]),
+        (lambda t: t.select(c=t.a == t.b), [False]),
+        (lambda t: t.select(c=t.a < t.b), [False]),
+        (lambda t: t.select(c=t.b < t.a), [True]),
+        (lambda t: t.filter(t.a > t.b).select("a").select(c=_.a == _.a), [True]),
+    ],
+)
+def test_comparing_decimals_of_other_scales_does_not_overflow_duckdb(make, expected):
+    """DuckDB's own comparison casts both sides to one `DECIMAL(38, s)` and raises on
+    a value that does not fit (#1498); the writer compares the integers instead."""
+    rows = {
+        "a": pa.array([BIG], pa.decimal128(38, 0)),
+        "b": pa.array([D("1.5")], pa.decimal128(38, 10)),
+    }
+    report, out = _run_duckdb(rows, make)
+    assert report.proved, str(report)
+    assert out.column(0).to_pylist() == expected
+
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_decimal_comparison_across_scales_at_the_boundary(sign):
+    """The scale gap's floor and remainder: equal, just below and above, both signs."""
+    pairs = [("5", "5.00"), ("5", "5.01"), ("5", "4.99"), ("-5", "-5.00"), ("-5", "-4.99")]
+    rows = {
+        "a": pa.array([D(a) * sign for a, _ in pairs], pa.decimal128(10, 0)),
+        "b": pa.array([D(b) * sign for _, b in pairs], pa.decimal128(10, 2)),
+    }
+    c = sv.connect()
+    c.put("t", pa.table(rows))
+    t = c.table("t")
+    got = sv.verify(t.select(lt=t.a < t.b, eq=t.a == t.b, gt=t.a > t.b)).run(c, "duckdb")
+    want = [
+        (D(a) * sign < D(b) * sign, D(a) * sign == D(b) * sign, D(a) * sign > D(b) * sign)
+        for a, b in pairs
+    ]
+    assert [tuple(r.values()) for r in got.to_pylist()] == want
+
+
+@pytest.mark.parametrize("p", [35, 36, 38])
+def test_the_average_of_a_wide_decimal_is_refused(p):
+    """A decimal `AVG` is a `DECIMAL(p + 4, s + 4)`, which 38 digits hold up to p = 34;
+    beyond it the model had no overflow check (#1497), so the parser refuses."""
+    c = sv.connect()
+    c.put("t", pa.table({"g": [1, 1], "v": pa.array([D(1), D(2)], pa.decimal128(p, 0))}))
+    t = c.table("t")
+    with pytest.raises(Exception, match="more than 34 digits"):
+        sv.verify(t.group_by("g").aggregate(m=t.v.mean()))
+
+
+def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
+    """Large values of the widest `AVG` input: the quotient is computed without a
+    product past 38 digits (#1497)."""
+    top = D(10**34 - 1)
+    rows = {"g": [1, 1], "v": pa.array([top, top - 2], pa.decimal128(34, 0))}
+    c = sv.connect()
+    c.put("t", pa.table(rows))
+    t = c.table("t")
+    report = sv.verify(
+        t.group_by("g").aggregate(m=t.v.mean()),
+        requires={"t": [_.v.between(-(10**33), 10**33)]},
+    )
+    out = report.run(c, "duckdb")
+    assert out.column("m").to_pylist() == [top - 1]
+
+
+def test_report_output_is_the_type_the_run_writes():
+    """`Report.output` of a decimal `AVG` is the run's `DECIMAL(p + 4, s + 4)`."""
+    c = sv.connect()
+    c.put("t", pa.table({"g": [1], "v": pa.array([D("1.5")], pa.decimal128(20, 18))}))
+    t = c.table("t")
+    report = sv.verify(t.group_by("g").aggregate(m=t.v.mean()))
+    got = report.run(c, "duckdb").schema.field("m").type
+    out = report.output["m"]
+    assert (out.precision, out.scale) == (got.precision, got.scale) == (24, 22)

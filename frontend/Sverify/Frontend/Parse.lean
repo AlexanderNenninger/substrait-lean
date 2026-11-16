@@ -1547,9 +1547,14 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
   -- sverify's own: `a / b`, a decimal by an integer, at the declared scale,
   -- rounded half away from zero; how a decimal `AVG` over a window is written
   -- (`Write.lean`).
-  | "sverify_decimal_div", [a, b], [(_, s₁), (_, 0)] => match typeKind outTy with
+  | "sverify_decimal_div", [a, b], [(p₁, s₁), (_, 0)] => match typeKind outTy with
     | .dec p s =>
-      if s₁ ≤ s then return some (.un (.dkind p s) (.bin .ddiv (upscale (s - s₁) a) b))
+      -- `dkind` has no check: the declared `p` must hold the dividend's digits
+      -- at the new scale (dividing by an integer adds none).
+      if s₁ ≤ s then
+        if p < p₁ + (s - s₁) then
+          throw "sverify_decimal_div: the declared precision cannot hold the quotient"
+        return some (.un (.dkind p s) (.bin .ddiv (upscale (s - s₁) a) b))
       else throw "sverify_decimal_div to a smaller scale is not supported"
     | _ => throw "sverify_decimal_div needs a DECIMAL output type"
   | "negate", [a], [(p, s)] | "subtract", [a], [(p, s)] =>
@@ -2163,8 +2168,12 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let decAvg : Option (Nat × Nat × Bool) := match name, k with
     | "avg", .dec p s => some (p, s, dblOut)
     | _, _ => none
-  if let some (_, s, _) := decAvg then
+  if let some (p, s, dbl) := decAvg then
     if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
+    -- The quotient is a `DECIMAL(p + 4, s + 4)` (`decimalAvgs`), held by 38
+    -- digits only up to `p = 34`: `dkind` there has no check to lean on (#1497).
+    if !dbl && 34 < p then
+      throw "avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) result does not fit 38 digits"
   -- `AVG` of integers follows the plan's declared output type (#209): a
   -- double (the mean of their conversions), or an integer (`AggFn.iavg`).
   let intOut := name == "avg" && k == .int && (field? m "outputType").any (typeKind · == .int)
