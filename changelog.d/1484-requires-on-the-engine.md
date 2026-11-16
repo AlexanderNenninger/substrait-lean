@@ -1,0 +1,3 @@
+### `requires` are checked on the run's own engine
+
+`Report.run` checks a report's preconditions on the engine it runs on, as one checker-written plan per table that counts every condition, where it ran an Ibis count per condition on the table's backend. A result that is not TRUE is a violation, a condition plan that raises is a violation (`PreconditionError`, "raised on"), and a condition the engine's writer refuses refuses the run, with no fallback to Ibis. A DuckDB run by the reference's translation no longer runs the plan once beforehand for its assumed `SUM`s and operations on finite doubles: the translation checks them as it runs ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), S3 and S4).
