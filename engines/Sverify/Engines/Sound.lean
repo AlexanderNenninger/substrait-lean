@@ -183,8 +183,11 @@ The plan adds 1 to a column of two rows. On unbounded data the sum can leave
 column to `[0, 100]`, which is what rules it out. The example runs with no
 black boxes. -/
 
+/-- No black boxes. -/
+@[instance_reducible] def Engine.exampleBoxes : Boxes.Ambient := Boxes.Ambient.none
+
 section Example
-local instance : Boxes.Ambient := Boxes.Ambient.none
+attribute [local instance] Engine.exampleBoxes
 
 def Engine.exampleCat : Catalog := fun
   | "t" => ⟨1, [[.int 1], [.int 2]]⟩

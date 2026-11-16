@@ -273,7 +273,7 @@ end Substrait
 
 namespace Substrait
 section Example
-local instance : Boxes.Ambient := Boxes.Ambient.none
+attribute [local instance] Engine.exampleBoxes
 
 /-- `Engine.spark_sound` applies to the example of `Sound.lean`: Spark computes
 `Rel.eval`'s rows for it, which the reference allows. -/
