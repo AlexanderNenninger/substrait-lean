@@ -39,3 +39,16 @@ def test_baseline_is_lowered_with_the_count():
         f"refusals without an exit: {sum(now.values())} now, {sum(base.values())} in the "
         "baseline; lower it with `python -m sverify_dev.exits --write-baseline`"
     )
+
+
+def test_sql_unsupported_always_carries_an_action():
+    """The classifier counts `SqlUnsupported` as naming an exit: its message
+    does carry one, with or without a hint or an issue."""
+    from sverify.plan_json import SqlUnsupported
+
+    for err in (
+        SqlUnsupported("a construct is not supported"),
+        SqlUnsupported("a construct is not supported", issue=350),
+        SqlUnsupported("a construct is not supported", hint="write it as x"),
+    ):
+        assert exits.EXIT.search(str(err)), str(err)
