@@ -35,7 +35,7 @@ core       every value, every behaviour of every option
 profiles   reference · Substrait · DuckDB · Polars · Spark · Snowflake
    │       an engine runs its profile; Engine.Refines, Engine.Sound per plan
    ▼
-engines    DuckDB · Polars · Spark · Snowflake · DataFusion (optional)
+engines    DuckDB · Polars · Spark · Snowflake
 ```
 
 - The core computes on the full value space. A double is an IEEE 754
@@ -73,9 +73,8 @@ engines    DuckDB · Polars · Spark · Snowflake · DataFusion (optional)
   (`sum_order`, `stat_algo`), its result is within the plan's tolerance of
   one the reference allows (`Relation.Near`,
   [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929)).
-  DataFusion is an optional engine, and no test takes it as a reference or
+  DuckDB is the default oracle, and no test takes another engine as a reference or
   an oracle ([#1139](https://github.com/AlexanderNenninger/substrait-lean/pull/1139)).
-  DuckDB is the default oracle.
 
 ## Principles the code follows
 
@@ -140,7 +139,7 @@ Three kinds of semantics, each with one job.
   choices are few and deliberate: the reference prefers raising, proved
   absent for a proved plan, or a choice every engine gives natively.
 - Engine profiles say what each engine does, from
-  `characterization/<engine>/facts/`, and refine the core. They are
+  `engines/<engine>/facts/`, and refine the core. They are
   siblings: no engine profile refines another, or the reference. A plan
   proved under the reference reaches an engine through a translation,
   shimmed only on the reference's value choices
@@ -362,7 +361,7 @@ def options : List OptionSpec := [
 Checks by `decide` (`core/Sverify/Core/Options.lean`) reject a repeated id or
 behaviour, and a `yaml` value or `extra` behaviour outside `core`; the rest of
 `core` is sverify's own (`ONE_ZERO`, `DROP_BITS`). `tests/test_functions.py`
-checks that every fact id names a file of `characterization/*/facts/`.
+checks that every fact id names a file of `engines/*/facts/`.
 
 ### The functions table
 
@@ -541,7 +540,7 @@ renamed them `exact`, `observed` and `observed`:
    Lean proves `ε` for a double `SUM` and `AVG` under every summation order
    the engines use, and its propagation through `+`, `−`, `×` and `/`;
    elementary functions stay tested
-   ([float-bounds.md](float-bounds.md#the-engines-orders-and-epsilon-444)).
+   ([float-bounds.md](float-bounds.md#the-engines-orders-and-epsilon)).
 4. Each of the three after a shim: a written flag, a rewrite or a guard,
    mostly for the reference's value choices.
 5. Refused.
@@ -561,7 +560,7 @@ runs.
 - The characterization checklist, [characterization/areas.json](../characterization/areas.json):
   the areas and items a characterization covers, each item an option of
   the catalogue or a point the options do not reach.
-- The facts, `characterization/<engine>/facts/`, each naming the items it
+- The facts, `engines/<engine>/facts/`, each naming the items it
   settles in its `options` field; `python -m sverify_dev.facts --coverage
   <engine>` lists, per item, the facts that settle it or `missing`.
 - The upstream ledger, [upstream/README.md](../upstream/README.md): spec gaps
@@ -864,7 +863,7 @@ group. For two profiles `P` and `Q`, a group and one of its options, with
 | `q ⊆ p` | native: the call as it is | `overflow`, reference to DuckDB: both `ERROR` |
 | `q ⊄ p`, and a shim in `Q` gives a subset of `p` | a shim, with its cost | `overflow: SILENT` to DuckDB: wrap in `HUGEINT` |
 | `q ⊄ p` only on inputs a precondition excludes | a precondition: proved, or listed in `Report.assumed` and checked on the data | the reference's error-side options to any engine: `nan_creation` (raise) to DuckDB (`NAN`) is sound on the inputs a plan proved to never raise reaches; `zero_sign` and `nan_kind`, Substrait (`IEEE`) to the reference: sound on inputs without `-0.0` or a negative NaN |
-| none of these | refused | `ntile_spread` on DataFusion ([DF-11](../upstream/bugs/DF-11.json)); `FLOOR` modulus anywhere today |
+| none of these | refused | `FLOOR` modulus anywhere today |
 
 From the reference to an engine, the third case covers every error-side
 option ([What strictness buys](#what-strictness-buys)): the reference raises

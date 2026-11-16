@@ -167,7 +167,11 @@ ssh homelab 'bash -s -- <branch>' < python/scripts/homelab_qa.sh
 
 The `homelab-qa` driver sends main's copy of this script, and `homelab-run`
 runs any other long job there (regens, bisects, profiles) in a capped
-`/tmp/substrait-lean-run-*` directory.
+`/tmp/substrait-lean-run-*` directory. An attached run ends with its ssh
+connection, so start anything longer than a few minutes with
+`homelab-run --detach` and follow it with `homelab-run --attach ID`, which
+can be repeated after a drop. A session that wants to be woken when the run
+ends starts the attach as a background task.
 
 The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
@@ -234,7 +238,7 @@ every session should hold before it touches `SubstraitLean/`.
   every engine gives natively or with a cheap shim. It belongs to no engine.
 - Each engine has a profile of its own (`Profile.duckdb`, Polars, Spark,
   Snowflake), stating what that engine computes, from
-  `characterization/<engine>/facts/`. Engine profiles are siblings: none
+  `engines/<engine>/facts/`. Engine profiles are siblings: none
   refines another, and none refines the reference. A plan verified under
   the reference reaches an engine through a translation (the lowering),
   shimmed only on the reference's value choices, and the engine's profile
@@ -332,13 +336,14 @@ conflicts with other PRs:
 - `upstream/REPORT.md`, the upstream bugs to report and the count of each
   class, from `sverify_dev.bugs --write`.
 
-Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
-DuckDB lowering, for DuckDB's default settings only) and
-`SubstraitLean/LiftDuckDB/Duckdb` and `Reference` (the lift from DuckDB SQL),
-entries with their proofs, are committed, and a build only checks them. When a
-build fails there, or a golden test of theirs changes, regenerate them with
-`poe regen-lowering` or `poe regen-lift` and commit the result. Both cap Lean at
-6 GB (`-M 6144`).
+Generated Lean modules are different: `engines/duckdb/Sverify/DuckDB/LoweringOn`
+(the DuckDB lowering, for DuckDB's default settings only) and
+`engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference` (the lift from
+DuckDB SQL), entries with their proofs, are committed, and a build only checks
+them. When a build fails there, or a golden test of theirs changes, regenerate
+them with `poe regen-lowering` or `poe regen-lift` and commit the result. Both
+cap Lean at 8 GB (`-M 8192`; the lowering's search peaks near 7.4 GB), so run
+them on homelab (`homelab-run --detach`).
 
 Their proofs are checked only when the lakefile's `check_generated` option is
 on (`engines/Sverify/Engines/Generated.lean`). It is off by default, so a local
