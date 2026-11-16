@@ -17,6 +17,7 @@ from sverify.ibis_substrait._base import Exprs, register, register_refusals
 from sverify.plan_json import (
     EPOCH,
     Json,
+    ProducerUnsupported,
     Unsupported,
     between,
     call,
@@ -83,10 +84,10 @@ def _interval(x: Exprs, op: Any) -> Json:
     if isinstance(op, ops.IntervalFromInteger):
         months, micros = interval_parts(1, dt.Interval(unit=op.unit))
         if months:
-            raise Unsupported("a column's count of months or years is not supported")
+            raise ProducerUnsupported("a column's count of months or years is not supported")
         return call("multiply", [x(op.arg, dt.int64), interval_json(0, micros)])
     if isinstance(op, ops.IntervalBinary):
-        raise Unsupported(f"{type(op).__name__} of non-constant intervals is not supported")
+        raise ProducerUnsupported(f"{type(op).__name__} of non-constant intervals is not supported")
     return x(op)
 
 
@@ -105,7 +106,7 @@ def _temporal_add(name: str) -> Callable[[Exprs, Any], Json]:
             left, right = op.left, op.right
         iv = _interval(x, right)
         if op.left.dtype.is_timestamp() and "scalarFunction" in iv:
-            raise Unsupported("a timestamp plus a column's interval is not supported")
+            raise ProducerUnsupported("a timestamp plus a column's interval is not supported")
         return call(name, [x(left), iv])
 
     return rule
@@ -188,7 +189,7 @@ def _sub_second(divisor: int) -> Callable[[Exprs, Any], Json]:
 def _date_truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit not in ("day", "week", "month", "quarter", "year"):
-        raise Unsupported(f"truncating a date to a {unit} is not supported")
+        raise ProducerUnsupported(f"truncating a date to a {unit} is not supported")
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 
@@ -221,7 +222,7 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
         try:
             value = build(*values)
         except (ValueError, OverflowError) as e:
-            raise Unsupported(f"{what} of {values}: {e}") from e
+            raise ProducerUnsupported(f"{what} of {values}: {e}") from e
         return literal(value, dtype)
 
     return rule
@@ -233,7 +234,7 @@ _UNIX_MICROS = {"s": 1_000_000, "ms": 1_000, "us": 1}
 def _from_unix(x: Exprs, op: Any) -> Json:
     k = _UNIX_MICROS.get(op.unit.short)
     if k is None:
-        raise Unsupported(f"timestamps from {op.unit.plural} are not supported")
+        raise ProducerUnsupported(f"timestamps from {op.unit.plural} are not supported")
     us = x(op.arg, dt.int64)
     if k != 1:
         us = call("multiply", [us, literal(k, dt.int64)])
@@ -268,7 +269,7 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
         if c is None:
             raise Unsupported("a time of day plus an interval needs a constant interval")
         if c[0]:
-            raise Unsupported("a time of day plus months or years is not supported")
+            raise ProducerUnsupported("a time of day plus months or years is not supported")
         return call(name, [x(op.left), interval_json(0, c[1])])
 
     return rule
@@ -277,7 +278,7 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
 def _time_truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit not in ("hour", "minute", "second", "millisecond", "microsecond"):
-        raise Unsupported(f"truncating a time of day to a {unit} is not supported")
+        raise ProducerUnsupported(f"truncating a time of day to a {unit} is not supported")
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 
