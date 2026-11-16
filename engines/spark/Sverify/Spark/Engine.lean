@@ -35,7 +35,10 @@ variable [Boxes.Ambient]
 /-- **Spark's functions are within its table**: each value `sparkBin` and
 `sparkUn` change is in the scope of an option Spark's table allows another
 behaviour: a created NaN (`nan_creation`), a domain error's NaN or NULL, or
-an out-of-range shift's masked count (`on_domain_error`). -/
+an out-of-range shift's masked count (`on_domain_error`). `date_add`'s wrap
+at 2³¹ days (SP-2) is in the scope of `date_range`, which the table leaves
+uncharacterized (`Profile.spark.table` has no row for it, so it allows
+`COMPUTE`). -/
 theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := by
   refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
   · simp only [Profile.spark] at h

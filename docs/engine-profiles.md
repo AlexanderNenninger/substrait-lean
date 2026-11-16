@@ -427,8 +427,10 @@ What is proved
   ANSI, as the writer writes it (`Profile.sparkWritten`), gives `Rel.eval`'s
   rows for a plan whose only issues are assumed ones, as `Rel.polars_sound`
   does for Polars. Its own values on the error side (NaN, a `date_add`
-  wrapped past 2³¹ days, SP-2) are where the reference raises; each is a row
-  of `Profile.spark`.
+  wrapped past 2³¹ days, SP-2) are where the reference raises. The NaN
+  values are rows of `Profile.spark.table`; the wrap is `sparkBin`'s
+  `date_add` arm, within the table through the uncharacterized `date_range`
+  option.
 - `Spark.decimal_negate_sub`: Spark's `-x` and `abs` round a decimal past 34
   significant digits ([SP-1](../upstream/bugs/SP-1.json)); the writer
   negates as `0 - x` there, exact where its type keeps the scale (up to 37
