@@ -741,6 +741,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "row tested: agg.quant's nan_creation (#241)",
           "row tested: agg.quant's nan_order (#241)",
           "row tested: agg.quant's quantile_interp (#900)"
         ],
