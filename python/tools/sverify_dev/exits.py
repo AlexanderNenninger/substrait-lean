@@ -42,12 +42,12 @@ _OWN_EXIT = {"SqlUnsupported", "WriterUnsupported", "ProducerUnsupported", "refu
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"
     "cast|wrap|drop|remove|pin|enable|try|switch|upgrade|read|select|take|order|name|put|"
-    "build|compare|re-run|compute|check"
+    "build|compare|re-run|compute|check|rebuild"
 )
 EXIT = re.compile(
     r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|to_sql\(|"
     rf"(?:; |, or )({_VERBS})\b|"
-    rf"\b({_VERBS})\b[^.]{{0,60}}"
+    rf"(?<![-\w])({_VERBS})\b[^.]{{0,60}}"
     r"(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis|another engine|fix it)",
     re.I,
 )

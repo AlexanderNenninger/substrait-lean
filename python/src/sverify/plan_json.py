@@ -64,16 +64,13 @@ class ProducerUnsupported(Unsupported):
     """The Ibis producer (or the plan writer) does not read a construct (yet).
     The message ends with the `hint` where the site has one, otherwise with
     what the user can do: rewrite the expression with a supported operation
-    or a supported column type, and the `issue` that tracks it where an open
-    one does."""
+    or a supported column type."""
 
-    def __init__(self, message: str, hint: str | None = None, issue: int | None = None):
+    def __init__(self, message: str, hint: str | None = None):
         if hint:
             message = f"{message}; {hint}"
         elif "#" not in message:
-            where = f" ({_ISSUES}/{issue})" if issue else ""
-            tracked = f"tracked in #{issue}{where}; until then, " if issue else ""
-            message = f"{message}; {tracked}rewrite it with a supported operation or column type"
+            message = f"{message}; rewrite it with a supported operation or column type"
         super().__init__(message)
 
 

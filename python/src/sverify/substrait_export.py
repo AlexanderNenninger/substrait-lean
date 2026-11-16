@@ -92,6 +92,10 @@ _TO_SQL = "report.to_sql(dialect) writes the proved plan for an engine instead"
 _MALFORMED = (
     "the plan is malformed or outside what to_substrait reads; export a plan sverify produced"
 )
+_INTERNAL = (
+    "this is an internal error in to_substrait's tables: report it at "
+    "https://github.com/AlexanderNenninger/substrait-lean/issues"
+)
 _REBUILD = "rebuild substrait-check from the same commit as sverify"
 
 
@@ -196,7 +200,7 @@ class Ty:
         if key is None:
             raise ExportError(
                 f"to_substrait cannot write the type {self.name}",
-                hint=_MALFORMED,
+                hint=_INTERNAL,
             )
         body: Json = {"nullability": "NULLABILITY_NULLABLE"}
         p = self.params
@@ -253,7 +257,7 @@ def _tokens(s: str) -> list[str]:
         if not m:
             raise ExportError(
                 f"cannot read the YAML expression {s!r}",
-                hint=_MALFORMED,
+                hint=_INTERNAL,
             )
         out.append(m.group(1))
         i = m.end()
@@ -278,7 +282,7 @@ class _Expr:
         if cur is None or (tok is not None and cur != tok):
             raise ExportError(
                 f"cannot read the YAML expression {' '.join(self.t)!r}",
-                hint=_MALFORMED,
+                hint=_INTERNAL,
             )
         self.i += 1
         return cur
@@ -471,7 +475,7 @@ def _return(impl: Json, env: Mapping[str, Any]) -> Ty:
     if not isinstance(out, Ty):
         raise ExportError(
             f"the return type {impl['return']!r} is not a type",
-            hint=_MALFORMED,
+            hint=_INTERNAL,
         )
     return _close(out, scope)
 
@@ -482,7 +486,7 @@ def _close(t: Ty, env: Mapping[str, Any]) -> Ty:
         if not isinstance(bound, Ty):
             raise ExportError(
                 f"the return type {t.name} is not bound",
-                hint=_MALFORMED,
+                hint=_INTERNAL,
             )
         return bound
     params = []
@@ -1561,7 +1565,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     posts = report._postconditions or []
     if len(posts) != len(report.ensures):
         raise ExportError(
-            "this report keeps no postconditions to export (re-run sv.verify)",
+            "this report keeps no postconditions to export",
             hint="re-run sv.verify",
         )
     from sverify.conditions import TableCondition
