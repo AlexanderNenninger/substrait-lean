@@ -10,7 +10,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
-from sverify.plan_json import Unsupported, cast_json, literal, type_json
+from sverify.plan_json import SqlUnsupported, Unsupported, cast_json, literal, type_json
 from sverify.sql_lift._base import (
     DIALECT,
     Column,
@@ -45,7 +45,10 @@ def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E | None:
     if t.is_decimal():
         raise Unsupported(f"a cast of a string to {t} is not supported yet (#27)")
     if t.is_timestamp() and t.timezone is not None:
-        raise Unsupported("timestamps with a time zone are not supported")
+        raise Unsupported(
+            "timestamps with a time zone are not supported; "
+            "read the column as a timestamp without one (CAST(column AS TIMESTAMP))"
+        )
     for accepts, name, via in _FROM_VARCHAR:
         if accepts(t):
             row = f"{'try_' if try_ else ''}varchar_{name}"
@@ -69,24 +72,28 @@ def _in_filtered_aggregate(node: sge.Expression) -> bool:
 def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     try_ = isinstance(node, sge.TryCast) or bool(node.args.get("safe"))
     if node.args.get("format"):
-        raise Unsupported("CAST … FORMAT is not supported")
+        raise SqlUnsupported("CAST … FORMAT is not supported")
     try:
         t: Any = DuckDBType.to_ibis(node.to).copy(nullable=True)
     except Exception as e:  # noqa: BLE001 - Ibis raises a variety
-        raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported") from e
+        raise SqlUnsupported(f"CAST to {node.to.sql(DIALECT)} is not supported") from e
     if node.to.this == sge.DataType.Type.NULL:
-        raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported")
+        raise SqlUnsupported(f"CAST to {node.to.sql(DIALECT)} is not supported")
     if node.to.is_type(*sge.DataType.TEMPORAL_TYPES) and [
         p.sql(DIALECT) for p in node.to.expressions
     ] not in ([], ["4"], ["5"], ["6"]):
         # DuckDB reads `TIMESTAMP(p)` as seconds for p = 0, milliseconds for
         # 1 to 3 and nanoseconds for 7 to 9; the model's timestamps are
         # microseconds, DuckDB's for 4 to 6 (#626, #323).
-        raise Unsupported(f"CAST to {node.to.sql(DIALECT)}: a precision is not supported")
+        raise SqlUnsupported(f"CAST to {node.to.sql(DIALECT)}: a precision is not supported")
     if node.to.this in (sge.DataType.Type.INT128, sge.DataType.Type.UINT128):
-        raise Unsupported(f"CAST to {node.to.sql(DIALECT)} (HUGEINT) is not supported")
+        raise SqlUnsupported(
+            f"CAST to {node.to.sql(DIALECT)} (HUGEINT) is not supported", issue=350
+        )
     if t.is_array() and getattr(t, "length", None) is not None:
-        raise Unsupported(f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported")
+        raise SqlUnsupported(
+            f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported"
+        )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
     from_string = a.type.is_string() and not t.is_string() and (try_ or not a.constant)
@@ -106,19 +113,22 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         try:
             v = Decimal(text)
         except ArithmeticError as e:
-            raise Unsupported(f"CAST of {text!r} to {t} is not supported") from e
+            raise SqlUnsupported(f"CAST of {text!r} to {t} is not supported") from e
         # Python reads digit separators and exponents DuckDB raises on
         # (`'_12.12'`, `'1e-9999999999'`; `'1e-9999'` DuckDB reads).
         exponent = v.as_tuple().exponent
         if "_" in text or (isinstance(exponent, int) and abs(exponent) > 10**6):
-            raise Unsupported(f"CAST of {text!r} to {t} is not supported")
+            raise SqlUnsupported(f"CAST of {text!r} to {t} is not supported")
         if v.is_finite():
             # DuckDB rounds the digits past the scale half away from zero.
             with localcontext() as ctx:
                 ctx.prec = 100
                 v = v.quantize(Decimal(1).scaleb(-t.scale), rounding=ROUND_HALF_UP)
         if not (v.is_finite() and _fits(v, t)):
-            raise Unsupported(f"CAST of {text!r} to {t}: DuckDB raises, the value does not fit")
+            raise SqlUnsupported(
+                f"CAST of {text!r} to {t}: DuckDB raises, the value does not fit",
+                hint="write a value that fits the type, or a wider type",
+            )
         return E(literal(v, t), t, v)
     if not a.constant:
         for src, to, sql in (
@@ -137,7 +147,9 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
                 "or round() first"
             )
     if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
-        raise Unsupported(f"CAST of a {a.type} to {t} rounds, which is not supported yet")
+        raise SqlUnsupported(
+            f"CAST of a {a.type} to {t} rounds, which is not supported yet", issue=322
+        )
     # A numeric constant becomes a literal of the type, where that is exact
     # (not a double or decimal made an integer, nor one that doesn't fit).
     exact = not (t.is_integer() and not a.type.is_integer())

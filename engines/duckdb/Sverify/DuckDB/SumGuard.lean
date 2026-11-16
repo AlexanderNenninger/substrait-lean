@@ -256,9 +256,9 @@ theorem SumGuard.noNan (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Valu
   rcases hm with rfl | rfl | rfl
   · rw [SumGuard.inputs_meas_guard f vs hvn]
     rcases hf with rfl | rfl <;>
-      simp [SumGuard.meas, AggFn.makesNan, SumGuard.below, canon_posInf]
-  · simp [SumGuard.meas, AggFn.makesNan]
-  · simp [SumGuard.meas, AggFn.makesNan]
+      simp [SumGuard.meas, AggFn.makesNan, AggFn.nanCase, SumGuard.below, canon_posInf]
+  · simp [SumGuard.meas, AggFn.makesNan, AggFn.nanCase]
+  · simp [SumGuard.meas, AggFn.makesNan, AggFn.nanCase]
 
 theorem SumGuard.noNan_all (f : AggFn) (hf : f = .fsum ∨ f = .avg) (vs : List Value)
     (hv : ∀ v ∈ vs, DuckType.double.Has v) :

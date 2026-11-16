@@ -9,6 +9,7 @@ import sqlglot.expressions as sge
 
 from sverify.plan_json import (
     Json,
+    SqlUnsupported,
     Unsupported,
     anchor,
     emit_rel,
@@ -71,7 +72,7 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     cells = [[lf.expr(c, [], Bound()) for c in r] for r in rows]
     for c in (c for r in cells for c in r):
         if not c.constant:
-            raise Unsupported(f"{_shown(node)}: VALUES of computed values is not supported yet")
+            raise SqlUnsupported(f"{_shown(node)}: VALUES of computed values is not supported yet")
     width = len(rows[0])
     types = []
     for i in range(width):
@@ -85,7 +86,9 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     alias = node.args.get("alias")
     given = [c.name for c in alias.columns] if alias is not None else []
     if len(given) > width:
-        raise Unsupported(f"{_shown(node)} names {len(given)} columns of {width}")
+        raise Unsupported(
+            f"{_shown(node)} names {len(given)} columns of {width}; name at most {width}"
+        )
     names = [_normalized(n) for n in given] + [f"col{i}" for i in range(len(given), width)]
     out = [[literal(lf.to(c, t).value, t) for c, t in zip(r, types, strict=True)] for r in cells]
     schema = ibis.schema(dict(zip(names, types, strict=True)))
@@ -123,9 +126,9 @@ def _unpivot(tree: sge.Expr) -> sge.Expr:
         p = pivots[0]
         values, fields = p.expressions, p.args.get("fields") or []
         if len(values) != 1 or len(fields) != 1 or not isinstance(fields[0], sge.In):
-            raise Unsupported("UNPIVOT of several value columns is not supported yet")
+            raise SqlUnsupported("UNPIVOT of several value columns is not supported yet")
         if any(p.args.get(k) for k in ("group", "columns", "default_on_null")):
-            raise Unsupported(f"{_shown(p)} is not supported yet")
+            raise SqlUnsupported(f"{_shown(p)} is not supported yet")
         value, name = values[0].name, fields[0].this.name
         cols: list[tuple[sge.Expression, str]] = []
         for c in fields[0].expressions:
@@ -210,7 +213,7 @@ def _unnest_columns(tree: sge.Expr) -> sge.Expr:
             )
         (size,) = sizes
         if size == 0:
-            raise Unsupported("UNNEST of an empty list is not supported")
+            raise SqlUnsupported("UNNEST of an empty list is not supported")
         branches = []
         for i in range(size):
             b = n.copy()

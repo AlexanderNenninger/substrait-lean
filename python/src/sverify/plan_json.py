@@ -35,9 +35,29 @@ NULLABLE = {"nullability": "NULLABILITY_NULLABLE"}
 REQUIRED = {"nullability": "NULLABILITY_REQUIRED"}
 
 
+_ISSUES = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+
+
 class Unsupported(_Unsupported):
     """The expression uses something the Lean model does not cover
     (`sverify.errors.UnsupportedError`)."""
+
+
+class SqlUnsupported(Unsupported):
+    """The SQL lift does not read a construct (yet). The message ends with what
+    the user can do: the `hint` (a rewrite the lift supports) where the site
+    has one; otherwise write the step in Ibis, which `sv.sql` replaces
+    one-to-one in a transform, and the `issue` that tracks the construct
+    where an open one does."""
+
+    def __init__(self, message: str, hint: str | None = None, issue: int | None = None):
+        if hint:
+            message = f"{message}; {hint}"
+        elif "#" not in message and "Ibis" not in message:
+            where = f" ({_ISSUES}/{issue})" if issue else ""
+            tracked = f"tracked in #{issue}{where}; until then, " if issue else ""
+            message = f"{message}; {tracked}write this step in Ibis"
+        super().__init__(message)
 
 
 # --------------------------------------------------------------------------
@@ -103,7 +123,9 @@ def _type_json(dtype: Any) -> Json:
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
             "source query, and compare it with the lower-case hyphenated form"
         )
-    raise Unsupported(f"type {dtype} is not supported")
+    raise Unsupported(
+        f"type {dtype} is not supported; cast the column to a supported type in the source query"
+    )
 
 
 def struct_names(schema: Any) -> list[str]:

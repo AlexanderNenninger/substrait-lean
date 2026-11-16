@@ -188,7 +188,7 @@ Spark's own SQL gives the reference result.
 | `floor`, `ceil` (`fp64`) | | a double | `BIGINT`; ±inf raises, NaN is 0 ([SP-5](../../../upstream/bugs/SP-5.json)) | round |
 | `fp32` arithmetic | | refused (#417) | native single precision; aggregates and math functions widen | [fp32](spark-fp32.json) |
 | `sum`, `avg` (`fp64`) | `sum_order` | any order, within #85's bound | in arrival order per partition, merged by task | [sum-double](spark-sum-double.json), [avg-double](spark-avg-double.json) |
-| `sum`, `avg`, `variance` over ±inf, NaN | `nan_creation`, `stat_degenerate` | raise | NaN, `±inf` | [nonfinite-aggregates](spark-nonfinite-aggregates.json) |
+| `sum`, `avg`, `variance` over ±inf, NaN | `nan_creation` | raise | NaN, `±inf` | [nonfinite-aggregates](spark-nonfinite-aggregates.json) |
 | `variance`, `std_dev`, `covar_*`, `corr` | `stat_algo`, `stat_degenerate` | generic properties; NULL for degenerate cases | Welford, Chan merge; NULL for one value or pair (NaN under a legacy setting) | [var-stddev](spark-var-stddev.json), [covar](spark-covar.json), [corr](spark-corr.json) |
 | `quantile_cont`, `median` | `quantile_interp` | any double between neighbours | linear at (n - 1)·p | [quantile](spark-quantile.json) |
 | `quantile_disc` | | a value of the input's type | the value, as a `DOUBLE` | quantile |

@@ -89,7 +89,7 @@ means Polars's own expression gives the reference result.
 | `floor`, `ceil`, `exp`, `atan` | | | native | round, math-domain |
 | doubles | `zero_sign` | `ONE_ZERO` | two zeros in arithmetic; a `±0.0` literal gives -0.0 for `-0.0 + 0.0`, per morsel on streaming | [zero-sign-streaming](polars-zero-sign-streaming.json) |
 | doubles | `nan_kind` | `ONE_NAN` | the sign survives | [nan-sign](polars-nan-sign.json) |
-| `sum`, `avg`, `variance`, `std_dev` over ±inf | `nan_creation`, `stat_degenerate` | raise | NaN | [nonfinite-aggregates](polars-nonfinite-aggregates.json) |
+| `sum`, `avg`, `variance`, `std_dev` over ±inf | `nan_creation` | raise | NaN | [nonfinite-aggregates](polars-nonfinite-aggregates.json) |
 | `sum`, `avg` (`fp64`) | `sum_order` | any order, within #85's bound | streaming: pairwise per morsel, in turn when grouped, varying between runs; in memory: pairwise, Kahan when grouped | [sum-float-streaming](polars-sum-float-streaming.json), [mean-float-streaming](polars-mean-float-streaming.json) |
 | `variance`, `std_dev`, `covar_*`, `corr` | `stat_algo`, `stat_degenerate` | generic properties; NULL for `corr` of one pair | two-pass blocks or Welford by path; NaN for degenerate `corr`; `Decimal` raises on streaming ([PL-5](../../../upstream/bugs/PL-5.json)) | [var-std-streaming](polars-var-std-streaming.json), [cov](polars-cov.json), [corr](polars-corr.json) |
 | `quantile_disc`, `quantile_cont`, `median` | `quantile_interp` | a value of the input; any double between neighbours | `nearest` by default; `linear` for `median` | [quantile](polars-quantile.json) |
