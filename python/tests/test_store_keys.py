@@ -69,7 +69,7 @@ WHEN = datetime(2024, 1, 1)
 def test_a_double_key_view_matches_recompute(engine, state, insert, delete) -> None:
     """The six rows of #1511: grouped counts and `DISTINCT`, refreshed after a batch."""
     for query in (
-        T.group_by("k").aggregate(n=T.k.count() + T.ts.count()),
+        T.group_by("k").aggregate(n=T.count()),
         T.select("k").distinct(),
     ):
         con = sv.connect()

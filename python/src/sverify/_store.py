@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from sverify._scan import Native
 from sverify._weighted import _indices
@@ -77,6 +78,15 @@ class Store[S](ABC):
         `with_keys` leaves out."""
 
 
+def _one_zero_one_nan(a: pa.Array) -> pa.Array:
+    """A key column's identity: `-0.0` as `0.0` and every NaN as one (D31)."""
+    if not pa.types.is_floating(a.type):
+        return a
+    one_nan = pa.scalar(float("nan"), a.type)
+    zero_fixed = pc.add(a, pa.scalar(0.0, a.type))  # -0.0 + 0.0 is 0.0; NULL stays
+    return pc.if_else(pc.is_nan(a), one_nan, zero_fixed)
+
+
 def by_keys(
     state: pa.Table, columns: Sequence[str], keys: pa.Table, *, keep: bool = True
 ) -> pa.Table:
@@ -86,15 +96,17 @@ def by_keys(
     if not keys.num_rows or not state.num_rows:
         return state.slice(0, 0) if keep else state
     # Each key column as dictionary indices over both tables, NULL its own
-    # value, so a hash join matches NULLs.
+    # value, so a hash join matches NULLs. A key is an identity boundary (D31):
+    # one zero and one NaN, on copies, the stored values stay raw. Encoded
+    # after the chunks are combined, since pyarrow cannot unify per-chunk
+    # dictionaries that hold NULL.
     left, right = {}, {}
     n = state.num_rows
     for i, c in enumerate(columns):
-        both = pa.chunked_array(
-            [*state.column(c).chunks, *keys.column(i).cast(state.schema.field(c).type).chunks],
-            type=state.schema.field(c).type,
-        )
-        codes = both.dictionary_encode(null_encoding="encode").combine_chunks().indices
+        t = state.schema.field(c).type
+        both = pa.chunked_array([*state.column(c).chunks, *keys.column(i).cast(t).chunks], type=t)
+        both = _one_zero_one_nan(both.combine_chunks())
+        codes = both.dictionary_encode(null_encoding="encode").indices
         left[f"__k{i}"], right[f"__k{i}"] = codes[:n], codes[n:]
     marked = state.append_column("__row", _indices(n))
     for k, v in left.items():
