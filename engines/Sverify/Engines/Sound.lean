@@ -184,7 +184,7 @@ column to `[0, 100]`, which is what rules it out. The example runs with no
 black boxes. -/
 
 /-- No black boxes. -/
-@[instance_reducible] def Engine.exampleBoxes : Boxes.Ambient := Boxes.Ambient.none
+abbrev Engine.exampleBoxes : Boxes.Ambient := Boxes.Ambient.none
 
 section Example
 attribute [local instance] Engine.exampleBoxes
