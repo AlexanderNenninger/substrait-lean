@@ -233,7 +233,10 @@ def allows_rows(
     cell one of its values. `same` compares two values (doubles to some
     precision, for one). The matching is `Relation.Near`'s (`Lipschitz.lean`):
     rows that tie on the exact columns pair up whatever order their doubles
-    sort in."""
+    sort in.
+
+    The oracle is tested, not proved: `Rel.evalChoices` has no theorem yet
+    (`docs/trusted-base.md`)."""
 
     def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:
         pos = 0

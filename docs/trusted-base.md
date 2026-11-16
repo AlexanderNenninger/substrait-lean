@@ -44,7 +44,7 @@ the project's one axiom (the trusted table below).
 | `Rel.duckdb_refines` | The generated DuckDB lowering computes the reference | `Obligations.lean` | propext, Classical.choice, Quot.sound |
 | `Lowering.duckdb_exact` | Each generated lowering entry is exact | `DuckDB/LoweringOn.lean` | propext, Classical.choice, Quot.sound |
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `DuckDB/Lift/Duckdb.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings). The model differs from the reference in its scalar functions; its relational behaviour is the model's, the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings). The model differs from the reference only in its scalar functions: its relational behaviour is the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
@@ -98,6 +98,8 @@ place, and what retires it.
 | toolchain | Lean `v4.35.0` | `lean-toolchain` | The kernel and the compiler | |
 
 ## The trusted parts in detail
+
+- The `evalChoices` oracle. `Rel.evalChoices` (`lean_choices`) and the Python matching of rows to its choices (`allows_rows`) check engine results against the rows the reference allows. `Rel.evalChoices` has no theorem yet, so the oracle is tested, not proved.
 
 - The size hypothesis. Every string has fewer than 2³² characters
   (`Text.sizeCap`, as DuckDB's strings hold fewer than 2³² bytes), every relation a window reads
