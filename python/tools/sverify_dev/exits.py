@@ -46,6 +46,7 @@ _VERBS = (
 )
 EXIT = re.compile(
     r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|to_sql\(|"
+    rf"(?:; |, or )({_VERBS})\b|"
     rf"\b({_VERBS})\b[^.]{{0,60}}"
     r"(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis|another engine|fix it)",
     re.I,
