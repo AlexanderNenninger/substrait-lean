@@ -92,3 +92,11 @@ def test_anchor_zero() -> None:
     """Protobuf JSON leaves out anchor 0."""
     with pytest.raises(Unsupported, match="sha256"):
         _support.check(plan("sha256", anchor=0), "Polars", Unsupported)
+
+
+def test_a_refusal_with_no_installed_engine_names_an_exit(monkeypatch):
+    """#1495: no engine runs the function (none installed): no IndexError."""
+    monkeypatch.setattr(_support, "_runs", lambda *_: False)
+    text = _support.refusal("regexp_extract", "duckdb")
+    assert "no installed engine runs it" in text
+    assert "install an engine" in text
