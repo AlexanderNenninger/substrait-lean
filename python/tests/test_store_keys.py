@@ -86,3 +86,40 @@ def test_a_double_key_view_matches_recompute(engine, state, insert, delete) -> N
             return sorted(repr(tuple(map(cell, r))) for r in rows)
 
         assert one_zero(view.rows()) == one_zero(view.recompute())
+
+
+# -- one helper for key equality (#1519) -------------------------------------------
+
+
+def test_every_pyarrow_key_site_canonicalises_through_the_one_helper() -> None:
+    """pyarrow groups and encodes doubles by their bits, so a module that matches keys
+    with it (`dictionary_encode`, or `group_by` on an Arrow table) reads them through
+    `sverify._keys`. A new such site fails here until it does."""
+    import re
+    from pathlib import Path
+
+    import sverify
+
+    root = Path(sverify.__file__).parent
+    pattern = r"\.dictionary_encode\(|\benc\.group_by\(|\.group_by\(\[\*names"
+    sites = {p.name for p in root.glob("*.py") if re.search(pattern, p.read_text())}
+    unguarded = sorted(
+        n for n in sites if n != "_keys.py" and "sverify._keys" not in (root / n).read_text()
+    )
+    assert not unguarded, f"key sites that do not use sverify._keys: {unguarded}"
+    assert {"_store.py", "partition.py", "_exact_sum.py"} <= sites
+
+
+@pytest.mark.parametrize("pair", [(0.0, -0.0), (NAN, -NAN)])
+def test_split_keys_and_unique_sets_of_both_zeros_or_both_nans_are_refused(pair) -> None:
+    """#1519: `check_keys` and `check_unique` compared doubles by bits, weaker than
+    Lean's `keyDisj` and `KeyOn`, which read `keyOf`'s canonical keys."""
+    from sverify.partition import check_keys, check_unique
+
+    a, b = pair
+    shards = [{"t": pa.table({"k": [a], "v": [1]})}, {"t": pa.table({"k": [b], "v": [2]})}]
+    with pytest.raises(Exception, match="split key"):
+        check_keys(shards, {"t": ["k"]})
+    pieces = {"t": [pa.table({"k": [a], "v": [1]}), pa.table({"k": [b], "v": [2]})]}
+    with pytest.raises(Exception, match="has two rows"):
+        check_unique(pieces, {"t": [["k"]]})

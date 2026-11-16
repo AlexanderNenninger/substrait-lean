@@ -13,8 +13,8 @@ from collections.abc import Sequence
 from typing import Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
 
+from sverify._keys import canonical_key
 from sverify._scan import Native
 from sverify._weighted import _indices
 
@@ -78,15 +78,6 @@ class Store[S](ABC):
         `with_keys` leaves out."""
 
 
-def _one_zero_one_nan(a: pa.Array) -> pa.Array:
-    """A key column's identity: `-0.0` as `0.0` and every NaN as one (D31)."""
-    if not pa.types.is_floating(a.type):
-        return a
-    one_nan = pa.scalar(float("nan"), a.type)
-    zero_fixed = pc.call_function("add", [a, pa.scalar(0.0, a.type)])  # -0.0 + 0.0 is 0.0
-    return pc.call_function("if_else", [pc.call_function("is_nan", [a]), one_nan, zero_fixed])
-
-
 def by_keys(
     state: pa.Table, columns: Sequence[str], keys: pa.Table, *, keep: bool = True
 ) -> pa.Table:
@@ -105,7 +96,7 @@ def by_keys(
     for i, c in enumerate(columns):
         t = state.schema.field(c).type
         both = pa.chunked_array([*state.column(c).chunks, *keys.column(i).cast(t).chunks], type=t)
-        both = _one_zero_one_nan(both.combine_chunks())
+        both = canonical_key(both.combine_chunks())
         codes = both.dictionary_encode(null_encoding="encode").indices
         left[f"__k{i}"], right[f"__k{i}"] = codes[:n], codes[n:]
     marked = state.append_column("__row", _indices(n))

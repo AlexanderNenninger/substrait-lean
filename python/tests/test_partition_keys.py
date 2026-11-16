@@ -15,7 +15,10 @@ from sverify.partition import check_keys, check_unique
 
 
 def _key_value(v):
-    return ("f", struct.pack("<d", v)) if isinstance(v, float) else v
+    """A key as Lean's `keyOf` has it: a double canonical (`canonV`), then by its bits."""
+    if isinstance(v, float):
+        return ("f", struct.pack("<d", math.nan if v != v else v + 0.0))
+    return v
 
 
 def old_check_keys(shards, keys):
@@ -103,15 +106,17 @@ def test_a_key_split_over_two_shards_names_the_first_row():
         check_keys(shards, {"t": ["a", "b"]})
 
 
-def test_signed_zeros_and_nans_are_compared_by_bits():
+def test_signed_zeros_and_nans_are_one_key_as_keyof_has_them():
+    """Lean's `keyOf` maps a double through `canonV`: one zero and one NaN (D31, #1519)."""
     nan = float("nan")
     t = _table([(None, 0.0, "a"), (None, nan, "a")])
     u = _table([(None, -0.0, "a"), (None, nan, "a")])
     with pytest.raises(ValueError, match="is on shards 0 and 1"):
         check_keys([{"t": t}, {"t": u}], {"t": ["a", "b"]})
-    check_keys(
-        [{"t": _table([(None, 0.0, "a")])}, {"t": _table([(None, -0.0, "a")])}], {"t": ["b"]}
-    )
+    for a, b in ((0.0, -0.0), (nan, -nan)):
+        with pytest.raises(ValueError, match="is on shards 0 and 1"):
+            shards = [{"t": _table([(None, a, "a")])}, {"t": _table([(None, b, "a")])}]
+            check_keys(shards, {"t": ["b"]})
 
 
 def test_a_repeated_key_across_pieces_is_named():
