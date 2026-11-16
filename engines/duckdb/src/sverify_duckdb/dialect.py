@@ -144,8 +144,13 @@ class DuckDBDialect(Dialect):
         )
 
     def float_extreme(self, fn: str, v: str, over: str) -> str:
-        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371).
-        return f"{fn}({v}) {over}" if over else f"{fn}({v})"
+        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371). Of equal
+        # zeros it keeps the one it read last (duckdb-minmax-zero-sign): the
+        # class's canonical value stands for it.
+        return self.zero_rep(f"{fn}({v}) {over}" if over else f"{fn}({v})")
+
+    def zero_rep(self, x: str) -> str:
+        return f"({x} + {self.float_lit(0.0)})"
 
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         # DuckDB's own `first`/`last` of the non-NULL values: the group's

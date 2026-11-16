@@ -149,13 +149,38 @@ def test_the_zeros_are_one_key_at_the_identity_boundaries() -> None:
     assert written(member, rows) == model(member, rows) == [(0, True), (1, True), (2, True)]
 
 
-def test_min_and_max_keep_the_stored_zero() -> None:
-    """D31 leaves a `MIN` or `MAX` of equal zeros open; the written plan
-    prints DuckDB's own, as the model does for `-0.0` alone."""
-    rows = [(0, NEG_ZERO), (1, NEG_ZERO)]
-    for fn in ("min", "max"):
-        expr = T.aggregate(v=getattr(X, fn)()).mutate(k=ibis.literal(0)).select("k", "v")
-        assert written(expr, rows) == model(expr, rows)
+@pytest.mark.parametrize("order", [[0, 1, 2], [2, 1, 0], [1, 2, 0]])
+def test_the_representative_of_a_zero_class_is_canonical_whatever_the_row_order(order) -> None:
+    """D31 leaves the zero of a `MIN`, `MAX`, group key or `DISTINCT` row open
+    (a member of the class, or its canonical value): DuckDB's pick depends on
+    row order, so the writer prints the class's canonical `+0.0` and a rerun
+    gives the same sign (`Dialect.zero_rep`)."""
+    base = [(0, NEG_ZERO), (1, 0.0), (2, NEG_ZERO)]
+    rows = [base[i] for i in order]
+    for agg in (X.min(), X.max()):
+        expr = T.aggregate(v=agg).mutate(k=ibis.literal(0)).select("k", "v")
+        assert written(expr, rows) == [(0, (0.0, 1.0))]
+        assert model(expr, rows)[0][1][0] == 0.0  # either member of the class
+    keys = T.group_by("x").aggregate(n=T.k.count()).select(k=_.n, v=_.x)
+    assert written(keys, rows) == [(3, (0.0, 1.0))]
+    distinct = T.select(T.k * 0, v=X).distinct()
+    assert written(distinct, rows) == [(0, (0.0, 1.0))]
+
+
+@pytest.mark.parametrize("pair", [(NEG_ZERO, 0.0), (0.0, NEG_ZERO)])
+def test_least_and_greatest_of_both_zeros_are_the_models_up_to_a_zero(pair) -> None:
+    """`least` and `greatest` keep the first of equal zeros on DuckDB; the model
+    reads a zero as open here (D31)."""
+    rows = [(0, pair[0])]
+    other = ibis.literal(pair[1])
+    for expr in (
+        T.select(T.k, v=ibis.least(X, other)),
+        T.select(T.k, v=ibis.greatest(X, other)),
+    ):
+        (k, got), = written(expr, rows)
+        assert got[0] == 0.0
+        (k2, want), = model(expr, rows)
+        assert want[0] == 0.0
 
 
 def test_sum_and_average_of_negative_zeros_are_positive_in_the_model_and_on_duckdb() -> None:

@@ -354,6 +354,14 @@ class Dialect:
         """IEEE negation; NaN stays NaN, and `-0.0` is the reference's too (D31)."""
         return f"(- {a})"
 
+    def zero_rep(self, x: str) -> str:
+        """`x`, a double the engine picks from a class of equal zeros (a MIN,
+        MAX or group key), as the class's canonical value where the engine's
+        pick depends on row order (D31: `Picks` and `IsReps` allow it, and a
+        rerun then gives the same sign). Identity where the engine's pick is
+        already canonical or fixed."""
+        return x
+
     def int_to_float(self, a: str) -> str:
         return self.cast(a, "float")
 
@@ -3729,8 +3737,16 @@ class _Writer:
         finally:
             self.d = d
 
-    def passthrough(self, alias: str, n: int, ordered: bool) -> list[str]:
-        items = [f"{self.ref(alias, self.c(i))} AS {self.c(i)}" for i in range(n)]
+    def passthrough(
+        self, alias: str, n: int, ordered: bool, keys: Sequence[Kind | None] | None = None
+    ) -> list[str]:
+        """The input's columns; `keys`: their kinds, when they are key outputs
+        (a double is the class's representative, `Dialect.zero_rep`)."""
+        d = self.d
+        items = [
+            f"{d.zero_rep(x) if keys and keys[i] == 'float' else x} AS {self.c(i)}"
+            for i, x in enumerate(self.ref(alias, self.c(i)) for i in range(n))
+        ]
         if ordered:
             items.append(f"{self.ordinal(alias)} AS {self.d.quote(ORD)}")
         return items
@@ -4028,7 +4044,10 @@ class _Writer:
             level = self.select(items, d.subquery(level, b))
             b = self.alias()
             keys = [col(c) for c in g_cols]
-        out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
+        out = [
+            f"{d.zero_rep(col(c)) if g_kinds[i] == 'float' else col(c)} AS {self.c(i)}"
+            for i, c in enumerate(g_cols)
+        ]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
             if ms.fn in ("first", "last", "string_agg", "collect", "mode"):
@@ -4181,7 +4200,7 @@ class _Writer:
         if not ordered:
             # Any row of a group stands for it: they are all the same value.
             return self.select(
-                self.passthrough(a, n, False),
+                self.passthrough(a, n, False, ks),
                 d.subquery(self.rel(i, False), a),
                 "GROUP BY " + ", ".join(keys),
             )
@@ -4190,7 +4209,7 @@ class _Writer:
         items = self.passthrough(a, n, True) + [f"{d.row_number(over)} AS {first}"]
         b = self.alias()
         return self.select(
-            self.passthrough(b, n, True),
+            self.passthrough(b, n, True, ks),
             d.subquery(self.select(items, d.subquery(self.rel(i, True), a)), b),
             f"WHERE {self.ref(b, first)} = {d.int_lit(1)}",
         )
