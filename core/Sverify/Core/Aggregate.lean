@@ -411,6 +411,33 @@ def contNeighbours (num scale : Nat) (s : List Value) : Option (Int × Int × In
     (intAt s (p / d + 1)).map fun h =>
       (l, h, FloatCode.fdiv (FloatCode.ofInt (p % d)) (FloatCode.ofInt d))
 
+/-- The integer part of a finite nonnegative double's code (`0` for any other). -/
+def FloatCode.floorNat (c : Int) : Nat :=
+  if 0 ≤ c ∧ c < FloatCode.posInf then (FloatCode.sv c).toNat / FloatCode.unitK else 0
+
+/-- The next integer at or above a finite nonnegative double's code. -/
+def FloatCode.ceilNat (c : Int) : Nat :=
+  if (FloatCode.sv c).toNat % FloatCode.unitK = 0 then FloatCode.floorNat c
+  else FloatCode.floorNat c + 1
+
+/-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
+read as the double nearest to it: Polars's `float_idx = (n − 1.0) · q` and
+Spark's `position = (n − 1) · p` (polars-quantile, spark-quantile). It misses
+a whole exact position by an ulp for some `q` (`n = 26`, `q = 0.28`). -/
+def contPosD (num scale n : Nat) : Int :=
+  FloatCode.fmul (FloatCode.ofInt ((n - 1 : Nat) : Int))
+    (FloatCode.fdiv (FloatCode.ofInt (num : Int)) (FloatCode.ofInt ((10 ^ scale : Nat) : Int)))
+
+/-- `contNeighbours` at the double position of `contPosD`: the codes at
+`⌊f⌋` and `⌈f⌉` (the same one where `f` is whole), and the weight
+`f − ⌊f⌋` as a double. -/
+def contNeighboursD (num scale : Nat) (s : List Value) : Option (Int × Int × Int) :=
+  let f := contPosD num scale s.length
+  (intAt s (FloatCode.floorNat f)).bind fun l =>
+    if FloatCode.ceilNat f = FloatCode.floorNat f then some (l, l, 0) else
+    (intAt s (FloatCode.floorNat f + 1)).map fun h =>
+      (l, h, FloatCode.fsub f (FloatCode.ofInt ((FloatCode.floorNat f : Nat) : Int)))
+
 /-- `l·(1 − w) + h·w` with native doubles, as DuckDB interpolates doubles,
 kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
 D31): rounding may leave them by an ulp. `−∞` with `+∞` gives NaN, which
@@ -429,13 +456,18 @@ def contValue (num scale : Nat) (s : List Value) : Value :=
   | some (l, h, w) => if l == h then .float l else .float (interpolate l h w)
   | none => .null
 
-/-- What `QUANTILE_CONT` of the doubles `s` in order may give: NULL without
-neighbours, else a double between them. -/
-def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
-  match contNeighbours num scale s with
+/-- What `QUANTILE_CONT` may give with the neighbours `nb`: NULL without
+them, else a double between them. -/
+def contAllowedOf (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
+  match nb with
   | some (l, h, _) => ∃ c, v = .float c ∧
       (c = l ∨ c = h ∨ (FloatCode.canon l ≤ FloatCode.canon c ∧ FloatCode.canon c ≤ FloatCode.canon h))
   | none => v = .null
+
+/-- What `QUANTILE_CONT` of the doubles `s` in order may give: NULL without
+neighbours, else a double between the neighbours of the exact position. -/
+def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
+  contAllowedOf (contNeighbours num scale s) v
 
 /-- The most frequent of `vs`, the first of those that tie. -/
 def modeOf (v : Value) (vs : List Value) : Value :=
@@ -588,7 +620,7 @@ theorem interpolate_between (l h w : Int) :
 omit [Boxes.Ambient] in
 theorem contValue_allowed (num scale : Nat) (s : List Value) :
     contAllowed num scale s (contValue num scale s) := by
-  unfold contAllowed contValue
+  unfold contAllowed contAllowedOf contValue
   cases contNeighbours num scale s with
   | none => rfl
   | some t =>

@@ -100,26 +100,39 @@ def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
 
 /-- What `lo + (hi − lo)·w` (Polars and Spark, `LINEAR_DIFF`) gives beyond a
-double between the neighbours, each value conditioned on them: NaN where `lo`
-is `-∞` and `hi` is greater (`hi − lo` is `+∞`, and `-∞ + ∞·w` is NaN), and
-`+∞` where `hi − lo` overflows to `+∞` (`[-1e308, 1e308]` gives `+∞` at
+double between the neighbours `nb`, each value conditioned on them: NaN where
+`lo` is `-∞` and `hi` is greater (`hi − lo` is `+∞`, and `-∞ + ∞·w` is NaN),
+and `+∞` where `hi − lo` overflows to `+∞` (`[-1e308, 1e308]` gives `+∞` at
 every fraction between, polars-quantile, spark-quantile). -/
-def contDiffExtra (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
-  match contNeighbours num scale (sortVals vs) with
+def contDiffExtra (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
+  match nb with
   | some (l, h, _) =>
       (v = .float FloatCode.nan ∧ l = FloatCode.negInf ∧ FloatCode.canon l < FloatCode.canon h) ∨
       (v = .float FloatCode.posInf ∧ FloatCode.fsub h l = FloatCode.posInf)
   | none => False
 
-/-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour: a double
-between the neighbours, as the reference's `BETWEEN` and an engine's `LINEAR`
-(DuckDB, `lo·(1 − w) + hi·w`) do. `LINEAR_DIFF` is that, or what the
+/-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour. `BETWEEN`
+(the reference) is a double between the neighbours of the exact position, and
+DuckDB's `LINEAR` is stated as that too (`duckdb-quantile-cont-interpolation`,
+#900). `LINEAR_DIFF` (Polars, Spark) takes the neighbours of the engine's
+double position (`contNeighboursD`), and is a double between them or what the
 difference `hi − lo` makes of an infinite or overflowing pair (`contDiffExtra`). -/
 def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
   if b = "BETWEEN" ∨ b = "LINEAR" then contAllowed num scale (sortVals vs) v
   else if b = "LINEAR_DIFF" then
-    contAllowed num scale (sortVals vs) v ∨ contDiffExtra num scale vs v
+    contAllowedOf (contNeighboursD num scale (sortVals vs)) v ∨
+      contDiffExtra (contNeighboursD num scale (sortVals vs)) v
   else True
+
+-- The double position of Polars and Spark misses a whole exact position by an
+-- ulp for some `q` (polars-quantile, spark-quantile): `n = 26`, `q = 0.28`
+-- lands above it, `n = 51`, `q = 0.58` below.
+#guard ((contNeighboursD 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt i))).map
+  fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 7, FloatCode.ofInt 8)
+#guard ((contNeighboursD 58 2 ((List.range 51).map fun i => .float (FloatCode.ofInt i))).map
+  fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 28, FloatCode.ofInt 29)
+#guard ((contNeighbours 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt i))).map
+  fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 7, FloatCode.ofInt 7)
 
 /-- The options `AggFn.AllowedP` interprets. -/
 def aggInterpreted : List String := ["sum_order", "stat_algo", "quantile_interp"]
