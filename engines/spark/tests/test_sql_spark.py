@@ -74,7 +74,7 @@ def parses(sql: str) -> str:
 def test_literals():
     assert parses(SPARK.float_lit(math.nan)) == "CAST('NaN' AS DOUBLE)"
     # The model's one zero and one NaN.
-    assert parses(SPARK.float_lit(-0.0)) == "CAST('0' AS DOUBLE)"
+    assert parses(SPARK.float_lit(-0.0)) == "-0.0D"
     assert SPARK.float_lit(-math.nan) == SPARK.float_lit(math.nan)
     assert parses(SPARK.str_lit("it's a\\b\n")) == "'it\\'s a\\\\b\\u000a'"
     assert parses(SPARK.timestamp_lit(1_500)) == "TIMESTAMP_NTZ '1970-01-01 00:00:00.001500'"

@@ -101,8 +101,12 @@ def tables(draw) -> dict[str, pa.Table]:
 
 def rows(table: pa.Table) -> list[tuple]:
     """An engine may type `ROW_NUMBER()` as a decimal; the model has one integer type."""
+    # `-0.0` as `0.0`: values are raw (D31) and the engines' writers differ in the sign.
     return [
-        tuple(int(v) if isinstance(v, Decimal) else v for v in r.values())
+        tuple(
+            int(v) if isinstance(v, Decimal) else v + 0.0 if isinstance(v, float) else v
+            for v in r.values()
+        )
         for r in table.to_pylist()
     ]
 
