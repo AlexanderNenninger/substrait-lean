@@ -80,9 +80,9 @@ def test_a_double_key_view_matches_recompute(engine, state, insert, delete) -> N
         )
 
         def one_zero(rows: list) -> list:
-            return sorted(
-                repr(tuple(("nan" if v != v else v + 0.0) if isinstance(v, float) else v for v in r))
-                for r in rows
-            )
+            def cell(v):
+                return ("nan" if v != v else v + 0.0) if isinstance(v, float) else v
+
+            return sorted(repr(tuple(map(cell, r))) for r in rows)
 
         assert one_zero(view.rows()) == one_zero(view.recompute())

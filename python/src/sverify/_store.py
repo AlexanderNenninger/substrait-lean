@@ -83,8 +83,8 @@ def _one_zero_one_nan(a: pa.Array) -> pa.Array:
     if not pa.types.is_floating(a.type):
         return a
     one_nan = pa.scalar(float("nan"), a.type)
-    zero_fixed = pc.add(a, pa.scalar(0.0, a.type))  # -0.0 + 0.0 is 0.0; NULL stays
-    return pc.if_else(pc.is_nan(a), one_nan, zero_fixed)
+    zero_fixed = pc.call_function("add", [a, pa.scalar(0.0, a.type)])  # -0.0 + 0.0 is 0.0
+    return pc.call_function("if_else", [pc.call_function("is_nan", [a]), one_nan, zero_fixed])
 
 
 def by_keys(
