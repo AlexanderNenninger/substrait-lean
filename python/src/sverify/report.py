@@ -1101,7 +1101,9 @@ class Report:
                 profile=chosen.profile if chosen is not None else self.semantics,
                 reason=(
                     f"{len(nodes)} node(s) of the streaming plan run on the in-memory engine "
-                    f"(streaming='require'): " + "; ".join(n[:120] for n in nodes)
+                    f"(streaming='require'): "
+                    + "; ".join(n[:120] for n in nodes)
+                    + "; run with streaming='allow' to let them run in memory"
                 ),
                 fallbacks=nodes,
             )
