@@ -172,14 +172,14 @@ def _scan(module: ModuleType, out: Discovery) -> None:
 def _check_declared(out: Discovery) -> None:
     """Prove each transform the file defines but never applies, and that
     declares its input schemas (`sverify.transform(schemas=)`): its
-    `check(**schemas)`, recorded as an application. What stops it (a
+    `check(schemas)`, recorded as an application. What stops it (a
     refusal) stops the check like an error of the file's own."""
     applied = {id(c.transform) for c in out._collected}
     for t in dict.fromkeys(out.transforms.values()):
         if id(t) in applied or t.schemas is None:
             continue
         try:
-            t.check(**t.schemas)
+            t.check(*(t.schemas[p] for p in t.signature.parameters))
         except Exception as e:  # noqa: BLE001 - reported, with what was found before it
             out.error = e
             return
