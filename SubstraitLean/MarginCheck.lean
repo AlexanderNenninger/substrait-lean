@@ -41,15 +41,30 @@ def Expr.fabs (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float 0))) (.un .
 /-- A double literal. -/
 def Expr.dlit (f : Float) : Expr := .lit (.float (FloatCode.ofFloat f))
 
+/-- A condition of the finish's shape: an exact column (`ex`) compared with a constant, by `<` or `=`,
+combined with `and` and `not`. Each such comparison takes the reference's branch on every engine: the
+column holds the same value there, and a comparison reads a zero of either sign as `0.0`. A condition
+that computes with the column (`1.0 / max(x) < 0`) is not of this shape. -/
+def Expr.exactCond (ex : Nat → Bool) : Expr → Bool
+  | .bin .and a b => a.exactCond ex && b.exactCond ex
+  | .un .not c => c.exactCond ex
+  | .bin .lt a b | .bin .eq a b =>
+    match a, b with
+    | .field j, _ => ex j && b.cols.isEmpty
+    | _, .field j => ex j && a.cols.isEmpty
+    | _, _ => false
+  | _ => false
+
 /-- What an expression passes of the aggregate's columns, where `ex` says which columns are exact on
-every engine (keys, and measures that are not sums): `some none` for a constant, `some (some j)` for
+every engine (`exactMeasure`, and the keys): `some none` for a constant, `some (some j)` for
 the double sum's column `j` itself, `none` for anything else. A `CASE` passes the one column its
-branches end in when its conditions read only exact columns. -/
+branches end in when its conditions are of the finish's shape over exact columns
+(`Expr.exactCond`). -/
 def Expr.passes (ex : Nat → Bool) : Expr → Option (Option Nat)
   | .lit _ => some none
   | .field j => some (some j)
   | .ifThen c t e =>
-    if c.cols.all ex then
+    if c.exactCond ex then
       match t.passes ex, e.passes ex with
       | some a, some b =>
         match a, b with
@@ -86,6 +101,13 @@ it is below a constant (the guard of the lift of #341, whose comparison is exact
 def Expr.exactArg : Expr → Bool
   | .field _ => true
   | .ifThen (.bin .lt (.field i) (.lit _)) (.field j) (.lit .null) => i == j
+  | _ => false
+
+/-- The measures whose value is the same on every engine: a count, an integer sum, a minimum
+and a maximum (by `Value.le`; their zero's sign is open, which a comparison with a constant does
+not read, `Expr.exactCond`). -/
+def AggFn.exactMeasure : AggFn → Bool
+  | .count | .sum | .min | .max => true
   | _ => false
 
 /-- The constant `c₀` of the check's `cₙ = (8n + c₀) · 2⁻⁵³`: `16` for a
@@ -199,9 +221,11 @@ filter comparing a window's `SUM` or `AVG` over the whole partition with a
 column of the window's input. `none` otherwise. -/
 def Rel.marginSite (cat : Catalog) : Rel → Option MarginSite
   | .filter (.aggregate r gs ms) c => do
-    -- Keys and the measures that are not sums are exact on every engine.
+    -- Keys, counts, integer sums and extremes are exact on every engine. A variance,
+    -- a covariance, a quantile, a first or last value and a black box are not: engines
+    -- differ in them, so a condition that reads one has no check.
     let ex (col : Nat) : Bool :=
-      col < gs.length || (ms[col - gs.length]?.map fun m => !(m.fn == .fsum || m.fn == .avg)).getD false
+      col < gs.length || (ms[col - gs.length]?.map (·.fn.exactMeasure)).getD false
     let (j, t) ← c.thresholdOf (·.sumCol ex)
     guard (gs.length ≤ j)
     let m ← ms[j - gs.length]?
@@ -257,6 +281,17 @@ private def having (c : Expr) : Rel :=
 #guard (Rel.filter (.aggregate (.read "orders") [.field 0] [{ fn := .count, arg := .field 1 }])
   (.bin .lt (.lit (.int 3)) (.field 1))).marginCheck exCat |>.isNone
 #guard (having (.bin .lt (.field 0) (.field 1))).marginCheck exCat |>.isNone
+-- A finish whose condition reads a measure the engines compute differently (`stddev(x) > 0.5`:
+-- `CASE WHEN 0.5 < stddev THEN sum ELSE 0 END > 10`) has no check, and one that reads a maximum
+-- through arithmetic has none either; a maximum compared with a constant has one.
+private def finish (cond : Expr) (f : AggFn) : Rel :=
+  .filter (.aggregate (.read "orders") [.field 0]
+    [{ fn := .fsum, arg := .field 1 }, { fn := f, arg := .field 1 }])
+    (.bin .lt (Expr.dlit 10.0) (.ifThen cond (.field 1) (.lit (.float 0))))
+#guard (finish (.bin .lt (Expr.dlit 0.5) (.field 2)) (.var true true)).marginCheck exCat |>.isNone
+#guard (finish (.bin .lt (Expr.dlit 0.5) (.field 2)) .max).marginCheck exCat |>.isSome
+#guard (finish (.bin .lt (.bin .fdiv (Expr.dlit 1.0) (.field 2)) (Expr.dlit 0.0)) .max).marginCheck
+  exCat |>.isNone
 -- A row's value against its partition's mean, through the projection and
 -- emit that put them side by side (`readings`: sensor, value).
 #guard (Rel.filter (.emit (.window (.read "r") [0] []
