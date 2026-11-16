@@ -41,7 +41,7 @@ def Expr.fabs (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float 0))) (.un .
 /-- A double literal. -/
 def Expr.dlit (f : Float) : Expr := .lit (.float (FloatCode.ofFloat f))
 
-/-- A condition of the finish's shape: an exact column (`ex`) compared with a constant, by `<` or `=`,
+/-- A condition of the finish's shape: an exact column (`ex`) compared with a literal, by `<` or `=`,
 combined with `and` and `not`. Each such comparison takes the reference's branch on every engine: the
 column holds the same value there, and a comparison reads a zero of either sign as `0.0`. A condition
 that computes with the column (`1.0 / max(x) < 0`) is not of this shape. -/
@@ -50,8 +50,8 @@ def Expr.exactCond (ex : Nat → Bool) : Expr → Bool
   | .un .not c => c.exactCond ex
   | .bin .lt a b | .bin .eq a b =>
     match a, b with
-    | .field j, _ => ex j && b.cols.isEmpty
-    | _, .field j => ex j && a.cols.isEmpty
+    | .field j, .lit _ => ex j
+    | .lit _, .field j => ex j
     | _, _ => false
   | _ => false
 
@@ -292,6 +292,8 @@ private def finish (cond : Expr) (f : AggFn) : Rel :=
 #guard (finish (.bin .lt (Expr.dlit 0.5) (.field 2)) .max).marginCheck exCat |>.isSome
 #guard (finish (.bin .lt (.bin .fdiv (Expr.dlit 1.0) (.field 2)) (Expr.dlit 0.0)) .max).marginCheck
   exCat |>.isNone
+-- A constant that is computed (a cast) may differ between engines: only a literal counts.
+#guard (finish (.bin .lt (.un .itof (.lit (.int 1))) (.field 2)) .max).marginCheck exCat |>.isNone
 -- A row's value against its partition's mean, through the projection and
 -- emit that put them side by side (`readings`: sensor, value).
 #guard (Rel.filter (.emit (.window (.read "r") [0] []
