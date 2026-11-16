@@ -69,7 +69,7 @@ def options : List OptionSpec := [
   { id := "nan_creation", substrait := none, core := ["NAN", "ERROR"],
     extra := [("NAN", "duckdb-R15-double-arith")] },
   { id := "zero_sign", substrait := none, core := ["IEEE", "ONE_ZERO"],
-    extra := [("IEEE", "duckdb-R14")] },
+    extra := [("IEEE", "polars-zero-sign")] },
   -- Which zero a negative double that rounds to zero is (`round(-0.4)`,
   -- `ceil(-0.4)`): IEEE's `-0.0`, or `+0.0` (Spark's `round` goes through a
   -- decimal). Another axis than `zero_sign`, which says where the two zeros

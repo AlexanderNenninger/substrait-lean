@@ -3,8 +3,7 @@
 DuckDB already raises on BIGINT overflow (`+`, `-`, `*` and negation), divides
 doubles by IEEE 754 rules, has `isnan`, and numbers a table's rows in insertion
 order with `rowid`. Its `=` and `<` on doubles are the model's: NaN equals
-itself and is largest, and -0.0 equals 0.0 (`canon` keeps -0.0 out of
-results). Its `//` truncates BIGINTs
+itself and is largest, and -0.0 equals 0.0 (D31 keeps the values raw). Its `//` truncates BIGINTs
 (and is plain `/` on doubles), so integer division is built from `%`, which
 truncates, and is exact whichever way `//` rounds; `error()` raises where
 DataFusion fails at run time.
@@ -106,6 +105,16 @@ class DuckDBDialect(Dialect):
         )
         # Wrap-arounds compute in HUGEINT: the result is a BIGINT again.
         return self.cast(sql, "int") if sql is not None and kind == "int" else sql
+
+    def float_round(self, x: str) -> str:
+        # DuckDB's `ROUND` of a negative value that rounds to zero is `-0.0`, the
+        # reference's `0.0`: the proved template (`round_zero_sign`).
+        low = self.lowered("Substrait.UnFn.fround", [x], "float")
+        return low if low is not None else super().float_round(x)
+
+    def float_ceil(self, x: str) -> str:
+        low = self.lowered("Substrait.UnFn.fceil", [x], "float")
+        return low if low is not None else super().float_ceil(x)
 
     def row_ordinal(self) -> str:
         return "rowid"

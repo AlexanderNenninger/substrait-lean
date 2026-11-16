@@ -83,10 +83,11 @@
     "A NaN's sign survives arithmetic, negation and the FLOAT-to-DOUBLE cast (a plain conversion), and `signbit` has a FLOAT overload that reads it (`std::signbit`). Hashing and the FLOAT `least`/`greatest` drop it.",
     "DuckDB's own test notes that a checkpoint loses the sign of zero in storage (DuckDB issue 25580), unrelated to ORDER BY.",
     "Round 4 (probes): IEEE signs on both widths, from constants and from table columns: `-0.0 + -0.0 = -0.0`, `-0.0 + 0.0 = 0.0 - 0.0 = 1 - 1 = +0.0`, `-1 * 0 = -0.0`, `-0.0 * 1 = -0.0`, `d - d = +0.0` and `-d = +0.0` for `d = -0.0`; `%` takes the dividend's sign (`-4 % 2 = -0.0`, `4 % -2 = +0.0`, `-0.0 % 1 = -0.0`). ORDER BY treats the zeros as peers and keeps their signs (duckdb-R14). `least` and `greatest` on DOUBLE keep the first argument among equal zeros; on FLOAT they return `+0.0` for any zero winner and the positive NaN for `-NaN`, also from table columns (`least(f, g)` with both `-0.0`): DD-6. `least(f, f)` is simplified to `f` and keeps the sign.",
+    "Round 5 (probes, 2026-11-15, #1461): `-0.0` and `0.0` are one key in a window `PARTITION BY` (`count(*) OVER (PARTITION BY a)` over -0.0, 0.0, -0.0 is 3 on each row), in `IN` and `IN (subquery)`, in list and struct `=` and `IN`, in `list_contains` and `list_distinct`, and tie in a window `ORDER BY` (`rank` is 1). `DISTINCT`, `GROUP BY`, joins and `INTERSECT` merge them and keep a present member. `sum`, `avg`, `var_pop`, `stddev_pop`, `var_samp` and `covar_pop` of `-0.0` values give `+0.0`; `min`, `max`, `quantile_cont` and `quantile_disc` keep `-0.0`. `CAST(-0.0 AS VARCHAR)` is `'-0.0'`.",
     "The docs are silent on signed zero: a docs gap. No upstream test pins FLOAT `least` and `greatest` of zeros (DD-6); it may change between versions."
   ],
-  "reference": "`zero_sign: ONE_ZERO` and `nan_kind: ONE_NAN` (#89, docs/core-semantics.md); Substrait is IEEE. sverify's SQL canonicalises `-0.0` on every read and after each operation that can make it (`Dialect.canon`, duckdb-R14), so DuckDB's IEEE zeros never reach a result. Lean refuses FLOAT arithmetic (duckdb-R12).",
-  "status": "shimmed",
+  "reference": "`zero_sign: ONE_ZERO` and `nan_kind: ONE_NAN` (#89, docs/core-semantics.md); Substrait is IEEE. sverify's SQL prints raw values, as the reference computes them (D31, #1461), and DuckDB's identity boundaries read the zeros as one (duckdb-R14). Lean refuses FLOAT arithmetic (duckdb-R12).",
+  "status": "decided",
   "evidence": "probe",
   "provenance": [
     {

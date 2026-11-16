@@ -72,7 +72,8 @@
   "description": [
     "Arithmetic keeps IEEE's two zeros: `-0.0 + 0.0` is 0.0, `-0.0 + -0.0` -0.0, `-0.0 * 0.0` -0.0, `-(0.0)` -0.0, `0.0 / -1.0` -0.0; `abs(-0.0)` is 0.0. Casting `-0.0` to `STRING` gives `-0.0`.",
     "A literal `-0.0` without a suffix is `DECIMAL(1,1)`, so `CAST(-0.0 AS DOUBLE)` is 0.0; `-0.0D` and `CAST('-0.0' AS DOUBLE)` are -0.0.",
-    "Comparisons, grouping and joins treat the zeros as equal (spark-zero-order)."
+    "Comparisons, grouping and joins treat the zeros as equal (spark-zero-order).",
+    "Round 2 (probes, 2026-11-16, #1461; ANSI on and off): `-0.0` and `0.0` are one key in a window `PARTITION BY` (count 3 on each row), in `GROUP BY` and `DISTINCT` (key `0.0`), in a join, in `IN` and `IN (subquery)`, and tie in a window `ORDER BY` (`rank` 1). `sqrt`, `sin`, `atan`, `tan` and `asin` of `-0.0` are `-0.0`, `exp` is `1.0`, `abs` and `-x` give `0.0`, `-0.0 * 1.0` is `-0.0`. `min` and `max` of `-0.0` values keep `-0.0`; `sum` and `avg` give `+0.0`. `atan2(-0.0, -1.0D)` is `π`, where the reference gives `-π`. `0.0 % -0.0` raises under ANSI and is NULL otherwise."
   ],
   "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere. Spark shows -0.0 where IEEE gives it, so a writer canonicalises where a result's zeros are observed.",
   "status": "open",
