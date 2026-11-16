@@ -31,7 +31,8 @@
     "No values is NULL; the sample variance of one value is NULL; the population variance of one value is 0. No clamp and no finiteness check: 1.5.6 raised `OutOfRange` (\"VARSAMP is out of range!\") on non-finite values, 2.0 gives NaN (duckdb-nonfinite-aggregates).",
     "The docs are silent on the algorithm and on one value: a docs gap.",
     "Probed (`sverify_dev.probe_statistics`): of {4, 7, 13, 16} shifted by 0, 1e6, 1e8, 1e9 and 1e12, `VAR_SAMP` is 30 and `VAR_POP` 22.5 at every shift, as Welford's update keeps them; the textbook formula gives 29.33 at 1e8 and 0 at 1e9. Values whose textbook variance in doubles is negative give 0.0: Welford's terms `(x - new_mean) * (x - mean)` are products of two numbers of one sign, so the sum is never negative and no clamp is needed.",
-    "Of [1e308, 1e308] `var_samp`, `var_pop`, `stddev_*`, `covar_*` are 0.0 (the exact value); `corr` is NaN."
+    "Of [1e308, 1e308] `var_samp`, `var_pop`, `stddev_*`, `covar_*` are 0.0 (the exact value); `corr` is NaN.",
+    "Outside the range where the bound is claimed (`Stat.fits`), the value is not the exact one rounded once: `var_pop` of [1e150, 3e150] is 9.999999999999999e+299 where the exact value rounds to 1.0000000000000002e+300, and of [1e130, 2e130, 4e130] 1.5555555555555556e+260 where it rounds to 1.555555555555556e+260."
   ],
   "reference": "D30 (#1022): `AggFn.var` is the exact moments rounded once, never below 0. DuckDB's Welford with Chan's merge is within the plan's bound of it (`stat_algo` `WELFORD_CHAN`, `Epsilon.statEps`, `FloatBounds.StdModel.core_var_chan`). A sample of one value is NULL in both.",
   "status": "open",
@@ -127,6 +128,16 @@
       "evidence": [
         {
           "note": "DuckDB 2.0.0: `var_samp`, `var_pop`, `stddev_samp`, `stddev_pop`, `covar_samp`, `covar_pop` of x = y = [1e308, 1e308]: 0.0; `corr(x, y)`: NaN."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1476 review: rulings 4.3 and 5.5), the probe scripts of the review rerun against DuckDB 2.0.0 and Polars 2.1.0",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0: `var_pop` of [1e150, 3e150]: 9.999999999999999e+299 (the exact variance, rounded once, is 1.0000000000000002e+300); of [1e130, 2e130, 4e130]: 1.5555555555555556e+260 (exact 1.555555555555556e+260). Polars 2.1.0 gives 9.999999999999999e+299 (streaming) and 1e+300 (in memory, ungrouped) for the first, 1.555555555555556e+260 (ungrouped streaming) and 1.5555555555555561e+260 (grouped streaming) for the second."
         }
       ]
     }

@@ -27,7 +27,7 @@
     "Polars's `var` merges two-pass blocks of up to 128 values (ungrouped) or Welford states (grouped) by Schubert and Gertz's update (polars-var-std-streaming). Its error has the shape of the leading term of `Stat.varTol`: the computed co-moment `v · d` is within `c · n · u · √(Q' S)` of the exact `S = Σx² − (Σx)²/n`, with `Q' = Σ (|x| + 2⁻¹⁰²²)²` and `u = 2⁻⁵³`.",
     "Fuzzed on the streaming engine, `var(ddof=0)` and `var(ddof=1)`, ungrouped and grouped by one constant key: 8 seeds of 300 columns each (6,033,974 values), sizes 2 to 20,000, shifts 0 to 1e12, spreads 1e-8 to 1e3. The largest `c` was 1.031 ungrouped (seed 2) and 0.588 grouped (seed 918, second run); every other seed stayed under 0.59. Both paths vary run to run with the streaming merge order (polars-var-std-streaming): seed 2 gave 1.031 and 0.756 ungrouped in two runs, seed 918 0.588 and 0.460 ungrouped, 0.429 and 0.588 grouped.",
     "This is a tested bound, not a proof: no Lean theorem covers Schubert and Gertz's merge yet. Its `(mb − m)` term cancels, so a proof needs `tInv_merge` generalised over the merge's correction term (#918).",
-    "Where the sum of squares overflows, the ungrouped streaming kernel gives NaN for `var`, `std` and `corr` and +inf for `cov` of two equal values near the double's range: of [1e308, 1e308] the exact variance is 0. The same values grouped give 0.0 (streaming), and 1e154 and 1e200 give 0.0 either way, so the loss is the intermediate overflow of the ungrouped path, not the algorithm's rounding bound."
+    "Outside the range where `Stat.fits` holds (more than 2³² values, or a value above 2³⁹⁸ ≈ 6.5e119 in magnitude) the bound is not claimed, and the fuzz above (sizes 2 to 20,000, shifts up to 1e12) does not reach it. There the kernel can overflow on the way. Of [1e308, 1e308] (exact variance 0), Polars 2.1.0 gives, by plan shape and size: `var` alone, ungrouped, streaming, default threads: 0.0 at 2, 3 and 10 values, NaN at 100000; with `POLARS_MAX_THREADS=1`, NaN at every size; in memory: NaN at every size; `var` beside the writer's flags (`is_infinite().any()`, `is_finite().all()`, `is_nan().any()`): the same values, with `bad` False, `fin` True and `nan` False; grouped by a constant key: 0.0 at every size, streaming and in memory; eager `Series.var`: NaN. Also, over [1e308, 1e308], ungrouped `cov` is +inf and `corr` NaN, and 1e154 and 1e200 give 0.0 either way."
   ],
   "reference": "D30: the reference's `VAR_*` is `S / d` rounded once (`varOf`). Polars's `stat_algo` row is `approxWithin \"plan\"`, tested; `StatProps`' `varTol` (leading constant 160) is what a proof would have to meet, and the fuzz stays two orders of magnitude inside it.",
   "status": "open",
@@ -51,7 +51,17 @@
       "checked_by": "session optimistic-hopper-2d1785 (probes from the orchestrator's backlog), scripts ov.py, dq.py, dq2.py, dq3.py, dq4.py, spo.py",
       "evidence": [
         {
-          "note": "Polars 2.1.0, POLARS_MAX_THREADS=1: `select(x.var(), x.std(), cov(x, y), corr(x, y))` over x = y = [1e308, 1e308]: streaming and in-memory give var NaN, std NaN, cov inf, corr NaN; grouped by a constant key: var 0.0, std 0.0, cov 0.0 (streaming) or inf (in-memory), corr NaN. x = y = [1e154, 1e154] and [1e200, 1e200]: var 0.0, std 0.0, cov 0.0, corr NaN, grouped or not."
+          "note": "Polars 2.1.0: `select(x.var(), x.std(), cov(x, y), corr(x, y))` over x = y = [1e308, 1e308], `POLARS_MAX_THREADS=1`: streaming and in-memory give var NaN, std NaN, cov inf, corr NaN; grouped by a constant key: var 0.0, std 0.0, cov 0.0 (streaming) or inf (in-memory), corr NaN. x = y = [1e154, 1e154] and [1e200, 1e200]: var 0.0, std 0.0, cov 0.0, corr NaN, grouped or not."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1476 review: rulings 4.3 and 5.5), the probe scripts of the review rerun against DuckDB 2.0.0 and Polars 2.1.0",
+      "evidence": [
+        {
+          "note": "Polars 2.1.0, `lf.select(v.var(ddof=1))`, `std`, `var` beside the three flags, and `group_by('k').agg(...)`, over n equal values 1e308 (n = 2, 3, 10, 100000), ten cores: streaming var 0.0 at n = 2, 3, 10 and NaN at 100000; in memory NaN at every n; the flags `(bad, fin, nan)` = (False, True, False) with NaN results; grouped: 0.0 at every n on both engines. With `POLARS_MAX_THREADS=1` the streaming ungrouped var is NaN at every n (the grouped one 0.0). Eager `Series.var` and `std`: NaN."
         }
       ]
     }
