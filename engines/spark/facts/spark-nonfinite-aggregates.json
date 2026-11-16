@@ -8,8 +8,7 @@
   "options": [
     "nonfinite_aggregates",
     "nan_creation",
-    "float_overflow",
-    "stat_degenerate"
+    "float_overflow"
   ],
   "rows": [
     {

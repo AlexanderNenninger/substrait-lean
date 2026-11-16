@@ -34,7 +34,7 @@
     "A `sum` of finite values that overflows is `±inf` without raising: `sum` of 1e308 and 1e308 (`Float64`) and of 3e38 and 3e38 (`Float32`, summed in `Float32`) is inf, grouped and not, on both engines. `mean` of the `Float64` pair is inf; `mean` of the `Float32` pair sums in `f64` and is the finite 3.0000000054977558e+38.",
     "The docs are silent on infinities and NaN in `sum`, `mean`, `var` and `std`: a docs gap.",
     "No upstream test pins `inf + (-inf)` or `var` and `std` with an infinity; they may change between versions.",
-    "`var`, `std`, `cov` and `corr` of a group holding `+inf` or `-inf` in `x` are NaN (streaming, one thread): no operation of the plan makes the NaN, so it is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var(x)` finite and makes `cov` and `corr` NaN; a single `inf` alone gives a null sample `var` and `cov` and a NaN `corr`. Grouped, only the group holding the infinity is NaN."
+    "`var`, `std`, `cov` and `corr` of a group holding `+inf` or `-inf` in `x` are NaN (streaming, one thread): no operation of the plan makes the NaN, so it is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var(x)` finite and makes `cov` and `corr` NaN; a single `inf` alone gives a null sample `var` and a NaN `corr`. Grouped, only the group holding the infinity is NaN."
   ],
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`nan_creation`). ST-3 and ST-5 record that Substrait leaves both open.",
   "status": "open",
