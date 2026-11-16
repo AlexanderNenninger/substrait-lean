@@ -317,14 +317,19 @@ every sink.
 [characterization](https://alexandernenninger.github.io/substrait-lean/ledgers/duckdb-facts.html). A route to Polars then takes the proof
 across only where Polars's choices are within DuckDB's on every option the
 plan reads (the checker's transfer check, `Rel.transfer_of_transferB`), and
-names the options and facts where they are not:
+names the options and facts where they are not. A comparison reads `zero_sign`,
+where DuckDB gives one zero and Polars IEEE's two, so a filter on a double
+fails the transfer check. A re-check under Polars's profile would take it, and
+the checker cannot do that yet:
 
 ```python
 t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
-filtered.run(con, "polars", route="auto")
-print(filtered.routes["polars"])
-# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the plan reads
+try:
+    filtered.run(con, "polars", route="auto")
+except RouteError as e:
+    print(e)
+# refused on polars: verify with semantics='reference' to run on polars...
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -335,7 +340,7 @@ try:
     divided.run(con, "polars", route="transfer")
 except RouteError as e:
     print(e)
-# refused on polars: the transfer check fails on int.arith's overflow: duckdb gives ERROR, polars gives SILENT ...
+# refused on polars: the transfer check fails on cmp's zero_sign: duckdb gives ONE_ZERO, polars gives IEEE ...
 try:
     divided.run(con, "polars", route="auto")
 except RouteError as e:
@@ -343,8 +348,9 @@ except RouteError as e:
 # refused on polars: verify with semantics='reference' to run on polars...
 ```
 
-The transfer check fails on the division's options. A re-check would prove the
-plan again under Polars's profile, which the checker cannot do yet
+The transfer check fails on the comparison's zero and the division's options. A
+re-check would prove the plan again under Polars's profile, which the checker
+cannot do yet
 ([#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442)), so the
 refusal names the reference as the way: it runs on Polars with the shim of
 example 4. [engine-profiles.md](engine-profiles.md) describes the

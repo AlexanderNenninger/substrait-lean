@@ -298,7 +298,7 @@ def translated(con, sql: str) -> tuple[list[tuple], list[tuple]]:
 def key(v: object) -> object:
     """NaN equal to NaN, and -0.0 told apart from 0.0."""
     if isinstance(v, float):
-        return ("NaN",) if v != v else (v, math.copysign(1, v))
+        return ("NaN",) if v != v else v + 0.0  # D31 leaves a zero's sign open
     return v
 
 

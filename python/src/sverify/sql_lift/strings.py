@@ -12,6 +12,7 @@ from sverify import _functions
 from sverify._plan_read import simple_regex
 from sverify.plan_json import (
     Json,
+    SqlUnsupported,
     Unsupported,
     call,
     chain,
@@ -28,7 +29,7 @@ def _strings(lf: _Lift, es: list[E], what: str) -> list[Json]:
     """Arguments that must be strings (a NULL is a string NULL)."""
     for e in es:
         if not (e.type.is_string() or e.type.is_null()):
-            raise Unsupported(f"{what} of a {e.type} is not supported yet")
+            raise SqlUnsupported(f"{what} of a {e.type} is not supported yet")
     return [lf.to(e, dt.string).json for e in es]
 
 
@@ -48,7 +49,7 @@ def _string_fn(f: _functions.Fn) -> Callable[..., E]:
 
 
 def _reverse(lf: _Lift, node: sge.Reverse, sub: Sub, scope: list[Column]) -> E:
-    raise Unsupported(
+    raise SqlUnsupported(
         "reverse is not supported yet: DuckDB reverses grapheme clusters, the model code points"
     )
 
@@ -56,7 +57,7 @@ def _reverse(lf: _Lift, node: sge.Reverse, sub: Sub, scope: list[Column]) -> E:
 def _length(lf: _Lift, node: sge.Length, sub: Sub, scope: list[Column]) -> E:
     # Characters (code points), a BIGINT; `strlen` (bytes) is another node.
     if node.args.get("binary"):
-        raise Unsupported("the length of a BLOB is not supported")
+        raise SqlUnsupported("the length of a BLOB is not supported")
     x = sub(node.this)
     if x.type.is_array():
         # DuckDB's `len(l)` of a list (#812): `UnFn.cardinality`.
@@ -70,7 +71,7 @@ def _trim(lf: _Lift, node: sge.Trim, sub: Sub, scope: list[Column]) -> E:
     position = (node.args.get("position") or "BOTH").upper()
     name = {"BOTH": "btrim", "LEADING": "ltrim", "TRAILING": "rtrim"}.get(position)
     if name is None or node.args.get("collation"):
-        raise Unsupported(f"{_shown(node)} is not supported yet")
+        raise SqlUnsupported(f"{_shown(node)} is not supported yet")
     chars = node.args.get("expression")
     s_, c = _strings(
         lf, [sub(node.this), sub(chars) if chars is not None else _const_str(" ")], name
@@ -93,9 +94,9 @@ def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) ->
             continue
         e = sub(a)
         if not (e.type.is_integer() or e.type.is_null()):
-            raise Unsupported(f"substring with a {e.type} position is not supported")
+            raise SqlUnsupported(f"substring with a {e.type} position is not supported")
         if a is length and e.constant and e.value is not None and e.value < 0:
-            raise Unsupported("substring with a negative length is not supported yet")
+            raise SqlUnsupported("substring with a negative length is not supported yet")
         args.append(lf.to(e, dt.int64).json)
     if start is None:
         raise Unsupported("substring needs a start")
@@ -106,7 +107,7 @@ def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) ->
 def _strpos(lf: _Lift, node: sge.StrPosition, sub: Sub, scope: list[Column]) -> E:
     # 1-based, 0 if absent; `strpos(s, '')` is 1.
     if node.args.get("position") is not None or node.args.get("occurrence") is not None:
-        raise Unsupported(f"{_shown(node)} is not supported yet")
+        raise SqlUnsupported(f"{_shown(node)} is not supported yet")
     args = _strings(lf, [sub(node.this), sub(node.args["substr"])], "strpos")
     return E(_fn("strpos", args, dt.int64), dt.int64)
 
@@ -124,9 +125,9 @@ def _like(name: str) -> Callable[..., E]:
         # a pattern must be a constant without one.
         p = sub(node.expression)
         if not p.constant:
-            raise Unsupported(f"{name.upper()} with a pattern that is not a constant")
+            raise SqlUnsupported(f"{name.upper()} with a pattern that is not a constant", issue=319)
         if isinstance(p.value, str) and "\\" in p.value:
-            raise Unsupported(
+            raise SqlUnsupported(
                 f"{name.upper()} with a backslash in the pattern is not supported yet"
             )
         args = _strings(lf, [sub(node.this), p], name)
@@ -170,7 +171,7 @@ def _replace(lf: _Lift, node: sge.Replace, sub: Sub, scope: list[Column]) -> E:
 def _repeat(lf: _Lift, node: sge.Repeat, sub: Sub, scope: list[Column]) -> E:
     n = sub(node.args["times"])
     if not (n.type.is_integer() or n.type.is_null()):
-        raise Unsupported(f"repeat by a {n.type} is not supported")
+        raise SqlUnsupported(f"repeat by a {n.type} is not supported")
     (s_,) = _strings(lf, [sub(node.this)], "repeat")
     return E(_fn("repeat", [s_, lf.to(n, dt.int64).json], dt.string), dt.string)
 
@@ -198,7 +199,7 @@ def _sha2(lf: _Lift, node: sge.SHA2, sub: Sub, scope: list[Column]) -> E:
     # DuckDB's `sha256(s)`, which SQLGlot reads as `SHA2(s, 256)`.
     n = node.args.get("length")
     if not (isinstance(n, sge.Literal) and n.this == "256"):
-        raise Unsupported("SHA2 of a length other than 256 is not supported")
+        raise SqlUnsupported("SHA2 of a length other than 256 is not supported")
     (s_,) = _strings(lf, [sub(node.this)], "sha256")
     return E(_fn("sha256", [s_], dt.string), dt.string)
 
@@ -221,7 +222,7 @@ def _pattern(lf: _Lift, node: sge.Expression, sub: Sub, what: str) -> tuple[Json
     if not (p.constant and isinstance(p.value, str)):
         raise Unsupported(f"{what} needs a constant pattern")
     if not simple_regex(p.value):
-        raise Unsupported(f"the regular expression {p.value!r} is outside the supported subset")
+        raise SqlUnsupported(f"the regular expression {p.value!r} is outside the supported subset")
     (s_,) = _strings(lf, [sub(node.this)], what)
     return s_, p.value
 
@@ -237,7 +238,7 @@ def _regexp_like(full: bool) -> Callable[..., E]:
 
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         if node.args.get("flag") is not None or node.args.get("options") is not None:
-            raise Unsupported(f"{what} with options is not supported yet")
+            raise SqlUnsupported(f"{what} with options is not supported yet")
         s_, p = _pattern(lf, node, sub, what)
         if full:
             # RE2's `$` is the end of the text, without the `m` flag.
@@ -254,9 +255,9 @@ def _regexp_like(full: bool) -> Callable[..., E]:
 def _regexp_extract(lf: _Lift, node: sge.RegexpExtract, sub: Sub, scope: list[Column]) -> E:
     # Group `g` of the first match, `''` without one (or past the groups).
     if node.args.get("position") is not None or node.args.get("occurrence") is not None:
-        raise Unsupported(f"{_shown(node)} is not supported yet")
+        raise SqlUnsupported(f"{_shown(node)} is not supported yet")
     if node.args.get("parameters") is not None:
-        raise Unsupported("regexp_extract with options is not supported yet")
+        raise SqlUnsupported("regexp_extract with options is not supported yet")
     s_, p = _pattern(lf, node, sub, "regexp_extract")
     group = node.args.get("group")
     g = 0 if group is None else _const(sub(group), "regexp_extract's group", int)
@@ -271,7 +272,7 @@ def _regexp_replace(lf: _Lift, node: sge.RegexpReplace, sub: Sub, scope: list[Co
     # The first match, or every match with the flag `'g'`.
     for k in ("position", "occurrence"):
         if node.args.get(k) is not None:
-            raise Unsupported(f"{_shown(node)} is not supported yet")
+            raise SqlUnsupported(f"{_shown(node)} is not supported yet")
     flags = node.args.get("modifiers")
     flag = None if flags is None else _const(sub(flags), "regexp_replace's options", str)
     if flag not in (None, "g"):
@@ -318,7 +319,9 @@ def _pad(lf: _Lift, node: sge.Pad, sub: Sub, scope: list[Column]) -> E:
         return E(if_then([(call("is_null", [s_]), literal(None, dt.string))],
                          literal("", dt.string)), dt.string)  # fmt: skip
     if p == "":
-        raise Unsupported(f"{what} with an empty fill: DuckDB raises where the string is shorter")
+        raise SqlUnsupported(
+            f"{what} with an empty fill: DuckDB raises where the string is shorter"
+        )
     size = call("character_length", [s_])
     cut = call("substring", [s_, literal(1, dt.int64), literal(n, dt.int64)])
     # The fill is the first `n - size` characters of `p` repeated: those of

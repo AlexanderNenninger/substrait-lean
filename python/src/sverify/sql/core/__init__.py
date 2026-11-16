@@ -15,11 +15,12 @@ defaults:
   (division by zero, `MIN / -1`, a bad `POWER` or `CAST(double AS BIGINT)`),
   Lean's value is NULL and `analysis/Sverify/Analysis/Safety.lean` says when that can
   happen; the SQL raises there too (`Dialect.raise_`).
-* Doubles have one zero and one NaN (`core/Sverify/Core/Float.lean`): `-0.0` is
-  `0.0`, NaN equals itself and is above `inf`, in comparisons, join
-  conditions, groups, window partitions and sort keys. Every double read
-  from a table, and every one an operation could make `-0.0`, goes through
-  `Dialect.canon`, so `-0.0` never reaches a result.
+* Doubles keep their values raw, `-0.0` included (D31): a read, a scalar
+  operation or an aggregate prints no canon, as the reference computes them.
+  Only identity boundaries tell the zeros apart or not: `-0.0` is `0.0` and
+  NaN equals itself and is above `inf` in comparisons, join conditions,
+  groups, window partitions and sort keys, where the engine's facts say its
+  own boundary does so (DuckDB's does, `duckdb-float-signs`).
 * Filters keep a row only when the condition is TRUE, `AND`/`OR`/`NOT` are
   Kleene's, and every `ORDER BY` key says where NULLs go.
 * Row order follows `Rel.eval`'s list order wherever it matters. Below a

@@ -35,9 +35,29 @@ NULLABLE = {"nullability": "NULLABILITY_NULLABLE"}
 REQUIRED = {"nullability": "NULLABILITY_REQUIRED"}
 
 
+_ISSUES = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+
+
 class Unsupported(_Unsupported):
     """The expression uses something the Lean model does not cover
     (`sverify.errors.UnsupportedError`)."""
+
+
+class SqlUnsupported(Unsupported):
+    """The SQL lift does not read a construct (yet). The message ends with what
+    the user can do: the `hint` (a rewrite the lift supports) where the site
+    has one; otherwise write the step in Ibis, which `sv.sql` replaces
+    one-to-one in a transform, and the `issue` that tracks the construct
+    where an open one does."""
+
+    def __init__(self, message: str, hint: str | None = None, issue: int | None = None):
+        if hint:
+            message = f"{message}; {hint}"
+        elif "#" not in message and "Ibis" not in message:
+            where = f" ({_ISSUES}/{issue})" if issue else ""
+            tracked = f"tracked in #{issue}{where}; until then, " if issue else ""
+            message = f"{message}; {tracked}write this step in Ibis"
+        super().__init__(message)
 
 
 # --------------------------------------------------------------------------
@@ -130,8 +150,8 @@ def literal(value: Any, dtype: Any) -> Json:
         name = next(iter(key))
         return {"literal": {name: str(value) if name == "i64" else int(value)}}
     if dtype.is_float64():
-        x = float(value) + 0.0  # the model's one zero (and one NaN, below)
-        text: Any = "NaN" if math.isnan(x) else x
+        x = float(value)  # raw (D31): -0.0 as the text "-0.0", a NaN as one below
+        text: Any = "NaN" if math.isnan(x) else "-0.0" if str(x) == "-0.0" else x
         if math.isinf(x):
             text = "Infinity" if x > 0 else "-Infinity"
         return {"literal": {"fp64": text}}
