@@ -392,8 +392,9 @@ does not report under that profile yet
 ([#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442),
 [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)), so
 `semantics="polars"` gives the reference's report with a
-`ProfilePendingWarning`, and the plan runs on Polars by the translated route,
-which shims `%` to truncate:
+`ProfilePendingWarning`. The plan still states `division_type: FLOOR`, which
+the core reads as the floored remainder, so the proof holds, and the plan runs
+on Polars by the translated route:
 
 ```python
 con.put("signed", pa.table({"x": [-7, -2, 3, 8]}))
@@ -405,15 +406,15 @@ parity = sv.verify(
 print(parity.semantics)
 # reference
 print(parity.proved)
-# False
+# True
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
-# [-1, 0, 1, 0]
+# [1, 0, 1, 0]
 print(parity.routes["polars"].kind)
 # translated
 ```
 
-Under the reference `-7 % 2` is `-1`, as on DuckDB, so the postcondition does
-not hold, and the run gives the reference's values. A zero divisor and integer
+Only the report's profile is pending: the floored remainder holds on the
+run. A zero divisor and integer
 overflow raise under the reference, so `verify` infers the same preconditions.
 [engine-profiles.md](engine-profiles.md#polars-as-a-profile) says which choices
 the profile takes from Polars.

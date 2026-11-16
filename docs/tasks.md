@@ -848,8 +848,8 @@ says which semantics it used (`Report.semantics`, a `semantics:` line).
 `semantics="polars"` is pending like Spark's: Polars floors integer `//` and
 `%`, so `-7 % 2` is `1` there, and until the checker reports under Polars's own
 profile ([#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442))
-the report is the reference's, `-7 % 2` is `-1`, and a `ProfilePendingWarning`
-says so ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
+the report is the reference's, with the stated `FLOOR` read by the core, and a
+`ProfilePendingWarning` says so ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode, and doubles that overflow are ±inf with no precondition.
 Until the checker reports under Spark's own profile

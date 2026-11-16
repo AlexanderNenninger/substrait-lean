@@ -371,7 +371,7 @@ On the routes: a plan proved under `Profile.polars` would run on Polars by
 `native`, where `sverify_polars.engine` runs Polars's `//` and `%` for the stated
 calls and the translation's shims elsewhere. Until the checker reports under
 it, a `semantics="polars"` request gets the reference's report and the
-translated route, whose shims make `%` truncate. The SQL writer computes a
+translated route, which computes the stated `FLOOR`. The SQL writer computes a
 stated `FLOOR` on every dialect from the truncating operations, as
 `Expr.floorDivOf` and `Expr.floorModOf` do, so the written plan runs on
 DuckDB, Spark and Snowflake too; the route to DuckDB is refused by the

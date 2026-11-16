@@ -421,8 +421,9 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
 
 def _floor_report(con, **kw) -> sv.Report:
     """`i % j` and `i // j` requested under `semantics="polars"`, which the
-    checker reports as pending until #271: the report is the reference's, with
-    `//` flooring and `%` truncating."""
+    checker reports as pending until #271: the report is the reference's. The
+    producer still states `division_type: FLOOR`, which the core reads as the
+    floored `//` and `%`."""
     t = con.table("t")
     return sv.verify(
         t.select("k", m=t.i % t.j, q=t.i // t.j),
@@ -434,7 +435,7 @@ def _floor_report(con, **kw) -> sv.Report:
 
 def test_f1_a_polars_request_runs_translated_on_polars(con) -> None:
     """Route (a): the request is reported under the reference (#1442), so the
-    plan reaches Polars by the translation, which shims the truncating `%`."""
+    plan reaches Polars by the translation, which computes the stated `FLOOR`."""
     with pytest.warns(ProfilePendingWarning):
         report = _floor_report(con)
     assert report.proved and report.semantics == "reference", str(report)
@@ -442,7 +443,7 @@ def test_f1_a_polars_request_runs_translated_on_polars(con) -> None:
     r = report.routes["polars"]
     assert (r.kind, r.profile) == ("translated", "reference")
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
-    assert sorted(out.column("m").to_pylist()) == sorted(int(math.fmod(i, j)) for i, j in pairs)
+    assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
     assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
 
 
@@ -453,7 +454,7 @@ def test_f1b_the_same_report_runs_translated_on_duckdb(con) -> None:
     assert r.kind == "translated", r
     out = report.run(con, "duckdb", route="auto")
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
-    assert sorted(out.column("m").to_pylist()) == sorted(int(math.fmod(i, j)) for i, j in pairs)
+    assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
     assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
 
 
