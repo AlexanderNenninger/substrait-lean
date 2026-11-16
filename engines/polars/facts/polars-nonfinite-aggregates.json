@@ -12,7 +12,9 @@
   ],
   "rows": [
     {"group": "agg.fsum", "option": "nan_creation", "types": ["fp32", "fp64"]},
-    {"group": "agg.fsum", "option": "float_overflow", "types": ["fp32", "fp64"]}
+    {"group": "agg.fsum", "option": "float_overflow", "types": ["fp32", "fp64"]},
+    {"group": "agg.var", "option": "nan_creation", "types": ["fp64"], "evidence": "probe"},
+    {"group": "agg.stat", "option": "nan_creation", "types": ["fp64"], "evidence": "probe"}
   ],
   "constructs": [
     "sum",
@@ -31,9 +33,10 @@
     "`Float32` takes the same generic code in single precision, so a `Float32` sum of inf and -inf is NaN too, on both engines, grouped and not. Nothing checks for the infinities; the Kahan step keeps its error term only while it is finite, so it adds no NaN of its own.",
     "A `sum` of finite values that overflows is `±inf` without raising: `sum` of 1e308 and 1e308 (`Float64`) and of 3e38 and 3e38 (`Float32`, summed in `Float32`) is inf, grouped and not, on both engines. `mean` of the `Float64` pair is inf; `mean` of the `Float32` pair sums in `f64` and is the finite 3.0000000054977558e+38.",
     "The docs are silent on infinities and NaN in `sum`, `mean`, `var` and `std`: a docs gap.",
-    "No upstream test pins `inf + (-inf)` or `var` and `std` with an infinity; they may change between versions."
+    "No upstream test pins `inf + (-inf)` or `var` and `std` with an infinity; they may change between versions.",
+    "`var`, `std`, `cov` and `corr` of a group holding `+inf` or `-inf` in `x` are NaN (streaming, one thread): no operation of the plan makes the NaN, so it is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var(x)` finite and makes `cov` and `corr` NaN; a single `inf` alone gives a null sample `var` and a NaN `corr`. Grouped, only the group holding the infinity is NaN."
   ],
-  "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`stat_degenerate`). ST-3 and ST-5 record that Substrait leaves both open.",
+  "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`nan_creation`). ST-3 and ST-5 record that Substrait leaves both open.",
   "status": "open",
   "evidence": "probe",
   "provenance": [
@@ -115,6 +118,17 @@
           "note": "`test_sum_inf_not_nan_25849`: grouped Float64 sum with one inf among finite values is inf (eager, in memory). No test of inf + -inf or var/std with inf"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1446 follow-up), probe script ps.py",
+      "evidence": [
+        {
+          "note": "Polars 2.1.0, `collect(engine=\"streaming\")`, POLARS_MAX_THREADS=1, Float64: x = [inf, 1, 2] (or [-inf, 1, 2], [inf, -inf, 1], [inf, inf]) with y = [1, 2, 4]: `x.var(1)`, `x.var(0)`, `x.std(1)`, `x.std(0)`, `pl.cov(x, y)` and `pl.corr(x, y)` are all NaN, grouped too (a second group of [3, 4] with y = [5, 7] gives var 0.5, corr 1.0); x = [1, 2, 3], y = [inf, 2, 5]: var(x) 1.0, cov and corr NaN; x = [inf], y = [1]: var(1) null, var(0) NaN, corr NaN"
+        }
+      ],
+      "notes": "Streaming engine, one thread."
     }
   ],
   "issues": [
