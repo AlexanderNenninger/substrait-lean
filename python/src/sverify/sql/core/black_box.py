@@ -61,8 +61,7 @@ def expr(
         else self.operand(x, KINDS[ty], ref, cols, name)
         for x, ty in zip(args, row.args, strict=True)
     ]
-    sql = self.d.black_box(row, sqls)
-    return self.d.canon(sql) if row.result == "double" else sql
+    return self.d.black_box(row, sqls)
 
 
 register(call, expr, un_kinds={}, bin_kinds={})

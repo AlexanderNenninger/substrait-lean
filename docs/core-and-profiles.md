@@ -53,7 +53,10 @@ by default. It belongs to no engine.
 Because the reference is strict, one proof carries to every engine:
 sverify writes the plan for each engine with a shim wherever the engine's
 value differs from the reference's, and the shims are proved
-([Verifying: the two paths](verifying.md)).
+([Verifying: the two paths](verifying.md)). For Polars and Spark, sverify
+proves that the plan as written computes the reference's result on data that
+meets the contract's preconditions, and takes what the engine does on that
+data from its facts and tests.
 
 ## Engine profiles
 

@@ -544,10 +544,9 @@ def run_semantics(cur) -> None:
     assert cur.execute(f"SELECT {d.str_lit('a\\b')}").fetchone() == ("a\\b",)
     ts = d.time_add_interval(d.timestamp_lit(0), d.interval_lit(86_400_000_001))
     assert str(cur.execute(f"SELECT {ts}").fetchone()[0]) == "1970-01-02 00:00:00.000001"
-    # One zero: -0.0 equals 0.0, and `canon` makes a computed -0.0 zero.
+    # One zero at `=`: -0.0 equals 0.0 (values stay raw, D31).
     neg0 = d.float_neg(zero)
-    row = cur.execute(f"SELECT {d.float_eq(neg0, zero)}, {d.canon(neg0)}").fetchone()
-    assert row[0] is True and math.copysign(1.0, row[1]) == 1.0
+    assert cur.execute(f"SELECT {d.float_eq(neg0, zero)}").fetchone() == (True,)
     big = d.int_lit(2**62)
     with pytest.raises(Exception, match="(?i)overflow"):
         cur.execute(f"SELECT {d.int_add(big, big)}").fetchall()
