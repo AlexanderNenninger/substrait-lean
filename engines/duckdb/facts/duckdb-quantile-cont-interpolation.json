@@ -29,7 +29,8 @@
     "The interpolation rounds: of neighbours that are equal it can give a double an ulp away from them, so the result can lie just outside [lo, hi]. Between -inf and +inf it is NaN (`-inf·(1 − d) + inf·d`); next to a NaN it is NaN. Large neighbours do not overflow (`-1.5e308` and `1.5e308` give `0.0`), since each is scaled before the sum. Since `RN` is a double, a fraction such as `0.1` may land just off a whole position; the result then differs from the exact one by rounding only.",
     "The docs are silent on the formula per type and on the DECIMAL truncation: a docs gap. No upstream test pins the overshoot between equal neighbours, ±inf neighbours or large neighbours; it may change between versions.",
     "Probed: the DOUBLE interpolation is computed in doubles as `fma(lo, 1 − d, hi·d)`, the source's formula with its last multiply-add fused by the compiler, in the macOS arm64 and Linux x86_64 wheels alike: of 0.4 and 1.697 at 0.3 it is 0.7891, where the unfused formula gives 0.7890999999999999. It is not the exact interpolation rounded once: of 188 random pairs, 30 differ from it by an ulp. `quantile_interp`'s `LINEAR` is therefore linear between the neighbours in doubles, within a few ulps; sverify's choice leaves the rounding open (`BETWEEN` in the reference).",
-    "`lo·(1 − w) + hi·w` has a NaN only where both neighbours are infinite and opposite, which is `nan_creation`'s (D37); DuckDB's behaviour stays `LINEAR` (duckdb-nonfinite-aggregates)."
+    "`lo·(1 − w) + hi·w` has a NaN only where both neighbours are infinite and opposite, which is `nan_creation`'s (D37); DuckDB's behaviour stays `LINEAR` (duckdb-nonfinite-aggregates).",
+    "The kernel can land one ulp outside the neighbours: `quantile_cont(x, 0.3)` of two equal values c is c's predecessor for some c (0.43021727930404396 gives 0.4302172793040439: 82 of 3000 random c × p, a group of two, where the neighbours are the group's minimum and maximum). The written plan clamps to `[MIN(x), MAX(x)]`, which fixes each of these (min = max = c). With neighbours strictly inside the group's range, equal or 1, 2 or 5 ulps apart (n = 4 to 11, magnitudes 1e-300 to 1e300), no result left them in 6000 trials, and one neighbour at an extreme (n = 3, 2 × 8000 trials) none either; sampling, not a proof."
   ],
   "reference": [
     "`AggFn.quantile true num scale` (`contValue`, #53): for the exact `q = num / 10^scale`, the doubles at positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉` in order; the one value where they coincide, else DuckDB's `lo·(1 − d) + hi·d` kept between `lo` and `hi` (`interpolate`). The reference allows any double between the two neighbours (`contAllowed`, `AggFn.Allowed`), so contracts know the result lies within the argument's range. Integers are converted to doubles first; DECIMAL, DATE and TIMESTAMP arguments are refused.",
@@ -175,6 +176,16 @@
       "evidence": [
         {
           "note": "DuckDB 2.0.0 (duckdb Python 2.0.0): `quantile_cont(x, p)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] it is -inf at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: -inf, 1, +inf at 0.25, 0.5, 0.75; of [1, +inf]: +inf. The interpolation `lo·(1 − w) + hi·w` makes a NaN only where both neighbours are infinite and opposite."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (probes from the orchestrator's backlog), scripts ov.py, dq.py, dq2.py, dq3.py, dq4.py, spo.py",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0: `quantile_cont(x, p)` against `[lo, hi]` of its neighbours, and against `greatest(least(quantile_cont(x, p), max(x)), min(x))`: two equal values, p in {0.1, 0.3, 0.5, 0.7, 0.9, 0.37}: raw outside in 82 of 3000, clamped 0; interior neighbours (n = 4, 5, 7, 11; k = 0, 1, 2, 5 ulps): 0 outside of 6000, raw and clamped; one neighbour the minimum or the maximum (n = 3): 0 of 8000 each."
         }
       ]
     }
