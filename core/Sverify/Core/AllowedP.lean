@@ -99,14 +99,26 @@ def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   if b = "EXACT" then v = f.apply vs
   else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
 
+/-- What `lo + (hi − lo)·w` (Polars and Spark, `LINEAR_DIFF`) gives beyond a
+double between the neighbours, each value conditioned on them: NaN where `lo`
+is `-∞` and `hi` is greater (`hi − lo` is `+∞`, and `-∞ + ∞·w` is NaN), and
+`+∞` where `hi − lo` overflows to `+∞` (`[-1e308, 1e308]` gives `+∞` at
+every fraction between, polars-quantile, spark-quantile). -/
+def contDiffExtra (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
+  match contNeighbours num scale (sortVals vs) with
+  | some (l, h, _) =>
+      (v = .float FloatCode.nan ∧ l = FloatCode.negInf ∧ FloatCode.canon l < FloatCode.canon h) ∨
+      (v = .float FloatCode.posInf ∧ FloatCode.fsub h l = FloatCode.posInf)
+  | none => False
+
 /-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour: a double
-between the neighbours, which DuckDB's linear interpolation is (clamped).
-`LINEAR_DIFF` (`lo + (hi - lo) · w`, Polars and Spark) is that, or a NaN: the
-difference `hi - lo` of an infinite neighbour and a finite one is infinite, and
-`lo + ∞ · w` is NaN where `lo` is `-∞` (polars-quantile, spark-quantile). -/
+between the neighbours, as the reference's `BETWEEN` and an engine's `LINEAR`
+(DuckDB, `lo·(1 − w) + hi·w`) do. `LINEAR_DIFF` is that, or what the
+difference `hi − lo` makes of an infinite or overflowing pair (`contDiffExtra`). -/
 def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
   if b = "BETWEEN" ∨ b = "LINEAR" then contAllowed num scale (sortVals vs) v
-  else if b = "LINEAR_DIFF" then contAllowed num scale (sortVals vs) v ∨ v = .float FloatCode.nan
+  else if b = "LINEAR_DIFF" then
+    contAllowed num scale (sortVals vs) v ∨ contDiffExtra num scale vs v
   else True
 
 /-- The options `AggFn.AllowedP` interprets. -/
