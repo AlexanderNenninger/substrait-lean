@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from tests._repo import needs_repo
+from _repo import ROOT, needs_repo
 
 pytestmark = needs_repo
 
-TEMPLATES = Path(__file__).resolve().parents[2] / "templates" / "orchestrators"
+TEMPLATES = ROOT / "templates" / "orchestrators"
 
 
 def _load(name: str):
