@@ -1923,6 +1923,11 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
         return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
+    if isinstance(table, ir.Join):
+        # Ibis merges a select over a join into the join's own select
+        # (`Join.select`); the checker wants the condition over the
+        # transformation as it is (#1484, `ContractCheck.postOf`).
+        table = ir.Table(table.op())
     return table.select(c=resolve(cond, table))
 
 

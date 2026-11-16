@@ -23,8 +23,10 @@ Input (JSON):
 
 ```json
 { "requires": [<plan>, ...],   -- each: one table, select of its preconditions
-  "ensures": [<plan>, ...],    -- each: the transformation, select of postconditions
-  "transform": <plan>,         -- the transformation, to report facts and keys
+  "ensures": [<plan>, ...],    -- each: the transformation, select of postconditions;
+      -- `parse` keeps only the selected conditions and refuses a plan that
+      -- selects from anything other than the transformation (`postOf`)
+  "transform": <plan>,         -- the transformation, which the postconditions are over
   "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
   "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
   "references": {"<table>": [[<col>, "<table>", <col>], ...]},
@@ -672,12 +674,44 @@ def issuesUnderAndOr (transform : Option Plan) (issues : List (Issue × Expr)) :
     issues.filterMap fun (_, e) => if all.any (e.underAndOr ·) then some e else none
   | none => []
 
-/-- A `--contract` request as `parse` reads it: the plans, the tables they
-read, and each table's preconditions. Everything `Request.check` analyses
-is a function of it (`check_proved_sound` reads it). -/
+/-- A postcondition as `parse` reads it from its plan in `ensures`: the
+condition columns it projects over the transformation's output and the
+columns it keeps (#1484, finding 2). The checker builds the postcondition's
+plan over the transformation itself (`Post.plan`), so the plan it proves is
+the transformation's by construction. -/
+structure Post where
+  exprs : List Expr
+  mapping : List Nat
+  names : List String
+
+/-- Postcondition `p`'s plan over the transformation `T`: `p`'s conditions
+projected over `T`'s output, `p`'s columns kept. -/
+def Post.plan (T : Plan) (p : Post) : Plan :=
+  { root := .emit (.project T.root p.exprs) p.mapping, names := p.names, tables := T.tables }
+
+/-- The postcondition a plan of `ensures` states over the transformation `T`:
+the plan must project its conditions over a relation equal to `T`'s root
+(`==`; the checker then builds the plan from `T` itself, `Post.plan`, so no
+law of `==` is trusted). `k` numbers it in messages. -/
+def postOf (T : Plan) (k : Nat) (q : Plan) : Except String Post :=
+  match q.root with
+  | .emit (.project r es) m =>
+    if r == T.root then .ok { exprs := es, mapping := m, names := q.names }
+    else .error s!"postcondition {k} does not select from the transformation"
+  | _ => .error s!"postcondition {k} is not a selection of conditions over the transformation"
+
+/-- A postcondition's abstract values from the transformation's and the
+facts its projections read (`Request.transformEnvIn`). -/
+def Post.envFrom (p : Post) (t : List AVal × List Fact) : List AVal :=
+  p.mapping.map ((t.1 ++ p.exprs.map (·.absF t.1 t.2)).getD · AVal.top)
+
+/-- A `--contract` request as `parse` reads it: the transformation, the
+postconditions over it, the precondition plans, the tables they read, and
+each table's preconditions. Everything `Request.check` analyses is a function
+of it (`check_proved_sound` reads it). -/
 structure Request where
   input : Json
-  ensures : List Plan
+  posts : List Post
   requires : List Plan
   transform : Option Plan
   tables : Tables
@@ -699,6 +733,10 @@ def parse (input : Json) : Except String Request := do
   let transform ← match (input.getObjVal? "transform").toOption with
     | some j => some <$> parseJsonPlan j
     | none => pure none
+  let posts ← match transform, ensures with
+    | _, [] => pure []
+    | some T, _ => (ensures.zip (List.range ensures.length)).mapM fun (q, k) => postOf T (k + 1) q
+    | none, _ => throw "postconditions need the transformation (\"transform\")"
   let plans := ensures ++ requires ++ transform.toList
   let tables : Tables := plans.flatMap (·.tables)
   for (t, n, _) in tables do
@@ -709,13 +747,18 @@ def parse (input : Json) : Except String Request := do
     let some (t, cs) := p.root.colExprs (tablesCatalog tables)
       | throw "a precondition plan must only select from one table"
     pre := (t, cs) :: pre
-  return { input, ensures, requires, transform, tables, pre }
+  return { input, posts, requires, transform, tables, pre }
 
 namespace Request
 
 variable (R : Request)
 
 def cat : Catalog := tablesCatalog R.tables
+
+/-- The postcondition plans, each built over the transformation (`Post.plan`). -/
+def ensures : List Plan := match R.transform with
+  | some T => R.posts.map (·.plan T)
+  | none => []
 
 /-- Each table's declared schema, as abstract values. -/
 def schemas (t : String) : List AVal := match R.tables.lookup t with
@@ -758,6 +801,21 @@ def ensureEnvIn (K : KnowledgeEnv) (q : Plan) : List AVal :=
 
 /-- A postcondition plan's abstract values, the rows it reads capped. -/
 def ensureEnv (q : Plan) : List AVal := R.ensureEnvIn R.kenv q
+
+/-- The transformation's abstract values and the facts its projections read,
+under `K`, its reads capped. Every postcondition's analysis starts from them
+(`ensureEnvIn_plan`), so `check` computes them once per request rather than
+once per postcondition. -/
+def transformEnvIn (K : KnowledgeEnv) (T : Plan) : List AVal × List Fact :=
+  let r := T.root.capReads R.caps
+  (r.aeval R.cat K.cols K.facts (K.windows R.cat),
+    r.facts R.cat K.facts (K.windows R.cat) ++ r.ratioPart R.cat K.cols K.facts (K.windows R.cat))
+
+/-- Each postcondition's abstract values under `K`, the transformation
+analysed once (`postEnvs_eq`). -/
+def postEnvs (K : KnowledgeEnv) : List (List AVal) := match R.transform with
+  | some T => let t := R.transformEnvIn K T; R.posts.map (·.envFrom t)
+  | none => []
 
 /-- A postcondition plan's columns, each with whether the analysis proves it
 TRUE and its abstract value: proved for every order of the ties
@@ -944,7 +1002,7 @@ def Request.check (R : Request) : Except String Report :=
     -- `R.kenv`, with every table's knowledge evaluated once (`knowsTable`):
     -- `R.kenv` itself would evaluate it again at each read.
     let K := memoKnowledge R.knowsTable R.know
-    let envs := R.ensures.map (R.ensureEnvIn K)
+    let envs := R.postEnvs K
     match R.analyses envs K with
     | .error e => .error e
     | .ok rep =>
@@ -954,6 +1012,18 @@ def Request.check (R : Request) : Except String Report :=
 /-- Check a `--contract` request. -/
 def check (input : Json) : Except String Report := do
   (← parse input).check
+
+/-- A postcondition's abstract values from the transformation's are those of
+its plan. -/
+theorem Request.ensureEnvIn_plan (R : Request) (K : KnowledgeEnv) (T : Plan) (p : Post) :
+    R.ensureEnvIn K (p.plan T) = p.envFrom (R.transformEnvIn K T) := by
+  simp only [Request.ensureEnvIn, Post.plan, Rel.capReads, Rel.aeval, Request.transformEnvIn,
+    Post.envFrom]
+
+theorem Request.postEnvs_eq (R : Request) (K : KnowledgeEnv) :
+    R.postEnvs K = R.ensures.map (R.ensureEnvIn K) := by
+  unfold Request.postEnvs Request.ensures
+  split <;> simp [List.map_map, Function.comp_def, Request.ensureEnvIn_plan]
 
 theorem Request.zip_results (R : Request) : ∀ qs : List Plan,
     ((qs.zip (qs.map R.ensureEnv)).map fun (q, env) => Request.ensureResults.resultsOf q env) =
@@ -975,6 +1045,7 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
     split at hc
     · cases hc
     · cases hc
+      rw [Request.postEnvs_eq]
       exact R.zip_results R.ensures
 
 theorem check_parse {input : Json} {R : Request} {rep : Report}
@@ -1049,7 +1120,9 @@ theorem Request.resultsOf_all (q : Plan) (env : List AVal)
 
 /-- **The checker's verdict is the contract theorem** (#1088). When `check`
 reports every column of the request's `k`-th postcondition proved, the
-postcondition holds on every row of every result the reference allows
+postcondition, its conditions projected over the request's transformation `T`
+(#1484, finding 2: `parse` builds the plan from `T`, `Post.plan`), holds on
+every row of every result the reference allows
 (`Rel.OrderAllowed`: every order of the ties, D24), for any data that has the
 request's tables (`harity`) and meets their schemas (`hS`), preconditions
 (`hpre`: those stated and those sverify inferred and assumed, both in the
@@ -1077,10 +1150,14 @@ theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
     (hpre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true)
     (hkeys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows)
     (hcap : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n)
-    {k : Nat} {q : Plan} (hq : R.ensures[k]? = some q)
+    {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
     (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) :
-    ∀ {out : Relation}, q.root.OrderAllowed data out → ∀ row ∈ out, ∀ v ∈ row, v = .bool true := by
+    ∀ {out : Relation}, (Rel.emit (.project T.root p.exprs) p.mapping).OrderAllowed data out →
+      ∀ row ∈ out, ∀ v ∈ row, v = .bool true := by
   intro out ho
+  let q := p.plan T
+  have hq : R.ensures[k]? = some q := by
+    simp [Request.ensures, hT, hp, q]
   have hall : (R.ensureEnv q).all AVal.certainlyTrue = true := by
     rw [check_ensures hR hc, List.getD_eq_getElem?_getD, List.getElem?_map, hq] at hproved
     exact Request.resultsOf_all q _ hproved

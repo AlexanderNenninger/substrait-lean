@@ -20,7 +20,9 @@ drifts.
 2. `substrait-check --contract` reads it (`ContractCheck.parse`) and analyses
    it (`ContractCheck.Request.check`).
 3. `ContractCheck.check_proved_sound` takes a postcondition the answer marks
-   proved to `Knowledge.contract_sound_all` on the data.
+   proved to `Knowledge.contract_sound_all` on the data. The postcondition's
+   plan is built by `parse` over the request's transformation (`Post.plan`):
+   a plan in `ensures` that selects from anything else is refused (#1484).
 4. The checker's answer becomes a report in one place
    (`python/src/sverify/_verdict.py`, `verdict`).
 5. `Report.run` writes the plan for an engine (`python/src/sverify/sql/`,

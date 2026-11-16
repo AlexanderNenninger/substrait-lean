@@ -27,7 +27,7 @@ contract's preconditions.
 |---|---|---|---|
 | A proved postcondition is TRUE on every output row | `eval` | `contract_sound` | `Contracts/Sound.lean` |
 | … in every row order the reference allows | `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
-| What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
+| What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s on the postcondition's conditions projected over the request's transformation, which `parse` builds itself, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088, #1484) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
 | The same on one hypothesis, the analysis's (`Knowledge`) | `eval`, `OrderAllowed` | `Knowledge.contract_sound`, `Knowledge.contract_sound_all`, `Knowledge.duckdb_sound` | `Knowledge.lean` |
 | The analysis is sound: what it knows of a relation holds of its rows | `eval`, `OrderAllowed` | `Rel.analyse_sound`, `Rel.analyse_sound_all` | `Knowledge.lean` |
 | The abstract evaluation bounds every column of every row | `eval`, `OrderAllowed` | `Rel.aeval_sound`, `Rel.aeval_sound_all` | `Contracts/Sound.lean` |
