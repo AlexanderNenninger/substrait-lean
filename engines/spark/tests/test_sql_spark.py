@@ -74,7 +74,7 @@ def parses(sql: str) -> str:
 def test_literals():
     assert parses(SPARK.float_lit(math.nan)) == "CAST('NaN' AS DOUBLE)"
     # The model's one zero and one NaN.
-    assert parses(SPARK.float_lit(-0.0)) == "CAST('0' AS DOUBLE)"
+    assert parses(SPARK.float_lit(-0.0)) == "-0.0D"
     assert SPARK.float_lit(-math.nan) == SPARK.float_lit(math.nan)
     assert parses(SPARK.str_lit("it's a\\b\n")) == "'it\\'s a\\\\b\\u000a'"
     assert parses(SPARK.timestamp_lit(1_500)) == "TIMESTAMP_NTZ '1970-01-01 00:00:00.001500'"
@@ -165,9 +165,9 @@ def test_floats(spark):
     # FLOOR, CEIL and ROUND keep NaN, ±inf and big values; zeros are zero.
     x = [d.float_lit(v) for v in (-0.4, 0.3, 2.5, 1e300)]
     got = one(
-        d.canon(d.float_round(x[0])),
-        d.canon(d.float_floor(x[1])),
-        d.canon(d.float_ceil(x[0])),
+        d.float_round(x[0]),
+        d.float_floor(x[1]),
+        d.float_ceil(x[0]),
         d.float_round(x[2]),
         d.float_floor(x[3]),
         d.float_ceil(ninf),
@@ -178,11 +178,10 @@ def test_floats(spark):
     for bad in (2.0**63, math.nan, -math.inf):
         with pytest.raises(Exception, match="sverify"):
             one(d.float_to_int(d.float_lit(bad)))
-    # `canon` survives the optimizer on a table (VALUES skip it), and a
-    # computed -0.0 comes out as 0.0.
+    # Values stay raw (D31): a computed -0.0 comes out as Spark gives it.
     spark.range(3).selectExpr("CAST(id AS DOUBLE) - 1 AS x").createOrReplaceTempView("signs")
-    got = query(f"SELECT x, {d.canon('(x * -0.0D)')} FROM signs ORDER BY x")
-    assert repr(got) == repr([(-1.0, 0.0), (0.0, 0.0), (1.0, 0.0)])
+    got = query("SELECT x, (x * -0.0D) FROM signs ORDER BY x")
+    assert [(a, math.copysign(1.0, b)) for a, b in got] == [(-1.0, 1.0), (0.0, -1.0), (1.0, -1.0)]
 
 
 def test_the_parser_cache_is_flushed(spark):

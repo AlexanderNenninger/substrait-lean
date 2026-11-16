@@ -130,8 +130,8 @@ def literal(value: Any, dtype: Any) -> Json:
         name = next(iter(key))
         return {"literal": {name: str(value) if name == "i64" else int(value)}}
     if dtype.is_float64():
-        x = float(value) + 0.0  # the model's one zero (and one NaN, below)
-        text: Any = "NaN" if math.isnan(x) else x
+        x = float(value)  # raw (D31): -0.0 as the text "-0.0", a NaN as one below
+        text: Any = "NaN" if math.isnan(x) else "-0.0" if str(x) == "-0.0" else x
         if math.isinf(x):
             text = "Infinity" if x > 0 else "-Infinity"
         return {"literal": {"fp64": text}}

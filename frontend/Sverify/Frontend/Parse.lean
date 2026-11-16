@@ -413,7 +413,10 @@ def Const.toFloat? : Const → Option Float
     | "-inf" | "-infinity" => some (-1.0 / 0.0)
     | "nan" => some (0.0 / 0.0)
     | t => match Json.parse t with
-      | .ok (.num n) => some (floatOfScientific n.mantissa n.exponent)
+      -- A JSON number has no `-0.0`: its text form does (D31, #1461).
+      | .ok (.num n) =>
+        if n.mantissa == 0 && t.startsWith "-" then some (-0.0) else
+        some (floatOfScientific n.mantissa n.exponent)
       | _ => none
   | _ => none
 
@@ -456,6 +459,8 @@ def roundMicros? (f : Float) : Option Int :=
 #guard (Const.str " 1.5").toFloat? == none && (Const.str "1.5\n").toFloat? == none
 #guard (Time.parseTimestamp? " 2024-01-01").isNone && (Time.parseDate? "2024-01-01 ").isNone
 #guard roundMicros? (0.3 * 1000000.0) == some 300000
+#guard (Const.str "-0.0").toFloat?.map (·.toBits) == some 0x8000000000000000
+#guard (Const.str "0.0").toFloat?.map (·.toBits) == some 0
 
 def intBits (ty : Json) : Nat :=
   if (ty.getObjVal? "i8").toOption.isSome then 8
