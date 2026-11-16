@@ -12,7 +12,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify import _checker, _proof_cache
+from sverify import _checker
 from sverify.report import UNCHECKED_CHECKER, Report
 
 orders = ibis.table({"id": "int64", "total": "int64"}, name="orders")
@@ -84,12 +84,3 @@ def test_reads_the_build_once_per_binary(tmp_path: Path, text: str, want: bool |
 def test_missing_binary_is_unknown(tmp_path: Path) -> None:
     _checker._generated_proofs.cache_clear()
     assert _checker._generated_proofs(str(tmp_path / "nope")) is None
-
-
-def test_the_cache_keys_on_it(tmp_path: Path) -> None:
-    path = tmp_path / "checker"
-    path.write_bytes(b"x")
-    keys = set()
-    for answer in (True, False, None):
-        keys.add(_proof_cache.key(str(path), ("--contract",), "{}", answer))
-    assert len(keys) == 3

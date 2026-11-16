@@ -292,13 +292,12 @@ atexit.register(_CHECKER.close)
 
 @functools.lru_cache(maxsize=8192)
 def _run_checker(path: str, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
-    built = _generated_proofs(path)
-    if (answer := _proof_cache.get(path, flags, stdin, built)) is not None:
+    if (answer := _proof_cache.get(path, flags, stdin)) is not None:
         _stages.hit("disk")
         return answer
     with _stages.stage("checker", within=("counterexamples",)):
         answer = _CHECKER.ask(flags, stdin)
-    _proof_cache.put(path, flags, stdin, answer, built)
+    _proof_cache.put(path, flags, stdin, answer)
     return answer
 
 
