@@ -42,10 +42,10 @@ _OWN_EXIT = {"SqlUnsupported", "WriterUnsupported", "refused"}
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"
     "cast|wrap|drop|remove|pin|enable|try|switch|upgrade|read|select|take|order|name|put|"
-    "build|compare"
+    "build|compare|re-run"
 )
 EXIT = re.compile(
-    r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|"
+    r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|to_sql\(|"
     rf"\b({_VERBS})\b[^.]{{0,60}}(`|\w+=|\(\)|first|instead|as a)",
     re.I,
 )
@@ -73,7 +73,14 @@ def _text(node: ast.AST, consts: dict[str, str]) -> str:
         return node.value
     if isinstance(node, ast.JoinedStr):
         return "".join(
-            _text(v, consts) if isinstance(v, ast.Constant) else "{}" for v in node.values
+            _text(v, consts)
+            if isinstance(v, ast.Constant)
+            else _text(v.value, consts)
+            if isinstance(v, ast.FormattedValue)
+            and isinstance(v.value, ast.Name)
+            and v.value.id in consts
+            else "{}"
+            for v in node.values
         )
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add | ast.Mod):
         return _text(node.left, consts) + _text(node.right, consts)
