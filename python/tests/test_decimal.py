@@ -15,6 +15,8 @@ import duckdb
 import ibis
 import pyarrow as pa
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
@@ -353,7 +355,7 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     """Large values of the widest `AVG` input: the quotient is computed without a
     product past 38 digits (#1497)."""
     top = D(10**34 - 1)
-    rows = {"g": [1, 1], "v": pa.array([top, top - 2], pa.decimal128(34, 0))}
+    rows = {"g": [1, 1], "v": pa.array([top, D(10**34 - 3)], pa.decimal128(34, 0))}
     c = sv.connect()
     c.put("t", pa.table(rows))
     t = c.table("t")
@@ -364,3 +366,28 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     out = report.run(c, "duckdb")
     assert out.column("m").to_pylist() == [top - 1]
 
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    u=st.integers(-(10**30), 10**30),
+    n=st.integers(-(10**6), 10**6).filter(lambda x: x != 0),
+    sa=st.sampled_from([0, 2, 6]),
+)
+def test_the_duckdb_quotient_is_the_models_rounding_half_away(u, n, sa):
+    """`decimalAvgs`: `sum / count` at scale `sa + 4`, rounded half away from zero,
+    on negative sums and at the half (#1497); the writer splits the quotient so no
+    product passes 38 digits."""
+    from fractions import Fraction
+
+    from sverify.sql.core import Dec
+    from sverify_duckdb.dialect import DUCKDB
+
+    k = Dec(38, sa + 4)
+    a = DUCKDB.cast(f"'{D(f'{u}e{-sa}'):f}'", Dec(38, sa))
+    sql = DUCKDB.decimal_div(a, str(n), sa, k)
+    got = duckdb.connect().execute(f"SELECT {sql}").fetchone()[0]
+    exact = Fraction(u * 10**4, n)
+    mag = (2 * abs(exact) + 1) // 2  # half away from zero, on the magnitude
+    want = D(f"{(1 if exact >= 0 else -1) * int(mag)}e{-(sa + 4)}")
+    assert got == want, (u, n, sa)
