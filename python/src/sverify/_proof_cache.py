@@ -70,17 +70,16 @@ def _build_dir(root: Path, path: str) -> Path:
     return root / "checker" / f"{binary_hash(path)[:32]}-p{PROTOCOL}-{_version()}"
 
 
-def key(path: str, flags: tuple[str, ...], stdin: str) -> str:
+def key(path: str, flags: tuple[str, ...], stdin: str, generated: bool | None = None) -> str:
     """The entry's key: a SHA-256 of the request and everything its answer
-    depends on."""
-    from sverify._checker import _generated_proofs
-
+    depends on, among it whether the checker's generated proofs were checked
+    (`generated`, `sverify._checker.generated_proofs`)."""
     h = hashlib.sha256()
     parts = (
         str(PROTOCOL),
         _version(),
         binary_hash(path),
-        f"generated={_generated_proofs(path)}",
+        f"generated={generated}",
         " ".join(flags) or "-",
     )
     for part in parts:
@@ -90,20 +89,24 @@ def key(path: str, flags: tuple[str, ...], stdin: str) -> str:
     return h.hexdigest()
 
 
-def _entry(path: str, flags: tuple[str, ...], stdin: str) -> Path | None:
+def _entry(
+    path: str, flags: tuple[str, ...], stdin: str, generated: bool | None
+) -> Path | None:
     if (" ".join(flags) or "-") not in CACHED_MODES:
         return None
     root = cache_dir()
     if root is None:
         return None
-    k = key(path, flags, stdin)
+    k = key(path, flags, stdin, generated)
     return _build_dir(root, path) / k[:2] / f"{k}.json"
 
 
-def get(path: str, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str] | None:
+def get(
+    path: str, flags: tuple[str, ...], stdin: str, generated: bool | None = None
+) -> tuple[int, str, str] | None:
     """The checker's answer to the request, if the cache has it."""
     try:
-        entry = _entry(path, flags, stdin)
+        entry = _entry(path, flags, stdin, generated)
         if entry is None:
             return None
         data = json.loads(entry.read_text())
@@ -115,11 +118,17 @@ def get(path: str, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str] |
     return code, out, err
 
 
-def put(path: str, flags: tuple[str, ...], stdin: str, answer: tuple[int, str, str]) -> None:
+def put(
+    path: str,
+    flags: tuple[str, ...],
+    stdin: str,
+    answer: tuple[int, str, str],
+    generated: bool | None = None,
+) -> None:
     """Keep the checker's answer to the request. Failing to write (a
     read-only or full disk) leaves the cache as it was."""
     try:
-        entry = _entry(path, flags, stdin)
+        entry = _entry(path, flags, stdin, generated)
         if entry is None:
             return
         entry.parent.mkdir(parents=True, exist_ok=True)

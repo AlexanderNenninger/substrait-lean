@@ -86,11 +86,10 @@ def test_missing_binary_is_unknown(tmp_path: Path) -> None:
     assert _checker._generated_proofs(str(tmp_path / "nope")) is None
 
 
-def test_the_cache_keys_on_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_cache_keys_on_it(tmp_path: Path) -> None:
     path = tmp_path / "checker"
     path.write_bytes(b"x")
     keys = set()
     for answer in (True, False, None):
-        monkeypatch.setattr(_checker, "_generated_proofs", lambda p, a=answer: a)
-        keys.add(_proof_cache.key(str(path), ("--contract",), "{}"))
+        keys.add(_proof_cache.key(str(path), ("--contract",), "{}", answer))
     assert len(keys) == 3

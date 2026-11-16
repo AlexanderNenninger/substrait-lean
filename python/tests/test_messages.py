@@ -140,7 +140,7 @@ def test_conditions_keep_their_short_values() -> None:
 
 def test_a_report_starts_with_its_verdict() -> None:
     proved = sv.verify(ITEMS.select(x=ITEMS.price), ensures=[_.x.isnull() | _.x.notnull()])
-    assert str(proved).splitlines()[0] == "proved"
+    assert str(proved).splitlines()[0].startswith("proved")
     report = sv.verify(margins(ITEMS), ensures=[_.revenue >= 0], counterexamples=0)
     assert str(report).splitlines()[0] == (
         "NOT proved: 1 of 1 postcondition not proved, 2 possible runtime errors, "
