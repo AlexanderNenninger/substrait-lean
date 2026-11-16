@@ -8,8 +8,7 @@
   "options": [
     "nonfinite_aggregates",
     "nan_creation",
-    "float_overflow",
-    "stat_degenerate"
+    "float_overflow"
   ],
   "rows": [
     {
@@ -41,6 +40,22 @@
         "fp32"
       ],
       "evidence": "probe"
+    },
+    {
+      "group": "agg.var",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "agg.stat",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -60,9 +75,10 @@
   },
   "description": [
     "`sum` and `avg` of inf and -inf are NaN; `variance` and `stddev` of a set with an infinity are NaN; `sum(1e308, 1e308)` and `avg` are +inf, while `variance(1e308, 1e308)` is 0.0. A NaN input makes `sum`, `avg`, `variance` NaN; `min` skips it (it sorts last) and `max` returns it. None of this raises under ANSI.",
-    "`COVAR_*` and `CORR` follow `variance`: a NaN or ±inf input makes them NaN, under ANSI too."
+    "`COVAR_*` and `CORR` follow `variance`: a NaN or ±inf input makes them NaN, under ANSI too.",
+    "`var_samp`, `var_pop`, `stddev_*`, `covar_*` and `corr` of values holding `+inf` or `-inf` in `x` are NaN, with `spark.sql.ansi.enabled` true and false: the NaN is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var_samp(x)` finite and makes `covar_*` and `corr` NaN; a single `inf` alone gives a null sample moment and `corr`. Grouped, only the group holding the infinity is NaN."
   ],
-  "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`stat_degenerate`); a sum past the largest double raises (#575). ST-3 and ST-5 record that Substrait leaves both open. Spark needs guards.",
+  "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`nan_creation`); a sum past the largest double raises (#575). ST-3 and ST-5 record that Substrait leaves both open. Spark needs guards.",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [
@@ -152,6 +168,17 @@
         }
       ],
       "notes": "x = 1, NaN, 2; 1, inf, 2; 1, -inf, 2; inf, inf."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1446 follow-up), homelab-run, probe script sp2.py",
+      "evidence": [
+        {
+          "note": "Spark 4.3.0 local[2], `spark.sql.ansi.enabled` true and false: FROM VALUES (x, y) with x = [inf, 1, 2] (or [-inf, 1, 2], [inf, -inf, 1], [inf, inf]), y = [1, 2, 4]: `var_samp`, `var_pop`, `stddev_samp`, `stddev_pop`, `covar_samp`, `covar_pop` and `corr` are all NaN, grouped too (a second group of [3, 4] with y = [5, 7] gives var_samp 0.5, corr 1.0); x = [1, 2, 3], y = [inf, 2, 5]: var_samp(x) 1.0, the covariances and corr NaN; x = [inf], y = [1]: var_samp, stddev_samp, covar_samp and corr null, the population moments NaN"
+        }
+      ],
+      "notes": "One local session."
     }
   ],
   "issues": [

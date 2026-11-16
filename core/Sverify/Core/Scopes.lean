@@ -51,11 +51,6 @@ def Value.anyZero : List Value → Bool
   | v :: vs => v.hasZero || Value.anyZero vs
 end
 
-/-- `+∞` or `-∞`. -/
-def Value.isInf : Value → Bool
-  | .float c => isInfCode c
-  | _ => false
-
 /-- A finite double, or a value that is not a double. -/
 def Value.finiteOrOther : Value → Bool
   | .float c => isFiniteCode c
@@ -114,14 +109,13 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "on_domain_error" => iss == some .domain
   | "on_log_zero" => iss == some .domain
   -- The arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`,
-  -- `∞ / ∞`, `fmod(±∞, y)` (`nanCase`), `0 / 0`, `fmod(x, 0)`, a `SUM` of
-  -- `+∞` and `−∞`.
+  -- `∞ / ∞`, `fmod(±∞, y)` (`nanCase`), `0 / 0`, `fmod(x, 0)`, and an
+  -- aggregate's (`AggFn.nanCase`).
   | "nan_creation" => match c, args with
     -- Zeros by their canonical codes: `-0.0` is a zero too (D31).
     | .bin f, [.float a, .float b] => nanCase f a b || (f == .fmod && FloatCode.canon b == 0) ||
         (f == .fdiv && FloatCode.canon a == 0 && FloatCode.canon b == 0)
-    | .agg _, vs => !Value.anyNaN vs && vs.any (· == .float FloatCode.posInf) &&
-        vs.any (· == .float FloatCode.negInf)
+    | .agg f, vs => !Value.anyNaN vs && f.nanCase vs
     | _, _ => false
   -- A zero argument or a zero result (underflow, `x − x`, a sum rounding to zero).
   | "zero_sign" => Value.anyZero args || r.hasZero

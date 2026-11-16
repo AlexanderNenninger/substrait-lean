@@ -1501,35 +1501,12 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
   | .unnest r _, h => ⟨⟨loose_wf (r := r) h.1, by rw [loose_arity]; exact h.2⟩, loose_wf (r := r) h.1,
       by simp [arity, loose_arity]⟩
 
-/-- Is the value a double's `±∞`? -/
-def isInfValue (v : Value) : Bool := v == .float FloatCode.posInf || v == .float FloatCode.negInf
-
-/-- Are `QUANTILE_CONT`'s neighbours among the values in order `-∞` and
-`+∞` (`contNeighbours`)? Its interpolation between them is NaN. -/
-def quantileOpposite (num scale : Nat) (vs : List Value) : Bool :=
-  match contNeighbours num scale (sortVals vs) with
-  | some (l, h, _) => l == FloatCode.negInf && h == FloatCode.posInf
-  | none => false
-
 /-- Would IEEE make the aggregate of these values NaN, from numbers (#257)?
-A double `SUM` or `AVG` of `+∞` and `-∞`, and a variance of an infinity
-(`∞ - ∞` in its deviations). A black box that raises on them (#326) is
-reported here too, as the same domain error. -/
+`AggFn.nanCase`'s cases, and a black box that raises on them (#326), reported
+here as the same domain error. -/
 def AggFn.makesNan : AggFn → List Value → Bool
-  | .fsum, vs | .avg, vs => vs.contains (.float FloatCode.posInf) && vs.contains (.float FloatCode.negInf)
-  | .var _ _, vs => vs.contains (.float FloatCode.posInf) || vs.contains (.float FloatCode.negInf)
-  -- A pair with an infinity: a deviation `∞ - ∞` (#54).
-  | .cov _, vs | .corr, vs => vs.any fun
-    | .list [a, b] => isInfValue a || isInfValue b
-    | _ => false
-  -- `QUANTILE_CONT` between `-∞` and `+∞`: IEEE's interpolation is NaN
-  -- (DuckDB gives it), the model's clamp `+∞`; the reference raises (D21).
-  | .quantile true num scale, vs =>
-    vs.contains (.float FloatCode.posInf) && vs.contains (.float FloatCode.negInf) &&
-      quantileOpposite num scale vs
-  -- A black box that raises on these values (#326).
   | .bbox n, vs => BlackBox.aggRaisesOn Boxes.Ambient.boxes n vs
-  | _, _ => false
+  | f, vs => f.nanCase vs
 
 /-- May `makesNan` hold of values that `a` describes? -/
 def AggFn.mayNan : AggFn → AVal → Bool
@@ -1550,12 +1527,19 @@ theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
     have := has _ hm; rwa [FloatCode.canon_negInf] at this
   cases f
   case quantile c _ _ =>
-    cases c <;> simp only [makesNan, mayNan, Bool.and_eq_true, List.contains_iff_mem,
-      reduceCtorEq] at h ⊢
+    cases c <;> simp only [makesNan, AggFn.nanCase, mayNan, Bool.and_eq_true,
+      List.contains_iff_mem, reduceCtorEq] at h ⊢
     all_goals first
       | exact ⟨hasP h.1.1, hasN h.1.2⟩
       | simp at h
-  all_goals simp only [makesNan, mayNan, Bool.and_eq_true, Bool.or_eq_true,
+  case var =>
+    simp only [makesNan, AggFn.nanCase, mayNan, List.any_eq_true, Value.isInf_iff,
+      Bool.or_eq_true] at h ⊢
+    obtain ⟨v, hv, hv'⟩ := h
+    rcases hv' with rfl | rfl
+    · exact .inl (hasP hv)
+    · exact .inr (hasN hv)
+  all_goals simp only [makesNan, AggFn.nanCase, mayNan, Bool.and_eq_true,
     List.contains_iff_mem] at h ⊢
   all_goals first
     | exact ⟨hasP h.1, hasN h.2⟩
@@ -1592,10 +1576,8 @@ theorem Measure.mayNan_of_makesNan {m : Measure} {grp : Relation} {abs : Expr �
   by_cases hp : m.fn.paired = true
   · simp only [hp, ite_true]
     -- An input pair with an infinite side, from some row.
-    have hex : ∃ v ∈ m.inputs grp, (match v with
-        | .list [a, b] => isInfValue a || isInfValue b
-        | _ => false) = true := by
-      cases hf : m.fn <;> simp [hf, AggFn.paired] at hp <;> simpa [hf, AggFn.makesNan] using h
+    have hex : ∃ v ∈ m.inputs grp, v.pairHasInf = true := by
+      cases hf : m.fn <;> simp [hf, AggFn.paired] at hp <;> simpa [hf, AggFn.makesNan, AggFn.nanCase] using h
     obtain ⟨v, hv, hinf⟩ := hex
     obtain ⟨row, hrow, hev⟩ := from_row v hv
     cases harg : m.arg with
@@ -1609,7 +1591,7 @@ theorem Measure.mayNan_of_makesNan {m : Measure} {grp : Relation} {abs : Expr �
         have hy := hsound row hrow y
         cases hxv : x.eval row <;> cases hyv : y.eval row <;>
           simp only [hxv, hyv, BinFn.apply] at hev <;> subst hev <;>
-          simp only [isInfValue, Bool.or_eq_true, beq_iff_eq] at hinf <;>
+          simp only [Value.pairHasInf, Value.isInf_iff, Bool.or_eq_true] at hinf <;>
           rw [hxv] at hx <;> rw [hyv] at hy <;>
           simp only [AVal.mayInf, Bool.or_eq_true] <;>
           rcases hinf with (h1 | h1) | (h1 | h1) <;>
@@ -1640,7 +1622,7 @@ def finiteValue : Value → Bool
 
 /-- Is the aggregate of these rows `±∞` though every value is finite? -/
 def Measure.makesInf (m : Measure) (grp : Relation) : Bool :=
-  m.fn.infAgg && (m.inputs grp).all finiteValue && isInfValue (m.eval grp)
+  m.fn.infAgg && (m.inputs grp).all finiteValue && Value.isInf (m.eval grp)
 
 /-- May the aggregate, whose result `r` describes (`Measure.abs`), overflow?
 Ruled out where `r` excludes `±∞`: a `SUM` or `AVG` of bounded values over at
@@ -1652,7 +1634,7 @@ theorem Measure.mayInf_of_makesInf {m : Measure} {grp : Relation} {r : AVal}
     (hr : r.Mem (m.eval grp)) (h : m.makesInf grp = true) : m.mayInf r = true := by
   simp only [Measure.makesInf, Bool.and_eq_true] at h
   obtain ⟨⟨hf, _⟩, hinf⟩ := h
-  simp only [isInfValue, Bool.or_eq_true, beq_iff_eq] at hinf
+  simp only [Value.isInf_iff] at hinf
   simp only [Measure.mayInf, hf, Bool.true_and, Bool.or_eq_true]
   rcases hinf with h | h <;> rw [h] at hr <;> have := AVal.has_of_mem hr <;>
     rw [NumKind.norm_float] at this

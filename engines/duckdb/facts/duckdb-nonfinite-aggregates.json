@@ -7,20 +7,19 @@
   "area": "aggregates",
   "options": [
     "nonfinite_aggregates",
-    "nan_creation",
-    "stat_degenerate"
+    "nan_creation"
   ],
   "rows": [
     {
       "group": "agg.var",
-      "option": "stat_degenerate",
+      "option": "nan_creation",
       "types": [
         "fp64"
       ]
     },
     {
       "group": "agg.stat",
-      "option": "stat_degenerate",
+      "option": "nan_creation",
       "types": [
         "fp64"
       ]
@@ -54,7 +53,7 @@
     "`COVAR_*` follow the same rule: a NaN or ±inf on either side, or two equal infinities, make every moment NaN, without an error.",
     "`nan_creation` of `sum` and `avg` of doubles (#341): `+inf` with `-inf` gives NaN, ungrouped, grouped and over a framed window; one kind of infinity with finite values gives that infinity; no error. A framed window sums each frame anew: a frame holding `-inf` and 1 after a frame that held `inf` and `-inf` is `-inf`, so no frame's NaN reaches the next. `fsum` and `favg` give NaN once a finite value follows an infinity, so their result depends on the order (`fsum` of 1, `inf` is `inf`, of `inf`, 1 NaN), and `favg` of one `inf` alone is NaN where `fsum` of it is `inf` (Kahan's error term `inf - inf`)."
   ],
-  "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85. `nan_creation` is `ERROR` in the reference: a double `SUM` or `AVG` (grouped or over a window frame) of `+∞` and `-∞` is a domain error (D37, #257); `Profile.duckdb` has `NAN`, and #341 states DuckDB's NaN in the DuckDB lift.",
+  "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85. `nan_creation` is `ERROR` in the reference: a variance, covariance or correlation of an infinity, and a double `SUM` or `AVG` (grouped or over a window frame) of `+∞` and `-∞` is a domain error (D37, #257); `Profile.duckdb` has `NAN`, and #341 states DuckDB's NaN in the DuckDB lift.",
   "status": "decided",
   "evidence": "probe",
   "provenance": [
