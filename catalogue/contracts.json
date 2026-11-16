@@ -12,7 +12,7 @@
           "row tested: cmp's zero_sign (#241)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "polars": {
@@ -35,9 +35,10 @@
           "row tested: agg.fsum's empty_group_aggregates (#271)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)",
+          "row tested: cmp's zero_sign (#271)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       }
     },
@@ -354,7 +355,7 @@
           "row tested: agg.order's nan_order (#241)",
           "row tested: agg.order's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "exact",
         "outcome": "tested"
       },
       "polars": {
@@ -370,9 +371,10 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)"
+          "row tested: agg.order's nan_order (#271)",
+          "row tested: agg.order's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "exact",
         "outcome": "tested"
       }
     },
@@ -386,7 +388,7 @@
           "row tested: agg.order's nan_order (#241)",
           "row tested: agg.order's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "exact",
         "outcome": "tested"
       },
       "polars": {
@@ -402,9 +404,10 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)"
+          "row tested: agg.order's nan_order (#271)",
+          "row tested: agg.order's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "exact",
         "outcome": "tested"
       }
     },
@@ -421,7 +424,7 @@
           "row tested: cmp's nan_order (#241)",
           "row tested: cmp's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "exact",
         "outcome": "tested"
       },
       "polars": {
@@ -440,10 +443,12 @@
       "spark": {
         "causes": [
           "row tested: agg.order's nan_order (#271)",
+          "row tested: agg.order's zero_sign (#271)",
           "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_order (#271)",
+          "row tested: cmp's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "exact",
         "outcome": "tested"
       }
     },
@@ -533,7 +538,7 @@
           "row tested: cmp's nan_order (#241)",
           "row tested: cmp's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "polars": {
@@ -554,9 +559,10 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_order (#271)",
+          "row tested: cmp's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       }
     },
@@ -630,7 +636,7 @@
           "row tested: cmp's nan_order (#241)",
           "row tested: cmp's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "polars": {
@@ -650,9 +656,10 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_order (#271)",
+          "row tested: cmp's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       }
     },
@@ -669,7 +676,7 @@
           "row tested: cmp's nan_order (#241)",
           "row tested: cmp's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "polars": {
@@ -687,9 +694,10 @@
       "spark": {
         "causes": [
           "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_order (#271)",
+          "row tested: cmp's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       }
     },
@@ -707,7 +715,7 @@
           "row tested: cmp's nan_order (#241)",
           "row tested: cmp's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "polars": {
@@ -728,9 +736,10 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_order (#271)",
+          "row tested: cmp's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       }
     },
@@ -893,7 +902,7 @@
           "row tested: fp.arith's rounding (#241)",
           "row tested: fp.arith's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "polars": {
@@ -912,9 +921,10 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: fp.arith's rounding (#271)"
+          "row tested: fp.arith's rounding (#271)",
+          "row tested: fp.arith's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       }
     },
@@ -1344,7 +1354,7 @@
           "row tested: cmp's nan_order (#241)",
           "row tested: cmp's zero_sign (#241)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "polars": {
@@ -1365,9 +1375,10 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_order (#271)",
+          "row tested: cmp's zero_sign (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       }
     },
