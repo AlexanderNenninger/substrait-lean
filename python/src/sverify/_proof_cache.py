@@ -73,8 +73,17 @@ def _build_dir(root: Path, path: str) -> Path:
 def key(path: str, flags: tuple[str, ...], stdin: str) -> str:
     """The entry's key: a SHA-256 of the request and everything its answer
     depends on."""
+    from sverify._checker import _generated_proofs
+
     h = hashlib.sha256()
-    for part in (str(PROTOCOL), _version(), binary_hash(path), " ".join(flags) or "-"):
+    parts = (
+        str(PROTOCOL),
+        _version(),
+        binary_hash(path),
+        f"generated={_generated_proofs(path)}",
+        " ".join(flags) or "-",
+    )
+    for part in parts:
         h.update(part.encode())
         h.update(b"\0")
     h.update(stdin.encode())

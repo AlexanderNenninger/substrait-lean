@@ -154,6 +154,10 @@ def _truncates(expr: str) -> bool:
     return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
 
 
+#: What `str(report)` adds to "proved" when the checker's generated proofs
+#: were not checked (`substrait-check --build`, `docs/trusted-base.md`).
+UNCHECKED_CHECKER = " by a checker whose generated proofs are unchecked"
+
 #: How a report explains a `SUM` that may overflow: an error like any other,
 #: which the job also checks while it runs.
 RUNTIME_CHECK = (
@@ -521,6 +525,10 @@ class Report:
     over the options the proof depends on, the theorems and facts, the shims,
     the options realized only up to an observation, what refuses it, and the
     transfer check from each other profile. None from a checker without it."""
+    _generated_proofs: bool | None = field(default=None, repr=False, compare=False)
+    """Whether the checker that made this report had checked its generated
+    lift and lowering proofs (`substrait-check --build`); None where it does
+    not say. A checker without them proves with `sorry` in their place."""
     _sorted: bool | None = field(default=None, repr=False, compare=False)
     """Whether the plan's result comes out of a sort, as the checker reads it."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
@@ -1452,6 +1460,8 @@ class Report:
 
     def __str__(self) -> str:
         lines = [self.verdict]
+        if self.proved and self._generated_proofs is False:
+            lines[0] += UNCHECKED_CHECKER
         needed = _labels_by_table(self.needs)
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self._inferred.get(table, [])}
