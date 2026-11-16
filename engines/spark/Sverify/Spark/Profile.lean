@@ -46,6 +46,14 @@ option Spark's table allows (`Profile.spark_withinOk`, `Engine.lean`).
 
 namespace Substrait
 
+/-- Spark's `date_add(d, CAST(n AS INT))`: the days added as 32-bit `int`s,
+wrapping past 2³¹ - 1 (SP-2, spark-date-range). -/
+def Spark.wrap32 (x : Int) : Int := (x + 2 ^ 31) % 2 ^ 32 - 2 ^ 31
+
+theorem Spark.wrap32_of_small {x : Int} (h1 : -2 ^ 31 ≤ x) (h2 : x < 2 ^ 31) :
+    Spark.wrap32 x = x := by
+  unfold Spark.wrap32; omega
+
 /-- Spark's `power` of doubles (`StrictMath.pow`) where it differs from the
 reference: `(-∞) ^ y` for a finite `y` that is not an integer is `+∞` for
 `y > 0` and `0` for `y < 0`, and a negative finite base to such a power is
@@ -86,6 +94,11 @@ def sparkBin : BinFn → Value → Value → Option Outcome
   | .bit .shr, .int a, .int b =>
     if 0 ≤ b ∧ b < 64 then none
     else some (.ok (.int ((BitVec.ofInt 64 a).sshiftRight (b % 64).toNat).toInt))
+  -- `date_add` counts days as a 32-bit `int` (spark-date-range, SP-2): the
+  -- sum wraps, where the reference raises past its date range. A count past
+  -- `int` fails the cast, which is no value of its own.
+  | .dateAdd, .date a, .int b =>
+    if -2 ^ 31 ≤ b ∧ b < 2 ^ 31 then some (.ok (.date (Spark.wrap32 (a + b)))) else none
   | _, _, _ => none
 
 /-- A logarithm (`ln`, `log10`, `log2`), which Spark makes NULL at `x ≤ 0`. -/
