@@ -470,11 +470,8 @@ def test_round_to_digits_is_duckdbs():
     plan = plan_of(sql, {"r": r}, "reference")
     native = duckdb.connect()
     native.register("r", r)
-    # The model has one zero; DuckDB's own result keeps -0.0.
-    own = [
-        tuple(v + 0.0 if isinstance(v, float) else v for v in row)
-        for row in native.execute(sql).fetchall()
-    ]
+    # DuckDB's own result keeps -0.0, which `canonical` reads as 0.0.
+    own = native.execute(sql).fetchall()
     assert canonical(duckdb_rows(plan, {"r": r})) == canonical(own)
 
 

@@ -177,9 +177,9 @@ def test_least_and_greatest_of_both_zeros_are_the_models_up_to_a_zero(pair) -> N
         T.select(T.k, v=ibis.least(X, other)),
         T.select(T.k, v=ibis.greatest(X, other)),
     ):
-        (k, got), = written(expr, rows)
+        ((k, got),) = written(expr, rows)
         assert got[0] == 0.0
-        (k2, want), = model(expr, rows)
+        ((k2, want),) = model(expr, rows)
         assert want[0] == 0.0
 
 

@@ -15,6 +15,7 @@ import pyarrow.compute as pc
 import pytest
 
 import sverify as sv
+from _zero import one_zero
 from sverify import _duckdb
 from sverify._arrow_state import ArrowOps as ArrowStore
 from sverify._scan import Resident
@@ -27,11 +28,6 @@ from sverify.testing import installed_engines
 from sverify_duckdb import DuckDBStore
 
 NAN = float("nan")
-
-
-def one_zero(rows) -> str:
-    """The rows' text with `-0.0` as `0.0` (values are raw, D31)."""
-    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in rows])
 
 
 def weighted_table(columns: dict, weights: list[int]) -> pa.Table:
