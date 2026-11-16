@@ -71,7 +71,7 @@ it does not yet flag the other choices.
 The reference is not a model of any engine, DuckDB included. It is stricter
 than every engine in most options: where engines disagree on an edge case it
 raises, so a proved plan never reaches that case. Each engine is
-characterized as a diff against it (`characterization/<engine>/`): which
+characterized as a diff against it (`engines/<engine>/facts/`): which
 behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
 which the translation refuses. The shims are proved against the reference in
 Lean, and that each engine matches its profile is tested; both are in
@@ -357,7 +357,7 @@ Design notes: [nested-values.md](nested-values.md).
 Engines compute `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` with different
 algorithms, none documented: DuckDB 2.0 and Spark 4.3 use Welford's update
 with Chan's merge, Polars 2.1 a two-pass per block of 128 values when
-ungrouped and Welford when grouped (`characterization/*/facts/`, ids
+ungrouped and Welford when grouped (`engines/*/facts/`, ids
 `duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std`,
 `polars-cov`, `polars-corr`, `spark-var-stddev`, `spark-covar`, `spark-corr`).
 The reference picks none. Its value is the

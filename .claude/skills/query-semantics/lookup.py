@@ -12,7 +12,7 @@ and prints:
   options    the (group, option) pairs the query meets
   choices    each profile's row for them (`substrait-check --options`):
              allowed behaviours, class, observation q, shim, facts
-  facts      characterization/<engine>/facts/*.json for those options and
+  facts      engines/<engine>/facts/*.json for those options and
              functions, with evidence level and status
   ledger     upstream/bugs/*.json linked to those facts or naming the
              functions: engine bugs and spec gaps (kind "spec-gap")
@@ -368,9 +368,7 @@ def evidence_of(fact: dict) -> str:
 @functools.cache
 def all_facts() -> list[dict]:
     out = []
-    # An engine package's facts (`engines/<e>/facts`, #1189) or the others'.
-    paths = [*ROOT.glob("engines/*/facts/*.json"), *ROOT.glob("characterization/*/facts/*.json")]
-    for f in sorted(paths):
+    for f in sorted(ROOT.glob("engines/*/facts/*.json")):
         d = json.loads(f.read_text())
         d["_path"] = str(f.relative_to(ROOT))
         out.append(d)
@@ -493,7 +491,7 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
                 extra.append(f"facts {', '.join(r['facts'])}")
             print(f"    {where(g, o):26} {allowed:24} {'; '.join(extra)}{via}")
 
-    print("\n== facts (characterization/<engine>/facts; evidence docs < source <")
+    print("\n== facts (engines/<engine>/facts; evidence docs < source <")
     print("   engine_test < probe < fuzz < proof)")
     hits = matching_facts(opts, {f.lower() for f in fns}, all_groups, words)
     shown: dict[str, int] = {}

@@ -35,6 +35,12 @@ def test_well_formed():
     assert "| total refused" in cc.table(RESULTS)
 
 
+def test_every_outcome_names_an_exit():
+    """#1205: every refusal and every tested route names the issue or the
+    option that lifts it."""
+    assert cc.unnamed(RESULTS) == []
+
+
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
 def test_outcome_holds(case):
     got = cc.census_case(case, cc.cat.load_schemas())

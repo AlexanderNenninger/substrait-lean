@@ -55,7 +55,7 @@ It prints:
 | profiles | `sv.verify(semantics=…)`, `routes.choose` | verified under which profile, preconditions inferred, issues, route and class per engine |
 | options | `substrait-check --functions`, the plan's `depends` | the (group, option) pairs the query meets |
 | choices | `substrait-check --options` | each profile's row: allowed behaviours, default, class, `q`, shim, rerun, facts |
-| facts | `characterization/<engine>/facts/*.json` | the facts for those options (by `rows` where a fact has them, else `options`) and functions, with evidence (`docs` < `source` < `engine_test` < `probe` < `fuzz` < `proof`) and status |
+| facts | `engines/<engine>/facts/*.json` | the facts for those options (by `rows` where a fact has them, else `options`) and functions, with evidence (`docs` < `source` < `engine_test` < `probe` < `fuzz` < `proof`) and status |
 | ledger | `upstream/bugs/*.json` | engine bugs and spec gaps (`ST-*`, `kind: spec-gap`) linked to those facts or naming the functions |
 | parser | `frontend/Sverify/Frontend/Parse.lean` | how the Substrait function is read, or refused |
 | prose (`--prose`) | `catalogue/pitfalls.toml`, `features.toml`, `backend_semantics.py`, engine module docstrings, `status.json` | older notes, from before the facts; the facts win where they disagree |
