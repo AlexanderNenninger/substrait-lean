@@ -35,6 +35,9 @@ BASELINE = Path(__file__).resolve().parents[2] / "tests" / "exits_baseline.json"
 #: The classes every refusal derives from, by name, and the helpers that build one.
 _ROOTS = {"SverifyError", "UnsupportedError", "Unsupported", "Refused", "ProducerRefused"}
 _HELPER = re.compile(r"refus|unsupported", re.I)
+#: Classes whose message always ends with the way out (`SqlUnsupported` adds a
+#: rewrite or the coverage epic).
+_OWN_EXIT = {"SqlUnsupported"}
 
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"
@@ -58,8 +61,10 @@ class Site:
 
     @property
     def tier(self) -> str:
-        if EXIT.search(self.message):
+        if self.cls in _OWN_EXIT or EXIT.search(self.message):
             return "exit"
+        if not re.sub(r"\{\w*\}|[\s:;,.()]", "", self.message):
+            return "passthrough"  # re-raises a message that carries its own exit
         return "hint" if HINT.search(self.message) else "unnamed"
 
 
@@ -143,11 +148,15 @@ def main() -> None:
     mods: dict[str, collections.Counter[str]] = collections.defaultdict(collections.Counter)
     for s in found:
         parts = s.file.split("/")
-        mods["/".join(parts[:2]) if len(parts) > 2 else parts[0]][s.tier] += 1
-    print(f"{'module':28} {'total':>5} {'exit':>5} {'hint':>5} {'unnamed':>7}")
+        mods["/".join(parts[:2]) if len(parts) > 2 else parts[0]][
+            "exit" if s.tier == "passthrough" else s.tier
+        ] += 1
+    print(
+        f"{'module':28} {'total':>5} {'exit':>5} {'hint':>5} {'unnamed':>7}  (exit includes passthroughs)"
+    )
     for m, c in sorted(mods.items(), key=lambda kv: -sum(kv[1].values())):
         print(f"{m:28} {sum(c.values()):5} {c['exit']:5} {c['hint']:5} {c['unnamed']:7}")
-    total = collections.Counter(s.tier for s in found)
+    total = collections.Counter("exit" if s.tier == "passthrough" else s.tier for s in found)
     print(f"{'total':28} {len(found):5} {total['exit']:5} {total['hint']:5} {total['unnamed']:7}")
     if "--sites" in sys.argv:
         for s in found:

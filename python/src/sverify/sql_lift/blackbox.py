@@ -19,6 +19,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify import black_box
+from sverify._unsupported import SqlUnsupported
 from sverify.plan_json import Unsupported
 from sverify.sql_lift._base import (
     _AGGREGATES,
@@ -101,7 +102,7 @@ def _unwrap(name: str, arg: sge.Expression) -> sge.Expression:
     """The SQL argument of a row whose SQL wraps it: `encode(s)` of `base64`'s."""
     if "encode({0})" in black_box.SCALARS[name].duckdb:
         if not isinstance(arg, sge.Encode):
-            raise Unsupported(
+            raise SqlUnsupported(
                 f"{name} of a BLOB is not supported: write {name}(encode(s)) of a string s"
             )
         return arg.this
@@ -139,7 +140,7 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
             return BlackBoxCall(this=name, expressions=list(n.expressions))
         if name in black_box.AGGREGATES:
             if len(n.expressions) != 1:
-                raise Unsupported(f"{name} takes one argument")
+                raise SqlUnsupported(f"{name} takes one argument", hint="call it with one argument")
             return BlackBoxAgg(this=n.expressions[0], fname=sge.Literal.string(name))
         return n
 
@@ -157,7 +158,7 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
     for a, ty in zip(args, row.args, strict=True):
         e = sub(_unwrap(row.name, a))
         if not _accepts(ty, e.type):
-            raise Unsupported(f"{row.name} of a {e.type} is not supported")
+            raise SqlUnsupported(f"{row.name} of a {e.type} is not supported")
         if row.name == "bit_count" and not e.type.is_int64():
             # DuckDB counts the bits of the argument's own width.
             raise Unsupported(f"bit_count of a {e.type}: cast it to BIGINT (#326)")
@@ -171,7 +172,7 @@ def _aggregate(lf: _Lift, node: sge.Expression, a: E) -> tuple[str, Any]:
     row = black_box.AGGREGATES[name]
     # An integer becomes a double (`Parse.lean`), as DuckDB converts it.
     if not (_accepts(row.args[0], a.type) or (row.args[0] == "double" and a.type.is_integer())):
-        raise Unsupported(f"{name} of a {a.type} is not supported")
+        raise SqlUnsupported(f"{name} of a {a.type} is not supported")
     return name, _TYPES[row.result]
 
 

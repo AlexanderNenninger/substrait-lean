@@ -11,6 +11,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.common.temporal import IntervalUnit
 
+from sverify._unsupported import SqlUnsupported
 from sverify.plan_json import (
     Json,
     Unsupported,
@@ -89,7 +90,7 @@ def _temporal(e: E, t: Any) -> E:
     except (TypeError, ValueError) as err:
         raise Unsupported(f"cannot read {text!r} as a {t}") from err
     if v.tzinfo is not None:
-        raise Unsupported("timestamps with a time zone are not supported")
+        raise SqlUnsupported("timestamps with a time zone are not supported")
     ts = dt.timestamp(scale=6)
     return E(literal(v, ts), ts, v)
 
@@ -117,9 +118,9 @@ def _date_trunc(lf: _Lift, node: sge.TimestampTrunc, sub: Sub, scope: list[Colum
         out = _fn("date_trunc", [literal(name, dt.string), a.json], dt.date)
         return E(out, dt.date, midnight=True)
     if not (a.type.is_timestamp() or a.type.is_null()):
-        raise Unsupported(f"date_trunc of a {a.type} is not supported")
+        raise SqlUnsupported(f"date_trunc of a {a.type} is not supported")
     if a.type.is_timestamp() and a.type.timezone is not None:
-        raise Unsupported("timestamps with a time zone are not supported")
+        raise SqlUnsupported("timestamps with a time zone are not supported")
     return E(_fn("date_trunc", [literal(name, dt.string), lf.to(a, ts).json], ts), ts)
 
 
@@ -179,13 +180,13 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
     if name == "add" and a.type.is_interval():
         a, b = b, a
     if name == "multiply" or not b.type.is_interval() or not b.constant:
-        raise Unsupported(f"{name} of {a.type} and {b.type} is not supported yet")
+        raise SqlUnsupported(f"{name} of {a.type} and {b.type} is not supported yet")
     months, micros = b.value
     if a.type.is_time() and not -(2**63) <= micros < 2**63:
-        raise Unsupported("an interval beyond 64-bit microseconds: DuckDB raises")
+        raise SqlUnsupported("an interval beyond 64-bit microseconds: DuckDB raises")
     if a.type.is_time() and name == "subtract" and micros == -(2**63):
         # DuckDB negates the interval, which overflows (`duckdb-time-plus-interval`).
-        raise Unsupported("TIME minus an interval of -2^63 microseconds: DuckDB raises")
+        raise SqlUnsupported("TIME minus an interval of -2^63 microseconds: DuckDB raises")
     if name == "subtract":
         months, micros = -months, -micros
     ts = dt.timestamp(scale=6)
@@ -208,7 +209,7 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
         # interval's months (`duckdb-time-plus-interval`).
         return E(_fn("add", [a.json, interval_json(0, micros)], dt.time), dt.time)
     if not a.type.is_timestamp() or a.type.timezone is not None:
-        raise Unsupported(f"{name} of {a.type} and an interval is not supported yet")
+        raise SqlUnsupported(f"{name} of {a.type} and an interval is not supported yet")
     return E(_fn(name, [a.json, b.json], ts), ts)
 
 
@@ -244,13 +245,13 @@ def _date_part(lf: _Lift, part: str, a: E) -> E:
         return _DERIVED_PARTS[part.lower()](lf, a)
     p = _DATE_PARTS.get(part.lower())
     if p is None:
-        raise Unsupported(f"the date part {part} is not supported yet")
+        raise SqlUnsupported(f"the date part {part} is not supported yet")
     if a.type.is_date() and not a.midnight and p in _TIME_PARTS:
-        raise Unsupported(f"the {p} of a DATE is not supported")
+        raise SqlUnsupported(f"the {p} of a DATE is not supported")
     if not (a.type.is_date() or a.type.is_timestamp() or a.type.is_null()):
-        raise Unsupported(f"date parts of a {a.type} are not supported")
+        raise SqlUnsupported(f"date parts of a {a.type} are not supported")
     if a.type.is_timestamp() and a.type.timezone is not None:
-        raise Unsupported("timestamps with a time zone are not supported")
+        raise SqlUnsupported("timestamps with a time zone are not supported")
     if a.type.is_date() and p in _TIME_PARTS:
         return E(literal(0, dt.int64), dt.int64, 0)  # a DATE at midnight
     return E(_fn("date_part", [literal(p, dt.string), a.json], dt.int64), dt.int64)
@@ -284,7 +285,7 @@ def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) ->
     if name == "weekday" and len(args) == 1:
         # DuckDB's `weekday(d)` is `dayofweek(d)`, Sunday 0 (#328).
         return _date_part(lf, "dow", sub(args[0]))
-    raise Unsupported(f"unknown function {node.name}(): DuckDB SQL here has no such function")
+    raise SqlUnsupported(f"unknown function {node.name}(): DuckDB SQL here has no such function")
 
 
 _KNOWN.update({"weekday", "isoyear", "epoch_us"})
@@ -300,9 +301,9 @@ def _i64(k: int) -> Json:
 def _when(e: E) -> E:
     """A date or timestamp argument; a time zone is refused."""
     if not (e.type.is_date() or e.type.is_timestamp() or e.type.is_null()):
-        raise Unsupported(f"a {e.type} is not a date or a timestamp")
+        raise SqlUnsupported(f"a {e.type} is not a date or a timestamp")
     if e.type.is_timestamp() and e.type.timezone is not None:
-        raise Unsupported("timestamps with a time zone are not supported")
+        raise SqlUnsupported("timestamps with a time zone are not supported")
     return e
 
 
@@ -383,7 +384,7 @@ def _named(part: str, names: tuple[str, ...], first: int) -> Callable[..., E]:
 def _last_day(lf: _Lift, node: sge.LastDay, sub: Sub, scope: list[Column]) -> E:
     # The month's first day, a month on, a day back: a DATE.
     if node.args.get("unit") is not None:
-        raise Unsupported(f"{_shown(node)} is not supported")
+        raise SqlUnsupported(f"{_shown(node)} is not supported")
     d = _day(lf, _when(sub(node.this)))
     first = _fn("date_trunc", [literal("month", dt.string), d], dt.date)
     next_month = _fn("add", [first, interval_json(1, 0)], dt.date)
@@ -395,14 +396,14 @@ def _make_date(lf: _Lift, node: sge.DateFromParts, sub: Sub, scope: list[Column]
     es = [sub(node.args[k]) for k in ("year", "month", "day")]
     for e in es:
         if not (e.type.is_integer() or e.type.is_null()):
-            raise Unsupported(f"make_date of a {e.type} is not supported")
+            raise SqlUnsupported(f"make_date of a {e.type} is not supported")
     if all(e.constant for e in es):
         if any(e.value is None for e in es):
             return E(literal(None, dt.date), dt.date, None)
         try:
             v = dt_.date(*(e.value for e in es))
         except ValueError as err:
-            raise Unsupported(f"make_date{tuple(e.value for e in es)}: DuckDB raises") from err
+            raise SqlUnsupported(f"make_date{tuple(e.value for e in es)}: DuckDB raises") from err
         return E(literal(v, dt.date), dt.date, v)
     y, m, d = (lf.to(e, dt.int64).json for e in es)
     return E(make_date_json(y, m, d), dt.date)
@@ -470,7 +471,7 @@ def _date_diff(lf: _Lift, node: sge.DateDiff, sub: Sub, scope: list[Column]) -> 
         return E(call("subtract", [a, b]), dt.int64)
     if name == "microsecond":
         return E(call("subtract", [_micros(lf, later), _micros(lf, earlier)]), dt.int64)
-    raise Unsupported(f"datediff in {name} is not supported yet")
+    raise SqlUnsupported(f"datediff in {name} is not supported yet")
 
 
 def _to_unix(lf: _Lift, node: sge.TimeToUnix, sub: Sub, scope: list[Column]) -> E:
