@@ -641,6 +641,20 @@ Consequences:
 - A postcondition at a rounding boundary can move by an ulp, which
   `sv.approx` absorbs.
 
+Note (2026-11-16, #1486; no new decision): `StatProps`, the model of
+`GENERIC` and `WELFORD_CHAN`, asked for the reference's own value outside
+`Stat.fits` (more than 2³² values, or one above 2³⁹⁸ in magnitude). For
+finite values that is false: `var_pop([1e150, 3e150])` is
+`1.0000000000000002e+300` exactly rounded and `9.999999999999999e+299` on
+DuckDB 2.0.0 and on streaming Polars 2.1.0. The last branch of `varStat`,
+`covStat` and `corrStat` now splits in three: a NaN or an infinity among the
+values gives the reference's value (`nan_through`, the infinity raise and
+`Stat.nanGuard_varStat` rely on it); finite values inside `Stat.fits` give
+the properties; finite values outside it are open, any double. No verdict
+changes: such a column has no plan bound (`doubleMag`, `statEps`) and the
+route reports it unproved. The reference's value and its promises are
+unchanged.
+
 Why: before D30 the reference stated generic properties for these
 aggregates and let engine profiles refine them, so a plan reading one left
 the engine a choice of value. `Rel.FloatOpenSafe`, `contract_sound_allowed`'s
