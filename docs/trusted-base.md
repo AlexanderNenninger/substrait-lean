@@ -64,7 +64,7 @@ What a test checks and no proof does.
 | The parser and the writer: every plan the checker writes parses back to the same `Rel` | The golden tests, `tests/run.sh` (`tests/fixtures/`), and the CLI's own round trip |
 | The checker's answers to `--contract` requests | `tests/contracts/` (`tests/run.sh`) |
 | The Python mirror of the function tables (`sverify._functions`) | `python/tests/test_functions.py` against `substrait-check --functions` |
-| The engine facts each engine profile states | Their probes (`characterization/<engine>/probes.json`), checked by `sverify_dev.facts` and the engine jobs |
+| The engine facts each engine profile states | Their probes (`engines/duckdb/replay/probes.json`, `engines/polars/probes/` and `engines/spark/probes/`), checked by `sverify_dev.facts` and the engine jobs |
 | Native `Float` arithmetic agrees with the exact definition, the exact result rounded once | `python/tests/test_float_model.py` and the `float-bounds/` project's `NativeLink` |
 | DuckDB's black-box catalogue (`sverify.black_box`, `Boxes.duckdb` in `engines/duckdb/Sverify/DuckDB/Boxes.lean`), and its evaluators against DuckDB's values (`evaluated`) | `python/tests/test_black_box.py` against `substrait-check --black-boxes`, and the samples' `#guard` |
 | The writers' SQL and the Polars translation compute what the lowered plan states | Golden, round-trip and differential tests ([the translations](engine-profiles.md#the-translations-today)) |
@@ -93,7 +93,7 @@ place, and what retires it.
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `SubstraitLean/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
-| engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `characterization/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
+| engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `engines/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
 | size hypothesis | `Rel.Small`, `Text.sizeCap` | `analysis/Sverify/Analysis/Contracts/Sound.lean`, `core/Sverify/Core/Text.lean` | Fewer than 2⁶² rows a window reads, strings under 2³² characters ([the size hypothesis](reference-semantics.md#overrides)) | |
 | toolchain | Lean `v4.35.0` | `lean-toolchain` | The kernel and the compiler | |
 
@@ -187,7 +187,7 @@ place, and what retires it.
   `Profile.spark` and `Spark.*` (`Spark/Profile.lean`, `Spark/Shims.lean`), and
   the shared shims' models `Shim.*` for each engine that writes them (`Shims.lean`),
   each from the engine's characterization facts
-  (`characterization/<engine>/facts/`, [how they are judged](../characterization/README.md)).
+  (`engines/<engine>/facts/`, [how they are judged](../characterization/README.md)).
   DuckDB's own tests are replayed and fuzzed against the model; the profiles
   are tested on the engines and trusted.
 - The table formats' change feeds (`ChangeFeed`, `TableFormat.lean`), a

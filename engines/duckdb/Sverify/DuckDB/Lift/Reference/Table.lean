@@ -54,7 +54,9 @@ def Substrait.liftReference : Substrait.Lift (Substrait.Semantics.reference) :=
     | Substrait.DuckFn.castDoubleBigint  => some Substrait.liftReference.castDoubleBigint
     | Substrait.DuckFn.castBigintDouble  => some Substrait.liftReference.castBigintDouble,
    fun g => match g with
-    | Substrait.DuckAgg.avgBigint => some Substrait.liftReference.avgBigint⟩
+    | Substrait.DuckAgg.avgBigint => some Substrait.liftReference.avgBigint
+    | Substrait.DuckAgg.sumDouble => some Substrait.liftReference.sumDouble
+    | Substrait.DuckAgg.avgDouble => some Substrait.liftReference.avgDouble⟩
 
 /-- How each function lifts (`--lift-table`, the cache). -/
 def Substrait.liftReference.coverage : List (String × String × Nat) := [
@@ -84,7 +86,9 @@ def Substrait.liftReference.coverage : List (String × String × Nat) := [
   ("least(DOUBLE, DOUBLE)", "cached: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":12,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
   ("CAST(DOUBLE AS BIGINT)", "cached: {\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
   ("CAST(BIGINT AS DOUBLE)", "cached: {\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
-  ("avg(BIGINT)", "{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":37,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", 0)]
+  ("avg(BIGINT)", "{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":37,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", 0),
+  ("sum(DOUBLE)", "{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":40,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", 0),
+  ("avg(DOUBLE)", "{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":38,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", 0)]
 
 theorem Substrait.liftReference.total :
     ∀ f, (Substrait.DuckFn.refused (Substrait.Semantics.reference) f).isNone → ((Substrait.liftReference).entry f).isSome :=

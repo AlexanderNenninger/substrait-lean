@@ -13,7 +13,8 @@ the pages marked "site", in the section named; the rest are read here. The
 pages for contributors, last, are records of the project's design: they keep
 its decision numbers and issue links, and the site leaves them out.
 `tests/test_docs_pages.py` checks that this map lists every page of `docs/`
-and every notebook once.
+and every notebook once, and `tests/test_docs_paths.py` that their links resolve and that no page
+names the old place of the engine facts.
 
 ## Entry pages
 
@@ -66,7 +67,8 @@ release on PyPI.
 | [report.md](report.md) | What a report holds, and how a verdict traces to what supports it | Design |
 | [rejections.md](rejections.md) | Where the reference raises, the precondition that rules each case out, and how to read a refusal | Design |
 | [engines.md](engines.md) | The engines, how to choose one, and what to install | Design |
-| [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers, what is proved | Design |
+| [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers | Design |
+| [proved-theorems.md](proved-theorems.md) | The theorems behind each guarantee, by their Lean names: contracts, composition, runtime errors, incremental views, table formats | |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
@@ -101,7 +103,7 @@ release on PyPI.
 | Profiles, for users | [core-and-profiles.md](core-and-profiles.md) |
 | Profile tables, translations, soundness | [core-semantics.md](core-semantics.md) |
 | Why each choice was made | [decisions.md](decisions.md) |
-| What is proved | [proofs.md](proofs.md) |
+| What is proved | [proofs.md](proofs.md), [proved-theorems.md](proved-theorems.md) |
 | What is trusted | [trusted-base.md](trusted-base.md) |
 | The Lean build's time and memory, and its budget | [build-performance.md](build-performance.md) |
 | How each feature is taught, and each refusal's exit | [teaching.md](teaching.md) |

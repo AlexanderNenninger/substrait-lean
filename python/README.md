@@ -13,7 +13,7 @@ In sverify you write a data transformation as usual, in
 [Ibis](https://ibis-project.org) or SQL, and state what it assumes about its
 inputs (`requires`) and what it guarantees about its output (`ensures`). A
 checker written in [Lean](https://lean-lang.org) proves the guarantees for
-every possible input, or says why it can't ([what is proved](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#what-is-proved)). Then:
+every possible input, or says why it can't ([what is proved](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md)). Then:
 
 * Contracts are proved before the job runs. `not_null`, `unique`, ranges and
   relations between columns hold on every input that meets the
@@ -21,7 +21,7 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   before the job runs. The preconditions you state, and those Sverify
   infers, are checked on each batch before the run, or proved from Delta
   and Iceberg metadata, and a batch that breaks one is refused before
-  anything runs. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#runtime-errors) list what is ruled out.
+  anything runs. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#runtime-errors) list what is ruled out.
 * A route takes the proof to the engine. `route="auto"` runs the plan on
   DuckDB, Polars or Spark natively, through the reference's proved translation, or
   by a check that the engine's choices are within the proof's, and names
@@ -40,7 +40,7 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   rerun must reproduce (`reproducible=`), and a refresh whose engine can't
   promise it is refused.
 * Results are kept up to date from the changes, by delta plans proved
-  equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
+  equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
 [Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes in ten steps from a first contract to

@@ -349,3 +349,12 @@ def test_maintained_statistics_are_exact(seed, engine):
         out = node.refresh(engine=engine)["stats"]
         assert out.report is not None and not out.report.touched and not out.report.diffed
         _check(node, live, ("vs", "dp", "cs", "r"))
+
+
+def test_the_exact_fold_needs_no_numpy():
+    """The base package does not declare numpy (#1447): the fold is Arrow's."""
+    import subprocess
+    import sys
+
+    code = "import sys; sys.modules['numpy'] = None; import sverify._exact_sum, sverify.incremental"
+    subprocess.run([sys.executable, "-c", code], check=True)

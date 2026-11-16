@@ -136,11 +136,44 @@ def reads : Expr → List Nat
   | .ifThen c t e => reads c ++ reads t ++ reads e
   | .hof _ l _ => reads l
 
-/-- An expression's source: a copy of a column keeps it; anything else is
-exact unless it reads a split double. -/
+/-- The source of a `CASE` that takes one of two branches: a key is exact; exact with exact is
+exact, exact with `bounded j` is `bounded j`, `bounded j` with itself is `bounded j`, and everything
+else is `unbounded`. -/
+def ColSrc.join : ColSrc → ColSrc → ColSrc
+  | .exact, .exact | .key _, .exact | .exact, .key _ | .key _, .key _ => .exact
+  | .bounded j, .exact | .bounded j, .key _ | .exact, .bounded j | .key _, .bounded j => .bounded j
+  | .bounded j, .bounded k => if j = k then .bounded j else .unbounded
+  | _, _ => .unbounded
+
+/-- An expression's source: a copy of a column keeps it; a `CASE` whose condition reads no split
+double is the join of its branches' sources; anything else is exact unless it reads a split double.
+
+Why the `CASE` rule holds: its condition reads only columns that hold the reference's value (keys,
+exact columns), so the shards' result and the reference's take the same branch, and each branch is
+exact or within the bound of its measure `j` (`ColSrc.join`). The rule names no engine. A condition
+that reads a split double may take the other branch, so the `CASE` is `unbounded`. -/
 def exprSrc (srcs : List ColSrc) : Expr → ColSrc
   | .field i => srcs.getD i .exact
+  | .ifThen c t e =>
+    if (reads c).any fun i => (srcs.getD i .exact).double then .unbounded
+    else (exprSrc srcs t).join (exprSrc srcs e)
   | e => if (reads e).any fun i => (srcs.getD i .exact).double then .unbounded else .exact
+
+-- The finish of a double `SUM` or `AVG` under DuckDB's semantics (#341): three measures, the first
+-- a split double, then a `CASE` on the other two.
+#guard
+  (exprSrc [.bounded 0, .exact, .exact]
+    (.ifThen (.bin .eq (.field 1) (.lit (.float FloatCode.nan))) (.lit (.float FloatCode.nan))
+      (.ifThen (.bin .and (.bin .eq (.field 1) (.lit (.float FloatCode.posInf)))
+          (.bin .eq (.field 2) (.lit (.float FloatCode.negInf)))) (.lit (.float FloatCode.nan))
+        (.ifThen (.bin .eq (.field 1) (.lit (.float FloatCode.posInf)))
+          (.lit (.float FloatCode.posInf)) (.field 0))))).toJson ==
+    (ColSrc.bounded 0).toJson
+-- A condition that reads the split double stays unbounded.
+#guard
+  (exprSrc [.bounded 0, .exact]
+    (.ifThen (.bin .lt (.field 0) (.lit (.float 0))) (.field 1) (.lit (.float 0)))).toJson ==
+    ColSrc.unbounded.toJson
 
 /-- The split double measures' indices among `ms`, in order. -/
 def doubleIdx (ms : List Measure) : List Nat :=
