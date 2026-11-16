@@ -137,7 +137,7 @@
       "checked_by": "session optimistic-hopper-2d1785 (#1476 review: rulings 4.3 and 5.5), the probe scripts of the review rerun against DuckDB 2.0.0 and Polars 2.1.0",
       "evidence": [
         {
-          "note": "DuckDB 2.0.0: `var_pop` of [1e150, 3e150]: 9.999999999999999e+299 (the exact variance, rounded once, is 1.0000000000000002e+300); of [1e130, 2e130, 4e130]: 1.5555555555555556e+260 (exact 1.555555555555556e+260). Polars 2.1.0 gives 9.999999999999999e+299 (streaming) and 1e+300 (in memory, ungrouped) for the first, 1.555555555555556e+260 (ungrouped streaming) and 1.5555555555555561e+260 (grouped streaming) for the second."
+          "note": "DuckDB 2.0.0: `var_pop` of [1e150, 3e150]: 9.999999999999999e+299 (the exact variance, rounded once, is 1.0000000000000002e+300); of [1e130, 2e130, 4e130]: 1.5555555555555556e+260 (exact 1.555555555555556e+260)."
         }
       ]
     }

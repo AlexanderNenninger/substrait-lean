@@ -64,6 +64,16 @@
           "note": "Polars 2.1.0, `lf.select(v.var(ddof=1))`, `std`, `var` beside the three flags, and `group_by('k').agg(...)`, over n equal values 1e308 (n = 2, 3, 10, 100000), ten cores: streaming var 0.0 at n = 2, 3, 10 and NaN at 100000; in memory NaN at every n; the flags `(bad, fin, nan)` = (False, True, False) with NaN results; grouped: 0.0 at every n on both engines. With `POLARS_MAX_THREADS=1` the streaming ungrouped var is NaN at every n (the grouped one 0.0). Eager `Series.var` and `std`: NaN."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1476 review: rulings 4.3 and 5.5), the probe scripts of the review rerun against DuckDB 2.0.0 and Polars 2.1.0",
+      "evidence": [
+        {
+          "note": "Polars 2.1.0, `var_pop`/`var(ddof=0)` of [1e150, 3e150]: 9.999999999999999e+299 streaming and 1e+300 in memory, ungrouped (the exact variance, rounded once, is 1.0000000000000002e+300); of [1e130, 2e130, 4e130]: 1.555555555555556e+260 ungrouped streaming and 1.5555555555555561e+260 grouped streaming (exact 1.555555555555556e+260). DuckDB 2.0.0 gives 9.999999999999999e+299 and 1.5555555555555556e+260 (duckdb-var-stddev)."
+        }
+      ]
     }
   ],
   "issues": [
