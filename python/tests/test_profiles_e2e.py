@@ -488,10 +488,10 @@ def test_f1e_recheck_is_unavailable_for_polars_until_271(con) -> None:
 
 
 @classes
-def test_f2_duckdb_plan_is_rechecked_on_polars(con) -> None:
+def test_f2_duckdb_plan_is_refused_on_polars_until_271(con) -> None:
     """Double arithmetic allowed to reach `±∞`, verified under `Profile.duckdb`:
     DuckDB's `zero_sign` is `ONE_ZERO` and Polars's `IEEE`, so the transfer
-    check fails and Polars proves the plan again (a `recheck`, exact)."""
+    check fails, and the re-check under Polars's profile waits for #1442."""
     big = sv.connect()
     big.put("u", pa.table({"x": [1e200, 2.0, -3.0], "y": [1e200, 3.0, 0.5]}))
     report = sv.verify(
@@ -503,9 +503,8 @@ def test_f2_duckdb_plan_is_rechecked_on_polars(con) -> None:
     assert report.proved, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     r = routes.choose(report, "polars")
-    assert (r.kind, r.cls) == ("recheck", "exact"), r
-    out = run_both(report, big)
-    assert math.inf in out["polars"].column("z").to_pylist()
+    assert r.refused and "semantics='reference'" in r.reason, r
+    assert math.inf in report.run(big, "duckdb").column("z").to_pylist()
 
 
 # Needs the engines' choices (the transfer check), not their classes: it holds
