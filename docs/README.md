@@ -16,6 +16,15 @@ its decision numbers and issue links, and the site leaves them out.
 and every notebook once, and `tests/test_docs_paths.py` that their links resolve and that no page
 names the old place of the engine facts.
 
+The pages for users keep Lean names and decision numbers off their lines and link the page that
+holds them. Six reference pages are the exception, each the reference for its subject:
+[reference-semantics.md](reference-semantics.md) (what a plan means),
+[trusted-base.md](trusted-base.md) (what a result rests on),
+[proved-theorems.md](proved-theorems.md) (the theorems behind each guarantee),
+[engine-profiles.md](engine-profiles.md) (each engine's model),
+[float-bounds.md](float-bounds.md) (the error bounds) and
+[optimizations.md](optimizations.md) (each optimization with its theorem).
+
 ## Entry pages
 
 | Page | For | Site |
@@ -54,6 +63,7 @@ release on PyPI.
 |---|---|---|
 | [The API reference](https://alexandernenninger.github.io/substrait-lean/reference/) | Every public function and class, from the docstrings | Reference |
 | [reference-semantics.md](reference-semantics.md) | What a plan means, row by row: the open choices, every option's value, the Ibis frontend and how the model holds a plan | Semantics |
+| [proved-theorems.md](proved-theorems.md) | The theorems behind each guarantee, by their Lean names: contracts, composition, runtime errors, incremental views, table formats | |
 | [stability.md](stability.md) | What 1.x keeps: the formats, the proofs, the API, the engines | Semantics |
 | [realizability.md](realizability.md) | Each engine's class on every option, generated | Ledgers |
 | The ledgers | Upstream bugs, spec gaps, engine facts, the checklist's coverage | Ledgers |
@@ -68,7 +78,6 @@ release on PyPI.
 | [rejections.md](rejections.md) | Where the reference raises, the precondition that rules each case out, and how to read a refusal | Design |
 | [engines.md](engines.md) | The engines, how to choose one, and what to install | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers | Design |
-| [proved-theorems.md](proved-theorems.md) | The theorems behind each guarantee, by their Lean names: contracts, composition, runtime errors, incremental views, table formats | |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |

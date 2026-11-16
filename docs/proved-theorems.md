@@ -1,7 +1,8 @@
 # Proved theorems
 
-The theorems behind each guarantee, with the Lean names they go by, moved here from
-[how-it-works.md](how-it-works.md#what-is-proved) so that the explanation keeps the user's terms. [proofs.md](proofs.md#the-guarantees-and-their-theorems) names
+The theorems behind each guarantee, with the Lean names they go by: a reference page
+(`docs/README.md`), moved here from [how-it-works.md](how-it-works.md#what-is-proved) so that the
+explanation keeps the user's terms. [proofs.md](proofs.md#the-guarantees-and-their-theorems) names
 every guarantee with its theorem, its layer and its module; the sections below explain the main ones.
 
 ## Contracts
