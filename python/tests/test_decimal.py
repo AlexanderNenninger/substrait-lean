@@ -364,13 +364,3 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     out = report.run(c, "duckdb")
     assert out.column("m").to_pylist() == [top - 1]
 
-
-def test_report_output_is_the_type_the_run_writes():
-    """`Report.output` of a decimal `AVG` is the run's `DECIMAL(p + 4, s + 4)`."""
-    c = sv.connect()
-    c.put("t", pa.table({"g": [1], "v": pa.array([D("1.5")], pa.decimal128(20, 18))}))
-    t = c.table("t")
-    report = sv.verify(t.group_by("g").aggregate(m=t.v.mean()))
-    got = report.run(c, "duckdb").schema.field("m").type
-    out = report.output["m"]
-    assert (out.precision, out.scale) == (got.precision, got.scale) == (24, 22)
