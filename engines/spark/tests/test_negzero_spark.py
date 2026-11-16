@@ -51,7 +51,7 @@ def test_atan2_is_refused_where_spark_differs_from_the_reference() -> None:
     """Spark adds `0.0` to `atan2`'s arguments: `atan2(-0.0, -1)` is `π` where
     the reference gives `-π` (spark-zero-sign), so the writer refuses it."""
     expr = T.select(T.k, v=(X * -1.0).atan2(-1.0))
-    with pytest.raises(Unsupported, match="atan2|power"):
+    with pytest.raises(Unsupported, match="StrictMath"):
         to_sql(written_plan(json.dumps(to_substrait(expr))), SPARK)
 
 

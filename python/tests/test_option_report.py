@@ -266,7 +266,7 @@ def test_rerun_variation():
     # prints the class's canonical value (`Dialect.zero_rep`): a rerun is exact.
     z = duck[(None, "zero_sign")]
     assert z["rerun"] == {} and z["deterministic"] is True
-    assert z["rerun_evidence"] == "probed" and z["rerun_facts"], z
+    assert z["rerun_evidence"] == "probe" and z["rerun_facts"], z
     # Every known rerun has evidence of its own.
     for engine in ("duckdb", "polars"):
         for r in choices[engine]:

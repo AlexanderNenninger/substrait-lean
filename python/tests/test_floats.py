@@ -11,7 +11,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from _zero import one_zero
+from _zero import one_zero, zero
 from sverify.engines import ENGINES
 from sverify.incremental import IncrementalView
 from sverify.io import Changes
@@ -84,8 +84,8 @@ def test_incremental_view_with_floats_matches_recompute(engine, data):
     view = IncrementalView(con, windows(db.table("s1"), db.table("s2")), "w", engine)
 
     def same(a, b):
-        # NaN != NaN, so compare the rows' text.
-        return sorted(map(repr, a)) == sorted(map(repr, b))
+        # NaN != NaN, so compare the rows' text, `-0.0` as `0.0` (D31 leaves it open).
+        return sorted(repr(zero(r)) for r in a) == sorted(repr(zero(r)) for r in b)
 
     assert same(view.rows(), view.recompute())
     for _step in range(data.draw(st.integers(1, 3))):
