@@ -262,7 +262,11 @@ def test_rerun_variation():
         assert row["rerun_evidence"] == "tested" and row["rerun_facts"], row
     # Not known: no rerun at all.
     assert "rerun" not in polars[("agg.order", "zero_sign")]
-    assert "rerun" not in duck[(None, "zero_sign")]
+    # DuckDB's zero in a `MIN`, `MAX` or key depends on row order, so the writer
+    # prints the class's canonical value (`Dialect.zero_rep`): a rerun is exact.
+    z = duck[(None, "zero_sign")]
+    assert z["rerun"] == {} and z["deterministic"] is True
+    assert z["rerun_evidence"] == "probed" and z["rerun_facts"], z
     # Every known rerun has evidence of its own.
     for engine in ("duckdb", "polars"):
         for r in choices[engine]:
