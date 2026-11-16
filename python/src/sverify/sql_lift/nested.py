@@ -33,7 +33,7 @@ def _array(lf: _Lift, node: sge.Array, sub: Sub, scope: list[Column]) -> E:
     t = lf.common(es, "a list literal")
     if t.is_decimal():
         # The model holds a decimal unscaled; inside a list nothing rescales it.
-        raise Unsupported(f"a list of {t} is not supported yet")
+        raise Unsupported(f"a list of {t} is not supported yet; cast the elements to DOUBLE")
     lt = dt.Array(value_type=t)
     if all(e.constant for e in es):
         values = [lf.to(e, t).value for e in es]
@@ -105,7 +105,7 @@ def _concat(lf: _Lift, node: sge.ArrayConcat, sub: Sub, scope: list[Column]) -> 
         raise Unsupported(f"{_shown(node)} of NULLs has no element type; cast them")
     t = lf.common([E(e.json, e.type.value_type) for e in lists], "list_concat")
     if t.is_decimal():
-        raise Unsupported(f"a list of {t} is not supported yet")
+        raise Unsupported(f"a list of {t} is not supported yet; cast the elements to DOUBLE")
     lt = dt.Array(value_type=t)
     out = lf.to(es[0], lt).json if es[0].type.is_array() else literal(None, lt)
     for e in es[1:]:
