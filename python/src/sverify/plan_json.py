@@ -103,7 +103,9 @@ def _type_json(dtype: Any) -> Json:
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
             "source query, and compare it with the lower-case hyphenated form"
         )
-    raise Unsupported(f"type {dtype} is not supported")
+    raise Unsupported(
+        f"type {dtype} is not supported; cast the column to a supported type in the source query"
+    )
 
 
 def struct_names(schema: Any) -> list[str]:
