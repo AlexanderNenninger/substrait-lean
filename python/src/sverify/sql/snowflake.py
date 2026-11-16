@@ -19,9 +19,8 @@ documentation they rest on:
 * **Three-valued logic**: `AND`/`OR`/`NOT` are Kleene, as in Lean. There is
   no `IS TRUE`, so it is `COALESCE(x, FALSE)`.
 * **Floats** are IEEE doubles; all NaNs are equal and NaN is above `'inf'`
-  (documented), as in the model, which has one NaN and one zero. `canon`
-  turns a `-0.0` into `0.0` wherever one could arise, so whether Snowflake
-  shows the sign of a zero does not matter.
+  (documented), as in the model, which has one NaN. Values stay raw (D31,
+  #1461); Snowflake's treatment of the sign of a zero is for its recordings.
 * **Timestamps** are `TIMESTAMP_NTZ(6)`: wall-clock microseconds like Lean.
   Plain `TIMESTAMP` follows `TIMESTAMP_TYPE_MAPPING` and defaults to
   nanoseconds; `LTZ` would depend on the session time zone. There is no

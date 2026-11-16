@@ -45,7 +45,7 @@ EXPECTED = {
     "sort, nulls stated": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
     "sort, nulls unstated": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
     "string length": {"duckdb": "exact", "polars": "exact", "spark": "exact"},
-    "double division": {"duckdb": "observed", "polars": "observed", "spark": "observed"},
+    "double division": {"duckdb": "exact", "polars": "observed", "spark": "exact"},
 }
 
 

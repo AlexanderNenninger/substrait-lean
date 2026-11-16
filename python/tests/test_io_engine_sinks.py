@@ -38,6 +38,11 @@ SCHEMA = pa.schema(
 )
 
 
+def zero_blind(row: dict) -> str:
+    """A row's text with `-0.0` as `0.0` (values are raw, D31)."""
+    return repr({k: v + 0.0 if isinstance(v, float) else v for k, v in row.items()})
+
+
 def orders(ids, x=1.5):
     return pa.Table.from_pylist(
         [
@@ -155,8 +160,8 @@ def test_a_node_reads_a_duckdb_written_delta_sink(tmp_path):
         assert report is not None
         [s] = report.sources
         assert s.mode == "change_feed"
-        assert repr(sorted(map(repr, down.to_arrow().to_pylist()))) == repr(
-            sorted(map(repr, node.to_arrow().select(["name", "x"]).to_pylist()))
+        assert sorted(map(zero_blind, down.to_arrow().to_pylist())) == sorted(
+            map(zero_blind, node.to_arrow().select(["name", "x"]).to_pylist())
         )
 
 

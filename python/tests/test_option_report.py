@@ -83,16 +83,17 @@ def depends_of(report: dict) -> list[dict]:
     ]
 
 
-def test_f2_double_arithmetic_transfers_from_duckdb_to_polars(tmp_path):
-    """F2: arithmetic that may reach ±∞, under DuckDB's profile: Polars's IEEE
-    choices are within DuckDB's at every option the plan meets."""
+def test_f2_double_arithmetic_is_rechecked_from_duckdb_to_polars(tmp_path):
+    """F2: arithmetic that may reach ±∞, under DuckDB's profile: DuckDB's
+    `zero_sign` is `ONE_ZERO` and Polars's `IEEE`, so the proof does not
+    transfer and Polars proves the plan again."""
     r = dependencies(lift("SELECT b * b + b AS y FROM t", STRINGS).plan, tmp_path)
     met = {o["option"] for o in r["options"]}
     assert {"float_overflow", "nan_creation", "zero_sign", "rounding"} <= met
-    assert r["transfer"]["duckdb"]["polars"] is True
+    assert r["transfer"]["duckdb"]["polars"] is False
     assert r["transfer"]["reference"]["polars"] is False
     out = transfer({"from": "duckdb", "to": "polars", "depends": depends_of(r)})
-    assert out == {"ok": True, "failures": []}
+    assert out["ok"] is False and out["failures"]
 
 
 def test_f3_default_null_order_does_not_transfer(tmp_path):
