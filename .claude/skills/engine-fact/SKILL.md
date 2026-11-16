@@ -1,16 +1,15 @@
 ---
 name: engine-fact
-description: Record what an engine does (overflow, NaN, casts, aggregate algorithms, ties) as an engine fact in characterization/<engine>/facts/ (engines/<engine>/facts/ for an engine package): id, fields, provenance, evidence order, rows, supersession, and the checker. Use when probing, fuzzing or researching DuckDB, Polars, Spark or Snowflake behaviour, or when a test or replay shows an engine differs from the reference.
+description: Record what an engine does (overflow, NaN, casts, aggregate algorithms, ties) as an engine fact in engines/<engine>/facts/: id, fields, provenance, evidence order, rows, supersession, and the checker. Use when probing, fuzzing or researching DuckDB, Polars, Spark or Snowflake behaviour, or when a test or replay shows an engine differs from the reference.
 ---
 
 # Engine facts
 
 What an engine does (overflow, NaN, casts, the algorithm behind `VARIANCE`, …)
 is recorded as facts, one JSON document per finding:
-`characterization/<engine>/facts/<id>.json` (`duckdb/`, `spark/`, …), or, for
-an engine that is a package of its own (#1189), `engines/<engine>/facts/<id>.json`
-(Polars: `engines/polars/facts/`, its probes in `engines/polars/probes/`);
-`sverify_dev.facts.facts_dir(engine)` says which. The format is
+`engines/<engine>/facts/<id>.json` (`duckdb`, `polars`, `spark`; their probes in
+`engines/duckdb/replay/`, `engines/polars/probes/` and `engines/spark/probes/`);
+`sverify_dev.facts.facts_dir(engine)` says where. The format is
 `characterization/fact.schema.json`'s. Every engine's research goes there,
 whoever does it.
 

@@ -98,7 +98,7 @@ contract that was proved. Each such fix comes with:
 
 - a changelog entry that names what is refused, why, and what to write
   instead;
-- an engine fact under [`characterization/<engine>/facts/`](../characterization/)
+- an engine fact under [`engines/<engine>/facts/`](../engines/)
   or an upstream record under [`upstream/bugs/`](../upstream/), with the
   evidence.
 
