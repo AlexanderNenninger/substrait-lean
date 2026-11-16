@@ -92,7 +92,12 @@ def Profile.duckdb.obs : ObsTable := [
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions, as the reference has them; MIN, MAX and quantiles return a
   -- member of the class, which D31 allows.
-  (none, "zero_sign", (ObsRow.native ["duckdb-R14", "duckdb-float-signs", "duckdb-minmax-zero-sign"]).tracking 241),
+  -- DuckDB's pick among equal zeros depends on row order (duckdb-minmax-zero-sign),
+  -- so the writer prints the class's canonical value for `MIN`, `MAX` and keys
+  -- (`Dialect.zero_rep`): a rerun gives the same sign.
+  (none, "zero_sign", ({ ObsRow.native ["duckdb-R14", "duckdb-float-signs", "duckdb-minmax-zero-sign"] with
+    rerun := some Obs.exact,
+    rerunEvidence := .probed ["duckdb-minmax-zero-sign", "duckdb-R14", "duckdb-float-signs"] }).tracking 241),
   -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
   -- exactly through the proved template (`Lowering.zeroTemplate`).
   (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R15-round",
