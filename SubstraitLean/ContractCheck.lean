@@ -1169,4 +1169,65 @@ theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
       Rel.keyedWindows_congr harity, (Rel.aeval_congr harity _ _ _ false _).1]
   exact Knowledge.contract_sound_all hcat hK hQ (henv ▸ hall) (Rel.orderAllowed_capReads hcap ho)
 
+/-- `p` keeps each of its conditions: over a transformation of arity `n`, the
+column of every expression in `p.exprs` is among those `p.mapping` keeps.
+The plans `sverify` sends keep exactly their conditions. -/
+def Post.Selects (p : Post) (n : Nat) : Prop := ∀ i < p.exprs.length, n + i ∈ p.mapping
+
+/-- **A proved postcondition over the transformation's own rows**: on every
+result the reference allows for the transformation, every row makes each
+column `p` keeps TRUE: the transformation's columns it keeps and its
+conditions (`check_proved_sound`, through the `project` and `emit` cases of
+`Rel.OrderAllowed`). `Expr.eval` is total: a condition that raises on a row
+has no result in the reference (`raiseIf`) for this to speak of. -/
+theorem check_proved_rows {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hcat : data.WF) (harity : ∀ t, (data t).arity = (R.cat t).arity)
+    (hS : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row)
+    (hpre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true)
+    (hkeys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows)
+    (hcap : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n)
+    {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
+    (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) :
+    ∀ {out : Relation}, T.root.OrderAllowed data out → ∀ row ∈ out,
+      ∀ j ∈ p.mapping, (row ++ p.exprs.map (·.eval row)).getD j .null = .bool true := by
+  intro out ho row hrow j hj
+  have h := check_proved_sound hR hc hcat harity hS hpre hkeys hcap hT hp hproved
+    (out := (out.map fun row => row ++ p.exprs.map (·.eval row)).map
+      fun row => p.mapping.map (row.getD · .null))
+    ⟨_, ⟨out, ho, rfl⟩, rfl⟩
+  exact h _ (List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨row, hrow, rfl⟩, rfl⟩) _
+    (List.mem_map.mpr ⟨j, hj, rfl⟩)
+
+/-- `check_proved_rows` for each condition of a postcondition that keeps
+them all (`Post.Selects`): every row of every result the reference allows for
+the transformation makes each of `p.exprs` TRUE. -/
+theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hcat : data.WF) (harity : ∀ t, (data t).arity = (R.cat t).arity)
+    (hS : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row)
+    (hpre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true)
+    (hkeys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows)
+    (hcap : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n)
+    {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
+    (hsel : p.Selects (T.root.arity R.cat))
+    (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) :
+    ∀ {out : Relation}, T.root.OrderAllowed data out → ∀ row ∈ out,
+      ∀ e ∈ p.exprs, e.eval row = .bool true := by
+  intro out ho row hrow e he
+  obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem he
+  have hq : R.ensures[k]? = some (p.plan T) := by simp [Request.ensures, hT, hp]
+  have hQ : ((p.plan T).root.capReads R.caps).WF data :=
+    Rel.wf_congr harity (Rel.checkWF_iff.mp (check_wf hR hc _ (List.mem_of_getElem? hq)))
+  have hT' : (T.root.capReads R.caps).WF data := by
+    simp only [Post.plan, Rel.capReads, Rel.WF] at hQ
+    exact hQ.1.1
+  have hlen : row.length = T.root.arity R.cat := by
+    rw [← Rel.arity_congr harity, ← Rel.capReads_arity R.caps]
+    exact Rel.orderAllowed_arity hcat hT' (Rel.orderAllowed_capReads hcap ho) row hrow
+  have h := check_proved_rows hR hc hcat harity hS hpre hkeys hcap hT hp hproved ho row hrow _
+    (hsel i hi)
+  rw [← hlen] at h
+  simpa [List.getD_eq_getElem?_getD, List.getElem?_append_right] using h
+
 end Substrait.ContractCheck

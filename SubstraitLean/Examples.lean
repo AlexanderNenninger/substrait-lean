@@ -217,6 +217,8 @@ end Substrait.Examples
 #print axioms Substrait.Knowledge.contract_sound
 #print axioms Substrait.Knowledge.contract_sound_all
 #print axioms Substrait.ContractCheck.check_proved_sound
+#print axioms Substrait.ContractCheck.check_proved_rows
+#print axioms Substrait.ContractCheck.check_proved_conds
 #print axioms Substrait.Knowledge.mayIssues_sound
 #print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines
