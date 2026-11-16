@@ -4,7 +4,7 @@ A formal model of [Substrait](https://substrait.io) relational plans in
 [Lean 4](https://lean-lang.org), and `sverify`, a Python package built on it.
 Sverify proves a data pipeline's contracts before it runs, gets the same
 result on DuckDB, Polars and Spark, and keeps it up to date from
-Delta Lake and Iceberg change feeds ([what is proved](docs/how-it-works.md#what-is-proved)). This README is for people working on the
+Delta Lake and Iceberg change feeds ([what is proved](docs/proved-theorems.md)). This README is for people working on the
 project. Users start at [python/README.md](python/README.md), which is also
 sverify's PyPI page.
 
@@ -68,7 +68,7 @@ SQL string ─► SQLGlot lift ────────────────�
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) and lowering expectations |
 | `notebooks/` | The tour, in [marimo](https://marimo.io) ([below](#the-tour)) |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O and more), probed against the checker and the engines; [findings](catalogue/FINDINGS.md) |
-| `characterization/` | What each engine does, as a diff against the reference profile: one JSON document per fact, with provenance ([DuckDB's facts](engines/duckdb/facts/); Polars's and Spark's are in `engines/<engine>/facts/`) |
+| `characterization/` | How engine facts are judged: the areas, the fact schema and the oracle-A baseline. The facts are in `engines/<engine>/facts/`: one JSON document per fact, a diff against the reference profile, with provenance ([DuckDB's facts](engines/duckdb/facts/)) |
 | `dbt/` | `sverify-dbt`, which checks a dbt project's tests and contracts ([dbt/README.md](dbt/README.md)) |
 | `models/` | The refresh protocol, model-checked in TLA+ |
 | `templates/` | A template repository for pipelines ([templates/pipelines/README.md](templates/pipelines/README.md)) |

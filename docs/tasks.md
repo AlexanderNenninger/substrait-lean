@@ -1268,7 +1268,7 @@ old snapshot into the new one, and that writers and file statistics are
 correct (Delta's millisecond timestamp maxima are widened by 999 µs; with
 deletion vectors the statistics cover deleted rows too, which still bounds
 the live ones). Iceberg tables with equality deletes can't be read. What is
-proved is listed under [Table formats](how-it-works.md#table-formats).
+proved is listed under [Table formats](proved-theorems.md#table-formats).
 
 ### Credentials
 
