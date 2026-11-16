@@ -8,8 +8,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
-from sverify._unsupported import SqlUnsupported
-from sverify.plan_json import Unsupported, literal
+from sverify.plan_json import SqlUnsupported, Unsupported, literal
 from sverify.plan_json import same_type as _same
 from sverify.sql_lift._base import (
     _KNOWN,

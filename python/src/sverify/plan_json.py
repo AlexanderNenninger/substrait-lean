@@ -26,6 +26,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 
 from sverify import black_box
+from sverify._unsupported import SQL_COVERAGE
 from sverify._unsupported import Unsupported as _Unsupported
 
 Json = dict[str, Any]
@@ -38,6 +39,17 @@ REQUIRED = {"nullability": "NULLABILITY_REQUIRED"}
 class Unsupported(_Unsupported):
     """The expression uses something the Lean model does not cover
     (`sverify.errors.UnsupportedError`)."""
+
+
+class SqlUnsupported(Unsupported):
+    """The SQL lift does not read a construct (yet). The message ends with the
+    way out: the `hint` (a rewrite the lift supports) where the site has one,
+    otherwise the coverage epic."""
+
+    def __init__(self, message: str, hint: str | None = None):
+        super().__init__(
+            f"{message}; {hint or SQL_COVERAGE}" if hint or "#" not in message else message
+        )
 
 
 # --------------------------------------------------------------------------

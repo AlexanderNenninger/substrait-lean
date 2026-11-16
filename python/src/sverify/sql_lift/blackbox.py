@@ -19,8 +19,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify import black_box
-from sverify._unsupported import SqlUnsupported
-from sverify.plan_json import Unsupported
+from sverify.plan_json import SqlUnsupported, Unsupported
 from sverify.sql_lift._base import (
     _AGGREGATES,
     _KNOWN,

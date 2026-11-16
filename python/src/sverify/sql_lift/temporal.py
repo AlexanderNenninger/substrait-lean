@@ -11,9 +11,9 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.common.temporal import IntervalUnit
 
-from sverify._unsupported import SqlUnsupported
 from sverify.plan_json import (
     Json,
+    SqlUnsupported,
     Unsupported,
     call,
     cast_json,

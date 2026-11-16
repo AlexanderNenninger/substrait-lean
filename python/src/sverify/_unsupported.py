@@ -59,17 +59,6 @@ Unsupported = UnsupportedError
 SQL_COVERAGE = "see #231, https://github.com/AlexanderNenninger/substrait-lean/issues/231"
 
 
-class SqlUnsupported(UnsupportedError):
-    """The SQL lift does not read a construct (yet). The message ends with the
-    way out: the `hint` (a rewrite the lift supports) where the site has one,
-    otherwise the coverage epic."""
-
-    def __init__(self, message: str, hint: str | None = None):
-        super().__init__(
-            f"{message}; {hint or SQL_COVERAGE}" if hint or "#" not in message else message
-        )
-
-
 class SverifyWarning(UserWarning):
     """The base of every warning sverify issues. In a CI job,
     `warnings.filterwarnings("error", category=SverifyWarning)` (or pytest's

@@ -7,9 +7,9 @@ import ibis
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
-from sverify._unsupported import SqlUnsupported
 from sverify.plan_json import (
     Json,
+    SqlUnsupported,
     Unsupported,
     anchor,
     emit_rel,

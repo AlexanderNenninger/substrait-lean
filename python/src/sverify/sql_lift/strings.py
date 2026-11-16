@@ -10,9 +10,9 @@ import sqlglot.expressions as sge
 
 from sverify import _functions
 from sverify._plan_read import simple_regex
-from sverify._unsupported import SqlUnsupported
 from sverify.plan_json import (
     Json,
+    SqlUnsupported,
     Unsupported,
     call,
     chain,

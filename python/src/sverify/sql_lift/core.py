@@ -12,8 +12,15 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify import _functions
-from sverify._unsupported import SqlUnsupported
-from sverify.plan_json import Json, Unsupported, between, if_then, in_values, literal
+from sverify.plan_json import (
+    Json,
+    SqlUnsupported,
+    Unsupported,
+    between,
+    if_then,
+    in_values,
+    literal,
+)
 from sverify.sql_lift._base import (
     DUCKDB,
     Column,

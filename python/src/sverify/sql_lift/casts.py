@@ -10,8 +10,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
-from sverify._unsupported import SqlUnsupported
-from sverify.plan_json import Unsupported, cast_json, literal, type_json
+from sverify.plan_json import SqlUnsupported, Unsupported, cast_json, literal, type_json
 from sverify.sql_lift._base import (
     DIALECT,
     Column,

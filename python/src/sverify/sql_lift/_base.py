@@ -25,9 +25,9 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
-from sverify._unsupported import SqlUnsupported
 from sverify.plan_json import (
     Json,
+    SqlUnsupported,
     Unsupported,
     anchor,
     call,
