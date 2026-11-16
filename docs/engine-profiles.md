@@ -1,7 +1,7 @@
 # Engine profiles: the reference semantics and the engines
 
 How a proof relates to the engines that run a plan. The evidence for each
-engine is in [`characterization/`](../characterization/). This note sums up
+engine is in [`engines/<engine>/facts/`](../engines/). This note sums up
 the design and what Lean proves today.
 The layers (the core, its profiles, the engines that run them) are in
 [core, profiles and engines](core-and-profiles.md);
