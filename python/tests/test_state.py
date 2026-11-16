@@ -29,6 +29,11 @@ from sverify_duckdb import DuckDBStore
 NAN = float("nan")
 
 
+def one_zero(rows) -> str:
+    """The rows' text with `-0.0` as `0.0` (values are raw, D31)."""
+    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in rows])
+
+
 def weighted_table(columns: dict, weights: list[int]) -> pa.Table:
     return pa.table({**columns, WEIGHT: pa.array(weights, pa.int64())})
 
@@ -136,7 +141,7 @@ def test_views_keep_their_state_where_their_engine_reads_it(engine):
         pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
         for v in views:
             assert isinstance(v.state, held)
-            assert repr(v.rows()) == repr(v.recompute())
+            assert one_zero(v.rows()) == one_zero(v.recompute())
 
 
 def resident_names(db) -> set[str]:
@@ -207,7 +212,7 @@ def test_in_place_merges_match_recomputation_and_the_arrow_store():
         duck.apply({"t": batch})
         arrow.apply({"t": batch})
         assert isinstance(v.state, Resident)
-        assert repr(v.rows()) == repr(v.recompute()) == repr(w.rows())
+        assert one_zero(v.rows()) == one_zero(v.recompute()) == one_zero(w.rows())
     # The state holds each row once, with its weight.
     rows = [tuple(r[c] for c in ("x", "tags")) for r in v.state.to_arrow().to_pylist()]
     assert len({repr(r) for r in rows}) == len(rows)

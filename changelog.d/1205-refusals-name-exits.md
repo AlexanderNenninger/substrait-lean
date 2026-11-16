@@ -1,0 +1,3 @@
+### Ten more refusals say what to do
+
+A HUGEINT literal, a `uuid` or other unsupported column type, a timestamp with a time zone, a list of decimals, `collect(include_null=True)`, truncating to a sub-second unit, a `VALUES` alias with too many names, a black-box call with the wrong argument count, an export with no matching Substrait impl and a streaming plan that falls back in memory under `streaming="require"` now end with the change that lifts them. `python -m sverify_dev.exits` counts the refusals that still name nothing (345 of 583); a test keeps the count from rising ([#1205](https://github.com/AlexanderNenninger/substrait-lean/issues/1205)).

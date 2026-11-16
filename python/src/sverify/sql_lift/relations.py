@@ -85,7 +85,9 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     alias = node.args.get("alias")
     given = [c.name for c in alias.columns] if alias is not None else []
     if len(given) > width:
-        raise Unsupported(f"{_shown(node)} names {len(given)} columns of {width}")
+        raise Unsupported(
+            f"{_shown(node)} names {len(given)} columns of {width}; name at most {width}"
+        )
     names = [_normalized(n) for n in given] + [f"col{i}" for i in range(len(given), width)]
     out = [[literal(lf.to(c, t).value, t) for c, t in zip(r, types, strict=True)] for r in cells]
     schema = ibis.schema(dict(zip(names, types, strict=True)))

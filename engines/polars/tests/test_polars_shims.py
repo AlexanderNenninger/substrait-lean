@@ -390,7 +390,7 @@ def test_double_group_keys_have_one_zero_and_one_nan():
     lean, polars = lean_and_polars(
         FLOATS, rows, "SELECT x, COUNT(*) AS n FROM r GROUP BY x", doubles=True
     )
-    assert repr(lean) == repr(polars)
+    assert _same(lean, polars)
     assert [n for _, n in polars] == [3, 2, 1]
     assert math.copysign(1.0, polars[0][0]) == 1.0
 
@@ -862,8 +862,11 @@ EXTREMES = [(1, 1.0), (1, math.nan), (1, -1.0), (2, math.nan), (3, math.nan), (3
 
 
 def _same(a: list, b: list) -> bool:
-    """Equal rows, NaN equal to NaN and each zero's sign compared."""
-    return repr(a) == repr(b)
+    """Equal rows, NaN equal to NaN and `-0.0` equal to `0.0`: the model keeps a
+    zero raw (D31) where Polars's writer still makes one zero (#1461 follow-up)."""
+    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in a]) == repr(
+        [tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in b]
+    )
 
 
 def test_polars_skips_nan_and_keeps_either_zero_and_the_shims_do_not():
