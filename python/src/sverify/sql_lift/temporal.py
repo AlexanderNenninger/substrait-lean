@@ -183,10 +183,12 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
         raise SqlUnsupported(f"{name} of {a.type} and {b.type} is not supported yet")
     months, micros = b.value
     if a.type.is_time() and not -(2**63) <= micros < 2**63:
-        raise SqlUnsupported("an interval beyond 64-bit microseconds: DuckDB raises")
+        raise SqlUnsupported("an interval beyond 64-bit microseconds: DuckDB raises", issue=342)
     if a.type.is_time() and name == "subtract" and micros == -(2**63):
         # DuckDB negates the interval, which overflows (`duckdb-time-plus-interval`).
-        raise SqlUnsupported("TIME minus an interval of -2^63 microseconds: DuckDB raises")
+        raise SqlUnsupported(
+            "TIME minus an interval of -2^63 microseconds: DuckDB raises", issue=342
+        )
     if name == "subtract":
         months, micros = -months, -micros
     ts = dt.timestamp(scale=6)
@@ -209,7 +211,7 @@ def _temporal_plus(name: str, a: E, b: E) -> E:
         # interval's months (`duckdb-time-plus-interval`).
         return E(_fn("add", [a.json, interval_json(0, micros)], dt.time), dt.time)
     if not a.type.is_timestamp() or a.type.timezone is not None:
-        raise SqlUnsupported(f"{name} of {a.type} and an interval is not supported yet")
+        raise SqlUnsupported(f"{name} of {a.type} and an interval is not supported yet", issue=342)
     return E(_fn(name, [a.json, b.json], ts), ts)
 
 

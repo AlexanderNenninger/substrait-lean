@@ -125,7 +125,7 @@ def _like(name: str) -> Callable[..., E]:
         # a pattern must be a constant without one.
         p = sub(node.expression)
         if not p.constant:
-            raise SqlUnsupported(f"{name.upper()} with a pattern that is not a constant")
+            raise SqlUnsupported(f"{name.upper()} with a pattern that is not a constant", issue=319)
         if isinstance(p.value, str) and "\\" in p.value:
             raise SqlUnsupported(
                 f"{name.upper()} with a backslash in the pattern is not supported yet"

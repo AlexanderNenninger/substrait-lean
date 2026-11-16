@@ -55,9 +55,6 @@ class UnsupportedError(SverifyError, ValueError):
 Unsupported = UnsupportedError
 """The internal modules' name for `UnsupportedError`."""
 
-#: Where the SQL the lift reads is tracked: the epic of the verified SQL pipeline.
-SQL_COVERAGE = "see #231, https://github.com/AlexanderNenninger/substrait-lean/issues/231"
-
 
 class SverifyWarning(UserWarning):
     """The base of every warning sverify issues. In a CI job,

@@ -35,8 +35,8 @@ BASELINE = Path(__file__).resolve().parents[2] / "tests" / "exits_baseline.json"
 #: The classes every refusal derives from, by name, and the helpers that build one.
 _ROOTS = {"SverifyError", "UnsupportedError", "Unsupported", "Refused", "ProducerRefused"}
 _HELPER = re.compile(r"refus|unsupported", re.I)
-#: Classes whose message always ends with the way out (`SqlUnsupported` adds a
-#: rewrite or the coverage epic).
+#: Classes whose message always ends with an action (`SqlUnsupported` adds a
+#: rewrite, or "write this step in Ibis").
 _OWN_EXIT = {"SqlUnsupported"}
 
 _VERBS = (
@@ -151,9 +151,8 @@ def main() -> None:
         mods["/".join(parts[:2]) if len(parts) > 2 else parts[0]][
             "exit" if s.tier == "passthrough" else s.tier
         ] += 1
-    print(
-        f"{'module':28} {'total':>5} {'exit':>5} {'hint':>5} {'unnamed':>7}  (exit includes passthroughs)"
-    )
+    # `exit` includes the passthroughs, which re-raise a message with its own.
+    print(f"{'module':28} {'total':>5} {'exit':>5} {'hint':>5} {'unnamed':>7}")
     for m, c in sorted(mods.items(), key=lambda kv: -sum(kv[1].values())):
         print(f"{m:28} {sum(c.values()):5} {c['exit']:5} {c['hint']:5} {c['unnamed']:7}")
     total = collections.Counter("exit" if s.tier == "passthrough" else s.tier for s in found)

@@ -119,7 +119,9 @@ def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     if name == "subtract" and a.type.is_date() and b.type.is_date():
         # DuckDB's DATE - DATE is a BIGINT of days.
         if a.midnight or b.midnight:
-            raise SqlUnsupported("a TIMESTAMP minus a DATE (an interval) is not supported yet")
+            raise SqlUnsupported(
+                "a TIMESTAMP minus a DATE (an interval) is not supported yet", issue=342
+            )
         return E(_fn("date_diff", [a.json, b.json], dt.int64), dt.int64)
     if not (_numeric(a.type) or a.type.is_null()) or not (_numeric(b.type) or b.type.is_null()):
         raise SqlUnsupported(f"{name} of {a.type} and {b.type} is not supported yet")

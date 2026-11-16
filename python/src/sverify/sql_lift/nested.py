@@ -55,7 +55,7 @@ def _array(lf: _Lift, node: sge.Array, sub: Sub, scope: list[Column]) -> E:
 def _list(lf: _Lift, x: E, what: str) -> Any:
     """The list type of `x`, which `what` needs."""
     if not x.type.is_array():
-        raise SqlUnsupported(f"{what} of a {x.type} is not supported")
+        raise SqlUnsupported(f"{what} of a {x.type} is not supported", issue=348)
     return x.type
 
 
@@ -63,7 +63,9 @@ def _len(lf: _Lift, node: sge.ArraySize, sub: Sub, scope: list[Column]) -> E:
     """`len(l)`, `array_length(l)`: the number of elements, NULL ones
     included (`UnFn.cardinality`, #812)."""
     if node.expression is not None:
-        raise SqlUnsupported(f"{_shown(node)}: array_length of a dimension is not supported")
+        raise SqlUnsupported(
+            f"{_shown(node)}: array_length of a dimension is not supported", issue=348
+        )
     x = sub(node.this)
     _list(lf, x, "array_length")
     return E(_fn("cardinality", [x.json], dt.int64), dt.int64)
@@ -75,12 +77,14 @@ def _needle(lf: _Lift, node: sge.Expression, lst: E, x: E, name: str) -> tuple[E
     so they are refused."""
     elem = _list(lf, lst, name).value_type
     if elem.is_floating() or elem.is_nested() or elem.is_decimal():
-        raise SqlUnsupported(f"{_shown(node)}: {name} of a list of {elem} is not supported yet")
+        raise SqlUnsupported(
+            f"{_shown(node)}: {name} of a list of {elem} is not supported yet", issue=348
+        )
     if x.type.is_null():
         return E(literal(None, elem), elem, None), elem
     t = lf.common([E(lst.json, elem), x], name)
     if not _same(t, elem):
-        raise SqlUnsupported(f"{_shown(node)}: {name} of a {x.type} in a list of {elem}")
+        raise SqlUnsupported(f"{_shown(node)}: {name} of a {x.type} in a list of {elem}", issue=348)
     return lf.to(x, elem), elem
 
 
@@ -99,7 +103,9 @@ def _concat(lf: _Lift, node: sge.ArrayConcat, sub: Sub, scope: list[Column]) -> 
     es = [sub(e) for e in [node.this, *node.expressions]]
     for e in es:
         if not (e.type.is_array() or e.type.is_null()):
-            raise SqlUnsupported(f"{_shown(node)}: list_concat of a {e.type} is not supported")
+            raise SqlUnsupported(
+                f"{_shown(node)}: list_concat of a {e.type} is not supported", issue=348
+            )
     lists = [e for e in es if e.type.is_array()]
     if not lists:
         raise Unsupported(f"{_shown(node)} of NULLs has no element type; cast them")
@@ -141,9 +147,9 @@ def _bracket(lf: _Lift, node: sge.Bracket, sub: Sub, scope: list[Column]) -> E:
     added back here. Slices are not supported yet."""
     x = sub(node.this)
     if not x.type.is_array():
-        raise SqlUnsupported(f"{_shown(node)}: indexing a {x.type} is not supported yet")
+        raise SqlUnsupported(f"{_shown(node)}: indexing a {x.type} is not supported yet", issue=348)
     if len(node.expressions) != 1 or isinstance(node.expressions[0], sge.Slice):
-        raise SqlUnsupported(f"{_shown(node)}: list slices are not supported yet")
+        raise SqlUnsupported(f"{_shown(node)}: list slices are not supported yet", issue=348)
     k = sub(node.expressions[0])
     if not (k.constant and isinstance(k.value, int) and not isinstance(k.value, bool)):
         raise Unsupported(f"{_shown(node)}: a list element needs a constant index")

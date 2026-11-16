@@ -2217,7 +2217,9 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
             # The model holds an interval as microseconds; DuckDB keeps its
             # months, days and microseconds apart (`INTERVAL 2 DAYS` is not
             # `48:00:00`), and the written plan returns the microseconds.
-            raise SqlUnsupported(f"the INTERVAL output column {c.name} is not supported yet")
+            raise SqlUnsupported(
+                f"the INTERVAL output column {c.name} is not supported yet", issue=342
+            )
     # Every output column may be NULL, as the plan's computed values are
     # (a LEFT JOIN's right side, an aggregate of no rows, …).
     schema = ibis.schema(

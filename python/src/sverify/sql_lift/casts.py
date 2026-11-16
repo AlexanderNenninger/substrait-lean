@@ -87,7 +87,9 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         # microseconds, DuckDB's for 4 to 6 (#626, #323).
         raise SqlUnsupported(f"CAST to {node.to.sql(DIALECT)}: a precision is not supported")
     if node.to.this in (sge.DataType.Type.INT128, sge.DataType.Type.UINT128):
-        raise SqlUnsupported(f"CAST to {node.to.sql(DIALECT)} (HUGEINT) is not supported")
+        raise SqlUnsupported(
+            f"CAST to {node.to.sql(DIALECT)} (HUGEINT) is not supported", issue=350
+        )
     if t.is_array() and getattr(t, "length", None) is not None:
         raise SqlUnsupported(
             f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported"
@@ -142,7 +144,9 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
                 "or round() first"
             )
     if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
-        raise SqlUnsupported(f"CAST of a {a.type} to {t} rounds, which is not supported yet")
+        raise SqlUnsupported(
+            f"CAST of a {a.type} to {t} rounds, which is not supported yet", issue=322
+        )
     # A numeric constant becomes a literal of the type, where that is exact
     # (not a double or decimal made an integer, nor one that doesn't fit).
     exact = not (t.is_integer() and not a.type.is_integer())
