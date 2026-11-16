@@ -231,7 +231,7 @@ skill:
 # the on-ramp (`docs/getting-started.md`, at `examples/examples.html`); the reference pages (what a plan
 # means, what 1.x keeps) and the design pages of `docs/`, by the kinds
 # `docs/README.md` maps, without the pages for contributors; and the ledgers, rendered from their
-# JSON (`upstream/bugs/`, `characterization/<engine>/facts/`,
+# JSON (`upstream/bugs/`, `engines/<engine>/facts/`,
 # `characterization/areas.json`, `docs/realizability.md`). Quarto's search
 # indexes every entry by its heading.
 sections:

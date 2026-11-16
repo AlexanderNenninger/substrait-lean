@@ -17,7 +17,7 @@ Read the document `upstream/bugs/<ID>.json`: `version`, `repro`, `handling`, the
 - "sqllogictest replay", "replay", `<file>.test`: DuckDB's sqllogictest suite replayed through `python/tools/sverify_dev/slt.py`, compared against the formalization.
 - `fuzz__*.json` ledgers: the Hypothesis fuzzer (`sverify_dev/duckdb_fuzz.py`). **Only** these may be called fuzzing.
 - `probes.json`, `duckdb-R15-*` facts: the function probe (`sverify_dev/probe.py`).
-- `characterization/<engine>/facts/`: characterizing the engine against the formalization.
+- `engines/<engine>/facts/`: characterizing the engine against the formalization.
 
 If the source is unclear, check `git log -S'<ID>'` and the PR named in the document, then ask.
 
