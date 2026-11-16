@@ -9,7 +9,10 @@ any other plan:
 
 1. join each left row with the right rows of the same `by` values whose `on`
    is at or before the left row's, at most `tolerance` earlier;
-2. rank them per left row, latest first, and keep the first.
+2. rank them per left row, latest first, and keep the first. A left row is
+   a numbered row (`ROW_NUMBER()` ordered by `by` and `on`, an identity only), so rows
+   that share their `by` and `on` values, or have a NULL `on`, each keep
+   their own match.
 
 The join is a range join, so the pairs of rows it compares are quadratic: each
 left row with every right row of its `by` group (`pairs`). `asof_join` refuses
@@ -18,10 +21,10 @@ them, and names the exits: `by` columns, fewer rows, a larger cap.
 
 No theorem is about ASOF joins: the plan is proved as any plan is. What an
 ASOF join promises, stated in `ensures`, is proved for each plan by the
-theorems every contract rests on (`docs/proofs.md`): one output row per left
-row (`unique(*by, on)`, from `ROW_NUMBER` keys and the join's key analysis,
-`Rel.keys_sound`), `on_right <= on` and `on - on_right <= tolerance`
-(`contract_sound`); `tests/test_asof.py` proves the three. The ranking is only
+theorems every contract rests on (`docs/proofs.md`): `on_right <= on` and
+`on - on_right <= tolerance` (`contract_sound`), and `unique(*by, on)` of the
+output where `requires` gives the left table that key (`Rel.keys_sound`);
+`tests/test_asof.py` proves the three. The ranking is only
 determined when no two right rows tie: without a key on `(*by, on)` on the
 right side these guarantees still hold for every pick of the tied rows,
 and the report is not `deterministic`.
@@ -38,6 +41,7 @@ import pyarrow as pa
 from sverify._unsupported import Unsupported
 from sverify._weighted import _call
 
+ROW = "_asof_row"
 RANK = "_asof_rank"
 
 MAX_PAIRS = 10**8
@@ -96,7 +100,6 @@ def asof_join(
     by: str | Sequence[str] = (),
     tolerance: Any = None,
     *,
-    key: Sequence[str] | None = None,
     how: Literal["left", "inner"] = "left",
     max_pairs: int | None = MAX_PAIRS,
 ) -> ir.Table:
@@ -104,11 +107,11 @@ def asof_join(
 
     `on` is the time column of both tables; rows match only when their `by`
     columns are equal and `left.on - tolerance <= right.on <= left.on`.
-    `key` identifies left rows (default: `by` and `on`); the left table must
-    not repeat it. With `how="left"`, left rows without a match are kept
-    with NULLs. The output has the left columns, then the right ones except
-    `by`, with clashing names suffixed `_right` (so `on_right` is the time
-    of the match).
+    The output has one row per left row, whatever its `by` and `on` values
+    (an inner join drops the rows without a match). With `how="left"`, left
+    rows without a match are kept with NULLs. The output has the left columns,
+    then the right ones except `by`, with clashing names suffixed `_right`
+    (so `on_right` is the time of the match).
 
     Args:
         left: The table whose rows are matched; one output row per left row.
@@ -122,7 +125,6 @@ def asof_join(
             None: no limit. The join computes `on - tolerance`, which
             overflows at the type's smallest value; a contract infers the
             lower bound on the left `on` column that rules it out.
-        key: Columns that identify left rows. Default: `by` and `on`.
         how: `"left"` (the default) keeps left rows without a match, with
             NULLs; `"inner"` drops them.
         max_pairs: The most pairs of rows (each left row with every right
@@ -142,15 +144,15 @@ def asof_join(
     """
     by = [by] if isinstance(by, str) else list(by)
     _check_pairs(left, right, by, max_pairs)
-    key = list(key) if key is not None else [*by, on]
+    # The number is an identity only, ordered by `by` and `on` so that a left
+    # table keyed on them has no tie there and the report can stay deterministic.
+    left = left.mutate(**{ROW: ibis.row_number().over(order_by=[left[c] for c in (*by, on)])})
     preds = [left[c] == right[c] for c in by] + [right[on] <= left[on]]
     if tolerance is not None:
         preds.append(right[on] >= left[on] - tolerance)
     joined = left.join(right, preds, how=how)
     # Ibis renames the right side's clashing columns to `<name>_right`.
-    latest = ibis.window(
-        group_by=[joined[c] for c in key], order_by=ibis.desc(joined[f"{on}_right"])
-    )
+    latest = ibis.window(group_by=[joined[ROW]], order_by=ibis.desc(joined[f"{on}_right"]))
     ranked = joined.mutate(**{RANK: ibis.row_number().over(latest)})
     first = ranked.filter(ranked[RANK] == 0)
-    return first.drop(RANK, *[f"{c}_right" for c in by if f"{c}_right" in first.columns])
+    return first.drop(ROW, RANK, *[f"{c}_right" for c in by if f"{c}_right" in first.columns])

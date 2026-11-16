@@ -870,8 +870,9 @@ def _(mo):
 
     A gyroscope reading from the future would leak information the model
     cannot have in production. The contract states what an ASOF join
-    promises: one output row per accelerometer sample, no gyroscope sample
-    from the future, and none older than the tolerance.
+    promises: no gyroscope sample from the future, and none older than the
+    tolerance. Each accelerometer sample keeps its own row, repeated
+    timestamps included.
     """)
     return
 
@@ -905,7 +906,6 @@ def _(con_w, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
             "gyr": [sv.unique("device", "ts")] if gyr_keyed.value else [],
         },
         ensures=[
-            sv.unique("device", "ts"),  # one row per accelerometer sample
             _.ts_right.isnull() | (_.ts_right <= _.ts),  # never from the future
             # never too old (a condition can be SQL, too)
             f"ts_right IS NULL OR ts_right >= ts - INTERVAL '{tolerance_ms.value} milliseconds'",
@@ -933,9 +933,8 @@ def _(mo):
       for "latest". The guarantees hold for either one, and the result is
       not deterministic: a rerun may pair the sample with the other reading.
 
-    One row per sample comes from the key analysis: `ROW_NUMBER()` over a
-    partition is a key together with the partition columns, and the filter
-    `rank = 0` drops the rank from that key. Framed window aggregates
+    Each sample keeps its row because the ranking is per accelerometer row,
+    numbered first. Framed window aggregates
     (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums verify too
     ([Ibis coverage](https://github.com/AlexanderNenninger/substrait-lean/blob/main/README.md#ibis-coverage)).
 
