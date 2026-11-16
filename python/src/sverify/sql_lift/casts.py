@@ -125,7 +125,10 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
                 ctx.prec = 100
                 v = v.quantize(Decimal(1).scaleb(-t.scale), rounding=ROUND_HALF_UP)
         if not (v.is_finite() and _fits(v, t)):
-            raise SqlUnsupported(f"CAST of {text!r} to {t}: DuckDB raises, the value does not fit")
+            raise SqlUnsupported(
+                f"CAST of {text!r} to {t}: DuckDB raises, the value does not fit",
+                hint="write a value that fits the type, or a wider type",
+            )
         return E(literal(v, t), t, v)
     if not a.constant:
         for src, to, sql in (

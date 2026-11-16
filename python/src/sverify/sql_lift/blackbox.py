@@ -133,7 +133,7 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
             return n
         name = n.name.lower()
         if name in REFUSED:
-            raise Unsupported(REFUSED[name])
+            raise SqlUnsupported(REFUSED[name])
         name = ALIASES.get(name, name)
         if name in black_box.SCALARS:
             return BlackBoxCall(this=name, expressions=list(n.expressions))

@@ -46,7 +46,7 @@ _VERBS = (
 )
 EXIT = re.compile(
     r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|"
-    rf"\b({_VERBS})\b[^.]{{0,60}}(`|\w+=|\(\)|first|instead|as a)",
+    rf"\b({_VERBS})\b[^.]{{0,60}}(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis)",
     re.I,
 )
 HINT = re.compile(r"; [a-z]|\bonly\b|\binstead\b|\bmust\b|\bneeds?\b|\bexpects?\b|\bunless\b", re.I)
@@ -63,8 +63,6 @@ class Site:
     def tier(self) -> str:
         if self.cls in _OWN_EXIT or EXIT.search(self.message):
             return "exit"
-        if not re.sub(r"\{\w*\}|[\s:;,.()]", "", self.message):
-            return "passthrough"  # re-raises a message that carries its own exit
         return "hint" if HINT.search(self.message) else "unnamed"
 
 
@@ -148,14 +146,11 @@ def main() -> None:
     mods: dict[str, collections.Counter[str]] = collections.defaultdict(collections.Counter)
     for s in found:
         parts = s.file.split("/")
-        mods["/".join(parts[:2]) if len(parts) > 2 else parts[0]][
-            "exit" if s.tier == "passthrough" else s.tier
-        ] += 1
-    # `exit` includes the passthroughs, which re-raise a message with its own.
+        mods["/".join(parts[:2]) if len(parts) > 2 else parts[0]][s.tier] += 1
     print(f"{'module':28} {'total':>5} {'exit':>5} {'hint':>5} {'unnamed':>7}")
     for m, c in sorted(mods.items(), key=lambda kv: -sum(kv[1].values())):
         print(f"{m:28} {sum(c.values()):5} {c['exit']:5} {c['hint']:5} {c['unnamed']:7}")
-    total = collections.Counter("exit" if s.tier == "passthrough" else s.tier for s in found)
+    total = collections.Counter(s.tier for s in found)
     print(f"{'total':28} {len(found):5} {total['exit']:5} {total['hint']:5} {total['unnamed']:7}")
     if "--sites" in sys.argv:
         for s in found:
