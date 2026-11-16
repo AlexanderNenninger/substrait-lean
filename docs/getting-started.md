@@ -317,14 +317,16 @@ every sink.
 [characterization](https://alexandernenninger.github.io/substrait-lean/ledgers/duckdb-facts.html). A route to Polars then takes the proof
 across only where Polars's choices are within DuckDB's on every option the
 plan reads (the checker's transfer check, `Rel.transfer_of_transferB`), and
-names the options and facts where they are not:
+names the options and facts where they are not. A comparison reads `zero_sign`,
+where DuckDB gives one zero and Polars IEEE's two, so a filter on a double is
+proved again under Polars's profile:
 
 ```python
 t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
 filtered.run(con, "polars", route="auto")
 print(filtered.routes["polars"])
-# exact; transfer: verified under semantics="duckdb"; polars's choices are within its choices on every option the plan reads
+# exact; recheck: proved again under semantics="polars"
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
