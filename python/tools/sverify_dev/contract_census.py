@@ -97,7 +97,8 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
     if "allowed_orders_only" in because:
         causes.append("proved on the reference's orders only (open measure, #1071)")
     if not causes:
-        causes.append(f"translation tested (no row for the options; {issues})")
+        # No row to track it: the translation's own proof is #271's.
+        causes.append(f"translation tested (no row for the options; {issues or '#271'})")
     return sorted(set(causes))
 
 
