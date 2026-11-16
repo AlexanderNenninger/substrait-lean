@@ -4,13 +4,13 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: cmp's zero_sign",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: agg.fsum's empty_group_aggregates (#241)",
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: cmp's nan_equality (#241)",
+          "row tested: cmp's nan_order (#241)",
+          "row tested: cmp's zero_sign (#241)",
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -18,24 +18,24 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)",
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: agg.fsum's empty_group_aggregates (#271)",
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)",
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -49,8 +49,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -64,7 +64,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -107,9 +107,9 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's empty_group_aggregates (#241)",
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -124,12 +124,12 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates"
+          "row tested: agg.fsum's empty_group_aggregates (#271)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -143,8 +143,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -159,7 +159,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -177,8 +177,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -192,7 +192,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -209,9 +209,9 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "tolerance bound not proved"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "tolerance bound not proved (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -222,7 +222,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -236,7 +236,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "translation tested (no row for the options)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -250,11 +250,11 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
-          "translation tested (no row for the options)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -267,7 +267,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.isum's overflow"
+          "row tested: agg.isum's overflow (#241)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -281,7 +281,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -295,7 +295,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.isum's overflow"
+          "row tested: agg.isum's overflow (#241)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -309,7 +309,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -323,7 +323,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.isum's overflow"
+          "row tested: agg.isum's overflow (#241)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -337,7 +337,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -351,8 +351,8 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order",
-          "row tested: agg.order's zero_sign"
+          "row tested: agg.order's nan_order (#241)",
+          "row tested: agg.order's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -366,11 +366,11 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order"
+          "row tested: agg.order's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -383,26 +383,26 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order",
-          "row tested: agg.order's zero_sign"
+          "row tested: agg.order's nan_order (#241)",
+          "row tested: agg.order's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "translation tested (no row for the options)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order"
+          "row tested: agg.order's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -415,11 +415,11 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order",
-          "row tested: agg.order's zero_sign",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: cmp's zero_sign"
+          "row tested: agg.order's nan_order (#241)",
+          "row tested: agg.order's zero_sign (#241)",
+          "row tested: cmp's nan_equality (#241)",
+          "row tested: cmp's nan_order (#241)",
+          "row tested: cmp's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -427,21 +427,21 @@
       "polars": {
         "causes": [
           "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: agg.order's nan_order (#271)",
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -512,7 +512,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -527,11 +527,11 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: cmp's zero_sign"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: cmp's nan_equality (#241)",
+          "row tested: cmp's nan_order (#241)",
+          "row tested: cmp's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -540,21 +540,21 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -568,8 +568,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -584,7 +584,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -609,7 +609,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -624,11 +624,11 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: cmp's zero_sign"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: cmp's nan_equality (#241)",
+          "row tested: cmp's nan_order (#241)",
+          "row tested: cmp's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -636,21 +636,21 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -663,31 +663,31 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: cmp's zero_sign"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: cmp's nan_equality (#241)",
+          "row tested: cmp's nan_order (#241)",
+          "row tested: cmp's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "polars": {
         "causes": [
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -701,11 +701,11 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: cmp's zero_sign"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: cmp's nan_equality (#241)",
+          "row tested: cmp's nan_order (#241)",
+          "row tested: cmp's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -714,21 +714,21 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -741,8 +741,8 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.quant's nan_order",
-          "row tested: agg.quant's quantile_interp"
+          "row tested: agg.quant's nan_order (#241)",
+          "row tested: agg.quant's quantile_interp (#900)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -793,11 +793,11 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: rel.sort's null_order",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: agg.fsum's empty_group_aggregates (#241)",
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: rel.sort's null_order (#241)",
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -806,20 +806,20 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: agg.fsum's empty_group_aggregates (#271)",
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -840,7 +840,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -854,10 +854,10 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: int.arith's overflow",
-          "row tested: rel.sort's null_order"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: int.arith's overflow (#241)",
+          "row tested: rel.sort's null_order (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -871,7 +871,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -886,12 +886,12 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: fp.arith's float_overflow",
-          "row tested: fp.arith's nan_creation",
-          "row tested: fp.arith's rounding",
-          "row tested: fp.arith's zero_sign"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: fp.arith's float_overflow (#241)",
+          "row tested: fp.arith's nan_creation (#241)",
+          "row tested: fp.arith's rounding (#241)",
+          "row tested: fp.arith's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -900,19 +900,19 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: fp.arith's rounding"
+          "row tested: fp.arith's rounding (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: fp.arith's rounding"
+          "row tested: fp.arith's rounding (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -926,11 +926,11 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: rel.sort's null_order",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: agg.fsum's empty_group_aggregates (#241)",
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: rel.sort's null_order (#241)",
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -939,20 +939,20 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates",
-          "row tested: win.agg's window_sum_algo"
+          "row tested: agg.fsum's empty_group_aggregates (#271)",
+          "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -967,7 +967,7 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's nan_creation",
-          "row tested: agg.var's rounding"
+          "row tested: agg.var's rounding (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -976,20 +976,20 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding",
-          "row tested: agg.var's stat_algo"
+          "row tested: agg.var's rounding (#271)",
+          "row tested: agg.var's stat_algo (#918)"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding"
+          "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1004,7 +1004,7 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's nan_creation",
-          "row tested: agg.var's rounding"
+          "row tested: agg.var's rounding (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1012,20 +1012,20 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding",
-          "row tested: agg.var's stat_algo"
+          "row tested: agg.var's rounding (#271)",
+          "row tested: agg.var's stat_algo (#918)"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding"
+          "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1071,7 +1071,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1085,8 +1085,8 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1097,7 +1097,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -1112,8 +1112,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1127,7 +1127,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1170,8 +1170,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1186,7 +1186,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1204,8 +1204,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1219,7 +1219,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1237,8 +1237,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1252,7 +1252,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1313,8 +1313,8 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1325,7 +1325,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -1340,11 +1340,11 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow",
-          "row tested: agg.fsum's nan_creation",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order",
-          "row tested: cmp's zero_sign"
+          "row tested: agg.fsum's float_overflow (#241)",
+          "row tested: agg.fsum's nan_creation (#241)",
+          "row tested: cmp's nan_equality (#241)",
+          "row tested: cmp's nan_order (#241)",
+          "row tested: cmp's zero_sign (#241)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -1353,21 +1353,21 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_equality (#271)",
+          "row tested: cmp's nan_order (#271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -1388,7 +1388,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1410,7 +1410,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1426,7 +1426,7 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.var's nan_creation",
-          "row tested: agg.var's rounding"
+          "row tested: agg.var's rounding (#241)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1435,20 +1435,20 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding",
-          "row tested: agg.var's stat_algo"
+          "row tested: agg.var's rounding (#271)",
+          "row tested: agg.var's stat_algo (#918)"
         ],
         "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding"
+          "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
         "outcome": "tested"

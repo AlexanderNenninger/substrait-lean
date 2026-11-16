@@ -83,18 +83,22 @@ def _tested_causes(report: Any, route: Any, engine: str) -> list[str]:
     for d in report._depends or []:
         r = routes.row(engine, d.get("group"), d["option"])
         if r is not None and r.get("evidence") == "tested":
-            causes.append(f"row tested: {routes._where(d.get('group'), d['option'])}")
+            causes.append(
+                f"row tested: {routes._where(d.get('group'), d['option'])} (#{r['issue']})"
+            )
     if any(e["unbounded"] for e in (report._epsilon or {}).values()):
         causes.append("no bound on the doubles (a SUM or AVG without sv.max_rows)")
+    issues = ", ".join(f"#{i}" for i in route.issues)
     if route.bound_proved is False:
-        causes.append("tolerance bound not proved")
+        causes.append(f"tolerance bound not proved ({issues})")
     because = (routes.verdict(report, engine) or {}).get("tested_because") or []
     if "robust_by_facts" in because:
         causes.append("robust only by the engine's facts (#1045)")
     if "allowed_orders_only" in because:
         causes.append("proved on the reference's orders only (open measure, #1071)")
     if not causes:
-        causes.append("translation tested (no row for the options)")
+        # No row to track it: the translation's own proof is #271's.
+        causes.append(f"translation tested (no row for the options; {issues or '#271'})")
     return sorted(set(causes))
 
 
@@ -222,10 +226,34 @@ def by_pattern(results: dict[str, dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+#: What names an exit in a refusal: an issue, an argument to pass, a rewrite
+#: or a precondition to state. A tested cause names one by an issue (the
+#: tracking issue of its row) or `sv.max_rows`.
+EXIT = re.compile(r"#\d+|unverified=|\bsv\.\w+|engine='|state a precondition")
+
+
+def unnamed(results: dict[str, dict[str, Any]]) -> list[tuple[str, str, str]]:
+    """The refused and tested outcomes without an exit, as (case, engine,
+    text): the gate of #1205 passes when this is empty."""
+    out = []
+    for cid, res in results.items():
+        for engine, r in res["engines"].items():
+            if r["outcome"] == "refused" and not EXIT.search(r["reason"]):
+                out.append((cid, engine, r["reason"]))
+            for cause in r.get("causes", []):
+                if not EXIT.search(cause):
+                    out.append((cid, engine, cause))
+    return out
+
+
 def main() -> None:
     if "--write" in sys.argv:
         RESULTS.write_text(json.dumps(census(), indent=2, sort_keys=True) + "\n")
     results = json.loads(RESULTS.read_text())
+    if "--unnamed" in sys.argv:
+        for cid, engine, text in unnamed(results):
+            print(f"{cid} {engine}: {text}")
+        print(f"unnamed: {len(unnamed(results))}")
     if "--table" in sys.argv:
         print(table(results))
         print()
