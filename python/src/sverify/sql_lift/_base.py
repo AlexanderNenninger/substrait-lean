@@ -224,7 +224,7 @@ def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
         return None
     entry = lift_table().scalars[construct]
     if "refused" in entry:
-        raise Unsupported(f"{construct}: {entry['refused']}")
+        raise SqlUnsupported(f"{construct}: {entry['refused']}")
     ts = [_TABLE_TYPES[a] for a in entry["args"]]
     js = [lf.to(a, t).json for a, t in zip(args, ts, strict=True)]
     return E(_instantiate(entry["template"], js), _TABLE_TYPES[entry["result"]])
@@ -350,13 +350,18 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
     for node in tree.find_all(*_NONDETERMINISTIC):
-        raise Unsupported(_nondeterministic(node))
+        raise SqlUnsupported(
+            _nondeterministic(node), hint="pass the value in as a column or a constant"
+        )
     for f in tree.find_all(sge.Anonymous):
         if f.name.lower() in _NONDETERMINISTIC_NAMES:
-            raise Unsupported(_nondeterministic(f))
+            raise SqlUnsupported(
+                _nondeterministic(f), hint="pass the value in as a column or a constant"
+            )
         if f.name.lower() not in _KNOWN:
             raise SqlUnsupported(
-                f"unknown function {f.name}(): DuckDB SQL here has no such function"
+                f"unknown function {f.name}(): DuckDB SQL here has no such function",
+                hint="check the name against DuckDB's functions, or write the step in Ibis",
             )
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
@@ -611,10 +616,7 @@ _NONDETERMINISTIC_NAMES = frozenset(
 
 
 def _nondeterministic(node: sge.Expression) -> str:
-    return (
-        f"{_shown(node)} gives another value on every run, so no proof covers its "
-        "result: pass the value in as a column or a constant"
-    )
+    return f"{_shown(node)} gives another value on every run, so no proof covers its result"
 
 
 def _shown(node: sge.Expression) -> str:

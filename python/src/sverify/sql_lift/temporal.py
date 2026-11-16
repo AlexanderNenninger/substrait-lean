@@ -287,7 +287,10 @@ def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) ->
     if name == "weekday" and len(args) == 1:
         # DuckDB's `weekday(d)` is `dayofweek(d)`, Sunday 0 (#328).
         return _date_part(lf, "dow", sub(args[0]))
-    raise SqlUnsupported(f"unknown function {node.name}(): DuckDB SQL here has no such function")
+    raise SqlUnsupported(
+        f"unknown function {node.name}(): DuckDB SQL here has no such function",
+        hint="check the name against DuckDB's functions, or write the step in Ibis",
+    )
 
 
 _KNOWN.update({"weekday", "isoyear", "epoch_us"})

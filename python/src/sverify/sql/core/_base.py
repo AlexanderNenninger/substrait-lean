@@ -144,7 +144,7 @@ class Dialect:
         row = _functions.BY_NAME[name]
         sql = _functions.sql(row, self.name)
         if isinstance(sql, _functions.No):
-            raise Unsupported(sql.reason)
+            raise WriterUnsupported(sql.reason)
         if sql is None:
             raise self.refused(row.name)
         return sql.format(*args)
