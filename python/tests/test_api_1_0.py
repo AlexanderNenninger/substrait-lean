@@ -97,7 +97,7 @@ def test_on_unproved_warn_warns_with_the_report(tmp_path) -> None:
     with pytest.warns(UnprovedWarning, match=r"\(\.report has the details\)") as w:
         node = clipped(orders)
     warning = next(x.message for x in w if isinstance(x.message, UnprovedWarning))
-    assert warning.report is node.report and not warning.report.proved
+    assert warning.report is node.report and warning.report.verdict == sv.Verdict.UNPROVED
 
 
 # -- A5: the engines of 1.x -----------------------------------------------------

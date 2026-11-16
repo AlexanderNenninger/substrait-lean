@@ -50,6 +50,7 @@ def test_the_top_level_is_small():
         "ContractedTransform",  # what @sv.transform returns, for isinstance (#682)
         "Node",
         "Report",
+        "Verdict",
         "approx",
         "arrives_within",
         "asof_join",

@@ -112,7 +112,7 @@ def census_case(c: Case, schemas: dict[str, Any]) -> dict[str, Any]:
     from sverify import routes
 
     report = report_of(c, schemas)
-    out: dict[str, Any] = {"pattern": c.pattern, "proved": report.proved}
+    out: dict[str, Any] = {"pattern": c.pattern, "proved": report._proved}
     if unproved := [x.label for x in report.unproved]:
         out["unproved"] = unproved
     if errors := [str(i) for i in report.errors]:

@@ -30,7 +30,7 @@ def _prev(t):
 def test_a_tie_free_window_runs_on_spark(spark):
     t = ibis.table({"k": "int64", "ts": "int64", "v": "int64"}, name="t")
     keyed = sv.verify(_prev(t), requires={"t": [sv.unique("k", "ts")]})
-    assert keyed.proved and keyed.deterministic
+    assert keyed.verdict == sv.Verdict.PROVED and keyed.deterministic
     con = sv.connect()
     con.put("t", ROWS)
     out = keyed.run(con, spark)

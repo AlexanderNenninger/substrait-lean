@@ -148,7 +148,7 @@ def aligned(acc, gyr):
 
 
 aligned(acc, gyr)  # on Ibis tables: checks the contract, returns an expression
-assert aligned.report.proved
+assert aligned.report.verdict == sv.Verdict.PROVED
 ```
 
 ## More

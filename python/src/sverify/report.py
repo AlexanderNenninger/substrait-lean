@@ -18,6 +18,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import ibis
@@ -351,6 +352,28 @@ class Issue:
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.shown or self.expr}"
+
+
+class Verdict(StrEnum):
+    """What the checker proved about a transformation: `Report.verdict`.
+
+    A verdict is not a boolean: `bool(verdict)` raises `TypeError`, so that
+    `assert report.verdict` cannot pass on `UNPROVED`. Compare with the value
+    you expect.
+    """
+
+    PROVED = "proved"
+    """Every postcondition holds on every run, and no run raises."""
+    PROVED_WITH_CHECKS = "proved_with_checks"
+    """Every run that finishes satisfies the postconditions. A run stops where
+    a check of `Report.assumed` fails on the data."""
+    UNPROVED = "unproved"
+    """A postcondition is not proved, a run-time error is possible, a
+    precondition is needed, Substrait allows more, or no engine's doubles meet
+    the observation."""
+
+    def __bool__(self) -> bool:
+        raise TypeError("a Verdict is not a bool: compare it with Verdict.PROVED, ...")
 
 
 @dataclass
@@ -929,7 +952,7 @@ class Report:
                 tables={"t": con.table("t")},
                 ensures=[sv.unique("host")],
             )
-            result = report.run(con)  # refused if report.proved is False
+            result = report.run(con)  # refused if report.verdict is unproved
             ```
         """
         from sverify import profiles, routes
@@ -1111,12 +1134,21 @@ class Report:
             raise routes.RouteError(refused)
 
     @property
-    def proved(self) -> bool:
-        """Every postcondition holds and no runtime error is possible. With
-        an observation (`sv.equivalent`), no postcondition depends on what
-        it ignores, and some engine's doubles meet it (`floats_unmet`).
-        Under `semantics="substrait"`, the reference's proof also carries
-        over (`transfer` is empty)."""
+    def verdict(self) -> Verdict:
+        """What the checker proved: `PROVED` (every postcondition holds and no
+        run raises), `PROVED_WITH_CHECKS` (the same, but a run stops where a
+        check of `assumed` fails on the data) or `UNPROVED`. With an
+        observation (`sv.equivalent`), proved also means that no postcondition
+        depends on what it ignores and that some engine's doubles meet it
+        (`floats_unmet`). Under `semantics="substrait"`, the reference's proof
+        also carries over (`transfer` is empty)."""
+        if not self._proved:
+            return Verdict.UNPROVED
+        return Verdict.PROVED_WITH_CHECKS if self.assumed else Verdict.PROVED
+
+    @property
+    def _proved(self) -> bool:
+        """Either proved verdict: what a run, an export and a summary need."""
         return (
             all(c.portable for c in self.ensures)
             and not self.errors
@@ -1184,7 +1216,7 @@ class Report:
         them to the stated preconditions.
 
             report = sv.verify(expr)
-            if not report.proved:
+            if not report._proved:
                 report = sv.verify(expr, requires=report.suggested_requires)
         """
         if self._on_inferred != "error":
@@ -1399,11 +1431,11 @@ class Report:
         return self._hints
 
     @property
-    def verdict(self) -> str:
+    def _summary(self) -> str:
         """The report's first line: "proved", or "NOT proved: " and what is
         missing, counted ("1 of 2 postconditions not proved, 1 possible
         runtime error")."""
-        return "proved" if self.proved else f"NOT proved: {', '.join(self._counts())}"
+        return "proved" if self._proved else f"NOT proved: {', '.join(self._counts())}"
 
     def _counts(self) -> list[str]:
         """What keeps the plan from being proved, counted."""
@@ -1451,7 +1483,7 @@ class Report:
         )
 
     def __str__(self) -> str:
-        lines = [self.verdict]
+        lines = [self._summary]
         needed = _labels_by_table(self.needs)
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self._inferred.get(table, [])}
@@ -1525,7 +1557,7 @@ class Report:
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         if self.rows is not None:
             facts.insert(0, f"| (rows) | at most {self.rows:,} |")
-        note = [f"**{self.verdict}**", ""]
+        note = [f"**{self._summary}**", ""]
         note += [] if self.deterministic else [f"> ⚠️ {self._ties_hint()}", ""]
         if self._params:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self._params)}", ""]

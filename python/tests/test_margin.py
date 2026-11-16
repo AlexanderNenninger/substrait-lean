@@ -57,7 +57,7 @@ def _flagged(groups: list[list[float]], t: float) -> int:
 
 def test_the_checker_writes_the_check_and_the_rows_are_exact_given_it(having):
     r = having
-    assert r.proved
+    assert r.verdict == sv.Verdict.PROVED_WITH_CHECKS
     assert len(r._margin_checks) == 1
     assert r._margin_checks[0]["column"] == "total"
     assert r._rows_exact is not None and all(r._rows_exact.values())

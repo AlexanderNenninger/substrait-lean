@@ -337,7 +337,7 @@ def test_string_contracts():
         ),
         ensures=[_.n >= 0, _.p >= -1, _.u.notnull(), _.b.notnull()],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     report = sv.verify(
         T.filter(T.name.notnull()).select(
             a=T.name.ascii_str(),
@@ -348,7 +348,7 @@ def test_string_contracts():
         ),
         ensures=[_.a >= 0, _.d >= 0, _.r.notnull(), _.p.notnull(), _.i.notnull()],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_negative_substring_length_is_rejected():

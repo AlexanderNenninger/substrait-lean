@@ -411,7 +411,7 @@ def test_old_spellings_of_on_unproved_and_on_inferred_warn():
     orders = ibis.table({"a": "int64", "b": "int64"}, name="orders")
     with pytest.warns(DeprecationWarning, match='on_inferred="ignore"'):
         report = sv.verify(orders.select(r=orders.a // orders.b), on_inferred="silent")  # type: ignore[arg-type]
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_check_requires_false_refuses_an_on_violation():

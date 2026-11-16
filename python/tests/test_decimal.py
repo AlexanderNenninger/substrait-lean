@@ -174,10 +174,10 @@ def test_casts_keep_bounds():
     """A decimal cast to a double, and back, keeps its bounds."""
     q = T.filter([T.a >= 0, T.a <= 50]).select(d=T.a.cast("float64"))
     report = sv.verify(q, ensures=[_.d >= 0, _.d <= 50])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     q = T.filter([T.f >= 0, T.f <= 100]).select(r=T.f.cast("decimal(10, 2)"))
     report = sv.verify(q, ensures=[_.r >= 0, _.r <= 100])
-    assert report.proved and report.errors == [], str(report)
+    assert report.verdict == sv.Verdict.PROVED and report.errors == [], str(report)
 
 
 def test_decimal_sum_does_not_wrap():
@@ -213,9 +213,9 @@ def test_a_decimal_sum_that_leaves_38_digits_is_reported(col, scale):
         con.execute(sql).fetchall()
     strict = sv.verify(sql, tables=OVERFLOW_SCHEMAS, on_inferred="off")
     assert [i.kind for i in strict.errors] == ["SUM overflow"]
-    assert not strict.proved
+    assert strict.verdict == sv.Verdict.UNPROVED
     report = sv.verify(sql, tables=OVERFLOW_SCHEMAS)
-    assert report.proved and report.errors == []
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS and report.errors == []
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
     assert f"fits DECIMAL(38, {scale}) in every group" in str(report)
 

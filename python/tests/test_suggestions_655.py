@@ -24,13 +24,13 @@ T = ibis.table({"k": "string", "s": "string", "x": "float64"}, name="t")
 
 def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
     report = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert _needed(report) == {"t": ["_.s.notnull()"]}
     assert "needs: _.s.notnull() on t, inferred from `(_.n >= 0)` (a NULL result otherwise)" in str(
         report
     )
     assumed = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0], on_inferred="ignore")
-    assert assumed.proved and "_.s.notnull()" in assumed.requires["t"]
+    assert assumed.verdict == sv.Verdict.PROVED and "_.s.notnull()" in assumed.requires["t"]
 
 
 def test_a_postcondition_that_may_be_false_gets_no_null_advice() -> None:
@@ -75,7 +75,7 @@ def plan_report():
 def test_a_tolerance_suggests_the_row_cap_that_meets_it(mean_report, plan_report) -> None:
     rel = routes._bounds(mean_report._epsilon["m"])["rel"][0]
     want = int(1000 * 1e-14 / rel)
-    assert not mean_report.proved
+    assert mean_report.verdict == sv.Verdict.UNPROVED
     assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in str(
         mean_report
     )

@@ -28,11 +28,15 @@
       "type": "string"
     },
     "proved": {
-      "description": "Report.proved: every postcondition holds, no runtime error is possible, and nothing more is needed.",
+      "description": "Either proved verdict: every postcondition holds, no runtime error is possible, and nothing more is needed.",
       "type": "boolean"
     },
     "verdict": {
-      "description": "The report's first line, for display: \"proved\", or \"NOT proved: \" and what is missing, counted. Tools read proved and the findings.",
+      "description": "Report.verdict: \"proved\" (no run raises), \"proved_with_checks\" (a run stops where a check of the assumed issues fails on the data) or \"unproved\". Reports written before the Verdict hold the first line here (now summary), so readers accept any string.",
+      "type": "string"
+    },
+    "summary": {
+      "description": "The report's first line, for display: \"proved\", or \"NOT proved: \" and what is missing, counted. Tools read verdict and the findings.",
       "type": "string"
     },
     "semantics": {

@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 
+from sverify import Verdict
+
 from sverify_dbt.check import check
 from sverify_dbt.manifest import ProjectError
 
@@ -78,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(result.to_dict(), indent=2) if args.json else result)
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
-        n = len({t.name for t in result.proved})
+        n = len({t.name for t in result.verdict == Verdict.PROVED})
         print(
             f"\nwrote the selector sverify_proved ({n} test(s)) to {path}; run "
             "`dbt build --exclude selector:sverify_proved` to skip them",

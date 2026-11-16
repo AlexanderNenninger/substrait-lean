@@ -368,8 +368,9 @@ def to_json(report: Report) -> Json:
     return {
         "format": FORMAT,
         "sverify": _sverify_version(),
-        "proved": report.proved,
-        "verdict": report.verdict,
+        "proved": report._proved,
+        "verdict": str(report.verdict),
+        "summary": report._summary,
         "semantics": report.semantics,
         "dialect": report._dialect,
         "on_inferred": report._on_inferred,

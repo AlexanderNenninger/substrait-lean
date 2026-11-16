@@ -53,7 +53,7 @@ class Checked:
             return "unfinished"
         if self.links:
             return "not_proved"
-        if r.proved:
+        if r._proved:
             return "proved"
         rest = [c for c in r.ensures if not c.portable and not c.checked]
         missing = rest or r.errors or r.needs or r._transfer or r.floats_unmet

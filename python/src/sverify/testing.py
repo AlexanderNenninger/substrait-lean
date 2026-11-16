@@ -475,7 +475,7 @@ def assert_contract(
         prov = _lookup(n._expr.op()) if isinstance(n, _Derived) else None
         if prov is None:
             return
-        if not prov.report.proved:
+        if not prov.report._proved:
             report = "\n".join(f"    {line}" for line in str(prov.report).splitlines())
             problems.append(f"  {n.name}:\n{report}")
         problems.extend(f"  not proved: {link}" for link in prov.unproved_links)

@@ -37,7 +37,7 @@ def test_a_key_survives_from_either_copy_of_the_join_column(side):
         "JOIN customers c ON c.customer_id = p.customer_id"
     )
     report = _verify(sql, [sv.unique("customer_id")])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
 
 
 def test_a_rank_broken_by_the_other_copy_is_determined():
@@ -48,13 +48,13 @@ def test_a_rank_broken_by_the_other_copy_is_determined():
     )
     report = _verify(sql, [sv.unique("customer_id"), "revenue_rank >= 1"])
     assert report.deterministic, str(report)
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
 
 
 def test_a_filters_equality_ties_the_columns():
     sql = "SELECT o2.order_id AS id FROM orders o, orders o2 WHERE o.order_id = o2.order_id"
     report = _verify(sql, [sv.unique("id")])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_a_left_joins_right_copy_is_no_key():
@@ -62,4 +62,4 @@ def test_a_left_joins_right_copy_is_no_key():
         f"SELECT c.customer_id FROM {PER_CUSTOMER} p "
         "LEFT JOIN customers c ON c.customer_id = p.customer_id"
     )
-    assert not _verify(sql, [sv.unique("customer_id")]).proved
+    assert _verify(sql, [sv.unique("customer_id")]).verdict == sv.Verdict.UNPROVED

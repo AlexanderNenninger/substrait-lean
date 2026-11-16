@@ -439,7 +439,7 @@ def _(con_refs, sv):
         ensures=[_.total >= 0, sv.max_rows(1_000_000)],
     )
     uncapped = sv.verify(_totals, requires={"orders": _amounts}, ensures=[_.total >= 0])
-    assert capped.proved and not capped.assumed
+    assert capped.verdict == sv.Verdict.PROVED and not capped.assumed
     {"with sv.max_rows": capped.rows, "assumed without it": [str(a) for a in uncapped.assumed]}
     return
 
@@ -686,8 +686,8 @@ def _(VerificationError, ibis, mo, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `Report.errors` lists the issues a proof has to rule out. `Report.proved`
-    is true when every postcondition is proved and there are no errors.
+    `Report.errors` lists the issues a proof has to rule out. `Report.verdict`
+    is `proved` when every postcondition is proved and there are no errors.
 
     The timing of evaluation is trusted: when an engine evaluates an
     expression (lazy `CASE`, eager `AND`/`OR`, merged filters, and the
@@ -1084,7 +1084,7 @@ def _(paid, sv):
     exported = paid.to_substrait()
     _manifest = paid.report.substrait_contract()["manifest"]
     _back = sv.Report.from_substrait(exported)
-    assert _back.proved
+    assert _back.verdict == sv.Verdict.PROVED
     {
         "class": _manifest["class"],
         "evidence": _manifest["evidence"],

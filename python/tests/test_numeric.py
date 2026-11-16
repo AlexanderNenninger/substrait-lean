@@ -185,7 +185,7 @@ def test_bounded_round_gives_bounded_integers():
         T.filter((T.amount >= 0) & (T.amount <= 100)).select(x=T.amount.round()),
         ensures=[_.x >= 0, _.x <= 100],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.facts["x"] == "an integer in [0, 100]"
 
 
@@ -201,7 +201,7 @@ def test_contracts_fail_on_possible_errors():
 def test_overflow_is_an_error():
     """An integer result that does not fit its declared width raises (#202)."""
     report = sv.verify(T.select(x=T.qty + 1), on_inferred="off")
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert [i.kind for i in report.errors] == ["overflow"]
 
 

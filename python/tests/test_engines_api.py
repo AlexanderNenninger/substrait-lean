@@ -54,7 +54,7 @@ def test_report_to_sql_refuses_an_unknown_dialect():
 
 def test_report_to_sql_refuses_what_is_not_proved():
     report = _report(ensures=[_.amount > 50])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     with pytest.raises(UnverifiedRunError) as e:
         report.to_sql("snowflake")
     assert "unverified=True" not in str(e.value)
@@ -62,7 +62,7 @@ def test_report_to_sql_refuses_what_is_not_proved():
 
 def test_report_to_sql_writes_engine_semantics_only_for_its_engine():
     report = _report(semantics="duckdb")
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert "SELECT" in report.to_sql("duckdb")
     with pytest.raises(RouteError, match="only for plans verified under the reference"):
         report.to_sql("snowflake")

@@ -1158,10 +1158,10 @@ def reproducibility(
 
 
 def verified(report: Report) -> bool:
-    """Whether a run may take the plan: it is proved (`Report.proved`), or
+    """Whether a run may take the plan: it is proved (`Report.verdict`), or
     its only unproved postconditions are checked on the output data
     (`on_unproved="check"`)."""
-    if report.proved:
+    if report._proved:
         return True
     return (
         not report.errors

@@ -1430,7 +1430,7 @@ def contract_json(report: Report, *, shims: Shims = "apply") -> Json:
 def _refuse_unverified(report: Report) -> None:
     if report.internal_plan is None or report._contract is None:
         raise ExportError("this report has no plan to export: it was not made by sv.verify")
-    if not report.proved:
+    if not report._proved:
         reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
         reasons += [f"may fail: {i}" for i in report.errors]
         if report._transfer:

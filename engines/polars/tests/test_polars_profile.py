@@ -47,7 +47,7 @@ def report() -> sv.Report:
         requires={"t": [_.i >= LOW, _.j != 0]},
         semantics="polars",
     )
-    assert r.proved, str(r)
+    assert r.verdict == sv.Verdict.PROVED, str(r)
     return r
 
 

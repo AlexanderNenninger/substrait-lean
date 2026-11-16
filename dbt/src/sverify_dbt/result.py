@@ -159,7 +159,7 @@ class CheckResult:
         raise KeyError(name)
 
     @property
-    def proved(self) -> list[TestResult]:
+    def proved_tests(self) -> list[TestResult]:
         """The tests proved before any model runs: `dbt build` may skip them."""
         return [t for m in self.models for t in m.tests if t.status == "proved"]
 
@@ -212,7 +212,7 @@ class CheckResult:
     def selector(self, name: str = "sverify_proved") -> dict[str, Any]:
         """A dbt selector that selects the proved tests, for
         `dbt build --exclude selector:<name>`."""
-        names = sorted({t.name for t in self.proved if t.name})
+        names = sorted({t.name for t in self.proved_tests if t.name})
         definition: dict[str, Any] = (
             {"union": [{"method": "fqn", "value": n} for n in names]}
             if names

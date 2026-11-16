@@ -40,7 +40,7 @@ def con():
 def test_an_unproved_run_is_refused_in_user_terms(con) -> None:
     t = con.table("t")
     report = sv.verify(t.group_by("k").aggregate(s=t.x.sum()))
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     with pytest.raises(
         RouteError,
         match=r"refused on duckdb: not verified: may fail: domain error: sum\(x\) "
@@ -111,14 +111,14 @@ def test_a_postcondition_on_a_double_keeps_it_exact_unless_every_engine_meets_it
     expr = o.group_by("customer").aggregate(m=o.amount.cast("float64").mean())
     req = {"orders": [_.amount >= 0, _.amount <= 1000, sv.max_rows(1000)]}
     sign = sv.verify(expr, requires=req, ensures=[_.m >= 0])
-    assert sign.proved and sign.ensures[0].robust
+    assert sign.verdict == sv.Verdict.PROVED and sign.ensures[0].robust
     assert sign.run(c, "polars").num_rows == 1
     tight = sv.verify(expr, requires=req, ensures=[_.m <= 1000])
-    assert tight.proved and not tight.ensures[0].robust
+    assert tight.verdict == sv.Verdict.PROVED and not tight.ensures[0].robust
     with pytest.raises(RouteError, match=r"reads m.*sv.approx"):
         tight.run(c, "polars")
     room = sv.verify(expr, requires=req, ensures=[_.m <= 1000 + 1.5e-10])
-    assert room.proved and room.ensures[0].robust
+    assert room.verdict == sv.Verdict.PROVED and room.ensures[0].robust
 
 
 def test_the_plan_bound_level() -> None:

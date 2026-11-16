@@ -308,7 +308,7 @@ def test_years_and_truncations_grow_with_the_timestamp():
         ),
         ensures=[_.y == 2024, _.m.between(1, 12), _.d.between(1, 31), _.t >= datetime(2024, 1, 1)],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.facts["y"] == "the integer 2024"
 
 
@@ -318,7 +318,7 @@ def test_parts_of_a_column_read_are_not_null():
     report = sv.verify(
         T.select(y=T.ts.year()), requires={"t": [_.ts.notnull()]}, ensures=[_.y.notnull()]
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 # --------------------------------------------------------------------------

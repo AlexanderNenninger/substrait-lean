@@ -235,7 +235,7 @@ def test_min_and_max_of_doubles_are_proved():
         requires={"samples": [_.cpu >= 0, _.cpu <= 100]},
         ensures=[_.hi <= 100, _.lo >= 0, _.lo <= _.hi, _.hi.notnull()],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_rollup_contract_is_proved():
@@ -251,7 +251,7 @@ def test_rollup_contract_is_proved():
         ensures=[_.mx.notnull(), _.mx <= 1000, _.lo <= _.mx, _.avg.notnull()],
         on_inferred="ignore",  # the truncated ts's bound
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.facts["mx"] == "an integer in [0, 1000]"
     # The reference rounds the exact mean once (D25), so it stays within the
     # inputs' bound (#1160). Its relation to the group's own max is not tracked.
@@ -280,7 +280,7 @@ def test_decimal_avg_is_bounded_by_its_inputs():
     report = sv.verify(
         g, requires={"lineitem": [_.q >= 1, _.q <= 50]}, ensures=[_.avg_q >= 1, _.avg_q <= 50]
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
 
 
 def test_avg_of_a_nullable_column_may_be_null():
@@ -297,13 +297,13 @@ def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     # `verify` assumes each sum fits, as it assumes inferred bounds, and the
     # job checks it on the data while it runs.
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
     assert [str(i) for i in report.assumed] == ["SUM overflow: sum(amount)"]
     assert "assumes: SUM of amount fits 64 bits in every group" in str(report)
     # Without inference it is an error like any other.
     strict = sv.verify(orders.aggregate(total=orders.amount.sum()), on_inferred="off")
     assert [str(i) for i in strict.errors] == ["SUM overflow: sum(amount)"]
-    assert not strict.proved and not strict.assumed
+    assert strict.verdict == sv.Verdict.UNPROVED and not strict.assumed
     assert "checks it while it runs" in str(strict)
 
 
@@ -315,12 +315,12 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     flag = (jobs.conclusion == "success").ifelse(1, 0)
     t = jobs.group_by("workflow").aggregate(passed=flag.sum())
     for report in (sv.verify(t), sv.verify(t, on_inferred="off")):
-        assert report.proved, str(report)
+        assert report.verdict == sv.Verdict.PROVED, str(report)
         assert not report.issues and not report.assumed and not report.warnings
         assert not any(h.startswith("SUM of") for h in report._hints)
     sign = (jobs.conclusion == "success").ifelse(1, -1)
     report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), on_inferred="off")
-    assert report.proved and not report.issues, str(report)
+    assert report.verdict == sv.Verdict.PROVED and not report.issues, str(report)
     # Values in [0, 2] still need a row cap: 2 · (2^63 - 1) leaves 64 bits.
     double = (jobs.conclusion == "success").ifelse(2, 0)
     t = jobs.group_by("workflow").aggregate(points=double.sum())
@@ -366,7 +366,7 @@ def test_a_bounded_sum_over_bounded_rows_is_proved_outright():
     report = sv.verify(
         first.aggregate(total=first.amount.sum()), requires=bounded, on_inferred="off"
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert not report.assumed
     # Without the bound on the values, or on the rows, it may overflow.
     report = sv.verify(first.aggregate(total=first.amount.sum()), on_inferred="off")
@@ -395,7 +395,7 @@ def test_aggregate_postconditions_are_proved():
             sv.unique("customer"),
         ],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
     # Nothing bounds a group's rows (#219): the SUM is assumed to fit.
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
     assert report.facts["n"] == "an integer ≥ 1"
@@ -414,7 +414,7 @@ def test_sum_has_no_upper_bound():
 
 def test_a_global_aggregate_has_one_row():
     report = sv.verify(orders.aggregate(n=orders.count()), ensures=[sv.unique()])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_errors_in_measures_are_reported():
@@ -663,7 +663,7 @@ def test_distinct_on_proves_nothing_about_one_row():
     rows_ok = [_.a <= _.b, _.a.notnull(), _.b.notnull()]
     report = sv.verify(expr, requires={"t": rows_ok}, ensures=[_.a <= _.b])
     assert not report.deterministic
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     # LAST of each column skips NULLs on its own: a and b from different rows.
     con = connect()
     con.create("t", D.schema(), [("x", 1, 5), ("x", 3, None), ("x", None, 2)])
@@ -817,7 +817,7 @@ def test_unordered_group_concat_proves_only_what_holds_for_every_order():
     group in the input's order."""
     expr = P.group_by("k").aggregate(s=P.x.group_concat(","))
     report = sv.verify(expr, ensures=[_.s == "a,b"])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert report.ensures[0].ignores == ("elements",)
     assert [p.op for p in report._tie_places] == ["aggregate"]
     assert "STRING_AGG" in report._tie_places[0].what
@@ -988,7 +988,7 @@ def test_quantiles_lie_between_the_smallest_and_largest_value():
             _.a.isnull() | ((_.a >= 0) & (_.a <= 10)),
         ],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_arg_min_is_determined_by_a_key_and_mode_by_its_value():

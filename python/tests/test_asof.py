@@ -113,7 +113,7 @@ def test_asof_guarantees_are_proved(how):
         ensures=GUARANTEES,
         on_inferred="ignore",  # ts - tolerance's bound
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 @pytest.mark.slow
@@ -127,7 +127,7 @@ def test_ties_on_the_right_keep_the_guarantees():
         ensures=GUARANTEES,
         on_inferred="ignore",
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert not report.deterministic
     assert [p.op for p in report._tie_places] == ["window"]
 
@@ -147,7 +147,7 @@ def test_aligning_100hz_with_130hz():
 
     rows = aligned(con.table("acc"), con.table("gyr")).to_pyarrow().to_pylist()
     report = aligned.report
-    assert report is not None and report.proved
+    assert report is not None and report.verdict == sv.Verdict.PROVED
     assert len(rows) == 100
     # The gyroscope samples every 7.7 ms, so every sample finds a partner.
     assert all(r["ts_right"] is not None for r in rows)

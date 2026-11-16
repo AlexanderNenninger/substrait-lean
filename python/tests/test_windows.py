@@ -101,7 +101,7 @@ def test_window_postconditions_are_proved():
             sv.unique("sensor", "ts"),
         ],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.deterministic
     assert report.facts["rn"] == "an integer ≥ 0"
     assert report.facts["prev"] == "a double > 0.0 or NULL"
@@ -135,7 +135,7 @@ def test_a_key_on_the_order_column_alone_suffices():
     report = sv.verify(
         with_neighbours(readings), requires={"readings": [sv.unique("ts")]}, ensures=[_.rn >= 0]
     )
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_strict_order_under_a_key():
@@ -156,7 +156,7 @@ def test_strict_order_under_a_key():
 
     gaps(readings)
     report = gaps.report
-    assert report is not None and report.proved, str(report)
+    assert report is not None and report.verdict == sv.Verdict.PROVED, str(report)
     assert (
         report.facts["gap"]
         == "an interval in [0:00:00.000001, 2932896 days, 23:59:59.999999] or NULL"
@@ -292,7 +292,7 @@ def test_window_sums_may_wrap():
     assert "SUM overflow" in [i.kind for i in report.assumed]
     strict = sv.verify(query, tables={"r": SCHEMA}, on_inferred="off")
     assert "SUM overflow" in [i.kind for i in strict.errors]
-    assert not strict.proved
+    assert strict.verdict == sv.Verdict.UNPROVED
 
 
 @pytest.mark.parametrize("fn", ["sum", "mean", "std", "var"])
@@ -305,7 +305,7 @@ def test_a_window_sum_of_both_infinities_is_a_domain_error(fn):
     expr = r.select("s", w=getattr(r.x, fn)().over(w))
     report = sv.verify(expr)
     assert "domain error" in [i.kind for i in report.errors]
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     bounded = sv.verify(expr, requires={"r": [_.x < 1e300, _.x > -1e300]})
     assert "domain error" not in [i.kind for i in bounded.issues]
 

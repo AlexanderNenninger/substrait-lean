@@ -793,7 +793,7 @@ def verify(
             tables={"orders": orders},
             ensures=["amount > 0"],
         )
-        report.proved  # True
+        report.verdict  # Verdict.PROVED
         ```
 
         An Ibis expression, with preconditions:
@@ -2592,7 +2592,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.guarantees) if prov else [],
         prov,
         list(prov.checked) if prov else [],
-        list(prov.report.not_null) if prov and prov.report.proved else [],
+        list(prov.report.not_null) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
     )
 
@@ -2879,7 +2879,7 @@ class ContractedTransform:
         unproved contract does not raise `VerificationError`, a bound table
         stands for its schema (its data is not read, so `requires` is not
         checked on it), and `on_unproved` does not apply. An editor, a test
-        or a CI step reads the report (`Report.proved`, `Report.needed`).
+        or a CI step reads the report (`Report.verdict`, `Report.needed`).
 
         Args:
             *args: The inputs, positionally: Ibis tables, `ibis.Schema`s, or
@@ -3001,7 +3001,7 @@ class ContractedTransform:
             # The report may be cached and shared by calls: this call's copy.
             report = self.report = replace(report, preconditions=found)
         checked: list[Condition] = []
-        if not report.proved and raise_unproved:
+        if not report._proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in
             # "check" mode the engine raises them if they happen.
             if self.on_unproved == "check" and (node or is_bound(result)):
@@ -3163,7 +3163,7 @@ def transform(
             return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
         big = orders.pipe(doubled)  # a Node, proved here (as doubled(orders))
-        doubled.report.proved  # True
+        doubled.report.verdict  # Verdict.PROVED
         doubled.report.facts["doubled"]  # 'an integer ≥ 22'
         big.refresh()
         big.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]

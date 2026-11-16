@@ -923,7 +923,7 @@ def test_min_and_max_of_doubles_run_on_polars_by_the_auto_route():
     r = con.table("readings")
     features = r.group_by("sensor").aggregate(lo=r.temp_c.min(), hi=r.temp_c.max())
     report = sv.verify(features.order_by("sensor"))
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     polars = report.run(con, "polars")
     duck = report.run(con, "duckdb")
     route = report.routes["polars"]

@@ -168,7 +168,7 @@ fires, `Rel.eval`'s value is not the answer.
   `qty != 0`) leaves the report unproved until `requires` states it, by
   default (`on_inferred="error"`); `"warn"` and `"ignore"` assume it and
   check it on the data, and `"off"` infers nothing.
-  `Report.proved` is false until a precondition excludes it. ✓ for division
+  `Report.verdict` is `unproved` until a precondition excludes it. ✓ for division
   by zero, casts out of range, domain errors, decimal precision and the
   other error issues, and for integer `+ - *` and negation overflow at the
   declared width. Inferred bounds discharge most overflows.

@@ -376,7 +376,7 @@ def proves(sql: str, ensures: str) -> bool:
     # The reference's casts truncate (#209 R9); DuckDB's round.
     j = ibis.table({"a": "int64"}, name="j")
     r = sv.verify(sv.sql(sql, semantics="reference", j=j), ensures=[ensures])
-    return r.proved and r.ensures[0].proved
+    return r.verdict == sv.Verdict.PROVED and r.ensures[0].proved
 
 
 def test_constant_casts_truncate(con):
@@ -410,6 +410,9 @@ def test_padded_date_strings_are_read_as_duckdb_reads_them():
     j = {"j": {"a": "int64"}}
     for value, kind in [("' 2024-01-01'", "TIMESTAMP"), ("'2024-01-01 '", "DATE")]:
         sql = f"SELECT CAST({value} AS {kind}) AS c FROM j"
-        assert sv.verify(sql, tables=j, ensures=[f"c = CAST('2024-01-01' AS {kind})"]).proved
+        assert (
+            sv.verify(sql, tables=j, ensures=[f"c = CAST('2024-01-01' AS {kind})"]).verdict
+            == sv.Verdict.PROVED
+        )
     with pytest.raises(ValueError, match="DuckDB cannot read"):
         sv.verify("SELECT CAST('2024-01-01 ' AS TIMESTAMP) AS c FROM j", tables=j)

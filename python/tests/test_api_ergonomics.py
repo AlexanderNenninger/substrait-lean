@@ -37,7 +37,7 @@ def test_an_unknown_requires_table_without_a_close_match():
 
 def test_a_list_of_requires_is_on_the_only_input():
     report = sv.verify(S.mutate(c=_.a + 1), requires=[_.a >= 0, _.a < 1000], ensures=[_.c > 0])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.requires["s"][0] == "(_.a >= 0)"
 
 
@@ -61,7 +61,7 @@ def test_transform_takes_a_list_of_requires_for_one_parameter():
 
     assert set(plus.requires) == {"t"}
     plus(S)
-    assert plus.report is not None and plus.report.proved
+    assert plus.report is not None and plus.report.verdict == sv.Verdict.PROVED
 
 
 # #412: references
@@ -130,6 +130,9 @@ def test_a_transformation_with_an_unbound_param_says_how_to_bind_it():
     with pytest.raises(TypeError, match=r"flag uses ibis.param\(int64\).*#354.*params="):
         flag(S)
     # verify binds it.
-    assert sv.verify(
-        S.select("a", big=S.a > limit), params={limit: 3}, ensures=[_.big.notnull()]
-    ).proved
+    assert (
+        sv.verify(
+            S.select("a", big=S.a > limit), params={limit: 3}, ensures=[_.big.notnull()]
+        ).verdict
+        == sv.Verdict.PROVED
+    )

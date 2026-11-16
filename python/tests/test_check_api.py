@@ -43,7 +43,7 @@ def test_check_returns_an_unproved_report_without_raising() -> None:
     with pytest.raises(VerificationError):
         unit(ibis.table(SCHEMA, name="orders"))
     report = unit.check(orders=SCHEMA)
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert _needed(report) == {"orders": ["(_.qty != 0)"]}
     assert unit.report is report
 
@@ -51,7 +51,7 @@ def test_check_returns_an_unproved_report_without_raising() -> None:
 def test_check_takes_schemas_tables_and_positions() -> None:
     by_name = doubled.check(orders=ibis.schema(SCHEMA))
     by_position = doubled.check(ibis.table(SCHEMA, name="anything"))
-    assert by_name.proved and by_position.proved
+    assert by_name.verdict == sv.Verdict.PROVED and by_position.verdict == sv.Verdict.PROVED
     assert by_position.inputs == {"orders": ibis.schema(SCHEMA)}
 
 
@@ -59,7 +59,7 @@ def test_check_reads_no_data() -> None:
     con = sv.connect()
     con.put("orders", pa.table({"id": [1], "amount": [-5], "qty": [1]}))
     # The precondition amount >= 0 fails on the data; check does not read it.
-    assert doubled.check(con.table("orders")).proved
+    assert doubled.check(con.table("orders")).verdict == sv.Verdict.PROVED
 
 
 def test_check_counterexamples() -> None:

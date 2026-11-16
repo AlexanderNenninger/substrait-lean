@@ -14,7 +14,7 @@ row is read. The result is a `Report`:
 ```python
 report = sv.verify(expr, requires={"orders": [...]}, ensures=[...])
 print(report)          # the whole report, as text
-report.proved          # True when everything holds
+report.verdict == Verdict.PROVED          # True when everything holds
 ```
 
 A transform whose contract is not proved is refused when it is applied
@@ -24,12 +24,17 @@ instead.
 
 ## What a report holds
 
-- The verdict. `report.verdict` is the first line: `proved`, or
-  `NOT proved:` and what is missing, counted. `report.proved` is true when
+- The verdict. `report.verdict` is a `sverify.Verdict`: `proved` when
   every postcondition holds, under the observation where `ensures` states
   one, no runtime error is possible, no needed precondition is missing, the
   chosen tolerance is one some engine's doubles actually meet, and, under
-  `semantics="substrait"`, the reference's proof carries over.
+  `semantics="substrait"`, the reference's proof carries over, and the
+  report assumes nothing that a run checks on the data. `proved_with_checks`
+  is the same with `report.assumed` non-empty: every run that finishes
+  satisfies the postconditions, and a run stops where a check fails on the
+  data. Anything else is `unproved`. `bool(report.verdict)` raises
+  `TypeError`: compare the value you expect. `str(report)` starts with the
+  verdict in words, `proved` or `NOT proved:` and what is missing, counted.
 - The assumptions. `report.requires` lists the preconditions per input
   table, the ones you stated and the ones sverify inferred and assumed;
   `report.assumed` the `SUM`s assumed to fit their type, which the run
