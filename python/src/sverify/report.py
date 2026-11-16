@@ -55,6 +55,7 @@ from sverify.conditions import (
     Inferred,
     Key,
     MaxRows,
+    PlannedCondition,
     PreconditionError,
     References,
     RelationRows,
@@ -847,6 +848,20 @@ class Report:
             except Exception as e:
                 raise self._broken_assumption(e) or e from None
 
+    def _unchecked_requires(self) -> list[str]:
+        """The preconditions in `requires` that `_conditions` holds no check
+        for, as `table: label`."""
+        have = {t: [label(c) for c in cs] for t, cs in self._conditions.items()}
+        out = []
+        for t, labs in self.requires.items():
+            left = list(have.get(t, []))
+            for lab in labs:
+                if lab in left:
+                    left.remove(lab)
+                else:
+                    out.append(f"{t}: {lab}")
+        return out
+
     def _broken_assumption(self, e: Exception) -> PreconditionError | None:
         """The refusal for an error of DuckDB's proved translation that says an
         assumed `SUM` or operation on finite doubles failed on the data; None
@@ -1016,6 +1031,14 @@ class Report:
             and kind == "translated"
         )
         if check_requires:
+            # A precondition with no check would let the run drop guards on
+            # data it never looked at: refuse before anything runs.
+            if unchecked := self._unchecked_requires():
+                raise PreconditionError(
+                    "no run-time check for the precondition(s) "
+                    + ", ".join(unchecked)
+                    + " of this report: refused before the run (check_requires=False skips them)"
+                )
             self.check_inputs(con, target, assumed_checked=assumed_checked)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
@@ -2058,7 +2081,14 @@ def violation_counts(
     backend (`violations`)."""
     if engine is None:
         return [
-            (c, *(_run_planned(table, c, "duckdb") if isinstance(c, PlannedCondition) else (violations(table, c), None)))
+            (
+                c,
+                *(
+                    _run_planned(table, c, "duckdb")
+                    if isinstance(c, PlannedCondition)
+                    else (violations(table, c), None)
+                ),
+            )
             for c in conds
         ]
     counts: dict[int, tuple[int, str | None]] = {}
