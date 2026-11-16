@@ -1580,6 +1580,7 @@ _REPORT_INTERNAL = [
     "margin_flags",
     "engines",
     "sorted",
+    "generated_proofs",
     "conditions",
     "dialect",
     "on_inferred",
