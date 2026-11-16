@@ -124,11 +124,10 @@ class DuckDBDialect(Dialect):
         """The integer `x · 10ˢ` of a decimal of scale `s`, as a HUGEINT, without
         the product (DuckDB's `DECIMAL(38) * 10ˢ` raises where `x` has more
         than `38 - s` integer digits): the integer part, then the fraction."""
-        return (
-            f"(CAST(TRUNC({x}) AS HUGEINT) * {10**s} + CAST(({x} - TRUNC({x})) * {10**s} AS HUGEINT))"
-            if s
-            else f"CAST({x} AS HUGEINT)"
-        )
+        if not s:
+            return f"CAST({x} AS HUGEINT)"
+        whole = f"CAST(TRUNC({x}) AS HUGEINT) * {10**s}"
+        return f"({whole} + CAST(({x} - TRUNC({x})) * {10**s} AS HUGEINT))"
 
     def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
         """As the base writes it, with the quotient `⌊(2·|u|·10ᵏ + |n|) / 2|n|⌋`
@@ -161,9 +160,9 @@ class DuckDBDialect(Dialect):
         if sa is None or sb is None or sa == sb:
             return super().decimal_compare(op, a, ka, b, kb)
         lo_is_a = sa < sb
-        (l, sl), (h, sh) = ((a, sa), (b, sb)) if lo_is_a else ((b, sb), (a, sa))
+        (low, sl), (high, sh) = ((a, sa), (b, sb)) if lo_is_a else ((b, sb), (a, sa))
         m = 10 ** (sh - sl)
-        ul, uh = self._unscaled(l, sl), self._unscaled(h, sh)
+        ul, uh = self._unscaled(low, sl), self._unscaled(high, sh)
         q = f"({uh} // {m} - CASE WHEN {uh} % {m} < 0 THEN 1 ELSE 0 END)"
         r = f"({uh} - {q} * {m})"
         if op == "eq":

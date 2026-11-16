@@ -367,7 +367,6 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     assert out.column("m").to_pylist() == [top - 1]
 
 
-
 @settings(max_examples=300, deadline=None)
 @given(
     u=st.integers(-(10**30), 10**30),
@@ -386,7 +385,9 @@ def test_the_duckdb_quotient_is_the_models_rounding_half_away(u, n, sa):
     k = Dec(38, sa + 4)
     a = DUCKDB.cast(f"'{D(f'{u}e{-sa}'):f}'", Dec(38, sa))
     sql = DUCKDB.decimal_div(a, str(n), sa, k)
-    got = duckdb.connect().execute(f"SELECT {sql}").fetchone()[0]
+    row = duckdb.connect().execute(f"SELECT {sql}").fetchone()
+    assert row is not None
+    got = row[0]
     exact = Fraction(u * 10**4, n)
     mag = (2 * abs(exact) + 1) // 2  # half away from zero, on the magnitude
     want = D(f"{(1 if exact >= 0 else -1) * int(mag)}e{-(sa + 4)}")
