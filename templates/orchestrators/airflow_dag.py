@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pendulum
 import pyarrow as pa
-from airflow.exceptions import AirflowFailException
 from airflow.sdk import dag, task
+from airflow.sdk.exceptions import AirflowFailException
 
 import orders as contract
 

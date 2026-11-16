@@ -34,5 +34,4 @@ def prove() -> sv.Report:
 def run(orders: pa.Table) -> pa.Table:
     """Apply the transform to `orders`: the preconditions are checked on the
     data, the postconditions are proved, and the result is computed."""
-    con = ibis.duckdb.connect()
-    return big_orders(con.create_table("orders", orders)).to_pyarrow()
+    return big_orders(ibis.memtable(orders, name="orders")).to_pyarrow()
