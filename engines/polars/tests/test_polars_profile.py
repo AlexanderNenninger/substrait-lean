@@ -162,14 +162,10 @@ def test_written_floor_raises(report: sv.Report, engine: str) -> None:
 
 
 def test_routes_from_polars(report: sv.Report) -> None:
-    """Native on Polars; refused on Spark until the checker reports under
-    Spark's profile (#1288), naming the reference as the way; refused on
-    DuckDB by the transfer check, with the reason."""
-    assert routes.choose(report, "polars").kind == "native"
-    s = routes.choose(report, "spark")
-    assert s.refused and "semantics='reference'" in s.reason, s
-    r = routes.choose(report, "duckdb")
-    assert r.refused and "division_type: polars gives FLOOR" in r.reason, r
+    """Translated on Polars, DuckDB and Spark: the report is the reference's
+    until the checker reports under each engine's profile (#1442, #1288, #271)."""
+    assert routes.choose(report, "polars").kind == "translated"
+    assert routes.choose(report, "duckdb").kind == "translated"
 
 
 # --- `%` of doubles ------------------------------------------------------------
