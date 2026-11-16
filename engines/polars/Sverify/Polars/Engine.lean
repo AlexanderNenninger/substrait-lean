@@ -102,3 +102,21 @@ theorem Engine.polars_sound : Engine.polars.Sound Engine.GuardFreeSide := by
   rw [Rel.polars_sound hcat hA hF hT hwf hsmall hs hm]; exact r.eval_allowed cat
 
 end Substrait
+
+namespace Substrait
+section Example
+attribute [local instance] Engine.exampleBoxes
+
+/-- `Engine.polars_sound` applies to the example of `Sound.lean`: Polars's
+written plan computes `Rel.eval`'s rows for it, which the reference allows. -/
+theorem Engine.polars_sound_example :
+    Engine.examplePlan.Allowed Engine.exampleCat
+      (Engine.examplePlan.eval Engine.exampleCat Engine.polars.impl) := by
+  refine Engine.polars_sound (r' := Engine.examplePlan) rfl ?_ Engine.guardFreeSide_example
+  simp [Rel.Raises, Engine.examplePlan]
+  intro x hx
+  have : x = [.int 1] ∨ x = [.int 2] := by simpa [Rel.eval, Engine.exampleCat] using hx
+  rcases this with rfl | rfl <;>
+    (unfold Expr.RaisesOn; decide +kernel)
+end Example
+end Substrait

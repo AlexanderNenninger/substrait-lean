@@ -21,8 +21,7 @@ result is the Lean value, checked on a local Spark session by
   `Math.pow`, which is only within 1 ulp, so double powers are refused.
 * **Zero and NaN**: `=` and `<` are the model's: NaN equals itself and is
   largest, and -0.0 equals 0.0. `GROUP BY`, `DISTINCT` and window
-  partitions treat them the same way (`NormalizeFloatingNumbers`), and
-  `canon` keeps -0.0 out of results.
+  partitions treat them the same way (`NormalizeFloatingNumbers`).
 * **NULL order**: `NULLS FIRST` is the default for ascending sorts; every
   key says where NULLs go.
 * **Timestamps** are `TIMESTAMP_NTZ`: wall-clock microseconds like Lean.
@@ -359,11 +358,16 @@ class SparkDialect(Dialect):
             "cast it to DOUBLE",
         )
 
+    def float_lit(self, f: float) -> str:
+        # Spark reads the text `-0.0` as a decimal zero (spark-zero-sign): a double
+        # literal takes the suffix.
+        return "-0.0D" if str(f) == "-0.0" else super().float_lit(f)
+
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         # NaN is the greatest double, and -0.0 equals 0.0, keeping whichever
         # came first (spark-nan-order, spark-zero-order): the codes' order up
-        # to the zero, which `canon` makes the one zero (`Shim.one_zero`).
-        return self.canon(f"{fn}({v}) {over}" if over else f"{fn}({v})")
+        # to the zero, which D31 leaves open for MIN and MAX.
+        return f"{fn}({v}) {over}" if over else f"{fn}({v})"
 
     def like_pattern(self, p: str) -> str:
         odd = f"({p} RLIKE {self.str_lit(r'(^|[^\\])(\\\\)*\\$')})"
