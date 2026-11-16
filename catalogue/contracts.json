@@ -741,6 +741,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "row tested: agg.quant's nan_creation (#241)",
           "row tested: agg.quant's nan_order (#241)",
           "row tested: agg.quant's quantile_interp (#900)"
         ],
@@ -966,7 +967,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's nan_creation",
+          "row tested: agg.var's nan_creation (#241)",
           "row tested: agg.var's rounding (#241)"
         ],
         "class": "observed",
@@ -1003,7 +1004,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's nan_creation",
+          "row tested: agg.var's nan_creation (#241)",
           "row tested: agg.var's rounding (#241)"
         ],
         "class": "observed",
@@ -1425,7 +1426,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's nan_creation",
+          "row tested: agg.var's nan_creation (#241)",
           "row tested: agg.var's rounding (#241)"
         ],
         "class": "observed",
