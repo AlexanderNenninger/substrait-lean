@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import ibis
 import pyarrow as pa
+import pytest
 from ibis import _
 
 import sverify as sv
 from sverify.contracts import Semantics
+
+pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
 
 T = ibis.table({"x": "int64", "d": "int64"}, name="t")
 REQUIRES = {"t": [_.x.between(-1000, 1000), _.d.between(1, 10)]}

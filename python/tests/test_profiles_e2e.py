@@ -29,6 +29,8 @@ import sverify as sv
 from sverify import routes
 from sverify.errors import PreconditionError, RouteError
 
+pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
+
 ENGINES = ("duckdb", "polars")
 DIVIDENDS = [-7, 2, 4, 3, -1, 5, 6]
 DIVISORS = [2, -3, 3, -2, 2, 4, -4]

@@ -25,6 +25,8 @@ from sverify import _proof_cache, _stages
 from sverify import engine as E
 from sverify.ibis_substrait import to_substrait_json
 
+pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
+
 T = ibis.table({"id": "int64", "x": "int64"}, name="t")
 
 

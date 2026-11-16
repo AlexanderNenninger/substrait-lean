@@ -172,11 +172,12 @@ def Profile.polars.obs : ObsTable := [
   -- reference truncates, and no shim gives the truncating `fmod` exactly
   -- (polars-double-modulus, #1270): the reference route refuses it. A plan
   -- that states `division_type: FLOOR`, or is produced for
-  -- `semantics="polars"`, runs natively (`Profile.polars_fmod`), the divisions
-  -- by a scalar taking `/`'s class (polars-scalar-divisor).
+  -- `semantics="polars"`, runs Polars's own `%` on the translated route
+  -- (`Profile.polars_fmod`), the divisions by a scalar taking `/`'s class
+  -- (polars-scalar-divisor).
   (some "fp.mod", "division_type", ({ ObsRow.native ["polars-double-modulus", "polars-scalar-divisor"] with
     cls := .refused
-    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs natively, as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`)." }).tracking 271),
+    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),

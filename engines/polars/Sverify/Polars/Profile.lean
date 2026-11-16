@@ -25,8 +25,9 @@ A plan states the choice it makes: integer `divide` and `modulus` with
 `division_type: FLOOR`, which the parser reads as `Expr.floorDivOf` and
 `Expr.floorModOf`, templates in the reference's truncating operations that
 never overflow on 64-bit operands. `Write` writes them back as the calls, so
-Polars runs its own `//` and `%` (the route `native`), and DuckDB, which has
-no `FLOOR`, refuses them.
+Polars runs its own `//` and `%` (on the translated route, until the generated
+lowering of #271 gives the native one), and DuckDB, which has no `FLOOR`,
+refuses them.
 
 What is proved here:
 
