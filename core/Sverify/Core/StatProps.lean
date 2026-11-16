@@ -40,8 +40,12 @@ merge in any tree, in DuckDB's order of operations (`chanVar_rel`,
 `chanCov_rel`; with `core_var_chan`, `core_cov_chan` and `core_corr_chan` the
 properties themselves, DuckDB's `CORR` formula included), all in
 `float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
-cancels catastrophically and is not covered. Outside the finite range above,
-the reference's own value is the one allowed.
+cancels catastrophically and is not covered. A NaN or an infinity among the
+values gives the reference's own value. Finite values outside the range above
+(`Stat.fits`) allow any double: the reference's value there is the exact moments
+rounded once, and an engine's algorithm may overflow on the way or round
+differently (`[1e150, 3e150]`, `[1e308, 1e308]`; `polars-var-bound`,
+`duckdb-var-stddev`; #1486, D30).
 
 Since D30 the reference's own value is one value, the exact moments rounded
 once (`varOf`, `covOf`, `corrOf` in `Aggregate.lean`), and `StatProps` is what
@@ -153,11 +157,15 @@ end Stat
 open Stat
 
 variable [Boxes.Ambient]
-/-- `VAR_*` / `STDDEV_*` of `vs` may give `v`. -/
+/-- `VAR_*` / `STDDEV_*` of `vs` may give `v`: `NULL` where the reference
+says; the properties for finite values inside `fits`; any double for finite
+values outside it (#1486); the reference's own value where a value is NaN or
+infinite. -/
 def varStat (sample sqrt : Bool) (vs : List Value) (v : Value) : Prop :=
   if vs = [] ∨ (sample = true ∧ vs.length = 1) then v = .null
   else if allInts vs ∧ fits ((floatsOf vs).map FloatCode.canon) = true then
     ∃ c, v = .float c ∧ varProps sample sqrt ((floatsOf vs).map FloatCode.canon) c
+  else if allInts vs ∧ nonFinite vs = none then True
   else v = (AggFn.var sample sqrt).apply vs
 
 /-- `COVAR_*` of `vs` may give `v`. -/
@@ -165,6 +173,7 @@ def covStat (sample : Bool) (vs : List Value) (v : Value) : Prop :=
   if (pairsOf vs).isEmpty = true ∨ (sample = true ∧ (pairsOf vs).length = 1) then v = .null
   else if fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true then
     ∃ c, v = .float c ∧ covProps sample (pairsOf vs) c
+  else if nonFinite (pairCodes (pairsOf vs)) = none then True
   else v = (AggFn.cov sample).apply vs
 
 /-- `CORR` of `vs` may give `v`. -/
@@ -175,11 +184,13 @@ def corrStat (vs : List Value) (v : Value) : Prop :=
     v = .null
   else if fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true then
     ∃ c, v = .float c ∧ corrProps (pairsOf vs) c
+  else if nonFinite (pairCodes (pairsOf vs)) = none then True
   else v = AggFn.corr.apply vs
 
 /-- The values a statistical aggregate `f` of `vs` may give: `NULL` where the
 reference says, otherwise a result with the generic properties for finite
-values in range, and the reference's own value outside it. -/
+values in range, any double for finite values outside it (`Stat.fits`), and
+the reference's own value where a value is NaN or infinite. -/
 def StatProps (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
   | .var sample sqrt => varStat sample sqrt vs v
@@ -245,7 +256,7 @@ theorem nanGuard_varStat {sample sqrt : Bool} {vs : List Value} {body : Value}
       have hs : (sample && vs.length == 1) = false := by
         cases sample <;> simp_all
       simp only [varStat, hd, ite_false, not_fits_of_nan hw hn, Bool.false_eq_true, and_false,
-        ha, ite_true]
+        ha, ite_true, hnf, reduceCtorEq]
       rcases vs with _ | ⟨v0, vs'⟩
       · simp at hw
       · simp only [AggFn.apply, varOf, hs, hnf, Bool.false_eq_true, ite_false]
