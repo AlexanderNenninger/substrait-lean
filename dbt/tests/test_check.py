@@ -256,7 +256,9 @@ def _incremental(make_project, config: str):
                 "models/p.sql": (
                     "{{ config(materialized='incremental'" + config + ") }}\n"
                     "select id, cents from {{ source('raw', 'payments') }}\n"
-                    "{% if is_incremental() %}where id > (select max(id) from {{ this }}){% endif %}\n"
+                    "{% if is_incremental() %}\n"
+                    "where id > (select max(id) from {{ this }})\n"
+                    "{% endif %}\n"
                 ),
                 "models/_models.yml": """\
                 version: 2
