@@ -94,6 +94,7 @@ Condition = (
     | MaxRows
     | RowsPer
     | Observation
+    | PlannedCondition
     | Callable[[ir.Table], ir.BooleanValue]
 )
 
@@ -2056,12 +2057,17 @@ def violation_counts(
     Ibis. Without an `engine`, Ibis counts each condition on the table's own
     backend (`violations`)."""
     if engine is None:
-        return [(c, violations(table, c), None) for c in conds]
+        return [
+            (c, *(_run_planned(table, c, "duckdb") if isinstance(c, PlannedCondition) else (violations(table, c), None)))
+            for c in conds
+        ]
     counts: dict[int, tuple[int, str | None]] = {}
     groups: dict[bool, list[int]] = {True: [], False: []}
     for i, c in enumerate(conds):
         if isinstance(c, TableCondition):
             counts[i] = (c.violations(table), None)
+        elif isinstance(c, PlannedCondition):
+            counts[i] = _run_planned(table, c, engine)
         else:
             groups[isinstance(c, str)].append(i)
     con = connection_of(table)
@@ -2089,6 +2095,20 @@ def violation_counts(
                 except Exception as e:
                     counts[i] = (0, str(e).splitlines()[0] if str(e) else type(e).__name__)
     return [(c, *counts[i]) for i, c in enumerate(conds)]
+
+
+def _run_planned(table: ir.Table, cond: PlannedCondition, engine: str) -> tuple[int, str | None]:
+    """The rows of `table` that break a condition read from an export, from its
+    own plan run on `engine`; a plan that raises is a violation."""
+    con = connection_of(table)
+    if con is None:
+        raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
+    try:
+        return _not_true(run_plan(con, written_plan(cond.plan), engine).column(0)), None
+    except SverifyError:
+        raise
+    except Exception as e:
+        return 0, str(e).splitlines()[0] if str(e) else type(e).__name__
 
 
 def _not_true(column: Any) -> int:

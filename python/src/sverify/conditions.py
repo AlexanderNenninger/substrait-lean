@@ -973,6 +973,18 @@ class PreconditionError(SverifyError):
         self.rows = rows
 
 
+@dataclass(frozen=True)
+class PlannedCondition:
+    """A row condition read from a Substrait export (`Report.from_substrait`):
+    its label, and the plan the checker wrote for it, a column that is TRUE
+    where a row meets it. A run checks it by running that plan on its engine
+    (`Report.check_inputs`)."""
+
+    text: str
+    plan: str
+    """The plan, as protobuf JSON in Lean's form."""
+
+
 class Inferred(str):
     """A bound inferred to rule out an overflow: a SQL condition on one
     column of an input table, labelled as the Ibis code that states it
@@ -1003,7 +1015,7 @@ class Inferred(str):
 
 
 def label(cond: Condition) -> str:
-    if isinstance(cond, Inferred):
+    if isinstance(cond, Inferred | PlannedCondition):
         return cond.text
     if isinstance(cond, TableCondition):
         return cond.label
