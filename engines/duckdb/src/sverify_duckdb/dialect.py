@@ -189,8 +189,8 @@ class DuckDBDialect(Dialect):
         value = f"LEAST(GREATEST({qc}, MIN({v})), MAX({v}))"
         frac = Fraction(q)
         dyadic = frac.denominator & (frac.denominator - 1) == 0
+        n1 = f"CAST(COUNT({v}) - 1 AS HUGEINT)"
         if not dyadic:
-            n1 = f"CAST(COUNT({v}) - 1 AS HUGEINT)"
             first = f"({n1} * {frac.numerator} < {frac.denominator})"
             value = self.case_when(first, f"LEAST({value}, ({self.second_smallest(v)}))", value)
         if self.guards:
