@@ -9,7 +9,7 @@ a plan verified in Lean runs as a Polars lazy frame on Polars's streaming
 engine, with a shim where Polars differs from the reference. Install it with
 `pip install sverify[polars]`, which brings Polars and NumPy (`sverify-polars[run]`);
 `sverify-polars` alone carries the plugin and the facts, for verifying under
-`semantics="polars"` without Polars. sverify finds it through its
+`semantics="polars"` (reported as pending, #1442) without Polars. sverify finds it through its
 `ProfilePlugin` in the entry-point group `sverify.profiles`.
 
 The directory holds the whole engine package:
