@@ -1228,6 +1228,9 @@ theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
   have h := check_proved_rows hR hc hcat harity hS hpre hkeys hcap hT hp hproved ho row hrow _
     (hsel i hi)
   rw [← hlen] at h
-  simpa [List.getD_eq_getElem?_getD, List.getElem?_append_right] using h
+  have hcol : (row ++ p.exprs.map (·.eval row)).getD (row.length + i) .null =
+      p.exprs[i].eval row := by
+    simp [List.getD_eq_getElem?_getD, List.getElem?_append_right, List.getElem?_eq_getElem hi]
+  rwa [hcol] at h
 
 end Substrait.ContractCheck
