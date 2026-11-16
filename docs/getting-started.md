@@ -337,13 +337,13 @@ try:
     divided.run(con, "polars", route="transfer")
 except RouteError as e:
     print(e)
-# refused on polars: the transfer check fails on int.arith's overflow: duckdb gives ERROR, polars gives SILENT ...
+# refused on polars: the transfer check fails on cmp's zero_sign: duckdb gives ONE_ZERO, polars gives IEEE ...
 divided.run(con, "polars", route="auto")
 print(divided.routes["polars"])
 # exact; recheck: proved again under semantics="polars"
 ```
 
-The transfer check fails on the division's options, so `route="auto"` goes on to the
+The transfer check fails on the comparison's zero and the division's options, so `route="auto"` goes on to the
 re-check: the checker proves the plan again under `semantics="polars"`, and
 Polars runs it with the shim of example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with

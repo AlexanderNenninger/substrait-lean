@@ -9,6 +9,7 @@
           "row tested: agg.fsum's nan_creation",
           "row tested: cmp's nan_equality",
           "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign",
           "row tested: win.agg's window_sum_algo"
         ],
         "class": "shim",
@@ -350,7 +351,8 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order"
+          "row tested: agg.order's nan_order",
+          "row tested: agg.order's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -381,7 +383,8 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order"
+          "row tested: agg.order's nan_order",
+          "row tested: agg.order's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -413,8 +416,10 @@
       "duckdb": {
         "causes": [
           "row tested: agg.order's nan_order",
+          "row tested: agg.order's zero_sign",
           "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -525,7 +530,8 @@
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
           "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -621,7 +627,8 @@
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
           "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -659,7 +666,8 @@
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
           "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -696,7 +704,8 @@
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
           "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -881,7 +890,8 @@
           "row tested: agg.fsum's nan_creation",
           "row tested: fp.arith's float_overflow",
           "row tested: fp.arith's nan_creation",
-          "row tested: fp.arith's rounding"
+          "row tested: fp.arith's rounding",
+          "row tested: fp.arith's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -1331,7 +1341,8 @@
           "row tested: agg.fsum's float_overflow",
           "row tested: agg.fsum's nan_creation",
           "row tested: cmp's nan_equality",
-          "row tested: cmp's nan_order"
+          "row tested: cmp's nan_order",
+          "row tested: cmp's zero_sign"
         ],
         "class": "shim",
         "outcome": "tested"
