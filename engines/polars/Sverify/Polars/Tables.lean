@@ -141,7 +141,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with
     engine := some "in-memory"
     cls := .refused
-    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference." }).tracking 900),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. `LINEAR_DIFF` overclaims at a whole exact position that the double position misses, where the engine's neighbours are those of the double position (polars-quantile); tracked in #900." }).tracking 900),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
   (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
