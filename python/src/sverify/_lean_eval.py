@@ -56,9 +56,11 @@ def literal(v: object) -> dict:
         micros = ((v.hour * 60 + v.minute) * 60 + v.second) * 1_000_000 + v.microsecond
         return {"literal": {"precisionTime": {"precision": 6, "value": str(micros)}}}
     if isinstance(v, float):
-        # The model's one zero and one NaN: -0.0 is 0.0, a negative NaN is NaN.
+        # Raw values (D31): -0.0 keeps its sign, as the text `-0.0`; a negative NaN is NaN.
+        if math.isfinite(v):
+            return {"literal": {"fp64": "-0.0" if str(v) == "-0.0" else v}}
         text = "NaN" if math.isnan(v) else "Infinity" if v == math.inf else "-Infinity"
-        return {"literal": {"fp64": v + 0.0 if math.isfinite(v) else text}}
+        return {"literal": {"fp64": text}}
     if isinstance(v, list):
         # Elements are literals without the `literal` key.
         if not v:

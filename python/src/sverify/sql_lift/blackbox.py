@@ -150,7 +150,9 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
     row = black_box.SCALARS[node.name]
     args = list(node.expressions)
     if len(args) != len(row.args):
-        raise Unsupported(f"{row.name} takes {len(row.args)} argument(s)")
+        raise Unsupported(
+            f"{row.name} takes {len(row.args)} argument(s); call it with exactly that many"
+        )
     js = []
     for a, ty in zip(args, row.args, strict=True):
         e = sub(_unwrap(row.name, a))

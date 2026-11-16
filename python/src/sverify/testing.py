@@ -154,9 +154,18 @@ def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) ->
     return arrow_rows(plugin.run_tables(plan_json, tables or {}))
 
 
+def _one_zero(v: Any) -> Any:
+    if isinstance(v, float):
+        return v + 0.0
+    if isinstance(v, tuple | list):
+        return type(v)(map(_one_zero, v))
+    return v
+
+
 def canonical(rows: Iterable[tuple]) -> list[str]:
-    """A bag of rows in a canonical order (NULLs and NaN compare as text)."""
-    return sorted(map(repr, rows))
+    """A bag of rows in a canonical order (NULLs and NaN compare as text, and
+    `-0.0` as `0.0`: values are raw, and D31 leaves a zero's sign open)."""
+    return sorted(repr(_one_zero(r)) for r in rows)
 
 
 # -- for users' tests ----------------------------------------------------------

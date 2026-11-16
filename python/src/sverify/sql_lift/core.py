@@ -67,7 +67,10 @@ def _number(text: str, negative: bool = False) -> E:
         for t in (dt.int32, dt.int64):
             if t.bounds.lower <= v <= t.bounds.upper:
                 return E(literal(v, t), t, v)
-        raise Unsupported(f"the integer {sign}{text} is a HUGEINT, which is not supported")
+        raise Unsupported(
+            f"the integer {sign}{text} is a HUGEINT, which is not supported; "
+            f"write it as a decimal literal ({sign}{text}.0, up to 38 digits)"
+        )
     m = re.fullmatch(r"(\d*)\.(\d*)", text)
     if m and len(m.group(1)) + len(m.group(2)) <= 38:
         v = Decimal(sign + text)

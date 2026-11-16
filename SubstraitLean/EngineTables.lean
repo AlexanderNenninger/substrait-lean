@@ -29,7 +29,7 @@ settings. Each one's shims are named as its rows name them; Polars's are
 def builtinEngines : List EngineProfile := [
   { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
     translationTheorem := "Rel.duckdb_refines",
-    shims := [("MIN % -1 written out", .expression), ("Dialect.canon", .expression),
+    shims := [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
       ("ORDER BY the keys", .sort), ("nan_through", .expression)] },
   { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
     translationTheorem := "Rel.polars_sound", executes := "streaming", asReference := true,
@@ -44,7 +44,7 @@ def builtinEngines : List EngineProfile := [
   { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
     translationTheorem := "Rel.spark_sound", executes := "batch",
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-      ("Dialect.canon", .expression), ("null_order", .argument), ("sort on the keys", .sort),
+      ("atan2 refused", .expression), ("null_order", .argument), ("sort on the keys", .sort),
       ("decimal_negate_sub", .expression)] }]
 
 variable [Boxes.Ambient]

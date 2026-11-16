@@ -96,7 +96,9 @@ def collect(x: Exprs, op: Any) -> Json:
     Ibis's DataFusion compiler writes `collect()`. Without `order_by` the order
     of the elements is the engine's choice."""
     if op.include_null:
-        raise Unsupported("collect(include_null=True) is not supported")
+        raise Unsupported(
+            "collect(include_null=True) is not supported; use collect(), which skips nulls"
+        )
     if op.distinct:
         raise Unsupported("collect(distinct=True) is not supported")
     arg = x(op.arg)

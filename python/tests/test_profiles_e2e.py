@@ -214,7 +214,7 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
     # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the written plan's
-    # `Dialect.canon` gives the reference's `0.0`.
+    # proved template gives the reference's `0.0`.
     assert route_of(rounded, "duckdb").cls == "shim"
     assert route_of(rounded, "polars").cls == "shim"
     assert mean._epsilon, "the plan's bound on the mean"
@@ -524,10 +524,10 @@ def test_f1e_recheck_targets_polars(con) -> None:
 
 
 @classes
-def test_f2_duckdb_plan_transfers_to_polars(con) -> None:
-    """Route (c) succeeds: double arithmetic allowed to reach `±∞`, verified
-    under `Profile.duckdb`; on every option the proof uses, Polars's IEEE
-    choices are within DuckDB's."""
+def test_f2_duckdb_plan_is_rechecked_on_polars(con) -> None:
+    """Double arithmetic allowed to reach `±∞`, verified under `Profile.duckdb`:
+    DuckDB's `zero_sign` is `ONE_ZERO` and Polars's `IEEE`, so the transfer
+    check fails and Polars proves the plan again (a `recheck`, exact)."""
     big = sv.connect()
     big.put("u", pa.table({"x": [1e200, 2.0, -3.0], "y": [1e200, 3.0, 0.5]}))
     report = sv.verify(
@@ -539,7 +539,7 @@ def test_f2_duckdb_plan_transfers_to_polars(con) -> None:
     assert report.proved, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     r = routes.choose(report, "polars")
-    assert (r.kind, r.cls) == ("transfer", "exact"), r
+    assert (r.kind, r.cls) == ("recheck", "exact"), r
     out = run_both(report, big)
     assert math.inf in out["polars"].column("z").to_pylist()
 
