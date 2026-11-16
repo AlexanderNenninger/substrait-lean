@@ -46,7 +46,8 @@ _VERBS = (
 )
 EXIT = re.compile(
     r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|to_sql\(|"
-    rf"\b({_VERBS})\b[^.]{{0,60}}(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis|another engine|fix it)",
+    rf"\b({_VERBS})\b[^.]{{0,60}}"
+    r"(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis|another engine|fix it)",
     re.I,
 )
 HINT = re.compile(r"; [a-z]|\bonly\b|\binstead\b|\bmust\b|\bneeds?\b|\bexpects?\b|\bunless\b", re.I)
