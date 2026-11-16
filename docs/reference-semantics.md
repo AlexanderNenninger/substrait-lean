@@ -90,7 +90,7 @@ result, so a proved postcondition holds whichever value the engine picks.
 |---|---|---|
 | `tie_order` | the order of rows that tie in an `ORDER BY` or a window's order, and of the values `STRING_AGG` and `collect` gather | any order |
 | `tie_pick` | the row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value` and `MODE` take among ties | any row of the tie |
-| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them |
+| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them; Polars and Spark (`LINEAR_DIFF`, `lo + (hi − lo)·w`) also give NaN with a `-∞` lower neighbour |
 | `round_zero_sign` | which zero `round` and `ceil` give a negative value that rounds to zero | either |
 | one zero, one NaN | which member a `GROUP BY` key, a `DISTINCT` row, a `MIN` or a `MAX` returns when its class holds `-0.0` and `0.0`, or NaNs of both signs | any member present, or the canonical value |
 | the sign of a NaN | the sign of a NaN an operation produces (under a profile that lets one be created) | either |
