@@ -4,9 +4,10 @@ A formal model of [Substrait](https://substrait.io) relational plans in
 [Lean 4](https://lean-lang.org), and `sverify`, a Python package built on it.
 Sverify proves a data pipeline's contracts before it runs, gets the same
 result on DuckDB, Polars and Spark up to the plan's stated tolerance, and keeps
-it up to date from Delta Lake and Iceberg change feeds. The agreement across
-engines is proved for DuckDB's scalar functions and tested for the rest
-([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). This README is for people working on the
+it up to date from Delta Lake and Iceberg change feeds. Sverify proves the
+agreement against a model of each engine's scalar functions (for Polars and
+Spark under guard elimination's side condition); that the models match the
+engines rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). This README is for people working on the
 project. Users start at [python/README.md](python/README.md), which is also
 sverify's PyPI page.
 
