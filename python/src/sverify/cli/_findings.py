@@ -70,7 +70,7 @@ def unchecked(name: str, d: Discovery) -> dict[str, Any]:
     return {
         "code": "unchecked",
         "level": _explain.level_of("unchecked"),
-        "message": "the file never applies it, so it has no inputs to be proved on",
+        "message": "the file never applies it and declares no schemas, so it has no inputs to be proved on",
         "item": name,
         "nodes": [],
         "line": getattr(code, "co_firstlineno", None),

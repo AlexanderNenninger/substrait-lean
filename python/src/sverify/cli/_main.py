@@ -232,7 +232,8 @@ class Check:
                 lines += [f"  {line}" for line in str(r).splitlines()[1:]]
                 lines += [f"  composition: {m}" for m in c.links]
         lines += [
-            f"{t}: not checked, the file never applies it  [unchecked]" for t in self.unchecked
+            f"{t}: not checked, the file never applies it; declare its input schemas with @sv.transform(schemas=...)  [unchecked]"
+            for t in self.unchecked
         ]
         if self.error is not None:
             lines.append(f"{self.error['code']}: {self.error['message']}  [{self.error['code']}]")
