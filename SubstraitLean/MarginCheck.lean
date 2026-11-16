@@ -41,13 +41,74 @@ def Expr.fabs (e : Expr) : Expr := .ifThen (.bin .lt e (.lit (.float 0))) (.un .
 /-- A double literal. -/
 def Expr.dlit (f : Float) : Expr := .lit (.float (FloatCode.ofFloat f))
 
-/-- A comparison of an aggregate's column `j` with a constant `t`, the
-condition of a threshold filter: `(j, t)`. -/
-def Expr.thresholdOf : Expr → Option (Nat × Expr)
-  | .bin .lt (.field j) t | .bin .lt t (.field j) | .bin .eq (.field j) t | .bin .eq t (.field j) =>
-    if t.cols.isEmpty then some (j, t) else none
-  | .un .not c => c.thresholdOf
+/-- A condition of the finish's shape: an exact column (`ex`) compared with a literal, by `<` or `=`,
+combined with `and` and `not`. Each such comparison takes the reference's branch on every engine: the
+column holds the same value there, and a comparison reads a zero of either sign as `0.0`. A condition
+that computes with the column (`1.0 / max(x) < 0`) is not of this shape. -/
+def Expr.exactCond (ex : Nat → Bool) : Expr → Bool
+  | .bin .and a b => a.exactCond ex && b.exactCond ex
+  | .un .not c => c.exactCond ex
+  | .bin .lt a b | .bin .eq a b =>
+    match a, b with
+    | .field j, .lit _ => ex j
+    | .lit _, .field j => ex j
+    | _, _ => false
+  | _ => false
+
+/-- What an expression passes of the aggregate's columns, where `ex` says which columns are exact on
+every engine (`exactMeasure`, and the keys): `some none` for a constant, `some (some j)` for
+the double sum's column `j` itself, `none` for anything else. A `CASE` passes the one column its
+branches end in when its conditions are of the finish's shape over exact columns
+(`Expr.exactCond`). -/
+def Expr.passes (ex : Nat → Bool) : Expr → Option (Option Nat)
+  | .lit _ => some none
+  | .field j => some (some j)
+  | .ifThen c t e =>
+    if c.exactCond ex then
+      match t.passes ex, e.passes ex with
+      | some a, some b =>
+        match a, b with
+        | none, none => some none
+        | some j, none | none, some j => some (some j)
+        | some j, some k => if j == k then some (some j) else none
+      | _, _ => none
+    else none
   | _ => none
+
+/-- A comparison of an aggregate's column `j` with a constant `t`, the
+condition of a threshold filter: `(j, t)`. The column is a bare column, or an expression that passes
+it (`Expr.passes`): the finishing `CASE` of DuckDB's `SUM` and `AVG` of doubles (#341), whose
+conditions read the extremes and whose branches are NaN, `+∞` or the sum. Both sides of such a
+filter agree on every engine: the conditions read exact columns, so each takes the reference's branch,
+and a branch is a constant, the same on every engine, or the sum, which the check bounds. -/
+def Expr.thresholdOf (col : Expr → Option Nat) : Expr → Option (Nat × Expr)
+  | .bin .lt a b | .bin .eq a b =>
+    match col a, col b with
+    | some j, none => if b.cols.isEmpty then some (j, b) else none
+    | none, some j => if a.cols.isEmpty then some (j, a) else none
+    | _, _ => none
+  | .un .not c => c.thresholdOf col
+  | _ => none
+
+/-- The column an expression passes (`Expr.passes`), when it is the sum's. -/
+def Expr.sumCol (ex : Nat → Bool) (e : Expr) : Option Nat :=
+  match e.passes ex with
+  | some (some j) => some j
+  | _ => none
+
+/-- The values a sum's measure adds are the same on every engine: a column, or a column kept where
+it is below a constant (the guard of the lift of #341, whose comparison is exact). -/
+def Expr.exactArg : Expr → Bool
+  | .field _ => true
+  | .ifThen (.bin .lt (.field i) (.lit _)) (.field j) (.lit .null) => i == j
+  | _ => false
+
+/-- The measures whose value is the same on every engine: a count, an integer sum, a minimum
+and a maximum (by `Value.le`; their zero's sign is open, which a comparison with a constant does
+not read, `Expr.exactCond`). -/
+def AggFn.exactMeasure : AggFn → Bool
+  | .count | .sum | .min | .max => true
+  | _ => false
 
 /-- The constant `c₀` of the check's `cₙ = (8n + c₀) · 2⁻⁵³`: `16` for a
 `SUM`, `32` for an `AVG`. -/
@@ -160,15 +221,17 @@ filter comparing a window's `SUM` or `AVG` over the whole partition with a
 column of the window's input. `none` otherwise. -/
 def Rel.marginSite (cat : Catalog) : Rel → Option MarginSite
   | .filter (.aggregate r gs ms) c => do
-    let (j, t) ← c.thresholdOf
+    -- Keys, counts, integer sums and extremes are exact on every engine. A variance,
+    -- a covariance, a quantile, a first or last value and a black box are not: engines
+    -- differ in them, so a condition that reads one has no check.
+    let ex (col : Nat) : Bool :=
+      col < gs.length || (ms[col - gs.length]?.map (·.fn.exactMeasure)).getD false
+    let (j, t) ← c.thresholdOf (·.sumCol ex)
     guard (gs.length ≤ j)
     let m ← ms[j - gs.length]?
-    guard ((m.fn == .fsum || m.fn == .avg) && !m.distinct && m.filter.isNone)
-    let i ← match m.arg with
-      | .field i => some i
-      | _ => none
+    guard ((m.fn == .fsum || m.fn == .avg) && !m.distinct && m.filter.isNone && m.arg.exactArg)
     let inner := Rel.aggregate r gs
-      [m, { fn := .count, arg := .field i }, { fn := .fsum, arg := (Expr.field i).fabs }]
+      [m, { fn := .count, arg := m.arg }, { fn := .fsum, arg := m.arg.fabs }]
     some ⟨marginCount inner (gs.length + 3) gs.length t (m.fn == .avg), j, t, false⟩
   | .filter i c => do
     let (x, y) ← c.cmpSides
@@ -218,6 +281,19 @@ private def having (c : Expr) : Rel :=
 #guard (Rel.filter (.aggregate (.read "orders") [.field 0] [{ fn := .count, arg := .field 1 }])
   (.bin .lt (.lit (.int 3)) (.field 1))).marginCheck exCat |>.isNone
 #guard (having (.bin .lt (.field 0) (.field 1))).marginCheck exCat |>.isNone
+-- A finish whose condition reads a measure the engines compute differently (`stddev(x) > 0.5`:
+-- `CASE WHEN 0.5 < stddev THEN sum ELSE 0 END > 10`) has no check, and one that reads a maximum
+-- through arithmetic has none either; a maximum compared with a constant has one.
+private def finish (cond : Expr) (f : AggFn) : Rel :=
+  .filter (.aggregate (.read "orders") [.field 0]
+    [{ fn := .fsum, arg := .field 1 }, { fn := f, arg := .field 1 }])
+    (.bin .lt (Expr.dlit 10.0) (.ifThen cond (.field 1) (.lit (.float 0))))
+#guard (finish (.bin .lt (Expr.dlit 0.5) (.field 2)) (.var true true)).marginCheck exCat |>.isNone
+#guard (finish (.bin .lt (Expr.dlit 0.5) (.field 2)) .max).marginCheck exCat |>.isSome
+#guard (finish (.bin .lt (.bin .fdiv (Expr.dlit 1.0) (.field 2)) (Expr.dlit 0.0)) .max).marginCheck
+  exCat |>.isNone
+-- A constant that is computed (a cast) may differ between engines: only a literal counts.
+#guard (finish (.bin .lt (.un .itof (.lit (.int 1))) (.field 2)) .max).marginCheck exCat |>.isNone
 -- A row's value against its partition's mean, through the projection and
 -- emit that put them side by side (`readings`: sensor, value).
 #guard (Rel.filter (.emit (.window (.read "r") [0] []
@@ -227,6 +303,22 @@ private def having (c : Expr) : Rel :=
 #guard (Rel.filter (.window (.read "r") [0] []
   [.agg { fn := .avg, arg := .field 1 } [] ⟨false, .unboundedPreceding, .preceding 0⟩])
   (.bin .lt (.field 2) (.field 1))).marginCheck exCat |>.isNone
+-- The finish of DuckDB's `SUM` of doubles (#341): a guarded sum, the maximum and the minimum, and a
+-- `CASE` on the extremes; the threshold on it has the check, and a `CASE` whose condition reads the
+-- sum has none.
+private def guardedSum : Rel := .aggregate (.read "orders") [.field 0]
+  [{ fn := .fsum, arg := .ifThen (.bin .lt (.field 1) (.lit (.float FloatCode.posInf))) (.field 1) (.lit .null) },
+   { fn := .max, arg := .field 1 }, { fn := .min, arg := .field 1 }]
+private def finishSum : Expr :=
+  .ifThen (.bin .eq (.field 2) (.lit (.float FloatCode.nan))) (.lit (.float FloatCode.nan))
+    (.ifThen (.bin .and (.bin .eq (.field 2) (.lit (.float FloatCode.posInf)))
+        (.bin .eq (.field 3) (.lit (.float FloatCode.negInf)))) (.lit (.float FloatCode.nan))
+      (.ifThen (.bin .eq (.field 2) (.lit (.float FloatCode.posInf))) (.lit (.float FloatCode.posInf))
+        (.field 1)))
+#guard (Rel.filter guardedSum (.bin .lt (Expr.dlit 1.0) finishSum)).marginCheck exCat |>.isSome
+#guard (Rel.filter guardedSum (.un .not (.bin .lt finishSum (Expr.dlit 1.0)))).marginCheck exCat |>.isSome
+#guard (Rel.filter guardedSum (.bin .lt (Expr.dlit 1.0)
+  (.ifThen (.bin .lt (.field 1) (Expr.dlit 0.0)) (.field 1) (Expr.dlit 0.0)))).marginCheck exCat |>.isNone
 -- A check for each threshold filter, nested ones included.
 #guard ((Rel.project (having (.bin .lt (Expr.dlit 1.0) (.field 1))) []).marginChecks exCat).length == 1
 
