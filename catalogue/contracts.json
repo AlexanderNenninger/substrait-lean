@@ -966,6 +966,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's nan_creation",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -1002,6 +1003,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's nan_creation",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
@@ -1423,6 +1425,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's nan_creation",
           "row tested: agg.var's rounding"
         ],
         "class": "observed",
