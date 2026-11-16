@@ -177,7 +177,9 @@ class DuckDBDialect(Dialect):
         #   smallest value, `min(x, 2)[2]`, bounds it.
         # The guards read `COUNT` and the decimal `q` in integers. A dyadic
         # `q` needs none: its double position is exact. Elsewhere the result
-        # stays within the neighbours by the clamp.
+        # stays within the neighbours by the clamp, while `(n - 1)·10^scale <
+        # 2^52` (the floor of the double position is then the exact one, away
+        # from the whole positions); past it the plan raises.
         # Between -inf and +inf the interpolation is NaN, which no operation
         # creates (#561): raise where it is NaN and no value is (NaN sorts
         # above every number, so `MAX` is NaN exactly then).
@@ -197,7 +199,16 @@ class DuckDBDialect(Dialect):
         if dyadic:
             return value
         whole = f"({n1} * {frac.numerator} % {frac.denominator} = 0)"
-        return self.case_when(whole, f"quantile_disc({v}, {q})", value)
+        value = self.case_when(whole, f"quantile_disc({v}, {q})", value)
+        if not self.guards:
+            return value
+        # `RN`'s double is within 2^-52·(n - 1) of the exact position, and a
+        # floor of it differs from the exact one only where that reaches the
+        # gap 10^-scale to the next whole position: past it, raise.
+        scale = len(q.partition(".")[2])
+        beyond = f"({n1} * {10**scale} >= {2**52})"
+        raise_ = self.raise_("quantile position beyond 2^52 / 10^scale", f"COUNT({v})", "float")
+        return self.case_when(beyond, raise_, value)
 
     def second_smallest(self, v: str) -> str:
         """The second value of the column `v` in order, NULLs skipped."""

@@ -34,7 +34,7 @@ def neighbours(values: list[float], q: Fraction) -> tuple[float, float]:
 def written(values: list[float], q: str) -> float:
     CON.execute("CREATE OR REPLACE TEMP TABLE t(x DOUBLE)")
     CON.executemany("INSERT INTO t VALUES (?)", [(v,) for v in values])
-    return CON.execute(f"SELECT {DUCKDB.quantile(True, 'x', q)} FROM t").fetchone()[0]
+    return CON.execute(f"SELECT {DUCKDB.quantile(True, 'x', q)} FROM t").fetchall()[0][0]
 
 
 def allowed(values: list[float], q: str, got: float) -> bool:
@@ -52,7 +52,9 @@ def whole_missed(limit: int = 2000):
 
 def written_sql(source: str, q: str) -> float:
     """The written quantile of the column `x` of the SQL `source`."""
-    return CON.execute(f"SELECT {DUCKDB.quantile(True, 'x', q)} FROM ({source}) s(x)").fetchone()[0]
+    return CON.execute(f"SELECT {DUCKDB.quantile(True, 'x', q)} FROM ({source}) s(x)").fetchall()[
+        0
+    ][0]
 
 
 def test_the_whole_positions_the_double_misses_give_the_model_value():
@@ -98,3 +100,10 @@ def test_a_dyadic_fraction_needs_no_guard():
     sql = DUCKDB.quantile(True, "x", "0.25")
     assert "quantile_disc" not in sql and "min(x, 2)" not in sql
     assert "quantile_disc" in DUCKDB.quantile(True, "x", "0.28")
+
+
+def test_a_position_past_the_double_is_refused():
+    # Ibis prints `quantile(1/3)` at scale 16: `(n - 1)·10^16 >= 2^52` from n = 2.
+    with pytest.raises(duckdb.Error, match="quantile position"):
+        written([1.0, 2.0], "0.3333333333333333")
+    assert written([1.0, 2.0, 3.0], "0.28") == 1.56  # inside the bound at scale 2
