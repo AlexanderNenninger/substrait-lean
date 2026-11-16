@@ -88,7 +88,7 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "division_type", (ObsRow.native ["duckdb-R3"]).tracking 241),
   (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 241),
-  (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 241),
+  (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-nonfinite-aggregates"]).tracking 241),
   -- Two zeros, as IEEE has them: the reference's up to one zero, or exactly
   -- after `Dialect.canon`.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R14"] with
