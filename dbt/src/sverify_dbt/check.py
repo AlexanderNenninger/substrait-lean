@@ -376,8 +376,37 @@ class _Checker:
                 }
             if tr.status == "proved" and tr.test:
                 self.proved.add(tr.test)
+        if m.materialized == "incremental":
+            self._incremental(m, res)
         if m.contract:
             res.contract = self._contract(report, m, res)
+
+    def _incremental(self, m: Relation, res: ModelResult) -> None:
+        """An incremental run writes rows the full-refresh proof does not
+        cover, so a proved test stays out of the skippable set unless the
+        strategy keeps the model's key unique: `merge` or `delete+insert` on
+        a `unique_key` that a proved `unique` test of the model names."""
+        key = set(m.unique_key or [])
+        by_key = m.incremental_strategy in ("merge", "delete+insert") and key
+        unique = by_key and any(
+            t.status == "proved" and _unique_on(self.p.tests.get(t.test or "")) == key
+            for t in res.tests
+        )
+        if unique:
+            res.notes.append(
+                f"incremental ({m.incremental_strategy} on {', '.join(sorted(key))}): "
+                "its tests may be skipped"
+            )
+            return
+        for t in res.tests:
+            t.skippable = False
+        res.notes.append(
+            "its tests hold for the full refresh; an incremental run "
+            f"({m.incremental_strategy or 'default strategy'}"
+            + (f" on {', '.join(sorted(key))}" if key else "")
+            + ") can still break them, so dbt build keeps running them (proving the "
+            "incremental branch is a follow-up)"
+        )
 
     def _contract(self, report: Any, m: Relation, res: ModelResult) -> list[ContractIssue]:
         """The declared columns and types against the proved output schema
@@ -541,6 +570,18 @@ def _user_table(name: str, checker: _Checker) -> str:
         if n == name:
             return checker.p.relations[uid].ref
     return name
+
+
+def _unique_on(t: Any) -> set[str] | None:
+    """The columns a `unique` test (without a `where`) says are unique."""
+    if t is None or t.where or not t.kind:
+        return None
+    base = t.kind.split(".")[-1]
+    if base == "unique" and t.column:
+        return {t.column}
+    if base == "unique_combination_of_columns":
+        return set(t.kwargs.get("combination_of_columns") or []) or None
+    return None
 
 
 def _needed(report: Any, checker: _Checker, m: Relation) -> list[Needed]:
