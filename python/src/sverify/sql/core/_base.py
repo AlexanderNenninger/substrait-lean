@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from sverify import _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
@@ -86,6 +86,11 @@ class Dialect:
     Attributes:
         name: The engine's name, used in `Unsupported` messages.
     """
+
+    canonical_zero_reps: ClassVar[frozenset[str]] = frozenset()
+    """Where the engine's pick among equal zeros depends on row order, so the
+    writer prints the class's canonical value: `"extreme"` (`MIN`, `MAX`) and
+    `"keys"` (group keys and `DISTINCT` rows)."""
 
     name: str
     guards: bool = True
@@ -354,13 +359,13 @@ class Dialect:
         """IEEE negation; NaN stays NaN, and `-0.0` is the reference's too (D31)."""
         return f"(- {a})"
 
-    def zero_rep(self, x: str) -> str:
+    def zero_rep(self, x: str, where: str) -> str:
         """`x`, a double the engine picks from a class of equal zeros (a MIN,
         MAX or group key), as the class's canonical value where the engine's
         pick depends on row order (D31: `Picks` and `IsReps` allow it, and a
         rerun then gives the same sign). Identity where the engine's pick is
-        already canonical or fixed."""
-        return x
+        already canonical or fixed (`canonical_zero_reps`)."""
+        return f"({x} + {self.float_lit(0.0)})" if where in self.canonical_zero_reps else x
 
     def int_to_float(self, a: str) -> str:
         return self.cast(a, "float")
@@ -3744,7 +3749,7 @@ class _Writer:
         (a double is the class's representative, `Dialect.zero_rep`)."""
         d = self.d
         items = [
-            f"{d.zero_rep(x) if keys and keys[i] == 'float' else x} AS {self.c(i)}"
+            f"{d.zero_rep(x, 'keys') if keys and keys[i] == 'float' else x} AS {self.c(i)}"
             for i, x in enumerate(self.ref(alias, self.c(i)) for i in range(n))
         ]
         if ordered:
@@ -4045,7 +4050,7 @@ class _Writer:
             b = self.alias()
             keys = [col(c) for c in g_cols]
         out = [
-            f"{d.zero_rep(col(c)) if g_kinds[i] == 'float' else col(c)} AS {self.c(i)}"
+            f"{d.zero_rep(col(c), 'keys') if g_kinds[i] == 'float' else col(c)} AS {self.c(i)}"
             for i, c in enumerate(g_cols)
         ]
         for k, ms in enumerate(measures):

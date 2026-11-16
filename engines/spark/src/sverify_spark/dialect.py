@@ -68,6 +68,7 @@ import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import ClassVar
 
 from sverify.sql.core import I64_MAX, I64_MIN, Dec, Dialect, Kind, Unsupported, _timestamp_text
 
@@ -109,6 +110,9 @@ def _digits(k: Kind) -> tuple[int, int]:
 class SparkDialect(Dialect):
     # Decimals (#27), as the module's docstring says.
     decimals: bool = True
+    # A `MIN` or `MAX` of mixed zeros depends on order and partitioning
+    # (spark-zero-order); its keys are canonical already.
+    canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme"})
 
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
@@ -366,8 +370,9 @@ class SparkDialect(Dialect):
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         # NaN is the greatest double, and -0.0 equals 0.0, keeping whichever
         # came first (spark-nan-order, spark-zero-order): the codes' order up
-        # to the zero, which D31 leaves open for MIN and MAX.
-        return f"{fn}({v}) {over}" if over else f"{fn}({v})"
+        # to the zero. Which zero depends on row order and partitioning
+        # (spark-zero-order), so the class's canonical value stands for it.
+        return self.zero_rep(f"{fn}({v}) {over}" if over else f"{fn}({v})", "extreme")
 
     def like_pattern(self, p: str) -> str:
         odd = f"({p} RLIKE {self.str_lit(r'(^|[^\\])(\\\\)*\\$')})"
