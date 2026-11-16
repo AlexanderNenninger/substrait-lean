@@ -183,6 +183,43 @@ def nanCase : BinFn → Int → Int → Bool
       decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) && FloatCode.floor b != b
   | _, _, _ => false
 
+/-- `+∞` or `-∞`. -/
+def Value.isInf : Value → Bool
+  | .float c => isInfCode c
+  | _ => false
+
+omit [Boxes.Ambient] in
+theorem Value.isInf_iff {v : Value} :
+    v.isInf = true ↔ v = .float FloatCode.posInf ∨ v = .float FloatCode.negInf := by
+  cases v <;> simp [Value.isInf, isInfCode]
+
+/-- A pair (`covar`'s and `corr`'s input) with an infinite side. -/
+def Value.pairHasInf : Value → Bool
+  | .list [a, b] => a.isInf || b.isInf
+  | _ => false
+
+/-- Are `QUANTILE_CONT`'s neighbours among the values in order `-∞` and
+`+∞` (`contNeighbours`)? Its interpolation between them is NaN. -/
+def quantileOpposite (num scale : Nat) (vs : List Value) : Bool :=
+  match contNeighbours num scale (sortVals vs) with
+  | some (l, h, _) => l == FloatCode.negInf && h == FloatCode.posInf
+  | none => false
+
+/-- The inputs on which IEEE 754 makes a double aggregate NaN though no input
+is NaN (#257): a `SUM` or `AVG` of `+∞` and `-∞`, a variance of an infinity
+(`∞ - ∞` in its deviations), a covariance or correlation of a pair holding
+one, and `QUANTILE_CONT` between `-∞` and `+∞` (DuckDB gives the NaN, the
+model's clamp `+∞`; the reference raises, D21). The reference raises on
+these, as `nanCase` has it for scalars. -/
+def AggFn.nanCase : AggFn → List Value → Bool
+  | .fsum, vs | .avg, vs => vs.contains (.float FloatCode.posInf) && vs.contains (.float FloatCode.negInf)
+  | .var _ _, vs => vs.any Value.isInf
+  | .cov _, vs | .corr, vs => vs.any Value.pairHasInf
+  | .quantile true num scale, vs =>
+    vs.contains (.float FloatCode.posInf) && vs.contains (.float FloatCode.negInf) &&
+      quantileOpposite num scale vs
+  | _, _ => false
+
 def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
 
 omit [Boxes.Ambient] in
