@@ -20,19 +20,19 @@
   ],
   "properties": {
     "format": {
-      "description": "The version of this format.",
-      "const": 2
+      "description": "The version of this format. Format 3 gave verdict the Verdict's value and added summary; format 2 is still read.",
+      "enum": [2, 3]
     },
     "sverify": {
       "description": "The version of sverify that wrote the report.",
       "type": "string"
     },
     "proved": {
-      "description": "Either proved verdict: every postcondition holds, no runtime error is possible, and nothing more is needed.",
+      "description": "Derived from verdict: false for unproved, true for proved and proved_with_checks. Kept for readers of format 2; dropped at 2.0.",
       "type": "boolean"
     },
     "verdict": {
-      "description": "Report.verdict: \"proved\" (no run raises), \"proved_with_checks\" (a run stops where a check of the assumed issues fails on the data) or \"unproved\". Reports written before the Verdict hold the first line here (now summary), so readers accept any string.",
+      "description": "Report.verdict: \"proved\" (no run raises), \"proved_with_checks\" (a run stops where a check of the assumed issues fails on the data) or \"unproved\". In format 2 this held the first line of the report, which summary holds from format 3, so a reader accepts any string.",
       "type": "string"
     },
     "summary": {

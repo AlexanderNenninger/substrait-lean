@@ -290,15 +290,15 @@ def test_report_reads(version: str, case: str) -> None:
     _valid(doc, "report.schema.json")
     report = sv.Report.from_json(doc)
     assert report._proved == doc["proved"]
-    # Before the `Verdict`, `verdict` held the first line, which `summary` now holds.
-    assert report._summary == doc.get("summary", doc["verdict"])
+    # In format 2 `verdict` held the first line, which `summary` holds from format 3.
+    assert report._summary == (doc["summary"] if doc["format"] >= 3 else doc["verdict"])
     assert [c.label for c in report.ensures] == [c["properties"]["label"] for c in doc["ensures"]]
     assert [n.code for n in report.needs] == [n["code"] for n in doc["needs"]]
     assert set(report.routes) == set(doc["routes"])
     now = json.loads(report.to_json())
     _valid(now, "report.schema.json")
     assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
-    skip = {"sverify", "verdict", "summary"}
+    skip = {"sverify", "format", "verdict", "summary"}
     assert {k: v for k, v in now.items() if k in doc and k not in skip} == {
         k: v for k, v in doc.items() if k not in skip
     }
