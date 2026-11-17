@@ -36,6 +36,7 @@ BC), which `date_trunc` leaves as it is.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import ClassVar
 
 from sverify.black_box import BlackBox
 from sverify.sql.core import (
@@ -55,6 +56,8 @@ class DuckDBDialect(Dialect):
     # DuckDB computes decimals exactly (#27): `+`, `-` and `×` at the types the
     # reference gives them, casts rounding half away from zero.
     decimals: bool = True
+    # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
+    canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
     orders_text: bool = True
 
     def type_name(self, kind: Kind) -> str:
@@ -207,8 +210,10 @@ class DuckDBDialect(Dialect):
         )
 
     def float_extreme(self, fn: str, v: str, over: str) -> str:
-        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371).
-        return f"{fn}({v}) {over}" if over else f"{fn}({v})"
+        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371). Of equal
+        # zeros it keeps the one it read last (duckdb-minmax-zero-sign): the
+        # class's canonical value stands for it.
+        return self.zero_rep(f"{fn}({v}) {over}" if over else f"{fn}({v})", "extreme")
 
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         # DuckDB's own `first`/`last` of the non-NULL values: the group's

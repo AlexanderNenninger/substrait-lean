@@ -18,6 +18,7 @@ import pytest
 
 import sverify as sv
 from _repo import ROOT, needs_repo
+from _zero import one_zero
 from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_rows, lean_values
@@ -862,11 +863,8 @@ EXTREMES = [(1, 1.0), (1, math.nan), (1, -1.0), (2, math.nan), (3, math.nan), (3
 
 
 def _same(a: list, b: list) -> bool:
-    """Equal rows, NaN equal to NaN and `-0.0` equal to `0.0`: the model keeps a
-    zero raw (D31) where Polars's writer still makes one zero (#1461 follow-up)."""
-    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in a]) == repr(
-        [tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in b]
-    )
+    """Equal rows, NaN equal to NaN and `-0.0` equal to `0.0`."""
+    return one_zero(a) == one_zero(b)
 
 
 def test_polars_skips_nan_and_keeps_either_zero_and_the_shims_do_not():
