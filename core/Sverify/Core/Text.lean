@@ -22,9 +22,9 @@ DataFusion 51 and Polars:
   `2³¹ - 1` bytes fails (`Text.repeatFits`), as Arrow's `Utf8` offsets are
   32-bit (`Utf8View` input too; DataFusion writes `Utf8`).
 * `reverse(s)` reverses the characters (combining marks move with them).
-* `replace(s, p, r)` is Rust's `str::replace`: every non-overlapping `p`,
-  from the left, becomes `r`; an empty `p` puts `r` before every character
-  and at the end.
+* `replace(s, p, r)` replaces every non-overlapping `p`, from the left, by `r`
+  (Rust's `str::replace`); an empty `p` matches nowhere, so the result is `s`
+  (D44).
 * `ascii(s)` is the code point of the first character, `0` for `''`.
 * `levenshtein(s, t)` counts single-character insertions, deletions and
   substitutions.
@@ -206,8 +206,7 @@ def replaceGo (p r : List Char) : Nat → List Char → List Char
 
 def replace (s p r : String) : String :=
   let cs := s.toList
-  if p.isEmpty then String.ofList (r.toList ++ cs.flatMap fun c => c :: r.toList)
-  else String.ofList (replaceGo p.toList r.toList cs.length cs)
+  if p.isEmpty then s else String.ofList (replaceGo p.toList r.toList cs.length cs)
 
 def ascii (s : String) : Int :=
   match s.toList with
@@ -427,8 +426,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard repeatFits "ab" (2 ^ 30 - 1) && !repeatFits "ab" (2 ^ 30) && !repeatFits "é" (2 ^ 30)
 #guard repeatFits "" (2 ^ 62) && repeatFits "ab" (-(2 ^ 62))
 #guard reverse "héllo" == "olléh" && reverse "" == ""
-#guard replace "ab" "" "x" == "xaxbx" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
-#guard replace "" "" "x" == "x" && replace "abcabc" "bc" "Z" == "aZaZ"
+#guard replace "ab" "" "x" == "ab" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
+#guard replace "" "" "x" == "" && replace "abcabc" "bc" "Z" == "aZaZ"
 #guard ascii "" == 0 && ascii "é" == 233 && ascii "ab" == 97
 #guard levenshtein "kitten" "sitting" == 3 && levenshtein "" "" == 0 && levenshtein "abc" "" == 3
 #guard levenshtein "" "ab" == 2 && levenshtein "é" "e" == 1 && levenshtein "flaw" "lawn" == 2

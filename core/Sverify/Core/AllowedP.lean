@@ -111,14 +111,32 @@ def contDiffExtra (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
       (v = .float FloatCode.posInf ∧ FloatCode.fsub h l = FloatCode.posInf)
   | none => False
 
+/-- What DuckDB's own `lo·(1 − w) + hi·w` gives beyond a double between the
+neighbours `nb`: an ulp above `hi` or below `lo` (the weight `1 − w` rounds
+where `lo` is the first value, finding B of duckdb-quantile-cont-interpolation).
+The fact's condition "`lo` is the group's first value" is left out on purpose:
+at later positions the weight `1 − w` is exact (`w` is a multiple of 2^-52
+below 1), but the two products and the sum still round, and no proof excludes
+an ulp there. Sampling found none (190,880 groups). -/
+def contLinearExtra (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
+  match nb with
+  | some (l, h, _) => v = .float (FloatCode.nextUp h) ∨ v = .float (FloatCode.nextDown l)
+  | none => False
+
 /-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour. `BETWEEN`
-(the reference) is a double between the neighbours of the exact position, and
-DuckDB's `LINEAR` is stated as that too (`duckdb-quantile-cont-interpolation`,
-#900). `LINEAR_DIFF` (Polars, Spark) takes the neighbours of the engine's
-double position (`contNeighboursD`), and is a double between them or what the
-difference `hi − lo` makes of an infinite or overflowing pair (`contDiffExtra`). -/
+(the reference) is a double between the neighbours of the exact position.
+`LINEAR` (DuckDB's own `quantile_cont`) takes the neighbours of its double
+position (`RN = (n − 1)·q` in doubles, `contNeighboursD`), and is a double
+between them or an ulp past them (`contLinearExtra`); the written plan meets
+`BETWEEN` by its guards (`Dialect.quantile`, #1502), which is the row's shim.
+`LINEAR_DIFF` (Polars, Spark) takes the same neighbours, and is a double
+between them or what the difference `hi − lo` makes of an infinite or
+overflowing pair (`contDiffExtra`). -/
 def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
-  if b = "BETWEEN" ∨ b = "LINEAR" then contAllowed num scale (sortVals vs) v
+  if b = "BETWEEN" then contAllowed num scale (sortVals vs) v
+  else if b = "LINEAR" then
+    contAllowedOf (contNeighboursD num scale (sortVals vs)) v ∨
+      contLinearExtra (contNeighboursD num scale (sortVals vs)) v
   else if b = "LINEAR_DIFF" then
     contAllowedOf (contNeighboursD num scale (sortVals vs)) v ∨
       contDiffExtra (contNeighboursD num scale (sortVals vs)) v
@@ -431,12 +449,12 @@ theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
     cases cont <;> simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_quant, QuantInterp]
   case fsum | avg =>
     cases vs with
-    | nil => simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, AggFn.Picks]
+    | nil => simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, AggFn.Picks, AggFn.classPick]
     | cons w ws =>
       simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, reference_allows_sum, SumOrder,
-        AvgOrder, AggFn.Picks]
+        AvgOrder, AggFn.Picks, AggFn.classPick]
   all_goals simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_var,
-    reference_allows_stat, StatAlgo, AggFn.Picks]
+    reference_allows_stat, StatAlgo, AggFn.Picks, AggFn.classPick]
 
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by
@@ -464,7 +482,7 @@ theorem Measure.allowed_iff {m : Measure} (hm : m.orderFree = true) (rows : Rela
   refine ⟨fun ⟨h, hmm⟩ => ?_, fun h => ⟨h ▸ ?_, fun _ => h⟩⟩
   · rcases Measure.allowed_picks hm h with hv | ⟨hf, -⟩
     · rw [hv, Measure.eval_eq (AggFn.ne_collect_of_orderFree hm)]
-    · exact hmm hf
+    · exact hmm (AggFn.minmax_of_classPick hm hf)
   -- As `Measure.eval_allowed`, through `AggFn.allowed_iff`: no measure's axioms.
   by_cases hs : m.fn.sorts = true
   · refine ⟨rows.mergeSort (sortLe m.sort), List.mergeSort_perm _ _, fun _ =>

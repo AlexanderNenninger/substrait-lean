@@ -114,8 +114,9 @@ def Measure.op (m : Measure) (rows : Relation) (s : Relation) : Value :=
   if m.fn.sorts then m.eval s else m.eval rows
 
 /-- **`Measure.OrderAllowed` is `SemBy`** over the measure's own order, for a
-measure other than `MIN` and `MAX` (whose member of a class is open, D31). -/
-theorem Measure.orderAllowed_iff_semBy (m : Measure) (hmin : m.fn ≠ .min) (hmax : m.fn ≠ .max)
+measure that does not select by comparison (`MIN`, `MAX` and `QUANTILE_DISC`
+leave the member of a class open, D31, D45). -/
+theorem Measure.orderAllowed_iff_semBy (m : Measure) (hc : m.fn.classPick = false)
     (rows : Relation) (v : Value) :
     m.OrderAllowed rows v ↔ SemBy (m.op rows) (sortLe m.sort) rows v := by
   have key : ∀ s, (if m.fn.sorts then v = m.eval s else m.fn.Picks (m.inputs rows) v) ↔
@@ -125,8 +126,10 @@ theorem Measure.orderAllowed_iff_semBy (m : Measure) (hmin : m.fn ≠ .min) (hma
     · exact Iff.rfl
     · next hs =>
       rw [Measure.eval_eq (by simpa using hs)]
-      exact ⟨fun h => by rcases h with h | ⟨hf, -⟩; · exact h
-                         rcases hf with hf | hf <;> contradiction, Or.inl⟩
+      refine ⟨fun h => ?_, Or.inl⟩
+      rcases h with h | ⟨hf, -⟩
+      · exact h
+      · rw [hc] at hf; cases hf
   exact ⟨fun ⟨s, hp, hs, hv⟩ => ⟨s, ⟨hp, hs⟩, (key s).mp hv⟩,
     fun ⟨s, ⟨hp, hs⟩, hv⟩ => ⟨s, hp, hs, (key s).mpr hv⟩⟩
 
@@ -141,7 +144,11 @@ lifting lemma for measures, `Measure.allowed_eq` for `Measure.OrderAllowed`. -/
 theorem Measure.orderAllowed_eq {m : Measure} (hm : m.orderFree = true) (hmin : m.fn ≠ .min)
     (hmax : m.fn ≠ .max) {rows : Relation} {v : Value} :
     m.OrderAllowed rows v ↔ v = m.eval rows := by
-  rw [Measure.orderAllowed_iff_semBy m hmin hmax,
+  have hc : m.fn.classPick = false := by
+    cases h : m.fn.classPick
+    · rfl
+    · rcases AggFn.minmax_of_classPick hm h with h' | h' <;> contradiction
+  rw [Measure.orderAllowed_iff_semBy m hc,
     SemBy.eq_iff_of_permInv (Measure.op_permInv hm rows) (sortLe_totalPre _)]
   unfold Measure.op; rw [ite_self]
 

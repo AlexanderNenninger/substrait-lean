@@ -10,7 +10,7 @@
     "`replace('ab', '', 'x')`: DuckDB 2.0.0 gives `'ab'` (fact duckdb-replace-empty-pattern); Polars gives `'xaxbx'` (fact polars-string-natives)."
   ],
   "handling": [
-    "The SQL lift and the Ibis producer refuse a constant empty pattern under the reference; `semantics=\"duckdb\"` lifts it to DuckDB's value. The DuckDB writer refuses the plan when it is handed in as Substrait (#1508).",
+    "The reference's `replace(s, '', r)` is `s` (D44), as DuckDB's. The writers fold the empty pattern to `s`; Polars's insertion at every character is never run (#1508).",
     "Could be expressed as: one sentence in the description (an empty substring matches nowhere, or at every character boundary), or an option."
   ],
   "found_by": "the text semantics of the reference (#1508)",
