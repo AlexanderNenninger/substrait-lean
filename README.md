@@ -3,8 +3,11 @@
 A formal model of [Substrait](https://substrait.io) relational plans in
 [Lean 4](https://lean-lang.org), and `sverify`, a Python package built on it.
 Sverify proves a data pipeline's contracts before it runs, gets the same
-result on DuckDB, Polars and Spark, and keeps it up to date from
-Delta Lake and Iceberg change feeds ([what is proved](docs/proved-theorems.md)). This README is for people working on the
+result on DuckDB, Polars and Spark up to the plan's stated tolerance, and keeps
+it up to date from Delta Lake and Iceberg change feeds. Sverify proves the
+agreement against a model of each engine's scalar functions (for Polars and
+Spark under guard elimination's side condition); that the models match the
+engines rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). This README is for people working on the
 project. Users start at [python/README.md](python/README.md), which is also
 sverify's PyPI page.
 
@@ -53,8 +56,11 @@ SQL string ─► SQLGlot lift ────────────────�
   and runs it. Delta and Iceberg IO, nodes, sinks and the pytest plugin live
   there too.
 * The two meet at one interface: Substrait JSON in, a report and rewritten
-  plans out. Lean's parser and writer and the engine lowerings are trusted
-  code; golden and differential tests cover them.
+  plans out. Lean's parser, the writers that print each engine's SQL or code and the
+  lowerings of Polars and Spark are trusted code; golden and differential tests
+  cover them. The generated DuckDB lowering table is proved exact against the
+  model of DuckDB (`Lowering.duckdb_exact`), and the model's match to the real
+  engine rests on tests ([trusted base](docs/trusted-base.md)).
 
 | Directory | Contents |
 |---|---|

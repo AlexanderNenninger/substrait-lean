@@ -148,7 +148,7 @@ def Profile.spark.obs : ObsTable := [
   -- `lo + (hi - lo) · w`, as Polars's: NaN with a `-∞` lower neighbour, `+∞` where `hi - lo` overflows (spark-quantile).
   (none, "quantile_interp", ({ ObsRow.native ["spark-quantile"] with
     cls := .refused
-    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. `LINEAR_DIFF` overclaims at a whole exact position that the double position misses, where the engine's neighbours are those of the double position (spark-quantile); tracked in #900." }).tracking 900),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, spark-quantile)." }).tracking 900),
   (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
   -- where its type keeps the scale, and a type past 38 digits at a scale

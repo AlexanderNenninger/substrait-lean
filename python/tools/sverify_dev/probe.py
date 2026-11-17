@@ -742,6 +742,9 @@ OBSERVATIONS: list[Observation] = [
        " ('nan'::DOUBLE), (3.0::DOUBLE)) t(x) UNION ALL SELECT median(x)::VARCHAR,"
        " quantile_cont(x, 0.5)::VARCHAR, NULL, NULL, NULL FROM (VALUES (1.0::DOUBLE),"
        " ('nan'::DOUBLE)) t(x)"),
+    _o("replace-empty-pattern", "strings",
+       "SELECT replace('ab', '', 'x'), replace('', '', 'x'), replace(NULL, '', 'x'),"
+       " replace('ab', '', NULL), replace('', '', NULL), typeof(replace('ab', '', 'x'))"),
     # Collations.
     _o("default-collation-nocase", "strings",
        "SELECT v = 'hello', v LIKE 'h%', v ILIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'),"

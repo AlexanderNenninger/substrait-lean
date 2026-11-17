@@ -163,18 +163,13 @@ def check (plan : Plan) (spec : Bool := false) (full : Bool := true) : IO UInt32
   -- `VirtualTable` rows show up here.
   -- Lean's evaluator panics at the black boxes it does not evaluate
   -- (`Text.lean`: non-ASCII `UPPER`/`LOWER`, regular expressions) and goes
-  -- on with a placeholder; refuse such rows rather than print them (#70).
+  -- on with a placeholder; `runOn` refuses the answer of any mode that panicked (#70).
   -- The writer's kinds, which call a bare double literal's column a double
   -- where `Rel.kinds` calls it an integer (#96).
   let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
-  let (panics, rows) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
-    -- `lazyPure`: evaluated here, not hoisted out of the isolated streams.
-    IO.lazyPure fun _ => (if spec then plan.root.eval cat else plan.root.evalFast cat).map fun row =>
-      let cells := row.zipIdx.map fun (v, i) => renderCell (kinds.getD i .other) v
-      s!"({", ".intercalate cells})"
-  if let some msg := (panics.splitOn "\n").find? (·.startsWith "PANIC") then
-    IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
-    return 1
+  let rows := (if spec then plan.root.eval cat else plan.root.evalFast cat).map fun row =>
+    let cells := row.zipIdx.map fun (v, i) => renderCell (kinds.getD i .other) v
+    s!"({", ".intercalate cells})"
   IO.println s!"rows ({rows.length}):"
   for row in rows do
     IO.println s!"  {row}"
@@ -198,14 +193,10 @@ def evalChoices (plan : Plan) : IO UInt32 := do
     | .collect cs =>
       let ek := match k with | .list e => e | _ => .other
       Lean.Json.mkObj [("collect", Lean.toJson (cs.map (·.map (renderCell ek))))]
-  let (panics, out) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
-    IO.lazyPure fun _ => match plan.root.evalChoices cat with
-      | some rows => Lean.Json.arr (rows.map fun row =>
-          Lean.Json.arr (row.zipIdx.map fun (c, i) => cellJson (kinds.getD i .other) c).toArray).toArray
-      | none => Lean.Json.null
-  if let some msg := (panics.splitOn "\n").find? (·.startsWith "PANIC") then
-    IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
-    return 1
+  let out := match plan.root.evalChoices cat with
+    | some rows => Lean.Json.arr (rows.map fun row =>
+        Lean.Json.arr (row.zipIdx.map fun (c, i) => cellJson (kinds.getD i .other) c).toArray).toArray
+    | none => Lean.Json.null
   IO.println (Lean.Json.mkObj [("rows", out)]).compress
   return 0
 
@@ -272,7 +263,7 @@ def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : 
 
 /-- One request of `--serve`: the mode flag (empty for the default check)
 and the input text. -/
-def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32 := do
+def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UInt32 := do
   if flag == "--contract" then
     match Lean.Json.parse input with
     | .error e => IO.eprintln s!"error: {e}"; return 1
@@ -338,6 +329,24 @@ def capture (act : IO UInt32) : IO (UInt32 × ByteArray × ByteArray) := do
   let code ← IO.withStdout (IO.FS.Stream.ofBuffer out) <|
     IO.withStderr (IO.FS.Stream.ofBuffer err) act
   return (code, (← out.get).data, (← err.get).data)
+
+/-- One request, in any mode: its answer, unless Lean panicked while
+computing it. A panic (`Text.lean`: non-ASCII `UPPER`/`LOWER`/`ILIKE`, regular
+expressions Rust and RE2 read differently; the black boxes) prints `PANIC` to
+stderr and goes on with a placeholder, which would be printed as a result. The
+request is refused instead, in every mode (`--outcomes` included), with the
+panic's message (#70, R6). -/
+def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32 := do
+  let (code, out, err) ← capture (runModes es flag input)
+  let some errText := String.fromUTF8? err
+    | IO.eprintln "error: rows not evaluated: the checker's stderr is not UTF-8"
+      return 1
+  if let some msg := (errText.splitOn "\n").find? (·.startsWith "PANIC") then
+    IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
+    return 1
+  (← IO.getStdout).write out
+  (← IO.getStderr).write err
+  return code
 
 partial def readExactly (h : IO.FS.Stream) (n : Nat) (acc : ByteArray := .empty) : IO ByteArray := do
   if acc.size ≥ n then return acc
