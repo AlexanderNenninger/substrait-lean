@@ -35,7 +35,10 @@ def test_core_names_no_removed_engine_and_no_engine_path(path):
     assert not hits, "\n".join(hits)
 
 
-@pytest.mark.parametrize("path", [p for p in FILES if p.name != "Options.lean"], ids=lambda p: p.name)
+NOT_OPTIONS = [p for p in FILES if p.name != "Options.lean"]
+
+
+@pytest.mark.parametrize("path", NOT_OPTIONS, ids=lambda p: p.name)
 def test_core_prose_names_no_engine_outside_the_options(path):
     hits = [
         f"{path.name}:{n}: {line.strip()}"
