@@ -53,7 +53,7 @@ may move between engines later.
 
 Spark's and Polars's profiles are their own. Until the checker reports under
 them ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288),
-[#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442)),
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)),
 `semantics="spark"` and `semantics="polars"` give the reference's report with
 a `ProfilePendingWarning`, and the route to those engines is `translated`.
 

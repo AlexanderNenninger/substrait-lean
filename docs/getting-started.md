@@ -351,7 +351,7 @@ except RouteError as e:
 The transfer check fails on the comparison's zero and the division's options. A
 re-check would prove the plan again under Polars's profile, which the checker
 cannot do yet
-([#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442)), so the
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)), so the
 refusal names the reference as the way: it runs on Polars with the shim of
 example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with
@@ -395,7 +395,7 @@ under Polars's own profile (`Profile.polars_imod` in
 [Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean)) would
 prove a postcondition that holds only of the floored remainder. The checker
 does not report under that profile yet
-([#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442),
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271),
 [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)), so
 `semantics="polars"` gives the reference's report with a
 `ProfilePendingWarning`. The plan still states `division_type: FLOOR`, which

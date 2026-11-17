@@ -336,7 +336,7 @@ The Polars rows of `--options` name these theorems as their evidence. The
 is the profile `--contract` takes with `"profile": "polars"`. It is an
 evaluable `Profile`, as `Profile.duckdb` is, and it takes Polars's choice
 option by option. `verify(semantics="polars")` does not check under it yet:
-the report is the reference's, marked pending (`ProfilePendingWarning`, #1442),
+the report is the reference's, marked pending (`ProfilePendingWarning`, #271),
 and the plan runs on Polars by the translated route until #271.
 
 | Option | `Profile.polars` | Polars 2.1.0 | Why |

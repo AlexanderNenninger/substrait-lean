@@ -7,5 +7,5 @@ The checker does not report under Polars's own profile yet, as for Spark
 reaches Polars by the `translated` route, which computes the stated `FLOOR`.
 The `native` route to Polars and the `recheck` route from a DuckDB report to
 Polars are refused until the checker proves under `Profile.polars`
-([#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442)).
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 Polars's observation rows now apply to Polars's tables.

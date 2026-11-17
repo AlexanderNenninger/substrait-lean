@@ -8,7 +8,7 @@ them is the trusted part, from its facts (polars-int-divide,
 polars-int-modulus); these tests run it against Python's `//` and `%`, which
 floor too.
 
-A `semantics="polars"` request is reported as pending (#1442): the report is
+A `semantics="polars"` request is reported as pending (#271): the report is
 the reference's, and the plan runs on Polars by the translated route, which
 `Rel.polars_sound` licenses. The plan states `FLOOR`, and Polars's executor runs
 its own `//` and `%` for it, whatever the route.
@@ -93,7 +93,7 @@ def test_the_native_route_is_refused_until_the_generated_lowering(report: sv.Rep
 
 
 def test_a_polars_request_is_reported_as_pending() -> None:
-    """The report is the reference's and the checker warns (#1442, #271)."""
+    """The report is the reference's and the checker warns (#271)."""
     con = sv.connect()
     con.put("t", pa.table({"i": pa.array([1], pa.int64()), "j": pa.array([1], pa.int64())}))
     t = con.table("t")
@@ -164,7 +164,7 @@ def test_written_floor_raises(report: sv.Report, engine: str) -> None:
 
 def test_routes_from_polars(report: sv.Report) -> None:
     """Translated on Polars, DuckDB and Spark: the report is the reference's
-    until the checker reports under each engine's profile (#1442, #1288, #271)."""
+    until the checker reports under each engine's profile (#1288, #271)."""
     assert routes.choose(report, "polars").kind == "translated"
     assert routes.choose(report, "duckdb").kind == "translated"
     assert routes.choose(report, "spark").kind == "translated"

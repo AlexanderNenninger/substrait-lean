@@ -36,7 +36,7 @@ def test_the_hint_is_for_the_pair_only():
 
 def test_the_hint_names_columns_and_follows_the_reference_for_polars():
     assert any("(x // d) * d + x % d == x" in h for h in hints(T.select(q=T.x // T.d, r=T.x % T.d)))
-    # `semantics="polars"` is pending (#1442): the checker reports under the reference.
+    # `semantics="polars"` is pending (#271): the checker reports under the reference.
     assert any("floors" in h for h in hints(T.select(q=T.x // 2, r=T.x % 2), semantics="polars"))
 
 

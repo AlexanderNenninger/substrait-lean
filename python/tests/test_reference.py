@@ -766,7 +766,7 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     # and `verify` sees guards the product (#702).
     assert duck.proved
     if engine == "polars":
-        # A DuckDB proof reaches Polars by a re-check, which waits for #1442.
+        # A DuckDB proof reaches Polars by a re-check, which waits for #271.
         with pytest.raises(RouteError, match="semantics='reference'"):
             duck.run(con, engine)
     else:

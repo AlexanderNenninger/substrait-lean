@@ -74,7 +74,7 @@ def test_transfer_check(con) -> None:
         in r.reason
     )
     # #655: under "auto", the refusal leads with what to do. The checker
-    # cannot prove under `Profile.polars` yet (#1442), so there is no re-check.
+    # cannot prove under `Profile.polars` yet (#271), so there is no re-check.
     auto = routes.choose(duck, "polars")
     assert auto.reason.startswith("verify with semantics='reference' to run on polars")
     # Where the check passes, the route is taken.
@@ -91,7 +91,7 @@ def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
     r = routes.choose(duck, "polars", "transfer")
     assert r.refused and "gave no transfer check" in r.reason
     # `auto` has no re-check to go on to: the checker reports `polars` as
-    # pending (#1442), so it names the reference as the way.
+    # pending (#271), so it names the reference as the way.
     auto = routes.choose(duck, "polars")
     assert auto.refused and auto.reason.startswith("verify with semantics='reference'"), auto
 

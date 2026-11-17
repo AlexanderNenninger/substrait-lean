@@ -847,7 +847,7 @@ An `sv.sql` expression inside an Ibis transformation keeps its own. The report
 says which semantics it used (`Report.semantics`, a `semantics:` line).
 `semantics="polars"` is pending like Spark's: Polars floors integer `//` and
 `%`, so `-7 % 2` is `1` there, and until the checker reports under Polars's own
-profile ([#1442](https://github.com/AlexanderNenninger/substrait-lean/issues/1442))
+profile ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271))
 the report is the reference's, with the stated `FLOOR` read by the core, and a
 `ProfilePendingWarning` says so ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
@@ -1620,7 +1620,7 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending until #1442 and #1288) |
+| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending until #1288 and #271) |
 | `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
 | `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
 | `recheck` | the checker proves the plan again under the engine's profile |

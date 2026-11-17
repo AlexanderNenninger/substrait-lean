@@ -434,7 +434,7 @@ def _floor_report(con, **kw) -> sv.Report:
 
 
 def test_f1_a_polars_request_runs_translated_on_polars(con) -> None:
-    """Route (a): the request is reported under the reference (#1442), so the
+    """Route (a): the request is reported under the reference (#271), so the
     plan reaches Polars by the translation, which computes the stated `FLOOR`."""
     with pytest.warns(ProfilePendingWarning):
         report = _floor_report(con)
@@ -491,7 +491,7 @@ def test_f1e_recheck_is_unavailable_for_polars_until_271(con) -> None:
 def test_f2_duckdb_plan_is_refused_on_polars_until_271(con) -> None:
     """Double arithmetic allowed to reach `±∞`, verified under `Profile.duckdb`:
     DuckDB's `zero_sign` is `ONE_ZERO` and Polars's `IEEE`, so the transfer
-    check fails, and the re-check under Polars's profile waits for #1442."""
+    check fails, and the re-check under Polars's profile waits for #271."""
     big = sv.connect()
     big.put("u", pa.table({"x": [1e200, 2.0, -3.0], "y": [1e200, 3.0, 0.5]}))
     report = sv.verify(
