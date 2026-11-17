@@ -42,8 +42,9 @@ class Lst:
 Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec | Lst
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
-#: guard that raises names, and `"asciiOnly"`: the one guard that is not an issue
-#: (#1506). `tests/test_guards_issues.py` checks the list against the Lean source.
+#: guard that raises names, and the guards that are not an issue, `UNISSUED`:
+#: the ASCII condition (#1506) and DuckDB's quantile position limit (#900).
+#: `tests/test_guards_issues.py` checks the list against the Lean source.
 GuardIssue = Literal[
     "divByZero",
     "overflow",
@@ -56,7 +57,11 @@ GuardIssue = Literal[
     "raised",
     "infinite",
     "asciiOnly",
+    "quantilePosition",
 ]
+
+#: The guards of `GuardIssue` that no `Issue` reports yet.
+UNISSUED = frozenset({"asciiOnly", "quantilePosition"})
 
 #: The issue a shim's `raise` message names (`UnFn.raise`); `"raised"` for any other.
 _RAISED: dict[str, GuardIssue] = {

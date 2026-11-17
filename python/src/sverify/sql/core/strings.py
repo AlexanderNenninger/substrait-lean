@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from sverify import _functions, _plan_read
+from sverify._unsupported import EMPTY_REPLACE_PATTERN
 from sverify.sql.core._base import (
     Bin,
     Expr,
@@ -154,9 +155,7 @@ def expr(
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
             if not pattern:
-                # Rust puts the replacement around every character; SQL engines
-                # return the string unchanged.
-                raise WriterUnsupported("replace with an empty pattern differs between engines")
+                raise WriterUnsupported(f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern")
             x = self.operand(a, "str", ref, cols, "replace")
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):

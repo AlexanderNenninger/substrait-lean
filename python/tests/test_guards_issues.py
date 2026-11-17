@@ -32,7 +32,7 @@ from sverify.engine import connect, put_table, substrait_json, written_plan
 from sverify.errors import UnsupportedError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import to_sql
-from sverify.sql.core import Dialect, GuardIssue
+from sverify.sql.core import UNISSUED, Dialect, GuardIssue
 from sverify_dev.coverage import CASES, Case, written
 from sverify_dev.coverage_cases._common import t
 
@@ -57,7 +57,7 @@ def test_guard_issues_are_leans_constructors() -> None:
     body = src[src.index("inductive Issue where") :]
     body = body[: body.index("\n\n", body.index("| infinite"))]
     ctors = re.findall(r"^  \| (\w+)", body, re.M)
-    assert set(get_args(GuardIssue)) == set(ctors) | {"asciiOnly"}
+    assert set(get_args(GuardIssue)) == set(ctors) | UNISSUED
     assert set(KIND) == set(ctors)
 
 
@@ -237,7 +237,7 @@ WITNESSES: dict[str, Callable[[], str]] = {
 def _unreported(scan: tuple[frozenset[Site], frozenset[Site], frozenset[str]]) -> dict:
     _, left, kinds = scan
     return {
-        (f, g, m): None for f, _, g, m in sorted(left) if g != "asciiOnly" and KIND[g] not in kinds
+        (f, g, m): None for f, _, g, m in sorted(left) if g not in UNISSUED and KIND[g] not in kinds
     }
 
 
@@ -266,7 +266,7 @@ def test_every_guard_site_is_reported_somewhere() -> None:
     scans = [s for c in VERIFIED if (s := _case_scan(c)) is not None]
     scans += [_scan(_witness(n)) for n in WITNESSES]
     for full, left, kinds in scans:
-        sites |= {(f, n) for f, n, g, _ in full if g != "asciiOnly"}
+        sites |= {(f, n) for f, n, g, _ in full if g not in UNISSUED}
         proven |= {(f, n) for f, n, g, _ in left if KIND.get(g) in kinds}
     lost = sorted(sites - proven)
     assert not lost, f"guard sites no plan reports: {lost}"
