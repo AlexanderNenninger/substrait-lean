@@ -372,3 +372,19 @@ def test_strings_order_by_code_point(engine, sql):
     expected = lean_rows(con, sql, rows)
     got = run_plan(con, written_plan(plan_of(con, sql)), engine)
     assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
+
+
+@pytest.mark.parametrize("dialect", ["spark", "snowflake"])
+@pytest.mark.parametrize("sql", ORDER_QUERIES)
+def test_dialects_without_an_order_fact_refuse_text_order(dialect, sql):
+    """Only a dialect with a fact on string and boolean order writes it
+    (`Dialect.orders_text`); Spark and Snowflake refuse until they have one."""
+    from sverify.sql import to_sql
+    from sverify.sql.snowflake import SNOWFLAKE
+    from sverify_spark.dialect import SPARK
+
+    con = connect()
+    con.create("r", R, [("a", "b", 1)])
+    plan = json.loads(plan_of(con, sql))
+    with pytest.raises(Unsupported, match="ordering comparisons of (str|bool) values"):
+        to_sql(plan, {"spark": SPARK, "snowflake": SNOWFLAKE}[dialect])

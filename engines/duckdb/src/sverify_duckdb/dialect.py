@@ -45,6 +45,7 @@ class DuckDBDialect(Dialect):
     # DuckDB computes decimals exactly (#27): `+`, `-` and `×` at the types the
     # reference gives them, casts rounding half away from zero.
     decimals: bool = True
+    orders_text: bool = True
 
     def type_name(self, kind: Kind) -> str:
         return "DOUBLE" if kind == "float" else super().type_name(kind)
