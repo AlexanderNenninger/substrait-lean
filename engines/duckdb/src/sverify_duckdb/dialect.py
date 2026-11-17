@@ -37,7 +37,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify.black_box import BlackBox
-from sverify.sql.core import I64_MAX, I64_MIN, Dialect, GuardIssue, Kind, Lst, raised_issue
+from sverify.sql.core import (
+    I64_MAX,
+    I64_MIN,
+    Dec,
+    Dialect,
+    GuardIssue,
+    Kind,
+    Lst,
+    raised_issue,
+)
 
 
 @dataclass(frozen=True)
@@ -118,6 +127,58 @@ class DuckDBDialect(Dialect):
 
     def row_ordinal(self) -> str:
         return "rowid"
+
+    @staticmethod
+    def _unscaled(x: str, s: int) -> str:
+        """The integer `x · 10ˢ` of a decimal of scale `s`, as a HUGEINT, without
+        the product (DuckDB's `DECIMAL(38) * 10ˢ` raises where `x` has more
+        than `38 - s` integer digits): the integer part, then the fraction."""
+        if not s:
+            return f"CAST({x} AS HUGEINT)"
+        whole = f"CAST(TRUNC({x}) AS HUGEINT) * {10**s}"
+        return f"({whole} + CAST(({x} - TRUNC({x})) * {10**s} AS HUGEINT))"
+
+    def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
+        """As the base writes it, with the quotient `⌊(2·|u|·10ᵏ + |n|) / 2|n|⌋`
+        split as `|u| = q·|n| + r`, so that no product passes 38 digits
+        where the result fits (#1497)."""
+        u = self._unscaled(a, sa)
+        n = f"CAST({b} AS HUGEINT)"
+        sign = f"CASE WHEN ({u} < 0) <> ({n} < 0) THEN -1 ELSE 1 END"
+        f = 10 ** (k.s - sa)
+        mag = (
+            f"((ABS({u}) // ABS({n})) * {f} + (2 * (ABS({u}) % ABS({n})) * {f} + ABS({n})) "
+            f"// (2 * ABS({n})))"
+        )
+        q = self.cast(f"({sign} * {mag})", Dec(38, 0))
+        scaled = f"{q} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
+        return self.case_when(f"{n} = 0", self.null(k), self.cast(scaled, k))
+
+    def decimal_compare(self, op: str, a: str, ka: Kind | None, b: str, kb: Kind | None) -> str:
+        """Decimals of different scales compared as integers: DuckDB casts both
+        sides to one `DECIMAL(38, s)` and raises on a value that does not fit
+        (duckdb-decimal-compare-scale, #1498). With `m = 10ᵏ` for the scale
+        gap, the low-scale side `L` and the high-scale side `H` as unscaled
+        integers: `L·m < H` is `L < ⌊H/m⌋ ∨ (L = ⌊H/m⌋ ∧ H mod m > 0)`,
+        `L·m = H` is `L = ⌊H/m⌋ ∧ H mod m = 0`, and `H < L·m` is `⌊H/m⌋ < L`."""
+
+        def scale(k: Kind | None) -> int | None:
+            return k.s if isinstance(k, Dec) else 0 if k == "int" else None
+
+        sa, sb = scale(ka), scale(kb)
+        if sa is None or sb is None or sa == sb:
+            return super().decimal_compare(op, a, ka, b, kb)
+        lo_is_a = sa < sb
+        (low, sl), (high, sh) = ((a, sa), (b, sb)) if lo_is_a else ((b, sb), (a, sa))
+        m = 10 ** (sh - sl)
+        ul, uh = self._unscaled(low, sl), self._unscaled(high, sh)
+        q = f"({uh} // {m} - CASE WHEN {uh} % {m} < 0 THEN 1 ELSE 0 END)"
+        r = f"({uh} - {q} * {m})"
+        if op == "eq":
+            return f"({ul} = {q} AND {r} = 0)"
+        if lo_is_a:  # L·m < H
+            return f"({ul} < {q} OR ({ul} = {q} AND {r} > 0))"
+        return f"({q} < {ul})"  # H < L·m
 
     def int_sum(self, v: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.

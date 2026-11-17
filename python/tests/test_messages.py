@@ -15,7 +15,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify import engine, routes
+from sverify import _checker, engine, routes
 from sverify.errors import CheckerVersionError, VerificationError
 
 
@@ -138,7 +138,9 @@ def test_conditions_keep_their_short_values() -> None:
 # -- 1.3, 1.4: the verdict first, the exception short ---------------------------
 
 
-def test_a_report_starts_with_its_verdict() -> None:
+def test_a_report_starts_with_its_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
+    # CI's checker builds without `check_generated`, for speed; a released one checks.
+    monkeypatch.setattr(_checker, "_generated_proofs", lambda path: True)
     proved = sv.verify(ITEMS.select(x=ITEMS.price), ensures=[_.x.isnull() | _.x.notnull()])
     assert str(proved).splitlines()[0] == "proved"
     report = sv.verify(margins(ITEMS), ensures=[_.revenue >= 0], counterexamples=0)

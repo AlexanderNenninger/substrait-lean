@@ -294,7 +294,11 @@ def _right(lf: _Lift, node: sge.Right, sub: Sub, scope: list[Column]) -> E:
     if n is None:
         return _null(dt.string)
     if n < 0:
-        return E(_fn("substring", [s_, literal(1 - n, dt.int64)], dt.string), dt.string)
+        # `1 - n` is past any string's end. It is capped at the largest offset
+        # DuckDB's substring takes (2**32 - 1); `n = -2**63` gives 2**63 + 1,
+        # which does not fit an i64.
+        start = min(1 - n, 2**32 - 1)
+        return E(_fn("substring", [s_, literal(start, dt.int64)], dt.string), dt.string)
     size = call("character_length", [s_])
     start = call("add", [call("subtract", [size, literal(n, dt.int64)]), literal(1, dt.int64)])
     return E(substring_left([s_, start]), dt.string)

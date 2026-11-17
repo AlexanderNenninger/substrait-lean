@@ -372,6 +372,13 @@ OBSERVATIONS: list[Observation] = [
     _o("dec-from-double", "decimals",
        "SELECT CAST(0.625::DOUBLE AS DECIMAL(3,2)), CAST(-0.125::DOUBLE AS DECIMAL(3,2)),"
        " CAST(2.675::DOUBLE AS DECIMAL(3,2)), CAST('2.675' AS DECIMAL(3,2))"),
+    # A comparison across scales (#1498): both sides go to one DECIMAL(38, s).
+    _o("dec-compare-scale-ok", "decimals",
+       "SELECT 1.5::DECIMAL(38,10) > 1::DECIMAL(38,0), 1::DECIMAL(38,0) = 1.0::DECIMAL(38,10)"),
+    _o("dec-compare-scale-raise", "decimals",
+       "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) > 1.5::DECIMAL(38,10)"),
+    _o("dec-compare-scale-raise-eq", "decimals",
+       "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) = 1.5::DECIMAL(38,10)"),
     _o("dec-divide", "decimals",
        "SELECT 1.00::DECIMAL(10,2) / 8::DECIMAL(10,0), 10::DECIMAL(10,0) / 3::DECIMAL(10,0),"
        " CAST(1.00::DECIMAL(10,2) / 8::DECIMAL(10,0) AS DECIMAL(10,2))"),

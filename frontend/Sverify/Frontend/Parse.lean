@@ -760,7 +760,16 @@ def parseConstLiteral (j : Json) : J Const := do
     if p ≤ 6 then return .ts (v * 10 ^ (6 - p))
     else if v % 10 ^ (p - 6) == 0 then return .ts (v / 10 ^ (p - 6))
     else throw "timestamps finer than microseconds are not supported"
-  | (_, n) => return .int (← getInt n)
+  | (k, n) =>
+    let i ← getInt n
+    -- An integer literal holds its tag's width (#1491); the model's integers
+    -- are unbounded, so the width is checked here, where the tag is known.
+    let bits : Nat :=
+      if k == "i8" then 8 else if k == "i16" then 16 else if k == "i32" then 32
+      else if k == "i64" then 64 else 0
+    if bits != 0 && !(decide (-((2 : Int) ^ (bits - 1)) ≤ i) && decide (i < 2 ^ (bits - 1))) then
+      throw s!"{k} literal {i} does not fit {k}"
+    return .int i
 
 /-- `arrow_cast(value, '<Arrow type>')`, as Ibis writes casts for DataFusion. -/
 def arrowCast (c : Const) (ty : String) : Option Const :=
@@ -1106,19 +1115,31 @@ private def optionNames : List String :=
   | some g, rows@(_ :: _) => rows.any (·.group == g) || (base == "modulus" && g == "fp.mod")
   | _, _ => true
 
-def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
+/-- The preferences of option `opt` of `base` that the model supports, in the plan's order (Substrait
+tries them in order, so the first is the one that applies). -/
+def supportedPrefs (base : String) (float : Bool) (opt : String) (prefs : List String) : List String :=
+  match optionAccepts base float opt with
+  | some (some ok) => prefs.filter ok.contains
+  | _ => prefs
+
+/-- The options of a call, refused if one is not supported, with each option's preferences cut to the
+supported ones: the first of what is left is the one `optionPref` reads, so the check and the parse
+agree on the preference (R1). -/
+def checkOptions (name : String) (float : Bool) (opts : List Json) : J (List Json) := do
   let base := baseName name
-  for o in opts do
+  opts.mapM fun o => do
     let opt ← (← field o "name").getStr?
     -- `concat`'s `null_handling` is checked where it is parsed.
-    if base == "concat" && opt == "null_handling" then continue
+    if base == "concat" && opt == "null_handling" then return o
     let prefs ← (← arrD o "preference").mapM (·.getStr?)
     match optionAccepts base float opt with
     | none => throw s!"{name}: option {opt} is not supported"
-    | some none => pure ()
+    | some none => return o
     | some (some ok) =>
-      unless prefs.isEmpty || prefs.any ok.contains do
+      let kept := supportedPrefs base float opt prefs
+      if !prefs.isEmpty && kept.isEmpty then
         throw s!"{name}: option {opt} = {prefs} is not supported (the model does {ok})"
+      return o.setObjVal! "preference" (Json.arr (kept.map Json.str).toArray)
 
 #guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
   ("preference", Json.arr #["ERROR", "SILENT"])]]).toBool
@@ -1140,6 +1161,7 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
   ("preference", Json.arr #["CASE_INSENSITIVE"])]]).toBool == false
 #guard (checkOptions "upper:str" false [Json.mkObj [("name", "char_set"),
   ("preference", Json.arr #["ASCII_ONLY"])]]).toBool == false
+
 
 /-! ## Dates and intervals
 
@@ -1228,7 +1250,7 @@ def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (
   return some (.bin .dateAdd x days)
 
 /-- The preference of option `name` that applies: the first one, or `dflt`
-when the plan omits it. `checkOptions` has checked them. -/
+when the plan omits it. `checkOptions` has checked them and kept the supported ones. -/
 def optionPref (name dflt : String) (opts : List Json) : String := Id.run do
   for o in opts do
     if (field? o "name") == some (.str name) then
@@ -1241,6 +1263,20 @@ def divByZeroMode : List Json → String := optionPref "on_division_by_zero" "ER
 
 /-- `division_type`; `TRUNCATE` when the plan omits it. -/
 def divisionTypeMode : List Json → String := optionPref "division_type" "TRUNCATE"
+
+/-- The preference the parse reads for option `opt` of a call, after `checkOptions`. -/
+private def chosen (name : String) (float : Bool) (opt dflt : String) (prefs : List String) : Option String :=
+  (checkOptions name float [Json.mkObj [("name", opt), ("preference", Json.arr (prefs.map Json.str).toArray)]]).toOption.map
+    (optionPref opt dflt)
+
+-- The first supported preference applies, not the first listed (R1): an integer `divide` with
+-- `["IEEE", "NULL"]` divides by zero to `NULL`; `["ERROR", "LEFT_OF_BEGINNING"]` of `substring`'s
+-- `negative_start` is `LEFT_OF_BEGINNING`; a double `modulus` with `["IEEE", "NULL"]` is `NULL`.
+#guard chosen "divide" false "on_division_by_zero" "ERROR" ["IEEE", "NULL"] == some "NULL"
+#guard chosen "substring" false "negative_start" "WRAP_FROM_END" ["ERROR", "LEFT_OF_BEGINNING"] ==
+  some "LEFT_OF_BEGINNING"
+#guard chosen "modulus" true "on_division_by_zero" "ERROR" ["IEEE", "NULL"] == some "NULL"
+#guard chosen "divide" false "on_division_by_zero" "ERROR" ["IEEE"] == none
 
 /-- `a / b` (`div`, which raises on a zero divisor) under `on_division_by_zero`
 = `mode`. Other than `ERROR`, the mode is a `CASE` on the divisor:
@@ -1764,7 +1800,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let onFloats :=
       (argJs.zip parsed).any (fun (j, e) => e.kind cols == .float || doubleJ fns j) ||
       typeKind ((field? f "outputType").getD .null) == .float
-    checkOptions name onFloats (← arrD f "options")
+    let fopts ← checkOptions name onFloats (← arrD f "options")
     -- Substrait's `greatest`/`least` are `NULL` if any argument is; DataFusion
     -- writes its `NULL`-skipping ones untyped (`mkCall`).
     if ["greatest", "least"].contains (baseName name) && !(sigTokens name).isEmpty then
@@ -1840,8 +1876,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Decimals (#27) are their unscaled integers: `decimalCall` brings the
     -- arguments to one scale.
     if parsed.any (·.kind cols matches .dec _ _) then
-      if ["SILENT", "SATURATE"].contains (optionPref "overflow" "ERROR" (← arrD f "options")) then
-        throw s!"{baseName name}: overflow {optionPref "overflow" "ERROR" (← arrD f "options")} is only modelled for integers"
+      if ["SILENT", "SATURATE"].contains (optionPref "overflow" "ERROR" fopts) then
+        throw s!"{baseName name}: overflow {optionPref "overflow" "ERROR" fopts} is only modelled for integers"
       if hasFloat then
         throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
       if let some e ← decimalCall cols (baseName name) outTy parsed then return e
@@ -1874,20 +1910,20 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if e.kind cols == .int && !keepInt k && !(e matches .lit _) && !doubleJ fns j then
           Expr.un .itof e
         else e
-      let mode := divByZeroMode (← arrD f "options")
+      let mode := divByZeroMode fopts
       match baseName name, args with
       -- `IEEE` reads both operands' raw signs (D39): one operation.
       | "divide", [a, b] =>
         return if mode == "IEEE" then .bin .fdivIeee a b else divByZero mode true (.bin .fdiv) a b
       | "modulus", [a, b] =>
-        let floor := divisionTypeMode (← arrD f "options") == "FLOOR"
+        let floor := divisionTypeMode fopts == "FLOOR"
         return divByZero mode true (if floor then Expr.floorFmodOf else .bin .fmod) a b
       | _, _ => mkFloatCall (baseName name) args
     else
-      let mode := divByZeroMode (← arrD f "options")
+      let mode := divByZeroMode fopts
       -- `division_type` = `FLOOR`: Polars's `//` and `%`, in the reference's
       -- operations (`engines/polars/Sverify/Polars/Profile.lean`).
-      let floor := divisionTypeMode (← arrD f "options") == "FLOOR"
+      let floor := divisionTypeMode fopts == "FLOOR"
       let call ← match baseName name, args with
         | "divide", [a, b] =>
           pure (divByZero mode false (if floor then Expr.floorDivOf else .bin .idiv) a b)
@@ -1897,14 +1933,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       -- A negative start wraps from the end unless the plan says otherwise (#209).
       let call := match call with
         | .bin (.substr n _) x a =>
-          let opts := (field? f "options").bind (·.getArr? |>.toOption) |>.getD #[]
-          .bin (.substr n (optionPref "negative_start" "WRAP_FROM_END" opts.toList != "LEFT_OF_BEGINNING")) x a
+          .bin (.substr n (optionPref "negative_start" "WRAP_FROM_END" fopts != "LEFT_OF_BEGINNING")) x a
         | c => c
       -- Arithmetic on integers narrower than 64 bits wraps at their width.
       let w := ((argJs.zip parsed).map fun (j, e) => argBits bits j e).foldl max 8
       -- `overflow` = `SILENT` or `SATURATE`: the exact result, brought to the
       -- width (#241).
-      let ov := optionPref "overflow" "ERROR" (← arrD f "options")
+      let ov := optionPref "overflow" "ERROR" fopts
       if ov == "SILENT" || ov == "SATURATE" then
         let exact? : Option Expr := if call.kind cols != .int then none else match call with
           | .bin .add a b => some (.bin .dadd a b)
@@ -2053,6 +2088,18 @@ def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) (rel
       else throw "a window's or a measure's sort direction cannot be clustered"
     | some d => throw s!"unsupported sort direction: {d.compress}"
 
+/-- `AVG` of a `DECIMAL(p, s)`: its quotient is a `DECIMAL(p + 4, s + 4)`
+(`decimalAvgs`), wrapped in `dkind`, which has no overflow check, so the parser
+checks that 38 digits hold it: `p ≤ 34` (a double output has no such limit) and
+`s ≤ 34` (#1497). -/
+def checkDecimalAvgWidth (p s : Nat) (dbl : Bool) : J Unit := do
+  if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
+  if !dbl && 34 < p then
+    throw "avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) result does not fit 38 digits"
+
+#guard (checkDecimalAvgWidth 34 4 false).toBool && (checkDecimalAvgWidth 38 4 true).toBool
+#guard (checkDecimalAvgWidth 35 0 false).toBool == false && (checkDecimalAvgWidth 20 35 true).toBool == false
+
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
 def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
@@ -2155,7 +2202,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let valueArgs := if ["string_agg", "quantile_cont", "quantile_disc", "arg_min", "arg_max"].contains name
     then args.take 1 else args
   let k : Kind := if valueArgs.any (doubleJ fns) then .float else arg.kind cols
-  checkOptions name (k == .float || name == "avg") (← arrD m "options")
+  let mopts ← checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` of a `DECIMAL(p, s)` (#27) is its `SUM` here, divided by a `COUNT`
   -- in `decimalAvgs`: a decimal, or a double if the plan says so (as DuckDB
   -- types it).
@@ -2163,8 +2210,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let decAvg : Option (Nat × Nat × Bool) := match name, k with
     | "avg", .dec p s => some (p, s, dblOut)
     | _, _ => none
-  if let some (_, s, _) := decAvg then
-    if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
+  if let some (p, s, dbl) := decAvg then checkDecimalAvgWidth p s dbl
   -- `AVG` of integers follows the plan's declared output type (#209): a
   -- double (the mean of their conversions), or an integer (`AggFn.iavg`).
   let intOut := name == "avg" && k == .int && (field? m "outputType").any (typeKind · == .int)
@@ -2213,7 +2259,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     -- Of doubles, or of integers converted to doubles, as `avg` (#54); the
     -- sample's unless the plan asks for the population's.
     | "variance", .float | "std_dev", .float | "variance", .int | "std_dev", .int =>
-      let sample := dist.getD (optionPref "distribution" "SAMPLE" (← arrD m "options")) != "POPULATION"
+      let sample := dist.getD (optionPref "distribution" "SAMPLE" mopts) != "POPULATION"
       pure (.var sample (name == "std_dev"), if k == .int then .un .itof arg else arg)
     -- Of two doubles (#54); `arg` is their `pair`.
     | "covar_samp", _ => pure (.cov true, arg)
@@ -2531,6 +2577,27 @@ def parseMask (mask : Json) : J (List Nat) := do
       throw "nested projection masks are not supported"
     natD item "field"
 
+/-- Does the value of a `VALUES` cell fit its column's type (#1491)? `NULL`
+fits every type. An integer type takes an integer inside its width, and a
+double, string or boolean type a value of that kind. The other types are not
+compared here. -/
+def literalFits (ty : Json) (v : Value) : Bool :=
+  match v with
+  | .null => true
+  | _ =>
+    match typeKind ty, v with
+    | .int, .int i =>
+      let bits := intBits ty
+      decide (-((2 : Int) ^ (bits - 1)) ≤ i) && decide (i < 2 ^ (bits - 1))
+    | .int, _ => false
+    | .float, .float _ => true
+    | .float, _ => false
+    | .str, .str _ => true
+    | .str, _ => false
+    | .bool, .bool _ => true
+    | .bool, _ => false
+    | _, _ => true
+
 def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   let arity ← schemaArity r
   -- The model's times are microseconds (`typeKind`).
@@ -2547,12 +2614,25 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
       pure (Rel.read name)
     | (_, v) =>
       -- Current encoding: `expressions`; deprecated encoding: `values` of literals.
+      -- A field is a literal: evaluated here with the total evaluator, an
+      -- expression would lose the overflow or division by zero it raises, so a
+      -- computed field is refused, as the SQL lift refuses it (#1491).
       let rows ← match field? v "expressions" with
         | some _ => (← arrD v "expressions").mapM fun row => do
-            (← arrD row "fields").mapM fun e => do pure ((← parseExpr fns [] [] e).eval [])
+            (← arrD row "fields").mapM fun e => do
+              if (field? e "literal").isNone then
+                throw "VALUES of computed values is not supported (a virtual table field is not a literal)"
+              pure ((← parseExpr fns [] [] e).eval [])
         | none => (← arrD v "values").mapM fun row => do
             (← arrD row "fields").mapM fun e => do
               return (← constExpr (← parseConstLiteral e)).eval []
+      -- Each cell holds its column's type, or `--write` would emit a plan no
+      -- consumer accepts.
+      let types := (← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types")
+      for row in rows do
+        for ((cell, ty), i) in (row.zip types).zipIdx do
+          if !literalFits ty cell then
+            throw s!"VALUES column {i} cannot hold {repr cell}: its type is {ty.compress}"
       -- Virtual tables with the same rows share an entry (`Rel.values` has no
       -- schema): where their kinds differ, the column's kind is unknown.
       let key := valuesKey arity rows

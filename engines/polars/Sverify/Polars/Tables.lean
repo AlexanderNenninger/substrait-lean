@@ -64,7 +64,7 @@ def Profile.polars.table : ProfileTable where
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     -- Streaming falls back to the in-memory engine; the translation asks for
     -- `linear` (polars-quantile).
-    (none, "quantile_interp", .oneOf ["LINEAR"]),
+    (none, "quantile_interp", .oneOf ["LINEAR_DIFF"]),
     (none, "avg_int_result", .oneOf ["FP64"]),
     (none, "empty_group_aggregates", .oneOf ["ZERO"]),
     (none, "null_order", .asked ["NULLS_FIRST", "NULLS_LAST"] ["NULLS_FIRST"]),
@@ -95,7 +95,7 @@ def Profile.polars.obs : ObsTable := [
   (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
   (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
   (none, "rounding", (ObsRow.native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]).tracking 271),
-  (none, "nan_creation", (ObsRow.native ["polars-double-arith"]).proved "Rel.polars_sound"),
+  (none, "nan_creation", (ObsRow.native ["polars-double-arith", "polars-nonfinite-aggregates"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
     with shim := some "one_zero" }).proved "Shim.one_zero"),
@@ -134,7 +134,14 @@ def Profile.polars.obs : ObsTable := [
     shim := some "nan_through",
     rerun := some { floats := .within "plan" },
     note := "Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan); the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves), within the fuzzed bound of the row for every statistic (polars-var-bound)." }).tracking 918),
-  (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with engine := some "in-memory" }).tracking 900),
+  -- `lo + (hi - lo) · w`: with an infinite neighbour `hi - lo` is infinite and the
+  -- result a NaN where `lo` is `-∞` and `+∞` where `hi - lo` overflows
+  -- (polars-quantile), values the reference does not allow at `BETWEEN`;
+  -- DuckDB's `lo · (1 - w) + hi · w` has neither.
+  (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with
+    engine := some "in-memory"
+    cls := .refused
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. `LINEAR_DIFF` overclaims at a whole exact position that the double position misses, where the engine's neighbours are those of the double position (polars-quantile); tracked in #900." }).tracking 900),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
   (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
@@ -172,11 +179,12 @@ def Profile.polars.obs : ObsTable := [
   -- reference truncates, and no shim gives the truncating `fmod` exactly
   -- (polars-double-modulus, #1270): the reference route refuses it. A plan
   -- that states `division_type: FLOOR`, or is produced for
-  -- `semantics="polars"`, runs natively (`Profile.polars_fmod`), the divisions
-  -- by a scalar taking `/`'s class (polars-scalar-divisor).
+  -- `semantics="polars"`, runs Polars's own `%` on the translated route
+  -- (`Profile.polars_fmod`), the divisions by a scalar taking `/`'s class
+  -- (polars-scalar-divisor).
   (some "fp.mod", "division_type", ({ ObsRow.native ["polars-double-modulus", "polars-scalar-divisor"] with
     cls := .refused
-    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs natively, as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`)." }).tracking 271),
+    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),

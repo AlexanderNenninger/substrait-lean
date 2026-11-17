@@ -32,6 +32,8 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from sverify._keys import canonical_keys
+
 SCALE = 2**1074
 """Every finite double is a multiple of `2⁻¹⁰⁷⁴` (`FloatCode.exact`)."""
 
@@ -182,7 +184,8 @@ def _fold(
         tab = tab.filter(fast)
         if not tab.num_rows:
             continue
-        agg = tab.group_by([*names, "__shift"]).aggregate([(c, "sum") for c in cols])
+        keyed = canonical_keys(tab, names)
+        agg = keyed.group_by([*names, "__shift"]).aggregate([(c, "sum") for c in cols])
         sums = [agg.column(f"{c}_sum").to_pylist() for c in cols]
         for i, (k, sh) in enumerate(
             zip(agg.select(names).to_pylist(), agg.column("__shift").to_pylist(), strict=True)
