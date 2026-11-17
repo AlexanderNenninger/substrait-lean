@@ -375,7 +375,7 @@ class SnowflakeDialect(Dialect):
             top = self.int_lit(INT32_MAX)
             if self.guards:
                 fail = self.raise_(
-                    "substring offset outside of supported range", s, "int", "overflow"
+                    "substring offset outside of supported range", s, "int", "domain"
                 )
                 top = f"IFF({start} >= {SUBSTR_MAX}, {fail}, {top})"
             first = f"LEAST({start}, {top})"

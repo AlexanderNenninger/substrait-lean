@@ -184,18 +184,6 @@ KNOWN: dict[str, dict[tuple[str, str, str], tuple[str, str]]] = {
         ),
     },
     "join": {
-        (
-            "sverify/sql/core/strings.py",
-            "overflow",
-            "substring offset outside of supported range",
-        ): (
-            "dead",
-            "the offset is the length of the literal separator plus 1",
-        ),
-        ("sverify/sql/snowflake.py", "overflow", "substring offset outside of supported range"): (
-            "dead",
-            "Snowflake's writing of the same literal offset",
-        ),
         ("sverify/sql/snowflake.py", "wraps", "integer overflow"): (
             "dead",
             "the sum of the literal separator's length and 1 in Snowflake's NUMBER arithmetic",

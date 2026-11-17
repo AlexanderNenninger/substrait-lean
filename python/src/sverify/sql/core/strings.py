@@ -182,7 +182,7 @@ def expr(
                     # offset out of range, but sees the shifted one here.
                     low = f"({sb} < {d.int_lit(-SUBSTR_MAX)})"
                     fail = d.raise_(
-                        "substring offset outside of supported range", sa, "int", "overflow"
+                        "substring offset outside of supported range", sa, "int", "domain"
                     )
                     wrapped = d.case_when(low, fail, wrapped)
                 sb = wrapped
