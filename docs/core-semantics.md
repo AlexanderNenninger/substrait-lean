@@ -1196,4 +1196,5 @@ to it, so links to an entry here still land.
 - <a id="d40-power1--is-cs-pow"></a>[D40. `power(±1, ±∞)` is C's `pow`](decisions.md#d40-power1--is-cs-pow)
 - <a id="d41-modulus-of-doubles-accepts-division_type-floor"></a>[D41. `modulus` of doubles accepts `division_type: FLOOR`](decisions.md#d41-modulus-of-doubles-accepts-division_type-floor)
 - <a id="d42-the-references-value-of-the-options-no-earlier-decision-states"></a>[D42. The reference's value of the options no earlier decision states](decisions.md#d42-the-references-value-of-the-options-no-earlier-decision-states)
+- <a id="d44-replace-with-an-empty-pattern-is-the-string-unchanged"></a>[D44. `replace` with an empty pattern is the string unchanged](decisions.md#d44-replace-with-an-empty-pattern-is-the-string-unchanged)
 - <a id="d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do"></a>[D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do](decisions.md#d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do)

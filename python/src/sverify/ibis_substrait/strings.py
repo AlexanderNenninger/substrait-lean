@@ -12,7 +12,6 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
-from sverify._unsupported import EMPTY_REPLACE_PATTERN
 from sverify.ibis_substrait._base import Exprs, register, register_refusals, table_rules
 from sverify.plan_json import (
     Json,
@@ -105,8 +104,6 @@ def _str_right(x: Exprs, op: Any) -> Json:
 def _replace(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
         raise Unsupported("replace needs a constant pattern and replacement")
-    if op.pattern.value == "":
-        raise Unsupported(f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern")
     return call("replace", [x(op.arg), x(op.pattern), x(op.replacement)])
 
 

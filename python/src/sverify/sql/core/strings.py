@@ -11,7 +11,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from sverify import _functions, _plan_read
-from sverify._unsupported import EMPTY_REPLACE_PATTERN
 from sverify.sql.core._base import (
     Bin,
     Expr,
@@ -154,9 +153,11 @@ def expr(
                 return self.ascii_only(x, v, f"regular expression {pattern!r}")
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
-            if not pattern:
-                raise WriterUnsupported(f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern")
             x = self.operand(a, "str", ref, cols, "replace")
+            if not pattern:
+                # An empty pattern matches nowhere (D44); no engine's `replace`
+                # is read for it (Spark's and Snowflake's are not probed).
+                return x
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):
             sa = self.operand(a, "str", ref, cols, "repeat")
