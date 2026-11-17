@@ -331,7 +331,7 @@ def plainInClass (c : Char) : Bool := !"[]\\-&~^".contains c
 /-- A repetition count: up to 4 digits, at most 1000. -/
 def count (cs : List Char) : Option (Nat × List Char) :=
   let ds := cs.takeWhile Char.isDigit
-  let n := (String.ofList ds).toNat!
+  let n := (String.ofList ds).toNat?.getD 0
   if ds.isEmpty || 4 < ds.length || 1000 < n then none else some (n, cs.drop ds.length)
 
 /-- Skip a quantifier, if there is one. -/
