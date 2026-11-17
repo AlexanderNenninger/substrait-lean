@@ -26,14 +26,16 @@
   "settings": {},
   "description": [
     "`QUANTILE_CONT(x, q)` of `n` values computes `RN = (n − 1)·q` in doubles, takes the values `lo` and `hi` at positions `⌊RN⌋` and `⌈RN⌉` in order, and gives `lo` where they are one position, else, for a DOUBLE, `lo·(1 − d) + hi·d` with `d = RN − ⌊RN⌋`. Integers are cast to DOUBLE first and the result is a DOUBLE; DATE gives a TIMESTAMP. FLOAT and DECIMAL take DuckDB's generic interpolation, `lo + (hi − lo)·d` in doubles, cast back to the argument's type with a `static_cast`: FLOAT stays FLOAT, with another formula than DOUBLE's (and `hi − lo` can overflow), and a DECIMAL result truncates toward zero, where DuckDB's DECIMAL casts round half away from zero: `median` of 1.5 and 1.6 as DECIMAL(2,1) is 1.5, `quantile_cont` of -0.05 and 0.00 as DECIMAL(4,2) at 0.5 is -0.02, and DuckDB's own test gives 24.7 for 24.75. (Corrected 2026-11-04: this said each type is interpolated in its own type by DOUBLE's formula.) `MEDIAN` of a number is `QUANTILE_CONT(x, 0.5)`.",
-    "The interpolation rounds: of neighbours that are equal it can give a double an ulp away from them, so the result can lie just outside [lo, hi]. Between -inf and +inf it is NaN (`-inf·(1 − d) + inf·d`); next to a NaN it is NaN. Large neighbours do not overflow (`-1.5e308` and `1.5e308` give `0.0`), since each is scaled before the sum. Since `RN` is a double, a fraction such as `0.1` may land just off a whole position; the result then differs from the exact one by rounding only.",
+    "The interpolation rounds: of neighbours that are equal it can give a double an ulp away from them, so the result can lie just outside [lo, hi]. Between -inf and +inf it is NaN (`-inf·(1 − d) + inf·d`); next to a NaN it is NaN. Large neighbours do not overflow (`-1.5e308` and `1.5e308` give `0.0`), since each is scaled before the sum. Since `RN` is a double, a fraction `q` whose exact position `(n − 1)·q` is whole can give a double position just off it (`n = 26`, `q = 0.28`: 7.000000000000001). DuckDB then interpolates toward the next neighbour with a weight near 1e-15, so with the neighbours 1.0 and 1e300 it gives 8.9e284 where the exact position holds 1.0: of the `n < 2000`, `q = 0.01` to `0.99` with a whole exact position (8301), the double lands above it in 290 and below it in 98. `quantile_disc` gives the value at the position in each.",
     "The docs are silent on the formula per type and on the DECIMAL truncation: a docs gap. No upstream test pins the overshoot between equal neighbours, ±inf neighbours or large neighbours; it may change between versions.",
-    "Probed: the DOUBLE interpolation is computed in doubles as `fma(lo, 1 − d, hi·d)`, the source's formula with its last multiply-add fused by the compiler, in the macOS arm64 and Linux x86_64 wheels alike: of 0.4 and 1.697 at 0.3 it is 0.7891, where the unfused formula gives 0.7890999999999999. It is not the exact interpolation rounded once: of 188 random pairs, 30 differ from it by an ulp. `quantile_interp`'s `LINEAR` is therefore linear between the neighbours in doubles, within a few ulps; sverify's choice leaves the rounding open (`BETWEEN` in the reference).",
-    "`lo·(1 − w) + hi·w` has a NaN only where both neighbours are infinite and opposite, which is `nan_creation`'s (D37); DuckDB's behaviour stays `LINEAR` (duckdb-nonfinite-aggregates)."
+    "Probed: the DOUBLE interpolation is computed in doubles as `fma(lo, 1 − d, hi·d)`, the source's formula with its last multiply-add fused by the compiler, in the macOS arm64 and Linux x86_64 wheels alike: of 0.4 and 1.697 at 0.3 it is 0.7891, where the unfused formula gives 0.7890999999999999. It is not the exact interpolation rounded once: of 188 random pairs, 30 differ from it by an ulp. `quantile_interp`'s `LINEAR` is therefore linear between the neighbours in doubles, within a few ulps of the interval where the position is exact (see above for where it is not); sverify's choice leaves the rounding open (`BETWEEN` in the reference).",
+    "`lo·(1 − w) + hi·w` has a NaN only where both neighbours are infinite and opposite, which is `nan_creation`'s (D37); DuckDB's behaviour stays `LINEAR` (duckdb-nonfinite-aggregates).",
+    "Where the lower neighbour is the group's first value (`RN < 1`), the weight `1 − d` rounds and the result can leave the neighbours by an ulp: of 30000 groups `[c, c + k ulps, 4c]` (`k` = 0, 1; `q` from 0.05 to 0.49), the raw result is below `lo` in 178 and above `hi` in 171. The written plan's clamp to `[MIN(x), MAX(x)]` does not act when `hi` is below the maximum: the clamped result is outside `[lo, hi]` in 171. A group of two equal values `[c, c]`, whose neighbours are the minimum and the maximum, is the part the clamp repairs (0.43021727930404396 at 0.3 gives 0.4302172793040439 raw: 506 of 120000 in a wider sweep). With the lower neighbour at position 1 or later `1 − d` is exact, and no escape was found in sampled groups; this is sampling, not a proof. The fix is in #900: `quantile_disc` at a whole exact position, `LEAST(clamp, min(x, 2)[2])` where the lower neighbour is first.",
+    "The written plan guards both escapes in exact integer arithmetic on `COUNT(x)` and the decimal `q` (`num/den` reduced; a dyadic `q` needs no guard, its double position is exact): where `(COUNT(x) − 1)·num` is a multiple of `den`, it takes `quantile_disc(x, q)`, whose index is `⌈n·q⌉ − 1` — read from `QuantileInterpolator<true>::Index` at tag v2.0.0 (`quantile_sort_tree.hpp`): for a decimal `q` it is `max(1, n − ⌊(n·scaling − n·integral)/scaling⌋) − 1` in HUGEINT, which is `⌈n·q⌉ − 1` exactly, and equals the whole position `(n − 1)·q` since `⌈q⌉ = 1`; where `(COUNT(x) − 1)·num < den` (the lower neighbour is the first value) it takes `LEAST(clamp, min(x, 2)[2])`; otherwise the clamp. A floor mismatch at a non-whole position is impossible while `(n − 1)·2⁻⁵² < 10^(-scale)`, the gap between `q` and the nearest position that is whole; for scale 2 that is `n` below 4.5e13. The writer raises past the bound (`quantile position beyond 2^52 / 10^scale`, where `(COUNT(x) − 1)·10^scale ≥ 2^52`, in exact integer arithmetic): at scale 2 from n = 4.5e13, and for Ibis's `quantile(1/3)`, which prints scale 16, from n = 2; a dyadic `q` is exempt (#900)."
   ],
   "reference": [
     "`AggFn.quantile true num scale` (`contValue`, #53): for the exact `q = num / 10^scale`, the doubles at positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉` in order; the one value where they coincide, else DuckDB's `lo·(1 − d) + hi·d` kept between `lo` and `hi` (`interpolate`). The reference allows any double between the two neighbours (`contAllowed`, `AggFn.Allowed`), so contracts know the result lies within the argument's range. Integers are converted to doubles first; DECIMAL, DATE and TIMESTAMP arguments are refused.",
-    "DuckDB differs from the reference only where its rounding leaves [lo, hi], and between -inf and +inf: there DuckDB gives NaN and the reference raises (a NaN created from numbers, `AggFn.makesNan`, D21; before, the reference kept +inf, #561). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]` and raises where the interpolation is NaN and no value is."
+    "DuckDB differs from the reference where its rounding leaves [lo, hi], at a whole exact position that the double `RN` misses, and between -inf and +inf: there DuckDB gives NaN and the reference raises (a NaN created from numbers, `AggFn.makesNan`, D21; before, the reference kept +inf, #561). The DuckDB writer clamps its `QUANTILE_CONT` to `[MIN(x), MAX(x)]`, which does not act at a missed whole position or where the upper neighbour is below the maximum (#900), and raises where the interpolation is NaN and no value is."
   ],
   "status": "shimmed",
   "evidence": "probe",
@@ -175,6 +177,56 @@
       "evidence": [
         {
           "note": "DuckDB 2.0.0 (duckdb Python 2.0.0): `quantile_cont(x, p)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] it is -inf at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: -inf, 1, +inf at 0.25, 0.5, 0.75; of [1, +inf]: +inf. The interpolation `lo·(1 − w) + hi·w` makes a NaN only where both neighbours are infinite and opposite."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (probes from the orchestrator's backlog), scripts ov.py, dq.py, dq2.py, dq3.py, dq4.py, spo.py",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0: `quantile_cont(x, p)` against `[lo, hi]` of its neighbours, and against `greatest(least(quantile_cont(x, p), max(x)), min(x))`: two equal values, p in {0.1, 0.3, 0.5, 0.7, 0.9, 0.37}: raw outside in 82 of 3000, clamped 0; interior neighbours (n = 4, 5, 7, 11; k = 0, 1, 2, 5 ulps): 0 outside of 6000, raw and clamped. The `n = 3` runs with a neighbour at an extreme were a weaker sample than the first-position probe below, which found escapes."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1476 review: rulings 4.3 and 5.5), the probe scripts of the review rerun against DuckDB 2.0.0 and Polars 2.1.0",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0, `SET threads=1`: (A) `n` in 2..1999, `q` = 0.01..0.99: 8301 whole exact positions, the double `(n − 1)·q` above it in 290 and below it in 98; n = 26, q = 0.28, group 1.0 up to the position then 1e300: model 1.0, raw and clamped 8.881784197001253e+284, `quantile_disc` 1.0; n = 51, q = 0.58, same shape: raw −3.552713678800501e+285; x = i: raw 7.000000000000001 (n = 26, q = 0.28) and 28.999999999999996 (n = 51, q = 0.58). (B) 30000 groups `[c, c + k ulps, 4c]` (k = 0, 1; 1500 groups per q for q in 0.05, 0.1, 0.15, 0.2, 0.3, 0.33, 0.37, 0.4, 0.45, 0.49; c uniform in 0.1 to 10 times 1e-300, 1e-5, 1, 1e7 or 1e300; seed 20261116): raw below `lo` 178, above `hi` 171, clamped outside `[lo, hi]` 171. The guarded form (`quantile_disc` at a whole exact position, else the clamp, `LEAST(clamp, min(x, 2)[2])` where the lower neighbour is first): 0 of 8301 differ from the value at the position, 0 of 30000 outside `[lo, hi]`."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (probe dq.py)",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0: `quantile_cont(x, p)` of two values `[lo, hi]` with `hi` 0 to 10 ulps above `lo` (20000 random `lo` of magnitudes 1e-300 to 1e300, `p` in {0.1, 0.3, 0.5, 0.7, 0.9, 0.37}, 120000 queries): the raw result is outside `[lo, hi]` in 506; with `lo = hi` and p = 0.3: 0.43021727930404396 gives 0.4302172793040439. A group of two equal values is the case the clamp repairs."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "source-reading",
+      "checked_by": "session optimistic-hopper-2d1785 (#900 fix)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp#L227-L249"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#900 fix), python/tests/test_duckdb_quantile_900.py",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0, the written SQL of `DuckDBDialect.quantile` against the model's neighbours: the 388 (n, q) of n < 2000, q = 0.01..0.99 whose exact position is whole and whose double is not: the written value is the model's (1.0 on the 1.0-then-1e300 step, the position's value on a ramp) in all 388; groups `[c, c + k ulps, 4c]` (k = 0, 1; q from 0.05 to 0.49, 6000 groups): inside [lo, hi] in all; Hypothesis groups of 2 to 40 values at q = 0.01..0.99: inside the neighbours."
         }
       ]
     }
