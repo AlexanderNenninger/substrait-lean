@@ -902,6 +902,73 @@ where
 
 end Request
 
+namespace Request
+
+variable (R : Request)
+
+/-- The output keys the request asks for (`ensures_keys`). -/
+def wantedKeys : List (List Nat) :=
+  natLists ((R.input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
+
+/-- The bounds on rows per key value (`rows_per`). -/
+def perKeyOf : String → List (List Nat × Nat) :=
+  rowsPer ((R.input.getObjVal? "rows_per").toOption.getD (.obj {}))
+
+/-- Does the request ask for the reference (`profile`)? Under another profile
+an overflow to `±∞` is the engine's value and no issue (#575). -/
+def underReference : Bool :=
+  ((R.input.getObjValAs? String "profile").toOption.getD "reference") == "reference"
+
+/-- Each requested output key, and whether it contains a key the analysis
+derives under `K` (`check_keys_sound`). -/
+def keysIn (K : KnowledgeEnv) : List (List Nat × Bool) := match R.transform with
+  | some p =>
+    let derived := p.root.keys R.cat K.cols K.facts K.keys
+    R.wantedKeys.map fun k => (k, derived.any fun k' => k'.all (k.contains ·))
+  | none => R.wantedKeys.map (·, false)
+
+/-- The issues the report lists under `K`: those of the plan with its reads
+and joins capped and its sums bounded per key (`Rel.issuesCapped`), and its
+constant errors, an overflow to `±∞` only under the reference
+(`check_issues_sound`). -/
+def issuesIn (K : KnowledgeEnv) : List (Issue × Expr) := match R.transform with
+  | some p =>
+    if p.root.checkWF R.cat then
+      ((p.root.issuesCapped R.cat K.cols K.facts (K.windows R.cat) K.keys R.caps R.perKeyOf) ++
+        p.root.constIssues).eraseDups.filter fun (i, _) => R.underReference || i != .infinite
+    else []
+  | none => []
+
+/-- Does the transformation run as written with unchecked functions under `K`:
+well-formed, its loose inputs its own, only assumed issues and no constant
+error (`check_guard_free_sound`)? -/
+def guardFreeIn (K : KnowledgeEnv) : Bool := match R.transform with
+  | some p =>
+    p.root.checkWF R.cat && p.root.looseSub &&
+      (p.root.mayIssues R.cat K.cols K.facts (K.windows R.cat) false).all (·.1.assumed) &&
+      p.root.constIssues.isEmpty
+  | none => false
+
+/-- The input foreign keys (`references`). -/
+def foreignKeysOf : ForeignKeys :=
+  foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
+
+/-- The transformation rewritten under `K` with the inputs' facts, keys and
+foreign keys (`Rel.optimize`, `check_optimized_sound`), and the rewrites'
+names. -/
+def optimizedIn (K : KnowledgeEnv) : Option (Rel × List String) :=
+  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf
+
+/-- The report's `optimized` and `rewrites`: `optimizedIn`'s plan in the
+writer's JSON (trusted, round-tripped where the CLI writes plans), and its
+rewrites. -/
+def optimizedJson (K : KnowledgeEnv) : Json × List String :=
+  match R.transform, R.optimizedIn K with
+  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log)
+  | _, _ => (.null, [])
+
+end Request
+
 /-- Is the transformation well-formed and without choices but the order of
 its rows (`Rel.detPlan`) under the description `K` of the inputs: the report's
 `deterministic` (`check_deterministic_sound`). -/
@@ -934,7 +1001,8 @@ theorem Request.deterministicIn_eq (R : Request) (K : KnowledgeEnv) :
 
 /-- The analyses of a parsed request, given each postcondition's abstract
 values (`ensureEnv`), but for the postconditions' verdicts (`Request.check`). -/
-def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEnv := R.kenv) :
+def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEnv)
+    (keys : List (List Nat × Bool)) (issues : List (Issue × Expr)) (guardFree : Bool) :
     Except String Report := do
   let input := R.input
   let ensures := R.ensures
@@ -948,7 +1016,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
   let implied : List (String × List (List (Nat × Bound))) :=
     ((transform.map (·.root)).filter (·.checkWF cat)).elim [] (impliedOf cat A F)
   let caps := R.caps
-  let perKey := rowsPer ((input.getObjVal? "rows_per").toOption.getD (.obj {}))
+  let perKey := R.perKeyOf
   let mut suggestions : List Infer.Bounds := []
   let mut tiesOnly : List Bool := []
   let mut depends : List (Option (List String)) := []
@@ -1002,30 +1070,8 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
   -- Windows that order their partitions totally: otherwise a rerun may give
   -- other rows (D10).
   let windowsDet := transform.all (·.root.windowsTotal cat A F inputKeys)
-  let wanted := natLists ((input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
-  let keys ← match transform with
-    | some p =>
-      if !p.root.checkWF cat then throw "the transformation plan is not well-formed"
-      let derived := p.root.keys cat A F inputKeys
-      -- A derived key holds on every order (`Rel.keys_sound_all`, D24).
-      pure (wanted.map fun k => (k, derived.any fun k' => k'.all (k.contains ·)))
-    | none => pure (wanted.map (·, false))
-  let raw := match transform with
-    | some p => if p.root.checkWF cat then p.root.mayIssues cat A F T false else []
-    | none => []
   let constant := match transform with
     | some p => if p.root.checkWF cat then p.root.constIssues else []
-    | none => []
-  -- An overflow to `±∞` is the reference's error (#575): under another
-  -- profile the request names, the engine gives `±∞`, and no precondition
-  -- rules it out.
-  let reference := ((input.getObjValAs? String "profile").toOption.getD "reference") == "reference"
-  let issues := match transform with
-    | some p =>
-      if p.root.checkWF cat then
-        ((p.root.issuesCapped cat A F T inputKeys caps perKey) ++ constant).eraseDups.filter
-          fun (i, _) => reference || i != .infinite
-      else []
     | none => []
   let rows := match transform with
     | some p => if p.root.checkWF cat then (p.root.capped cat A F inputKeys caps).maxRows else none
@@ -1040,28 +1086,15 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         (Infer.Rel.bounds cat A F T false p.root).map fun (i, e, b) =>
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
-  let guardFree := match transform with
-    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1.assumed) && constant.isEmpty
-    | none => false
   let unchecked := match transform with
     | some p =>
       if p.root.checkWF cat && p.root.looseSub then
         p.root.marksJson (p.root.marks cat A F T false)
       else .null
     | none => .null
-  let (optimized, rewrites) := match transform with
-    | some p =>
-      if !p.root.checkWF cat then (.null, [])
-      else
-        let R := foreignKeys ((input.getObjVal? "references").toOption.getD (.obj {}))
-        let (q, log) := p.root.optimize cat A F inputKeys R
-        (Write.writePlan (Write.planSchemas p) cat q p.names, log)
-    | none => (.null, [])
   let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre
   return {
     implied
-    optimized
-    rewrites
     ensures := []
     suggestions
     tiesOnly
@@ -1093,17 +1126,26 @@ def Request.check (R : Request) : Except String Report :=
   -- `contract_sound` needs the postcondition plans to be well-formed (`check_wf`).
   if !R.ensures.all fun q => (q.root.capReads R.caps).checkWF R.cat then
     throw "a postcondition plan is not well-formed"
+  else if !R.transform.all fun T => T.root.checkWF R.cat then
+    throw "the transformation plan is not well-formed"
   else
     -- `R.kenv`, with every table's knowledge evaluated once (`knowsTable`):
     -- `R.kenv` itself would evaluate it again at each read.
     let K := memoKnowledge R.knowsTable R.know
     let envs := R.postEnvs K
-    match R.analyses envs K with
+    -- The fields the checker's theorems speak of, each computed once
+    -- (`check_keys_sound`, `check_issues_sound`, `check_guard_free_sound`).
+    let keys := R.keysIn K
+    let issues := R.issuesIn K
+    let guardFree := R.guardFreeIn K
+    match R.analyses envs K keys issues guardFree with
     | .error e => .error e
     | .ok rep =>
       let ensures := (R.ensures.zip envs).map fun (q, env) => Request.ensureResults.resultsOf q env
       let tiePlaces := R.tiePlacesIn K
-      .ok { rep with ensures, tiePlaces, deterministic := R.transform.isSome && tiePlaces.isEmpty }
+      let deterministic := R.transform.isSome && tiePlaces.isEmpty
+      let (optimized, rewrites) := R.optimizedJson K
+      .ok { rep with ensures, tiePlaces, deterministic, keys, issues, guardFree, optimized, rewrites }
 
 /-- Check a `--contract` request. -/
 def check (input : Json) : Except String Report := do
@@ -1129,21 +1171,35 @@ theorem Request.zip_results (R : Request) : ∀ qs : List Plan,
     simp only [List.map_cons, List.zip_cons_cons, R.zip_results qs]
     rfl
 
+/-- What a report `Request.check` gives is made of: the plans are
+well-formed, and each field a theorem speaks of is its function's. -/
+structure Request.CheckOk (R : Request) (rep : Report) : Prop where
+  wf : (R.ensures.all fun q => (q.root.capReads R.caps).checkWF R.cat) = true
+  transformWF : (R.transform.all fun T => T.root.checkWF R.cat) = true
+  ensures : rep.ensures = R.ensures.map R.ensureResults
+  deterministic : rep.deterministic = R.deterministicIn R.kenv
+  tiePlaces : rep.tiePlaces = R.tiePlacesIn R.kenv
+  keys : rep.keys = R.keysIn R.kenv
+  issues : rep.issues = R.issuesIn R.kenv
+  guardFree : rep.guardFree = R.guardFreeIn R.kenv
+  optimized : (rep.optimized, rep.rewrites) = R.optimizedJson R.kenv
+
 theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
-    (R.ensures.all fun q => (q.root.capReads R.caps).checkWF R.cat) = true ∧
-      rep.ensures = R.ensures.map R.ensureResults ∧
-      rep.deterministic = R.deterministicIn R.kenv ∧ rep.tiePlaces = R.tiePlacesIn R.kenv := by
+    R.CheckOk rep := by
   unfold Request.check at hc
   split at hc
   · cases hc
   · rename_i hwf
-    refine ⟨by simpa using hwf, ?_⟩
-    simp only at hc
     split at hc
     · cases hc
-    · cases hc
-      rw [Request.postEnvs_eq]
-      exact ⟨R.zip_results R.ensures, (R.deterministicIn_eq _).symm, rfl⟩
+    · rename_i htw
+      simp only at hc
+      split at hc
+      · cases hc
+      · cases hc
+        rw [Request.postEnvs_eq]
+        exact ⟨by simpa using hwf, by simpa using htw, R.zip_results R.ensures,
+          (R.deterministicIn_eq _).symm, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem check_parse {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) : R.check = .ok rep := by
@@ -1154,25 +1210,35 @@ postconditions, one list per postcondition plan. -/
 theorem check_ensures {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
     rep.ensures = R.ensures.map R.ensureResults :=
-  (Request.check_ok (check_parse hR hc)).2.1
+  (Request.check_ok (check_parse hR hc)).ensures
 
 /-- The report's `deterministic` is `Request.deterministicIn`'s. -/
 theorem check_deterministic {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
     rep.deterministic = R.deterministicIn R.kenv :=
-  (Request.check_ok (check_parse hR hc)).2.2.1
+  (Request.check_ok (check_parse hR hc)).deterministic
 
 /-- The report's `tie_places` are `Request.tiePlacesIn`'s. -/
 theorem check_tiePlaces {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
     rep.tiePlaces = R.tiePlacesIn R.kenv :=
-  (Request.check_ok (check_parse hR hc)).2.2.2
+  (Request.check_ok (check_parse hR hc)).tiePlaces
+
+/-- **The report's flag and its places agree**: a report of a transformation
+is `deterministic` exactly when it names no place that leaves the result
+open (`tiesIn_eq_nil`, `Request.deterministicIn_eq`). -/
+theorem check_deterministic_iff {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.deterministic = true ↔ R.transform.isSome = true ∧ rep.tiePlaces = [] := by
+  have h := Request.check_ok (check_parse hR hc)
+  rw [h.deterministic, h.tiePlaces, Request.deterministicIn_eq]
+  simp [List.isEmpty_iff]
 
 /-- The postcondition plans `check` analysed are well-formed. -/
 theorem check_wf {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
     ∀ q ∈ R.ensures, (q.root.capReads R.caps).checkWF R.cat = true := by
-  have h := (Request.check_ok (check_parse hR hc)).1
+  have h := (Request.check_ok (check_parse hR hc)).wf
   simpa only [List.all_eq_true] using h
 
 /-! ### The checker's verdict is the contract theorem (#1088)
@@ -1361,5 +1427,107 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
     rw [Rel.detPlan_congr hD.arity]
     exact hdet.2
   exact Knowledge.allowed_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+
+/-! ### The other fields the engine theorems read (#1484, A4)
+
+Each report field an engine's theorem reads is a theorem of the checker, in
+the shape of `check_proved_sound`: the analysis theorem on the data's catalog,
+through `Request.check_ok` (the field is its function's) and the analyses'
+congruence in the catalog's arities (`AnalysisCongr.lean`). -/
+
+/-- The transformation `check` analysed is well-formed on the data. -/
+theorem check_transform_wf {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) {data : Catalog}
+    (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T) : T.root.WF data := by
+  have htw := (Request.check_ok (check_parse hR hc)).transformWF
+  simp only [hT, Option.all_some] at htw
+  exact Rel.wf_congr hD.arity (Rel.checkWF_iff.mp htw)
+
+/-- **A key the checker reports proved is a key** of every result the
+reference allows for the transformation (`Rel.keys_sound_all`, D24), on any
+data that meets the request. -/
+theorem check_keys_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
+    {k : List Nat} (hk : (k, true) ∈ rep.keys) :
+    ∀ {out : Relation}, T.root.OrderAllowed data out → KeyOn k out := by
+  intro out ho
+  rw [(Request.check_ok (check_parse hR hc)).keys] at hk
+  simp only [Request.keysIn, hT, List.mem_map, Prod.mk.injEq] at hk
+  obtain ⟨k0, -, rfl, hany⟩ := hk
+  obtain ⟨k', hk', hsub⟩ := List.any_eq_true.mp hany
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  rw [← Rel.keys_congr hD.arity] at hk'
+  exact (Rel.keys_sound_all hD.wf hK.cols hK.facts hK.keys (check_transform_wf hR hc hD hT) k' hk'
+    ho).superset (by simpa [List.all_eq_true] using hsub)
+
+/-- **Every issue that can happen is reported** (`Rel.issuesCapped_sound`):
+on data that meets the request and its bounds per key (`rows_per`), and whose
+windows and aggregates read fewer rows than the size hypothesis allows
+(`Rel.Small`), each issue of the transformation (`Rel.HasIssue`) is in the
+report, but an overflow to `±∞` under a profile other than the reference,
+where it is the engine's value. -/
+theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
+    (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
+    (hsm : T.root.Small data) :
+    ∀ p, T.root.HasIssue data false p →
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) := by
+  intro p hp
+  have hok := Request.check_ok (check_parse hR hc)
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hwf := check_transform_wf hR hc hD hT
+  have hin := Rel.issuesCapped_sound hD.wf hK.cols hK.facts (hK.windows hD.wf) hK.keys hD.caps hP
+    hwf hsm p hp
+  rw [Rel.issuesCapped_congr hD.arity] at hin
+  have htw := hok.transformWF
+  simp only [hT, Option.all_some] at htw
+  rw [hok.issues]
+  simp only [Request.issuesIn, hT, htw, ↓reduceIte, List.mem_filter, List.mem_eraseDups,
+    List.mem_append, KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity]
+  by_cases hinf : p.1 = .infinite ∧ R.underReference = false
+  · exact .inr hinf
+  · refine .inl ⟨.inl (by simpa [KnowledgeEnv.windows] using hin), ?_⟩
+    obtain ⟨i, e⟩ := p
+    simp only at hinf ⊢
+    cases hr : R.underReference
+    · simp only [hr, and_true] at hinf
+      simp [hinf]
+    · simp
+
+/-- **A guard-free transformation needs no checks** (`Rel.guardFree_sound`):
+when the report says `guard_free`, the transformation computes the same rows
+with any faithful functions, unchecked ones among them, on data that meets
+the request and the size hypothesis. -/
+theorem check_guard_free_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
+    (hsm : T.root.Small data) (hg : rep.guardFree = true) {I : Impl} (hI : I.Faithful) :
+    T.root.eval data I = T.root.eval data := by
+  rw [(Request.check_ok (check_parse hR hc)).guardFree] at hg
+  simp only [Request.guardFreeIn, hT, Bool.and_eq_true] at hg
+  obtain ⟨⟨⟨-, hloose⟩, hm⟩, -⟩ := hg
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  rw [KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity, ← Rel.mayIssues_congr hD.arity] at hm
+  exact Rel.guardFree_sound hD.wf hK.cols hK.facts (hK.windows hD.wf) (check_transform_wf hR hc hD hT)
+    hsm hloose hm hI
+
+/-- **The optimized plan computes the transformation's rows** (`Rel.optimize_sound`):
+on data that meets the request and its foreign keys (`references`), the plan
+`check` rewrites the transformation into is well-formed, has its arity and
+gives the same rows. The report's `optimized` is this plan in the writer's
+JSON (`Request.CheckOk.optimized`). -/
+theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
+    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List String}
+    (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
+  rw [← Rel.optimize_congr hD.arity] at hq
+  have := Rel.optimize_sound hD.wf hK.cols hK.facts hK.keys hFK (check_transform_wf hR hc hD hT)
+  rw [hq] at this
+  exact this
 
 end Substrait.ContractCheck
