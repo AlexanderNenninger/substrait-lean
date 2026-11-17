@@ -435,3 +435,45 @@ def test_an_iceberg_scan_equals_the_arrow_route_over_histories(history, tmp_path
     agree_or_fall_back(src, [None])
     if history.partitioned:
         assert src._native() is None
+
+
+def test_widening_is_the_one_conversion_table():
+    """The schema rule of the design note (section 5.2, #1540): what every engine
+    reads as the declared type without changing a value."""
+    from sverify._scan import Mismatch, schema_mismatches, widens
+
+    ok = [
+        (pa.int32(), pa.int64()),
+        (pa.int8(), pa.int16()),
+        (pa.float32(), pa.float64()),
+        (pa.decimal128(10, 2), pa.decimal128(12, 2)),
+        (pa.list_(pa.int32()), pa.list_(pa.int64())),
+        (pa.string(), pa.string()),
+    ]
+    refused = [
+        (pa.int64(), pa.int32()),
+        (pa.float64(), pa.int64()),
+        (pa.int64(), pa.float64()),
+        (pa.uint32(), pa.int64()),
+        (pa.decimal128(10, 2), pa.decimal128(12, 3)),
+        (pa.decimal128(12, 2), pa.decimal128(10, 2)),
+        (pa.string(), pa.int64()),
+    ]
+    assert all(widens(a, e) for a, e in ok)
+    assert not any(widens(a, e) for a, e in refused)
+    expected = pa.schema(
+        [
+            pa.field("a", pa.int64(), nullable=False),
+            pa.field("b", pa.float64()),
+            pa.field("c", pa.string()),
+        ]
+    )
+    actual = pa.schema(
+        [pa.field("a", pa.int32()), pa.field("b", pa.string()), pa.field("z", pa.int64())]
+    )
+    assert schema_mismatches(expected, actual) == [
+        Mismatch("a", "nullability", "non-null", "nullable"),
+        Mismatch("b", "type", "double", "string"),
+        Mismatch("c", "missing", "string", ""),
+    ]
+    assert schema_mismatches(expected, expected) == []

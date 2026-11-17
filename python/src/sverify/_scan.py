@@ -169,6 +169,11 @@ class Scan(Native):
 
         return attach_scan(self, db, name, table=table, positions=positions)
 
+    def check_schema(self, expected: pa.Schema) -> list[Mismatch]:
+        """How the table's schema at this version differs from `expected`
+        (`schema_mismatches`): from metadata, before any file is opened."""
+        return schema_mismatches(expected, self.schema)
+
     def readable(self) -> bool:
         """Whether every file is still there (a vacuum removes the files of
         old versions)."""
@@ -180,6 +185,63 @@ class Scan(Native):
         from sverify_duckdb.scan import read_scan
 
         return read_scan(self)
+
+
+@dataclass(frozen=True)
+class Mismatch:
+    """One way a table's schema differs from the schema a plan expects."""
+
+    column: str
+    what: str  # "missing", "type" or "nullability"
+    expected: str
+    actual: str
+
+    def __str__(self) -> str:
+        if self.what == "missing":
+            return f"column {self.column!r} is missing (expected {self.expected})"
+        return f"column {self.column!r} is {self.actual}, the plan expects {self.expected}"
+
+
+def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
+    """Whether a column of type `actual` is read as `expected` by every engine
+    without changing a value (design note #173, section 5.2): the same type;
+    a signed integer to a wider one; `float32` to `float64`; a decimal to a
+    greater precision at the same scale; a list whose element widens."""
+    types = pa.types
+    if actual == expected:
+        return True
+    if types.is_integer(actual) and types.is_integer(expected):
+        return (
+            types.is_signed_integer(actual) == types.is_signed_integer(expected)
+            and actual.bit_width < expected.bit_width
+        )
+    if types.is_float32(actual) and types.is_float64(expected):
+        return True
+    if types.is_decimal(actual) and types.is_decimal(expected):
+        return actual.scale == expected.scale and actual.precision <= expected.precision
+    if types.is_list(actual) and types.is_list(expected):
+        return widens(actual.value_type, expected.value_type)
+    return False
+
+
+def schema_mismatches(expected: pa.Schema, actual: pa.Schema) -> list[Mismatch]:
+    """How `actual`, a table's schema, fails to be the `expected` one, column
+    by column (#1540): a column missing, a type that is not `widens`, a column
+    that may hold NULL where the plan reads it as non-null. Columns the plan does
+    not read are ignored. One rule for every engine, checked on metadata before
+    any engine opens a file."""
+    out = []
+    for f in expected:
+        i = actual.get_field_index(f.name)
+        if i < 0:
+            out.append(Mismatch(f.name, "missing", str(f.type), ""))
+            continue
+        a = actual.field(i)
+        if not widens(a.type, f.type):
+            out.append(Mismatch(f.name, "type", str(f.type), str(a.type)))
+        elif a.nullable and not f.nullable:
+            out.append(Mismatch(f.name, "nullability", "non-null", "nullable"))
+    return out
 
 
 @dataclass
