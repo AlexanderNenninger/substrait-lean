@@ -26,7 +26,7 @@ FILE, POS = '"__sverify_file"', '"__sverify_pos"'
 """The columns `attach_scan(..., positions=True)` adds (quoted)."""
 
 
-def _lit(s: str) -> str:
+def lit(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
@@ -85,7 +85,7 @@ def scan_sql(
         if positions:
             cols += f", CAST(NULL AS VARCHAR) AS {FILE}, CAST(NULL AS BIGINT) AS {POS}"
         return f"SELECT {cols} WHERE FALSE"
-    files = "[" + ", ".join(map(_lit, scan.files)) + "]"
+    files = "[" + ", ".join(map(lit, scan.files)) + "]"
     options = "union_by_name = true"
     if scan.deleted is not None or positions:
         options += ", filename = true, file_row_number = true"

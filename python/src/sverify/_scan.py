@@ -205,16 +205,14 @@ class Mismatch:
 def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
     """Whether a column of type `actual` is read as `expected` by every engine
     without changing a value (design note #173, section 5.2): the same type;
-    a signed integer to a wider one; `float32` to `float64`; a decimal to a
-    greater precision at the same scale; a list whose element widens."""
+    a signed integer to a wider signed one (unsigned integers do not widen);
+    `float32` to `float64`; a decimal to a greater precision at the same scale;
+    a list whose element widens."""
     types = pa.types
     if actual == expected:
         return True
-    if types.is_integer(actual) and types.is_integer(expected):
-        return (
-            types.is_signed_integer(actual) == types.is_signed_integer(expected)
-            and actual.bit_width < expected.bit_width
-        )
+    if types.is_signed_integer(actual) and types.is_signed_integer(expected):
+        return actual.bit_width < expected.bit_width
     if types.is_float32(actual) and types.is_float64(expected):
         return True
     if types.is_decimal(actual) and types.is_decimal(expected):

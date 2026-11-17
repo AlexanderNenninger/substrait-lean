@@ -455,6 +455,7 @@ def test_widening_is_the_one_conversion_table():
         (pa.float64(), pa.int64()),
         (pa.int64(), pa.float64()),
         (pa.uint32(), pa.int64()),
+        (pa.uint8(), pa.uint16()),
         (pa.decimal128(10, 2), pa.decimal128(12, 3)),
         (pa.decimal128(12, 2), pa.decimal128(10, 2)),
         (pa.string(), pa.int64()),

@@ -133,13 +133,19 @@ def build_iceberg(catalog, name: str, history: History) -> IcebergSource:
         with table.update_spec() as update:
             update.add_identity("k")
     table.append(data)
+    # A column is added just before the next append: pyiceberg's own read of a
+    # snapshot older than the schema fails (test_iceberg_added_and_renamed_columns).
+    pending: list[str] = []
     for n, step in enumerate(history.steps[1:], 1):
         match step:
             case Append(ids):
+                for col in pending:
+                    with table.update_schema() as update:
+                        update.add_column(col, StringType())
+                pending.clear()
                 table.append(rows(history, ids, n))
             case Delete(below):
                 table.delete(f"id < {below}")
             case AddColumn(col):
-                with table.update_schema() as update:
-                    update.add_column(col, StringType())
+                pending.append(col)
     return IcebergSource(catalog, name)
