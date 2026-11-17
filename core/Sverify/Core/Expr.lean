@@ -177,8 +177,16 @@ inductive UnFn where
   2 is `1234`), so this is the value itself: it gives the expression its kind,
   and a value of more than `p` digits is an overflow (`Safety.lean`). -/
   | decimal (p s : Nat)
-  /-- `DECIMAL(p, s)` without the check, where the value cannot have more
-  digits: an average has no more than the values it averages (#27). -/
+  /-- `DECIMAL(p, s)` without the overflow check. The parser builds it in two
+  uses. A quotient (`Parse.decimalAvgs`): an average has no more digits than the
+  values it averages (#27), and the parser checks that its `DECIMAL(p + 4, s + 4)`
+  fits 38 digits (`checkDecimalAvgWidth`, #1497). A comparison's side
+  (`decimalCall`): the operand upscaled to the larger scale, whose precision
+  bounds nothing and which only the scale is read from (`Expr.eval` and
+  `Kind.comparable`), so the model compares the exact values (#1498). And
+  `sverify_decimal_div` read back in `decimalCall`: the bound holds for the plan
+  the writer makes from an `AVG`, and is unchecked for a hand-written call
+  (#1497). -/
   | dkind (p s : Nat)
   /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
   rounding half away from zero (`roundDiv10`). -/
@@ -1073,5 +1081,15 @@ theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)
     simp only [eval, ihl he.1 hlen]
     congr 1; funext x
     exact ihb (row := x :: row) he.2 (by simp [hlen])
+
+/-- The columns `e` reads; a lambda's body reads none of the row's. -/
+def Expr.cols : Expr → List Nat
+  | .lit _ => []
+  | .field i => [i]
+  | .un _ a => a.cols
+  | .bin _ a b => a.cols ++ b.cols
+  | .ifThen c t e => c.cols ++ t.cols ++ e.cols
+  -- A lambda's body reads its parameter as field 0 and the row from 1 (D28).
+  | .hof _ l b => l.cols ++ b.cols.filterMap fun i => if i = 0 then none else some (i - 1)
 
 end Substrait

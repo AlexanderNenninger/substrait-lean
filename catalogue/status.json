@@ -272,7 +272,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses"
+   "snowflake": "refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses; rewrite this step"
   }
  },
  "fin-fifo-pnl": {
@@ -292,7 +292,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses"
+   "snowflake": "refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses; rewrite this step"
   }
  },
  "fin-volume-spike": {

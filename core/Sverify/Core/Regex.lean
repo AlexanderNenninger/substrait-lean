@@ -69,7 +69,7 @@ The grammar of `Text.simpleRegex`; the parser assumes the pattern is in it. -/
 
 def digits (cs : List Char) : Nat × List Char :=
   let ds := cs.takeWhile Char.isDigit
-  ((String.ofList ds).toNat!, cs.drop ds.length)
+  ((String.ofList ds).toNat?.getD 0, cs.drop ds.length)
 
 /-- A quantifier, if there is one: its bounds and the rest. -/
 def quantifier : List Char → Option ((Nat × Option Nat) × List Char)

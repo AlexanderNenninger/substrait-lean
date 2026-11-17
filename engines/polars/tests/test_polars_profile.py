@@ -5,8 +5,13 @@ Lean proves that the checker's reading of a call that states
 `division_type: FLOOR` is `Polars.floorDiv` and `Polars.floorMod` on 64-bit
 integers (`Profile.polars_idiv`, `Profile.polars_imod`). That Polars computes
 them is the trusted part, from its facts (polars-int-divide,
-polars-int-modulus); these tests run it natively against Python's `//` and
-`%`, which floor too.
+polars-int-modulus); these tests run it against Python's `//` and `%`, which
+floor too.
+
+A `semantics="polars"` request is reported as pending (#271): the report is
+the reference's, and the plan runs on Polars by the translated route, which
+`Rel.polars_sound` licenses. The plan states `FLOOR`, and Polars's executor runs
+its own `//` and `%` for it, whatever the route.
 """
 
 from __future__ import annotations
@@ -25,6 +30,9 @@ from ibis import _
 import sverify as sv
 from sverify import _support, routes
 from sverify.engine import connect, put_table, run_plan, written_plan
+from sverify.errors import ProfilePendingWarning
+
+pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
 
 MIN, MAX = -(2**63), 2**63 - 1
 #: The preconditions `verify` infers: `i >= -9 * 10**18` (so `MIN // -1`
@@ -53,14 +61,47 @@ def report() -> sv.Report:
 
 @settings(max_examples=50, deadline=None)
 @given(rows=st.lists(st.tuples(dividends, divisors), min_size=1, max_size=20))
-def test_native_floor_agrees_with_floor_division(report: sv.Report, rows) -> None:
+def test_floor_run_agrees_with_floor_division(report: sv.Report, rows) -> None:
     con = sv.connect()
     i, j = zip(*rows, strict=True)
     con.put("t", pa.table({"i": pa.array(i, pa.int64()), "j": pa.array(j, pa.int64())}))
-    out = report.run(con, "polars", route="native")
+    out = report.run(con, "polars")
     assert out.column("m").to_pylist() == [a % b for a, b in rows]
     assert out.column("q").to_pylist() == [a // b for a, b in rows]
-    assert report.routes["polars"].kind == "native"
+    assert report.routes["polars"].kind == "translated"
+
+
+def test_floor_run_over_mixed_signs(report: sv.Report) -> None:
+    """A guard-free plan: its `//` and `%` give Polars's own values, floored."""
+    rows = [(-7, 2), (7, -2), (-7, -2), (7, 2), (0, 3), (-1, MAX), (LOW, -1), (MAX, MIN)]
+    con = sv.connect()
+    i, j = zip(*rows, strict=True)
+    con.put("t", pa.table({"i": pa.array(i, pa.int64()), "j": pa.array(j, pa.int64())}))
+    assert report._guard_free
+    out = report.run(con, "polars")
+    assert out.column("m").to_pylist() == [a % b for a, b in rows]
+    assert out.column("q").to_pylist() == [a // b for a, b in rows]
+
+
+def test_the_native_route_is_refused_until_the_generated_lowering(report: sv.Report) -> None:
+    """The report is the reference's, so `native` (verified under the engine's own
+    profile) is not available (#271)."""
+    con = sv.connect()
+    con.put("t", pa.table({"i": pa.array([1], pa.int64()), "j": pa.array([1], pa.int64())}))
+    with pytest.raises(routes.RouteError):
+        report.run(con, "polars", route="native")
+
+
+def test_a_polars_request_is_reported_as_pending() -> None:
+    """The report is the reference's and the checker warns (#271)."""
+    con = sv.connect()
+    con.put("t", pa.table({"i": pa.array([1], pa.int64()), "j": pa.array([1], pa.int64())}))
+    t = con.table("t")
+    with pytest.warns(ProfilePendingWarning, match="polars"):
+        r = sv.verify(
+            t.select(q=t.i // t.j), requires={"t": [_.i >= LOW, _.j != 0]}, semantics="polars"
+        )
+    assert r.proved and r.semantics == "reference"
 
 
 def test_written_plan_states_floor(report: sv.Report) -> None:
@@ -122,14 +163,11 @@ def test_written_floor_raises(report: sv.Report, engine: str) -> None:
 
 
 def test_routes_from_polars(report: sv.Report) -> None:
-    """Native on Polars; refused on Spark until the checker reports under
-    Spark's profile (#1288), naming the reference as the way; refused on
-    DuckDB by the transfer check, with the reason."""
-    assert routes.choose(report, "polars").kind == "native"
-    s = routes.choose(report, "spark")
-    assert s.refused and "semantics='reference'" in s.reason, s
-    r = routes.choose(report, "duckdb")
-    assert r.refused and "division_type: polars gives FLOOR" in r.reason, r
+    """Translated on Polars, DuckDB and Spark: the report is the reference's
+    until the checker reports under each engine's profile (#1288, #271)."""
+    assert routes.choose(report, "polars").kind == "translated"
+    assert routes.choose(report, "duckdb").kind == "translated"
+    assert routes.choose(report, "spark").kind == "translated"
 
 
 # --- `%` of doubles ------------------------------------------------------------
@@ -156,16 +194,16 @@ def _double_report(con: sv.Connection, semantics: str, divisor) -> sv.Report:
     )
 
 
-def test_double_modulus_floors_natively() -> None:
+def test_double_modulus_floors() -> None:
     """Under `semantics="polars"`, `%` of doubles by a column is Polars's own:
     the rows of polars-double-modulus (`Profile.polars_fmod`), zeros +0.0."""
     con = sv.connect()
     con.put("t", _double_table())
     report = _double_report(con, "polars", None)
-    out = report.run(con, "polars", route="native").column("m").to_pylist()
+    out = report.run(con, "polars").column("m").to_pylist()
     assert out == [r[2] for r in DOUBLE_ROWS]
     assert all(str(v) == str(float(r[2])) for v, r in zip(out, DOUBLE_ROWS, strict=True))
-    assert report.routes["polars"].kind == "native"
+    assert report.routes["polars"].kind == "translated"
 
 
 def test_double_modulus_is_the_floor_formula_over_divide() -> None:
@@ -192,7 +230,7 @@ def test_double_modulus_is_the_floor_formula_over_divide() -> None:
             assert (both["m"] == both["f"]).all(), (divisor, engine)
 
 
-def test_double_modulus_by_a_literal_is_native() -> None:
+def test_double_modulus_by_a_literal_runs() -> None:
     """A literal divisor is `/` by a scalar (`approx`, polars-scalar-divisor): the
     written plan runs its four calls."""
     con = sv.connect()
@@ -203,7 +241,7 @@ def test_double_modulus_by_a_literal_is_native() -> None:
         requires={"t": [_.x > -1e300, _.x < 1e300]},
         semantics="polars",
     )
-    out = report.run(con, "polars", route="native").column("m").to_pylist()
+    out = report.run(con, "polars").column("m").to_pylist()
     assert out == [x - 3.0 * math.floor(x / 3.0) for x, _y, _m in DOUBLE_ROWS]
 
 

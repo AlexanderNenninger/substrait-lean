@@ -13,7 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, _sort_key
-from sverify.plan_json import Json, Unsupported, call, decimal_literal
+from sverify.plan_json import Json, ProducerUnsupported, Unsupported, call, decimal_literal
 from sverify.plan_json import anchor as _anchor
 
 
@@ -75,7 +75,7 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.ArgMin | ops.ArgMax):
         return arg_min_max(x, op)
     else:
-        raise Unsupported(f"aggregate {type(op).__name__} is not supported")
+        raise ProducerUnsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {
         "functionReference": _anchor(name),
         "arguments": [{"value": a} for a in args],
@@ -100,7 +100,7 @@ def collect(x: Exprs, op: Any) -> Json:
             "collect(include_null=True) is not supported; use collect(), which skips nulls"
         )
     if op.distinct:
-        raise Unsupported("collect(distinct=True) is not supported")
+        raise ProducerUnsupported("collect(distinct=True) is not supported")
     arg = x(op.arg)
     sorts = []
     for k in op.order_by:
@@ -153,7 +153,7 @@ def first_last(x: Exprs, op: Any) -> Json:
     reported as the engine's choice unless the group is a key."""
     name = "first" if isinstance(op, ops.First) else "last"
     if op.include_null:
-        raise Unsupported(f"{name}(include_null=True) is not supported")
+        raise ProducerUnsupported(f"{name}(include_null=True) is not supported")
     sorts = []
     for k in op.order_by:
         key = _sort_key(x, k)
@@ -196,7 +196,7 @@ def quantile(x: Exprs, op: Any) -> Json:
     cont = t.is_integer() or t.is_floating()
     if not (cont or t.is_string() or t.is_date()):
         # DuckDB interpolates decimals and timestamps in their own types.
-        raise Unsupported(f"{type(op).__name__.lower()} of {t} is not supported yet")
+        raise ProducerUnsupported(f"{type(op).__name__.lower()} of {t} is not supported yet")
     agg: Json = {
         "functionReference": _anchor("quantile_cont" if cont else "quantile_disc"),
         "arguments": [
