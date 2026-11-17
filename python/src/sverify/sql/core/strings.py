@@ -123,7 +123,7 @@ def expr(
             x = self.operand(a, "str", ref, cols, "regexp_match")
             m = d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
             return (
-                self.ascii_only(x, m, f"regular expression {pattern!r}", "int")
+                self.ascii_only(x, m, f"regular expression {pattern!r}", "int", classes=True)
                 if (unicode_classes(pattern))
                 else m
             )
@@ -144,13 +144,13 @@ def expr(
             x = self.operand(a, "str", ref, cols, "regexp_extract")
             v = d.regex_extract(x, pattern, group)
             if unicode_classes(pattern):
-                return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return self.ascii_only(x, v, f"regular expression {pattern!r}", classes=True)
             return v
         case Un(op="regex_replace", arg=a, param=pattern, replacement=r, flags=flags):
             x = self.operand(a, "str", ref, cols, "regexp_replace")
             v = d.regex_replace(x, pattern, r, flags == "g")
             if unicode_classes(pattern):
-                return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return self.ascii_only(x, v, f"regular expression {pattern!r}", classes=True)
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
             x = self.operand(a, "str", ref, cols, "replace")
