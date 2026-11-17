@@ -85,7 +85,7 @@ except ImportError as e:
 
 from sverify import _deprecated, _quarantine
 from sverify._duration import Duration, duration
-from sverify._scan import Scan, ScanSnapshot, local_path
+from sverify._scan import EqualityDelete, Scan, ScanSnapshot, local_path
 from sverify._unsupported import SverifyWarning
 from sverify._weighted import split
 from sverify.contracts import Fact
@@ -121,6 +121,11 @@ APP = "sverify.app"
 
 def _arrow_schema(t: Table) -> pa.Schema:
     return pa.schema([f.remove_metadata() for f in t.schema().as_arrow()])
+
+
+def _field_ids(t: Table) -> tuple[int, ...]:
+    """The field id of each column of `_arrow_schema(t)`."""
+    return tuple(f.field_id for f in t.schema().fields)
 
 
 def _layout(schema: pa.Schema) -> list[tuple[str, bool, pa.DataType]]:
@@ -172,12 +177,20 @@ def _read(t: Table, s: IcebergSnapshot | None) -> pa.Table:
     return t.scan(snapshot_id=s.snapshot_id).to_arrow().cast(schema)
 
 
-def _live_files(t: Table, s: IcebergSnapshot | None) -> list[dict[str, Any]]:
-    """Manifest entries of the data files in snapshot `s`."""
+def _live_entries(t: Table, s: IcebergSnapshot | None) -> list[dict[str, Any]]:
+    """Manifest entries of the data and delete files in snapshot `s`."""
     if s is None:
         return []
-    entries = t.inspect.entries(snapshot_id=s.snapshot_id).to_pylist()
-    return [e for e in entries if e["status"] != 2 and e["data_file"]["content"] == 0]
+    return [e for e in t.inspect.entries(snapshot_id=s.snapshot_id).to_pylist() if e["status"] != 2]
+
+
+def _data_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [e for e in entries if e["data_file"]["content"] == DataFileContent.DATA]
+
+
+def _live_files(t: Table, s: IcebergSnapshot | None) -> list[dict[str, Any]]:
+    """Manifest entries of the data files in snapshot `s`."""
+    return _data_entries(_live_entries(t, s))
 
 
 def _stats(entry: dict[str, Any], names: list[str]) -> dict[str, ColumnStats]:
@@ -232,21 +245,23 @@ def _scan(t: Table, tasks: Sequence[FileScanTask]) -> pa.Table:
     return ArrowScan(t.metadata, t.io, t.schema(), AlwaysTrue()).to_table(tasks)
 
 
-def _by_name(t: Table) -> bool:
-    """Whether reading the data files by column name reads the columns
-    pyiceberg reads by field id: no field had another name in any of the
-    table's schemas and no name meant another field, no name mapping (for
-    files without field ids), and no partition fields (whose values files
-    added from elsewhere may lack)."""
+def _by_id(t: Table) -> bool:
+    """Whether the Parquet field ids tell the columns apart for DuckDB: no
+    name mapping (for files without field ids), no partition fields (whose
+    values files added from elsewhere may lack), and no nested field that
+    had another name in some schema (DuckDB maps the top-level columns by id
+    and what is inside them by name)."""
     if t.properties.get(TableProperties.DEFAULT_NAME_MAPPING):
         return False
     if any(spec.fields for spec in t.specs().values()):
         return False
-    names: dict[int, str] = {}
-    ids: dict[str, int] = {}
+    inner: dict[int, str] = {}
     for schema in t.metadata.schemas:
         for fid, name in index_name_by_id(schema).items():
-            if names.setdefault(fid, name) != name or ids.setdefault(name, fid) != fid:
+            if (
+                "." in name
+                and inner.setdefault(fid, name.rsplit(".", 1)[-1]) != name.rsplit(".", 1)[-1]
+            ):
                 return False
     return True
 
@@ -261,7 +276,9 @@ def _deleted_rows(paths: dict[str, set[str]]) -> pa.Table:
         rows = pq.read_table(local, columns=["file_path", "pos"])
         rows = rows.filter(
             pc.call_function(
-                "is_in", [rows.column("file_path")], pc.SetLookupOptions(pa.array(sorted(data)))
+                "is_in",
+                [rows.column("file_path")],
+                pc.SetLookupOptions(pa.array(sorted(data), pa.string())),
             )
         )
         files = [local_path(f) for f in rows.column("file_path").to_pylist()]
@@ -316,8 +333,8 @@ class IcebergSource(_TableSource):
     A refresh reads the files that appends added since the version a node's
     state was computed from; after row-level deletes or overwrites it diffs
     the data files that changed. A table dropped and created again under
-    `identifier` (a new table UUID) is read in full. Tables with equality
-    deletes cannot be read.
+    `identifier` (a new table UUID) is read in full. Equality deletes are read
+    on local Parquet files of tables without partition fields.
 
     With `where` (a SQL condition on the columns), the source is the rows on
     which it is TRUE: snapshots read only the data files whose statistics do
@@ -405,7 +422,14 @@ class IcebergSource(_TableSource):
     def _rows(self, t: Table, s: IcebergSnapshot | None) -> tuple[pa.Table, list[dict[str, Any]]]:
         """The source's rows at snapshot `s`, and the manifest entries of the
         files they come from."""
-        files = _live_files(t, s)
+        entries = _live_entries(t, s)
+        files = _data_entries(entries)
+        if any(e["data_file"]["content"] == DataFileContent.EQUALITY_DELETES for e in entries):
+            # pyiceberg reads none: the descriptor's reader does.
+            snap = self._native(_version(s))
+            if snap is None:
+                raise ValueError(f"{self.identifier} has equality deletes that sverify cannot read")
+            return snap.scan.to_arrow(), files
         if self.where is None:
             return _read(t, s), files
         keep = self._keep_entries(t, files)
@@ -440,36 +464,52 @@ class IcebergSource(_TableSource):
 
     def _native(self, version: int | None = None) -> ScanSnapshot | None:
         """The snapshot at `version` as the Parquet files DuckDB reads
-        itself (#173), with their position deletes, and the same facts as
-        `snapshot`. None where reading the files by column name may not give
-        pyiceberg's rows (`_by_name`), and for equality deletes, other file
-        formats and object stores."""
+        itself (#173), by field id, with their position and equality
+        deletes, and the same facts as `snapshot`. None where the files are
+        not local Parquet, or `_by_id` is False."""
         t = self.table()
         s = t.current_snapshot() if version is None else _at(t, version)
-        if (version is not None and s is None and version != 0) or not _by_name(t):
+        if (version is not None and s is None and version != 0) or not _by_id(t):
             return None
-        live = self._keep_entries(t, _live_files(t, s))
-        paths = {e["data_file"]["file_path"] for e in live}
-        files: list[str] = []
+        entries = _live_entries(t, s)
+        live = self._keep_entries(t, _data_entries(entries))
+        kept = {e["data_file"]["file_path"]: e["sequence_number"] for e in live}
+        files = [local_path(p) for p in kept]
+        if None in files:
+            return None
+        names = {i: n for n, i in zip(_arrow_schema(t).names, _field_ids(t), strict=True)}
         deletes: dict[str, set[str]] = {}
-        for task in _tasks(t, s).values():
-            if task.file.file_path not in paths:
+        equality: list[EqualityDelete] = []
+        for e in entries:
+            d = e["data_file"]
+            if d["content"] == DataFileContent.DATA:
                 continue
-            local = local_path(task.file.file_path)
-            if local is None or task.file.file_format != FileFormat.PARQUET:
+            local = local_path(d["file_path"])
+            if local is None or d["file_format"] != "PARQUET":
                 return None
-            files.append(local)
-            for d in task.delete_files:
-                if d.content != DataFileContent.POSITION_DELETES:
-                    return None
-                if d.file_format != FileFormat.PARQUET or local_path(d.file_path) is None:
-                    return None
-                deletes.setdefault(d.file_path, set()).add(task.file.file_path)
+            if d["content"] == DataFileContent.POSITION_DELETES:
+                deletes.setdefault(d["file_path"], set()).update(kept)
+            else:
+                # Applies to the data files written before it (spec, unpartitioned).
+                before = tuple(
+                    sorted(local_path(p) or "" for p, n in kept.items() if n < e["sequence_number"])
+                )
+                ids = tuple(d["equality_ids"])
+                if before:
+                    equality.append(
+                        EqualityDelete(local, ids, tuple(names[i] for i in ids), before)
+                    )
         v = _version(s)
         self._read_at(t, v)
         deleted = _deleted_rows(deletes) if deletes else None
         scan = Scan(
-            tuple(sorted(files)), _arrow_schema(t), deleted, self.where, f"{self.name}@v{v}"
+            tuple(sorted(f for f in files if f)),
+            _arrow_schema(t),
+            deleted,
+            self.where,
+            f"{self.name}@v{v}",
+            _field_ids(t),
+            tuple(equality),
         )
         return ScanSnapshot(v, scan, self._facts(t, live, f"file stats @v{v}"))
 
