@@ -1,0 +1,3 @@
+### DuckDB's quantile_cont stays inside the model at a whole position
+
+DuckDB computes the position `(n − 1)·q` of `quantile_cont` in doubles, so where the exact position is whole and its double is not (n = 26, q = 0.28), it interpolates toward the next value: of the values 1.0 then 1e300 it gave 8.9e284 where the model says 1.0. The written plan now takes `quantile_disc` at a whole exact position, and bounds the result by the second smallest value where the lower neighbour is the first, with the guards in exact integer arithmetic ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)).

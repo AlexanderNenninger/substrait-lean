@@ -56,7 +56,8 @@ QUERIES = [
     # `lpad` and `rpad` cut `s` to `n` characters, or fill it with the fill
     # repeated and cut (#808).
     "SELECT id, right(customer, 2) AS r, right(customer, -1) AS r2, right(customer, 10) AS r3,"
-    " right(customer, 0) AS r4, lpad(customer, 5, 'xy') AS l, rpad(customer, 2, '0') AS p,"
+    " right(customer, 0) AS r4, right(customer, -9223372036854775808) AS r5,"
+    " lpad(customer, 5, 'xy') AS l, rpad(customer, 2, '0') AS p,"
     " rpad(customer, 6, 'é-') AS q, lpad(customer, 0, '*') AS z, lpad(customer, -1, '*') AS n"
     " FROM orders",
     # `split_part` and `string_split(s, sep)[n]`: from 1, from the end for a

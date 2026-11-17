@@ -11,5 +11,5 @@ with the install and what sverify does around them:
 6. [A reproducible sink, kept up to date](getting-started.md#6-a-reproducible-sink-kept-up-to-date)
 7. [A plan checked under DuckDB's profile](getting-started.md#7-a-plan-checked-under-duckdbs-profile)
 8. [Substrait's own semantics](getting-started.md#8-substraits-own-semantics)
-9. [A plan checked under Polars's profile](getting-started.md#9-a-plan-checked-under-polarss-profile)
+9. [Polars's profile, still pending](getting-started.md#9-polarss-profile-still-pending)
 10. [A proved plan for any Substrait consumer](getting-started.md#10-a-proved-plan-for-any-substrait-consumer)
