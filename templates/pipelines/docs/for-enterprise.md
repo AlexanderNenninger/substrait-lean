@@ -203,3 +203,5 @@ lineage, the freshness and the chart, and carry no rows. Set the
 variable `SVERIFY_CATALOG_DATA` to `snapshot` to add a copy of each table
 for the query box, or to `none` with everything in your repository to
 leave the data out there too.
+
+Which stores, catalogs and orchestrators are tested, and with which versions: [compatibility](compatibility.md).
