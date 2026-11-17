@@ -214,3 +214,27 @@ theorem Engine.duckdb_sound : (Engine.duckdb {} rfl).Sound fun _ _ => True := by
   rw [Rel.eval_okImpl (p := Profile.duckdb {}) hr]; exact Rel.duckdb_shim_allowed hr
 
 end Substrait
+
+namespace Substrait
+section Example
+attribute [local instance] Engine.exampleBoxes
+
+/-- DuckDB on the example of `Sound.lean`: the lowered plan does not raise on
+it, so `Engine.contract_sound`'s hypotheses hold (`Engine.example_contract`) and
+the postcondition holds on the rows DuckDB's functions compute. -/
+theorem Engine.duckdb_contract_example :
+    ∀ row ∈ postRows Engine.examplePost [2]
+        ((Lowering.duckdb.lowerRel Engine.examplePlan).eval Engine.exampleCat
+          (Engine.duckdb {} rfl).impl),
+      ∀ v ∈ row, v = .bool true := by
+  refine Engine.example_contract (Engine.duckdb_sound) (E := Engine.duckdb {} rfl)
+    (T' := Lowering.duckdb.lowerRel Engine.examplePlan) rfl ?_ trivial
+  show ¬(Lowering.duckdb.lowerRel Engine.examplePlan).Raises (Profile.duckdb {}) Engine.exampleCat
+  simp [Rel.Raises, Engine.examplePlan, Lowering.lowerRel, Rel.mapExprs]
+  intro x hx
+  have : x = [.int 1] ∨ x = [.int 2] := by simpa [Rel.eval, Engine.exampleCat] using hx
+  rcases this with rfl | rfl <;>
+    (unfold Expr.RaisesOn; decide +kernel)
+
+end Example
+end Substrait

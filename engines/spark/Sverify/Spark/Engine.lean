@@ -278,16 +278,20 @@ namespace Substrait
 section Example
 attribute [local instance] Engine.exampleBoxes
 
-/-- `Engine.spark_sound` applies to the example of `Sound.lean`: Spark computes
-`Rel.eval`'s rows for it, which the reference allows. -/
-theorem Engine.spark_sound_example :
-    Engine.examplePlan.Allowed Engine.exampleCat
-      (Engine.examplePlan.eval Engine.exampleCat Engine.spark.impl) := by
-  refine Engine.spark_sound (r' := Engine.examplePlan) rfl ?_ Engine.guardFreeSide_example
+/-- Spark on the example of `Sound.lean`: the written plan does not raise on
+it, so `Engine.contract_sound`'s hypotheses hold (`Engine.example_contract`) and
+the postcondition holds on the rows Spark's functions compute. -/
+theorem Engine.spark_contract_example :
+    ∀ row ∈ postRows Engine.examplePost [2]
+        (Engine.examplePlan.eval Engine.exampleCat Engine.spark.impl),
+      ∀ v ∈ row, v = .bool true := by
+  refine Engine.example_contract Engine.spark_sound (T' := Engine.examplePlan) rfl ?_
+    Engine.guardFreeSide_example
   simp [Rel.Raises, Engine.examplePlan]
   intro x hx
   have : x = [.int 1] ∨ x = [.int 2] := by simpa [Rel.eval, Engine.exampleCat] using hx
   rcases this with rfl | rfl <;>
     (unfold Expr.RaisesOn; decide +kernel)
+
 end Example
 end Substrait

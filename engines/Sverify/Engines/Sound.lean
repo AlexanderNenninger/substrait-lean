@@ -20,6 +20,10 @@ decidable; its data part (`Engine.GuardFreeData`) states preconditions on the
 catalog, as `hK` does, with the size hypothesis (`Rel.Small`).
 `Engine.guardFreeSide_example` shows one catalog and plan that meet it, so
 that `Engine.polars_sound` and `Engine.spark_sound` apply to something.
+`Engine.example_contract` goes on to inhabit every hypothesis of
+`Engine.contract_sound` for that plan and a postcondition, and each engine
+(`Engine.duckdb_contract_example`, `Engine.polars_contract_example`,
+`Engine.spark_contract_example`) supplies its own three.
 
 What the two proofs take and what they leave. They do not use the hypothesis
 that the translated plan does not raise: on data that meets the side
@@ -180,7 +184,8 @@ One catalog and one plan, shown to meet `Engine.GuardFreeSide`, so that
 (`engines/polars/Sverify/Polars/Engine.lean`, `engines/spark/Sverify/Spark/Engine.lean`).
 The plan adds 1 to a column of two rows. On unbounded data the sum can leave
 64 bits, so the plan has an overflow to eliminate: the environment bounds the
-column to `[0, 100]`, which is what rules it out. The example runs with no
+column to `[0, 100]` and gives it integer kind, which rules it out and lets the
+analysis find the postcondition `0 < sum` certainly true. The example runs with no
 black boxes. -/
 
 /-- No black boxes. -/
@@ -197,32 +202,66 @@ def Engine.examplePlan : Rel :=
   .project (.read "t") [.bin .add (.field 0) (.lit (.int 1))]
 
 def Engine.exampleA : String → List AVal := fun
-  | "t" => [{ int := some ⟨some 0, some 100⟩ }]
+  | "t" => [{ int := some ⟨some 0, some 100⟩, nk := some .int }]
   | _ => []
 
+theorem Engine.exampleCat_wf : Engine.exampleCat.WF := by
+  intro t row h
+  unfold Engine.exampleCat at h ⊢
+  split at h
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+    rcases h with rfl | rfl <;> rfl
+  · simp at h
+
+theorem Engine.exampleA_mem :
+    ∀ t, ∀ row ∈ (Engine.exampleCat t).rows, EnvMem (Engine.exampleA t) row := by
+  intro t row h i
+  unfold Engine.exampleCat at h
+  split at h
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+    unfold Engine.exampleA
+    rcases h with rfl | rfl <;> cases i <;>
+      simp [AVal.Mem, AVal.MemR, AVal.MemNum, Bound.Mem, AVal.top]
+  · simp at h
+
+theorem Engine.examplePlan_wf : Engine.examplePlan.WF Engine.exampleCat := by
+  simp [Engine.examplePlan, Rel.WF, Expr.refsLt, Rel.arity, Engine.exampleCat]
+
 theorem Engine.guardFreeSide_example : Engine.GuardFreeSide Engine.exampleCat Engine.examplePlan := by
-  refine ⟨Engine.exampleA, fun _ => [], WindowKeys.none, ⟨?_, ?_, ?_, WindowKeys.none_soundAll _, ?_⟩,
-    ?_, ?_, ?_⟩
-  · intro t row h
-    unfold Engine.exampleCat at h ⊢
-    split at h
-    · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
-      rcases h with rfl | rfl <;> rfl
-    · simp at h
-  · intro t row h i
-    unfold Engine.exampleCat at h
-    split at h
-    · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
-      unfold Engine.exampleA
-      rcases h with rfl | rfl <;> cases i <;>
-        simp [AVal.Mem, AVal.MemR, AVal.MemNum, Bound.Mem, AVal.top]
-    · simp at h
+  refine ⟨Engine.exampleA, fun _ => [], WindowKeys.none,
+    ⟨Engine.exampleCat_wf, Engine.exampleA_mem, ?_, WindowKeys.none_soundAll _, ?_⟩,
+    Engine.examplePlan_wf, ?_, ?_⟩
   · intro t row h f hf
     simp at hf
   · trivial
-  · simp [Engine.examplePlan, Rel.WF, Expr.refsLt, Rel.arity, Engine.exampleCat]
   · decide +kernel
   · decide +kernel
+
+/-- The postcondition of the example: the sum, column 1 of the plan's output,
+is positive. -/
+def Engine.examplePost : List Expr := [.bin .lt (.lit (.int 0)) (.field 1)]
+
+/-- **`Engine.contract_sound`'s hypotheses are inhabited**: for the example's
+catalog, plan and postcondition (`Engine.examplePost`, column 2 of the
+selection), every hypothesis but the engine's own (`hl`, `hr`, `hside`) is
+shown here: the data meets the bounds, the plan is well-formed and closed
+(so `FloatOpenSafe`), no shift is used, and the analysis finds the
+postcondition certainly true. Each engine states its three in its own
+module. -/
+theorem Engine.example_contract {E : Engine} {side : Catalog → Rel → Prop} (hE : E.Sound side)
+    {T' : Rel} (hl : E.lower Engine.examplePlan = some T') (hr : ¬T'.Raises E.profile Engine.exampleCat)
+    (hside : side Engine.exampleCat Engine.examplePlan) :
+    ∀ row ∈ postRows Engine.examplePost [2] (T'.eval Engine.exampleCat E.impl),
+      ∀ v ∈ row, v = .bool true :=
+  Engine.contract_sound hE Engine.exampleCat_wf (S := Engine.exampleA) (pre := fun _ => [])
+    Engine.exampleA_mem (by intro t row _ e he; simp at he) Engine.examplePlan_wf
+    (q := { rows := .multiset }) (ctx := {}) rfl
+    (Rel.floatOpenSafe_of_closed ⟨fun n h => by simp at h, fun s h hne => absurd h.symm hne⟩
+      (by decide))
+    (sh := fun _ => none) (by simp) (by decide +kernel)
+    (by simp [Rel.WF, Expr.refsLt, Rel.arity, Engine.exampleCat, Engine.examplePlan,
+      Engine.examplePost, Expr.narrow, Expr.narrowCmp, Expr.cmp?])
+    (WindowKeys.none_soundAll _) (by rw [Rel.aeval_csimp]; decide +kernel) hl hr hside
 
 end Example
 
