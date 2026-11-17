@@ -1040,9 +1040,13 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
       simp only [Rel.keys, List.mem_singleton] at hk
       subst hk
       exact (aggOrderAllowed_key ho).perm h.symm fun h => Ne.symm h
-  | .window r part sort fns, hwf, k, hk, _, ⟨i, hi, s, hp, hs, h⟩ => by
+  | .window r part sort fns, hwf, k, hk, _, ⟨i, hi, s, hp, hs, o, h, ho⟩ => by
       refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
-      show KeyOn _ _
+      -- Keys compare classes (`keyOf`): the reference's rows key as `windowRows`'s.
+      suffices hw : KeyOn k (windowRows part fns [] s) by
+        have := List.pairwise_map.mpr hw
+        rw [← windowRowsA_map_canon ho (keyOf k) fun _ _ => keyOf_eq_of_canon] at this
+        exact List.pairwise_map.mp this
       have harity : ∀ x ∈ s, x.length = r.arity cat :=
         fun x hx => orderAllowed_arity hcat hwf.1 hi x (hp.mem_iff.mp hx)
       simp only [Rel.keys, List.mem_append] at hk

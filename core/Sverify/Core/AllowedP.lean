@@ -203,28 +203,21 @@ def SlidingSum (t : ProfileTable) (m : Measure) : Prop :=
 /-- What a window function may give at `x`, from its partition's rows before
 (`pb`) and after (`pa`) it, under `t`. An order-free aggregate over the frame
 takes its measure's choice (`Measure.AllowedP`), as a grouped aggregate does:
-a double `SUM` or `AVG` any sum `sum_order` allows. Every other window
-function gives its value. The frame's rows come from the window's own
-columns, so the measure reads them with Lean's functions, as
+a double `SUM` or `AVG` any sum `sum_order` allows, a `MIN` or `MAX` any
+member of its class (D45). Every other window function gives what the
+reference allows (`WinFn.Allowed`). The frame's rows come from the window's
+own columns, so the measure reads them with Lean's functions, as
 `WinFn.valueIn` does. -/
 def WinFn.AllowedP (t : ProfileTable) (pb : List Row) (x : Row) (pa : List Row) (f : WinFn)
     (v : Value) : Prop :=
   match f with
   | .agg m sort fr =>
-    -- A window's `MIN` and `MAX` keep `Measure.eval`'s member of a class.
-    if m.orderFree then (m.AllowedP t Impl.lean (fr.rows sort pb x pa) v ∧
-        (m.fn = .min ∨ m.fn = .max → v = m.eval (fr.rows sort pb x pa))) ∨ SlidingSum t m
-    else v = m.eval (fr.rows sort pb x pa)
+    if m.orderFree then m.AllowedP t Impl.lean (fr.rows sort pb x pa) v ∨ SlidingSum t m
+    else f.Allowed pb x pa v
   | _ => v = f.valueIn pb x pa
 
 /-- `windowRows` with each function's value one `WinFn.AllowedP` allows. -/
-def windowRowsP (t : ProfileTable) (part : List Nat) (fns : List WinFn) :
-    List Row → List Row → Relation → Prop
-  | _, [], out => out = []
-  | before, x :: after, out => ∃ vs rest, out = (x ++ vs) :: rest ∧
-      Forall2 (fun f v => f.AllowedP t (before.filter (samePart part x)) x
-        (after.filter (samePart part x)) v) fns vs ∧
-      windowRowsP t part fns (before ++ [x]) after rest
+abbrev windowRowsP (t : ProfileTable) := windowRowsWith (WinFn.AllowedP t)
 
 /-! ## Sorts -/
 
@@ -348,7 +341,7 @@ theorem WinFn.AllowedP.mono {pb : List Row} {x : Row} {pa : List Row} {f : WinFn
     f.AllowedP t pb x pa v → f.AllowedP u pb x pa v := by
   cases f <;> simp only [WinFn.AllowedP] <;> try exact id
   split
-  · exact Or.imp (fun ⟨ha, hm⟩ => ⟨Measure.AllowedP.mono h ha, hm⟩) fun ⟨hf, hb⟩ => ⟨hf, h _ _ _ _ hb⟩
+  · exact Or.imp (Measure.AllowedP.mono h) fun ⟨hf, hb⟩ => ⟨hf, h _ _ _ _ hb⟩
   · exact id
 
 theorem windowRowsP.mono {part : List Nat} {fns : List WinFn} :
@@ -474,32 +467,38 @@ theorem Measure.allowed_iff {m : Measure} (hm : m.orderFree = true) (rows : Rela
     rw [Measure.eval_eq (by simpa using hs)]
     exact (AggFn.allowed_iff hm _ _).mpr (AggFn.picks_apply _ _)
 
+/-- **An order-free measure allows what its function picks** from the
+measure's values. -/
+theorem Measure.allowed_iff_picks {m : Measure} (hm : m.orderFree = true) (rows : Relation)
+    (v : Value) : m.Allowed rows v ↔ m.fn.Picks (m.inputs rows) v := by
+  refine ⟨Measure.allowed_picks hm, fun hp => ⟨rows, .refl _, fun h => ?_, (AggFn.allowed_iff hm _ _).mpr hp⟩⟩
+  rw [AggFn.ne_collect_of_orderFree hm] at h; cases h
+
+/-- At the reference, a window function allows what `WinFn.Allowed` does. -/
 theorem WinFn.allowedP_reference (pb : List Row) (x : Row) (pa : List Row) (f : WinFn)
-    (v : Value) : f.AllowedP Profile.reference.table pb x pa v ↔ v = f.valueIn pb x pa := by
+    (v : Value) : f.AllowedP Profile.reference.table pb x pa v ↔ f.Allowed pb x pa v := by
   have hs : ∀ m, ¬ SlidingSum Profile.reference.table m := fun _ ⟨_, h⟩ => by
     rw [reference_allows_window_sum] at h; simp at h
-  cases f <;> simp only [WinFn.AllowedP, WinFn.valueIn]
+  cases f <;> simp only [WinFn.AllowedP, WinFn.Allowed] <;> try exact Iff.rfl
   split
-  · next hm => rw [or_iff_left (hs _), Measure.allowedP_reference, Measure.allowed_iff hm]
+  · next hm =>
+    rw [or_iff_left (hs _), Measure.allowedP_reference, Measure.allowed_iff_picks hm]
+    split
+    · exact Iff.rfl
+    · next hc =>
+      rw [Measure.eval_eq (AggFn.ne_collect_of_orderFree hm)]
+      exact ⟨fun h => h.resolve_right fun ⟨h', _⟩ => hc h', .inl⟩
   · exact Iff.rfl
 
 theorem windowRowsP_reference (part : List Nat) (fns : List WinFn) :
     ∀ (before s : List Row) (out : Relation),
-      windowRowsP Profile.reference.table part fns before s out ↔
-        out = windowRows part fns before s
+      windowRowsP Profile.reference.table part fns before s out ↔ windowRowsA part fns before s out
   | _, [], _ => Iff.rfl
   | before, x :: after, out => by
-    simp only [windowRowsP, windowRows]
-    have hv : ∀ vs, Forall2 (fun f v => f.AllowedP Profile.reference.table
-        (before.filter (samePart part x)) x (after.filter (samePart part x)) v) fns vs ↔
-        vs = fns.map (·.value part before after x) := fun vs =>
-      (forall₂_iff fun f v => WinFn.allowedP_reference _ _ _ f v).trans
-        ⟨eq_map_of_forall₂, fun h => h ▸ forall₂_map_self fns fun _ _ => rfl⟩
-    constructor
-    · rintro ⟨vs, rest, rfl, h1, h2⟩
-      rw [(hv vs).mp h1, (windowRowsP_reference part fns _ after rest).mp h2]
-    · rintro rfl
-      exact ⟨_, _, rfl, (hv _).mpr rfl, (windowRowsP_reference part fns _ after _).mpr rfl⟩
+    simp only [windowRowsP, windowRowsA, windowRowsWith]
+    refine exists_congr fun vs => exists_congr fun rest => and_congr_right fun _ => and_congr
+      (forall₂_iff fun f v => WinFn.allowedP_reference _ _ _ f v) ?_
+    exact windowRowsP_reference part fns _ after rest
 
 omit [Boxes.Ambient] in
 theorem NullOk.reference (k : SortKey) (nf : Bool) :
@@ -550,7 +549,7 @@ theorem Rel.allowedI_reference (cat : Catalog) :
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a, Rel.allowedI_reference cat b]
   | .window r part _ fns, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r,
-      windowRowsP_reference part fns, exists_eq_right]
+      windowRowsP_reference part fns]
   | .semi a b _ _, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]
