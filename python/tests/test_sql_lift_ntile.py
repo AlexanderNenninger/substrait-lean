@@ -36,12 +36,12 @@ def test_ntile_is_proved_and_runs_as_duckdbs_on_duckdb_and_polars(query, semanti
     own = duckdb.connect()
     own.register("t", arrow)
     expected = own.sql(f"{query} ORDER BY o").fetchall()
-    # A plan verified under DuckDB's semantics does not transfer to Polars:
-    # `rel.keys`'s zero_sign is ONE_ZERO on DuckDB and IEEE on Polars.
+    # A partitioned plan verified under DuckDB's semantics does not transfer to
+    # Polars: `rel.keys`'s zero_sign is ONE_ZERO on DuckDB and IEEE on Polars.
     for engine in ("duckdb", "polars"):
         con = sv.connect()
         con.put("t", arrow)
-        if semantics == "duckdb" and engine == "polars":
+        if semantics == "duckdb" and engine == "polars" and "PARTITION" in query:
             with pytest.raises(RouteError, match="zero_sign"):
                 report.run(con, engine)
             continue
