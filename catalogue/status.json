@@ -739,7 +739,7 @@
  "dbt-generate-date-spine": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "FROM UNNEST(GENERATE_SERIES(CAST('2024-01-01' AS TIMESTAMP), C... is not supported",
+  "detail": "FROM UNNEST(GENERATE_SERIES(CAST('2024-01-01' AS TIMESTAMP), C... is not supported; write this step in Ibis",
   "native": "runs"
  },
  "dbt-accepted-values-test": {
@@ -1100,7 +1100,7 @@
  "ts-local-day-revenue": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "orders.order_ts AT TIME ZONE 'Europe/Berlin' is not supported yet",
+  "detail": "orders.order_ts AT TIME ZONE 'Europe/Berlin' is not supported yet; write this step in Ibis",
   "native": "runs"
  },
  "ts-overlapping-bookings": {

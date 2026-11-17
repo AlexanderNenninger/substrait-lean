@@ -35,6 +35,9 @@ BASELINE = Path(__file__).resolve().parents[2] / "tests" / "exits_baseline.json"
 #: The classes every refusal derives from, by name, and the helpers that build one.
 _ROOTS = {"SverifyError", "UnsupportedError", "Unsupported", "Refused", "ProducerRefused"}
 _HELPER = re.compile(r"refus|unsupported", re.I)
+#: Classes whose message always ends with an action (`SqlUnsupported` adds a
+#: rewrite, or "write this step in Ibis").
+_OWN_EXIT = {"SqlUnsupported"}
 
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"
@@ -43,7 +46,7 @@ _VERBS = (
 )
 EXIT = re.compile(
     r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|"
-    rf"\b({_VERBS})\b[^.]{{0,60}}(`|\w+=|\(\)|first|instead|as a)",
+    rf"\b({_VERBS})\b[^.]{{0,60}}(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis)",
     re.I,
 )
 HINT = re.compile(r"; [a-z]|\bonly\b|\binstead\b|\bmust\b|\bneeds?\b|\bexpects?\b|\bunless\b", re.I)
@@ -58,7 +61,7 @@ class Site:
 
     @property
     def tier(self) -> str:
-        if EXIT.search(self.message):
+        if self.cls in _OWN_EXIT or EXIT.search(self.message):
             return "exit"
         return "hint" if HINT.search(self.message) else "unnamed"
 

@@ -20,14 +20,6 @@
   "sql/core/strings.py": 2,
   "sql/core/temporal.py": 3,
   "sql/snowflake.py": 1,
-  "sql_lift/_base.py": 56,
-  "sql_lift/blackbox.py": 5,
-  "sql_lift/casts.py": 10,
-  "sql_lift/core.py": 19,
-  "sql_lift/nested.py": 8,
-  "sql_lift/relations.py": 4,
-  "sql_lift/strings.py": 17,
-  "sql_lift/temporal.py": 18,
   "sql_model.py": 2,
   "substrait_export.py": 24
 }
