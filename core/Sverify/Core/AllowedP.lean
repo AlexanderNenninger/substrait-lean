@@ -127,11 +127,11 @@ def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) 
 -- The double position of Polars and Spark misses a whole exact position by an
 -- ulp for some `q` (polars-quantile, spark-quantile): `n = 26`, `q = 0.28`
 -- lands above it, `n = 51`, `q = 0.58` below.
-#guard ((contNeighboursD 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt i))).map
+#guard ((contNeighboursD 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt (i : Int)))).map
   fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 7, FloatCode.ofInt 8)
-#guard ((contNeighboursD 58 2 ((List.range 51).map fun i => .float (FloatCode.ofInt i))).map
+#guard ((contNeighboursD 58 2 ((List.range 51).map fun i => .float (FloatCode.ofInt (i : Int)))).map
   fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 28, FloatCode.ofInt 29)
-#guard ((contNeighbours 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt i))).map
+#guard ((contNeighbours 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt (i : Int)))).map
   fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 7, FloatCode.ofInt 7)
 
 /-- The options `AggFn.AllowedP` interprets. -/
