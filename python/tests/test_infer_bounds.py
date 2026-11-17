@@ -360,6 +360,9 @@ def test_null_passes_an_inferred_bound():
     ]
 
 
+INT32 = ["(_.i >= -2 * 10**9)", "(_.i <= 2_147_483_647)"]
+
+
 @pytest.mark.parametrize(
     "sql",
     [
@@ -369,10 +372,11 @@ def test_null_passes_an_inferred_bound():
     ],
 )
 def test_a_widening_cast_has_its_targets_width(sql):
-    """`CAST(i AS BIGINT) * 4` of an `INTEGER` is 64-bit arithmetic, proved
-    with no bound; it was modelled as `WRAP32` (#1541)."""
-    report = verify(sql, tables={"t": {"i": "int32"}}, on_inferred="off")
+    """`CAST(i AS BIGINT) * 4` of an `INTEGER` is 64-bit arithmetic: the only
+    bound is the column's own type, not the `|i| < 2**29` of `WRAP32` (#1541)."""
+    report = verify(sql, tables={"t": {"i": "int32"}})
     assert report.proved and not report.errors, report
+    assert inferred(report) == INT32
 
 
 def test_arithmetic_without_the_cast_still_wraps_at_the_columns_width():
@@ -382,7 +386,7 @@ def test_arithmetic_without_the_cast_still_wraps_at_the_columns_width():
 
 def test_a_tinyint_cast_to_smallint_multiplies_at_16_bits():
     tables = {"t": {"v": "int8"}}
-    ok = verify("SELECT CAST(v AS SMALLINT) * 4 AS y FROM t", tables=tables, on_inferred="off")
-    assert ok.proved, ok
-    big = verify("SELECT CAST(v AS SMALLINT) * 10000 AS y FROM t", tables=tables, on_inferred="off")
-    assert not big.proved and any("WRAP16" in str(i) for i in big.errors), big
+    ok = verify("SELECT CAST(v AS SMALLINT) * 4 AS y FROM t", tables=tables)
+    assert ok.proved and inferred(ok) == ["(_.v >= -127)", "(_.v <= 127)"], ok
+    big = verify("SELECT CAST(v AS SMALLINT) * 10000 AS y FROM t", tables=tables)
+    assert big.proved and inferred(big) != inferred(ok), big
