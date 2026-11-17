@@ -13,6 +13,7 @@ from typing import get_args
 import pytest
 
 from _repo import ROOT, needs_repo
+from sverify import profiles
 from sverify._checker import run_checker
 from sverify.errors import UnsupportedError
 from sverify.sql import to_sql
