@@ -1,3 +1,4 @@
+import Sverify.Core.Conversions
 import Sverify.Core.Order
 import Sverify.Core.Dedup
 import Sverify.Core.FloatMoments
@@ -421,12 +422,22 @@ def FloatCode.ceilNat (c : Int) : Nat :=
   else FloatCode.floorNat c + 1
 
 /-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
-read as the double nearest to it: Polars's `float_idx = (n − 1.0) · q` and
-Spark's `position = (n − 1) · p` (polars-quantile, spark-quantile). It misses
-a whole exact position by an ulp for some `q` (`n = 26`, `q = 0.28`). -/
+read as the double nearest to it (`ofDecimal`, correctly rounded at every
+scale; `fdiv num 10^scale` would equal it only while both operands are exact,
+`num < 2⁵³` and `scale ≤ 22`): Polars's `float_idx = (n − 1.0) · q` and Spark's
+`position = (n − 1) · p` (polars-quantile, spark-quantile). It misses a whole
+exact position by an ulp for some `q` (`n = 26`, `q = 0.28`).
+
+Polars adds the null count inside the sum, `float_idx = (n − 1)·q + nulls`,
+over the array that holds the nulls first. This is the position over the
+values without nulls: the rounded sum is `(n − 1)·q` rounded then shifted by
+the whole number `nulls` and rounded again, and rounding is monotone with the
+whole numbers below `2⁵³` doubles, so the engine's pair is `(m, m)`, `(m, m + 1)` or
+`(m + 1, m + 1)` for `m = ⌊(n − 1)·q⌋`, all inside `[s[m], s[m + 1]]`, which this
+pair's `contAllowedOf` covers (`n = 26`, `q = 0.28` with a null: the sum is
+`8.0`, the pair `(7, 7)`). -/
 def contPosD (num scale n : Nat) : Int :=
-  FloatCode.fmul (FloatCode.ofInt ((n - 1 : Nat) : Int))
-    (FloatCode.fdiv (FloatCode.ofInt (num : Int)) (FloatCode.ofInt ((10 ^ scale : Nat) : Int)))
+  FloatCode.fmul (FloatCode.ofInt ((n - 1 : Nat) : Int)) (FloatCode.ofDecimal (num : Int) scale)
 
 /-- `contNeighbours` at the double position of `contPosD`: the codes at
 `⌊f⌋` and `⌈f⌉` (the same one where `f` is whole), and the weight

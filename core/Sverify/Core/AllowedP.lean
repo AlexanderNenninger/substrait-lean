@@ -133,6 +133,17 @@ def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) 
   fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 28, FloatCode.ofInt 29)
 #guard ((contNeighbours 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt (Int.ofNat i)))).map
   fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 7, FloatCode.ofInt 7)
+-- Polars adds the null count inside the sum: one null at `n = 26`, `q = 0.28` gives
+-- `8.0` (pair `(7, 7)` over the values without it, inside `[s 7, s 8]`), four nulls
+-- at `n = 51`, `q = 0.58` give `33.0` (pair `(29, 29)`).
+#guard FloatCode.floorNat (FloatCode.fadd (contPosD 28 2 26) (FloatCode.ofInt 1)) = 8
+  && FloatCode.ceilNat (FloatCode.fadd (contPosD 28 2 26) (FloatCode.ofInt 1)) = 8
+#guard FloatCode.floorNat (FloatCode.fadd (contPosD 58 2 51) (FloatCode.ofInt 4)) = 33
+  && FloatCode.ceilNat (FloatCode.fadd (contPosD 58 2 51) (FloatCode.ofInt 4)) = 33
+-- `q` is the nearest double at every scale: `fdiv 1 10^23` is not (`10^23` is not a double).
+#guard FloatCode.fdiv (FloatCode.ofInt 1) (FloatCode.ofInt ((10 ^ 23 : Nat) : Int)) ≠
+  FloatCode.ofDecimal 1 23
+#guard contPosD 2800000000000000 16 26 = contPosD 28 2 26
 
 /-- The options `AggFn.AllowedP` interprets. -/
 def aggInterpreted : List String := ["sum_order", "stat_algo", "quantile_interp"]
