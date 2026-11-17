@@ -688,9 +688,21 @@ class Dialect:
     # Decimals (#27). The reference computes them exactly; a dialect whose
     # engine does too, with the hooks below, sets `decimals`.
 
+    orders_text: bool = False
+    """Whether the dialect writes ordering comparisons of strings and booleans
+    (`<`, `BETWEEN`, `GREATEST`, `LEAST`): it has a fact that the engine
+    orders them as the reference does, by code point and `false < true`
+    (#1492). A dialect without it refuses them."""
+
     decimals: bool = False
     """Whether the engine computes decimals exactly, as the reference does
     (#27). A dialect without it refuses plans with decimal arithmetic."""
+
+    def require_ordered(self, kind: Any) -> None:
+        """Raise `Unsupported` for an ordering comparison of strings or
+        booleans unless the dialect has `orders_text`."""
+        if kind in ("str", "bool") and not self.orders_text:
+            raise self.not_written(f"ordering comparisons of {kind} values")
 
     def decimal_type(self, k: Dec) -> str:
         if not self.decimals:
@@ -4767,10 +4779,7 @@ class _Writer:
                 # `GREATEST`/`LEAST` (NaN above everything, the first on a tie).
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
-                if k in ("str", "bool"):
-                    raise WriterUnsupported(
-                        f"ordering comparisons of {k} values are not in the Lean model"
-                    )
+                d.require_ordered(k)
                 ca = ka if isinstance(ka, Dec) else k
                 cb = kb if isinstance(kb, Dec) else k
                 sa, sb = go(a, ca), go(b, cb)
@@ -4786,11 +4795,8 @@ class _Writer:
                 k = ka or kb
                 if ka is not None and kb is not None and ka != kb:
                     raise Unsupported(f"comparison of {ka} with {kb}; cast one side first")
-                if op == "lt" and k in ("str", "bool"):
-                    # `BinFn.apply .lt` is only defined on integers (and the codes).
-                    raise WriterUnsupported(
-                        f"ordering comparisons of {k} values are not in the Lean model"
-                    )
+                if op == "lt":
+                    d.require_ordered(k)
                 sa, sb = go(a, k), go(b, k)
                 if k == "float":
                     return d.float_eq(sa, sb) if op == "eq" else d.float_lt(sa, sb)
