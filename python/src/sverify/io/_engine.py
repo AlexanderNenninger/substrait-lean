@@ -32,8 +32,9 @@ import duckdb
 import pyarrow as pa
 
 from sverify import _duckdb
-from sverify._scan import FILE, POS, Resident, Scan, _duckdb_types, _lit, _q
+from sverify._scan import Resident, Scan, _q
 from sverify._weighted import WEIGHT
+from sverify_duckdb.scan import FILE, POS, duckdb_types, lit
 
 _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
@@ -97,7 +98,7 @@ def copy(sql: str, path: str, schema: pa.Schema, field_ids: dict[str, int] | Non
     file `path`, in `schema`'s types. Returns the number of rows."""
     with _LOCK:
         db = _db()
-        types = _duckdb_types(db, schema)
+        types = duckdb_types(db, schema)
         cast = ", ".join(
             f"CAST({_q(c)} AS {t}) AS {_q(c)}" for c, t in zip(schema.names, types, strict=True)
         )
@@ -106,7 +107,7 @@ def copy(sql: str, path: str, schema: pa.Schema, field_ids: dict[str, int] | Non
             ids = ", ".join(f"{_q(c)}: {i}" for c, i in field_ids.items())
             options += f", FIELD_IDS {{{ids}}}"
         row = db.execute(
-            f"COPY (SELECT {cast} FROM ({sql})) TO {_lit(path)} ({options})"
+            f"COPY (SELECT {cast} FROM ({sql})) TO {lit(path)} ({options})"
         ).fetchall()[0]
     return int(row[0]) if row else 0
 
@@ -122,14 +123,14 @@ def rewrite(path: str, gone: pa.Table, new: str, field_ids: dict[str, int] | Non
         try:
             src = (
                 f"SELECT * EXCLUDE (file_row_number) FROM "
-                f"read_parquet({_lit(path)}, file_row_number = true) "
+                f"read_parquet({lit(path)}, file_row_number = true) "
                 f"WHERE file_row_number NOT IN (SELECT pos FROM {name})"
             )
             options = "FORMAT parquet"
             if field_ids is not None:
                 ids = ", ".join(f"{_q(c)}: {i}" for c, i in field_ids.items())
                 options += f", FIELD_IDS {{{ids}}}"
-            row = db.execute(f"COPY ({src}) TO {_lit(new)} ({options})").fetchall()[0]
+            row = db.execute(f"COPY ({src}) TO {lit(new)} ({options})").fetchall()[0]
         finally:
             db.unregister(name)
     return int(row[0]) if row else 0
@@ -232,9 +233,7 @@ def float_bounds(path: str, schema: pa.Schema) -> dict[str, tuple[float, float]]
     ]
     with _LOCK:
         row = (
-            _db()
-            .execute(f"SELECT {', '.join(parts)} FROM read_parquet({_lit(path)})")
-            .fetchall()[0]
+            _db().execute(f"SELECT {', '.join(parts)} FROM read_parquet({lit(path)})").fetchall()[0]
         )
     out = {}
     for i, c in enumerate(cols):
@@ -259,9 +258,7 @@ def delta_stats(path: str, schema: pa.Schema) -> str:
             parts += [f"min({c}){keep}", f"max({c}){keep}"]
     with _LOCK:
         row = (
-            _db()
-            .execute(f"SELECT {', '.join(parts)} FROM read_parquet({_lit(path)})")
-            .fetchall()[0]
+            _db().execute(f"SELECT {', '.join(parts)} FROM read_parquet({lit(path)})").fetchall()[0]
         )
     assert row is not None
     values = iter(row)

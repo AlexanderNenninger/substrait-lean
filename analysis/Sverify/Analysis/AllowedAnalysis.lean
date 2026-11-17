@@ -40,11 +40,12 @@ def Measure.detIn (cat : Catalog) (A : String → List AVal) (F : String → Lis
     (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
   m.orderFree || (m.fn.sorts && m.tiesFixed cat A F K r gs)
 
-/-- Does the measure `m` over `r` pick one value: not `MIN` or `MAX`, whose
-value is any member of its class (D31), or over an argument without doubles? -/
+/-- Does the measure `m` over `r` pick one value: not a function that picks
+any member of a class (`AggFn.classPick`: `MIN`, `MAX`, `QUANTILE_DISC`; D31,
+D45), or over an argument without doubles? -/
 def Measure.pickFixed (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (r : Rel)
     (m : Measure) : Bool :=
-  !(m.fn matches .min | .max) || (m.arg.abs (r.aeval cat A F .none)).noDoubles
+  !m.fn.classPick || (m.arg.abs (r.aeval cat A F .none)).noDoubles
 
 /-- Does the window over `r` give one result for every order of its ties: do
 its partition and sort columns contain a key of `r` (`window_tiebreak`), are
@@ -236,7 +237,8 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     have ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ x ∈ i,
         (m.arg.eval x).Lone := fun m hm hf x hx => by
       have := hmm m hm
-      rcases hf with hf | hf <;> simp only [Measure.pickFixed, hf, Bool.not_true, Bool.false_or] at this <;>
+      rcases hf with hf | hf <;>
+        simp only [Measure.pickFixed, hf, AggFn.classPick, Bool.not_true, Bool.false_or] at this <;>
         exact AVal.lone_of_noDoubles this (Expr.abs_sound (henv x hx) m.arg)
     exact h.trans ((aggAllowed_eq (hms hp) hk ha ho).trans (aggregateEval_perm_of (hms .rfl) hp))
   | .unnest r _, hwf, hd, _, ⟨i, hi, h⟩ =>

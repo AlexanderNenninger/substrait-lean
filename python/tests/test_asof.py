@@ -99,7 +99,6 @@ KEYS = {
     "gyr": [sv.unique("device", "ts")],
 }
 GUARANTEES = [
-    sv.unique("device", "ts"),
     _.ts_right.isnull() | (_.ts_right <= _.ts),
     _.ts_right.isnull() | (_.ts_right >= _.ts - TOL),
 ]
@@ -203,3 +202,35 @@ def test_the_default_cap_leaves_the_usual_joins_alone():
     left, right = _bound(2000, 2000, 1)  # 4 · 10⁶ pairs
     assert MAX_PAIRS > 2000 * 2000
     assert sv.asof_join(left, right, on="ts", by="device") is not None
+
+
+def test_left_rows_that_share_a_key_each_keep_their_match():
+    """#1517: left rows with the same `(by, on)`, a NULL `on` among them, each
+    get an output row. The ranking is per left row, so none is dropped."""
+    import pyarrow as pa
+
+    con = sv.connect()
+    left = {"sym": ["a", "a", "a", "b"], "t": [10, 10, None, 5], "qty": [1, 2, 3, 4]}
+    con.put("l", pa.table(left))
+    con.put("r", pa.table({"sym": ["a", "a", "b"], "t": [8, 9, 1], "px": [100, 101, 50]}))
+    j = sv.asof_join(con.table("l"), con.table("r"), on="t", by="sym")
+    report = sv.verify(j, on_inferred="ignore")
+    for engine in ("duckdb", "polars"):
+        out = report.run(con, engine)
+        assert sorted(out.column("qty").to_pylist()) == [1, 2, 3, 4], engine
+        qty, px = out.column("qty").to_pylist(), out.column("px").to_pylist()
+        rows = dict(zip(qty, px, strict=True))
+        assert rows == {1: 101, 2: 101, 3: None, 4: 50}, engine
+
+
+def test_unique_by_on_is_not_proved_of_the_join():
+    """The output has one row per left row, but the key analysis does not carry
+    the left table's key through the join and the ranking (#1517): the plan
+    no longer claims `unique(by, on)`, with or without the key on `acc`."""
+    j = sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=TOL)
+    ensures = [sv.unique("device", "ts")]
+    requires = {"acc": [_.device.notnull()]}
+    assert not sv.verify(j, requires=requires, ensures=ensures, on_inferred="ignore").proved
+    # With the left key in `requires` this is the line that flips when the key
+    # analysis carries a left key through the ranking (#1517).
+    assert not sv.verify(j, requires=KEYS, ensures=ensures, on_inferred="ignore").proved

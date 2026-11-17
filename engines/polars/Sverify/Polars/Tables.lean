@@ -141,7 +141,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with
     engine := some "in-memory"
     cls := .refused
-    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. `LINEAR_DIFF` overclaims at a whole exact position that the double position misses, where the engine's neighbours are those of the double position (polars-quantile); tracked in #900." }).tracking 900),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, polars-quantile)." }).tracking 900),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
   (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
@@ -179,11 +179,12 @@ def Profile.polars.obs : ObsTable := [
   -- reference truncates, and no shim gives the truncating `fmod` exactly
   -- (polars-double-modulus, #1270): the reference route refuses it. A plan
   -- that states `division_type: FLOOR`, or is produced for
-  -- `semantics="polars"`, runs natively (`Profile.polars_fmod`), the divisions
-  -- by a scalar taking `/`'s class (polars-scalar-divisor).
+  -- `semantics="polars"`, runs Polars's own `%` on the translated route
+  -- (`Profile.polars_fmod`), the divisions by a scalar taking `/`'s class
+  -- (polars-scalar-divisor).
   (some "fp.mod", "division_type", ({ ObsRow.native ["polars-double-modulus", "polars-scalar-divisor"] with
     cls := .refused
-    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs natively, as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`)." }).tracking 271),
+    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),

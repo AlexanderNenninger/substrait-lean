@@ -60,6 +60,20 @@ class SqlUnsupported(Unsupported):
         super().__init__(message)
 
 
+class ProducerUnsupported(Unsupported):
+    """The Ibis producer (or the plan writer) does not read a construct (yet).
+    The message ends with the `hint` where the site has one, otherwise with
+    what the user can do: rewrite the expression with a supported operation
+    or a supported column type."""
+
+    def __init__(self, message: str, hint: str | None = None):
+        if hint:
+            message = f"{message}; {hint}"
+        elif "#" not in message:
+            message = f"{message}; rewrite it with a supported operation or column type"
+        super().__init__(message)
+
+
 # --------------------------------------------------------------------------
 # Types and literals
 
@@ -172,7 +186,7 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"date": (value - EPOCH.date()).days}}
     if dtype.is_time():
         if value.tzinfo is not None:
-            raise Unsupported("times with a time zone are not supported")
+            raise ProducerUnsupported("times with a time zone are not supported")
         micros = ((value.hour * 60 + value.minute) * 60 + value.second) * 1_000_000
         micros += value.microsecond
         return {"literal": {"precisionTime": {"precision": 6, "value": str(micros)}}}
@@ -187,7 +201,7 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_struct():
         fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
         return {"literal": {"struct": {"fields": fields}}}
-    raise Unsupported(f"literal of type {dtype} is not supported")
+    raise ProducerUnsupported(f"literal of type {dtype} is not supported")
 
 
 def same_type(a: Any, b: Any) -> bool:
@@ -204,7 +218,7 @@ def decimal_type_of(value: Any) -> Any:
     """The narrowest `DECIMAL(p, s)` that holds `value` exactly."""
     d = Decimal(value)
     if not d.is_finite():
-        raise Unsupported(f"decimal {d} is not supported")
+        raise ProducerUnsupported(f"decimal {d} is not supported")
     s = max(0, -int(d.as_tuple().exponent))
     digits = len(str(abs(int(d.scaleb(s)))))
     return dt.Decimal(precision=max(digits, s, 1), scale=s, nullable=True)
@@ -218,9 +232,9 @@ def decimal_literal(value: Any, dtype: Any) -> Json:
         dtype = decimal_type_of(value)
     unscaled = Decimal(value).scaleb(dtype.scale)
     if unscaled != unscaled.to_integral_value():
-        raise Unsupported(f"{value} has more than {dtype.scale} decimal places")
+        raise ProducerUnsupported(f"{value} has more than {dtype.scale} decimal places")
     if len(str(abs(int(unscaled)))) > dtype.precision:
-        raise Unsupported(f"{value} does not fit {dtype}")
+        raise ProducerUnsupported(f"{value} does not fit {dtype}")
     raw = int(unscaled).to_bytes(16, "little", signed=True)
     body = {"value": base64.b64encode(raw).decode(), "precision": dtype.precision}
     return {"literal": {"decimal": {**body, "scale": dtype.scale}}}
@@ -250,7 +264,7 @@ def interval_parts(value: Any, dtype: Any) -> tuple[int, int]:
         return int(value) * INTERVAL_MONTHS[unit], 0
     factor = INTERVAL_MICROS.get(unit)
     if factor is None:
-        raise Unsupported(f"intervals in {dtype.unit.plural} are not supported")
+        raise ProducerUnsupported(f"intervals in {dtype.unit.plural} are not supported")
     return 0, int(value) * factor
 
 

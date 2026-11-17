@@ -23,6 +23,7 @@ from sverify.ibis_substrait.aggregates import measure
 from sverify.ibis_substrait.windows import _row_number_from_zero, _window_functions, window
 from sverify.plan_json import (
     Json,
+    ProducerUnsupported,
     Unsupported,
     call,
     chain,
@@ -54,7 +55,7 @@ def _exists_subquery(x: Exprs, op: Any) -> Json:
 def _in_subquery(x: Exprs, op: Any) -> Json:
     (column,) = op.rel.schema.types
     if not same_type(op.needle.dtype, column):
-        raise Unsupported(f"IN of {op.needle.dtype} in a subquery of {column}")
+        raise ProducerUnsupported(f"IN of {op.needle.dtype} in a subquery of {column}")
     return {"subquery": {"inPredicate": {"needles": [x(op.needle)], "haystack": rel(op.rel)}}}
 
 
@@ -281,7 +282,7 @@ def _join_chain(op: Any) -> Json:
             width += len(link.table.schema)
             continue
         if link.how not in _JOIN_TYPES:
-            raise Unsupported(f"{link.how} joins are not supported")
+            raise ProducerUnsupported(f"{link.how} joins are not supported")
         x = Exprs({**offsets, link.table: width})
         conds = [x(p) for p in link.predicates] or [literal(True, dt.boolean)]
         current = {
@@ -432,7 +433,7 @@ def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
     def walk_view(read: Json, view: Any) -> Json:
         common = read.get("common", {})
         if set(common) - {"direct", "emit"}:
-            raise Unsupported(f"a read of a view with {sorted(common)} is not supported")
+            raise ProducerUnsupported(f"a read of a view with {sorted(common)} is not supported")
         out = rel(view)
         if "filter" in read:
             out = {"filter": {"input": out, "condition": walk(read["filter"])}}

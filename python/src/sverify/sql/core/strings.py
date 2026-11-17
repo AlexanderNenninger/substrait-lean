@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from sverify import _functions, _plan_read
+from sverify._unsupported import EMPTY_REPLACE_PATTERN
 from sverify.sql.core._base import (
     Bin,
     Expr,
@@ -19,6 +20,7 @@ from sverify.sql.core._base import (
     Lit,
     Un,
     Unsupported,
+    WriterUnsupported,
     _Writer,
     like_pattern,
     register,
@@ -63,7 +65,9 @@ def call(name: str, args: list[Expr]) -> Expr | None:
             return Bin("substr", a, b)
         case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
             if n < 0:
-                raise Unsupported("a negative substring length always fails")
+                raise WriterUnsupported(
+                    "a negative substring length always fails", hint="use a length of 0 or more"
+                )
             return Bin("substr", a, b, length=n)
         case "substring", [_, _, _]:
             raise Unsupported("substring lengths must be constants")
@@ -151,9 +155,7 @@ def expr(
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
             if not pattern:
-                # Rust puts the replacement around every character; SQL engines
-                # return the string unchanged.
-                raise Unsupported("replace with an empty pattern differs between engines")
+                raise WriterUnsupported(f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern")
             x = self.operand(a, "str", ref, cols, "replace")
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):

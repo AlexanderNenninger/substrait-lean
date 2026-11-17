@@ -546,7 +546,9 @@ def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .aggregate r gs ms =>
     let env := r.aeval cat A F .none
     (gs.filter fun g => !(g.abs env).noDoubles).map (fun g => doublesTies s!"GROUP BY {g.render}") ++
-      (ms.filter fun m => !Measure.detIn cat A F K r gs m).map measureTies ++
+      -- A measure that only picks a member of a class says so, its one open place.
+      (ms.filter fun m => !Measure.detIn cat A F K r gs m && Measure.pickFixed cat A F r m).map
+        measureTies ++
       (ms.filter fun m => !Measure.pickFixed cat A F r m).map fun m => doublesTies m.render
   | .fetch (.orderBy i keys) _ _ =>
     if Rel.fetchTotalAt cat A F K i keys then [] else
@@ -578,9 +580,12 @@ theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String →
       List.all_eq_true, Bool.not_eq_true', Bool.not_eq_false]
     constructor
     · rintro ⟨⟨⟨hg, hm⟩, hmm⟩, hd⟩
-      exact ⟨⟨⟨hd, hm⟩, hg⟩, hmm⟩
+      refine ⟨⟨⟨hd, fun m h => ?_⟩, hg⟩, hmm⟩
+      cases hdm : Measure.detIn cat A F K r gs m
+      · exact absurd ⟨hdm, hmm m h⟩ (hm m h)
+      · rfl
     · rintro ⟨⟨⟨hd, hm⟩, hg⟩, hmm⟩
-      exact ⟨⟨⟨hg, hm⟩, hmm⟩, hd⟩
+      exact ⟨⟨⟨hg, fun m h ⟨hf, _⟩ => by rw [hm m h] at hf; cases hf⟩, hmm⟩, hd⟩
   | .fetch (.orderBy i keys) _ _ => by
     cases h : Rel.fetchTotalAt cat A F K i keys <;> cases h' : keys.any (·.clustered) <;>
       simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K i, h, h']
