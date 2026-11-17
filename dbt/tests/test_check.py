@@ -302,6 +302,44 @@ def test_an_incremental_models_tests_are_skippable_only_if_its_key_holds(
         assert "proved for the full refresh (dbt build still runs them)" in str(res)
 
 
+def test_a_merge_keeps_only_the_key_and_row_level_tests_skippable(make_project) -> None:
+    """`unique(cents)` holds for the batch and the full refresh, but a merge on
+    `id` can leave an old row and a batch row with the same `cents`: old
+    `(1, 5)`, batch `(2, 5)`. It stays out of the skippable set; `unique(id)`
+    and the row-level `not_null(id)` stay in."""
+    res = sverify_dbt.check(
+        make_project(
+            {
+                "models/_sources.yml": SOURCES.replace(
+                    "{name: cents, data_type: integer}",
+                    "{name: cents, data_type: integer, data_tests: [unique]}",
+                ),
+                "models/p.sql": (
+                    "{{ config(materialized='incremental', unique_key='id', "
+                    "incremental_strategy='merge') }}\n"
+                    "select id, cents from {{ source('raw', 'payments') }}\n"
+                ),
+                "models/_models.yml": """\
+                version: 2
+                models:
+                  - name: p
+                    columns:
+                      - name: id
+                        data_tests: [unique, not_null]
+                      - name: cents
+                        data_tests: [unique]
+            """,
+            }
+        ),
+        counterexamples=0,
+    )
+    assert {t.label: t.skippable for t in res["p"].tests} == {
+        "unique(id)": True,
+        "not_null(id)": True,
+        "unique(cents)": False,
+    }
+
+
 def test_not_a_duckdb_project(tmp_path: Path) -> None:
     (tmp_path / "target").mkdir()
     (tmp_path / "target" / "manifest.json").write_text(
