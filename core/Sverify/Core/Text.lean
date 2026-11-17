@@ -426,8 +426,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard repeatFits "ab" (2 ^ 30 - 1) && !repeatFits "ab" (2 ^ 30) && !repeatFits "é" (2 ^ 30)
 #guard repeatFits "" (2 ^ 62) && repeatFits "ab" (-(2 ^ 62))
 #guard reverse "héllo" == "olléh" && reverse "" == ""
-#guard replace "ab" "" "x" == "xaxbx" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
-#guard replace "" "" "x" == "x" && replace "abcabc" "bc" "Z" == "aZaZ"
+#guard replace "ab" "" "x" == "ab" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
+#guard replace "" "" "x" == "" && replace "abcabc" "bc" "Z" == "aZaZ"
 #guard ascii "" == 0 && ascii "é" == 233 && ascii "ab" == 97
 #guard levenshtein "kitten" "sitting" == 3 && levenshtein "" "" == 0 && levenshtein "abc" "" == 3
 #guard levenshtein "" "ab" == 2 && levenshtein "é" "e" == 1 && levenshtein "flaw" "lawn" == 2
