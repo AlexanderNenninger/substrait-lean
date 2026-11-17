@@ -204,6 +204,7 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_terms
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
+#print axioms Substrait.Rel.mayIssues_sound_all
 #print axioms Substrait.Rel.noIssue_of_sumsFit
 #print axioms Substrait.floatSumCR_mem
 #print axioms Substrait.floatAvgCR_mem
