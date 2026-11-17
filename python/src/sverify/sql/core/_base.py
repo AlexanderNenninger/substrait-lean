@@ -62,7 +62,7 @@ class Unsupported(_Unsupported):
     """
 
 
-RANGE_HINT = "state a precondition that keeps the value in range"
+RANGE_HINT = "change the constant, or the cast's type, so the value fits"
 MALFORMED_PLAN = (
     "the plan is malformed or outside what this writer reads; build it with sverify, or fix it"
 )

@@ -99,4 +99,4 @@ def test_a_refusal_with_no_installed_engine_names_an_exit(monkeypatch):
     monkeypatch.setattr(_support, "_runs", lambda *_: False)
     text = _support.refusal("regexp_extract", "duckdb")
     assert "no installed engine runs it" in text
-    assert "install an engine" in text
+    assert "rewrite the step" in text and "pip install" not in text
