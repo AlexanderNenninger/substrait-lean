@@ -142,7 +142,7 @@ def test_a_limit_without_order_by_is_refused(con) -> None:
     report = sv.verify(t.limit(2))
     assert not report.deterministic
     assert [p.op for p in report._tie_places] == ["fetch"]
-    with pytest.raises(RouteError, match="ties stay open at the fetch at relation 0"):
+    with pytest.raises(RouteError, match="the plan leaves open the fetch at relation 0"):
         report.run(con, "duckdb", route="auto", reproducible=sv.equivalent(rows="multiset"))
 
 

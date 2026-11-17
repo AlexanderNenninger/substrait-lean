@@ -232,6 +232,13 @@ end Substrait.Examples
 #print axioms Substrait.ContractCheck.check_proved_sound
 #print axioms Substrait.ContractCheck.check_proved_rows
 #print axioms Substrait.ContractCheck.check_proved_conds
+#print axioms Substrait.ContractCheck.check_deterministic_sound
+#print axioms Substrait.ContractCheck.tiesIn_eq_nil
+#print axioms Substrait.ContractCheck.Request.deterministicIn_eq
+#print axioms Substrait.Rel.fetch_clustered_open
+#print axioms Substrait.Measure.mode_signed_zero_open
+#print axioms Substrait.Measure.allowed_eq_of_ties
+#print axioms Substrait.map_eq_of_perm_of_pairwise
 #print axioms Substrait.Knowledge.mayIssues_sound
 #print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines

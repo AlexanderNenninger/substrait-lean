@@ -1108,8 +1108,8 @@ def reproducibility(
     if not report.deterministic:
         problems.append(
             "the result is not determined up to row order: the deterministic profile needs a "
-            "total order, and ties stay open at "
-            + ("; ".join(map(str, report._tie_places)) or "an ORDER BY or a LIMIT")
+            "total order, and the plan leaves open "
+            + ("; ".join(map(str, report._tie_places)) or "a place the report does not name")
             + ", so no rerun is sure to reproduce it"
         )
     if depends is None:
