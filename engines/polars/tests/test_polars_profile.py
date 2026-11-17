@@ -77,6 +77,7 @@ def test_floor_run_over_mixed_signs(report: sv.Report) -> None:
     con = sv.connect()
     i, j = zip(*rows, strict=True)
     con.put("t", pa.table({"i": pa.array(i, pa.int64()), "j": pa.array(j, pa.int64())}))
+    assert report._guard_free
     out = report.run(con, "polars")
     assert out.column("m").to_pylist() == [a % b for a, b in rows]
     assert out.column("q").to_pylist() == [a // b for a, b in rows]
@@ -166,6 +167,7 @@ def test_routes_from_polars(report: sv.Report) -> None:
     until the checker reports under each engine's profile (#1442, #1288, #271)."""
     assert routes.choose(report, "polars").kind == "translated"
     assert routes.choose(report, "duckdb").kind == "translated"
+    assert routes.choose(report, "spark").kind == "translated"
 
 
 # --- `%` of doubles ------------------------------------------------------------

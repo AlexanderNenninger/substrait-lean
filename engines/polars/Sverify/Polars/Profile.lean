@@ -354,7 +354,7 @@ end Polars
 reference's double operations, which is Polars's `%` for a column divisor
 (polars-double-modulus). A literal divisor takes the reciprocal kernel for
 `/`, and `%` is that same formula over it (polars-scalar-divisor), so the
-engine runs it natively too. Where Polars gives NaN
+engine runs it on the translated route too. Where Polars gives NaN
 (`x % 0`, a finite `x % ±∞`) the profile raises, as the reference does
 (D21). The numeric rows of the fact are checked against Polars in
 `engines/polars/tests/test_polars_profile.py`. -/
