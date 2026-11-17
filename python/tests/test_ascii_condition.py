@@ -35,7 +35,7 @@ def test_the_guard_and_the_precondition_are_one_predicate(classes):
     assert rows(f"NOT {guard}") == broken
     assert broken == {"héllo", "ÉCOLE", "ß"} | ({"a\x0bb", "\x0b"} if classes else set())
     # The Ibis form the report shows is the same predicate (NULL is not a value).
-    t = ibis.duckdb.connect().create_table("t", {"s": [x for x in SAMPLE]})
+    t = ibis.memtable({"s": SAMPLE}, schema={"s": "string"})
     shown = eval(cond.text, {"_": ibis._, "ibis": ibis})  # noqa: S307 - the label is Ibis code
     kept = set(t.filter(shown.resolve(t))["s"].to_pyarrow().to_pylist())
     assert kept == {x for x in SAMPLE if x is not None} - broken
