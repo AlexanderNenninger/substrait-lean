@@ -425,27 +425,27 @@ def FloatCode.ceilNat (c : Int) : Nat :=
 `2^(⌊log₂ m⌋ − 52)`. -/
 def FloatCode.ulpMag (m : Nat) : Nat := if m < 2 ^ 52 then 1 else 2 ^ (m.log2 - 52)
 
-/-- The next double above a code, for a finite one (`-0.0` and `0` step to the
-smallest subnormal; past the largest, `+∞`; `+∞` and NaN stay). -/
+/-- The magnitude one spacing above `m`, and below it (`m − ulp(m − 1)`, the
+spacing below a power of two being the finer one). -/
+def FloatCode.upMag (m : Nat) : Nat := m + FloatCode.ulpMag m
+def FloatCode.downMag (m : Nat) : Nat := m - FloatCode.ulpMag (m - 1)
+
+/-- The code of magnitude `m`, negative (`0` for the magnitude `0`). -/
+def FloatCode.negCode (m : Nat) : Int := if m = 0 then 0 else -FloatCode.posCode m
+
+/-- The next double above a code, for a finite one (`0` steps to the smallest
+subnormal; past the largest, `+∞`; `±∞` and NaN stay). -/
 def FloatCode.nextUp (c : Int) : Int :=
   if c = 0 then FloatCode.posCode 1
-  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode ((c.toNat - 1) / 2 + FloatCode.ulpMag ((c.toNat - 1) / 2))
-  else if FloatCode.negInf < c ∧ c < 0 then
-    let m := ((-c).toNat - 1) / 2
-    let m' := m - FloatCode.ulpMag (m - 1)
-    if m' = 0 then 0 else -FloatCode.posCode m'
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.upMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.downMag (((-c).toNat - 1) / 2))
   else c
 
 /-- The next double below a code, for a finite one. -/
 def FloatCode.nextDown (c : Int) : Int :=
   if c = 0 then -FloatCode.posCode 1
-  else if 0 < c ∧ c < FloatCode.posInf then
-    let m := (c.toNat - 1) / 2
-    let m' := m - FloatCode.ulpMag (m - 1)
-    if m' = 0 then 0 else FloatCode.posCode m'
-  else if FloatCode.negInf < c ∧ c < 0 then
-    let m := ((-c).toNat - 1) / 2
-    -FloatCode.posCode (m + FloatCode.ulpMag m)
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.downMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.upMag (((-c).toNat - 1) / 2))
   else c
 
 -- Against `Float`'s neighbours.
