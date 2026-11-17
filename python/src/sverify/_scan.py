@@ -54,16 +54,8 @@ def local_path(uri: str) -> str | None:
     return None
 
 
-FILE, POS = '"__sverify_file"', '"__sverify_pos"'
-"""The columns `Scan.attach(..., positions=True)` adds (quoted)."""
-
-
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
-
-
-def _lit(s: str) -> str:
-    return "'" + s.replace("'", "''") + "'"
 
 
 class Native:
@@ -172,30 +164,10 @@ class Scan(Native):
         table: bool = False,
         positions: bool = False,
     ) -> Callable[[], None]:
-        """Make `name` a temporary view of the rows in `db`, or with `table`
-        a temporary table holding them (whose `rowid` numbers the rows in
-        file order). With `positions`, each row also has its file (`FILE`)
-        and its position in the file (`POS`). Returns the function that
-        drops it again."""
-        tag = uuid.uuid4().hex
-        deleted = f"__sverify_deleted_{tag}"
-        if self.deleted is not None:
-            db.register(deleted, self.deleted)
-        kind = "TABLE" if table else "VIEW"
-        try:
-            sql = self._sql(db, deleted, positions)
-            db.execute(f"CREATE OR REPLACE TEMP {kind} {_q(name)} AS {sql}")
-        except BaseException:
-            if self.deleted is not None:
-                db.unregister(deleted)
-            raise
+        """DuckDB's view or table of the rows (`sverify_duckdb.scan.attach_scan`)."""
+        from sverify_duckdb.scan import attach_scan
 
-        def drop() -> None:
-            db.execute(f"DROP {kind} IF EXISTS {_q(name)}")
-            if self.deleted is not None:
-                db.unregister(deleted)
-
-        return drop
+        return attach_scan(self, db, name, table=table, positions=positions)
 
     def readable(self) -> bool:
         """Whether every file is still there (a vacuum removes the files of
@@ -203,67 +175,11 @@ class Scan(Native):
         return all(os.path.exists(f) for f in self.files)
 
     def to_arrow(self) -> pa.Table:
-        """The rows as an Arrow table in the scan's schema."""
-        db = duckdb.connect()
-        try:
-            self.attach(db, "t")
-            return db.sql("SELECT * FROM t").to_arrow_table().cast(self.schema)
-        finally:
-            db.close()
+        """The rows as an Arrow table in the scan's schema: the reference reader,
+        what an engine's scan of this descriptor must equal."""
+        from sverify_duckdb.scan import read_scan
 
-    def _sql(self, db: duckdb.DuckDBPyConnection, deleted: str, positions: bool = False) -> str:
-        types = _duckdb_types(db, self.schema)
-        names = self.schema.names
-        if not self.files:
-            cols = ", ".join(
-                f"CAST(NULL AS {t}) AS {_q(c)}" for c, t in zip(names, types, strict=True)
-            )
-            if positions:
-                cols += f", CAST(NULL AS VARCHAR) AS {FILE}, CAST(NULL AS BIGINT) AS {POS}"
-            return f"SELECT {cols} WHERE FALSE"
-        files = "[" + ", ".join(map(_lit, self.files)) + "]"
-        options = "union_by_name = true"
-        if self.deleted is not None or positions:
-            options += ", filename = true, file_row_number = true"
-        source = f"read_parquet({files}, {options})"
-        present = {r[0] for r in db.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()}
-        cols = ", ".join(
-            f"{_column(f, t, present)} AS {_q(f.name)}"
-            for f, t in zip(self.schema, types, strict=True)
-        )
-        if positions:
-            cols += f", s.filename AS {FILE}, s.file_row_number AS {POS}"
-        sql = f"SELECT {cols} FROM {source} s"
-        if self.deleted is not None:
-            sql += (
-                f" WHERE NOT EXISTS (SELECT 1 FROM {deleted} d"
-                " WHERE d.file = s.filename AND d.pos = s.file_row_number)"
-            )
-        if self.where is not None:
-            sql = f"SELECT * FROM ({sql}) WHERE {self.where}"
-        return sql
-
-
-def _column(f: pa.Field, t: str, present: set[str]) -> str:
-    """Column `f` of a file as type `t`, NULL where no file has it. Doubles
-    as `sverify.engine.canonical` makes them: `-0.0` as `0.0`, and every NaN
-    the positive one (files may hold others, which DuckDB orders apart)."""
-    if f.name not in present:
-        return f"CAST(NULL AS {t})"
-    col = f"CAST(s.{_q(f.name)} AS {t})"
-    if pa.types.is_floating(f.type):
-        col = f"CAST(CASE WHEN isnan({col}) THEN 'NaN' ELSE {col} + 0.0 END AS {t})"
-    return col
-
-
-def _duckdb_types(db: duckdb.DuckDBPyConnection, schema: pa.Schema) -> list[str]:
-    """The DuckDB type of each column of an Arrow table with `schema`."""
-    name = f"__sverify_schema_{uuid.uuid4().hex}"
-    db.register(name, schema.empty_table())
-    try:
-        return [r[1] for r in db.execute(f"DESCRIBE {_q(name)}").fetchall()]
-    finally:
-        db.unregister(name)
+        return read_scan(self)
 
 
 @dataclass

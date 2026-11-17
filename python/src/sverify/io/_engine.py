@@ -32,8 +32,9 @@ import duckdb
 import pyarrow as pa
 
 from sverify import _duckdb
-from sverify._scan import FILE, POS, Resident, Scan, _duckdb_types, _lit, _q
+from sverify._scan import Resident, Scan, _q
 from sverify._weighted import WEIGHT
+from sverify_duckdb.scan import FILE, POS, _lit, duckdb_types
 
 _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
@@ -97,7 +98,7 @@ def copy(sql: str, path: str, schema: pa.Schema, field_ids: dict[str, int] | Non
     file `path`, in `schema`'s types. Returns the number of rows."""
     with _LOCK:
         db = _db()
-        types = _duckdb_types(db, schema)
+        types = duckdb_types(db, schema)
         cast = ", ".join(
             f"CAST({_q(c)} AS {t}) AS {_q(c)}" for c, t in zip(schema.names, types, strict=True)
         )
