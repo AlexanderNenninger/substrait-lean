@@ -10,6 +10,7 @@ membership test of the engine's value against that set.
 """
 
 import math
+from collections.abc import Sequence
 from decimal import Decimal
 
 import pytest
@@ -40,7 +41,7 @@ def allowed(values: list[float], q: str, got: float) -> bool:
     return got == math.inf and hi - lo == math.inf
 
 
-def polars_quantile(values: list[float | None], q: str) -> float:
+def polars_quantile(values: Sequence[float | None], q: str) -> float:
     df = pl.DataFrame({"x": values}, schema={"x": pl.Float64})
     return df.select(pl.col("x").quantile(float(Decimal(q)), "linear")).item()
 
