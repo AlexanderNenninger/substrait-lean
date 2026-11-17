@@ -27,8 +27,9 @@ def _table() -> pa.Table:
 
 
 @pytest.mark.parametrize("query", QUERIES)
-def test_ntile_is_proved_and_runs_as_duckdbs_on_duckdb_and_polars(query):
-    report = sv.verify(query, tables={"t": SCHEMA})
+@pytest.mark.parametrize("semantics", [None, "duckdb"])
+def test_ntile_is_proved_and_runs_as_duckdbs_on_duckdb_and_polars(query, semantics):
+    report = sv.verify(query, tables={"t": SCHEMA}, semantics=semantics)
     assert report.proved, report
     arrow = _table()
     own = duckdb.connect()
