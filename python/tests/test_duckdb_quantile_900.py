@@ -18,6 +18,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from sverify.sql.core import Unsupported
 from sverify_duckdb.dialect import DUCKDB
 
 pytestmark = pytest.mark.backend("duckdb")
@@ -103,15 +104,100 @@ def test_a_dyadic_fraction_needs_no_guard():
     assert "quantile_disc" in DUCKDB.quantile(True, "x", "0.28")
 
 
-def test_a_position_past_the_double_is_refused():
-    # Ibis prints `quantile(1/3)` at scale 16: `(n - 1)·10^16 >= 2^52` from n = 2.
-    with pytest.raises(duckdb.Error, match="quantile position"):
-        written([1.0, 2.0], "0.3333333333333333")
-    assert written([1.0, 2.0, 3.0], "0.28") == 1.56  # inside the bound at scale 2
+def band_of(n1: int, q: Fraction) -> tuple[bool, int, int]:
+    """(in the band, k, nearest whole position m) of the position `n1·q`."""
+    k, r = divmod(n1 * q.numerator, q.denominator)
+    d = min(r, q.denominator - r)
+    return d <= (n1 * q.denominator) // 2**51, k, k if 2 * r < q.denominator else k + 1
 
 
-def test_the_position_check_stays_without_guards():
-    # An engine limit, which `guard_free` cannot prove absent.
+def test_the_band_arithmetic():
+    """Outside the band the double position's floor and ceiling are the exact ones; in it
+    and below the count limit the shifted `quantile_disc` index is the nearest whole
+    position, which the engine's pair holds."""
+    rng = random.Random(900)
+    eps = Fraction(1, 10**15)
+    seen = {"band": 0, "outside": 0}
+    for _ in range(30_000):
+        scale = rng.randint(2, 21)
+        den0 = 10**scale
+        n1 = rng.choice((rng.randint(1, 60), rng.randint(1, 10**14 - 1)))
+        num0 = rng.choice((rng.randint(1, den0 - 1), rng.randint(1, 20), den0 - rng.randint(1, 20)))
+        q = Fraction(num0, den0)
+        if q.denominator & (q.denominator - 1) == 0:
+            continue
+        band, k, m = band_of(n1, q)
+        rn = float(n1) * (q.numerator / q.denominator)
+        pair = (math.floor(rn), math.ceil(rn))
+        if not band:
+            seen["outside"] += 1
+            assert pair == (k, k + 1), (n1, q)
+            continue
+        seen["band"] += 1
+        assert m in pair, (n1, q)
+        n = n1 + 1
+        shifted = q + eps if 2 * q < 1 else q - eps
+        assert max(1, math.ceil(n * shifted)) - 1 == m, (n1, q)
+    assert seen["band"] > 100 and seen["outside"] > 100
+
+
+BAND_QS = tuple(
+    f"0.{num:0{scale}d}"
+    for scale in (16, 18, 21)
+    for num in (1, 2, 3, 7, 10**scale - 1, 10**scale - 4)
+)
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    st.lists(
+        st.one_of(
+            st.floats(min_value=-1e300, max_value=1e300), st.sampled_from([-math.inf, math.inf])
+        ),
+        min_size=2,
+        max_size=12,
+    ),
+    st.sampled_from(BAND_QS),
+)
+def test_a_group_with_a_position_in_the_band_stays_between_the_neighbours(values, q):
+    lo, hi = neighbours(values, Fraction(q))
+    p = (len(values) - 1) * Fraction(q)
+    if lo == -math.inf and hi == math.inf and p.denominator != 1:
+        with pytest.raises(duckdb.Error, match="domain"):
+            written(values, q)
+    else:
+        assert allowed(values, q, written(values, q))
+
+
+def test_the_domain_error_in_the_band():
+    q = "0.9999999999999999"
+    with pytest.raises(duckdb.Error, match="domain"):
+        written([-math.inf, math.inf], q)
+    # Both infinities in the group, but the neighbours at the fractional position are +inf.
+    assert written([-math.inf, math.inf, math.inf], q) == math.inf
+    # Without the guards the engine's own value comes back.
+    sql = replace(DUCKDB, guards=False).quantile(True, "x", q)
+    CON.execute(f"SELECT {sql} FROM (VALUES ('-inf'::DOUBLE), ('inf'::DOUBLE)) s(x)").fetchall()
+
+
+def test_a_third_at_scale_16_is_not_refused():
+    # Ibis prints `quantile(1/3)` at scale 16; it was refused from n = 2.
+    assert written([1.0, 2.0], "0.3333333333333333") == pytest.approx(1.3333333333333333)
+
+
+def test_more_than_21_decimals_are_refused_when_written():
+    with pytest.raises(Unsupported, match="21"):
+        DUCKDB.quantile(True, "x", "0.1234567890123456789012")
+    DUCKDB.quantile(True, "x", "0.123456789012345678901")
+    DUCKDB.quantile(True, "x", "0.500000000000000000000000")  # dyadic
+
+
+def test_the_count_limit_stays_without_guards():
+    # An engine limit, which `guard_free` cannot prove absent. 10^14 rows do not fit a test:
+    # lower the limit in the written SQL.
     sql = replace(DUCKDB, guards=False).quantile(True, "x", "0.3333333333333333")
-    with pytest.raises(duckdb.Error, match="quantile position"):
-        CON.execute(f"SELECT {sql} FROM (VALUES (1.0), (2.0)) s(x)").fetchall()
+    assert str(10**14) in sql
+    with pytest.raises(duckdb.Error, match="quantile count"):
+        CON.execute(
+            f"SELECT {sql.replace(str(10**14), '2')} FROM (VALUES (1.0), (2.0), (3.0)) s(x)"
+        ).fetchall()
