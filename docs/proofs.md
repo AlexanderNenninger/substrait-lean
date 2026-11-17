@@ -271,7 +271,7 @@ and CI runs that build as the guard. The modules below import it as
 |---|---|
 | `Polars/Tables.lean` | Polars's choice table and observation rows, refining the core |
 | `Polars/Shims.lean` | The Polars shims, proved against a model of Polars's functions |
-| `Polars/Profile.lean` | `Profile.polars`, the semantics under `semantics="polars"` |
+| `Polars/Profile.lean` | `Profile.polars`, the semantics `semantics="polars"` will check under (pending, #271) |
 | `Polars/Engine.lean` | `Engine.polars`, its functions within Polars's table, and `Engine.polars_sound` |
 
 ### Spark: `engines/spark/Sverify/Spark/`
