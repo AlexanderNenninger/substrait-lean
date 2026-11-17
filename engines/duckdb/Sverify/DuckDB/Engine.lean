@@ -11,7 +11,7 @@ runs the plan through its lowering (`Lowering.duckdb`), with its profile's
 functions where they do not raise (`impl := profile.okImpl`).
 `Profile.duckdb_withinOk` proves those within DuckDB's table, and
 `Engine.duckdb_sound` that the run is sound: where the lowered plan does not
-raise, `okImpl` computes DuckDB's run (`Rel.eval_okImpl`), which the reference
+raise (`Engine.NoRaiseSide`), `okImpl` computes DuckDB's run (`Rel.eval_okImpl`), which the reference
 allows (`Rel.duckdb_shim_allowed`).
 -/
 
@@ -207,8 +207,9 @@ def Engine.duckdb (s : DuckDBSettings) (hs : s.ieeeOps = true) : Engine where
 /-- DuckDB at its default settings: where the lowered plan does not raise,
 `okImpl` computes DuckDB's run (`Rel.eval_okImpl`), which the reference
 allows (`Rel.duckdb_shim_allowed`). -/
-theorem Engine.duckdb_sound : (Engine.duckdb {} rfl).Sound fun _ _ => True := by
-  intro cat r r' hl hr _
+theorem Engine.duckdb_sound : (Engine.duckdb {} rfl).Sound (Engine.duckdb {} rfl).NoRaiseSide := by
+  intro cat r r' hl hside
+  have hr := hside r' hl
   cases hl
   show r.Allowed cat ((Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).okImpl)
   rw [Rel.eval_okImpl (p := Profile.duckdb {}) hr]; exact Rel.duckdb_shim_allowed hr
@@ -219,16 +220,18 @@ namespace Substrait
 section Example
 attribute [local instance] Engine.exampleBoxes
 
-/-- DuckDB on the example of `Sound.lean`: the lowered plan does not raise on
-it, so `Engine.contract_sound`'s hypotheses hold (`Engine.example_contract`) and
-the postcondition holds on the rows DuckDB's functions compute. -/
+/-- DuckDB on the example of `Sound.lean`: the lowered plan does not raise on it
+(`Engine.NoRaiseSide`), so `Engine.contract_sound`'s hypotheses hold
+(`Engine.example_contract`) and the postcondition holds on the rows DuckDB's
+functions compute. -/
 theorem Engine.duckdb_contract_example :
     ∀ row ∈ postRows Engine.examplePost [2]
         ((Lowering.duckdb.lowerRel Engine.examplePlan).eval Engine.exampleCat
           (Engine.duckdb {} rfl).impl),
       ∀ v ∈ row, v = .bool true := by
-  refine Engine.example_contract (Engine.duckdb_sound) (E := Engine.duckdb {} rfl)
-    (T' := Lowering.duckdb.lowerRel Engine.examplePlan) rfl ?_ trivial
+  refine Engine.example_contract Engine.duckdb_sound (E := Engine.duckdb {} rfl)
+    (T' := Lowering.duckdb.lowerRel Engine.examplePlan) rfl ?_
+  rintro r' ⟨⟩
   show ¬(Lowering.duckdb.lowerRel Engine.examplePlan).Raises (Profile.duckdb {}) Engine.exampleCat
   simp [Rel.Raises, Engine.examplePlan, Lowering.lowerRel, Rel.mapExprs]
   intro x hx

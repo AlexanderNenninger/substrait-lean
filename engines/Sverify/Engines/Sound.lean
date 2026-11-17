@@ -7,8 +7,7 @@ import Sverify.Analysis.AllowedAnalysis
 # What an engine's model is sound for (#900)
 
 `Engine.Sound E side`: for every plan `r` that `E` translates to `r'`, where
-`r'` does not raise under `E`'s profile and `side` holds, the rows `r'`
-computes with `E`'s functions are a result the reference allows for `r`
+`side` holds, the rows `r'` computes with `E`'s functions are a result the reference allows for `r`
 (`Rel.Allowed`). `Engine.reference_sound` is the reference's own; each
 engine proves its own (`Engine.duckdb_sound`, `Engine.polars_sound`,
 `Engine.spark_sound`).
@@ -23,11 +22,13 @@ that `Engine.polars_sound` and `Engine.spark_sound` apply to something.
 `Engine.example_contract` goes on to inhabit every hypothesis of
 `Engine.contract_sound` for that plan and a postcondition, and each engine
 (`Engine.duckdb_contract_example`, `Engine.polars_contract_example`,
-`Engine.spark_contract_example`) supplies its own three.
+`Engine.spark_contract_example`) supplies its own two.
 
-What the two proofs take and what they leave. They do not use the hypothesis
-that the translated plan does not raise: on data that meets the side
-condition the written plan's functions compute `Rel.eval`
+What each engine's side condition is. DuckDB's model is its profile's
+functions where they do not raise (`okImpl`), so its side condition is that
+the translated plan does not raise (`Engine.NoRaiseSide`). Polars's and
+Spark's models are the written plan's functions, total: on data that meets
+`Engine.GuardFreeSide` they compute `Rel.eval`
 (`Impl.Faithful`, guard elimination). That the engine computes what its
 model says on such data is D16's trusted claim (`Engine.Runs`), carried by
 the engine's facts and tests.
@@ -54,15 +55,21 @@ variable [Boxes.Ambient]
 
 /-! ## The bridge -/
 
-/-- **`E`'s run is sound under `side`**: where `E` translates `r` to `r'`,
-`r'` does not raise under `E`'s profile and `side cat r` holds, the rows `r'`
-computes with `E`'s functions are a result the reference allows for `r`. -/
+/-- The side condition of an engine whose model is its profile's functions
+where they do not raise (`okImpl`, DuckDB): the translated plan does not
+raise. -/
+def Engine.NoRaiseSide (E : Engine) (cat : Catalog) (r : Rel) : Prop :=
+  ∀ r', E.lower r = some r' → ¬r'.Raises E.profile cat
+
+/-- **`E`'s run is sound under `side`**: where `E` translates `r` to `r'` and
+`side cat r` holds, the rows `r'` computes with `E`'s functions are a result the
+reference allows for `r`. -/
 def Engine.Sound (E : Engine) (side : Catalog → Rel → Prop) : Prop :=
-  ∀ {cat : Catalog} {r r' : Rel}, E.lower r = some r' → ¬r'.Raises E.profile cat → side cat r →
+  ∀ {cat : Catalog} {r r' : Rel}, E.lower r = some r' → side cat r →
     r.Allowed cat (r'.eval cat E.impl)
 
 theorem Engine.reference_sound : Engine.reference.Sound fun _ _ => True := by
-  intro cat r r' hl _ _; cases hl; exact r.eval_allowed cat
+  intro cat r r' hl _; cases hl; exact r.eval_allowed cat
 
 /-- The data part of guard elimination's side condition: preconditions on the catalog
 (`A` its tables' values, `F` their facts, `T` the window keys), and the size
@@ -97,9 +104,9 @@ theorem Engine.refWithin_of_transferB {E : Engine} {r : Rel}
 /-- Where the reference's choices are within `E`'s, `E`'s table allows the
 run too. -/
 theorem Engine.Sound.allowedP {E : Engine} {side : Catalog → Rel → Prop} (hE : E.Sound side)
-    {cat : Catalog} {r r' : Rel} (hl : E.lower r = some r') (hr : ¬r'.Raises E.profile cat)
+    {cat : Catalog} {r r' : Rel} (hl : E.lower r = some r')
     (hs : side cat r) (hw : E.RefWithin r) : r.AllowedP E.table cat (r'.eval cat E.impl) :=
-  Rel.AllowedP_transfer hw (Rel.allowedP_reference.mpr (hE hl hr hs))
+  Rel.AllowedP_transfer hw (Rel.allowedP_reference.mpr (hE hl hs))
 
 /-! ## Contracts on an engine -/
 
@@ -116,8 +123,7 @@ theorem Rel.Allowed.postRows {cat : Catalog} {T : Rel} {es : List Expr} {mp : Li
 /-- **A verified contract holds on an engine's model** (#900). On data that
 meets the preconditions, with `contract_sound_allowed`'s hypotheses on the
 transformation `T` and its postconditions `es` (selected by `mp`), where `E`
-translates `T` to `T'`, `T'` does not raise under `E`'s profile and `E`'s side
-condition holds, the postconditions hold on the rows `T'` computes with `E`'s
+translates `T` to `T'` and `E`'s side condition holds, the postconditions hold on the rows `T'` computes with `E`'s
 functions. -/
 theorem Engine.contract_sound {E : Engine} {side : Catalog → Rel → Prop} (hE : E.Sound side)
     {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
@@ -133,10 +139,10 @@ theorem Engine.contract_sound {E : Engine} {side : Catalog → Rel → Prop} (hE
     (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
       (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
         AVal.certainlyTrue = true)
-    {T' : Rel} (hl : E.lower T = some T') (hr : ¬T'.Raises E.profile cat) (hside : side cat T) :
+    {T' : Rel} (hl : E.lower T = some T') (hside : side cat T) :
     ∀ row ∈ postRows es mp (T'.eval cat E.impl), ∀ v ∈ row, v = .bool true :=
   contract_sound_allowed hcat hS hpre hT hq hsafe hsh hrob hQ hW hproved
-    (hE hl hr hside).postRows
+    (hE hl hside).postRows
 
 /-- **D16's trusted claim**: what `E` returns for `r` is `out`, a result `E`'s
 table allows for `r`, on the strength of the observation rows `r` relies on,
@@ -243,13 +249,13 @@ def Engine.examplePost : List Expr := [.bin .lt (.lit (.int 0)) (.field 1)]
 
 /-- **`Engine.contract_sound`'s hypotheses are inhabited**: for the example's
 catalog, plan and postcondition (`Engine.examplePost`, column 2 of the
-selection), every hypothesis but the engine's own (`hl`, `hr`, `hside`) is
+selection), every hypothesis but the engine's own (`hl`, `hside`) is
 shown here: the data meets the bounds, the plan is well-formed and closed
 (so `FloatOpenSafe`), no shift is used, and the analysis finds the
-postcondition certainly true. Each engine states its three in its own
+postcondition certainly true. Each engine states its two in its own
 module. -/
 theorem Engine.example_contract {E : Engine} {side : Catalog → Rel → Prop} (hE : E.Sound side)
-    {T' : Rel} (hl : E.lower Engine.examplePlan = some T') (hr : ¬T'.Raises E.profile Engine.exampleCat)
+    {T' : Rel} (hl : E.lower Engine.examplePlan = some T')
     (hside : side Engine.exampleCat Engine.examplePlan) :
     ∀ row ∈ postRows Engine.examplePost [2] (T'.eval Engine.exampleCat E.impl),
       ∀ v ∈ row, v = .bool true :=
@@ -261,7 +267,7 @@ theorem Engine.example_contract {E : Engine} {side : Catalog → Rel → Prop} (
     (sh := fun _ => none) (by simp) (by decide +kernel)
     (by simp [Rel.WF, Expr.refsLt, Rel.arity, Engine.exampleCat, Engine.examplePlan,
       Engine.examplePost, Expr.narrow, Expr.narrowCmp, Expr.cmp?])
-    (WindowKeys.none_soundAll _) (by rw [Rel.aeval_csimp]; decide +kernel) hl hr hside
+    (WindowKeys.none_soundAll _) (by rw [Rel.aeval_csimp]; decide +kernel) hl hside
 
 end Example
 
