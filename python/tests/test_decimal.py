@@ -367,6 +367,21 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     assert out.column("m").to_pylist() == [D(10**34 - 2)]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="#1497: Report.output of a decimal AVG is the input's type; the written plan's is "
+    "DECIMAL(p + 4, s + 4) (S7)",
+)
+def test_the_output_type_of_a_decimal_mean_is_the_one_that_runs():
+    c = sv.connect()
+    c.put("t", pa.table({"g": [1, 1], "v": pa.array([D("1.5"), D("2.5")], pa.decimal128(20, 18))}))
+    t = c.table("t")
+    report = sv.verify(t.group_by("g").aggregate(m=t.v.mean()))
+    declared = report.output["m"]
+    ran = report.run(c).schema.field("m").type
+    assert (declared.precision, declared.scale) == (ran.precision, ran.scale)
+
+
 @settings(max_examples=300, deadline=None)
 @given(
     u=st.integers(-(10**30), 10**30),

@@ -177,10 +177,13 @@ inductive UnFn where
   2 is `1234`), so this is the value itself: it gives the expression its kind,
   and a value of more than `p` digits is an overflow (`Safety.lean`). -/
   | decimal (p s : Nat)
-  /-- `DECIMAL(p, s)` without the check, where the value cannot have more
-  digits: an average has no more than the values it averages (#27). The parser
-  builds it only where that bound follows from the input's precision
-  (`Parse.decimalAvgs`, `decimalCall`); the theorems that read it assume it. -/
+  /-- `DECIMAL(p, s)` without the overflow check. The parser builds it in two
+  uses. A quotient (`Parse.decimalAvgs`): an average has no more digits than the
+  values it averages (#27), and the parser checks that its `DECIMAL(p + 4, s + 4)`
+  fits 38 digits (`checkDecimalAvgWidth`, #1497). A comparison's side
+  (`decimalCall`): the operand upscaled to the larger scale, whose precision
+  bounds nothing and which only the scale is read from (`Expr.eval` and
+  `Kind.comparable`), so the model compares the exact values (#1498). -/
   | dkind (p s : Nat)
   /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
   rounding half away from zero (`roundDiv10`). -/
