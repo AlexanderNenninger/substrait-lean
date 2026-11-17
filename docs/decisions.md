@@ -271,11 +271,12 @@ A filter above a join is analysed on the cross product of the join's loose
 inputs (`Rel.loose`), so DuckDB pushing a raising `WHERE` into one side of an
 inner or left join
 (fact `duckdb-exec-filter-pushdown`, #602)
-evaluates it on rows the analysis covers. The one exception is a join whose
-other side is empty: `Rel.HasIssue` then has no pairs, while DuckDB still
-evaluates the pushed filter on the side's rows. `Rel.mayIssues` reports
-the error anyway, since it describes each side's columns by that side's own
-bounds; `Rel.HasIssue` does not model the case yet.
+evaluates it on rows the analysis covers. A join whose other side is empty
+has no pairs, while DuckDB still evaluates the pushed filter on the side's
+rows. `Rel.HasIssueAll` models that case too (#1484 R3): each subexpression a
+condition always evaluates may run on the rows of the join inputs it reads,
+the other inputs' columns NULL (`Rel.ViewAllowed`), and
+`Rel.mayIssues_sound_all` proves that `Rel.mayIssues` reports it.
 
 DuckDB 2.0.0 also evaluates a `CASE`'s constant `WHEN` conditions when it
 plans the query, with the evaluator that raises:
