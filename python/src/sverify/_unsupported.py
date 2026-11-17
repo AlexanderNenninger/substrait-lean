@@ -20,15 +20,6 @@ DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 RANGE_GUARD = "Overflow in a RANGE frame bound"
 
 
-#: The refusal of `replace(s, '', r)`: the model's `replace` puts `r` around
-#: every character (Rust, Polars), DuckDB's returns `s`. The frontends under
-#: the reference and the SQL writers refuse the empty pattern with it.
-EMPTY_REPLACE_PATTERN = (
-    "replace with an empty pattern differs between engines: DuckDB returns the string"
-    " unchanged, Polars puts the replacement around every character"
-)
-
-
 class SverifyError(Exception):
     """The base of every exception sverify raises on purpose: a refusal
     (`Unsupported`), a proof that fails (`VerificationError`), data that

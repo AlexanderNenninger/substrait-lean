@@ -421,6 +421,44 @@ def FloatCode.ceilNat (c : Int) : Nat :=
   if (FloatCode.sv c).toNat % FloatCode.unitK = 0 then FloatCode.floorNat c
   else FloatCode.floorNat c + 1
 
+/-- The spacing at a magnitude (in units of `2⁻¹⁰⁷⁴`): `1` below `2⁵²`, else
+`2^(⌊log₂ m⌋ − 52)`. -/
+def FloatCode.ulpMag (m : Nat) : Nat := if m < 2 ^ 52 then 1 else 2 ^ (m.log2 - 52)
+
+/-- The magnitude one spacing above `m`, and below it (`m − ulp(m − 1)`, the
+spacing below a power of two being the finer one). -/
+def FloatCode.upMag (m : Nat) : Nat := m + FloatCode.ulpMag m
+def FloatCode.downMag (m : Nat) : Nat := m - FloatCode.ulpMag (m - 1)
+
+/-- The code of magnitude `m`, negative (`0` for the magnitude `0`). -/
+def FloatCode.negCode (m : Nat) : Int := if m = 0 then 0 else -FloatCode.posCode m
+
+/-- The next double above a code, for a finite one (`0` steps to the smallest
+subnormal; past the largest, `+∞`; `±∞` and NaN stay). -/
+def FloatCode.nextUp (c : Int) : Int :=
+  if c = 0 then FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.upMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.downMag (((-c).toNat - 1) / 2))
+  else c
+
+/-- The next double below a code, for a finite one. -/
+def FloatCode.nextDown (c : Int) : Int :=
+  if c = 0 then -FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.downMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.upMag (((-c).toNat - 1) / 2))
+  else c
+
+-- Against `Float`'s neighbours.
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 1.0000000000000002
+#guard FloatCode.nextUp (FloatCode.ofFloat (-1.0)) = FloatCode.ofFloat (-0.9999999999999999)
+#guard FloatCode.nextUp (FloatCode.ofFloat 0.0) = FloatCode.ofFloat 5e-324
+#guard FloatCode.nextDown (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 0.9999999999999999
+#guard FloatCode.nextDown (FloatCode.ofFloat 2.0) = FloatCode.ofFloat 1.9999999999999998
+#guard FloatCode.nextDown (FloatCode.ofFloat (-2.0)) = FloatCode.ofFloat (-2.0000000000000004)
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.7976931348623157e308) = FloatCode.posInf
+#guard FloatCode.nextDown (FloatCode.ofFloat 5e-324) = FloatCode.ofFloat 0.0
+#guard FloatCode.nextDown (FloatCode.ofFloat (-1.7976931348623157e308)) = FloatCode.negInf
+
 /-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
 read as the double nearest to it (`ofDecimal`, correctly rounded at every
 scale; `fdiv num 10^scale` would equal it only while both operands are exact,

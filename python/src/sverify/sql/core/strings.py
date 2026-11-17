@@ -11,7 +11,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from sverify import _functions, _plan_read
-from sverify._unsupported import EMPTY_REPLACE_PATTERN
 from sverify.sql.core._base import (
     Bin,
     Expr,
@@ -154,9 +153,11 @@ def expr(
                 return self.ascii_only(x, v, f"regular expression {pattern!r}")
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
-            if not pattern:
-                raise WriterUnsupported(f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern")
             x = self.operand(a, "str", ref, cols, "replace")
+            if not pattern:
+                # An empty pattern matches nowhere (D44); no engine's `replace`
+                # is read for it (Spark's and Snowflake's are not probed).
+                return x
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):
             sa = self.operand(a, "str", ref, cols, "repeat")
@@ -168,7 +169,7 @@ def expr(
             cap = d.int_lit(REPEAT_MAX + 1)
             capped = f"(CASE WHEN {n} > {cap} THEN {cap} ELSE {n} END)"
             big = f"({capped} * {d.octet_length(sa)} > {d.int_lit(REPEAT_MAX)})"
-            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str")
+            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str", "overflow")
             return d.case_when(big, fail, r)
         case Bin(op="substr", left=a, right=b, length=length, param=start):
             sa = self.operand(a, "str", ref, cols, "substring")
@@ -183,7 +184,9 @@ def expr(
                     # `Text.substrInRange` (#336): the engine raises on an
                     # offset out of range, but sees the shifted one here.
                     low = f"({sb} < {d.int_lit(-SUBSTR_MAX)})"
-                    fail = d.raise_("substring offset outside of supported range", sa, "int")
+                    fail = d.raise_(
+                        "substring offset outside of supported range", sa, "int", "domain"
+                    )
                     wrapped = d.case_when(low, fail, wrapped)
                 sb = wrapped
             return self.substring(sa, sb, length)

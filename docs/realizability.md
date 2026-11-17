@@ -39,7 +39,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 26 | 1 | 4 | 4 | 0 | 15 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 5 | 25 | 1 | 4 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 6 | 8 | 2 | 15 | 7 |
 | Spark | 4.3.0 | `Rel.spark_sound` | 6 | 26 | 1 | 5 | 3 | 2 | 14 | 0 |
 
@@ -58,6 +58,7 @@ Rows per evidence level:
 | DuckDB | `MIN % -1 written out` | expression | `min_mod_neg_one` |
 | DuckDB | `round: 0.0 for a negative value that rounds to zero` | expression | `round_zero_sign` |
 | DuckDB | `nan_through` | expression | agg.var: `stat_algo` |
+| DuckDB | `quantile_guard` | expression | `quantile_interp` |
 | DuckDB | `ORDER BY the keys` | sort | `clustered` |
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
 | Polars | `int_div_trunc` | expression | int.div: `division_type` |
@@ -82,7 +83,7 @@ Rows per evidence level:
 
 ## DuckDB 2.0.0
 
-4 shims (3 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
+5 shims (4 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -127,7 +128,7 @@ Rows per evidence level:
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `TREE`, `RUNNING_ADD`, `RECOMPUTE` | observed: within the plan's bound | probe | tested: [duckdb-window-sum-order](../engines/duckdb/facts/duckdb-window-sum-order.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | probe | tested: [duckdb-R6](../engines/duckdb/facts/duckdb-R6.json) |
-| every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [duckdb-quantile-cont-interpolation](../engines/duckdb/facts/duckdb-quantile-cont-interpolation.json) |
+| every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | shim `quantile_guard` (expression) | probe | tested: [duckdb-quantile-cont-interpolation](../engines/duckdb/facts/duckdb-quantile-cont-interpolation.json), `tests/test_duckdb_quantile_900.py::test_the_whole_positions_the_double_misses_give_the_model_value`, `tests/test_duckdb_quantile_900.py::test_a_random_group_stays_between_the_neighbours` |
 | every | `tie_pick` | open | `ANY_ROW` | `FIRST_READ` | native | probe | tested: [duckdb-mode-ties](../engines/duckdb/facts/duckdb-mode-ties.json), [duckdb-arg-min-nulls](../engines/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `tie_order` | open | `ANY` | `ANY` | native | probe | tested: [duckdb-sort-ties](../engines/duckdb/facts/duckdb-sort-ties.json), [duckdb-mode-ties](../engines/duckdb/facts/duckdb-mode-ties.json) |
 | every | `null_order` | choose | `NULLS_LAST` | `NULLS_LAST` | native | engine_test | tested: [duckdb-F2](../engines/duckdb/facts/duckdb-F2.json) |
