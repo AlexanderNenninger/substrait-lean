@@ -206,7 +206,7 @@ not known. D10's determinism and the Python side's `rerun ⊑ q` check read it. 
   proved to refine the reference and still vary run to run. -/
   rerunEvidence : Evidence := .none
   /-- Where the engine executes the row's functions, if not its default
-  (Polars: streaming; `"in-memory"` where streaming falls back). -/
+  (streaming; `"in-memory"` where streaming falls back). -/
   engine : Option String := none
   /-- What the engine's behaviour rests on, beyond the reference's
   preconditions: proved from the bounds where possible, else checked on the

@@ -99,7 +99,7 @@ def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   if b = "EXACT" then v = f.apply vs
   else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
 
-/-- What `lo + (hi − lo)·w` (Polars and Spark, `LINEAR_DIFF`) gives beyond a
+/-- What `lo + (hi − lo)·w` (`LINEAR_DIFF`) gives beyond a
 double between the neighbours `nb`, each value conditioned on them: NaN where
 `lo` is `-∞` and `hi` is greater (`hi − lo` is `+∞`, and `-∞ + ∞·w` is NaN),
 and `+∞` where `hi − lo` overflows to `+∞` (`[-1e308, 1e308]` gives `+∞` at
@@ -111,7 +111,7 @@ def contDiffExtra (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
       (v = .float FloatCode.posInf ∧ FloatCode.fsub h l = FloatCode.posInf)
   | none => False
 
-/-- What DuckDB's own `lo·(1 − w) + hi·w` gives beyond a double between the
+/-- What the interpolation `lo·(1 − w) + hi·w` in doubles gives beyond a double between the
 neighbours `nb`: an ulp above `hi` or below `lo` (the weight `1 − w` rounds
 where `lo` is the first value, finding B of duckdb-quantile-cont-interpolation).
 The fact's condition "`lo` is the group's first value" is left out on purpose:
@@ -125,11 +125,10 @@ def contLinearExtra (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
 
 /-- What `QUANTILE_CONT` gives under a `quantile_interp` behaviour. `BETWEEN`
 (the reference) is a double between the neighbours of the exact position.
-`LINEAR` (DuckDB's own `quantile_cont`) takes the neighbours of its double
+`LINEAR` (duckdb-quantile-cont-interpolation) takes the neighbours of its double
 position (`RN = (n − 1)·q` in doubles, `contNeighboursD`), and is a double
-between them or an ulp past them (`contLinearExtra`); the written plan meets
-`BETWEEN` by its guards (`Dialect.quantile`, #1502), which is the row's shim.
-`LINEAR_DIFF` (Polars, Spark) takes the same neighbours, and is a double
+between them or an ulp past them (`contLinearExtra`).
+`LINEAR_DIFF` (polars-quantile, spark-quantile) takes the same neighbours, and is a double
 between them or what the difference `hi − lo` makes of an infinite or
 overflowing pair (`contDiffExtra`). -/
 def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) : Prop :=
@@ -142,7 +141,7 @@ def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) 
       contDiffExtra (contNeighboursD num scale (sortVals vs)) v
   else True
 
--- The double position of Polars and Spark misses a whole exact position by an
+-- The double position of `LINEAR_DIFF` misses a whole exact position by an
 -- ulp for some `q` (polars-quantile, spark-quantile): `n = 26`, `q = 0.28`
 -- lands above it, `n = 51`, `q = 0.58` below.
 #guard ((contNeighboursD 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt (Int.ofNat i)))).map
@@ -151,7 +150,7 @@ def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) 
   fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 28, FloatCode.ofInt 29)
 #guard ((contNeighbours 28 2 ((List.range 26).map fun i => .float (FloatCode.ofInt (Int.ofNat i)))).map
   fun (l, h, _) => (l, h)) = some (FloatCode.ofInt 7, FloatCode.ofInt 7)
--- Polars adds the null count inside the sum: one null at `n = 26`, `q = 0.28` gives
+-- With the null count added inside the sum (polars-quantile): one null at `n = 26`, `q = 0.28` gives
 -- `8.0` (pair `(7, 7)` over the values without it, inside `[s 7, s 8]`), four nulls
 -- at `n = 51`, `q = 0.58` give `33.0` (pair `(29, 29)`).
 #guard FloatCode.floorNat (FloatCode.fadd (contPosD 28 2 26) (FloatCode.ofInt 1)) = 8

@@ -4,9 +4,8 @@ import Sverify.Core.Aggregate
 # What a statistical aggregate may give (#85)
 
 `VARIANCE`, `STDDEV`, `COVAR_SAMP`/`COVAR_POP` and `CORR` are computed by each
-engine's own algorithm, and none documents which (DuckDB, Spark and grouped
-Polars use Welford's update with Chan's merge, ungrouped Polars a blockwise
-two-pass). Before D30 the reference allowed any value with the generic
+engine's own algorithm, and none documents which (the tier-1 engines use Welford's update with
+Chan's merge, or a blockwise two-pass). Before D30 the reference allowed any value with the generic
 properties every reasonable algorithm keeps; since D30 it is the exact moments
 rounded once, and these properties (`StatProps`) are what an engine's
 algorithm may give (`core/Sverify/Core/AllowedP.lean`). An engine profile may
@@ -36,9 +35,10 @@ witness `r ≥ 0` with `r² ≥` the product it bounds. The bounds scale with th
 spread of the values: they stay small for values far from zero that vary
 little. They hold for the two-pass algorithm (the reference's own,
 `twoPass_var_rel`, `twoPass_cov_rel`) and for Welford's update with Chan's
-merge in any tree, in DuckDB's order of operations (`chanVar_rel`,
-`chanCov_rel`; with `core_var_chan`, `core_cov_chan` and `core_corr_chan` the
-properties themselves, DuckDB's `CORR` formula included), all in
+merge in any tree, in the order of operations that `chanVar_rel` and
+`chanCov_rel` state (with
+`core_var_chan`, `core_cov_chan` and `core_corr_chan` the
+properties themselves, the `CORR` formula of `core_corr_chan` included), all in
 `float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
 cancels catastrophically and is not covered. A NaN or an infinity among the
 values gives the reference's own value. Finite values outside the range above
@@ -200,14 +200,12 @@ def StatProps (f : AggFn) (vs : List Value) (v : Value) : Prop :=
 
 /-! ## The NaN guard of a written variance (DD-3)
 
-DuckDB's `VAR_POP` and `STDDEV_POP` of one value are `0` whatever the value,
-NaN included (`duckdb-var-pop-one-value`, upstream DD-3), where `varStat`
-asks for the reference's NaN. Sverify's SQL writes the aggregate as
-`CASE WHEN n ≤ k THEN NULL WHEN COUNT(isnan(x)) > 0 THEN NaN ELSE body END`
-(`nan_through` in `python/src/sverify/sql/core/_base.py`, grouped and
-windowed), and raises on an infinity first (#257). `Stat.nanGuard` is that
-expression; `Stat.nanGuard_varStat` says it gives what `varStat` allows
-whenever the engine's `body` does on finite values. -/
+`VAR_POP` and `STDDEV_POP` of one value are `0` whatever the value, NaN
+included, where an engine follows `duckdb-var-pop-one-value` (upstream DD-3);
+`varStat` asks for the reference's NaN. `Stat.nanGuard` is the guarded
+expression `CASE WHEN n ≤ k THEN NULL WHEN COUNT(isnan(x)) > 0 THEN NaN ELSE
+body END` (an infinity raises first, #257); `Stat.nanGuard_varStat` says it
+gives what `varStat` allows whenever `body` does on finite values. -/
 
 namespace Stat
 
