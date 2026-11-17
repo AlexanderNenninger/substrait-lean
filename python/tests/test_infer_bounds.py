@@ -393,5 +393,5 @@ def test_a_tinyint_cast_to_smallint_multiplies_at_16_bits():
     tables = {"t": {"v": "int8"}}
     ok = verify("SELECT CAST(v AS SMALLINT) * 4 AS y FROM t", tables=tables)
     assert ok.proved and inferred(ok) == ["(_.v >= -128)", "(_.v <= 127)"], ok
-    big = verify("SELECT CAST(v AS SMALLINT) * 10000 AS y FROM t", tables=tables)
+    big = verify("SELECT CAST(v AS SMALLINT) * CAST(1000 AS SMALLINT) AS y FROM t", tables=tables)
     assert big.proved and inferred(big) != inferred(ok), big
