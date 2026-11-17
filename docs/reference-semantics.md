@@ -57,10 +57,14 @@ proves its postconditions and keys over every order
 (`Rel.OrderAllowed`, `contract_sound_all`, `core/Sverify/Core/OrderAllowed.lean`, `analysis/Sverify/Analysis/Contracts.lean`), and
 `Rel.eval`'s order is the
 [deterministic profile's](#tie-order-and-the-deterministic-profile).
-`Report.deterministic` is false where rows may tie in the order of a window,
-of `FIRST`, `LAST`, `STRING_AGG` or `MODE`, or of a `FETCH`
-(`Rel.windowsTotal`, `Rel.fetchesTotal`), `str(report)` names each place, and
-`Report.ties` gives the keys that would close them.
+`Report.deterministic` is true when every result the reference allows is
+`Rel.eval`'s up to row order (`Rel.detPlan`, `check_deterministic_sound`). It
+is false where rows may tie in the order of a window, of `FIRST`, `LAST`,
+`STRING_AGG` or `MODE`, or of a `FETCH`, where the reference leaves a value
+open (the median of doubles, which member of a class of doubles a `DISTINCT`,
+a group key, `MIN` or `MAX` keeps, D31), and where an aggregate is not proved a
+function of its values. `str(report)` names each place (`tiesIn_eq_nil`), and
+`Report.ties` gives the keys that would close the ties.
 `RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` over the window's own
 order need no key: tied rows get the same value in every arrangement
 (`window_tieFree`). A key on one column of a pair an inner join's or a filter's

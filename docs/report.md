@@ -51,9 +51,11 @@ instead.
   `ensures` states otherwise with `sv.equivalent(...)`, and it prints the
   bound (`equivalent(floats=plan, ≤ 1.1e-10)`).
 - Determinism. `report.deterministic` is false when rows may tie in the
-  order of a window, an ordered aggregate or a `LIMIT`: the proof then holds
-  for every order of the ties, and `report.notes` names where they stay
-  open and the key that would close them.
+  order of a window, an ordered aggregate or a `LIMIT`, or the reference
+  leaves a value open (the median of doubles, which member of a class of
+  doubles a `DISTINCT`, a group key, `MIN` or `MAX` keeps): the proof then
+  holds for every choice, and `report.notes` names where they stay open and
+  the key that would close the ties.
 
 ## Following a verdict to its warrant
 

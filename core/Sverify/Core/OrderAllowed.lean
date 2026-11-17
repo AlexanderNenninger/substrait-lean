@@ -35,6 +35,52 @@ theorem mergeSort_sorted (sort : List SortKey) (rows : Relation) :
     (rows.mergeSort (sortLe sort)).Pairwise (sortLe sort · · = true) :=
   List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total rows
 
+/-- Rows that tie in the measure's order agree on its argument: the order
+of the ties, which the reference leaves open, changes none of its inputs. -/
+def Measure.TiesAgree (m : Measure) (rows : Relation) : Prop :=
+  ∀ x ∈ rows, ∀ y ∈ rows, sortLe m.sort x y = true → sortLe m.sort y x = true →
+    m.arg.eval x = m.arg.eval y
+
+theorem Measure.TiesAgree.perm {m : Measure} {xs ys : Relation} (h : m.TiesAgree ys)
+    (hp : xs.Perm ys) : m.TiesAgree xs :=
+  fun x hx y hy => h x (hp.mem_iff.mp hx) y (hp.mem_iff.mp hy)
+
+/-- Two arrangements of the rows in the measure's order give it the same
+inputs, when its ties agree on its argument. -/
+theorem Measure.inputs_eq_of_sorted {m : Measure} {s s' : Relation} (hp : s.Perm s')
+    (hs : s.Pairwise (sortLe m.sort · · = true)) (hs' : s'.Pairwise (sortLe m.sort · · = true))
+    (ht : m.TiesAgree s') : m.inputs s = m.inputs s' := by
+  have : (m.kept s).map (fun row => m.arg.eval row) = (m.kept s').map (fun row => m.arg.eval row) := by
+    unfold Measure.kept; split
+    · exact map_eq_of_perm_of_pairwise hp hs hs' ht
+    · exact map_eq_of_perm_of_pairwise (hp.filter _) (hs.filter _) (hs'.filter _)
+        fun a ha b hb => ht a (List.mem_filter.mp ha).1 b (List.mem_filter.mp hb).1
+  simp only [Measure.inputs, this]
+
+/-- A measure that sorts its rows gives one value on the same rows in any
+order, when its ties agree on its argument. -/
+theorem Measure.eval_perm_of_ties {m : Measure} (hs : m.fn.sorts = true) {xs ys : Relation}
+    (h : xs.Perm ys) (ht : m.TiesAgree ys) : m.eval xs = m.eval ys := by
+  rw [Measure.eval_sorts hs, Measure.eval_sorts hs]
+  have hy := List.mergeSort_perm ys (sortLe m.sort)
+  rw [Measure.inputs_eq_of_sorted ((List.mergeSort_perm xs _).trans (h.trans hy.symm))
+    (mergeSort_sorted _ _) (mergeSort_sorted _ _) (ht.perm hy)]
+
+/-- Rows of one group that tie in the measure's order agree on its argument. -/
+def Measure.TiesAgreeIn (m : Measure) (gs : List Expr) (rows : Relation) : Prop :=
+  ∀ x ∈ rows, ∀ y ∈ rows, (groupKey gs x).canon = (groupKey gs y).canon →
+    sortLe m.sort x y = true → sortLe m.sort y x = true → m.arg.eval x = m.arg.eval y
+
+theorem Measure.TiesAgreeIn.group {m : Measure} {gs : List Expr} {rows : Relation}
+    (h : m.TiesAgreeIn gs rows) (k : Row) : m.TiesAgree (groupRows gs rows k) := by
+  intro x hx y hy
+  simp only [groupRows, List.mem_filter, beq_iff_eq] at hx hy
+  exact h x hx.1 y hy.1 (hx.2.trans hy.2.symm)
+
+theorem Measure.TiesAgreeIn.nil {m : Measure} {rows : Relation} (h : m.TiesAgreeIn [] rows) :
+    m.TiesAgree rows :=
+  fun x hx y hy => h x hx y hy rfl
+
 omit [Boxes.Ambient] in
 /-- A sorted list sorts to itself. -/
 theorem mergeSort_eq_of_sorted {sort : List SortKey} {s : Relation}
