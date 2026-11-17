@@ -3,7 +3,7 @@
   "engine": "polars",
   "engine_version": "py-2.1.0",
   "title": "Native forms of `replace`, `reverse`, `ascii` and `repeat`; `replace` takes no pattern per row",
-  "verdict": "exact with a literal pattern; a pattern per row is refused by Polars",
+  "verdict": "exact with a non-empty literal pattern; the empty literal is folded to the string (D44); a pattern per row is refused by Polars",
   "area": "strings",
   "options": [
     "char_set"

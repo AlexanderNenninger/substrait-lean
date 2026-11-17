@@ -24,7 +24,7 @@ DataFusion 51 and Polars:
 * `reverse(s)` reverses the characters (combining marks move with them).
 * `replace(s, p, r)` replaces every non-overlapping `p`, from the left, by `r`
   (Rust's `str::replace`); an empty `p` matches nowhere, so the result is `s`
-  (D44: DuckDB and Spark's value, a constant fold on Polars).
+  (D44).
 * `ascii(s)` is the code point of the first character, `0` for `''`.
 * `levenshtein(s, t)` counts single-character insertions, deletions and
   substitutions.
