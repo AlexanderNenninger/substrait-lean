@@ -236,6 +236,9 @@ WITNESSES: dict[str, Callable[[], str]] = {
     "substring at an offset from a column": lambda: _sql_plan(
         "SELECT substr(name, qty) AS x FROM t", "reference"
     ),
+    "bucket of a computed timestamp": lambda: _plan(
+        t.select(x=(t.ts + ibis.interval(days=1)).bucket(minutes=15))
+    ),
     "date_trunc of ts + interval": lambda: _plan(
         t.select(x=(t.ts + ibis.interval(days=1)).truncate("M"))
     ),
