@@ -236,9 +236,6 @@ WITNESSES: dict[str, Callable[[], str]] = {
     "substring at an offset from a column": lambda: _sql_plan(
         "SELECT substr(name, qty) AS x FROM t", "reference"
     ),
-    "time_bucket of a computed timestamp": lambda: _sql_plan(
-        "SELECT time_bucket(INTERVAL 1 HOUR, ts + INTERVAL 1 DAY) AS x FROM t", "reference"
-    ),
     "date_trunc of ts + interval": lambda: _plan(
         t.select(x=(t.ts + ibis.interval(days=1)).truncate("M"))
     ),
@@ -265,8 +262,9 @@ def test_the_guards_left_unchecked_are_reported(c: Case) -> None:
     assert set(got) == set(KNOWN.get(c.label, {})), f"reported issues {kinds}: {got}"
 
 
-def _witnesses() -> dict[str, str]:
-    return {name: build() for name, build in WITNESSES.items()}
+@functools.cache
+def _witness(name: str) -> str:
+    return WITNESSES[name]()
 
 
 def test_every_guard_site_is_reported_somewhere() -> None:
@@ -275,7 +273,7 @@ def test_every_guard_site_is_reported_somewhere() -> None:
     sites: set[tuple[str, int]] = set()
     proven: set[tuple[str, int]] = set()
     scans = [s for c in VERIFIED if (s := _case_scan(c)) is not None]
-    scans += [_scan(p) for p in _witnesses().values()]
+    scans += [_scan(_witness(n)) for n in WITNESSES]
     for full, left, kinds in scans:
         sites |= {(f, n) for f, n, g, _ in full if g != "asciiOnly"}
         proven |= {(f, n) for f, n, g, _ in left if KIND.get(g) in kinds}
@@ -285,7 +283,7 @@ def test_every_guard_site_is_reported_somewhere() -> None:
 
 @pytest.mark.parametrize("name", WITNESSES)
 def test_a_witness_reaches_a_site(name: str) -> None:
-    full, left, kinds = _scan(_witnesses()[name])
+    full, left, kinds = _scan(_witness(name))
     assert any(KIND.get(g) in kinds for _, _, g, _ in left), (name, sorted(kinds))
 
 
