@@ -20,7 +20,15 @@ from sverify.ibis_substrait._base import (
     rel,
     same_type,
 )
-from sverify.plan_json import Json, Unsupported, call, cast_json, literal, type_json
+from sverify.plan_json import (
+    Json,
+    ProducerUnsupported,
+    Unsupported,
+    call,
+    cast_json,
+    literal,
+    type_json,
+)
 
 
 def reference(segment: Json, expr: Json) -> Json:
@@ -110,9 +118,9 @@ def _table_unnest(op: Any) -> Json:
     # No standard Substrait relation: an `ExtensionSingleRel` with our own
     # detail (`docs/nested-values.md`). The column keeps its place.
     if op.offset is not None:
-        raise Unsupported("unnest(offset=) is not supported")
+        raise ProducerUnsupported("unnest(offset=) is not supported")
     if op.keep_empty:
-        raise Unsupported("unnest(keep_empty=True) is not supported")
+        raise ProducerUnsupported("unnest(keep_empty=True) is not supported")
     if op.column_name != op.column.name or not isinstance(op.column, ops.Field):
         raise Unsupported("unnest must unnest a column in place")
     col = list(op.parent.schema.names).index(op.column.name)
