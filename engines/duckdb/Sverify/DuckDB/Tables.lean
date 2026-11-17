@@ -88,7 +88,7 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "division_type", (ObsRow.native ["duckdb-R3"]).tracking 241),
   (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 241),
-  (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 241),
+  (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-nonfinite-aggregates"]).tracking 241),
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions, as the reference has them; MIN, MAX and quantiles return a
   -- member of the class, which D31 allows.
