@@ -132,6 +132,11 @@ def _measure_slot(m: Any, inp: list[Any], fns: Mapping[int, str]) -> _Slot:
     return slot
 
 
+def _settled(v: Any) -> str | None:
+    """The name of a column that is certain: a table's, or the output's."""
+    return v.name if isinstance(v, _Slot) else v
+
+
 def columns(plan: Mapping[str, Any]) -> Seen:
     """Each relation that computes expressions, as its input's column names
     (None where unknown), the input columns its expressions read, and, for
@@ -167,8 +172,8 @@ def columns(plan: Mapping[str, Any]) -> Seen:
             args = []
             for a in win.get("arguments") or []:
                 v = a.get("value") if isinstance(a, dict) else None
-                if (g := _field(v)) is not None and g < len(inp) and _name(inp[g]) is not None:
-                    args.append(_name(inp[g]))
+                if (g := _field(v)) is not None and g < len(inp) and _settled(inp[g]) is not None:
+                    args.append(_settled(inp[g]))
                 elif isinstance(v, dict) and "literal" in v:
                     continue
                 else:
