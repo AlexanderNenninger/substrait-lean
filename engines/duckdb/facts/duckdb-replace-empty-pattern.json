@@ -15,7 +15,7 @@
     "Polars and Rust's `str::replace` insert the replacement before every character and at the end (polars-string-natives, `Text.replace`), so the two disagree on a defined value. The model's `replace` is Rust's."
   ],
   "reference": "The frontends refuse a constant empty pattern under the reference (#1508), and `semantics=\"duckdb\"` lifts `replace(s, '', r)` to `s` (NULL for a NULL `r`), so every route gives what DuckDB's SQL gives. The reference's own value for the empty pattern waits for a decision (proposed D44: `s`).",
-  "status": "decided",
+  "status": "open",
   "evidence": "probe",
   "provenance": [
     {
