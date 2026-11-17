@@ -436,6 +436,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard simpleRegex "^a" && simpleRegex "(a)(b)" && simpleRegex "\\d{4}-\\d{2}" && simpleRegex "[a-z]+$"
 #guard !simpleRegex "(" && !simpleRegex "a**" && !simpleRegex "[]" && !simpleRegex "(?i)a"
 #guard !simpleRegex "a{3,2}" && !simpleRegex "*a"
+-- A quantifier with no digits (`0{`) reached `Regex.digits` and `count` through `toNat!`.
+#guard !simpleRegex "0{"
 #guard simpleRegex "(?:a)(b)" && !simpleRegex "(?i)a" && !simpleRegex "(?=a)"
 #guard regexGroups "(a)(?:b)(c(d))" == 3 && regexGroups "[(]\\(" == 0
 #guard rewriteOk 1 "[\\1\\0\\\\]".toList && !rewriteOk 1 "\\2".toList && !rewriteOk 1 "a\\".toList

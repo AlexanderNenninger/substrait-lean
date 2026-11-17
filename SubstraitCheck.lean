@@ -338,7 +338,9 @@ request is refused instead, in every mode (`--outcomes` included), with the
 panic's message (#70, R6). -/
 def runOn (es : List EngineProfile) (flag : String) (input : String) : IO UInt32 := do
   let (code, out, err) ← capture (runModes es flag input)
-  let errText := String.fromUTF8! err
+  let some errText := String.fromUTF8? err
+    | IO.eprintln "error: rows not evaluated: the checker's stderr is not UTF-8"
+      return 1
   if let some msg := (errText.splitOn "\n").find? (·.startsWith "PANIC") then
     IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
     return 1
