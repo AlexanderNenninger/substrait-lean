@@ -271,11 +271,12 @@ A filter above a join is analysed on the cross product of the join's loose
 inputs (`Rel.loose`), so DuckDB pushing a raising `WHERE` into one side of an
 inner or left join
 (fact `duckdb-exec-filter-pushdown`, #602)
-evaluates it on rows the analysis covers. The one exception is a join whose
-other side is empty: `Rel.HasIssue` then has no pairs, while DuckDB still
-evaluates the pushed filter on the side's rows. `Rel.mayIssues` reports
-the error anyway, since it describes each side's columns by that side's own
-bounds; `Rel.HasIssue` does not model the case yet.
+evaluates it on rows the analysis covers. A join whose other side is empty
+has no pairs, while DuckDB still evaluates the pushed filter on the side's
+rows. `Rel.HasIssueAll` models that case too (#1484 R3): each subexpression a
+condition always evaluates may run on the rows of the join inputs it reads,
+the other inputs' columns NULL (`Rel.ViewAllowed`), and
+`Rel.mayIssues_sound_all` proves that `Rel.mayIssues` reports it.
 
 DuckDB 2.0.0 also evaluates a `CASE`'s constant `WHEN` conditions when it
 plans the query, with the evaluator that raises:
@@ -888,7 +889,7 @@ never narrower; one not pinned down yet is every call.
 | `on_division_by_zero` | the divisor is zero |
 | `division_type` | the operands have opposite signs and the remainder is not zero |
 | `min_mod_neg_one` | `MIN % -1` |
-| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` or `AVG` of `+∞` and `−∞`, a variance, standard deviation, covariance or correlation of an infinity (`AggFn.nanCase`) |
+| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` or `AVG` of `+∞` and `−∞`, a variance, standard deviation, covariance or correlation of an infinity, a `QUANTILE_CONT` between a `-∞` and a `+∞` neighbour (`AggFn.nanCase`) |
 | `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
 | `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
 | `round_zero_sign` | the reference result is a zero (`round(-0.4)`, `ceil(-0.4)`) |

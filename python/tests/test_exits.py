@@ -41,14 +41,25 @@ def test_baseline_is_lowered_with_the_count():
     )
 
 
-def test_sql_unsupported_always_carries_an_action():
-    """The classifier counts `SqlUnsupported` as naming an exit: its message
-    does carry one, with or without a hint or an issue."""
-    from sverify.plan_json import SqlUnsupported
+def test_every_real_site_of_an_own_exit_class_carries_an_action():
+    """The classifier counts `SqlUnsupported` and `WriterUnsupported` as naming
+    an exit: build each real site's message (its text and its hint) with the
+    class and check the result."""
+    from sverify.plan_json import ProducerUnsupported, SqlUnsupported
+    from sverify.sql.core._base import WriterUnsupported
 
-    for err in (
-        SqlUnsupported("a construct is not supported"),
-        SqlUnsupported("a construct is not supported", issue=350),
-        SqlUnsupported("a construct is not supported", hint="write it as x"),
-    ):
-        assert exits.EXIT.search(str(err)), str(err)
+    classes = {
+        "SqlUnsupported": SqlUnsupported,
+        "WriterUnsupported": WriterUnsupported,
+        "ProducerUnsupported": ProducerUnsupported,
+    }
+    bad = []
+    for s in exits.sites():
+        cls = classes.get(s.cls)
+        if cls is None:
+            continue
+        kwargs = {"hint": s.hint} if s.hint else {}
+        text = str(cls(s.message, **kwargs))
+        if not exits.EXIT.search(text):
+            bad.append(f"{s.file}:{s.line}: {text}")
+    assert not bad, "\n".join(bad)

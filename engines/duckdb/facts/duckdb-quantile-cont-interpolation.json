@@ -28,7 +28,8 @@
     "`QUANTILE_CONT(x, q)` of `n` values computes `RN = (n − 1)·q` in doubles, takes the values `lo` and `hi` at positions `⌊RN⌋` and `⌈RN⌉` in order, and gives `lo` where they are one position, else, for a DOUBLE, `lo·(1 − d) + hi·d` with `d = RN − ⌊RN⌋`. Integers are cast to DOUBLE first and the result is a DOUBLE; DATE gives a TIMESTAMP. FLOAT and DECIMAL take DuckDB's generic interpolation, `lo + (hi − lo)·d` in doubles, cast back to the argument's type with a `static_cast`: FLOAT stays FLOAT, with another formula than DOUBLE's (and `hi − lo` can overflow), and a DECIMAL result truncates toward zero, where DuckDB's DECIMAL casts round half away from zero: `median` of 1.5 and 1.6 as DECIMAL(2,1) is 1.5, `quantile_cont` of -0.05 and 0.00 as DECIMAL(4,2) at 0.5 is -0.02, and DuckDB's own test gives 24.7 for 24.75. (Corrected 2026-11-04: this said each type is interpolated in its own type by DOUBLE's formula.) `MEDIAN` of a number is `QUANTILE_CONT(x, 0.5)`.",
     "The interpolation rounds: of neighbours that are equal it can give a double an ulp away from them, so the result can lie just outside [lo, hi]. Between -inf and +inf it is NaN (`-inf·(1 − d) + inf·d`); next to a NaN it is NaN. Large neighbours do not overflow (`-1.5e308` and `1.5e308` give `0.0`), since each is scaled before the sum. Since `RN` is a double, a fraction such as `0.1` may land just off a whole position; the result then differs from the exact one by rounding only.",
     "The docs are silent on the formula per type and on the DECIMAL truncation: a docs gap. No upstream test pins the overshoot between equal neighbours, ±inf neighbours or large neighbours; it may change between versions.",
-    "Probed: the DOUBLE interpolation is computed in doubles as `fma(lo, 1 − d, hi·d)`, the source's formula with its last multiply-add fused by the compiler, in the macOS arm64 and Linux x86_64 wheels alike: of 0.4 and 1.697 at 0.3 it is 0.7891, where the unfused formula gives 0.7890999999999999. It is not the exact interpolation rounded once: of 188 random pairs, 30 differ from it by an ulp. `quantile_interp`'s `LINEAR` is therefore linear between the neighbours in doubles, within a few ulps; sverify's choice leaves the rounding open (`BETWEEN` in the reference)."
+    "Probed: the DOUBLE interpolation is computed in doubles as `fma(lo, 1 − d, hi·d)`, the source's formula with its last multiply-add fused by the compiler, in the macOS arm64 and Linux x86_64 wheels alike: of 0.4 and 1.697 at 0.3 it is 0.7891, where the unfused formula gives 0.7890999999999999. It is not the exact interpolation rounded once: of 188 random pairs, 30 differ from it by an ulp. `quantile_interp`'s `LINEAR` is therefore linear between the neighbours in doubles, within a few ulps; sverify's choice leaves the rounding open (`BETWEEN` in the reference).",
+    "`lo·(1 − w) + hi·w` has a NaN only where both neighbours are infinite and opposite, which is `nan_creation`'s (D37); DuckDB's behaviour stays `LINEAR` (duckdb-nonfinite-aggregates)."
   ],
   "reference": [
     "`AggFn.quantile true num scale` (`contValue`, #53): for the exact `q = num / 10^scale`, the doubles at positions `⌊(n−1)·q⌋` and `⌈(n−1)·q⌉` in order; the one value where they coincide, else DuckDB's `lo·(1 − d) + hi·d` kept between `lo` and `hi` (`interpolate`). The reference allows any double between the two neighbours (`contAllowed`, `AggFn.Allowed`), so contracts know the result lies within the argument's range. Integers are converted to doubles first; DECIMAL, DATE and TIMESTAMP arguments are refused.",
@@ -166,6 +167,16 @@
         }
       ],
       "notes": "The source's `lo * (1.0 - d) + hi * d` (arithmetic.cpp#L1475-L1478) is contracted by the compiler into one fused multiply-add in both wheels."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (±∞ aggregate cleanup, PR 2), probe scripts pq.py, pq2.py (Polars), spq3.py (Spark on homelab-run)",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0 (duckdb Python 2.0.0): `quantile_cont(x, p)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] it is -inf at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: -inf, 1, +inf at 0.25, 0.5, 0.75; of [1, +inf]: +inf. The interpolation `lo·(1 − w) + hi·w` makes a NaN only where both neighbours are infinite and opposite."
+        }
+      ]
     }
   ],
   "issues": [

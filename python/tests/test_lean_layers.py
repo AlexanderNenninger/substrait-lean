@@ -108,3 +108,32 @@ def test_main_package_requires_every_layer():
     lakefile = (ROOT / "lakefile.lean").read_text()
     for layer, (package, _, _) in LAYERS.items():
         assert f'require «{package}» from "{layer}"' in lakefile
+
+
+def _closure(start: str) -> set[str]:
+    """The modules `start` imports, directly or not, of this repository's
+    packages (the layers and the root package)."""
+    files = {name: path for layer in LAYERS for name, path in _modules(layer).items()}
+    files |= {
+        ".".join(p.with_suffix("").relative_to(ROOT).parts): p
+        for p in (ROOT / "SubstraitLean").rglob("*.lean")
+    }
+    seen: set[str] = set()
+    todo = [start]
+    while todo:
+        name = todo.pop()
+        if name in seen or name not in files:
+            continue
+        seen.add(name)
+        todo += _imports(files[name])
+    return seen
+
+
+def test_the_verdict_imports_no_engine():
+    """The checker's verdict (`ContractCheck`, `check_proved_sound`) depends on
+    no engine package's module (#1484, S1): it is about the reference alone."""
+    engines = tuple(LAYERS[layer][1] for layer in LAYERS if layer.startswith("engines/"))
+    closure = _closure("SubstraitLean.ContractCheck")
+    assert "Sverify.Core.Rel" in closure  # the walk found the layers' files
+    bad = sorted(m for m in closure if m.split(".")[:2] in [e.split(".") for e in engines])
+    assert not bad, bad

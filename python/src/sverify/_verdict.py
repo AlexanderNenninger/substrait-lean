@@ -18,6 +18,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from sverify._checker import generated_proofs
+
 if TYPE_CHECKING:
     from sverify.report import Issue, Report
 
@@ -69,6 +71,7 @@ def verdict(
         _margin_checks=list(out.get("margin_checks") or []),
         _engines=out.get("engines"),
         _sorted=out.get("sorted"),
+        _generated_proofs=generated_proofs(),
         _contract=dict(request),
         _transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
         **context,

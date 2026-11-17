@@ -1074,4 +1074,14 @@ theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)
     congr 1; funext x
     exact ihb (row := x :: row) he.2 (by simp [hlen])
 
+/-- The columns `e` reads; a lambda's body reads none of the row's. -/
+def Expr.cols : Expr → List Nat
+  | .lit _ => []
+  | .field i => [i]
+  | .un _ a => a.cols
+  | .bin _ a b => a.cols ++ b.cols
+  | .ifThen c t e => c.cols ++ t.cols ++ e.cols
+  -- A lambda's body reads its parameter as field 0 and the row from 1 (D28).
+  | .hof _ l b => l.cols ++ b.cols.filterMap fun i => if i = 0 then none else some (i - 1)
+
 end Substrait

@@ -795,3 +795,32 @@ def test_variance_of_a_nan_through_the_written_plan(xs):
     assert (vs is None) == (len([x for x in xs if x is not None]) == 1)
     ((_, lvp, lsp, lvs),) = lean_on(json.loads(plan), {"t": t})
     assert math.isnan(lvp) and math.isnan(lsp) and (lvs is None) == (vs is None)
+
+
+@pytest.mark.parametrize("grouped", [False, True], ids=["ungrouped", "grouped"])
+def test_variance_of_finite_values_that_polars_makes_nan_is_refused(grouped):
+    """polars-var-bound: over 100000 values of 1e308 the streaming kernel
+    returns NaN (the reference: 0.0, and no NaN from finite values). The
+    ungrouped plan raises `VarianceNaN`, the engine's limit, with or without
+    guards, as `SubnormalDivisor` does for a division; grouped by a constant key
+    the kernel gives the reference's 0.0 at every size. At 100,000 values the
+    ungrouped kernel gives NaN on the default thread count and on one thread
+    (`POLARS_MAX_THREADS=1`, read when Polars is imported), so the test holds on both;
+    smaller sizes depend on the thread count (polars-var-bound)."""
+    n = 100_000
+    con = connect()
+    t = pa.table({"g": pa.array([1] * n, pa.int64()), "x": pa.array([1e308] * n, pa.float64())})
+    put_table(con, "t", t)
+    sql = (
+        "SELECT g, var_pop(x) AS vp FROM t GROUP BY g"
+        if grouped
+        else ("SELECT var_pop(x) AS vp FROM t")
+    )
+    plan = written_plan(substrait_json(con, sql))
+    tables = {"t": con._arrow["t"]}
+    for guards in (True, False):
+        if grouped:  # a constant key gives 0.0 at every size: nothing to refuse
+            assert polars_engine.run(plan, tables, guards=guards)["vp"].to_pylist() == [0.0]
+        else:
+            with pytest.raises(polars_engine.VarianceNaN):
+                polars_engine.run(plan, tables, guards=guards)
