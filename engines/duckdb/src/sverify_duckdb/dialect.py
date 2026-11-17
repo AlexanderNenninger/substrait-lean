@@ -37,7 +37,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify.black_box import BlackBox
-from sverify.sql.core import I64_MAX, I64_MIN, Dialect, GuardIssue, Kind, Lst
+from sverify.sql.core import I64_MAX, I64_MIN, Dialect, GuardIssue, Kind, Lst, raised_issue
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,7 @@ class DuckDBDialect(Dialect):
         sql = lowering.render(
             fn,
             args,
-            lambda message, dep: self.raise_(message, dep, kind, "raised"),
+            lambda message, dep: self.raise_(message, dep, kind, raised_issue(message)),
             self.float_lit,
             self.int_lit,
             self.guards,

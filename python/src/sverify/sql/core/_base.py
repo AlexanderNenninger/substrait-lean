@@ -57,6 +57,21 @@ GuardIssue = Literal[
     "infinite",
     "asciiOnly",
 ]
+
+#: The issue a shim's `raise` message names (`UnFn.raise`); `"raised"` for any other.
+_RAISED: dict[str, GuardIssue] = {
+    "division by zero": "divByZero",
+    "domain error": "domain",
+    "negative exponent": "negExponent",
+    "integer overflow": "wraps",
+}
+
+
+def raised_issue(message: str) -> GuardIssue:
+    """The `Issue` of a guard a lowering's template raises with `message`."""
+    return _RAISED.get(message, "raised")
+
+
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
 zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
 microseconds. `None` (unknown) is
@@ -4494,7 +4509,7 @@ class _Writer:
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
             case Un(op="raise", arg=a, param=msg):
-                return d.raise_(msg, go(a, kind(a)), ctx or "int", "raised")
+                return d.raise_(msg, go(a, kind(a)), ctx or "int", raised_issue(msg))
             case Un(op="is_null", arg=a):
                 return d.is_null(go(a))
             case Un(op="neg", arg=a):
