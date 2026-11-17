@@ -393,8 +393,12 @@ core needs no square roots. The bounds are proved for the two-pass algorithm
 and for DuckDB's Welford update with Chan's merge in any
 tree ([`float-bounds.md`](float-bounds.md)), and a property test checks
 DuckDB's results against them (`tests/test_float_bounds.py`). The textbook
-formula `Σx² − (Σx)²/n` cancels and is outside them. Outside the finite range
-the reference's own value is the one allowed. An engine profile may name a
+formula `Σx² − (Σx)²/n` cancels and is outside them. A NaN or an infinity
+among the values gives the reference's own value. Finite values outside the
+range above (`Stat.fits`) allow any double: an engine's algorithm may overflow
+on the way or round differently there (`var_pop([1e150, 3e150])` is
+`1.0000000000000002e+300` exactly rounded, `9.999999999999999e+299` on DuckDB
+and streaming Polars; [D30](decisions.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)). An engine profile may name a
 stricter algorithm (`Profile.statAlgo`, `Profile.sumAlgo`, `AggAlgo`); without
 one, the generic properties hold. No profile names one yet. Engines differ
 from the reference where it raises: DuckDB and Polars give NaN for an
