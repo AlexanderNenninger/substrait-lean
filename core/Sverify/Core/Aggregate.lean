@@ -293,6 +293,44 @@ def clampInts (vs : List Value) (c : Int) : Int :=
   | [] => c
   | x :: xs => min (max c (xs.foldl min x)) (xs.foldl max x)
 
+omit [Boxes.Ambient] in
+theorem min?_perm {l l' : List Int} (h : l.Perm l') : l.min? = l'.min? := by
+  cases hm : l.min? with
+  | none => rw [List.min?_eq_none_iff] at hm; subst hm; rw [← h.nil_eq]; rfl
+  | some a =>
+    rw [List.min?_eq_some_iff] at hm
+    symm; rw [List.min?_eq_some_iff]
+    exact ⟨h.mem_iff.mp hm.1, fun b hb => hm.2 b (h.mem_iff.mpr hb)⟩
+
+omit [Boxes.Ambient] in
+theorem max?_perm {l l' : List Int} (h : l.Perm l') : l.max? = l'.max? := by
+  cases hm : l.max? with
+  | none => rw [List.max?_eq_none_iff] at hm; subst hm; rw [← h.nil_eq]; rfl
+  | some a =>
+    rw [List.max?_eq_some_iff] at hm
+    symm; rw [List.max?_eq_some_iff]
+    exact ⟨h.mem_iff.mp hm.1, fun b hb => hm.2 b (h.mem_iff.mpr hb)⟩
+
+omit [Boxes.Ambient] in
+/-- The clamp reads the integers among `vs` as a multiset: their least and
+greatest. -/
+theorem clampInts_perm {vs ws : List Value} (h : vs.Perm ws) (c : Int) :
+    clampInts vs c = clampInts ws c := by
+  have hp : (intsOf vs).Perm (intsOf ws) := h.filterMap _
+  have hmin := min?_perm hp
+  have hmax := max?_perm hp
+  unfold clampInts
+  generalize intsOf vs = a at hp hmin hmax ⊢
+  generalize intsOf ws = b at hp hmin hmax ⊢
+  cases a with
+  | nil => rw [← hp.nil_eq]
+  | cons x xs =>
+    cases b with
+    | nil => exact absurd hp.length_eq (by simp)
+    | cons y ys =>
+      simp only [List.min?, List.max?, Option.some.injEq] at hmin hmax
+      simp only [hmin, hmax]
+
 /-- `op` folded over the integers among `vs`, from `op`'s identity (`-1`,
 all bits set, for `and`; `0` for `or` and `xor`). -/
 def bitFold (op : BitOp) (vs : List Value) : Int :=
