@@ -1,29 +1,21 @@
 """The ASCII precondition of the text black boxes (#1506): one predicate for
-the writers' guard (`ascii_text`) and for the inferred condition
-`Report.check_inputs` checks, on text with and without the vertical tab."""
+the writers' guard (`ascii_text`, DuckDB's own dialect) and for the inferred
+condition `Report.check_inputs` checks, in both of its forms (the SQL it is
+counted with, and the Ibis expression shown to the user), on text with and
+without the vertical tab. The reference's `Text.classesDiffer` joins them
+with the Lean side of #1506."""
 
 from __future__ import annotations
 
 import duckdb
+import ibis
 import pytest
 
 from sverify.contracts import _ascii_condition
-from sverify.sql.core._base import Dialect, ascii_text
+from sverify.sql.core import ascii_text
+from sverify_duckdb.dialect import DuckDBDialect
 
 SAMPLE = ["ab", "", "héllo", "ÉCOLE", "a\x0bb", "\x0b", "ß", "tab\there", None]
-
-
-class Plain(Dialect):
-    """The standard SQL spellings the base class has, for DuckDB to run."""
-
-    name = "plain"
-
-    def is_ascii(self, s: str) -> str:
-        return f"(strlen({s}) = length({s}))"
-
-
-def run(con: duckdb.DuckDBPyConnection, where: str) -> list:
-    return [r[0] for r in con.sql(f"SELECT s FROM t WHERE {where}").fetchall()]
 
 
 @pytest.mark.parametrize("classes", [False, True])
@@ -31,12 +23,19 @@ def test_the_guard_and_the_precondition_are_one_predicate(classes):
     con = duckdb.connect()
     con.execute("CREATE TABLE t (s VARCHAR)")
     con.executemany("INSERT INTO t VALUES (?)", [(x,) for x in SAMPLE])
-    guard = ascii_text(Plain("plain"), '"s"', classes)
-    inferred = _ascii_condition("s", classes)
-    # The guard raises where the text is not plain; the condition fails there
-    # (and passes NULL, which the guard's CASE also lets through).
-    raises = {r for r in run(con, f"NOT {guard}")}
-    broken = {r for r in run(con, f"NOT ({inferred})")}
-    assert raises == broken
-    expected = {"héllo", "ÉCOLE", "ß"} | ({"a\x0bb", "\x0b"} if classes else set())
-    assert broken == expected
+
+    def rows(where: str) -> set:
+        return {r[0] for r in con.sql(f"SELECT s FROM t WHERE {where}").fetchall()}
+
+    guard = ascii_text(DuckDBDialect("duckdb"), '"s"', classes)
+    cond = _ascii_condition("s", classes)
+    # The guard raises where the text is not plain (NULL passes its CASE); the
+    # condition fails on the same rows.
+    broken = rows(f"NOT ({cond})")
+    assert rows(f"NOT {guard}") == broken
+    assert broken == {"héllo", "ÉCOLE", "ß"} | ({"a\x0bb", "\x0b"} if classes else set())
+    # The Ibis form the report shows is the same predicate (NULL is not a value).
+    t = ibis.duckdb.connect().create_table("t", {"s": [x for x in SAMPLE]})
+    shown = eval(cond.text, {"_": ibis._, "ibis": ibis})  # noqa: S307 - the label is Ibis code
+    kept = set(t.filter(shown.resolve(t))["s"].to_pyarrow().to_pylist())
+    assert kept == {x for x in SAMPLE if x is not None} - broken
