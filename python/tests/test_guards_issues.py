@@ -22,12 +22,13 @@ from collections.abc import Callable
 from typing import get_args
 
 import ibis
+import pyarrow as pa
 import pytest
 
 from _repo import ROOT, needs_repo
 from sverify import profiles
 from sverify._checker import run_checker
-from sverify.engine import written_plan
+from sverify.engine import connect, put_table, substrait_json, written_plan
 from sverify.errors import UnsupportedError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import to_sql
@@ -152,22 +153,31 @@ def _plan(expr: ibis.Table) -> str:
     return written_plan(to_substrait_json(expr))
 
 
+def _sql_plan(sql: str) -> str:
+    """The plan of DuckDB's `sql` over the cases' table `t`, as written."""
+    con = connect()
+    put_table(con, "t", pa.table(t.schema().to_pyarrow().empty_table()))
+    return written_plan(substrait_json(con, sql, semantics="duckdb"))
+
+
 #: Plans for the guard sites no case reaches: a divisor that is a column, an
-#: operand whose bounds Safety does not get from its type (a timestamp plus an
-#: interval column, an offset computed from a column).
-WITNESSES: dict[str, Callable[[], ibis.Table]] = {
-    "integer division by a column": lambda: t.select(x=t.qty // t.id),
-    "integer modulo by a column": lambda: t.select(x=t.qty % t.id),
-    "date_trunc of a computed timestamp": lambda: t.select(
-        x=(t.ts + ibis.interval(days=1) * t.qty).truncate("M")
+#: operand whose bounds Safety does not get from its type (a timestamp from an
+#: integer column, a date from columns), an offset computed from a column.
+WITNESSES: dict[str, Callable[[], str]] = {
+    "integer division by a column": lambda: _sql_plan("SELECT qty // id AS x FROM t"),
+    "integer modulo by a column": lambda: _plan(t.select(x=t.qty % t.id)),
+    "date from unbounded columns": lambda: _plan(t.select(x=ibis.date(t.id, t.qty, t.qty))),
+    "substring at an offset from a column": lambda: _plan(t.select(x=t.name.substr(t.qty))),
+    "months added to a timestamp": lambda: _plan(t.select(x=t.ts + ibis.interval(months=1))),
+    "date_trunc of an epoch": lambda: _sql_plan("SELECT date_trunc('month', epoch_ms(qty)) FROM t"),
+    "year of an epoch": lambda: _sql_plan("SELECT year(epoch_ms(qty)) AS x FROM t"),
+    "time_bucket of an epoch": lambda: _sql_plan(
+        "SELECT time_bucket(INTERVAL 1 HOUR, epoch_ms(qty)) AS x FROM t"
     ),
-    "date_part of a computed timestamp": lambda: t.select(
-        x=(t.ts + ibis.interval(days=1) * t.qty).year()
+    "date_trunc of ts + interval": lambda: _plan(
+        t.select(x=(t.ts + ibis.interval(days=1)).truncate("M"))
     ),
-    "bucket of a computed timestamp": lambda: t.select(
-        x=(t.ts + ibis.interval(days=1) * t.qty).bucket(ibis.interval(hours=1))
-    ),
-    "substring at a computed offset": lambda: t.select(x=t.name.substr(t.qty * t.id)),
+    "year of an int timestamp": lambda: _plan(t.select(x=t.qty.as_timestamp("s").year())),
 }
 
 
@@ -186,11 +196,12 @@ def test_the_guards_left_unchecked_are_reported(c: Case) -> None:
     if scan is None:
         pytest.skip("not written")
     kinds = sorted(scan[2])
-    assert set(_unreported(scan)) == set(KNOWN.get(c.label, {})), f"reported issues: {kinds}"
+    got = sorted(_unreported(scan))
+    assert set(got) == set(KNOWN.get(c.label, {})), f"reported issues {kinds}: {got}"
 
 
 def _witnesses() -> dict[str, str]:
-    return {name: _plan(build()) for name, build in WITNESSES.items()}
+    return {name: build() for name, build in WITNESSES.items()}
 
 
 def test_every_guard_site_is_reported_somewhere() -> None:
