@@ -146,33 +146,98 @@ VERIFIED = [c for c in CASES if c.expected == "verified"]
 #: or the writer keeps it without them). Live: DuckDB raises on admitted
 #: input, a wrong verdict (S9, none today). The assertion is equality, so a
 #: new unreported guard and a closed gap both fail.
-KNOWN: dict[str, dict[tuple[str, str, str], tuple[str, str]]] = {}
+KNOWN: dict[str, dict[tuple[str, str, str], tuple[str, str]]] = {
+    "arithmetic over aggregates": {
+        ("sverify/sql/core/_base.py", "domain", "domain error"): (
+            "dead",
+            "the operands are sums and extrema of integers, converted to doubles: never infinite",
+        ),
+        ("sverify_duckdb/dialect.py", "domain", "domain error"): (
+            "dead",
+            "the lowered division template's infinity check, over the same finite operands",
+        ),
+    },
+    "scalar subquery": {
+        ("sverify/sql/core/_base.py", "domain", "domain error"): (
+            "dead",
+            "the mean is over an int64 column: its values are finite, so no +inf with -inf",
+        ),
+        ("sverify/sql/core/_base.py", "infinite", "overflow to infinity"): (
+            "dead",
+            "the sum of at most 2**63-magnitude values per row cannot reach infinity",
+        ),
+    },
+    "float division": {
+        ("sverify/sql/core/_base.py", "infinite", "overflow to infinity"): (
+            "dead",
+            "an int64 column over the literal 2: finite, and the quotient is smaller",
+        ),
+    },
+    "abs": {
+        ("sverify/sql/core/_base.py", "divByZero", "division by zero"): (
+            "dead",
+            "the negating branch divides by the literal -1",
+        ),
+        ("sverify_duckdb/dialect.py", "divByZero", "division by zero"): (
+            "dead",
+            "the lowered template of the same division by the literal -1",
+        ),
+    },
+    "join": {
+        (
+            "sverify/sql/core/strings.py",
+            "overflow",
+            "substring offset outside of supported range",
+        ): (
+            "dead",
+            "the offset is the length of the literal separator plus 1",
+        ),
+        ("sverify/sql/snowflake.py", "overflow", "substring offset outside of supported range"): (
+            "dead",
+            "Snowflake's writing of the same literal offset",
+        ),
+        ("sverify/sql/snowflake.py", "wraps", "integer overflow"): (
+            "dead",
+            "the sum of the literal separator's length and 1 in Snowflake's NUMBER arithmetic",
+        ),
+    },
+    "date from columns": {
+        (
+            "sverify/sql/core/_base.py",
+            "raised",
+            "make_date of a date outside the calendar or the years 1 to 9999",
+        ): ("dead", "the year is the literal 2024, the month is clipped to 1..12, the day is 1"),
+    },
+}
 
 
 def _plan(expr: ibis.Table) -> str:
     return written_plan(to_substrait_json(expr))
 
 
-def _sql_plan(sql: str) -> str:
+def _sql_plan(sql: str, semantics: str = "duckdb") -> str:
     """The plan of DuckDB's `sql` over the cases' table `t`, as written."""
     con = connect()
     put_table(con, "t", pa.table(t.schema().to_pyarrow().empty_table()))
-    return written_plan(substrait_json(con, sql, semantics="duckdb"))
+    return written_plan(substrait_json(con, sql, semantics=semantics))
 
 
 #: Plans for the guard sites no case reaches: a divisor that is a column, an
 #: operand whose bounds Safety does not get from its type (a timestamp from an
 #: integer column, a date from columns), an offset computed from a column.
 WITNESSES: dict[str, Callable[[], str]] = {
-    "integer division by a column": lambda: _sql_plan("SELECT qty // id AS x FROM t"),
+    "integer division by a column": lambda: _sql_plan("SELECT qty // id AS x FROM t", "reference"),
     "integer modulo by a column": lambda: _plan(t.select(x=t.qty % t.id)),
     "date from unbounded columns": lambda: _plan(t.select(x=ibis.date(t.id, t.qty, t.qty))),
-    "substring at an offset from a column": lambda: _plan(t.select(x=t.name.substr(t.qty))),
+    "substring at an offset from a column, in Ibis": lambda: _plan(
+        t.select(x=t.name.substr(t.qty))
+    ),
     "months added to a timestamp": lambda: _plan(t.select(x=t.ts + ibis.interval(months=1))),
-    "date_trunc of an epoch": lambda: _sql_plan("SELECT date_trunc('month', epoch_ms(qty)) FROM t"),
-    "year of an epoch": lambda: _sql_plan("SELECT year(epoch_ms(qty)) AS x FROM t"),
-    "time_bucket of an epoch": lambda: _sql_plan(
-        "SELECT time_bucket(INTERVAL 1 HOUR, epoch_ms(qty)) AS x FROM t"
+    "substring at an offset from a column": lambda: _sql_plan(
+        "SELECT substr(name, qty) AS x FROM t", "reference"
+    ),
+    "time_bucket of a computed timestamp": lambda: _sql_plan(
+        "SELECT time_bucket(INTERVAL 1 HOUR, ts + INTERVAL 1 DAY) AS x FROM t", "reference"
     ),
     "date_trunc of ts + interval": lambda: _plan(
         t.select(x=(t.ts + ibis.interval(days=1)).truncate("M"))
