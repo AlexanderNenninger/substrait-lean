@@ -160,7 +160,9 @@ place, and what retires it.
   expression may raise on under `Rel.eval`; which expressions an engine
   evaluates, on which rows, is trusted. `Rel.loose` models an engine that
   evaluates an expression on more rows than the plan says (merged filters,
-  eager `AND` and `OR`), and the facts record what each engine does
+  eager `AND` and `OR`), `Rel.ViewAllowed` one that evaluates part of a
+  condition on one input of a join before any pair exists (a pushed-down
+  filter, a hash join's key), and the facts record what each engine does
   ([duckdb-exec-filter-pushdown](../engines/duckdb/facts/duckdb-exec-filter-pushdown.json),
   [DD-7](../upstream/bugs/DD-7.json); `Safety.lean`'s header).
 - Doubles. Lean's `Float` is an opaque `extern` to C `double`, trusted to be

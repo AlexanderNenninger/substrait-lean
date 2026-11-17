@@ -19,6 +19,7 @@ from sverify.sql.core._base import (
     Lit,
     Un,
     Unsupported,
+    WriterUnsupported,
     _Writer,
     like_pattern,
     register,
@@ -63,7 +64,9 @@ def call(name: str, args: list[Expr]) -> Expr | None:
             return Bin("substr", a, b)
         case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
             if n < 0:
-                raise Unsupported("a negative substring length always fails")
+                raise WriterUnsupported(
+                    "a negative substring length always fails", hint="use a length of 0 or more"
+                )
             return Bin("substr", a, b, length=n)
         case "substring", [_, _, _]:
             raise Unsupported("substring lengths must be constants")

@@ -23,7 +23,7 @@ from sverify.sql.core._base import (
     Kind,
     Lit,
     Un,
-    Unsupported,
+    WriterUnsupported,
     _Writer,
     expr_kind,
     parse_format,
@@ -71,15 +71,15 @@ def call(name: str, args: list[Expr]) -> Expr | None:
         # Timestamps (`core/Sverify/Core/Time.lean`).
         case (("date_part" | "datepart"), [Lit(value=str(part)), a]):
             if part.lower() not in DATE_PARTS:
-                raise Unsupported(f"unsupported date part '{part}'")
+                raise WriterUnsupported(f"unsupported date part '{part}'")
             return Un("date_part", a, param=part.lower())
         case (("date_trunc" | "datetrunc"), [Lit(value=str(unit)), a]):
             if unit.lower() not in TIME_UNITS:
-                raise Unsupported(f"unsupported date_trunc unit '{unit}'")
+                raise WriterUnsupported(f"unsupported date_trunc unit '{unit}'")
             return Un("date_trunc", a, param=unit.lower())
         case (("strftime" | "to_char" | "date_format"), [a, Lit(value=str(fmt))]):
             if parse_format(fmt) is None:
-                raise Unsupported(f"strftime format '{fmt}' is not supported")
+                raise WriterUnsupported(f"strftime format '{fmt}' is not supported")
             return Un("strftime", a, param=fmt)
         # sverify's own: the days from `e` to `d`.
         case "date_diff", [d, e]:

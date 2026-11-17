@@ -179,16 +179,28 @@ class SubnormalDivisor(RuntimeIssue):
     issue = "subnormal divisor"
 
 
+class VarianceNaN(RuntimeIssue):
+    """A variance or deviation of finite values that Polars computes as NaN:
+    its algorithm overflows on the way (`[1e308] * 100000` ungrouped, streaming).
+    The reference gives a value (D30) and no NaN without a NaN or an infinity
+    in the inputs, so this is the engine's limit (D16: sound, incomplete),
+    as `SubnormalDivisor` is for division. Checked with or without guards."""
+
+    issue = "variance computed as NaN"
+
+
 #: The issues `guards=True` checks: every one.
 ALL_GUARDS = frozenset(
     {"overflow", "SUM overflow", "division by zero", "negative exponent", "cast out of range",
      "invalid regular expression", "domain error", "raised by a guard", "overflow to infinity",
-     "subnormal divisor"}
+     "subnormal divisor", "variance computed as NaN"}
 )  # fmt: skip
 #: `guards=False`: the checks of the preconditions a `guard_free` report
 #: assumes (`Issue.assumed`): integer `SUM`s fit, and no operation on finite
 #: doubles gives `±∞` (#575).
-NO_GUARDS = frozenset({"SUM overflow", "overflow to infinity", "subnormal divisor"})
+NO_GUARDS = frozenset(
+    {"SUM overflow", "overflow to infinity", "subnormal divisor", "variance computed as NaN"}
+)
 
 
 def col(i: int) -> str:
@@ -2018,7 +2030,13 @@ class Measure:
                 ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
                  # `agg_makes_infinite`, its two halves read after the aggregation.
                  (pl.col(fin) & r.is_infinite(), InfiniteResult,
-                  f"{self.fn} overflows to infinity")),
+                  f"{self.fn} overflows to infinity (the result, or a step of Polars's "
+                  "algorithm)"),
+                 # Finite values give no NaN in the reference; Polars's algorithm
+                 # overflows to one (polars-var-bound): its limit, not an overflow
+                 # of the reference's value.
+                 (pl.col(fin) & r.is_nan(), VarianceNaN,
+                  f"{self.fn} of finite values: Polars's algorithm overflows to NaN")),
             )  # fmt: skip
         return None
 

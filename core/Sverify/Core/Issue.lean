@@ -358,6 +358,47 @@ def Expr.issues (row : Row) : Expr → List (Issue × Expr)
   -- The lambda runs on every element.
   | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues (x :: row)
 
+/-- The subexpressions that evaluating `e` always evaluates: the arguments of
+its calls, a `CASE`'s condition and a lambda's list, and theirs. -/
+def Expr.eager : Expr → List Expr
+  | .lit _ | .field _ => []
+  | .un _ a => a :: a.eager
+  | .bin _ a b => a :: b :: (a.eager ++ b.eager)
+  | .ifThen c _ _ => c :: c.eager
+  | .hof _ l _ => l :: l.eager
+
+/-- The issues of a subexpression evaluating `e` always evaluates are among
+`e`'s. -/
+theorem Expr.issues_eager {row : Row} {p : Issue × Expr} :
+    ∀ {e d : Expr}, d ∈ e.eager → p ∈ d.issues row → p ∈ e.issues row
+  | .lit _, _, hd, _ | .field _, _, hd, _ => by simp [eager] at hd
+  | .un f a, _, hd, hp => by
+    simp only [eager, List.mem_cons] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | hd
+    · exact .inl hp
+    · exact .inl (issues_eager (e := a) hd hp)
+  | .bin f a b, _, hd, hp => by
+    simp only [eager, List.mem_cons, List.mem_append] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | rfl | hd | hd
+    · exact .inl (.inl hp)
+    · exact .inl (.inr hp)
+    · exact .inl (.inl (issues_eager (e := a) hd hp))
+    · exact .inl (.inr (issues_eager (e := b) hd hp))
+  | .ifThen c t e, _, hd, hp => by
+    simp only [eager, List.mem_cons] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | hd
+    · exact .inl hp
+    · exact .inl (issues_eager (e := c) hd hp)
+  | .hof f l b, _, hd, hp => by
+    simp only [eager, List.mem_cons] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | hd
+    · exact .inl hp
+    · exact .inl (issues_eager (e := l) hd hp)
+
 -- `AND` and `OR` evaluate both operands (D19, #604): `x <> 0 AND 10 / x > 1`
 -- divides by zero on `x = 0`; guarding the division with a `CASE` does not.
 #guard letI := Boxes.Ambient.none; (Expr.issues [.int 0] (.bin .and (.un .not (.bin .eq (.field 0) (.lit (.int 0))))
