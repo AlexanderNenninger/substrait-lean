@@ -780,8 +780,12 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     # And proved: DuckDB's `0 · inf` is NaN, which the lift's `CASE` writes
     # and `verify` sees guards the product (#702).
     assert duck.proved
-    out = duck.run(con, engine)
-    assert out.column("v").to_pylist() == [INF, 2.0]
+    if engine == "polars":
+        # A DuckDB proof reaches Polars by a re-check, which waits for #271.
+        with pytest.raises(RouteError, match="semantics='reference'"):
+            duck.run(con, engine)
+    else:
+        assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]
     ref = sv.verify(sql, tables=tables)
     assert [i.kind for i in ref.assumed] == [INFINITE]
     # Not proved (`x * y` may be 0 · inf), so refused unless asked (#655);
