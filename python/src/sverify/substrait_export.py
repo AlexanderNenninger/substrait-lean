@@ -1705,7 +1705,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     }
     for e in imp.ensures:
         if e.get("kind") == "row":
-            p = _lean_plan(e["plan"])
+            p = _over(request["transform"], _lean_plan(e["plan"]), e["text"])
             p["relations"][0]["root"]["names"] = [e["text"]]
             request["ensures"].append(p)
     request = json.loads(json.dumps(request), parse_float=_num)
@@ -1767,6 +1767,111 @@ def _num(s: str) -> Any:
 
 def _ints(d: Mapping[str, Any]) -> dict[str, int]:
     return {k: int(v) for k, v in d.items()}
+
+
+def _skeleton(rel: Json) -> Json:
+    """A relation's shape without its expressions: the kind of each relation,
+    its emit and its reads. Shims change expressions, and wrap an aggregate
+    in a project (`_substrait_shims._wrap`), so an aggregate's emit and a
+    project right over an aggregate are left out."""
+    [(kind, body)] = rel.items()
+    if kind == "project" and "aggregate" in body["input"]:
+        return _skeleton(body["input"])
+    out: Json = {"kind": kind}
+    if kind != "aggregate":
+        out["emit"] = (body.get("common") or {}).get("emit")
+    for c in ("input", "left", "right"):
+        if c in body:
+            out[c] = _skeleton(body[c])
+    if "inputs" in body:
+        out["inputs"] = [_skeleton(x) for x in body["inputs"]]
+    if kind == "read":
+        out["read"] = {k: body.get(k) for k in ("baseSchema", "namedTable", "virtualTable")}
+    return out
+
+
+def _types(plan: Json, rel: Json) -> list[Any]:
+    """The column types of `rel`, a relation of `plan`."""
+    typer = _Typer(copy.deepcopy(plan))
+    typer.wrap = False
+    return typer.rel(copy.deepcopy(rel))
+
+
+def _over(transform: Json, cond: Json, text: str) -> Json:
+    """`cond`'s selection of its condition over `transform`'s output: the
+    checker proves a postcondition only over the transformation itself
+    (`ContractCheck.postOf`, #1484), and an export's plan carries the shims
+    its postconditions' plans don't. The shims keep the plan's relations
+    (`_skeleton`) and its columns' types, so the condition reads the same
+    columns; an export whose condition reads another relation is refused.
+    The condition's functions join `transform`'s extensions, under new
+    anchors."""
+    reads = cond["relations"][0]["root"]["input"].get("project", {}).get("input")
+    whole = transform["relations"][0]["root"]["input"]
+    if (
+        reads is None
+        or _skeleton(reads) != _skeleton(whole)
+        or _types(cond, reads) != _types(transform, whole)
+    ):
+        raise ValueError(
+            f"the postcondition {text!r} of this export does not select from the exported "
+            "plan, so it cannot be proved of it (#1484); verify the transformation again "
+            "and export it with this version of sverify"
+        )
+    out = copy.deepcopy(transform)
+    urns = out.setdefault("extensionUrns", [])
+    exts = out.setdefault("extensions", [])
+    urn_of = {u["urn"]: u["extensionUrnAnchor"] for u in urns}
+    fn_of = {
+        (f["extensionUrnReference"], f["name"]): f["functionAnchor"]
+        for x in exts
+        if (f := x.get("extensionFunction"))
+    }
+    cond_urns = {u["extensionUrnAnchor"]: u["urn"] for u in cond.get("extensionUrns", [])}
+    anchors: dict[int, int] = {}
+    for x in cond.get("extensions", []):
+        f = x["extensionFunction"]
+        urn = cond_urns[f["extensionUrnReference"]]
+        if urn not in urn_of:
+            urn_of[urn] = max(urn_of.values(), default=0) + 1
+            urns.append({"extensionUrnAnchor": urn_of[urn], "urn": urn})
+        key = (urn_of[urn], f["name"])
+        if key not in fn_of:
+            fn_of[key] = max(fn_of.values(), default=0) + 1
+            exts.append(
+                {
+                    "extensionFunction": {
+                        "functionAnchor": fn_of[key],
+                        "name": f["name"],
+                        "extensionUrnReference": urn_of[urn],
+                    }
+                }
+            )
+        anchors[f.get("functionAnchor", 0)] = fn_of[key]
+
+    if 0 in anchors:
+        # Protobuf's JSON leaves out a `functionReference` of 0.
+        raise ValueError("a postcondition's plan uses function anchor 0; export it again")
+
+    def remap(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {
+                k: anchors[v] if k == "functionReference" else remap(v) for k, v in node.items()
+            }
+        if isinstance(node, list):
+            return [remap(v) for v in node]
+        return node
+
+    project = cond["relations"][0]["root"]["input"]["project"]
+    root = out["relations"][0]["root"]
+    root["input"] = {
+        "project": {
+            **remap({k: v for k, v in project.items() if k != "input"}),
+            "input": root["input"],
+        }
+    }
+    root["names"] = cond["relations"][0]["root"]["names"]
+    return out
 
 
 def _lean_plan(plan: Json) -> Json:
