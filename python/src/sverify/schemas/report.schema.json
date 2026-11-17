@@ -238,6 +238,18 @@
         "null"
       ]
     },
+    "checker": {
+      "description": "The checker that proved the plan. generated_proofs: whether its generated lift and lowering proofs were checked (substrait-check --build); false for a plain lake build, an editable install or a borrowed binary, which hold them as sorry. Null where the checker does not say, and in a report written before 1.0.",
+      "type": "object",
+      "properties": {
+        "generated_proofs": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
     "sorted": {
       "description": "Whether the plan's result comes out of a sort, as the checker reads it.",
       "type": [

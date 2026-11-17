@@ -785,6 +785,27 @@ def Rel.Small (cat : Catalog) : Rel → Prop
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => a.Small cat ∧ b.Small cat
   | .window r _ _ _ => (r.eval cat).length < 2 ^ 62 ∧ r.Small cat
 
+/-- The size hypothesis on every order (#1484): every result the reference
+allows for a relation a window or an aggregate reads is as small as
+`Rel.Small` asks of `Rel.eval`'s, which is one of them (`Rel.SmallAll.small`).
+Every engine's memory guarantees it as it guarantees `Rel.Small`. -/
+def Rel.SmallAll (cat : Catalog) : Rel → Prop
+  | .read _ | .values _ _ => True
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
+  | .unnest r _ => r.SmallAll cat
+  | .aggregate r _ _ => (∀ i, r.OrderAllowed cat i → i.length < 2 ^ 63) ∧ r.SmallAll cat
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => a.SmallAll cat ∧ b.SmallAll cat
+  | .window r _ _ _ => (∀ i, r.OrderAllowed cat i → i.length < 2 ^ 62) ∧ r.SmallAll cat
+
+theorem Rel.SmallAll.small {cat : Catalog} : ∀ {r : Rel}, r.SmallAll cat → r.Small cat
+  | .read _, h | .values _ _, h => h
+  | .filter r _, h | .project r _, h | .emit r _, h | .fetch r _ _, h | .orderBy r _, h
+  | .distinct r, h | .unnest r _, h => Rel.SmallAll.small (r := r) h
+  | .aggregate r _ _, h | .window r _ _ _, h =>
+    ⟨h.1 _ (r.eval_orderAllowed cat), Rel.SmallAll.small (r := r) h.2⟩
+  | .cross a b, h | .join a b _ _, h | .unionAll a b, h | .semi a b _ _, h =>
+    ⟨Rel.SmallAll.small (r := a) h.1, Rel.SmallAll.small (r := b) h.2⟩
+
 mutual
 theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
@@ -978,43 +999,44 @@ theorem EnvMem.measures_all {env : List AVal} {fs : List Fact} {grp : Relation}
 
 mutual
 /-- **The abstract interpreter describes every row of every order.** -/
-theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+theorem Rel.aeval_sound_allSz {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat) :
-    ∀ {r : Rel}, r.WF cat → ∀ {out : Relation}, r.OrderAllowed cat out →
-      ∀ row ∈ out, EnvMem (r.aeval cat A F T) row
-  | .read t, _, _, h, row, hr =>
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {sz : Bool} :
+    ∀ {r : Rel}, r.WF cat → (sz = true → r.SmallAll cat) → ∀ {out : Relation},
+      r.OrderAllowed cat out → ∀ row ∈ out, EnvMem (r.aeval cat A F T sz) row
+  | .read t, _, _, _, h, row, hr =>
       useFacts_sound (hF t row (h.mem_iff.mp hr)) ((hA t row (h.mem_iff.mp hr)).fit _)
-  | .values _ _, _, _, _, row, _ => EnvMem.replicate _ row
-  | .filter r c, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+  | .values _ _, _, _, _, _, row, _ => EnvMem.replicate _ row
+  | .filter r c, hwf, hsz, _, ⟨i, hi, rfl⟩, row, hr => by
       rw [List.mem_filter] at hr
       exact useFacts_sound ((Rel.facts_sound_all hcat hF hT hwf.1 hi row hr.1).append
-        (c.factsOf_sound hr.2)) (Expr.refine_sound _ c (aeval_sound_all hcat hA hF hT hwf.1 hi row hr.1) hr.2)
-  | .project r es, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+        (c.factsOf_sound hr.2)) (Expr.refine_sound _ c (aeval_sound_allSz hcat hA hF hT hwf.1 hsz hi row hr.1) hr.2)
+  | .project r es, hwf, hsz, _, ⟨i, hi, rfl⟩, row, hr => by
       obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hr
-      have hm := aeval_sound_all hcat hA hF hT hwf.1 hi x hx
-      have hrp := ratioPart_sound_all hcat hA hF hT hwf.1 hi x hx
+      have hm := aeval_sound_allSz hcat hA hF hT hwf.1 hsz hi x hx
+      have hrp := ratioPart_sound_allSz hcat hA hF hT hwf.1 hsz hi x hx
       exact hm.append (hm.mapF ((Rel.facts_sound_all hcat hF hT hwf.1 hi x hx).append hrp) es)
         (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hi x hx])
-  | .emit r m, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
+  | .emit r m, hwf, hsz, _, ⟨i, hi, rfl⟩, row, hr => by
       obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hr
-      exact (aeval_sound_all hcat hA hF hT hwf.1 hi x hx).emit m
-  | .cross a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+      exact (aeval_sound_allSz hcat hA hF hT hwf.1 hsz hi x hx).emit m
+  | .cross a b, hwf, hsz, _, ⟨x, y, hx, hy, h⟩, row, hr => by
       obtain ⟨u, hu, v, hv, rfl⟩ := mem_crossRows.mp (h.mem_iff.mp hr)
-      exact (aeval_sound_all hcat hA hF hT hwf.1 hx u hu).append
-        (aeval_sound_all hcat hA hF hT hwf.2 hy v hv)
+      exact (aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).1) hx u hu).append
+        (aeval_sound_allSz hcat hA hF hT hwf.2 (fun h => (hsz h).2) hy v hv)
         (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hx u hu])
-  | .join a b .inner on, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+  | .join a b .inner on, hwf, hsz, _, ⟨x, y, hx, hy, h⟩, row, hr => by
       obtain ⟨hc, ht⟩ := List.mem_filter.mp (h.mem_iff.mp hr)
       obtain ⟨u, hu, v, hv, rfl⟩ := mem_crossRows.mp hc
-      exact Expr.refine_sound _ on ((aeval_sound_all hcat hA hF hT hwf.1 hx u hu).append
-        (aeval_sound_all hcat hA hF hT hwf.2.1 hy v hv)
+      exact Expr.refine_sound _ on ((aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).1) hx u hu).append
+        (aeval_sound_allSz hcat hA hF hT hwf.2.1 (fun h => (hsz h).2) hy v hv)
         (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hx u hu])) ht
-  | .join a b .left on, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+  | .join a b .left on, hwf, hsz, _, ⟨x, y, hx, hy, h⟩, row, hr => by
       obtain ⟨u, hu, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
-      have hum := aeval_sound_all hcat hA hF hT hwf.1 hx u hu
-      have hl : (a.aeval cat A F T).length = u.length := by
+      have hum := aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).1) hx u hu
+      have hl : (a.aeval cat A F T sz).length = u.length := by
         rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hx u hu]
       unfold leftJoinRow at h
       simp only [] at h
@@ -1024,67 +1046,95 @@ theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List
         exact hum.append (EnvMem.nulls _ _) hl
       · simp only [List.mem_filter, List.mem_map] at h
         obtain ⟨⟨v, hv, rfl⟩, _⟩ := h
-        exact hum.append (aeval_sound_all hcat hA hF hT hwf.2.1 hy v hv).nullable hl
-  | .fetch r _ cnt, hwf, _, ⟨i, hi, rfl⟩, row, hr => by
-      have := aeval_sound_all hcat hA hF hT (r := r) hwf hi
+        exact hum.append (aeval_sound_allSz hcat hA hF hT hwf.2.1 (fun h => (hsz h).2) hy v hv).nullable hl
+  | .fetch r _ cnt, hwf, hsz, _, ⟨i, hi, rfl⟩, row, hr => by
+      have := aeval_sound_allSz hcat hA hF hT (r := r) hwf hsz hi
       cases cnt with
       | none => exact this row (List.mem_of_mem_drop hr)
       | some _ => exact this row (List.mem_of_mem_drop (List.mem_of_mem_take hr))
-  | .semi a _ _ _, hwf, _, ⟨x, _, hx, _, h⟩, row, hr =>
-      aeval_sound_all hcat hA hF hT hwf.1 hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
-  | .orderBy r _, hwf, _, ⟨i, hi, h, _⟩, row, hr =>
-      aeval_sound_all hcat hA hF hT (r := r) hwf.1 hi row (h.mem_iff.mp hr)
-  | .distinct r, hwf, _, ⟨i, hi, _, hd, h⟩, row, hr => by
+  | .semi a _ _ _, hwf, hsz, _, ⟨x, _, hx, _, h⟩, row, hr =>
+      aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).1) hx row (List.mem_filter.mp (h.mem_iff.mp hr)).1
+  | .orderBy r _, hwf, hsz, _, ⟨i, hi, h, _⟩, row, hr =>
+      aeval_sound_allSz hcat hA hF hT (r := r) hwf.1 hsz hi row (h.mem_iff.mp hr)
+  | .distinct r, hwf, hsz, _, ⟨i, hi, _, hd, h⟩, row, hr => by
       obtain ⟨y, hy, he⟩ := hd.class_mem (h.mem_iff.mp hr)
-      exact (aeval_sound_all hcat hA hF hT (r := r) hwf hi y hy).of_canon he
-  | .unnest r c, hwf, _, ⟨i, hi, h⟩, row, hr => by
+      exact (aeval_sound_allSz hcat hA hF hT (r := r) hwf hsz hi y hy).of_canon he
+  | .unnest r c, hwf, hsz, _, ⟨i, hi, h⟩, row, hr => by
       obtain ⟨x, hx, h⟩ := List.mem_flatMap.mp (h.mem_iff.mp hr)
       obtain ⟨_, v, hc, hv, rfl⟩ := mem_unnestRow h
-      exact (aeval_sound_all hcat hA hF hT hwf.1 hi x hx).set_elem hc hv
-  | .aggregate r gs ms, hwf, _, ⟨i, hi, o, h, ho⟩, row, hr => by
+      exact (aeval_sound_allSz hcat hA hF hT hwf.1 hsz hi x hx).set_elem hc hv
+  | .aggregate r gs ms, hwf, hsz, _, ⟨i, hi, o, h, ho⟩, row, hr => by
       obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, hne, hglen⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
-      have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T) y ∧ FactsHold (r.facts cat F T) y :=
-        fun y hy => ⟨aeval_sound_all hcat hA hF hT hwf.1 hi y (hgrp y hy),
+      have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T sz) y ∧ FactsHold (r.facts cat F T) y :=
+        fun y hy => ⟨aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi y (hgrp y hy),
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
       have hm := EnvMem.measures_all hall hv (!gs.isEmpty) (fun hg => hne (by simpa using hg))
         (rows := r.maxRows) (fun n hn => Nat.le_trans hglen (Rel.maxRows_sound_all hn hi))
       rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, he⟩
       · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
-      · exact ((EnvMem.mapD (aeval_sound_all hcat hA hF hT hwf.1 hi x hx)
+      · exact ((EnvMem.mapD (aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi x hx)
           (Rel.facts_sound_all hcat hF hT hwf.1 hi x hx) gs).of_canon he).append hm
           (by rw [Row.length_of_canon he]; simp [groupKey])
-  | .unionAll a b, hwf, _, ⟨x, y, hx, hy, h⟩, row, hr => by
+  | .unionAll a b, hwf, hsz, _, ⟨x, y, hx, hy, h⟩, row, hr => by
       rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
-      · exact (aeval_sound_all hcat hA hF hT hwf.1 hx row h).zip_left
-      · exact (aeval_sound_all hcat hA hF hT hwf.2.1 hy row h).zip_right
-  | .window r _ _ fns, hwf, _, ⟨i, hi, s, hp, hs, h⟩, row, hr => by
-      obtain ⟨b, x, a, _, rfl, _, _, hin⟩ := mem_windowRows_sorted hs (h.mem_iff.mp hr)
-      have hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem (r.aeval cat A F T) y :=
-        fun y hy => aeval_sound_all hcat hA hF hT hwf.1 hi y (hp.mem_iff.mp (hin y hy))
-      exact (hall x (.inl rfl)).append (EnvMem.window (sz := false) hall nofun fns)
+      · exact (aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).1) hx row h).zip_left
+      · exact (aeval_sound_allSz hcat hA hF hT hwf.2.1 (fun h => (hsz h).2) hy row h).zip_right
+  | .window r _ _ fns, hwf, hsz, _, ⟨i, hi, s, hp, hs, h⟩, row, hr => by
+      obtain ⟨b, x, a, hsplit, rfl, _, _, hin⟩ := mem_windowRows_sorted hs (h.mem_iff.mp hr)
+      have hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem (r.aeval cat A F T sz) y :=
+        fun y hy => aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi y
+          (hp.mem_iff.mp (hin y hy))
+      have hn : sz = true → b.length + 1 + a.length < 2 ^ 62 := by
+        intro hz
+        have hl := hp.length_eq
+        rw [hsplit] at hl
+        simp only [List.length_append, List.length_cons] at hl
+        have := (hsz hz).1 i hi
+        omega
+      exact (hall x (.inl rfl)).append (EnvMem.window hall hn fns)
         (by rw [aeval_length hwf.1, orderAllowed_arity hcat hwf.1 hi x (hp.mem_iff.mp (hin x (.inl rfl)))])
 
-theorem Rel.ratioPart_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+theorem Rel.ratioPart_sound_allSz {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat) :
-    ∀ {r : Rel}, r.WF cat → ∀ {out : Relation}, r.OrderAllowed cat out →
-      ∀ row ∈ out, FactsHold (r.ratioPart cat A F T) row
-  | .aggregate r gs ms, hwf, _, ⟨i, hi, o, h, ho⟩, row, hr => by
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {sz : Bool} :
+    ∀ {r : Rel}, r.WF cat → (sz = true → r.SmallAll cat) → ∀ {out : Relation},
+      r.OrderAllowed cat out → ∀ row ∈ out, FactsHold (r.ratioPart cat A F T sz) row
+  | .aggregate r gs ms, hwf, hsz, _, ⟨i, hi, o, h, ho⟩, row, hr => by
       obtain ⟨k, vs, grp, rfl, hv, hgrp, hk, -⟩ := mem_aggOrderAllowed ho (h.mem_iff.mp hr)
       have hkl : k.length = gs.length := by
         rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, he⟩
         · rfl
         · rw [Row.length_of_canon he]; simp [groupKey]
       exact ratioFacts_sound_of (hkl ▸ aggCol_eq hv) fun y hy =>
-        ⟨aeval_sound_all hcat hA hF hT hwf.1 hi y (hgrp y hy),
+        ⟨aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi y (hgrp y hy),
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
-  | .read _, _, _, _, _, _ | .values _ _, _, _, _, _, _ | .filter _ _, _, _, _, _, _
-  | .project _ _, _, _, _, _, _ | .emit _ _, _, _, _, _, _ | .cross _ _, _, _, _, _, _
-  | .join _ _ _ _, _, _, _, _, _ | .fetch _ _ _, _, _, _, _, _ | .unionAll _ _, _, _, _, _, _
-  | .window _ _ _ _, _, _, _, _, _ | .semi _ _ _ _, _, _, _, _, _ | .orderBy _ _, _, _, _, _, _
-  | .distinct _, _, _, _, _, _ | .unnest _ _, _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
+  | .read _, _, _, _, _, _, _ | .values _ _, _, _, _, _, _, _ | .filter _ _, _, _, _, _, _, _
+  | .project _ _, _, _, _, _, _, _ | .emit _ _, _, _, _, _, _, _ | .cross _ _, _, _, _, _, _, _
+  | .join _ _ _ _, _, _, _, _, _, _ | .fetch _ _ _, _, _, _, _, _, _
+  | .unionAll _ _, _, _, _, _, _, _ | .window _ _ _ _, _, _, _, _, _, _
+  | .semi _ _ _ _, _, _, _, _, _, _ | .orderBy _ _, _, _, _, _, _, _ | .distinct _, _, _, _, _, _, _
+  | .unnest _ _, _, _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
 end
+
+/-- `Rel.aeval_sound_allSz` without the size hypothesis's bounds (`sz = false`). -/
+theorem Rel.aeval_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {r : Rel} (hwf : r.WF cat) {out : Relation} (h : r.OrderAllowed cat out) :
+    ∀ row ∈ out, EnvMem (r.aeval cat A F T) row :=
+  Rel.aeval_sound_allSz hcat hA hF hT (sz := false) hwf nofun h
+
+/-- `Rel.ratioPart_sound_allSz` with `sz = false`. -/
+theorem Rel.ratioPart_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {r : Rel} (hwf : r.WF cat) {out : Relation} (h : r.OrderAllowed cat out) :
+    ∀ row ∈ out, FactsHold (r.ratioPart cat A F T) row :=
+  Rel.ratioPart_sound_allSz hcat hA hF hT (sz := false) hwf nofun h
 
 /-! ## Contracts -/
 

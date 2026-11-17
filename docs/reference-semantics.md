@@ -90,7 +90,7 @@ result, so a proved postcondition holds whichever value the engine picks.
 |---|---|---|
 | `tie_order` | the order of rows that tie in an `ORDER BY` or a window's order, and of the values `STRING_AGG` and `collect` gather | any order |
 | `tie_pick` | the row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value` and `MODE` take among ties | any row of the tie |
-| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them |
+| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them; Polars and Spark (`LINEAR_DIFF`, `lo + (hi − lo)·w`) also give NaN with a `-∞` lower neighbour and `+∞` where `hi − lo` overflows (`[-1e308, 1e308]`), and take the neighbours of their double position `(n − 1)·q` (`contNeighboursD`) |
 | `round_zero_sign` | which zero `round` and `ceil` give a negative value that rounds to zero | either |
 | one zero, one NaN | which member a `GROUP BY` key, a `DISTINCT` row, a `MIN` or a `MAX` returns when its class holds `-0.0` and `0.0`, or NaNs of both signs | any member present, or the canonical value |
 | the sign of a NaN | the sign of a NaN an operation produces (under a profile that lets one be created) | either |
@@ -276,6 +276,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | Characters | Unicode code points (Lean `Char`); `length`, `substring`, `strpos` count them. Strings compare by code point, which is UTF-8 byte order. | ✓ |
 | `substring` with a negative start | `negative_start` omitted means `WRAP_FROM_END`: `substring('hello', -2, 2) = 'lo'`. A plan that sets `LEFT_OF_BEGINNING` gets that. | ✓ (R13) |
 | `substring` range | An offset outside `[-2³², 2³²)` or a length of `2³²` or more is an error, as in DuckDB ("Substring offset outside of supported range"); NULL arguments give NULL. `verify` reports it as a domain error unless the offset's bounds rule it out, for example `_.start >= -2**32` and `_.start < 2**32` in `requires`. | ✓: `Text.substrInRange`, `Issue.domain`; DuckDB raises itself, and the written plan guards the offset its wrap-around arithmetic shifts |
+| `replace` with an empty pattern | The model's `replace` puts the replacement around every character (Rust, Polars); DuckDB returns the string unchanged ([duckdb-replace-empty-pattern](../engines/duckdb/facts/duckdb-replace-empty-pattern.json), [ST-17](../upstream/bugs/ST-17.json)). The frontends refuse a constant empty pattern under the reference, and `semantics="duckdb"` lifts it to the string unchanged (NULL for a NULL replacement; #1508). | ✓ |
 | Matching | Case-sensitive only (`case_sensitivity` = `CASE_SENSITIVE`); `LIKE` has `%`, `_` and a backslash escape. | ✓ |
 | Black boxes | `upper`, `lower`, `ilike`, regular expressions and the digests `md5` and `sha256` are opaque to the proofs: no proof depends on what they compute, only on their types, that NULL in gives NULL out, and that equal inputs give equal outputs. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator maps ASCII case only, and evaluates regular expressions with RE2's meaning (`core/Sverify/Core/Regex.lean`) where it agrees with Rust's, which is everywhere but `\d`, `\w`, `\s` and `\b` on non-ASCII text (and `\s` on `\v`); there `substrait-check` refuses to print rows rather than print wrong ones. | ✓ |
 | `regexp_extract`, `regexp_replace` | A constant pattern that `Text.simpleRegex` accepts, or the plan is refused. `regexp_extract(s, p, g)` is group `g` (0 to 9; DuckDB raises past 9) of the leftmost-first match, `''` where nothing matches, the group took no part, or `p` has fewer groups. `regexp_replace` replaces the first match, or every match with the flag `'g'` (an empty match right after the previous one is skipped); in the replacement, `\0` … `\9` are groups and `\\` a backslash, and other escapes are refused. On DuckDB only. | ✓ |
@@ -393,8 +394,12 @@ core needs no square roots. The bounds are proved for the two-pass algorithm
 and for DuckDB's Welford update with Chan's merge in any
 tree ([`float-bounds.md`](float-bounds.md)), and a property test checks
 DuckDB's results against them (`tests/test_float_bounds.py`). The textbook
-formula `Σx² − (Σx)²/n` cancels and is outside them. Outside the finite range
-the reference's own value is the one allowed. An engine profile may name a
+formula `Σx² − (Σx)²/n` cancels and is outside them. A NaN or an infinity
+among the values gives the reference's own value. Finite values outside the
+range above (`Stat.fits`) allow any double: an engine's algorithm may overflow
+on the way or round differently there (`var_pop([1e150, 3e150])` is
+`1.0000000000000002e+300` exactly rounded, `9.999999999999999e+299` on DuckDB
+and streaming Polars; [D30](decisions.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)). An engine profile may name a
 stricter algorithm (`Profile.statAlgo`, `Profile.sumAlgo`, `AggAlgo`); without
 one, the generic properties hold. No profile names one yet. Engines differ
 from the reference where it raises: DuckDB and Polars give NaN for an

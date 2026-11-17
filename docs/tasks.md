@@ -845,12 +845,11 @@ them. `sv.sql(query, semantics=...)` attaches the choice to the query.
 it for the SQL they lift themselves: a SQL transformation and SQL conditions.
 An `sv.sql` expression inside an Ibis transformation keeps its own. The report
 says which semantics it used (`Report.semantics`, a `semantics:` line).
-`semantics="polars"` reads an Ibis transformation as Polars computes it:
-integer `//` and `%` floor, so `-7 % 2` is `1`, and the plan states
-`division_type: FLOOR` on each, which Polars runs natively and the SQL
-writer computes from truncating operations; a zero divisor and integer overflow still raise, so `verify`
-infers the same preconditions as under the reference
-([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
+`semantics="polars"` is pending like Spark's: Polars floors integer `//` and
+`%`, so `-7 % 2` is `1` there, and until the checker reports under Polars's own
+profile ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271))
+the report is the reference's, with the stated `FLOOR` read by the core, and a
+`ProfilePendingWarning` says so ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode, and doubles that overflow are ±inf with no precondition.
 Until the checker reports under Spark's own profile
@@ -1598,7 +1597,6 @@ defines it. On `x = -7`, with `d = 2`:
 |---|---|---|---|
 | Ibis, `semantics="reference"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
 | SQL through `sv.sql` or `sv.verify`, reference | -3 (truncated) | -1 | yes |
-| Ibis, `semantics="polars"` | -4 | 1 | yes |
 
 A plan that splits milliseconds into seconds and a remainder with `t.ms // 1000`
 and `t.ms % 1000` gets the identity only for non-negative `ms`. State
@@ -1612,7 +1610,6 @@ reproduces the table.
 
 A proof is about the plan under one semantics, a profile: sverify's
 reference by default, `semantics="duckdb"` for what DuckDB does,
-`semantics="polars"` for what Polars does, or
 `semantics="substrait"` for Substrait's extension YAMLs, open wherever they
 say nothing. Each profile refines one core that does a superset of
 operations ([core, profiles and engines](core-and-profiles.md)). An engine computes its own semantics, so running a proved
@@ -1623,7 +1620,7 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars, `semantics="spark"` on Spark) |
+| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending until #1288 and #271) |
 | `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
 | `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
 | `recheck` | the checker proves the plan again under the engine's profile |
