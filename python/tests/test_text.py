@@ -43,7 +43,6 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
-from sverify.sql import Unsupported
 from sverify.testing import canonical, duckdb_ibis, duckdb_sql, inline_tables, lean_values
 
 R = ibis.schema({"s": "string", "t": "string", "a": "int64"})
@@ -206,14 +205,13 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
 @given(rows=st.lists(st.tuples(marked, marked, counts), max_size=6))
 def test_repeat_reverse_replace_match_the_reference(sql, rows):
     """Polars and DuckDB give Lean's rows. DuckDB is the oracle of `replace`
-    with a pattern; its own `repeat`, `reverse`, `ascii` and `levenshtein`
-    count bytes or grapheme clusters, and its `replace` of an empty pattern
-    returns the string unchanged, so there Lean, the reference, stands alone
-    (#1138)."""
+    (the SQL lift states its value for an empty pattern, #1508); its own
+    `repeat`, `reverse`, `ascii` and `levenshtein` count bytes or grapheme
+    clusters, so there Lean, the reference, stands alone (#1138)."""
     con = connect()
     con.create("r", R, rows)
     expected = lean_rows(con, sql, rows)
-    if sql == REPLACE:
+    if sql in (REPLACE, EMPTY_PATTERN):
         assert canonical(oracle(con, sql)) == expected
     plan = written_plan(plan_of(con, sql))
     if sql == LEVENSHTEIN:
@@ -229,10 +227,7 @@ def test_repeat_reverse_replace_match_the_reference(sql, rows):
         non_ascii = any(
             not (r[0] + r[1]).isascii() for r in rows if r[0] is not None and r[1] is not None
         )
-    if sql == EMPTY_PATTERN:
-        with pytest.raises(Unsupported, match="empty pattern"):
-            run_plan(con, plan, "duckdb")
-    elif sql in (ASCII_IN_DUCKDB, LEVENSHTEIN) and non_ascii:
+    if sql in (ASCII_IN_DUCKDB, LEVENSHTEIN) and non_ascii:
         with pytest.raises(Exception, match="non-ASCII text differs between engines"):
             run_plan(con, plan, "duckdb")
     else:
