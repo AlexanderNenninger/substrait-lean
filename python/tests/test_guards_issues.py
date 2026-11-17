@@ -2,7 +2,15 @@
 that plan (S9a): every guard (`Dialect.raise_`) names the `Issue` it enforces
 (`GuardIssue`), and each coverage case whose SQL holds a guard has that issue
 among those `substrait-check --contract` reports for the plan. A raise the
-report does not state is a wrong verdict, whatever the proof says."""
+report does not state is a wrong verdict, whatever the proof says.
+
+The rule (S9a-1): on input the report admits, written SQL raises only for an
+issue the report lists. A guard on an issue the checker discharged (a column's
+type, a literal argument) cannot fire and may stay, so each plan is written a
+second time with the report's `unchecked` slots, and the guards left there must
+be reported (a). A slot where Safety models no issue is unchecked, so (a) alone
+passes a guard Safety does not model; (b) asks that each guard site survives
+the unchecked writing, with its issue reported, in at least one plan."""
 
 from __future__ import annotations
 
@@ -45,8 +53,15 @@ def test_guard_issues_are_leans_constructors() -> None:
     assert set(KIND) == set(ctors)
 
 
-def _recording(monkeypatch: pytest.MonkeyPatch, used: set[str]) -> None:
-    """Record the issue of every guard any dialect writes."""
+import functools
+import sys
+from collections import defaultdict
+
+Site = tuple[str, int, str]  # (file, line, issue)
+
+
+def _recording(monkeypatch: pytest.MonkeyPatch, used: set[Site]) -> None:
+    """Record the call site and issue of every guard any dialect writes."""
     seen: set[type] = set()
 
     def wrap(cls: type) -> None:
@@ -56,7 +71,8 @@ def _recording(monkeypatch: pytest.MonkeyPatch, used: set[str]) -> None:
         orig = vars(cls)["raise_"]
 
         def raise_(self, message, dep, kind, issue, _orig=orig):  # type: ignore[no-untyped-def]
-            used.add(issue)
+            f = sys._getframe(1)
+            used.add((f.f_code.co_filename.split("/src/")[-1], f.f_lineno, issue))
             return _orig(self, message, dep, kind, issue)
 
         monkeypatch.setattr(cls, "raise_", raise_)
@@ -69,42 +85,90 @@ def _recording(monkeypatch: pytest.MonkeyPatch, used: set[str]) -> None:
     walk(Dialect)
 
 
-def _reported(plan: str) -> set[str]:
+def _report(plan: str) -> dict:
     code, out, _ = run_checker(
         ("--contract",), json.dumps({"transform": json.loads(plan), "ensures": []})
     )
-    report = json.loads(out)
+    return json.loads(out)
+
+
+def _kinds(report: dict) -> set[str]:
     return {i["kind"] for i in report.get("issues", [])}
 
 
-def _guards_of(plan: str, monkeypatch: pytest.MonkeyPatch) -> set[str]:
-    used: set[str] = set()
+def _sites(plan: str, unchecked: dict | None, monkeypatch: pytest.MonkeyPatch) -> set[Site]:
+    used: set[Site] = set()
     with monkeypatch.context() as m:
         _recording(m, used)
         for plugin in profiles.plugins().values():
             if plugin.dialect is None:
                 continue
             try:
-                to_sql(json.loads(plan), plugin.dialect())
+                to_sql(json.loads(plan), plugin.dialect(), unchecked=unchecked)
             except UnsupportedError:
                 continue
     return used
 
 
-@pytest.mark.parametrize("c", [c for c in CASES if c.expected == "verified"], ids=lambda c: c.label)
-def test_written_guards_are_reported_issues(c: Case, monkeypatch: pytest.MonkeyPatch) -> None:
+@functools.cache
+def _scan(label: str) -> tuple[frozenset[Site], frozenset[Site], frozenset[str]] | None:
+    """The guard sites of case `label` as written, as written with the report's
+    unchecked slots, and the kinds the report lists."""
+    c = next(c for c in CASES if c.label == label)
     try:
         plan = written(c)
     except UnsupportedError:
+        return None
+    mp = pytest.MonkeyPatch()
+    try:
+        full = _sites(plan, None, mp)
+        if not full:
+            return frozenset(), frozenset(), frozenset()
+        report = _report(plan)
+        left = _sites(plan, report.get("unchecked"), mp)
+        return frozenset(full), frozenset(left), frozenset(_kinds(report))
+    finally:
+        mp.undo()
+
+
+VERIFIED = [c for c in CASES if c.expected == "verified"]
+
+
+@pytest.mark.parametrize("c", VERIFIED, ids=lambda c: c.label)
+def test_the_guards_left_unchecked_are_reported(c: Case) -> None:
+    """(a): every guard the unchecked writing keeps has its issue reported."""
+    scan = _scan(c.label)
+    if scan is None:
         pytest.skip("not written")
-    guards = _guards_of(plan, monkeypatch) - {"asciiOnly"}
-    if not guards:
-        return
-    reported = _reported(plan)
-    missing = {g for g in guards if KIND[g] not in reported}
-    assert not missing, (
-        f"guards {sorted(missing)} are not among the reported issues {sorted(reported)}"
+    _, left, kinds = scan
+    missing = sorted(
+        (f"{f}:{n}", g) for f, n, g in left if g != "asciiOnly" and KIND[g] not in kinds
     )
+    assert not missing, f"guards without a reported issue {sorted(kinds)}: {missing}"
+
+
+def test_every_guard_site_is_reported_somewhere() -> None:
+    """(b): each guard site survives the unchecked writing, with its issue
+    reported, in some plan: a witness for a site no case reaches."""
+    sites: dict[tuple[str, int], set[str]] = defaultdict(set)
+    proven: set[tuple[str, int]] = set()
+    for c in VERIFIED:
+        scan = _scan(c.label)
+        if scan is None:
+            continue
+        full, left, kinds = scan
+        for f, n, g in full:
+            sites[(f, n)].add(g)
+        for f, n, g in left:
+            if KIND.get(g) in kinds:
+                proven.add((f, n))
+    proven |= set(WITNESSES)
+    lost = sorted((f"{f}:{n}", sorted(g)) for (f, n), g in sites.items() if (f, n) not in proven)
+    assert not [x for x in lost if "asciiOnly" not in x[1]], f"sites with no witness: {lost}"
+
+
+#: Witness plans for guard sites no case reaches: `{(file, line): plan}`.
+WITNESSES: dict[tuple[str, int], str] = {}
 
 
 @pytest.mark.xfail(strict=True, reason="#1506: the ASCII guard is not an issue Safety reports")
@@ -116,4 +180,4 @@ def test_the_ascii_guard_is_an_issue(monkeypatch: pytest.MonkeyPatch) -> None:
 
     t = ibis.table({"s": "string"}, name="t")
     plan = written_plan(to_substrait_json(t.select(u=t.s.upper())))
-    assert "asciiOnly" not in _guards_of(plan, monkeypatch) or _reported(plan)
+    assert "asciiOnly" not in {g for *_, g in _sites(plan, None, monkeypatch)}
