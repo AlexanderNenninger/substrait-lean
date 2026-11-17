@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from sverify import Verdict
 
 import sverify_dbt
 from sverify_dbt.cli import main
@@ -106,7 +105,7 @@ def test_selectors_keep_other_selectors(result: sverify_dbt.CheckResult, tmp_pat
     data = yaml.safe_load(path.read_text())
     assert [s["name"] for s in data["selectors"]] == ["mine", "sverify_proved"]
     values = {d["value"] for d in data["selectors"][1]["definition"]["union"]}
-    assert values == {t.name for t in result.verdict == Verdict.PROVED}
+    assert values == {t.name for t in result.proved_tests}
     assert "not_null_stg_orders_order_id" in values
 
 
@@ -132,7 +131,7 @@ def test_dbt_excludes_the_proved_tests(shop: Path, result: sverify_dbt.CheckResu
         ]
     )
     assert res.success
-    assert set(res.result) == {t.name for t in result.verdict == Verdict.PROVED}
+    assert set(res.result) == {t.name for t in result.proved_tests}
     dbt(shop, "compile")  # the selectors file parses
 
 
