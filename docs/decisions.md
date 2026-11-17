@@ -156,7 +156,7 @@ after the transfer check: the checker proves the contract again under the
 engine's profile (`python/src/sverify/routes.py`).
 
 Each route ends in `Engine.contract_sound` (#900): the contract holds on the
-rows the engine's model computes for the translated plan, unless it raises.
+rows the engine's model computes for the translated plan, under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference).
 The engine's actual output rests on `Engine.Runs` and the transfer check
 (`Engine.contract_sound_runs`); it fails today at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on every engine, `null_order` without a preference on Polars and Spark, and integer overflow on Polars ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900), PR 3).
 
@@ -193,9 +193,18 @@ proved to never raise the two agree (`Rel.duckdb_sound`).
 Amended (2026-11-08): `Engine.contract_sound` (`engines/Sverify/Engines/Sound.lean`,
 [#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)) proves
 a proved contract on the rows each engine's model computes for the
-translated plan, unless it raises, through each engine's `Engine.Sound`. That the engine's actual
+translated plan, under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference), through each engine's `Engine.Sound`. That the engine's actual
 result is one its table allows stays trusted, as `Engine.Runs`, resting on the
 tested rows `Engine.Refines` lists ([What is trusted](proofs.md#what-is-trusted)).
+
+Amended (2026-11-17): that the translated plan does not raise is DuckDB's side
+condition (`Engine.NoRaiseSide`), since DuckDB's model is its profile's
+functions where they do not raise (`okImpl`). `Engine.Sound` and
+`Engine.contract_sound` no longer take it: Polars and Spark hold under
+`Engine.GuardFreeSide` and the reference under no condition
+([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484),
+finding 13). A run that raises returns no result, and `Engine.Runs` speaks of
+a result, so the guarantee to a user is the same.
 
 ### D17. Changing the reference
 

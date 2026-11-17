@@ -96,7 +96,7 @@ def Engine.polars : Engine where
 /-- Polars under guard elimination's side condition: the written plan's
 functions compute `Rel.eval` (`Rel.polars_sound`). -/
 theorem Engine.polars_sound : Engine.polars.Sound Engine.GuardFreeSide := by
-  intro cat r r' hl _ ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
+  intro cat r r' hl ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
   cases hl
   show r.Allowed cat (r.eval cat Polars.written)
   rw [Rel.polars_sound hcat hA hF hT hwf hsmall hs hm]; exact r.eval_allowed cat
@@ -107,16 +107,16 @@ namespace Substrait
 section Example
 attribute [local instance] Engine.exampleBoxes
 
-/-- `Engine.polars_sound` applies to the example of `Sound.lean`: Polars's
-written plan computes `Rel.eval`'s rows for it, which the reference allows. -/
-theorem Engine.polars_sound_example :
-    Engine.examplePlan.Allowed Engine.exampleCat
-      (Engine.examplePlan.eval Engine.exampleCat Engine.polars.impl) := by
-  refine Engine.polars_sound (r' := Engine.examplePlan) rfl ?_ Engine.guardFreeSide_example
-  simp [Rel.Raises, Engine.examplePlan]
-  intro x hx
-  have : x = [.int 1] ∨ x = [.int 2] := by simpa [Rel.eval, Engine.exampleCat] using hx
-  rcases this with rfl | rfl <;>
-    (unfold Expr.RaisesOn; decide +kernel)
+/-- Polars on the example of `Sound.lean`: `Engine.contract_sound`'s hypotheses
+hold (`Engine.example_contract`), so the postcondition holds on the rows
+Polars's functions compute. -/
+theorem Engine.polars_contract_example :
+    ∀ row ∈ postRows Engine.examplePost [2]
+        (Engine.examplePlan.eval Engine.exampleCat Engine.polars.impl),
+      ∀ v ∈ row, v = .bool true := by
+  exact Engine.example_contract Engine.polars_sound (T' := Engine.examplePlan) rfl
+    Engine.guardFreeSide_example
+
 end Example
+
 end Substrait
