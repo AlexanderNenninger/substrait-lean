@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import ibis
 import pyarrow as pa
-import sverify as sv
 from ibis import _
+
+import sverify as sv
 
 SCHEMA = {"id": "int64", "amount": "int64"}
 

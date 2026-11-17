@@ -10,12 +10,11 @@ Needs `pip install apache-airflow sverify`.
 
 from __future__ import annotations
 
+import orders as contract
 import pendulum
 import pyarrow as pa
 from airflow.sdk import dag, task
 from airflow.sdk.exceptions import AirflowFailException
-
-import orders as contract
 
 
 @dag(schedule=None, start_date=pendulum.datetime(2026, 1, 1), catchup=False)

@@ -11,9 +11,8 @@ Needs `pip install dagster sverify`.
 from __future__ import annotations
 
 import dagster as dg
-import pyarrow as pa
-
 import orders as contract
+import pyarrow as pa
 
 
 @dg.asset
