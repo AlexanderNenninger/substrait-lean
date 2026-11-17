@@ -461,8 +461,8 @@ theorem WinFn.AllowedP.monoOn {f : WinFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {p
   | agg m sort fr =>
     simp only [WinFn.AllowedP]
     split
-    · refine Or.imp (fun ⟨ha, hb⟩ => ⟨Measure.AllowedP.monoOn
-        (fun p hp => h p (List.mem_append_left _ hp)) ha, hb⟩) fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
+    · refine Or.imp (Measure.AllowedP.monoOn fun p hp => h p (List.mem_append_left _ hp))
+        fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
       · have hp : ("win.agg", "window_sum_algo", ([] : List String)) ∈ (WinFn.agg m sort fr).reads := by
           simp only [WinFn.reads, List.mem_append]
           exact .inr (by simp only [hf, ↓reduceIte]; exact List.mem_singleton_self _)

@@ -539,10 +539,11 @@ def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fac
     (K : String → List (List Nat)) : Rel → List String
   | .distinct r => if (r.aeval cat A F .none).all AVal.noDoubles then [] else [doublesTies "DISTINCT"]
   | .window r part sort fns =>
-    if Rel.windowDetAt cat A F K r part sort fns then [] else
+    (if Rel.windowDetAt cat A F K r part sort fns then [] else
       let fs := ", ".intercalate ((fns.filter (!·.orderFree)).map WinFn.render)
       [s!"{fs} over rows that tie in PARTITION BY {part.map (s!"${·}")} ORDER BY " ++
-        s!"{sort.map (s!"${·.col}")}, with no key among those columns"]
+        s!"{sort.map (s!"${·.col}")}, with no key among those columns"]) ++
+      (fns.filter fun f => !WinFn.pickFixed cat A F r f).map fun f => doublesTies f.render
   | .aggregate r gs ms =>
     let env := r.aeval cat A F .none
     (gs.filter fun g => !(g.abs env).noDoubles).map (fun g => doublesTies s!"GROUP BY {g.render}") ++
@@ -573,7 +574,8 @@ theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String →
       simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K r, h]
   | .window r part sort fns => by
     cases h : Rel.windowDetAt cat A F K r part sort fns <;>
-      simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K r, h]
+      simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K r, h, List.filter_eq_nil_iff,
+        List.all_eq_true, and_comm]
   | .aggregate r gs ms => by
     simp only [preorder, tiesHere, Rel.detPlan, List.flatMap_cons, List.append_eq_nil_iff,
       List.map_eq_nil_iff, List.filter_eq_nil_iff, tiesIn_eq_nil cat A F K r, Bool.and_eq_true,
