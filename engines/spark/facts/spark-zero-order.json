@@ -61,9 +61,9 @@
   },
   "description": [
     "`-0.0 = 0.0` and `-0.0 <=> 0.0` are true, `-0.0 < 0.0` false; a sort keeps the zeros as ties in input order. Grouping, `DISTINCT`, joins and set operations normalise -0.0 to 0.0, so a group key is 0.0 whichever zero came first, and the joined side keeps its own value (`0.0` joins `-0.0`).",
-    "`min` and `max` keep the first of two equal zeros: over (-0.0, 0.0) both are -0.0, over (0.0, -0.0) both 0.0. `greatest(-0.0, 0.0)` is -0.0."
+    "`min` and `max` keep the first of two equal zeros in one partition: over (-0.0, 0.0) both are -0.0, over (0.0, -0.0) both 0.0. With several partitions the merge picks by partition order, so the sign depends on the data's order and partitioning (reproduced 2026-11-17: 1 partition gives the first zero of the input, 4 partitions gave +0.0 for all four orders tried, ANSI on and off; sverify's writer prints the class's `+0.0`, `test_min_and_max_of_mixed_zeros_are_the_canonical_zero`). `greatest` and `least` keep the first argument: `greatest(-0.0, 0.0)` and `least(-0.0, 0.0)` are -0.0, `greatest(0.0, -0.0)` and `least(0.0, -0.0)` are 0.0 (probe `double-compare`, `engines/spark/probes/probes.json`), which is the reference's `Value.pick`."
   ],
-  "reference": "`ONE_ZERO` (#89): `-0.0` is `0.0` everywhere, so a group key and an aggregate's result are never -0.0. Spark's grouping is native; `min`, `max`, `greatest`, `least` and a sorted column need the zero canonicalised where it is observed.",
+  "reference": "`ONE_ZERO` (#89): the zero class is one value at every identity boundary. Spark's grouping is native. `min` and `max` pick a member of the class by order and partitioning, which D31 allows (`AggFn.Picks`); the writer prints the canonical `+0.0` there. `greatest`, `least` and a sorted column keep the first of equal zeros, as the reference does: no shim.",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [
@@ -132,6 +132,21 @@
         "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 5784 of 5784 results as the fact says.",
         "zero_order[0]: 300 rows, `min(x)`, `max(x)`, `count(DISTINCT x)`, 984 of 984 results as the fact says; zero_order[1]: 300 rows, `a = b`, `a < b`, `a <=> b`, `greatest(a, b)`, 4800 of 4800 results as the fact says.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    },
+    {
+      "checked_at": "2026-11-17",
+      "method": "manual-repro",
+      "checked_by": "worker 2 (#1512), local Spark 4.3.0, local[2]",
+      "evidence": [
+        {
+          "file": "engines/spark/tests/test_negzero_spark.py",
+          "note": "test_min_and_max_of_mixed_zeros_are_the_canonical_zero, test_least_and_greatest_of_both_zeros_keep_the_first_argument_on_spark"
+        }
+      ],
+      "notes": [
+        "`SELECT min(x), max(x)` over rows (-0.0, 0.0, -0.0, 0.0) in four orders, with 1 and 4 partitions (`repartition`), spark.sql.ansi.enabled on and off: 1 partition gives the first row's zero for both (-0.0 for two orders, +0.0 for two), 4 partitions gave +0.0 in all eight cases.",
+        "`greatest(x, y)` and `least(x, y)` of (-0.0, 0.0) and (0.0, -0.0) through the written plan, with `y` a stored column or a literal: always the first argument."
       ]
     }
   ],

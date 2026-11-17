@@ -6,6 +6,7 @@ canonical `+0.0`, since Spark's depends on order and partitioning."""
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 import ibis
@@ -65,6 +66,27 @@ def test_min_and_max_of_mixed_zeros_are_the_canonical_zero(order, parts) -> None
     for agg in (X.min(), X.max()):
         expr = T.aggregate(v=agg).mutate(k=ibis.literal(0)).select("k", "v")
         assert on_spark(expr, rows, parts) == [(0, (0.0, 1.0))]
+
+
+@pytest.mark.parametrize("stored_right", [True, False])
+@pytest.mark.parametrize("pair", [(NEG_ZERO, 0.0), (0.0, NEG_ZERO)])
+def test_least_and_greatest_of_both_zeros_keep_the_first_argument_on_spark(pair, stored_right):
+    """The reference keeps the first argument unless the second is strictly
+    better (`Value.pick`); Spark's `greatest` and `least` do too
+    (spark-zero-order, probe `double-compare`). The other argument is a second
+    stored column, or a literal."""
+    if stored_right:
+        t = ibis.table(ibis.schema({"k": "int64", "x": "float64", "y": "float64"}), name="t")
+        frame, cols, other = [(0, *pair)], "k BIGINT, x DOUBLE, y DOUBLE", t.y
+    else:
+        t = T
+        frame, cols, other = [(0, pair[0])], "k BIGINT, x DOUBLE", ibis.literal(pair[1])
+    s = session()
+    s.createDataFrame(frame, cols).createOrReplaceTempView("t")
+    for fn in (ibis.least, ibis.greatest):
+        sql = to_sql(written_plan(json.dumps(to_substrait(t.select(t.k, v=fn(t.x, other))))), SPARK)
+        got = [signed(r[1]) for r in s.sql(sql).collect()]
+        assert got == [(pair[0], math.copysign(1.0, pair[0]))], sql
 
 
 def test_group_keys_and_distinct_rows_are_canonical_on_spark() -> None:

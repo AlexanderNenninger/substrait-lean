@@ -168,19 +168,18 @@ def test_the_representative_of_a_zero_class_is_canonical_whatever_the_row_order(
 
 
 @pytest.mark.parametrize("pair", [(NEG_ZERO, 0.0), (0.0, NEG_ZERO)])
-def test_least_and_greatest_of_both_zeros_are_the_models_up_to_a_zero(pair) -> None:
-    """`least` and `greatest` keep the first of equal zeros on DuckDB; the model
-    reads a zero as open here (D31)."""
+def test_least_and_greatest_of_both_zeros_keep_the_first_argument(pair) -> None:
+    """The reference keeps the first argument unless the second is strictly
+    better (`Value.pick`), so `greatest(-0.0, 0.0)` is `-0.0` and
+    `greatest(0.0, -0.0)` is `0.0`; DuckDB's written plan does the same."""
     rows = [(0, pair[0])]
     other = ibis.literal(pair[1])
     for expr in (
         T.select(T.k, v=ibis.least(X, other)),
         T.select(T.k, v=ibis.greatest(X, other)),
     ):
-        ((k, got),) = written(expr, rows)
-        assert got[0] == 0.0
-        ((k2, want),) = model(expr, rows)
-        assert want[0] == 0.0
+        assert written(expr, rows) == model(expr, rows)
+        assert written(expr, rows)[0][1][1] == math.copysign(1.0, pair[0])
 
 
 def test_sum_and_average_of_negative_zeros_are_positive_in_the_model_and_on_duckdb() -> None:
