@@ -59,7 +59,10 @@ print(big_orders.report)
 # requires orders: (_.amount < 1000000000)
 # requires orders: unique(id)
 # ensures (_.doubled >= 22): proved
+# ...
 ```
+
+The report goes on with the evidence for each engine; `sverify check` prints the contract in plain words.
 
 A postcondition that doesn't follow is refused before anything runs:
 
@@ -278,6 +281,7 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 ]
 ```
 
+`sverify check` reads a Python file or a dbt project; a bare `.sql` file is not checked yet, so put the query in `sv.sql` in a `.py` file, or use [sverify-dbt](https://github.com/AlexanderNenninger/substrait-lean/blob/main/dbt/README.md).
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
 through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
