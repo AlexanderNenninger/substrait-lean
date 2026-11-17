@@ -33,6 +33,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify._checker import run_checker
 from sverify._unsupported import UnsupportedError
 from sverify.engine import (
     connect,
@@ -349,3 +350,17 @@ def test_string_contracts():
 def test_negative_substring_length_is_rejected():
     with pytest.raises(ValueError, match="negative (substring )?length"):
         sv.verify("SELECT substring(name, 1, -1) AS x FROM t", tables={"t": T})
+
+
+@pytest.mark.parametrize("flags", [("--outcomes",), ("--eval-choices",), ("--rows",)])
+def test_every_mode_refuses_a_panic(flags):
+    """A panic in Lean's evaluator is a refusal in each mode that evaluates
+    rows, not a placeholder in the answer (R6): `--outcomes`, which the
+    engine-fact probes compare against, included."""
+    con = connect()
+    rows = [("Straße", "abc", 1)]
+    con.create("r", R, rows)
+    plan = inline_tables(json.loads(plan_of(con, "SELECT upper(s) AS u FROM r")), {"r": rows})
+    code, out, err = run_checker(flags, json.dumps(plan))
+    assert code != 0 and out == ""
+    assert "rows not evaluated: UPPER of non-ASCII text" in err

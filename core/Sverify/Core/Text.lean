@@ -330,7 +330,7 @@ def plainInClass (c : Char) : Bool := !"[]\\-&~^".contains c
 /-- A repetition count: up to 4 digits, at most 1000. -/
 def count (cs : List Char) : Option (Nat × List Char) :=
   let ds := cs.takeWhile Char.isDigit
-  let n := (String.ofList ds).toNat!
+  let n := (String.ofList ds).toNat?.getD 0
   if ds.isEmpty || 4 < ds.length || 1000 < n then none else some (n, cs.drop ds.length)
 
 /-- Skip a quantifier, if there is one. -/
@@ -435,6 +435,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard simpleRegex "^a" && simpleRegex "(a)(b)" && simpleRegex "\\d{4}-\\d{2}" && simpleRegex "[a-z]+$"
 #guard !simpleRegex "(" && !simpleRegex "a**" && !simpleRegex "[]" && !simpleRegex "(?i)a"
 #guard !simpleRegex "a{3,2}" && !simpleRegex "*a"
+-- A quantifier with no digits (`0{`) reached `Regex.digits` and `count` through `toNat!`.
+#guard !simpleRegex "0{"
 #guard simpleRegex "(?:a)(b)" && !simpleRegex "(?i)a" && !simpleRegex "(?=a)"
 #guard regexGroups "(a)(?:b)(c(d))" == 3 && regexGroups "[(]\\(" == 0
 #guard rewriteOk 1 "[\\1\\0\\\\]".toList && !rewriteOk 1 "\\2".toList && !rewriteOk 1 "a\\".toList

@@ -333,13 +333,15 @@ The Polars rows of `--options` name these theorems as their evidence. The
 ### Polars as a profile
 
 `Profile.polars` ([Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean))
-is the profile `verify(semantics="polars")` checks under, and the one
-`--contract` takes with `"profile": "polars"`. It is an evaluable `Profile`,
-as `Profile.duckdb` is, and it takes Polars's choice option by option:
+is the profile `--contract` takes with `"profile": "polars"`. It is an
+evaluable `Profile`, as `Profile.duckdb` is, and it takes Polars's choice
+option by option. `verify(semantics="polars")` does not check under it yet:
+the report is the reference's, marked pending (`ProfilePendingWarning`, #271),
+and the plan runs on Polars by the translated route until #271.
 
 | Option | `Profile.polars` | Polars 2.1.0 | Why |
 |---|---|---|---|
-| `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../engines/polars/facts/polars-int-divide.json), [int-modulus](../engines/polars/facts/polars-int-modulus.json)) | Polars's own value, so the native route needs no shim |
+| `division_type` (integer `//`, `%`) | `FLOOR` | `FLOOR` ([int-divide](../engines/polars/facts/polars-int-divide.json), [int-modulus](../engines/polars/facts/polars-int-modulus.json)) | Polars's own value, so a native route would need no shim |
 | `float_overflow` | `INFINITY`, with no precondition | `INFINITY` ([double-arith](../engines/polars/facts/polars-double-arith.json)) | as under DuckDB's profile |
 | `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a proved plan never wraps |
 | `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
@@ -365,9 +367,11 @@ parser reads, and the report says `"profile": "polars"`. What is proved:
 - `Rel.allowed_polars_core`: `Allowed_polars ⊆ Allowed_core`, from the
   choices table.
 
-On the routes: a plan proved under `Profile.polars` runs on Polars by
+On the routes: a plan proved under `Profile.polars` would run on Polars by
 `native`, where `sverify_polars.engine` runs Polars's `//` and `%` for the stated
-calls and the translation's shims elsewhere. The SQL writer computes a
+calls and the translation's shims elsewhere. Until the checker reports under
+it, a `semantics="polars"` request gets the reference's report and the
+translated route, which computes the stated `FLOOR`. The SQL writer computes a
 stated `FLOOR` on every dialect from the truncating operations, as
 `Expr.floorDivOf` and `Expr.floorModOf` do, so the written plan runs on
 DuckDB, Spark and Snowflake too; the route to DuckDB is refused by the

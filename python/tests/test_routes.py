@@ -53,7 +53,7 @@ def test_run_chooses_a_route_by_default(con) -> None:
     assert duck.routes["duckdb"].kind == "native"
 
 
-def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
+def test_transfer_check(con) -> None:
     """The transfer route takes the checker's check (`transferB`, proved
     sound by `Rel.transfer_of_transferB`) over every option the plan reads."""
     duck = sv.verify(
@@ -73,10 +73,8 @@ def test_transfer_check(monkeypatch: pytest.MonkeyPatch, con) -> None:
         "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR (polars-int-modulus)"
         in r.reason
     )
-    # #655: under "auto", the refusal leads with what to do. The re-check
-    # under `Profile.polars` proves this plan, so it is made to fail here.
-    assert routes.choose(duck, "polars").kind == "recheck"
-    monkeypatch.setattr(routes, "recheck", lambda report, e: (False, "not proved"))
+    # #655: under "auto", the refusal leads with what to do. The checker
+    # cannot prove under `Profile.polars` yet (#271), so there is no re-check.
     auto = routes.choose(duck, "polars")
     assert auto.reason.startswith("verify with semantics='reference' to run on polars")
     # Where the check passes, the route is taken.
@@ -92,10 +90,10 @@ def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
     duck._engines = None
     r = routes.choose(duck, "polars", "transfer")
     assert r.refused and "gave no transfer check" in r.reason
-    # `auto` goes on to the re-check, which the checker proves under
-    # `Profile.polars` (the plan states its options, `Polars/Profile.lean`).
+    # `auto` has no re-check to go on to: the checker reports `polars` as
+    # pending (#271), so it names the reference as the way.
     auto = routes.choose(duck, "polars")
-    assert (auto.kind, auto.profile) == ("recheck", "polars"), auto
+    assert auto.refused and auto.reason.startswith("verify with semantics='reference'"), auto
 
 
 def test_unproved_plan_is_refused(con) -> None:

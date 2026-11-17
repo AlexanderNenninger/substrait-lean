@@ -68,7 +68,11 @@ theorem AggFn.allowed_of_picks {f : AggFn} {vs : List Value} {v : Value} (h : f.
     f.Allowed vs v := by
   rcases h' : h with h₁ | ⟨hf, _⟩
   · rw [h₁]; exact AggFn.apply_allowed _ _
-  · rcases hf with rfl | rfl <;> exact h
+  · cases f with
+    | quantile cont _ _ => cases cont
+                           · exact h
+                           · simp [AggFn.classPick] at hf
+    | _ => exact h
 
 /-- An aggregate that combines in two phases gives its value, or for `MIN`
 and `MAX` another member of its class. -/
@@ -112,7 +116,7 @@ theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) (hmin : m.fn 
     (hmax : m.fn ≠ .max) {rows : Relation} {v : Value} (h : m.Allowed rows v) : v = m.eval rows := by
   rcases Measure.allowed_picks hm h with hv | ⟨hf, -⟩
   · rw [hv, Measure.eval_eq (AggFn.ne_collect_of_orderFree hm)]
-  · rcases hf with hf | hf <;> contradiction
+  · rcases AggFn.minmax_of_classPick hm hf with hf | hf <;> contradiction
 
 /-- What an aggregate's output may be, for the input rows `rows` in this
 order: a row per group (in their order of first appearance), each measure
@@ -157,7 +161,7 @@ theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, 
         · exact h
         refine AggFn.Picks.eq hp fun w hw => ?_
         obtain ⟨-, y, hy, rfl⟩ := Measure.mem_inputs hw
-        exact ha _ hmem hf y (hg y hy)
+        exact ha _ hmem (AggFn.minmax_of_classPick hof hf) y (hg y hy)
     exact this (fun m hm => ⟨hms m hm, hm⟩) hv
   unfold aggAllowed at h; unfold aggregateEval
   split at h

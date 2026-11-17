@@ -6744,6 +6744,27 @@
    "observed": "0.63, -0.13, 2.68, 2.68"
   },
   {
+   "construct": "dec-compare-scale-ok",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 1.5::DECIMAL(38,10) > 1::DECIMAL(38,0), 1::DECIMAL(38,0) = 1.0::DECIMAL(38,10)",
+   "observed": "true, true"
+  },
+  {
+   "construct": "dec-compare-scale-raise",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) > 1.5::DECIMAL(38,10)",
+   "observed": "error ConversionException: Conversion Error: Casting value \"99999999999999999999999999999999999999\" to type DECIMAL(38,10) failed: value is out of range!"
+  },
+  {
+   "construct": "dec-compare-scale-raise-eq",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) = 1.5::DECIMAL(38,10)",
+   "observed": "error ConversionException: Conversion Error: Casting value \"99999999999999999999999999999999999999\" to type DECIMAL(38,10) failed: value is out of range!"
+  },
+  {
    "construct": "dec-divide",
    "area": "decimals",
    "setup": [],

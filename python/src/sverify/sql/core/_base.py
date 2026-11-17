@@ -753,6 +753,13 @@ class Dialect:
         scaled = f"{q} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
         return self.case_when(f"{n} = 0", self.null(k), self.cast(scaled, k))
 
+    def decimal_compare(self, op: str, a: str, ka: Kind | None, b: str, kb: Kind | None) -> str:
+        """`a = b` or `a < b` (`op` is `eq` or `lt`) of decimals or integers, exactly, at
+        any scales (#27). The engine's own comparison casts both sides to one
+        type, which raises where a value does not fit it (#1498); a dialect
+        that does so writes the comparison without the cast."""
+        return self.eq(a, b) if op == "eq" else self.lt(a, b)
+
     def decimal_avg(self, v: str, a: Dec, k: Dec) -> str:
         """`SUM(v) / COUNT(v)` at scale `a.s + 4` (`decimalAvgs`); NULL with
         no values."""
@@ -4773,7 +4780,7 @@ class _Writer:
             ) or isinstance(kind(b), Dec):
                 # Decimals compare exactly at any scales, and with integers (#27).
                 sa, sb = go(a, kind(a)), go(b, kind(b))
-                return d.eq(sa, sb) if op == "eq" else d.lt(sa, sb)
+                return d.decimal_compare(op, sa, kind(a), sb, kind(b))
             case Bin(op="eq" | "lt" as op, left=a, right=b):
                 ka, kb = kind(a), kind(b)
                 k = ka or kb

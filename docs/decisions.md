@@ -753,7 +753,8 @@ raises or leaves the result open where engines disagree."
   canonical values, and rows tied on it may come in any order (`Allowed`).
 - Where a class has several members, a `DISTINCT` row, a `GROUP BY` key and
   a `MIN` or `MAX` may be any member of the class present in the input, or
-  the class's canonical value (`IsReps`, `AggFn.Picks`). Spark and DuckDB
+  the class's canonical value (`IsReps`, `AggFn.Picks`; `QUANTILE_DISC` too
+  since D45). Spark and DuckDB
   emit the canonical value, so a group of `-0.0`s comes out as `+0.0`;
   Polars emits a present member. `Rel.eval` keeps one admitted value, the
   raw-least member. Where the keys and arguments hold no doubles, each class
@@ -1177,3 +1178,28 @@ Both frontends take only constant patterns, so the empty pattern is known when
 the plan is written, and the writers fold it. The core gains no option, and the
 raise set stays the small guardable one. The Substrait YAML leaves the case
 unspecified ([ST-17](../upstream/bugs/ST-17.json)).
+
+### D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do
+
+Approved 2026-11-17 by the user, on the theory advisor's proposal (the ruling
+on [#1512](https://github.com/AlexanderNenninger/substrait-lean/issues/1512)'s zero sign).
+
+`QUANTILE_DISC` selects one of its values by comparison, as `MIN` and `MAX`
+do. Where the selected value is a double whose class has more than one member
+(a zero, a NaN), the reference allows the value `AggFn.apply` selects, any
+member of the group in that class, or the class's canonical value
+(`AggFn.Picks`, `AggFn.classPick`). `AggFn.apply` keeps its pick. A value of
+any other kind is alone in its class, so nothing else changes
+(`AggFn.Picks.eq`).
+
+Why: before this decision the reference fixed `QUANTILE_DISC`'s member of a
+class to the raw-least (`sortVals` breaks ties by codes), and DuckDB returns
+`-0.0` or `+0.0` by row order and thread count, outside `Allowed`. D31 already
+opens the class for `MIN` and `MAX`; this extends its rule to the remaining
+order statistic. It widens no verdict: a quantile is neither order-free nor
+sorting, so `Rel.detPlan` already answers false for a plan with one, and the
+contract analysis bounds a double by its canonical code.
+
+Windows stay pinned: a window's `MIN`, `MAX` and `QUANTILE_DISC` keep
+`Measure.eval`'s member (`WinFn.AllowedP`; `Rel.Allowed`'s window case fixes
+every window value). Opening the three in windows is a follow-up decision.
