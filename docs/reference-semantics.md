@@ -62,8 +62,8 @@ proves its postconditions and keys over every order
 is false where rows may tie in the order of a window, of `FIRST`, `LAST`,
 `STRING_AGG` or `MODE`, or of a `FETCH`, where the reference leaves a value
 open (the median of doubles, which member of a class of doubles a `DISTINCT`,
-a group key, `MIN` or `MAX` keeps, D31), and where an aggregate is not proved a
-function of its values. `str(report)` names each place (`tiesIn_eq_nil`), and
+a group key, `MIN`, `MAX` or `QUANTILE_DISC` keeps, D31, D45), and where an
+aggregate is not proved a function of its values. `str(report)` names each place (`tiesIn_eq_nil`), and
 `Report.ties` gives the keys that would close the ties.
 `RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` over the window's own
 order need no key: tied rows get the same value in every arrangement

@@ -53,9 +53,9 @@ instead.
 - Determinism. `report.deterministic` is false when rows may tie in the
   order of a window, an ordered aggregate or a `LIMIT`, or the reference
   leaves a value open (the median of doubles, which member of a class of
-  doubles a `DISTINCT`, a group key, `MIN` or `MAX` keeps): the proof then
-  holds for every choice, and `report.notes` names where they stay open and
-  the key that would close the ties.
+  doubles a `DISTINCT`, a group key, `MIN`, `MAX` or `QUANTILE_DISC`
+  keeps): the proof then holds for every choice, and `report.notes` names
+  where they stay open and the key that would close the ties.
 
 ## Following a verdict to its warrant
 

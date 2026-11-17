@@ -386,8 +386,8 @@ class Report:
     `group_concat`; without an `order_by` every row ties), when a `LIMIT`
     takes rows that tie in its `ORDER BY` or has none, when the reference
     leaves a value open (the median of doubles, which member of a class of
-    doubles a `DISTINCT`, a group key, `MIN` or `MAX` keeps), or where the
-    checker has not proved an aggregate a function of its values. The
+    doubles a `DISTINCT`, a group key, `MIN`, `MAX` or `QUANTILE_DISC`
+    keeps), or where the checker has not proved an aggregate a function of its values. The
     engine then picks, and a rerun may pick another. The postconditions
     are proved for every choice; the deterministic profile
     (`run(reproducible=sv.equivalent())`, a sink's `reproducible=`)
