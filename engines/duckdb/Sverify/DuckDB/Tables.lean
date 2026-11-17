@@ -90,11 +90,12 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 241),
   (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-nonfinite-aggregates"]).tracking 241),
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
-  -- partitions, as the reference has them; MIN, MAX and quantiles return a
-  -- member of the class, which D31 allows.
+  -- partitions, as the reference has them. A group's MIN, MAX and QUANTILE_DISC
+  -- return a member of the class (D31, D45); quantiles print canonical too.
   -- DuckDB's pick among equal zeros depends on row order (duckdb-minmax-zero-sign),
-  -- so the writer prints the class's canonical value for `MIN`, `MAX` and keys
-  -- (`Dialect.zero_rep`): a rerun gives the same sign.
+  -- so the writer prints the class's canonical value for them and for keys
+  -- (`Dialect.zero_rep`): a rerun gives the same sign. A frame's value prints
+  -- canonical, and the reference pins it until D45's window amendment.
   (none, "zero_sign", ({ ObsRow.native ["duckdb-R14", "duckdb-float-signs", "duckdb-minmax-zero-sign"] with
     rerun := some Obs.exact,
     rerunEvidence := .probed ["duckdb-minmax-zero-sign", "duckdb-R14", "duckdb-float-signs"] }).tracking 241),
