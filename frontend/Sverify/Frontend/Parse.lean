@@ -557,9 +557,10 @@ def _root_.Substrait.Expr.readsField (e : Expr) : Bool := e.readsFieldFrom 0
 def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
   match field? j "literal", field? j "cast" with
   | some l, _ => if (field? l "null").isSome then 8 else intBits l
-  -- A cast has its target's width (`CAST(x AS DOUBLE)` of a `FLOAT` is 64).
+  -- A cast has its target's width (`CAST(x AS DOUBLE)` of a `FLOAT` is 64,
+  -- `CAST(i AS BIGINT)` of an `INTEGER` is 64: #1541).
   | none, some c => match field? c "type" with
-    | some ty => if typeKind ty == .float then intBits ty else e.bits cols
+    | some ty => if typeKind ty == .float || typeKind ty == .int then intBits ty else e.bits cols
     | none => e.bits cols
   -- A call has its declared output type's width: `(10::TINYINT * 10) * 10`
   -- is 8-bit arithmetic throughout (#419). Without one, arithmetic on
