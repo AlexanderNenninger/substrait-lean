@@ -202,7 +202,7 @@ def core : List FnRow := [
   { name := "sverify_pair", anchor := 123, group := "sverify", ctor := some (.bin .pair),
     reads := .plain, pretty := "PAIR" },
   -- `GREATEST`/`LEAST` of two values, skipping `NULL`s (`BinFn.greatest`,
-  -- #340): untyped, as DataFusion writes its own and the parser reads them;
+  -- #340): untyped, which the parser reads;
   -- Substrait's typed ones propagate `NULL`s.
   { name := "greatest", anchor := 124, group := "cmp", ctor := some (.bin .greatest),
     pretty := "GREATEST" },

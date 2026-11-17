@@ -363,7 +363,7 @@ def truncDay (u : TimeUnit) (d : Int) : Int := days (trunc u (d * usPerDay))
 
 /-- Adding `m` months to day `d`: the same day of month `monthIndex d + m`,
 or that month's last day if it is shorter (2024-01-31 + 1 month is
-2024-02-29), as DataFusion, DuckDB and Polars do. -/
+2024-02-29), as DuckDB and Polars do. -/
 def addMonths (m d : Int) : Int :=
   min (monthStart (monthIndex d + m) + (d - monthStart (monthIndex d)))
     (monthStart (monthIndex d + m + 1) - 1)
@@ -501,8 +501,7 @@ theorem bucket_mono (k : Nat) (origin : Int) {s t : Int} (h : s ≤ t) :
 #guard bucket 900000000 0 (-1) == -900000000 && bucket 900000000 300000000 0 == -600000000
 #guard bucket 900000000 0 899999999 == 0 && bucket 900000000 0 900000000 == 900000000
 
-/-! The probe points of D32 (the facts `characterization/<engine>/facts/
-<engine>-calendar-range.json` record the same rows on DuckDB, Polars and
+/-! The probe points of D32 (the facts `<engine>-calendar-range` record the same rows on DuckDB, Polars and
 Spark): the ends of the reference's timestamps, leap days, and both sides of
 the Gregorian switch, which the proleptic calendar does not skip.
 0001-01-01 is a Monday, so no truncation of a timestamp in range leaves it. -/

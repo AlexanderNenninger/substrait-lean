@@ -8,7 +8,7 @@ String functions on Unicode scalar values (Lean's `Char`), checked by
 `python/tests/test_text.py`: `substring`, `strpos` and the trims against
 DuckDB, and `LIKE` with a backslash escape, `repeat`, `reverse`, `replace`,
 `ascii` and `levenshtein`, whose meaning follows Rust's strings, against
-DataFusion 51 and Polars:
+Polars:
 
 * `substring(s FROM a FOR n)` keeps the characters at 1-based positions
   `a … a+n-1` that exist; without `FOR`, all from `a` on. (A negative `n`
@@ -20,7 +20,7 @@ DataFusion 51 and Polars:
 * `btrim`/`ltrim`/`rtrim` remove characters of a set from the ends.
 * `repeat(s, n)` is `s` `n` times (`''` for `n ≤ 0`); a result of more than
   `2³¹ - 1` bytes fails (`Text.repeatFits`), as Arrow's `Utf8` offsets are
-  32-bit (`Utf8View` input too; DataFusion writes `Utf8`).
+  32-bit (`Utf8View` input too).
 * `reverse(s)` reverses the characters (combining marks move with them).
 * `replace(s, p, r)` replaces every non-overlapping `p`, from the left, by `r`
   (Rust's `str::replace`); an empty `p` matches nowhere, so the result is `s`
@@ -29,14 +29,14 @@ DataFusion 51 and Polars:
 * `levenshtein(s, t)` counts single-character insertions, deletions and
   substitutions.
 
-`translate` is not modelled: DataFusion translates grapheme clusters, not
-characters (`translate('e\u{301}e', 'e', 'x')` is `'e\u{301}x'`).
+`translate` is not modelled: engines differ on whether it works on grapheme
+clusters or on characters.
 
 `UPPER`, `LOWER`, `ILIKE`, regular expressions and the digests `md5` and
 `sha256` are black boxes: `opaque` functions, so no proof depends on what
 they compute, only on their types (and that they are functions, so equal
 inputs give equal outputs). Their meaning is Rust's (`str::to_uppercase`, the
-`regex` crate), which DataFusion and Polars use; the SQL translations refuse
+`regex` crate), which Polars uses; the SQL translations refuse
 at run time what their engines compute differently (#70). `ILIKE` folds case
 with Unicode's simple case folding (the `regex` crate's `(?i)`, so
 `'É' ILIKE 'é'` but not `'ß' ILIKE 'SS'`). Lean's evaluator maps ASCII case
@@ -313,7 +313,7 @@ part or `p` has fewer groups. -/
 
 /-! ## Patterns that certainly compile
 
-DataFusion compiles a pattern with Rust's `regex` crate when it first
+Polars compiles a pattern with Rust's `regex` crate when it first
 evaluates it, and fails if it is invalid; DuckDB compiles a constant pattern
 with RE2 when it plans the query. `simpleRegex` accepts a conservative
 subset of both syntaxes: literal characters, `.`, `^`, `$`, escapes, groups

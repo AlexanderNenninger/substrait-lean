@@ -14,7 +14,7 @@ patterns `Text.simpleRegex` accepts, with RE2's meaning, which DuckDB uses:
 * an iteration of `*`, `+` or `{n,}` beyond the minimum must not be empty,
   so `(a*)*` captures `'aaa'` in `'aaa'`, as RE2 does.
 
-Rust's `regex` crate, which DataFusion and Polars use, reads `\d`, `\w`, `\s`
+Rust's `regex` crate, which Polars uses, reads `\d`, `\w`, `\s`
 and `\b` as Unicode classes, and its `\s` includes `\v`. Where a text would
 tell them apart, the evaluator panics instead of picking one, and
 `substrait-check` then refuses to print rows (`Text.classesDiffer`).

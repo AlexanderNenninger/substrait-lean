@@ -20,8 +20,8 @@ argument is in every domain: NaN in, NaN out. An error is `null` here, and
 **Bitwise operations** act on 64-bit two's complement, exactly. Substrait's
 `shift_left` and `shift_right` fill the vacated bits with zeros (with the
 sign, shifting right), so bits shifted out are lost. Substrait leaves shift
-counts outside `0`–`63` open; the reference raises on them (DataFusion and
-Java take the count modulo 64, DuckDB raises).
+counts outside `0`–`63` open; the reference raises on them (Java takes the count modulo 64,
+DuckDB raises).
 -/
 
 namespace Substrait
@@ -172,8 +172,8 @@ inductive BitOp where
   | shl | shr
   deriving Repr, DecidableEq
 
-/-- The name the writer uses: Substrait's `bitwise_*`, and DataFusion's names
-for the shifts (Substrait's `shift_left` and `shift_right` parse too). -/
+/-- The name a plan writes: Substrait's `bitwise_*` and its names for the
+shifts (`shift_left` and `shift_right` parse too). -/
 def BitOp.name : BitOp → String
   | .and => "bitwise_and" | .or => "bitwise_or" | .xor => "bitwise_xor"
   | .shl => "bitwise_shift_left" | .shr => "bitwise_shift_right"

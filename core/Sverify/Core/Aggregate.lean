@@ -15,17 +15,15 @@ A measure is `COUNT`, `SUM`, `MIN`, `MAX`, `AVG` or `ARRAY_AGG` (`collect`,
 whose rows may be ordered) of an expression, over the
 rows that pass its `FILTER` (if any), skipping NULLs, and over distinct
 values only for `COUNT(DISTINCT …)` and friends. On no values `COUNT` is 0
-and the others are NULL. Checked against DataFusion 51:
+and the others are NULL:
 
 * `SUM` of integers wraps around modulo 2⁶⁴; since wrapping addition is
   associative, the result is the true sum unless that leaves 64 bits.
   `SUM` here is the true sum, and `analysis/Sverify/Analysis/Safety.lean` warns.
-* `SUM` and `AVG` of doubles round, in an order DataFusion does not promise;
+* `SUM` and `AVG` of doubles round, in an order SQL does not promise;
   here they add in list order with native floats. `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.
 * `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`).
-  DataFusion's grouped `MIN` of a group of +∞ is the largest finite double,
-  and it skips NaN next to other values (`upstream/bugs/DF-15.json`).
 * Grouping compares values exactly; doubles have one zero and one NaN
   (`core/Sverify/Core/Float.lean`), so -0.0 and 0.0 are one group, and NULLs
   group together.
@@ -494,7 +492,7 @@ kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
 D31): rounding may leave them by an ulp. `−∞` with `+∞` gives NaN, which
 the clamp makes `+∞`; the reference raises there (`AggFn.makesNan`, #561),
 so no verified plan sees that value
-(`engines/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
+(fact `duckdb-quantile-cont-interpolation`). -/
 def interpolate (l h w : Int) : Int :=
   let r := FloatCode.fadd (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
     (FloatCode.fmul h w)

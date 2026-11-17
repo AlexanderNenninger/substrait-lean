@@ -21,8 +21,8 @@ catalogue** (`Boxes`) declares of it:
   (`Law`), such as "not NULL" or "at least 0";
 * the function itself, `eval`, which the engine package supplies (#1189).
 
-The core holds the mechanism only. The rows are an engine package's:
-DuckDB's are `Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`).
+The core holds the mechanism only. The rows are an engine package's (DuckDB's
+are `Boxes.duckdb`).
 
 ## What is proved and what is assumed
 

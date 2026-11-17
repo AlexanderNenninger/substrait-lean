@@ -914,8 +914,8 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
   | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
 
-/-- `a // b` of integers with `division_type` = `FLOOR` (Polars's `//`,
-`engines/polars/Sverify/Polars/Profile.lean`), in the reference's truncating
+/-- `a // b` of integers with `division_type` = `FLOOR` (the expression a plan with that
+`division_type` means), in the reference's truncating
 operations: with the signs apart, `(a + 1) / b - 1` for `a < 0 < b` and
 `(a - 1) / b - 1` for `b < 0 < a`, so that no step overflows; otherwise the
 truncated quotient. Each condition compares one argument with zero, `a`
@@ -949,8 +949,8 @@ def Expr.floorModOf (a b : Expr) : Expr :=
         (.bin .imod a b))
       (.bin .imod a b))
 
-/-- `a % b` of doubles with `division_type` = `FLOOR` (Polars's `%`,
-`engines/polars/Sverify/Polars/Profile.lean`): `a - b * floor(a / b)`, in the
+/-- `a % b` of doubles with `division_type` = `FLOOR` (the expression a plan with that
+`division_type` means): `a - b * floor(a / b)`, in the
 reference's double operations. A zero divisor raises, and so does a finite
 `a % ±∞` (`∞ * 0` is a NaN). `Write` keeps the four calls: only `floorDivOf` and
 `floorModOf` are written back as one call. -/

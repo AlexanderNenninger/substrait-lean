@@ -11,15 +11,11 @@ profile (`Profile.reference`), and `Expr.evalP_reference` proves that
 evaluating under it is `eval` and `issues`.
 
 An engine's profile is a diff against the reference, from its
-characterization (`engines/duckdb/facts/` for DuckDB). A **shim**
+characterization (its facts). A **shim**
 rewrites a plan into one the engine evaluates to the reference's outcome,
 adding guards (`UnFn.raise`, DuckDB's `error()`) where the engine is laxer,
 or refuses it. A shimmed plan is an ordinary plan, so it is written and run
-like any other. Shims are generated: `engines/Sverify/Engines/LoweringSearch.lean`
-searches, for each function, for a template the engine evaluates to the
-reference's outcome, and proves it (#241). `engines/Sverify/Engines/Lowering.lean` proves
-lowering with such a table correct, and `engines/duckdb/Sverify/DuckDB/Lowering.lean`
-holds DuckDB's tables, with `Rel.duckdb_shim_sound`.
+like any other. Shims are generated, each proved against the reference (#241).
 
 Trusted, and tested rather than proved: that the profile matches the engine
 (the fuzzer, #185), and that the SQL printer prints the plan faithfully,
@@ -50,7 +46,7 @@ theorem Outcome.agree_refl : ∀ o : Outcome, o.Agree o
 /-- An engine's own algorithm for a family of aggregates of doubles, with
 properties stricter than the generic ones the reference allows (#85,
 `StatProps`, `FloatSums`). Each names what the engine's characterization
-records (`characterization/<engine>/facts/`). -/
+records. -/
 inductive AggAlgo where
   /-- Welford's update with Chan's merge (`duckdb-var-stddev`, `duckdb-covar`,
   `spark-var-stddev`, `spark-covar`). -/
@@ -505,7 +501,7 @@ raises.
 
 * `Expr.Exact p t e`: `t`, run with `p`'s functions, computes `e`'s value on
   every row where it does not raise. `Lowering.lower_exact` proves it for every
-  expression and its lowering (`engines/Sverify/Engines/Lowering.lean`).
+  expression and its lowering.
 * `Rel.Raises p cat t`: some expression of `t` raises on a row `Rel.eval cat p.impl`
   evaluates it on.
 * `Rel.evalI_mapExprs`: a plan whose expressions are each `Exact` computes
