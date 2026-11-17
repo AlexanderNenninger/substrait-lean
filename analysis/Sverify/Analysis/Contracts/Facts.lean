@@ -1270,12 +1270,13 @@ theorem aggCol {ms : List Measure} {grp : Relation} {k : Row} {vs : List Value}
     exact (h hs).canon
   · rw [hm] at ha; cases ha
 
-/-- `aggCol` with equality, for measures other than `MIN` and `MAX`. -/
+/-- `aggCol` with equality, for measures that do not select by comparison
+(`AggFn.classPick`: `MIN`, `MAX`, `QUANTILE_DISC`). -/
 theorem aggCol_eq {ms : List Measure} {grp : Relation} {k : Row} {vs : List Value}
     (hv : Forall2 (fun m v => m.OrderAllowed grp v) ms vs) :
-    ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn ≠ .min → m.fn ≠ .max →
+    ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn.classPick = false →
       (k ++ vs).getD (k.length + i) .null = m.eval grp := by
-  intro i m hm hs hmin hmax
+  intro i m hm hs hc
   rw [getD_append_right']
   rcases hv.getElem? i with ⟨a, v, ha, hb, hr⟩ | ⟨ha, _⟩
   · rw [hm] at ha; cases ha
@@ -1284,7 +1285,7 @@ theorem aggCol_eq {ms : List Measure} {grp : Relation} {k : Row} {vs : List Valu
     rw [Measure.eval_eq hs]
     rcases h hs with h | ⟨hf, -⟩
     · exact h
-    · rcases hf with hf | hf <;> contradiction
+    · rw [hc] at hf; cases hf
   · rw [hm] at ha; cases ha
 
 /-- **The facts hold on every row of every order.** -/
