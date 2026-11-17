@@ -8,7 +8,6 @@ import duckdb
 import pytest
 
 from sverify.contracts import _ascii_condition
-from sverify.sql import to_sql  # noqa: F401  (the package's SQL layer imports cleanly)
 from sverify.sql.core._base import Dialect, ascii_text
 
 SAMPLE = ["ab", "", "héllo", "ÉCOLE", "a\x0bb", "\x0b", "ß", "tab\there", None]
