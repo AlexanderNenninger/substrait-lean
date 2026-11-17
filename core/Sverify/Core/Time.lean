@@ -4,8 +4,8 @@
 Timestamps are microseconds since 1970-01-01 00:00 (UTC, proleptic Gregorian
 calendar). The reference's timestamps are those of its dates, 0001-01-01
 00:00:00 to 9999-12-31 23:59:59.999999 (`tsMin`, `tsMax`; D32), and the
-calendar functions are defined on all of them, checked against DuckDB, Polars
-and Spark at the probe points below and by `python/tests/test_time.py`:
+calendar functions are defined on all of them, checked against the tier-1 engines
+at the probe points below and by `python/tests/test_time.py`:
 
 * `date_part` gives the part. A DATE or TIMESTAMP of the reference lies in
   0001 to 9999 by its type (`Value.InCalendar`; the source read checks it),
@@ -363,7 +363,7 @@ def truncDay (u : TimeUnit) (d : Int) : Int := days (trunc u (d * usPerDay))
 
 /-- Adding `m` months to day `d`: the same day of month `monthIndex d + m`,
 or that month's last day if it is shorter (2024-01-31 + 1 month is
-2024-02-29), as DataFusion, DuckDB and Polars do. -/
+2024-02-29). -/
 def addMonths (m d : Int) : Int :=
   min (monthStart (monthIndex d + m) + (d - monthStart (monthIndex d)))
     (monthStart (monthIndex d + m + 1) - 1)
@@ -422,8 +422,7 @@ theorem truncDay_mono (u : TimeUnit) {d e : Int} (h : d ≤ e) : truncDay u d �
 
 /-! ## Formatting (`strftime`, chrono's)
 
-The directives chrono formats the same way as DuckDB, Polars and the other
-engines: `%Y` (the year, padded to four digits, with a sign outside 0 to
+The directives chrono formats the same way as the SQL engines: `%Y` (the year, padded to four digits, with a sign outside 0 to
 9999), `%m`, `%d`, `%H`, `%M`, `%S`, `%j` (day of the year), `%F`
 (`%Y-%m-%d`), `%T` (`%H:%M:%S`) and `%%`. -/
 
@@ -484,8 +483,7 @@ theorem timeOfDay_range (ts : Int) : 0 ≤ timeOfDay ts ∧ timeOfDay ts < usPer
 
 /-! ## Buckets
 
-`date_bin(k, ts, origin)` (Ibis's `bucket`, Polars' `group_by_dynamic` without
-overlap): the start of the `k`-microsecond bucket, counted from `origin`,
+`date_bin(k, ts, origin)` (Ibis's `bucket`): the start of the `k`-microsecond bucket, counted from `origin`,
 that `ts` falls in. -/
 
 def bucket (k : Nat) (origin ts : Int) : Int := floorTo k (ts - origin) + origin
@@ -501,9 +499,7 @@ theorem bucket_mono (k : Nat) (origin : Int) {s t : Int} (h : s ≤ t) :
 #guard bucket 900000000 0 (-1) == -900000000 && bucket 900000000 300000000 0 == -600000000
 #guard bucket 900000000 0 899999999 == 0 && bucket 900000000 0 900000000 == 900000000
 
-/-! The probe points of D32 (the facts `characterization/<engine>/facts/
-<engine>-calendar-range.json` record the same rows on DuckDB, Polars and
-Spark): the ends of the reference's timestamps, leap days, and both sides of
+/-! The probe points of D32 (the facts `<engine>-calendar-range` record the same rows): the ends of the reference's timestamps, leap days, and both sides of
 the Gregorian switch, which the proleptic calendar does not skip.
 0001-01-01 is a Monday, so no truncation of a timestamp in range leaves it. -/
 

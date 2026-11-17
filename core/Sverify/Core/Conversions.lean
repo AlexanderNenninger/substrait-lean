@@ -335,8 +335,7 @@ def decQ (s m : Nat) : Nat := roundRat (m * roundRat (10 ^ s * 2 ^ 1074) 1) (2 ^
 def decR (s m : Nat) : Int := ((roundMag (decQ s m) / K : Nat) : Int)
 
 /-- `CAST(x AS DECIMAL(_, s))` of a double, as the decimal's unscaled integer:
-`round(x · 10ˢ)` computed in doubles, halves away from zero, as DuckDB and
-DataFusion cast (#27). NaN, `±∞`, and products that overflow to `±∞` have
+`round(x · 10ˢ)` computed in doubles, halves away from zero (#27). NaN, `±∞`, and products that overflow to `±∞` have
 none. `toDecimalNative?` computes it with native floats; the `#guard`s below
 compare them. -/
 def toDecimalExact (c : Int) (s : Nat) : Option Int :=

@@ -177,9 +177,8 @@ inductive Kind where
   /-- `tod`: a time of day (`TIME`), in microseconds since midnight. -/
   | int | float | time | date | str | bool | tod | other
   /-- A timestamp with a time zone: an instant, whose calendar arithmetic
-  depends on a time zone the plan does not state (DuckDB and Spark use the
-  session's: duckdb-timestamptz-session-zone, spark-timestamp-session-zone;
-  Polars the column's: polars-datetime-zone), so it is refused. -/
+  depends on a time zone the plan does not state (the session's, duckdb-timestamptz-session-zone
+  and spark-timestamp-session-zone, or the column's, polars-datetime-zone), so it is refused. -/
   | timeTz
   /-- A list of values of the element kind. -/
   | list (elem : Kind)

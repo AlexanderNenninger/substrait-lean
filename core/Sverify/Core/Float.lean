@@ -3,13 +3,11 @@ import Sverify.Core.FloatFormat
 /-!
 # Floats and timestamps as integers
 
-**Floats.** Doubles compare as SQL engines compare them (PostgreSQL, DuckDB,
-Spark, Snowflake): `-∞ < negatives < 0.0 < positives < +∞ < NaN`, where
+**Floats.** Doubles compare as SQL engines compare them (PostgreSQL and the
+tier-1 engines): `-∞ < negatives < 0.0 < positives < +∞ < NaN`, where
 `-0.0` *is* `0.0` and every NaN is the same NaN, equal to itself. The model
 has one zero and one NaN, so `-0.0` never appears in a result (`-1 · 0.0` is
-`0.0`) and `-0.0 >= 0` holds. (DataFusion's own order, `f64::total_cmp`,
-puts `-0.0` below `+0.0` and negative NaNs first; `sverify` canonicalizes
-DataFusion's inputs and results instead.)
+`0.0`) and `-0.0 >= 0` holds.
 
 A double is represented by an integer *code* with exactly that order
 (`core/Sverify/Core/FloatFormat.lean` states the codes for every format; doubles
@@ -80,7 +78,7 @@ def toFloat (c : Int) : Float :=
 
 def lift₂ (op : Float → Float → Float) (a b : Int) : Int := ofFloat (op (toFloat a) (toFloat b))
 
-/-- `ROUND(x, d)`, as DuckDB 2.0 computes it (#335, `duckdb-round-digits-2`), halves
+/-- `ROUND(x, d)`, (#335, `duckdb-round-digits-2`), halves
 away from zero: with `m = 10^|d|` (C's `pow`), `round(x · m) / m` for
 `d ≥ 0` and `round(x / m) · m` for `d < 0`, or `x` itself where that is not
 finite (`round(1.5e308, -308)` is `1.5e308`, not `2e308`); 0 for `d < 0`
@@ -574,7 +572,7 @@ def isNan (c : Int) : Bool := c == nan
 #guard ofFloat (Float.ofBits 0x8000000000000000) == fp64.negZero && ofFloat 0.0 == 0
 #guard ofFloat (Float.ofBits 0xFFF8000000000000) == nan && ofFloat (0.0 / 0.0) == nan
 #guard neg (ofFloat 0.0) == 0 && neg (ofFloat 1.5) == ofFloat (-1.5)
--- `ROUND(x, d)` as DuckDB gives it (#335), at ordinary and extreme digits.
+-- `ROUND(x, d)` (#335), at ordinary and extreme digits.
 #guard roundTo (-1) (ofFloat 42.0) == ofFloat 40.0 && roundTo (-2) (ofFloat 42.0) == 0
 #guard roundTo (-1000) (ofFloat 42.0) == 0 && roundTo (-2147483648) (ofFloat 1.0) == 0
 #guard roundTo (-5) (ofFloat 521924.88982515107) == ofFloat 500000.0
@@ -589,8 +587,8 @@ def isNan (c : Int) : Bool := c == nan
 /-- `(-1)^s · m · 2⁻¹⁰⁷⁴` for a finite code, as `(negative, m)`. -/
 def finiteParts (c : Int) : Bool × Nat := if c = fp64.negZero then (true, 0) else (c < 0, (c.natAbs - 1) / 2)
 
-/-- `fmod(a, b)`, the remainder of doubles in C and IEEE 754, which DuckDB,
-DataFusion and Spark compute for `%`: `a - b · trunc(a / b)`, with the sign of
+/-- `fmod(a, b)`, the remainder of doubles in C and IEEE 754, `a - b · trunc(a / b)`, which is `%` of doubles under
+`division_type` = `TRUNCATE`, with the sign of
 `a`. It is exact, so the codes give it without rounding: the magnitude of a
 finite double is an integer (`|x| · 2¹⁰⁷⁴`), and the remainder of the
 magnitudes is the magnitude of the remainder. NaN or an infinite `a` give
@@ -702,8 +700,7 @@ theorem neg_canon {c : Int} (h : IsRef c) : neg (canon c) = neg c := by rw [cano
 
 /-- `CAST(x AS DECIMAL(_, s))` of a double with native floats (the model's is
 `toDecimal?`, `core/Sverify/Core/Conversions.lean`), as the decimal's unscaled integer:
-`round(x · 10ˢ)` computed in doubles, halves away from zero, as DuckDB and
-DataFusion cast (#27). NaN and ±∞ have none. -/
+`round(x · 10ˢ)` computed in doubles, halves away from zero (#27). NaN and ±∞ have none. -/
 def toDecimalNative? (c : Int) (s : Nat) : Option Int :=
   let (negative, m) := finiteParts (ofFloat (toFloat c * Float.ofNat (10 ^ s)).round)
   -- A whole double's magnitude is a multiple of 2¹⁰⁷⁴.
