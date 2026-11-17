@@ -1,7 +1,9 @@
 """Key equality for the glue around the engines (D31, #1511, #1519).
 
 A key is an identity boundary: Lean's `keyOf` maps each value through `canonV`,
-so `-0.0` is `0.0`, every NaN is one NaN, and NULL is a key of its own. pyarrow
+so `-0.0` is `0.0`, every NaN is one NaN, and NULL is a key of its own. Only
+flat double columns are canonicalised here; `canonV` also reaches into lists and
+structs, which pyarrow cannot encode as keys at all. pyarrow
 groups and encodes doubles by their bits, so every place in sverify that
 matches keys through pyarrow canonicalises the key columns here first. The
 stored values stay raw: only the copy a key is matched on changes.

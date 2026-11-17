@@ -123,3 +123,23 @@ def test_a_repeated_key_across_pieces_is_named():
     pieces = [_table([(1, 0.0, "a")]), _table([(2, 0.0, "a"), (1, 0.0, "b")])]
     with pytest.raises(ValueError, match=r"t has two rows with \['a'\] = \(1,\)"):
         check_unique({"t": pieces}, {"t": [["a"]]})
+
+
+def test_a_zero_key_split_over_shards_is_refused_through_run_sharded():
+    """The grouped count of the issue's first row: `-0.0` and `0.0` are one group,
+    so a split that puts them on two shards raises instead of counting twice."""
+    import ibis
+
+    from sverify.engine import connect, substrait_json
+    from sverify.partition import run_sharded
+
+    schema = ibis.schema({"k": "float64", "n": "int64"})
+    con = connect()
+    con.create("t", schema)
+    plan = substrait_json(con, "SELECT k, COUNT(*) AS c FROM t GROUP BY k", semantics="duckdb")
+
+    def shard(k):
+        return {"t": pa.table({"k": pa.array([k], pa.float64()), "n": pa.array([1], pa.int64())})}
+
+    with pytest.raises(ValueError, match="is on shards 0 and 1"):
+        run_sharded(plan, [shard(0.0), shard(-0.0)], sharded=["t"], keys={"t": ["k"]})
