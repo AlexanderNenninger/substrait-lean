@@ -35,7 +35,9 @@
     "Integers go through the same kernel (`QuantileDispatcher` for every `PolarsIntegerType`), each value read `to_f64`, so the result is `Float64`. Decimals: ungrouped, the kernel runs on the scaled `Int128` values, then divides by 10^scale (two roundings); grouped, the column is first cast to `Float64` (correctly rounded). The result is `Float64` in both cases.",
     "The result type is `moment_dtype`: integers, decimals and `Float64` give `Float64`, `Float32` (and `Float16`) keep their type, and `Date` gives `Datetime(us)`. The docs say a single quantile is f64: PL-11.",
     "The streaming engine has no quantile reduction: ungrouped, `quantile` runs as a columnar function on the collected column and `median` through the in-memory fallback; grouped, the query falls back to the in-memory group_by. So both engines run this kernel.",
-    "Probed: `linear` is computed in doubles, `lo + (hi − lo)·d` unfused: of 0.4 and 1.697 at 0.3 it is 0.7891000000000001, an ulp above the exact interpolation rounded once (0.7891). It stays between the neighbours except where `hi − lo` overflows."
+    "Probed: `linear` is computed in doubles, `lo + (hi − lo)·d` unfused: of 0.4 and 1.697 at 0.3 it is 0.7891000000000001, an ulp above the exact interpolation rounded once (0.7891). It stays between the neighbours of the double position (`⌊f⌋` and `⌈f⌉`, `f = q·(n − 1)` in doubles) except where `hi − lo` overflows; those are not the neighbours of the exact position where the exact position is whole and `f` misses it (below).",
+    "With an infinite or overflowing difference, `lo + (hi − lo)·w` is NaN where `lo` is -inf and `hi` is greater (`hi − lo` is +inf, and `-inf + inf·w` is NaN), and +inf where `hi − lo` overflows to +inf (`[-1e308, 1e308]` gives +inf at 0.25, 0.5 and 0.75): neither is a double between the neighbours, so the engine's behaviour is `LINEAR_DIFF`, a value between them, a NaN or +inf, each only on neighbours that make it (`contDiffExtra`).",
+    "Like DuckDB, the position `(n − 1)·q` is computed in doubles, so where the exact position is whole and its double is not (n = 26, q = 0.28), the engine interpolates toward the next value with a weight near 1e-15: with neighbours 1.0 and 1e300 the result is 8.9e284 where the exact position holds 1.0. The result then lies between the group's minimum and maximum but not between the model's neighbours; `LINEAR_DIFF` as defined does not admit it: an overclaim, tracked in #900, until the definition takes the engine's double-position neighbours."
   ],
   "reference": "`quantile_disc` takes a value of the input; `quantile_cont` any double between the neighbours (`contAllowed`).",
   "status": "open",
@@ -216,6 +218,36 @@
         }
       ],
       "notes": "x = 0.4, 1.697, quantile(0.3, 'linear')."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (±∞ aggregate cleanup, PR 2), probe scripts pq.py, pq2.py (Polars), spq3.py (Spark on homelab-run)",
+      "evidence": [
+        {
+          "note": "Polars 2.1.0 (streaming engine, POLARS_MAX_THREADS=1): `quantile(p, 'linear')` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] it is NaN at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: NaN at 0.25, 1 at 0.5, +inf at 0.75; of [-inf, -inf, 1]: -inf at 0.25 and 0.5, NaN at 0.75; of [1, +inf]: +inf. `lo + (hi − lo)·w` is NaN wherever `lo` is -inf and `hi` is greater."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1475 review, Fable's required change)",
+      "evidence": [
+        {
+          "note": "Polars 2.1.0, POLARS_MAX_THREADS=1, streaming: `quantile(q, 'linear')` of [-1e308, 1e308] is -1e308 at 0, +inf at 0.25, 0.5 and 0.75, 1e308 at 1 (DuckDB 2.0.0: -5e307, 0, 5e307 at 0.25, 0.5, 0.75); of [-1.7e308, 0, 1.7e308] and [1e308, 1.7e308] the values are between the neighbours, as DuckDB's."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1475 reviewer's probe), local",
+      "evidence": [
+        {
+          "note": "Polars 2.1.0, `POLARS_MAX_THREADS=1`, streaming, `quantile(q, 'linear')`: n = 26, q = 0.28 (exact position 7, whole): the values 1.0 up to the position and 1e300 after give 8.881784197001253e+284 (the value at the position is 1.0), and `x = i` gives 7.000000000000001; n = 51, q = 0.58 (position 29): `x = i` gives 28.999999999999996, and the 1.0-then-1e300 shape gives 1.0."
+        }
+      ]
     }
   ]
 }
