@@ -456,6 +456,8 @@ def FloatCode.nextDown (c : Int) : Int :=
 #guard FloatCode.nextDown (FloatCode.ofFloat 2.0) = FloatCode.ofFloat 1.9999999999999998
 #guard FloatCode.nextDown (FloatCode.ofFloat (-2.0)) = FloatCode.ofFloat (-2.0000000000000004)
 #guard FloatCode.nextUp (FloatCode.ofFloat 1.7976931348623157e308) = FloatCode.posInf
+#guard FloatCode.nextDown (FloatCode.ofFloat 5e-324) = FloatCode.ofFloat 0.0
+#guard FloatCode.nextDown (FloatCode.ofFloat (-1.7976931348623157e308)) = FloatCode.negInf
 
 /-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
 read as the double nearest to it (`ofDecimal`, correctly rounded at every

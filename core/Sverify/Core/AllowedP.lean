@@ -113,7 +113,11 @@ def contDiffExtra (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
 
 /-- What DuckDB's own `lo·(1 − w) + hi·w` gives beyond a double between the
 neighbours `nb`: an ulp above `hi` or below `lo` (the weight `1 − w` rounds
-where `lo` is the first value, finding B of duckdb-quantile-cont-interpolation). -/
+where `lo` is the first value, finding B of duckdb-quantile-cont-interpolation).
+The fact's condition "`lo` is the group's first value" is left out on purpose:
+at later positions the weight `1 − w` is exact (`w` is a multiple of 2^-52
+below 1), but the two products and the sum still round, and no proof excludes
+an ulp there. Sampling found none (190,880 groups). -/
 def contLinearExtra (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
   match nb with
   | some (l, h, _) => v = .float (FloatCode.nextUp h) ∨ v = .float (FloatCode.nextDown l)
