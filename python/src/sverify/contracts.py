@@ -65,7 +65,6 @@ inside the Lean model. `unique` checks always run through Ibis.
 
 from __future__ import annotations
 
-import difflib
 import functools
 import inspect
 import json
@@ -92,6 +91,7 @@ from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double 
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyWarning
+from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
 from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DATA_ONLY,
@@ -651,12 +651,9 @@ def requires_by_input(
     for key in requires:
         if key in inputs:
             continue
-        lower = {i.lower(): i for i in inputs}
-        close = [lower[k] for k in difflib.get_close_matches(str(key).lower(), lower, n=1)]
-        hint = f"; did you mean {close[0]!r}?" if close else ""
         raise error(
             f"requires: unknown {kind} {key!r}; the inputs are: {', '.join(inputs) or 'none'}"
-            + hint
+            + did_you_mean(key, inputs)
         )
     return {t: expand_keys(cs) for t, cs in requires.items()}
 
@@ -1688,6 +1685,9 @@ def _verify_once(
         _postconditions=list(ensures),
         inputs=dict(schemas),
     )
+    from sverify._vacuity import contradictions
+
+    report._vacuous = contradictions(requires, schemas)
     if not isinstance(transform, str) and report.issues:
         report._hints = overflow_hints(transform, requires, report)
     report._hints += and_or_hints(report.issues, transform)

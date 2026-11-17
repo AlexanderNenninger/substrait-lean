@@ -452,6 +452,8 @@ class Report:
     _bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    _vacuous: list[str] = field(default_factory=list, repr=False, compare=False)
+    """The `requires` that no row can meet (`_vacuity.contradictions`)."""
     rows: int | None = None
     """At most this many output rows, from the inputs' row caps (`max_rows`
     in `requires`, `Rel.maxRows`); None if nothing bounds them."""
@@ -1358,9 +1360,11 @@ class Report:
     def notes(self) -> list[str]:
         """What the report notes about the result as a whole, as `str(report)`
         prints them after "note: ": that rows may tie in an `ORDER BY`
-        (`deterministic` is False, `ties` says which keys would help), and
-        that the proof holds for the `params` given only."""
+        (`deterministic` is False, `ties` says which keys would help), that the
+        `requires` of a table contradict each other, so that no row meets
+        them, and that the proof holds for the `params` given only."""
         out = [] if self.deterministic else [self._ties_hint()]
+        out += self._vacuous
         if self._params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
         return out
