@@ -18,18 +18,22 @@ import functools
 import json
 import re
 import sys
-from collections import defaultdict
+from collections.abc import Callable
 from typing import get_args
 
+import ibis
 import pytest
 
 from _repo import ROOT, needs_repo
 from sverify import profiles
 from sverify._checker import run_checker
+from sverify.engine import written_plan
 from sverify.errors import UnsupportedError
+from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import to_sql
 from sverify.sql.core import Dialect, GuardIssue
 from sverify_dev.coverage import CASES, Case, written
+from sverify_dev.coverage_cases._common import t
 
 #: `Issue.kind`'s text for each constructor (`core/Sverify/Core/Issue.lean`).
 KIND = {
@@ -56,11 +60,11 @@ def test_guard_issues_are_leans_constructors() -> None:
     assert set(KIND) == set(ctors)
 
 
-Site = tuple[str, int, str]  # (file, line, issue)
+Site = tuple[str, int, str, str]  # (file, line, issue, message)
 
 
 def _recording(monkeypatch: pytest.MonkeyPatch, used: set[Site]) -> None:
-    """Record the call site and issue of every guard any dialect writes."""
+    """Record the call site, issue and message of every guard any dialect writes."""
     seen: set[type] = set()
 
     def wrap(cls: type) -> None:
@@ -71,7 +75,8 @@ def _recording(monkeypatch: pytest.MonkeyPatch, used: set[Site]) -> None:
 
         def raise_(self, message, dep, kind, issue, _orig=orig):  # type: ignore[no-untyped-def]
             f = sys._getframe(1)
-            used.add((f.f_code.co_filename.split("/src/")[-1], f.f_lineno, issue))
+            file = f.f_code.co_filename.split("/src/")[-1]
+            used.add((file, f.f_lineno, issue, message))
             return _orig(self, message, dep, kind, issue)
 
         monkeypatch.setattr(cls, "raise_", raise_)
@@ -110,14 +115,9 @@ def _sites(plan: str, unchecked: dict | None, monkeypatch: pytest.MonkeyPatch) -
 
 
 @functools.cache
-def _scan(label: str) -> tuple[frozenset[Site], frozenset[Site], frozenset[str]] | None:
-    """The guard sites of case `label` as written, as written with the report's
+def _scan(plan: str) -> tuple[frozenset[Site], frozenset[Site], frozenset[str]]:
+    """The guard sites of `plan` as written, as written with the report's
     unchecked slots, and the kinds the report lists."""
-    c = next(c for c in CASES if c.label == label)
-    try:
-        plan = written(c)
-    except UnsupportedError:
-        return None
     mp = pytest.MonkeyPatch()
     try:
         full = _sites(plan, None, mp)
@@ -130,44 +130,87 @@ def _scan(label: str) -> tuple[frozenset[Site], frozenset[Site], frozenset[str]]
         mp.undo()
 
 
+def _case_scan(c: Case) -> tuple[frozenset[Site], frozenset[Site], frozenset[str]] | None:
+    try:
+        return _scan(written(c))
+    except UnsupportedError:
+        return None
+
+
 VERIFIED = [c for c in CASES if c.expected == "verified"]
+
+#: The guards a case's unchecked writing keeps although the report lists no
+#: issue of their kind, `{case: {(file, issue, message): (class, cause)}}`.
+#: Dead: no input the report admits fires it (the marks do not reach its slot,
+#: or the writer keeps it without them). Live: DuckDB raises on admitted
+#: input, a wrong verdict (S9, none today). The assertion is equality, so a
+#: new unreported guard and a closed gap both fail.
+KNOWN: dict[str, dict[tuple[str, str, str], tuple[str, str]]] = {}
+
+
+def _plan(expr: ibis.Table) -> str:
+    return written_plan(to_substrait_json(expr))
+
+
+#: Plans for the guard sites no case reaches: a divisor that is a column, an
+#: operand whose bounds Safety does not get from its type (a timestamp plus an
+#: interval column, an offset computed from a column).
+WITNESSES: dict[str, Callable[[], ibis.Table]] = {
+    "integer division by a column": lambda: t.select(x=t.qty // t.id),
+    "integer modulo by a column": lambda: t.select(x=t.qty % t.id),
+    "date_trunc of a computed timestamp": lambda: t.select(
+        x=(t.ts + ibis.interval(days=1) * t.qty).truncate("M")
+    ),
+    "date_part of a computed timestamp": lambda: t.select(
+        x=(t.ts + ibis.interval(days=1) * t.qty).year()
+    ),
+    "bucket of a computed timestamp": lambda: t.select(
+        x=(t.ts + ibis.interval(days=1) * t.qty).bucket(ibis.interval(hours=1))
+    ),
+    "substring at a computed offset": lambda: t.select(x=t.name.substr(t.qty * t.id)),
+}
+
+
+def _unreported(scan: tuple[frozenset[Site], frozenset[Site], frozenset[str]]) -> dict:
+    _, left, kinds = scan
+    return {
+        (f, g, m): None for f, _, g, m in sorted(left) if g != "asciiOnly" and KIND[g] not in kinds
+    }
 
 
 @pytest.mark.parametrize("c", VERIFIED, ids=lambda c: c.label)
 def test_the_guards_left_unchecked_are_reported(c: Case) -> None:
-    """(a): every guard the unchecked writing keeps has its issue reported."""
-    scan = _scan(c.label)
+    """(a): every guard the unchecked writing keeps has its issue reported,
+    except the ones `KNOWN` classes."""
+    scan = _case_scan(c)
     if scan is None:
         pytest.skip("not written")
-    _, left, kinds = scan
-    missing = sorted(
-        (f"{f}:{n}", g) for f, n, g in left if g != "asciiOnly" and KIND[g] not in kinds
-    )
-    assert not missing, f"guards without a reported issue {sorted(kinds)}: {missing}"
+    kinds = sorted(scan[2])
+    assert set(_unreported(scan)) == set(KNOWN.get(c.label, {})), f"reported issues: {kinds}"
+
+
+def _witnesses() -> dict[str, str]:
+    return {name: _plan(build()) for name, build in WITNESSES.items()}
 
 
 def test_every_guard_site_is_reported_somewhere() -> None:
     """(b): each guard site survives the unchecked writing, with its issue
-    reported, in some plan: a witness for a site no case reaches."""
-    sites: dict[tuple[str, int], set[str]] = defaultdict(set)
+    reported, in some plan: a case's, or a witness (`WITNESSES`)."""
+    sites: set[tuple[str, int]] = set()
     proven: set[tuple[str, int]] = set()
-    for c in VERIFIED:
-        scan = _scan(c.label)
-        if scan is None:
-            continue
-        full, left, kinds = scan
-        for f, n, g in full:
-            sites[(f, n)].add(g)
-        for f, n, g in left:
-            if KIND.get(g) in kinds:
-                proven.add((f, n))
-    proven |= set(WITNESSES)
-    lost = sorted((f"{f}:{n}", sorted(g)) for (f, n), g in sites.items() if (f, n) not in proven)
-    assert not [x for x in lost if "asciiOnly" not in x[1]], f"sites with no witness: {lost}"
+    scans = [s for c in VERIFIED if (s := _case_scan(c)) is not None]
+    scans += [_scan(p) for p in _witnesses().values()]
+    for full, left, kinds in scans:
+        sites |= {(f, n) for f, n, g, _ in full if g != "asciiOnly"}
+        proven |= {(f, n) for f, n, g, _ in left if KIND.get(g) in kinds}
+    lost = sorted(sites - proven)
+    assert not lost, f"guard sites no plan reports: {lost}"
 
 
-#: Witness plans for guard sites no case reaches: `{(file, line): plan}`.
-WITNESSES: dict[tuple[str, int], str] = {}
+@pytest.mark.parametrize("name", WITNESSES)
+def test_a_witness_reaches_a_site(name: str) -> None:
+    full, left, kinds = _scan(_witnesses()[name])
+    assert any(KIND.get(g) in kinds for _, _, g, _ in left), (name, sorted(kinds))
 
 
 @pytest.mark.xfail(strict=True, reason="#1506: the ASCII guard is not an issue Safety reports")
@@ -179,4 +222,4 @@ def test_the_ascii_guard_is_an_issue(monkeypatch: pytest.MonkeyPatch) -> None:
 
     t = ibis.table({"s": "string"}, name="t")
     plan = written_plan(to_substrait_json(t.select(u=t.s.upper())))
-    assert "asciiOnly" not in {g for *_, g in _sites(plan, None, monkeypatch)}
+    assert "asciiOnly" not in {g for _, _, g, _ in _sites(plan, None, monkeypatch)}
