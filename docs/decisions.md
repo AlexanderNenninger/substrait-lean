@@ -752,9 +752,9 @@ raises or leaves the result open where engines disagree."
 - `ORDER BY` is an identity boundary too: it sorts by a total preorder on
   canonical values, and rows tied on it may come in any order (`Allowed`).
 - Where a class has several members, a `DISTINCT` row, a `GROUP BY` key and
-  a `MIN` or `MAX` may be any member of the class present in the input, or
-  the class's canonical value (`IsReps`, `AggFn.Picks`; `QUANTILE_DISC` too
-  since D45). Spark and DuckDB
+  a `MIN` or `MAX` in a group or a window frame may be any member of the
+  class present in the input, or the class's canonical value (`IsReps`,
+  `AggFn.Picks`, `WinFn.Allowed`; `QUANTILE_DISC` too since D45). Spark and DuckDB
   emit the canonical value, so a group of `-0.0`s comes out as `+0.0`;
   Polars emits a present member. `Rel.eval` keeps one admitted value, the
   raw-least member. Where the keys and arguments hold no doubles, each class
@@ -1180,6 +1180,19 @@ order statistic. It widens no verdict: a quantile is neither order-free nor
 sorting, so `Rel.detPlan` already answers false for a plan with one, and the
 contract analysis bounds a double by its canonical code.
 
-Windows stay pinned: a window's `MIN`, `MAX` and `QUANTILE_DISC` keep
-`Measure.eval`'s member (`WinFn.AllowedP`; `Rel.Allowed`'s window case fixes
-every window value). Opening the three in windows is a follow-up decision.
+Amended 2026-11-17 (the theory advisor's rulings on D45's windows, entries 28
+and 34; the user's approval is pending on the pull request): windows join.
+A window's `MIN`, `MAX` and `QUANTILE_DISC` over a frame allow what
+`AggFn.Picks` allows over the frame's values, in the frame's order
+(`WinFn.Allowed`); every other window function keeps its value, and a
+windowed `QUANTILE_CONT` keeps its pin. `Rel.Allowed`'s and
+`Rel.OrderAllowed`'s window cases admit any such result (`windowRowsA`), and
+`WinFn.AllowedP` no longer pins a window's `MIN` and `MAX`. Why: D31's text
+never named a group, and DuckDB's `duckdb-minmax-zero-sign` contradicts the
+pin. Where the class-picking functions' arguments hold no doubles, a window
+gives `windowRows` alone (`windowRowsA_eq`), and every admitted result is
+`windowRows` up to each window value's class (`windowRowsA_canon`).
+`Rel.detPlan`'s window case gains the aggregate case's guard
+(`WinFn.pickFixed`), so a plan with a windowed `MIN`, `MAX` or
+`QUANTILE_DISC` over an argument that may be a double is no longer
+certified deterministic.
