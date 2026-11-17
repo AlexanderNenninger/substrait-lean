@@ -523,7 +523,7 @@ def _ascii_condition(col: str, classes: bool = False) -> Inferred:
     expression with `\\w`, `\\d`, `\\s` or `\\b`), no vertical tab either:
     `Text.classesDiffer`. Its SQL is the writers' guard (`ascii_text`)."""
     sql = '"' + col.replace('"', '""') + '"'
-    plain = f"octet_length({sql}) = char_length({sql})"
+    plain = f"strlen({sql}) = length({sql})"
     vtab = f" AND {sql} NOT LIKE '%{chr(11)}%'" if classes else ""
     ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
     return Inferred(f"{sql} IS NULL OR ({plain}{vtab})", f"({ref}.isascii())")

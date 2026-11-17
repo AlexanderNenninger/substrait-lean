@@ -19,7 +19,7 @@ class Plain(Dialect):
     name = "plain"
 
     def is_ascii(self, s: str) -> str:
-        return f"(octet_length({s}) = length({s}))"
+        return f"(strlen({s}) = length({s}))"
 
 
 def run(con: duckdb.DuckDBPyConnection, where: str) -> list:
