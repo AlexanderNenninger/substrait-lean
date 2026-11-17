@@ -42,6 +42,7 @@ the project's one axiom (the trusted table below).
 | `contract_sound_allowed` | … on every result the reference allows, for a plan whose open measures choose no rows | `AllowedAnalysis.lean` | propext, Classical.choice, Quot.sound |
 | `ContractCheck.check_proved_sound` | What `substrait-check --contract` reports proved holds on the data's every allowed order | `ContractCheck.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.mayIssues_sound` | A plan with no reported issue raises no runtime error | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Rel.mayIssues_sound_all` | … on every order of the ties the reference allows | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.guardFree_sound` | Dropping the guards of a plan whose only issues are assumed changes no result | `Guards.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.duckdb_refines` | The generated DuckDB lowering computes the reference | `Obligations.lean` | propext, Classical.choice, Quot.sound |
 | `Lowering.duckdb_exact` | Each generated lowering entry is exact | `DuckDB/LoweringOn.lean` | propext, Classical.choice, Quot.sound |
@@ -105,7 +106,8 @@ place, and what retires it.
   (`Text.sizeCap`, as DuckDB's strings hold fewer than 2³² bytes), every relation a window reads
   fewer than 2⁶² rows (`Rel.Small`), and every relation an
   aggregate reads fewer than 2⁶³, as `COUNT(*)` is a 64-bit integer
-  (`Rel.sumRows`).
+  (`Rel.sumRows`). `Rel.SmallAll` asks the same of every order of the ties
+  the reference allows, for `Rel.mayIssues_sound_all`.
   No machine's memory holds more. The theorems that need it take
   `Rel.Small` (`Rel.mayIssues_sound`, `Rel.guardFree_sound`,
   `Rel.duckdb_sound`, `Rel.polars_sound`, `Rel.spark_sound`, and the engine
@@ -158,7 +160,9 @@ place, and what retires it.
   expression may raise on under `Rel.eval`; which expressions an engine
   evaluates, on which rows, is trusted. `Rel.loose` models an engine that
   evaluates an expression on more rows than the plan says (merged filters,
-  eager `AND` and `OR`), and the facts record what each engine does
+  eager `AND` and `OR`), `Rel.ViewAllowed` one that evaluates part of a
+  condition on one input of a join before any pair exists (a pushed-down
+  filter, a hash join's key), and the facts record what each engine does
   ([duckdb-exec-filter-pushdown](../engines/duckdb/facts/duckdb-exec-filter-pushdown.json),
   [DD-7](../upstream/bugs/DD-7.json); `Safety.lean`'s header).
 - Doubles. Lean's `Float` is an opaque `extern` to C `double`, trusted to be

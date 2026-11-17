@@ -29,15 +29,7 @@ variable [Boxes.Ambient]
 
 /-! ## The columns an expression reads -/
 
-/-- The columns `e` reads; a lambda's body reads none of the row's. -/
-def Expr.cols : Expr → List Nat
-  | .lit _ => []
-  | .field i => [i]
-  | .un _ a => a.cols
-  | .bin _ a b => a.cols ++ b.cols
-  | .ifThen c t e => c.cols ++ t.cols ++ e.cols
-  -- A lambda's body reads its parameter as field 0 and the row from 1 (D28).
-  | .hof _ l b => l.cols ++ b.cols.filterMap fun i => if i = 0 then none else some (i - 1)
+-- `Expr.cols`, the columns an expression reads, is `core/Sverify/Core/Expr.lean`'s.
 
 /-- An expression's value depends only on the columns it reads. -/
 theorem Expr.eval_congr_cols {r r' : Row} :
