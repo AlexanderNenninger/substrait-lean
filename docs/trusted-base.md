@@ -99,7 +99,7 @@ place, and what retires it.
 
 ## The trusted parts in detail
 
-- The `evalChoices` oracle. `Rel.evalChoices` (`lean_choices`) and the Python matching of rows to its choices (`allows_rows`) check engine results against the rows the reference allows. `Rel.evalChoices` has no theorem yet, so the oracle is tested, not proved.
+- The `evalChoices` oracle. `Rel.evalChoices` (`lean_choices`) and the Python matching of rows to its choices (`allows_rows`) check engine results against the rows the reference allows. `Rel.evalChoices` has no theorem yet, so the oracle rests on tests.
 
 - The size hypothesis. Every string has fewer than 2³² characters
   (`Text.sizeCap`, as DuckDB's strings hold fewer than 2³² bytes), every relation a window reads
