@@ -402,7 +402,7 @@ rows asks for it, through `run(reproducible=sv.equivalent())` or a sink's
 [D20](#d20-two-observations-per-output)). Engines read tables in an order of
 their own, so no shim reproduces list order on them. The deterministic
 profile needs a plan whose order is total, by a tie-break key or a
-uniqueness precondition (`Rel.windowsTotal`, `Rel.fetchesTotal`), and
+uniqueness precondition (`Rel.detPlan`), and
 refuses a plan without one. The refusal names each place where ties stay
 open (`str(report)`, with the keys that would close them in `Report.ties`).
 

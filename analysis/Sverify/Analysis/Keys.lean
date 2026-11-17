@@ -1160,29 +1160,6 @@ namespace Substrait
 theorem KeyOn.nodup {k : List Nat} {rows : Relation} (h : KeyOn k rows) : rows.Nodup :=
   h.imp fun hne heq => hne (by rw [heq])
 
-/-- Two sorted arrangements of the same rows are equal when the order has
-no ties between different rows. -/
-theorem eq_of_perm_of_pairwise {le : Row → Row → Bool} :
-    ∀ {l₁ l₂ : List Row}, l₁.Perm l₂ → l₁.Pairwise (le · · = true) → l₂.Pairwise (le · · = true) →
-      (∀ x ∈ l₁, ∀ y ∈ l₁, le x y = true → le y x = true → x = y) → l₁ = l₂
-  | [], _, hp, _, _, _ => (List.nil_perm.mp hp).symm
-  | _ :: _, [], hp, _, _, _ => absurd hp.length_eq (by simp)
-  | x :: t, y :: u, hp, h₁, h₂, ha => by
-      rw [List.pairwise_cons] at h₁ h₂
-      have hxy : x = y := by
-        have hx : x ∈ y :: u := hp.subset (by simp)
-        have hy : y ∈ x :: t := hp.symm.subset (by simp)
-        simp only [List.mem_cons] at hx hy
-        rcases hx with hx | hx
-        · exact hx
-        rcases hy with hy | hy
-        · exact hy.symm
-        exact ha x (by simp) y (by simp [hy]) (h₁.1 y hy) (h₂.1 x hx)
-      subst hxy
-      congr 1
-      exact eq_of_perm_of_pairwise hp.cons_inv h₁.2 h₂.2
-        fun a ha' b hb => ha a (by simp [ha']) b (by simp [hb])
-
 /-- The rows of `P` before and after the first occurrence of `x`. -/
 def splitAt (x : Row) (P : List Row) : List Row × List Row :=
   (P.takeWhile (· != x), (P.dropWhile (· != x)).drop 1)
@@ -1577,6 +1554,12 @@ theorem window_allColumns {part : List Nat} {sort : List SortKey} {fns : List Wi
     windowRows_eq_occurrences hS [] _ fun x hx => hm.subset (by simpa using hx)]
   exact (occurrences_perm (hp.trans hm.symm) []).map _
 
+/-- Do the group's and the measure's sort columns contain a key of `r`? Then
+no two rows of a group tie in the measure's order. -/
+def Measure.keyedIn (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+  (r.keys cat A F K).any fun k => k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
+
 /-- Does the measure `m` of an aggregate over `r` grouped by `gs` take its
 rows in an order the plan fixes? `FIRST`/`LAST` (#55) pick a row by their
 order, `STRING_AGG` joins the rows in it, and `MODE` (#53) breaks ties by it:
@@ -1586,9 +1569,7 @@ that tie have one value. -/
 def Measure.totalIn (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
   !(m.fn matches .pick _ || m.fn matches .concat _ || m.fn matches .mode) ||
-    (m.fn matches .mode && m.sort.any (m.arg == .field ·.col)) ||
-    (r.keys cat A F K).any fun k =>
-      k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
+    (m.fn matches .mode && m.sort.any (m.arg == .field ·.col)) || m.keyedIn cat A F K r gs
 
 /-- Does the window over `r` order its partitions totally: do its partition
 and sort columns contain a derived key of its input, are its functions
@@ -1601,10 +1582,11 @@ def Rel.windowTotalAt (cat : Catalog) (A : String → List AVal) (F : String →
     fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part)
 
 /-- Does the `FETCH` over an `ORDER BY` on `keys` of `i` take rows the plan
-fixes: do the sort's columns contain a key of its input? -/
+fixes: do the sort's columns contain a key of its input, and is no key
+clustered (whose groups the reference leaves in any order, `SortAllowed`)? -/
 def Rel.fetchTotalAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (i : Rel) (keys : List SortKey) : Bool :=
-  (i.keys cat A F K).any fun k => k.all fun c => keys.any (·.col == c)
+  ((i.keys cat A F K).any fun k => k.all fun c => keys.any (·.col == c)) && keys.all (!·.clustered)
 
 /-- Is every window deterministic: do its partition and sort columns contain
 a derived key of its input (`Rel.window_deterministic`), or are its functions
@@ -1620,20 +1602,6 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort fns =>
       r.windowsTotal cat A F K && Rel.windowTotalAt cat A F K r part sort fns
-
-/-- Does every `FETCH` (a `LIMIT` or `OFFSET`) take rows whose choice the
-plan fixes? Only below an `ORDER BY` whose keys contain a key of its input:
-otherwise the rows that tie, or the input's order, decide which rows come
-first, and the engine picks them (D10, `Rel.detPlan`). -/
-def Rel.fetchesTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → Bool
-  | .read _ | .values _ _ => true
-  | .fetch (.orderBy i keys) _ _ => i.fetchesTotal cat A F K && Rel.fetchTotalAt cat A F K i keys
-  | .fetch _ _ _ => false
-  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r | .unnest r _
-  | .window r _ _ _ | .aggregate r _ _ => r.fetchesTotal cat A F K
-  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
-      a.fetchesTotal cat A F K && b.fetchesTotal cat A F K
 
 /-- The check at one window: then the engine's tie-breaking is irrelevant. -/
 theorem Rel.window_deterministic {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
