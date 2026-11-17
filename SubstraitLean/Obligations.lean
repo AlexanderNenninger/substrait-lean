@@ -107,15 +107,14 @@ named apart: `(option, engine's, reference's, why)`. The reference's `ANY`
 sum order allows every order of the additions, a sequential one among them;
 `ANY_ROW` allows the first row read; `DECLARED_TYPE` for an integer `AVG`
 (declared `i64`) is the exact mean truncated; `GENERIC` allows Welford with
-Chan's merge, and `BETWEEN` a linear interpolation. -/
+Chan's merge. -/
 def behaviourRefines : List (String × Behaviour × Behaviour × String) := [
   ("sum_order", "SEQUENTIAL", "ANY", "FloatSums: a sequential sum is one order of the additions"),
   ("tie_pick", "FIRST_READ", "ANY_ROW", "the first row read is a row of the tie"),
   ("round_zero_sign", "IEEE", "ANY", "-0.0 is one of the zeros the reference leaves open (duckdb-R15-round, polars-round)"),
   ("round_zero_sign", "POSITIVE", "ANY", "+0.0 is one of the zeros the reference leaves open (spark-round)"),
   ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)"),
-  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)"),
-  ("quantile_interp", "LINEAR", "BETWEEN", "a linear interpolation lies between the neighbouring values (duckdb-quantile-cont-interpolation, polars-quantile)")]
+  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)")]
 
 /-- Each behaviour of `a` is one of `b`'s, or refines one of them. -/
 private def sub (o : String) (a b : List Behaviour) : Bool :=

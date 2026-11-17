@@ -46,7 +46,9 @@ def _template(p: probe.Probe) -> str | None:
         return None
     kind = "float" if p.result == "float64" else "int"
     args = [f"{{{i}}}" for i in range(len(p.args))]
-    return lowering.render(fn, args, lambda m, dep: D.raise_(m, dep, kind), D.float_lit, D.int_lit)
+    return lowering.render(
+        fn, args, lambda m, dep: D.raise_(m, dep, kind, "raised"), D.float_lit, D.int_lit
+    )
 
 
 CASES = [p for p in probe.PROBES if not p.constants and _template(p) is not None]

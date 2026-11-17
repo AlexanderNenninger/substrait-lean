@@ -421,6 +421,44 @@ def FloatCode.ceilNat (c : Int) : Nat :=
   if (FloatCode.sv c).toNat % FloatCode.unitK = 0 then FloatCode.floorNat c
   else FloatCode.floorNat c + 1
 
+/-- The spacing at a magnitude (in units of `2⁻¹⁰⁷⁴`): `1` below `2⁵²`, else
+`2^(⌊log₂ m⌋ − 52)`. -/
+def FloatCode.ulpMag (m : Nat) : Nat := if m < 2 ^ 52 then 1 else 2 ^ (m.log2 - 52)
+
+/-- The magnitude one spacing above `m`, and below it (`m − ulp(m − 1)`, the
+spacing below a power of two being the finer one). -/
+def FloatCode.upMag (m : Nat) : Nat := m + FloatCode.ulpMag m
+def FloatCode.downMag (m : Nat) : Nat := m - FloatCode.ulpMag (m - 1)
+
+/-- The code of magnitude `m`, negative (`0` for the magnitude `0`). -/
+def FloatCode.negCode (m : Nat) : Int := if m = 0 then 0 else -FloatCode.posCode m
+
+/-- The next double above a code, for a finite one (`0` steps to the smallest
+subnormal; past the largest, `+∞`; `±∞` and NaN stay). -/
+def FloatCode.nextUp (c : Int) : Int :=
+  if c = 0 then FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.upMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.downMag (((-c).toNat - 1) / 2))
+  else c
+
+/-- The next double below a code, for a finite one. -/
+def FloatCode.nextDown (c : Int) : Int :=
+  if c = 0 then -FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.downMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.upMag (((-c).toNat - 1) / 2))
+  else c
+
+-- Against `Float`'s neighbours.
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 1.0000000000000002
+#guard FloatCode.nextUp (FloatCode.ofFloat (-1.0)) = FloatCode.ofFloat (-0.9999999999999999)
+#guard FloatCode.nextUp (FloatCode.ofFloat 0.0) = FloatCode.ofFloat 5e-324
+#guard FloatCode.nextDown (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 0.9999999999999999
+#guard FloatCode.nextDown (FloatCode.ofFloat 2.0) = FloatCode.ofFloat 1.9999999999999998
+#guard FloatCode.nextDown (FloatCode.ofFloat (-2.0)) = FloatCode.ofFloat (-2.0000000000000004)
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.7976931348623157e308) = FloatCode.posInf
+#guard FloatCode.nextDown (FloatCode.ofFloat 5e-324) = FloatCode.ofFloat 0.0
+#guard FloatCode.nextDown (FloatCode.ofFloat (-1.7976931348623157e308)) = FloatCode.negInf
+
 /-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
 read as the double nearest to it (`ofDecimal`, correctly rounded at every
 scale; `fdiv num 10^scale` would equal it only while both operands are exact,
@@ -837,12 +875,38 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     simp only [apply] at h; subst h
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
+/-- The aggregates that select one of their values by comparison: `MIN`,
+`MAX` (D31) and `QUANTILE_DISC` (D45). -/
+def AggFn.classPick : AggFn → Bool
+  | .min | .max | .quantile false _ _ => true
+  | _ => false
+
+/-- A function that selects by comparison gives one of its values, or NULL. -/
+theorem AggFn.apply_mem_of_classPick {f : AggFn} (hf : f.classPick = true) (vs : List Value) :
+    f.apply vs ∈ vs ∨ f.apply vs = .null := by
+  cases vs with
+  | nil => cases f <;> simp_all [classPick, apply]
+  | cons w ws =>
+    cases f with
+    | min | max => exact .inl (pickFold_mem _ _ _)
+    | quantile cont num scale =>
+      cases cont
+      · simp only [apply, List.getD_eq_getElem?_getD]
+        cases h : (sortVals (w :: ws))[discIndex (w :: ws).length num scale]? with
+        | none => exact .inr rfl
+        | some v =>
+          exact .inl ((List.mergeSort_perm _ _).subset (List.mem_of_getElem? h))
+      · simp [classPick] at hf
+    | _ => simp [classPick] at hf
+
 /-- What the reference allows an aggregate to give on `vs`: its value, or for
-`MIN` and `MAX` another value of the value's class (`-0.0` for `0.0`, the
-negative NaN for the NaN, D31): a member of `vs`, or the class's canonical
-value, which engines emit. `AggFn.apply` picks the raw-least member. -/
+a function that selects by comparison (`AggFn.classPick`: `MIN`, `MAX`,
+`QUANTILE_DISC`) another value of the selected value's class (`-0.0` for
+`0.0`, the negative NaN for the NaN, D31, D45): a member of `vs`, or the
+class's canonical value, which engines emit. `AggFn.apply` keeps its own
+pick. -/
 def AggFn.Picks (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v.canonV = (f.apply vs).canonV ∧
+  v = f.apply vs ∨ (f.classPick = true ∧ v.canonV = (f.apply vs).canonV ∧
     (v ∈ vs ∨ v = (f.apply vs).canonV))
 
 theorem AggFn.picks_apply (f : AggFn) (vs : List Value) : f.Picks vs (f.apply vs) := .inl rfl
@@ -853,21 +917,16 @@ theorem AggFn.Picks.canon {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks
   · rfl
   · exact h
 
-/-- On values alone in their classes, `MIN` and `MAX` have one allowed
-value. -/
+/-- On values alone in their classes, a function that selects by comparison
+has one allowed value. -/
 theorem AggFn.Picks.eq {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v)
     (hlone : ∀ w ∈ vs, w.Lone) : v = f.apply vs := by
   rcases h with h | ⟨hf, hc, -⟩
   · exact h
-  · cases vs with
-    | nil =>
-      have hn : (f.apply []) = .null := by rcases hf with rfl | rfl <;> rfl
-      rw [hn] at hc ⊢
+  · rcases AggFn.apply_mem_of_classPick hf vs with hmem | hn
+    · exact hlone _ hmem v hc
+    · rw [hn] at hc ⊢
       exact Value.lone_of_ne (by simp) (by simp) (by simp) v hc
-    | cons w ws =>
-      have hmem : f.apply (w :: ws) ∈ w :: ws := by
-        rcases hf with rfl | rfl <;> exact pickFold_mem _ _ _
-      exact hlone _ hmem v hc
 
 omit [Boxes.Ambient] in
 theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=

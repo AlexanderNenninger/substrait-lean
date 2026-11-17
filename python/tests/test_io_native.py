@@ -16,10 +16,12 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
+from hypothesis import HealthCheck, given, settings
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.types import StringType
 
 import sverify as sv
+from _table_histories import build_delta, build_iceberg, histories
 from sverify._scan import Scan
 from sverify.incremental import Pipeline, snapshot_diff
 from sverify.io import Changes, DeltaSource, IcebergSink, IcebergSource
@@ -391,3 +393,88 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
     assert pipe.view("v", t.filter(t.x > 100.0)).rows()[0][0] == 2
     # Ibis on the connection reads the same view of the files.
     assert t.filter(t.x > 100.0).count().execute() == 1
+
+
+# Property 5.1 of the native-scan design (#173): a scan of the descriptor is the
+# Arrow route's rows, over generated table histories (`_table_histories`). A
+# source falls back to Arrow where a native read does not cover the history yet
+# (partitions, a rename); the property then pins that.
+
+
+def agree_or_fall_back(src, versions):
+    for v in versions:
+        snap = src._native(v)
+        if snap is None:
+            continue
+        assert same_rows(snap.scan.to_arrow(), src.snapshot(v).table), f"version {v}"
+
+
+@settings(
+    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(history=histories())
+def test_a_delta_scan_equals_the_arrow_route_over_histories(history, tmp_path_factory):
+    path = tmp_path_factory.mktemp("h") / "t"
+    src = build_delta(path, history)
+    n = DeltaTable(str(path)).version()
+    agree_or_fall_back(src, [*range(n + 1), None])
+    if history.partitioned:
+        assert src._native() is None
+
+
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(history=histories())
+def test_an_iceberg_scan_equals_the_arrow_route_over_histories(history, tmp_path_factory):
+    warnings.filterwarnings("ignore", module="pyiceberg")
+    root = tmp_path_factory.mktemp("i")
+    cat = SqlCatalog("test", uri=f"sqlite:///{root}/catalog.db", warehouse=f"file://{root}")
+    cat.create_namespace("db")
+    src = build_iceberg(cat, "db.t", history)
+    agree_or_fall_back(src, [None])
+    if history.partitioned:
+        assert src._native() is None
+
+
+def test_widening_is_the_one_conversion_table():
+    """The schema rule of the design note (section 5.2, #1540): what every engine
+    reads as the declared type without changing a value."""
+    from sverify._scan import Mismatch, schema_mismatches, widens
+
+    ok = [
+        (pa.int32(), pa.int64()),
+        (pa.int8(), pa.int16()),
+        (pa.float32(), pa.float64()),
+        (pa.decimal128(10, 2), pa.decimal128(12, 2)),
+        (pa.list_(pa.int32()), pa.list_(pa.int64())),
+        (pa.string(), pa.string()),
+    ]
+    refused = [
+        (pa.int64(), pa.int32()),
+        (pa.float64(), pa.int64()),
+        (pa.int64(), pa.float64()),
+        (pa.uint32(), pa.int64()),
+        (pa.uint8(), pa.uint16()),
+        (pa.decimal128(10, 2), pa.decimal128(12, 3)),
+        (pa.decimal128(12, 2), pa.decimal128(10, 2)),
+        (pa.string(), pa.int64()),
+    ]
+    assert all(widens(a, e) for a, e in ok)
+    assert not any(widens(a, e) for a, e in refused)
+    expected = pa.schema(
+        [
+            pa.field("a", pa.int64(), nullable=False),
+            pa.field("b", pa.float64()),
+            pa.field("c", pa.string()),
+        ]
+    )
+    actual = pa.schema(
+        [pa.field("a", pa.int32()), pa.field("b", pa.string()), pa.field("z", pa.int64())]
+    )
+    assert schema_mismatches(expected, actual) == [
+        Mismatch("a", "nullability", "non-null", "nullable"),
+        Mismatch("b", "type", "double", "string"),
+        Mismatch("c", "missing", "string", ""),
+    ]
+    assert schema_mismatches(expected, expected) == []

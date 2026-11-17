@@ -39,7 +39,16 @@ from fractions import Fraction
 from typing import ClassVar
 
 from sverify.black_box import BlackBox
-from sverify.sql.core import I64_MAX, I64_MIN, Dec, Dialect, Kind, Lst
+from sverify.sql.core import (
+    I64_MAX,
+    I64_MIN,
+    Dec,
+    Dialect,
+    GuardIssue,
+    Kind,
+    Lst,
+    raised_issue,
+)
 
 
 @dataclass(frozen=True)
@@ -49,6 +58,7 @@ class DuckDBDialect(Dialect):
     decimals: bool = True
     # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
+    orders_text: bool = True
 
     def type_name(self, kind: Kind) -> str:
         return "DOUBLE" if kind == "float" else super().type_name(kind)
@@ -65,7 +75,7 @@ class DuckDBDialect(Dialect):
     def float_lt(self, a: str, b: str) -> str:
         return f"({a} < {b})"
 
-    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+    def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"
         return self.cast(f"error({text})", kind)
 
@@ -102,7 +112,7 @@ class DuckDBDialect(Dialect):
         sql = lowering.render(
             fn,
             args,
-            lambda message, dep: self.raise_(message, dep, kind),
+            lambda message, dep: self.raise_(message, dep, kind, raised_issue(message)),
             self.float_lit,
             self.int_lit,
             self.guards,
@@ -178,7 +188,7 @@ class DuckDBDialect(Dialect):
     def int_sum(self, v: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.
         total = f"SUM({v})"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return (
             f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
@@ -192,7 +202,7 @@ class DuckDBDialect(Dialect):
     def window_int_sum(self, v: str, over: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.
         total = f"SUM({v}) {over}"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return (
             f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
@@ -252,7 +262,8 @@ class DuckDBDialect(Dialect):
             value = self.case_when(first, f"LEAST({value}, ({self.second_smallest(v)}))", value)
         if self.guards:
             made = f"({self.is_nan(qc)} AND NOT {self.is_nan(f'MAX({v})')})"
-            value = self.case_when(made, self.raise_("domain error", f"MIN({v})", "float"), value)
+            fail = self.raise_("domain error", f"MIN({v})", "float", "domain")
+            value = self.case_when(made, fail, value)
         if dyadic:
             return value
         whole = f"({n1} * {frac.numerator} % {frac.denominator} = 0)"
@@ -265,7 +276,9 @@ class DuckDBDialect(Dialect):
         # gap 10^-scale to the next whole position: past it, raise.
         scale = len(q.partition(".")[2])
         beyond = f"({n1} * {10**scale} >= {2**52})"
-        raise_ = self.raise_("quantile position beyond 2^52 / 10^scale", f"COUNT({v})", "float")
+        raise_ = self.raise_(
+            "quantile position beyond 2^52 / 10^scale", f"COUNT({v})", "float", "quantilePosition"
+        )
         return self.case_when(beyond, raise_, value)
 
     def second_smallest(self, v: str) -> str:

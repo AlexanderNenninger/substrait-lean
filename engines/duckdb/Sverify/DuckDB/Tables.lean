@@ -157,13 +157,13 @@ def Profile.duckdb.obs : ObsTable := [
     rerun := some { floats := .within "plan" },
     note := "Welford with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); DuckDB's VAR_POP and STDDEV_POP of one value are 0 even for NaN (DD-3), so the written plan returns NaN where a value is NaN (nan_through), which meets StatProps everywhere without an infinity (Stat.nanGuard_varStat); an infinity raises first (#257)." }).proved
     "Stat.nanGuard_varStat"),
-  -- `LINEAR` is stated as a double between the neighbours of the exact position
-  -- (`QuantInterp`); DuckDB's own `quantile_cont` leaves it at a whole exact
-  -- position its double misses and where the lower neighbour is first (findings
-  -- A and B, #900). Its written form (`Dialect.quantile`, #1502) meets it; the
-  -- row becomes `shimmed` with the restated `LINEAR`.
-  (none, "quantile_interp", ({ ObsRow.native ["duckdb-quantile-cont-interpolation"] with
-    note := "`LINEAR` states a double between the exact position's neighbours; DuckDB's own `quantile_cont` leaves it at findings A and B (duckdb-quantile-cont-interpolation); the written plan guards both (#1502)." }).tracking 900)]
+  -- `LINEAR` is DuckDB's own `quantile_cont`: the neighbours of its double
+  -- position, an ulp past them where the lower neighbour is first (findings A
+  -- and B, #900). The written plan guards both (`Dialect.quantile`, #1502), which
+  -- the shim names, and meets `BETWEEN`.
+  (none, "quantile_interp", ({ ObsRow.shimmed "quantile_guard" ["duckdb-quantile-cont-interpolation", "tests/test_duckdb_quantile_900.py::test_the_whole_positions_the_double_misses_give_the_model_value", "tests/test_duckdb_quantile_900.py::test_a_random_group_stays_between_the_neighbours"] with
+    precondition := "(COUNT(x) − 1)·10^scale < 2^52 for the decimal fraction's scale, checked on the data (the written plan raises past it)",
+    note := "`LINEAR` states DuckDB's own `quantile_cont`, which leaves the model's neighbours at a whole exact position its double misses and where the lower neighbour is first; the written plan takes `quantile_disc` at a whole exact position and bounds the first lower neighbour by the second smallest value (python/tests/test_duckdb_quantile_900.py)." }).tracking 900)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/
