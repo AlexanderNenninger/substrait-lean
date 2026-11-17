@@ -1547,14 +1547,9 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
   -- sverify's own: `a / b`, a decimal by an integer, at the declared scale,
   -- rounded half away from zero; how a decimal `AVG` over a window is written
   -- (`Write.lean`).
-  | "sverify_decimal_div", [a, b], [(p₁, s₁), (_, 0)] => match typeKind outTy with
+  | "sverify_decimal_div", [a, b], [(_, s₁), (_, 0)] => match typeKind outTy with
     | .dec p s =>
-      -- `dkind` has no check: the declared `p` must hold the dividend's digits
-      -- at the new scale (dividing by an integer adds none).
-      if s₁ ≤ s then
-        if p < p₁ + (s - s₁) then
-          throw "sverify_decimal_div: the declared precision cannot hold the quotient"
-        return some (.un (.dkind p s) (.bin .ddiv (upscale (s - s₁) a) b))
+      if s₁ ≤ s then return some (.un (.dkind p s) (.bin .ddiv (upscale (s - s₁) a) b))
       else throw "sverify_decimal_div to a smaller scale is not supported"
     | _ => throw "sverify_decimal_div needs a DECIMAL output type"
   | "negate", [a], [(p, s)] | "subtract", [a], [(p, s)] =>
