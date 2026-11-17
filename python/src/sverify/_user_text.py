@@ -102,14 +102,19 @@ class _Slot:
     """A column a relation computes: named once the plan's output names show
     that it reaches the output unchanged (`columns`)."""
 
-    __slots__ = ("name",)
+    __slots__ = ("fallback", "name")
 
     def __init__(self) -> None:
         self.name: str | None = None
+        self.fallback: str | None = None
+        """What a measure computes (`sum(amount)`), used while the output's
+        name for the column is not known."""
 
 
 def _name(v: Any) -> str | None:
-    return v.name if isinstance(v, _Slot) else v
+    if isinstance(v, _Slot):
+        return v.name if v.name is not None else v.fallback
+    return v
 
 
 def _measure_slot(m: Any, inp: list[Any], fns: Mapping[int, str]) -> _Slot:
@@ -123,7 +128,7 @@ def _measure_slot(m: Any, inp: list[Any], fns: Mapping[int, str]) -> _Slot:
         column = _name(inp[f])
         if column is not None:
             base = _plan_read.base_name(fns.get(fn.get("functionReference", 0), "?"))
-            slot.name = f"{_AGG_NAMES.get(base, base)}({column})"
+            slot.fallback = f"{_AGG_NAMES.get(base, base)}({column})"
     return slot
 
 
