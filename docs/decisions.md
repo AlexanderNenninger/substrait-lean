@@ -1180,6 +1180,6 @@ order statistic. It widens no verdict: a quantile is neither order-free nor
 sorting, so `Rel.detPlan` already answers false for a plan with one, and the
 contract analysis bounds a double by its canonical code.
 
-A window's `MIN`, `MAX` and `QUANTILE_DISC` keep `Measure.eval`'s member
-(`WinFn.AllowedP`, and `Rel.Allowed`'s window case computes the window's
-values); opening them there is not part of this decision.
+Windows stay pinned: a window's `MIN`, `MAX` and `QUANTILE_DISC` keep
+`Measure.eval`'s member (`WinFn.AllowedP`; `Rel.Allowed`'s window case fixes
+every window value). Opening the three in windows is a follow-up decision.
