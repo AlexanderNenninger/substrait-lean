@@ -11,18 +11,12 @@ profile (`Profile.reference`), and `Expr.evalP_reference` proves that
 evaluating under it is `eval` and `issues`.
 
 An engine's profile is a diff against the reference, from its
-characterization (its facts). A **shim**
-rewrites a plan into one the engine evaluates to the reference's outcome,
-adding guards (`UnFn.raise`, DuckDB's `error()`) where the engine is laxer,
-or refuses it. A shimmed plan is an ordinary plan, so it is written and run
-like any other. Shims are generated, each proved against the reference (#241).
+characterization (its facts). `docs/core-semantics.md`, "Terminology", says
+what a profile is for.
 
 Trusted, and tested rather than proved: that the profile matches the engine
 (the fuzzer, #185), and that the SQL printer prints the plan faithfully,
 `UnFn.isNum` as `IS NOT NULL` included.
-
-This first slice covers scalar expressions and DuckDB's division and modulus
-by zero (FACTS R2–R5).
 -/
 
 namespace Substrait
@@ -494,19 +488,16 @@ def Profile.impl (p : Profile) : Impl :=
 
 /-! ## Plans that may raise
 
-A plan `verify` cannot prove error-free still runs on DuckDB: its SQL raises
-where an operation goes wrong (DuckDB's own errors, the shim's guards). What
-holds for it is **partial correctness**: DuckDB returns `Rel.eval`'s rows, or
-raises.
+A plan `verify` cannot prove error-free still runs, and raises where an
+operation goes wrong under the profile. What holds for it is **partial
+correctness**: the run gives `Rel.eval`'s rows, or raises.
 
 * `Expr.Exact p t e`: `t`, run with `p`'s functions, computes `e`'s value on
-  every row where it does not raise. `Lowering.lower_exact` proves it for every
-  expression and its lowering.
+  every row where it does not raise.
 * `Rel.Raises p cat t`: some expression of `t` raises on a row `Rel.eval cat p.impl`
   evaluates it on.
 * `Rel.evalI_mapExprs`: a plan whose expressions are each `Exact` computes
-  `Rel.eval`'s rows unless it raises. `Lowering.lowerRel_sound` applies it to
-  a lowered plan, and `Rel.duckdb_shim_sound` to the shimmed plan on DuckDB.
+  `Rel.eval`'s rows unless it raises.
 
 No guard elimination is involved, so this needs neither a contract nor
 `looseSub`. An engine may evaluate an expression on fewer rows than

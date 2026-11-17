@@ -70,7 +70,7 @@ inductive AggFn where
   argument is `pair x y` (rows with a NULL skipped). Engines compute them
   their own way: the model claims some double, or NULL where the definition
   has no value. `CORR` is NULL, as the SQL standard says, for fewer than two
-  pairs or a side whose values are all equal (DuckDB gives NaN there). -/
+  pairs or a side whose values are all equal (some engines give NaN there). -/
   | cov (sample : Bool)
   | corr
   /-- `STRING_AGG(x, sep ORDER BY …)` (Ibis's `group_concat`, #55): the strings
@@ -91,8 +91,7 @@ inductive AggFn where
   between the two neighbours (`contAllowed`). -/
   | quantile (cont : Bool) (num scale : Nat)
   /-- `MODE(x ORDER BY …)` (#53): the most frequent value, and of the values
-  that tie, the first in the measure's `sort` order (as DuckDB breaks ties,
-  by first occurrence). NULLs skipped, NULL without values. Ties in the sort
+  that tie, the first in the measure's `sort` order (by first occurrence). NULLs skipped, NULL without values. Ties in the sort
   order make it depend on the engine, as for `pick`. -/
   | mode
   deriving Repr, DecidableEq
@@ -460,11 +459,11 @@ def FloatCode.nextDown (c : Int) : Int :=
 /-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
 read as the double nearest to it (`ofDecimal`, correctly rounded at every
 scale; `fdiv num 10^scale` would equal it only while both operands are exact,
-`num < 2⁵³` and `scale ≤ 22`): Polars's `float_idx = (n − 1.0) · q` and Spark's
-`position = (n − 1) · p` (polars-quantile, spark-quantile). It misses a whole
+`num < 2⁵³` and `scale ≤ 22`): `float_idx = (n − 1.0) · q`
+(polars-quantile, spark-quantile). It misses a whole
 exact position by an ulp for some `q` (`n = 26`, `q = 0.28`).
 
-Polars adds the null count inside the sum, `float_idx = (n − 1)·q + nulls`,
+With the null count added inside the sum (polars-quantile), `float_idx = (n − 1)·q + nulls`,
 over the array that holds the nulls first. This is the position over the
 values without nulls: the rounded sum is `(n − 1)·q` rounded then shifted by
 the whole number `nulls` and rounded again, and rounding is monotone with the
@@ -487,8 +486,8 @@ def contNeighboursD (num scale : Nat) (s : List Value) : Option (Int × Int × I
     (intAt s (FloatCode.floorNat f + 1)).map fun h =>
       (l, h, FloatCode.fsub f (FloatCode.ofInt ((FloatCode.floorNat f : Nat) : Int)))
 
-/-- `l·(1 − w) + h·w` with native doubles, as DuckDB interpolates doubles,
-kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
+/-- `l·(1 − w) + h·w` with native doubles
+(duckdb-quantile-cont-interpolation), kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
 D31): rounding may leave them by an ulp. `−∞` with `+∞` gives NaN, which
 the clamp makes `+∞`; the reference raises there (`AggFn.makesNan`, #561),
 so no verified plan sees that value

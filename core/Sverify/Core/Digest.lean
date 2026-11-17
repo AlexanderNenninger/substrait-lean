@@ -3,7 +3,7 @@
 
 The evaluators behind the black boxes `Text.md5` and `Text.sha256`
 (`implemented_by`): the digest of a string's UTF-8 bytes, as lowercase hex,
-which is what DuckDB's `md5` and `sha256` return (RFC 1321, FIPS 180-4).
+(RFC 1321, FIPS 180-4).
 -/
 
 namespace Substrait.Digest
