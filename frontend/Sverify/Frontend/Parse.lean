@@ -760,7 +760,16 @@ def parseConstLiteral (j : Json) : J Const := do
     if p ≤ 6 then return .ts (v * 10 ^ (6 - p))
     else if v % 10 ^ (p - 6) == 0 then return .ts (v / 10 ^ (p - 6))
     else throw "timestamps finer than microseconds are not supported"
-  | (_, n) => return .int (← getInt n)
+  | (k, n) =>
+    let i ← getInt n
+    -- An integer literal holds its tag's width (#1491); the model's integers
+    -- are unbounded, so the width is checked here, where the tag is known.
+    let bits : Nat :=
+      if k == "i8" then 8 else if k == "i16" then 16 else if k == "i32" then 32
+      else if k == "i64" then 64 else 0
+    if bits != 0 && !(decide (-((2 : Int) ^ (bits - 1)) ≤ i) && decide (i < 2 ^ (bits - 1))) then
+      throw s!"{k} literal {i} does not fit {k}"
+    return .int i
 
 /-- `arrow_cast(value, '<Arrow type>')`, as Ibis writes casts for DataFusion. -/
 def arrowCast (c : Const) (ty : String) : Option Const :=
@@ -2568,6 +2577,27 @@ def parseMask (mask : Json) : J (List Nat) := do
       throw "nested projection masks are not supported"
     natD item "field"
 
+/-- Does the value of a `VALUES` cell fit its column's type (#1491)? `NULL`
+fits every type. An integer type takes an integer inside its width, and a
+double, string or boolean type a value of that kind. The other types are not
+compared here. -/
+def literalFits (ty : Json) (v : Value) : Bool :=
+  match v with
+  | .null => true
+  | _ =>
+    match typeKind ty, v with
+    | .int, .int i =>
+      let bits := intBits ty
+      decide (-((2 : Int) ^ (bits - 1)) ≤ i) && decide (i < 2 ^ (bits - 1))
+    | .int, _ => false
+    | .float, .float _ => true
+    | .float, _ => false
+    | .str, .str _ => true
+    | .str, _ => false
+    | .bool, .bool _ => true
+    | .bool, _ => false
+    | _, _ => true
+
 def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   let arity ← schemaArity r
   -- The model's times are microseconds (`typeKind`).
@@ -2584,12 +2614,25 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
       pure (Rel.read name)
     | (_, v) =>
       -- Current encoding: `expressions`; deprecated encoding: `values` of literals.
+      -- A field is a literal: evaluated here with the total evaluator, an
+      -- expression would lose the overflow or division by zero it raises, so a
+      -- computed field is refused, as the SQL lift refuses it (#1491).
       let rows ← match field? v "expressions" with
         | some _ => (← arrD v "expressions").mapM fun row => do
-            (← arrD row "fields").mapM fun e => do pure ((← parseExpr fns [] [] e).eval [])
+            (← arrD row "fields").mapM fun e => do
+              if (field? e "literal").isNone then
+                throw "VALUES of computed values is not supported (a virtual table field is not a literal)"
+              pure ((← parseExpr fns [] [] e).eval [])
         | none => (← arrD v "values").mapM fun row => do
             (← arrD row "fields").mapM fun e => do
               return (← constExpr (← parseConstLiteral e)).eval []
+      -- Each cell holds its column's type, or `--write` would emit a plan no
+      -- consumer accepts.
+      let types := (← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types")
+      for row in rows do
+        for ((cell, ty), i) in (row.zip types).zipIdx do
+          if !literalFits ty cell then
+            throw s!"VALUES column {i} cannot hold {repr cell}: its type is {ty.compress}"
       -- Virtual tables with the same rows share an entry (`Rel.values` has no
       -- schema): where their kinds differ, the column's kind is unknown.
       let key := valuesKey arity rows
