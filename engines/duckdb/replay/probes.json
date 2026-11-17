@@ -7494,6 +7494,13 @@
    "observed": "'2.5', '2.5', 'nan', '3.0', 'nan'; 'nan', 'nan', NULL, NULL, NULL"
   },
   {
+   "construct": "replace-empty-pattern",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT replace('ab', '', 'x'), replace('', '', 'x'), replace(NULL, '', 'x'), replace('ab', '', NULL), replace('', '', NULL), typeof(replace('ab', '', 'x'))",
+   "observed": "'ab', '', NULL, NULL, NULL, 'VARCHAR'"
+  },
+  {
    "construct": "default-collation-nocase",
    "area": "strings",
    "setup": [
