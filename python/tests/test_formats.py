@@ -291,7 +291,12 @@ def test_report_reads(version: str, case: str) -> None:
     report = sv.Report.from_json(doc)
     assert report._proved == doc["proved"]
     # In format 2 `verdict` held the first line, which `summary` holds from format 3.
-    assert report._summary == (doc["summary"] if doc["format"] >= 3 else doc["verdict"])
+    stored = doc["summary"] if doc["format"] >= 3 else doc["verdict"]
+    if stored == "proved" and report.verdict == sv.Verdict.PROVED_WITH_CHECKS:
+        # Written before the first line said "proved with checks" (#1484).
+        stored = f"proved with checks: {len(report.assumed)} assumption"
+        stored += "" if len(report.assumed) == 1 else "s"
+    assert report._summary == stored
     assert [c.label for c in report.ensures] == [c["properties"]["label"] for c in doc["ensures"]]
     assert [n.code for n in report.needs] == [n["code"] for n in doc["needs"]]
     assert set(report.routes) == set(doc["routes"])

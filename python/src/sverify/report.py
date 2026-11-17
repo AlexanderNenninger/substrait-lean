@@ -1432,10 +1432,18 @@ class Report:
 
     @property
     def _summary(self) -> str:
-        """The report's first line: "proved", or "NOT proved: " and what is
-        missing, counted ("1 of 2 postconditions not proved, 1 possible
-        runtime error")."""
-        return "proved" if self._proved else f"NOT proved: {', '.join(self._counts())}"
+        """The report's first line, by the verdict: "proved"; "proved with
+        checks: " and the assumptions that run time checks ("2 assumptions");
+        or "NOT proved: " and what is missing, counted ("1 of 2
+        postconditions not proved, 1 possible runtime error")."""
+        match self.verdict:
+            case Verdict.PROVED:
+                return "proved"
+            case Verdict.PROVED_WITH_CHECKS:
+                k = len(self.assumed)
+                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+            case _:
+                return f"NOT proved: {', '.join(self._counts())}"
 
     def _counts(self) -> list[str]:
         """What keeps the plan from being proved, counted."""
