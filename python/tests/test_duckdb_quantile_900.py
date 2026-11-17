@@ -10,6 +10,7 @@ membership test of its result against the model.
 
 import math
 import random
+from dataclasses import replace
 from fractions import Fraction
 
 import duckdb
@@ -107,3 +108,10 @@ def test_a_position_past_the_double_is_refused():
     with pytest.raises(duckdb.Error, match="quantile position"):
         written([1.0, 2.0], "0.3333333333333333")
     assert written([1.0, 2.0, 3.0], "0.28") == 1.56  # inside the bound at scale 2
+
+
+def test_the_position_check_stays_without_guards():
+    # An engine limit, which `guard_free` cannot prove absent.
+    sql = replace(DUCKDB, guards=False).quantile(True, "x", "0.3333333333333333")
+    with pytest.raises(duckdb.Error, match="quantile position"):
+        CON.execute(f"SELECT {sql} FROM (VALUES (1.0), (2.0)) s(x)").fetchall()

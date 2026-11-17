@@ -200,8 +200,9 @@ class DuckDBDialect(Dialect):
             return value
         whole = f"({n1} * {frac.numerator} % {frac.denominator} = 0)"
         value = self.case_when(whole, f"quantile_disc({v}, {q})", value)
-        if not self.guards:
-            return value
+        # An engine limit the reference does not have, so a `guard_free`
+        # report cannot prove it absent: it is written with `guards=False`
+        # too, like integer `SUM`'s check and `finite`.
         # `RN`'s double is within 2^-52·(n - 1) of the exact position, and a
         # floor of it differs from the exact one only where that reaches the
         # gap 10^-scale to the next whole position: past it, raise.
