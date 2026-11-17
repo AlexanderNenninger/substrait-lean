@@ -1,0 +1,39 @@
+{
+  "id": "duckdb-string-order",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Strings compare by code point; `FALSE` before `TRUE`",
+  "verdict": "code point order, no collation",
+  "area": "strings",
+  "constructs": [
+    "<",
+    "BETWEEN",
+    "GREATEST",
+    "LEAST"
+  ],
+  "settings": {
+    "default_collation": [
+      "BINARY (the default)"
+    ]
+  },
+  "description": "Under the default `BINARY` collation `<`, `BETWEEN`, `GREATEST` and `LEAST` order VARCHAR by its UTF-8 bytes, which is code point order (`'\\uffff'` is below `'\\U0001f600'`, as it is not in UTF-16 order), and BOOLEAN `FALSE < TRUE`. `default_collation` or a column's `COLLATE` changes the order of strings (duckdb-exec-settings, duckdb-string-match-case), so the session stays at the default and a collated column is a different type for the writer.",
+  "reference": "Strings in code point order (Lean's `String` order, `Value.ltB`); booleans `false < true`; `GREATEST` and `LEAST` skip NULL and keep the first of equal values (`Value.pick`).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-17",
+      "method": "replay",
+      "checked_by": "python/tests/test_text.py (Hypothesis rows, and `test_strings_order_by_code_point`)",
+      "evidence": [
+        {
+          "test": "python/tests/test_text.py::test_strings_order_by_code_point"
+        },
+        {
+          "test": "python/tests/test_text.py::test_engines_match_the_oracle"
+        }
+      ],
+      "notes": "The plans of `s < t`, `s > t`, `s BETWEEN 'a' AND t`, `greatest`, `least` of strings and of booleans give Lean's rows when DuckDB runs the SQL the writer prints, on random rows with NULLs and on rows that separate code point order from UTF-16 order."
+    }
+  ]
+}
