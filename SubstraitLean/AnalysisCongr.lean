@@ -85,6 +85,10 @@ theorem Measure.pickFixed_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : St
     (F : String → List Fact) (r : Rel) : Measure.pickFixed c A F r = Measure.pickFixed cat A F r := by
   funext m; simp only [Measure.pickFixed, (Rel.aeval_congr h A F .none false r).1]
 
+theorem WinFn.pickFixed_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (r : Rel) : WinFn.pickFixed c A F r = WinFn.pickFixed cat A F r := by
+  funext f; cases f <;> simp only [WinFn.pickFixed, Measure.pickFixed_congr h A F r]
+
 theorem Rel.detPlan_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : String → List (List Nat)) :
     ∀ r : Rel, r.detPlan c A F K = r.detPlan cat A F K
@@ -107,6 +111,6 @@ theorem Rel.detPlan_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String �
       simp only [detPlan, detPlan_congr h A F K a, detPlan_congr h A F K b]
   | .window r _ _ _ => by
       simp only [detPlan, windowDetAt, detPlan_congr h A F K r, keys_congr h A F K r,
-        arity_congr h r, (aeval_congr h A F .none false r).1]
+        arity_congr h r, (aeval_congr h A F .none false r).1, WinFn.pickFixed_congr h A F r]
 
 end Substrait
