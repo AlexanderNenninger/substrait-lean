@@ -62,6 +62,27 @@ class Unsupported(_Unsupported):
     """
 
 
+RANGE_HINT = "change the constant, or the cast's type, so the value fits"
+MALFORMED_PLAN = (
+    "the plan is malformed or outside what this writer reads; build it with sverify, or fix it"
+)
+
+
+class WriterUnsupported(Unsupported):
+    """The SQL writer does not write a construct of the plan. The message ends
+    with the `hint` where the site has one (a malformed plan: what to fix),
+    otherwise with what the user can do: rewrite the step. A dialect's own
+    refusals (`Dialect.not_written`, `_support.refusal`) name the engine that
+    runs it."""
+
+    def __init__(self, message: str, hint: str | None = None):
+        if hint:
+            message = f"{message}; {hint}"
+        elif "engine=" not in message and "#" not in message:
+            message = f"{message}; rewrite this step"
+        super().__init__(message)
+
+
 # --------------------------------------------------------------------------
 # Dialects
 
@@ -125,7 +146,7 @@ class Dialect:
         row = _functions.BY_NAME[name]
         sql = _functions.sql(row, self.name)
         if isinstance(sql, _functions.No):
-            raise Unsupported(sql.reason)
+            raise WriterUnsupported(sql.reason)
         if sql is None:
             raise self.refused(row.name)
         return sql.format(*args)
@@ -151,7 +172,7 @@ class Dialect:
             return self.decimal_type(kind)
         if isinstance(kind, Lst):
             if kind.elem is None:
-                raise Unsupported("a list whose elements' type is not known")
+                raise WriterUnsupported("a list whose elements' type is not known")
             return f"{self.type_name(kind.elem)}[]"
         return {
             "int": "BIGINT",
@@ -955,7 +976,7 @@ class Dialect:
     def row_ordinal(self) -> str:
         """An expression numbering a base table's rows in a fixed scan order,
         used where Lean's list order matters (below FETCH and windows)."""
-        raise Unsupported(f"{self.name} has no stable row order for tables")
+        raise WriterUnsupported(f"{self.name} has no stable row order for tables")
 
     def subquery(self, select: str, alias: str) -> str:
         return f"({select}) AS {alias}"
@@ -982,7 +1003,7 @@ def _timestamp_text(micros: int) -> str:
     try:
         ts = datetime(1970, 1, 1) + timedelta(microseconds=micros)
     except OverflowError as e:
-        raise Unsupported(f"timestamp {micros}µs is out of range") from e
+        raise WriterUnsupported(f"timestamp {micros}µs is out of range", hint=RANGE_HINT) from e
     # `%Y` is not zero-padded on every platform (glibc writes year 1 as `1`).
     return f"{ts.year:04d}-" + ts.strftime("%m-%d %H:%M:%S.%f")
 
@@ -991,7 +1012,7 @@ def _date_text(days: int) -> str:
     try:
         return (date(1970, 1, 1) + timedelta(days=days)).isoformat()
     except OverflowError as e:
-        raise Unsupported(f"date {days} is out of range") from e
+        raise WriterUnsupported(f"date {days} is out of range", hint=RANGE_HINT) from e
 
 
 # --------------------------------------------------------------------------
@@ -1451,7 +1472,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
     if m.fn in ("dsum", "davg"):
         a = kind(m.arg, cols)
         if not isinstance(a, Dec):
-            raise Unsupported(f"{m.fn} of a non-decimal")
+            raise WriterUnsupported(f"{m.fn} of a non-decimal")
         return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
     if m.fn in ("count", "sum", "iavg", *BIT_AGGS):
         return "int"
@@ -1648,7 +1669,10 @@ def _field(j: dict, k: str) -> Any:
 def _req(j: dict, k: str) -> Any:
     v = _field(j, k)
     if v is None:
-        raise Unsupported(f"missing field '{k}' in {_short(j)}")
+        raise WriterUnsupported(
+            f"missing field '{k}' in {_short(j)}",
+            hint=MALFORMED_PLAN,
+        )
     return v
 
 
@@ -1660,7 +1684,10 @@ def _arr(j: dict, k: str) -> list:
     if v is None:
         return []
     if not isinstance(v, list):
-        raise Unsupported(f"expected an array in '{k}'")
+        raise WriterUnsupported(
+            f"expected an array in '{k}'",
+            hint=MALFORMED_PLAN,
+        )
     return v
 
 
@@ -1671,7 +1698,10 @@ def _int(j: Any) -> int:
 def _nat(j: Any) -> int:
     i = _int(j)
     if i < 0:
-        raise Unsupported(f"expected non-negative integer, got {i}")
+        raise WriterUnsupported(
+            f"expected non-negative integer, got {i}",
+            hint=MALFORMED_PLAN,
+        )
     return i
 
 
@@ -1685,7 +1715,10 @@ def _oneof(what: str, j: dict, keys: Sequence[str]) -> tuple[str, Any]:
         v = _field(j, k)
         if v is not None:
             return k, v
-    raise Unsupported(f"unsupported {what}: {_short(j)}")
+    raise WriterUnsupported(
+        f"unsupported {what}: {_short(j)}",
+        hint=MALFORMED_PLAN,
+    )
 
 
 def _float_lit(e: Expr) -> float | None:
@@ -1890,42 +1923,58 @@ def _cast_const(ty: dict, c: Const) -> Const:
     if _wide_int_decimal(ty):
         if c.tag == "int" or (c.tag == "dec" and c.scale == 0):
             return Const("int", c.value, kind="int")
-        raise Unsupported("cannot cast this value to an integer decimal")
+        raise WriterUnsupported(
+            "cannot cast this value to an integer decimal",
+            hint=MALFORMED_PLAN,
+        )
     match lean:
         case "float":
             f = c.to_float()
             if f is None:
-                raise Unsupported("cannot cast this value to a double")
+                raise WriterUnsupported(
+                    "cannot cast this value to a double",
+                    hint=MALFORMED_PLAN,
+                )
             return Const("flt", f, kind="float")
         case "int":
             i = c.to_int()
             if i is None:
-                raise Unsupported("cannot cast this value to an integer")
+                raise WriterUnsupported(
+                    "cannot cast this value to an integer",
+                    hint=MALFORMED_PLAN,
+                )
             bits = _int_bits(ty)
             if not -(2 ** (bits - 1)) <= i < 2 ** (bits - 1):
-                raise Unsupported(f"cast of {i} to a {bits}-bit integer overflows")
+                raise WriterUnsupported(
+                    f"cast of {i} to a {bits}-bit integer overflows", hint=RANGE_HINT
+                )
             return Const("int", i, kind="int")
         case "time" | "date":
             if c.tag == "str":
                 parse = _parse_timestamp if lean == "time" else _parse_date
                 v = parse(c.value.strip())
                 if v is None:
-                    raise Unsupported(
-                        f"cannot parse {'timestamp' if lean == 'time' else 'date'} '{c.value}'"
+                    raise WriterUnsupported(
+                        f"cannot parse {'timestamp' if lean == 'time' else 'date'} '{c.value}'",
+                        hint=MALFORMED_PLAN,
                     )
                 return Const("int", v, kind=lean)
             if c.tag == "int":
                 return Const("int", c.value, kind=lean)
-            raise Unsupported(
-                f"cannot cast this value to a {'timestamp' if lean == 'time' else 'date'}"
+            raise WriterUnsupported(
+                f"cannot cast this value to a {'timestamp' if lean == 'time' else 'date'}",
+                hint=MALFORMED_PLAN,
             )
         case "str":
             if c.tag == "str":
                 return c
-            raise Unsupported("casts to strings are not supported")
+            raise WriterUnsupported("casts to strings are not supported")
     if isinstance(lean, Dec):
         return _cast_const_decimal(lean, c)
-    raise Unsupported("unsupported cast type")
+    raise WriterUnsupported(
+        "unsupported cast type",
+        hint=MALFORMED_PLAN,
+    )
 
 
 def _cast_const_decimal(t: Dec, c: Const) -> Const:
@@ -1942,12 +1991,15 @@ def _cast_const_decimal(t: Dec, c: Const) -> Const:
             )
         case "flt":
             if not math.isfinite(c.value):
-                raise Unsupported("cannot cast NaN or infinity to a decimal")
+                raise WriterUnsupported("cannot cast NaN or infinity to a decimal", hint=RANGE_HINT)
             m = _round_half_away(Fraction(c.value * 10.0**t.s))
         case _:
-            raise Unsupported("cannot cast this value to a decimal")
+            raise WriterUnsupported(
+                "cannot cast this value to a decimal",
+                hint=MALFORMED_PLAN,
+            )
     if abs(m) >= 10**t.p:
-        raise Unsupported(f"cast to DECIMAL({t.p}, {t.s}) overflows")
+        raise WriterUnsupported(f"cast to DECIMAL({t.p}, {t.s}) overflows", hint=RANGE_HINT)
     return Const("dec", m, t.s, t, t.p)
 
 
@@ -2028,7 +2080,10 @@ def _const_literal(j: dict) -> Const:
             return Const("int", v, kind=kind)
         case "int":
             return Const("int", v[1], kind="int")
-    raise Unsupported(f"unsupported literal: {_short(j)}")
+    raise WriterUnsupported(
+        f"unsupported literal: {_short(j)}",
+        hint=MALFORMED_PLAN,
+    )
 
 
 def _arrow_cast(c: Const, ty: str) -> Const | None:
@@ -2097,10 +2152,10 @@ def _list_lit(lit: Any) -> Lit:
         else:
             c = _const_literal(j)
             if c.tag == "dec":
-                raise Unsupported("a list of decimals has no SQL form yet")
+                raise WriterUnsupported("a list of decimals has no SQL form yet")
             e = _lit(c)
             if not isinstance(e, Lit):
-                raise Unsupported("a list element that is not a constant")
+                raise WriterUnsupported("a list element that is not a constant")
         vals.append(e.value)
         ks.append(e.kind)
     return Lit(tuple(vals), Lst(next((k for k in ks if k is not None), None)))
@@ -2121,7 +2176,10 @@ def _lit(c: Const) -> Expr:
             return Lit(None, c.kind)
     if c.tag == "dec":
         return DecOp("lit", (), c.precision, c.scale, c.value)
-    raise Unsupported(f"unsupported constant {c.tag}")
+    raise WriterUnsupported(
+        f"unsupported constant {c.tag}",
+        hint=MALFORMED_PLAN,
+    )
 
 
 @dataclass
@@ -2136,7 +2194,10 @@ class _Parser:
 
     def name(self, anchor: int) -> str:
         if anchor not in self.fns:
-            raise Unsupported(f"function reference {anchor} is not declared in extensions")
+            raise WriterUnsupported(
+                f"function reference {anchor} is not declared in extensions",
+                hint=MALFORMED_PLAN,
+            )
         return self.fns[anchor]
 
     # Constants
@@ -2184,7 +2245,7 @@ class _Parser:
         match key:
             case "selection":
                 if _field(v, "outerReference") is not None:
-                    raise Unsupported("outer references are not supported")
+                    raise WriterUnsupported("outer references are not supported")
                 ref = _req(v, "directReference")
                 if (base := _field(v, "expression")) is not None:
                     # Elements of a list (#94), segment by segment.
@@ -2218,7 +2279,7 @@ class _Parser:
                     if g is not None and inner is not None and _base_name(inner) == "regexp_match":
                         gargs = [_req(a, "value") for a in _arr(g, "arguments")]
                         if len(gargs) != 2:
-                            raise Unsupported("regexp_match with flags is not supported")
+                            raise WriterUnsupported("regexp_match with flags is not supported")
                         pat = self.const(gargs[1])
                         if pat is None or pat.tag != "str":
                             raise Unsupported("regular expressions must be constants")
@@ -2236,10 +2297,16 @@ class _Parser:
                     _arg_kind(cols.lean, a, e) != "date"
                     for a, e in zip(arg_js, parsed, strict=True)
                 ):
-                    raise Unsupported("date_diff takes two dates")
+                    raise WriterUnsupported(
+                        "date_diff takes two dates",
+                        hint=MALFORMED_PLAN,
+                    )
                 if name == "date_bin":
                     if len(arg_js) != 3:
-                        raise Unsupported("date_bin takes an interval, a timestamp and an origin")
+                        raise WriterUnsupported(
+                            "date_bin takes an interval, a timestamp and an origin",
+                            hint=MALFORMED_PLAN,
+                        )
                     iv = _interval_lit(arg_js[0])
                     origin = self.const(arg_js[2])
                     if iv is None or iv[0] != 0 or iv[1] <= 0:
@@ -2273,7 +2340,7 @@ class _Parser:
                             return replace(call, op="day_part")
                         if isinstance(call, Un) and call.op == "date_trunc":
                             if call.param not in ("day", "week", "month", "quarter", "year"):
-                                raise Unsupported(
+                                raise WriterUnsupported(
                                     f"date_trunc of a date to a {call.param} is not supported"
                                 )
                             return replace(call, op="day_trunc")
@@ -2306,7 +2373,7 @@ class _Parser:
                 # `Parse.wideIntDecimal`: other decimal results are not modelled.
                 decimal = isinstance(out_ty, dict) and "decimal" in out_ty
                 if decimal and not _wide_int_decimal(out_ty):
-                    raise Unsupported(f"{name}: decimal results are not supported")
+                    raise WriterUnsupported(f"{name}: decimal results are not supported")
                 out = _lean_type_kind(out_ty)
                 floats = (
                     "add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
@@ -2321,7 +2388,10 @@ class _Parser:
                 )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
-                    raise Unsupported("sverify_fmod takes doubles")
+                    raise WriterUnsupported(
+                        "sverify_fmod takes doubles",
+                        hint=MALFORMED_PLAN,
+                    )
                 if name in (*BITWISE, "bitwise_not", "shift_left", "shift_right") and has_float:
                     raise Unsupported(f"{name} is only supported on integers")
                 # An integer constant next to a double, or in a double
@@ -2395,7 +2465,7 @@ class _Parser:
                     # otherwise (`Text.substrWrap`, #209).
                     start = _option(v, "negative_start", "WRAP_FROM_END")
                     if start not in ("WRAP_FROM_END", "LEFT_OF_BEGINNING"):
-                        raise Unsupported(f"substring with negative_start = {start}")
+                        raise WriterUnsupported(f"substring with negative_start = {start}")
                     if start == "LEFT_OF_BEGINNING":
                         out_e = replace(out_e, param=start)
                 return out_e
@@ -2429,10 +2499,10 @@ class _Parser:
                 # smaller scale; to an integer truncates toward zero.
                 if isinstance(target, Dec):
                     if or_null:
-                        raise Unsupported("TRY_CAST to DECIMAL is not supported yet")
+                        raise WriterUnsupported("TRY_CAST to DECIMAL is not supported yet")
                     if k in ("int", "float") or isinstance(k, Dec):
                         return DecOp("cast", (e,), target.p, target.s)
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         f"unsupported cast from {k} to DECIMAL({target.p}, {target.s})"
                     )
                 if isinstance(k, Dec):
@@ -2443,13 +2513,13 @@ class _Parser:
                         if bits == 64 and k.p - k.s <= 18:
                             return t
                         if or_null:
-                            raise Unsupported(
+                            raise WriterUnsupported(
                                 "TRY_CAST of a DECIMAL to an integer is not supported yet"
                             )
                         return Un("narrow", t, digits=bits)
                     if target == "float":
                         return Un("dtof", e)
-                    raise Unsupported(f"unsupported cast from DECIMAL to {target}")
+                    raise WriterUnsupported(f"unsupported cast from DECIMAL to {target}")
                 if k == "time" and _interval_type(_req(v, "type")):
                     return e
                 if target == "float" and k == "int":
@@ -2479,7 +2549,7 @@ class _Parser:
                     return Un("narrow_or_null" if or_null else "narrow", e, digits=bits)
                 if target == k and target != "other":
                     return e
-                raise Unsupported(f"unsupported cast from {k} to {target}")
+                raise WriterUnsupported(f"unsupported cast from {k} to {target}")
             case "singularOrList":
                 value = self.expr(_req(v, "value"), cols)
                 is_float = lean_expr_kind(value, cols.lean) == "float"
@@ -2493,7 +2563,10 @@ class _Parser:
                 for o in opts[1:]:
                     acc = Bin("or", acc, Bin("eq", value, o))
                 return acc
-        raise Unsupported(f"unsupported expression: {key}")
+        raise WriterUnsupported(
+            f"unsupported expression: {key}",
+            hint=MALFORMED_PLAN,
+        )
 
     def temporal_arith(self, name: str, arg_js: list, cols: _Cols, out: LeanKind) -> Expr | None:
         """`temporalArith`: `x ± interval` of a DATE, or of a timestamp and an
@@ -2512,12 +2585,12 @@ class _Parser:
                     "a time of day plus an interval is only supported for constant intervals"
                 )
             if iv[0] != 0:
-                raise Unsupported("a time of day plus months or years is not supported")
+                raise WriterUnsupported("a time of day plus months or years is not supported")
             return Un("time_add", a, digits=(-iv[1] if sub else iv[1]) % 86_400_000_000)
         if ka not in ("date", "time"):
             return None
         if ka == "date" and out == "time":
-            raise Unsupported("a date plus an interval typed as a timestamp is not supported")
+            raise WriterUnsupported("a date plus an interval typed as a timestamp is not supported")
         iv = _interval_lit(bj)
         b = Lit(iv[1], "interval") if iv is not None else self.expr(bj, cols)
         if ka == "date" and _arg_kind(cols.lean, bj, b) == "date":
@@ -2540,11 +2613,11 @@ class _Parser:
         match rest:
             case Lit(value=int(us)):
                 if us % US_PER_DAY:
-                    raise Unsupported("a date plus a part of a day is not supported")
+                    raise WriterUnsupported("a date plus a part of a day is not supported")
                 days: Expr = Lit(us // US_PER_DAY, "int")
             case Bin(op="mul", left=n, right=Lit(value=int(us))) if not isinstance(us, bool):
                 if us % US_PER_DAY or us == 0:
-                    raise Unsupported("a date plus a part of a day is not supported")
+                    raise WriterUnsupported("a date plus a part of a day is not supported")
                 if lean_expr_kind(n, cols.lean) != "int" and _reads_field(n):
                     raise Unsupported(
                         "a date plus an interval is only supported with an integer count of days"
@@ -2589,7 +2662,10 @@ class _Parser:
         }
         d = d or "SORT_DIRECTION_UNSPECIFIED"
         if d not in dirs:
-            raise Unsupported(f"unsupported sort direction: {d}")
+            raise WriterUnsupported(
+                f"unsupported sort direction: {d}",
+                hint=MALFORMED_PLAN,
+            )
         return SortKey(col, *dirs[d])
 
     def window(self, w: dict, cols: _Cols) -> tuple[tuple[int, ...], tuple[SortKey, ...], WinFn]:
@@ -2600,7 +2676,10 @@ class _Parser:
         match name:
             case "row_number":
                 if args:
-                    raise Unsupported("row_number takes no arguments")
+                    raise WriterUnsupported(
+                        "row_number takes no arguments",
+                        hint=MALFORMED_PLAN,
+                    )
                 return part, sort, WinFn("row_number")
             case "lag" | "lead":
                 if not args:
@@ -2612,7 +2691,7 @@ class _Parser:
                     if k is None or k.tag != "int":
                         raise Unsupported(f"{name} offsets must be integer constants")
                     if k.value < 0:
-                        raise Unsupported(f"negative {name} offset")
+                        raise WriterUnsupported(f"negative {name} offset")
                     offset = k.value
                 default = Lit(None, None)
                 if len(args) > 2:
@@ -2631,13 +2710,19 @@ class _Parser:
                 return part, sort, WinFn(name, c, offset, default)
             case "rank" | "dense_rank" | "percent_rank" | "cume_dist":
                 if args:
-                    raise Unsupported(f"{name} takes no arguments")
+                    raise WriterUnsupported(
+                        f"{name} takes no arguments",
+                        hint=MALFORMED_PLAN,
+                    )
                 return part, sort, WinFn(name)
             case "ntile":
                 return part, sort, WinFn("ntile", offset=self.positive(args, 0, name))
             case "first_value" | "last_value" | "nth_value":
                 if len(args) != (2 if name == "nth_value" else 1):
-                    raise Unsupported(f"{name} takes a column")
+                    raise WriterUnsupported(
+                        f"{name} takes a column",
+                        hint=MALFORMED_PLAN,
+                    )
                 c = self.column(args[0], cols, "function arguments")
                 n = self.positive(args, 1, name) if name == "nth_value" else 0
                 return part, sort, WinFn(name, c, n, frame=self.frame(w, cols, sort))
@@ -2650,7 +2735,7 @@ class _Parser:
                 keys = ("functionReference", "arguments", "outputType", "options")
                 m = self.measure({"measure": {k: w[k] for k in keys if k in w}}, cols)
                 if m.distinct:
-                    raise Unsupported("DISTINCT window aggregates are not supported")
+                    raise WriterUnsupported("DISTINCT window aggregates are not supported")
                 if m.fn == "davg":
                     raise Unsupported(
                         "avg of DECIMAL over a window is written as SUM and COUNT (#27)"
@@ -2660,7 +2745,10 @@ class _Parser:
                         "window aggregates of expressions are not supported; use a column"
                     )
                 return part, sort, WinFn("agg", measure=m, frame=self.frame(w, cols, sort))
-        raise Unsupported(f"unsupported window function: {name}")
+        raise WriterUnsupported(
+            f"unsupported window function: {name}",
+            hint=MALFORMED_PLAN,
+        )
 
     def positive(self, args: list, i: int, name: str) -> int:
         k = self.const(args[i]) if i < len(args) else None
@@ -2676,7 +2764,7 @@ class _Parser:
         elif bt in (None, "BOUNDS_TYPE_RANGE", "BOUNDS_TYPE_UNSPECIFIED"):
             rng = True
         else:
-            raise Unsupported(f"unsupported window bounds type: {bt}")
+            raise WriterUnsupported(f"unsupported window bounds type: {bt}")
 
         def bound(b: Any) -> tuple[str, int]:
             if b is None:
@@ -2688,7 +2776,7 @@ class _Parser:
                 return ("preceding", 0)
             k = _int(_field(v, "offset") or 0)
             if k < 0:
-                raise Unsupported("negative frame offsets are not supported")
+                raise WriterUnsupported("negative frame offsets are not supported")
             return (key, k)
 
         lo, hi = bound(_field(w, "lowerBound")), bound(_field(w, "upperBound"))
@@ -2789,7 +2877,7 @@ class _Parser:
         if mask is not None:
             items = _arr(_req(mask, "select"), "structItems")
             if any(_field(i, "child") is not None for i in items):
-                raise Unsupported("nested projection masks are not supported")
+                raise WriterUnsupported("nested projection masks are not supported")
             base = Emit(base, tuple(_nat_d(i, "field") for i in items))
         return base
 
@@ -2810,9 +2898,12 @@ class _Parser:
                 # sverify's unnest (`docs/nested-values.md`, #94).
                 detail = _req(r, "detail")
                 if detail.get("@type") != "type.googleapis.com/sverify.Unnest":
-                    raise Unsupported(f"unsupported extension relation {detail.get('@type')}")
+                    raise WriterUnsupported(
+                        f"unsupported extension relation {detail.get('@type')}",
+                        hint=MALFORMED_PLAN,
+                    )
                 if detail.get("keepEmpty"):
-                    raise Unsupported("unnest keeping empty lists is not supported")
+                    raise WriterUnsupported("unnest keeping empty lists is not supported")
                 inp = self.rel(_req(r, "input"))
                 col = _nat_d(detail, "column")
                 if col >= arity(inp) or not isinstance(lean_kinds(inp)[col], Lst):
@@ -2834,7 +2925,7 @@ class _Parser:
                         continue
                     needles = _arr(ip, "needles")
                     if len(needles) != 1:
-                        raise Unsupported("IN with several needles is not supported")
+                        raise WriterUnsupported("IN with several needles is not supported")
                     needle = self.expr(needles[0], cols)
                     hay = self.rel(_req(ip, "haystack"))
                     if len(lean_kinds(hay)) != 1:
@@ -2861,7 +2952,7 @@ class _Parser:
             case "join":
                 t = _field(r, "type")
                 if _field(r, "postJoinFilter") is not None:
-                    raise Unsupported("JoinRel.postJoinFilter is not supported")
+                    raise WriterUnsupported("JoinRel.postJoinFilter is not supported")
                 left, right = self.rel(_req(r, "left")), self.rel(_req(r, "right"))
                 lc, rc = self.cols(left), self.cols(right)
                 n, m = len(lc.lean), len(rc.lean)
@@ -2892,13 +2983,17 @@ class _Parser:
                         pad = Project(Semi(right, left, True, swapped), (Lit(None, None),) * n)
                         core = UnionAll(Join(left, right, "left", on), Emit(pad, back))
                     case _:
-                        raise Unsupported(
-                            f"unsupported join type: {'unspecified' if t is None else t}"
+                        raise WriterUnsupported(
+                            f"unsupported join type: {'unspecified' if t is None else t}",
+                            hint=MALFORMED_PLAN,
                         )
             case "fetch":
                 offset = self.fetch_int(r, "offset")
                 if offset is not None and offset < 0:
-                    raise Unsupported("negative FetchRel offset")
+                    raise WriterUnsupported(
+                        "negative FetchRel offset",
+                        hint=MALFORMED_PLAN,
+                    )
                 count = self.fetch_int(r, "count")
                 core = Fetch(
                     self.rel(_req(r, "input")),
@@ -2914,7 +3009,10 @@ class _Parser:
             case _:
                 inputs = [self.rel(i) for i in _arr(r, "inputs")]
                 if not inputs:
-                    raise Unsupported("SetRel without inputs")
+                    raise WriterUnsupported(
+                        "SetRel without inputs",
+                        hint=MALFORMED_PLAN,
+                    )
                 core = inputs[0]
                 for i in inputs[1:]:
                     core = UnionAll(core, i)
@@ -2922,8 +3020,9 @@ class _Parser:
                 if op == "SET_OP_UNION_DISTINCT":
                     core = Distinct(core)
                 elif op != "SET_OP_UNION_ALL":
-                    raise Unsupported(
-                        f"unsupported set operation: {'unspecified' if op is None else op}"
+                    raise WriterUnsupported(
+                        f"unsupported set operation: {'unspecified' if op is None else op}",
+                        hint=MALFORMED_PLAN,
                     )
         common = _field(r, "common")
         emit = _field(common, "emit") if common is not None else None
@@ -2947,7 +3046,7 @@ class _Parser:
         if not groupings:
             groups = []
         elif len(groupings) > 1:
-            raise Unsupported("grouping sets are not supported")
+            raise WriterUnsupported("grouping sets are not supported")
         else:
             g = groupings[0]
             refs, exprs = _field(g, "expressionReferences"), _field(g, "groupingExpressions")
@@ -2962,7 +3061,10 @@ class _Parser:
                     for k in _arr(g, "expressionReferences"):
                         k = _nat(k)
                         if k >= len(top):
-                            raise Unsupported(f"grouping expression {k} does not exist")
+                            raise WriterUnsupported(
+                                f"grouping expression {k} does not exist",
+                                hint=MALFORMED_PLAN,
+                            )
                         js.append(top[k])
                 else:
                     js = _arr(g, "groupingExpressions")
@@ -2992,14 +3094,14 @@ class _Parser:
             elif k == "int":
                 tys.append((19, 0))
             else:
-                raise Unsupported(f"{name} of a DECIMAL and a non-number is not supported")
+                raise WriterUnsupported(f"{name} of a DECIMAL and a non-number is not supported")
         declared = _lean_type_kind(out_ty)
         dp = declared.p if isinstance(declared, Dec) else None
 
         def check_scale(sc: int) -> None:
             # A plan that declares a smaller scale rounds, which is not modelled.
             if isinstance(declared, Dec) and declared.s != sc:
-                raise Unsupported(
+                raise WriterUnsupported(
                     f"{name}: a DECIMAL result of scale {declared.s} where the exact one has {sc} "
                     "is not supported"
                 )
@@ -3014,7 +3116,7 @@ class _Parser:
             case "multiply", [a, b], [(p1, s1), (p2, s2)]:
                 sc = s1 + s2
                 if sc > 38:
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         "a DECIMAL product with more than 38 decimal places is not supported"
                     )
                 check_scale(sc)
@@ -3046,14 +3148,17 @@ class _Parser:
         m = _req(mj, "measure")
         name = _base_name(self.name(_nat_d(m, "functionReference")))
         if _arr(m, "sorts") and name not in ("first", "last", "string_agg", "array_agg", "mode"):
-            raise Unsupported(f"ordered aggregates are not supported: {name}")
+            raise WriterUnsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
         if name == "mode" and not sort:
-            raise Unsupported(f"{name} without ORDER BY is not supported")
+            raise WriterUnsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
                        "AGGREGATION_INVOCATION_DISTINCT"):  # fmt: skip
-            raise Unsupported(f"unsupported aggregate invocation: {inv}")
+            raise WriterUnsupported(
+                f"unsupported aggregate invocation: {inv}",
+                hint=MALFORMED_PLAN,
+            )
         f = _field(mj, "filter")
         cond = None if f is None else self.expr(f, cols)
         args = [_req(a, "value") for a in _arr(m, "arguments")]
@@ -3082,7 +3187,10 @@ class _Parser:
         elif not args:
             raise Unsupported(f"{name} needs an argument")
         else:
-            raise Unsupported(f"{name} takes one argument")
+            raise WriterUnsupported(
+                f"{name} takes one argument",
+                hint=MALFORMED_PLAN,
+            )
         # A quantile's fraction (`Parse.parseMeasure`, #53): a constant decimal
         # in [0, 1]; `median` is the 0.5 quantile.
         q = (0, 0)
@@ -3102,12 +3210,15 @@ class _Parser:
         # not NULL (#53).
         if name in ("arg_min", "arg_max"):
             if len(args) != 2:
-                raise Unsupported(f"{name} takes a value and a column to order by")
+                raise WriterUnsupported(
+                    f"{name} takes a value and a column to order by",
+                    hint=MALFORMED_PLAN,
+                )
             by = self.expr(args[1], cols)
             if not isinstance(by, Field):
                 raise Unsupported(f"{name} orders by a column only")
             if inv == "AGGREGATION_INVOCATION_DISTINCT":
-                raise Unsupported(f"{name}(DISTINCT …) is not supported")
+                raise WriterUnsupported(f"{name}(DISTINCT …) is not supported")
             sort = (SortKey(by.index, name == "arg_max", False),)
             keep = Un("not", Un("is_null", by))
             cond = keep if cond is None else Bin("and", cond, keep)
@@ -3130,7 +3241,7 @@ class _Parser:
             and "outputType" in m
             and _lean_type_kind(m["outputType"]) != "float"
         ):
-            raise Unsupported("avg with a non-double result is not supported")
+            raise WriterUnsupported("avg with a non-double result is not supported")
         fn: Literal[
             "count",
             "sum",
@@ -3167,7 +3278,7 @@ class _Parser:
                 fn = "dsum"
             case "avg", Dec():
                 if k.s > 34:
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         "avg of a DECIMAL with more than 34 decimal places is not supported"
                     )
                 fn = "davg"
@@ -3196,14 +3307,14 @@ class _Parser:
                 if k == "int":
                     arg = Un("itof", arg)
             case (("median" | "quantile_cont"), _):
-                raise Unsupported(f"{name} of a value that is not a number is not supported")
+                raise WriterUnsupported(f"{name} of a value that is not a number is not supported")
             case (
                 ("quantile_disc" | "mode"),
                 (Dec() | "int" | "float" | "str" | "bool" | "time" | "date"),
             ):
                 fn = name
             case (("quantile_disc" | "mode"), _):
-                raise Unsupported(f"{name} of this type is not supported")
+                raise WriterUnsupported(f"{name} of this type is not supported")
             case (("arg_min" | "arg_max"), _):
                 fn = "first"
             # NULLs are skipped (`Measure.inputs`), in the measure's order (#94).
@@ -3220,12 +3331,15 @@ class _Parser:
             case (("min" | "max"), ("int" | "float" | "str" | "bool" | "time" | "date")):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
-                raise Unsupported(f"{name} of this type is not supported")
+                raise WriterUnsupported(f"{name} of this type is not supported")
             # A black box (#325): NULLs skipped, its row's `empty` without values.
             case _ if name in black_box.AGGREGATES:
                 fn = "black_box"
             case _:
-                raise Unsupported(f"unsupported aggregate function: {name}")
+                raise WriterUnsupported(
+                    f"unsupported aggregate function: {name}",
+                    hint=MALFORMED_PLAN,
+                )
         bbox = name if fn == "black_box" else ""
         return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort, sep, bbox, q)
 
@@ -3261,7 +3375,10 @@ def _values_kinds(rows: tuple, schema: tuple[Kind | None, ...]) -> tuple[Kind | 
         nonnull = [e for e in values if not (isinstance(e, Lit) and e.value is None)]
         seen = {expr_kind(e, []) for e in nonnull} - {None}
         if len(seen) > 1:
-            raise Unsupported(f"virtual table column {j} mixes {sorted(seen)}")  # type: ignore[type-var]
+            raise WriterUnsupported(
+                f"virtual table column {j} mixes {sorted(seen)}",  # type: ignore[type-var]
+                hint=MALFORMED_PLAN,
+            )
         out.append(seen.pop() if seen else k)
     return tuple(out)
 
@@ -3438,7 +3555,10 @@ def _call(name: str, args: list[Expr]) -> Expr:
     for call in CALLS:
         if (out := call(name, args)) is not None:
             return out
-    raise Unsupported(f"unsupported function {name}/{len(args)}")
+    raise WriterUnsupported(
+        f"unsupported function {name}/{len(args)}",
+        hint=MALFORMED_PLAN,
+    )
 
 
 def parse_format(fmt: str) -> list[str] | None:
@@ -3534,7 +3654,7 @@ def _div_by_zero(
         return q
     fdiv = isinstance(q, Bin) and q.op == "fdiv"
     if mode not in ("IEEE", "LIMIT", "NULL") or (not fdiv and mode != "NULL"):
-        raise Unsupported(f"on_division_by_zero = {mode} is not supported")
+        raise WriterUnsupported(f"on_division_by_zero = {mode} is not supported")
     lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
     nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
     is_nan = Bin("eq", a, nan)
@@ -3581,7 +3701,10 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return Un("fround", a) if d == 0 else Un("froundTo", a, d)
     if (out := table_call(name, args, double=True)) is not None:
         return out
-    raise Unsupported(f"unsupported double function {name}/{len(args)}")
+    raise WriterUnsupported(
+        f"unsupported double function {name}/{len(args)}",
+        hint=MALFORMED_PLAN,
+    )
 
 
 @dataclass
@@ -3595,7 +3718,10 @@ def parse_plan(plan: dict) -> Plan:
     p = _Parser(plan)
     root = next((_field(r, "root") for r in _arr(plan, "relations") if _field(r, "root")), None)
     if root is None:
-        raise Unsupported("plan has no root relation")
+        raise WriterUnsupported(
+            "plan has no root relation",
+            hint=MALFORMED_PLAN,
+        )
     rel = p.rel(_req(root, "input"))
     names = _arr(root, "names")
     if not all(isinstance(n, str) for n in names):
@@ -3677,7 +3803,10 @@ def unchecked_slots(r: Rel, marks: dict) -> dict[int, frozenset[int]]:
             or m.get("node") != type(x).__name__
             or len(m.get("inputs", ())) != len(kids)
         ):
-            raise Unsupported("the unchecked expressions are for another plan")
+            raise WriterUnsupported(
+                "the unchecked expressions are for another plan",
+                hint=MALFORMED_PLAN,
+            )
         out[id(x)] = frozenset(m.get("slots", ()))
         for k, mk in zip(kids, m["inputs"], strict=True):
             walk(k, mk)
@@ -3748,7 +3877,7 @@ class _Writer:
         d = self.d
         n = arity(r)
         if n == 0:
-            raise Unsupported("relations without columns have no SQL form")
+            raise WriterUnsupported("relations without columns have no SQL form")
         match r:
             case Read(name=name, columns=columns):
                 if len(columns) != n:
@@ -3763,8 +3892,9 @@ class _Writer:
                 cols = [self.c(i) for i in range(n)] + ([d.quote(ORD)] if ordered else [])
                 for row in rows:
                     if len(row) != n:
-                        raise Unsupported(
-                            f"a virtual table row has {len(row)} fields, expected {n}"
+                        raise WriterUnsupported(
+                            f"a virtual table row has {len(row)} fields, expected {n}",
+                            hint=MALFORMED_PLAN,
                         )
                 if not rows:
                     items = [f"{d.null(k)} AS {self.c(i)}" for i, k in enumerate(ks)]
@@ -3810,7 +3940,10 @@ class _Writer:
                 a = self.alias()
                 m = arity(i)
                 if any(j >= m for j in mapping):
-                    raise Unsupported(f"emit refers to a column beyond the input's {m}")
+                    raise WriterUnsupported(
+                        f"emit refers to a column beyond the input's {m}",
+                        hint=MALFORMED_PLAN,
+                    )
                 items = [f"{self.ref(a, self.c(j))} AS {self.c(k)}" for k, j in enumerate(mapping)]
                 if ordered:
                     items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
@@ -3851,7 +3984,10 @@ class _Writer:
                 )
             case UnionAll(left=left, right=right):
                 if arity(left) != arity(right):
-                    raise Unsupported("UNION ALL inputs have different numbers of columns")
+                    raise WriterUnsupported(
+                        "UNION ALL inputs have different numbers of columns",
+                        hint=MALFORMED_PLAN,
+                    )
                 if not ordered:
                     branches = []
                     for b in (left, right):
@@ -3913,7 +4049,10 @@ class _Writer:
                 a = self.alias()
                 ks = kinds(i)
                 if any(k.col >= n for k in sort):
-                    raise Unsupported("a sort key refers to a column beyond its input")
+                    raise WriterUnsupported(
+                        "a sort key refers to a column beyond its input",
+                        hint=MALFORMED_PLAN,
+                    )
                 keys = self.sort_keys(a, sort, ks)
                 items = self.passthrough(a, n, False)
                 if ordered:
@@ -3927,7 +4066,10 @@ class _Writer:
                 return self.distinct(i, ordered)
             case Aggregate(input=i, groups=gs, measures=ms):
                 return self.aggregate(i, gs, ms, ordered, 0 in self.unchecked.get(id(r), ()))
-        raise Unsupported(f"unsupported relation {type(r).__name__}")
+        raise WriterUnsupported(
+            f"unsupported relation {type(r).__name__}",
+            hint=MALFORMED_PLAN,
+        )
 
     def aggregate(
         self,
@@ -4001,7 +4143,9 @@ class _Writer:
             ms.fn in ("first", "last", "string_agg", "collect", "mode") for ms in measures
         )
         if picks and any(ms.distinct for ms in measures):
-            raise Unsupported("an ordered aggregate next to a DISTINCT measure is not supported")
+            raise WriterUnsupported(
+                "an ordered aggregate next to a DISTINCT measure is not supported"
+            )
         needs = needs or picks
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
@@ -4068,7 +4212,7 @@ class _Writer:
                 return d.black_box_agg(row, v)
             case "dsum" | "davg":
                 if not isinstance(kind, Dec):
-                    raise Unsupported(f"{m.fn} of a non-decimal")
+                    raise WriterUnsupported(f"{m.fn} of a non-decimal")
                 if m.fn == "dsum":
                     return d.decimal_sum(v, dsum_kind(kind))
                 return d.decimal_avg(v, kind, davg_kind(kind))
@@ -4205,7 +4349,10 @@ class _Writer:
             or any(k.col >= m for k in sort)
             or any(f.reads and f.col >= m for f in fns)
         ):
-            raise Unsupported("window refers to a column beyond its input")
+            raise WriterUnsupported(
+                "window refers to a column beyond its input",
+                hint=MALFORMED_PLAN,
+            )
 
         def col(j: int) -> str:
             return self.ref(a, self.c(j))
@@ -4250,7 +4397,7 @@ class _Writer:
                 # A bare literal: Spark's NTILE takes an INT, and the count is
                 # a positive constant (`positive`).
                 if f.offset > 2**31 - 1:
-                    raise Unsupported("NTILE of more than 2147483647 buckets")
+                    raise WriterUnsupported("NTILE of more than 2147483647 buckets")
                 sql = f"NTILE({int(f.offset)}) {over}"
             elif f.fn in ("percent_rank", "cume_dist"):
                 n = f"COUNT(*) {whole()}"
@@ -4343,7 +4490,7 @@ class _Writer:
             case "dsum":
                 a = expr_kind(m.arg, ks)
                 if not isinstance(a, Dec):
-                    raise Unsupported("dsum of a non-decimal")
+                    raise WriterUnsupported("dsum of a non-decimal")
                 return d.decimal_window_sum(v, w, dsum_kind(a))
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 return self.window_var(m.fn, v, w)
@@ -4399,8 +4546,9 @@ class _Writer:
         match e:
             case Field(index=i):
                 if i >= n:
-                    raise Unsupported(
-                        f"field reference ${i} is out of range (the input has {n} columns)"
+                    raise WriterUnsupported(
+                        f"field reference ${i} is out of range (the input has {n} columns)",
+                        hint=MALFORMED_PLAN,
                     )
             case Un(arg=a):
                 self.check_refs(a, n)
@@ -4431,7 +4579,9 @@ class _Writer:
             case "float":
                 return d.float_lit(v)
         if not I64_MIN <= v <= I64_MAX:
-            raise Unsupported(f"integer constant {v} does not fit in 64 bits")
+            raise WriterUnsupported(
+                f"integer constant {v} does not fit in 64 bits", hint=RANGE_HINT
+            )
         match k:
             case "time":
                 return d.timestamp_lit(v)
@@ -4611,7 +4761,7 @@ class _Writer:
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
                 if k in ("str", "bool"):
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         f"ordering comparisons of {k} values are not in the Lean model"
                     )
                 ca = ka if isinstance(ka, Dec) else k
@@ -4631,7 +4781,7 @@ class _Writer:
                     raise Unsupported(f"comparison of {ka} with {kb}; cast one side first")
                 if op == "lt" and k in ("str", "bool"):
                     # `BinFn.apply .lt` is only defined on integers (and the codes).
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         f"ordering comparisons of {k} values are not in the Lean model"
                     )
                 sa, sb = go(a, k), go(b, k)
@@ -4648,7 +4798,10 @@ class _Writer:
         for case in EXPRS:
             if (sql := case(self, e, ref, cols, ctx)) is not None:
                 return sql
-        raise Unsupported(f"unsupported expression {e!r}")
+        raise WriterUnsupported(
+            f"unsupported expression {e!r}",
+            hint=MALFORMED_PLAN,
+        )
 
     def decimal(self, e: DecOp, ref: Callable[[int], str], cols: list[Kind | None]) -> str:
         """A decimal operation (#27) as the dialect computes it exactly."""
@@ -4663,7 +4816,10 @@ class _Writer:
                 sa = ka.s if isinstance(ka, Dec) else 0
                 kb = expr_kind(e.args[1], cols)
                 if ka is None or kb is None:
-                    raise Unsupported(f"decimal {op} of an operand of unknown type")
+                    raise WriterUnsupported(
+                        f"decimal {op} of an operand of unknown type",
+                        hint=MALFORMED_PLAN,
+                    )
                 return d.decimal_arith(
                     {"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k, (ka, kb)
                 )
@@ -4676,7 +4832,7 @@ class _Writer:
             case "div", [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 return d.decimal_div(a, b, ka.s if isinstance(ka, Dec) else 0, k)
-        raise Unsupported(f"decimal {e.op} of {len(xs)} arguments")
+        raise WriterUnsupported(f"decimal {e.op} of {len(xs)} arguments")
 
     def operand(
         self, e: Expr, want: Kind, ref: Callable[[int], str], cols: list[Kind | None], what: str
@@ -4893,7 +5049,7 @@ class _Writer:
             sa, sb = self.int_operand(a, ref, cols, name), self.int_operand(b, ref, cols, name)
             return {"add": d.int_add, "sub": d.int_sub, "mul": d.int_mul}[op](sa, sb)
         if "date" in temporal:
-            raise Unsupported(
+            raise WriterUnsupported(
                 "date arithmetic is not in the Lean model (dates are days, intervals microseconds)"
             )
         sa, sb = self.expr(a, ref, cols, ka or kb), self.expr(b, ref, cols, kb or ka)
@@ -4910,7 +5066,7 @@ class _Writer:
                 return d.interval_add(sa, sb)
             case "sub", "interval", "interval":
                 return d.interval_sub(sa, sb)
-        raise Unsupported(f"{ka} {sym} {kb} is not supported")
+        raise WriterUnsupported(f"{ka} {sym} {kb} is not supported")
 
 
 #: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`,
@@ -4947,7 +5103,10 @@ def _is_int_arith(e: Expr) -> bool:
 
 
 def _no_fields() -> str:
-    raise Unsupported("virtual table rows cannot refer to fields")
+    raise WriterUnsupported(
+        "virtual table rows cannot refer to fields",
+        hint=MALFORMED_PLAN,
+    )
 
 
 def to_sql(
@@ -5046,7 +5205,10 @@ def to_sql(
     n = arity(p.root)
     names = p.names or [f"c{i}" for i in range(n)]
     if len(names) != n:
-        raise Unsupported(f"root names {names} do not match the plan's {n} columns")
+        raise WriterUnsupported(
+            f"root names {names} do not match the plan's {n} columns",
+            hint=MALFORMED_PLAN,
+        )
     for k in kinds(p.root):
         dialect.result_kind(k)
     w = _Writer(dialect, deterministic)

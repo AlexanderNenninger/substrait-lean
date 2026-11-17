@@ -16,7 +16,7 @@ import ibis.expr.operations as ops
 from sverify.ibis_substrait._base import Exprs, _sort_key
 from sverify.ibis_substrait.aggregates import measure
 from sverify.ibis_substrait.temporal import _const_interval
-from sverify.plan_json import INTERVAL_MICROS, Json, Unsupported, call, literal
+from sverify.plan_json import INTERVAL_MICROS, Json, ProducerUnsupported, Unsupported, call, literal
 from sverify.plan_json import anchor as _anchor
 
 
@@ -132,7 +132,7 @@ def window(x: Exprs, op: Any) -> Json:
             # Ibis's DataFusion SQL is a plain FIRST_VALUE/LAST_VALUE whatever
             # `include_null` says.
             if func.where is not None or func.order_by:
-                raise Unsupported("first/last with where or order_by is not supported")
+                raise ProducerUnsupported("first/last with where or order_by is not supported")
             name = "first_value" if isinstance(func, ops.First) else "last_value"
             args = [x(func.arg)]
         else:
@@ -143,7 +143,7 @@ def window(x: Exprs, op: Any) -> Json:
     elif isinstance(func, ops.Reduction):
         m = measure(x, func)
         if "filter" in m or m["measure"]["invocation"] != "AGGREGATION_INVOCATION_ALL":
-            raise Unsupported("window aggregates with where= or DISTINCT are not supported")
+            raise ProducerUnsupported("window aggregates with where= or DISTINCT are not supported")
         fn = m["measure"]
         return {
             "windowFunction": {
@@ -157,7 +157,7 @@ def window(x: Exprs, op: Any) -> Json:
             }
         }
     else:
-        raise Unsupported(f"window function {type(func).__name__} is not supported")
+        raise ProducerUnsupported(f"window function {type(func).__name__} is not supported")
     return {
         "windowFunction": {
             "functionReference": _anchor(name),
