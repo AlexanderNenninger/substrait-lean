@@ -395,7 +395,10 @@ class _Checker:
             t.status == "proved" and _unique_on(self.p.tests.get(t.test or "")) == key
             for t in res.tests
         )
-        head = "an incremental model, checked as its full refresh (its `is_incremental()` block only filters it)"
+        head = (
+            "an incremental model, checked as its full refresh "
+            "(its `is_incremental()` block only filters it)"
+        )
         if unique:
             for t in res.tests:
                 test = self.p.tests.get(t.test or "")
