@@ -475,12 +475,14 @@ def test_unwritten_plans_are_refused():
         polars_engine.to_lazy(raw, {"r": pa.table({"a": [1], "b": [1], "c": [1]})})
 
 
-def test_string_order_is_refused():
-    """`BinFn.lt` is undefined on strings in the model, unlike in SQL."""
+def test_strings_order_by_code_point():
+    """`BinFn.lt` orders strings by code point, as SQL does (#1492)."""
     con = connect()
-    con.create("o", ibis.schema({"name": "string"}), [("ada",)])
-    with pytest.raises(polars_engine.Unsupported, match="lt of String"):
-        polars_rows(con, "SELECT name FROM o WHERE name < 'b'")
+    con.create(
+        "o", ibis.schema({"name": "string"}), [("ada",), ("b",), ("\U0001f600",), ("\uffff",)]
+    )
+    rows = polars_rows(con, "SELECT name FROM o WHERE name < 'b'")
+    assert sorted(rows) == [("ada",)]
 
 
 def test_unknown_function_is_refused():

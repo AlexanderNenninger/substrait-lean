@@ -16,7 +16,7 @@
   "plan_json.py": 6,
   "report.py": 8,
   "routes.py": 1,
-  "sql/core/_base.py": 119,
+  "sql/core/_base.py": 117,
   "sql/core/strings.py": 2,
   "sql/core/temporal.py": 3,
   "sql/snowflake.py": 1,
