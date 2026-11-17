@@ -172,7 +172,7 @@ class SnowflakeDialect(Dialect):
         with `guards=False`; the one on `SUM` (`row=False`) stays."""
         if row and not self.guards:
             return r
-        fail = self.raise_("integer overflow", r, "int", "wraps")
+        fail = self.raise_("integer overflow", r, "int", "wraps" if row else "sumWraps")
         return f"IFF({r} BETWEEN {I64_MIN} AND {I64_MAX}, {r}, {fail})"
 
     def folded(self, r: str, value: int | None) -> str:
