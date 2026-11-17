@@ -41,9 +41,9 @@ def written(values: list[float], q: str) -> float:
 
 def allowed(values: list[float], q: str, got: float) -> bool:
     lo, hi = neighbours(values, Fraction(q))
-    if math.isnan(lo) or math.isnan(hi):
-        return math.isnan(got)
-    return lo <= got <= hi
+    # The model's order puts NaN above every number (`contAllowedOf`).
+    key = lambda v: (math.isnan(v), 0.0 if math.isnan(v) else v)  # noqa: E731
+    return key(lo) <= key(got) <= key(hi)
 
 
 def whole_missed(limit: int = 2000):
