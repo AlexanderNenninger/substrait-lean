@@ -58,6 +58,7 @@ from typing import Any, Literal, overload
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from sverify._keys import canonical_key
 from sverify._weighted import _call, _indices, _is_in
 from sverify.engine import checker_failed, run_checker
 from sverify.observation import Observation, Within
@@ -413,16 +414,17 @@ def tolerances(s: Split, partials: pa.Table, result: pa.Table) -> Sharded:
 
 
 def _key_columns(table: pa.Table, names: Sequence[str]) -> tuple[list[str], list[pa.Array]]:
-    """The key columns `names` of `table` as Lean compares them: doubles by
-    their bits (so NaN equals itself and `-0.0` differs from `0.0`), integers
-    as one width, each with a tag of its kind so that kinds never meet."""
+    """The key columns `names` of `table` as Lean's `keyOf` compares them: doubles
+    canonical (`-0.0` is `0.0` and every NaN one NaN, `canonV`), then by their
+    bits, integers as one width, each with a tag of its kind so that kinds
+    never meet."""
     kinds: list[str] = []
     arrays: list[pa.Array] = []
     for n in names:
         col = table.column(n).combine_chunks()
         if pa.types.is_floating(col.type):
             kinds.append("f")
-            col = col.cast(pa.float64()).view(pa.int64())
+            col = canonical_key(col.cast(pa.float64())).view(pa.int64())
         elif pa.types.is_signed_integer(col.type):
             kinds.append("i")
             col = col.cast(pa.int64())

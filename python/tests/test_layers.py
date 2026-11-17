@@ -38,6 +38,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_proof_cache",
             "_checker",
             "_lean_eval",
+            "_keys",
             "_weighted",
             "_store",
             "_arrow_state",
