@@ -479,7 +479,9 @@ def contPosD (num scale n : Nat) : Int :=
 
 /-- `contNeighbours` at the double position of `contPosD`: the codes at
 `⌊f⌋` and `⌈f⌉` (the same one where `f` is whole), and the weight
-`f − ⌊f⌋` as a double. -/
+`f − ⌊f⌋` as a double. Both codes are drawn from the group (`intAt s`), the
+fact the between-members lemma of `QuantInterp` will rest on (the #900 proof
+step: no theorem reads it yet). -/
 def contNeighboursD (num scale : Nat) (s : List Value) : Option (Int × Int × Int) :=
   let f := contPosD num scale s.length
   (intAt s (FloatCode.floorNat f)).bind fun l =>
