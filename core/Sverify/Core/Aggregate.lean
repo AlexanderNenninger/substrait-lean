@@ -421,6 +421,42 @@ def FloatCode.ceilNat (c : Int) : Nat :=
   if (FloatCode.sv c).toNat % FloatCode.unitK = 0 then FloatCode.floorNat c
   else FloatCode.floorNat c + 1
 
+/-- The spacing at a magnitude (in units of `2⁻¹⁰⁷⁴`): `1` below `2⁵²`, else
+`2^(⌊log₂ m⌋ − 52)`. -/
+def FloatCode.ulpMag (m : Nat) : Nat := if m < 2 ^ 52 then 1 else 2 ^ (m.log2 - 52)
+
+/-- The next double above a code, for a finite one (`-0.0` and `0` step to the
+smallest subnormal; past the largest, `+∞`; `+∞` and NaN stay). -/
+def FloatCode.nextUp (c : Int) : Int :=
+  if c = 0 then FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode ((c.toNat - 1) / 2 + FloatCode.ulpMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then
+    let m := ((-c).toNat - 1) / 2
+    let m' := m - FloatCode.ulpMag (m - 1)
+    if m' = 0 then 0 else -FloatCode.posCode m'
+  else c
+
+/-- The next double below a code, for a finite one. -/
+def FloatCode.nextDown (c : Int) : Int :=
+  if c = 0 then -FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then
+    let m := (c.toNat - 1) / 2
+    let m' := m - FloatCode.ulpMag (m - 1)
+    if m' = 0 then 0 else FloatCode.posCode m'
+  else if FloatCode.negInf < c ∧ c < 0 then
+    let m := ((-c).toNat - 1) / 2
+    -FloatCode.posCode (m + FloatCode.ulpMag m)
+  else c
+
+-- Against `Float`'s neighbours.
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 1.0000000000000002
+#guard FloatCode.nextUp (FloatCode.ofFloat (-1.0)) = FloatCode.ofFloat (-0.9999999999999999)
+#guard FloatCode.nextUp (FloatCode.ofFloat 0.0) = FloatCode.ofFloat 5e-324
+#guard FloatCode.nextDown (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 0.9999999999999999
+#guard FloatCode.nextDown (FloatCode.ofFloat 2.0) = FloatCode.ofFloat 1.9999999999999998
+#guard FloatCode.nextDown (FloatCode.ofFloat (-2.0)) = FloatCode.ofFloat (-2.0000000000000004)
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.7976931348623157e308) = FloatCode.posInf
+
 /-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
 read as the double nearest to it (`ofDecimal`, correctly rounded at every
 scale; `fdiv num 10^scale` would equal it only while both operands are exact,
