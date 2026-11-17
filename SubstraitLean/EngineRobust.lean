@@ -126,14 +126,6 @@ def signKeptOn (es : List EngineProfile) : List String :=
 -- Polars's in-memory `sum` is Kahan's (polars-sum-float).
 #guard signKeptOn builtinEngines == ["duckdb", "spark"]
 
-/-- The postconditions of an `ensures` plan as expressions over the output
-of `tr`, the transformation it selects from. -/
-def postOver (tr : Rel) (n : Nat) : Rel → Option (List Expr)
-  | .project r es => if r == tr then some ((List.range n).map .field ++ es)
-      else (postOver tr n r).map fun cs => cs ++ es.map (·.subst cs)
-  | .emit r m => (postOver tr n r).map fun cs => m.map (cs.getD · (.lit .null))
-  | r => if r == tr then some ((List.range n).map .field) else none
-
 variable [Boxes.Ambient]
 /-- `"robust"` of a `--contract` request: per postcondition, in the order of
 `"ensures"`, `{"robust": …, "proved_on": […]}`: whether it is certainly TRUE
@@ -144,27 +136,13 @@ covariance's). Columns without a finite bound keep their abstract value: a
 postcondition reads only their sign (`signBound`, which
 `TreeSum.sign` keeps on every engine). -/
 def robust (es : List EngineProfile) (input : Json) : Except String Json := do
-  let some tj := (input.getObjVal? "transform").toOption | return Json.arr #[]
-  let plan ← parseJsonPlan tj
-  let requires ← ((input.getObjValAs? (Array Json) "requires").toOption.getD #[]).toList.mapM
-    parseJsonPlan
-  let ensures ← ((input.getObjValAs? (Array Json) "ensures").toOption.getD #[]).toList.mapM
-    parseJsonPlan
-  let tables : Tables := (plan :: requires ++ ensures).flatMap (·.tables)
-  let cat : Catalog := fun t => match tables.lookup t with
-    | some (n, _) => ⟨n, []⟩
-    | none => ⟨0, []⟩
-  let schemas : String → List AVal := fun t => match tables.lookup t with
-    | some (_, s) => schemaEnv s
-    | none => []
-  let pre : List (String × List Expr) := requires.filterMap (·.root.colExprs cat)
-  let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
-  let A := fun t => tableEnv (schemas t) (preOf t)
-  let F := fun t => (preOf t).flatMap Expr.factsOf
-  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
+  let R ← ContractCheck.parse input
+  let some plan := R.transform | return Json.arr #[]
+  let cat := R.cat
+  let A := fun t => tableEnv (R.schemas t) (R.preOf t)
+  let F := fun t => (R.preOf t).flatMap Expr.factsOf
   let T := Rel.keyedWindows cat A F (fun _ => [])
-  let tr := plan.root.capReads caps
-  let env := tr.aeval cat A F T
+  let env := (plan.root.capReads R.caps).aeval cat A F T
   let names := if plan.names.length == env.length then plan.names
     else (List.range env.length).map (s!"#{·}")
   let eps ← Epsilon.epsilon es input
@@ -181,12 +159,11 @@ def robust (es : List EngineProfile) (input : Json) : Except String Json := do
       | some t => engineVal t (!covs.contains n) a
       | none => { a with int := a.int.map fun _ => Bound.top }
     | none => a
-  let out := ensures.flatMap fun q =>
-    let qr := q.root.capReads caps
-    let k := (qr.aeval cat A F T).length
-    match postOver tr env.length qr with
-    | some ps => ps.map fun p => (p.absD E []).certainlyTrue
-    | none => List.replicate k false
+  -- Each postcondition's columns as expressions over the transformation's
+  -- output (`Post.plan`).
+  let out := R.posts.flatMap fun p =>
+    let cs := (List.range env.length).map Expr.field ++ p.exprs
+    p.mapping.map fun j => ((cs.getD j (.lit .null)).absD E []).certainlyTrue
   return toJson (out.map fun b => Json.mkObj [("robust", toJson b),
     ("proved_on", toJson (if b then signKeptOn es else []))])
 
