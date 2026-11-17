@@ -36,7 +36,7 @@ def test_an_overflow_after_an_aggregate_names_the_measure():
 def test_requires_that_no_row_meets_are_flagged(requires, vacuous):
     t = ORDERS.select(ORDERS.order_id, y=ORDERS.amount)
     report = sv.verify(t, requires={"orders": requires}, ensures=[_.y > 0])
-    flagged = [n for n in report.notes if "contradict" in n]
+    flagged = [n for n in report._all_hints() if "contradict" in n]
     assert bool(flagged) is vacuous, report
     if vacuous:
         assert "no row meets them" in flagged[0]
@@ -49,7 +49,7 @@ def test_contradictory_sql_requires_are_flagged():
         requires={"orders": ["amount > 5", "amount < 3"]},
         ensures=["y > 0"],
     )
-    assert any("`amount`" in n and "contradict" in n for n in report.notes)
+    assert any("`amount`" in n and "contradict" in n for n in report._all_hints())
 
 
 def test_a_condition_the_check_cannot_read_is_not_flagged():

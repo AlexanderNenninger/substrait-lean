@@ -1687,7 +1687,6 @@ def _verify_once(
     )
     from sverify._vacuity import contradictions
 
-    report._vacuous = contradictions(requires, schemas)
     if not isinstance(transform, str) and report.issues:
         report._hints = overflow_hints(transform, requires, report)
     report._hints += and_or_hints(report.issues, transform)
@@ -1699,6 +1698,7 @@ def _verify_once(
         if plugin is None or not plugin.floor_division:
             # An engine whose `//` and `%` floor computes them as the plan states.
             report._hints += division_hints(transform)
+    report._hints += contradictions(requires, schemas)
     return report, out["inferred"], schemas
 
 

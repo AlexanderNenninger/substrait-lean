@@ -17,6 +17,7 @@ from typing import Any
 
 import ibis
 import ibis.expr.operations as ops
+from ibis.common.deferred import Deferred
 
 Atom = tuple[str, str, Fraction]  # (column, comparison, number)
 
@@ -80,10 +81,9 @@ def atoms(cond: Any, columns: Mapping[str, Any]) -> list[Atom]:
     if isinstance(cond, str):
         _sql_atoms(cond, out)
         return out
-    from sverify.conditions import resolve
-
     try:
-        expr = resolve(cond, ibis.table(ibis.schema(dict(columns)), name="t"))
+        table = ibis.table(ibis.schema(dict(columns)), name="t")
+        expr = cond.resolve(table) if isinstance(cond, Deferred) else cond(table)
         _ibis_atoms(expr.op(), out)
     except Exception:  # noqa: BLE001 - a condition we cannot read is not checked
         return []
