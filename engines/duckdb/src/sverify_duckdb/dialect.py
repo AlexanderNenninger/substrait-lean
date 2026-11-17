@@ -36,6 +36,7 @@ BC), which `date_trunc` leaves as it is.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import ClassVar
 
 from sverify.black_box import BlackBox
 from sverify.sql.core import (
@@ -46,6 +47,7 @@ from sverify.sql.core import (
     GuardIssue,
     Kind,
     Lst,
+    Unsupported,
     raised_issue,
 )
 
@@ -55,6 +57,8 @@ class DuckDBDialect(Dialect):
     # DuckDB computes decimals exactly (#27): `+`, `-` and `×` at the types the
     # reference gives them, casts rounding half away from zero.
     decimals: bool = True
+    # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
+    canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
     orders_text: bool = True
 
     def type_name(self, kind: Kind) -> str:
@@ -207,8 +211,10 @@ class DuckDBDialect(Dialect):
         )
 
     def float_extreme(self, fn: str, v: str, over: str) -> str:
-        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371).
-        return f"{fn}({v}) {over}" if over else f"{fn}({v})"
+        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371). Of equal
+        # zeros it keeps the one it read last (duckdb-minmax-zero-sign): the
+        # class's canonical value stands for it.
+        return self.zero_rep(f"{fn}({v}) {over}" if over else f"{fn}({v})", "extreme")
 
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         # DuckDB's own `first`/`last` of the non-NULL values: the group's
@@ -238,41 +244,65 @@ class DuckDBDialect(Dialect):
         #   `[MIN, MAX]` does not catch below the maximum: the second
         #   smallest value, `min(x, 2)[2]`, bounds it.
         # The guards read `COUNT` and the decimal `q` in integers. A dyadic
-        # `q` needs none: its double position is exact. Elsewhere the result
-        # stays within the neighbours by the clamp, while `(n - 1)·10^scale <
-        # 2^52` (the floor of the double position is then the exact one, away
-        # from the whole positions); past it the plan raises.
+        # `q` needs none: its double position is exact.
+        # Elsewhere `RN`'s double is within `(n - 1)·2^-51` of the exact
+        # position `P`. Outside the band `d·2^51 <= (n - 1)·den`, with `d`
+        # the distance of `P` to the nearest whole position, its floor and
+        # ceiling are the exact ones and the clamp keeps the result between
+        # the neighbours. In the band (whole positions included) the engine's
+        # pair holds the nearest whole position `m`, and the written plan
+        # takes `quantile_disc` of `q` moved by 10^-15 toward 1/2: its index
+        # `⌈n·q'⌉ - 1` is `m` for `n <= 10^14` (the decimal is read exactly,
+        # `duckdb-quantile-cont-interpolation`). Past that count it raises.
         # Between -inf and +inf the interpolation is NaN, which no operation
         # creates (#561): raise where it is NaN and no value is (NaN sorts
-        # above every number, so `MAX` is NaN exactly then).
+        # above every number, so `MAX` is NaN exactly then). In the band the
+        # same cases are the neighbours `s[k] = -inf`, `s[k + 1] = +inf` at a
+        # fractional position, counted below.
         if not cont:
             return f"quantile_disc({v}, {q})"
         qc = f"quantile_cont({v}, {q})"
         value = f"LEAST(GREATEST({qc}, MIN({v})), MAX({v}))"
         frac = Fraction(q)
-        dyadic = frac.denominator & (frac.denominator - 1) == 0
+        num, den = frac.numerator, frac.denominator
+        dyadic = den & (den - 1) == 0
         n1 = f"CAST(COUNT({v}) - 1 AS HUGEINT)"
         if not dyadic:
-            first = f"({n1} * {frac.numerator} < {frac.denominator})"
+            first = f"({n1} * {num} < {den})"
             value = self.case_when(first, f"LEAST({value}, ({self.second_smallest(v)}))", value)
+        fail = self.raise_("domain error", f"MIN({v})", "float", "domain")
         if self.guards:
             made = f"({self.is_nan(qc)} AND NOT {self.is_nan(f'MAX({v})')})"
-            fail = self.raise_("domain error", f"MIN({v})", "float", "domain")
             value = self.case_when(made, fail, value)
         if dyadic:
             return value
-        whole = f"({n1} * {frac.numerator} % {frac.denominator} = 0)"
-        value = self.case_when(whole, f"quantile_disc({v}, {q})", value)
+        scale = next(s for s in range(1000) if (frac * 10**s).denominator == 1)
+        if scale > 21:
+            raise Unsupported(
+                f"quantile fraction {q} has {scale} decimals; DuckDB's quantile writes "
+                "at most 21 (#900), use a shorter fraction"
+            )
+        shifted = frac + (Fraction(1, 10**15) if 2 * num < den else -Fraction(1, 10**15))
+        digits = max(scale, 15)
+        disc = f"quantile_disc({v}, 0.{int(shifted * 10**digits):0{digits}d})"
+        rest = f"({n1} * {num} % {den})"
+        if self.guards:
+            k = f"({n1} * {num} // {den})"
+            inf = "CAST('inf' AS DOUBLE)"
+            opposite = (
+                f"({rest} <> 0 AND COUNT(*) FILTER (WHERE {v} = -{inf}) = {k} + 1"
+                f" AND COUNT(*) FILTER (WHERE {v} < {inf}) = {k} + 1"
+                f" AND COUNT(*) FILTER (WHERE {v} = {inf}) > 0)"
+            )
+            disc = self.case_when(opposite, fail, disc)
+        band = f"(LEAST({rest}, {den} - {rest}) <= {n1} * {den} // {2**51})"
+        value = self.case_when(band, disc, value)
         # An engine limit the reference does not have, so a `guard_free`
         # report cannot prove it absent: it is written with `guards=False`
         # too, like integer `SUM`'s check and `finite`.
-        # `RN`'s double is within 2^-52·(n - 1) of the exact position, and a
-        # floor of it differs from the exact one only where that reaches the
-        # gap 10^-scale to the next whole position: past it, raise.
-        scale = len(q.partition(".")[2])
-        beyond = f"({n1} * {10**scale} >= {2**52})"
+        beyond = f"({n1} >= {10**14})"
         raise_ = self.raise_(
-            "quantile position beyond 2^52 / 10^scale", f"COUNT({v})", "float", "quantilePosition"
+            "quantile count beyond 10^14", f"COUNT({v})", "float", "quantilePosition"
         )
         return self.case_when(beyond, raise_, value)
 

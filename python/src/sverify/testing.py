@@ -163,8 +163,11 @@ def _one_zero(v: Any) -> Any:
 
 
 def canonical(rows: Iterable[tuple]) -> list[str]:
-    """A bag of rows in a canonical order (NULLs and NaN compare as text, and
-    `-0.0` as `0.0`: values are raw, and D31 leaves a zero's sign open)."""
+    """A bag of rows in a canonical order, as text: NULLs and NaN compare as
+    they print, and `-0.0` as `0.0`. Values are raw (D31), and the sign of a
+    zero is open where an engine picks one of several equal zeros (a `MIN`,
+    `MAX`, group key or `DISTINCT` row), so two bags that differ only in it are
+    equal here. Compare signs yourself (`math.copysign`) where they matter."""
     return sorted(repr(_one_zero(r)) for r in rows)
 
 

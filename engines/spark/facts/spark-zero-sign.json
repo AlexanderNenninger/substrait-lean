@@ -75,7 +75,7 @@
     "Comparisons, grouping and joins treat the zeros as equal (spark-zero-order).",
     "Round 2 (probes, 2026-11-16, #1461; ANSI on and off): `-0.0` and `0.0` are one key in a window `PARTITION BY` (count 3 on each row), in `GROUP BY` and `DISTINCT` (key `0.0`), in a join, in `IN` and `IN (subquery)`, and tie in a window `ORDER BY` (`rank` 1). `sqrt`, `sin`, `atan`, `tan` and `asin` of `-0.0` are `-0.0`, `exp` is `1.0`, `abs` and `-x` give `0.0`, `-0.0 * 1.0` is `-0.0`. `min` and `max` of `-0.0` values keep `-0.0`; `sum` and `avg` give `+0.0`. `atan2(-0.0, -1.0D)` is `π`, where the reference gives `-π`. `0.0 % -0.0` raises under ANSI and is NULL otherwise."
   ],
-  "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere. Spark shows -0.0 where IEEE gives it, so a writer canonicalises where a result's zeros are observed.",
+  "reference": "Values stay raw (D31, #1461): arithmetic and the elementary functions give IEEE's signed zeros, and `-0.0` equals `0.0` at the identity boundaries (`zero_sign: ONE_ZERO`). Spark adds `0.0` to `atan2`'s arguments, so `atan2(-0.0, -1.0)` is `π` where the reference gives `-π`: the writer refuses double `atan2`.",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [

@@ -735,6 +735,24 @@ OBSERVATIONS: list[Observation] = [
     _o("minmax-zero-last-positive", "aggregates",
        "SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM"
        " (VALUES (-0.0::DOUBLE, -0.0::FLOAT), (0.0::DOUBLE, 0.0::FLOAT)) t(d, f)"),
+    # The raw sign of min, max and quantile_disc over frames and groups holding both
+    # zeros, at 1 and at 4 threads (#1512, D45).
+    *(
+        _o(f"minmax-zero-frames-{n}-threads", "aggregates",
+           "SELECT i, signbit(min(x) OVER w), signbit(max(x) OVER w) FROM (VALUES"
+           " (1, 0.0::DOUBLE), (2, -0.0::DOUBLE), (3, 0.0::DOUBLE), (4, -0.0::DOUBLE)) t(i, x)"
+           " WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY i",
+           f"SET threads = {n}")
+        for n in (1, 4)
+    ),
+    *(
+        _o(f"quantile-disc-zero-{n}-threads", "aggregates",
+           "SELECT signbit(quantile_disc(x, 0.0)), signbit(quantile_disc(x, 0.5)),"
+           " signbit(quantile_disc(x, 1.0)) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE),"
+           " (0.0::DOUBLE), (-0.0::DOUBLE)) t(x)",
+           f"SET threads = {n}")
+        for n in (1, 4)
+    ),
     _o("quantile-nan", "aggregates",
        "SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR,"
        " quantile_cont(x, 0.75)::VARCHAR, quantile_disc(x, 0.75)::VARCHAR,"
