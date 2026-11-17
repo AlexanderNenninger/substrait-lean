@@ -117,7 +117,7 @@ def expr(
             if not d.guards:
                 return r
             lo, hi = d.int_lit(TS_MIN), d.int_lit(TS_MAX)
-            fail = d.raise_(f"date_bin {OUTSIDE_TS}", x, "time")
+            fail = d.raise_(f"date_bin {OUTSIDE_TS}", x, "time", "overflow")
             ru = d.time_micros(r)
             bad = f"({us} NOT BETWEEN {lo} AND {hi} OR {ru} NOT BETWEEN {lo} AND {hi})"
             return d.case_when(bad, fail, r)
@@ -134,7 +134,7 @@ def expr(
                 return d.date_time(x)
             lo, hi = d.int_lit(DAY_MIN), d.int_lit(DAY_MAX)
             bad = f"({d.date_days(x)} NOT BETWEEN {lo} AND {hi})"
-            fail = d.raise_(f"a DATE as a TIMESTAMP {OUTSIDE_DATES}", x, "time")
+            fail = d.raise_(f"a DATE as a TIMESTAMP {OUTSIDE_DATES}", x, "time", "overflow")
             return d.case_when(bad, fail, d.date_time(f"(CASE WHEN NOT {bad} THEN {x} END)"))
         case Un(op="epoch_us", arg=a):
             return d.epoch_us(self.operand(a, "time", ref, cols, "epoch_us"))
@@ -151,7 +151,7 @@ def expr(
                 return d.day_part(part, x)
             lo, hi = d.int_lit(DAY_MIN), d.int_lit(DAY_MAX)
             bad = f"({d.date_days(x)} NOT BETWEEN {lo} AND {hi})"
-            fail = d.raise_(f"date_part {part!r} {OUTSIDE_DATES}", x, "int")
+            fail = d.raise_(f"date_part {part!r} {OUTSIDE_DATES}", x, "int", "overflow")
             return d.case_when(bad, fail, d.day_part(part, f"(CASE WHEN NOT {bad} THEN {x} END)"))
         case Un(op="day_trunc", arg=a, param=unit):
             x = self.operand(a, "date", ref, cols, "date_trunc")
@@ -177,7 +177,7 @@ def expr(
                 return d.add_months(x, months, kind)
             lo, hi = d.int_lit(TS_MIN), d.int_lit(TS_MAX)
             us = d.time_micros(x)
-            fail = d.raise_(f"adding months {OUTSIDE_TS}", x, "time")
+            fail = d.raise_(f"adding months {OUTSIDE_TS}", x, "time", "overflow")
             safe = d.add_months(
                 f"(CASE WHEN {us} BETWEEN {lo} AND {hi} THEN {x} END)", months, kind
             )
