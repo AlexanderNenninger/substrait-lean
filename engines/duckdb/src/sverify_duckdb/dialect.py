@@ -248,7 +248,7 @@ class DuckDBDialect(Dialect):
         # pair holds the nearest whole position `m`, and the written plan
         # takes `quantile_disc` of `q` moved by 10^-15 toward 1/2: its index
         # `⌈n·q'⌉ - 1` is `m` for `n <= 10^14` (the decimal is read exactly,
-        # `duckdb-quantile-disc-index`). Past that count it raises.
+        # `duckdb-quantile-cont-interpolation`). Past that count it raises.
         # Between -inf and +inf the interpolation is NaN, which no operation
         # creates (#561): raise where it is NaN and no value is (NaN sorts
         # above every number, so `MAX` is NaN exactly then). In the band the

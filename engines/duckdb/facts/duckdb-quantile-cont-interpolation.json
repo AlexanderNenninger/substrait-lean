@@ -256,6 +256,9 @@
       "checked_by": "worker 3 for #900, from Fable's probe (duckdb 2.0.0 Python package)",
       "evidence": [
         {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp#L168-L220"
+        },
+        {
           "file": "engines/duckdb/probes/quantile_disc_index.py"
         },
         {

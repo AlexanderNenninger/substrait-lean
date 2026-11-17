@@ -28,7 +28,7 @@ CON.execute("SET threads=1")
 
 
 def neighbours(values: list[float], q: Fraction) -> tuple[float, float]:
-    s = sorted(values)
+    s = sorted(values, key=lambda v: (math.isnan(v), v))  # NaN sorts last
     p = (len(s) - 1) * q
     return s[math.floor(p)], s[math.ceil(p)]
 
@@ -41,6 +41,8 @@ def written(values: list[float], q: str) -> float:
 
 def allowed(values: list[float], q: str, got: float) -> bool:
     lo, hi = neighbours(values, Fraction(q))
+    if math.isnan(lo) or math.isnan(hi):
+        return math.isnan(got)
     return lo <= got <= hi
 
 
@@ -152,7 +154,8 @@ BAND_QS = tuple(
 @given(
     st.lists(
         st.one_of(
-            st.floats(min_value=-1e300, max_value=1e300), st.sampled_from([-math.inf, math.inf])
+            st.floats(min_value=-1e300, max_value=1e300),
+            st.sampled_from([-math.inf, math.inf, math.nan]),
         ),
         min_size=2,
         max_size=12,
