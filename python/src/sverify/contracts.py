@@ -516,6 +516,19 @@ def _not_null_condition(col: str) -> Inferred:
     return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
 
 
+def _ascii_condition(col: str, classes: bool = False) -> Inferred:
+    """`col` holds ASCII text (NULL passes): the precondition under which the
+    black boxes `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii` and
+    `levenshtein` agree across engines (#1506). With `classes` (a regular
+    expression with `\\w`, `\\d`, `\\s` or `\\b`), no vertical tab either:
+    `Text.classesDiffer`. Its SQL is the writers' guard (`ascii_text`)."""
+    sql = '"' + col.replace('"', '""') + '"'
+    plain = f"octet_length({sql}) = char_length({sql})"
+    vtab = f" AND {sql} NOT LIKE '%{chr(11)}%'" if classes else ""
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    return Inferred(f"{sql} IS NULL OR ({plain}{vtab})", f"({ref}.isascii())")
+
+
 def _suggested(
     bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
 ) -> dict[str, list[Condition]]:
