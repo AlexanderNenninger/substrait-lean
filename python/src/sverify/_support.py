@@ -114,13 +114,10 @@ def refusal(name: str, engine: str, window: bool = False) -> str:
     runs = sorted(e for e in _engines() if _runs(name, e, field))
     reason = (_engines().get(engine.lower()) or _NO_PLUGIN).refuses.get(name)
     if not runs:
-        # No installed engine runs it (an engine package is not installed, or none does).
+        # No installed engine runs it. DuckDB is a base dependency, so it refuses too.
         why = f"{reason[0]}; " if reason else ""
         issue = reason[1] if reason else ISSUE_271
-        return (
-            f"{label}: {why}no installed engine runs it; install an engine that does "
-            f"(e.g. pip install 'sverify[duckdb]'), or rewrite the step ({issue})"
-        )
+        return f"{label}: {why}no installed engine runs it; rewrite the step ({issue})"
     exit_ = f"run it with engine={runs[0]!r}"
     if reason:
         why, issue = reason
