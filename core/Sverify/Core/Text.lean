@@ -22,9 +22,9 @@ DataFusion 51 and Polars:
   `2³¹ - 1` bytes fails (`Text.repeatFits`), as Arrow's `Utf8` offsets are
   32-bit (`Utf8View` input too; DataFusion writes `Utf8`).
 * `reverse(s)` reverses the characters (combining marks move with them).
-* `replace(s, p, r)` is Rust's `str::replace`: every non-overlapping `p`,
-  from the left, becomes `r`; an empty `p` puts `r` before every character
-  and at the end.
+* `replace(s, p, r)` replaces every non-overlapping `p`, from the left, by `r`
+  (Rust's `str::replace`); an empty `p` matches nowhere, so the result is `s`
+  (D44: DuckDB and Spark's value, a constant fold on Polars).
 * `ascii(s)` is the code point of the first character, `0` for `''`.
 * `levenshtein(s, t)` counts single-character insertions, deletions and
   substitutions.
@@ -206,8 +206,7 @@ def replaceGo (p r : List Char) : Nat → List Char → List Char
 
 def replace (s p r : String) : String :=
   let cs := s.toList
-  if p.isEmpty then String.ofList (r.toList ++ cs.flatMap fun c => c :: r.toList)
-  else String.ofList (replaceGo p.toList r.toList cs.length cs)
+  if p.isEmpty then s else String.ofList (replaceGo p.toList r.toList cs.length cs)
 
 def ascii (s : String) : Int :=
   match s.toList with

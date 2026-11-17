@@ -1156,3 +1156,23 @@ each is:
 Why: the rule is that the reference changes only through a recorded decision
 and an option enters the core with its value recorded. The rows whose "Decided by" is this decision were never ruled on in this record; they record the values as of 2026-11-15, and a later decision changes one as D17 describes. A test (`tests/test_decisions_name_options.py`)
 keeps every option of the core named in this file.
+
+### D44. `replace` with an empty pattern is the string unchanged
+
+Decided 2026-11-17 (the maintainer, on the theory advisor's recommendation,
+#1508).
+
+`replace(s, '', r)` is `s`: an empty pattern matches nowhere. It is `NULL`
+where `s` or `r` is `NULL`, as for any pattern. `Text.replace` changes for
+this case only; a non-empty pattern is Rust's `str::replace` as before.
+
+Why: the reference's value is one every engine gives natively or by a cheap
+shim. DuckDB returns the string unchanged
+([duckdb-replace-empty-pattern](../engines/duckdb/facts/duckdb-replace-empty-pattern.json)),
+and so does a constant fold on Polars, whose own `replace_all` inserts the
+replacement at every character boundary
+([polars-string-natives](../engines/polars/facts/polars-string-natives.json)).
+Both frontends take only constant patterns, so the empty pattern is known when
+the plan is written, and the writers fold it. The core gains no option, and the
+raise set stays the small guardable one. The Substrait YAML leaves the case
+unspecified ([ST-17](../upstream/bugs/ST-17.json)).

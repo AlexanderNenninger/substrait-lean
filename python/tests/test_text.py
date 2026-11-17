@@ -204,7 +204,7 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
 @given(rows=st.lists(st.tuples(marked, marked, counts), max_size=6))
 def test_repeat_reverse_replace_match_the_reference(sql, rows):
     """Polars and DuckDB give Lean's rows. DuckDB is the oracle of `replace`
-    (the SQL lift states its value for an empty pattern, #1508); its own
+    (an empty pattern matches nowhere, D44); its own
     `repeat`, `reverse`, `ascii` and `levenshtein` count bytes or grapheme
     clusters, so there Lean, the reference, stands alone (#1138)."""
     con = connect()
