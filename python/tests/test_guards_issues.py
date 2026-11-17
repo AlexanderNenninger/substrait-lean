@@ -14,8 +14,11 @@ the unchecked writing, with its issue reported, in at least one plan."""
 
 from __future__ import annotations
 
+import functools
 import json
 import re
+import sys
+from collections import defaultdict
 from typing import get_args
 
 import pytest
@@ -52,10 +55,6 @@ def test_guard_issues_are_leans_constructors() -> None:
     assert set(get_args(GuardIssue)) == set(ctors) | {"asciiOnly"}
     assert set(KIND) == set(ctors)
 
-
-import functools
-import sys
-from collections import defaultdict
 
 Site = tuple[str, int, str]  # (file, line, issue)
 
