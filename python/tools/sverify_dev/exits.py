@@ -42,7 +42,7 @@ _OWN_EXIT = {"SqlUnsupported", "WriterUnsupported", "ProducerUnsupported", "refu
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"
     "cast|wrap|drop|remove|pin|enable|try|switch|upgrade|read|select|take|order|name|put|"
-    "build|compare|re-run|compute|check|rebuild"
+    "build|compare|re-run|compute|check|rebuild|change"
 )
 EXIT = re.compile(
     r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|to_sql\(|"
