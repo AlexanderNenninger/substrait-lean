@@ -163,16 +163,41 @@ theorem Rel.sumsPer_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String �
       simp only [sumsPer, sumsPer_congr h A F T K P r, (aeval_congr h A F T true r).1,
         facts_congr h F T r, groupRows_congr h A F K P r]
 
+theorem Rel.viewEnv_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (T : WindowKeys) :
+    ∀ (cols : List Nat) (r : Rel), r.viewEnv c A F T cols = r.viewEnv cat A F T cols
+  | cols, .cross a b | cols, .join a b _ _ => by
+      simp only [viewEnv, arity_congr h, viewEnv_congr h A F T _ a, viewEnv_congr h A F T _ b]
+  | _, .read _ | _, .values _ _ | _, .filter _ _ | _, .project _ _ | _, .emit _ _
+  | _, .fetch _ _ _ | _, .unionAll _ _ | _, .window _ _ _ _ | _, .semi _ _ _ _
+  | _, .orderBy _ _ | _, .distinct _ | _, .aggregate _ _ _ | _, .unnest _ _ => by
+      simp only [viewEnv, (aeval_congr h A F T true _).1]
+
+omit [Boxes.Ambient] in
+theorem Rel.viewFacts_congr (h : ∀ t, (c t).arity = (cat t).arity) (F : String → List Fact)
+    (T : WindowKeys) : ∀ (cols : List Nat) (r : Rel), r.viewFacts c F T cols = r.viewFacts cat F T cols
+  | cols, .cross a b | cols, .join a b _ _ => by
+      simp only [viewFacts, arity_congr h, viewFacts_congr h F T _ a, viewFacts_congr h F T _ b]
+  | _, .read _ | _, .values _ _ | _, .filter _ _ | _, .project _ _ | _, .emit _ _
+  | _, .fetch _ _ _ | _, .unionAll _ _ | _, .window _ _ _ _ | _, .semi _ _ _ _
+  | _, .orderBy _ _ | _, .distinct _ | _, .aggregate _ _ _ | _, .unnest _ _ => by
+      simp only [viewFacts, facts_congr h F T]
+
+theorem Rel.viewIssues_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (T : WindowKeys) (r : Rel) :
+    r.viewIssues c A F T = r.viewIssues cat A F T := by
+  funext e; simp only [viewIssues, viewEnv_congr h A F T, viewFacts_congr h F T]
+
 theorem Rel.mayIssues_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (T : WindowKeys) :
     ∀ (u : Bool) (r : Rel), r.mayIssues c A F T u = r.mayIssues cat A F T u
   | _, .read _ | _, .values _ _ => rfl
   | _, .filter r _ => by
       simp only [mayIssues, mayIssues_congr h A F T true r, (aeval_congr h A F T true r.loose).1,
-        facts_congr h F T r.loose]
+        facts_congr h F T r.loose, viewIssues_congr h A F T]
   | u, .project r _ => by
       cases u <;> simp only [mayIssues, mayIssues_congr h A F T _ r, (aeval_congr h A F T true _).1,
-        facts_congr h F T, Bool.false_eq_true, ↓reduceIte]
+        facts_congr h F T, viewIssues_congr h A F T, Bool.false_eq_true, ↓reduceIte]
   | u, .emit r _ | u, .fetch r _ _ | u, .orderBy r _ | u, .distinct r | u, .unnest r _ => by
       simp only [mayIssues, mayIssues_congr h A F T u r]
   | u, .window r _ _ _ => by
@@ -182,10 +207,11 @@ theorem Rel.mayIssues_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String
       simp only [mayIssues, mayIssues_congr h A F T u a, mayIssues_congr h A F T u b]
   | _, .join a b _ _ | _, .semi a b _ _ => by
       simp only [mayIssues, mayIssues_congr h A F T true a, mayIssues_congr h A F T true b,
-        (aeval_congr h A F T true (Rel.cross a.loose b.loose)).1, facts_congr h F T]
+        (aeval_congr h A F T true (Rel.cross a.loose b.loose)).1, facts_congr h F T,
+        viewIssues_congr h A F T]
   | u, .aggregate r _ _ => by
       cases u <;> simp only [mayIssues, mayIssues_congr h A F T _ r, (aeval_congr h A F T true _).1,
-        facts_congr h F T, Bool.false_eq_true, ↓reduceIte]
+        facts_congr h F T, viewIssues_congr h A F T, Bool.false_eq_true, ↓reduceIte]
 
 theorem Rel.issuesCapped_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (T : WindowKeys) (K : String → List (List Nat))
