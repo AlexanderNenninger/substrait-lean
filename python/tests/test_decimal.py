@@ -361,7 +361,7 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     t = c.table("t")
     report = sv.verify(
         t.group_by("g").aggregate(m=t.v.mean()),
-        requires={"t": ["v BETWEEN -1000000000000000000000000000000000 AND 1000000000000000000000000000000000"]},
+        requires={"t": [f"v BETWEEN -{10**33} AND {10**33}"]},
     )
     out = report.run(c, "duckdb")
     assert out.column("m").to_pylist() == [top - 1]
