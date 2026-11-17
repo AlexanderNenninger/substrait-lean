@@ -261,16 +261,18 @@ structure Report where
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
-  /-- Does every window order its partitions totally (`Rel.windowsTotal`), and
-  every `FETCH` take rows an `ORDER BY` on a key fixes (`Rel.fetchesTotal`)? -/
+  /-- Does the transformation leave the engine no choice but the order of its
+  rows (`Rel.detPlan`): then every result the reference allows is `Rel.eval`'s
+  up to that order (`check_deterministic_sound`). -/
   deterministic : Bool := true
   /-- Does every window order its partitions totally? A `FETCH` over ties
   keeps every proof (it takes some rows of an allowed order) and the written
   SQL breaks its ties by input order; only a rerun may differ. -/
   windowsTotal : Bool := true
-  /-- Where the transformation leaves the order of ties open (D24): each
-  relation in the pre-order of `relations`, by its index, its operator and
-  what is open. Empty when `deterministic`. -/
+  /-- Where the transformation leaves its result open: each relation in the
+  pre-order of `relations`, by its index, its operator and what is open
+  (`tiesHere`). Empty exactly when `deterministic`
+  (`Request.deterministicIn_eq`). -/
   tiePlaces : List (Nat × String × String) := []
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
@@ -515,30 +517,104 @@ def preorder (r : Rel) : List Rel :=
     | .distinct i | .aggregate i _ _ | .unnest i _ => preorder i
     | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => preorder a ++ preorder b
 
-/-- What the relation `r` leaves open of the order of ties, beyond its
-inputs: the checks of `Rel.windowsTotal` and `Rel.fetchesTotal` at `r`. -/
+/-- What the measure `m` leaves open when `Measure.detIn` fails: rows that
+tie in its order (`Measure.mode_signed_zero_open` for doubles that tie), a
+double between two neighbours (`contAllowed`), or a function of its values
+that is not proved (`AggFn.orderFree` lists the proved ones). -/
+def measureTies (m : Measure) : String :=
+  if m.fn.sorts then
+    s!"{m.render} over rows that tie in its ORDER BY: no key among the group's and the " ++
+      "order's columns, and its argument is not among the order's columns or holds doubles"
+  else if m.fn matches .quantile true _ _ then
+    s!"{m.render}: any double between the two neighbours"
+  else s!"{m.render}: not proved a function of its values"
+
+/-- Which member of a class of doubles (`0.0` and `-0.0`, the NaNs, D31). -/
+def doublesTies (what : String) : String :=
+  s!"{what} keeps any member of a class of doubles (0.0 and -0.0, the NaNs)"
+
+/-- What the relation `r` leaves open beyond its inputs: each check of
+`Rel.detPlan` at `r` that fails (`tiesIn_eq_nil`). -/
 def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → List String
+  | .distinct r => if (r.aeval cat A F .none).all AVal.noDoubles then [] else [doublesTies "DISTINCT"]
   | .window r part sort fns =>
-    if Rel.windowTotalAt cat A F K r part sort fns then [] else
+    if Rel.windowDetAt cat A F K r part sort fns then [] else
       let fs := ", ".intercalate ((fns.filter (!·.orderFree)).map WinFn.render)
       [s!"{fs} over rows that tie in PARTITION BY {part.map (s!"${·}")} ORDER BY " ++
         s!"{sort.map (s!"${·.col}")}, with no key among those columns"]
-  | .aggregate r gs ms => (ms.filter fun m => !Measure.totalIn cat A F K r gs m).map fun m =>
-      s!"{m.render} over rows that tie in its ORDER BY, with no key among the group's and " ++
-        "the order's columns"
+  | .aggregate r gs ms =>
+    let env := r.aeval cat A F .none
+    (gs.filter fun g => !(g.abs env).noDoubles).map (fun g => doublesTies s!"GROUP BY {g.render}") ++
+      -- A measure that only picks a member of a class says so, its one open place.
+      (ms.filter fun m => !Measure.detIn cat A F K r gs m && Measure.pickFixed cat A F r m).map
+        measureTies ++
+      (ms.filter fun m => !Measure.pickFixed cat A F r m).map fun m => doublesTies m.render
   | .fetch (.orderBy i keys) _ _ =>
     if Rel.fetchTotalAt cat A F K i keys then [] else
-      [s!"the rows it takes tie in ORDER BY {keys.map (s!"${·.col}")}, with no key among " ++
-        "those columns"]
+      if keys.any (·.clustered) then
+        [s!"ORDER BY {keys.map (s!"${·.col}")} clusters its groups in any order"]
+      else
+        [s!"the rows it takes tie in ORDER BY {keys.map (s!"${·.col}")}, with no key among " ++
+          "those columns"]
   | .fetch _ _ _ => ["the rows it takes have no ORDER BY"]
   | _ => []
+
+/-- **The reasons are the flag's**: `r` leaves nothing open
+(`Rel.detPlan`) exactly where no relation of it names a reason. -/
+theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) :
+    ∀ r : Rel, (preorder r).flatMap (tiesHere cat A F K) = [] ↔ r.detPlan cat A F K = true
+  | .read _ | .values _ _ => by simp [preorder, tiesHere, Rel.detPlan]
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .unnest r _ => by
+    simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K r]
+  | .distinct r => by
+    cases h : (r.aeval cat A F .none).all AVal.noDoubles <;>
+      simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K r, h]
+  | .window r part sort fns => by
+    cases h : Rel.windowDetAt cat A F K r part sort fns <;>
+      simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K r, h]
+  | .aggregate r gs ms => by
+    simp only [preorder, tiesHere, Rel.detPlan, List.flatMap_cons, List.append_eq_nil_iff,
+      List.map_eq_nil_iff, List.filter_eq_nil_iff, tiesIn_eq_nil cat A F K r, Bool.and_eq_true,
+      List.all_eq_true, Bool.not_eq_true', Bool.not_eq_false]
+    constructor
+    · rintro ⟨⟨⟨hg, hm⟩, hmm⟩, hd⟩
+      refine ⟨⟨⟨hd, fun m h => ?_⟩, hg⟩, hmm⟩
+      cases hdm : Measure.detIn cat A F K r gs m
+      · exact absurd ⟨hdm, hmm m h⟩ (hm m h)
+      · rfl
+    · rintro ⟨⟨⟨hd, hm⟩, hg⟩, hmm⟩
+      exact ⟨⟨⟨hg, fun m h ⟨hf, _⟩ => by rw [hm m h] at hf; cases hf⟩, hmm⟩, hd⟩
+  | .fetch (.orderBy i keys) _ _ => by
+    cases h : Rel.fetchTotalAt cat A F K i keys <;> cases h' : keys.any (·.clustered) <;>
+      simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K i, h, h']
+  | .fetch (.read _) _ _ | .fetch (.values _ _) _ _ | .fetch (.filter _ _) _ _
+  | .fetch (.project _ _) _ _ | .fetch (.emit _ _) _ _ | .fetch (.cross _ _) _ _
+  | .fetch (.join _ _ _ _) _ _ | .fetch (.fetch _ _ _) _ _ | .fetch (.unionAll _ _) _ _
+  | .fetch (.window _ _ _ _) _ _ | .fetch (.semi _ _ _ _) _ _ | .fetch (.distinct _) _ _
+  | .fetch (.aggregate _ _ _) _ _ | .fetch (.unnest _ _) _ _ => by
+    simp [preorder, tiesHere, Rel.detPlan]
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => by
+    simp [preorder, tiesHere, Rel.detPlan, tiesIn_eq_nil cat A F K a, tiesIn_eq_nil cat A F K b]
 
 /-- Where `r` leaves the order of ties open: each relation's index in
 `preorder r`, its operator and what is open. -/
 def tiePlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String) :=
   (preorder r).zipIdx.flatMap fun (n, i) => (tiesHere cat A F K n).map (i, opName n, ·)
+
+theorem tiePlaces_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) :
+    tiePlaces cat A F K r = [] ↔ r.detPlan cat A F K = true := by
+  rw [← tiesIn_eq_nil]
+  simp only [tiePlaces, List.flatMap_eq_nil_iff, List.map_eq_nil_iff, Prod.forall]
+  constructor
+  · intro h n hn
+    obtain ⟨i, hi, he⟩ := List.getElem_of_mem hn
+    exact h n i (List.mem_zipIdx_iff_getElem?.mpr (by rw [List.getElem?_eq_getElem hi, he]))
+  · intro h n i hi
+    exact h n (List.mem_of_getElem? (List.mem_zipIdx_iff_getElem?.mp hi))
 
 /-- A column's kind as an observation sees it (`ColKind`). -/
 def colKindOf : Kind → ColKind
@@ -831,6 +907,36 @@ where
 
 end Request
 
+/-- Is the transformation well-formed and without choices but the order of
+its rows (`Rel.detPlan`) under the description `K` of the inputs: the report's
+`deterministic` (`check_deterministic_sound`). -/
+def Request.deterministicIn (R : Request) (K : KnowledgeEnv) : Bool := match R.transform with
+  | some T => T.root.checkWF R.cat && T.root.detPlan R.cat K.cols K.facts K.keys
+  | none => false
+
+/-- Where the transformation leaves its result open (`tiePlaces`): the
+report's `tie_places`. A transformation that is not well-formed is open
+as a whole (`check` refuses it). -/
+def Request.tiePlacesIn (R : Request) (K : KnowledgeEnv) : List (Nat × String × String) :=
+  match R.transform with
+  | some T => if T.root.checkWF R.cat then tiePlaces R.cat K.cols K.facts K.keys T.root
+    else [(0, opName T.root, "the transformation plan is not well-formed")]
+  | none => []
+
+/-- **The transformation is determined exactly where the report names no
+place that leaves it open**, so `check` reads the flag off the places and
+analyses the plan once. -/
+theorem Request.deterministicIn_eq (R : Request) (K : KnowledgeEnv) :
+    R.deterministicIn K = (R.transform.isSome && (R.tiePlacesIn K).isEmpty) := by
+  unfold Request.deterministicIn Request.tiePlacesIn
+  cases R.transform with
+  | none => rfl
+  | some T =>
+    cases hw : T.root.checkWF R.cat
+    · simp [hw]
+    · simp only [hw, Option.isSome_some, Bool.true_and, ↓reduceIte]
+      exact Bool.eq_iff_iff.mpr (by rw [List.isEmpty_iff, tiePlaces_eq_nil])
+
 /-- The analyses of a parsed request, given each postcondition's abstract
 values (`ensureEnv`), but for the postconditions' verdicts (`Request.check`). -/
 def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEnv := R.kenv) :
@@ -898,13 +1004,9 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
           (a.render d, a.json d))
     | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
-  -- Windows that order their partitions totally, and `FETCH`es below an
-  -- `ORDER BY` on a key: otherwise a rerun may give other rows (D10).
+  -- Windows that order their partitions totally: otherwise a rerun may give
+  -- other rows (D10).
   let windowsDet := transform.all (·.root.windowsTotal cat A F inputKeys)
-  let deterministic := windowsDet && transform.all (·.root.fetchesTotal cat A F inputKeys)
-  let tiePlaces := match transform with
-    | some p => if p.root.checkWF cat then tiePlaces cat A F inputKeys p.root else []
-    | none => []
   let wanted := natLists ((input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
   let keys ← match transform with
     | some p =>
@@ -973,9 +1075,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
     allowed
     facts
     keys
-    deterministic
     windowsTotal := windowsDet
-    tiePlaces
     issues
     rows
     relations
@@ -1007,7 +1107,8 @@ def Request.check (R : Request) : Except String Report :=
     | .error e => .error e
     | .ok rep =>
       let ensures := (R.ensures.zip envs).map fun (q, env) => Request.ensureResults.resultsOf q env
-      .ok { rep with ensures }
+      let tiePlaces := R.tiePlacesIn K
+      .ok { rep with ensures, tiePlaces, deterministic := R.transform.isSome && tiePlaces.isEmpty }
 
 /-- Check a `--contract` request. -/
 def check (input : Json) : Except String Report := do
@@ -1035,7 +1136,8 @@ theorem Request.zip_results (R : Request) : ∀ qs : List Plan,
 
 theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
     (R.ensures.all fun q => (q.root.capReads R.caps).checkWF R.cat) = true ∧
-      rep.ensures = R.ensures.map R.ensureResults := by
+      rep.ensures = R.ensures.map R.ensureResults ∧
+      rep.deterministic = R.deterministicIn R.kenv ∧ rep.tiePlaces = R.tiePlacesIn R.kenv := by
   unfold Request.check at hc
   split at hc
   · cases hc
@@ -1046,7 +1148,7 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
     · cases hc
     · cases hc
       rw [Request.postEnvs_eq]
-      exact R.zip_results R.ensures
+      exact ⟨R.zip_results R.ensures, (R.deterministicIn_eq _).symm, rfl⟩
 
 theorem check_parse {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) : R.check = .ok rep := by
@@ -1057,7 +1159,19 @@ postconditions, one list per postcondition plan. -/
 theorem check_ensures {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
     rep.ensures = R.ensures.map R.ensureResults :=
-  (Request.check_ok (check_parse hR hc)).2
+  (Request.check_ok (check_parse hR hc)).2.1
+
+/-- The report's `deterministic` is `Request.deterministicIn`'s. -/
+theorem check_deterministic {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.deterministic = R.deterministicIn R.kenv :=
+  (Request.check_ok (check_parse hR hc)).2.2.1
+
+/-- The report's `tie_places` are `Request.tiePlacesIn`'s. -/
+theorem check_tiePlaces {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.tiePlaces = R.tiePlacesIn R.kenv :=
+  (Request.check_ok (check_parse hR hc)).2.2.2
 
 /-- The postcondition plans `check` analysed are well-formed. -/
 theorem check_wf {input : Json} {R : Request} {rep : Report}
@@ -1118,15 +1232,26 @@ theorem Request.resultsOf_all (q : Plan) (env : List AVal)
     have := h _ (List.getElem_mem hi')
     simpa using this
 
+/-- **The data meets the request** (#1484): it has the request's tables with
+their arities, and meets their schemas, their preconditions (those stated and
+those sverify inferred and assumed, both in the request), their keys and their
+row caps (`sv.max_rows`). The checker's theorems take it as their one
+hypothesis on the data; the run-time checks of the preconditions decide it. -/
+structure DataMeets (R : Request) (data : Catalog) : Prop where
+  wf : data.WF
+  arity : ∀ t, (data t).arity = (R.cat t).arity
+  schemas : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row
+  pre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true
+  keys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows
+  caps : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n
+
 /-- **The checker's verdict is the contract theorem** (#1088). When `check`
 reports every column of the request's `k`-th postcondition proved, the
 postcondition, its conditions projected over the request's transformation `T`
 (#1484, finding 2: `parse` builds the plan from `T`, `Post.plan`), holds on
 every row of every result the reference allows
-(`Rel.OrderAllowed`: every order of the ties, D24), for any data that has the
-request's tables (`harity`) and meets their schemas (`hS`), preconditions
-(`hpre`: those stated and those sverify inferred and assumed, both in the
-request), keys (`hkeys`) and row caps (`hcap`, `sv.max_rows`).
+(`Rel.OrderAllowed`: every order of the ties, D24), for any data that meets
+the request (`DataMeets`).
 
 `check` analyses under the reference whatever profile the request names: a
 report under another one is the reference's, relabelled by `underProfile`
@@ -1145,11 +1270,7 @@ whether its value means anything. It enters the engine's corollary as a
 hypothesis through `Engine.Runs`, and leaves no hole in this lemma. -/
 theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
-    {data : Catalog} (hcat : data.WF) (harity : ∀ t, (data t).arity = (R.cat t).arity)
-    (hS : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row)
-    (hpre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true)
-    (hkeys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows)
-    (hcap : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n)
+    {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
     (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) :
     ∀ {out : Relation}, (Rel.emit (.project T.root p.exprs) p.mapping).OrderAllowed data out →
@@ -1161,13 +1282,13 @@ theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
   have hall : (R.ensureEnv q).all AVal.certainlyTrue = true := by
     rw [check_ensures hR hc, List.getD_eq_getElem?_getD, List.getElem?_map, hq] at hproved
     exact Request.resultsOf_all q _ hproved
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hS hpre hkeys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
   have hQ : (q.root.capReads R.caps).WF data :=
-    Rel.wf_congr harity (Rel.checkWF_iff.mp (check_wf hR hc q (List.mem_of_getElem? hq)))
+    Rel.wf_congr hD.arity (Rel.checkWF_iff.mp (check_wf hR hc q (List.mem_of_getElem? hq)))
   have henv : R.ensureEnv q = ((q.root.capReads R.caps).analyse data R.kenv).cols := by
     simp only [Request.ensureEnv, Request.ensureEnvIn, Rel.analyse, KnowledgeEnv.windows,
-      Rel.keyedWindows_congr harity, (Rel.aeval_congr harity _ _ _ false _).1]
-  exact Knowledge.contract_sound_all hcat hK hQ (henv ▸ hall) (Rel.orderAllowed_capReads hcap ho)
+      Rel.keyedWindows_congr hD.arity, (Rel.aeval_congr hD.arity _ _ _ false _).1]
+  exact Knowledge.contract_sound_all hD.wf hK hQ (henv ▸ hall) (Rel.orderAllowed_capReads hD.caps ho)
 
 /-- `p` keeps each of its conditions: over a transformation of arity `n`, the
 column of every expression in `p.exprs` is among those `p.mapping` keeps.
@@ -1182,17 +1303,13 @@ conditions (`check_proved_sound`, through the `project` and `emit` cases of
 has no result in the reference (`raiseIf`) for this to speak of. -/
 theorem check_proved_rows {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
-    {data : Catalog} (hcat : data.WF) (harity : ∀ t, (data t).arity = (R.cat t).arity)
-    (hS : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row)
-    (hpre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true)
-    (hkeys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows)
-    (hcap : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n)
+    {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
     (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) :
     ∀ {out : Relation}, T.root.OrderAllowed data out → ∀ row ∈ out,
       ∀ j ∈ p.mapping, (row ++ p.exprs.map (·.eval row)).getD j .null = .bool true := by
   intro out ho row hrow j hj
-  have h := check_proved_sound hR hc hcat harity hS hpre hkeys hcap hT hp hproved
+  have h := check_proved_sound hR hc hD hT hp hproved
     (out := (out.map fun row => row ++ p.exprs.map (·.eval row)).map
       fun row => p.mapping.map (row.getD · .null))
     ⟨_, ⟨out, ho, rfl⟩, rfl⟩
@@ -1204,11 +1321,7 @@ them all (`Post.Selects`): every row of every result the reference allows for
 the transformation makes each of `p.exprs` TRUE. -/
 theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
-    {data : Catalog} (hcat : data.WF) (harity : ∀ t, (data t).arity = (R.cat t).arity)
-    (hS : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row)
-    (hpre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true)
-    (hkeys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows)
-    (hcap : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n)
+    {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
     (hsel : p.Selects (T.root.arity R.cat))
     (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) :
@@ -1218,19 +1331,40 @@ theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
   obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem he
   have hq : R.ensures[k]? = some (p.plan T) := by simp [Request.ensures, hT, hp]
   have hQ : ((p.plan T).root.capReads R.caps).WF data :=
-    Rel.wf_congr harity (Rel.checkWF_iff.mp (check_wf hR hc _ (List.mem_of_getElem? hq)))
+    Rel.wf_congr hD.arity (Rel.checkWF_iff.mp (check_wf hR hc _ (List.mem_of_getElem? hq)))
   have hT' : (T.root.capReads R.caps).WF data := by
     simp only [Post.plan, Rel.capReads, Rel.WF] at hQ
     exact hQ.1.1
   have hlen : row.length = T.root.arity R.cat := by
-    rw [← Rel.arity_congr harity, ← Rel.capReads_arity R.caps]
-    exact Rel.orderAllowed_arity hcat hT' (Rel.orderAllowed_capReads hcap ho) row hrow
-  have h := check_proved_rows hR hc hcat harity hS hpre hkeys hcap hT hp hproved ho row hrow _
+    rw [← Rel.arity_congr hD.arity, ← Rel.capReads_arity R.caps]
+    exact Rel.orderAllowed_arity hD.wf hT' (Rel.orderAllowed_capReads hD.caps ho) row hrow
+  have h := check_proved_rows hR hc hD hT hp hproved ho row hrow _
     (hsel i hi)
   rw [← hlen] at h
   have hcol : (row ++ p.exprs.map (·.eval row)).getD (row.length + i) .null =
       p.exprs[i].eval row := by
     simp [List.getD_eq_getElem?_getD, List.getElem?_append_right, List.getElem?_eq_getElem hi]
   rwa [hcol] at h
+
+/-- **The checker's `deterministic` is a theorem** (#1484, finding 9). When
+`check` reports the transformation deterministic, every result the reference
+allows for it, every order of the ties (`Rel.OrderAllowed`), is `Rel.eval`'s
+up to the order of its rows, for any data that meets the request
+(`DataMeets`): through `Rel.detPlan` (`check_deterministic`) and
+`Rel.allowed_perm_eval`. -/
+theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) :
+    ∀ {out : Relation}, T.root.OrderAllowed data out → out.Perm (T.root.eval data) := by
+  intro out ho
+  rw [check_deterministic hR hc] at hdet
+  simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hdet.1)
+  have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
+    rw [Rel.detPlan_congr hD.arity]
+    exact hdet.2
+  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
 
 end Substrait.ContractCheck

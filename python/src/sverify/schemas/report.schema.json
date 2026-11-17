@@ -67,7 +67,7 @@
       "$ref": "#/$defs/equivalence"
     },
     "deterministic": {
-      "description": "Whether the result is determined up to row order (Report.deterministic).",
+      "description": "Whether every result the reference allows is one up to row order (Report.deterministic): no ties in an ORDER BY a window, an ordered aggregate or a LIMIT reads, and no value the reference leaves open.",
       "type": "boolean"
     },
     "rows": {
