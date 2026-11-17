@@ -187,3 +187,20 @@ def test_sum_and_average_of_negative_zeros_are_positive_in_the_model_and_on_duck
     for fn in ("sum", "mean"):
         expr = T.aggregate(v=getattr(X, fn)()).mutate(k=ibis.literal(0)).select("k", "v")
         assert written(expr, rows) == model(expr, rows) == [(0, (0.0, 1.0))]
+
+
+@pytest.mark.parametrize("threads", [1, 4])
+@pytest.mark.parametrize("order", [[0, 1, 2, 3], [1, 0, 3, 2], [3, 2, 1, 0], [2, 0, 3, 1]])
+def test_quantile_cont_and_median_of_mixed_zeros_are_the_canonical_zero(order, threads) -> None:
+    """DuckDB's `quantile_cont` and `median` of equal zeros pick one by row order and
+    threads; the reference allows both (`contAllowed`), so the writer prints `+0.0`."""
+    base = [(0, NEG_ZERO), (1, 0.0), (2, NEG_ZERO), (3, 0.0)]
+    rows = [base[i] for i in order]
+    for agg in (X.quantile(0.5), X.median(), X.quantile(0.0), X.quantile(1.0)):
+        expr = T.aggregate(v=agg).mutate(k=ibis.literal(0)).select("k", "v")
+        sql = to_sql(written_plan(json.dumps(to_substrait(expr))), "duckdb")
+        db = duckdb.connect()
+        db.execute(f"SET threads = {threads}")
+        db.execute("CREATE TABLE t(k BIGINT, x DOUBLE)")
+        db.executemany("INSERT INTO t VALUES (?, ?)", rows)
+        assert [(k, signed(v)) for k, v in db.execute(sql).fetchall()] == [(0, (0.0, 1.0))], agg

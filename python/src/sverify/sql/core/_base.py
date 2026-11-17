@@ -4106,7 +4106,12 @@ class _Writer:
                 num, scale = m.q
                 digits = str(num).rjust(scale + 1, "0")
                 q = f"{digits[: len(digits) - scale]}.{digits[len(digits) - scale :] or '0'}"
-                return d.quantile(m.fn == "quantile_cont", v, q)
+                cont = m.fn == "quantile_cont"
+                sql = d.quantile(cont, v, q)
+                # A double quantile_cont (or median) of equal zeros picks one by row
+                # order and threads: the reference allows both (`contAllowed`), so the
+                # canonical zero stands for it. quantile_disc waits for D45.
+                return d.zero_rep(sql, "extreme") if cont and kind == "float" else sql
             case "covar_samp" | "covar_pop" | "corr":
                 x, y = f"{v}[1]", f"{v}[2]"
                 n = f"COUNT({v})"
