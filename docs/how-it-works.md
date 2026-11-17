@@ -318,6 +318,20 @@ lists each.
 composition, runtime errors, incremental view maintenance and table formats. [proofs.md](proofs.md)
 maps each guarantee to its module.
 
+## Where an engine evaluates an expression
+
+A runtime error depends on which rows an engine evaluates an expression on,
+and engines evaluate more than the plan says. Sverify assumes that a filter or
+join condition may run on its input's rows before the filters below it, that
+`AND`, `OR` and `COALESCE` evaluate every argument, and that a `CASE`
+evaluates a branch only on the rows that take it. It also assumes that each
+part of a condition that always runs may run on the rows of the join inputs
+it reads alone, even when another input is empty, as DuckDB's filter pushdown
+and hash joins do (#1484). These assumptions are stated in
+[`Safety.lean`](../analysis/Sverify/Analysis/Safety.lean)'s header, and
+`Rel.mayIssues_sound_all` proves that every issue they allow on every order of
+the ties is reported.
+
 ## Modelling choices
 
 How the Lean model represents and evaluates a plan (positional schemas,

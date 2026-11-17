@@ -235,6 +235,45 @@ def test_a_transform_never_applied_is_not_proved(tmp_path, capsys):
     assert doc["unchecked"] == ["paid"]
 
 
+def test_declared_schemas_let_check_prove_an_unapplied_transform(tmp_path, capsys):
+    body = """
+    @sv.transform(
+        requires=[_.amount >= 0, _.amount < 2**62],
+        ensures=[_.amount >= 0],
+        schemas={"orders": {"id": "int64", "amount": "int64"}},
+    )
+    def paid(orders):
+        return orders.filter(orders.amount > 10)
+    """
+    code, doc = run_json(capsys, "check", str(write(tmp_path, body)))
+    assert code == 0
+    assert doc["unchecked"] == []
+    [item] = doc["items"]
+    assert (item["name"], item["status"]) == ("paid", "proved")
+
+
+def test_declared_schemas_report_what_is_not_proved(tmp_path, capsys):
+    body = """
+    @sv.transform(
+        ensures=[_.amount > 10], schemas={"orders": {"id": "int64", "amount": "int64"}}
+    )
+    def paid(orders):
+        return orders.filter(orders.amount > 0)
+    """
+    code, doc = run_json(capsys, "check", str(write(tmp_path, body)))
+    assert code == 1
+    [item] = doc["items"]
+    assert item["status"] == "not_proved"
+
+
+def test_schemas_must_name_the_parameters():
+    with pytest.raises(TypeError, match="must name each parameter"):
+
+        @sv.transform(schemas={"other": {"id": "int64"}})
+        def paid(orders):
+            return orders
+
+
 def test_a_broken_link_is_reported(tmp_path, capsys):
     body = """
     @sv.transform(ensures=[sv.unique("id")])

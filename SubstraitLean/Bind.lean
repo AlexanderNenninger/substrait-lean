@@ -37,14 +37,8 @@ namespace Substrait
 
 /-! ## Expressions -/
 
-/-- The subexpressions that evaluating `e` always evaluates: the arguments of
-its calls, a `CASE`'s condition and a lambda's list, and theirs. -/
-def Expr.eager : Expr → List Expr
-  | .lit _ | .field _ => []
-  | .un _ a => a :: a.eager
-  | .bin _ a b => a :: b :: (a.eager ++ b.eager)
-  | .ifThen c _ _ => c :: c.eager
-  | .hof _ l _ => l :: l.eager
+-- `Expr.eager`, the subexpressions evaluating an expression always
+-- evaluates, is `core/Sverify/Core/Issue.lean`'s.
 
 /-- An expression raises where one it always evaluates raises. -/
 theorem Expr.raises_of_eager {p : Profile} {row : Row} :

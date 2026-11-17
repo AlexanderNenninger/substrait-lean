@@ -43,7 +43,9 @@
   "description": [
     "`median`, `percentile(x, p)` and `percentile_cont(p) WITHIN GROUP (ORDER BY x)` interpolate linearly at position (n - 1)·p: over 1, 2, 3, 10 the median is 2.5 and `p = 0.25` 1.75. `percentile_disc(p)` takes the first value whose cumulative share reaches p (1 at 0.25, 2 at 0.26 over 1, 2, 3, 4). All three return `DOUBLE`, for integer and decimal inputs too (`median` of two `DECIMAL(10,2)` is 1.675 as a double). `percentile_approx` is approximate and returns the input type.",
     "NULLs are skipped; NaN sorts last (spark-nan-order). The fraction must be a constant. Under `spark.sql.legacy.percentileDiscCalculation` (off by default) `percentile_disc` picks other values.",
-    "The interpolation is `lo + (position − ⌊position⌋)·(hi − lo)` in doubles (`getPercentile`): of 0.4 and 1.697 at 0.3, `percentile_cont` is 0.7891000000000001, an ulp above the exact interpolation rounded once (0.7891). `hi − lo` can overflow for neighbours of opposite sign near the double's range."
+    "The interpolation is `lo + (position − ⌊position⌋)·(hi − lo)` in doubles (`getPercentile`): of 0.4 and 1.697 at 0.3, `percentile_cont` is 0.7891000000000001, an ulp above the exact interpolation rounded once (0.7891). `hi − lo` can overflow for neighbours of opposite sign near the double's range.",
+    "With an infinite or overflowing difference, `lo + (hi − lo)·w` is NaN where `lo` is -inf and `hi` is greater (`hi − lo` is +inf, and `-inf + inf·w` is NaN), and +inf where `hi − lo` overflows to +inf (`[-1e308, 1e308]` gives +inf at 0.25, 0.5 and 0.75): neither is a double between the neighbours, so the engine's behaviour is `LINEAR_DIFF`, a value between them, a NaN or +inf, each only on neighbours that make it (`contDiffExtra`).",
+    "Like DuckDB, the position `(n − 1)·q` is computed in doubles, so where the exact position is whole and its double is not (n = 26, q = 0.28), the engine interpolates toward the next value with a weight near 1e-15: with neighbours 1.0 and 1e300 the result is 8.9e284 where the exact position holds 1.0. The result then lies between the group's minimum and maximum but not between the model's neighbours; `LINEAR_DIFF` as defined does not admit it: an overclaim, tracked in #900, until the definition takes the engine's double-position neighbours."
   ],
   "reference": "`quantile_disc` takes a value of the input, of its type; `quantile_cont` any double between the neighbours (`contAllowed`). Spark's positions match; `percentile_disc` of integers and decimals needs a cast back to the input type, exact for integers below 2⁵³.",
   "status": "open",
@@ -158,6 +160,36 @@
         }
       ],
       "notes": "x = 0.4, 1.697."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (±∞ aggregate cleanup, PR 2), probe scripts pq.py, pq2.py (Polars), spq3.py (Spark on homelab-run)",
+      "evidence": [
+        {
+          "note": "Spark 4.3.0 local[2], ANSI on: `percentile_cont(p) WITHIN GROUP (ORDER BY x)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] NaN at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: NaN at 0.25, 1 at 0.5, +inf at 0.75; of [-inf, 0, +inf, 5]: NaN, 2.5, +inf; of [1, +inf]: +inf. The same `lo + (hi − lo)·w` as Polars (Spark 4.0.1 gives -inf, not NaN, at [-inf, 1], so the interpolation changed between 4.0 and 4.3)."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1475 review, Fable's required change), homelab-run",
+      "evidence": [
+        {
+          "note": "Spark 4.3.0 local[2], ANSI on: `percentile_cont(p) WITHIN GROUP (ORDER BY x)` of [-1e308, 1e308] is -1e308 at 0, +inf at 0.25, 0.5 and 0.75, 1e308 at 1; of [-1.7e308, 0, 1.7e308]: -1.7e308, -8.5e307, 0, 8.5e307, 1.7e308 at 0, 0.25, 0.5, 0.75, 1 (between the neighbours)."
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-16",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (#1475 reviewer's probe), homelab-run",
+      "evidence": [
+        {
+          "note": "Spark 4.3.0 local[2], `percentile_cont(q) WITHIN GROUP (ORDER BY x)`: the same four cases: n = 26, q = 0.28: 1.0-then-1e300 gives 8.881784197001253e+284 and `x = i` 7.000000000000001; n = 51, q = 0.58: `x = i` gives 28.999999999999996, the 1.0-then-1e300 shape 1.0."
+        }
+      ]
     }
   ]
 }

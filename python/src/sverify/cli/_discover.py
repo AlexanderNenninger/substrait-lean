@@ -69,8 +69,9 @@ class Discovery:
         checked: Each application of a contracted transform, in the order
             the file made them.
         unchecked: Contracted transforms the file defines but never
-            applies: without input schemas they have nothing to be proved
-            on.
+            applies and declares no input schemas for
+            (`sverify.transform(schemas=)`): they have nothing to be
+            proved on.
         nodes: The file's nodes, by variable name.
         transforms: The file's contracted transforms, by variable name.
         error: What stopped the import, if anything (a refusal,
@@ -149,6 +150,8 @@ def load(path: str | Path, out: Discovery | None = None) -> Discovery:
                 out.error = e
             finally:
                 _scan(module, out)
+                if out.error is None:
+                    _check_declared(out)
                 out._finish()
     finally:
         if sys.path and sys.path[0] == folder:
@@ -164,3 +167,19 @@ def _scan(module: ModuleType, out: Discovery) -> None:
             out.nodes[var] = value
         elif isinstance(value, ContractedTransform):
             out.transforms[var] = value
+
+
+def _check_declared(out: Discovery) -> None:
+    """Prove each transform the file defines but never applies, and that
+    declares its input schemas (`sverify.transform(schemas=)`): its
+    `check(schemas)`, recorded as an application. What stops it (a
+    refusal) stops the check like an error of the file's own."""
+    applied = {id(c.transform) for c in out._collected}
+    for t in dict.fromkeys(out.transforms.values()):
+        if id(t) in applied or t.schemas is None:
+            continue
+        try:
+            t.check(*(t.schemas[p] for p in t.signature.parameters))
+        except Exception as e:  # noqa: BLE001 - reported, with what was found before it
+            out.error = e
+            return

@@ -210,3 +210,23 @@ def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
     with warnings.catch_warnings():
         warnings.simplefilter("error", InferredWarning)
         having.run(c, "duckdb")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT k, sum(f) AS s FROM t GROUP BY k HAVING sum(f) > 1",
+        "SELECT k, avg(f) AS s FROM t GROUP BY k HAVING avg(f) < 3",
+    ],
+)
+def test_the_margin_check_sees_through_the_finish_of_duckdbs_sum_and_avg(query):
+    """Under `semantics="duckdb"` a double `SUM` or `AVG` is a guarded sum and the extremes,
+    finished by a `CASE` that the threshold reads (#341). The check still covers it (#929): the
+    `CASE` reads exact columns and ends in the sum or a constant."""
+    t = ibis.table({"k": "int64", "f": "float64"}, name="t")
+    r = sv.verify(
+        sv.sql(query, t=t, semantics="duckdb"), requires={"t": [_.f.between(-1e300, 1e300)]}
+    )
+    assert r.proved
+    assert len(r._margin_checks) == 1
+    assert r._rows_exact is not None and all(r._rows_exact.values())

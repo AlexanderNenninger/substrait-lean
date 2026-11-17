@@ -90,7 +90,7 @@ result, so a proved postcondition holds whichever value the engine picks.
 |---|---|---|
 | `tie_order` | the order of rows that tie in an `ORDER BY` or a window's order, and of the values `STRING_AGG` and `collect` gather | any order |
 | `tie_pick` | the row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value` and `MODE` take among ties | any row of the tie |
-| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them |
+| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them; Polars and Spark (`LINEAR_DIFF`, `lo + (hi − lo)·w`) also give NaN with a `-∞` lower neighbour and `+∞` where `hi − lo` overflows (`[-1e308, 1e308]`) |
 | `round_zero_sign` | which zero `round` and `ceil` give a negative value that rounds to zero | either |
 | one zero, one NaN | which member a `GROUP BY` key, a `DISTINCT` row, a `MIN` or a `MAX` returns when its class holds `-0.0` and `0.0`, or NaNs of both signs | any member present, or the canonical value |
 | the sign of a NaN | the sign of a NaN an operation produces (under a profile that lets one be created) | either |
@@ -393,8 +393,12 @@ core needs no square roots. The bounds are proved for the two-pass algorithm
 and for DuckDB's Welford update with Chan's merge in any
 tree ([`float-bounds.md`](float-bounds.md)), and a property test checks
 DuckDB's results against them (`tests/test_float_bounds.py`). The textbook
-formula `Σx² − (Σx)²/n` cancels and is outside them. Outside the finite range
-the reference's own value is the one allowed. An engine profile may name a
+formula `Σx² − (Σx)²/n` cancels and is outside them. A NaN or an infinity
+among the values gives the reference's own value. Finite values outside the
+range above (`Stat.fits`) allow any double: an engine's algorithm may overflow
+on the way or round differently there (`var_pop([1e150, 3e150])` is
+`1.0000000000000002e+300` exactly rounded, `9.999999999999999e+299` on DuckDB
+and streaming Polars; [D30](decisions.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)). An engine profile may name a
 stricter algorithm (`Profile.statAlgo`, `Profile.sumAlgo`, `AggAlgo`); without
 one, the generic properties hold. No profile names one yet. Engines differ
 from the reference where it raises: DuckDB and Polars give NaN for an

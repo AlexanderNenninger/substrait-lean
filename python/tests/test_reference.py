@@ -353,6 +353,21 @@ def issues(plan: str) -> list[str]:
     return [i["kind"] for i in json.loads(out)["issues"]]
 
 
+def test_a_postcondition_must_select_from_the_transformation():
+    """The checker proves a postcondition only over the transformation: a
+    plan in `ensures` that selects from another relation is refused
+    (`ContractCheck.postOf`, #1484)."""
+    con = connect()
+    put_table(con, "i", pa.table({"a": pa.array([1, 2], pa.int64())}))
+    transform = json.loads(substrait_json(con, "SELECT a FROM i WHERE a > 1"))
+    other = json.loads(substrait_json(con, "SELECT a >= 1 AS c FROM i"))
+    contract = {"requires": [], "ensures": [other], "transform": transform, "keys": {},
+                "ensures_keys": [], "references": {}}  # fmt: skip
+    code, _, err = run_checker(("--contract",), json.dumps(contract))
+    assert code not in (0, 4)
+    assert "postcondition 1" in err
+
+
 @pytest.mark.parametrize("op", ["//", "%"])
 def test_integer_division_by_zero_may_ask_for_null(op):
     con = connect()

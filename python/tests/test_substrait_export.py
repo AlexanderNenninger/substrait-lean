@@ -304,3 +304,28 @@ def test_proto_file_matches_the_messages() -> None:
     }
     assert declared == built
     assert f"type.googleapis.com/{contract.DESCRIPTOR.full_name}" == se.TYPE_URL
+
+
+@needs_repo
+def test_a_condition_over_another_relation_is_refused() -> None:
+    """`from_substrait` proves an export's postconditions over the exported
+    plan; a condition whose plan reads another relation (a join's select
+    that Ibis merged, before #1484) is refused with an error that says to
+    export again."""
+    import copy
+
+    from sverify.substrait_export import _lean_plan, _over, read
+
+    fixture = Path(__file__).parent / "formats" / "main-3f971d1e" / "substrait"
+    imp = read((fixture / "row_and_table.json").read_text())
+    plan = _lean_plan(imp.plan)
+    cond = _lean_plan(next(e for e in imp.ensures if e.get("kind") == "row")["plan"])
+    assert (
+        _over(plan, cond, "c")["relations"][0]["root"]["input"]["project"]["input"]
+        == (plan["relations"][0]["root"]["input"])
+    )
+    other = copy.deepcopy(cond)
+    project = other["relations"][0]["root"]["input"]["project"]
+    project["input"] = project["input"]["project"]["input"]
+    with pytest.raises(ValueError, match="export it with this version"):
+        _over(plan, other, "c")

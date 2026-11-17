@@ -14,6 +14,7 @@ from typing import Any
 
 import pyarrow as pa
 
+from sverify._keys import canonical_key
 from sverify._scan import Native
 from sverify._weighted import _indices
 
@@ -86,15 +87,17 @@ def by_keys(
     if not keys.num_rows or not state.num_rows:
         return state.slice(0, 0) if keep else state
     # Each key column as dictionary indices over both tables, NULL its own
-    # value, so a hash join matches NULLs.
+    # value, so a hash join matches NULLs. A key is an identity boundary (D31):
+    # one zero and one NaN, on copies, the stored values stay raw. Encoded
+    # after the chunks are combined, since pyarrow cannot unify per-chunk
+    # dictionaries that hold NULL.
     left, right = {}, {}
     n = state.num_rows
     for i, c in enumerate(columns):
-        both = pa.chunked_array(
-            [*state.column(c).chunks, *keys.column(i).cast(state.schema.field(c).type).chunks],
-            type=state.schema.field(c).type,
-        )
-        codes = both.dictionary_encode(null_encoding="encode").combine_chunks().indices
+        t = state.schema.field(c).type
+        both = pa.chunked_array([*state.column(c).chunks, *keys.column(i).cast(t).chunks], type=t)
+        both = canonical_key(both.combine_chunks())
+        codes = both.dictionary_encode(null_encoding="encode").indices
         left[f"__k{i}"], right[f"__k{i}"] = codes[:n], codes[n:]
     marked = state.append_column("__row", _indices(n))
     for k, v in left.items():

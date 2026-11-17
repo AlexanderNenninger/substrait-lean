@@ -162,6 +162,13 @@ theorem mayIssues_sound {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK :
     (h : r.HasIssue cat u p) : p ∈ r.mayIssues cat K.cols K.facts (K.windows cat) u :=
   Rel.mayIssues_sound hcat hK.cols hK.facts (hK.windows hcat) hwf hsm p h
 
+/-- `Rel.mayIssues_sound_all` on one hypothesis: every issue on any order of
+the ties is reported (#1484). -/
+theorem mayIssues_sound_all {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat)
+    {u : Bool} {r : Rel} (hwf : r.WF cat) (hsm : r.SmallAll cat) {p : Issue × Expr}
+    (h : r.HasIssueAll cat u p) : p ∈ r.mayIssues cat K.cols K.facts (K.windows cat) u :=
+  Rel.mayIssues_sound_all hcat hK.cols hK.facts (hK.windows hcat) hwf hsm p h
+
 /-- `Rel.guardFree_sound` on one hypothesis. -/
 theorem guardFree_sound {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)

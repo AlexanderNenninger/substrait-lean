@@ -2604,6 +2604,25 @@ def register_view(table: ir.Table, contract: ViewContract) -> None:
         _register(table.op(), contract.provenance)
 
 
+def _declared_schemas(
+    fn: Callable[..., Any], schemas: Mapping[str, Any] | None
+) -> dict[str, ibis.Schema] | None:
+    """`transform(schemas=)` as `ibis.Schema`s, once, at decoration: it names
+    only parameters of `fn` and gives each of them (a missing or unknown
+    parameter is a `TypeError`, as in `requires`)."""
+    if schemas is None:
+        return None
+    params = list(inspect.signature(fn).parameters)
+    if (unknown := [k for k in schemas if k not in params]) or (
+        missing := [p for p in params if p not in schemas]
+    ):
+        raise TypeError(
+            f"schemas of {fn.__name__} must name each parameter {params}; "
+            + (f"unknown: {unknown}" if unknown else f"missing: {missing}")
+        )
+    return {k: v if isinstance(v, ibis.Schema) else ibis.schema(v) for k, v in schemas.items()}
+
+
 class ContractedTransform:
     """A transformation with a contract; see `transform`.
 
@@ -2630,8 +2649,13 @@ class ContractedTransform:
         semantics: Semantics = "reference",
         on_inferred: OnInferred = "error",
         on_violation: Policy | None = None,
+        schemas: Mapping[str, Any] | None = None,
     ):
         self.fn, self.ensures = fn, expand_keys(ensures)
+        self.schemas: dict[str, ibis.Schema] | None = _declared_schemas(fn, schemas)
+        """The input schemas the decorator declares (`transform(schemas=)`),
+        by parameter name; None when it declares none. `sverify check`
+        proves the contract on them when the file never applies it."""
         self.on_violation: Policy | None = check_policy(on_violation)
         """What a refresh does with a batch of a source that breaks this
         transform's preconditions; None: the source's setting."""
@@ -3063,6 +3087,7 @@ def transform(
     semantics: Semantics = "reference",
     on_inferred: OnInferred = "error",
     on_violation: Policy | None = None,
+    schemas: Mapping[str, Any] | None = None,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -3131,6 +3156,12 @@ def transform(
             version of the source meets the preconditions. Default None:
             the source's `on_violation`, else `"error"`. Where two
             transforms state the same condition, the stricter holds.
+        schemas: The schema of each input, by parameter name, as an
+            `ibis.Schema` or a mapping from column name to type
+            (`{"orders": {"id": "int64", "total": "int64"}}`). They let
+            `sverify check file.py` prove the contract of a transform the
+            file never applies, which is `fn.check(**schemas)`
+            (`ContractedTransform.check`). Calls ignore them. Default: none.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -3226,4 +3257,5 @@ def transform(
         semantics=semantics,
         on_inferred=on_inferred,
         on_violation=on_violation,
+        schemas=schemas,
     )
