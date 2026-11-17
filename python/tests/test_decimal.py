@@ -317,7 +317,7 @@ def test_comparing_decimals_of_other_scales_does_not_overflow_duckdb(make, expec
         "b": pa.array([D("1.5")], pa.decimal128(38, 10)),
     }
     report, out = _run_duckdb(rows, make)
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert out.column(0).to_pylist() == expected
 
 
