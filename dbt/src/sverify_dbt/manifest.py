@@ -40,6 +40,9 @@ class Relation:
     compiled_code: str | None = None
     language: str = "sql"
     materialized: str | None = None
+    unique_key: list[str] | None = None
+    """An incremental model's `unique_key`, as a list."""
+    incremental_strategy: str | None = None
     depends_on: list[str] = field(default_factory=list)
     contract: bool = False
     constraints: list[dict[str, Any]] = field(default_factory=list)
@@ -202,6 +205,14 @@ def load(project: str | Path, target_path: str | Path = "target") -> Project:
             compiled_code=n.get("compiled_code"),
             language=n.get("language") or "sql",
             materialized=config.get("materialized"),
+            unique_key=(
+                [config["unique_key"]]
+                if isinstance(config.get("unique_key"), str)
+                else list(config["unique_key"])
+                if config.get("unique_key")
+                else None
+            ),
+            incremental_strategy=config.get("incremental_strategy"),
             depends_on=list((n.get("depends_on") or {}).get("nodes") or []),
             contract=bool(contract),
             constraints=list(n.get("constraints") or []),

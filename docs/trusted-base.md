@@ -47,9 +47,9 @@ the project's one axiom (the trusted table below).
 | `Rel.duckdb_refines` | The generated DuckDB lowering computes the reference | `Obligations.lean` | propext, Classical.choice, Quot.sound |
 | `Lowering.duckdb_exact` | Each generated lowering entry is exact | `DuckDB/LoweringOn.lean` | propext, Classical.choice, Quot.sound |
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `DuckDB/Lift/Duckdb.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.polars_sound` | … on the model of Polars | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `Engine.spark_sound` | … on the model of Spark | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings). The model differs from the reference only in its scalar functions: its relational behaviour is the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
@@ -91,7 +91,7 @@ place, and what retires it.
 | opaque, `implemented_by`, unsafe def | `evalEngines`, `evalEnginesUnsafe` | `SubstraitLean/Obligations.lean` | The engine profiles' evaluation while the obligations elaborate | |
 | sorry | `checkGenerated` | `engines/Sverify/Engines/Generated.lean` | With `check_generated` off (a plain `lake build`, every editable install), the generated entries' proofs are `sorryAx`; CI, the wheels and `poe prove` check them. `substrait-check --build` says which build it is (`generated proofs checked` or `unchecked`); the report records it as `checker.generated_proofs`, and `str(report)` says "proved by a checker whose generated proofs are unchecked" for the second | |
 | compiled checker | `partial def` on the evaluation path, IO, `Lean.Json` | `SubstraitLean/`, `SubstraitCheck.lean`, `Main.lean` | The compiled code runs what the definitions state; a `partial def` is opaque to proofs | |
-| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` labels the reference's report with the profile of an engine marked `asReference` | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/271)) |
+| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` labels the reference's report with the profile of an out-of-tree engine marked `asReference`, and marks a built-in engine's request pending | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/271)) |
 | CLI glue | `"class_basis": "computed"`, `"sorted_basis": "computed"` | `SubstraitLean/Realize.lean` | The class and the sort per engine are computed from the rows; no theorem connects them to the engine's refinement | A theorem that does |
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `SubstraitLean/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
@@ -101,6 +101,8 @@ place, and what retires it.
 | toolchain | Lean `v4.35.0` | `lean-toolchain` | The kernel and the compiler | |
 
 ## The trusted parts in detail
+
+- The `evalChoices` oracle. `Rel.evalChoices` (`lean_choices`) and the Python matching of rows to its choices (`allows_rows`) check engine results against the rows the reference allows. `Rel.evalChoices` has no theorem yet, so the oracle rests on tests.
 
 - The size hypothesis. Every string has fewer than 2³² characters
   (`Text.sizeCap`, as DuckDB's strings hold fewer than 2³² bytes), every relation a window reads
@@ -141,7 +143,7 @@ place, and what retires it.
   `schemaEnv`, the declared types as abstract values), `Report.json`, the
   `--serve` loop and `runOn` that call `check` and print its report, and
   `underProfile`, which labels the reference's report with the profile a
-  request names for an engine marked `asReference` (today Polars). On the Python side, the glue of
+  request names for an out-of-tree engine marked `asReference` (no built-in one: Polars's report is pending until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). On the Python side, the glue of
   incremental views (change tables, consolidation, merge).
 - The exact state of a maintained `SUM` or `AVG` of doubles
   (`python/src/sverify/_exact_sum.py`). Lean proves that the state, an
@@ -160,7 +162,9 @@ place, and what retires it.
   expression may raise on under `Rel.eval`; which expressions an engine
   evaluates, on which rows, is trusted. `Rel.loose` models an engine that
   evaluates an expression on more rows than the plan says (merged filters,
-  eager `AND` and `OR`), and the facts record what each engine does
+  eager `AND` and `OR`), `Rel.ViewAllowed` one that evaluates part of a
+  condition on one input of a join before any pair exists (a pushed-down
+  filter, a hash join's key), and the facts record what each engine does
   ([duckdb-exec-filter-pushdown](../engines/duckdb/facts/duckdb-exec-filter-pushdown.json),
   [DD-7](../upstream/bugs/DD-7.json); `Safety.lean`'s header).
 - Doubles. Lean's `Float` is an opaque `extern` to C `double`, trusted to be
