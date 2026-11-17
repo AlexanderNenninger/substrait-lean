@@ -18,6 +18,15 @@ engine proves its own (`Engine.duckdb_sound`, `Engine.polars_sound`,
 (Polars, Spark) are sound. Its plan part (`Engine.GuardFreePlan`) is
 decidable; its data part (`Engine.GuardFreeData`) states preconditions on the
 catalog, as `hK` does, with the size hypothesis (`Rel.Small`).
+`Engine.guardFreeSide_example` shows one catalog and plan that meet it, so
+that `Engine.polars_sound` and `Engine.spark_sound` apply to something.
+
+What the two proofs take and what they leave. They do not use the hypothesis
+that the translated plan does not raise: on data that meets the side
+condition the written plan's functions compute `Rel.eval`
+(`Impl.Faithful`, guard elimination). That the engine computes what its
+model says on such data is D16's trusted claim (`Engine.Runs`), carried by
+the engine's facts and tests.
 
 `Engine.contract_sound` composes it with `contract_sound_allowed`: unless the
 translated plan raises, the contract's postconditions hold on the rows the
@@ -159,5 +168,62 @@ theorem Engine.contract_sound_runs {E : Engine} {tested : ObsRow → Prop}
     ∀ row ∈ postRows es mp out, ∀ v ∈ row, v = .bool true :=
   contract_sound_allowed hcat hS hpre hT hq hsafe hsh hrob hQ hW hproved
     (Rel.allowedP_reference.mp (Rel.transfer_of_transferB htr hrun.2)).postRows
+
+end Substrait
+
+namespace Substrait
+
+/-! ## An example that meets the side condition
+
+One catalog and one plan, shown to meet `Engine.GuardFreeSide`, so that
+`Engine.polars_sound` and `Engine.spark_sound` apply to something
+(`engines/polars/Sverify/Polars/Engine.lean`, `engines/spark/Sverify/Spark/Engine.lean`).
+The plan adds 1 to a column of two rows. On unbounded data the sum can leave
+64 bits, so the plan has an overflow to eliminate: the environment bounds the
+column to `[0, 100]`, which is what rules it out. The example runs with no
+black boxes. -/
+
+/-- No black boxes. -/
+abbrev Engine.exampleBoxes : Boxes.Ambient := Boxes.Ambient.none
+
+section Example
+attribute [local instance] Engine.exampleBoxes
+
+def Engine.exampleCat : Catalog := fun
+  | "t" => ⟨1, [[.int 1], [.int 2]]⟩
+  | _ => ⟨0, []⟩
+
+def Engine.examplePlan : Rel :=
+  .project (.read "t") [.bin .add (.field 0) (.lit (.int 1))]
+
+def Engine.exampleA : String → List AVal := fun
+  | "t" => [{ int := some ⟨some 0, some 100⟩ }]
+  | _ => []
+
+theorem Engine.guardFreeSide_example : Engine.GuardFreeSide Engine.exampleCat Engine.examplePlan := by
+  refine ⟨Engine.exampleA, fun _ => [], WindowKeys.none, ⟨?_, ?_, ?_, WindowKeys.none_soundAll _, ?_⟩,
+    ?_, ?_, ?_⟩
+  · intro t row h
+    unfold Engine.exampleCat at h ⊢
+    split at h
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+      rcases h with rfl | rfl <;> rfl
+    · simp at h
+  · intro t row h i
+    unfold Engine.exampleCat at h
+    split at h
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+      unfold Engine.exampleA
+      rcases h with rfl | rfl <;> cases i <;>
+        simp [AVal.Mem, AVal.MemR, AVal.MemNum, Bound.Mem, AVal.top]
+    · simp at h
+  · intro t row h f hf
+    simp at hf
+  · trivial
+  · simp [Engine.examplePlan, Rel.WF, Expr.refsLt, Rel.arity, Engine.exampleCat]
+  · decide +kernel
+  · decide +kernel
+
+end Example
 
 end Substrait

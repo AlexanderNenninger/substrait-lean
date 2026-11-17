@@ -17,9 +17,9 @@ shimmed expression gives the reference's value. The lemmas are named as the
 shims of `Profile.spark.obs` (`EngineTables.lean`): `Spark.<name>`, or, for a
 shim another engine writes the same way, `Shim.<name>` (`engines/Sverify/Engines/Shims.lean`).
 
-**Trusted**: the model of Spark's own functions (`Spark.bin` below; the sort
-`Shim.sortWith`, the `DECIMAL(38,0)` sum `Shim.sumEmptyNull`), each from its
-fact.
+**Trusted**: the model of Spark's own functions (`Profile.spark`,
+`Spark/Profile.lean`; the sort `Shim.sortWith`, the `DECIMAL(38,0)` sum
+`Shim.sumEmptyNull`), each from its fact.
 
 * `int_sum_decimal` (spark-sum-int): Spark adds a `BIGINT` `SUM` in `BIGINT`
   and, under ANSI, raises as soon as a partial sum leaves 64 bits, which
@@ -39,8 +39,8 @@ fact.
   reference raises (spark-int-arith, spark-int-divide); a zero divisor
   raises; `0 · ∞`, `∞ - ∞` and `sqrt(-1)` are NaN (spark-double-arith,
   spark-math-domain); `date_add` wraps past 2³¹ days (SP-2). None needs a
-  shim: `Spark.written_faithful`, hence `Rel.spark_sound`, as
-  `Rel.polars_sound` is for Polars.
+  shim: `Profile.sparkWritten_okImpl_faithful`, hence `Rel.spark_sound`
+  (`Spark/Engine.lean`), as `Rel.polars_sound` is for Polars.
 -/
 
 namespace Substrait.Spark
@@ -109,96 +109,4 @@ theorem decimal_negate_sub (r : Int → Int) {p s : Nat} {u : Int} (hu : u.natAb
     simp [hp, h34, h37]
   · by_cases h : p ≤ 37 ∨ s ≤ 6 <;> simp [hp, h]
 
-/-! ## The error side: no shim for a verified plan -/
-
-/-- Spark's `date_add(d, CAST(n AS INT))`: the days added as 32-bit `int`s,
-wrapping past 2³¹ - 1 (SP-2); a count outside `INT` fails the cast (ANSI),
-modelled as NULL. -/
-def wrap32 (x : Int) : Int := (x + 2 ^ 31) % 2 ^ 32 - 2 ^ 31
-
-variable [Boxes.Ambient]
-/-- **Spark as the writer writes it, under ANSI**, on the functions of the
-slice: integer `+ - *` raise past 64 bits (spark-int-arith), integer `div`
-truncates and raises at a zero divisor and `MIN div -1` (spark-int-divide),
-`%` truncates and raises at a zero divisor (spark-int-modulus), doubles are
-IEEE's with NaN for `∞ - ∞`, `0 · ∞`, `∞ / ∞` (spark-double-arith), and
-`date_add` wraps at 2³¹ days (spark-date-range). A raise is modelled as NULL:
-the theorem below needs only that it happens where the reference raises.
-Every other function is the reference's. -/
-def bin : BinFn → Value → Value → Value
-  | .add, .int a, .int b => if inI64 (a + b) then .int (a + b) else .null
-  | .sub, .int a, .int b => if inI64 (a - b) then .int (a - b) else .null
-  | .mul, .int a, .int b => if inI64 (a * b) then .int (a * b) else .null
-  | .idiv, .int a, .int b => if b = 0 then .null else if inI64 (a.tdiv b) then .int (a.tdiv b) else .null
-  | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
-  | .dateAdd, .date a, .int b =>
-    if -2 ^ 31 ≤ b ∧ b < 2 ^ 31 then .date (wrap32 (a + b)) else .null
-  | f, .float a, .float b =>
-    if nanCase f a b then .float FloatCode.nan else f.apply (.float a) (.float b)
-  | f, v, w => f.apply v w
-
-def written : Impl := ⟨UnFn.apply, bin⟩
-
-omit [Boxes.Ambient] in
-theorem wrap32_of_small {x : Int} (h1 : -2 ^ 31 ≤ x) (h2 : x < 2 ^ 31) : wrap32 x = x := by
-  unfold wrap32; omega
-
-/-- **`Spark.written_faithful`**: Spark under ANSI, as the writer writes it,
-agrees with the reference wherever the reference reports no issue. Its
-raises and its own values elsewhere (NaN, a wrapped date) are on the error
-side, where a verified plan does not go. -/
-theorem written_faithful : written.Faithful := by
-  refine ⟨fun _ _ _ => rfl, fun f v w h => ?_⟩
-  show bin f v w = f.apply v w
-  unfold bin
-  split
-  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
-    split at h <;> simp_all [BinFn.apply]
-  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
-    split at h <;> simp_all [BinFn.apply]
-  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
-    split at h <;> simp_all [BinFn.apply]
-  · rename_i a b
-    simp only [BinFn.issue] at h
-    by_cases hb : b = 0 <;> by_cases hi : inI64 (a.tdiv b) = true <;> simp_all [BinFn.apply]
-  · rename_i a b
-    simp only [BinFn.issue] at h
-    by_cases hb : b = 0 <;> simp_all [BinFn.apply]
-  · rename_i a b
-    simp only [BinFn.issue, rangeIssue] at h
-    split at h
-    · rename_i hr
-      simp only [between, Bool.and_eq_true, decide_eq_true_eq] at hr
-      have h1 : Time.dayMin = -719162 := rfl
-      have h2 : Time.dayMax = 2932896 := rfl
-      have hb : -2 ^ 31 ≤ b ∧ b < 2 ^ 31 := by omega
-      simp only [BinFn.apply, hb, and_self, ite_true]
-      rw [wrap32_of_small (by omega) (by omega)]
-    · simp at h
-  · rename_i a b
-    have : nanCase f a b = false := by
-      cases hn : nanCase f a b
-      · rfl
-      · exact absurd h (nanCase_issue hn)
-    simp [this]
-  · rfl
-
 end Substrait.Spark
-
-namespace Substrait
-
-variable [Boxes.Ambient]
-/-- **A verified plan runs on Spark.** When `Rel.mayIssues` reports nothing
-but assumed issues (whose guards the writer keeps), on every catalog that
-satisfies the preconditions, Spark under ANSI as the writer writes it gives
-`Rel.eval`'s rows. -/
-theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
-    {F : String → List Fact}
-    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
-    r.eval cat Spark.written = r.eval cat :=
-  Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm Spark.written_faithful
-
-end Substrait

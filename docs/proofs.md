@@ -27,7 +27,7 @@ contract's preconditions.
 |---|---|---|---|
 | A proved postcondition is TRUE on every output row | `eval` | `contract_sound` | `Contracts/Sound.lean` |
 | … in every row order the reference allows | `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
-| What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
+| What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s on the postcondition's conditions projected over the request's transformation, which `parse` builds itself, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088, #1484) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
 | The same on one hypothesis, the analysis's (`Knowledge`) | `eval`, `OrderAllowed` | `Knowledge.contract_sound`, `Knowledge.contract_sound_all`, `Knowledge.duckdb_sound` | `Knowledge.lean` |
 | The analysis is sound: what it knows of a relation holds of its rows | `eval`, `OrderAllowed` | `Rel.analyse_sound`, `Rel.analyse_sound_all` | `Knowledge.lean` |
 | The abstract evaluation bounds every column of every row | `eval`, `OrderAllowed` | `Rel.aeval_sound`, `Rel.aeval_sound_all` | `Contracts/Sound.lean` |
@@ -37,6 +37,7 @@ contract's preconditions.
 | `sv.asof_join`'s promises, stated in `ensures`: one row per left row, the match at or before it and within the tolerance. The join is a range join and a ranking window, with no theorem of its own | `eval`, `OrderAllowed` | `contract_sound_all`, `Rel.keys_sound_all` | `Contracts/Sound.lean`, `Keys.lean` |
 | A window's result does not depend on how its ties are broken | `eval`, `OrderAllowed` | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `eval` | `Rel.mayIssues_sound` | `Safety.lean` |
+| … on every order of the ties the reference allows: an engine that breaks a window's ties another way meets no unreported issue either (#1484) | `OrderAllowed` | `Rel.mayIssues_sound_all` | `Safety.lean` |
 | Row caps rule out `SUM` overflow | `eval` | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | A well-formed plan on a well-formed catalog gives rows of its declared arity | `eval` | `Rel.eval_arity` | `Rel.lean` |
 | The checker decides well-formedness | the plan | `Rel.checkWF_iff` | `Check.lean` |
@@ -52,7 +53,7 @@ contract's preconditions.
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `DuckDB/Lowering.lean`, `DuckDB/LoweringOn/Guards.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `DuckDB/Lowering.lean` |
 | Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `Polars/Shims.lean`, `Shims.lean` |
-| Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Shims.lean`, `Shims.lean` |
+| Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Engine.lean`, `Spark/Shims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `DuckDB/Tables.lean`, `Polars/Tables.lean`, `Substrait/Profile.lean` |
@@ -186,7 +187,7 @@ as the guard. Engines-common and the modules below import it as
 | `Contracts/Facts.lean` | Relational facts through a plan; `Rel.facts_sound` |
 | `Contracts/Plan.lean` | Abstract plan evaluation: `Rel.maxRows`, `Rel.aeval` and its one pass, `Rel.lane` |
 | `Contracts/Sound.lean` | `Rel.aeval_sound`, `contract_sound` |
-| `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound` |
+| `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound`, and `Rel.mayIssues_sound_all` on every order |
 | `Rows.lean` | Row caps that rule out `SUM` overflow |
 | `Keys.lean` | Derived keys and window tie-breaking |
 | `Partition.lean` | Sharded evaluation and two-phase aggregates |
