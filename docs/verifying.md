@@ -33,8 +33,7 @@ may move between engines later.
 
 ## Under an engine
 
-`semantics="duckdb"`, `"polars"` or `"spark"` proves the plan under that
-engine's profile, and `semantics="substrait"` under Substrait's:
+`semantics="duckdb"` proves the plan under that engine's profile, and `semantics="substrait"` under Substrait's:
 
 - The proof is about what that engine computes. A plan whose meaning
   depends on the engine can be proved here and not under the reference:
@@ -52,10 +51,11 @@ engine's profile, and `semantics="substrait"` under Substrait's:
   open wherever they say nothing; the report names the options where
   Substrait allows more than the reference.
 
-Spark's profile is Spark's own. Until the checker reports under it
-([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
-`semantics="spark"` gives the reference's report with a
-`ProfilePendingWarning`, and the route to Spark is `translated`.
+Spark's and Polars's profiles are their own. Until the checker reports under
+them ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288),
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)),
+`semantics="spark"` and `semantics="polars"` give the reference's report with
+a `ProfilePendingWarning`, and the route to those engines is `translated`.
 
 `sv.sql` is DuckDB-dialect SQL, verified under the reference like
 everything else; `semantics="duckdb"` on a `sv.sql` reads that node as
@@ -66,7 +66,7 @@ DuckDB computes it.
 | You want | `semantics=` | Route on the engine |
 |---|---|---|
 | One proof for every engine | `"reference"` (the default) | `translated` |
-| What DuckDB, Polars or Spark computes, on that engine | `"duckdb"`, `"polars"`, `"spark"` | `native` |
+| What DuckDB computes, on DuckDB | `"duckdb"` | `native` |
 | The same plan on a second engine | either | `transfer` or `recheck`, else refused |
 | What any Substrait consumer may compute | `"substrait"` | no engine route: the plan is certified against the spec, exported like any plan |
 

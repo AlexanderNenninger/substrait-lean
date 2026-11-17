@@ -1,0 +1,38 @@
+{
+  "id": "ST-17",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0",
+  "status": "confirmed",
+  "status_note": "`functions_string.yaml` (substrait-extensions 0.106.0): `replace` is \"Replace all occurrences of the substring with the replacement string\" and says nothing of an empty substring. Not searched upstream.",
+  "summary": "`replace(input, substring, replacement)` does not say what an empty `substring` matches. DuckDB returns the input unchanged (a NULL for a NULL replacement), and Polars and Rust's `str::replace` insert the replacement before every character and at the end.",
+  "repro": [
+    "`replace('ab', '', 'x')`: DuckDB 2.0.0 gives `'ab'` (fact duckdb-replace-empty-pattern); Polars gives `'xaxbx'` (fact polars-string-natives)."
+  ],
+  "handling": [
+    "The SQL lift and the Ibis producer refuse a constant empty pattern under the reference; `semantics=\"duckdb\"` lifts it to DuckDB's value. The DuckDB writer refuses the plan when it is handed in as Substrait (#1508).",
+    "Could be expressed as: one sentence in the description (an empty substring matches nowhere, or at every character boundary), or an option."
+  ],
+  "found_by": "the text semantics of the reference (#1508)",
+  "issues": [
+    1508
+  ],
+  "files": [
+    "python/src/sverify/sql_lift/strings.py",
+    "python/src/sverify/ibis_substrait/strings.py",
+    "python/src/sverify/sql/core/strings.py"
+  ],
+  "facts": [
+    "duckdb-replace-empty-pattern",
+    "polars-string-natives"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-17",
+      "against": {
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "functions_string.yaml: replace's description and its two impls (string and varchar<L>) say nothing of an empty substring; the options are case_sensitivity only"
+    }
+  ]
+}

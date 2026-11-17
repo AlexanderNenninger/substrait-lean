@@ -213,8 +213,6 @@ class _Checker:
                 "no compiled SQL in the manifest: run `dbt compile` (or `dbt build`) first; "
                 "`dbt parse`, `dbt ls` and a `dbt test` without the model leave it out"
             )
-        if m.materialized == "incremental":
-            res.notes.append("an incremental model: checked as its full refresh, as compiled")
         inputs = [self.p.relations[d] for d in m.depends_on if d in self.p.relations]
         for r in inputs:
             why = self._ensure_relation(r)
@@ -376,8 +374,58 @@ class _Checker:
                 }
             if tr.status == "proved" and tr.test:
                 self.proved.add(tr.test)
+        if m.materialized == "incremental":
+            self._incremental(m, res)
         if m.contract:
             res.contract = self._contract(report, m, res)
+
+    def _incremental(self, m: Relation, res: ModelResult) -> None:
+        """An incremental model is checked as its full refresh, as compiled; its
+        `is_incremental()` block is taken to only filter that query. An
+        incremental run writes rows the full-refresh proof does not cover, so a
+        proved test stays out of the skippable set unless the strategy keeps
+        the model's key unique: `merge` or `delete+insert` on a `unique_key`
+        that a proved `unique` test of the model names (the batch is unique on
+        it, and each key is replaced). Then only the tests the old rows plus the
+        batch still satisfy stay skippable: a row-level test (each row is
+        checked alone) and a `unique` over a superset of the key."""
+        key = set(m.unique_key or [])
+        by_key = m.incremental_strategy in ("merge", "delete+insert") and key
+        unique = by_key and any(
+            t.status == "proved" and _unique_on(self.p.tests.get(t.test or "")) == key
+            for t in res.tests
+        )
+        head = (
+            "an incremental model, checked as its full refresh "
+            "(its `is_incremental()` block only filters it)"
+        )
+        if unique:
+            for t in res.tests:
+                test = self.p.tests.get(t.test or "")
+                cols = _unique_on(test)
+                t.skippable = (cols is not None and key <= cols) or (
+                    cols is None and _row_level(test)
+                )
+            kept = [t.name for t in res.tests if t.status == "proved" and not t.skippable]
+            res.notes.append(
+                f"{head}: {m.incremental_strategy} on {', '.join(sorted(key))} keeps that key "
+                "unique, so its row-level tests and `unique` over that key may be skipped"
+                + (
+                    f"; dbt build still runs {', '.join(sorted(n for n in kept if n))}"
+                    if kept
+                    else ""
+                )
+            )
+            return
+        for t in res.tests:
+            t.skippable = False
+        res.notes.append(
+            f"{head}: its tests hold for the full refresh; an incremental run "
+            f"({m.incremental_strategy or 'default strategy'}"
+            + (f" on {', '.join(sorted(key))}" if key else "")
+            + ") can still break them, so dbt build keeps running them (proving the "
+            "incremental branch is a follow-up)"
+        )
 
     def _contract(self, report: Any, m: Relation, res: ModelResult) -> list[ContractIssue]:
         """The declared columns and types against the proved output schema
@@ -541,6 +589,39 @@ def _user_table(name: str, checker: _Checker) -> str:
         if n == name:
             return checker.p.relations[uid].ref
     return name
+
+
+#: Tests that judge each row alone: the old rows and a batch satisfy them
+#: whatever the strategy, as the batch's rows do.
+_ROW_LEVEL = frozenset(
+    {
+        "not_null",
+        "expect_column_values_to_not_be_null",
+        "expect_column_values_to_be_null",
+        "accepted_values",
+        "expect_column_values_to_be_in_set",
+        "expect_column_values_to_not_be_in_set",
+        "accepted_range",
+        "expect_column_values_to_be_between",
+        "expression_is_true",
+    }
+)
+
+
+def _row_level(t: Any) -> bool:
+    return t is not None and bool(t.kind) and t.kind.split(".")[-1] in _ROW_LEVEL
+
+
+def _unique_on(t: Any) -> set[str] | None:
+    """The columns a `unique` test (without a `where`) says are unique."""
+    if t is None or t.where or not t.kind:
+        return None
+    base = t.kind.split(".")[-1]
+    if base == "unique" and t.column:
+        return {t.column}
+    if base == "unique_combination_of_columns":
+        return set(t.kwargs.get("combination_of_columns") or []) or None
+    return None
 
 
 def _needed(report: Any, checker: _Checker, m: Relation) -> list[Needed]:

@@ -152,7 +152,13 @@ def Profile.duckdb.obs : ObsTable := [
     rerun := some { floats := .within "plan" },
     note := "Welford with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); DuckDB's VAR_POP and STDDEV_POP of one value are 0 even for NaN (DD-3), so the written plan returns NaN where a value is NaN (nan_through), which meets StatProps everywhere without an infinity (Stat.nanGuard_varStat); an infinity raises first (#257)." }).proved
     "Stat.nanGuard_varStat"),
-  (none, "quantile_interp", (ObsRow.native ["duckdb-quantile-cont-interpolation"]).tracking 900)]
+  -- `LINEAR` is stated as a double between the neighbours of the exact position
+  -- (`QuantInterp`); DuckDB's own `quantile_cont` leaves it at a whole exact
+  -- position its double misses and where the lower neighbour is first (findings
+  -- A and B, #900). Its written form (`Dialect.quantile`, #1502) meets it; the
+  -- row becomes `shimmed` with the restated `LINEAR`.
+  (none, "quantile_interp", ({ ObsRow.native ["duckdb-quantile-cont-interpolation"] with
+    note := "`LINEAR` states a double between the exact position's neighbours; DuckDB's own `quantile_cont` leaves it at findings A and B (duckdb-quantile-cont-interpolation); the written plan guards both (#1502)." }).tracking 900)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/

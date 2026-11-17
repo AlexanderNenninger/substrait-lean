@@ -15,7 +15,10 @@ from sverify.partition import check_keys, check_unique
 
 
 def _key_value(v):
-    return ("f", struct.pack("<d", v)) if isinstance(v, float) else v
+    """A key as Lean's `keyOf` has it: a double canonical (`canonV`), then by its bits."""
+    if isinstance(v, float):
+        return ("f", struct.pack("<d", math.nan if v != v else v + 0.0))
+    return v
 
 
 def old_check_keys(shards, keys):
@@ -103,18 +106,40 @@ def test_a_key_split_over_two_shards_names_the_first_row():
         check_keys(shards, {"t": ["a", "b"]})
 
 
-def test_signed_zeros_and_nans_are_compared_by_bits():
+def test_signed_zeros_and_nans_are_one_key_as_keyof_has_them():
+    """Lean's `keyOf` maps a double through `canonV`: one zero and one NaN (D31, #1519)."""
     nan = float("nan")
     t = _table([(None, 0.0, "a"), (None, nan, "a")])
     u = _table([(None, -0.0, "a"), (None, nan, "a")])
     with pytest.raises(ValueError, match="is on shards 0 and 1"):
         check_keys([{"t": t}, {"t": u}], {"t": ["a", "b"]})
-    check_keys(
-        [{"t": _table([(None, 0.0, "a")])}, {"t": _table([(None, -0.0, "a")])}], {"t": ["b"]}
-    )
+    for a, b in ((0.0, -0.0), (nan, -nan)):
+        with pytest.raises(ValueError, match="is on shards 0 and 1"):
+            shards = [{"t": _table([(None, a, "a")])}, {"t": _table([(None, b, "a")])}]
+            check_keys(shards, {"t": ["b"]})
 
 
 def test_a_repeated_key_across_pieces_is_named():
     pieces = [_table([(1, 0.0, "a")]), _table([(2, 0.0, "a"), (1, 0.0, "b")])]
     with pytest.raises(ValueError, match=r"t has two rows with \['a'\] = \(1,\)"):
         check_unique({"t": pieces}, {"t": [["a"]]})
+
+
+def test_a_zero_key_split_over_shards_is_refused_through_run_sharded():
+    """The grouped count of the issue's first row: `-0.0` and `0.0` are one group,
+    so a split that puts them on two shards raises instead of counting twice."""
+    import ibis
+
+    from sverify.engine import connect, substrait_json
+    from sverify.partition import run_sharded
+
+    schema = ibis.schema({"k": "float64", "n": "int64"})
+    con = connect()
+    con.create("t", schema)
+    plan = substrait_json(con, "SELECT k, COUNT(*) AS c FROM t GROUP BY k", semantics="duckdb")
+
+    def shard(k):
+        return {"t": pa.table({"k": pa.array([k], pa.float64()), "n": pa.array([1], pa.int64())})}
+
+    with pytest.raises(ValueError, match="is on shards 0 and 1"):
+        run_sharded(plan, [shard(0.0), shard(-0.0)], sharded=["t"], keys={"t": ["k"]})
