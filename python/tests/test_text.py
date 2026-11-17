@@ -382,7 +382,7 @@ def test_dialects_without_an_order_fact_refuse_text_order(dialect, sql):
     con = connect()
     con.create("r", R, [("a", "b", 1)])
     plan = json.loads(plan_of(con, sql))
-    with pytest.raises(Unsupported, match="ordering comparisons of (str|bool) values"):
+    with pytest.raises(UnsupportedError, match="ordering comparisons of (str|bool) values"):
         to_sql(plan, {"spark": SPARK, "snowflake": SNOWFLAKE}[dialect])
 
 
