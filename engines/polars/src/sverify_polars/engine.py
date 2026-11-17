@@ -1060,19 +1060,23 @@ class Exprs:
             if name == "array_length" and len(arg_js) == 1:
                 return self.regex_match(arg_js[0])
             if name == "replace" and len(arg_js) == 3:
-                # `Text.replace` is Python's `str.replace` (an empty pattern too).
+                # `Text.replace` is Python's `str.replace`, except that an empty
+                # pattern matches nowhere (D44).
                 s_, p_, r_ = (self(a) for a in arg_js)
                 if any(v.dtype not in (pl.String, pl.Null) for v in (s_, p_, r_)):
                     raise Unsupported(f"replace of {[s_.dtype, p_.dtype, r_.dtype]}")
                 if "literal" in arg_js[1]:
                     # Polars's literal `replace_all` matches as `str.replace`
-                    # does, the empty pattern at every character boundary
-                    # (polars-string-natives).
+                    # does, except for the empty pattern (at every character
+                    # boundary, polars-string-natives), which the plan folds to
+                    # the string: a constant fold, not a shim of an engine value.
                     p = literal(arg_js[1]["literal"])[0]
                     x, r = s_.expr, r_.expr
                     out = pl.when(x.is_null() | r.is_null() | pl.lit(p is None)).then(None)
                     if p is not None:
-                        out = out.otherwise(x.str.replace_all(pl.lit(p), r, literal=True))
+                        out = out.otherwise(
+                            x if p == "" else x.str.replace_all(pl.lit(p), r, literal=True)
+                        )
                 else:
                     raise Unsupported(
                         "replace with a pattern that is not a literal on Polars: Polars "

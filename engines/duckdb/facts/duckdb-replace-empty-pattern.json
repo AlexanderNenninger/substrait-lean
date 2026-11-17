@@ -14,8 +14,8 @@
     "`replace(s, '', r)` is `s` in DuckDB: `replace('ab', '', 'x')` is `'ab'` and `replace('', '', 'x')` is `''`. A NULL string gives NULL, and so does a NULL replacement, also for an empty pattern (`replace('ab', '', NULL)` is NULL). The type is VARCHAR.",
     "Polars and Rust's `str::replace` insert the replacement before every character and at the end (polars-string-natives, `Text.replace`), so the two disagree on a defined value. The model's `replace` is Rust's."
   ],
-  "reference": "The frontends refuse a constant empty pattern under the reference (#1508), and `semantics=\"duckdb\"` lifts `replace(s, '', r)` to `s` (NULL for a NULL `r`), so every route gives what DuckDB's SQL gives. The reference's own value for the empty pattern waits for a decision (proposed D44: `s`).",
-  "status": "open",
+  "reference": "D44: the reference's `replace(s, '', r)` is `s`, NULL for a NULL `r`, as DuckDB's (`Text.replace`). The SQL lift and the Ibis producer accept the empty pattern, the writers fold it to `s`, and Polars's own insertion at every character is not used (polars-string-natives).",
+  "status": "decided",
   "evidence": "probe",
   "provenance": [
     {

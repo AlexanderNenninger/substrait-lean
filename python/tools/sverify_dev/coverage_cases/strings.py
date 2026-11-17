@@ -34,7 +34,7 @@ CASES: list[Case] = [
     case("strings", "reverse", V, lambda: t.select(x=t.name.reverse())),
     case("strings", "right", V, lambda: t.select(x=t.name.right(t.qty))),
     case("strings", "replace", V, lambda: t.select(x=t.name.replace("a", "o"))),
-    case("strings", "replace ''", R, lambda: t.select(x=t.name.replace("", "-"))),
+    case("strings", "replace ''", V, lambda: t.select(x=t.name.replace("", "-"))),
     case("strings", "ilike", V, lambda: t.filter(t.name.ilike("A%"))),
     case("strings", "find from", V, lambda: t.select(x=t.name.find("a", t.qty))),
     case("strings", "ascii", V, lambda: t.select(x=t.name.ascii_str())),
