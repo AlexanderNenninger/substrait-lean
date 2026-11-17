@@ -14,7 +14,10 @@ own order takes.
 
 * `Rel.orderAllowed_orderBy`, `Rel.orderAllowed_fetch_orderBy`,
   `Rel.orderAllowed_window`, `Measure.orderAllowed_iff_semBy`:
-  `Rel.OrderAllowed`'s order-sensitive cases are `Lin` and `Sem`.
+  `Rel.OrderAllowed`'s order-sensitive cases are `Lin` and `Sem`. A window
+  reads one enumeration (`LinBy`) and gives a result `windowRowsA` allows
+  over it: `SemBy (windowRows …)` where its class-picking functions'
+  arguments are alone in their classes (`windowRowsA_eq`, D45).
 * `Sem.eq_iff_of_permInv`, `SemBy.eq_iff_of_permInv`: **the lifting
   lemma**. An operator that factors through the multiset has one meaning,
   its value on the multiset, so every theorem about the unordered core holds
