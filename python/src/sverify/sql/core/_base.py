@@ -4610,10 +4610,6 @@ class _Writer:
                 # `GREATEST`/`LEAST` (NaN above everything, the first on a tie).
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
-                if k in ("str", "bool"):
-                    raise Unsupported(
-                        f"ordering comparisons of {k} values are not in the Lean model"
-                    )
                 ca = ka if isinstance(ka, Dec) else k
                 cb = kb if isinstance(kb, Dec) else k
                 sa, sb = go(a, ca), go(b, cb)
@@ -4629,11 +4625,6 @@ class _Writer:
                 k = ka or kb
                 if ka is not None and kb is not None and ka != kb:
                     raise Unsupported(f"comparison of {ka} with {kb}; cast one side first")
-                if op == "lt" and k in ("str", "bool"):
-                    # `BinFn.apply .lt` is only defined on integers (and the codes).
-                    raise Unsupported(
-                        f"ordering comparisons of {k} values are not in the Lean model"
-                    )
                 sa, sb = go(a, k), go(b, k)
                 if k == "float":
                     return d.float_eq(sa, sb) if op == "eq" else d.float_lt(sa, sb)

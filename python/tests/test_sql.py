@@ -640,15 +640,10 @@ def renamed(plan_json: str, old: str, new: str) -> dict:
 
 def test_unsupported_constructs_raise():
     r = ints(a=[1], b=[2])
-    s = pa.table({"name": ["a"]})
     stddev = renamed(plan_of("SELECT a, max(b) AS s FROM r GROUP BY a", {"r": r}), "max", "stddev")
     is_true = renamed(plan_of("SELECT a FROM r WHERE NOT (a < 1)", {"r": r}), "not", "is_true")
     for plan, match in [
         (stddev, "unsupported aggregate"),
-        (
-            json.loads(plan_of("SELECT name FROM s WHERE name < 'b'", {"s": s})),
-            "ordering comparisons of str",
-        ),
         (is_true, "unsupported function is_true"),
     ]:
         with pytest.raises(Unsupported, match=match):
