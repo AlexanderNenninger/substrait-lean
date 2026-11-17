@@ -166,7 +166,7 @@ def expr(
             cap = d.int_lit(REPEAT_MAX + 1)
             capped = f"(CASE WHEN {n} > {cap} THEN {cap} ELSE {n} END)"
             big = f"({capped} * {d.octet_length(sa)} > {d.int_lit(REPEAT_MAX)})"
-            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str")
+            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str", "overflow")
             return d.case_when(big, fail, r)
         case Bin(op="substr", left=a, right=b, length=length, param=start):
             sa = self.operand(a, "str", ref, cols, "substring")
@@ -181,7 +181,9 @@ def expr(
                     # `Text.substrInRange` (#336): the engine raises on an
                     # offset out of range, but sees the shifted one here.
                     low = f"({sb} < {d.int_lit(-SUBSTR_MAX)})"
-                    fail = d.raise_("substring offset outside of supported range", sa, "int")
+                    fail = d.raise_(
+                        "substring offset outside of supported range", sa, "int", "overflow"
+                    )
                     wrapped = d.case_when(low, fail, wrapped)
                 sb = wrapped
             return self.substring(sa, sb, length)

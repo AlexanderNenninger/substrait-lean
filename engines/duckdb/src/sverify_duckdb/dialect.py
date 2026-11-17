@@ -37,7 +37,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify.black_box import BlackBox
-from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind, Lst
+from sverify.sql.core import I64_MAX, I64_MIN, Dialect, GuardIssue, Kind, Lst
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,7 @@ class DuckDBDialect(Dialect):
     def float_lt(self, a: str, b: str) -> str:
         return f"({a} < {b})"
 
-    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+    def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"
         return self.cast(f"error({text})", kind)
 
@@ -98,7 +98,7 @@ class DuckDBDialect(Dialect):
         sql = lowering.render(
             fn,
             args,
-            lambda message, dep: self.raise_(message, dep, kind),
+            lambda message, dep: self.raise_(message, dep, kind, "raised"),
             self.float_lit,
             self.int_lit,
             self.guards,
@@ -122,7 +122,7 @@ class DuckDBDialect(Dialect):
     def int_sum(self, v: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.
         total = f"SUM({v})"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return (
             f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
@@ -136,7 +136,7 @@ class DuckDBDialect(Dialect):
     def window_int_sum(self, v: str, over: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.
         total = f"SUM({v}) {over}"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return (
             f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
@@ -175,7 +175,9 @@ class DuckDBDialect(Dialect):
         if not self.guards:
             return value
         made = f"({self.is_nan(qc)} AND NOT {self.is_nan(f'MAX({v})')})"
-        return self.case_when(made, self.raise_("domain error", f"MIN({v})", "float"), value)
+        return self.case_when(
+            made, self.raise_("domain error", f"MIN({v})", "float", "domain"), value
+        )
 
     def mode(self, v: str, order: Sequence[str]) -> str:
         # Its input in this order, DuckDB keeps the value seen first of those

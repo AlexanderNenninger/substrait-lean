@@ -73,7 +73,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify._plan_read import SUBSTR_MAX
-from sverify.sql.core import Dec, Dialect, Kind, Lst, Unsupported, _timestamp_text
+from sverify.sql.core import Dec, Dialect, GuardIssue, Kind, Lst, Unsupported, _timestamp_text
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 INT32_MAX = 2**31 - 1
@@ -108,7 +108,7 @@ class SnowflakeDialect(Dialect):
                 "see #852",
             )
 
-    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+    def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         """An expression of type `kind` that fails with `message`. Snowflake
         has no RAISE function, but casting a non-numeric (non-boolean) string
         is an error that quotes the string. It depends on `dep` so it cannot
@@ -172,7 +172,7 @@ class SnowflakeDialect(Dialect):
         with `guards=False`; the one on `SUM` (`row=False`) stays."""
         if row and not self.guards:
             return r
-        fail = self.raise_("integer overflow", r, "int")
+        fail = self.raise_("integer overflow", r, "int", "wraps")
         return f"IFF({r} BETWEEN {I64_MIN} AND {I64_MAX}, {r}, {fail})"
 
     def folded(self, r: str, value: int | None) -> str:
@@ -214,7 +214,7 @@ class SnowflakeDialect(Dialect):
         value = f"CAST(TRUNC({x}) AS NUMBER(38,0))"
         if not self.guards:
             return value
-        fail = self.raise_("CAST to BIGINT out of range", x, "int")
+        fail = self.raise_("CAST to BIGINT out of range", x, "int", "badCast")
         return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN {value} ELSE {fail} END)"
 
     def int_to_float(self, a: str) -> str:
@@ -374,7 +374,9 @@ class SnowflakeDialect(Dialect):
             # The string is the raise's dependency: `start` is written twice, not three times.
             top = self.int_lit(INT32_MAX)
             if self.guards:
-                fail = self.raise_("substring offset outside of supported range", s, "int")
+                fail = self.raise_(
+                    "substring offset outside of supported range", s, "int", "overflow"
+                )
                 top = f"IFF({start} >= {SUBSTR_MAX}, {fail}, {top})"
             first = f"LEAST({start}, {top})"
         if length is None:
