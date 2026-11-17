@@ -19,7 +19,7 @@
   "description": "Under the default `BINARY` collation `<`, `BETWEEN`, `GREATEST` and `LEAST` order VARCHAR by its UTF-8 bytes, which is code point order (`'\\uffff'` is below `'\\U0001f600'`, as it is not in UTF-16 order), and BOOLEAN `FALSE < TRUE`. `default_collation` or a column's `COLLATE` changes the order of strings (duckdb-exec-settings, duckdb-string-match-case), so the session stays at the default and a collated column is a different type for the writer.",
   "reference": "Strings in code point order (Lean's `String` order, `Value.ltB`); booleans `false < true`; `GREATEST` and `LEAST` skip NULL and keep the first of equal values (`Value.pick`).",
   "status": "no-finding",
-  "evidence": "probe",
+  "evidence": "engine_test",
   "provenance": [
     {
       "checked_at": "2026-11-17",
