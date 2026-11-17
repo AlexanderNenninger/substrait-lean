@@ -3151,7 +3151,10 @@ def transform(
             breaks one of these preconditions, inferred ones included:
             `"error"` raises `PreconditionError`; `"quarantine"`
             sets the offending rows aside with the reason, in the node's
-            quarantine table, and the rest flows; `"hold"` commits nothing
+            quarantine table, and the rest flows (of a key on two different
+            rows, both go; rows identical in every column count once, so a
+            redelivered duplicate is set aside and the kept row stays);
+            `"hold"` commits nothing
             for the batch and holds the node at its versions until a later
             version of the source meets the preconditions. Default None:
             the source's `on_violation`, else `"error"`. Where two
