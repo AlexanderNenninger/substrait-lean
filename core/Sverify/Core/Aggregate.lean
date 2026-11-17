@@ -792,12 +792,38 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     simp only [apply] at h; subst h
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
+/-- The aggregates that select one of their values by comparison: `MIN`,
+`MAX` (D31) and `QUANTILE_DISC` (D45). -/
+def AggFn.classPick : AggFn → Bool
+  | .min | .max | .quantile false _ _ => true
+  | _ => false
+
+/-- A function that selects by comparison gives one of its values, or NULL. -/
+theorem AggFn.apply_mem_of_classPick {f : AggFn} (hf : f.classPick = true) (vs : List Value) :
+    f.apply vs ∈ vs ∨ f.apply vs = .null := by
+  cases vs with
+  | nil => cases f <;> simp_all [classPick, apply]
+  | cons w ws =>
+    cases f with
+    | min | max => exact .inl (pickFold_mem _ _ _)
+    | quantile cont num scale =>
+      cases cont
+      · simp only [apply, List.getD_eq_getElem?_getD]
+        cases h : (sortVals (w :: ws))[discIndex (w :: ws).length num scale]? with
+        | none => exact .inr rfl
+        | some v =>
+          exact .inl ((List.mergeSort_perm _ _).subset (List.mem_of_getElem? h))
+      · simp [classPick] at hf
+    | _ => simp [classPick] at hf
+
 /-- What the reference allows an aggregate to give on `vs`: its value, or for
-`MIN` and `MAX` another value of the value's class (`-0.0` for `0.0`, the
-negative NaN for the NaN, D31): a member of `vs`, or the class's canonical
-value, which engines emit. `AggFn.apply` picks the raw-least member. -/
+a function that selects by comparison (`AggFn.classPick`: `MIN`, `MAX`,
+`QUANTILE_DISC`) another value of the selected value's class (`-0.0` for
+`0.0`, the negative NaN for the NaN, D31, D45): a member of `vs`, or the
+class's canonical value, which engines emit. `AggFn.apply` keeps its own
+pick. -/
 def AggFn.Picks (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v.canonV = (f.apply vs).canonV ∧
+  v = f.apply vs ∨ (f.classPick = true ∧ v.canonV = (f.apply vs).canonV ∧
     (v ∈ vs ∨ v = (f.apply vs).canonV))
 
 theorem AggFn.picks_apply (f : AggFn) (vs : List Value) : f.Picks vs (f.apply vs) := .inl rfl
@@ -808,21 +834,16 @@ theorem AggFn.Picks.canon {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks
   · rfl
   · exact h
 
-/-- On values alone in their classes, `MIN` and `MAX` have one allowed
-value. -/
+/-- On values alone in their classes, a function that selects by comparison
+has one allowed value. -/
 theorem AggFn.Picks.eq {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v)
     (hlone : ∀ w ∈ vs, w.Lone) : v = f.apply vs := by
   rcases h with h | ⟨hf, hc, -⟩
   · exact h
-  · cases vs with
-    | nil =>
-      have hn : (f.apply []) = .null := by rcases hf with rfl | rfl <;> rfl
-      rw [hn] at hc ⊢
+  · rcases AggFn.apply_mem_of_classPick hf vs with hmem | hn
+    · exact hlone _ hmem v hc
+    · rw [hn] at hc ⊢
       exact Value.lone_of_ne (by simp) (by simp) (by simp) v hc
-    | cons w ws =>
-      have hmem : f.apply (w :: ws) ∈ w :: ws := by
-        rcases hf with rfl | rfl <;> exact pickFold_mem _ _ _
-      exact hlone _ hmem v hc
 
 omit [Boxes.Ambient] in
 theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=

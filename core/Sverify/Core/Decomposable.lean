@@ -133,6 +133,12 @@ def AggFn.orderFree (f : AggFn) : Bool :=
     | _ => false
 
 omit [Boxes.Ambient] in
+/-- The order-free functions that select by comparison are `MIN` and `MAX`. -/
+theorem AggFn.minmax_of_classPick {f : AggFn} (ho : f.orderFree = true) (hc : f.classPick = true) :
+    f = .min ∨ f = .max := by
+  cases f <;> simp_all [orderFree, decomposable, classPick]
+
+omit [Boxes.Ambient] in
 theorem AggFn.orderFree_of_decomposable {f : AggFn} (h : f.decomposable = true) :
     f.orderFree = true := by
   simp [orderFree, h]
