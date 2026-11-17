@@ -2079,6 +2079,18 @@ def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) (rel
       else throw "a window's or a measure's sort direction cannot be clustered"
     | some d => throw s!"unsupported sort direction: {d.compress}"
 
+/-- `AVG` of a `DECIMAL(p, s)`: its quotient is a `DECIMAL(p + 4, s + 4)`
+(`decimalAvgs`), wrapped in `dkind`, which has no overflow check, so the parser
+checks that 38 digits hold it: `p ≤ 34` (a double output has no such limit) and
+`s ≤ 34` (#1497). -/
+def checkDecimalAvgWidth (p s : Nat) (dbl : Bool) : J Unit := do
+  if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
+  if !dbl && 34 < p then
+    throw "avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) result does not fit 38 digits"
+
+#guard (checkDecimalAvgWidth 34 4 false).toBool && (checkDecimalAvgWidth 38 4 true).toBool
+#guard (checkDecimalAvgWidth 35 0 false).toBool == false && (checkDecimalAvgWidth 20 35 true).toBool == false
+
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
 def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
@@ -2189,8 +2201,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let decAvg : Option (Nat × Nat × Bool) := match name, k with
     | "avg", .dec p s => some (p, s, dblOut)
     | _, _ => none
-  if let some (_, s, _) := decAvg then
-    if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
+  if let some (p, s, dbl) := decAvg then checkDecimalAvgWidth p s dbl
   -- `AVG` of integers follows the plan's declared output type (#209): a
   -- double (the mean of their conversions), or an integer (`AggFn.iavg`).
   let intOut := name == "avg" && k == .int && (field? m "outputType").any (typeKind · == .int)

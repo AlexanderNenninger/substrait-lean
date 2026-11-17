@@ -1,0 +1,47 @@
+{
+  "id": "duckdb-decimal-compare-scale",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "A comparison of decimals of different scales casts both sides to one DECIMAL(38, s) and raises on a value that does not fit",
+  "verdict": "`overflow: ERROR` native; the writer does not emit the native comparison across scales",
+  "area": "decimals",
+  "options": [
+    "overflow"
+  ],
+  "rows": [
+    {"group": "dec.arith", "option": "overflow", "types": ["decimal"]}
+  ],
+  "constructs": [
+    "=",
+    "<",
+    ">",
+    "CAST"
+  ],
+  "settings": {},
+  "description": [
+    "`DECIMAL(38,0) > DECIMAL(38,10)` casts both sides to `DECIMAL(38,10)`, the larger scale at 38 digits. A value with more than `38 - s` integer digits does not fit: `99999999999999999999999999999999999999::DECIMAL(38,0) > 1.5::DECIMAL(38,10)` raises `Conversion Error: Casting value ... to type DECIMAL(38,10) failed: value is out of range!`, for `=` as for `>`. Values that fit compare exactly (`1.5 > 1` and `1 = 1.0` are true).",
+    "The docs are silent on the common type of a comparison across scales: a docs gap."
+  ],
+  "reference": [
+    "The reference compares the exact values, with no issue (D31 does not apply: decimals have one representation). A plan that is proved can then raise on DuckDB.",
+    "The DuckDB writer does not emit the native comparison across scales: `Dialect.decimal_compare` brings both sides to integers (the integer part times `10ˢ` plus the fraction times `10ˢ`, in `HUGEINT`) and compares those with floor division, so no implicit cast runs (#1498)."
+  ],
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-17",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; #1498)",
+      "evidence": [
+        {"file": "engines/duckdb/replay/probes.json", "probe": "dec-compare-scale-ok"},
+        {"file": "engines/duckdb/replay/probes.json", "probe": "dec-compare-scale-raise"},
+        {"file": "engines/duckdb/replay/probes.json", "probe": "dec-compare-scale-raise-eq"}
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` runs each query on a fresh connection and records the rows or the error as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ],
+  "issues": [
+    1498
+  ]
+}
