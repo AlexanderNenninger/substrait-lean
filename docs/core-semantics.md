@@ -841,8 +841,8 @@ few plans verify there ([Terminology](#terminology)). Translations are linear
 in the number of engines: one per engine, from the reference.
 
 For the second way, `Engine.contract_sound` (`engines/Sverify/Engines/Sound.lean`)
-is the theorem: unless the translated plan raises, the rows the engine's
-model computes for it (DuckDB's, Polars's, Spark's or the reference's) are a
+is the theorem: under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference), the rows the engine's
+model computes for the translated plan (DuckDB's, Polars's, Spark's or the reference's) are a
 result the reference allows (`Engine.Sound`), and the contract holds on them.
 The engine's actual output rests on D16's claim (`Engine.Runs`) and the
 transfer check from the engine's table to the reference's

@@ -203,7 +203,7 @@ place, and what retires it.
   feed; it is proved when the change is computed from two snapshots.
 - An engine's run of a proved plan. `Engine.contract_sound` proves the
   contract on the rows the engine's model computes for the translated plan
-  (`r'.eval cat E.impl`), unless it raises. The chain from there to the engine's actual
+  (`r'.eval cat E.impl`), under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference). The chain from there to the engine's actual
   result, in order:
   1. the Lean theorem, `Engine.contract_sound` with the engine's
      `Engine.Sound` (`Sound.lean`); `Engine.polars_sound` and
