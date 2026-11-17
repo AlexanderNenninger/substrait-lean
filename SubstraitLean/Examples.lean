@@ -52,6 +52,18 @@ open scoped Substrait.DuckDB
 
 open Rel
 
+/-! ## The writer's anchors under DuckDB's black boxes
+
+Each anchor and name once, each in its area's range (`Write.areas`). They are
+checked here so that the writer, and the verdict that imports it, depend on no
+engine module (#1484, S1; `tests/test_lean_layers.py`). -/
+
+example : ((@Write.declared DuckDB.boxes).map (·.1)).Nodup := nodup_of_nodupB (by decide +kernel)
+example : ((@Write.declared DuckDB.boxes).map (·.2)).Nodup := nodup_of_nodupB (by decide +kernel)
+example : (@Write.areas DuckDB.boxes).all fun (fs, lo) =>
+    fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
+  decide +kernel
+
 /-- `orders(id, customer, amount)` -/
 def orders : Table :=
   { arity := 3
@@ -217,6 +229,8 @@ end Substrait.Examples
 #print axioms Substrait.Knowledge.contract_sound
 #print axioms Substrait.Knowledge.contract_sound_all
 #print axioms Substrait.ContractCheck.check_proved_sound
+#print axioms Substrait.ContractCheck.check_proved_rows
+#print axioms Substrait.ContractCheck.check_proved_conds
 #print axioms Substrait.Knowledge.mayIssues_sound
 #print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines

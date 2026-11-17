@@ -86,6 +86,26 @@ def _check_protocol(path: str) -> None:
         )
 
 
+@functools.cache
+def _generated_proofs(path: str) -> bool | None:
+    try:
+        out = subprocess.run(
+            [path, "--build"], capture_output=True, text=True, timeout=60
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return {"generated proofs checked": True, "generated proofs unchecked": False}.get(out)
+
+
+def generated_proofs() -> bool | None:
+    """Were the generated lift and lowering proofs checked in the build of the
+    checker in use (`substrait-check --build`)? An unchecked build (every plain
+    `lake build`, so an editable install, `SVERIFY_CHECKER` or a borrowed
+    sibling binary) holds them as `sorry`. Asked once per checker binary;
+    None if the checker does not say."""
+    return _generated_proofs(str(_checker_file()))
+
+
 def checker_env() -> str | None:
     """`$SVERIFY_CHECKER`, else the deprecated `$SVERIFY_CHECK` with a
     `DeprecationWarning`, else None."""

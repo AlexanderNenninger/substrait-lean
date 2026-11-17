@@ -80,7 +80,11 @@ which keep old readers and old data working:
   formats above. Its keys are in
   [the guide](tasks.md#exporting-to-substrait).
 - `sv.Report.from_substrait` reads every earlier 1.x export and proves its contract
-  again; for an export of a proved plan the report is proved.
+  again; for an export of a proved plan the report is proved. It proves each
+  postcondition over the exported plan, shims included (#1484). An export whose
+  postcondition's plan reads another relation, such as one written before #1484
+  from a transformation that ends in a join's `select`, is refused with an error
+  that says to verify and export again.
 
 The exported plan is Substrait, at the version the export names (`version`
 in the plan, `substrait` in the manifest: 0.106.0 today). A minor release may
