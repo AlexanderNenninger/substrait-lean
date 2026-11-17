@@ -168,7 +168,10 @@ def _replace(lf: _Lift, node: sge.Replace, sub: Sub, scope: list[Column]) -> E:
     args = _strings(lf, [sub(node.this), pattern, replacement], "replace")
     if pattern.value == "":
         if lf.profile.name != "duckdb":
-            raise Unsupported(EMPTY_REPLACE_PATTERN)
+            raise Unsupported(
+                f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern, or semantics='duckdb'"
+                " for DuckDB's value"
+            )
         # DuckDB's value (duckdb-replace-empty-pattern): the string unchanged,
         # NULL for a NULL replacement.
         return lf.to(replacement if replacement.value is None else sub(node.this), dt.string)

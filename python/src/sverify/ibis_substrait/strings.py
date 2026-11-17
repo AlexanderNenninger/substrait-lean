@@ -97,7 +97,7 @@ def _replace(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
         raise Unsupported("replace needs a constant pattern and replacement")
     if op.pattern.value == "":
-        raise Unsupported(EMPTY_REPLACE_PATTERN)
+        raise Unsupported(f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern")
     return call("replace", [x(op.arg), x(op.pattern), x(op.replacement)])
 
 

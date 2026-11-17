@@ -152,7 +152,7 @@ def expr(
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
             if not pattern:
-                raise Unsupported(EMPTY_REPLACE_PATTERN)
+                raise Unsupported(f"{EMPTY_REPLACE_PATTERN}; use a non-empty pattern")
             x = self.operand(a, "str", ref, cols, "replace")
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):

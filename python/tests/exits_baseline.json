@@ -17,7 +17,7 @@
   "report.py": 8,
   "routes.py": 1,
   "sql/core/_base.py": 119,
-  "sql/core/strings.py": 2,
+  "sql/core/strings.py": 1,
   "sql/core/temporal.py": 3,
   "sql/snowflake.py": 1,
   "sql_model.py": 2,
