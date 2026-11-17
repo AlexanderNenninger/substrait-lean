@@ -33,6 +33,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify._checker import run_checker
 from sverify._unsupported import UnsupportedError
 from sverify.engine import (
     connect,
@@ -42,7 +43,6 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
-from sverify.sql import Unsupported
 from sverify.testing import canonical, duckdb_ibis, duckdb_sql, inline_tables, lean_values
 
 R = ibis.schema({"s": "string", "t": "string", "a": "int64"})
@@ -53,7 +53,12 @@ QUERIES = [
     "SELECT s LIKE t AS l, s LIKE 'a%' AS m, s LIKE '_\\%%' AS n FROM r",
     "SELECT btrim(s, t) AS b, ltrim(s, t) AS l, rtrim(s, t) AS r, btrim(s) AS w FROM r",
     "SELECT s || t AS c, character_length(s) AS n FROM r",
+    # Order: strings by code point (UTF-8 byte order), booleans `FALSE < TRUE` (#1492).
+    "SELECT s < t AS a, s > t AS b, s BETWEEN 'a' AND t AS c FROM r",
+    "SELECT greatest(s, t) AS g, least(s, t) AS l FROM r",
+    "SELECT (a > 1) < (a > 3) AS x, greatest(a > 1, a > 3) AS y, least(a > 1, a > 3) AS z FROM r",
 ]
+ORDER_QUERIES = QUERIES[-3:]
 
 text = st.one_of(st.none(), st.text(alphabet='ab %_\\é,"', max_size=6))
 
@@ -205,14 +210,13 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
 @given(rows=st.lists(st.tuples(marked, marked, counts), max_size=6))
 def test_repeat_reverse_replace_match_the_reference(sql, rows):
     """Polars and DuckDB give Lean's rows. DuckDB is the oracle of `replace`
-    with a pattern; its own `repeat`, `reverse`, `ascii` and `levenshtein`
-    count bytes or grapheme clusters, and its `replace` of an empty pattern
-    returns the string unchanged, so there Lean, the reference, stands alone
-    (#1138)."""
+    (an empty pattern matches nowhere, D44); its own
+    `repeat`, `reverse`, `ascii` and `levenshtein` count bytes or grapheme
+    clusters, so there Lean, the reference, stands alone (#1138)."""
     con = connect()
     con.create("r", R, rows)
     expected = lean_rows(con, sql, rows)
-    if sql == REPLACE:
+    if sql in (REPLACE, EMPTY_PATTERN):
         assert canonical(oracle(con, sql)) == expected
     plan = written_plan(plan_of(con, sql))
     if sql == LEVENSHTEIN:
@@ -228,10 +232,7 @@ def test_repeat_reverse_replace_match_the_reference(sql, rows):
         non_ascii = any(
             not (r[0] + r[1]).isascii() for r in rows if r[0] is not None and r[1] is not None
         )
-    if sql == EMPTY_PATTERN:
-        with pytest.raises(Unsupported, match="empty pattern"):
-            run_plan(con, plan, "duckdb")
-    elif sql in (ASCII_IN_DUCKDB, LEVENSHTEIN) and non_ascii:
+    if sql in (ASCII_IN_DUCKDB, LEVENSHTEIN) and non_ascii:
         with pytest.raises(Exception, match="non-ASCII text differs between engines"):
             run_plan(con, plan, "duckdb")
     else:
@@ -354,3 +355,46 @@ def test_string_contracts():
 def test_negative_substring_length_is_rejected():
     with pytest.raises(ValueError, match="negative (substring )?length"):
         sv.verify("SELECT substring(name, 1, -1) AS x FROM t", tables={"t": T})
+
+
+@pytest.mark.parametrize("engine", ["polars", "duckdb"])
+@pytest.mark.parametrize("sql", ORDER_QUERIES)
+def test_strings_order_by_code_point(engine, sql):
+    """`U+FFFF` is below `U+1F600` by code point and above it by UTF-16
+    code unit: the engines order as the model does, with no collation."""
+    rows = [("\uffff", "\U0001f600", 2), ("\U0001f600", "\uffff", 4), ("é", "z", 0), (None, "a", 1)]
+    con = connect()
+    con.create("r", R, rows)
+    expected = lean_rows(con, sql, rows)
+    got = run_plan(con, written_plan(plan_of(con, sql)), engine)
+    assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
+
+
+@pytest.mark.parametrize("dialect", ["spark", "snowflake"])
+@pytest.mark.parametrize("sql", ORDER_QUERIES)
+def test_dialects_without_an_order_fact_refuse_text_order(dialect, sql):
+    """Only a dialect with a fact on string and boolean order writes it
+    (`Dialect.orders_text`); Spark and Snowflake refuse until they have one."""
+    from sverify.sql import to_sql
+    from sverify.sql.snowflake import SNOWFLAKE
+    from sverify_spark.dialect import SPARK
+
+    con = connect()
+    con.create("r", R, [("a", "b", 1)])
+    plan = json.loads(plan_of(con, sql))
+    with pytest.raises(UnsupportedError, match="ordering comparisons of (str|bool) values"):
+        to_sql(plan, {"spark": SPARK, "snowflake": SNOWFLAKE}[dialect])
+
+
+@pytest.mark.parametrize("flags", [("--outcomes",), ("--eval-choices",), ("--rows",)])
+def test_every_mode_refuses_a_panic(flags):
+    """A panic in Lean's evaluator is a refusal in each mode that evaluates
+    rows, not a placeholder in the answer (R6): `--outcomes`, which the
+    engine-fact probes compare against, included."""
+    con = connect()
+    rows = [("Straße", "abc", 1)]
+    con.create("r", R, rows)
+    plan = inline_tables(json.loads(plan_of(con, "SELECT upper(s) AS u FROM r")), {"r": rows})
+    code, out, err = run_checker(flags, json.dumps(plan))
+    assert code != 0 and out == ""
+    assert "rows not evaluated: UPPER of non-ASCII text" in err

@@ -143,8 +143,8 @@ inductive WinFn where
   | percentRank (sort : List SortKey)
   /-- `CUME_DIST()`: the share of the partition's rows up to `x`'s last peer. -/
   | cumeDist (sort : List SortKey)
-  /-- `NTILE(k)` as DataFusion computes it: `⌊i · min(k, n) / n⌋ + 1` for the
-  `i`-th row (from 0) of `n`, not the SQL standard's buckets. -/
+  /-- `NTILE(k)`: the SQL standard's buckets (`ntileOf`) for the `i`-th row
+  (from 0) of `n`. -/
   | ntile (k : Nat)
   /-- An aggregate over the frame. -/
   | agg (m : Measure) (sort : List SortKey) (frame : Frame)

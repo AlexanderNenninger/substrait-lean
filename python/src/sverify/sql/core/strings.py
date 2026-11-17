@@ -19,6 +19,7 @@ from sverify.sql.core._base import (
     Lit,
     Un,
     Unsupported,
+    WriterUnsupported,
     _Writer,
     like_pattern,
     register,
@@ -63,7 +64,9 @@ def call(name: str, args: list[Expr]) -> Expr | None:
             return Bin("substr", a, b)
         case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
             if n < 0:
-                raise Unsupported("a negative substring length always fails")
+                raise WriterUnsupported(
+                    "a negative substring length always fails", hint="use a length of 0 or more"
+                )
             return Bin("substr", a, b, length=n)
         case "substring", [_, _, _]:
             raise Unsupported("substring lengths must be constants")
@@ -150,11 +153,11 @@ def expr(
                 return self.ascii_only(x, v, f"regular expression {pattern!r}")
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
-            if not pattern:
-                # Rust puts the replacement around every character; SQL engines
-                # return the string unchanged.
-                raise Unsupported("replace with an empty pattern differs between engines")
             x = self.operand(a, "str", ref, cols, "replace")
+            if not pattern:
+                # An empty pattern matches nowhere (D44); no engine's `replace`
+                # is read for it (Spark's and Snowflake's are not probed).
+                return x
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):
             sa = self.operand(a, "str", ref, cols, "repeat")
@@ -166,7 +169,7 @@ def expr(
             cap = d.int_lit(REPEAT_MAX + 1)
             capped = f"(CASE WHEN {n} > {cap} THEN {cap} ELSE {n} END)"
             big = f"({capped} * {d.octet_length(sa)} > {d.int_lit(REPEAT_MAX)})"
-            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str")
+            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str", "overflow")
             return d.case_when(big, fail, r)
         case Bin(op="substr", left=a, right=b, length=length, param=start):
             sa = self.operand(a, "str", ref, cols, "substring")
@@ -181,7 +184,9 @@ def expr(
                     # `Text.substrInRange` (#336): the engine raises on an
                     # offset out of range, but sees the shifted one here.
                     low = f"({sb} < {d.int_lit(-SUBSTR_MAX)})"
-                    fail = d.raise_("substring offset outside of supported range", sa, "int")
+                    fail = d.raise_(
+                        "substring offset outside of supported range", sa, "int", "domain"
+                    )
                     wrapped = d.case_when(low, fail, wrapped)
                 sb = wrapped
             return self.substring(sa, sb, length)

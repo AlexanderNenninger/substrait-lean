@@ -12,7 +12,7 @@ source = { name = "pandas merge_asof", url = "https://pandas.pydata.org/docs/ref
 features = ["asof_join", "range_join", "left_join", "row_number", "qualify"]
 pitfalls = ["tie_order: two quotes with the same timestamp: which is 'latest' is arbitrary (sverify requires a key on (symbol, ts) to prove anything)", "null_join_keys: trades with a NULL symbol get no quote"]
 ibis = '''
-q = sv.asof_join(trades, quotes, on="ts", by="symbol", key=["symbol", "ts", "price", "qty"])
+q = sv.asof_join(trades, quotes, on="ts", by="symbol")
 '''
 notes = "sverify.asof_join writes the as-of join as a range join plus ROW_NUMBER, which DataFusion runs and Lean checks; Ibis's own asof_join compiles only for DuckDB."
 
@@ -25,7 +25,7 @@ source = { name = "Polars user guide: joins (join_asof with tolerance)", url = "
 features = ["asof_join", "range_join", "left_join", "row_number", "qualify", "interval_day_time", "arithmetic_float"]
 pitfalls = ["tie_order: two rates at the same instant", "float_sum_order: none here, but converted amounts are doubles; money wants DECIMAL"]
 ibis = '''
-j = sv.asof_join(payments, fx_rates, on="ts", by="currency", tolerance=ibis.interval(days=1), key=["payment_id"])
+j = sv.asof_join(payments, fx_rates, on="ts", by="currency", tolerance=ibis.interval(days=1))
 q = j.mutate(amount_base=j.amount * j.rate)
 '''
 

@@ -22,6 +22,7 @@ import ibis.expr.types as ir
 from sverify import _decimals, _functions
 from sverify.plan_json import (
     Json,
+    ProducerUnsupported,
     Unsupported,
     call,
     cast_json,
@@ -94,7 +95,7 @@ class Exprs:
             reason = _REFUSED.get(name)
             # A refusal with a reason names its exit there; the others are
             # the operations the producer does not map yet (#60).
-            raise Unsupported(
+            raise ProducerUnsupported(
                 f"{_OP_LABELS.get(name, name)} is not supported"
                 + (f": {reason}" if reason else f" yet ({_ISSUE_60})")
             )

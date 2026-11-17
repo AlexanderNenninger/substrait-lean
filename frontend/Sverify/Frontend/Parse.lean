@@ -557,9 +557,10 @@ def _root_.Substrait.Expr.readsField (e : Expr) : Bool := e.readsFieldFrom 0
 def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
   match field? j "literal", field? j "cast" with
   | some l, _ => if (field? l "null").isSome then 8 else intBits l
-  -- A cast has its target's width (`CAST(x AS DOUBLE)` of a `FLOAT` is 64).
+  -- A cast has its target's width (`CAST(x AS DOUBLE)` of a `FLOAT` is 64,
+  -- `CAST(i AS BIGINT)` of an `INTEGER` is 64: #1541).
   | none, some c => match field? c "type" with
-    | some ty => if typeKind ty == .float then intBits ty else e.bits cols
+    | some ty => if typeKind ty == .float || typeKind ty == .int then intBits ty else e.bits cols
     | none => e.bits cols
   -- A call has its declared output type's width: `(10::TINYINT * 10) * 10`
   -- is 8-bit arithmetic throughout (#419). Without one, arithmetic on
@@ -760,7 +761,16 @@ def parseConstLiteral (j : Json) : J Const := do
     if p ≤ 6 then return .ts (v * 10 ^ (6 - p))
     else if v % 10 ^ (p - 6) == 0 then return .ts (v / 10 ^ (p - 6))
     else throw "timestamps finer than microseconds are not supported"
-  | (_, n) => return .int (← getInt n)
+  | (k, n) =>
+    let i ← getInt n
+    -- An integer literal holds its tag's width (#1491); the model's integers
+    -- are unbounded, so the width is checked here, where the tag is known.
+    let bits : Nat :=
+      if k == "i8" then 8 else if k == "i16" then 16 else if k == "i32" then 32
+      else if k == "i64" then 64 else 0
+    if bits != 0 && !(decide (-((2 : Int) ^ (bits - 1)) ≤ i) && decide (i < 2 ^ (bits - 1))) then
+      throw s!"{k} literal {i} does not fit {k}"
+    return .int i
 
 /-- `arrow_cast(value, '<Arrow type>')`, as Ibis writes casts for DataFusion. -/
 def arrowCast (c : Const) (ty : String) : Option Const :=
@@ -2079,6 +2089,18 @@ def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) (rel
       else throw "a window's or a measure's sort direction cannot be clustered"
     | some d => throw s!"unsupported sort direction: {d.compress}"
 
+/-- `AVG` of a `DECIMAL(p, s)`: its quotient is a `DECIMAL(p + 4, s + 4)`
+(`decimalAvgs`), wrapped in `dkind`, which has no overflow check, so the parser
+checks that 38 digits hold it: `p ≤ 34` (a double output has no such limit) and
+`s ≤ 34` (#1497). -/
+def checkDecimalAvgWidth (p s : Nat) (dbl : Bool) : J Unit := do
+  if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
+  if !dbl && 34 < p then
+    throw "avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) result does not fit 38 digits"
+
+#guard (checkDecimalAvgWidth 34 4 false).toBool && (checkDecimalAvgWidth 38 4 true).toBool
+#guard (checkDecimalAvgWidth 35 0 false).toBool == false && (checkDecimalAvgWidth 20 35 true).toBool == false
+
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
 def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
@@ -2189,8 +2211,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let decAvg : Option (Nat × Nat × Bool) := match name, k with
     | "avg", .dec p s => some (p, s, dblOut)
     | _, _ => none
-  if let some (_, s, _) := decAvg then
-    if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
+  if let some (p, s, dbl) := decAvg then checkDecimalAvgWidth p s dbl
   -- `AVG` of integers follows the plan's declared output type (#209): a
   -- double (the mean of their conversions), or an integer (`AggFn.iavg`).
   let intOut := name == "avg" && k == .int && (field? m "outputType").any (typeKind · == .int)
@@ -2557,6 +2578,27 @@ def parseMask (mask : Json) : J (List Nat) := do
       throw "nested projection masks are not supported"
     natD item "field"
 
+/-- Does the value of a `VALUES` cell fit its column's type (#1491)? `NULL`
+fits every type. An integer type takes an integer inside its width, and a
+double, string or boolean type a value of that kind. The other types are not
+compared here. -/
+def literalFits (ty : Json) (v : Value) : Bool :=
+  match v with
+  | .null => true
+  | _ =>
+    match typeKind ty, v with
+    | .int, .int i =>
+      let bits := intBits ty
+      decide (-((2 : Int) ^ (bits - 1)) ≤ i) && decide (i < 2 ^ (bits - 1))
+    | .int, _ => false
+    | .float, .float _ => true
+    | .float, _ => false
+    | .str, .str _ => true
+    | .str, _ => false
+    | .bool, .bool _ => true
+    | .bool, _ => false
+    | _, _ => true
+
 def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   let arity ← schemaArity r
   -- The model's times are microseconds (`typeKind`).
@@ -2573,12 +2615,25 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
       pure (Rel.read name)
     | (_, v) =>
       -- Current encoding: `expressions`; deprecated encoding: `values` of literals.
+      -- A field is a literal: evaluated here with the total evaluator, an
+      -- expression would lose the overflow or division by zero it raises, so a
+      -- computed field is refused, as the SQL lift refuses it (#1491).
       let rows ← match field? v "expressions" with
         | some _ => (← arrD v "expressions").mapM fun row => do
-            (← arrD row "fields").mapM fun e => do pure ((← parseExpr fns [] [] e).eval [])
+            (← arrD row "fields").mapM fun e => do
+              if (field? e "literal").isNone then
+                throw "VALUES of computed values is not supported (a virtual table field is not a literal)"
+              pure ((← parseExpr fns [] [] e).eval [])
         | none => (← arrD v "values").mapM fun row => do
             (← arrD row "fields").mapM fun e => do
               return (← constExpr (← parseConstLiteral e)).eval []
+      -- Each cell holds its column's type, or `--write` would emit a plan no
+      -- consumer accepts.
+      let types := (← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types")
+      for row in rows do
+        for ((cell, ty), i) in (row.zip types).zipIdx do
+          if !literalFits ty cell then
+            throw s!"VALUES column {i} cannot hold {repr cell}: its type is {ty.compress}"
       -- Virtual tables with the same rows share an entry (`Rel.values` has no
       -- schema): where their kinds differ, the column's kind is unknown.
       let key := valuesKey arity rows

@@ -22,9 +22,9 @@ DataFusion 51 and Polars:
   `2³¹ - 1` bytes fails (`Text.repeatFits`), as Arrow's `Utf8` offsets are
   32-bit (`Utf8View` input too; DataFusion writes `Utf8`).
 * `reverse(s)` reverses the characters (combining marks move with them).
-* `replace(s, p, r)` is Rust's `str::replace`: every non-overlapping `p`,
-  from the left, becomes `r`; an empty `p` puts `r` before every character
-  and at the end.
+* `replace(s, p, r)` replaces every non-overlapping `p`, from the left, by `r`
+  (Rust's `str::replace`); an empty `p` matches nowhere, so the result is `s`
+  (D44).
 * `ascii(s)` is the code point of the first character, `0` for `''`.
 * `levenshtein(s, t)` counts single-character insertions, deletions and
   substitutions.
@@ -206,8 +206,7 @@ def replaceGo (p r : List Char) : Nat → List Char → List Char
 
 def replace (s p r : String) : String :=
   let cs := s.toList
-  if p.isEmpty then String.ofList (r.toList ++ cs.flatMap fun c => c :: r.toList)
-  else String.ofList (replaceGo p.toList r.toList cs.length cs)
+  if p.isEmpty then s else String.ofList (replaceGo p.toList r.toList cs.length cs)
 
 def ascii (s : String) : Int :=
   match s.toList with
@@ -331,7 +330,7 @@ def plainInClass (c : Char) : Bool := !"[]\\-&~^".contains c
 /-- A repetition count: up to 4 digits, at most 1000. -/
 def count (cs : List Char) : Option (Nat × List Char) :=
   let ds := cs.takeWhile Char.isDigit
-  let n := (String.ofList ds).toNat!
+  let n := (String.ofList ds).toNat?.getD 0
   if ds.isEmpty || 4 < ds.length || 1000 < n then none else some (n, cs.drop ds.length)
 
 /-- Skip a quantifier, if there is one. -/
@@ -427,8 +426,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard repeatFits "ab" (2 ^ 30 - 1) && !repeatFits "ab" (2 ^ 30) && !repeatFits "é" (2 ^ 30)
 #guard repeatFits "" (2 ^ 62) && repeatFits "ab" (-(2 ^ 62))
 #guard reverse "héllo" == "olléh" && reverse "" == ""
-#guard replace "ab" "" "x" == "xaxbx" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
-#guard replace "" "" "x" == "x" && replace "abcabc" "bc" "Z" == "aZaZ"
+#guard replace "ab" "" "x" == "ab" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
+#guard replace "" "" "x" == "" && replace "abcabc" "bc" "Z" == "aZaZ"
 #guard ascii "" == 0 && ascii "é" == 233 && ascii "ab" == 97
 #guard levenshtein "kitten" "sitting" == 3 && levenshtein "" "" == 0 && levenshtein "abc" "" == 3
 #guard levenshtein "" "ab" == 2 && levenshtein "é" "e" == 1 && levenshtein "flaw" "lawn" == 2
@@ -436,6 +435,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard simpleRegex "^a" && simpleRegex "(a)(b)" && simpleRegex "\\d{4}-\\d{2}" && simpleRegex "[a-z]+$"
 #guard !simpleRegex "(" && !simpleRegex "a**" && !simpleRegex "[]" && !simpleRegex "(?i)a"
 #guard !simpleRegex "a{3,2}" && !simpleRegex "*a"
+-- A quantifier with no digits (`0{`) reached `Regex.digits` and `count` through `toNat!`.
+#guard !simpleRegex "0{"
 #guard simpleRegex "(?:a)(b)" && !simpleRegex "(?i)a" && !simpleRegex "(?=a)"
 #guard regexGroups "(a)(?:b)(c(d))" == 3 && regexGroups "[(]\\(" == 0
 #guard rewriteOk 1 "[\\1\\0\\\\]".toList && !rewriteOk 1 "\\2".toList && !rewriteOk 1 "a\\".toList

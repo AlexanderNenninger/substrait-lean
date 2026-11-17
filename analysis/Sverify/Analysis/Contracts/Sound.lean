@@ -928,8 +928,8 @@ end
 values over `grp`. -/
 theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
     {grp : Relation} {row : Row}
-    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn ≠ .min →
-      m.fn ≠ .max → row.getD (g + i) .null = m.eval grp)
+    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn.classPick = false →
+      row.getD (g + i) .null = m.eval grp)
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
     FactsHold (ratioFacts g env fs ms) row := by
   intro f hf
@@ -944,9 +944,9 @@ theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : L
       · rename_i b hb
         simp only [List.mem_singleton] at hf; subst hf
         intro x n hx hn
-        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; decide) (by rw [hsum]; decide),
+        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; rfl),
           Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
-        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; decide) (by rw [hcount]; decide),
+        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; rfl),
           Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
         have hsame : mj.inputs grp = mi.inputs grp := by
           simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]

@@ -449,12 +449,12 @@ theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
     cases cont <;> simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_quant, QuantInterp]
   case fsum | avg =>
     cases vs with
-    | nil => simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, AggFn.Picks]
+    | nil => simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, AggFn.Picks, AggFn.classPick]
     | cons w ws =>
       simp [AggFn.AllowedChoice, AggFn.Allowed, AggFn.apply, reference_allows_sum, SumOrder,
-        AvgOrder, AggFn.Picks]
+        AvgOrder, AggFn.Picks, AggFn.classPick]
   all_goals simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_var,
-    reference_allows_stat, StatAlgo, AggFn.Picks]
+    reference_allows_stat, StatAlgo, AggFn.Picks, AggFn.classPick]
 
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by
@@ -482,7 +482,7 @@ theorem Measure.allowed_iff {m : Measure} (hm : m.orderFree = true) (rows : Rela
   refine ⟨fun ⟨h, hmm⟩ => ?_, fun h => ⟨h ▸ ?_, fun _ => h⟩⟩
   · rcases Measure.allowed_picks hm h with hv | ⟨hf, -⟩
     · rw [hv, Measure.eval_eq (AggFn.ne_collect_of_orderFree hm)]
-    · exact hmm hf
+    · exact hmm (AggFn.minmax_of_classPick hm hf)
   -- As `Measure.eval_allowed`, through `AggFn.allowed_iff`: no measure's axioms.
   by_cases hs : m.fn.sorts = true
   · refine ⟨rows.mergeSort (sortLe m.sort), List.mergeSort_perm _ _, fun _ =>
