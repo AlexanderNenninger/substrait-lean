@@ -53,7 +53,12 @@ QUERIES = [
     "SELECT s LIKE t AS l, s LIKE 'a%' AS m, s LIKE '_\\%%' AS n FROM r",
     "SELECT btrim(s, t) AS b, ltrim(s, t) AS l, rtrim(s, t) AS r, btrim(s) AS w FROM r",
     "SELECT s || t AS c, character_length(s) AS n FROM r",
+    # Order: strings by code point (UTF-8 byte order), booleans `FALSE < TRUE` (#1492).
+    "SELECT s < t AS a, s > t AS b, s BETWEEN 'a' AND t AS c FROM r",
+    "SELECT greatest(s, t) AS g, least(s, t) AS l FROM r",
+    "SELECT (a > 1) < (a > 3) AS x, greatest(a > 1, a > 3) AS y, least(a > 1, a > 3) AS z FROM r",
 ]
+ORDER_QUERIES = QUERIES[-3:]
 
 text = st.one_of(st.none(), st.text(alphabet='ab %_\\é,"', max_size=6))
 
@@ -350,6 +355,35 @@ def test_string_contracts():
 def test_negative_substring_length_is_rejected():
     with pytest.raises(ValueError, match="negative (substring )?length"):
         sv.verify("SELECT substring(name, 1, -1) AS x FROM t", tables={"t": T})
+
+
+@pytest.mark.parametrize("engine", ["polars", "duckdb"])
+@pytest.mark.parametrize("sql", ORDER_QUERIES)
+def test_strings_order_by_code_point(engine, sql):
+    """`U+FFFF` is below `U+1F600` by code point and above it by UTF-16
+    code unit: the engines order as the model does, with no collation."""
+    rows = [("\uffff", "\U0001f600", 2), ("\U0001f600", "\uffff", 4), ("é", "z", 0), (None, "a", 1)]
+    con = connect()
+    con.create("r", R, rows)
+    expected = lean_rows(con, sql, rows)
+    got = run_plan(con, written_plan(plan_of(con, sql)), engine)
+    assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
+
+
+@pytest.mark.parametrize("dialect", ["spark", "snowflake"])
+@pytest.mark.parametrize("sql", ORDER_QUERIES)
+def test_dialects_without_an_order_fact_refuse_text_order(dialect, sql):
+    """Only a dialect with a fact on string and boolean order writes it
+    (`Dialect.orders_text`); Spark and Snowflake refuse until they have one."""
+    from sverify.sql import to_sql
+    from sverify.sql.snowflake import SNOWFLAKE
+    from sverify_spark.dialect import SPARK
+
+    con = connect()
+    con.create("r", R, [("a", "b", 1)])
+    plan = json.loads(plan_of(con, sql))
+    with pytest.raises(UnsupportedError, match="ordering comparisons of (str|bool) values"):
+        to_sql(plan, {"spark": SPARK, "snowflake": SNOWFLAKE}[dialect])
 
 
 @pytest.mark.parametrize("flags", [("--outcomes",), ("--eval-choices",), ("--rows",)])

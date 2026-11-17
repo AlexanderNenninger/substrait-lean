@@ -337,6 +337,9 @@ def lit_expr(value: Any, dtype: DType) -> pl.Expr:
 # --- Expressions -----------------------------------------------------------
 
 INTEGRAL = (pl.Int64, US, INTERVAL)
+#: The types `<`, `GREATEST` and `LEAST` order, as the model does (`Value.ltB`): strings by
+#: code point (UTF-8 byte order) and booleans `FALSE < TRUE` among them.
+ORDERED = (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.String, pl.Boolean)
 
 
 @dataclass(frozen=True)
@@ -1641,9 +1644,7 @@ class Exprs:
             return self.pick(name, [a, b])
         if name in ("equal", "lt"):
             t = unify(ta, tb, name)
-            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
-                # `BinFn.lt` is only defined on integers (and the codes of
-                # doubles and times); strings would differ from SQL.
+            if name == "lt" and t not in (*ORDERED, pl.Null):
                 raise Unsupported(f"lt of {t}")
             ka, kb = ordered(a.expr, t), ordered(b.expr, t)
             return Val(ka == kb if name == "equal" else ka < kb, pl.Boolean, issues(a, b))
@@ -1669,10 +1670,28 @@ class Exprs:
         t = pl.Null
         for v in vals:
             t = unify(t, v.dtype, name)
-        if t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null) and not is_decimal(t):
+        if t not in (*ORDERED, pl.Null) and not is_decimal(t):
             raise Unsupported(f"{name} of {t}")
         if t == pl.Null:
             return Val(pl.lit(None), t, issues(*vals))
+        if t in (pl.String, pl.Boolean):
+            # Strings by byte (code point) order and `FALSE < TRUE`, as `Value.ltB`: a fold
+            # that skips NULL and keeps the first of equal values (`Value.pick`).
+            better = (
+                (lambda new, best: new > best)
+                if name.startswith("greatest")
+                else (lambda new, best: new < best)
+            )
+            out = vals[0].expr.cast(t)
+            for v in vals[1:]:
+                x = v.expr.cast(t)
+                out = (
+                    pl.when(out.is_null()).then(x)
+                    .when(x.is_null()).then(out)
+                    .when(better(x, out)).then(x)
+                    .otherwise(out)
+                )  # fmt: skip
+            return Val(out, t, issues(*vals))
         # The first extreme's index in the list of keys: `arg_max` and
         # `arg_min` skip NULLs and NaN, and give the first of equal values;
         # NaN is the greatest double here (polars-min-max-nan). One list, so

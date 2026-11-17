@@ -69,7 +69,16 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sverify.sql.core import I64_MAX, I64_MIN, Dec, Dialect, Kind, Unsupported, _timestamp_text
+from sverify.sql.core import (
+    I64_MAX,
+    I64_MIN,
+    Dec,
+    Dialect,
+    GuardIssue,
+    Kind,
+    Unsupported,
+    _timestamp_text,
+)
 
 #: Session settings the SQL relies on; `SparkSession.builder.config` each.
 SPARK_CONF: dict[str, str] = {
@@ -123,7 +132,7 @@ class SparkDialect(Dialect):
     def time_of_day_lit(self, micros: int) -> str:
         raise self.to_duckdb("spark has no tod type (TIME needs Spark 4.1)")
 
-    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+    def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS STRING))"
         fail = self.cast(f"raise_error({text})", kind)
         return f"(CASE WHEN {dep} IS NULL THEN {self.null(kind)} ELSE {fail} END)"
@@ -198,7 +207,7 @@ class SparkDialect(Dialect):
     def float_to_int(self, x: str) -> str:
         # The cast raises on NaN and ±inf but saturates at 2⁶³: check first.
         lo, hi = self.float_lit(-(2.0**63)), self.float_lit(2.0**63)
-        fail = self.raise_("CAST to BIGINT out of range", x, "int")
+        fail = self.raise_("CAST to BIGINT out of range", x, "int", "badCast")
         return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN CAST({x} AS BIGINT) ELSE {fail} END)"
 
     def is_nan(self, x: str) -> str:
@@ -271,7 +280,7 @@ class SparkDialect(Dialect):
 
     def int_sum(self, v: str) -> str:
         total = f"SUM(CAST({v} AS DECIMAL(38,0)))"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return f"(CASE WHEN {inside} THEN CAST({total} AS BIGINT) ELSE {fail} END)"
 
@@ -282,7 +291,7 @@ class SparkDialect(Dialect):
 
     def window_int_sum(self, v: str, over: str) -> str:
         total = f"SUM(CAST({v} AS DECIMAL(38,0))) {over}"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return f"(CASE WHEN {inside} THEN CAST({total} AS BIGINT) ELSE {fail} END)"
 
