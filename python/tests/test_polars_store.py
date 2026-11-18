@@ -36,7 +36,7 @@ def weighted(rows) -> pa.Table:
     )
 
 
-def arrow(z) -> pa.Table:
+def rows_of(z) -> pa.Table:
     """A handle's rows (a lazy one is computed first)."""
     return z.to_arrow() if hasattr(z, "to_arrow") else z.lf.collect().to_arrow()
 
@@ -56,7 +56,7 @@ def test_the_operations_agree_with_the_arrow_store(rows):
     kept = store.kept(z)
     assert bag(kept.to_arrow()) == bag(z)
     assert store.has_negative(kept) == arrow.has_negative(z)
-    assert bag(arrow(store.negated(kept))) == bag(arrow.negated(z))
+    assert bag(rows_of(store.negated(kept))) == bag(arrow.negated(z))
     pos = z.filter(pc.call_function("greater", [z[WEIGHT], 0]))
     assert bag(store.expanded(store.kept(pos)).to_arrow()) == bag(arrow.expanded(pos))
     keys = pa.table({"k": pa.array([1, 2], pa.int64()), "x": pa.array([0.0, float("nan")])})
