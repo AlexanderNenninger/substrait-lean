@@ -127,7 +127,8 @@ def spark_scan(spark: Any, scan: Scan) -> DataFrame:
                 F.col(_FILE),
                 *(
                     (
-                        F.lit(here[c])
+                        # nullable, as every column of the Arrow route is
+                        F.when(F.col(_POS).isNotNull(), F.lit(here[c]))
                         if c in here
                         else F.col(f"`{c}`")
                         if c in renaming.values()
