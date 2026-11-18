@@ -147,3 +147,23 @@ def test_a_where_is_duckdb_sql_and_stays_on_the_arrow_route(tmp_path):
 
     got = _table(Con(), "t")
     assert isinstance(got, pa.Table) and got.column("id").to_pylist() == [2, 3]
+
+
+def test_equality_deletes_find_a_file_whose_path_the_session_encodes(tmp_path):
+    """The session reports a path percent-encoded (`a%20b`), and as `file:///`; the
+    descriptor holds the plain local path. Nothing matches paths as text."""
+    from sverify._scan import EqualityDelete
+
+    d = tmp_path / "dir with space%25"
+    d.mkdir()
+    data, dele = d / "data file.parquet", d / "del.parquet"
+    schema = pa.schema([pa.field("id", pa.int64(), metadata={"PARQUET:field_id": "1"})])
+    pq.write_table(pa.table({"id": [1, 2, 3]}, schema=schema), data)
+    pq.write_table(pa.table({"id": [2]}, schema=schema), dele)
+    scan = Scan(
+        (str(data),),
+        pa.schema([("id", pa.int64())]),
+        equality=(EqualityDelete(str(dele), (1,), ("id",), (str(data),)),),
+    )
+    got = spark_scan(session(), scan).toArrow()
+    assert sorted(got.column("id").to_pylist()) == [1, 3]

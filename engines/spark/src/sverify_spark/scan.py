@@ -53,10 +53,13 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
             deleted.setdefault(f, []).append(p)
     pieces = []
     for renaming, files in _runs(scan, deleted):
+        # The file is tagged with the descriptor's own string: no match between
+        # it and the URI the session reports (`s3a://`, percent-encoding, `file:`
+        # with one or three slashes) can fail silently. A file an equality
+        # delete applies to is read alone, so the tag names it.
+        tag = F.lit(files[0] if len(files) == 1 else None).cast("string")
         df = spark.read.parquet(*files).select(
-            "*",
-            F.regexp_replace(F.col("_metadata.file_path"), "^file:/+", "/").alias(_FILE),
-            F.col("_metadata.row_index").alias(_POS),
+            "*", tag.alias(_FILE), F.col("_metadata.row_index").alias(_POS)
         )
         if files[0] in deleted:
             df = df.filter(~F.col(_POS).isin(deleted[files[0]]))
@@ -97,11 +100,13 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
 
 def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str], list[str]]]:
     """The files in the descriptor's order, in runs that one read covers: files
-    named alike (`{physical name: logical name}`), none with deleted positions."""
+    named alike (`{physical name: logical name}`), none with deleted positions
+    or under an equality delete, which are read alone."""
+    alone = set(deleted).union(*(e.applies_to for e in scan.equality))
     out: list[tuple[dict[str, str], list[str]]] = []
     for f in scan.files:
         names = _renaming(f, scan)
-        if out and out[-1][0] == names and f not in deleted and out[-1][1][0] not in deleted:
+        if out and out[-1][0] == names and f not in alone and out[-1][1][0] not in alone:
             out[-1][1].append(f)
         else:
             out.append((names, [f]))
