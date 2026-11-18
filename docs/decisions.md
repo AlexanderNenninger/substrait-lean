@@ -1459,3 +1459,5 @@ taken branch alone; an engine without one refuses it.
 Why: the eager reading made the commonest guard in SQL unprovable, and the
 engines that short-circuit give the value the user meant.
 
+Recomputes sinks: no. The reference's values do not change: a plan that raises on no row
+computes what it did, and a lifted guard only removes a raise.
