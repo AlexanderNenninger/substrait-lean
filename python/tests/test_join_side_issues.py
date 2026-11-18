@@ -18,7 +18,6 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.plan_json import Unsupported
 
 SCHEMAS = {
     "a": {"id": "!int64", "x": "!int64"},
@@ -132,12 +131,16 @@ def test_duckdb_raises_with_the_other_side_empty_but_not_when_it_is_unmatched():
     assert con.execute(BASE).fetchall() == []
 
 
-def test_a_semi_join_written_with_exists_is_refused_for_now():
-    """DuckDB raises on it with `b` empty; sverify refuses a correlated
-    subquery (#813), so no report states anything."""
+def test_a_semi_join_written_with_exists_reports_the_division():
+    """DuckDB raises on it with `b` empty; a correlated EXISTS lifts as a semi
+    join (#345) below a filter that divides by `a.x` on every row of `a`, so the
+    report needs `x != 0`, whatever `b` holds."""
     sql = "SELECT a.id FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.id = a.id) AND 10 // a.x > 1"
-    with pytest.raises(Unsupported, match="correlated subqueries"):
-        sv.verify(sql, tables=TABLES, counterexamples=0)
+    report = sv.verify(sql, tables=TABLES, counterexamples=0)
+    assert report.verdict == sv.Verdict.UNPROVED
+    assert [n.label for n in report.needs] == ["(_.x != 0)"]
+    proved = sv.verify(sql, tables=TABLES, requires=X_NOT_ZERO, counterexamples=0)
+    assert proved.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS)
     with pytest.raises(duckdb.InvalidInputException, match="Division by zero"):
         _duckdb("b").execute(sql).fetchall()
 
