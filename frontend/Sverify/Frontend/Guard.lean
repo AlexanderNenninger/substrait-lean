@@ -527,7 +527,7 @@ theorem Expr.andLift_false (row : Row) (pre : List Expr) (p : Expr) (post : List
   · next h => exact absurd h hlen
   split
   · exact hg
-  · have hi := Expr.conj_plain_issues row _ (Expr.filter_plain_plain _)
+  · have hi := Expr.conj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)
     simp only [Expr.refOutcome] at hg ⊢
     split at hg
     · cases hg
@@ -549,7 +549,7 @@ theorem Expr.orLift_true (row : Row) (pre : List Expr) (p : Expr) (post : List E
   · next h => exact absurd h hlen
   split
   · exact hg
-  · have hi := Expr.disj_plain_issues row _ (Expr.filter_plain_plain _)
+  · have hi := Expr.disj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)
     simp only [Expr.refOutcome] at hg ⊢
     split at hg
     · cases hg
@@ -571,7 +571,7 @@ theorem Expr.andLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List
   · next h => exact absurd h hlen
   split
   · exact hg
-  · have hi := Expr.conj_plain_issues row _ (Expr.filter_plain_plain _)
+  · have hi := Expr.conj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)
     simp only [Expr.refOutcome] at hg ⊢
     split at hg
     · next k' hk =>
@@ -591,7 +591,7 @@ theorem Expr.orLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List 
   · next h => exact absurd h hlen
   split
   · exact hg
-  · have hi := Expr.disj_plain_issues row _ (Expr.filter_plain_plain _)
+  · have hi := Expr.disj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)
     simp only [Expr.refOutcome] at hg ⊢
     split at hg
     · next k' hk =>
