@@ -115,6 +115,25 @@ theorem Rel.detPlan_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String �
       simp only [detPlan, windowDetAt, detPlan_congr h A F K r, keys_congr h A F K r,
         arity_congr h r, (aeval_congr h A F .none false r).1, WinFn.pickFixed_congr h A F r]
 
+theorem Rel.detClass_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (K : String → List (List Nat)) :
+    ∀ r : Rel, r.detClass c A F K = r.detClass cat A F K
+  | .read _ | .values _ _ => rfl
+  | .filter r _ | .project r _ => by
+      simp only [detClass, detClass_congr h A F K r, detPlan_congr h A F K r]
+  | .emit r _ | .orderBy r _ | .distinct r => by simp only [detClass, detClass_congr h A F K r]
+  | .unionAll a b => by simp only [detClass, detClass_congr h A F K a, detClass_congr h A F K b]
+  | .window r _ _ _ => by
+      simp only [detClass, windowDetAt, detPlan_congr h A F K r, keys_congr h A F K r,
+        arity_congr h r, (aeval_congr h A F .none false r).1]
+  | .aggregate r _ _ => by
+      simp only [detClass, detPlan_congr h A F K r, Measure.detIn_congr h A F K r]
+  | .fetch r o n => by simp only [detClass, detPlan_congr h A F K (.fetch r o n)]
+  | .cross a b => by simp only [detClass, detPlan_congr h A F K (.cross a b)]
+  | .join a b t on => by simp only [detClass, detPlan_congr h A F K (.join a b t on)]
+  | .semi a b t on => by simp only [detClass, detPlan_congr h A F K (.semi a b t on)]
+  | .unnest r i => by simp only [detClass, detPlan_congr h A F K (.unnest r i)]
+
 /-! ### The issues (#1484, A4)
 
 `Rel.mayIssues` and the capped issues the report lists (`Rel.issuesCapped`:
