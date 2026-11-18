@@ -21,10 +21,11 @@
   "settings": {},
   "description": [
     "`avg` has one overload per integer width it names, `SMALLINT`, `INTEGER`, `BIGINT` and `HUGEINT`, and each returns `DOUBLE`; there is no integer result. `TINYINT` has none: the binder takes the overload with the cheapest implicit cast, and a cast to `BIGINT` costs 101 against 110 for `SMALLINT`, so `avg(TINYINT)` runs the `BIGINT` one.",
-    "`SMALLINT`: the sum is an `int64_t` (`RegularAdd`, unchecked, out of reach below 2^48 rows) and the result `double(sum) / double(count)`. `INTEGER` and `BIGINT`: the sum is an exact `HUGEINT` (`AddToHugeint`) and the result `long double(sum) / long double(count)`, rounded to `DOUBLE`. `long double` is 80-bit on x86-64 Linux and the same as `double` on arm64 macOS and MSVC, so the last bit of a large mean can depend on the platform.",
+    "`SMALLINT`: the sum is an `int64_t` (`RegularAdd`, unchecked, out of reach below 2^48 rows) and the result `double(sum) / double(count)`. `INTEGER` and `BIGINT`: the sum is an exact `HUGEINT` (`AddToHugeint`) and the result `long double(sum) / long double(count)`, rounded to `DOUBLE`. `long double` is 80-bit on x86-64 Linux and the same as `double` on arm64 macOS and MSVC, so the last bit of a large mean can depend on the platform. Round 5's run on x86-64 Linux does not show the 80-bit result (below), so on that wheel `long double` behaves as `double`, or the source reading is wrong; which of the two is open.",
     "No values gives NULL. The width dispatch is one template instantiation per width (`GetAverageAggregate`), which is what lets this reading cover `i8` to `i64`.",
-    "Round 4 (probes): `avg` of TINYINT and SMALLINT is a DOUBLE (126.5, 32766.5). `avg` of 2^63 - 1, 2^63 - 2, 2^63 - 3 is 9.223372036854776e+18 and of 2^53 + 1, 2^53 + 2 is 9007199254740994.0 on any platform. The last bit depends on `long double`: `avg` of 2^53 + 1, 0, 0 is 3002399751580330.5 on macOS arm64, where the sum is rounded to a double before the division; the exact mean 3002399751580331 is what an 80-bit `long double` gives (homelab, x86-64 Linux, to check).",
-    "The docs are silent on `avg`'s DOUBLE result, the `long double` division and the overload `TINYINT` takes: a docs gap. No upstream test pins the platform-dependent last bit; it may change between versions."
+    "Round 4 (probes): `avg` of TINYINT and SMALLINT is a DOUBLE (126.5, 32766.5). `avg` of 2^63 - 1, 2^63 - 2, 2^63 - 3 is 9.223372036854776e+18 and of 2^53 + 1, 2^53 + 2 is 9007199254740994.0 on any platform. The last bit depends on `long double`: `avg` of 2^53 + 1, 0, 0 is 3002399751580330.5 on macOS arm64, where the sum is rounded to a double before the division; an 80-bit `long double` would give the exact mean 3002399751580331, and the x86-64 Linux wheel gave 3002399751580330.5 as macOS arm64 does (round 5).",
+    "The docs are silent on `avg`'s DOUBLE result, the `long double` division and the overload `TINYINT` takes: a docs gap. No upstream test pins the platform-dependent last bit; it may change between versions.",
+    "Round 5 (probe, `engines/duckdb/probes/avg_int.py`): on x86-64 Linux (DuckDB 2.0.0, the Python wheel, homelab) and on macOS arm64, `avg` of BIGINT gave the model's value for every pair tried. The pairs separate the readings: `avg` of 2^53 + 1, 0, 0; 200 pairs with a sum below 2^53 and a count of 1,025 to 19,999 where an 80-bit division rounded again to a double differs from one division in doubles; 200 pairs with a sum from 2^53 to 2^62 where the sum rounded to a double, then divided, differs from the exact quotient rounded once. All 401 on each platform were the one division in doubles of the sum rounded to a double (the model's). The source at v2.0.0 (`avg.cpp` lines 110-124, `IntegerAverageOperationHugeint`) divides `Hugeint::Cast<long double>(state.value)` by a `long double` count and returns a `double`; a run that agrees with that reading on an 80-bit `long double` would have shown the other value on the second and third group. Aarch64 Linux (113-bit `long double`) and Windows are unprobed."
   ],
   "reference": [
     "`avg_int_result` follows the plan's declared output type (#209). With `fp64` the reference averages the integers' conversions to doubles (`parseMeasure`), so it rounds each value and then the sum, where DuckDB rounds the exact sum once; both are within #85's bound.",
@@ -159,6 +160,21 @@
         }
       ],
       "notes": "The reference's int64 sum measure would leave its type here (`.sumWraps`); DuckDB's avg does not."
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "worker 8 (#1608 item 12, 12d), engines/duckdb/probes/avg_int.py, duckdb 2.0.0 Python wheel on x86_64 Linux (homelab) and arm64 macOS",
+      "evidence": [
+        {
+          "sql": "engines/duckdb/probes/avg_int.py: avg of BIGINT tables whose sum and count separate the readings (2^53+1, 0, 0; 200 pairs with sum < 2^53 and count 1025 to 19999; 200 pairs with sum 2^53 to 2^62)",
+          "observed": "x86_64 Linux: avg of 2^53+1, 0, 0 = 3002399751580330.5; 200 of 200 pairs with sum < 2^53 give the one division in doubles (0 the 80-bit double rounding); 200 of 200 pairs with sum >= 2^53 give the sum rounded to a double, then divided (0 the exact quotient rounded once). The same on arm64 macOS."
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L110-L124",
+          "note": "IntegerAverageOperationHugeint: Hugeint::Cast<long double>(state.value) / a long double count, as a double. The run and this reading disagree on x86-64 Linux; which is wrong is open."
+        }
+      ]
     }
   ],
   "issues": [
