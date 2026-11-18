@@ -1600,7 +1600,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
   },
   "contract": {
    "proved": true,
