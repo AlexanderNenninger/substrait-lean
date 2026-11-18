@@ -23,7 +23,7 @@ from typing import Any
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 1:
+if getattr(_meta, "PLUGIN_API", None) != 2:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -65,11 +65,18 @@ def _run(
 
 def _table(con: Any, name: str) -> Any:
     """Table `name` of the connection for Polars: a `Scan` of local files without a
-    `where` as a lazy scan (`sverify_polars.scan`), any other table as Arrow."""
+    `where`, partition values or physical names as a lazy scan
+    (`sverify_polars.scan`), any other table as Arrow."""
     from sverify._scan import Scan
 
     table = con.get(name)
-    if isinstance(table, Scan) and table.readable() and table.where is None:
+    if (
+        isinstance(table, Scan)
+        and table.readable()
+        and table.where is None
+        and table.partitions is None
+        and table.physical is None
+    ):
         from sverify_polars.scan import lazy_scan
 
         return lazy_scan(table)

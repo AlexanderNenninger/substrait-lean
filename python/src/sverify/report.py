@@ -23,11 +23,14 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 import ibis
 import ibis.expr.types as ir
+import pyarrow as pa
 from ibis.common.deferred import Deferred
 
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
+from sverify._run_schema import declared_columns, int_name, int_range
+from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
@@ -43,8 +46,6 @@ from sverify.observation import Observation, _deterministic_arg
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
-    import pyarrow as pa
-
     from sverify.routes import Route, RouteKind
 from sverify.conditions import (
     DATA_CHECK,
@@ -118,9 +119,9 @@ UnprovedReason = Literal[
 
 @dataclass(frozen=True)
 class TiePlace:
-    """A place where the plan leaves the order of ties open: a window,
-    an ordered aggregate (`first`, `group_concat`, …) or a `LIMIT` whose
-    order is not total on the input's keys."""
+    """A place where the plan leaves its result open: a window, an ordered
+    aggregate (`first`, `group_concat`, …) or a `LIMIT` whose order is not
+    total on the input's keys, or a value picked from a class of doubles."""
 
     relation: int
     """The relation's index in the plan, in pre-order (`Report.relations`)."""
@@ -128,14 +129,31 @@ class TiePlace:
     """The relation's operator: `window`, `aggregate` or `fetch`."""
     what: str
     """What is open there, with columns as `$i` of the relation's input."""
+    kind: Literal["tie", "class", "open"] = "tie"
+    """`"class"`: the place only picks a member of a class of doubles
+    (`-0.0` or `0.0`, a NaN; D31), which an observation that reads one zero
+    and one NaN cannot tell apart (D48); `"tie"`: the order of ties is open;
+    `"open"`: what the class level leaves open, a tie or an expression that
+    reads a picked value (`Report.deterministic`)."""
 
     def __str__(self) -> str:
         return f"the {self.op} at relation {self.relation}: {self.what}"
 
 
 def tie_places(out: Mapping[str, Any]) -> list[TiePlace]:
-    """The `tie_places` of `substrait-check`'s report."""
-    return [TiePlace(t["relation"], t["op"], t["what"]) for t in out.get("tie_places", [])]
+    """The `tie_places` of `substrait-check`'s report: the exact level's."""
+    return [
+        TiePlace(t["relation"], t["op"], t["what"], t.get("kind", "tie"))
+        for t in out.get("tie_places", [])
+    ]
+
+
+def class_places(out: Mapping[str, Any]) -> list[TiePlace]:
+    """The `class_places` of `substrait-check`'s report: what the class
+    level leaves open (D48). A checker without them gives the exact level's."""
+    if "class_places" not in out:
+        return tie_places(out)
+    return [TiePlace(t["relation"], t["op"], t["what"], "open") for t in out["class_places"]]
 
 
 #: What a report suggests for an overflow it cannot rule out (#202).
@@ -406,24 +424,37 @@ class Report:
     of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
     """True when every result the reference allows is one up to row order
-    (`check_deterministic_sound`). False when rows may tie in the ORDER BY
-    of a window or of an ordered aggregate (`first`, `last`,
+    and up to the member of each class of doubles (`-0.0` and `0.0`; every
+    NaN; D31, D48): `check_class_determined_sound`. A `DISTINCT` or a group
+    key over doubles, `MIN`, `MAX` and `QUANTILE_DISC` only pick a member of
+    a class, which leaves the result determined. False when rows may tie in
+    the ORDER BY of a window or of an ordered aggregate (`first`, `last`,
     `group_concat`; without an `order_by` every row ties), when a `LIMIT`
-    takes rows that tie in its `ORDER BY` or has none, when the reference
-    leaves a value open (the median of doubles, which member of a class of
-    doubles a `DISTINCT`, a group key, `MIN`, `MAX` or `QUANTILE_DISC`
-    keeps), or where the checker has not proved an aggregate a function of its values. The
-    engine then picks, and a rerun may pick another. The postconditions
-    are proved for every choice; the deterministic profile
-    (`run(reproducible=sv.equivalent())`, a sink's `reproducible=`)
-    refuses such a plan and names `tie_places`."""
+    takes rows that tie in its `ORDER BY` or has none, when an expression
+    reads a picked double and can tell the members apart (`atan2`), when the
+    reference leaves a value open (the median of doubles), or where the
+    checker has not proved an aggregate a function of its values. The
+    engine then picks, and a rerun may pick another. The postconditions are
+    proved for every choice. A rerun that must reproduce the result
+    (`run(reproducible=sv.equivalent())`, a refresh, a sink's
+    `reproducible=`) refuses such a plan and names each place; one whose
+    observation reads the members of a class (exact doubles and zeros) also
+    refuses each class pick (D48)."""
+    _exact: bool = field(default=True, repr=False)
+    """Every result the reference allows is one up to row order, members of
+    a class included (`check_deterministic_sound`): `deterministic` with no
+    class pick. The SQL writers' tie-free windows read this level."""
+    _class_places: list[TiePlace] = field(default_factory=list, repr=False)
+    """What the class level leaves open, one entry per place; empty exactly
+    when `deterministic` (`Request.classDeterminedIn_eq`)."""
     _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
     _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
     """Where the plan leaves its result open, one entry per window, ordered
-    aggregate, `LIMIT` or value the reference leaves open; empty exactly
-    when `deterministic` (`Request.deterministicIn_eq`)."""
+    aggregate, `LIMIT` or value the reference leaves open, class picks
+    included (kind `"class"`); empty exactly when `_exact`
+    (`Request.deterministicIn_eq`)."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, SUM overflows among them, the checker could not rule out; when
     empty, the transformation provably runs without them."""
@@ -728,8 +759,8 @@ class Report:
         `dialect`.
 
         The SQL keeps every run-time check, as `run` does. Where the report
-        is `deterministic` (no window ties on data that meets the
-        preconditions), windows need no row-order tiebreak, so Snowflake and
+        is determined up to row order with no class pick (no window ties on
+        data that meets the preconditions), windows need no row-order tiebreak, so Snowflake and
         Spark take them. A plan verified under an engine's semantics
         (`semantics="duckdb"`) is written only for an engine its route
         reaches (`sverify.routes.choose`). Snowflake takes plans verified
@@ -771,7 +802,7 @@ class Report:
         return to_sql(
             written_plan(self.internal_plan),
             d,
-            deterministic=self.deterministic,
+            deterministic=self._exact,
             finite=finite,
             rows="sequence" if self.observation.rows == "sequence" else "multiset",
         )
@@ -839,6 +870,7 @@ class Report:
             PreconditionError: A precondition or an assumed `SUM` does not
                 hold on the data.
         """
+        self._check_schema(con, engine)
         for t, conds in self._conditions.items():
             if not con.has(t):
                 continue
@@ -865,6 +897,46 @@ class Report:
                 run_plan(con, written_plan(self.internal_plan), "duckdb")
             except Exception as e:
                 raise self._broken_assumption(e) or e from None
+
+    def _check_schema(self, con: Connection, engine: str | None) -> None:
+        """Refuse a table that differs from the schema the plan was verified
+        for (`sverify._run_schema`): a missing column, a type the reader would
+        change, a NULL in a column read as non-null, an integer outside the
+        declared type's range (D46; the engine counts it)."""
+        if self.internal_plan is None:
+            return
+        for t, schemas in declared_columns(json.loads(self.internal_plan)).items():
+            if not con.has(t):
+                continue
+            z = con.get(t)
+            data = z if isinstance(z, pa.Table) else None
+            wide: set[tuple[str, str]] = set()
+            for declared in schemas:
+                found, more = schema_problems(declared, con.schema(t), data)
+                if found:
+                    raise PreconditionError(
+                        f"table {t} differs from the schema the plan was verified for: "
+                        + "; ".join(found)
+                        + ": refused before the run. Declare the column as it is, or fix the source"
+                    )
+                wide.update(more)
+            table = con.table(t)
+            for col, key in sorted(wide):
+                lo, hi = int_range(key)
+                x: Any = ibis._[col]
+                cond = x.isnull() | ((x >= lo) & (x <= hi))
+                [(_c, n, error)] = violation_counts(table, [cond], engine)
+                if n or error:
+                    raise PreconditionError(
+                        f"column {col!r} of {t} is declared {int_name(key)} ({lo} to {hi}) and "
+                        + (
+                            f"its range check raised: {error}"
+                            if error
+                            else f"{n} value(s) lie outside it, e.g. {_example(table, cond, col)}"
+                        )
+                        + ": refused before the run. Declare the wider type, or cast in the query",
+                        source=t,
+                    )
 
     def _unchecked_requires(self) -> list[str]:
         """The preconditions in `requires` that `_conditions` holds no check
@@ -970,8 +1042,10 @@ class Report:
                 breaks one (`check_inputs`), as
                 `transform(check_requires=)` does on bound inputs. Default
                 True. False skips the check, for a caller that has made it
-                already: the report's guarantee then holds only on data that
-                meets them, and a batch that does not may raise on the
+                already (the tables are still checked against the schema the
+                plan was verified for: types, NULLs, integer widths). The
+                report's guarantee then holds only on data that meets the
+                preconditions, and a batch that does not may raise on the
                 engine. With the check, a guard-free plan on the reference's
                 route runs without the per-row checks the checker discharged
                 on data that meets them, on an engine whose writer a theorem
@@ -1058,6 +1132,10 @@ class Report:
                     + " of this report: refused before the run (check_requires=False skips them)"
                 )
             self.check_inputs(con, target, assumed_checked=assumed_checked)
+        else:
+            # The schema is what the proof is about, not a precondition: it is
+            # checked whatever `check_requires` says.
+            self._check_schema(con, target)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)
@@ -1096,9 +1174,9 @@ class Report:
                     written_plan(self.internal_plan),
                     engine,
                     finite=finite,
-                    # A proved report's `deterministic` justifies Spark's windows
+                    # A proved report's exact level justifies Spark's windows
                     # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                    tie_free=self.deterministic and kind != "unverified",
+                    tie_free=self._exact and kind != "unverified",
                 )
         except Exception as e:
             # The translation's own checks of the assumptions, which `check_inputs`
@@ -1127,14 +1205,18 @@ class Report:
         The check and the plan must read one snapshot: each input the check
         reads is an Arrow table, a `Resident` table or a `Scan` pinned to a
         version (`_pinned`). Another input warns (`InferredWarning`), and
-        refuses the run with `deterministic` (the deterministic profile,
-        `reproducible=`).
+        refuses the run with `deterministic` (a rerun that must reproduce
+        the result, `reproducible=`).
 
         Raises:
             PreconditionError: A check flags a group, and the report was not
                 verified with `on_inferred="warn"`; or, with `deterministic`,
                 an input the check reads is not pinned to one version.
         """
+
+        from sverify import profiles
+        from sverify.sql import parse_plan
+        from sverify.sql.core import open_choices
 
         total = 0
         for chk in self._margin_checks:
@@ -1152,12 +1234,41 @@ class Report:
                 if deterministic:
                     raise PreconditionError(msg)
                 warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            plan = written_plan(json.dumps(chk["plan"]))
+            # Where the runner leaves ties and a LIMIT's rows open (`ProfilePlugin.rows`),
+            # the check and the run each pick their own: its count says nothing
+            # about the run's sums. The ordinal of `rows="sequence"` makes them one.
+            runner = profiles.find(target)
+            if (
+                runner is not None
+                and runner.rows == "multiset"
+                and not self.deterministic
+                and (open_ := open_choices(parse_plan(json.loads(plan)).root))
+            ):
+                what = " and ".join(sorted(set(open_)))
+                if self._on_inferred != "warn":
+                    raise PreconditionError(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open (ties, or the rows of a LIMIT): the check's count may "
+                        "miss groups the run sums differently; pin the rows with `reproducible=`, "
+                        "order by a key that makes the order total, or run with "
+                        '`on_inferred="warn"`'
+                    )
+                warnings.warn(
+                    InferredWarning(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open: the check's count may miss groups the run sums "
+                        "differently",
+                        self,
+                    ),
+                    stacklevel=3,
+                )
             # Without the overflow checks of #575: the margin is at most `A`, and
             # a `v − t` past the largest double is farther than any bound.
-            # Its windows aggregate whole partitions, so no row order matters.
-            res = run_plan(
-                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
-            )
+            # Its own windows aggregate whole partitions, so no row order matters there;
+            # the relations below the sum can hold open choices (above), and
+            # `tie_free=True` drops their tiebreak on an engine that reads it.
+            res = run_plan(con, plan, engine, finite=False, tie_free=True)
             k = int(res.column(0)[0].as_py() or 0)
             if not k:
                 continue
@@ -1563,7 +1674,7 @@ class Report:
 
         out = TIES_HINT.format(_ORDERED.get(self._dialect, _ORDERED["ibis"]))
         plan = json.loads(self.internal_plan) if self.internal_plan else None
-        places = [named(t.what, plan) for t in self._tie_places]
+        places = [named(t.what, plan) for t in self._class_places]
         if places and all(places):
             out += f" ({'; '.join(dict.fromkeys(p for p in places if p))})"
         if self.ties:
@@ -1678,6 +1789,8 @@ class Report:
 _REPORT_INTERNAL = [
     "windows_total",
     "tie_places",
+    "exact",
+    "class_places",
     "guard_free",
     "unchecked",
     "optimized",
@@ -2232,3 +2345,9 @@ def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) ->
         return bad.limit(limit).to_pyarrow()
     except Exception:
         return None
+
+
+def _example(table: ir.Table, cond: Condition, col: str) -> object:
+    """One value of column `col` where `cond` is not TRUE, for a message."""
+    rows = violating_rows(table, cond, 1)
+    return rows.column(col)[0].as_py() if rows is not None and rows.num_rows else "?"

@@ -552,9 +552,9 @@ def run_plan(
             plan verified with `semantics="duckdb"`, which allows `±∞`.
         tie_free: On Spark, the plan's windows have no ties on data that
             meets its preconditions (a proved report's `deterministic`), so
-            they run without a row-order tiebreak (`to_sql`'s
-            `deterministic`). Default: False; `Report.run` and a stored
-            node's refresh pass the report's fact.
+            they run with the sort keys alone (`to_sql`'s `deterministic`).
+            Default: False; `Report.run` and a stored node's refresh pass
+            the report's fact.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with

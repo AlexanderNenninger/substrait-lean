@@ -48,12 +48,16 @@ def verdict(
         final.
     """
     from sverify.conditions import RelationRows
-    from sverify.report import Report, tie_places
+    from sverify.report import Report, class_places, tie_places
 
     semantics = context.get("semantics", "reference")
     return Report(
         issues=list(issues),
-        deterministic=out["deterministic"],
+        # D48: the report's `deterministic` is the class level; a checker
+        # without it gives the exact level, which implies it.
+        deterministic=out.get("class_determined", out["deterministic"]),
+        _exact=out["deterministic"],
+        _class_places=class_places(out),
         _windows_total=out.get("windows_total", out["deterministic"]),
         _tie_places=tie_places(out),
         _guard_free=out["guard_free"],

@@ -112,3 +112,28 @@ def test_verification_errors_show_the_counterexample():
     report = plus_one.report
     assert report is not None
     assert "fails on `orders(id, customer, amount)" in report._repr_markdown_()
+
+
+def test_a_date_in_the_output_prints_as_a_date_like_the_input():
+    """`Rel.eval` counts a date in days: the output showed `0` beside the
+    input's `datetime.date(1970, 1, 1)` (#1485)."""
+    import datetime as dt
+
+    t = ibis.table({"id": "int64", "d": "date"}, name="orders")
+
+    def f(orders):
+        return orders.select("id", "d")
+
+    report = sv.verify(f(t), requires={"orders": [_.id >= 0]}, ensures=[_.d >= dt.date(2024, 6, 1)])
+    text = str(report.unproved[0].counterexample)
+    assert text.count("datetime.date(1970, 1, 1)") == 2
+
+
+def test_a_date_in_a_sql_output_prints_as_a_date_too():
+    """The dbt path checks SQL: its counterexample showed `order_date = 0` (#1485)."""
+    report = sv.verify(
+        "SELECT id, d FROM orders",
+        tables={"orders": {"id": "int64", "d": "date"}},
+        ensures=["d >= DATE '2024-06-01'"],
+    )
+    assert str(report.unproved[0].counterexample).count("datetime.date(1970, 1, 1)") == 2

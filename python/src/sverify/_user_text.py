@@ -361,6 +361,24 @@ def _decimal(dialect: Dialect, x: str, p: str, s: str) -> str:
     return f"CAST({x} AS DECIMAL({p}, {s}))"
 
 
+_IMPLICIT_CAST = re.compile(r"\b(?:DOUBLE|AS_DECIMAL_\d+_\d+)\(")
+
+
+def _drop_implicit_casts(s: str) -> str:
+    """`s` without the casts the user did not write (`DOUBLE(x)`,
+    `AS_DECIMAL_p_s(x)`), whatever the argument holds: `DOUBLE(sum(x))` too."""
+    while m := _IMPLICIT_CAST.search(s):
+        depth = 1
+        i = m.end()
+        while i < len(s) and depth:
+            depth += (s[i] == "(") - (s[i] == ")")
+            i += 1
+        if depth:  # unbalanced: leave it
+            break
+        s = s[: m.start()] + s[m.end() : i - 1] + s[i:]
+    return s
+
+
 def pretty(
     out: str,
     dialect: Dialect = "ibis",
@@ -370,9 +388,7 @@ def pretty(
     `/` of integers as Ibis's `//`, `DECIMAL_10_2(TO_DECIMAL_2(x))` as the
     cast the user wrote, a timestamp plus microseconds as an interval
     (`temporal` names the timestamp columns), no implicit casts."""
-    # Implicit casts the user did not write.
-    while (new := re.sub(r"\b(?:DOUBLE|AS_DECIMAL_\d+_\d+)\(([^()]*)\)", r"\1", out)) != out:
-        out = new
+    out = _drop_implicit_casts(out)
     out = re.sub(r"(\d)d\b", r"\1", out)
     # A cast to a decimal: `DECIMAL_p_s(TO_DECIMAL_s(x))` (a double's), or
     # `DECIMAL_p_s(x)`, `TO_DECIMAL_s(x)` alone (the precision is the plan's).
