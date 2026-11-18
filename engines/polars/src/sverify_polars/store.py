@@ -140,6 +140,9 @@ def _key(e: pl.Expr, t: pa.DataType) -> pl.Expr:
     return shims.one_zero(e) if pa.types.is_floating(t) else e
 
 
+_OVERFLOW = "a row's weight sum leaves 64 bits"
+
+
 class PolarsStore(ArrowOps):
     """A view's state as generations of Parquet files that Polars scans
     (`PolarsState`). A weighted table that is an Arrow table (a change, the
@@ -150,11 +153,20 @@ class PolarsStore(ArrowOps):
     def merge(
         self, plan: str, schema: pa.Schema, a: State, b: State, *, keep: bool
     ) -> State | pa.Table:
+        # The plan's own overflow guard (a callback per batch) is left out: a
+        # weight sum that leaves 64 bits comes out NULL, which is checked
+        # natively on the result, one `any()` over the written weights.
         lf = engine.to_lazy(plan, {MERGE_A: _lazy(a), MERGE_B: _lazy(b)}, guards=False)
         lf = lf.select([pl.col(f.name).cast(_dtype(f)) for f in schema])
         if keep:
-            return _write(lf, schema)
-        return engine.collect(lf).to_arrow().cast(schema)
+            out = _write(lf, schema)
+            if out.lazy().select(pl.col(WEIGHT).is_null().any()).collect().item():
+                raise engine.SumOverflow(_OVERFLOW)
+            return out
+        table = engine.collect(lf).to_arrow().cast(schema)
+        if table.column(WEIGHT).null_count:
+            raise engine.SumOverflow(_OVERFLOW)
+        return table
 
     def kept(self, table: pa.Table) -> State:
         return _write(_lazy(table), table.schema)

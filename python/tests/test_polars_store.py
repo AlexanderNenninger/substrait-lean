@@ -79,3 +79,26 @@ def test_a_generation_is_removed_with_its_handle():
     del z
     gc.collect()
     assert not os.path.exists(path)
+
+
+def test_a_weight_sum_that_leaves_64_bits_raises():
+    from sverify_polars.engine import SumOverflow
+
+    store = polars_store.PolarsStore()
+    big = 2**63 - 1
+    z = store.kept(weighted([(1, "a", 1.5, big)]))
+    plan = _merge_plan(z.schema)
+    with pytest.raises(SumOverflow):
+        store.merge(plan, z.schema, z, weighted([(1, "a", 1.5, 1)]), keep=True)
+    with pytest.raises(SumOverflow):
+        store.merge(plan, z.schema, z, weighted([(1, "a", 1.5, 1)]), keep=False)
+
+
+def _merge_plan(schema: pa.Schema) -> str:
+    import sverify as sv
+    from sverify._state import Merger
+
+    m = Merger(sv.connect("polars"), schema)
+    plan = m.plan()
+    assert plan is not None
+    return plan
