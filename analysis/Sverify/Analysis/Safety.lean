@@ -978,12 +978,13 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
         · rename_i hs hc
           simp only [Option.some.injEq] at hk; subst hk
           right
-          simp only [Bool.not_eq_true, Bool.not_not] at hs
+          simp only [Bool.not_eq_true] at hs
           by_cases hp : aa.plainOk = true
           · have := Text.classesDiffer_of_isPlain p (AVal.isPlain_of_plainOk ha hp)
             simp_all
-          · simp [hp]
-            intro hcl; simp_all [Text.classesDiffer]
+          · simp only [hp, Bool.or_false, Bool.not_eq_true, Bool.not_eq_false', ite_eq_right_iff]
+            simp only [Text.classesDiffer, Bool.and_eq_true] at hc
+            simp [hc.1]
         · simp at hk
     | _ => simp_all [UnFn.issue, UnFn.mayIssue]
   case regexExtract p g | regexReplace p r g =>
