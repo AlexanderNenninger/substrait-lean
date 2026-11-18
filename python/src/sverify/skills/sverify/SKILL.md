@@ -62,7 +62,7 @@ big = big_orders(orders)  # proved here, before any data runs
 big.refresh()
 assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
 report = big_orders.report
-assert report.proved
+assert report.verdict == sv.Verdict.PROVED
 print(report.facts["doubled"])  # what Lean established about the column
 ```
 
@@ -103,7 +103,7 @@ postcondition. Here a filter makes it hold:
 ```python
 fixed = orders_t.filter(orders_t.amount > 4).select(orders_t.id, total=orders_t.amount + 1)
 bounded = {"orders": [_.amount >= 0, _.amount < 1_000_000_000]}
-assert sv.verify(fixed, requires=bounded, ensures=[_.total > 5]).proved
+assert sv.verify(fixed, requires=bounded, ensures=[_.total > 5]).verdict == sv.Verdict.PROVED
 ```
 
 `report.issues` lists runtime errors that may happen (division by zero,

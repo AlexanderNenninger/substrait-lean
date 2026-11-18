@@ -326,7 +326,7 @@ def _(ENSURES, MODEL_SQL, REQUIRES, history_t, orders_t, sv):
         return sv.sql(MODEL_SQL, orders=orders, history=history)
 
     sql_transform = daily_city_revenue_sql.check(orders=orders_t, history=history_t)
-    assert sql_transform.proved
+    assert sql_transform.verdict == sv.Verdict.PROVED_WITH_CHECKS
     print(sql_transform)
     return
 
@@ -348,11 +348,11 @@ def _(mo):
 
 
 @app.cell
-def _(DeltaSource, daily_city_revenue, lake):
+def _(DeltaSource, daily_city_revenue, lake, sv):
     orders = DeltaSource(str(lake / "orders"))
     history = DeltaSource(str(lake / "customer_history"), name="history")
     mart = orders.pipe(daily_city_revenue, history=history)
-    assert daily_city_revenue.report.proved
+    assert daily_city_revenue.report.verdict == sv.Verdict.PROVED_WITH_CHECKS
     mart.refresh()
     print(mart.status())
     return history, mart, orders

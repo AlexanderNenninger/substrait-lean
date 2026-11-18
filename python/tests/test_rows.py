@@ -37,7 +37,7 @@ def test_a_row_bound_proves_a_sum_fits():
     report = sv.verify(per_customer(ORDERS), requires={"orders": [*bounded, sv.max_rows(10**12)]})
     # 10¹² rows of at most 10⁶ each: below 2⁶³.
     assert not sum_risks(report)
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.rows == 10**12
     assert "requires orders: max_rows(1000000000000)" in str(report)
     assert "  rows: at most 1,000,000,000,000" in str(report)
@@ -64,7 +64,7 @@ def test_the_readme_sql_model():
     assert sum_risks(sv.verify(query, requires=requires, tables=tables))
     requires["orders"].append(sv.max_rows(10**9))
     report = sv.verify(query, requires=requires, ensures=["total >= 0"], tables=tables)
-    assert report.proved and not sum_risks(report)
+    assert report.verdict == sv.Verdict.PROVED and not sum_risks(report)
 
 
 def test_row_bounds_propagate():
@@ -104,7 +104,7 @@ def test_a_join_fans_out_unless_on_a_key():
 def test_ensures_rows_is_proved_from_the_inputs():
     requires = {"orders": [sv.max_rows(50)]}
     report = sv.verify(ORDERS.filter(_.amount > 0), requires=requires, ensures=[sv.max_rows(50)])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     report = sv.verify(ORDERS.filter(_.amount > 0), requires=requires, ensures=[sv.max_rows(49)])
     [c] = report.unproved
     assert (c.label, c.value) == ("max_rows(49)", "at most 50 rows")
@@ -158,7 +158,7 @@ def test_benchmark_sums_are_proved_with_row_bounds(catalogue, qid):
         requires[t] = [*requires.get(t, []), sv.max_rows(n)]
     report = sv.verify(query, requires=requires, ensures=ensures, counterexamples=0)
     assert not sum_risks(report), str(report)
-    assert report.proved and report._guard_free
+    assert report.verdict == sv.Verdict.PROVED and report._guard_free
     assert report.rows is not None
 
 
@@ -172,7 +172,7 @@ def test_benchmark_sums_of_flags_are_proved_without_row_bounds(catalogue):
     requires, ensures = cat.contract(q, schemas, "native")
     report = sv.verify(query, requires=requires, ensures=ensures, counterexamples=0)
     assert not sum_risks(report), str(report)
-    assert report.proved and report._guard_free
+    assert report.verdict == sv.Verdict.PROVED and report._guard_free
 
 
 # -- Delta metadata ------------------------------------------------------------

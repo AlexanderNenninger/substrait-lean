@@ -105,7 +105,7 @@ def test_contracts_through_new_operators():
         .union(t.filter(t.a > 5).select("a"), distinct=True)
     )
     report = sv.verify(expr, ensures=[_.a > 0])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_semi_join_condition_issues_are_reported():
@@ -116,7 +116,7 @@ def test_semi_join_condition_issues_are_reported():
 def test_distinct_rows_are_a_key():
     # After `DISTINCT`, `ROW_NUMBER` over all columns has no ties.
     report = sv.verify(t.distinct().mutate(n=ibis.row_number().over(order_by=["a", "b"])))
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 @settings(max_examples=30, deadline=None)

@@ -37,7 +37,6 @@ def _round_trip(report: Report) -> dict:
     doc = json.loads(text)
     jsonschema.validate(doc, SCHEMA)
     back = Report.from_json(text)
-    assert back.proved == report.proved
     assert back.verdict == report.verdict
     assert json.loads(back.to_json()) == doc
     assert str(back.observation) == str(report.observation)
@@ -49,7 +48,7 @@ def test_proved() -> None:
         orders.select("id", d=_.total * 2), requires=BOUNDED, ensures=[_.d >= 0, sv.unique("id")]
     )
     doc = _round_trip(report)
-    assert doc["format"] == report_json.FORMAT == 2
+    assert doc["format"] == report_json.FORMAT == 3
     assert doc["proved"] and doc["verdict"] == "proved"
     assert [
         (c["properties"]["label"], c["ruleId"], c["level"], c["kind"]) for c in doc["ensures"]
@@ -133,7 +132,7 @@ def test_tolerance_observation() -> None:
 def test_newer_format_refused_and_unknown_keys_ignored() -> None:
     doc = json.loads(sv.verify(orders.select("id"), requires=BOUNDED).to_json())
     with pytest.raises(ValueError, match="upgrade sverify"):
-        Report.from_json({**doc, "format": 3})
+        Report.from_json({**doc, "format": 4})
     later = {**doc, "added_in_1_9": True}
     later["ensures"] = [
         {**c, "new_field": 1, "properties": {**c["properties"], "new": 2}} for c in doc["ensures"]
@@ -153,3 +152,16 @@ def test_ties() -> None:
         (t, lab) for t, labs in report.ties.items() for lab in labs
     }
     assert "tie_places" not in doc and "hints" not in doc
+
+
+def test_a_report_of_format_2_reads_with_its_verdict_as_the_first_line() -> None:
+    """Format 3 gave `verdict` the `Verdict`'s value and added `summary`
+    (docs/stability.md); format 2 held the first line in `verdict`."""
+    report = sv.verify(orders.select("id"), requires=BOUNDED)
+    doc = json.loads(report.to_json())
+    assert doc["verdict"] == report.verdict == "proved" and doc["summary"] == "proved"
+    old = {k: v for k, v in doc.items() if k != "summary"} | {"format": 2}
+    back = Report.from_json(old)
+    assert back.verdict == report.verdict and back._summary == report._summary
+    with pytest.raises(ValueError, match="no release wrote"):
+        Report.from_json({**doc, "format": 1})

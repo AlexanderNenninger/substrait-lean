@@ -163,7 +163,7 @@ def test_report_names_what_a_condition_depends_on() -> None:
         "n >= 0": (),
     }
     assert report.observation == sv.equivalent(floats=sv.within(rel=1e-9), timestamps="s")
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert "depends on floats, which the observation ignores" in str(report)
     assert "observes: equivalent(" in str(report)
 
@@ -200,7 +200,7 @@ def test_without_an_observation_nothing_changes() -> None:
     req = {"t": [_.k.between(0, 100)]}
     plain = sv.verify(expr, requires=req, ensures=[_.y >= 1], counterexamples=0)
     observed = sv.verify(expr, requires=req, ensures=[sv.equivalent(), _.y >= 1], counterexamples=0)
-    assert plain.proved and observed.proved
+    assert plain.verdict == sv.Verdict.PROVED and observed.verdict == sv.Verdict.PROVED
     assert plain.observation == sv.equivalent(floats="plan")
     assert observed.observation == Observation()
     assert "observes" not in str(plain)

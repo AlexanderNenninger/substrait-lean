@@ -29,7 +29,11 @@ if TYPE_CHECKING:
 #: The version of the report's JSON format (`format` in the document).
 #: Format 1 was on main between #788 and the 1.0 renames, in no release:
 #: `from_json` refuses it.
-FORMAT = 2
+FORMAT = 3
+#: The oldest format `from_json` reads. Format 3 gave `verdict` the `Verdict`'s
+#: value and moved the first line of `str(report)` to `summary`; a report of
+#: format 2 has no `summary`, and its `verdict` is that line.
+OLDEST = 2
 
 Json = dict[str, Any]
 
@@ -368,8 +372,9 @@ def to_json(report: Report) -> Json:
     return {
         "format": FORMAT,
         "sverify": _sverify_version(),
-        "proved": report.proved,
-        "verdict": report.verdict,
+        "proved": report._proved,
+        "verdict": str(report.verdict),
+        "summary": report._summary,
         "semantics": report.semantics,
         "dialect": report._dialect,
         "on_inferred": report._on_inferred,
@@ -421,7 +426,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
             f"the report's JSON has format {fmt!r}, and this version of sverify reads "
             f"format {FORMAT}: upgrade sverify"
         )
-    if fmt < FORMAT:
+    if fmt < OLDEST:
         raise ValueError(
             f"the report's JSON has format {fmt}, which no release wrote: write it again "
             f"with this version of sverify (format {FORMAT})"

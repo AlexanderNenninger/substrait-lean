@@ -226,7 +226,7 @@ class Check:
             lines.append("")
         for c in self.checked:
             r = c.report
-            verdict = r.verdict if r is not None else "unfinished: the time budget ran out"
+            verdict = r._summary if r is not None else "unfinished: the time budget ran out"
             lines.append(f"{_label(c.name, c.nodes)}: {verdict}")
             if full and r is not None:
                 lines += [f"  {line}" for line in str(r).splitlines()[1:]]

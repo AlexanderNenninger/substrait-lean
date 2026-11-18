@@ -6,6 +6,7 @@ import json
 import pytest
 
 from _sql_lift import SCHEMAS, TABLES
+from sverify import Verdict
 from sverify.engine import run_checker
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql_lift import lift
@@ -289,7 +290,7 @@ def test_sum_of_an_expression_is_proved_under_duckdbs_semantics():
 
     t = ibis.table({"f": "float64"}, name="f")
     report = sv.verify(sv.sql("SELECT sum(f + 1.0) AS v FROM f", f=t, semantics="duckdb"))
-    assert report.proved and not report.issues, report
+    assert report.verdict == Verdict.PROVED and not report.issues, report
 
 
 def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measures_for_duckdb():

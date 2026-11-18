@@ -246,7 +246,7 @@ def test_verify_does_not_prove_lateness():
     report = sv.verify(
         "select * from t", tables={"t": SCHEMA}, ensures=[sv.arrives_within("ts", "PT1H")]
     )
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert report.ensures[0].value == "lateness is checked on a source's batches"
 
 
