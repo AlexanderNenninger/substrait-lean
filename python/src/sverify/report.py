@@ -2177,7 +2177,8 @@ def _run_conditions(
 
         query = query.format('"t"')
         schema = sql_model_schema(query, {"t": table.schema()}, "reference")
-        q = SQLModel(query, (table.op(),), ("t",), schema, "duckdb", "reference").to_expr()
+        inputs: Any = (table.op(),)  # a table's op is the relation the model reads
+        q = SQLModel(query, inputs, ("t",), schema, "duckdb", "reference").to_expr()
     else:
         q = table.select(**{f"c{i}": resolve(c, table) for i, c in enumerate(conds)})
     return run_plan(con, written_plan(plan_json(con, q)), engine)
