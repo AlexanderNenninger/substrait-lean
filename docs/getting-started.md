@@ -5,8 +5,8 @@ takes the proof to DuckDB, Polars and Spark, and keeps the result up to date
 from the changes. This page goes from the install to a proved plan exported
 for any Substrait consumer, in ten steps, each a step up from the one
 before. Steps 1 to 3, a contract, SQL and the preconditions a plan needs, are
-the first hour; steps 4 to 8 go further, into engines, doubles, sinks and
-profiles, and each can wait. Then it lists what goes wrong without a checker, sketches how the
+the first hour; steps 4 to 10 go further, into engines, doubles, sinks, profiles and
+Substrait consumers, and each can wait. Then it lists what goes wrong without a checker, sketches how the
 checker works, and points to the tour and the task pages.
 
 The inputs are a few rows in memory. Every Python block runs as written, in
