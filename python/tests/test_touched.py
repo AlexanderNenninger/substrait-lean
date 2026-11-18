@@ -68,20 +68,8 @@ def random_batches(seed, steps=40):
     )
 
 
-#: Spark loses a NULL-key group in seeds 1 and 2 (#1006).
-NULL_KEY_GROUPS = pytest.mark.xfail(
-    strict=True, reason="Spark's touched-groups refresh loses a NULL-key group (#1006)"
-)
-
-
-@pytest.mark.parametrize(
-    ("seed", "engine"),
-    [
-        (s, e) if not (e == "spark" and s in (1, 2)) else pytest.param(s, e, marks=NULL_KEY_GROUPS)
-        for s in range(3)
-        for e in PROFILED
-    ],
-)
+@pytest.mark.parametrize("seed", range(3))
+@pytest.mark.parametrize("engine", PROFILED)
 def test_touched_groups_match_a_full_recompute(seed, engine):
     first, batches = random_batches(seed)
     src = StaticSource(samples(first), name="samples")
