@@ -1051,7 +1051,9 @@ removes the rules that allow more than one, so that every NaN an operation
 creates is the positive canonical one; every profile is a subset of the full
 one. The core is the full profile. The reference fixes the values Wasm's
 deterministic profile fixes, NaNs among them, and leaves the order of ties
-open; sverify proves a plan's result determined where no order is left open ([D24](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)). The
+open; sverify proves a plan's result determined where no order is left open
+([D24](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)), up to
+the member of each class of doubles ([D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)). The
 reference goes further on zeros: Wasm keeps `-0` and `+0` apart, and its
 `fmin(-0, +0)` is `-0`, while the reference has one zero (#89). D4's NaN
 codes by sign follow Wasm's treatment of the sign as a choice; IEEE 754 does
@@ -1198,4 +1200,5 @@ to it, so links to an entry here still land.
 - <a id="d44-replace-with-an-empty-pattern-is-the-string-unchanged"></a>[D44. `replace` with an empty pattern is the string unchanged](decisions.md#d44-replace-with-an-empty-pattern-is-the-string-unchanged)
 - <a id="d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do"></a>[D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do](decisions.md#d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do), amended 2026-11-17 for windows
 - <a id="d47-raise-value-or-open-where-engines-differ"></a>[D47. Raise, value or open where engines differ](decisions.md#d47-raise-value-or-open-where-engines-differ)
+- <a id="d48-a-result-is-determined-up-to-the-classes-its-observation-reads"></a>[D48. A result is determined up to the classes its observation reads](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)
 - <a id="d49-a-value-known-from-one-engine-is-provisional"></a>[D49. A value known from one engine is provisional](decisions.md#d49-a-value-known-from-one-engine-is-provisional)

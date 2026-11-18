@@ -9,8 +9,8 @@ window's order come in any order, a `FETCH` takes the first rows of any
 order the plan allows, and `FIRST`, `LAST`, `ARG_MIN`/`ARG_MAX`,
 `STRING_AGG`, `collect` and `MODE` take their rows in any order their own
 `ORDER BY` allows. `Rel.eval` picks one of these orders (a stable
-`List.mergeSort`, rows in list order): it is the evaluator of the
-deterministic profile, which fixes them.
+`List.mergeSort`, rows in list order). Determinism is a property proved of a
+plan (D24, D48): every allowed result is `Rel.eval`'s up to row order.
 
 `Rel.OrderAllowed` (`OrderAllowed.lean`) holds the results of every such
 order. It is `Rel.Allowed` with every other choice taken as `Rel.eval` takes

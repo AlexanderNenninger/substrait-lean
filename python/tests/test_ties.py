@@ -1,8 +1,8 @@
 """Tie order (D24, #679): the reference leaves `tie_order` and `tie_pick`
-open, and the deterministic profile fixes them.
+open, and a rerun that must reproduce the result needs them closed.
 
 Under the reference a plan whose ties stay open is proved for every order
-and runs natively; under the deterministic profile (`reproducible=sv.equivalent()`, a
+and runs natively; under a rerun requirement (`reproducible=sv.equivalent()`, a
 sink's `reproducible=`) it is refused, and the refusal names each place.
 `lean_choices` lists the values every order allows, and `allows_rows`
 accepts an engine's rows when they are one of them."""
@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 
 import ibis
+import pyarrow as pa
 import pytest
 from ibis import _
 
@@ -280,3 +281,74 @@ def test_an_open_tie_is_open_at_both_levels(monkeypatch):
     (out,) = seen
     assert not out["deterministic"] and not out["class_determined"]
     assert [p["kind"] for p in out["tie_places"]] == ["tie"]
+
+
+# -- D48 in Python: `Report.deterministic` is the class level -----------------
+
+
+def test_the_report_reads_the_class_level():
+    """`Report.deterministic` is the class level; the exact level stays the
+    writers' (`_exact`)."""
+    picks = sv.verify(_T.group_by("k").aggregate(m=_T.x.max()))
+    assert picks.deterministic and not picks._exact
+    assert [p.kind for p in picks._tie_places] == ["class"] and picks._class_places == []
+    mins = _T.group_by("k").aggregate(m=_T.x.min())
+    reads = sv.verify(mins.mutate(a=mins.m.atan2(-1.0)))
+    assert not reads.deterministic
+    assert any("picked from a class" in p.what for p in reads._class_places)
+    tie = sv.verify(_T.group_by("k").aggregate(f=_T.x.first()))
+    assert not tie.deterministic and not tie._exact
+
+
+def test_a_report_read_back_keeps_both_levels():
+    report = sv.verify(_T.group_by("x").aggregate(c=_T.k.count()))
+    again = sv.Report.from_json(report.to_json())
+    assert (again.deterministic, again._exact) == (True, False)
+    assert again._tie_places == report._tie_places
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [_T.group_by("k").aggregate(m=_T.x.max()), _T.group_by("x").aggregate(c=_T.k.count())],
+    ids=["max of doubles", "group by a double"],
+)
+def test_a_class_pick_reruns_under_the_default_and_not_under_exact_zeros(expr):
+    """D48: the default observation reads one zero and one NaN, so a rerun
+    that picks another member reproduces the result; an observation that
+    reads the members refuses the pick, names it and gives the two ways out."""
+    report = sv.verify(expr)
+    for q in (sv.equivalent(floats="plan"), sv.equivalent(zeros="canon")):
+        assert not routes.choose(report, "duckdb", reproducible=q).refused
+    r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
+    assert r.refused and "reads the members of a class of doubles" in r.reason
+    assert "picks one at the aggregate" in r.reason and routes.CLASS_PICKS in r.reason
+    assert "unique(" not in r.reason
+
+
+def test_a_refresh_of_a_max_of_doubles(tmp_path):
+    """`SELECT region, MAX(price) … GROUP BY region` with a double price
+    refreshes under the sink's default (D48); exact zeros refuse it."""
+    from deltalake import DeltaTable, write_deltalake
+
+    from sverify.errors import RouteError as Refused
+    from sverify.io import DeltaSink, DeltaSource
+
+    write_deltalake(
+        str(tmp_path / "prices"),
+        pa.table({"region": ["n", "n", "s", "s"], "price": [1.5, 2.5, -0.0, 0.0]}),
+    )
+
+    @sv.transform()
+    def top(prices):
+        return prices.group_by("region").aggregate(top=prices.price.max())
+
+    node = top(DeltaSource(str(tmp_path / "prices"))).write(DeltaSink(str(tmp_path / "out")))
+    node.refresh(engine="duckdb")
+    out = DeltaTable(str(tmp_path / "out")).to_pyarrow_table().sort_by("region")
+    assert out.column("top").to_pylist() == [2.5, 0.0]
+    exact = top(DeltaSource(str(tmp_path / "prices"))).write(
+        DeltaSink(str(tmp_path / "exact"), reproducible=sv.equivalent())
+    )
+    with pytest.raises(Refused, match="reads the members of a class") as err:
+        exact.refresh(engine="duckdb")
+    assert routes.CLASS_PICKS in str(err.value) and "unique(" not in str(err.value)

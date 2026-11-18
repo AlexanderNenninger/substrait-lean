@@ -118,9 +118,9 @@ UnprovedReason = Literal[
 
 @dataclass(frozen=True)
 class TiePlace:
-    """A place where the plan leaves the order of ties open: a window,
-    an ordered aggregate (`first`, `group_concat`, …) or a `LIMIT` whose
-    order is not total on the input's keys."""
+    """A place where the plan leaves its result open: a window, an ordered
+    aggregate (`first`, `group_concat`, …) or a `LIMIT` whose order is not
+    total on the input's keys, or a value picked from a class of doubles."""
 
     relation: int
     """The relation's index in the plan, in pre-order (`Report.relations`)."""
@@ -128,14 +128,31 @@ class TiePlace:
     """The relation's operator: `window`, `aggregate` or `fetch`."""
     what: str
     """What is open there, with columns as `$i` of the relation's input."""
+    kind: Literal["tie", "class", "open"] = "tie"
+    """`"class"`: the place only picks a member of a class of doubles
+    (`-0.0` or `0.0`, a NaN; D31), which an observation that reads one zero
+    and one NaN cannot tell apart (D48); `"tie"`: the order of ties is open;
+    `"open"`: what the class level leaves open, a tie or an expression that
+    reads a picked value (`Report.deterministic`)."""
 
     def __str__(self) -> str:
         return f"the {self.op} at relation {self.relation}: {self.what}"
 
 
 def tie_places(out: Mapping[str, Any]) -> list[TiePlace]:
-    """The `tie_places` of `substrait-check`'s report."""
-    return [TiePlace(t["relation"], t["op"], t["what"]) for t in out.get("tie_places", [])]
+    """The `tie_places` of `substrait-check`'s report: the exact level's."""
+    return [
+        TiePlace(t["relation"], t["op"], t["what"], t.get("kind", "tie"))
+        for t in out.get("tie_places", [])
+    ]
+
+
+def class_places(out: Mapping[str, Any]) -> list[TiePlace]:
+    """The `class_places` of `substrait-check`'s report: what the class
+    level leaves open (D48). A checker without them gives the exact level's."""
+    if "class_places" not in out:
+        return tie_places(out)
+    return [TiePlace(t["relation"], t["op"], t["what"], "open") for t in out["class_places"]]
 
 
 #: What a report suggests for an overflow it cannot rule out (#202).
@@ -406,24 +423,37 @@ class Report:
     of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
     """True when every result the reference allows is one up to row order
-    (`check_deterministic_sound`). False when rows may tie in the ORDER BY
-    of a window or of an ordered aggregate (`first`, `last`,
+    and up to the member of each class of doubles (`-0.0` and `0.0`; every
+    NaN; D31, D48): `check_class_determined_sound`. A `DISTINCT` or a group
+    key over doubles, `MIN`, `MAX` and `QUANTILE_DISC` only pick a member of
+    a class, which leaves the result determined. False when rows may tie in
+    the ORDER BY of a window or of an ordered aggregate (`first`, `last`,
     `group_concat`; without an `order_by` every row ties), when a `LIMIT`
-    takes rows that tie in its `ORDER BY` or has none, when the reference
-    leaves a value open (the median of doubles, which member of a class of
-    doubles a `DISTINCT`, a group key, `MIN`, `MAX` or `QUANTILE_DISC`
-    keeps), or where the checker has not proved an aggregate a function of its values. The
-    engine then picks, and a rerun may pick another. The postconditions
-    are proved for every choice; the deterministic profile
-    (`run(reproducible=sv.equivalent())`, a sink's `reproducible=`)
-    refuses such a plan and names `tie_places`."""
+    takes rows that tie in its `ORDER BY` or has none, when an expression
+    reads a picked double and can tell the members apart (`atan2`), when the
+    reference leaves a value open (the median of doubles), or where the
+    checker has not proved an aggregate a function of its values. The
+    engine then picks, and a rerun may pick another. The postconditions are
+    proved for every choice. A rerun that must reproduce the result
+    (`run(reproducible=sv.equivalent())`, a refresh, a sink's
+    `reproducible=`) refuses such a plan and names each place; one whose
+    observation reads the members of a class (exact doubles and zeros) also
+    refuses each class pick (D48)."""
+    _exact: bool = field(default=True, repr=False)
+    """Every result the reference allows is one up to row order, members of
+    a class included (`check_deterministic_sound`): `deterministic` with no
+    class pick. The SQL writers' tie-free windows read this level."""
+    _class_places: list[TiePlace] = field(default_factory=list, repr=False)
+    """What the class level leaves open, one entry per place; empty exactly
+    when `deterministic` (`Request.classDeterminedIn_eq`)."""
     _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
     _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
     """Where the plan leaves its result open, one entry per window, ordered
-    aggregate, `LIMIT` or value the reference leaves open; empty exactly
-    when `deterministic` (`Request.deterministicIn_eq`)."""
+    aggregate, `LIMIT` or value the reference leaves open, class picks
+    included (kind `"class"`); empty exactly when `_exact`
+    (`Request.deterministicIn_eq`)."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, SUM overflows among them, the checker could not rule out; when
     empty, the transformation provably runs without them."""
@@ -728,8 +758,8 @@ class Report:
         `dialect`.
 
         The SQL keeps every run-time check, as `run` does. Where the report
-        is `deterministic` (no window ties on data that meets the
-        preconditions), windows need no row-order tiebreak, so Snowflake and
+        is determined up to row order with no class pick (no window ties on
+        data that meets the preconditions), windows need no row-order tiebreak, so Snowflake and
         Spark take them. A plan verified under an engine's semantics
         (`semantics="duckdb"`) is written only for an engine its route
         reaches (`sverify.routes.choose`). Snowflake takes plans verified
@@ -771,7 +801,7 @@ class Report:
         return to_sql(
             written_plan(self.internal_plan),
             d,
-            deterministic=self.deterministic,
+            deterministic=self._exact,
             finite=finite,
             rows="sequence" if self.observation.rows == "sequence" else "multiset",
         )
@@ -1096,9 +1126,9 @@ class Report:
                     written_plan(self.internal_plan),
                     engine,
                     finite=finite,
-                    # A proved report's `deterministic` justifies Spark's windows
+                    # A proved report's exact level justifies Spark's windows
                     # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                    tie_free=self.deterministic and kind != "unverified",
+                    tie_free=self._exact and kind != "unverified",
                 )
         except Exception as e:
             # The translation's own checks of the assumptions, which `check_inputs`
@@ -1127,8 +1157,8 @@ class Report:
         The check and the plan must read one snapshot: each input the check
         reads is an Arrow table, a `Resident` table or a `Scan` pinned to a
         version (`_pinned`). Another input warns (`InferredWarning`), and
-        refuses the run with `deterministic` (the deterministic profile,
-        `reproducible=`).
+        refuses the run with `deterministic` (a rerun that must reproduce
+        the result, `reproducible=`).
 
         Raises:
             PreconditionError: A check flags a group, and the report was not
@@ -1563,7 +1593,7 @@ class Report:
 
         out = TIES_HINT.format(_ORDERED.get(self._dialect, _ORDERED["ibis"]))
         plan = json.loads(self.internal_plan) if self.internal_plan else None
-        places = [named(t.what, plan) for t in self._tie_places]
+        places = [named(t.what, plan) for t in self._class_places]
         if places and all(places):
             out += f" ({'; '.join(dict.fromkeys(p for p in places if p))})"
         if self.ties:
@@ -1678,6 +1708,8 @@ class Report:
 _REPORT_INTERNAL = [
     "windows_total",
     "tie_places",
+    "exact",
+    "class_places",
     "guard_free",
     "unchecked",
     "optimized",

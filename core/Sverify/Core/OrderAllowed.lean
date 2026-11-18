@@ -328,7 +328,7 @@ def Rel.OrderAllowed (cat : Catalog) : Rel → Relation → Prop
       aggOrderAllowed gs ms i o
   | .unnest r c, out => ∃ i, r.OrderAllowed cat i ∧ out.Perm (i.flatMap (unnestRow c))
 
-/-- **`Rel.eval` takes one of the orders**: the deterministic profile's. -/
+/-- **`Rel.eval` takes one of the orders** (D24). -/
 theorem Rel.eval_orderAllowed (cat : Catalog) : ∀ r : Rel, r.OrderAllowed cat (r.eval cat)
   | .read _ | .values _ _ => .refl _
   | .filter r _ | .project r _ | .emit r _ => ⟨_, eval_orderAllowed cat r, rfl⟩

@@ -437,14 +437,15 @@ def test_negative_ibis_offsets_count_the_other_way():
 
 def test_a_windowed_min_of_doubles_picks_a_member_of_a_class():
     """D45, amended for windows: a window's MIN over doubles may give either
-    zero of a frame holding both, so its result is not determined, and the
-    report names the function. Over integers each class has one member."""
+    zero of a frame holding both, so its result is not determined exactly, and
+    the report names the function; it is determined up to the class (D48).
+    Over integers each class has one member."""
     t = ibis.table({"s": "int64", "t": "int64", "x": "float64", "n": "int64"}, name="r")
     w = ibis.window(group_by=t.s, order_by=t.t, preceding=2, following=0)
     keyed = {"r": [sv.unique("s", "t"), _.s.notnull(), _.t.notnull()]}
     doubles = sv.verify(t.select(t.s, t.t, lo=t.x.min().over(w)), requires=keyed)
-    assert not doubles.deterministic
-    assert [p.op for p in doubles._tie_places] == ["window"]
+    assert doubles.deterministic and not doubles._exact
+    assert [(p.op, p.kind) for p in doubles._tie_places] == [("window", "class")]
     assert "keeps any member of a class of doubles" in doubles._tie_places[0].what
     ints = sv.verify(t.select(t.s, t.t, lo=t.n.min().over(w)), requires=keyed)
     assert ints.deterministic

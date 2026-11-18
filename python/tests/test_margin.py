@@ -190,7 +190,7 @@ def test_a_row_against_its_partitions_mean(engine):
 def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
     """The check and the plan read their inputs twice: an Arrow table, a
     resident table or a Delta/Iceberg scan at one version reads the same rows;
-    a file scan without a version warns, and the deterministic profile
+    a file scan without a version warns, and a rerun requirement
     refuses it."""
     import pyarrow.parquet as pq
 

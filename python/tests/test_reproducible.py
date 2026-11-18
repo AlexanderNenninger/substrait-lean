@@ -137,7 +137,7 @@ def test_an_open_choice_fails_every_requirement(con) -> None:
 
 
 def test_a_limit_without_order_by_is_refused(con) -> None:
-    """The deterministic profile names the LIMIT that leaves the rows open (D24)."""
+    """A rerun requirement names the LIMIT that leaves the rows open (D24)."""
     t = con.table("t")
     report = sv.verify(t.limit(2))
     assert not report.deterministic
