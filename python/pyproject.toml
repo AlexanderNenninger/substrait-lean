@@ -108,6 +108,9 @@ exclude = ["build", "src/sverify/_bin"]
 "../SubstraitCheckExamples" = "lean/SubstraitCheckExamples"
 "../SubstraitLean.lean" = "lean/SubstraitLean.lean"
 "../SubstraitLean" = "lean/SubstraitLean"
+# `SubstraitLean/Statements.lean` reads it with `include_str`;
+# `tests/test_sdist_inputs.py` checks every such file is here.
+"../tests/contracts/int_division.json" = "lean/tests/contracts/int_division.json"
 "../core/lakefile.toml" = "lean/core/lakefile.toml"
 "../core/lake-manifest.json" = "lean/core/lake-manifest.json"
 "../core/lean-toolchain" = "lean/core/lean-toolchain"
