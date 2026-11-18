@@ -59,6 +59,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from sverify._keys import canonical_key
+from sverify._run_schema import table_problems
 from sverify._weighted import _call, _indices, _is_in
 from sverify.engine import checker_failed, run_checker
 from sverify.observation import Observation, Within
@@ -596,7 +597,9 @@ def run_sharded(
             `sharded`; rows with equal split keys are on two shards; a
             `unique` column set has two equal rows; `keys` or `unique`
             name unknown columns; or a row's τ exceeds the tolerance
-            `reproducible` states.
+            `reproducible` states; a table differs from the schema the plan
+            was verified for (a NULL in a non-null column, a changed type,
+            an integer outside its declared width).
     """
     from sverify import profiles
 
@@ -611,6 +614,10 @@ def run_sharded(
     for k, shard in enumerate(shards):
         if set(shard) != set(sharded):
             raise ValueError(f"shard {k} has tables {sorted(shard)}, expected {sorted(sharded)}")
+    parsed = json.loads(plan) if isinstance(plan, str) else plan
+    for shard in shards:
+        if bad := table_problems(parsed, {**(broadcast or {}), **shard}):
+            raise ValueError("; ".join(bad) + ": refused before the run")
     order: FloatOrder = "exact" if floats == "exact" else "any"
     s = split(plan, sharded, keys=keys, unique=unique, float_order=order)
     common = dict(broadcast or {})

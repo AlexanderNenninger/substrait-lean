@@ -21,9 +21,11 @@ What is compared:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from sverify._plan_read import type_kind
 from sverify._scan import schema_mismatches
@@ -140,11 +142,12 @@ def problems(
     declared: list[Declared], schema: pa.Schema, data: pa.Table | None
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """How a table fails the schema the plan was verified for, as messages
-    (missing columns, types, NULLs in a non-null column), and the integer
-    columns, as `(column, declared type)`, whose physical type is wider than
-    declared and whose values still have to be range-checked. `data` is None
-    for a table the engine reads where it is: its NULLs are then not counted
-    (its values are range-checked on the engine all the same)."""
+    (missing columns, types, NULLs in a non-null column, values outside a
+    declared integer width), and the integer columns, as `(column, declared
+    type)`, whose values the caller must range-check itself. `data` is None
+    for a table the engine reads where it is: its NULLs are then not counted,
+    and every column of a wider physical type is returned for the engine to
+    range-check; on an Arrow table the range is checked here, in one pass."""
     expected = pa.schema(
         [
             pa.field(d.name, d.arrow(schema.field(i).type if i >= 0 else pa.null()))
@@ -160,7 +163,58 @@ def problems(
             continue
         actual = schema.field(i).type
         if d.int_key and pa.types.is_integer(actual) and not _fits(actual, d.int_key):
-            wide.append((d.name, d.int_key))
+            if data is None:
+                wide.append((d.name, d.int_key))
+            elif found := outside(data.column(i), *int_range(d.int_key)):
+                n, example = found
+                out.append(range_message(d.name, d.int_key, n, example))
         if data is not None and d.non_null and (n := data.column(i).null_count):
             out.append(f"column {d.name!r} holds {n} NULL(s), the plan reads it as non-null")
     return out, wide
+
+
+def range_message(column: str, key: str, count: int, example: object) -> str:
+    """The refusal for `count` values of an integer column outside its declared
+    type, `example` one of them."""
+    lo, hi = int_range(key)
+    return (
+        f"column {column!r} is declared {int_name(key)} ({lo} to {hi}) and "
+        f"{count} value(s) lie outside it, e.g. {example}"
+    )
+
+
+def outside(column: pa.ChunkedArray, lo: int, hi: int) -> tuple[int, object] | None:
+    """The count of values of an integer column outside `[lo, hi]` and one of
+    them, or None if all lie inside (NULLs do). One native pass for the
+    minimum and maximum, a second only on a failure."""
+    mm = pc.call_function("min_max", [column]).as_py()
+    if mm["min"] is None or (lo <= mm["min"] and mm["max"] <= hi):
+        return None
+    high = pc.call_function("greater", [column, pa.scalar(hi, column.type)])
+    if pa.types.is_unsigned_integer(column.type):
+        bad = high
+    else:
+        bad = pc.call_function(
+            "or", [pc.call_function("less", [column, pa.scalar(lo, column.type)]), high]
+        )
+    count = pc.call_function("sum", [bad]).as_py()
+    return count, column.filter(bad)[0].as_py()
+
+
+def table_problems(plan: object, tables: Mapping[str, pa.Table]) -> list[str]:
+    """How the Arrow `tables` fail the schemas `plan` was verified for, one
+    message per table (`table t differs from the schema the plan was verified
+    for: ...`), for the callers that run a plan over tables they hold:
+    shards, a pipeline's batches."""
+    out = []
+    for t, schemas in declared_columns(plan).items():
+        if t not in tables:
+            continue
+        found = [
+            m for declared in schemas for m in problems(declared, tables[t].schema, tables[t])[0]
+        ]
+        if found:
+            out.append(
+                f"table {t} differs from the schema the plan was verified for: " + "; ".join(found)
+            )
+    return out

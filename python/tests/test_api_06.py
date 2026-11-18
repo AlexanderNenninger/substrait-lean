@@ -348,7 +348,7 @@ def test_run_refuses_an_integer_outside_its_declared_width(engine: str) -> None:
     report = sv.verify(t.select(y=t.a))
     wide = pa.table({"a": pa.array([1, 2**40], pa.int64())})
     with pytest.raises(
-        sv.errors.PreconditionError, match=r"column 'a' of t is declared int32.*1099511627776"
+        sv.errors.PreconditionError, match=r"column .a. is declared int32.*1099511627776"
     ):
         report.run(_con(engine, {"t": wide}), engine=engine)
     ok = pa.table({"a": pa.array([1, 2**30], pa.int64())})
@@ -385,7 +385,7 @@ def _int32_report() -> sv.Report:
 @pytest.mark.parametrize("engine", ENGINES)
 def test_run_checks_the_schema_without_check_requires(engine: str) -> None:
     wide = pa.table({"a": pa.array([1, 2**40], pa.int64())})
-    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' of t is declared int32"):
+    with pytest.raises(sv.errors.PreconditionError, match=r"column .a. is declared int32"):
         _int32_report().run(_con(engine, {"t": wide}), engine=engine, check_requires=False)
 
 
@@ -394,7 +394,7 @@ def test_run_range_checks_a_resident_table() -> None:
 
     con = sv.connect()
     con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, 2**40], pa.int64())})))
-    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' of t is declared int32"):
+    with pytest.raises(sv.errors.PreconditionError, match=r"column .a. is declared int32"):
         _int32_report().run(con)
 
 
