@@ -550,7 +550,12 @@ def _refuse_schema(plan: str, tables: Mapping[str, pa.Table], source: str | None
     for (`sverify._run_schema`): a NULL in a non-null column, a changed type, an
     integer outside its declared width (D46)."""
     if bad := table_problems(json.loads(plan), tables):
-        raise PreconditionError("; ".join(bad) + ": refused before the run", source=source)
+        raise PreconditionError(
+            "; ".join(bad)
+            + ": refused before the run. Declare the column as it is in the transform "
+            "(a wider integer type for a value outside the width), or fix the source",
+            source=source,
+        )
 
 
 def plan_digest(plan: str) -> str:
