@@ -5,8 +5,11 @@ A Connect server (`SparkSession.builder.remote("local[2]")` starts one from the
 pyspark package) is a session whose client holds no table: the paths of the
 descriptor resolve on the server, no `createDataFrame` of data runs, and only
 the answer is collected. The client runs in a process of its own, since a process
-holds either a classic session or a remote one. Skipped without the Connect
-client's dependencies (`pip install 'pyspark[connect]'`)."""
+holds either a classic session or a remote one. The server here shares the
+client's filesystem, which the route needs: the client opens each file's Parquet
+footer once (`sverify_spark.scan`, an interim until N12 of #173 maps field ids on
+the server), and a path the client cannot open is refused. Skipped without the
+Connect client's dependencies (`pip install 'pyspark[connect]'`)."""
 
 import json
 import subprocess

@@ -145,7 +145,7 @@ def test_a_where_is_duckdb_sql_and_stays_on_the_arrow_route(tmp_path):
 
         _arrow = {"t": scan.to_arrow()}
 
-    got = _table(Con(), "t")
+    got = _table(Con(), "t", _Classic("local[2]"))
     assert isinstance(got, pa.Table) and got.column("id").to_pylist() == [2, 3]
 
 
@@ -192,7 +192,49 @@ def test_many_deleted_positions_become_an_anti_join(tmp_path, monkeypatch):
         assert sorted(got.column("id").to_pylist()) == want
 
 
-def test_a_path_the_driver_cannot_open_is_refused(tmp_path):
+class _Classic:
+    """A classic session with the given master (the parts the route reads)."""
+
+    def __init__(self, master):
+        self.sparkContext = type("C", (), {"master": master})()
+
+
+class _Connect:
+    pass
+
+
+_Connect.__module__ = "pyspark.sql.connect.session"
+
+
+def test_a_path_the_driver_cannot_open_is_refused_by_session_kind(tmp_path):
     scan = Scan((str(tmp_path / "missing.parquet"),), pa.schema([("id", pa.int64())]))
-    with pytest.raises(Unsupported, match="driver cannot open"):
-        spark_scan(session(), scan)
+    with pytest.raises(Unsupported, match="does not see the server's filesystem"):
+        spark_scan(_Connect(), scan)
+    with pytest.raises(Unsupported, match="driver cannot open it"):
+        spark_scan(_Classic("local[2]"), scan)
+
+
+def test_a_path_with_a_scheme_is_refused_before_any_open():
+    scan = Scan(("s3://bucket/a.parquet",), pa.schema([("id", pa.int64())]))
+    for spark in (_Connect(), _Classic("local[2]")):
+        with pytest.raises(Unsupported, match="N12"):
+            spark_scan(spark, scan)
+
+
+def test_a_scan_the_route_does_not_cover_depends_on_the_session(tmp_path):
+    from sverify_spark import _table
+
+    f = tmp_path / "a.parquet"
+    pq.write_table(pa.table({"id": [1, 2]}), f)
+    scan = Scan((str(f),), pa.schema([("id", pa.int64())]), where="id > 1")
+
+    class Con:
+        def get(self, name):
+            return scan
+
+        _arrow = {"t": scan.to_arrow()}
+
+    assert isinstance(_table(Con(), "t", _Classic("local[2]")), pa.Table)
+    for spark in (_Connect(), _Classic("spark://cluster:7077")):
+        with pytest.raises(Unsupported, match="N12"):
+            _table(Con(), "t", spark)

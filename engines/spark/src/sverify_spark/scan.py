@@ -9,6 +9,13 @@ the driver), `_metadata.row_index` for the positions a file lost, equality delet
 as a null-safe left join, and a cast of each column to the type the Arrow route
 gives it. The session's settings stay the user's. A file column whose type does
 not widen to the schema's (`sverify._scan.widens`) raises `Unsupported`.
+
+Limit (an interim until N12, which maps field ids on the server): the driver
+opens each file's Parquet footer once, to name its columns and read their
+types, so the route covers only a filesystem the driver shares with the
+session. A path with a scheme other than `file:` is refused before any open,
+and on a Spark Connect client, which does not see the server's filesystem, a
+local path the client cannot open is refused with that said.
 """
 
 from __future__ import annotations
@@ -18,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from sverify._scan import widens
+from sverify._scan import local_path, widens
 from sverify._unsupported import Unsupported
 from sverify_spark.engine import spark_type
 
@@ -36,14 +43,38 @@ list; above it they are a DataFrame the file's rows are anti-joined with, so a
 large deletion vector does not bloat a plan (sent over gRPC on Spark Connect)."""
 
 
-def _footer(path: str) -> pa.Schema:
-    """A Parquet file's schema, read in the driver (which must reach the path)."""
+def is_connect(spark: Any) -> bool:
+    """Whether `spark` is a Spark Connect client (it has no JVM and does not see
+    the server's filesystem)."""
+    return type(spark).__module__.startswith("pyspark.sql.connect")
+
+
+def shares_filesystem(spark: Any) -> bool:
+    """Whether the driver and the session share a filesystem, as far as the
+    session says: a classic session with a `local` master. A Connect client
+    cannot say, and a cluster master is not local."""
+    if is_connect(spark):
+        return False
+    return str(spark.sparkContext.master).startswith("local")
+
+
+def _footer(path: str, connect: bool) -> pa.Schema:
+    """A Parquet file's schema, read in the driver: one open per file, for a
+    local path only (decided from the path before any open)."""
+    if local_path(path) is None:
+        raise Unsupported(
+            f"{path}: the driver reads Parquet footers of local files only; reading the "
+            "footers on the server is N12 of #173"
+        )
     try:
         return pq.read_schema(path)
     except OSError as e:
-        raise Unsupported(
-            f"{path}: the driver cannot open the file to read its schema ({e})"
-        ) from e
+        where = (
+            "the Spark Connect client does not see the server's filesystem, "
+            if connect
+            else "the driver cannot open it, "
+        )
+        raise Unsupported(f"{path}: {where}so its columns cannot be read ({e})") from e
 
 
 def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
@@ -67,7 +98,8 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
         ):
             deleted.setdefault(f, []).append(p)
     pieces = []
-    for renaming, files in _runs(scan, deleted):
+    connect = is_connect(spark)
+    for renaming, files in _runs(scan, deleted, connect):
         # The file is tagged with the descriptor's own string: no match between
         # it and the URI the session reports (`s3a://`, percent-encoding, `file:`
         # with one or three slashes) can fail silently. A file an equality
@@ -102,7 +134,7 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
     for p in pieces[1:]:
         out = out.unionAll(p)
     for e in scan.equality:
-        out = _equality(spark, out, e, types)
+        out = _equality(spark, out, e, types, connect)
     out = out.drop(_FILE)
     # The Arrow route reads doubles as the model has them: `-0.0` as `0.0` and one NaN.
     doubles = [f.name for f in scan.schema if pa.types.is_floating(f.type)]
@@ -118,7 +150,9 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
     )
 
 
-def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str], list[str]]]:
+def _runs(
+    scan: Scan, deleted: dict[str, list[int]], connect: bool
+) -> list[tuple[dict[str, str], list[str]]]:
     """The files in the descriptor's order, in runs that one read covers: files
     named alike (`{physical name: logical name}`) and typed alike (one read
     infers one schema), none with deleted positions or under an equality
@@ -127,7 +161,7 @@ def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str
     out: list[tuple[dict[str, str], list[str]]] = []
     keys: list[tuple[dict[str, str], tuple[str, ...]]] = []
     for f in scan.files:
-        names, kinds = _renaming(f, scan)
+        names, kinds = _renaming(f, scan, connect)
         if out and keys[-1] == (names, kinds) and f not in alone and out[-1][1][0] not in alone:
             out[-1][1].append(f)
         else:
@@ -136,7 +170,7 @@ def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str
     return out
 
 
-def _renaming(file: str, scan: Scan) -> tuple[dict[str, str], tuple[str, ...]]:
+def _renaming(file: str, scan: Scan, connect: bool) -> tuple[dict[str, str], tuple[str, ...]]:
     """`{physical: logical}` for the columns of `file` the schema has, and their
     file types, refusing a type that does not widen."""
     by_id = (
@@ -146,7 +180,7 @@ def _renaming(file: str, scan: Scan) -> tuple[dict[str, str], tuple[str, ...]]:
     )
     out = {}
     kinds = []
-    for f in _footer(file):
+    for f in _footer(file, connect):
         if by_id is None:
             logical = f.name if f.name in scan.schema.names else None
         else:
@@ -174,7 +208,7 @@ def _strings(have: pa.DataType, want: pa.DataType) -> bool:
 
 
 def _equality(
-    spark: SparkSession, df: DataFrame, e: EqualityDelete, types: dict[str, str]
+    spark: SparkSession, df: DataFrame, e: EqualityDelete, types: dict[str, str], connect: bool
 ) -> DataFrame:
     """Rows of `e.applies_to` that match a row of the delete file on `e.columns`
     (NULLs equal) leave."""
@@ -182,7 +216,7 @@ def _equality(
 
     by_id = {
         int(f.metadata[_FIELD_ID]): f.name
-        for f in _footer(e.file)
+        for f in _footer(e.file, connect)
         if f.metadata and _FIELD_ID in f.metadata
     }
     keys = spark.read.parquet(e.file)
