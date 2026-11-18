@@ -993,6 +993,7 @@ def test_a_repeated_date_operation_is_computed_once():
     report = sv.verify(
         "SELECT d + INTERVAL 7 DAY AS r FROM t", tables={"t": days.schema}, on_inferred="warn"
     )
+    assert report.internal_plan is not None
     plan = json.loads(report.internal_plan)
     sql = to_sql(plan, DUCKDB)
     assert len(sql) < 2000 and '"b0"' in sql, len(sql)
