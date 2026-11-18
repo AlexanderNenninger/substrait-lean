@@ -33,6 +33,7 @@ from sverify._weighted import WEIGHT, consolidated
 
 __all__ = ["Merger", "State", "Store", "arrow_of", "by_keys", "store_for"]
 
+
 class Merger:
     """Adds up weighted tables with `schema` (the rows' columns, then
     `WEIGHT`) by the plan Lean checked, run on the engine of `store` (DuckDB

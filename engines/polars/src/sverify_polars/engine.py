@@ -3148,6 +3148,12 @@ def collect(lf: pl.LazyFrame) -> pl.DataFrame:
     return collect_streaming(lf, optimizations=_OPTIMIZATIONS)
 
 
+def sink_parquet(lf: pl.LazyFrame, path: str) -> None:
+    """Stream a translated plan into a Parquet file on the streaming engine,
+    with `collect`'s optimizations: the result never sits in memory whole."""
+    lf.sink_parquet(path, engine="streaming", optimizations=_OPTIMIZATIONS)
+
+
 def run(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pa.Table:
     """Run a plan in Lean's written form on Polars (`guards`: see `to_lazy`).
     The columns are named by `RelRoot.names`, repeats included."""

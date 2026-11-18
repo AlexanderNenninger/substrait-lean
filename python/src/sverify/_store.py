@@ -50,9 +50,7 @@ class Store[S](ABC):
     keep = False
 
     @abstractmethod
-    def merge(
-        self, plan: str, schema: pa.Schema, a: S, b: S, *, keep: bool
-    ) -> S | pa.Table:
+    def merge(self, plan: str, schema: pa.Schema, a: S, b: S, *, keep: bool) -> S | pa.Table:
         """The weighted tables `a` and `b` added up by the merge `plan`
         (`sverify._state.Merger`: its tables are `MERGE_A` and `MERGE_B`), run
         on the store's engine: the result as the store's state with `keep`,
