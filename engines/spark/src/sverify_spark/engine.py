@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from sverify.sql import to_sql
+from sverify_spark import ROWS
 from sverify_spark.dialect import SPARK, SPARK_CONF
 
 try:
@@ -192,6 +193,6 @@ def run(
             timestamp with a time zone.
     """
     spark = spark or session()
-    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows="multiset")
+    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows=ROWS)
     put_tables(tables, spark)
     return spark.sql(sql).toArrow()

@@ -3887,11 +3887,15 @@ def inputs(r: Rel) -> list[Rel]:
 
 def open_choices(r: Rel) -> list[str]:
     """The nodes of `r` whose rows `Rel.Allowed` leaves open: a `FETCH` takes
-    the first rows of an order that may have ties, a window orders its ties as
-    the engine does. A second statement over `r` sees its own choices (#1608)."""
-    found = (
-        [{Fetch: "a LIMIT", Window: "a window"}[type(r)]] if isinstance(r, Fetch | Window) else []
-    )
+    the first rows of an order that may have ties, and a window with a function
+    that reads the order of tied rows (`peer_dependent`) orders them as the
+    engine does. A window of ranks or whole-partition measures has one result.
+    A second statement over `r` sees its own choices (#1608)."""
+    found: list[str] = []
+    if isinstance(r, Fetch):
+        found.append("a LIMIT")
+    elif isinstance(r, Window) and any(map(peer_dependent, r.fns)):
+        found.append("a window")
     return found + [n for k in inputs(r) for n in open_choices(k)]
 
 

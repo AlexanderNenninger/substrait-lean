@@ -901,14 +901,18 @@ def test_tied_limit_takes_a_prefix_of_the_keys():
 
 
 def test_open_choices_names_the_limits_and_windows_of_a_plan():
-    """A margin check re-evaluates the plan below its sum, and warns where that
-    holds a LIMIT or a window whose rows are open (#1608)."""
+    """A margin check re-evaluates the plan below its sum, and is refused where the
+    runner leaves open the rows of a LIMIT or of a window that reads the order
+    of ties (#1608)."""
     t = ibis.table({"id": "int64", "g": "string", "v": "int64"}, name="t")
     w = ibis.window(group_by=t.g, order_by=t.v)
     for expr, want in [
         (t.filter(t.v > 1).group_by("g").aggregate(s=t.v.sum()), []),
         (t.order_by(t.v).limit(3).group_by("g").aggregate(s=t.v.sum()), ["a LIMIT"]),
         (t.mutate(rn=ibis.row_number().over(w)).filter(t.v > 0), ["a window"]),
+        # Ranks and whole-partition sums have one result whatever the ties.
+        (t.mutate(r=ibis.rank().over(w)), []),
+        (t.mutate(s=t.v.sum().over(group_by=t.g)), []),
     ]:
         root = parse_plan(json.loads(to_substrait_json(expr))).root
         assert open_choices(root) == want

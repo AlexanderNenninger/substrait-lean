@@ -20,6 +20,7 @@ def _dialect() -> Any:
 PLUGIN = ProfilePlugin(
     "snowflake",
     dialect=_dialect,
+    rows="multiset",
     title="Snowflake",
     refuses={
         "sverify_raise": (
