@@ -281,11 +281,23 @@ def zeroFact : Expr → List Fact
   | .bin .lt (.lit (.int c)) (.field i) => if 0 ≤ c then [.ne i .int 0] else []
   | _ => []
 
+/-- `x` of `x IS NULL`. -/
+def Expr.isNullOf? : Expr → Option Expr
+  | .un .isNull x => some x
+  | _ => none
+
+omit [Boxes.Ambient] in
+theorem Expr.isNullOf?_some {p x : Expr} (h : p.isNullOf? = some x) : p = .un .isNull x := by
+  cases p with
+  | un f y => cases f <;> simp_all [Expr.isNullOf?]
+  | _ => simp [Expr.isNullOf?] at h
+
 /-- The guard `p IS NOT FALSE` of an `AND` (`Expr.notFalse`, D50) is
 `p IS NULL OR p`: what `p` says of a column holds where it is NULL too. -/
-def nullNeFacts : Expr → Expr → List Fact
-  | .un .isNull x, q => if x = q then zeroFact x else []
-  | _, _ => []
+def nullNeFacts (p q : Expr) : List Fact :=
+  match p.isNullOf? with
+  | some x => if x = q then zeroFact x else []
+  | none => []
 
 /-- `t < a OR b < t` with `a ≤ b` numbers of one kind: `t` is not in
 `[a, b]`, so not `0` when `0` is in it, and not `a`. -/
@@ -515,8 +527,12 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
     (hpq : (p.eval row).isTrue = true ∨ (q.eval row).isTrue = true) :
     FactsHold (nullNeFacts p q) row := by
   unfold nullNeFacts
-  split
-  · rename_i x q'
+  cases hx : p.isNullOf? with
+  | none => intro f hf; simp at hf
+  | some x =>
+    have hp := Expr.isNullOf?_some hx
+    subst hp
+    simp only []
     split
     · rename_i hxq
       refine zeroFact_sound ?_
@@ -528,7 +544,6 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
       · right
         rw [hxq]; exact h
     · intro f hf; simp at hf
-  · intro f hf; simp at hf
 
 theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
     FactsHold e.factsCore row := by
