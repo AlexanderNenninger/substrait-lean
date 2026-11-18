@@ -2366,10 +2366,9 @@ def _run_conditions(
     on `engine`: SQL conditions as one `SELECT`, Ibis ones as one `select`."""
     if all(isinstance(c, str) for c in conds):
         items = ", ".join(f'({c}) AS "c{i}"' for i, c in enumerate(conds))
-        query = f'SELECT {items} FROM {{}} AS "t"'
+        query = f'SELECT {items} FROM "t" AS "t"'
         from sverify.ibis_substrait import SQLModel, sql_model_schema
 
-        query = query.format('"t"')
         schema = sql_model_schema(query, {"t": table.schema()}, "reference")
         inputs: Any = (table.op(),)  # a table's op is the relation the model reads
         q = SQLModel(query, inputs, ("t",), schema, "duckdb", "reference").to_expr()

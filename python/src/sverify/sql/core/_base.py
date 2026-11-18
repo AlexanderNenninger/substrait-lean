@@ -5509,8 +5509,10 @@ def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
 
 def case_class(which: Literal["upper", "lower"]) -> str:
     """The regular expression class of the scalars `UPPER` (`which`) raises on
-    (`_case_tables`, D51), as code points, in the syntax RE2, Java's `Pattern` and Rust's
-    `regex` share: `[\\x{DF}\\x{149}-\\x{14A}…]`."""
+    (`_case_tables`, D51), written with the characters themselves and ranges of them:
+    every member is outside ASCII, so none is a metacharacter, and the pattern is in
+    the supported subset (`Text.simpleRegex`: 200 characters at most) that the lift
+    reads and RE2, Java's `Pattern` and Rust's `regex` share."""
     runs: list[list[int]] = []
     for c in _case_tables.raise_set(which):
         if runs and runs[-1][1] + 1 == c:
@@ -5527,8 +5529,7 @@ def case_raises(text: str, which: Literal["upper", "lower"]) -> bool:
 
 
 def _class_run(lo: int, hi: int) -> str:
-    one = f"\\x{{{lo:X}}}"
-    return one if lo == hi else f"{one}-\\x{{{hi:X}}}"
+    return chr(lo) if lo == hi else f"{chr(lo)}-{chr(hi)}"
 
 
 def like_pattern(p: str) -> str:

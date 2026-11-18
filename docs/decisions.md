@@ -1260,17 +1260,64 @@ Plans with these functions on text not known to be ASCII move from proved to
 an inferred precondition under every `semantics`; a per-engine value, and the
 guard narrowing to the characters that differ, are later and rest on facts.
 
-The option sits on two groups, `str.case` (`upper`, `lower`) and `str.ascii`
-(`reverse`, `ascii`, `levenshtein`, `ilike` and the regular expressions),
-because a profile transfer reads options by group: it gives a call every
-option of its group, so the option sits on the groups whose functions can
-report the issue, and `str.plain` (`length`, `repeat`, trims) and `str.opaque`
-(`md5`, `sha256`) carry none. A `#guard` in `Scopes.lean` ties a function's
-group to the issue. The transfer is static: under `semantics="substrait"`,
-where `non_ascii_text` allows `COMPUTE`, those nine functions are unproved on
-the option whether or not the column is declared ASCII, as `substring_range`
-is on `str.sub`; a transfer that skips a raise option whose issue the analysis
-rules out is a follow-up.
+The option sits on the group `str.ascii` (`reverse`, `ascii`, `levenshtein`,
+`ilike` and the regular expressions; D51 moved `upper` and `lower` to
+`case_mapping` on `str.case`), because a profile transfer reads options by
+group: it gives a call every option of its group, so an option sits on the
+groups whose functions can report its issue, and `str.plain` (`length`,
+`repeat`, trims) and `str.opaque` (`md5`, `sha256`) carry none. A `#guard` in
+`Scopes.lean` ties a function's group to its issue. The transfer is static:
+under `semantics="substrait"`, where `non_ascii_text` allows `COMPUTE`, those
+seven functions are unproved on the option whether or not the column is
+declared ASCII, as `substring_range` is on `str.sub`; a transfer that skips a
+raise option whose issue the analysis rules out is a follow-up.
+
+### D51. Case mapping has the value the engines agree on
+
+Approved 2026-11-18 by the maintainer. It replaces D43's raise for `UPPER` and
+`LOWER`; D43 landed first as written.
+
+`UPPER` and `LOWER` map a character as DuckDB, Polars and Spark all map it, and
+raise on a character they map differently or that one of them does not know
+(D47, rule 4). The raise is the issue `Issue.caseDiffers`
+(`core/Sverify/Core/Issue.lean`) under the option `case_mapping` (`ERROR`,
+`COMPUTE`; the reference's value is `ERROR`, Substrait's `COMPUTE`).
+The tables are generated from one fact per engine and version
+(`python -m sverify_dev.case_mapping`: `core/Sverify/Core/CaseTable.lean` for
+the reference, `python/src/sverify/_case_tables.py` for the writers' guards and
+the inferred precondition) and are the intersection over the supported
+versions. A mapping that changes a string's length is outside the table.
+
+The alphabets are per function. `UPPER` raises on a string that holds one of
+the 157 scalar values DuckDB, Polars and Spark map differently
+(`characterization/case-differences.json`); `LOWER` on one of 56, or on every
+`Σ` (U+03A3), 57 in all. Every other scalar has the one scalar the three give,
+1,423 for `UPPER` and 1,431 for `LOWER`, and a scalar none maps stays as it is.
+`LOWER` raises on every `Σ` until the facts on its context (the final sigma
+reads each engine's Cased and Case_Ignorable sets on both sides) exist; the
+exact set is a later narrowing. No set is coarser than a scalar list: the
+facts cover every scalar, and a raise stays small and guardable (D47, rule 4).
+ASCII text is in neither set, so a column declared ASCII proves as under D43.
+
+The precondition names the agreed alphabet. Two declared column facts state
+it, one per function (`upper`, `lower` in the checker's request, `AVal.upper`
+and `AVal.lower`): no scalar of that function's set. ASCII gives both
+(`Text.upperRaises_of_isAscii`, `Text.lowerRaises_of_isAscii`). Python renders
+the inferred precondition as one native regular expression class per engine
+and checks it on the data.
+
+`ILIKE`, `reverse`, `ascii`, `levenshtein` and the regular expressions keep
+D43. Regex classes and `ILIKE` follow by the same method under this number once
+their facts exist.
+
+Spark's writer calls `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')`:
+the plain function follows the JVM's default locale (`tr`, `az` and `lt` map
+`i` and `I` otherwise) and the collated form does not. Snowflake's writer
+refuses `UPPER` and `LOWER` of anything but a literal until its facts, kept
+privately, show the table.
+
+Why: real text is rarely ASCII, so D43's precondition bites, against D21's own
+condition. The engines agree on almost every letter.
 
 ### D44. `replace` with an empty pattern is the string unchanged
 

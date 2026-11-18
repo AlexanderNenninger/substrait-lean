@@ -3,10 +3,10 @@
 * Lean's semantics of `substring`, `strpos`, `starts_with`, `ends_with`,
   `btrim`/`ltrim`/`rtrim`, `||`, `character_length` and `LIKE` with a
   backslash escape agrees with DuckDB, the oracle (`core/Sverify/Core/Text.lean`);
-  Polars and DuckDB, which run the plan Lean writes, give Lean's rows. `UPPER`,
-  `LOWER` and regular expressions, black boxes in Lean pinned to Rust's
-  strings, agree with DuckDB on the alphabet drawn here (sverify's DuckDB
-  lowering raises on non-ASCII case mapping, #70).
+  Polars and DuckDB, which run the plan Lean writes, give Lean's rows. `UPPER` and
+  `LOWER` map each scalar as the engines agree and raise where they differ (D51:
+  `test_case_mapping.py`). Regular expressions are black boxes in Lean pinned to
+  Rust's strings and agree with DuckDB on the alphabet drawn here.
 * Polars and DuckDB give Lean's rows of `repeat`, `reverse`, `replace`,
   `ascii` and `levenshtein` (#49) on Rust's edge cases: negative counts,
   empty patterns, combining marks. DuckDB's own functions count bytes or
@@ -21,7 +21,6 @@
 """
 
 import json
-import subprocess
 from typing import Any, cast
 
 import ibis
@@ -57,8 +56,10 @@ QUERIES = [
     "SELECT s < t AS a, s > t AS b, s BETWEEN 'a' AND t AS c FROM r",
     "SELECT greatest(s, t) AS g, least(s, t) AS l FROM r",
     "SELECT (a > 1) < (a > 3) AS x, greatest(a > 1, a > 3) AS y, least(a > 1, a > 3) AS z FROM r",
+    # The case mapping the engines agree on (D51); `é` is in it.
+    "SELECT upper(s) AS u, lower(t) AS l FROM r",
 ]
-ORDER_QUERIES = QUERIES[-3:]
+ORDER_QUERIES = QUERIES[-4:-1]
 
 text = st.one_of(st.none(), st.text(alphabet='ab %_\\é,"', max_size=6))
 
@@ -121,11 +122,8 @@ def test_string_semantics_match_the_oracle(sql, rows):
 
 
 #: Black boxes in Lean: only the engines are compared.
-BLACK_BOXES = [
-    "SELECT upper(s) AS u, lower(t) AS l FROM r",
-    "regular expressions",
-]
-PLANS[BLACK_BOXES[1]] = lambda r: r.select(
+BLACK_BOXES = ["regular expressions"]
+PLANS[BLACK_BOXES[0]] = lambda r: r.select(
     x=r.s.re_search("^a"), y=r.s.re_search("(a)(b|%)"), z=r.t.re_search("é.")
 )
 
@@ -142,11 +140,6 @@ def test_engines_match_the_oracle(engine, sql, rows):
     con.create("r", R, rows)
     expected = canonical(oracle(con, sql)) if sql in BLACK_BOXES else lean_rows(con, sql, rows)
     plan = written_plan(plan_of(con, sql))
-    non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
-    if engine == "duckdb" and sql == BLACK_BOXES[0] and non_ascii:
-        with pytest.raises(Exception, match="non-ASCII text differs between engines"):
-            run_plan(con, plan, engine)
-        return
     if engine == "polars" and sql == QUERIES[2]:
         # A pattern per row has no exact native form on Polars (#1270).
         with pytest.raises(UnsupportedError, match="LIKE with a pattern"):
@@ -154,30 +147,6 @@ def test_engines_match_the_oracle(engine, sql, rows):
         return
     got = run_plan(con, plan, engine)
     assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
-
-
-@pytest.mark.parametrize(
-    ("sql", "message"),
-    [
-        ("SELECT upper(s) AS u FROM r", "UPPER of non-ASCII text"),
-        ("SELECT lower(s) AS u FROM r", "LOWER of non-ASCII text"),
-    ],
-)
-def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
-    """Lean's evaluator maps ASCII case only; `substrait-check` refuses such
-    rows instead of printing placeholders (`''`, NULL) that no engine gives
-    (#70). Regular expressions: `test_regex.py`."""
-    con = connect()
-    rows = [("Straße", "abc", 1)]
-    con.create("r", R, rows)
-    plan = inline_tables(json.loads(plan_of(con, sql)), {"r": rows})
-    with pytest.raises(subprocess.CalledProcessError) as e:
-        lean_values(json.dumps(plan))
-    assert f"rows not evaluated: {message}" in e.value.stderr
-    ascii_rows = inline_tables(
-        json.loads(substrait_json(con, sql, semantics="duckdb")), {"r": [("abc", "x", 1)]}
-    )
-    assert lean_values(json.dumps(ascii_rows)) == [("ABC" if "upper" in sql else "abc",)]
 
 
 #: Edge cases of #49: combining marks, which `reverse` moves (Rust reverses
@@ -205,13 +174,9 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
 
 @pytest.mark.parametrize(
     "sql",
-    [
-        "SELECT upper(s) AS u FROM r",
-        "SELECT lower(s) AS u FROM r",
-        "SELECT s ILIKE 'a%' AS u FROM r",
-    ],
+    ["SELECT s ILIKE 'a%' AS u FROM r"],
 )
-def test_the_reference_does_not_evaluate_non_ascii_case_mapping(sql):
+def test_the_reference_does_not_evaluate_non_ascii_ilike(sql):
     """D43: the reference answers non-ASCII text with an error, and the
     checker prints it (exit 1) instead of stopping on a Lean `panic!` (#1506)."""
     con = connect()
@@ -423,7 +388,7 @@ def test_every_mode_refuses_a_panic(flags):
     con = connect()
     rows = [("Straße", "abc", 1)]
     con.create("r", R, rows)
-    plan = inline_tables(json.loads(plan_of(con, "SELECT upper(s) AS u FROM r")), {"r": rows})
+    plan = inline_tables(json.loads(plan_of(con, "SELECT s ILIKE 'a%' AS u FROM r")), {"r": rows})
     code, out, err = run_checker(flags, json.dumps(plan))
     assert code != 0 and out == ""
-    assert "rows not evaluated: UPPER of non-ASCII text" in err
+    assert "rows not evaluated: ILIKE of non-ASCII text" in err
