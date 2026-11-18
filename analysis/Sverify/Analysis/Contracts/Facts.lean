@@ -493,7 +493,7 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
         have hw := Value.numOf?_some hnum
         have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
           rw [hx, hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
-        simp [eval, hn, UnFn.apply, Value.isTrue] at hpq
+        simp [Expr.eval, hn, UnFn.apply, Value.isTrue] at hpq
     · intro f hf; simp at hf
   · intro f hf; simp at hf
 
@@ -564,7 +564,7 @@ theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = 
     · exact orNullFacts_sound ihq hpq.symm hf
     · exact orGapFacts_sound hpq hf
     · exact orGapFacts_sound hpq.symm hf
-    · exact nullNeFacts_sound hpq hf
+    · exact nullNeFacts_sound hpq f hf
   case case10 => intro f hf; simp at hf
 
 /-- The conjuncts of a condition. -/
