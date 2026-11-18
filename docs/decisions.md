@@ -414,6 +414,8 @@ Assumed conditions keep their checks on the data (`Report.assumed`,
 `unproved`, and a plan whose only open conditions are assumed gives
 `proved_with_checks`.
 
+<a id="d24-tie-order-belongs-to-the-deterministic-profile"></a>
+
 ### D24. Tie order is open, and determinism is proved
 
 The reference leaves `tie_order` and `tie_pick` open. Rows that tie in an
