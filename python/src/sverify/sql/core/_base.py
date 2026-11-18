@@ -4467,12 +4467,13 @@ class _Writer:
             )
         keys = self.sort_keys(a, sort, ks)
         items = self.passthrough(a, n, False)
-        if not self.tie_free:
+        numbered = not self.tie_free and (self.seq or chain_orders(src))
+        if numbered:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
         rest = "ORDER BY " + ", ".join(keys)
         if lo := d.limit_offset(off, cnt):
             rest += " " + lo
-        top = self.select(items, d.subquery(self.rel(src, not self.tie_free), a), rest)
+        top = self.select(items, d.subquery(self.rel(src, numbered), a), rest)
         if not ordered:
             return top
         b = self.alias()
