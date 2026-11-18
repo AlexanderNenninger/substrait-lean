@@ -60,9 +60,9 @@ def test_a_nullable_column_is_guarded_too():
 
 def test_the_lifted_plan_runs_as_the_eager_one_where_nothing_raises():
     con = sv.connect()
-    rows = pa.table({"qty": [1, 2, 3, 5], "total": [3, 4, 9, 0]})
+    rows = pa.table({"qty": [0, 1, 2, 3, 5], "total": [7, 3, 4, 9, 0]})
     con.put("orders", rows)
     sql = "SELECT qty, total FROM orders WHERE qty <> 0 AND total // qty > 1"
     report = sv.verify(sql, tables={"orders": con.table("orders")}, ensures=[])
     got = sorted(report.run(con, unverified=True).to_pylist(), key=lambda r: r["qty"])
-    assert got == [{"qty": 1, "total": 3}, {"qty": 3, "total": 9}]
+    assert got == [{"qty": 1, "total": 3}, {"qty": 2, "total": 4}, {"qty": 3, "total": 9}]

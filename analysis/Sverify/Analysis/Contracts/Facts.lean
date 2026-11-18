@@ -296,7 +296,7 @@ theorem Expr.isNullOf?_some {p x : Expr} (h : p.isNullOf? = some x) : p = .un .i
 `p IS NULL OR p`: what `p` says of a column holds where it is NULL too. -/
 def nullNeFacts (p q : Expr) : List Fact :=
   match p.isNullOf? with
-  | some x => if x = q then zeroFact x else []
+  | some x => if x = q then zeroFact x else if .un .not x = q then zeroFact q else []
   | none => []
 
 /-- `t < a OR b < t` with `a ≤ b` numbers of one kind: `t` is not in
@@ -543,7 +543,18 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
         cases v <;> simp [UnFn.apply, Value.isTrue] at h2 ⊢
       · right
         rw [hxq]; exact h
-    · intro f hf; simp at hf
+    · split
+      · rename_i _ hnq
+        refine zeroFact_sound ?_
+        rcases hpq with h | h
+        · left
+          have h2 : (UnFn.apply .isNull (x.eval row)).isTrue = true := h
+          rw [← hnq]
+          show UnFn.apply .not (x.eval row) = .null
+          generalize x.eval row = v at h2 ⊢
+          cases v <;> simp [UnFn.apply, Value.isTrue] at h2 ⊢
+        · right; rw [← hnq]; rw [← hnq] at h; exact h
+      · intro f hf; simp at hf
 
 theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
     FactsHold e.factsCore row := by
