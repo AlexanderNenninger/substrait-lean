@@ -23,4 +23,6 @@ deterministic, because the reference leaves the order of the groups open.
 Over 2,394 recorded requests, 50 turn false: 22 for `MIN`/`MAX` over doubles,
 17 for an `AVG` of integers, 6 for the median of doubles, 4 for a group key
 over doubles and 1 for an ordered `ARRAY_AGG` over ties. None turns true. A
-rerun requirement (`reproducible=`) refuses these plans.
+rerun requirement (`reproducible=`) refuses these plans. D48 then counts the
+first bullet's picks as determined again, up to the member of a class
+(`1484-d48-class-level.md`).

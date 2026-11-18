@@ -246,3 +246,19 @@ def test_proved_on_every_allowed_result() -> None:
         counterexamples=0,
     )
     assert plain.ensures[0].proved and plain.ensures[0].allowed
+
+
+@pytest.mark.parametrize(
+    ("zero", "negative_zero"),
+    [([0.0, 1.0], [-0.0, 1.0]), ([[0.0]], [[-0.0]]), ([{"a": 0.0}], [{"a": -0.0}])],
+    ids=["double", "list", "struct"],
+)
+def test_one_zero_unless_the_observation_reads_the_members(zero, negative_zero):
+    """D48: `floats="plan"` reads one zero, bound or not; exact doubles and
+    zeros read the members, also where Arrow's equality takes `-0.0` for
+    `0.0` and nested in a list or a struct."""
+    a, b = pa.table({"c": zero}), pa.table({"c": negative_zero})
+    assert sv.equivalent(floats="plan").equal(a, b)
+    assert sv.equivalent(zeros="canon").equal(a, b)
+    assert sv.equivalent().reads_members and not sv.equivalent().equal(a, b)
+    assert not sv.equivalent(floats="plan").reads_members

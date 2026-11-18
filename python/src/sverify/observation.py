@@ -177,7 +177,8 @@ class Observation:
     """With `floats="plan"`, the plan's bound as a tolerance, where the
     report knows it (`Report.observation`): printed beside `floats=plan`,
     and used by `equal`. Equality of observations ignores it. Without it,
-    `equal` compares doubles under `"plan"` exactly."""
+    `equal` compares doubles under `"plan"` exactly, one zero and one NaN
+    (`reads_members`, D48)."""
 
     def __post_init__(self) -> None:
         for name, allowed in _COMPONENTS:
@@ -221,6 +222,19 @@ class Observation:
             for name, levels in _COMPONENTS
             if (floats if name == "floats" else chain(name, levels))
         ]
+
+    @property
+    def reads_members(self) -> bool:
+        """Whether this observation reads the members of a class of doubles
+        (D31, D48): exact doubles and exact zeros, so `-0.0` differs from
+        `0.0`. `floats="plan"` and a tolerance read one zero and one NaN, as
+        `zeros="canon"` does. Every NaN equals every other under each
+        observation. `equal` and the rerun's class picks read this predicate;
+        the refinement order (`coarser_than`), which D18's check and the
+        engines' rerun rows use, still compares `zeros` as a component of its
+        own, which is stricter than `equal` under `floats="plan"` or a
+        tolerance (D48)."""
+        return self.floats == "exact" and self.zeros == "exact"
 
     def ignored(self) -> list[str]:
         """The components this observation ignores: where it is coarser
@@ -291,11 +305,23 @@ class Observation:
         # Decimals compare by value from here on (`Decimal("1.50") == Decimal("1.5")`).
         ca, cb = self.canonical(a), self.canonical(b)
         for name in ca.column_names:
+            if self._arrow_equal(ca.column(name), cb.column(name)):
+                continue
             xs, ys = ca.column(name).to_pylist(), cb.column(name).to_pylist()
             for i, (x, y) in enumerate(zip(xs, ys, strict=True)):
                 if not self._same(x, y):
                     return f"row {i} of column {name}: {x!r} and {y!r}"
         return None
+
+    def _arrow_equal(self, x: pa.ChunkedArray, y: pa.ChunkedArray) -> bool:
+        """Whether Arrow finds the two columns equal, where that implies
+        `_same` row by row: Arrow's equality takes `-0.0` for `0.0`, so a
+        column holding doubles counts only when this observation reads one
+        zero (not `reads_members`). A NaN is unequal to Arrow, which leaves
+        such a column to `_same`."""
+        if self.reads_members and _holds_floats(x.type):
+            return False
+        return x.equals(y)
 
     def _same(self, x: Any, y: Any) -> bool:
         if x is None or y is None:
@@ -307,7 +333,7 @@ class Observation:
                 return self.bound.close(x, y)
             if math.isnan(x) or math.isnan(y):
                 return math.isnan(x) and math.isnan(y)
-            return x == y and (self.zeros == "canon" or math.copysign(1, x) == math.copysign(1, y))
+            return x == y and (not self.reads_members or math.copysign(1, x) == math.copysign(1, y))
         if isinstance(x, list) and isinstance(y, list):
             return len(x) == len(y) and all(self._same(u, v) for u, v in zip(x, y, strict=True))
         if isinstance(x, dict) and isinstance(y, dict):
@@ -334,6 +360,15 @@ class Observation:
     @property
     def label(self) -> str:
         return str(self)
+
+
+def _holds_floats(t: pa.DataType) -> bool:
+    """Whether a value of type `t` may hold a double, nested ones included."""
+    if pa.types.is_floating(t):
+        return True
+    if pa.types.is_dictionary(t):
+        return _holds_floats(t.value_type)
+    return any(_holds_floats(t.field(i).type) for i in range(t.num_fields))
 
 
 def _bound_text(w: Within) -> str:

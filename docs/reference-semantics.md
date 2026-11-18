@@ -65,13 +65,18 @@ proves its postconditions and keys over every order
 `Rel.eval`'s order is one of the allowed
 orders ([tie order](#tie-order-and-determinism)).
 `Report.deterministic` is true when every result the reference allows is
-`Rel.eval`'s up to row order (`Rel.detPlan`, `check_deterministic_sound`). It
-is false where rows may tie in the order of a window, of `FIRST`, `LAST`,
-`STRING_AGG` or `MODE`, or of a `FETCH`, where the reference leaves a value
-open (the median of doubles, which member of a class of doubles a `DISTINCT`,
-a group key, `MIN`, `MAX` or `QUANTILE_DISC` keeps, D31, D45), and where an
-aggregate is not proved a function of its values. `str(report)` names each place (`tiesIn_eq_nil`), and
-`Report.ties` gives the keys that would close the ties.
+`Rel.eval`'s up to row order and up to the member of each class of doubles
+(`Rel.detClass`, `check_class_determined_sound`, [D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)).
+Which member of a class a `DISTINCT`, a group key, `MIN`, `MAX` or
+`QUANTILE_DISC` keeps (D31, D45) leaves it true. It is false where rows may
+tie in the order of a window, of `FIRST`, `LAST`, `STRING_AGG` or `MODE`, or
+of a `FETCH`, where an expression reads a picked double and can tell the
+members apart (`atan2`), where the reference leaves a value open (the median
+of doubles), and where an aggregate is not proved a function of its values.
+`str(report)` names each place (`classIn_eq_nil`), and `Report.ties` gives
+the keys that would close the ties. An observation that reads the members of
+a class asks for the exact level, every result `Rel.eval`'s up to row order
+(`Rel.detPlan`, `check_deterministic_sound`).
 `RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` over the window's own
 order need no key: tied rows get the same value in every arrangement
 (`window_tieFree`). A key on one column of a pair an inner join's or a filter's
