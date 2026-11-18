@@ -1168,6 +1168,38 @@ Why: the rule is that the reference changes only through a recorded decision
 and an option enters the core with its value recorded. The rows whose "Decided by" is this decision were never ruled on in this record; they record the values as of 2026-11-15, and a later decision changes one as D17 describes. A test (`tests/test_decisions_name_options.py`)
 keeps every option of the core named in this file.
 
+### D43. Text the engines map differently is an issue, `nonAscii`
+
+`UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein` and a regular
+expression with a class (`\d`, `\w`, `\s`, `\b`) give Rust's values on ASCII
+text, and the engines give their own elsewhere: DuckDB maps `ß` to `ẞ` where
+Rust gives `SS`, and Rust's `\s` includes the vertical tab where RE2's does
+not. The reference raises where the engines can differ, as
+`Issue.nonAscii` (`core/Sverify/Core/Issue.lean`), under the option
+`non_ascii_text` (`ERROR`, `COMPUTE`; the reference's value is `ERROR`).
+`COMPUTE` says an engine gives a value where the reference raises. The
+option names no table, so an engine profile states its own mapping.
+
+The condition is `Text.isAscii`, and for a class regular expression
+`Text.classesDiffer`: ASCII without the vertical tab (`Text.isPlain`). The
+analysis carries it as two flags of `AVal` (`ascii`, `plain`), set by a column
+declared ASCII in the checker's request (`"ascii"`, trusted as the schema's
+nullability is) and by a literal's text, and `UnFn.mayIssue` and
+`BinFn.mayIssue` report `nonAscii` unless every text operand has them. For
+each reported issue the checker infers the base-table text columns that must
+be ASCII (`Infer.asciiNeeds`), and Python renders the precondition and checks
+it on the data (`Report.check_inputs`). The writers' guard raises on the same
+predicate, so the run-time behaviour does not change and the report now lists
+what the written SQL raises on (S9, #1484).
+
+Why: the guard was the one writer check that no issue stated, so a plan with
+`UPPER` over an unconstrained column reported nothing and the run raised on
+the first accented name. `assumed` was rejected as the mechanism: an
+assumption the model does not state leaves the invariant with an exception.
+Plans with these functions on text not known to be ASCII move from proved to
+an inferred precondition under every `semantics`; a per-engine value, and the
+guard narrowing to the characters that differ, are later and rest on facts.
+
 ### D44. `replace` with an empty pattern is the string unchanged
 
 Decided 2026-11-17 (the maintainer, on the theory advisor's recommendation,
