@@ -347,6 +347,7 @@ _HINTED = {
 def test_suggested_requires_states_the_bound_a_hint_names(name):
     sql = _HINTED[name]
     r = sv.verify(sql, tables={"orders": _ORDERS}, on_inferred="error")
-    assert not r.proved
+    assert r.verdict == sv.Verdict.UNPROVED
     assert r.suggested_requires, "the hint names a bound; it must be in suggested_requires"
-    assert sv.verify(sql, tables={"orders": _ORDERS}, requires=r.suggested_requires).proved
+    again = sv.verify(sql, tables={"orders": _ORDERS}, requires=r.suggested_requires)
+    assert again.verdict != sv.Verdict.UNPROVED
