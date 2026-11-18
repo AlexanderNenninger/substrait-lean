@@ -10,10 +10,9 @@ A `Delete` rewrites the files it touches (delta-rs writes no deletion vectors,
 Iceberg no position deletes here): those are covered by the fixture and the sink
 tests in `test_io_native.py`.
 
-Histories go beyond what a native read covers today (partitions): a source
-falls back to Arrow there, and the property says so. As a
-native read learns a case, the test that pins the fallback turns into one that
-compares the rows.
+Histories may go beyond what a native read covers: a source falls back to Arrow
+there, and the property says so. As a native read learns a case, the test that
+pins the fallback turns into one that compares the rows.
 """
 
 from __future__ import annotations
@@ -88,7 +87,11 @@ def rows(history: History, ids: tuple[int, ...], upto: int) -> pa.Table:
 
 @st.composite
 def histories(
-    draw, max_steps: int = 5, partitioned: bool | None = None, renames: bool = False
+    draw,
+    max_steps: int = 5,
+    partitioned: bool | None = None,
+    renames: bool = False,
+    adds: bool = True,
 ) -> History:
     """Histories that start with an append, so no table is empty at creation
     (an empty table is its own test)."""
@@ -97,7 +100,11 @@ def histories(
     steps: list[Step] = [first]
     added, renamed = 0, False
     for _ in range(draw(st.integers(0, max_steps - 1))):
-        kind = draw(st.sampled_from(["append", "append", "delete", "add", *(["rename"] * renames)]))
+        kind = draw(
+            st.sampled_from(
+                ["append", "append", "delete", *(["add"] * adds), *(["rename"] * renames)]
+            )
+        )
         if kind == "append":
             steps.append(Append(tuple(draw(st.lists(ids, min_size=1, max_size=6, unique=True)))))
         elif kind == "delete":
@@ -106,14 +113,17 @@ def histories(
             if not renamed:
                 steps.append(Rename())
                 renamed = True
-        elif added < 2:
+        elif kind == "add" and added < 2:
             steps.append(AddColumn(f"c{added}"))
             added += 1
     return History(draw(st.booleans()) if partitioned is None else partitioned, tuple(steps))
 
 
-def build_delta(path: Path, history: History) -> DeltaSource:
-    """Run `history` on a Delta table at `path`: one commit per step."""
+def build_delta(path: Path, history: History, mapping: str = "none") -> DeltaSource:
+    """Run `history` on a Delta table at `path`: one commit per step. With a
+    column `mapping` (`name` or `id`), delta-rs writes the table (it evolves no
+    schema there: use histories without added columns) and a rename is the
+    metadata-only commit Delta defines: the files keep their columns."""
     from deltalake import DeltaTable, write_deltalake
 
     created = False
@@ -125,15 +135,51 @@ def build_delta(path: Path, history: History) -> DeltaSource:
                     path,
                     table,
                     mode="append" if created else "error",
-                    schema_mode="merge" if created else None,
+                    schema_mode="merge" if created and mapping == "none" else None,
                     partition_by=["k"] if history.partitioned and not created else None,
+                    configuration=(
+                        {"delta.columnMapping.mode": mapping} if mapping != "none" else None
+                    )
+                    if not created
+                    else None,
                 )
                 created = True
             case Delete(below):
                 DeltaTable(str(path)).delete(f"id < {below}")
+            case Rename() if mapping != "none":
+                rename_logically(path, "x", "y")
             case AddColumn() | Rename():
                 pass  # the column appears with the next append (schema merge)
     return DeltaSource(str(path))
+
+
+def rename_logically(path: Path, old: str, new: str) -> None:
+    """Commit a rename under column mapping: the schema's logical name changes,
+    no file does."""
+    import json
+
+    from deltalake import DeltaTable
+
+    dt = DeltaTable(str(path))
+    meta = dt.metadata()
+    schema = json.loads(dt.schema().to_json())
+    for f in schema["fields"]:
+        if f["name"] == old:
+            f["name"] = new
+    action = {
+        "metaData": {
+            "id": meta.id,
+            "name": meta.name,
+            "description": meta.description,
+            "format": {"provider": "parquet", "options": {}},
+            "schemaString": json.dumps(schema),
+            "partitionColumns": list(meta.partition_columns),
+            "createdTime": meta.created_time,
+            "configuration": dict(meta.configuration),
+        }
+    }
+    log = Path(path) / "_delta_log" / f"{dt.version() + 1:020d}.json"
+    log.write_text(json.dumps(action) + "\n")
 
 
 def build_iceberg(catalog, name: str, history: History) -> IcebergSource:

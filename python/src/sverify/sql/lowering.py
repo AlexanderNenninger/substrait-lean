@@ -79,6 +79,57 @@ def _hugeint(x: str) -> str:
     return f"CAST({x} AS HUGEINT)"
 
 
+def _value(t: Json, consts: Sequence[float | int | None]) -> float | int | None:
+    """The value of a number term when the arguments' literals decide it."""
+    if "field" in t:
+        i = t["field"]
+        return consts[i] if i < len(consts) else None
+    if "code" in t:
+        return decode_double(int(t["code"]))
+    if "int" in t:
+        return int(t["int"])
+    return None
+
+
+def reduce(t: Json, consts: Sequence[float | int | None]) -> Json:
+    """The condition `t` with what the literal `consts` decide written out: a
+    `{"bool": …}` where they decide all of it, else `t` without its decided
+    parts (None where an argument is not a literal). NaN and the codes `±1`
+    (`x < 1` is `x <= 0`, below) are left to the SQL."""
+    name, args = t.get("fn"), t.get("args", [])
+
+    def known(v: bool) -> Json:
+        return {"bool": v}
+
+    if name in ("eq", "lt"):
+        x, y = (_value(a, consts) for a in args)
+        if x is None or y is None or x != x or y != y:
+            return t
+        if name == "lt" and any(a.get("code") in ("1", "-1") for a in args):
+            return t
+        return known(x == y if name == "eq" else x < y)
+    if name in ("isNum", "isNull"):
+        # A literal is a number, not NULL.
+        return t if _value(args[0], consts) is None else known(name == "isNum")
+    if name == "not":
+        v = reduce(args[0], consts)
+        return known(not v["bool"]) if "bool" in v else {**t, "args": [v]}
+    if name in ("and", "or"):
+        stop = name == "or"
+        vs = [reduce(a, consts) for a in args]
+        if any(v.get("bool") is stop for v in vs):
+            return known(stop)
+        if name == "and" and any(
+            a.get("fn") == "isNum" and {"fn": "isNull", "args": a["args"]} in args for a in args
+        ):
+            return known(False)  # `isNum x` and `isNull x`
+        rest = [v for v in vs if "bool" not in v]
+        if not rest:
+            return known(not stop)
+        return rest[0] if len(rest) == 1 else {**t, "args": rest}
+    return t
+
+
 def render(
     fn: str,
     args: Sequence[str],
@@ -86,6 +137,7 @@ def render(
     float_lit: Callable[[float], str],
     int_lit: Callable[[int], str],
     guards: bool = True,
+    consts: Sequence[float | int | None] = (),
 ) -> str | None:
     """`fn` of the arguments' SQL as its template writes it, or None where
     DuckDB's own function is the reference's (no template). `raise_` writes
@@ -93,7 +145,10 @@ def render(
     (`to_sql(..., guards=False)`, for plans proved not to raise) the arms of
     a `CASE` that raise are left out: they would never be taken. That the
     templates without them still give the reference's rows is
-    `Rel.duckdb_guardFree_sound` (`engines/duckdb/Sverify/DuckDB/Lowering.lean`)."""
+    `Rel.duckdb_guardFree_sound` (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
+    `consts` gives the value of each argument that is a literal, else None: an
+    arm of a `CASE` whose condition is false for those values is left out, and
+    a true one ends the `CASE` (`reduce`)."""
     tmpl = table().get(fn)
     if tmpl is None:
         return None
@@ -115,8 +170,12 @@ def render(
             # A chain of `CASE`s in the `ELSE` is one `CASE`.
             whens = []
             while "if" in t:
+                cond = reduce(t["if"], consts)
+                if "bool" in cond:
+                    t = t["then"] if cond["bool"] else t["else"]
+                    continue
                 if guards or t["then"].get("fn") != "raise":
-                    whens.append(f"WHEN {go(t['if'])} THEN {go(t['then'])}")
+                    whens.append(f"WHEN {go(cond)} THEN {go(t['then'])}")
                 t = t["else"]
             last = go(t)
             return f"(CASE {' '.join(whens)} ELSE {last} END)" if whens else last

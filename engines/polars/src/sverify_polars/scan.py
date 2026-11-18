@@ -32,9 +32,13 @@ def lazy_scan(scan: Scan) -> pl.LazyFrame:
     """The scan's rows as a lazy frame in the dtypes of its Arrow schema, in
     the descriptor's file order. A scan with a `where` is refused: a source's
     `where` is DuckDB SQL (`sverify.io._common.filter_rows`), which Polars's SQL
-    does not read alike."""
+    does not read alike. A scan with `partitions` or `physical` names is refused
+    too: Polars does not yet read partition values from the log or physical names
+    (#173)."""
     if scan.where is not None:
         raise Unsupported(f"{scan.origin}: a `where` is DuckDB SQL, which Polars does not read")
+    if scan.partitions is not None or scan.physical is not None:
+        raise Unsupported(f"{scan.origin}: Polars does not read partition values or physical names")
     dtypes = pl.from_arrow(scan.schema.empty_table()).schema  # type: ignore[union-attr]
     if not scan.files:
         return pl.LazyFrame(schema=dtypes)
