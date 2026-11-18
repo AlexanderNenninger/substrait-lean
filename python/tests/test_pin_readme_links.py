@@ -6,12 +6,12 @@ import sys
 from pathlib import Path
 
 import pytest
+from _repo import needs_repo
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "python" / "scripts" / "pin_readme_links.py"
 
-#: The Wheels workflow runs these tests with only `python/tests` copied out.
-pytestmark = pytest.mark.skipif(not SCRIPT.is_file(), reason="the repository is not here")
+pytestmark = needs_repo
 
 
 @pytest.fixture(scope="module")
