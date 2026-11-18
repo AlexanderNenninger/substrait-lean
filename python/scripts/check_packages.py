@@ -56,7 +56,7 @@ def report_and_tables():
         requires={"t": [sv.unique("a")]},
         ensures=[sv.unique("a")],
     )
-    assert report.proved, report
+    assert report.verdict == "proved", report
     return report, con
 
 

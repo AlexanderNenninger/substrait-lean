@@ -1357,8 +1357,8 @@ def _(mo):
     in each dialect. DuckDB gets an ordinal column, so ties break the way
     Lean's stable sort breaks them. Snowflake and Spark refuse, because
     their tables have no row order. When a contract report says
-    `deterministic` (chapter 4), `deterministic=True` promises there are no ties
-    and the SQL is written.
+    `deterministic` (chapter 4), `node.to_sql(dialect)` writes the window
+    without a tiebreak, since the report proves there are no ties.
 
     Snowflake: integers are `NUMBER(38,0)` checked against the 64-bit
     range, timestamps are `TIMESTAMP_NTZ(6)`, every identifier is quoted,
@@ -1382,8 +1382,8 @@ def _(mo):
     * `TIMESTAMP` is the session time zone's, and so is what `date_trunc`
       returns, so the SQL stays in `TIMESTAMP_NTZ`.
     * `POWER` of doubles is Java's `Math.pow` (within 1 ulp of C's) and is
-      refused, as are sorts and windows over a table without
-      `deterministic=True`.
+      refused, as are sorts and windows of a plan whose report is not
+      `deterministic`.
 
     Spark runs locally, unlike Snowflake. The tests run every coverage case
     and every query of the Snowflake suite on a local Spark session
@@ -1549,7 +1549,11 @@ def _(ibis, sv):
     _requires = {"readings": [_.temp >= -50.0, _.temp <= 60.0, sv.max_rows(1_000_000)]}
     exact_claim = sv.verify(_avg, requires=_requires, ensures=[_.avg_temp <= 60.0])
     approx_claim = sv.verify(_avg, requires=_requires, ensures=[sv.approx(_.avg_temp <= 60.0)])
-    assert exact_claim.proved and not exact_claim.ensures[0].robust and approx_claim.proved
+    assert (
+        exact_claim.verdict == sv.Verdict.PROVED
+        and not exact_claim.ensures[0].robust
+        and approx_claim.verdict == sv.Verdict.PROVED
+    )
     print(_routes.choose(exact_claim, "duckdb"))
     return (approx_claim,)
 
@@ -1691,7 +1695,7 @@ def _(mo):
 def _(con_lines, sv):
     _lines = con_lines.table("lines")
     _totals = sv.verify(_lines.select("id", total=_lines.price * _lines.qty))
-    assert _totals.proved
+    assert _totals.verdict == sv.Verdict.PROVED
     {"total": str(_totals.output["total"]), "rows": _totals.run(con_lines, "duckdb").to_pylist()}
     return
 

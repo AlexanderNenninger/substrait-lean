@@ -57,7 +57,7 @@ def _flagged(groups: list[list[float]], t: float) -> int:
 
 def test_the_checker_writes_the_check_and_the_rows_are_exact_given_it(having):
     r = having
-    assert r.proved
+    assert r.verdict == sv.Verdict.PROVED_WITH_CHECKS
     assert len(r._margin_checks) == 1
     assert r._margin_checks[0]["column"] == "total"
     assert r._rows_exact is not None and all(r._rows_exact.values())
@@ -227,6 +227,6 @@ def test_the_margin_check_sees_through_the_finish_of_duckdbs_sum_and_avg(query):
     r = sv.verify(
         sv.sql(query, t=t, semantics="duckdb"), requires={"t": [_.f.between(-1e300, 1e300)]}
     )
-    assert r.proved
+    assert r.verdict != sv.Verdict.UNPROVED
     assert len(r._margin_checks) == 1
     assert r._rows_exact is not None and all(r._rows_exact.values())

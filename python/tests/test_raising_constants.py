@@ -38,7 +38,7 @@ LATER_WHEN = "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END AS v FROM
 )
 def test_a_constant_that_raises_is_reported_whatever_the_preconditions(sql):
     report = verify(sql, tables={"t": T}, requires={"t": ["x > 0"]})
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     [issue] = report.errors
     assert issue.kind == "division by zero" and issue.constant
     assert issue.hint == CONSTANT_HINT
@@ -47,7 +47,7 @@ def test_a_constant_that_raises_is_reported_whatever_the_preconditions(sql):
 
 def test_a_constant_without_an_error_is_nothing():
     report = verify("SELECT x + 6 // 3 AS v FROM t", tables={"t": T})
-    assert report.proved and report.errors == []
+    assert report.verdict == sv.Verdict.PROVED and report.errors == []
 
 
 @pytest.mark.parametrize("rows", [[], [5, 7]])

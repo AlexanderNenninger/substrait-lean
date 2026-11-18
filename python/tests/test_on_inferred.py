@@ -30,7 +30,7 @@ def con():
 def test_an_inferred_precondition_is_an_error_by_default(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(t.k, per=t.total // t.qty))
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert _needed(report) == {"t": ["(_.total >= -9 * 10**18)", "(_.qty != 0)"]}
     text = str(report)
     assert (
@@ -61,7 +61,7 @@ def test_declaring_it_proves_the_plan_and_checks_it(con) -> None:
         t.select(t.k, per=t.total // t.qty),
         requires={"t": [_.qty != 0, _.total >= 0]},
     )
-    assert report.proved and _needed(report) == {}
+    assert report.verdict == sv.Verdict.PROVED and _needed(report) == {}
     with pytest.raises(PreconditionError, match=r"violate \(_.qty != 0\)"):
         report.run(con)
 
@@ -72,7 +72,7 @@ def test_filtering_first_needs_no_precondition(con) -> None:
     report = sv.verify(
         kept.select(kept.k, per=kept.total // kept.qty), requires={"t": [_.total >= 0]}
     )
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.run(con).to_pylist() == [{"k": "a", "per": 10}]
 
 
@@ -81,11 +81,11 @@ def test_warn_and_silent_assume_it(con) -> None:
     expr = t.select(t.k, per=t.total // t.qty)
     with pytest.warns(InferredWarning, match=r"\(_.qty != 0\) on t, inferred from"):
         warned = sv.verify(expr, on_inferred="warn")
-    assert warned.proved and _needed(warned) == {}
+    assert warned.verdict == sv.Verdict.PROVED and _needed(warned) == {}
     with warnings.catch_warnings():
         warnings.simplefilter("error", InferredWarning)
         silent = sv.verify(expr, on_inferred="ignore")
-    assert silent.proved
+    assert silent.verdict == sv.Verdict.PROVED
     assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(silent)
     with pytest.raises(PreconditionError, match="inferred from `total // qty`"):
         silent.run(con)

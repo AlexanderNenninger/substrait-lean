@@ -111,7 +111,7 @@ def test_a1_integer_arithmetic_with_negative_operands(con) -> None:
         mod=t.i % t.j,
     )
     report = sv.verify(expr, requires=req)
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     out = run_both(report, con)
     assert sorted(out["duckdb"].column("mod").to_pylist()) == sorted(
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
@@ -130,7 +130,7 @@ def test_a2_sum_of_a_bounded_int32(con) -> None:
         t.group_by("k").aggregate(total=t.n.sum()),
         requires={"t": [_.n.between(0, 1000), sv.max_rows(1_000_000)]},
     )
-    assert report.proved and not report.assumed and not report.issues
+    assert report.verdict == sv.Verdict.PROVED and not report.assumed and not report.issues
     run_both(report, con)
     for e in ENGINES:
         assert route_of(report, e).kind == "translated"
@@ -148,13 +148,15 @@ def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
     NOT NULL in the preconditions no group is all NULL, and Polars refines."""
     t = con.table("t")
     report = sv.verify(t.group_by("k").aggregate(total=t.i.sum()))
-    assert report.proved and [i.what for i in report.assumed] == ["i"]
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS and [i.what for i in report.assumed] == [
+        "i"
+    ]
     run_both(report, con)
     assert route_of(report, "duckdb").cls == "exact"
     assert route_of(report, "polars").cls == "shim"
     assert any("sum_empty_null" in s for s in route_of(report, "polars").shims)
     present = sv.verify(t.group_by("k").aggregate(total=t.i.sum()), requires={"t": [_.i.notnull()]})
-    assert present.proved, str(present)
+    assert present.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(present)
     run_both(present, con)
     for e in ENGINES:
         assert route_of(present, e).cls == "exact"
@@ -176,7 +178,7 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
     checked on the data; a verified run never yields a new `±∞`."""
     u = ibis.table({"x": "float64", "y": "float64"}, name="u")
     report = sv.verify(u.select(z=u.x * u.y))
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report._inferred.get("u"), "the bounds that keep x * y finite"
     good = sv.connect()
     good.put("u", pa.table({"x": [2.0, -3.0], "y": [4.0, 0.5]}))
@@ -212,7 +214,7 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
         ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
     )
     for report in (rounded, mean):
-        assert report.proved, str(report)
+        assert report.verdict == sv.Verdict.PROVED, str(report)
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
     # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the written plan's
@@ -248,7 +250,7 @@ def test_b1_float_aggregates_within_a_tolerance(con) -> None:
             requires={"t": [bound, sv.max_rows(1_000_000)]},
             ensures=[sv.equivalent(floats=tolerance), sv.approx(_.mean <= 1e6)],
         )
-        assert report.proved, str(report)
+        assert report.verdict == sv.Verdict.PROVED, str(report)
         assert report._epsilon, "the plan's bound on the doubles"
         data = con if tolerance.abs is not None else _non_negative(con)
         run_both(report, data)
@@ -283,7 +285,7 @@ def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
     d = z.table("d")
     expr = d.group_by("x").aggregate(n=d.v.count())
     exact = sv.verify(expr)
-    assert exact.proved, str(exact)
+    assert exact.verdict == sv.Verdict.PROVED, str(exact)
     strict = routes.choose(exact, "polars")
     assert (strict.refused and "zeros" in strict.reason) or strict.cls == "shim", strict
     canon = sv.verify(expr, ensures=[sv.equivalent(zeros="canon")])
@@ -339,7 +341,7 @@ def test_c3_limit_over_ties_is_reported_and_refused_where_required(con) -> None:
     (an idempotent sink's epoch) is refused."""
     t = con.table("t")
     report = sv.verify(t.order_by("k").limit(2))
-    assert report.proved and not report.deterministic
+    assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     r = routes.choose(report, "polars")
     assert r.kind == "translated" and not r.deterministic and r.warnings
     with pytest.raises(RouteError, match="rerun must give the same result"):
@@ -376,7 +378,7 @@ def test_d1_open_picks_and_element_order(con) -> None:
     req = {"t": [_.i.between(-100, 100)]}
     q = sv.equivalent(elements="multiset")
     report = sv.verify(expr, requires=req, ensures=[q, _.f <= _.mx, _.l.length() >= 1])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     run_both(report, con, sv.equivalent(elements="multiset"))
     for e in ENGINES:
         assert route_of(report, e).kind == "translated"
@@ -401,7 +403,7 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
         "SELECT substring(s, -2, 2) AS tail, strpos(s, 'b') AS at FROM t",
         tables={"t": t},
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     out = run_both(report, con)
     assert sorted(out["polars"].column("at").to_pylist(), key=lambda v: (v is None, v)) == [
         0,
@@ -438,7 +440,7 @@ def test_f1_a_polars_request_runs_translated_on_polars(con) -> None:
     plan reaches Polars by the translation, which computes the stated `FLOOR`."""
     with pytest.warns(ProfilePendingWarning):
         report = _floor_report(con)
-    assert report.proved and report.semantics == "reference", str(report)
+    assert report.verdict == sv.Verdict.PROVED and report.semantics == "reference", str(report)
     out = report.run(con, "polars", route="auto")
     r = report.routes["polars"]
     assert (r.kind, r.profile) == ("translated", "reference")
@@ -463,7 +465,7 @@ def test_f1d_zero_divisor_is_a_precondition_under_a_polars_request(con) -> None:
     `verify` infers `j != 0` and checks it on the data before the run."""
     t = con.table("t")
     report = sv.verify(t.select(m=t.i % t.j), semantics="polars", on_inferred="ignore")
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report._inferred == {"t": ['"j" IS NULL OR "j" <> 0']}, report._inferred
     bad = sv.connect()
     bad.put("t", con.get("t").set_column(2, "j", pa.array([0] * 7, pa.int64())))
@@ -500,7 +502,7 @@ def test_f2_duckdb_plan_is_refused_on_polars_until_271(con) -> None:
         requires={"u": ["x BETWEEN -1e300 AND 1e300", "y BETWEEN -1e300 AND 1e300"]},
         semantics="duckdb",
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     r = routes.choose(report, "polars")
     assert r.refused and "semantics='reference'" in r.reason, r
@@ -522,7 +524,7 @@ def test_f3_duckdb_null_order_stated_transfers(con) -> None:
         ensures=[sv.equivalent(rows="sequence")],
         semantics="duckdb",
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     taken = routes.choose(report, "polars", route="transfer")
     assert not taken.refused, taken.reason
@@ -538,7 +540,7 @@ def test_g1_md5_runs_on_duckdb_and_is_refused_on_polars(con) -> None:
     """Polars has no expression for `md5`: refused with the reason."""
     t = con.table("t")
     report = sv.verify(t.select(h=t.s.hexdigest("md5")))
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     out = report.run(con, "duckdb", route="auto")
     assert out.column("h").to_pylist()[0] == "900150983cd24fb0d6963f7d28e17f72"
     assert report.routes["duckdb"].kind == "translated"

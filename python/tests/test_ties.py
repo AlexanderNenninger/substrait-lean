@@ -131,7 +131,7 @@ RANKED = T.mutate(rn=ibis.row_number().over(W))
 
 def test_the_reference_proves_every_order_and_runs_natively() -> None:
     report = sv.verify(RANKED, ensures=[_.rn >= 0])
-    assert report.proved and not report.deterministic
+    assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     r = routes.choose(report, "duckdb")
     assert not r.refused
     assert any("ties stay open:" in w for w in r.warnings)
@@ -207,7 +207,7 @@ def test_a_key_is_seen_through_the_columns_a_join_equates(side) -> None:
     report = sv.verify(
         q, tables=SQL_TABLES, requires=SQL_REQUIRES, ensures=[sv.unique("customer_id")]
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_a_key_through_a_join_breaks_the_ties_of_a_window() -> None:
@@ -222,3 +222,61 @@ def test_a_key_through_a_join_breaks_the_ties_of_a_window() -> None:
     """
     report = sv.verify(q, tables=SQL_TABLES, requires=SQL_REQUIRES, ensures=["rn >= 1"])
     assert report.deterministic and report._tie_places == []
+
+
+def _checker_reports(monkeypatch):
+    """The checker's raw `--contract` reports while `sv.verify` runs."""
+    import sverify.contracts as contracts
+
+    seen: list[dict] = []
+    run = contracts.run_checker
+
+    def spy(flags, stdin):
+        code, out, err = run(flags, stdin)
+        if flags == ("--contract",) and code == 0:
+            seen.append(json.loads(out))
+        return code, out, err
+
+    monkeypatch.setattr(contracts, "run_checker", spy)
+    return seen
+
+
+_T = ibis.table({"k": "int64", "x": "float64", "n": "int64"}, name="t")
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [_T.group_by("k").aggregate(m=_T.x.max()), _T.group_by("x").aggregate(c=_T.k.count())],
+    ids=["max of doubles", "group by a double"],
+)
+def test_a_class_pick_is_determined_up_to_the_class(monkeypatch, expr):
+    """D48: a place that only picks a member of a class (`-0.0` or `0.0`, a
+    NaN) leaves the result determined up to the class, though not exactly."""
+    seen = _checker_reports(monkeypatch)
+    sv.verify(expr)
+    (out,) = seen
+    assert not out["deterministic"]
+    assert out["class_determined"]
+    assert [p["kind"] for p in out["tie_places"]] == ["class"]
+    assert out["class_places"] == []
+
+
+def test_atan2_of_a_picked_double_is_not_determined_up_to_the_class(monkeypatch):
+    """`atan2(-0.0, -1)` is `-π` and `atan2(0.0, -1)` is `π`: an expression
+    that tells the members apart drops the class level, and the report names
+    it."""
+    seen = _checker_reports(monkeypatch)
+    mins = _T.group_by("k").aggregate(m=_T.x.min())
+    sv.verify(mins.mutate(a=mins.m.atan2(-1.0)))
+    (out,) = seen
+    assert not out["class_determined"]
+    (place,) = out["class_places"]
+    assert "ATAN2" in place["what"] and "picked from a class" in place["what"]
+
+
+def test_an_open_tie_is_open_at_both_levels(monkeypatch):
+    seen = _checker_reports(monkeypatch)
+    sv.verify(_T.group_by("k").aggregate(f=_T.x.first()))
+    (out,) = seen
+    assert not out["deterministic"] and not out["class_determined"]
+    assert [p["kind"] for p in out["tie_places"]] == ["tie"]

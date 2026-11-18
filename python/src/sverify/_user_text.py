@@ -13,6 +13,7 @@ names. Where it cannot tell, the expression keeps Lean's notation.
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from collections.abc import Collection, Mapping, Sequence
@@ -22,6 +23,21 @@ from typing import Any, Literal
 from sverify import _plan_read
 
 Dialect = Literal["ibis", "sql"]
+
+
+def closest(name: object, known: Collection[str]) -> str | None:
+    """The name in `known` closest to `name` (ignoring case), or None when
+    none is close."""
+    lower = {k.lower(): k for k in known}
+    close = difflib.get_close_matches(str(name).lower(), lower, n=1)
+    return lower[close[0]] if close else None
+
+
+def did_you_mean(name: object, known: Collection[str]) -> str:
+    """`"; did you mean 'x'?"` for the closest name, or `""`."""
+    near = closest(name, known)
+    return f"; did you mean {near!r}?" if near else ""
+
 
 #: The relation types whose output is their input's columns, unchanged.
 _PASS = ("filter", "sort", "fetch")
@@ -51,17 +67,29 @@ def _field(e: Any) -> int | None:
     return None
 
 
-Seen = list[tuple[list[Any], set[int], dict[int, list[str]], set[tuple[int, ...]]]]
+Seen = list[tuple[list[Any], set[int], dict[int, list[str]], set[tuple[int | None, ...]]]]
 
 
-def _pairs(node: Any, out: set[tuple[int, ...]]) -> None:
-    """The column arguments of each function call in an expression whose
-    arguments are all columns: `($1 - $3)` is `(1, 3)`."""
+def _operand(e: Any) -> int | None | Literal[False]:
+    """A call's operand: its column, None for a literal (through casts), or
+    False for anything else."""
+    f = _field(e)
+    if f is not None:
+        return f
+    while isinstance(e, dict) and "cast" in e:
+        e = e["cast"].get("input")
+    return None if isinstance(e, dict) and "literal" in e else False
+
+
+def _pairs(node: Any, out: set[tuple[int | None, ...]]) -> None:
+    """The operands of each function call in an expression whose arguments
+    are all columns or literals, with at least one column: `($1 - $3)` is
+    `(1, 3)` and `($1 * 2)` is `(1, None)`."""
     if isinstance(node, dict):
         fn = node.get("scalarFunction")
         if isinstance(fn, dict):
-            args = [_field((a or {}).get("value")) for a in fn.get("arguments") or []]
-            if args and all(a is not None for a in args):
+            args = [_operand((a or {}).get("value")) for a in fn.get("arguments") or []]
+            if args and all(a is not False for a in args) and any(a is not None for a in args):
                 out.add(tuple(args))  # type: ignore[arg-type]
         for v in node.values():
             _pairs(v, out)
@@ -74,13 +102,38 @@ class _Slot:
     """A column a relation computes: named once the plan's output names show
     that it reaches the output unchanged (`columns`)."""
 
-    __slots__ = ("name",)
+    __slots__ = ("fallback", "name")
 
     def __init__(self) -> None:
         self.name: str | None = None
+        self.fallback: str | None = None
+        """What a measure computes (`sum(amount)`), used while the output's
+        name for the column is not known."""
 
 
 def _name(v: Any) -> str | None:
+    if isinstance(v, _Slot):
+        return v.name if v.name is not None else v.fallback
+    return v
+
+
+def _measure_slot(m: Any, inp: list[Any], fns: Mapping[int, str]) -> _Slot:
+    """The column an aggregate's measure computes, named by the measure
+    (`sum(amount)`) when it is one call on a named column, so that a later
+    expression over it reads `sum(amount) * 2`."""
+    slot = _Slot()
+    fn = (m or {}).get("measure") or {}
+    args = fn.get("arguments") or []
+    if len(args) == 1 and (f := _field(args[0].get("value"))) is not None and f < len(inp):
+        column = _name(inp[f])
+        if column is not None:
+            base = _plan_read.base_name(fns.get(fn.get("functionReference", 0), "?"))
+            slot.fallback = f"{_AGG_NAMES.get(base, base)}({column})"
+    return slot
+
+
+def _settled(v: Any) -> str | None:
+    """The name of a column that is certain: a table's, or the output's."""
     return v.name if isinstance(v, _Slot) else v
 
 
@@ -100,7 +153,7 @@ def columns(plan: Mapping[str, Any]) -> Seen:
     def record(inp: list[Any] | None, exprs: Any, measures=None) -> None:
         reads: set[int] = set()
         _refs(exprs, reads)
-        pairs: set[tuple[int, ...]] = set()
+        pairs: set[tuple[int | None, ...]] = set()
         _pairs(exprs, pairs)
         # An input whose names are not known is kept, as `[]`: a relation
         # that reads the columns makes their names ambiguous.
@@ -119,8 +172,8 @@ def columns(plan: Mapping[str, Any]) -> Seen:
             args = []
             for a in win.get("arguments") or []:
                 v = a.get("value") if isinstance(a, dict) else None
-                if (g := _field(v)) is not None and g < len(inp) and _name(inp[g]) is not None:
-                    args.append(_name(inp[g]))
+                if (g := _field(v)) is not None and g < len(inp) and _settled(inp[g]) is not None:
+                    args.append(_settled(inp[g]))
                 elif isinstance(v, dict) and "literal" in v:
                     continue
                 else:
@@ -177,7 +230,7 @@ def columns(plan: Mapping[str, Any]) -> Seen:
                 ]
             if inp is None:
                 return None
-            return emit(rel, keys + [_Slot() for _ in rel.get("measures") or []])
+            return emit(rel, keys + [_measure_slot(m, inp, fns) for m in rel.get("measures") or []])
         # Windows, unnests, extensions: their expressions are read, but what
         # they output is not followed.
         record(inp, {k: v for k, v in rel.items() if k != "input"})
@@ -200,6 +253,7 @@ def columns(plan: Mapping[str, Any]) -> Seen:
 
 
 _FIELD = re.compile(r"\$(\d+)")
+_OPERAND = r"\$\d+|-?\d+(?:\.\d+)?"
 
 
 def _names(expr: str, seen: Seen) -> tuple[dict[int, str], dict[int, list[str]]] | None:
@@ -209,9 +263,12 @@ def _names(expr: str, seen: Seen) -> tuple[dict[int, str], dict[int, list[str]]]
     if not wanted:
         return {}, {}
     candidates = [x for x in seen if wanted <= x[1]]
-    # A call on columns only (`($1 - $3)`) is in a relation that makes it.
+    # A call on columns and literals (`($1 - $3)`, `($1 * 2)`) is in a relation
+    # that makes it.
     calls = {
-        tuple(int(i) for i in _FIELD.findall(m)) for m in re.findall(r"\((\$\d+ \S+ \$\d+)\)", expr)
+        tuple(int(t[1:]) if t[0] == "$" else None for t in (m[0], m[2]))
+        for m in re.findall(rf"\(({_OPERAND}) (\S+) ({_OPERAND})\)", expr)
+        if m[0][0] == "$" or m[2][0] == "$"
     }
     if calls and (making := [x for x in candidates if calls & x[3]]):
         candidates = making

@@ -153,7 +153,7 @@ def test_contracts_see_through_rewrites(label, expr, ensures, facts):
     bounded = [c.isnull() | ((c > -(2**61)) & (c < 2**61)) for c in (_.qty, _.id)]
     requires = {"t": bounded} if label == "abs" else None
     report = sv.verify(expr, requires=requires, ensures=ensures)
-    assert report.proved, f"{label}: {report}"
+    assert report.verdict == sv.Verdict.PROVED, f"{label}: {report}"
     for col, fact in facts.items():
         assert report.facts[col] == fact, label
 
@@ -164,4 +164,4 @@ def test_clip_keeps_its_bounds_given_non_null_input():
         requires={"t": [_.qty.notnull()]},
         ensures=[_.x.notnull(), _.x <= 10],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)

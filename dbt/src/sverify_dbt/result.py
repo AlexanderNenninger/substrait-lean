@@ -153,7 +153,14 @@ class CheckResult:
         """`suggestions` as a dbt properties file, with each test's reason as
         a comment: merge it into the project's YAML (dbt rejects a second
         entry for a relation another file describes)."""
-        return suggestions_yaml(self.suggestions())
+        text = suggestions_yaml(self.suggestions())
+        refused = [m for m in self.models if m.refused]
+        if refused and not self.suggestions():
+            text = (
+                f"# sverify-dbt suggests no tests: {len(refused)} of {len(self.models)} "
+                "model(s) were refused, so nothing was read; see the refusals of `check`\n"
+            )
+        return text
 
     def __getitem__(self, name: str) -> ModelResult:
         for m in self.models:
@@ -162,7 +169,7 @@ class CheckResult:
         raise KeyError(name)
 
     @property
-    def proved(self) -> list[TestResult]:
+    def proved_tests(self) -> list[TestResult]:
         """The tests proved before any model runs: `dbt build` may skip them."""
         return [t for m in self.models for t in m.tests if t.status == "proved"]
 
@@ -170,7 +177,7 @@ class CheckResult:
     def skippable(self) -> list[TestResult]:
         """The proved tests `dbt build` may skip (`proved` less an incremental
         model's tests that its incremental runs can still break)."""
-        return [t for t in self.proved if t.skippable]
+        return [t for t in self.proved_tests if t.skippable]
 
     @property
     def contract_errors(self) -> list[tuple[str, ContractIssue]]:

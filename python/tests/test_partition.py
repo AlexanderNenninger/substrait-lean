@@ -368,6 +368,19 @@ def test_integer_avg_truncates_the_whole_mean():
     assert canonical(tuple(r.values()) for r in got.to_pylist()) == canonical([(0, None), (1, 4)])
 
 
+def test_an_integer_avg_grouped_by_the_split_key_runs_per_shard():
+    """An integer `AVG` depends on its group's values only (`AggFn.orderFree`).
+    Grouped by the split key, each group lies in one shard, so the plan runs on
+    each shard as it is (`linear`), and the shards' rows are the whole's."""
+    plan = int_avg(r_table.group_by("b").aggregate(m=r_table.a.mean()))
+    s = split(plan, ["r"], keys={"r": ["b"]})
+    assert (s.mode, s.proved) == ("linear", True)
+    rows = [(-7, 1, 0), (-8, 1, 0), (5, 1, None), (4, 2, 0), (3, 2, 0)]
+    shards = [{"r": arrow(rows[:3])}, {"r": arrow(rows[3:])}]
+    got = run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]})
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
 # -- Split double sums within a proved bound (#428) --------------------------
 
 F = ibis.schema({"g": "int64", "x": "float64"})

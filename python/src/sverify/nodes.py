@@ -282,7 +282,12 @@ class Node:
         if report is None:
             return to_sql(self.internal_plan, dialect_of(dialect))
         d = report._sql_route(dialect)[0]
-        return to_sql(self.internal_plan, d, deterministic=report.deterministic)
+        return to_sql(
+            self.internal_plan,
+            d,
+            deterministic=report.deterministic,
+            rows="sequence" if report.observation.rows == "sequence" else "multiset",
+        )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
         """Apply `step` to this node, left to right: `orders.pipe(paid)` is
@@ -862,7 +867,7 @@ class _Stage:
             view_name = f"{name}_{n}"
         view = pipe.view(view_name, bound, resume=resume)
         report = node.report
-        view.tie_free = report is not None and report.proved and report.deterministic
+        view.tie_free = report is not None and report._proved and report.deterministic
         prunable = {t for t, src in pipe.sources.items() if isinstance(src, _TableSource)}
         if implied is None and prunable:
             found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}

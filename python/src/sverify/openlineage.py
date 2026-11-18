@@ -376,7 +376,7 @@ def contract_facet(
         "sverify": _version(),
         "node": node.name,
         "plan": plan_digest(node.internal_plan),
-        "proved": report.proved,
+        "proved": report._proved,
         "verdict": report.verdict,
         "semantics": report.semantics,
         "equivalence": str(report.observation),
@@ -817,7 +817,7 @@ class Upstream:
         checker proves the plan's postconditions (`sv.Report.from_substrait`), and
         the export is the plan the facet names."""
         self._verify()
-        return self._report is not None and self._report.proved
+        return self._report is not None and self._report._proved
 
     @property
     def why_unverified(self) -> str | None:
@@ -856,8 +856,8 @@ class Upstream:
             self._claims(c)
             return
         self._report = report
-        if not report.proved:
-            self._why = f"the checker does not prove the exported plan: {report.verdict}"
+        if not report._proved:
+            self._why = f"the checker does not prove the exported plan: {report._summary}"
             self._claims(c)
             return
         proved = {e.label for e in report.ensures if e.proved}

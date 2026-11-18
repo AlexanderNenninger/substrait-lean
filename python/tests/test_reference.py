@@ -779,7 +779,7 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     assert INFINITE not in [i.kind for i in duck.issues + duck.assumed]
     # And proved: DuckDB's `0 · inf` is NaN, which the lift's `CASE` writes
     # and `verify` sees guards the product (#702).
-    assert duck.proved
+    assert duck.verdict == sv.Verdict.PROVED
     if engine == "polars":
         # A DuckDB proof reaches Polars by a re-check, which waits for #271.
         with pytest.raises(RouteError, match="semantics='reference'"):
@@ -860,8 +860,10 @@ def test_abs_of_the_smallest_integer_raises_at_its_width(dtype, lo):
     plan = substrait_json(con, "SELECT abs(a) AS q FROM i")
     assert issues(plan) != []
     tables = {"i": {"a": str(ibis.dtype(dtype))}}
-    assert not verify("SELECT abs(a) AS q FROM i", tables).proved
-    assert verify("SELECT abs(a) AS q FROM i", tables, [f"a >= {lo + 1}"]).proved
+    assert verify("SELECT abs(a) AS q FROM i", tables).verdict == sv.Verdict.UNPROVED
+    assert (
+        verify("SELECT abs(a) AS q FROM i", tables, [f"a >= {lo + 1}"]).verdict == sv.Verdict.PROVED
+    )
     # In range: the largest value; DuckDB on the written plan agrees.
     want = [(-(lo + 1),), (None,)]
     rows = {"i": [(lo + 1,), (None,)]}

@@ -37,7 +37,7 @@ def test_verify_proves_every_choice_and_run_takes_one() -> None:
     con.create("t", ibis.schema({"id": "int64", "amount": "int64"}), [(1, 5), (2, 7), (3, 9)])
     t = con.table("t")
     report = sv.verify(t.limit(2), requires={"t": [_.amount >= 0]}, ensures=[_.amount >= 0])
-    assert report.proved and not report.deterministic
+    assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     assert [p.op for p in report._tie_places] == ["fetch"]
     out = report.run(con, "duckdb")
     assert out.num_rows == 2

@@ -1657,7 +1657,7 @@ wheels = [
 
 [[package]]
 name = "sverify"
-version = "0.8.0"
+version = "0.9.0.dev0"
 source = { editable = "../python" }
 dependencies = [
     { name = "duckdb" },
@@ -1717,7 +1717,7 @@ docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 
 [[package]]
 name = "sverify-dbt"
-version = "0.8.0"
+version = "0.9.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
@@ -1752,7 +1752,7 @@ dev = [
 
 [[package]]
 name = "sverify-duckdb"
-version = "0.8.0"
+version = "0.9.0.dev0"
 source = { editable = "../engines/duckdb" }
 dependencies = [
     { name = "sverify" },
