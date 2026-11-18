@@ -29,7 +29,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
-from sverify._run_schema import declared_columns, int_range, range_message
+from sverify._run_schema import declared_columns, int_range, null_message, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
@@ -2340,7 +2340,7 @@ def refuse_schema(plan: object, con: Connection, engine: str | None = None) -> N
             continue
         z = con.get(t)
         data = z if isinstance(z, pa.Table) else None
-        wide: set[tuple[str, str]] = set()
+        checks: set[tuple[str, str | None]] = set()
         for declared in schemas:
             found, more = schema_problems(declared, con.schema(t), data)
             if found:
@@ -2350,22 +2350,27 @@ def refuse_schema(plan: object, con: Connection, engine: str | None = None) -> N
                     + ": refused before the run. Declare the column as it is (a wider "
                     "integer type for a value outside the width), or fix the source"
                 )
-            wide.update(more)
+            checks.update(more)
         table = con.table(t)
-        for col, key in sorted(wide):
-            lo, hi = int_range(key)
+        for col, key in sorted(checks, key=lambda c: (c[0], c[1] or "")):
             x: Any = ibis._[col]
-            cond = x.isnull() | ((x >= lo) & (x <= hi))
+            if key is None:
+                cond = x.notnull()
+            else:
+                lo, hi = int_range(key)
+                cond = x.isnull() | ((x >= lo) & (x <= hi))
             [(_c, n, error)] = violation_counts(table, [cond], engine)
             if n or error:
+                what = (
+                    f"the check of column {col!r} raised: {error}"
+                    if error
+                    else null_message(col, n)
+                    if key is None
+                    else range_message(col, key, n, _example(table, cond, col))
+                )
                 raise PreconditionError(
-                    f"table {t} differs from the schema the plan was verified for: "
-                    + (
-                        f"the range check of column {col!r} raised: {error}"
-                        if error
-                        else range_message(col, key, n, _example(table, cond, col))
-                    )
-                    + ": refused before the run. Declare a wider integer type, or cast in "
-                    "the query",
+                    f"table {t} differs from the schema the plan was verified for: {what}"
+                    ": refused before the run. Declare the column as it is (a wider integer "
+                    "type for a value outside the width), or fix the source",
                     source=t,
                 )

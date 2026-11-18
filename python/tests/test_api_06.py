@@ -443,3 +443,16 @@ def test_run_adds_at_the_edge_of_a_narrower_physical_width(engine: str) -> None:
     report = sv.verify(t.select(y=t.a + t.a), requires=[_.a < 2**40, _.a > -(2**40)])
     data = pa.table({"a": pa.array([32767], pa.int16())})
     assert report.run(_con(engine, {"t": data}), engine=engine).to_pylist() == [{"y": 65534}]
+
+
+def test_run_counts_the_nulls_of_a_resident_table() -> None:
+    from sverify_duckdb import DuckDBStore
+
+    t = ibis.table({"a": "!int64"}, name="t")
+    report = sv.verify(t.select(y=t.a))
+    con = sv.connect()
+    con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, None], pa.int64())})))
+    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' holds 1 NULL"):
+        report.run(con)
+    con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, 2], pa.int64())})))
+    assert len(report.run(con).to_pylist()) == 2

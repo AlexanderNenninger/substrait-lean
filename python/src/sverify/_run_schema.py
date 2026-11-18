@@ -140,14 +140,15 @@ def _fits(actual: pa.DataType, key: str) -> bool:
 
 def problems(
     declared: list[Declared], schema: pa.Schema, data: pa.Table | None
-) -> tuple[list[str], list[tuple[str, str]]]:
+) -> tuple[list[str], list[tuple[str, str | None]]]:
     """How a table fails the schema the plan was verified for, as messages
     (missing columns, types, NULLs in a non-null column, values outside a
-    declared integer width), and the integer columns, as `(column, declared
-    type)`, whose values the caller must range-check itself. `data` is None
-    for a table the engine reads where it is: its NULLs are then not counted,
-    and every column of a wider physical type is returned for the engine to
-    range-check; on an Arrow table the range is checked here, in one pass."""
+    declared integer width), and the columns the caller must check on the
+    engine, as `(column, declared integer type)` for a range and `(column,
+    None)` for a NULL count. `data` is None for a table the engine reads where
+    it is: every non-null column and every column of a wider physical type is
+    returned for the engine to check; on an Arrow table both are checked here,
+    in one pass."""
     expected = pa.schema(
         [
             pa.field(d.name, d.arrow(schema.field(i).type if i >= 0 else pa.null()))
@@ -156,7 +157,7 @@ def problems(
         ]
     )
     out = [str(m) for m in schema_mismatches(expected, schema)]
-    wide = []
+    on_engine: list[tuple[str, str | None]] = []
     for d in declared:
         i = schema.get_field_index(d.name)
         if i < 0:
@@ -164,13 +165,21 @@ def problems(
         actual = schema.field(i).type
         if d.int_key and pa.types.is_integer(actual) and not _fits(actual, d.int_key):
             if data is None:
-                wide.append((d.name, d.int_key))
+                on_engine.append((d.name, d.int_key))
             elif found := outside(data.column(i), *int_range(d.int_key)):
                 n, example = found
                 out.append(range_message(d.name, d.int_key, n, example))
-        if data is not None and d.non_null and (n := data.column(i).null_count):
-            out.append(f"column {d.name!r} holds {n} NULL(s), the plan reads it as non-null")
-    return out, wide
+        if d.non_null:
+            if data is None:
+                on_engine.append((d.name, None))
+            elif n := data.column(i).null_count:
+                out.append(null_message(d.name, n))
+    return out, on_engine
+
+
+def null_message(column: str, count: int) -> str:
+    """The refusal for `count` NULLs in a column the plan reads as non-null."""
+    return f"column {column!r} holds {count} NULL(s), the plan reads it as non-null"
 
 
 def range_message(column: str, key: str, count: int, example: object) -> str:
