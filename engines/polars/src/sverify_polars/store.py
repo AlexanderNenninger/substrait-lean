@@ -156,7 +156,9 @@ class PolarsStore(ArrowOps):
         # The plan's own overflow guard (a callback per batch) is left out: a
         # weight sum that leaves 64 bits comes out NULL, which is checked
         # natively on the result, one `any()` over the written weights.
-        lf = engine.to_lazy(plan, {MERGE_A: _lazy(a), MERGE_B: _lazy(b)}, guards=False)
+        lf = engine.to_lazy(
+            plan, {MERGE_A: _lazy(a), MERGE_B: _lazy(b)}, guards=False, rows="multiset"
+        )
         lf = lf.select([pl.col(f.name).cast(_dtype(f)) for f in schema])
         if keep:
             out = _write(lf, schema)

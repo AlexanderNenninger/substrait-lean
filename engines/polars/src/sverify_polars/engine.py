@@ -65,7 +65,7 @@ import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 import pyarrow as pa
 
@@ -2401,7 +2401,14 @@ def checks_of(guards: Guards) -> frozenset[str]:
 
 
 class Translator:
-    def __init__(self, plan: dict, tables: Tables, guards: Guards = True):
+    def __init__(
+        self,
+        plan: dict,
+        tables: Tables,
+        guards: Guards = True,
+        rows: Literal["sequence", "multiset"] = "sequence",
+    ):
+        self.rows = rows
         _support.check(plan, "Polars", Unsupported)
         self.functions = _plan_read.function_names(plan, Unsupported)
         self.tables = tables
@@ -2723,9 +2730,10 @@ class Translator:
         # evaluated on every input row (`Rel.HasIssue`).
         lf = self.guard(lf, [*groups, *(v for m in ms for v in m.vals)])
         keys = [f"__sv_g{k}" for k in range(len(groups))]
+        multiset = self.rows == "multiset"
         lf = lf.with_columns(
             [ordered(g.expr, g.dtype).alias(k) for g, k in zip(groups, keys, strict=True)]
-            + [g.expr.alias(f"__sv_v{k}") for k, g in enumerate(groups)]
+            + ([] if multiset else [g.expr.alias(f"__sv_v{k}") for k, g in enumerate(groups)])
             + [m.values.alias(f"__sv_m{j}") for j, m in enumerate(ms)]
             + [
                 ordered(key.expr, key.dtype).alias(f"__sv_m{j}_k{i}")
@@ -2756,7 +2764,11 @@ class Translator:
                 key = _float_key(v) if m.arg.dtype == pl.Float64 else v
                 v = key.unique(maintain_order=True)
             values.append(v)
-        if groups:
+        if groups and multiset:
+            # A bag: the groups in any order, each key the class's canonical
+            # value (`ordered`), with no row index and no `first()` per group.
+            out = lf.group_by(keys).agg(values + aggs)
+        elif groups:
             firsts = [pl.col(f"__sv_v{k}").first() for k in range(len(groups))]
             out = lf.group_by(keys, maintain_order=True).agg(firsts + values + aggs)
         else:
@@ -2767,7 +2779,10 @@ class Translator:
             for nat in natives if nat is not None
         ])  # fmt: skip
         out = out.select(
-            [pl.col(f"__sv_v{k}").alias(col(k)) for k in range(len(groups))]
+            [
+                pl.col(keys[k] if multiset else f"__sv_v{k}").alias(col(k))
+                for k in range(len(groups))
+            ]
             + [
                 (m.result(pl.col(f"__sv_m{j}")) if nat is None else nat.result).alias(
                     col(len(groups) + j)
@@ -3006,7 +3021,10 @@ class Translator:
 
 
 def _translate(
-    plan: str | dict, tables: Tables, guards: Guards = True
+    plan: str | dict,
+    tables: Tables,
+    guards: Guards = True,
+    rows: Literal["sequence", "multiset"] = "sequence",
 ) -> tuple[pl.LazyFrame, list[str]]:
     """The plan's `LazyFrame`, with its columns still positional (`c0`, `c1`,
     …) and cast to their output types, and the root's column names."""
@@ -3014,14 +3032,20 @@ def _translate(
     roots = [r["root"] for r in p.get("relations", []) if "root" in r]
     if len(roots) != 1:
         raise Unsupported("plan must have exactly one root relation")
-    lf, dtypes = Translator(p, tables, guards).rel(roots[0]["input"])
+    lf, dtypes = Translator(p, tables, guards, rows).rel(roots[0]["input"])
     names = roots[0].get("names") or [col(i) for i in range(len(dtypes))]
     if len(names) != len(dtypes):
         raise Unsupported(f"root names {names} do not match arity {len(dtypes)}")
     return lf.select([pl.col(col(i)).cast(materialize(t)) for i, t in enumerate(dtypes)]), names
 
 
-def to_lazy(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pl.LazyFrame:
+def to_lazy(
+    plan: str | dict,
+    tables: Tables,
+    *,
+    guards: Guards = True,
+    rows: Literal["sequence", "multiset"] = "sequence",
+) -> pl.LazyFrame:
     """The `LazyFrame` for a plan in Lean's written form, over `tables`
     (by name; columns in schema order). Columns are named by `RelRoot.names`;
     a Polars frame cannot hold two columns of one name, so a plan whose root
@@ -3033,8 +3057,13 @@ def to_lazy(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pl.La
     its preconditions (`Rel.guardFree_sound`). Integer `SUM` keeps its check.
     A collection of `Issue.name`s checks exactly those: for a plan verified
     under the reference, the issues its report assumes (`Report.assumed`:
-    "SUM overflow", "overflow to infinity", #575)."""
-    lf, names = _translate(plan, tables, guards)
+    "SUM overflow", "overflow to infinity", #575).
+
+    `rows` is `to_sql`'s: `"sequence"` (default) gives the rows in the order
+    `Rel.eval` gives them; `"multiset"` is for a caller that reads the rows as
+    a bag (a view's state), and lets an aggregate emit its groups in any
+    order, each key as the canonical value of its class (`Rel.Allowed`)."""
+    lf, names = _translate(plan, tables, guards, rows)
     if len(set(names)) != len(names):
         raise Unsupported(f"root names {names} repeat a name; use `run`")
     return lf.rename({col(i): name for i, name in enumerate(names)})
