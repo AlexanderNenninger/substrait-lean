@@ -32,9 +32,14 @@ pip install sverify-dbt dbt-duckdb
 Compile the project, then check it:
 
 ```bash
+dbt docs generate   # writes target/catalog.json, where the column types come from
 dbt compile
 sverify-dbt check .
 ```
+
+Without the catalog, sverify-dbt takes types from each column's `data_type`
+in the YAML and refuses a model whose inputs have none. After a `dbt run`,
+check incremental models from `dbt compile --full-refresh`.
 
 On the sample project in [`examples/shop`](examples/shop):
 
