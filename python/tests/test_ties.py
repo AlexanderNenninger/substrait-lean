@@ -139,7 +139,7 @@ def test_the_reference_proves_every_order_and_runs_natively() -> None:
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
-def test_the_deterministic_profile_refuses_open_ties_and_names_the_place(engine) -> None:
+def test_a_rerun_requirement_refuses_open_ties_and_names_the_place(engine) -> None:
     report = sv.verify(RANKED, ensures=[_.rn >= 0])
     r = routes.choose(report, engine, reproducible=sv.equivalent())
     assert r.refused
@@ -148,7 +148,7 @@ def test_the_deterministic_profile_refuses_open_ties_and_names_the_place(engine)
     assert "sv.unique('k', 'o')" in r.reason
 
 
-def test_the_deterministic_profile_takes_a_total_order() -> None:
+def test_a_rerun_requirement_takes_a_total_order() -> None:
     report = sv.verify(RANKED, requires={"t": [sv.unique("k", "o")]}, ensures=[_.rn >= 0])
     assert report.deterministic and report._tie_places == []
     assert not routes.choose(report, "duckdb", reproducible=sv.equivalent()).refused
@@ -273,6 +273,19 @@ def test_atan2_of_a_picked_double_is_not_determined_up_to_the_class(monkeypatch)
     assert not out["class_determined"]
     (place,) = out["class_places"]
     assert "ATAN2" in place["what"] and "picked from a class" in place["what"]
+
+
+def test_a_cast_of_a_picked_double_to_a_string_is_refused():
+    """D48 §2.5's second counterexample, `CAST(MIN(x) AS VARCHAR)`, tells
+    `-0.0` from `0.0` with a string result. The reference refuses every cast
+    of a double to a string, so no plan reaches the class level with one;
+    were the cast admitted, its expression is not a bare column, and
+    `Expr.classCongr` would name it as `atan2`'s is named above."""
+    from sverify.errors import UnsupportedError
+
+    mins = _T.group_by("k").aggregate(m=_T.x.min())
+    with pytest.raises(UnsupportedError, match="unsupported cast from .*float to .*str"):
+        sv.verify(mins.mutate(s=mins.m.cast("string")))
 
 
 def test_an_open_tie_is_open_at_both_levels(monkeypatch):

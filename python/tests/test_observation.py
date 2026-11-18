@@ -248,7 +248,6 @@ def test_proved_on_every_allowed_result() -> None:
     assert plain.ensures[0].proved and plain.ensures[0].allowed
 
 
-
 @pytest.mark.parametrize(
     ("zero", "negative_zero"),
     [([0.0, 1.0], [-0.0, 1.0]), ([[0.0]], [[-0.0]]), ([{"a": 0.0}], [{"a": -0.0}])],
