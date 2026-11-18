@@ -103,7 +103,7 @@ on 2026-11-07.
 | "the postcondition X reads c, which is within ..." | Tolerance | `sv.approx(X)` or `sv.equivalent(floats=...)` |
 | "c is within ...", a stated `within` the bound does not meet | Tolerance | A looser tolerance, or `sv.max_rows(N)` |
 | "c has no bound on its distance to the reference" | Tolerance | `floats="plan"` or drop the tolerance; lifted by [#1032] and [#85] |
-| "a filter, grouping key or sort on a double may keep other rows" | Tolerance | A precondition away from the threshold; refuses the whole plan: [#1045] |
+| "a filter, grouping key or sort on a double may keep other rows" | Tolerance | A constant threshold: a precondition away from it. A threshold computed from the data: exact columns, for a mean of integers `x * COUNT(y) > SUM(y)`; refuses the whole plan: [#1045] |
 | "observes the rows as a sequence, and the plan's result is not sorted" | Observations | None: [#1045] |
 | "a rerun must give the same result: ... ties stay open at ..." | Ties | `sv.unique(...)` in `requires`, or an `order_by` before `LIMIT` |
 | "two runs on E agree only up to ..." | `reproducible=` | `reproducible=sv.equivalent(floats=...)` |
