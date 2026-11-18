@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from _repo import needs_repo
 
 ROOT = Path(__file__).resolve().parents[2]
