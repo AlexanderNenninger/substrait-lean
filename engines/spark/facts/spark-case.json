@@ -26,6 +26,10 @@
     "initcap"
   ],
   "settings": {
+    "spark.sql.icu.caseMappings.enabled": [
+      true,
+      false
+    ],
     "spark.sql.ansi.enabled": [
       true,
       false
@@ -39,6 +43,50 @@
   "status": "no-finding",
   "evidence": "probe",
   "provenance": [
+    {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "the same probe under `uv run --with pyspark==<version>` (D51 facts, C3), one JVM per version, default settings",
+      "evidence": [
+        {
+          "note": "pyspark 4.0.1 and 4.1.1 map 1552 scalars for `upper` and 1460 for `lower`: 28 fewer in each direction than 4.3.0, newer additions (U+16EA0 to U+16EBF, U+A7CE to U+A7D5) that DuckDB does not map either: every one of them is in the raise sets already; pyspark 4.2.0 gives 4.3.0's table exactly. The table of the raise sets therefore holds for pyspark 4.0 to 4.3"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "source-reading",
+      "checked_by": "D51 facts (C2 of the ruling on the raise sets)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala",
+          "note": "`spark.sql.icu.caseMappings.enabled` (since 4.0.0, default true): ICU, not the JVM, implements case mappings under UTF8_BINARY collation"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/sql/catalyst/util/CollationSupport.java#L188-L224",
+          "note": "`Upper.exec` and `Lower.exec`: `execBinaryICU` when the conf is on, `execBinary` (`UTF8String.toUpperCase`) when off"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/sql/catalyst/util/CollationAwareUTF8String.java#L398-L443",
+          "note": "the default path: a fully ASCII string byte by byte, any other through ICU's `UCharacter.toUpperCase(String)` / `toLowerCase(String)`, which take the default locale"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/unsafe/types/UTF8String.java#L792-L840",
+          "note": "the JVM path: `String.toUpperCase()` / `toLowerCase()` without a locale argument, so the JVM's default locale"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "sverify_dev.case_tables --spark-setting (D51 facts, pyspark 4.3.0, OpenJDK 21.0.13, ICU 78.3 with Unicode 17)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/case-tables-settings.json",
+          "note": "every scalar under the ICU path (the default) and the JVM path (`spark.sql.icu.caseMappings.enabled=false`), in the JVM's default locale (de_DE here) and with `user.language` tr, az and lt, as differences from the default table. The JVM path lacks 55 pairs ICU has (`upper('ƛ')`, U+019B to U+A7DC): scalars DuckDB leaves alone too, so they are in the raise sets already. tr and az: `lower('İ')` is `i`, and in a string with a non-ASCII scalar `I` lowers to `ı` and `i` uppercases to `İ` (`lower('Ié')` is `ıé`); lt: `lower` of `Ì`, `Í`, `Ĩ` keeps a dot above"
+        }
+      ]
+    },
     {
       "checked_at": "2026-11-18",
       "method": "probe",
