@@ -505,7 +505,7 @@ theorem Expr.mixed_length {ps : List Expr} (hnp : ∃ q ∈ ps, q.plain = false)
   intro h
   obtain ⟨q, hq, hqf⟩ := hnp
   have := List.filter_eq_self.mp ((List.filter_sublist ps).eq_of_length h) q hq
-  simp_all
+  simp [hqf] at this
 
 omit [Boxes.Ambient] in
 theorem Expr.filter_plain_plain (ps : List Expr) : ∀ q ∈ ps.filter Expr.plain, q.plain = true :=
@@ -529,7 +529,7 @@ theorem Expr.and_outer_error (row : Row) (a e : Expr) (k : Issue)
   · next k' hk =>
     cases he
     have : firstError ((Expr.bin .and a e).issues row) = some k := by
-      simp [Expr.issues, hi, firstError_append, hk]
+      simp [Expr.issues, hi, hk]
     simp [Expr.refOutcome, this]
   · cases he
 
@@ -542,7 +542,7 @@ theorem Expr.and_outer_false (row : Row) (a e : Expr)
   · next hn =>
     have hv : e.eval row = .bool false := by simpa using he
     have : firstError ((Expr.bin .and a e).issues row) = none := by
-      simp [Expr.issues, hi, firstError_append, hn]
+      simp [Expr.issues, hi, hn]
     simp [Expr.refOutcome, this, Expr.eval, Impl.lean, BinFn.apply, hv, and3_false_right]
 
 theorem Expr.or_outer_error (row : Row) (a e : Expr) (k : Issue)
@@ -553,7 +553,7 @@ theorem Expr.or_outer_error (row : Row) (a e : Expr) (k : Issue)
   · next k' hk =>
     cases he
     have : firstError ((Expr.bin .or a e).issues row) = some k := by
-      simp [Expr.issues, hi, firstError_append, hk]
+      simp [Expr.issues, hi, hk]
     simp [Expr.refOutcome, this]
   · cases he
 
@@ -566,7 +566,7 @@ theorem Expr.or_outer_true (row : Row) (a e : Expr)
   · next hn =>
     have hv : e.eval row = .bool true := by simpa using he
     have : firstError ((Expr.bin .or a e).issues row) = none := by
-      simp [Expr.issues, hi, firstError_append, hn]
+      simp [Expr.issues, hi, hn]
     simp [Expr.refOutcome, this, Expr.eval, Impl.lean, BinFn.apply, hv, or3_true_right]
 
 /-- **The lift protects** (G2 for `andLift`): where an operand is FALSE and the
@@ -613,7 +613,7 @@ theorem Expr.andLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List
   · next h => exact absurd h hlen
   split
   · exact hg
-  · exact Expr.and_outer_error row _ _ (Expr.conj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)) hg
+  · exact Expr.and_outer_error row _ _ k (Expr.conj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)) hg
 
 theorem Expr.orLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List Expr) (k : Issue)
     (hpre : ∀ q ∈ pre, Expr.GoOr row q) (hp : firstError (p.issues row) = some k)
@@ -627,6 +627,6 @@ theorem Expr.orLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List 
   · next h => exact absurd h hlen
   split
   · exact hg
-  · exact Expr.or_outer_error row _ _ (Expr.disj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)) hg
+  · exact Expr.or_outer_error row _ _ k (Expr.disj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)) hg
 
 end Substrait
