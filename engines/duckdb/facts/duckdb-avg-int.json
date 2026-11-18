@@ -3,7 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "`AVG` of integers: a `DOUBLE` within a bound of the exact mean",
-  "verdict": "`DOUBLE`; for exact sum s and count n: |s| <= 2^53, one of the two doubles around s/n (s/n itself when it is a double); |s| > 2^53, within a relative bound of s/n that covers every path (constant open)",
+  "verdict": "`DOUBLE`; for exact sum s and count n: |s| <= 2^53 and n <= 2^53, one of the two doubles around s/n (s/n itself when it is a double); otherwise within 8 * 2^-53 of s/n, relatively",
   "area": "aggregates",
   "options": [
     "avg_int_result",
@@ -45,7 +45,7 @@
   ],
   "settings": {},
   "description": [
-    "For the non-NULL values with exact sum `s` and count `n`, `avg` of `INTEGER` or `BIGINT` returns a double `r` with: `|s| <= 2^53`, `r` is one of the two doubles around `s / n`, and `s / n` itself when that is a double; `|s| > 2^53`, `r` is within a relative bound of `s / n` that covers every path below (the sum rounded to a double, then divided; the 80-bit quotient rounded again; the two-rounding cast of a negative sum). Fable's estimate of the constant is 4 * 2^-53; the owner of the profile change (12d-2) derives and proves it. Which member of the set comes back depends on the platform's `long double`, on the plan's shape, on sibling aggregates, on statistics and on optimizer settings, so the set is the fact and no shape is. The paragraphs below are the evidence.",
+    "For the non-NULL values with exact sum `s` and count `n`, `avg` of `INTEGER` or `BIGINT` returns a double `r` with: `|s| <= 2^53` and `n <= 2^53`, `r` is one of the two doubles around `s / n`, and `s / n` itself when that is a double; otherwise `|r - s / n| <= 8 * 2^-53 * |s / n|`, a bound that covers every path below (the sum rounded to a double, then divided; the 80-bit quotient rounded again; the two-rounding cast of a negative sum; a count past `2^53` rounded). The constant is derived path by path in the last provenance entry (12d-2 of #1608). Which member of the set comes back depends on the platform's `long double`, on the plan's shape, on sibling aggregates, on statistics and on optimizer settings, so the set is the fact and no shape is. The paragraphs below are the evidence.",
     "`avg` has one overload per integer width it names, `SMALLINT`, `INTEGER`, `BIGINT` and `HUGEINT`, and each returns `DOUBLE`; there is no integer result. `TINYINT` has none: the binder takes the overload with the cheapest implicit cast, and a cast to `BIGINT` costs 101 against 110 for `SMALLINT`, so `avg(TINYINT)` runs the `BIGINT` one.",
     "`SMALLINT`: the sum is an `int64_t` (`RegularAdd`, unchecked, out of reach below 2^48 rows) and the result `double(sum) / double(count)`. `INTEGER` and `BIGINT`: the sum is an exact `HUGEINT` (`AddToHugeint`) and the native finalize is `long double(sum) / long double(count)`, rounded to `DOUBLE`. `long double` is 80-bit on x86-64 Linux and the same as `double` on arm64 macOS and MSVC, so the last bit of a mean can depend on the platform.",
     "No values gives NULL. The width dispatch is one template instantiation per width (`GetAverageAggregate`), which is what lets this reading cover `i8` to `i64`.",
@@ -228,9 +228,34 @@
         }
       ],
       "notes": "Aarch64 Linux and Windows unprobed. Whether DuckDB's CI compares a grouped mean exactly was not checked."
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "source-reading",
+      "checked_by": "track A's Lean worker (#1608 12d-2, ruling 79 item 6): the constant of the second range, from the casts and divisions of every path",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types/hugeint.cpp#L458-L469",
+          "note": "CastBigintToFloating, for s = U * 2^64 + L: U = -1 computes -REAL_T(UINT64_MAX - L) - 1 (two roundings); every other U computes REAL_T(L) + REAL_T(U) * (REAL_T(UINT64_MAX) + 1), whose multiplier is 2^64 as a double (UINT64_MAX rounds up to 2^64, and adding 1 rounds back to it) and 2^64 in an 80-bit or 128-bit long double (2^64 - 1 is exact there, and adding 1 is exact): the product is exact either way, so three roundings."
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L83-L90",
+          "note": "GetAverageDivident: the count converted to the division's type, exact up to 2^53 (one rounding above)."
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L116-L124",
+          "note": "IntegerAverageOperationHugeint::Finalize: Hugeint::Cast<long double>(sum) / long double(count), assigned to a double: the cast, the division and one more rounding."
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/aggregate_function_rewriter.cpp#L70-L172",
+          "note": "AvgRewriteRule: CAST(SUM(x) AS DOUBLE) / CAST(COUNT(x) AS DOUBLE), the same cast in doubles, then one division."
+        }
+      ],
+      "notes": "With u = 2^-53 and each rounding to nearest within a relative u (u' for the long double: 2^-64 on x86-64, 2^-113 on aarch64 Linux, u where it is a double), the cast of the sum is within: u for U = 0; 2u + u^2 for U = -1; 2u + u^2 for U >= 1, since its two terms' errors add to at most u * (L + U * 2^64) = u * |s|; 4u + 3u^2 for U <= -2, since |s| >= (|U| - 1) * 2^64 makes those errors at most u * 2^64 * (1 + |U|) <= 3u * |s|. The count is exact up to 2^53 and within u above. The rewritten shapes divide once in doubles: (1 + 4u + 3u^2)(1 + u)/(1 - u) - 1 < 7u. The native finalize does the same in long double and rounds the quotient to a double: (1 + 4u' + 3u'^2)(1 + u')/(1 - u') * (1 + u) - 1 < 7u. So every path is within 7u of s / n, and the fact states 8u, which leaves the u^2 terms room. Below 2^53 in |s| and n, every step is exact but the division and the long double's second rounding, both monotone, so the result is one of the two doubles around s / n (ruling 79). Read at v2.0.0; not run."
     }
   ],
   "issues": [
-    209
+    209,
+    1608
   ]
 }

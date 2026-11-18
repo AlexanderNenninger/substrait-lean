@@ -1,3 +1,4 @@
+import Sverify.DuckDB.AvgSet
 import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Engine
 import Sverify.DuckDB.Functions

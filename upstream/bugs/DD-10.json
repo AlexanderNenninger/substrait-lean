@@ -1,0 +1,34 @@
+{
+  "id": "DD-10",
+  "project": "duckdb",
+  "kind": "bug",
+  "version": "2.0.0",
+  "status": "unverified",
+  "status_note": "Reproduces on 2.0.0 (Python wheel) on arm64 macOS; read in the source at v2.0.0. Not checked against the latest release or main, and the duckdb/duckdb issues were not searched.",
+  "title": "`HUGEINT` to `DOUBLE` of a negative value rounds twice",
+  "summary": [
+    "`CastBigintToFloating` (https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types/hugeint.cpp#L458-L469) computes a negative value as `-REAL_T(UINT64_MAX - lower) - 1`, which rounds twice in `REAL_T`, so the result can be one unit in the last place from the correctly rounded one. `BIGINT` to `DOUBLE` of the same value is correct.",
+    "It reaches `avg` of integers: the sum is a `HUGEINT`, and every path that casts it to `DOUBLE` inherits the error for a negative sum of magnitude 2^53 and above."
+  ],
+  "repro": "`SELECT (-9007199254740994)::HUGEINT::DOUBLE, (-9007199254740994)::BIGINT::DOUBLE` gives `-9007199254740992.0` and `-9007199254740994.0`. The mean of one value shows it: `SELECT avg(v) FROM (SELECT -9007199254740994::BIGINT v)` gives `-9007199254740992.0`, grouped and ungrouped, where the value is a double.",
+  "handling": "None needed in the SQL sverify writes (it casts the sum to `BIGINT` first, `dialect.py`, `int_avg`). The DuckDB profile's model of `avg` allows for it through the fact's bound (12d-2).",
+  "found_by": "worker 8 (#1608 item 12, 12d), ruling 74; engines/duckdb/probes/avg_int_shapes.py, 'negative sum' pool",
+  "issues": [
+    1608
+  ],
+  "files": [
+    "engines/duckdb/probes/avg_int_shapes.py"
+  ],
+  "facts": [
+    "duckdb-avg-int"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-18",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "probe on arm64 macOS and x86-64 Linux; the source read at v2.0.0"
+    }
+  ]
+}
