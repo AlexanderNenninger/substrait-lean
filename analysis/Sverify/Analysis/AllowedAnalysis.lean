@@ -628,6 +628,50 @@ theorem Row.EquivFrom.length_eq {q : Obs} {ctx : ObsCtx} :
   | _, _ :: _, _ :: _, ⟨_, t⟩ => by simp [Row.EquivFrom.length_eq t]
   | _, [], _ :: _, h | _, _ :: _, [], h => h.elim
 
+/-- **Contracts hold on a result near one of an order's.** On data meeting the
+preconditions, the postconditions `es` of the transformation `T`, selected by
+`mp`, hold on the rows `t`, when `t` is, under the observation `q` (rows as a
+multiset), the result `t'` of one of the reference's orders, the
+postconditions are `Expr.robustB` under `q` with the shifts `sh`, and the
+checker proves them narrowed by `sh` on every order (`contract_sound_all`).
+`contract_sound_allowed` takes `t` from `Rel.Allowed`, and an engine's run
+takes it from its table (`Engine.contract_sound_runs_near`). -/
+theorem contract_sound_near {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
+    {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
+    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
+    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
+    (hT : T.WF cat) {q : Obs} {ctx : ObsCtx} (hq : q.rows = .multiset) {sh : Nat → Option Shift}
+    (hsh : ∀ i s, sh i = some s → s.Sound q ctx i)
+    (hrob : ∀ j ∈ mp, (postExpr (T.arity cat) es j).robustB q ctx sh = true)
+    (hQ : (Rel.emit (.project T (es.map (·.narrow sh))) mp).WF cat) {W : WindowKeys}
+    (hW : W.SoundAll cat)
+    (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
+      (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
+        AVal.certainlyTrue = true)
+    {t t' : Relation} (ht' : T.OrderAllowed cat t') (heq : Relation.Equiv q ctx t' t) :
+    ∀ row ∈ (t.map fun row => row ++ es.map (·.eval row)).map (fun row => mp.map (row.getD · .null)),
+      ∀ v ∈ row, v = .bool true := by
+  intro row hrow v hv
+  unfold Relation.Equiv at heq; rw [hq] at heq
+  obtain ⟨p, hf, hpt⟩ := heq
+  -- The row of `T` it comes from, and its partner in an order's result.
+  simp only [List.map_map, List.mem_map, Function.comp] at hrow
+  obtain ⟨x, hx, rfl⟩ := hrow
+  obtain ⟨x', hx', hxx⟩ := Forall2.mem_right hf (hpt.mem_iff.mpr hx)
+  have hlen' : x'.length = T.arity cat := Rel.orderAllowed_arity hcat hT ht' x' hx'
+  have hlen : x.length = T.arity cat := (Row.EquivFrom.length_eq hxx).symm.trans hlen'
+  -- The narrowed postconditions hold on the partner (`contract_sound_all`).
+  have hall := contract_sound_all hcat hS hpre hQ hW hproved
+    (out := (t'.map fun row => row ++ (es.map (·.narrow sh)).map (·.eval row)).map
+      fun row => mp.map (row.getD · .null)) ⟨_, ⟨t', ht', rfl⟩, rfl⟩
+  obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hv
+  have h' := hall (mp.map ((x' ++ (es.map (·.narrow sh)).map (·.eval x')).getD · .null))
+    (List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨x', hx', rfl⟩, rfl⟩) _
+    (List.mem_map.mpr ⟨j, hj, rfl⟩)
+  rw [postExpr_eval hlen', postExpr_narrow] at h'
+  rw [postExpr_eval hlen, ← Value.isTrue_iff]
+  exact Expr.narrow_sound hsh _ (hrob j hj) hxx (Value.isTrue_iff.mpr h')
+
 /-- **Contracts hold on every allowed result.** On data meeting the
 preconditions, the postconditions `es` of the transformation `T`, selected
 by `mp`, hold on every result the reference allows (`Rel.Allowed`, every
@@ -653,27 +697,9 @@ theorem contract_sound_allowed {cat : Catalog} (hcat : cat.WF) {S : String → L
         AVal.certainlyTrue = true) :
     ∀ {out : Relation}, (Rel.emit (.project T es) mp).Allowed cat out →
       ∀ row ∈ out, ∀ v ∈ row, v = .bool true := by
-  rintro out ⟨_, ⟨t, ht, rfl⟩, rfl⟩ row hrow v hv
+  rintro out ⟨_, ⟨t, ht, rfl⟩, rfl⟩
   obtain ⟨t', ht', heq⟩ := hsafe t ht
-  unfold Relation.Equiv at heq; rw [hq] at heq
-  obtain ⟨p, hf, hpt⟩ := heq
-  -- The row of `T` it comes from, and its partner in an order's result.
-  simp only [List.map_map, List.mem_map, Function.comp] at hrow
-  obtain ⟨x, hx, rfl⟩ := hrow
-  obtain ⟨x', hx', hxx⟩ := Forall2.mem_right hf (hpt.mem_iff.mpr hx)
-  have hlen' : x'.length = T.arity cat := Rel.orderAllowed_arity hcat hT ht' x' hx'
-  have hlen : x.length = T.arity cat := (Row.EquivFrom.length_eq hxx).symm.trans hlen'
-  -- The narrowed postconditions hold on the partner (`contract_sound_all`).
-  have hall := contract_sound_all hcat hS hpre hQ hW hproved
-    (out := (t'.map fun row => row ++ (es.map (·.narrow sh)).map (·.eval row)).map
-      fun row => mp.map (row.getD · .null)) ⟨_, ⟨t', ht', rfl⟩, rfl⟩
-  obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hv
-  have h' := hall (mp.map ((x' ++ (es.map (·.narrow sh)).map (·.eval x')).getD · .null))
-    (List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨x', hx', rfl⟩, rfl⟩) _
-    (List.mem_map.mpr ⟨j, hj, rfl⟩)
-  rw [postExpr_eval hlen', postExpr_narrow] at h'
-  rw [postExpr_eval hlen, ← Value.isTrue_iff]
-  exact Expr.narrow_sound hsh _ (hrob j hj) hxx (Value.isTrue_iff.mpr h')
+  exact contract_sound_near hcat hS hpre hT hq hsh hrob hQ hW hproved ht' heq
 
 /-- **Contracts hold on every allowed result of a closed plan** (D25): the
 side condition of `contract_sound_allowed` replaced by the decidable
