@@ -265,6 +265,11 @@ structure Report where
   rows (`Rel.detPlan`): then every result the reference allows is `Rel.eval`'s
   up to that order (`check_deterministic_sound`). -/
   deterministic : Bool := true
+  /-- Is the transformation closed (`Rel.closedB`): no measure the reference
+  leaves open (`VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR`, `QUANTILE_CONT`), so
+  every result it allows is one of an order's (`Rel.allowed_orderAllowed`)?
+  The float safety an engine's theorem reads (`check_proved_on`). -/
+  closed : Bool := false
   /-- Does every window order its partitions totally? A `FETCH` over ties
   keeps every proof (it takes some rows of an allowed order) and the written
   SQL breaks its ties by input order; only a rerun may differ. -/
@@ -393,6 +398,7 @@ def Report.json (r : Report) : Json :=
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
+    ("closed", Lean.toJson r.closed),
     ("windows_total", Lean.toJson r.windowsTotal),
     ("tie_places", Json.arr (r.tiePlaces.map fun (i, op, what) => Json.mkObj
       [("relation", Lean.toJson i), ("op", Lean.toJson op), ("what", Lean.toJson what)]).toArray),
@@ -956,6 +962,9 @@ def guardFreeIn (K : KnowledgeEnv) : Bool := match R.transform with
       p.root.constIssues.isEmpty
   | none => false
 
+/-- Is the transformation closed (`Rel.closedB`): the report's `closed`. -/
+def closedIn : Bool := R.transform.any (·.root.closedB)
+
 /-- The input foreign keys (`references`). -/
 def foreignKeysOf : ForeignKeys :=
   foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
@@ -1151,6 +1160,7 @@ def Request.check (R : Request) : Except String Report :=
       let ensures := (R.ensures.zip envs).map fun (q, env) => Request.ensureResults.resultsOf q env
       let tiePlaces := R.tiePlacesIn K
       let deterministic := R.transform.isSome && tiePlaces.isEmpty
+      let rep := { rep with closed := R.closedIn }
       let (optimized, rewrites) := R.optimizedJson K
       .ok { rep with ensures, tiePlaces, deterministic, keys, issues, guardFree, optimized, rewrites }
 
@@ -1186,6 +1196,7 @@ structure Request.CheckOk (R : Request) (rep : Report) : Prop where
   ensures : rep.ensures = R.ensures.map R.ensureResults
   deterministic : rep.deterministic = R.deterministicIn R.kenv
   tiePlaces : rep.tiePlaces = R.tiePlacesIn R.kenv
+  closed : rep.closed = R.closedIn
   keys : rep.keys = R.keysIn R.kenv
   issues : rep.issues = R.issuesIn R.kenv
   guardFree : rep.guardFree = R.guardFreeIn R.kenv
@@ -1206,7 +1217,7 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
       · cases hc
         rw [Request.postEnvs_eq]
         exact ⟨by simpa using hwf, by simpa using htw, R.zip_results R.ensures,
-          (R.deterministicIn_eq _).symm, rfl, rfl, rfl, rfl, rfl⟩
+          (R.deterministicIn_eq _).symm, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem check_parse {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) : R.check = .ok rep := by
@@ -1224,6 +1235,11 @@ theorem check_deterministic {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
     rep.deterministic = R.deterministicIn R.kenv :=
   (Request.check_ok (check_parse hR hc)).deterministic
+
+/-- The report's `closed` is `Request.closedIn`'s. -/
+theorem check_closed {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) : rep.closed = R.closedIn :=
+  (Request.check_ok (check_parse hR hc)).closed
 
 /-- The report's `tie_places` are `Request.tiePlacesIn`'s. -/
 theorem check_tiePlaces {input : Json} {R : Request} {rep : Report}
