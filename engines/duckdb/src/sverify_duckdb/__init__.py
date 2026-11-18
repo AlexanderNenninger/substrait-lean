@@ -225,6 +225,9 @@ class DuckDBStore(ArrowOps):
             schema = db.sql(f"SELECT * FROM main.{_q(name)} LIMIT 0").to_arrow_table().schema
         return Resident(name, schema, kind, reads)
 
+    def kept(self, table: pa.Table) -> State:
+        return self.keep_table(table)
+
     def keep_table(self, table: pa.Table) -> Resident:
         """An Arrow table, held by DuckDB."""
         with DuckDBStore._lock:

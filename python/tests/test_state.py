@@ -131,13 +131,55 @@ def pipeline(engine):
 @pytest.mark.parametrize("engine", installed_engines())
 def test_views_keep_their_state_where_their_engine_reads_it(engine):
     pipe, views = pipeline(engine)
-    held = Resident if engine == "duckdb" else pa.Table
+    held: type = pa.Table
+    if engine == "duckdb":
+        held = Resident
+    elif engine == "polars":
+        from sverify_polars.store import PolarsState
+
+        held = PolarsState
     for step in range(3):
         deletes = orders()[2 * step : 2 * step + 2]
         pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
         for v in views:
             assert isinstance(v.state, held)
             assert one_zero(v.rows()) == one_zero(v.recompute())
+
+
+#: The refresh code that may read a piece of state into Arrow: the state's rows of
+#: the groups a change touches, which the change bounds (`with_keys`).
+ANSWER_SITES = {"_linear_change"}
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_refresh_does_not_read_a_views_state_into_the_driver(engine, monkeypatch):
+    """The state stays in its engine (#1329): during a refresh nothing reads a
+    handle into Arrow except the answer sites above."""
+    import inspect
+
+    classes = [Resident]
+    if engine == "polars":
+        pytest.importorskip("sverify_polars")
+        from sverify_polars.store import PolarsState
+
+        classes = [PolarsState]
+    pipe, _ = pipeline(engine)
+
+    def poisoned(cls):
+        read = cls.to_arrow
+
+        def to_arrow(self):
+            caller = [f.function for f in inspect.stack()[1:6]]
+            assert ANSWER_SITES & set(caller), f"state read into Arrow by {caller}"
+            return read(self)
+
+        return to_arrow
+
+    for cls in classes:
+        monkeypatch.setattr(cls, "to_arrow", poisoned(cls))
+    for step in range(2):
+        deletes = orders()[2 * step : 2 * step + 2]
+        pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
 
 
 def resident_names(db) -> set[str]:

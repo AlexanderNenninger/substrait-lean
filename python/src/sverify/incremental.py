@@ -1164,7 +1164,7 @@ class IncrementalView:
     def _set_schema(self, schema: pa.Schema) -> None:
         self.schema = schema
         weighted_schema = pa.schema([*schema, pa.field(WEIGHT, pa.int64())])
-        self._merge = Merger(self.con, weighted_schema)
+        self._merge = Merger(self.con, weighted_schema, self.store)
         """Adds up weighted tables of the view's rows by a plan Lean
         checked."""
 
