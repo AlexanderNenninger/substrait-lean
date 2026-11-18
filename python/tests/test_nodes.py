@@ -561,7 +561,7 @@ def test_nodes_read_stored_nodes_and_contracts_connect():
     # `flagged`'s precondition on `base` was proved from `doubled`'s contract.
     assert flagged.report is not None
     assert flagged.report.requires == {
-        "doubled": ["(_.doubled >= 0)", "_.doubled.notnull()", "unique(id)"]
+        "t": ["(_.doubled >= 0)", "_.doubled.notnull()", "unique(id)"]
     }
     jobs = sv.group(base, by_city, loc, rich)
     jobs.refresh()

@@ -250,7 +250,8 @@ class Check:
             lines.append(
                 f"`sverify explain <code>` says what a [code] means ({', '.join(codes)}){more}."
             )
-        lines.append(STATUS[self.code].replace("_", " "))
+        if not self.checked:  # a node's line has said it otherwise
+            lines.append(STATUS[self.code].replace("_", " "))
         return "\n".join(lines)
 
     def render(self, fmt: str, full: bool) -> str:
