@@ -229,7 +229,11 @@ class Observation:
         (D31, D48): exact doubles and exact zeros, so `-0.0` differs from
         `0.0`. `floats="plan"` and a tolerance read one zero and one NaN, as
         `zeros="canon"` does. Every NaN equals every other under each
-        observation."""
+        observation. `equal` and the rerun's class picks read this predicate;
+        the refinement order (`coarser_than`), which D18's check and the
+        engines' rerun rows use, still compares `zeros` as a component of its
+        own, which is stricter than `equal` under `floats="plan"` or a
+        tolerance (D48)."""
         return self.floats == "exact" and self.zeros == "exact"
 
     def ignored(self) -> list[str]:

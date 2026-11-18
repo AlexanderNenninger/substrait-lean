@@ -1101,9 +1101,10 @@ def reproducibility(
     an ORDER BY, a LIMIT without one) fails every requirement, and the
     problem names each place. A place that only picks a member of a class
     (`-0.0` or `0.0`, a NaN: a group key over doubles, `MIN`, `MAX`) fails a
-    requirement that reads the members (`Observation.reads_members`), since
-    an engine may pick another member on a rerun; the problem names each
-    pick and the two ways out. Then, on each option the plan depends on, the engine's run-to-run
+    requirement that reads the members (`Observation.reads_members`): the
+    reference leaves the member open, and the check is the plan's, reading
+    no engine fact; the problem names each pick and the two ways out. Then,
+    on each option the plan depends on, the engine's run-to-run
     variation (the `"rerun_observation"` column of its
     choices, `"rerun"` from an older checker, component
     levels as in an observation, `{}` where it is exact; `{"floats": {"bound":
@@ -1131,7 +1132,7 @@ def reproducibility(
         problems.append(
             f"{required} reads the members of a class of doubles, and the plan picks one at "
             + ("; ".join(map(str, picks)) or "a place the report does not name")
-            + f", so a rerun may pick another: {CLASS_PICKS}"
+            + f", which the reference leaves open: {CLASS_PICKS}"
         )
     if depends is None:
         depends = report._depends

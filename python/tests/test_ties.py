@@ -332,6 +332,12 @@ def test_a_class_pick_reruns_under_the_default_and_not_under_exact_zeros(expr):
     report = sv.verify(expr)
     for q in (sv.equivalent(floats="plan"), sv.equivalent(zeros="canon")):
         assert not routes.choose(report, "duckdb", reproducible=q).refused
+    # The engines' rerun rows are compared component by component, and the
+    # default keeps `zeros` as one: no row may refuse the default on its zeros
+    # (Fable's ruling on #1642, item 3).
+    for engine in ("duckdb", "polars", "spark"):
+        problems, _ = routes.reproducibility(report, engine, sv.equivalent(floats="plan"))
+        assert not [p for p in problems if "zeros" in p or "class of doubles" in p], engine
     r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
     assert r.refused and "reads the members of a class of doubles" in r.reason
     assert "picks one at the aggregate" in r.reason and routes.CLASS_PICKS in r.reason
