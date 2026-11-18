@@ -900,7 +900,7 @@ class Report:
                         + (
                             f"its range check raised: {error}"
                             if error
-                            else f"{n} value(s) lie outside it, e.g. {_outside(z, col, lo, hi)}"
+                            else f"{n} value(s) lie outside it, e.g. {_example(table, cond, col)}"
                         )
                         + ": refused before the run. Declare the wider type, or cast in the query",
                         source=t,
@@ -2274,8 +2274,7 @@ def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) ->
         return None
 
 
-def _outside(z: object, col: str, lo: int, hi: int) -> object:
-    """One value of column `col` outside `[lo, hi]`, for a message."""
-    if not isinstance(z, pa.Table):
-        return "?"
-    return next((v for v in z.column(col).to_pylist() if v is not None and not lo <= v <= hi), "?")
+def _example(table: ir.Table, cond: Condition, col: str) -> object:
+    """One value of column `col` where `cond` is not TRUE, for a message."""
+    rows = violating_rows(table, cond, 1)
+    return rows.column(col)[0].as_py() if rows is not None and rows.num_rows else "?"

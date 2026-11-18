@@ -367,3 +367,11 @@ def test_run_checks_no_range_when_the_physical_type_fits(monkeypatch) -> None:
     )
     report.run(_con("duckdb", {"t": pa.table({"a": pa.array([1, 2], pa.int16())})}))
     assert seen == []
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_run_refuses_a_string_in_a_date_column(engine: str) -> None:
+    t = ibis.table({"d": "date"}, name="t")
+    report = sv.verify(t.select(y=t.d))
+    with pytest.raises(sv.errors.PreconditionError, match=r"column 'd' is string"):
+        report.run(_con(engine, {"t": pa.table({"d": ["2024-01-01"]})}), engine=engine)

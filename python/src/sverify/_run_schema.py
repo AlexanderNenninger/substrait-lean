@@ -59,6 +59,8 @@ class Declared:
             return pa.string()
         if kind == "bool":
             return pa.bool_()
+        if kind == "date":
+            return pa.date32()
         if kind == "decimal" and isinstance(payload, tuple):
             return pa.decimal128(*payload)
         return actual
