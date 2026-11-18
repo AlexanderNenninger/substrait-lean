@@ -79,37 +79,35 @@ def Expr.BoolVal (row : Row) (p : Expr) : Prop :=
 /-- `e` raises under the reference on `row`. -/
 def Expr.Raises (row : Row) (e : Expr) : Prop := (firstError (e.issues row)).isSome
 
-omit [Boxes.Ambient] in
-theorem UnFn.issueAll_isNull (v : Value) : UnFn.isNull.issueAll v = none := by
+@[simp] theorem UnFn.issueAll_isNull (v : Value) : UnFn.isNull.issueAll v = none := by
   cases v <;> simp [UnFn.issueAll, UnFn.issue, UnFn.infIssue]
 
-omit [Boxes.Ambient] in
-theorem UnFn.issueAll_not (v : Value) : UnFn.not.issueAll v = none := by
+@[simp] theorem UnFn.issueAll_not (v : Value) : UnFn.not.issueAll v = none := by
   cases v <;> simp [UnFn.issueAll, UnFn.issue, UnFn.infIssue]
 
-omit [Boxes.Ambient] in
-theorem BinFn.issueAll_logic (f : BinFn) (hf : f = .and ∨ f = .or ∨ f = .eq) (v w : Value) :
-    f.issueAll v w = none := by
-  rcases hf with rfl | rfl | rfl <;> cases v <;> cases w <;>
-    simp [BinFn.issueAll, BinFn.issue, BinFn.infIssue, BinFn.makesInf]
+@[simp] theorem BinFn.issueAll_and (v w : Value) : BinFn.and.issueAll v w = none := by
+  cases v <;> cases w <;> simp [BinFn.issueAll, BinFn.issue, BinFn.infIssue, BinFn.makesInf]
+
+@[simp] theorem BinFn.issueAll_or (v w : Value) : BinFn.or.issueAll v w = none := by
+  cases v <;> cases w <;> simp [BinFn.issueAll, BinFn.issue, BinFn.infIssue, BinFn.makesInf]
+
+@[simp] theorem BinFn.issueAll_eq (v w : Value) : BinFn.eq.issueAll v w = none := by
+  cases v <;> cases w <;> simp [BinFn.issueAll, BinFn.issue, BinFn.infIssue, BinFn.makesInf]
 
 theorem Expr.issues_notFalse (row : Row) (p : Expr) :
     p.notFalse.issues row = p.issues row ++ p.issues row := by
-  simp [Expr.notFalse, Expr.issues, UnFn.issueAll_isNull, BinFn.issueAll_logic .or (by simp)]
+  simp [Expr.notFalse, Expr.issues]
 
 theorem Expr.issues_notTrue (row : Row) (p : Expr) :
     p.notTrue.issues row = p.issues row ++ p.issues row := by
-  simp [Expr.notTrue, Expr.issues, UnFn.issueAll_isNull, UnFn.issueAll_not,
-    BinFn.issueAll_logic .or (by simp)]
+  simp [Expr.notTrue, Expr.issues]
 
 /-! ### Values of the guards -/
 
-omit [Boxes.Ambient] in
 theorem Value.isTrue_or3_isNull (v : Value) :
     (or3 (UnFn.apply .isNull v) v).isTrue = true ↔ v ≠ .bool false := by
   cases v <;> simp [UnFn.apply, or3, Value.isTrue]
 
-omit [Boxes.Ambient] in
 theorem Value.isTrue_or3_isNull_not (v : Value) (h : v = .null ∨ ∃ b, v = .bool b) :
     (or3 (UnFn.apply .isNull v) (UnFn.apply .not v)).isTrue = true ↔ v ≠ .bool true := by
   rcases h with rfl | ⟨b, rfl⟩ <;> cases b <;> simp [UnFn.apply, or3, Value.isTrue]
@@ -131,18 +129,14 @@ theorem Expr.issues_foldl_and (row : Row) (acc : Expr) (ps : List Expr) :
   induction ps generalizing acc with
   | nil => simp
   | cons p ps ih =>
-    simp only [List.foldl_cons, ih, Expr.issues, List.flatMap_cons,
-      BinFn.issueAll_logic .and (by simp), Option.map_none, Option.toList_none, List.append_nil,
-      List.append_assoc]
+    simp [List.foldl_cons, ih, Expr.issues, List.flatMap_cons, List.append_assoc]
 
 theorem Expr.issues_foldl_or (row : Row) (acc : Expr) (ps : List Expr) :
     ((ps.foldl (.bin .or) acc).issues row) = acc.issues row ++ ps.flatMap (·.issues row) := by
   induction ps generalizing acc with
   | nil => simp
   | cons p ps ih =>
-    simp only [List.foldl_cons, ih, Expr.issues, List.flatMap_cons,
-      BinFn.issueAll_logic .or (by simp), Option.map_none, Option.toList_none, List.append_nil,
-      List.append_assoc]
+    simp [List.foldl_cons, ih, Expr.issues, List.flatMap_cons, List.append_assoc]
 
 theorem Expr.eval_foldl_and (row : Row) (acc : Expr) (ps : List Expr) :
     (ps.foldl (.bin .and) acc).eval row = ps.foldl (fun v q => and3 v (q.eval row)) (acc.eval row) := by
@@ -187,7 +181,7 @@ theorem Expr.andG_false (row : Row) (pre : List Expr) (p : Expr) (post : List Ex
     (Expr.andG (pre ++ p :: post)).refOutcome row = .ok (.bool false) := by
   obtain ⟨h1, h2⟩ := Expr.andChain_stop row (Expr.conj (pre ++ p :: post)) p post hp hf pre hpre
   simp [Expr.refOutcome, Expr.andG, Expr.issues, Expr.eval, Impl.lean, BinFn.apply, h1, h2,
-    BinFn.issueAll_logic .eq (by simp), firstError_append, Value.numPair]
+    firstError_append, Value.numPair]
 
 theorem Expr.andChain_error (row : Row) (all : Expr) (p : Expr) (post : List Expr) (k : Issue)
     (hp : firstError (p.issues row) = some k) :
@@ -210,8 +204,7 @@ theorem Expr.andG_error (row : Row) (pre : List Expr) (p : Expr) (post : List Ex
       (Expr.conj (pre ++ p :: post)).refOutcome row = .error k := by
   have hc := Expr.andChain_error row (Expr.conj (pre ++ p :: post)) p post k hp pre hpre
   constructor
-  · simp [Expr.refOutcome, Expr.andG, Expr.issues, BinFn.issueAll_logic .eq (by simp),
-      firstError_append, hc]
+  · simp [Expr.refOutcome, Expr.andG, Expr.issues,       firstError_append, hc]
   · cases pre with
     | nil =>
       simp [Expr.refOutcome, Expr.conj, Expr.issues_foldl_and, firstError_append, hp]
@@ -287,7 +280,7 @@ theorem Expr.andG_none (row : Row) (p : Expr) (ps : List Expr)
       | false => exact absurd hq hnf
       | true => exact .inr hq
   have hall' : firstError ((Expr.andG (p :: ps)).issues row) = none := by
-    simp [Expr.andG, Expr.issues, BinFn.issueAll_logic .eq (by simp), firstError_append, h2, hall]
+    simp [Expr.andG, Expr.issues, firstError_append, h2, hall]
   unfold Expr.refOutcome
   rw [hall', hall]
   simp only [Expr.andG, Expr.eval, Impl.lean, BinFn.apply, h1]
