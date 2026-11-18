@@ -129,14 +129,20 @@ Several agents often work at once, and together they have crashed the
 laptop. Start an expensive task (`poe qa`, `lake build`, the full pytest
 suite, notebook runs, wheel builds) only when the machine it runs on has
 spare capacity. This applies to the laptop as much as to `homelab`. On the
-laptop, several builds and test runs may go at once while load and memory
-allow, each under its memory cap (`lean -M`). On homelab, three slots decide
-(below).
+laptop, two slots of about 3.5 GB decide, and on homelab three (below). A
+run takes an exclusive `flock` on its slots and holds it until it ends; a
+load check alone is racy, since several sessions pass it before any of them
+has started.
 
-- **Laptop** (10 cores, 16 GB RAM): check `uptime` and `memory_pressure | tail -1`.
-  If the 1-minute load average is above 6, or free memory is below 30 %,
-  don't start the task. Wait and check again, or run only the tests your
-  change touches.
+- **Laptop** (10 cores, 16 GB RAM): two slots, taken by the `local-run` and
+  `lean-check` drivers (`~/Projects/agentic-tools/drivers`; macOS has no
+  `flock`, so they use the system `python3`). `lean-check` and `poe test` or
+  `pytest -n 2` take one slot (`local-run --slots 1`, the default), a full
+  `lake build` two (`--slots 2`). Benchmarks and long checker runs stay on
+  homelab. A run that finds the slots taken exits 75 and names the holders;
+  `--wait` queues. Once it holds its slots it still needs a 1-minute load of
+  at most 6 and 30 % of memory free (`uptime`, `memory_pressure | tail -1`),
+  checked inside the lock. `capacity local` lists holders and waiters.
 - **Long checker runs never run on the laptop.** A `substrait-check` that works
   through many plans (`snowflake_plan_fuzz compare`, replays, fuzzing) can
   grow past the laptop's memory in seconds, while the load average stays low.
@@ -151,7 +157,7 @@ the package, and its build hook runs a full `lake build`. After such an
 edit, run tools through `python/.venv/bin/` directly, or check capacity
 first as for any build.
 
-Check the load again before each further expensive task, also one of your
+Check capacity again before each further expensive task, also one of your
 own beside another. `poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
 use `pytest -n auto`, which takes every core. On the laptop, run pytest
 directly with `-n 2` instead.
@@ -186,10 +192,10 @@ racy: on 2026-11-18 five sessions passed it within 16 seconds, and five Lean
 builds took the box to load 118. The script exits 75 and names the holders
 when the slots are taken, and `--wait` (before the branch) queues for them. A
 run that needs several slots goes before smaller runs that arrive after it.
-Once it holds its slots it still needs 6 GB available, checked inside the
-lock. `--slots N` and `--exclusive` choose the weight (the script's full
-`poe qa` takes 2, a light task `--slots 1`); `homelab-run` has the same
-options. `capacity homelab` lists the holders and waiters.
+Once it holds its slots it still needs 6 GB available and a 1-minute load of
+at most 8 (the user's services share the box), checked inside the lock.
+`--slots N` and `--exclusive` choose the weight (the script's full `poe qa`
+takes 2, a light task `--slots 1`); `homelab-run` has the same options. `capacity homelab` lists the holders and waiters.
 
 - **Three slots.** A `/tmp/substrait-lean-*` directory means a run is going.
   Long jobs that aren't QA (a replay, fuzzing, TLC) go through `homelab-run`

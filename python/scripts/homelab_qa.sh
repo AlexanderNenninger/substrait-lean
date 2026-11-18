@@ -15,7 +15,8 @@
 # hours by default). A run that needs several slots goes before smaller runs
 # that arrive after it. The kernel frees the slots when the run ends, crashes
 # or is killed. Once it holds its slots, the script still checks that 6 GB are
-# available (the user's own services share the box), inside the lock. Each
+# available and the 1-minute load is at most 8 (the user's own services share
+# the box), inside the lock. Each
 # holder's info is in ~/.substrait-lean/slots/slot-N.holder, and `capacity
 # homelab` lists holders and waiters. The chaos run (prefix `substrait-chaos`,
 # below) takes no slot.
@@ -36,12 +37,12 @@
 #   HOMELAB_QA_CHECK_GENERATED     check the generated modules' proofs (true)
 #   HOMELAB_QA_WAIT_MAX            seconds `--wait` waits (10800)
 #   HOMELAB_SESSION                the session's name, written to the holder info
-#   HOMELAB_SLOT_DIR, HOMELAB_MIN_AVAILABLE_GB  the slot directory and memory floor (tests)
+#   HOMELAB_SLOT_DIR, HOMELAB_MIN_AVAILABLE_GB, HOMELAB_MAX_LOAD  the slot directory, memory floor and load limit (tests)
 #
 # The background chaos run builds at the 8G default without checking the
 # generated proofs (CI checks them on every PR), and runs its tests with 2
 # workers, 2G, nice 19 and the prefix `substrait-chaos`, so the
-# slot check skips it (CLAUDE.md); it still needs 6 GB available.
+# slot and load checks skip it (CLAUDE.md); it still needs 6 GB available.
 #
 # The Lean build and the tests each run in their own systemd user scope with
 # no swap (`ulimit -v`, per process, where user scopes are not available; a
@@ -68,7 +69,7 @@ slots=2
 while :; do
   case ${1:-} in
     --wait) wait=true ;;
-    --slots) slots=$2; shift ;;
+    --slots) slots=${2:?--slots needs a number}; shift ;;
     --exclusive) slots=all ;;
     *) break ;;
   esac
@@ -105,7 +106,20 @@ $wait || wait_max=0
 slots_dir=${HOMELAB_SLOT_DIR:-$HOME/.substrait-lean/slots}
 slot_count=3
 slots_min_available_kb=$(( ${HOMELAB_MIN_AVAILABLE_GB:-6} * 1024 * 1024 ))
+slots_max_load=${HOMELAB_MAX_LOAD:-8}
 slots_taken=()
+
+# `slots_backstop`: why the box can't take a run even with a slot (less than
+# 6 GB available, a 1-minute load above 8: the user's own services share it);
+# nothing if it can.
+slots_backstop() {
+  local avail load
+  avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+  [ "$avail" -ge "$slots_min_available_kb" ] \
+    || { echo "only $((avail / 1024)) MB available, under $((slots_min_available_kb / 1024 / 1024)) GB"; return; }
+  load=$(cut -d' ' -f1 /proc/loadavg)
+  awk -v l="$load" -v m="$slots_max_load" 'BEGIN { exit !(l > m) }' && echo "1-minute load $load, over $slots_max_load"
+}
 
 # `slots_info <run id> <slots> <branch> <session> <command>`: the info file text.
 slots_info() {
@@ -133,8 +147,7 @@ slots_release() {
 
 # `slots_acquire <id> <slots> <wait seconds> <branch> <session> <command>`:
 # take <slots> slots (0 wait seconds: a few seconds of grace, then exit
-# status 75). Then check that 6 GB are available (HOMELAB_MIN_AVAILABLE_GB),
-# inside the lock, so two runs can't both pass the check.
+# status 75). Then the backstop (slots_backstop), inside the lock.
 slots_acquire() {
   local n=$2 wait_max=$3 deadline i fd got=0 avail last=0 now
   slots_id=$1
@@ -160,7 +173,7 @@ slots_acquire() {
     now=$(date +%s)
     if [ "$now" -ge "$deadline" ]; then
       echo "slots: busy: need $n of $slot_count slots, held by:" >&2
-      slots_holders | sed 's/^/slots:   /' >&2
+      { slots_holders | grep . || echo "(no live holder file: a leftover process of a finished run may hold a slot)"; } | sed 's/^/slots:   /' >&2
       for i in "${slots_taken[@]}"; do eval "exec $((20 + i))>&-"; done
       slots_taken=(); exec 19>&-; rm -f "$slots_dir/waiters/$1"; return 75
     fi
@@ -178,14 +191,13 @@ slots_acquire() {
   rm -f "$slots_dir/waiters/$1"
   exec 19>&-
   echo "slots: holding slot(s) ${slots_taken[*]} of $slot_count" >&2
-  # The memory check, with the slots held. The user's own services share the box.
+  # The backstop, with the slots held, so two runs can't both pass it.
   deadline=$(( $(date +%s) + (wait_max > 0 ? wait_max : 0) ))
   while :; do
-    avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-    [ "$avail" -ge "$slots_min_available_kb" ] && return 0
-    now=$(date +%s)
-    if [ "$now" -ge "$deadline" ]; then
-      echo "slots: not starting: only $((avail / 1024)) MB available, under $((slots_min_available_kb / 1024 / 1024)) GB" >&2
+    avail=$(slots_backstop)
+    [ -z "$avail" ] && return 0
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "slots: not starting: $avail" >&2
       slots_release
       return 75
     fi
