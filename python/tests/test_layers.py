@@ -35,6 +35,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "plan_json",
             "_duckdb",
             "_scan",
+            "_run_schema",
             "_decimals",
             "_proof_cache",
             "_checker",
