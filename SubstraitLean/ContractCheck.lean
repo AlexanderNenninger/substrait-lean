@@ -273,7 +273,15 @@ structure Report where
   pre-order of `relations`, by its index, its operator and what is open
   (`tiesHere`). Empty exactly when `deterministic`
   (`Request.deterministicIn_eq`). -/
-  tiePlaces : List (Nat × String × String) := []
+  tiePlaces : List (Nat × String × String × String) := []
+  /-- Is the transformation determined up to the class (`Rel.detClass`, D48):
+  every allowed result `Rel.eval`'s up to row order and the member of each
+  class of D31 (`check_class_determined_sound`)? -/
+  classDetermined : Bool := false
+  /-- Where the transformation is not determined up to the class: open ties,
+  and operators that read a value picked from a class (`classHere`). Empty
+  exactly when `classDetermined` (`Request.classDeterminedIn_eq`). -/
+  classPlaces : List (Nat × String × String) := []
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
   within 64 bits is left out. -/
@@ -394,7 +402,11 @@ def Report.json (r : Report) : Json :=
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
     ("windows_total", Lean.toJson r.windowsTotal),
-    ("tie_places", Json.arr (r.tiePlaces.map fun (i, op, what) => Json.mkObj
+    ("tie_places", Json.arr (r.tiePlaces.map fun (i, op, kind, what) => Json.mkObj
+      [("relation", Lean.toJson i), ("op", Lean.toJson op), ("kind", Lean.toJson kind),
+        ("what", Lean.toJson what)]).toArray),
+    ("class_determined", Lean.toJson r.classDetermined),
+    ("class_places", Json.arr (r.classPlaces.map fun (i, op, what) => Json.mkObj
       [("relation", Lean.toJson i), ("op", Lean.toJson op), ("what", Lean.toJson what)]).toArray),
     ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
     ("relations", Json.arr (r.relations.map fun (op, d, n, g) =>
@@ -536,29 +548,31 @@ def doublesTies (what : String) : String :=
 /-- What the relation `r` leaves open beyond its inputs: each check of
 `Rel.detPlan` at `r` that fails (`tiesIn_eq_nil`). -/
 def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → List String
-  | .distinct r => if (r.aeval cat A F .none).all AVal.noDoubles then [] else [doublesTies "DISTINCT"]
+    (K : String → List (List Nat)) : Rel → List (String × String)
+  | .distinct r =>
+    if (r.aeval cat A F .none).all AVal.noDoubles then [] else [("class", doublesTies "DISTINCT")]
   | .window r part sort fns =>
     (if Rel.windowDetAt cat A F K r part sort fns then [] else
       let fs := ", ".intercalate ((fns.filter (!·.orderFree)).map WinFn.render)
-      [s!"{fs} over rows that tie in PARTITION BY {part.map (s!"${·}")} ORDER BY " ++
-        s!"{sort.map (s!"${·.col}")}, with no key among those columns"]) ++
-      (fns.filter fun f => !WinFn.pickFixed cat A F r f).map fun f => doublesTies f.render
+      [("tie", s!"{fs} over rows that tie in PARTITION BY {part.map (s!"${·}")} ORDER BY " ++
+        s!"{sort.map (s!"${·.col}")}, with no key among those columns")]) ++
+      (fns.filter fun f => !WinFn.pickFixed cat A F r f).map fun f => ("class", doublesTies f.render)
   | .aggregate r gs ms =>
     let env := r.aeval cat A F .none
-    (gs.filter fun g => !(g.abs env).noDoubles).map (fun g => doublesTies s!"GROUP BY {g.render}") ++
+    (gs.filter fun g => !(g.abs env).noDoubles).map
+        (fun g => ("class", doublesTies s!"GROUP BY {g.render}")) ++
       -- A measure that only picks a member of a class says so, its one open place.
       (ms.filter fun m => !Measure.detIn cat A F K r gs m && Measure.pickFixed cat A F r m).map
-        measureTies ++
-      (ms.filter fun m => !Measure.pickFixed cat A F r m).map fun m => doublesTies m.render
+        (("tie", measureTies ·)) ++
+      (ms.filter fun m => !Measure.pickFixed cat A F r m).map fun m => ("class", doublesTies m.render)
   | .fetch (.orderBy i keys) _ _ =>
     if Rel.fetchTotalAt cat A F K i keys then [] else
       if keys.any (·.clustered) then
-        [s!"ORDER BY {keys.map (s!"${·.col}")} clusters its groups in any order"]
+        [("tie", s!"ORDER BY {keys.map (s!"${·.col}")} clusters its groups in any order")]
       else
-        [s!"the rows it takes tie in ORDER BY {keys.map (s!"${·.col}")}, with no key among " ++
-          "those columns"]
-  | .fetch _ _ _ => ["the rows it takes have no ORDER BY"]
+        [("tie", s!"the rows it takes tie in ORDER BY {keys.map (s!"${·.col}")}, with no key " ++
+          "among those columns")]
+  | .fetch _ _ _ => [("tie", "the rows it takes have no ORDER BY")]
   | _ => []
 
 /-- **The reasons are the flag's**: `r` leaves nothing open
@@ -603,8 +617,8 @@ theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String →
 /-- Where `r` leaves the order of ties open: each relation's index in
 `preorder r`, its operator and what is open. -/
 def tiePlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String) :=
-  (preorder r).zipIdx.flatMap fun (n, i) => (tiesHere cat A F K n).map (i, opName n, ·)
+    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String × String) :=
+  (preorder r).zipIdx.flatMap fun (n, i) => (tiesHere cat A F K n).map fun (k, w) => (i, opName n, k, w)
 
 theorem tiePlaces_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (r : Rel) :
@@ -976,6 +990,148 @@ def optimizedJson (K : KnowledgeEnv) : Json × List String :=
 
 end Request
 
+/-- An operator over `x` that needs `x` determined exactly, where it is only
+determined up to the class (D48). -/
+def readsClass (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (x : Rel) (what : String) : List String :=
+  if x.detClass cat A F K && !x.detPlan cat A F K then
+    [s!"{what} reads a value picked from a class of doubles (0.0 and -0.0, the NaNs)"]
+  else []
+
+/-- What the relation `r` leaves open at the class level (D48): each check of
+`Rel.detClass` at `r` that fails (`classIn_eq_nil`). Open ties, and operators
+that read a value a class pick below them chose. -/
+def classHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) : Rel → List String
+  | .filter r c => if c.canonSafe then [] else readsClass cat A F K r s!"WHERE {c.render}"
+  | .project r es =>
+    if es.all Expr.classCongr then [] else
+      readsClass cat A F K r (", ".intercalate ((es.filter (!·.classCongr)).map Expr.render))
+  | .window r part sort fns =>
+    readsClass cat A F K r "the window" ++
+      (if Rel.windowDetAt cat A F K r part sort fns then [] else
+        let fs := ", ".intercalate ((fns.filter (!·.orderFree)).map WinFn.render)
+        [s!"{fs} over rows that tie in PARTITION BY {part.map (s!"${·}")} ORDER BY " ++
+          s!"{sort.map (s!"${·.col}")}, with no key among those columns"])
+  | .aggregate r gs ms =>
+    readsClass cat A F K r "the aggregate" ++
+      (ms.filter fun m => !Measure.detIn cat A F K r gs m).map measureTies
+  | .fetch (.orderBy i keys) _ _ =>
+    readsClass cat A F K (.orderBy i keys) "the FETCH" ++
+      (if Rel.fetchTotalAt cat A F K i keys then [] else
+        if keys.any (·.clustered) then
+          [s!"ORDER BY {keys.map (s!"${·.col}")} clusters its groups in any order"]
+        else
+          [s!"the rows it takes tie in ORDER BY {keys.map (s!"${·.col}")}, with no key " ++
+            "among those columns"])
+  | .fetch _ _ _ => ["the rows it takes have no ORDER BY"]
+  | .cross a b | .join a b _ _ | .semi a b _ _ =>
+    readsClass cat A F K a "the join" ++ readsClass cat A F K b "the join"
+  | .unnest r _ => readsClass cat A F K r "the UNNEST"
+  | _ => []
+
+theorem readsClass_eq_nil {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
+    {K : String → List (List Nat)} {x : Rel} {what : String} (hx : x.detClass cat A F K = true) :
+    readsClass cat A F K x what = [] ↔ x.detPlan cat A F K = true := by
+  unfold readsClass
+  cases h : x.detPlan cat A F K <;> simp [hx]
+
+/-- **The class-level reasons are the flag's**: `r` is determined up to the
+class (`Rel.detClass`) exactly where no relation of it names a reason. -/
+theorem classIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) :
+    ∀ r : Rel, (preorder r).flatMap (classHere cat A F K) = [] ↔ r.detClass cat A F K = true
+  | .read _ | .values _ _ => by simp [preorder, classHere, Rel.detClass]
+  | .emit r _ | .orderBy r _ | .distinct r => by
+    simp [preorder, classHere, Rel.detClass, classIn_eq_nil cat A F K r]
+  | .unionAll a b => by
+    simp [preorder, classHere, Rel.detClass, classIn_eq_nil cat A F K a, classIn_eq_nil cat A F K b]
+  | .filter r c => by
+    simp only [preorder, classHere, Rel.detClass, List.flatMap_cons, List.append_eq_nil_iff,
+      classIn_eq_nil cat A F K r, Bool.and_eq_true, Bool.or_eq_true]
+    by_cases hc : r.detClass cat A F K = true
+    · cases c.canonSafe <;> simp [hc, readsClass_eq_nil hc]
+    · simp [hc]
+  | .project r es => by
+    simp only [preorder, classHere, Rel.detClass, List.flatMap_cons, List.append_eq_nil_iff,
+      classIn_eq_nil cat A F K r, Bool.and_eq_true, Bool.or_eq_true]
+    by_cases hc : r.detClass cat A F K = true
+    · cases es.all Expr.classCongr <;> simp [hc, readsClass_eq_nil hc]
+    · simp [hc]
+  | .window r part sort fns => by
+    simp only [preorder, classHere, Rel.detClass, List.flatMap_cons, List.append_eq_nil_iff,
+      classIn_eq_nil cat A F K r, Bool.and_eq_true]
+    by_cases hc : r.detClass cat A F K = true
+    · cases Rel.windowDetAt cat A F K r part sort fns <;> simp [hc, readsClass_eq_nil hc]
+    · have hp : ¬r.detPlan cat A F K = true := fun h => hc (Rel.detClass_of_detPlan h)
+      simp [hc, hp]
+  | .aggregate r gs ms => by
+    simp only [preorder, classHere, Rel.detClass, List.flatMap_cons, List.append_eq_nil_iff,
+      classIn_eq_nil cat A F K r, Bool.and_eq_true, List.map_eq_nil_iff, List.filter_eq_nil_iff,
+      List.all_eq_true, Bool.not_eq_true']
+    by_cases hc : r.detClass cat A F K = true
+    · simp only [hc, readsClass_eq_nil hc, and_true]
+      constructor
+      · rintro ⟨hd, hm⟩; exact ⟨hd, fun m h => by simpa using hm m h⟩
+      · rintro ⟨hd, hm⟩; exact ⟨hd, fun m h => by simp [hm m h]⟩
+    · have hp : ¬r.detPlan cat A F K = true := fun h => hc (Rel.detClass_of_detPlan h)
+      simp [hc, hp]
+  | .fetch (.orderBy i keys) o n => by
+    rw [show preorder (Rel.fetch (.orderBy i keys) o n) =
+      Rel.fetch (.orderBy i keys) o n :: preorder (.orderBy i keys) from rfl, List.flatMap_cons,
+      List.append_eq_nil_iff, classIn_eq_nil cat A F K (.orderBy i keys)]
+    simp only [classHere, Rel.detClass, Rel.detPlan, Bool.and_eq_true, List.append_eq_nil_iff]
+    by_cases hc : (Rel.orderBy i keys).detClass cat A F K = true
+    · have hci : i.detClass cat A F K = true := by simpa [Rel.detClass] using hc
+      rw [readsClass_eq_nil hc]
+      cases Rel.fetchTotalAt cat A F K i keys <;> cases keys.any (·.clustered) <;>
+        simp [hci, Rel.detPlan]
+    · have hp : ¬i.detPlan cat A F K = true := fun h =>
+        hc (Rel.detClass_of_detPlan (r := .orderBy i keys) (by simpa [Rel.detPlan] using h))
+      exact ⟨fun h => absurd h.2 hc, fun h => absurd h.1 hp⟩
+  | .fetch (.read _) _ _ | .fetch (.values _ _) _ _ | .fetch (.filter _ _) _ _
+  | .fetch (.project _ _) _ _ | .fetch (.emit _ _) _ _ | .fetch (.cross _ _) _ _
+  | .fetch (.join _ _ _ _) _ _ | .fetch (.fetch _ _ _) _ _ | .fetch (.unionAll _ _) _ _
+  | .fetch (.window _ _ _ _) _ _ | .fetch (.semi _ _ _ _) _ _ | .fetch (.distinct _) _ _
+  | .fetch (.aggregate _ _ _) _ _ | .fetch (.unnest _ _) _ _ => by
+    simp [preorder, classHere, Rel.detClass, Rel.detPlan]
+  | .cross a b | .join a b _ _ | .semi a b _ _ => by
+    simp only [preorder, classHere, Rel.detClass, Rel.detPlan, List.flatMap_cons,
+      List.flatMap_append, List.append_eq_nil_iff, classIn_eq_nil cat A F K a,
+      classIn_eq_nil cat A F K b, Bool.and_eq_true]
+    by_cases ha : a.detClass cat A F K = true
+    · by_cases hb : b.detClass cat A F K = true
+      · simp only [ha, hb, readsClass_eq_nil ha, readsClass_eq_nil hb, and_true]
+      · have hp : ¬b.detPlan cat A F K = true := fun h => hb (Rel.detClass_of_detPlan h)
+        simp [hb, hp]
+    · have hp : ¬a.detPlan cat A F K = true := fun h => ha (Rel.detClass_of_detPlan h)
+      simp [ha, hp]
+  | .unnest r _ => by
+    simp only [preorder, classHere, Rel.detClass, Rel.detPlan, List.flatMap_cons,
+      List.append_eq_nil_iff, classIn_eq_nil cat A F K r]
+    by_cases hc : r.detClass cat A F K = true
+    · simp [hc, readsClass_eq_nil hc]
+    · have hp : ¬r.detPlan cat A F K = true := fun h => hc (Rel.detClass_of_detPlan h)
+      simp [hc, hp]
+
+/-- Where `r` is open at the class level: each relation's index in
+`preorder r`, its operator and what is open. -/
+def classPlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String) :=
+  (preorder r).zipIdx.flatMap fun (n, i) => (classHere cat A F K n).map (i, opName n, ·)
+
+theorem classPlaces_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) :
+    classPlaces cat A F K r = [] ↔ r.detClass cat A F K = true := by
+  rw [← classIn_eq_nil]
+  simp only [classPlaces, List.flatMap_eq_nil_iff, List.map_eq_nil_iff, Prod.forall]
+  constructor
+  · intro h n hn
+    obtain ⟨i, hi, he⟩ := List.getElem_of_mem hn
+    exact h n i (List.mem_zipIdx_iff_getElem?.mpr (by rw [List.getElem?_eq_getElem hi, he]))
+  · intro h n i hi
+    exact h n (List.mem_of_getElem? (List.mem_zipIdx_iff_getElem?.mp hi))
+
 /-- Is the transformation well-formed and without choices but the order of
 its rows (`Rel.detPlan`) under the description `K` of the inputs: the report's
 `deterministic` (`check_deterministic_sound`). -/
@@ -986,10 +1142,10 @@ def Request.deterministicIn (R : Request) (K : KnowledgeEnv) : Bool := match R.t
 /-- Where the transformation leaves its result open (`tiePlaces`): the
 report's `tie_places`. A transformation that is not well-formed is open
 as a whole (`check` refuses it). -/
-def Request.tiePlacesIn (R : Request) (K : KnowledgeEnv) : List (Nat × String × String) :=
+def Request.tiePlacesIn (R : Request) (K : KnowledgeEnv) : List (Nat × String × String × String) :=
   match R.transform with
   | some T => if T.root.checkWF R.cat then tiePlaces R.cat K.cols K.facts K.keys T.root
-    else [(0, opName T.root, "the transformation plan is not well-formed")]
+    else [(0, opName T.root, "tie", "the transformation plan is not well-formed")]
   | none => []
 
 /-- **The transformation is determined exactly where the report names no
@@ -1005,6 +1161,34 @@ theorem Request.deterministicIn_eq (R : Request) (K : KnowledgeEnv) :
     · simp [hw]
     · simp only [hw, Option.isSome_some, Bool.true_and, ↓reduceIte]
       exact Bool.eq_iff_iff.mpr (by rw [List.isEmpty_iff, tiePlaces_eq_nil])
+
+/-- Is the transformation well-formed and determined up to the class
+(`Rel.detClass`, D48) under the description `K` of the inputs: the report's
+`class_determined` (`check_class_determined_sound`). -/
+def Request.classDeterminedIn (R : Request) (K : KnowledgeEnv) : Bool := match R.transform with
+  | some T => T.root.checkWF R.cat && T.root.detClass R.cat K.cols K.facts K.keys
+  | none => false
+
+/-- Where the transformation is open at the class level (`classPlaces`): the
+report's `class_places`. -/
+def Request.classPlacesIn (R : Request) (K : KnowledgeEnv) : List (Nat × String × String) :=
+  match R.transform with
+  | some T => if T.root.checkWF R.cat then classPlaces R.cat K.cols K.facts K.keys T.root
+    else [(0, opName T.root, "the transformation plan is not well-formed")]
+  | none => []
+
+/-- **The transformation is determined up to the class exactly where the
+report names no place open at that level.** -/
+theorem Request.classDeterminedIn_eq (R : Request) (K : KnowledgeEnv) :
+    R.classDeterminedIn K = (R.transform.isSome && (R.classPlacesIn K).isEmpty) := by
+  unfold Request.classDeterminedIn Request.classPlacesIn
+  cases R.transform with
+  | none => rfl
+  | some T =>
+    cases hw : T.root.checkWF R.cat
+    · simp [hw]
+    · simp only [hw, Option.isSome_some, Bool.true_and, ↓reduceIte]
+      exact Bool.eq_iff_iff.mpr (by rw [List.isEmpty_iff, classPlaces_eq_nil])
 
 /-- The analyses of a parsed request, given each postcondition's abstract
 values (`ensureEnv`), but for the postconditions' verdicts (`Request.check`). -/
@@ -1151,7 +1335,10 @@ def Request.check (R : Request) : Except String Report :=
       let ensures := (R.ensures.zip envs).map fun (q, env) => Request.ensureResults.resultsOf q env
       let tiePlaces := R.tiePlacesIn K
       let deterministic := R.transform.isSome && tiePlaces.isEmpty
+      let classPlaces := R.classPlacesIn K
+      let classDetermined := R.transform.isSome && classPlaces.isEmpty
       let (optimized, rewrites) := R.optimizedJson K
+      let rep := { rep with classPlaces, classDetermined }
       .ok { rep with ensures, tiePlaces, deterministic, keys, issues, guardFree, optimized, rewrites }
 
 /-- Check a `--contract` request. -/
@@ -1186,6 +1373,8 @@ structure Request.CheckOk (R : Request) (rep : Report) : Prop where
   ensures : rep.ensures = R.ensures.map R.ensureResults
   deterministic : rep.deterministic = R.deterministicIn R.kenv
   tiePlaces : rep.tiePlaces = R.tiePlacesIn R.kenv
+  classDetermined : rep.classDetermined = R.classDeterminedIn R.kenv
+  classPlaces : rep.classPlaces = R.classPlacesIn R.kenv
   keys : rep.keys = R.keysIn R.kenv
   issues : rep.issues = R.issuesIn R.kenv
   guardFree : rep.guardFree = R.guardFreeIn R.kenv
@@ -1206,7 +1395,8 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
       · cases hc
         rw [Request.postEnvs_eq]
         exact ⟨by simpa using hwf, by simpa using htw, R.zip_results R.ensures,
-          (R.deterministicIn_eq _).symm, rfl, rfl, rfl, rfl, rfl⟩
+          (R.deterministicIn_eq _).symm, rfl, (R.classDeterminedIn_eq _).symm, rfl, rfl, rfl, rfl,
+          rfl⟩
 
 theorem check_parse {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) : R.check = .ok rep := by
@@ -1434,6 +1624,40 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
     rw [Rel.detPlan_congr hD.arity]
     exact hdet.2
   exact Knowledge.allowed_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+
+/-- The report's `class_determined` is `Request.classDeterminedIn`'s. -/
+theorem check_classDetermined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.classDetermined = R.classDeterminedIn R.kenv :=
+  (Request.check_ok (check_parse hR hc)).classDetermined
+
+/-- The report's `class_places` are `Request.classPlacesIn`'s. -/
+theorem check_classPlaces {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.classPlaces = R.classPlacesIn R.kenv :=
+  (Request.check_ok (check_parse hR hc)).classPlaces
+
+/-- **The checker's `class_determined` is a theorem** (D48). When `check`
+reports the transformation determined up to the class, every result the
+reference allows for it, every order of the ties (`Rel.OrderAllowed`), is
+`Rel.eval`'s up to the order of its rows and the member of each class of D31
+(`Row.canon`), for any data that meets the request (`DataMeets`): through
+`Rel.detClass` and `Rel.allowed_canon_perm_eval`. -/
+theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) :
+    ∀ {out : Relation}, T.root.OrderAllowed data out →
+      (out.map Row.canon).Perm ((T.root.eval data).map Row.canon) := by
+  intro out ho
+  rw [check_classDetermined hR hc] at hdet
+  simp only [Request.classDeterminedIn, hT, Bool.and_eq_true] at hdet
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hdet.1)
+  have hd : T.root.detClass data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
+    rw [Rel.detClass_congr hD.arity]
+    exact hdet.2
+  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
 
 /-! ### The other fields the engine theorems read (#1484, A4)
 
