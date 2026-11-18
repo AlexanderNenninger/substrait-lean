@@ -1278,10 +1278,14 @@ class Report:
         out: dict[str, list[Condition]] = {}
         for t, cs in self._conditions.items():
             out[t] = [c for c in cs if not isinstance(c, Inferred)]
-        for n in self._inferred_needs():
-            have = out.setdefault(n.table, [])
-            if n.condition is not None and n.label not in {label(c) for c in have}:
-                have.append(n.condition)
+        # The bounds a hint names, which a proof confirmed (`_confirm_hints`).
+        extra = [(n.table, n.condition, n.label) for n in self._inferred_needs()]
+        for i in self.issues:
+            extra += [(t, c, label(c)) for t, cs in i.hint_needs.items() for c in cs]
+        for t, c, lab in extra:
+            have = out.setdefault(t, [])
+            if c is not None and lab not in {label(x) for x in have}:
+                have.append(c)
         return {t: cs for t, cs in out.items() if cs}
 
     @property
