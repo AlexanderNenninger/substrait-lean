@@ -47,3 +47,13 @@ def test_main_says_it_is_the_development_version(script, tmp_path: Path):
 
 def test_the_version_is_pyprojects(script):
     assert script.version() in (ROOT / "python" / "pyproject.toml").read_text()
+
+
+def test_the_logo_tooltip_is_relabelled(script, tmp_path: Path):
+    (tmp_path / "index.html").write_text(
+        '<a data-tippy-content="<code>vnightly</code><br>Released 2026-11-03">'
+    )
+    assert script.relabel(tmp_path, "0.9.0.dev0", release=False) == 1
+    text = (tmp_path / "index.html").read_text()
+    assert "<code>0.9.0.dev0 (development)</code><br>Development version" in text
+    assert "Released" not in text
