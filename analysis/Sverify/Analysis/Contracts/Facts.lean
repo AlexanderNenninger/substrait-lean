@@ -484,16 +484,18 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
     · rename_i hij
       obtain ⟨rfl, rfl⟩ := hij
       cases hnum : w.numOf? with
-      | none => intro f hf; simp [hnum] at hf
+      | none => intro f hf; simp at hf; simp_all
       | some kc =>
         obtain ⟨k, c⟩ := kc
         intro f hf
         simp only [hnum, List.mem_singleton] at hf; subst hf
         intro x hx heq
         have hw := Value.numOf?_some hnum
-        have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
-          rw [hx, hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
-        simp [Expr.eval, hn, Value.isTrue] at hpq
+        have hx' : row[i]?.getD Value.null = k.val x := by
+          rw [← List.getD_eq_getElem?_getD]; exact hx
+        have hn : UnFn.apply .not (BinFn.apply .eq (row[i]?.getD Value.null) w) = .bool false := by
+          rw [hx', hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
+        simp [Expr.eval, List.getD_eq_getElem?_getD, hn, Value.isTrue] at hpq
     · intro f hf; simp at hf
   · intro f hf; simp at hf
 
