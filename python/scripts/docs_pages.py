@@ -642,6 +642,11 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
             "The trusted base",
             "What a result rests on that the kernel does not check",
         ),
+        (
+            "docs/comparison.md",
+            "Next to other checks",
+            "Sverify beside dbt tests, Great Expectations, Soda and data contracts, by bug class",
+        ),
         ("docs/prior-work.md", "Prior work", "The work sverify builds on, and related tools"),
     ],
 }

@@ -127,7 +127,7 @@ def test_the_json_document(tmp_path, capsys):
     assert set(item) == {"name", "nodes", "status", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
     assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
-    assert item["report"]["format"] == 2 and item["report"]["proved"] is False
+    assert item["report"]["format"] == 3 and item["report"]["proved"] is False
 
 
 def test_one_node_of_a_file(tmp_path, capsys):
@@ -197,6 +197,26 @@ def test_diff_shows_the_fix_and_fix_writes_it(tmp_path, capsys):
     )
     code, _ = run(capsys, "check", str(path))
     assert code == 0
+
+
+SUM_ONLY = """
+@sv.transform(ensures=[_.total > 0])
+def per_customer(orders):
+    return orders.group_by("customer").agg(total=orders.amount.sum() * 2 + 1)
+
+
+p = orders.pipe(per_customer)
+"""
+
+
+def test_diff_names_the_other_fixes_where_no_precondition_helps(tmp_path, capsys):
+    """An unbounded SUM needs a row cap, not a `requires` the checker infers:
+    `--diff` prints the report's hint instead of a dead end (#1485)."""
+    path = write(tmp_path, SUM_ONLY)
+    code, out = run(capsys, "check", str(path), "--diff")
+    assert "No preconditions to add: no proof" not in out
+    assert "sv.max_rows(" in out
+    assert "$" not in out
 
 
 @pytest.mark.parametrize(
@@ -553,3 +573,12 @@ def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
         assert any(q["examples"] for n in shown["nodes"] for q in n["quarantine"])
     got, out = run(capsys, "refresh", f"{path}:p")
     assert got == code and "### paid" in out and "| id |" not in out
+
+
+def test_classifying_an_import_error_in_sverify_errors_does_not_raise(monkeypatch):
+    """`sverify.errors` failing to import is the error to classify, not a second
+    one raised from the classifier (#1585: a double traceback)."""
+    from sverify.cli._main import ERROR, _classify
+
+    monkeypatch.setitem(sys.modules, "sverify.errors", None)  # `import` then raises
+    assert _classify(TypeError("boom")) == (ERROR, "error")

@@ -128,7 +128,8 @@ class _Checker:
             if types is None:
                 why = (
                     f"{r.ref} has no column types: give each of its columns a data_type in "
-                    "its YAML, or run `dbt docs generate` so that target/catalog.json has them"
+                    "its YAML, or run `dbt seed` (for a seed) and then `dbt docs generate`, so "
+                    "that target/catalog.json has the types of the loaded table"
                 )
             else:
                 cols = ", ".join(f"{_q(c)} {t}" for c, t in types.items())
@@ -217,11 +218,12 @@ class _Checker:
         for r in inputs:
             why = self._ensure_relation(r)
             if why:
-                return res.refuse(f"it reads {why}")
+                return res.refuse(why)
         try:
             res.sql = _rewrite(
                 m.compiled_code,
                 {r.relation_name: self.names[r.unique_id] for r in inputs if r.relation_name},
+                own=m.relation_name,
             )
         except _Unreadable as e:
             return res.refuse(str(e))
@@ -487,7 +489,7 @@ def _parts(t: sg.exp.Table) -> tuple[str, ...]:
     return tuple(p.lower() for p in (t.catalog, t.db, t.name) if p)
 
 
-def _rewrite(sql: str, inputs: dict[str, str]) -> str:
+def _rewrite(sql: str, inputs: dict[str, str], own: str | None = None) -> str:
     """`sql` with each relation of `inputs` (dbt's `relation_name`) read by
     its input name, keeping what the query calls it (its alias, else its
     table name)."""
@@ -508,6 +510,7 @@ def _rewrite(sql: str, inputs: dict[str, str]) -> str:
         hits = [n for p, n in wanted.items() if p[-len(parts) :] == parts]
         return hits[0] if len(hits) == 1 else None
 
+    own_parts = _parts(sg.exp.to_table(own, dialect="duckdb")) if own else None
     unknown = []
     for t in list(tree.find_all(sg.exp.Table)):
         if not isinstance(t.this, sg.exp.Identifier):
@@ -515,6 +518,12 @@ def _rewrite(sql: str, inputs: dict[str, str]) -> str:
         if not t.db and not t.catalog and t.name.lower() in ctes:
             continue
         name = find(t)
+        if name is None and own_parts and _parts(t) == own_parts:
+            raise _Unreadable(
+                "it reads its own table, `{{ this }}`: this compile rendered the "
+                "`is_incremental()` branch, since the model has run; compile with "
+                "`dbt compile --full-refresh`"
+            )
         if name is None:
             unknown.append(t.sql("duckdb"))
             continue

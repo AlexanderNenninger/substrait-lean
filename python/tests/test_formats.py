@@ -179,7 +179,7 @@ def test_substrait_export_reads_and_proves(version: str, case: str) -> None:
     imp = read(text)
     _valid(imp.manifest, "substrait-manifest.schema.json")
     report = sv.Report.from_substrait(text)
-    assert report.proved, str(report)
+    assert report.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS), str(report)
     assert [(c.label, c.proved) for c in report.ensures] == [
         (e["text"], e.get("proved", False)) for e in imp.ensures
     ]
@@ -191,7 +191,7 @@ def test_substrait_binary_export(version: str) -> None:
     folder = FORMATS / version / "substrait"
     binary = (folder / "row_and_table.bin").read_bytes()
     assert read(binary) == read((folder / "row_and_table.json").read_text())
-    assert sv.Report.from_substrait(binary).proved
+    assert sv.Report.from_substrait(binary).verdict == sv.Verdict.PROVED
 
 
 def test_substrait_manifest_only_gains_keys() -> None:
@@ -289,15 +289,23 @@ def test_report_reads(version: str, case: str) -> None:
     doc = json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
     _valid(doc, "report.schema.json")
     report = sv.Report.from_json(doc)
-    assert report.proved == doc["proved"] and report.verdict == doc["verdict"]
+    assert report._proved == doc["proved"]
+    # In format 2 `verdict` held the first line, which `summary` holds from format 3.
+    stored = doc["summary"] if doc["format"] >= 3 else doc["verdict"]
+    if stored == "proved" and report.verdict == sv.Verdict.PROVED_WITH_CHECKS:
+        # Written before the first line said "proved with checks" (#1484).
+        stored = f"proved with checks: {len(report.assumed)} assumption"
+        stored += "" if len(report.assumed) == 1 else "s"
+    assert report._summary == stored
     assert [c.label for c in report.ensures] == [c["properties"]["label"] for c in doc["ensures"]]
     assert [n.code for n in report.needs] == [n["code"] for n in doc["needs"]]
     assert set(report.routes) == set(doc["routes"])
     now = json.loads(report.to_json())
     _valid(now, "report.schema.json")
     assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
-    assert {k: v for k, v in now.items() if k in doc and k != "sverify"} == {
-        k: v for k, v in doc.items() if k != "sverify"
+    skip = {"sverify", "format", "verdict", "summary"}
+    assert {k: v for k, v in now.items() if k in doc and k not in skip} == {
+        k: v for k, v in doc.items() if k not in skip
     }
 
 

@@ -153,7 +153,7 @@ Closed in substrait-lean#685: `Report.needs`; sverify-dbt writes the dbt test fr
 
 ### 6. A condition proved with a needed precondition reads as proved
 
-Under `on_inferred="error"`, `Report.proved` is False when `needed` is not
+Under `on_inferred="error"`, `Report.verdict` is `unproved` when `needed` is not
 empty, but each `CheckedCondition.proved` stays True for a condition whose
 proof used the inferred bound. A tool that reads the conditions one by one
 reports them as proved.
@@ -419,3 +419,7 @@ asks, and a `Needed` per column carrying both sides (`lower`, `upper`).
 The weakest-precondition search of
 [substrait-lean#663](https://github.com/AlexanderNenninger/substrait-lean/issues/663)
 would give suggestions for more kinds of postcondition.
+
+### sverify's `Report.proved` is gone
+
+`Report.verdict` (`sverify.Verdict`: `proved`, `proved_with_checks`, `unproved`) replaces `Report.proved` with no alias. For one name per concept, `CheckResult.proved` (the list of tests proved before any model runs) is now `CheckResult.proved_tests`. `CheckedCondition.proved` stays a boolean.

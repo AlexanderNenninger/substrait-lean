@@ -112,7 +112,7 @@ def test_asof_guarantees_are_proved(how):
         ensures=GUARANTEES,
         on_inferred="ignore",  # ts - tolerance's bound
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 @pytest.mark.slow
@@ -126,7 +126,7 @@ def test_ties_on_the_right_keep_the_guarantees():
         ensures=GUARANTEES,
         on_inferred="ignore",
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert not report.deterministic
     assert [p.op for p in report._tie_places] == ["window"]
 
@@ -146,7 +146,7 @@ def test_aligning_100hz_with_130hz():
 
     rows = aligned(con.table("acc"), con.table("gyr")).to_pyarrow().to_pylist()
     report = aligned.report
-    assert report is not None and report.proved
+    assert report is not None and report.verdict == sv.Verdict.PROVED
     assert len(rows) == 100
     # The gyroscope samples every 7.7 ms, so every sample finds a partner.
     assert all(r["ts_right"] is not None for r in rows)
@@ -230,7 +230,13 @@ def test_unique_by_on_is_not_proved_of_the_join():
     j = sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=TOL)
     ensures = [sv.unique("device", "ts")]
     requires = {"acc": [_.device.notnull()]}
-    assert not sv.verify(j, requires=requires, ensures=ensures, on_inferred="ignore").proved
+    assert (
+        sv.verify(j, requires=requires, ensures=ensures, on_inferred="ignore").verdict
+        == sv.Verdict.UNPROVED
+    )
     # With the left key in `requires` this is the line that flips when the key
     # analysis carries a left key through the ranking (#1517).
-    assert not sv.verify(j, requires=KEYS, ensures=ensures, on_inferred="ignore").proved
+    assert (
+        sv.verify(j, requires=KEYS, ensures=ensures, on_inferred="ignore").verdict
+        == sv.Verdict.UNPROVED
+    )

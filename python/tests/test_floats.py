@@ -61,7 +61,7 @@ def test_float_ranges_are_exact_at_the_boundary():
 def test_nan_is_largest():
     # NaN is above every number (as in SQL engines), so `value > 0` keeps NaN rows.
     report = sv.verify(s1.filter(s1.value > 0).select("value"), ensures=[~_.value.isnan()])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 # No `-inf`: `v1 * 2.0 + v2` of `inf` and `-inf` would be NaN, which raises
@@ -124,7 +124,7 @@ def test_integer_constants_compared_with_doubles():
 
 def test_column_comparisons_imply_not_null():
     report = sv.verify(in_session(hr, sessions), ensures=[_.ts >= _.start, _.ts < _.end])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 @pytest.mark.parametrize("engine", ENGINES)
@@ -178,5 +178,5 @@ def test_negating_a_non_positive_double_gives_a_non_negative_one():
     that tells the zeros apart, `-(0.0)` would be -0.0, below 0.0)."""
     t = s1.filter(s1.value <= 0).select(y=-s1.value)
     report = sv.verify(t, ensures=[_.y >= 0])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.facts["y"] == "a double ≥ 0.0"

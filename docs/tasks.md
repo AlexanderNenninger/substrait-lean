@@ -202,7 +202,7 @@ except VerificationError as e:
 
   ```python
   report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
-  if report.proved:
+  if report.verdict == sv.Verdict.PROVED:
       result = report.run(con)
   ```
 * `requires` maps each input to its conditions. A transformation with one
@@ -272,7 +272,7 @@ except VerificationError as e:
   If rows can tie in the order, the engine decides which comes first:
   `verify` proves the postconditions that hold for every order of the ties,
   `report.deterministic` is `False`, `str(report)` names the window and
-  `report.ties` the key that would close it ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
+  `report.ties` the key that would close it ([tie order](reference-semantics.md#tie-order-and-determinism)).
   A key on the partition and order columns makes the order total, which
   facts such as `prev_ts < ts` and a rerun that must give the same rows
   need.
@@ -587,7 +587,7 @@ def unit_price(orders):
 
 
 report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
-print(report.proved, [n.label for n in report.needs])
+print(report.verdict == sv.Verdict.PROVED, [n.label for n in report.needs])
 # False ['(_.qty != 0)']
 print(report.ensures[0].message)
 # NOT proved: it may be FALSE or NULL on some rows
@@ -1037,16 +1037,19 @@ refresh batch by batch and a recompute agree:
 
 - A row on which a row condition is FALSE or NULL (ranges, NOT NULL, value
   sets, inferred bounds).
-- Among the other rows, every row of a key that occurs more than once
-  (`sv.unique`, `sv.key`): both copies of a repeated `id`, the one the node
-  held before included. The rule needs no order between rows, so it gives the
-  same answer under every profile ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
+- Among the other rows, every row of a key that occurs on more than one
+  distinct row (`sv.unique`, `sv.key`): both rows of a repeated `id` with
+  different values, the one the node held before included. Rows identical in
+  every column count once: a redelivered duplicate of a kept row is set aside
+  beside it, and the kept row stays. The rule needs no order between rows, so it gives the
+  same answer under every profile ([tie order](reference-semantics.md#tie-order-and-determinism)).
 - `max_rows`, `arrives_within` and the other conditions on a table as a whole
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
 
 Every precondition holds on the rows kept: `Catalog.kept_sound` in
-[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule,
+[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule
+(on the snapshot with identical rows collapsed),
 so the node's contract (`contract_sound`, `Rel.keys_sound`) holds on what it
 reads. The batch checks then run on the kept rows as on any batch, and a row
 the rule let through by mistake would raise.
@@ -1445,8 +1448,8 @@ upstream = openlineage.read("events.jsonl").dataset(paid_sink)
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(upstream.verified, doubled_paid.check(paid=upstream.schema).proved)
-# True True
+print(upstream.verified, doubled_paid.check(paid=upstream.schema).verdict)
+# True proved
 ```
 
 To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
@@ -1667,9 +1670,9 @@ list every fact). What to do about one:
   why that one fails.
 
 `report.run(..., reproducible=sv.equivalent())`, like a sink's
-`reproducible=`, asks for the deterministic profile, which fixes the order of
+`reproducible=`, asks for a determined result, which fixes the order of
 ties
-([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)):
+([tie order](reference-semantics.md#tie-order-and-determinism)):
 it refuses a plan whose result is not determined up to row order, and the
 reason names each window, ordered aggregate or `LIMIT` where ties stay open
 (`str(report)`), with the `sv.unique(...)` that would close them
@@ -1862,8 +1865,8 @@ paid_contract = odcs.read("paid.odcs.yaml")
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(doubled_paid.check(paid=paid_contract.schema()).proved)
-# True
+print(doubled_paid.check(paid=paid_contract.schema()).verdict)
+# proved
 ```
 
 ```bash
@@ -1918,7 +1921,7 @@ result. The sink states what "the same" means (`reproducible=`,
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
 refused with a `RouteError`; so is a plan whose ties stay open, since the
-sink then needs the deterministic profile, and the error names the
+sink then needs a determined result, and the error names the
 place. Polars's streaming `SUM` of doubles may add in
 another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the

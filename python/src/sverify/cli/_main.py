@@ -91,13 +91,16 @@ def _error(code: str, e: BaseException | str, kind: str | None = None) -> dict[s
 
 def _classify(e: BaseException) -> tuple[int, str]:
     """The exit code and the error's code for an exception."""
-    from sverify.errors import (
-        AuditError,
-        PostconditionError,
-        PreconditionError,
-        UnsupportedError,
-        VerificationError,
-    )
+    try:
+        from sverify.errors import (
+            AuditError,
+            PostconditionError,
+            PreconditionError,
+            UnsupportedError,
+            VerificationError,
+        )
+    except Exception:  # noqa: BLE001 - the import failure is the error being classified (#1585)
+        return ERROR, "error"
 
     if isinstance(e, BudgetExceeded):
         return BUDGET, "memory" if e.what == "memory" else "timeout"
@@ -226,7 +229,7 @@ class Check:
             lines.append("")
         for c in self.checked:
             r = c.report
-            verdict = r.verdict if r is not None else "unfinished: the time budget ran out"
+            verdict = r._summary if r is not None else "unfinished: the time budget ran out"
             lines.append(f"{_label(c.name, c.nodes)}: {verdict}")
             if full and r is not None:
                 lines += [f"  {line}" for line in str(r).splitlines()[1:]]
@@ -370,7 +373,20 @@ def cmd_check(args: argparse.Namespace) -> int:
     }
     lines = []
     if not plan.fixes:
-        lines.append("No preconditions to add: no proof in the file needs one.")
+        other = [
+            f"  {c.name}: {h}"
+            for c in check.checked
+            if c.report is not None
+            for h in dict.fromkeys(c.report._all_hints())
+        ]
+        if other:
+            lines.append(
+                "No preconditions to add (nothing in `requires` rules these out); "
+                "the reports suggest:"
+            )
+            lines += other
+        else:
+            lines.append("No preconditions to add: no proof in the file needs one.")
     for f in plan.fixes:
         lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
         if f.reason:

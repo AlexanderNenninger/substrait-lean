@@ -28,7 +28,7 @@ GUARDED_BY_CASE = T.filter(ibis.cases((_.x != 0, 10 // _.x)) > 1).select("x")  #
 
 def test_an_error_under_and_is_reported_with_the_case_rewrite():
     report = verify(GUARDED_BY_AND, tables={"t": T}, requires=REQUIRES, on_inferred="off")
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     [issue] = report.errors
     assert issue.kind == "division by zero" and issue.under_and_or
     assert any("inside an AND or OR" in h and "CASE" in h for h in report._hints)
@@ -38,7 +38,7 @@ def test_the_inferred_precondition_names_the_and():
     """With `infer`, the plan is proved under `x != 0`, which the report says
     comes from a guard under `AND`."""
     report = verify(GUARDED_BY_AND, tables={"t": T}, requires=REQUIRES)
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report._inferred
     assert any("inside an AND or OR" in h for h in report._hints)
 
@@ -63,7 +63,7 @@ def test_the_issues_batch_is_refused_before_the_run(engine):
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_the_case_form_is_proved_and_runs(engine):
     report = verify(GUARDED_BY_CASE, tables={"t": T}, requires=REQUIRES, on_inferred="off")
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     con = connect()
     put_table(con, "t", pa.table({"x": [0, 2, 5]}))
     assert report.run(con, engine).column("x").to_pylist() == [2, 5]
@@ -92,7 +92,7 @@ def test_an_aggregate_filter_under_and_evaluates_both_operands():
     [div] = [i for i in off.errors if i.kind == "division by zero"]
     assert div.under_and_or
     report = verify(sql, tables={"t": T}, requires=REQUIRES)
-    assert report.proved and report._inferred
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS and report._inferred
     con = connect()
     put_table(con, "t", pa.table({"x": [0, 2, 5]}))
     with pytest.raises(PreconditionError, match="refused before the run"):

@@ -140,6 +140,10 @@
                 "description": "Rows this refresh quarantined.",
                 "type": "integer"
               },
+              "retracted": {
+                "description": "Of the rows quarantined, how many the node had published: a new row repeated their key with other values.",
+                "type": "integer"
+              },
               "by_condition": {
                 "type": "object",
                 "additionalProperties": {

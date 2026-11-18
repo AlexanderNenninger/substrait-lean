@@ -41,7 +41,7 @@ report = sv.verify(
     requires={"orders": ["amount >= 0", "amount < 1000000000", sv.unique("id")]},
     ensures=["doubled >= 22", sv.unique("id")],
 )
-assert report.proved
+assert report.verdict == sv.Verdict.PROVED
 ```
 
 In a node, write the SQL as a transform's body, `return sv.sql(query,

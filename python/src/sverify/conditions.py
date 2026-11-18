@@ -973,6 +973,18 @@ class PreconditionError(SverifyError):
         self.rows = rows
 
 
+@dataclass(frozen=True)
+class PlannedCondition:
+    """A row condition read from a Substrait export (`Report.from_substrait`):
+    its label, and the plan the checker wrote for it, a column that is TRUE
+    where a row meets it. A run checks it by running that plan on its engine
+    (`Report.check_inputs`)."""
+
+    text: str
+    plan: str
+    """The plan, as protobuf JSON in Lean's form."""
+
+
 class Inferred(str):
     """A bound inferred to rule out an overflow: a SQL condition on one
     column of an input table, labelled as the Ibis code that states it
@@ -1006,7 +1018,7 @@ class Inferred(str):
 
 
 def label(cond: Condition) -> str:
-    if isinstance(cond, Inferred):
+    if isinstance(cond, Inferred | PlannedCondition):
         return cond.text
     if isinstance(cond, TableCondition):
         return cond.label
@@ -1036,7 +1048,19 @@ def show_duration(d: timedelta) -> str:
 
 def resolve(cond: Condition, table: ir.Table) -> ir.BooleanValue:
     if isinstance(cond, Deferred):
-        return cond.resolve(table)
+        try:
+            return cond.resolve(table)
+        except AttributeError as e:
+            missing = re.search(r"no attribute '([^']+)'", str(e))
+            if not missing:
+                raise
+            from sverify._user_text import did_you_mean
+
+            raise AttributeError(
+                f"{label(cond)}: the table has no column {missing[1]!r}"
+                f"{did_you_mean(missing[1], table.columns)} Its columns are: "
+                f"{', '.join(table.columns)}"
+            ) from None
     if callable(cond):
         return cond(table)
     return cond  # type: ignore[return-value]

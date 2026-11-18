@@ -55,7 +55,7 @@ def report() -> sv.Report:
         requires={"t": [_.i >= LOW, _.j != 0]},
         semantics="polars",
     )
-    assert r.proved, str(r)
+    assert r.verdict == sv.Verdict.PROVED, str(r)
     return r
 
 
@@ -101,7 +101,7 @@ def test_a_polars_request_is_reported_as_pending() -> None:
         r = sv.verify(
             t.select(q=t.i // t.j), requires={"t": [_.i >= LOW, _.j != 0]}, semantics="polars"
         )
-    assert r.proved and r.semantics == "reference"
+    assert r.verdict == sv.Verdict.PROVED and r.semantics == "reference"
 
 
 def test_written_plan_states_floor(report: sv.Report) -> None:

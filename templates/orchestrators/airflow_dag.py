@@ -16,15 +16,17 @@ import pyarrow as pa
 from airflow.sdk import dag, task
 from airflow.sdk.exceptions import AirflowFailException
 
+import sverify as sv
+
 
 @dag(schedule=None, start_date=pendulum.datetime(2026, 1, 1), catchup=False)
 def big_orders():
     @task
     def prove() -> str:
         report = contract.prove()
-        if not report.proved:
+        if report.verdict == sv.Verdict.UNPROVED:
             raise AirflowFailException(str(report))
-        return report.verdict
+        return report.verdict.value
 
     @task
     def run() -> int:

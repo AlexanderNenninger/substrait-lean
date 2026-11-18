@@ -43,7 +43,7 @@ def test_rows_per_group_prove_a_sum_fits():
     # 10¹² rows per customer of at most 10⁶ each: below 2⁶³. The table itself
     # has no bound.
     assert not sum_risks(report), str(report)
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.rows is None
     assert "requires orders: rows_per(customer, at_most=1000000000000)" in str(report)
 

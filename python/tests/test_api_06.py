@@ -47,7 +47,7 @@ def test_on_inferred_off_infers_and_assumes_nothing() -> None:
     off = _quiet(sv.verify, SUM, on_inferred="off")
     assert not off.assumed and not off._inferred
     assert "SUM overflow" in [i.kind for i in off.errors]
-    assert not off.proved
+    assert off.verdict == sv.Verdict.UNPROVED
     # The other values assume the SUM fits, and check it at run time.
     assumed = _quiet(sv.verify, SUM)
     assert [i.kind for i in assumed.assumed] == ["SUM overflow"]
@@ -76,6 +76,10 @@ def test_an_assumed_sum_says_it_is_checked_at_run_time() -> None:
     text = str(report)
     assert "SUM of amount fits 64 bits in every group (checked at run time" in text
     assert "(inferred;" not in text
+    # The first line says the proof holds under checks (#1484).
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
+    assert text.splitlines()[0].startswith("proved with checks: 1 assumption")
+    assert "**proved with checks: 1 assumption**" in report._repr_markdown_()
 
 
 def test_an_assumed_double_sum_names_the_sum() -> None:
@@ -92,7 +96,7 @@ def test_an_assumed_double_sum_names_the_sum() -> None:
 
 def test_an_unproved_run_raises_unverified_run_error(con) -> None:
     report = _quiet(sv.verify, con.table("t").select("k", x=_.amount * _.amount), on_inferred="off")
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     with pytest.raises(
         UnverifiedRunError, match=r"run\(\.\.\., unverified=True\) runs it anyway"
     ) as e:

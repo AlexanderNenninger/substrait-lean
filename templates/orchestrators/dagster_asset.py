@@ -14,6 +14,8 @@ import dagster as dg
 import orders as contract
 import pyarrow as pa
 
+import sverify as sv
+
 
 @dg.asset
 def big_orders() -> pa.Table:
@@ -25,8 +27,8 @@ def big_orders() -> pa.Table:
 def big_orders_contract() -> dg.AssetCheckResult:
     report = contract.prove()
     return dg.AssetCheckResult(
-        passed=report.proved,
-        metadata={"verdict": report.verdict, "report": dg.MetadataValue.text(str(report))},
+        passed=report.verdict != sv.Verdict.UNPROVED,
+        metadata={"verdict": report.verdict.value, "report": dg.MetadataValue.text(str(report))},
     )
 
 

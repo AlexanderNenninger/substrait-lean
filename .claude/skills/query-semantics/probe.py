@@ -63,7 +63,9 @@ Rows = list[tuple]
 
 def short(e: BaseException | str) -> str:
     text = [ln for ln in str(e).strip().splitlines() if ln.strip()]
-    msg = next((ln for ln in text if ln.startswith("error:")), text[0] if text else repr(e))
+    msg = next(
+        (ln for ln in text if ln.startswith("error:")), text[0] if text else repr(e)
+    )
     if isinstance(e, BaseException) and type(e).__name__ not in msg:
         msg = f"{type(e).__name__}: {msg}"
     return re.sub(r"\s+", " ", msg)[:160]
@@ -71,7 +73,9 @@ def short(e: BaseException | str) -> str:
 
 #: Run-time errors the Lean model marks (`analysis/Sverify/Analysis/Safety.lean`): its
 #: value is NULL there, and the engines running Lean's plan raise by design.
-RUNTIME = re.compile(r"zero|overflow|DivideByZero|DivisionByZero|out of range", re.IGNORECASE)
+RUNTIME = re.compile(
+    r"zero|overflow|DivideByZero|DivisionByZero|out of range", re.IGNORECASE
+)
 
 
 def failed(e: BaseException) -> str:
@@ -98,7 +102,9 @@ def polars_streaming() -> str:
         )
 
     polars_engine.collect = collect
-    return "streaming (patched in by the probe until #605 lands; predicate pushdown off)"
+    return (
+        "streaming (patched in by the probe until #605 lands; predicate pushdown off)"
+    )
 
 
 def native_polars(lf: Any) -> Any:
@@ -141,7 +147,9 @@ def environment(con: eng.Connection, spark: bool, polars_mode: str) -> None:
 
         for engine in PROFILED:
             cur = es.current(engine)
-            print(f"  {engine} settings: " + ", ".join(f"{k}={v}" for k, v in cur.items()))
+            print(
+                f"  {engine} settings: " + ", ".join(f"{k}={v}" for k, v in cur.items())
+            )
             for msg in es.check_settings(engine):
                 print(f"    differs from the profile: {msg}")
     except ImportError:
@@ -162,14 +170,21 @@ def environment(con: eng.Connection, spark: bool, polars_mode: str) -> None:
         got = []
         for n in names:
             try:
-                got.append(f"{n}={db.sql(f"SELECT current_setting('{n}')").fetchall()[0][0]}")
+                got.append(
+                    f"{n}={db.sql(f"SELECT current_setting('{n}')").fetchall()[0][0]}"
+                )
             except Exception:  # noqa: BLE001 - not a setting in this version
                 continue
-        print("  duckdb settings (a fresh connection; #598 adds the check): " + ", ".join(got))
+        print(
+            "  duckdb settings (a fresh connection; #598 adds the check): "
+            + ", ".join(got)
+        )
         import os
 
         aff = os.environ.get("POLARS_ENGINE_AFFINITY", "auto")
-        print(f"  polars engine affinity: {aff} (sverify names engine='streaming' anyway)")
+        print(
+            f"  polars engine affinity: {aff} (sverify names engine='streaming' anyway)"
+        )
 
 
 def few_rows(tables: dict[str, pa.Table]) -> list[str]:
@@ -208,7 +223,8 @@ def norm(v: Any) -> Any:
 def positional(t: pa.Table) -> Rows:
     # Positional: `SELECT *` over a join may repeat column names.
     return [
-        tuple(norm(v) for v in r) for r in zip(*(c.to_pylist() for c in t.columns), strict=True)
+        tuple(norm(v) for v in r)
+        for r in zip(*(c.to_pylist() for c in t.columns), strict=True)
     ]
 
 
@@ -230,7 +246,9 @@ def has_ties(r: Any) -> bool:
     so their row numbers, neighbours or selection differ legitimately."""
     if isinstance(r, (Window, Fetch)):
         return True
-    return any(has_ties(getattr(r, k)) for k in ("input", "left", "right") if hasattr(r, k))
+    return any(
+        has_ties(getattr(r, k)) for k in ("input", "left", "right") if hasattr(r, k)
+    )
 
 
 def show(rows: Rows, limit: int = 6) -> str:
@@ -257,7 +275,9 @@ def cell(v: Any, t: pa.DataType) -> Any:
 def tables_from_args(specs: list[list[str]]) -> dict[str, pa.Table]:
     out = {}
     for name, cols, rows in specs:
-        schema = ibis.schema(dict(c.split(":", 1) for c in cols.split(","))).to_pyarrow()
+        schema = ibis.schema(
+            dict(c.split(":", 1) for c in cols.split(","))
+        ).to_pyarrow()
         data = [
             {f.name: cell(v, f.type) for f, v in zip(schema, r, strict=True)}
             for r in ast.literal_eval(rows)
@@ -278,7 +298,9 @@ def catalogue_query(qid: str) -> tuple[dict[str, pa.Table], str | None, str | No
 # ---------------------------------------------------------------- frontends
 
 
-def frontends(con: eng.Connection, sql: str | None, expr: Any) -> dict[str, tuple[str, str]]:
+def frontends(
+    con: eng.Connection, sql: str | None, expr: Any
+) -> dict[str, tuple[str, str]]:
     """name -> (plan JSON or "", outcome)."""
     out: dict[str, tuple[str, str]] = {}
     if sql is not None:
@@ -302,7 +324,11 @@ def lean(plan: str, tables: dict[str, pa.Table]) -> tuple[str, str, Rows | None]
     if code != 0:
         return f"rejected: {short(out + err)}", "", None
     rel = out.split("\ntables:")[0]
-    flags = [ln for ln in out.splitlines() if ln.startswith(("incremental:", "deterministic"))]
+    flags = [
+        ln
+        for ln in out.splitlines()
+        if ln.startswith(("incremental:", "deterministic"))
+    ]
     rows = {n: [tuple(r.values()) for r in t.to_pylist()] for n, t in tables.items()}
     try:
         inlined = json.dumps(inline_tables(json.loads(eng.written_plan(plan)), rows))
@@ -349,7 +375,9 @@ def backends(
     try:
         text = plan_sql(json.loads(written), SNOWFLAKE)
         out["snowflake"] = (
-            "SQL generated, not run, outside the profiles: " + " ".join(text.split())[:100] + " …",
+            "SQL generated, not run, outside the profiles: "
+            + " ".join(text.split())[:100]
+            + " …",
             None,
         )
     except Unsupported as e:
@@ -448,12 +476,20 @@ def route_of(report: Any, engine: str) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     ap.add_argument(
-        "--table", nargs=3, action="append", default=[], metavar=("NAME", "COL:TYPE,...", "ROWS")
+        "--table",
+        nargs=3,
+        action="append",
+        default=[],
+        metavar=("NAME", "COL:TYPE,...", "ROWS"),
     )
     ap.add_argument("--sql", help="the query, in DuckDB's SQL")
-    ap.add_argument("--ibis", help="Ibis code: an expression, or statements assigning q")
+    ap.add_argument(
+        "--ibis", help="Ibis code: an expression, or statements assigning q"
+    )
     ap.add_argument(
         "--requires",
         nargs=2,
@@ -469,9 +505,13 @@ def main() -> int:
         metavar="EXPR",
         help="a postcondition, e.g. sv.equivalent(floats=sv.within(rel=1e-9))",
     )
-    ap.add_argument("--catalogue", help="a catalogue query id: its query and synthetic tables")
     ap.add_argument(
-        "--spark", action="store_true", help="also run on Spark (needs a JVM; outside the profiles)"
+        "--catalogue", help="a catalogue query id: its query and synthetic tables"
+    )
+    ap.add_argument(
+        "--spark",
+        action="store_true",
+        help="also run on Spark (needs a JVM; outside the profiles)",
     )
     args = ap.parse_args()
 
@@ -488,7 +528,9 @@ def main() -> int:
         con.put(n, t)
     environment(con, args.spark, polars_streaming())
     if small := few_rows(tables):
-        print(f"  note: {', '.join(small)} has fewer than 2 rows. Polars rewrites arithmetic with")
+        print(
+            f"  note: {', '.join(small)} has fewer than 2 rows. Polars rewrites arithmetic with"
+        )
         print(
             "  literals differently on one-row frames (PL-3, polars-zero-sign): give 2 rows"
             " or more."
@@ -497,7 +539,10 @@ def main() -> int:
     if code is not None:
         expr = ibis_expr(code, {n: con.table(n) for n in tables})
         if sql is None:
-            print("Ibis's DuckDB SQL:", " ".join(ibis.to_sql(expr, dialect="duckdb").split())[:300])
+            print(
+                "Ibis's DuckDB SQL:",
+                " ".join(ibis.to_sql(expr, dialect="duckdb").split())[:300],
+            )
 
     model: Rows | None = None
     ordered = False
@@ -519,19 +564,25 @@ def main() -> int:
                 root = parse_plan(json.loads(eng.written_plan(plan))).root
                 ordered = promises_order(root)
                 if has_ties(root):
-                    print("    note: a window or FETCH: where sort keys tie, engines may number,")
+                    print(
+                        "    note: a window or FETCH: where sort keys tie, engines may number,"
+                    )
                     print(
                         "    pair or pick rows differently from Rel.eval's stable order and still"
                     )
-                    print("    be right (option tie_order; the observation 'ties permuted').")
+                    print(
+                        "    be right (option tie_order; the observation 'ties permuted')."
+                    )
             elif not same(rows, model, ordered):
                 print("    (differs from the first verified frontend's Rel.eval)")
 
     schemas = {n: ibis.Schema.from_pyarrow(t.schema) for n, t in tables.items()}
     req, ens = lookup.conditions(args.requires, args.ensures)
-    reports = lookup.verify_profiles(expr if expr is not None else sql, schemas, req, ens)
+    reports = lookup.verify_profiles(
+        expr if expr is not None else sql, schemas, req, ens
+    )
     lookup.print_profiles(reports)
-    verified = [r for r in reports.values() if not isinstance(r, str) and r.proved]
+    verified = [r for r in reports.values() if not isinstance(r, str) and r._proved]
     best = verified[0] if verified else None
 
     if first_verified is not None:
@@ -548,9 +599,13 @@ def main() -> int:
             if engine != "snowflake":
                 print(f"  {'':11}   route: {route_of(best, engine)}")
     else:
-        print("\n== No frontend's plan verified under the reference: Rel.eval gives no rows")
+        print(
+            "\n== No frontend's plan verified under the reference: Rel.eval gives no rows"
+        )
     if sql is not None:
-        print("\n== Native: the SQL itself on each engine (no route; what the engine does)")
+        print(
+            "\n== Native: the SQL itself on each engine (no route; what the engine does)"
+        )
         for engine, (status, rows) in native_sql(con, sql, tables, args.spark).items():
             print(f"  {engine:11} {verdict(status, rows, model, ordered)}")
     if code is not None:

@@ -55,7 +55,11 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     assert absent.observation.bound == plan.observation.bound == bound
     assert str(absent.observation) == f"equivalent(floats=plan, ≤ {bound.abs:.1e})"
     assert f"observes: equivalent(floats=plan, ≤ {bound.abs:.1e})" in str(absent)
-    assert absent.proved and plan.proved and stated.proved
+    assert (
+        absent.verdict == sv.Verdict.PROVED
+        and plan.verdict == sv.Verdict.PROVED
+        and stated.verdict == sv.Verdict.PROVED
+    )
     assert absent._floats_on == plan._floats_on == {}
     assert all(not ps for ps in stated._floats_on.values())
     assert f"the plan's bound on its doubles is {bound.abs:.1e}" in str(stated)
@@ -101,7 +105,7 @@ def test_a_sign_postcondition_runs_with_or_without_a_bound(con) -> None:
     expr = r.group_by("k").aggregate(m=r.x.mean())
     for req in ([_.x.between(0, 10)], [_.x.between(0, 10), sv.max_rows(1000)]):
         report = sv.verify(expr, requires={"readings": req}, ensures=[_.m >= 0])
-        assert report.proved
+        assert report.verdict == sv.Verdict.PROVED
         assert not report.route("duckdb").refused
 
 
@@ -121,7 +125,7 @@ def test_plan_bound_equality_uses_the_bound() -> None:
 )
 def test_a_tolerance_below_the_bound_is_refused_at_verify(con, tol) -> None:
     report = verify(con, [sv.equivalent(floats=tol)])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert report._floats_on and all(report._floats_on.values())
     text = str(report)
     assert f"observes: equivalent(floats={tol}); the plan's bound on its doubles is " in text
@@ -135,14 +139,14 @@ def test_a_tolerance_below_the_bound_is_refused_at_verify(con, tol) -> None:
 
 def test_exact_doubles_say_which_engines_give_them(con) -> None:
     mean = verify(con, [sv.equivalent(floats="exact")])
-    assert not mean.proved
+    assert mean.verdict == sv.Verdict.UNPROVED
     assert "NOT met: no engine meets exact doubles" in str(mean)
 
     r = con.table("readings")
     doubled = sv.verify(
         r.select("k", y=r.x * 2), requires=REQ, ensures=[sv.equivalent(floats="exact")]
     )
-    assert doubled.proved
+    assert doubled.verdict == sv.Verdict.PROVED
     assert doubled._floats_on == {"duckdb": [], "polars": [], "spark": []}
     assert "duckdb, polars, spark meet exact doubles" in str(doubled)
 
@@ -195,7 +199,7 @@ def test_a_window_over_a_key_has_a_class() -> None:
     req = {"events": [sv.unique("id"), _.id.notnull(), _.ms.between(-1000, 1000), _.user.notnull()]}
     window = ibis.window(group_by=e.user, order_by=e.id)
     report = sv.verify(e.mutate(prev=e.ms.lag().over(window)), requires=req)
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     for engine in ("duckdb", "polars"):
         assert report.run(c, engine).num_rows == 4
         route = report.routes[engine]
@@ -214,7 +218,7 @@ def test_a_window_sum_of_doubles_is_within_the_plans_bound(con, engine) -> None:
     double sums)."""
     r = con.table("readings")
     report = sv.verify(r.mutate(s=r.x.sum().over(group_by=r.k)), requires=REQ)
-    assert report.proved and report.route(engine).cls == (
+    assert report.verdict == sv.Verdict.PROVED and report.route(engine).cls == (
         "observed" if engine == "duckdb" else "shim"
     )
     assert report.run(con, engine).num_rows == 3

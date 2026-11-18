@@ -1493,7 +1493,7 @@ def _refuse_unverified(report: Report) -> None:
             "this report has no plan to export: it was not made by sv.verify",
             hint="export a report that sv.verify returned",
         )
-    if not report.proved:
+    if not report._proved:
         reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
         reasons += [f"may fail: {i}" for i in report.errors]
         if report._transfer:
@@ -1753,7 +1753,7 @@ def _floats_component(components: Mapping[str, Any]) -> Any:
 def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     """`from_substrait`, under its internal name."""
     from sverify._verdict import split_assumed, verdict
-    from sverify.conditions import CheckedCondition
+    from sverify.conditions import CheckedCondition, PlannedCondition
     from sverify.engine import run_checker
     from sverify.observation import Observation
     from sverify.report import Issue
@@ -1799,9 +1799,17 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         else:
             checked.append(_table_condition(e["entry"]).ensured(out, next_key))
     requires: dict[str, list[str]] = {}
+    conditions: dict[str, list[Any]] = {}
     for r in imp.requires:
         if r.get("table"):
             requires.setdefault(r["table"], []).append(r["text"])
+            # What a run checks on the data: a row condition by its own plan, a
+            # table condition as `check_inputs` checks it for `sv.verify`.
+            conditions.setdefault(r["table"], []).append(
+                PlannedCondition(r["text"], json.dumps(_lean_plan(r["plan"])))
+                if r.get("kind") == "row"
+                else _table_condition(r["entry"])
+            )
     components = {
         k: v
         for k, v in (m.get("equivalence_components") or {}).items()
@@ -1825,6 +1833,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         observation=observation,
         _params=list(m.get("params") or []),
     )
+    report._conditions = conditions
     return split_assumed(report)
 
 

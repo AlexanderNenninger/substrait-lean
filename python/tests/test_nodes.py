@@ -411,7 +411,7 @@ def test_unproved_postconditions_of_a_node_are_checked_at_refresh(tmp_path):
     src = static_orders([(1, "ada", 5), (2, "bob", 7)])
     node = capped(src)  # no VerificationError: checked at refresh instead
     report = capped.report
-    assert report is not None and not report.proved
+    assert report is not None and report.verdict == sv.Verdict.UNPROVED
     assert [c.checked for c in report.ensures] == [True, True]
     assert "NOT proved: it may be FALSE or NULL on some rows" in str(report)
     assert "; checked on the output data" in str(report)

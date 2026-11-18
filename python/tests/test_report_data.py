@@ -64,7 +64,7 @@ def test_reason_of_a_condition_that_may_be_null() -> None:
 
 def test_needs_as_data() -> None:
     report = sv.verify("select q + 1 as a, k * 3 as b from t", tables=T, semantics="duckdb")
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     needs = report.needs
     assert [(n.table, n.column, n.op, n.value) for n in needs] == [
         ("t", "q", "<", "9000000000000000000"),
@@ -91,7 +91,7 @@ def test_needs_code_is_what_requires_takes() -> None:
         t.select(t.g, per=t.total // t.qty),
         requires={"t": [eval(c, {"_": _}) for c in codes]},  # noqa: S307 - our own code
     )
-    assert proved.proved
+    assert proved.verdict == sv.Verdict.PROVED
 
 
 def test_needs_is_empty_when_inferred_bounds_are_assumed() -> None:
@@ -105,7 +105,7 @@ def test_tables_take_duckdb_type_names() -> None:
         tables={"t": {"id": "BIGINT", "n": "HUGEINT", "s": "VARCHAR NOT NULL", "x": "!int64"}},
         ensures=["s IS NOT NULL"],
     )
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.output["id"] == ibis.dtype("int64")
     assert report.output["n"] == ibis.dtype("decimal(38, 0)")
     with pytest.raises(ValueError, match="neither an Ibis type nor one of DuckDB's"):

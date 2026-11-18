@@ -105,7 +105,7 @@ def test_selectors_keep_other_selectors(result: sverify_dbt.CheckResult, tmp_pat
     data = yaml.safe_load(path.read_text())
     assert [s["name"] for s in data["selectors"]] == ["mine", "sverify_proved"]
     values = {d["value"] for d in data["selectors"][1]["definition"]["union"]}
-    assert values == {t.name for t in result.proved}
+    assert values == {t.name for t in result.proved_tests}
     assert "not_null_stg_orders_order_id" in values
 
 
@@ -131,7 +131,7 @@ def test_dbt_excludes_the_proved_tests(shop: Path, result: sverify_dbt.CheckResu
         ]
     )
     assert res.success
-    assert set(res.result) == {t.name for t in result.proved}
+    assert set(res.result) == {t.name for t in result.proved_tests}
     dbt(shop, "compile")  # the selectors file parses
 
 
@@ -294,7 +294,7 @@ def test_an_incremental_models_tests_are_skippable_only_if_its_key_holds(
     res = _incremental(make_project, config)
     assert statuses(res["p"]) == {"unique(id)": "proved", "not_null(id)": "proved"}
     assert [t.skippable for t in res["p"].tests] == [skippable, skippable]
-    names = {t.name for t in res.proved}
+    names = {t.name for t in res.proved_tests}
     selected = {n["value"] for n in res.selector()["definition"].get("union", [])}
     assert (selected == names) if skippable else not (selected & names)
     assert ("dbt build may skip them" in str(res)) == skippable
@@ -400,3 +400,67 @@ def test_needs_become_suggested_source_tests(make_project, capsys) -> None:
     assert "# arr: overflow in `mrr * 12` otherwise" in text
     assert main(["suggest", str(root)]) == 0
     assert capsys.readouterr().out == text
+
+
+def test_a_seed_takes_its_types_from_the_catalog_of_the_loaded_table(make_project):
+    """The dbt default: a seed states no types. Once `dbt seed` has loaded it,
+    `dbt docs generate` records the table's real types; before, the refusal
+    says what to run (#1586). The CSV is not sniffed: DuckDB reads `1` as
+    BIGINT where dbt-duckdb loads INTEGER."""
+    from conftest import dbt
+
+    root = make_project(
+        {
+            "seeds/raw_orders.csv": "id,cents\n1,100\n2,250\n",
+            "models/stg.sql": "select id, cents from {{ ref('raw_orders') }}\n",
+        }
+    )
+    why = sverify_dbt.check(root, counterexamples=0)["stg"].refused
+    assert why is not None
+    assert why.startswith("ref('raw_orders') has no column types") and "`dbt seed`" in why
+    dbt(root, "seed")
+    dbt(root, "docs", "generate")
+    assert sverify_dbt.check(root, counterexamples=0)["stg"].refused is None
+
+
+def test_a_missing_column_type_message_parses(make_project):
+    res = sverify_dbt.check(
+        make_project(
+            {
+                "models/_sources.yml": (
+                    "version: 2\nsources:\n  - name: raw\n    schema: main\n"
+                    "    tables:\n      - name: payments\n"
+                ),
+                "models/p.sql": "select 1 as id from {{ source('raw', 'payments') }}\n",
+            }
+        ),
+        counterexamples=0,
+    )
+    why = res["p"].refused
+    assert why is not None and why.startswith("source('raw', 'payments') has no column types")
+
+
+def test_an_incremental_model_compiled_after_its_run_asks_for_full_refresh(make_project):
+    """After `dbt run`, a plain compile renders the `{{ this }}` branch (#1586)."""
+    from conftest import dbt
+
+    root = make_project(
+        {
+            "seeds/raw.csv": "id\n1\n2\n",
+            "models/p.sql": (
+                "{{ config(materialized='incremental') }}\n"
+                "select id from {{ ref('raw') }}\n"
+                "{% if is_incremental() %}\n"
+                "where id > (select max(id) from {{ this }})\n"
+                "{% endif %}\n"
+            ),
+        }
+    )
+    dbt(root, "seed")
+    dbt(root, "run")
+    dbt(root, "docs", "generate")
+    dbt(root, "compile")
+    why = sverify_dbt.check(root, counterexamples=0)["p"].refused
+    assert why and "dbt compile --full-refresh" in why and "{{ this }}" in why
+    dbt(root, "compile", "--full-refresh")
+    assert sverify_dbt.check(root, counterexamples=0)["p"].refused is None

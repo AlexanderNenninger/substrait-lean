@@ -65,7 +65,6 @@ inside the Lean model. `unique` checks always run through Ibis.
 
 from __future__ import annotations
 
-import difflib
 import functools
 import inspect
 import json
@@ -92,6 +91,7 @@ from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double 
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyWarning
+from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
 from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DATA_ONLY,
@@ -675,12 +675,9 @@ def requires_by_input(
     for key in requires:
         if key in inputs:
             continue
-        lower = {i.lower(): i for i in inputs}
-        close = [lower[k] for k in difflib.get_close_matches(str(key).lower(), lower, n=1)]
-        hint = f"; did you mean {close[0]!r}?" if close else ""
         raise error(
             f"requires: unknown {kind} {key!r}; the inputs are: {', '.join(inputs) or 'none'}"
-            + hint
+            + did_you_mean(key, inputs)
         )
     return {t: expand_keys(cs) for t, cs in requires.items()}
 
@@ -725,7 +722,7 @@ def verify(
     Ibis expression compiles with sverify's own producer, so it means what
     `docs/reference-semantics.md` ("The Ibis frontend") says, whichever Ibis
     backend it came from; where
-    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
+    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on some backends, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DuckDB and
     Polars. A SQL string, and a SQL condition, is DuckDB's SQL, lifted by
@@ -817,7 +814,7 @@ def verify(
             tables={"orders": orders},
             ensures=["amount > 0"],
         )
-        report.proved  # True
+        report.verdict  # Verdict.PROVED
         ```
 
         An Ibis expression, with preconditions:
@@ -1714,6 +1711,7 @@ def _verify_once(
             shown=shown,
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
             dialect=dialect,
+            finite=lambda e: _finite_bounds(e, schemas, assumable, dialect),
         ),
         _params=bound,
         _bounds=_int_bounds(out["facts"], dtypes),
@@ -1723,6 +1721,8 @@ def _verify_once(
         _postconditions=list(ensures),
         inputs=dict(schemas),
     )
+    from sverify._vacuity import contradictions
+
     if not isinstance(transform, str) and report.issues:
         report._hints = overflow_hints(transform, requires, report)
     report._hints += and_or_hints(report.issues, transform)
@@ -1734,7 +1734,29 @@ def _verify_once(
         if plugin is None or not plugin.floor_division:
             # An engine whose `//` and `%` floor computes them as the plan states.
             report._hints += division_hints(transform)
+    report._hints += contradictions(requires, schemas)
     return report, out["inferred"], schemas
+
+
+def _finite_bounds(
+    shown: str, schemas: Mapping[str, ibis.Schema], assumable: Container[str], dialect: str
+) -> dict[str, list[Condition]]:
+    """Bounds of ±1e300 on the double column a `sum(x)` or `avg(x)` adds up:
+    they keep the sum from being NaN (+inf plus -inf). A hint proposes them
+    only where a proof confirms it (`_confirm_hints`)."""
+    m = re.fullmatch(r"(?:sum|avg|mean)\((\w+)\)(?: or \w+\(\1\))*", shown)
+    out: dict[str, list[Condition]] = {}
+    for t, schema in schemas.items():
+        if m is None or t not in assumable or m[1] not in schema or not schema[m[1]].is_floating():
+            continue
+        col = m[1]
+        q = f'"{col}"' if not col.isidentifier() else col
+        out[t] = (
+            [getattr(ibis._, col) >= -1e300, getattr(ibis._, col) <= 1e300]
+            if dialect == "ibis"
+            else [f"{q} >= -1e300", f"{q} <= 1e300"]
+        )
+    return out
 
 
 def _guess_bounds(
@@ -1820,6 +1842,7 @@ def _issues(
     shown: Callable[..., str | None],
     guess: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
     dialect: str = "ibis",
+    finite: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
 ) -> list[Issue]:
     """The checker's issues, one per expression the user wrote and kind
     (#687): the sub-expressions of an expression that may overflow, and the
@@ -1866,6 +1889,10 @@ def _issues(
         guessed = (
             guess(user) if error and not constant and bound and bound.get("why") and user else {}
         )
+        if not guessed and error and not constant and kind == "domain error" and user:
+            # `sum(x)` is NaN where x holds both +inf and -inf: finite bounds
+            # rule it out (`_cause`).
+            guessed = finite(user)
         if guessed:
             code, fallback = guessed, text
             text = (
@@ -2627,7 +2654,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.guarantees) if prov else [],
         prov,
         list(prov.checked) if prov else [],
-        list(prov.report.not_null) if prov and prov.report.proved else [],
+        list(prov.report.not_null) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
     )
 
@@ -2938,7 +2965,7 @@ class ContractedTransform:
         unproved contract does not raise `VerificationError`, a bound table
         stands for its schema (its data is not read, so `requires` is not
         checked on it), and `on_unproved` does not apply. An editor, a test
-        or a CI step reads the report (`Report.proved`, `Report.needed`).
+        or a CI step reads the report (`Report.verdict`, `Report.needed`).
 
         Args:
             *args: The inputs, positionally: Ibis tables, `ibis.Schema`s, or
@@ -3060,7 +3087,7 @@ class ContractedTransform:
             # The report may be cached and shared by calls: this call's copy.
             report = self.report = replace(report, preconditions=found)
         checked: list[Condition] = []
-        if not report.proved and raise_unproved:
+        if not report._proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in
             # "check" mode the engine raises them if they happen.
             if self.on_unproved == "check" and (node or is_bound(result)):
@@ -3186,7 +3213,10 @@ def transform(
             breaks one of these preconditions, inferred ones included:
             `"error"` raises `PreconditionError`; `"quarantine"`
             sets the offending rows aside with the reason, in the node's
-            quarantine table, and the rest flows; `"hold"` commits nothing
+            quarantine table, and the rest flows (of a key on two different
+            rows, both go; rows identical in every column count once, so a
+            redelivered duplicate is set aside and the kept row stays);
+            `"hold"` commits nothing
             for the batch and holds the node at its versions until a later
             version of the source meets the preconditions. Default None:
             the source's `on_violation`, else `"error"`. Where two
@@ -3229,7 +3259,7 @@ def transform(
             return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
         big = orders.pipe(doubled)  # a Node, proved here (as doubled(orders))
-        doubled.report.proved  # True
+        doubled.report.verdict  # Verdict.PROVED
         doubled.report.facts["doubled"]  # 'an integer ≥ 22'
         big.refresh()
         big.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]
