@@ -891,8 +891,8 @@ Two limits of the per-option view:
 - Relational options act on operators, not calls: `null_order` is
   discharged by writing the sort key's NULL placement, `tie_order` and
   `tie_pick` natively (any engine's pick is one the reference allows), or,
-  under the deterministic profile, by a total order or a refusal
-  ([D24](decisions.md#d24-tie-order-belongs-to-the-deterministic-profile)), and `sum_order`
+  for a plan that must be determined, by a total order or a refusal
+  ([D24](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)), and `sum_order`
   (any order in `P`, a fixed one in `Q`) is native, while the converse needs
   an ordered aggregation (`Dialect.float_sum`), at the cost of a sort.
 
@@ -1046,13 +1046,12 @@ proving.
 
 WebAssembly's spec is the closest precedent for profiles of one language
 [Wasm, Profiles]. Its full profile holds every behaviour, a NaN result is any
-element of a set the spec defines (`nans_N`), and the deterministic profile
+element of a set the spec defines (`nans_N`), and Wasm's deterministic profile
 removes the rules that allow more than one, so that every NaN an operation
 creates is the positive canonical one; every profile is a subset of the full
 one. The core is the full profile. The reference fixes the values Wasm's
 deterministic profile fixes, NaNs among them, and leaves the order of ties
-open; sverify's deterministic profile is the reference with that order
-fixed as well ([D24](decisions.md#d24-tie-order-belongs-to-the-deterministic-profile)). The
+open; sverify proves a plan's result determined where no order is left open ([D24](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)). The
 reference goes further on zeros: Wasm keeps `-0` and `+0` apart, and its
 `fmin(-0, +0)` is `-0`, while the reference has one zero (#89). D4's NaN
 codes by sign follow Wasm's treatment of the sign as a choice; IEEE 754 does
@@ -1178,7 +1177,7 @@ to it, so links to an entry here still land.
 - <a id="d21-tighten-the-reference-where-it-stays-practical"></a>[D21. Tighten the reference where it stays practical](decisions.md#d21-tighten-the-reference-where-it-stays-practical)
 - <a id="d22-four-route-classes-and-tolerances-are-observations"></a>[D22. Four route classes, and tolerances are observations](decisions.md#d22-four-route-classes-and-tolerances-are-observations)
 - <a id="d23-inferred-preconditions-are-errors-by-default"></a>[D23. Inferred preconditions are errors by default](decisions.md#d23-inferred-preconditions-are-errors-by-default)
-- <a id="d24-tie-order-belongs-to-the-deterministic-profile"></a>[D24. Tie order belongs to the deterministic profile](decisions.md#d24-tie-order-belongs-to-the-deterministic-profile)
+- <a id="d24-tie-order-belongs-to-the-deterministic-profile"></a><a id="d24-tie-order-is-open-and-determinism-is-proved"></a>[D24. Tie order is open, and determinism is proved](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)
 - <a id="d25-float-aggregates-are-correctly-rounded-exact-sums"></a>[D25. Float aggregates are correctly rounded exact sums](decisions.md#d25-float-aggregates-are-correctly-rounded-exact-sums)
 - <a id="d26-two-equalities-for-null"></a>[D26. Two equalities for NULL](decisions.md#d26-two-equalities-for-null)
 - <a id="d27-the-size-hypothesis-is-the-only-size-assumption"></a>[D27. The size hypothesis is the only size assumption](decisions.md#d27-the-size-hypothesis-is-the-only-size-assumption)
@@ -1198,3 +1197,5 @@ to it, so links to an entry here still land.
 - <a id="d42-the-references-value-of-the-options-no-earlier-decision-states"></a>[D42. The reference's value of the options no earlier decision states](decisions.md#d42-the-references-value-of-the-options-no-earlier-decision-states)
 - <a id="d44-replace-with-an-empty-pattern-is-the-string-unchanged"></a>[D44. `replace` with an empty pattern is the string unchanged](decisions.md#d44-replace-with-an-empty-pattern-is-the-string-unchanged)
 - <a id="d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do"></a>[D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do](decisions.md#d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do), amended 2026-11-17 for windows
+- <a id="d47-raise-value-or-open-where-engines-differ"></a>[D47. Raise, value or open where engines differ](decisions.md#d47-raise-value-or-open-where-engines-differ)
+- <a id="d49-a-value-known-from-one-engine-is-provisional"></a>[D49. A value known from one engine is provisional](decisions.md#d49-a-value-known-from-one-engine-is-provisional)
