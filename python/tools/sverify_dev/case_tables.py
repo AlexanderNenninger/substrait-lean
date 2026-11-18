@@ -150,6 +150,37 @@ def spark_setting(name: str, conf: str | None = None, collated: bool = False) ->
     path.write_text(json.dumps(data, ensure_ascii=False, indent=0, sort_keys=True) + "\n")
 
 
+def collated_string_checks(spark: Any) -> dict[str, Any]:
+    """What the collated form returns (D51, L3 and L4): a string under
+    `UTF8_BINARY`, so schema, comparison, `GROUP BY`, `DISTINCT`, `ORDER BY`
+    and join keys go by bytes and the result mixes with an uncollated string;
+    and what it does with invalid UTF-8. Runs on any `SparkSession`."""
+    form = lambda x: COLLATED.format(fn="upper", x=x)  # noqa: E731
+    spark.sql(
+        f"SELECT {form('s')} AS u, s FROM VALUES ('é'), ('a'), ('É'), ('B') AS t(s)"
+    ).createOrReplaceTempView("v")
+    q = lambda sql: [tuple(r) for r in spark.sql(sql).collect()]  # noqa: E731
+    out: dict[str, Any] = {
+        "type": q(f"SELECT typeof({form(repr('é'))})")[0][0],
+        "schema": str(spark.sql("SELECT u FROM v").schema.fields[0].dataType),
+        "order_by": [r[0] for r in q("SELECT u FROM v ORDER BY u")],
+        "group_by": sorted(r[0] for r in q("SELECT u FROM v GROUP BY u")),
+        "distinct": q("SELECT count(DISTINCT u) FROM v")[0][0],
+        "equal_bytes": q("SELECT u = 'É', u = 'é' FROM v WHERE s = 'é'")[0],
+        "join_keys": sorted(r[0] for r in q("SELECT a.u FROM v a JOIN v b ON a.u = b.u")),
+        "mixes_with_plain": q("SELECT u || s, concat(u, s), u < s FROM v WHERE s = 'a'")[0],
+    }
+    # Invalid UTF-8: a lone continuation byte, through the plain and the collated form.
+    for label, f in (("plain", "upper({x})"), ("collated", COLLATED.replace("{fn}", "upper"))):
+        out["invalid_utf8_" + label] = [
+            r[0].encode("utf-8", "surrogateescape").hex()
+            for r in spark.sql(
+                "SELECT " + f.format(x="CAST(unhex('C3') AS STRING)") + ", 1"
+            ).collect()
+        ]
+    return out
+
+
 def spark_executor_locale(locale: str) -> None:
     """The collated form on a Spark executor whose JVM has `locale` as its
     default (`local-cluster`: the executor is a JVM of its own), over every

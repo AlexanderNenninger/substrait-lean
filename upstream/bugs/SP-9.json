@@ -1,0 +1,32 @@
+{
+  "id": "SP-9",
+  "project": "spark",
+  "kind": "bug",
+  "version": "4.3.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on Spark 4.3.0 (and 4.0.1); main not read. The javadoc of `CollationAwareUTF8String.toUpperCase(UTF8String)` and `toLowerCase(UTF8String)` says \"using the ICU root locale rules\"; the code calls `UCharacter.toUpperCase(String)`, which takes the JVM's default locale. No upstream issue searched yet.",
+  "title": "`upper` and `lower` of a UTF8_BINARY string follow the JVM's default locale",
+  "summary": "With `spark.sql.icu.caseMappings.enabled` (the default) `upper` and `lower` of a non-ASCII `UTF8_BINARY` string go through `CollationAwareUTF8String.toUpperCase(UTF8String)`, documented as \"using the ICU root locale rules\", and call `UCharacter.toUpperCase(String)` and `toLowerCase(String)`, ICU's default-locale overloads. Under a JVM whose default locale is Turkish or Azeri, `lower('Ié')` is `ıé` and `upper('iÉ')` is `İÉ`; under Lithuanian `lower('Ì')` keeps a dot above. Executors have JVMs of their own, so the same query maps by each executor's locale. A fully ASCII string takes a byte path and is unaffected.",
+  "repro": "Start the JVM with `-Duser.language=tr`: `SELECT lower('Ié'), upper('iÉ');` gives `ıé`, `İÉ`; with `-Duser.language=en` it gives `ié`, `IÉ`. `SELECT lower(collate('Ié', 'UNICODE'))` gives `ié` under both.",
+  "handling": "Spark's writer emits `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')` (and `lower`) on text not proved ASCII (D51, `spark-case-collated`), which takes the collation's locale. The fix upstream is to pass `ULocale.ROOT` as the javadoc says.",
+  "found_by": "the D51 case-mapping probes (sverify_dev.case_tables --spark-setting)",
+  "issues": [],
+  "files": [
+    "engines/spark/facts/spark-case.json",
+    "engines/spark/facts/spark-case-collated.json"
+  ],
+  "facts": [
+    "spark-case",
+    "spark-case-collated"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-18",
+      "against": {
+        "pyspark": "4.3.0",
+        "openjdk": "21.0.13"
+      },
+      "note": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/sql/catalyst/util/CollationAwareUTF8String.java#L392-L443 (javadoc at L392, `UCharacter.toUpperCase(target.toValidString())` at L406); probes in engines/spark/probes/case-tables-settings.json (JVM locales tr, az, lt)"
+    }
+  ]
+}

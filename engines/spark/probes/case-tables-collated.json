@@ -1269,5 +1269,86 @@
 ]
 },
 "upper": {}
+},
+"string_checks": {
+"4.0.1": {
+"distinct": 3,
+"equal_bytes": [
+true,
+false
+],
+"group_by": [
+"A",
+"B",
+"É"
+],
+"invalid_utf8_collated": [
+"efbfbd"
+],
+"invalid_utf8_plain": [
+"efbfbd"
+],
+"join_keys": [
+"A",
+"B",
+"É",
+"É",
+"É",
+"É"
+],
+"mixes_with_plain": [
+"Aa",
+"Aa",
+true
+],
+"order_by": [
+"A",
+"B",
+"É",
+"É"
+],
+"schema": "StringType()",
+"type": "string"
+},
+"4.3.0": {
+"distinct": 3,
+"equal_bytes": [
+true,
+false
+],
+"group_by": [
+"A",
+"B",
+"É"
+],
+"invalid_utf8_collated": [
+"efbfbd"
+],
+"invalid_utf8_plain": [
+"efbfbd"
+],
+"join_keys": [
+"A",
+"B",
+"É",
+"É",
+"É",
+"É"
+],
+"mixes_with_plain": [
+"Aa",
+"Aa",
+true
+],
+"order_by": [
+"A",
+"B",
+"É",
+"É"
+],
+"schema": "StringType()",
+"type": "string collate UTF8_BINARY"
+},
+"arrow_invalid_utf8": "pyarrow raises ArrowInvalid on b'\\xc3' for a string array and for binary-to-string cast, so a table from sverify's readers holds no invalid UTF-8"
 }
 }
