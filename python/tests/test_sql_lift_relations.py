@@ -84,6 +84,36 @@ QUERIES = [
     "SELECT o.id, p.amount AS above FROM orders o ASOF LEFT JOIN orders p ON o.amount < p.amount",
     "SELECT a.id, b.id AS nxt FROM orders a ASOF JOIN orders b ON a.day < b.day"
     " AND a.customer IS NOT DISTINCT FROM b.customer",
+    # #345: a correlated [NOT] EXISTS that is a conjunct of WHERE, as a semi or
+    # anti join. NULL keys (orders 5, no customer) match nothing.
+    "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c WHERE c.name = o.customer)",
+    "SELECT id FROM orders o WHERE NOT EXISTS (SELECT 1 FROM customers c"
+    " WHERE c.name = o.customer)",
+    "SELECT name FROM customers c WHERE EXISTS (SELECT * FROM orders o WHERE o.customer = c.name"
+    " AND o.amount > 5)",
+    # A condition that is not an equality, and an inner-only conjunct.
+    "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM orders p WHERE p.amount > o.amount"
+    " AND p.id <> o.id)",
+    "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c WHERE c.name = o.customer"
+    " AND c.region = 'eu') AND o.amount > 1",
+    # Two of them, an empty inner table, and the other conjuncts first.
+    "SELECT id FROM orders o WHERE o.amount > 0 AND EXISTS (SELECT 1 FROM customers c"
+    " WHERE c.name = o.customer) AND NOT EXISTS (SELECT 1 FROM customers c"
+    " WHERE c.name = o.customer AND c.region = 'us')",
+    "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c WHERE c.name = o.customer"
+    " AND c.region = 'nowhere')",
+    "SELECT id FROM orders o WHERE NOT EXISTS (SELECT 1 FROM customers c WHERE c.name = o.customer"
+    " AND c.region = 'nowhere')",
+    # Names resolve innermost first: the inner `customer` is the inner row's own
+    # (a tautology where it is not NULL), and the same table on both sides.
+    "SELECT id FROM orders WHERE EXISTS (SELECT 1 FROM orders o2 WHERE o2.customer = customer)",
+    "SELECT id FROM orders WHERE EXISTS (SELECT 1 FROM orders WHERE orders.id = id)",
+    # A join inside the subquery, and a condition that can raise (division by
+    # an inner column) in a semi join.
+    "SELECT name FROM customers c WHERE EXISTS (SELECT 1 FROM orders o JOIN customers d"
+    " ON d.name = o.customer WHERE d.region = c.region AND o.id > 1)",
+    "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM orders p WHERE p.id = o.id"
+    " AND 10 / p.amount > 0)",
 ]
 
 
@@ -119,10 +149,51 @@ def test_sorts_put_nulls_last_unless_told():
             "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t) SELECT n FROM t",
             "RECURSIVE",
         ),
+        # Correlated EXISTS shapes that stay refused, each by name (#345).
         (
-            "SELECT id FROM orders o"
-            " WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer)",
+            "SELECT id FROM orders o WHERE amount > 0 OR EXISTS"
+            " (SELECT 1 FROM customers WHERE name = o.customer)",
             "correlated",
+        ),
+        (
+            "SELECT id, EXISTS (SELECT 1 FROM customers WHERE name = o.customer) AS known"
+            " FROM orders o",
+            "correlated",
+        ),
+        (
+            "SELECT id FROM orders o WHERE NOT (amount > 3 AND EXISTS"
+            " (SELECT 1 FROM customers WHERE name = o.customer))",
+            "correlated",
+        ),
+        (
+            "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers"
+            " GROUP BY name HAVING min(name) = o.customer)",
+            "correlated|GROUP BY",
+        ),
+        (
+            "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer"
+            " UNION SELECT 1 FROM customers)",
+            "set operation",
+        ),
+        (
+            "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer"
+            " LIMIT 1)",
+            "LIMIT in a correlated EXISTS",
+        ),
+        (
+            "SELECT id FROM orders o WHERE EXISTS (SELECT amount + 1 FROM customers"
+            " WHERE name = o.customer)",
+            "write SELECT 1",
+        ),
+        (
+            "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c JOIN orders p"
+            " ON p.customer = o.customer WHERE c.name = p.customer)",
+            "correlated",
+        ),
+        (
+            "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers c WHERE c.name ="
+            " o.customer AND c.region IN (SELECT region FROM customers WHERE name = o.customer))",
+            "subquery, window or aggregate",
         ),
         # Joins that are not the inner join of their ON, and a star SQLGlot
         # expands otherwise than DuckDB.
