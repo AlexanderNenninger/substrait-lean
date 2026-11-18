@@ -205,7 +205,9 @@ def test_partition_values_with_awkward_characters_reach_their_rows(tmp_path):
     ks = ["a b", "50%", "x=y", "p/q", "é"]
     t = pa.table({"id": list(range(len(ks))), "k": ks})
     write_deltalake(tmp_path / "p", t, partition_by=["k"])
-    scan = DeltaSource(str(tmp_path / "p"))._native().scan
+    snap = DeltaSource(str(tmp_path / "p"))._native()
+    assert snap is not None
+    scan = snap.scan
     assert scan.partitions is not None
     got = lazy_scan(scan).collect().to_arrow()
     assert sorted(zip(got["id"].to_pylist(), got["k"].to_pylist(), strict=True)) == list(
@@ -219,7 +221,9 @@ def test_a_file_without_partition_values_raises(tmp_path):
     from sverify.io.delta import DeltaSource
 
     write_deltalake(tmp_path / "p", pa.table({"id": [1, 2], "k": ["a", "b"]}), partition_by=["k"])
-    scan = DeltaSource(str(tmp_path / "p"))._native().scan
+    snap = DeltaSource(str(tmp_path / "p"))._native()
+    assert snap is not None
+    scan = snap.scan
     assert scan.partitions is not None
     short = replace(scan, partitions=scan.partitions.slice(1))
     with pytest.raises(ValueError, match="no partition values for"):
