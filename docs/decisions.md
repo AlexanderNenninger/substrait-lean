@@ -1300,8 +1300,11 @@ the count and one value.
 
 What holds at merge: the checker takes the range as known for `i64` only
 (`ContractCheck.typeEnvD`); `i8`, `i16` and `i32` follow with the checker
-change. The run check covers `Report.run`; pipelines and incremental views
-follow with it.
+change. The run check covers `Report.run`, `run_sharded`, and the first load
+and each batch of an incremental view. A transform called on bound tables is
+verified on the schemas the engine reports for them, so it declares no type
+the data could exceed; a view planned again after a schema change (`_replan`)
+likewise.
 
 Why: the docs state the width of results and said nothing of a source value
 outside the declared width. D32 settled the same gap for dates, and D46 has

@@ -1811,6 +1811,16 @@ def _int_lit(e: Expr) -> int | None:
     return None
 
 
+#: The date and time operations whose guards repeat their operand, written
+#: without a branch of their own (`temporal.py`).
+_DATE_OPS = frozenset(
+    {
+        "date_part", "day_part", "date_trunc", "day_trunc", "to_date", "date_time",
+        "add_months", "as_time", "time_of_day", "bucket", "strftime", "epoch_us",
+    }
+)  # fmt: skip
+
+
 def _always_evaluated(e: Expr) -> bool:
     """Is every part of `e` evaluated on every row? Double arithmetic over
     columns and literals is: a branch or a short-circuit would leave arms
@@ -1824,6 +1834,10 @@ def _always_evaluated(e: Expr) -> bool:
             return _always_evaluated(a) and _always_evaluated(b)
         case Un(op="fneg" | "itof" | "neg", arg=a):
             return _always_evaluated(a)
+        case Un(op=op, arg=a) if op in _DATE_OPS:
+            return _always_evaluated(a)
+        case Bin(op="date_add" | "date_diff", left=a, right=b):
+            return _always_evaluated(a) and _always_evaluated(b)
     return False
 
 
@@ -5208,7 +5222,8 @@ class _Writer:
         k = expr_kind(e, cols)
         if k != want and not (isinstance(e, Lit) and e.value is None):
             raise Unsupported(f"{what} needs a {want} value, not {k or 'one of unknown type'}")
-        return self.expr(e, ref, cols, want)
+        # The guards repeat it: it is computed once.
+        return self.bind(self.expr(e, ref, cols, want))
 
     def substring(self, s: str, a: str, n: int | None) -> str:
         """`Text.substr`: the characters at 1-based positions `a … a+n-1` that
