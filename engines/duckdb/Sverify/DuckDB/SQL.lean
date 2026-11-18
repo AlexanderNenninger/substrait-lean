@@ -63,6 +63,21 @@ def DuckType.HaveAll : List DuckType → List Value → Prop
 def DuckType.substrait : DuckType → String
   | .bigint => "i64" | .double => "fp64" | .tinyint => "i8"
 
+/-- A rounding of a double to an integral double: `round` (halves away from
+zero), `floor`, `ceil`. -/
+inductive IntRound where
+  | round | floor | ceil
+  deriving Repr, DecidableEq, Inhabited
+
+def IntRound.all : List IntRound := [.round, .floor, .ceil]
+
+def IntRound.name : IntRound → String
+  | .round => "round" | .floor => "floor" | .ceil => "ceil"
+
+/-- The model's function. -/
+def IntRound.fn : IntRound → UnFn
+  | .round => .fround | .floor => .ffloor | .ceil => .fceil
+
 /-- A DuckDB SQL function at one signature. -/
 inductive DuckFn where
   /-- `a / b` of `BIGINT`s, a `DOUBLE`: DuckDB divides as doubles (F1). -/
@@ -86,15 +101,21 @@ inductive DuckFn where
   | greatestBigint | leastBigint | greatestDouble | leastDouble
   /-- `CAST(x AS BIGINT)` of a `DOUBLE`, and `CAST(x AS DOUBLE)` of a `BIGINT`. -/
   | castDoubleBigint | castBigintDouble
+  /-- `CAST(round(x) AS BIGINT)`, and of `floor(x)` and `ceil(x)`, of a
+  `DOUBLE`: the argument is integral, so DuckDB's half-to-even cast (R9)
+  has no tie to break (#1655). -/
+  | castRoundedBigint (r : IntRound)
   deriving Repr, DecidableEq, Inhabited
 
 def DuckFn.all : List DuckFn :=
   [.divInt, .divDouble, .modDouble, .addDouble, .subDouble, .mulDouble] ++ FMath.all.map .elementary ++ [.power, .signBigint, .signDouble, .greatestBigint, .leastBigint,
-   .greatestDouble, .leastDouble, .castDoubleBigint, .castBigintDouble]
+   .greatestDouble, .leastDouble, .castDoubleBigint, .castBigintDouble] ++
+  IntRound.all.map .castRoundedBigint
 
 theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by
   cases f
   case elementary f => cases f <;> decide
+  case castRoundedBigint r => cases r <;> decide
   all_goals decide
 
 /-- The function as DuckDB writes it, with its argument types. -/
@@ -112,16 +133,17 @@ def DuckFn.sql : DuckFn → String
   | .greatestBigint => "greatest(BIGINT, BIGINT)" | .leastBigint => "least(BIGINT, BIGINT)"
   | .greatestDouble => "greatest(DOUBLE, DOUBLE)" | .leastDouble => "least(DOUBLE, DOUBLE)"
   | .castDoubleBigint => "CAST(DOUBLE AS BIGINT)" | .castBigintDouble => "CAST(BIGINT AS DOUBLE)"
+  | .castRoundedBigint r => s!"CAST({r.name}(DOUBLE) AS BIGINT)"
 
 def DuckFn.args : DuckFn → List DuckType
   | .divInt | .greatestBigint | .leastBigint => [.bigint, .bigint]
   | .divDouble | .modDouble | .addDouble | .subDouble | .mulDouble | .greatestDouble | .leastDouble | .power => [.double, .double]
-  | .elementary _ | .signDouble | .castDoubleBigint => [.double]
+  | .elementary _ | .signDouble | .castDoubleBigint | .castRoundedBigint _ => [.double]
   | .signBigint | .castBigintDouble => [.bigint]
 
 def DuckFn.result : DuckFn → DuckType
   | .signBigint | .signDouble => .tinyint
-  | .greatestBigint | .leastBigint | .castDoubleBigint => .bigint
+  | .greatestBigint | .leastBigint | .castDoubleBigint | .castRoundedBigint _ => .bigint
   | _ => .double
 
 /-- Functions the model cannot state under the semantics, and why: the lift
@@ -136,6 +158,79 @@ theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.po
 
 theorem FloatCode.ofInt_ne_negInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.negInf := by
   have := FloatCode.ofInt_bounds i; omega
+
+/-! ## DuckDB's cast of a double to `BIGINT` (R9) -/
+
+namespace FloatCode
+
+/-- `m / K` rounded to the nearest integer, halves to the even one: the
+integer part of a double's magnitude `m` as DuckDB's cast takes it. -/
+def evenQuot (m : Nat) : Nat :=
+  if 2 * (m % K) < K then m / K
+  else if K < 2 * (m % K) then m / K + 1
+  else if m / K % 2 = 0 then m / K else m / K + 1
+
+/-- DuckDB's `CAST(x AS BIGINT)` of a double, before its range check: half to
+even (duckdb-R9), `none` for NaN and `±∞`. `toInt?` truncates. -/
+def toIntEven? (c : Int) : Option Int :=
+  if maxMag < mag c then none
+  else some (if c < 0 then -((evenQuot (mag c) : Nat) : Int) else ((evenQuot (mag c) : Nat) : Int))
+
+/-- **Half to even returns an integral magnitude**: a multiple of `K` has no
+fraction, so no tie to break. -/
+theorem evenQuot_of_dvd {m : Nat} (h : K ∣ m) : evenQuot m = m / K := by
+  have := K_pos
+  simp [evenQuot, Nat.mod_eq_zero_of_dvd h, this]
+
+/-- On an integral double, or NaN and `±∞`, DuckDB's cast is the model's
+truncation. -/
+theorem toIntEven?_eq_toInt? {c : Int} (h : maxMag < mag c ∨ K ∣ mag c) :
+    toIntEven? c = toInt? c := by
+  unfold toIntEven? toInt?
+  by_cases hc : maxMag < mag c
+  · simp [hc]
+  · simp only [hc, ite_false, evenQuot_of_dvd (h.resolve_left hc)]
+
+theorem mag_code (m : Nat) : mag (code m) = m := by
+  unfold mag code; split <;> omega
+
+theorem mag_neg (x : Int) : mag (-x) = mag x := by simp [mag]
+
+theorem dvd_floorMag (m : Nat) : K ∣ floorMag m := Nat.dvd_mul_left _ _
+theorem dvd_ceilMag (m : Nat) : K ∣ ceilMag m := Nat.dvd_mul_left _ _
+theorem dvd_roundMag (m : Nat) : K ∣ roundMag m := Nat.dvd_mul_left _ _
+
+/-- What `onMag` gives, with magnitudes that are multiples of `K`, is
+integral or NaN and `±∞`; so is its canonical value. -/
+theorem integral_canon_onMag {pos neg : Nat → Nat} (hp : ∀ m, K ∣ pos m) (hn : ∀ m, K ∣ neg m)
+    (c : Int) : maxMag < mag (canon (onMag pos neg c)) ∨ K ∣ mag (canon (onMag pos neg c)) := by
+  have hnan : maxMag < mag nan := by
+    have := nan_eq; unfold mag; omega
+  have hd : maxMag < mag (onMag pos neg c) ∨ K ∣ mag (onMag pos neg c) := by
+    unfold onMag
+    split
+    · exact .inl ‹_›
+    · split
+      · exact .inr (by rw [mag_neg, mag_code]; exact hn _)
+      · exact .inr (by rw [mag_code]; exact hp _)
+  by_cases h1 : onMag pos neg c = negZero
+  · have e : canon negZero = 0 := fp64.canon_negZero
+    rw [h1, e]; exact .inr (by simp [mag])
+  by_cases h2 : onMag pos neg c = negNan
+  · have e : canon negNan = nan := fp64.canon_negNan
+    rw [h2, e]; exact .inl hnan
+  · have e : canon (onMag pos neg c) = onMag pos neg c := fp64.canon_eq_self ⟨h1, h2⟩
+    rw [e]; exact hd
+
+end FloatCode
+
+/-- DuckDB's `CAST(x AS BIGINT)` of a double (duckdb-R9): halves to even, and
+an error for NaN, `±∞` and values outside 64 bits, as the model's cast. -/
+def duckCastBigint : Value → Outcome
+  | .float c => match FloatCode.toIntEven? (FloatCode.canon c) with
+    | some i => if inI64 i then .ok (.int i) else .error .badCast
+    | none => .error .badCast
+  | _ => .ok .null
 
 /-! Lemmas the generated proofs compute with (`generate_lift … using`). -/
 
@@ -681,6 +776,89 @@ theorem DuckDBSQL.duck_un_null (f : UnFn) : (Profile.duckdb {}).un f .null = Pro
 theorem DuckDBSQL.duck_itof (v : Value) : (Profile.duckdb {}).un .itof v = Profile.reference.un .itof v := by
   cases v <;> rfl
 
+/-! ### The cast of a rounded double (#1655)
+
+Both sides of `CAST(round(x) AS BIGINT)`'s entry, and of `floor`'s and
+`ceil`'s, come to `castOut` of the rounded code: the reference's by its
+truncating cast, DuckDB's by its half-to-even one, which agree on an integral
+argument (`FloatCode.toIntEven?_eq_toInt?`). -/
+
+/-- The model's `CAST(x AS BIGINT)` of the double `d`. -/
+def DuckDBSQL.castOut (d : Int) : Outcome :=
+  match FloatCode.toInt? (FloatCode.canon d) with
+  | some i => if inI64 i then .ok (.int i) else .error .badCast
+  | none => .error .badCast
+
+/-- The rounding's code. -/
+def IntRound.code : IntRound → Int → Int
+  | .round => FloatCode.round | .floor => FloatCode.floor | .ceil => FloatCode.ceil
+
+theorem DuckDBSQL.ref_ftoi_float (d : Int) : Profile.reference.un .ftoi (.float d) = DuckDBSQL.castOut d := by
+  simp only [Profile.reference, raiseIf, UnFn.issue, UnFn.apply, DuckDBSQL.castOut]
+  cases FloatCode.toInt? (FloatCode.canon d) with
+  | none => rfl
+  | some x => by_cases h : inI64 x = true <;> simp [h, Issue.isError]
+theorem DuckDBSQL.ref_ftoi_null : Profile.reference.un .ftoi .null = .ok .null := rfl
+theorem DuckDBSQL.ref_fround_float (c : Int) :
+    Profile.reference.un .fround (.float c) = .ok (.float (FloatCode.round c)) := rfl
+theorem DuckDBSQL.ref_fround_null : Profile.reference.un .fround .null = .ok .null := rfl
+theorem DuckDBSQL.ref_fceil_float (c : Int) :
+    Profile.reference.un .fceil (.float c) = .ok (.float (FloatCode.ceil c)) := rfl
+theorem DuckDBSQL.ref_fceil_null : Profile.reference.un .fceil .null = .ok .null := rfl
+
+theorem DuckDBSQL.ref_rounded_float (r : IntRound) (c : Int) :
+    Profile.reference.un r.fn (.float c) >>= Profile.reference.un .ftoi = DuckDBSQL.castOut (r.code c) := by
+  cases r <;> exact DuckDBSQL.ref_ftoi_float _
+theorem DuckDBSQL.ref_rounded_null (r : IntRound) :
+    Profile.reference.un r.fn .null >>= Profile.reference.un .ftoi = .ok .null := by
+  cases r <;> rfl
+
+/-- DuckDB's rounding is the reference's up to the zero's sign (R15), which
+the cast reads as one zero. -/
+theorem DuckDBSQL.canon_duck_rounded (r : IntRound) (c : Int) :
+    ∃ d, (Profile.duckdb {}).un r.fn (.float c) = .ok (.float d) ∧
+      FloatCode.canon d = FloatCode.canon (r.code c) := by
+  have ref : ∀ f : UnFn, f = .fround ∨ f = .ffloor ∨ f = .fceil →
+      Profile.reference.un f (.float c) = .ok (UnFn.apply f (.float c)) := by
+    rintro f (rfl | rfl | rfl) <;> rfl
+  cases r
+  · by_cases h : c < 0 ∧ FloatCode.round c = 0
+    · refine ⟨FloatCode.negZero, by simp [IntRound.fn, Profile.duckdb, duckUn, h], ?_⟩
+      simp only [IntRound.code]; rw [h.2, DuckDBSQL.canon_negZero, FloatCode.canon_zero]
+    · refine ⟨FloatCode.round c, ?_, rfl⟩
+      simp [IntRound.fn, Profile.duckdb, duckUn, h, ref .fround (.inl rfl), UnFn.apply]
+  · exact ⟨FloatCode.floor c, rfl, rfl⟩
+  · by_cases h : c < 0 ∧ FloatCode.ceil c = 0
+    · refine ⟨FloatCode.negZero, by simp [IntRound.fn, Profile.duckdb, duckUn, h], ?_⟩
+      simp only [IntRound.code]; rw [h.2, DuckDBSQL.canon_negZero, FloatCode.canon_zero]
+    · refine ⟨FloatCode.ceil c, ?_, rfl⟩
+      simp [IntRound.fn, Profile.duckdb, duckUn, h, ref .fceil (.inr (.inr rfl)), UnFn.apply]
+
+omit [Boxes.Ambient] in
+theorem IntRound.integral (r : IntRound) (c : Int) :
+    FloatCode.maxMag < FloatCode.mag (FloatCode.canon (r.code c)) ∨
+      FloatCode.K ∣ FloatCode.mag (FloatCode.canon (r.code c)) := by
+  cases r <;> simp only [IntRound.code, FloatCode.round, FloatCode.floor, FloatCode.ceil]
+  · exact FloatCode.integral_canon_onMag FloatCode.dvd_roundMag FloatCode.dvd_roundMag c
+  · exact FloatCode.integral_canon_onMag FloatCode.dvd_floorMag FloatCode.dvd_ceilMag c
+  · exact FloatCode.integral_canon_onMag FloatCode.dvd_ceilMag FloatCode.dvd_floorMag c
+
+/-- **DuckDB's cast of its rounding is the model's**: the rounded double is
+integral, so half to even is truncation. -/
+theorem DuckDBSQL.duck_rounded_float (r : IntRound) (c : Int) :
+    (Profile.duckdb {}).un r.fn (.float c) >>= duckCastBigint = DuckDBSQL.castOut (r.code c) := by
+  obtain ⟨d, hd, hc⟩ := DuckDBSQL.canon_duck_rounded r c
+  rw [hd]
+  show duckCastBigint (.float d) = _
+  simp only [duckCastBigint, DuckDBSQL.castOut, hc, FloatCode.toIntEven?_eq_toInt? (r.integral c)]
+theorem DuckDBSQL.duck_rounded_null (r : IntRound) :
+    (Profile.duckdb {}).un r.fn .null >>= duckCastBigint = .ok .null := by
+  cases r <;> rfl
+/-- The same, once `duck_un_null` has made DuckDB's `NULL` case the reference's. -/
+theorem DuckDBSQL.ref_rounded_null_duckCast (r : IntRound) :
+    Profile.reference.un r.fn .null >>= duckCastBigint = .ok .null := by
+  cases r <;> rfl
+
 /-- `sign` of an integer, or of a double's code (codes are ordered as their
 doubles; NaN's is the largest, and its sign is `0`). -/
 def duckSign (x : Int) : Int := if x < 0 then -1 else if 0 < x then 1 else 0
@@ -734,6 +912,9 @@ def DuckFn.evalOwn : Semantics → DuckFn → List Value → Outcome
     | .null, v | v, .null => v
     | _, _ => .null)
   | .reference, .castDoubleBigint, [a] => Profile.reference.un .ftoi a
+  -- DuckDB's cast (R9) of DuckDB's rounding, which may give `-0.0` (R15).
+  | .duckdb, .castRoundedBigint r, [a] => (Profile.duckdb {}).un r.fn a >>= duckCastBigint
+  | .reference, .castRoundedBigint r, [a] => Profile.reference.un r.fn a >>= Profile.reference.un .ftoi
   | _, .castBigintDouble, [.int a] => .ok (.float (FloatCode.ofInt a))
   | _, _, _ => .ok .null
 

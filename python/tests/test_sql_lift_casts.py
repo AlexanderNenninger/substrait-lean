@@ -205,3 +205,39 @@ def test_a_try_cast_to_a_number_proves_nothing_more():
     tried = sv.verify("SELECT TRY_CAST(s AS DOUBLE) AS x FROM t", tables=schemas,
                       ensures=["x IS NOT NULL"], counterexamples=0)  # fmt: skip
     assert not any(c.proved for c in tried.ensures), tried
+
+
+#: `CAST(round(x) AS BIGINT)` at the points where DuckDB's half-to-even cast
+#: and the model's truncation could part (#1655, Fable's ruling on #1608 item
+#: 9): halves, the zeros, and values DuckDB raises on.
+ROUNDED_FINITE = [0.5, 1.5, 2.5, -0.5, -1.5, -0.0, 0.4, -0.4, 1e15 + 0.5]
+ROUNDED_RAISING = [float("nan"), float("inf"), float("-inf"), 2.0**63]
+
+
+@pytest.mark.parametrize("fn", ["round", "floor", "ceil"])
+@pytest.mark.parametrize("x", ROUNDED_FINITE)
+def test_a_cast_of_a_rounded_double_lifts_as_duckdb_computes_it(fn, x):
+    """The argument is integral, so DuckDB's cast has no tie to break:
+    oracles A and C agree at the halves and at `-0.0`."""
+    result = check(f"SELECT CAST({fn}(x) AS BIGINT) AS b FROM t", {"t": pa.table({"x": [x]})})
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize("fn", ["round", "floor", "ceil"])
+@pytest.mark.parametrize("x", ROUNDED_RAISING)
+def test_a_cast_of_a_rounded_double_raises_where_duckdb_does(fn, x):
+    """NaN, `±∞` and `2⁶³` fail in DuckDB's cast, and the lifted plan may
+    raise there: its report names the cast."""
+    query = f"SELECT CAST({fn}(x) AS BIGINT) AS b FROM t"
+    assert check(query, {"t": pa.table({"x": [x]})}).stage == "duckdb"
+    plan = lift(query, {"t": ibis.schema({"x": "float64"})}, "duckdb").plan
+    code, out, err = run_checker((), json.dumps(plan))
+    assert code == 0, err or out
+    assert "cast" in out.lower()
+
+
+def test_a_bare_double_cast_stays_refused():
+    """The bare `CAST(x AS BIGINT)` needs DuckDB's half-to-even cast, which the
+    model does not state yet (#1655)."""
+    with pytest.raises(Refused, match="TIE_TO_EVEN"):
+        lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, "duckdb")
