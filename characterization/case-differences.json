@@ -1,0 +1,1084 @@
+{
+"engines": [
+"duckdb",
+"polars",
+"spark"
+],
+"upper": {
+"scalars_mapped_by_some_engine": 1580,
+"scalars_that_differ": 157,
+"differ": {
+"00DF": {
+"duckdb": "ẞ",
+"polars": "SS",
+"spark": "SS"
+},
+"0149": {
+"duckdb": "ŉ",
+"polars": "ʼN",
+"spark": "ʼN"
+},
+"019B": {
+"duckdb": "ƛ",
+"polars": "Ƛ",
+"spark": "Ƛ"
+},
+"01F0": {
+"duckdb": "ǰ",
+"polars": "J̌",
+"spark": "J̌"
+},
+"0264": {
+"duckdb": "ɤ",
+"polars": "Ɤ",
+"spark": "Ɤ"
+},
+"0390": {
+"duckdb": "ΐ",
+"polars": "Ϊ́",
+"spark": "Ϊ́"
+},
+"03B0": {
+"duckdb": "ΰ",
+"polars": "Ϋ́",
+"spark": "Ϋ́"
+},
+"0587": {
+"duckdb": "և",
+"polars": "ԵՒ",
+"spark": "ԵՒ"
+},
+"1C8A": {
+"duckdb": "ᲊ",
+"polars": "Ᲊ",
+"spark": "Ᲊ"
+},
+"1E96": {
+"duckdb": "ẖ",
+"polars": "H̱",
+"spark": "H̱"
+},
+"1E97": {
+"duckdb": "ẗ",
+"polars": "T̈",
+"spark": "T̈"
+},
+"1E98": {
+"duckdb": "ẘ",
+"polars": "W̊",
+"spark": "W̊"
+},
+"1E99": {
+"duckdb": "ẙ",
+"polars": "Y̊",
+"spark": "Y̊"
+},
+"1E9A": {
+"duckdb": "ẚ",
+"polars": "Aʾ",
+"spark": "Aʾ"
+},
+"1F50": {
+"duckdb": "ὐ",
+"polars": "Υ̓",
+"spark": "Υ̓"
+},
+"1F52": {
+"duckdb": "ὒ",
+"polars": "Υ̓̀",
+"spark": "Υ̓̀"
+},
+"1F54": {
+"duckdb": "ὔ",
+"polars": "Υ̓́",
+"spark": "Υ̓́"
+},
+"1F56": {
+"duckdb": "ὖ",
+"polars": "Υ̓͂",
+"spark": "Υ̓͂"
+},
+"1F80": {
+"duckdb": "ᾈ",
+"polars": "ἈΙ",
+"spark": "ἈΙ"
+},
+"1F81": {
+"duckdb": "ᾉ",
+"polars": "ἉΙ",
+"spark": "ἉΙ"
+},
+"1F82": {
+"duckdb": "ᾊ",
+"polars": "ἊΙ",
+"spark": "ἊΙ"
+},
+"1F83": {
+"duckdb": "ᾋ",
+"polars": "ἋΙ",
+"spark": "ἋΙ"
+},
+"1F84": {
+"duckdb": "ᾌ",
+"polars": "ἌΙ",
+"spark": "ἌΙ"
+},
+"1F85": {
+"duckdb": "ᾍ",
+"polars": "ἍΙ",
+"spark": "ἍΙ"
+},
+"1F86": {
+"duckdb": "ᾎ",
+"polars": "ἎΙ",
+"spark": "ἎΙ"
+},
+"1F87": {
+"duckdb": "ᾏ",
+"polars": "ἏΙ",
+"spark": "ἏΙ"
+},
+"1F88": {
+"duckdb": "ᾈ",
+"polars": "ἈΙ",
+"spark": "ἈΙ"
+},
+"1F89": {
+"duckdb": "ᾉ",
+"polars": "ἉΙ",
+"spark": "ἉΙ"
+},
+"1F8A": {
+"duckdb": "ᾊ",
+"polars": "ἊΙ",
+"spark": "ἊΙ"
+},
+"1F8B": {
+"duckdb": "ᾋ",
+"polars": "ἋΙ",
+"spark": "ἋΙ"
+},
+"1F8C": {
+"duckdb": "ᾌ",
+"polars": "ἌΙ",
+"spark": "ἌΙ"
+},
+"1F8D": {
+"duckdb": "ᾍ",
+"polars": "ἍΙ",
+"spark": "ἍΙ"
+},
+"1F8E": {
+"duckdb": "ᾎ",
+"polars": "ἎΙ",
+"spark": "ἎΙ"
+},
+"1F8F": {
+"duckdb": "ᾏ",
+"polars": "ἏΙ",
+"spark": "ἏΙ"
+},
+"1F90": {
+"duckdb": "ᾘ",
+"polars": "ἨΙ",
+"spark": "ἨΙ"
+},
+"1F91": {
+"duckdb": "ᾙ",
+"polars": "ἩΙ",
+"spark": "ἩΙ"
+},
+"1F92": {
+"duckdb": "ᾚ",
+"polars": "ἪΙ",
+"spark": "ἪΙ"
+},
+"1F93": {
+"duckdb": "ᾛ",
+"polars": "ἫΙ",
+"spark": "ἫΙ"
+},
+"1F94": {
+"duckdb": "ᾜ",
+"polars": "ἬΙ",
+"spark": "ἬΙ"
+},
+"1F95": {
+"duckdb": "ᾝ",
+"polars": "ἭΙ",
+"spark": "ἭΙ"
+},
+"1F96": {
+"duckdb": "ᾞ",
+"polars": "ἮΙ",
+"spark": "ἮΙ"
+},
+"1F97": {
+"duckdb": "ᾟ",
+"polars": "ἯΙ",
+"spark": "ἯΙ"
+},
+"1F98": {
+"duckdb": "ᾘ",
+"polars": "ἨΙ",
+"spark": "ἨΙ"
+},
+"1F99": {
+"duckdb": "ᾙ",
+"polars": "ἩΙ",
+"spark": "ἩΙ"
+},
+"1F9A": {
+"duckdb": "ᾚ",
+"polars": "ἪΙ",
+"spark": "ἪΙ"
+},
+"1F9B": {
+"duckdb": "ᾛ",
+"polars": "ἫΙ",
+"spark": "ἫΙ"
+},
+"1F9C": {
+"duckdb": "ᾜ",
+"polars": "ἬΙ",
+"spark": "ἬΙ"
+},
+"1F9D": {
+"duckdb": "ᾝ",
+"polars": "ἭΙ",
+"spark": "ἭΙ"
+},
+"1F9E": {
+"duckdb": "ᾞ",
+"polars": "ἮΙ",
+"spark": "ἮΙ"
+},
+"1F9F": {
+"duckdb": "ᾟ",
+"polars": "ἯΙ",
+"spark": "ἯΙ"
+},
+"1FA0": {
+"duckdb": "ᾨ",
+"polars": "ὨΙ",
+"spark": "ὨΙ"
+},
+"1FA1": {
+"duckdb": "ᾩ",
+"polars": "ὩΙ",
+"spark": "ὩΙ"
+},
+"1FA2": {
+"duckdb": "ᾪ",
+"polars": "ὪΙ",
+"spark": "ὪΙ"
+},
+"1FA3": {
+"duckdb": "ᾫ",
+"polars": "ὫΙ",
+"spark": "ὫΙ"
+},
+"1FA4": {
+"duckdb": "ᾬ",
+"polars": "ὬΙ",
+"spark": "ὬΙ"
+},
+"1FA5": {
+"duckdb": "ᾭ",
+"polars": "ὭΙ",
+"spark": "ὭΙ"
+},
+"1FA6": {
+"duckdb": "ᾮ",
+"polars": "ὮΙ",
+"spark": "ὮΙ"
+},
+"1FA7": {
+"duckdb": "ᾯ",
+"polars": "ὯΙ",
+"spark": "ὯΙ"
+},
+"1FA8": {
+"duckdb": "ᾨ",
+"polars": "ὨΙ",
+"spark": "ὨΙ"
+},
+"1FA9": {
+"duckdb": "ᾩ",
+"polars": "ὩΙ",
+"spark": "ὩΙ"
+},
+"1FAA": {
+"duckdb": "ᾪ",
+"polars": "ὪΙ",
+"spark": "ὪΙ"
+},
+"1FAB": {
+"duckdb": "ᾫ",
+"polars": "ὫΙ",
+"spark": "ὫΙ"
+},
+"1FAC": {
+"duckdb": "ᾬ",
+"polars": "ὬΙ",
+"spark": "ὬΙ"
+},
+"1FAD": {
+"duckdb": "ᾭ",
+"polars": "ὭΙ",
+"spark": "ὭΙ"
+},
+"1FAE": {
+"duckdb": "ᾮ",
+"polars": "ὮΙ",
+"spark": "ὮΙ"
+},
+"1FAF": {
+"duckdb": "ᾯ",
+"polars": "ὯΙ",
+"spark": "ὯΙ"
+},
+"1FB2": {
+"duckdb": "ᾲ",
+"polars": "ᾺΙ",
+"spark": "ᾺΙ"
+},
+"1FB3": {
+"duckdb": "ᾼ",
+"polars": "ΑΙ",
+"spark": "ΑΙ"
+},
+"1FB4": {
+"duckdb": "ᾴ",
+"polars": "ΆΙ",
+"spark": "ΆΙ"
+},
+"1FB6": {
+"duckdb": "ᾶ",
+"polars": "Α͂",
+"spark": "Α͂"
+},
+"1FB7": {
+"duckdb": "ᾷ",
+"polars": "Α͂Ι",
+"spark": "Α͂Ι"
+},
+"1FBC": {
+"duckdb": "ᾼ",
+"polars": "ΑΙ",
+"spark": "ΑΙ"
+},
+"1FC2": {
+"duckdb": "ῂ",
+"polars": "ῊΙ",
+"spark": "ῊΙ"
+},
+"1FC3": {
+"duckdb": "ῌ",
+"polars": "ΗΙ",
+"spark": "ΗΙ"
+},
+"1FC4": {
+"duckdb": "ῄ",
+"polars": "ΉΙ",
+"spark": "ΉΙ"
+},
+"1FC6": {
+"duckdb": "ῆ",
+"polars": "Η͂",
+"spark": "Η͂"
+},
+"1FC7": {
+"duckdb": "ῇ",
+"polars": "Η͂Ι",
+"spark": "Η͂Ι"
+},
+"1FCC": {
+"duckdb": "ῌ",
+"polars": "ΗΙ",
+"spark": "ΗΙ"
+},
+"1FD2": {
+"duckdb": "ῒ",
+"polars": "Ϊ̀",
+"spark": "Ϊ̀"
+},
+"1FD3": {
+"duckdb": "ΐ",
+"polars": "Ϊ́",
+"spark": "Ϊ́"
+},
+"1FD6": {
+"duckdb": "ῖ",
+"polars": "Ι͂",
+"spark": "Ι͂"
+},
+"1FD7": {
+"duckdb": "ῗ",
+"polars": "Ϊ͂",
+"spark": "Ϊ͂"
+},
+"1FE2": {
+"duckdb": "ῢ",
+"polars": "Ϋ̀",
+"spark": "Ϋ̀"
+},
+"1FE3": {
+"duckdb": "ΰ",
+"polars": "Ϋ́",
+"spark": "Ϋ́"
+},
+"1FE4": {
+"duckdb": "ῤ",
+"polars": "Ρ̓",
+"spark": "Ρ̓"
+},
+"1FE6": {
+"duckdb": "ῦ",
+"polars": "Υ͂",
+"spark": "Υ͂"
+},
+"1FE7": {
+"duckdb": "ῧ",
+"polars": "Ϋ͂",
+"spark": "Ϋ͂"
+},
+"1FF2": {
+"duckdb": "ῲ",
+"polars": "ῺΙ",
+"spark": "ῺΙ"
+},
+"1FF3": {
+"duckdb": "ῼ",
+"polars": "ΩΙ",
+"spark": "ΩΙ"
+},
+"1FF4": {
+"duckdb": "ῴ",
+"polars": "ΏΙ",
+"spark": "ΏΙ"
+},
+"1FF6": {
+"duckdb": "ῶ",
+"polars": "Ω͂",
+"spark": "Ω͂"
+},
+"1FF7": {
+"duckdb": "ῷ",
+"polars": "Ω͂Ι",
+"spark": "Ω͂Ι"
+},
+"1FFC": {
+"duckdb": "ῼ",
+"polars": "ΩΙ",
+"spark": "ΩΙ"
+},
+"A7CD": {
+"duckdb": "ꟍ",
+"polars": "Ꟍ",
+"spark": "Ꟍ"
+},
+"A7CF": {
+"duckdb": "꟏",
+"polars": "꟎",
+"spark": "꟎"
+},
+"A7D3": {
+"duckdb": "ꟓ",
+"polars": "꟒",
+"spark": "꟒"
+},
+"A7D5": {
+"duckdb": "ꟕ",
+"polars": "꟔",
+"spark": "꟔"
+},
+"A7DB": {
+"duckdb": "ꟛ",
+"polars": "Ꟛ",
+"spark": "Ꟛ"
+},
+"FB00": {
+"duckdb": "ﬀ",
+"polars": "FF",
+"spark": "FF"
+},
+"FB01": {
+"duckdb": "ﬁ",
+"polars": "FI",
+"spark": "FI"
+},
+"FB02": {
+"duckdb": "ﬂ",
+"polars": "FL",
+"spark": "FL"
+},
+"FB03": {
+"duckdb": "ﬃ",
+"polars": "FFI",
+"spark": "FFI"
+},
+"FB04": {
+"duckdb": "ﬄ",
+"polars": "FFL",
+"spark": "FFL"
+},
+"FB05": {
+"duckdb": "ﬅ",
+"polars": "ST",
+"spark": "ST"
+},
+"FB06": {
+"duckdb": "ﬆ",
+"polars": "ST",
+"spark": "ST"
+},
+"FB13": {
+"duckdb": "ﬓ",
+"polars": "ՄՆ",
+"spark": "ՄՆ"
+},
+"FB14": {
+"duckdb": "ﬔ",
+"polars": "ՄԵ",
+"spark": "ՄԵ"
+},
+"FB15": {
+"duckdb": "ﬕ",
+"polars": "ՄԻ",
+"spark": "ՄԻ"
+},
+"FB16": {
+"duckdb": "ﬖ",
+"polars": "ՎՆ",
+"spark": "ՎՆ"
+},
+"FB17": {
+"duckdb": "ﬗ",
+"polars": "ՄԽ",
+"spark": "ՄԽ"
+},
+"10D70": {
+"duckdb": "𐵰",
+"polars": "𐵐",
+"spark": "𐵐"
+},
+"10D71": {
+"duckdb": "𐵱",
+"polars": "𐵑",
+"spark": "𐵑"
+},
+"10D72": {
+"duckdb": "𐵲",
+"polars": "𐵒",
+"spark": "𐵒"
+},
+"10D73": {
+"duckdb": "𐵳",
+"polars": "𐵓",
+"spark": "𐵓"
+},
+"10D74": {
+"duckdb": "𐵴",
+"polars": "𐵔",
+"spark": "𐵔"
+},
+"10D75": {
+"duckdb": "𐵵",
+"polars": "𐵕",
+"spark": "𐵕"
+},
+"10D76": {
+"duckdb": "𐵶",
+"polars": "𐵖",
+"spark": "𐵖"
+},
+"10D77": {
+"duckdb": "𐵷",
+"polars": "𐵗",
+"spark": "𐵗"
+},
+"10D78": {
+"duckdb": "𐵸",
+"polars": "𐵘",
+"spark": "𐵘"
+},
+"10D79": {
+"duckdb": "𐵹",
+"polars": "𐵙",
+"spark": "𐵙"
+},
+"10D7A": {
+"duckdb": "𐵺",
+"polars": "𐵚",
+"spark": "𐵚"
+},
+"10D7B": {
+"duckdb": "𐵻",
+"polars": "𐵛",
+"spark": "𐵛"
+},
+"10D7C": {
+"duckdb": "𐵼",
+"polars": "𐵜",
+"spark": "𐵜"
+},
+"10D7D": {
+"duckdb": "𐵽",
+"polars": "𐵝",
+"spark": "𐵝"
+},
+"10D7E": {
+"duckdb": "𐵾",
+"polars": "𐵞",
+"spark": "𐵞"
+},
+"10D7F": {
+"duckdb": "𐵿",
+"polars": "𐵟",
+"spark": "𐵟"
+},
+"10D80": {
+"duckdb": "𐶀",
+"polars": "𐵠",
+"spark": "𐵠"
+},
+"10D81": {
+"duckdb": "𐶁",
+"polars": "𐵡",
+"spark": "𐵡"
+},
+"10D82": {
+"duckdb": "𐶂",
+"polars": "𐵢",
+"spark": "𐵢"
+},
+"10D83": {
+"duckdb": "𐶃",
+"polars": "𐵣",
+"spark": "𐵣"
+},
+"10D84": {
+"duckdb": "𐶄",
+"polars": "𐵤",
+"spark": "𐵤"
+},
+"10D85": {
+"duckdb": "𐶅",
+"polars": "𐵥",
+"spark": "𐵥"
+},
+"16EBB": {
+"duckdb": "𖺻",
+"polars": "𖺠",
+"spark": "𖺠"
+},
+"16EBC": {
+"duckdb": "𖺼",
+"polars": "𖺡",
+"spark": "𖺡"
+},
+"16EBD": {
+"duckdb": "𖺽",
+"polars": "𖺢",
+"spark": "𖺢"
+},
+"16EBE": {
+"duckdb": "𖺾",
+"polars": "𖺣",
+"spark": "𖺣"
+},
+"16EBF": {
+"duckdb": "𖺿",
+"polars": "𖺤",
+"spark": "𖺤"
+},
+"16EC0": {
+"duckdb": "𖻀",
+"polars": "𖺥",
+"spark": "𖺥"
+},
+"16EC1": {
+"duckdb": "𖻁",
+"polars": "𖺦",
+"spark": "𖺦"
+},
+"16EC2": {
+"duckdb": "𖻂",
+"polars": "𖺧",
+"spark": "𖺧"
+},
+"16EC3": {
+"duckdb": "𖻃",
+"polars": "𖺨",
+"spark": "𖺨"
+},
+"16EC4": {
+"duckdb": "𖻄",
+"polars": "𖺩",
+"spark": "𖺩"
+},
+"16EC5": {
+"duckdb": "𖻅",
+"polars": "𖺪",
+"spark": "𖺪"
+},
+"16EC6": {
+"duckdb": "𖻆",
+"polars": "𖺫",
+"spark": "𖺫"
+},
+"16EC7": {
+"duckdb": "𖻇",
+"polars": "𖺬",
+"spark": "𖺬"
+},
+"16EC8": {
+"duckdb": "𖻈",
+"polars": "𖺭",
+"spark": "𖺭"
+},
+"16EC9": {
+"duckdb": "𖻉",
+"polars": "𖺮",
+"spark": "𖺮"
+},
+"16ECA": {
+"duckdb": "𖻊",
+"polars": "𖺯",
+"spark": "𖺯"
+},
+"16ECB": {
+"duckdb": "𖻋",
+"polars": "𖺰",
+"spark": "𖺰"
+},
+"16ECC": {
+"duckdb": "𖻌",
+"polars": "𖺱",
+"spark": "𖺱"
+},
+"16ECD": {
+"duckdb": "𖻍",
+"polars": "𖺲",
+"spark": "𖺲"
+},
+"16ECE": {
+"duckdb": "𖻎",
+"polars": "𖺳",
+"spark": "𖺳"
+},
+"16ECF": {
+"duckdb": "𖻏",
+"polars": "𖺴",
+"spark": "𖺴"
+},
+"16ED0": {
+"duckdb": "𖻐",
+"polars": "𖺵",
+"spark": "𖺵"
+},
+"16ED1": {
+"duckdb": "𖻑",
+"polars": "𖺶",
+"spark": "𖺶"
+},
+"16ED2": {
+"duckdb": "𖻒",
+"polars": "𖺷",
+"spark": "𖺷"
+},
+"16ED3": {
+"duckdb": "𖻓",
+"polars": "𖺸",
+"spark": "𖺸"
+}
+}
+},
+"lower": {
+"scalars_mapped_by_some_engine": 1488,
+"scalars_that_differ": 56,
+"differ": {
+"0130": {
+"duckdb": "i",
+"polars": "i̇",
+"spark": "i̇"
+},
+"1C89": {
+"duckdb": "Ᲊ",
+"polars": "ᲊ",
+"spark": "ᲊ"
+},
+"A7CB": {
+"duckdb": "Ɤ",
+"polars": "ɤ",
+"spark": "ɤ"
+},
+"A7CC": {
+"duckdb": "Ꟍ",
+"polars": "ꟍ",
+"spark": "ꟍ"
+},
+"A7CE": {
+"duckdb": "꟎",
+"polars": "꟏",
+"spark": "꟏"
+},
+"A7D2": {
+"duckdb": "꟒",
+"polars": "ꟓ",
+"spark": "ꟓ"
+},
+"A7D4": {
+"duckdb": "꟔",
+"polars": "ꟕ",
+"spark": "ꟕ"
+},
+"A7DA": {
+"duckdb": "Ꟛ",
+"polars": "ꟛ",
+"spark": "ꟛ"
+},
+"A7DC": {
+"duckdb": "Ƛ",
+"polars": "ƛ",
+"spark": "ƛ"
+},
+"10D50": {
+"duckdb": "𐵐",
+"polars": "𐵰",
+"spark": "𐵰"
+},
+"10D51": {
+"duckdb": "𐵑",
+"polars": "𐵱",
+"spark": "𐵱"
+},
+"10D52": {
+"duckdb": "𐵒",
+"polars": "𐵲",
+"spark": "𐵲"
+},
+"10D53": {
+"duckdb": "𐵓",
+"polars": "𐵳",
+"spark": "𐵳"
+},
+"10D54": {
+"duckdb": "𐵔",
+"polars": "𐵴",
+"spark": "𐵴"
+},
+"10D55": {
+"duckdb": "𐵕",
+"polars": "𐵵",
+"spark": "𐵵"
+},
+"10D56": {
+"duckdb": "𐵖",
+"polars": "𐵶",
+"spark": "𐵶"
+},
+"10D57": {
+"duckdb": "𐵗",
+"polars": "𐵷",
+"spark": "𐵷"
+},
+"10D58": {
+"duckdb": "𐵘",
+"polars": "𐵸",
+"spark": "𐵸"
+},
+"10D59": {
+"duckdb": "𐵙",
+"polars": "𐵹",
+"spark": "𐵹"
+},
+"10D5A": {
+"duckdb": "𐵚",
+"polars": "𐵺",
+"spark": "𐵺"
+},
+"10D5B": {
+"duckdb": "𐵛",
+"polars": "𐵻",
+"spark": "𐵻"
+},
+"10D5C": {
+"duckdb": "𐵜",
+"polars": "𐵼",
+"spark": "𐵼"
+},
+"10D5D": {
+"duckdb": "𐵝",
+"polars": "𐵽",
+"spark": "𐵽"
+},
+"10D5E": {
+"duckdb": "𐵞",
+"polars": "𐵾",
+"spark": "𐵾"
+},
+"10D5F": {
+"duckdb": "𐵟",
+"polars": "𐵿",
+"spark": "𐵿"
+},
+"10D60": {
+"duckdb": "𐵠",
+"polars": "𐶀",
+"spark": "𐶀"
+},
+"10D61": {
+"duckdb": "𐵡",
+"polars": "𐶁",
+"spark": "𐶁"
+},
+"10D62": {
+"duckdb": "𐵢",
+"polars": "𐶂",
+"spark": "𐶂"
+},
+"10D63": {
+"duckdb": "𐵣",
+"polars": "𐶃",
+"spark": "𐶃"
+},
+"10D64": {
+"duckdb": "𐵤",
+"polars": "𐶄",
+"spark": "𐶄"
+},
+"10D65": {
+"duckdb": "𐵥",
+"polars": "𐶅",
+"spark": "𐶅"
+},
+"16EA0": {
+"duckdb": "𖺠",
+"polars": "𖺻",
+"spark": "𖺻"
+},
+"16EA1": {
+"duckdb": "𖺡",
+"polars": "𖺼",
+"spark": "𖺼"
+},
+"16EA2": {
+"duckdb": "𖺢",
+"polars": "𖺽",
+"spark": "𖺽"
+},
+"16EA3": {
+"duckdb": "𖺣",
+"polars": "𖺾",
+"spark": "𖺾"
+},
+"16EA4": {
+"duckdb": "𖺤",
+"polars": "𖺿",
+"spark": "𖺿"
+},
+"16EA5": {
+"duckdb": "𖺥",
+"polars": "𖻀",
+"spark": "𖻀"
+},
+"16EA6": {
+"duckdb": "𖺦",
+"polars": "𖻁",
+"spark": "𖻁"
+},
+"16EA7": {
+"duckdb": "𖺧",
+"polars": "𖻂",
+"spark": "𖻂"
+},
+"16EA8": {
+"duckdb": "𖺨",
+"polars": "𖻃",
+"spark": "𖻃"
+},
+"16EA9": {
+"duckdb": "𖺩",
+"polars": "𖻄",
+"spark": "𖻄"
+},
+"16EAA": {
+"duckdb": "𖺪",
+"polars": "𖻅",
+"spark": "𖻅"
+},
+"16EAB": {
+"duckdb": "𖺫",
+"polars": "𖻆",
+"spark": "𖻆"
+},
+"16EAC": {
+"duckdb": "𖺬",
+"polars": "𖻇",
+"spark": "𖻇"
+},
+"16EAD": {
+"duckdb": "𖺭",
+"polars": "𖻈",
+"spark": "𖻈"
+},
+"16EAE": {
+"duckdb": "𖺮",
+"polars": "𖻉",
+"spark": "𖻉"
+},
+"16EAF": {
+"duckdb": "𖺯",
+"polars": "𖻊",
+"spark": "𖻊"
+},
+"16EB0": {
+"duckdb": "𖺰",
+"polars": "𖻋",
+"spark": "𖻋"
+},
+"16EB1": {
+"duckdb": "𖺱",
+"polars": "𖻌",
+"spark": "𖻌"
+},
+"16EB2": {
+"duckdb": "𖺲",
+"polars": "𖻍",
+"spark": "𖻍"
+},
+"16EB3": {
+"duckdb": "𖺳",
+"polars": "𖻎",
+"spark": "𖻎"
+},
+"16EB4": {
+"duckdb": "𖺴",
+"polars": "𖻏",
+"spark": "𖻏"
+},
+"16EB5": {
+"duckdb": "𖺵",
+"polars": "𖻐",
+"spark": "𖻐"
+},
+"16EB6": {
+"duckdb": "𖺶",
+"polars": "𖻑",
+"spark": "𖻑"
+},
+"16EB7": {
+"duckdb": "𖺷",
+"polars": "𖻒",
+"spark": "𖻒"
+},
+"16EB8": {
+"duckdb": "𖺸",
+"polars": "𖻓",
+"spark": "𖻓"
+}
+}
+}
+}

@@ -1586,7 +1586,7 @@
   {"semantics": "duckdb",
    "result": "i64",
    "refused":
-   "DuckDB rounds half to even, which the model's casts (they truncate) cannot state; use semantics='reference', or round() first",
+   "DuckDB rounds half to even, which the model's casts (they truncate) cannot state; use semantics='reference'",
    "construct": "CAST(DOUBLE AS BIGINT)",
    "args": ["fp64"]},
   {"template":

@@ -776,9 +776,9 @@ def doubled_paid(t):
 
 expr = doubled_paid(paid(orders))
 print(doubled_paid.report)
-# requires paid: (_.amount >= 0)          ← what `paid` guarantees, not `orders`
-# requires paid: _.amount.notnull()
-# requires paid: unique(id)
+# requires t: (_.amount >= 0)          ← what `paid` guarantees, named by `t`, the parameter
+# requires t: _.amount.notnull()
+# requires t: unique(id)
 # ensures (_.doubled >= 0): proved
 # ensures _.doubled.notnull(): proved
 ```
