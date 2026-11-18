@@ -361,6 +361,24 @@ def _decimal(dialect: Dialect, x: str, p: str, s: str) -> str:
     return f"CAST({x} AS DECIMAL({p}, {s}))"
 
 
+_IMPLICIT_CAST = re.compile(r"\b(?:DOUBLE|AS_DECIMAL_\d+_\d+)\(")
+
+
+def _drop_implicit_casts(s: str) -> str:
+    """`s` without the casts the user did not write (`DOUBLE(x)`,
+    `AS_DECIMAL_p_s(x)`), whatever the argument holds: `DOUBLE(sum(x))` too."""
+    while m := _IMPLICIT_CAST.search(s):
+        depth = 1
+        i = m.end()
+        while i < len(s) and depth:
+            depth += (s[i] == "(") - (s[i] == ")")
+            i += 1
+        if depth:  # unbalanced: leave it
+            break
+        s = s[: m.start()] + s[m.end() : i - 1] + s[i:]
+    return s
+
+
 def pretty(
     out: str,
     dialect: Dialect = "ibis",
@@ -370,9 +388,7 @@ def pretty(
     `/` of integers as Ibis's `//`, `DECIMAL_10_2(TO_DECIMAL_2(x))` as the
     cast the user wrote, a timestamp plus microseconds as an interval
     (`temporal` names the timestamp columns), no implicit casts."""
-    # Implicit casts the user did not write.
-    while (new := re.sub(r"\b(?:DOUBLE|AS_DECIMAL_\d+_\d+)\(([^()]*)\)", r"\1", out)) != out:
-        out = new
+    out = _drop_implicit_casts(out)
     out = re.sub(r"(\d)d\b", r"\1", out)
     # A cast to a decimal: `DECIMAL_p_s(TO_DECIMAL_s(x))` (a double's), or
     # `DECIMAL_p_s(x)`, `TO_DECIMAL_s(x)` alone (the precision is the plan's).
@@ -634,3 +650,41 @@ def deferred_text(d: Any) -> str:
         return go(d)
     except Exception:  # noqa: BLE001 - a label falls back to Ibis's repr
         return repr(d)
+
+
+_PLAIN_OPS = {"==": "=", "!=": "≠", ">=": "≥", "<=": "≤"}
+
+
+def plain(label: str) -> str:
+    """A condition's label in words: `(_.amount > 10)` is "amount > 10",
+    `_.id.notnull()` "id is never NULL", `unique(id)` "no two rows share
+    id", `max_rows(10)` "at most 10 rows"."""
+    s = label.strip()
+    while s.startswith("(") and s.endswith(")") and _balanced(s[1:-1]):
+        s = s[1:-1].strip()
+    if m := re.fullmatch(r"unique\((.*)\)", s):
+        cols = m.group(1)
+        return f"no two rows share {cols}" if "," not in cols else f"no two rows share ({cols})"
+    if m := re.fullmatch(r"max_rows\((\d+)\)", s):
+        return f"at most {int(m.group(1)):,} rows"
+    if m := re.fullmatch(r"rows_per\(\[(.*)\], at_most=(\d+)\)", s):
+        return f"at most {m.group(2)} rows per {m.group(1)}"
+    if m := re.fullmatch(r"references\((\w+), (\w+)\.(\w+)\)", s):
+        return f"every {m.group(1)} is a {m.group(3)} of {m.group(2)}"
+    if m := re.fullmatch(r"arrives_within\((\w+), (.*)\)", s):
+        return f"rows arrive at most {m.group(2)} late by {m.group(1)}"
+    s = re.sub(r"_\.(\w+)\.notnull\(\)", r"\1 is never NULL", s)
+    s = re.sub(r"_\.(\w+)\.isnull\(\)", r"\1 is NULL", s)
+    s = re.sub(r"\b_\.", "", s)
+    for op, word in _PLAIN_OPS.items():
+        s = s.replace(f" {op} ", f" {word} ")
+    return s.replace(" & ", " and ").replace(" | ", " or ")
+
+
+def _balanced(s: str) -> bool:
+    depth = 0
+    for ch in s:
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if depth < 0:
+            return False
+    return depth == 0

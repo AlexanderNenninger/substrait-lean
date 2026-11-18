@@ -55,14 +55,19 @@ orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
 big.refresh(engine="polars", route="auto")  # updated from the changes alone, on Polars
 assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 print(big_orders.report)
-# requires orders: (_.amount >= 0)
-# requires orders: (_.amount < 1000000000)
-# requires orders: unique(id)
-# ensures (_.doubled >= 22): proved
+# proved
+# The output guarantees:
+#   doubled ≥ 22
+#   doubled is never NULL
+#   no two rows share id
+# Each run checks on the data:
+#   orders: amount ≥ 0
+#   orders: amount < 1000000000
+#   orders: no two rows share id
 # ...
 ```
 
-The report goes on with the evidence for each engine; `sverify check` prints the contract in plain words.
+`print(big_orders.report.details())` goes on with the evidence for each engine; `sverify check` prints the same contract.
 
 A postcondition that doesn't follow is refused before anything runs:
 
@@ -100,9 +105,11 @@ and `sverify-spark` with their runtimes; either package alone
 writes its SQL without the runtime. Sverify finds every installed engine
 through its plugin (`sverify.profiles.ProfilePlugin`, the entry-point group
 `sverify.profiles`). Wheels bundle the checker as a small native binary for Linux (x86_64,
-aarch64) and macOS (arm64), Python 3.12 and later. Elsewhere (Windows, an Intel Mac) pip
-builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
-starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
+aarch64) and macOS (arm64), Python 3.12 and later. Elsewhere (Windows, an Intel Mac) the
+sdist's build stops with a message; use WSL2 or a Linux container, or set
+`SVERIFY_BUILD_FROM_SOURCE=1` to build from source, which needs
+[elan](https://github.com/leanprover/elan) and starts a full `lake build` of every generated Lean module,
+minutes of work that can load every core.
 Contributors with a built checker set `SVERIFY_PREBUILT_CHECKER=<path to substrait-check>`, and an editable install links it instead.
 
 ## In CI
@@ -119,7 +126,7 @@ sverify check pipelines/orders.py
 
 ## Go on from here
 
-[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes in ten steps from a first contract to
+[Getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html) goes in ten steps from a first contract to
 Substrait's own semantics, each feature in a few lines.
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
@@ -199,7 +206,7 @@ list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `fir
 
 ## Status
 
-Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is deprecated for one release, with a `DeprecationWarning` that says what replaces it ([the changelog](https://github.com/AlexanderNenninger/substrait-lean/blob/main/CHANGELOG.md) lists each move), and the 1.0 release candidate removes the ones left ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
+Sverify is a working prototype of a pipeline tool: it proves contracts and runs the checked plan. Production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is deprecated for one release, with a `DeprecationWarning` that says what replaces it ([the changelog](https://github.com/AlexanderNenninger/substrait-lean/blob/main/CHANGELOG.md) lists each move), and the 1.0 release candidate removes the ones left ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
 ## Nightly builds
 
@@ -368,7 +375,7 @@ Refused for now: correlated scalar subqueries, unbound parameters
 `sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
 marks ✗. The repository has
-[a how-to page](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), [getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md),
+[a how-to page](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), [getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html),
 the Ibis coverage table in its README, and
 [what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 

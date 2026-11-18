@@ -1,0 +1,29 @@
+{
+  "id": "DL-3",
+  "project": "deltalake",
+  "version": "1.6.6",
+  "status": "confirmed",
+  "title": "`DeltaTable.to_pyarrow_table()` and `to_pyarrow_dataset()` read every column of a column-mapped table as NULL",
+  "status_note": "Reproduces on 1.6.6, the latest release. No upstream issue found (searched delta-io/delta-rs for column mapping, pyarrow NULL and physical name on 2026-11-18); #4944 is about the protocol losing `columnMapping` after enabling a table feature, a different path. The DataFusion-based reader (`QueryBuilder`) returns the values.",
+  "summary": "With `delta.columnMapping.mode` set to `name` or `id`, the files hold columns under their physical names (`col-<uuid>`). delta-rs's PyArrow readers (`to_pyarrow_table`, `to_pyarrow_dataset`) look the files' columns up by logical name, find none, and return NULL for every non-partition column without an error. `QueryBuilder().register(...).execute(...)` reads the same table correctly.",
+  "repro": "```python\nimport pyarrow as pa, tempfile\nfrom deltalake import DeltaTable, QueryBuilder, write_deltalake\n\nd = tempfile.mkdtemp()\nwrite_deltalake(d, pa.table({\"id\": [1, 2, 3]}), configuration={\"delta.columnMapping.mode\": \"name\"})\ndt = DeltaTable(d)\nprint(dt.to_pyarrow_table()[\"id\"].to_pylist())    # [None, None, None]\nprint(dt.to_pyarrow_dataset().to_table()[\"id\"].to_pylist())  # [None, None, None]\nprint(pa.table(QueryBuilder().register(\"t\", dt).execute(\"select id from t\").read_all())[\"id\"].to_pylist())  # [1, 2, 3]\n```",
+  "handling": "`DeltaSource` reads a column-mapped table through `QueryBuilder` (delta-rs's own reader inside the `deltalake` package, as it already does for deletion vectors), whole and not by file, and reads the file statistics by physical name. The native scan reads the files by physical name or field id. Tests: `test_a_column_mapped_table_reads_its_values_and_its_renames` and the mapped property in `python/tests/test_io_native.py`.",
+  "found_by": "#173",
+  "issues": [
+    173
+  ],
+  "files": [
+    "python/src/sverify/io/delta.py",
+    "python/tests/test_io_native.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-18",
+      "against": {
+        "deltalake": "1.6.6",
+        "pyarrow": "26.0.1"
+      },
+      "note": "latest release; macOS arm64"
+    }
+  ]
+}

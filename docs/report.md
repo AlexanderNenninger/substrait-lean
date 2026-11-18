@@ -13,7 +13,8 @@ row is read. The result is a `Report`:
 
 ```python
 report = sv.verify(expr, requires={"orders": [...]}, ensures=[...])
-print(report)          # the whole report, as text
+print(report)          # the contract in plain words: what holds, what each run checks, what is not proved
+print(report.details())  # the whole report, with the semantics, the evidence per engine and the routes
 report.verdict == Verdict.PROVED          # True when everything holds
 ```
 
@@ -94,8 +95,10 @@ the names of the proofs.
 ## Running is separate
 
 A report proves; it runs nothing. `report.run(con, engine)` runs the plan
-it checked: it checks the preconditions on the data first, refuses a batch
-that breaks one (`PreconditionError`), chooses a route to the engine and
+it checked: it checks the tables against the schema the plan was proved for
+(a missing column, a changed type, a NULL in a non-null column, an integer
+outside its declared width), then the preconditions on the data, refuses a
+batch that breaks one (`PreconditionError`), chooses a route to the engine and
 records it in `report.routes`. A report that is not proved is refused
 there too (`UnverifiedRunError`) unless `unverified=True` says otherwise.
 `report.to_json()` writes the report for another tool, and

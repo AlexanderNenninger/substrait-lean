@@ -155,8 +155,10 @@ def _div(lf: _Lift, node: sge.Div, sub: Sub, scope: list[Column]) -> E:
     for x in (a, b):
         if not (_numeric(x.type) or x.type.is_null()):
             raise SqlUnsupported(f"/ of {a.type} and {b.type} is not supported")
-    if node.args.get("typed") or node.args.get("safe"):
-        raise SqlUnsupported("typed or safe division is not DuckDB's /")
+    # `typed` is another dialect's integer division; `safe` is not checked: up
+    # to SQLGlot 30.8 the DuckDB dialect sets it on every `/`.
+    if node.args.get("typed"):
+        raise SqlUnsupported("typed division is not DuckDB's /")
     # DuckDB's `/` divides as doubles (F1): integers as BIGINTs, decimals as
     # doubles; by zero it gives ±inf or NaN.
     ints = all(x.type.is_integer() or x.type.is_null() for x in (a, b))

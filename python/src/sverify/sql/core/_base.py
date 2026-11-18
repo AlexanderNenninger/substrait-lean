@@ -198,10 +198,14 @@ class Dialect:
         `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
         raise self.not_written(f"overflow = {mode}", "see #241")
 
-    def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
+    def lowered(
+        self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
+    ) -> str | None:
         """`fn` of `args` as the engine's generated, proved lowering writes it
         (`sverify.sql.lowering`, #241), or None where there is none and the
-        printer writes it by hand. `kind` is the result's."""
+        printer writes it by hand. `kind` is the result's. `consts`: each
+        argument's value where it is a literal, so the guards that cannot fire
+        for it are left out."""
         return None
 
     # Identifiers and types
@@ -1798,6 +1802,72 @@ def _float_lit(e: Expr) -> float | None:
     if isinstance(e, Lit) and isinstance(e.value, float) and math.isfinite(e.value):
         return e.value
     return None
+
+
+def _int_lit(e: Expr) -> int | None:
+    """The value of a non-NULL integer constant."""
+    if isinstance(e, Lit) and e.kind == "int" and isinstance(e.value, int):
+        return e.value
+    return None
+
+
+#: The date and time operations whose guards repeat their operand, written
+#: without a branch of their own (`temporal.py`).
+_DATE_OPS = frozenset(
+    {
+        "date_part", "day_part", "date_trunc", "day_trunc", "to_date", "date_time",
+        "add_months", "as_time", "time_of_day", "bucket", "strftime", "epoch_us",
+    }
+)  # fmt: skip
+
+
+def _always_evaluated(e: Expr) -> bool:
+    """Is every part of `e` evaluated on every row? Double arithmetic over
+    columns and literals is: a branch or a short-circuit would leave arms
+    unevaluated, and the errors of an arm no row takes must stay unraised."""
+    match e:
+        case Field() | Lit():
+            return True
+        case Bin(
+            op="fadd" | "fsub" | "fmul" | "fdiv" | "fdivIeee" | "fmod" | "fpow", left=a, right=b
+        ):
+            return _always_evaluated(a) and _always_evaluated(b)
+        case Un(op="fneg" | "itof" | "neg", arg=a):
+            return _always_evaluated(a)
+        case Un(op=op, arg=a) if op in _DATE_OPS:
+            return _always_evaluated(a)
+        case Bin(op="date_add" | "date_diff", left=a, right=b):
+            return _always_evaluated(a) and _always_evaluated(b)
+    return False
+
+
+def _decided(c: Expr) -> Expr:
+    """The condition `c` with the comparisons of integer constants worked out:
+    `x AND TRUE` is `x`, `x AND FALSE` is `FALSE` (also for a NULL `x`), and
+    `OR` the other way. Not a `Lit` bool where the data decides."""
+    match c:
+        case Bin(op="lt" | "eq" as op, left=a, right=b) if None not in (
+            x := _int_lit(a),
+            y := _int_lit(b),
+        ):
+            return Lit(x < y if op == "lt" else x == y, "bool")  # pyrefly: ignore
+        case Bin(op="and" | "or" as op, left=a, right=b):
+            stop = op == "or"
+            a, b = _decided(a), _decided(b)
+            if any(isinstance(v, Lit) and v.value is stop for v in (a, b)):
+                return Lit(stop, "bool")
+            for v, w in ((a, b), (b, a)):
+                if isinstance(v, Lit) and v.value is (not stop):
+                    return w
+            return Bin(op, a, b)
+        case Un(op="not", arg=a):
+            a = _decided(a)
+            return (
+                Lit(not a.value, "bool")
+                if isinstance(a, Lit) and a.kind == "bool"
+                else Un("not", a)
+            )
+    return c
 
 
 def _nan_ruled_out(op: str, a: Expr, b: Expr) -> bool:
@@ -3695,11 +3765,24 @@ def _floor(kind: str, a: Expr, b: Expr) -> Expr:
         if "int" in t:
             return Lit(int(t["int"]), "int")
         if "if" in t:
-            return If(go(t["if"]), go(t["then"]), go(t["else"]))
+            # A condition the literal divisor decides picks its arm.
+            if isinstance(c := go(t["if"]), Lit) and c.kind == "bool":
+                return go(t["then"] if c.value else t["else"])
+            return If(c, go(t["then"]), go(t["else"]))
         args = [go(x) for x in t["args"]]
         if t["fn"] == "ffloor":
             return Un("ffloor", args[0])
-        return Bin(t["fn"], args[0], args[1])
+        x, y = args
+        if t["fn"] == "lt" and None not in (i := [_int_lit(v) for v in args]):
+            return Lit(i[0] < i[1], "bool")  # pyrefly: ignore
+        if t["fn"] in ("and", "or"):
+            stop = t["fn"] == "or"
+            if any(isinstance(v, Lit) and v.value is stop for v in args):
+                return Lit(stop, "bool")
+            rest = [v for v in args if not isinstance(v, Lit)]
+            if len(rest) == 1:
+                return rest[0]
+        return Bin(t["fn"], x, y)
 
     from sverify.sql import lowering
 
@@ -3825,6 +3908,15 @@ def numbers_copies(w: Window) -> bool:
 _ORDER_FREE_FNS = frozenset({"count", "sum", "fsum", "avg", "iavg", "min", "max"})
 
 
+def peer_dependent(f: WinFn) -> bool:
+    """Does `f` read how a window orders its tied rows? Ranks, `CUME_DIST` and
+    the order-free measures over the whole partition or a RANGE frame do not."""
+    if f.fn in ("rank", "dense_rank", "percent_rank", "cume_dist"):
+        return False
+    free = f.fn == "agg" and f.measure is not None and f.measure.fn in _ORDER_FREE_FNS
+    return not (free and (f.frame == WHOLE or f.frame.range))
+
+
 def order_matters(r: Rel) -> bool:
     """Does the result's row order matter (a FETCH, a window or a sort anywhere
     the order reaches the result)?"""
@@ -3876,6 +3968,20 @@ def inputs(r: Rel) -> list[Rel]:
             return [r.input]
 
 
+def open_choices(r: Rel) -> list[str]:
+    """The nodes of `r` whose rows `Rel.Allowed` leaves open: a `FETCH` takes
+    the first rows of an order that may have ties, and a window with a function
+    that reads the order of tied rows (`peer_dependent`) orders them as the
+    engine does. A window of ranks or whole-partition measures has one result.
+    A second statement over `r` sees its own choices (#1608)."""
+    found: list[str] = []
+    if isinstance(r, Fetch):
+        found.append("a LIMIT")
+    elif isinstance(r, Window) and any(map(peer_dependent, r.fns)):
+        found.append("a window")
+    return found + [n for k in inputs(r) for n in open_choices(k)]
+
+
 def unchecked_slots(r: Rel, marks: dict) -> dict[int, frozenset[int]]:
     """The slots of each node of `r` whose expressions run without their checks,
     by node (`id`), from a contract report's `unchecked` (`Rel.marksJson`).
@@ -3920,6 +4026,27 @@ class _Writer:
     one, numbered by its keys, and ties are open as `Rel.Allowed` leaves them.
     Below a window or an ordered aggregate it is on again: they read the
     ordinal."""
+    binds: list[tuple[str, str]] | None = None
+    """While a projection's expressions are written: the subexpressions bound once
+    as columns of a layer below it, as (name, SQL); None elsewhere."""
+    bind_alias: str = ""
+    bind_on: bool = False
+    """Binding is sound for the expression being written: it holds no branch
+    (`If`, `coalesce`, `AND`) whose arms may stay unevaluated, so a bound
+    subexpression is evaluated on every row in the original too."""
+
+    def bind(self, sql: str) -> str:
+        """`sql` as a column of the layer below the projection being written,
+        where a guard repeats it (#1608); `sql` itself where there is no such
+        layer or binding it could change its meaning (an earlier binding
+        in it, a lambda)."""
+        if self.binds is None or not self.bind_on or len(sql) < 120 or "->" in sql:
+            return sql
+        name = next((n for n, text in self.binds if text == sql), None)
+        if name is None:
+            name = f"b{len(self.binds)}"
+            self.binds.append((name, sql))
+        return self.ref(self.bind_alias, self.d.quote(name))
 
     @property
     def stable(self) -> bool:
@@ -4051,14 +4178,38 @@ class _Writer:
                 ks = kinds(i)
                 m = len(ks)
                 items = [f"{self.ref(a, self.c(j))} AS {self.c(j)}" for j in range(m)]
-                for j, e in enumerate(es):
-                    self.check_refs(e, m)
-                    with self.slot(r, j):
-                        sql = self.expr(e, lambda x: self.ref(a, self.c(x)), ks, expr_kind(e, ks))
-                    items.append(f"{sql} AS {self.c(m + j)}")
+                self.binds, self.bind_alias = [], a
+                try:
+                    for j, e in enumerate(es):
+                        self.check_refs(e, m)
+                        self.bind_on = _always_evaluated(e)
+                        with self.slot(r, j):
+                            sql = self.expr(
+                                e, lambda x: self.ref(a, self.c(x)), ks, expr_kind(e, ks)
+                            )
+                        items.append(f"{sql} AS {self.c(m + j)}")
+                    binds = self.binds
+                finally:
+                    self.binds = None
                 if ordered:
                     items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
-                return self.select(items, d.subquery(self.rel(i, ordered), a))
+                src = d.subquery(self.rel(i, ordered), a)
+                # Each repeated subexpression is computed once, in a layer below the
+                # projection; one that reads another binding goes a layer higher.
+                level: dict[str, int] = {}
+                for name, text in binds:
+                    level[name] = 1 + max(
+                        (level[n] for n in level if d.quote(n) in text), default=0
+                    )
+                for k in range(1, max(level.values(), default=0) + 1):
+                    inner = self.passthrough(a, m, ordered)
+                    for name, text in binds:
+                        if level[name] < k:
+                            inner.append(f"{self.ref(a, d.quote(name))} AS {d.quote(name)}")
+                        elif level[name] == k:
+                            inner.append(f"{text} AS {d.quote(name)}")
+                    src = d.subquery(self.select(inner, src), a)
+                return self.select(items, src)
             case Emit(input=i, mapping=mapping):
                 a = self.alias()
                 m = arity(i)
@@ -4287,7 +4438,11 @@ class _Writer:
             raise WriterUnsupported(
                 "an ordered aggregate next to a DISTINCT measure is not supported"
             )
-        needs = needs or picks
+        # Under `rows="multiset"` a pick takes its keys alone: each measure has
+        # its own arrangement of the group's rows in `Measure.Allowed`. `mode`
+        # keeps the ordinal, since its tied values win by the first seen.
+        modes = any(ms.fn == "mode" for ms in measures)
+        needs = needs or (picks and (self.seq or modes))
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
         level = self.select(items, d.subquery(self.child(i, needs), a))
@@ -4322,9 +4477,11 @@ class _Writer:
             if native(ms):
                 sql = f"COUNT(DISTINCT {v})"
             elif ms.fn in ("first", "last", "string_agg", "collect", "mode"):
-                # Ties go in Lean's list order: the ordinal breaks them.
+                # Ties go in Lean's list order, the ordinal's, where it is asked for.
                 order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
-                         for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
+                         for c, key, kind in orders[k]]  # fmt: skip
+                if self.seq or ms.fn == "mode":
+                    order.append(self.asc(self.ordinal(b)))
                 if ms.fn == "string_agg":
                     sql = d.string_agg(v, d.str_lit(ms.sep), order)
                 elif ms.fn == "collect":
@@ -4549,29 +4706,48 @@ class _Writer:
                 hint=MALFORMED_PLAN,
             )
 
+        copies = numbers_copies(Window(i, part, sort, fns)) and not ordered
+        # `Rel.Allowed` takes one arrangement of the ties for the whole node. Two
+        # functions that read it would each see the engine's own, so one inner
+        # number fixes it and the node's functions order by that (#1608).
+        fixed = not (copies or self.stable or self.tie_free) and sum(map(peer_dependent, fns)) > 1
+
         def col(j: int) -> str:
             return self.ref(a, self.c(j))
 
-        partition = [col(p) for p in part]
-        keys: list[str] = []
-        for k in sort:
-            for x, kind in self.sort_exprs(col(k.col), ks[k.col]):
-                keys.append(d.sort_key(x, k.desc, k.nulls_first, kind))
-        copies = numbers_copies(Window(i, part, sort, fns)) and not ordered
-        if copies:
-            # Any order numbers the copies (some dialects need one).
-            keys = [d.sort_key(col(p), False, False, ks[p]) for p in part]
-        elif not self.tie_free:
-            # Lean sorts with a stable merge sort: ties keep their input order.
-            keys.append(self.asc(self.ordinal(a)))
-        elif ordered and not keys:
-            raise Unsupported(
-                "without ORDER BY a window keeps its input's order, which needs ordinals"
+        def order() -> tuple[list[str], list[str], list[str]]:
+            """The partition, the sort keys (the peers) and the keys the node orders by."""
+            partition = [col(p) for p in part]
+            peers: list[str] = []
+            for k in sort:
+                for x, kind in self.sort_exprs(col(k.col), ks[k.col]):
+                    peers.append(d.sort_key(x, k.desc, k.nulls_first, kind))
+            if copies:
+                # Any order numbers the copies (some dialects need one).
+                return partition, peers, [d.sort_key(col(p), False, False, ks[p]) for p in part]
+            if self.stable:
+                # Lean sorts with a stable merge sort: ties keep their input order.
+                return partition, peers, peers + [self.asc(self.ordinal(a))]
+            if ordered and not peers and self.tie_free:
+                raise Unsupported(
+                    "without ORDER BY a window keeps its input's order, which needs ordinals"
+                )
+            return partition, peers, peers
+
+        partition, peers, keys = order()
+        inner = ""
+        if fixed:
+            tie = d.quote("w")
+            src = self.child(i, False)
+            inner = self.select(
+                [f"{col(j)} AS {self.c(j)}" for j in range(m)]
+                + [f"{d.row_number(d.over(partition, keys))} AS {tie}"],
+                d.subquery(src, a),
             )
+            a = self.alias()
+            partition, peers, _ = order()
+            keys = [self.asc(self.ref(a, tie))]
         over = d.over(partition, keys)
-        # Ranks, `CUME_DIST` and RANGE frames depend on the sort keys only: ties
-        # are peers, not ordered by the ordinal.
-        peers = keys[:-1] if not self.tie_free else keys
 
         def whole() -> str:
             return f"OVER ({'PARTITION BY ' + ', '.join(partition) if partition else ''})"
@@ -4623,7 +4799,9 @@ class _Writer:
         if ordered:
             # `windowEval` emits the rows in sort order.
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
-        return self.select(items, d.subquery(self.child(i, not self.tie_free and not copies), a))
+        # Written last, so a refusal in an expression comes before the input's.
+        src = inner or self.child(i, self.stable and not copies)
+        return self.select(items, d.subquery(src, a))
 
     def framed(
         self,
@@ -4917,12 +5095,20 @@ class _Writer:
                 # Where an operand rules out a new NaN (a finite constant),
                 # the template's guard could not fire: the operator alone.
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
-                if not plain and (low := d.lowered(op, [sa, sb], "float")) is not None:
-                    return low if op == "fmod" else self.finite(low, unknown, by_zero_ok)
+                consts = [_float_lit(a), _float_lit(b)]
+                # A finite number divided by a constant of at least 1 in size, or
+                # multiplied by one of at most 1, has no larger magnitude: no overflow.
+                shrinks = (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0) or (
+                    op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts)
+                )
+                if not plain and (low := d.lowered(op, [sa, sb], "float", consts)) is not None:
+                    if op == "fmod" or shrinks:
+                        return low
+                    return self.finite(low, unknown, by_zero_ok)
                 sql = f(sa, sb)
                 if not d.guards:
                     return sql
-                if op != "fmod":
+                if op != "fmod" and not shrinks:
                     # `fmod` is exact: it never overflows.
                     sql = self.finite(sql, unknown, by_zero_ok)
                 if not _nan_ruled_out(op, a, b):
@@ -4940,7 +5126,8 @@ class _Writer:
                 what = "division" if op == "idiv" else "remainder"
                 sa = self.int_operand(a, ref, cols, what)
                 sb = self.int_operand(b, ref, cols, what)
-                if (low := d.lowered(op, [sa, sb], "int")) is not None:
+                consts = [_int_lit(a), _int_lit(b)]
+                if (low := d.lowered(op, [sa, sb], "int", consts)) is not None:
                     return low
                 return d.int_div(sa, sb) if op == "idiv" else d.int_mod(sa, sb)
             case Bin(op="ipow", left=a, right=b):
@@ -4980,6 +5167,9 @@ class _Writer:
                     return d.float_eq(sa, sb) if op == "eq" else d.float_lt(sa, sb)
                 return d.eq(sa, sb) if op == "eq" else d.lt(sa, sb)
             case If(cond=c, then=t, orelse=o):
+                c = _decided(c)
+                if isinstance(c, Lit) and c.kind == "bool":
+                    return go(t if c.value else o, kind(e) or ctx)
                 if (ab := _null_safe_eq(e)) is not None and kind(ab[0]) == kind(ab[1]):
                     k = kind(ab[0])
                     if (sql := d.not_distinct(go(ab[0], k), go(ab[1], k))) is not None:
@@ -5032,7 +5222,8 @@ class _Writer:
         k = expr_kind(e, cols)
         if k != want and not (isinstance(e, Lit) and e.value is None):
             raise Unsupported(f"{what} needs a {want} value, not {k or 'one of unknown type'}")
-        return self.expr(e, ref, cols, want)
+        # The guards repeat it: it is computed once.
+        return self.bind(self.expr(e, ref, cols, want))
 
     def substring(self, s: str, a: str, n: int | None) -> str:
         """`Text.substr`: the characters at 1-based positions `a … a+n-1` that
@@ -5212,6 +5403,7 @@ class _Writer:
         if not d.finite:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
+        sql = self.bind(sql)
         return d.case_when(
             f"({fin}{unless}{d.is_inf(sql)})",
             d.raise_("overflow to infinity", sql, "float", "infinite"),
@@ -5232,7 +5424,8 @@ class _Writer:
             raise Unsupported(
                 f"double arithmetic on {k or 'a value of unknown type'}; cast it to DOUBLE first"
             )
-        return self.expr(e, ref, cols, "float")
+        # The operator's guards repeat it: it is computed once.
+        return self.bind(self.expr(e, ref, cols, "float"))
 
     def arith(
         self, op: str, a: Expr, b: Expr, ref: Callable[[int], str], cols: list[Kind | None]

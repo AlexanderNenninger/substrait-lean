@@ -3602,6 +3602,17 @@ dependencies = [
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/46/b2/4e28aaffe28db4745ac5df3ee9115719c1b5da5cce4106bee99c82d1eb2c/pyspark-4.3.0.tar.gz", hash = "sha256:e8c517948eff7088a7aa07449aa8eafa4a15a8d50319de2525a6fd26622476c6", size = 455910862, upload-time = "2026-10-30T15:30:57.079Z" }
 
+[package.optional-dependencies]
+connect = [
+    { name = "googleapis-common-protos" },
+    { name = "grpcio" },
+    { name = "grpcio-status" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "zstandard" },
+]
+
 [[package]]
 name = "pytest"
 version = "9.2.0"
@@ -4505,6 +4516,7 @@ dev = [
     { name = "poethepoet" },
     { name = "pyiceberg", extra = ["sql-sqlite"] },
     { name = "pyrefly" },
+    { name = "pyspark", extra = ["connect"] },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
@@ -4534,7 +4546,7 @@ requires-dist = [
     { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
-    { name = "sqlglot", specifier = "~=30.17.0" },
+    { name = "sqlglot", specifier = ">=30.8.0,<30.18" },
     { name = "substrait", specifier = ">=0.37.0" },
     { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
     { name = "sverify-duckdb", extras = ["run"], editable = "../engines/duckdb" },
@@ -4554,6 +4566,7 @@ dev = [
     { name = "poethepoet", specifier = ">=0.49.0" },
     { name = "pyiceberg", extras = ["sql-sqlite"], specifier = ">=0.12.0" },
     { name = "pyrefly", specifier = ">=1.4.0" },
+    { name = "pyspark", extras = ["connect"], specifier = ">=4.0" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },

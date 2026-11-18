@@ -276,7 +276,7 @@ def test_verify_states_and_takes_its_semantics():
     ref = sv.verify(sql, tables={"t": t}, on_inferred="off")
     duck = sv.verify(sql, tables={"t": t}, semantics="duckdb", on_inferred="off")
     assert (ref.semantics, duck.semantics) == ("reference", "duckdb")
-    assert "semantics: reference" in str(ref).splitlines()
+    assert "semantics: reference" in ref.details().splitlines()
     assert any("zero" in str(i) for i in ref.issues)
     assert not any("zero" in str(i) for i in duck.issues)
     with pytest.raises(ValueError, match="semantics must be"):
@@ -386,7 +386,12 @@ def test_an_error_in_a_conjunct_that_is_never_true_may_raise():
     schema = ibis.Schema.from_pyarrow(tab2.schema)
     for semantics in ("duckdb", "reference"):
         report = sv.verify(query, tables={"tab2": schema}, semantics=semantics, counterexamples=0)
-        assert any("overflow" in str(i) for i in report.issues), report
+        # The overflow is an issue, or a precondition that rules it out (an
+        # INTEGER column's type bounds it, D46): `col1 < 1`, which the data breaks.
+        inferred = [str(c) for c in report._inferred.get("tab2", [])]
+        assert any("overflow" in str(i) for i in report.issues) or any(
+            "col1" in c and "< 1" in c for c in inferred
+        ), report
     con = connect()
     con._arrow["tab2"] = tab2
     with pytest.raises(Exception, match="out of range"):

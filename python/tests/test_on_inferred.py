@@ -32,7 +32,7 @@ def test_an_inferred_precondition_is_an_error_by_default(con) -> None:
     report = sv.verify(t.select(t.k, per=t.total // t.qty))
     assert report.verdict == sv.Verdict.UNPROVED
     assert _needed(report) == {"t": ["(_.total >= -9 * 10**18)", "(_.qty != 0)"]}
-    text = str(report)
+    text = report.details()
     assert (
         "needs: (_.total >= -9 * 10**18) and (_.qty != 0) on t, inferred from `total // qty` "
         "(overflow or division by zero otherwise): declare them in requires (each run then "
@@ -86,7 +86,7 @@ def test_warn_and_silent_assume_it(con) -> None:
         warnings.simplefilter("error", InferredWarning)
         silent = sv.verify(expr, on_inferred="ignore")
     assert silent.verdict == sv.Verdict.PROVED
-    assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(silent)
+    assert "requires t: (_.qty != 0) (inferred from total // qty)" in silent.details()
     with pytest.raises(PreconditionError, match="inferred from `total // qty`"):
         silent.run(con)
     with pytest.raises(ValueError, match="on_inferred must be"):

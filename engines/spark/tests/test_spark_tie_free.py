@@ -7,7 +7,6 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.errors import UnsupportedError
 from sverify.io import StaticSource
 
 pytestmark = pytest.mark.backend("spark")
@@ -39,11 +38,10 @@ def test_a_tie_free_window_runs_on_spark(spark):
         {"k": 1, "ts": 2, "prev": 10},
         {"k": 2, "ts": 1, "prev": None},
     ]
-    # Without the key, rows may tie and Spark has no row order to break them.
+    # Without the key, rows may tie: Spark runs the window with them open.
     loose = sv.verify(_prev(t))
     assert not loose.deterministic
-    with pytest.raises((UnsupportedError, sv.errors.RouteError)):
-        loose.run(con, spark)
+    assert len(loose.run(con, spark)) == len(ROWS)
 
 
 def test_a_tie_free_window_refreshes_on_spark(spark):
@@ -56,3 +54,16 @@ def test_a_tie_free_window_refreshes_on_spark(spark):
     node.refresh(engine=spark)
     got = sorted(node.to_arrow().to_pylist(), key=lambda r: (r["k"], r["ts"]))
     assert [r["prev"] for r in got] == [None, 10, None]
+
+
+def test_a_table_with_an_empty_chunk_loses_no_rows(spark):
+    """`createDataFrame` of Arrow chunks of 3, 0 and 2 rows gave back 3 rows
+    (#1608): the loader makes one chunk."""
+    from sverify_spark.engine import put_tables
+
+    def chunk(xs):
+        return pa.record_batch({"x": pa.array(xs, pa.int64())})
+
+    table = pa.Table.from_batches([chunk([1, 2, 3]), chunk([]), chunk([4, 5])])
+    put_tables({"chunked": table}, spark)
+    assert spark.sql("SELECT count(*) AS n FROM chunked").collect()[0]["n"] == 5

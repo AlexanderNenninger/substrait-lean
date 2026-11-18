@@ -1421,6 +1421,29 @@ def _confirm_suggestions(report: Report, requires, once) -> Report:
     return replace(report, ensures=ensures)
 
 
+def _output_types(transform: Transform, schemas: Mapping[str, ibis.Schema]) -> list[Any] | None:
+    """The types of a transformation's columns, to print a counterexample's
+    dates and timestamps as such (`Rel.eval` counts them in days and
+    microseconds); None where they cannot be had, which only plainer prints."""
+    try:
+        if not isinstance(transform, str):
+            return list(transform.schema().values())
+        import duckdb  # DuckDB's own types for the SQL, where it is installed
+
+        db = duckdb.connect()
+        for name, schema in schemas.items():
+            db.register(name, schema.to_pyarrow().empty_table())
+        kinds = [row[1].upper() for row in db.execute(f"DESCRIBE {transform}").fetchall()]
+        return [
+            ibis.dtype(
+                "date" if k == "DATE" else "timestamp" if k.startswith("TIMESTAMP") else "string"
+            )
+            for k in kinds
+        ]
+    except Exception:  # noqa: BLE001 - the types only improve the printing
+        return None
+
+
 def _verify_once(
     transform: Transform,
     requires: Mapping[str, Sequence[Condition]],
@@ -1512,6 +1535,7 @@ def _verify_once(
         ens_plans.append(p)
     transform_plan = plan(transform)
     out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
+    out_types = _output_types(transform, schemas) if counterexamples else None
 
     def names(t: str) -> Sequence[str]:
         return column_names(schemas[t])
@@ -1615,6 +1639,7 @@ def _verify_once(
                 target,
                 budget=counterexamples,
                 references=foreign_keys,
+                output_types=out_types,
             )
 
     def next_key() -> tuple[bool, Counterexample | None]:
@@ -2264,11 +2289,12 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
 
     def capped(n: int) -> str:
-        """The row cap that proves the sum fits (#219)."""
+        """The row cap that proves the sum fits (#219): a cap near `n` is
+        no cap anyone writes, so a round one (at most a billion) is the example."""
+        cap = 10 ** min(len(str(n)) - 1, 9)
         return (
-            f"`sv.max_rows({n:_})` in {where} proves it, and so does "
-            f"`sv.rows_per(<grouping columns>, at_most={n:_})`; without a row bound, the job "
-            "checks the sum as it runs"
+            f"a row cap in {where} proves it: `sv.max_rows({cap:_})` or "
+            f"`sv.rows_per(<grouping columns>, at_most={cap:_})`"
         )
 
     if lo is not None and hi is not None:
@@ -2281,8 +2307,8 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
             # sum fits, and Lean proves it.
             return None
         return (
-            f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
-            f"{rows:,} rows; {capped(rows)}"
+            f"SUM of {what}: it is in [{lo}, {hi}]. The job checks the sum as it runs; "
+            f"{capped(rows)}, and any group of up to {rows:,} rows fits 64 bits"
         )
     col = origin[1] if origin else "x"
     proposed = []
@@ -2293,8 +2319,9 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     largest = max(SUM_BOUND, abs(lo or 0), abs(hi or 0))
     rows = (2**63 - 1) // largest
     return (
-        f"SUM of {what}: bound it in {where}, for example {' and '.join(proposed)}; then a "
-        f"group's sum fits 64 bits for up to {rows:,} rows, and {capped(rows)}"
+        f"SUM of {what}: the job checks the sum as it runs. To prove it, bound it in {where}, "
+        f"for example {' and '.join(proposed)}; then {capped(rows)}, and any group of up to "
+        f"{rows:,} rows fits 64 bits"
     )
 
 
@@ -3018,6 +3045,7 @@ class ContractedTransform:
         external: dict[str, list[Condition]] = {}
         policies: Policies = {}
         unproved_links: list[str] = []
+        table_params: dict[str, str] = {}  # placeholder table -> the parameter
         taken = set(leaf_tables(result))
         for param, value in inputs.items():
             if not isinstance(value, ir.Table):
@@ -3042,6 +3070,7 @@ class ContractedTransform:
                 prov = _lookup(op)
                 name = _fresh(prov.transform.name if prov else param, taken)
                 placeholders[op] = (name, link.assumptions[param])
+                table_params[name] = param
                 if prov is None:
                     plain[name] = (param, value)
         abstraction = _abstract(result, placeholders, taken)
@@ -3068,9 +3097,12 @@ class ContractedTransform:
                 param, value = bound_inputs[t]
             if self.check_requires:
                 self._check_on_data(value, param, conds, found)
-        if found:
-            # The report may be cached and shared by calls: this call's copy.
-            report = self.report = replace(report, preconditions=found)
+        # The report may be cached and shared by calls: this call's copy.
+        report = self.report = replace(
+            report,
+            preconditions=found or report.preconditions,
+            _table_params={**{t: p for t, (p, _) in bound_inputs.items()}, **table_params},
+        )
         checked: list[Condition] = []
         if not report._proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in

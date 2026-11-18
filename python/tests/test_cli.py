@@ -100,7 +100,7 @@ def test_a_proved_file_exits_0_with_its_contract_in_words(tmp_path, capsys):
     assert "  Each refresh checks on the data:" in lines
     assert any(line.startswith("    paid (p): orders: amount ≥ 0") for line in lines)
     assert "paid (p): proved" in lines
-    assert lines[-1] == "proved"
+    assert lines[-1] == "paid (p): proved"  # no bare status line after the node's own
 
 
 def test_a_file_that_is_not_proved_exits_1_with_codes(tmp_path, capsys):
@@ -109,7 +109,7 @@ def test_a_file_that_is_not_proved_exits_1_with_codes(tmp_path, capsys):
     assert "  Not proved:" in out
     assert "[may_be_false]" in out
     assert "counterexample:" in out
-    assert out.splitlines()[-1] == "not proved"
+    assert "NOT proved" in out and out.splitlines()[-1] != "not proved"
 
 
 def test_the_json_document(tmp_path, capsys):
@@ -492,7 +492,7 @@ def test_summary_of_a_report():
     s = summary(report)
     assert s["guarantees"] == ["amount > 10"]
     assert s["checks"] == ["orders: amount ≥ 0", "orders: amount < 100"]
-    assert s["not_proved"][0].startswith("id is never NULL: not proved")
+    assert s["not_proved"][0].startswith("id is never NULL: it may be")
 
 
 def test_the_entry_point():
@@ -573,6 +573,29 @@ def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
         assert any(q["examples"] for n in shown["nodes"] for q in n["quarantine"])
     got, out = run(capsys, "refresh", f"{path}:p")
     assert got == code and "### paid" in out and "| id |" not in out
+
+
+def test_a_sql_file_is_a_usage_error_that_says_where_sql_goes(tmp_path, capsys):
+    """`sverify check revenue.sql` used to exit 6 with "not a Python file" (#1485)."""
+    sql = tmp_path / "revenue.sql"
+    sql.write_text("select 1")
+    code, out = run(capsys, "check", str(sql))
+    assert code == 2
+    assert "sv.sql" in out and "not a Python file" not in out
+
+
+def test_the_double_cast_is_not_shown_around_an_aggregate(tmp_path, capsys):
+    """`amount / DOUBLE(sum(amount))` showed an internal cast (#1485)."""
+    src = """
+@sv.transform(
+    schemas={"orders": {"id": "int64", "amount": "int64"}},
+    ensures=[_.share <= 1],
+)
+def share(orders):
+    return orders.select(orders.id, share=orders.amount / orders.amount.sum())
+"""
+    code, out = run(capsys, "check", str(write(tmp_path, src)))
+    assert "DOUBLE(" not in out and "amount / sum(amount)" in out
 
 
 def test_classifying_an_import_error_in_sverify_errors_does_not_raise(monkeypatch):

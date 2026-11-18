@@ -3,16 +3,17 @@ Parquet files as a lazy frame, on the streaming engine, without the table
 passing through Arrow in the driver.
 
 Route A of the design note (section 3.2), with public Polars API only:
-`scan_parquet` over the files (grouped by how their columns are named), the
-positions a file lost anti-joined from a scan of that file alone, equality
-deletes anti-joined with NULLs equal, and a cast of each column to the type the
-Arrow route gives it. A column a file lacks is NULL; a file column whose type
+`scan_parquet` over the files (grouped by how their columns are named: by field
+id, by the table's physical names or by name), the partition values joined on
+the file path, the positions a file lost anti-joined from a scan of that file
+alone, equality deletes anti-joined with NULLs equal, and a cast of each column
+to the type the Arrow route gives it. A column a file lacks is NULL; a file column whose type
 does not widen to the schema's (`sverify._scan.widens`) raises.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 import pyarrow as pa
@@ -47,28 +48,35 @@ def lazy_scan(scan: Scan) -> pl.LazyFrame:
         ):
             deleted.setdefault(f, []).append(p)
     pieces = []
-    for names, files in _runs(scan, deleted):
-        if files[0] in deleted:
-            pieces.append(_read(files, names, scan, dtypes, deleted[files[0]]))
-        else:
-            pieces.append(_read(files, names, scan, dtypes))
+    values = _partition_values(scan)
+    for names, files in _runs(scan, deleted, values):
+        here = dict(zip(_constant(scan), values.get(files[0], ()), strict=False))
+        pieces.append(_read(files, names, scan, dtypes, here, deleted.get(files[0])))
     lf = pl.concat(pieces, how="vertical")
     for e in scan.equality:
         lf = _equality(lf, e, dtypes)
     return lf.drop(_FILE)
 
 
-def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str], list[str]]]:
+def _runs(
+    scan: Scan, deleted: dict[str, list[int]], values: dict[str, tuple[Any, ...]]
+) -> list[tuple[dict[str, str], list[str]]]:
     """The files in the descriptor's order, in runs that one scan reads: files
-    named alike (`{physical name: logical name}`, by field id for Iceberg),
-    none with deleted positions, which are scanned alone."""
+    named alike (`{physical name: logical name}`, by field id for Iceberg) and
+    partitioned alike, none with deleted positions or under an equality delete,
+    which are scanned alone: the file is tagged with the descriptor's own string,
+    so no match between it and a path Polars reports can fail silently."""
+    alone = set(deleted).union(*(e.applies_to for e in scan.equality))
     out: list[tuple[dict[str, str], list[str]]] = []
+    keys: list[tuple[Any, ...]] = []
     for f in scan.files:
         names = _renaming(f, scan)
-        if out and out[-1][0] == names and f not in deleted and out[-1][1][0] not in deleted:
+        key = (names, values.get(f))
+        if out and keys[-1] == key and f not in alone and out[-1][1][0] not in alone:
             out[-1][1].append(f)
         else:
             out.append((names, [f]))
+            keys.append(key)
     return out
 
 
@@ -81,14 +89,15 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
         if scan.field_ids is None
         else {i: n for i, n in zip(scan.field_ids, scan.schema.names, strict=True)}
     )
+    by_name = dict(zip(scan.physical or scan.schema.names, scan.schema.names, strict=True))
     out = {}
     for f in schema:
         if by_id is None:
-            logical = f.name if f.name in scan.schema.names else None
+            logical = by_name.get(f.name)
         else:
             raw = (f.metadata or {}).get(_FIELD_ID)
             logical = by_id.get(int(raw)) if raw is not None else None
-        if logical is None:
+        if logical is None or logical in _constant(scan):
             continue
         want = scan.schema.field(logical).type
         if not widens(f.type, want) and not _same_family(f.type, want):
@@ -96,6 +105,28 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
                 f"{file}: column {logical!r} is {f.type} in the file and {want} in the table"
             )
         out[f.name] = logical
+    return out
+
+
+def _constant(scan: Scan) -> list[str]:
+    """The partition columns: their values are the log's, one per file."""
+    if scan.partitions is None:
+        return []
+    return [c for c in scan.partitions.column_names if c != "file"]
+
+
+def _partition_values(scan: Scan) -> dict[str, tuple[Any, ...]]:
+    """Each file's partition values, in the order of `_constant`, keyed by the
+    descriptor's own file string. A file the descriptor has no values for
+    raises: its partition columns would be NULL."""
+    if scan.partitions is None:
+        return {}
+    cols = [scan.partitions.column(c).to_pylist() for c in _constant(scan)]
+    out = dict(
+        zip(scan.partitions.column("file").to_pylist(), zip(*cols, strict=True), strict=True)
+    )
+    if missing := [f for f in scan.files if f not in out]:
+        raise ValueError(f"{scan.origin}: no partition values for {missing[0]}")
     return out
 
 
@@ -116,18 +147,27 @@ def _read(
     names: dict[str, str],
     scan: Scan,
     dtypes: pl.Schema,
+    constants: dict[str, Any],
     positions: list[int] | None = None,
 ) -> pl.LazyFrame:
-    lf = pl.scan_parquet(
-        files, include_file_paths=_FILE, row_index_name=_POS if positions is not None else None
-    )
+    lf = pl.scan_parquet(files, row_index_name=_POS if positions is not None else None)
     if positions is not None:
         lf = lf.filter(~pl.col(_POS).is_in(positions)).drop(_POS)
-    lf = lf.rename(names)
+    lf = lf.select(*names).rename(names)
+    # The partition values are literals keyed by the descriptor's own file string:
+    # no match between it and the path Polars reports can fail silently.
     return lf.select(
-        pl.col(_FILE),
+        pl.lit(files[0] if len(files) == 1 else None, dtype=pl.String).alias(_FILE),
         *(
-            (pl.col(c) if c in names.values() else pl.lit(None)).cast(dtypes[c]).alias(c)
+            (
+                pl.lit(constants[c])
+                if c in constants
+                else pl.col(c)
+                if c in names.values()
+                else pl.lit(None)
+            )
+            .cast(dtypes[c])
+            .alias(c)
             for c in scan.schema.names
         ),
     )

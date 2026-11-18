@@ -69,6 +69,7 @@ from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
+from sverify._run_schema import table_problems
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import Merger, State, Store, arrow_of, by_keys, store_for
 from sverify._unsupported import SverifyError
@@ -129,6 +130,7 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     to_arrow,
     written_plan,
 )
+from sverify.report import refuse_schema
 from sverify_duckdb import DuckDBStore
 
 Row = tuple
@@ -543,9 +545,66 @@ def _facts_within(facts: Sequence[Fact], names: Sequence[str]) -> list[Fact]:
     return out
 
 
-def plan_digest(plan: str) -> str:
-    """sha256 of a plan as Lean wrote it; sinks record it."""
-    return hashlib.sha256(plan.encode()).hexdigest()
+def _refuse_schema(plan: str, tables: Mapping[str, pa.Table], source: str | None = None) -> None:
+    """Refuse rows of `tables` that differ from the schema `plan` was verified
+    for (`sverify._run_schema`): a NULL in a non-null column, a changed type, an
+    integer outside its declared width (D46)."""
+    if bad := table_problems(json.loads(plan), tables):
+        raise PreconditionError(
+            "; ".join(bad)
+            + ": refused before the run. Declare the column as it is in the transform "
+            "(a wider integer type for a value outside the width), or fix the source",
+            source=source,
+        )
+
+
+MEANING_CHANGES: tuple[str, ...] = ()
+"""The changes that make an unchanged plan compute another result than before,
+one entry per change, in the order they landed: `"D53"` for a decision that
+changes a value of the reference or narrows what it allows (its section in
+`docs/decisions.md` says `Recomputes sinks: yes`), `"#1702"` for the fix of a
+wrong result of a lowering or a shim. A decision that only opens a choice
+leaves the stored rows among the allowed results and is not recorded. The
+record is hashed into `plan_digest`, so a sink written before one of these
+changes is recomputed, and a refresh says which change did it
+(`tests/test_plan_digest.py` checks the record against the decisions). Append
+an entry; two changes in different releases give different digests."""
+
+
+def plan_digest(plan: str, changes: tuple[str, ...] | None = None) -> str:
+    """The sha256 of a plan's canonical form and of the changes of meaning
+    (`MEANING_CHANGES`, or `changes`): its JSON with sorted keys, no
+    `extensions` (the list of every function the writer knows, which grows with
+    each release), each `functionReference` replaced by the function's name.
+    With no changes recorded the digest is that of the plan alone. It is the
+    same across releases that change nothing the plan computes, so a sink
+    written by one is resumed by the next; sinks record it, and `Stored`
+    compares it. A release that changes the canonical form recomputes every sink
+    once, and its changelog says so (`tests/test_plan_digest.py` pins a
+    digest)."""
+    changes = MEANING_CHANGES if changes is None else changes
+    p = json.loads(plan)
+    names = {
+        f["functionAnchor"]: f["name"]
+        for e in p.get("extensions", [])
+        if isinstance(f := e.get("extensionFunction"), dict)
+    }
+
+    def canon(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {
+                k: names.get(v, v) if k == "functionReference" else canon(v)
+                for k, v in node.items()
+                if k != "extensions"
+            }
+        if isinstance(node, list):
+            return [canon(x) for x in node]
+        return node
+
+    text = json.dumps(canon(p), sort_keys=True, separators=(",", ":"))
+    if changes:
+        text += "\n" + json.dumps(list(changes))
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def table_digest(table: pa.Table) -> str:
@@ -959,6 +1018,7 @@ class IncrementalView:
         self._sinks: list = []
         """Where the view keeps its state (`sverify._state`): in DuckDB on
         DuckDB, else in Arrow."""
+        refuse_schema(json.loads(self.plan), con, self.engine)
         reason = None if resume is None else self._mismatch(resume)
         if resume is not None and reason is None:
             # The schema the engine gives the view, from a run on no rows.
@@ -1070,6 +1130,10 @@ class IncrementalView:
         """Why `stored` is not this view's state at the versions the pipeline
         holds its inputs at, or None if it is."""
         if stored.plan != plan_digest(self.plan):
+            for k in range(len(MEANING_CHANGES) - 1, -1, -1):
+                if stored.plan == plan_digest(self.plan, MEANING_CHANGES[:k]):
+                    changed = ", ".join(MEANING_CHANGES[k:])
+                    return f"sverify changed what this plan computes ({changed})"
             return "the plan changed"
         lineage: dict[str, int] = {}
         for t in self.tables:
@@ -1148,7 +1212,7 @@ class IncrementalView:
     def _set_schema(self, schema: pa.Schema) -> None:
         self.schema = schema
         weighted_schema = pa.schema([*schema, pa.field(WEIGHT, pa.int64())])
-        self._merge = Merger(self.con, weighted_schema)
+        self._merge = Merger(self.con, weighted_schema, self.store)
         """Adds up weighted tables of the view's rows by a plan Lean
         checked."""
 
@@ -1941,6 +2005,9 @@ class Pipeline:
             conds = self.requires.get(t, [])
             rowwise = [c for c in conds if not (isinstance(c, TableCondition) and c.batched)]
             inserts = rows_of(positive(ch))
+            for v in self._views:
+                if t in v.tables:
+                    _refuse_schema(v.plan, {t: inserts}, t)
             if rowwise and inserts.num_rows:
                 name = t + "$inserts"
                 put_table(self.con, name, inserts)

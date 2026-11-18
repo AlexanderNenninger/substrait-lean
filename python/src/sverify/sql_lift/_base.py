@@ -547,6 +547,51 @@ _JOIN_TYPES = {
     ("LEFT", "ANTI"): "JOIN_TYPE_LEFT_ANTI",
 }
 
+
+def _find(col: sge.Column, scope: list[Column]) -> list[int]:
+    """The columns of `scope` that `col` names."""
+    return [
+        i
+        for i, c in enumerate(scope)
+        if c.name == col.name and (not col.table or c.table == col.table)
+    ]
+
+
+def _resolved(node: sge.Expression, inner: list[Column], scope: list[Column]) -> sge.Expression:
+    """`node` with each column renamed to the one it names, the inner query's
+    first: `__inner.cJ` for `inner[J]`, else `__outer.cI` for `scope[I]`."""
+
+    def rename(n: sge.Expression) -> sge.Expression:
+        if not isinstance(n, sge.Column):
+            return n
+        if found := _find(n, inner):
+            side, i = "__inner", found[0]
+        elif found := _find(n, scope):
+            side, i = "__outer", found[0]
+        else:
+            return n
+        return sge.column(f"c{i}", table=side)
+
+    return node.transform(rename)
+
+
+def _and(parts: list[sge.Expression]) -> sge.Expression:
+    """The conjunction of `parts`."""
+    out = parts[0]
+    for c in parts[1:]:
+        out = sge.And(this=out, expression=c)
+    return out
+
+
+def _conjuncts(node: sge.Expression) -> list[sge.Expression]:
+    """The top-level conjuncts of a condition, through parentheses."""
+    if isinstance(node, sge.Paren):
+        return _conjuncts(node.this)
+    if isinstance(node, sge.And):
+        return _conjuncts(node.this) + _conjuncts(node.expression)
+    return [node]
+
+
 #: The arguments of a SELECT the lift reads; any other one set is refused.
 _SELECT_ARGS = {
     "with_",
@@ -685,7 +730,7 @@ class _Lift:
             )
         rel, scope = self.from_(node)
         if (where := node.args.get("where")) is not None:
-            rel = {"filter": {"input": rel, "condition": self.condition(where.this, scope)}}
+            rel = self.filtered(rel, scope, where.this)
 
         group = node.args.get("group")
         parts = [*node.expressions, node.args.get("having"), node.args.get("order")]
@@ -1147,6 +1192,163 @@ class _Lift:
             self.guards[id(w)] = guard
         return {"windowFunction": fn}
 
+    def filtered(self, rel: Json, scope: list[Column], where: sge.Expression) -> Json:
+        """`rel` filtered by `where`. A correlated `[NOT] EXISTS` that is a
+        conjunct of it is a semi (anti) join (#345), applied after the filter of
+        the other conjuncts: the rows are the same in any order, and the
+        safety analysis reads a condition on pairs of loose rows."""
+        conjuncts = _conjuncts(where)
+        joins: list[tuple[Json, Json, bool]] = []
+        plain: list[sge.Expression] = []
+        for c in conjuncts:
+            found = self.exists_join(scope, c)
+            if found is None:
+                plain.append(c)
+            else:
+                joins.append(found)
+        if not joins:
+            return {"filter": {"input": rel, "condition": self.condition(where, scope)}}
+        if plain:
+            rel = {"filter": {"input": rel, "condition": self.condition(_and(plain), scope)}}
+        for right, on, anti in joins:
+            how = "JOIN_TYPE_LEFT_ANTI" if anti else "JOIN_TYPE_LEFT_SEMI"
+            rel = {"join": {"left": rel, "right": right, "expression": on, "type": how}}
+        return rel
+
+    def exists_join(
+        self, scope: list[Column], node: sge.Expression
+    ) -> tuple[Json, Json, bool] | None:
+        """`[NOT] EXISTS (SELECT … FROM r WHERE p)` and `x [NOT] IN (SELECT k FROM r
+        WHERE p)` that read the outer query's columns, as the right side `r`
+        (filtered by the conjuncts of `p` that read none), the join condition
+        (over the outer columns then `r`'s) and whether it is an anti join. None
+        where `node` is no such predicate: an uncorrelated one is an expression
+        as before.
+
+        `EXISTS` is TRUE iff some row of `r` makes `p` TRUE, which is the semi
+        join's match; `NOT EXISTS` is the anti join's, and a NULL key matches
+        nothing in both. `x IN (…)` is a semi join on `x = k AND p`, since a
+        WHERE drops NULL like FALSE. `x NOT IN (…)` keeps a row iff no row with
+        `p` TRUE equals `x` or makes the comparison NULL: an anti join on
+        `p AND (x = k OR x IS NULL OR k IS NULL)`; with no such row it stays,
+        also for a NULL `x`."""
+        negated = isinstance(node, sge.Not) and isinstance(node.this, sge.Exists | sge.In)
+        pred = node.this if negated else node
+        needle = None
+        if isinstance(pred, sge.Exists):
+            what, query = "EXISTS", pred.this
+        elif isinstance(pred, sge.In) and pred.args.get("query") is not None:
+            if pred.args.get("unnest") is not None or pred.args.get("field") is not None:
+                return None
+            what, query, needle = "IN", pred.args["query"], pred.this
+        else:
+            return None
+        sub = query.this if isinstance(query, sge.Subquery) else query
+        if isinstance(sub, sge.SetOperation):
+            # An uncorrelated UNION lifts as an expression; one that reads the
+            # outer query's columns is refused by name.
+            self.outer.append(scope)
+            try:
+                self.query(sub)
+            except Unsupported as e:
+                if "correlated" in str(e):
+                    raise SqlUnsupported(
+                        f"a set operation (UNION, EXCEPT, INTERSECT) in a correlated {what} "
+                        "is not supported yet",
+                        hint=f"write the {what} over one SELECT",
+                        issue=345,
+                    ) from e
+                raise
+            finally:
+                self.outer.pop()
+            return None
+        if not isinstance(sub, sge.Select) or sub.args.get("with_"):
+            return None
+        self.outer.append(scope)
+        try:
+            right, inner = self.from_(sub)
+            where = sub.args.get("where")
+            parts = _conjuncts(where.this) if where is not None else []
+            reads = [self.reads_outer(c, inner, scope) for c in parts]
+            if not any(reads):
+                return None
+            self.check_exists_shape(sub, parts, reads, what)
+            item = sub.expressions[0].unalias() if needle is not None else None
+            if item is not None and self.reads_outer(item, inner, scope):
+                raise SqlUnsupported(
+                    f"the select list {_shown(item)} of a correlated IN reads the outer "
+                    "query's columns",
+                    hint="compare in the WHERE of the subquery: x IN (SELECT k FROM r WHERE …)",
+                    issue=345,
+                )
+            keep = [c for c, r in zip(parts, reads, strict=True) if not r]
+            if keep:
+                right = {"filter": {"input": right, "condition": self.condition(_and(keep), inner)}}
+        finally:
+            self.outer.pop()
+        both = [Column("__outer", f"c{i}", c.type) for i, c in enumerate(scope)] + [
+            Column("__inner", f"c{j}", c.type) for j, c in enumerate(inner)
+        ]
+        corr = [_resolved(c.copy(), inner, scope) for c, r in zip(parts, reads, strict=True) if r]
+        if needle is not None and item is not None:
+            x = _resolved(needle.copy(), [], scope)
+            k = _resolved(item.copy(), inner, [])
+            nt, kt = self.expr(x, both), self.expr(k, both)
+            if not nt.type.is_null() and not _same(
+                self.common([nt, E({}, kt.type)], "IN"), kt.type
+            ):
+                raise SqlUnsupported(
+                    f"IN of a {nt.type} in a subquery of {kt.type} is not supported yet"
+                )
+            match: sge.Expression = sge.EQ(this=x, expression=k)
+            if negated:
+                # NULL on either side is a match: the row's NOT IN is NULL, not TRUE.
+                for side in (x, k):
+                    match = sge.Or(
+                        this=match, expression=sge.Is(this=side.copy(), expression=sge.Null())
+                    )
+            corr = [match, *corr]
+        return right, self.condition(_and(corr), both), negated
+
+    @staticmethod
+    def reads_outer(conj: sge.Expression, inner: list[Column], scope: list[Column]) -> bool:
+        """Does `conj` read a column that is not `inner`'s but is `scope`'s?"""
+        return any(
+            not _find(col, inner) and bool(_find(col, scope)) for col in conj.find_all(sge.Column)
+        )
+
+    @staticmethod
+    def check_exists_shape(
+        sub: sge.Select, parts: list[sge.Expression], reads: list[bool], what: str = "EXISTS"
+    ) -> None:
+        """The correlated `EXISTS` and `IN` shapes that lift (#345); the others
+        are refused by name."""
+        for arg in ("group", "having", "distinct", "order", "limit", "offset", "qualify"):
+            if sub.args.get(arg):
+                raise SqlUnsupported(
+                    f"{arg.upper()} in a correlated {what} is not supported yet",
+                    hint="write EXISTS (SELECT 1 FROM … WHERE …) or x IN (SELECT k FROM … WHERE …)",
+                    issue=345,
+                )
+        if what == "IN" and (len(sub.expressions) != 1 or isinstance(sub.expressions[0], sge.Star)):
+            raise Unsupported("an IN subquery must return one column")
+        for e in sub.expressions if what == "EXISTS" else []:
+            if not isinstance(e.unalias(), sge.Star | sge.Literal | sge.Column):
+                raise SqlUnsupported(
+                    f"the select list {_shown(e)} of a correlated EXISTS is not supported",
+                    hint="write SELECT 1",
+                    issue=345,
+                )
+        nested = (sge.Subquery, sge.Exists, sge.Select, sge.Window, *_AGGREGATES)
+        for c, r in zip(parts, reads, strict=True):
+            if r and any(c.find(t) is not None for t in nested):
+                raise SqlUnsupported(
+                    f"{_shown(c)}: a subquery, window or aggregate in a condition on the "
+                    "outer query's columns is not supported yet",
+                    hint="write it as a join",
+                    issue=345,
+                )
+
     def nested(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, list[Column]]:
         """A subquery inside an expression over `scope`."""
         self.outer.append(scope)
@@ -1460,8 +1662,13 @@ class _Lift:
             # `mode(x ORDER BY …)`
             order, arg = arg, arg.this
         distinct = isinstance(arg, sge.Distinct)
+        q = node.args.get("quantile") or node.expression
         if distinct:
-            if len(arg.expressions) != 1:
+            if len(arg.expressions) == 2 and q is None and name.startswith("quantile_"):
+                # SQLGlot up to 30.8 reads `quantile_cont(DISTINCT x, 0.9)` with
+                # the fraction inside the DISTINCT.
+                q = arg.expressions[1]
+            elif len(arg.expressions) != 1:
                 raise SqlUnsupported(f"{_shown(node)}: DISTINCT of several values is not supported")
             arg = arg.expressions[0]
         if arg is None:
@@ -1477,7 +1684,6 @@ class _Lift:
             name = "quantile_disc"
             args.append(decimal_literal("0.5", dt.Decimal()))
         elif name in ("quantile_cont", "quantile_disc"):
-            q = node.args.get("quantile") or node.expression
             if isinstance(q, sge.Neg):
                 # DuckDB reads a negative fraction from the largest value.
                 raise Unsupported(f"{_shown(node)}: the fraction must be between 0 and 1")
@@ -1590,7 +1796,7 @@ class _Lift:
             ):
                 raise Unsupported(
                     f"correlated subqueries are not supported yet (it reads {_shown(node)}); "
-                    "write it as a join (#813)"
+                    "write it as a join (#345 for EXISTS and IN, #813 for the rest)"
                 )
             what = "unknown" if not found else "ambiguous"
             raise SqlUnsupported(f"{what} column {_shown(node)}")
