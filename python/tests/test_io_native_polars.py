@@ -13,7 +13,7 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from deltalake import DeltaTable
+from deltalake import DeltaTable, write_deltalake
 from hypothesis import HealthCheck, given, settings
 from pyiceberg.catalog.sql import SqlCatalog
 
@@ -167,3 +167,24 @@ def test_a_where_is_duckdb_sql_and_stays_on_the_arrow_route(tmp_path):
 
     got = _table(Con(), "t")
     assert isinstance(got, pa.Table) and got.column("id").to_pylist() == [2, 3]
+
+
+def test_a_partitioned_delta_table_reads_on_polars_through_arrow(tmp_path):
+    """Polars does not read partition values yet, so `_table` hands such a scan to
+    Polars as Arrow: the rows are the table's, and `lazy_scan` still refuses."""
+    import sverify as sv
+    from sverify.incremental import Pipeline
+    from sverify.io.delta import DeltaSource
+    from sverify_polars import _table
+
+    t = pa.table({"id": [1, 2, 3], "k": ["a", "b", "a"]})
+    write_deltalake(tmp_path / "p", t, partition_by=["k"])
+    pipe = Pipeline(sv.connect())
+    pipe.source("p", DeltaSource(str(tmp_path / "p")))
+    scan = pipe.con.get("p")
+    assert isinstance(scan, Scan) and scan.partitions is not None
+    with pytest.raises(Unsupported):
+        lazy_scan(scan)
+    got = _table(pipe.con, "p")
+    assert isinstance(got, pa.Table)
+    assert bag(got) == bag(scan.to_arrow())
