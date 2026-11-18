@@ -6,10 +6,12 @@
   "verdict": "`char_set: UTF8`, Rust's `str::to_uppercase`",
   "area": "strings",
   "options": [
-    "char_set"
+    "char_set",
+    "non_ascii_text"
   ],
   "rows": [
-    {"group": "str.case", "option": "char_set", "types": ["string"]}
+    {"group": "str.case", "option": "char_set", "types": ["string"]},
+    {"group": "str.case", "option": "non_ascii_text", "types": ["string"]}
   ],
   "constructs": [
     "str.to_uppercase",

@@ -5230,7 +5230,8 @@ def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
     plain = d.is_ascii(x)
     if not vertical_tab_out:
         return plain
-    return f"({plain} AND NOT {d.like(x, d.str_lit(VERTICAL_TAB_PATTERN))})"
+    # No ESCAPE clause: the pattern has no backslash, and the SQL lift reads the form without one.
+    return f"({plain} AND NOT ({x} LIKE {d.str_lit(VERTICAL_TAB_PATTERN)}))"
 
 
 def like_pattern(p: str) -> str:

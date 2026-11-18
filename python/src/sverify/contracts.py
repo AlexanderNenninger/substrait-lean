@@ -538,6 +538,34 @@ def _ascii_condition(col: str, classes: bool = False) -> Inferred:
     return out
 
 
+def _squeeze(code: str) -> str:
+    """Ibis code without spaces or one pair of outer parentheses."""
+    code = "".join(code.split())
+    return code[1:-1] if code.startswith("(") and code.endswith(")") else code
+
+
+def _declared_ascii(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, str]:
+    """The text columns `conds` declare ASCII (`"ascii"`) or plain (`"plain"`),
+    by column position, for the request (#1506): the inferred condition, or
+    the user's own copy of its Ibis code (`_ascii_condition`'s `text`)."""
+    out: dict[str, str] = {}
+    for c in conds:
+        if isinstance(c, TableCondition):
+            continue
+        if isinstance(c, Inferred):
+            if c.ascii and c.column is not None and c.column in columns:
+                out[str(list(columns).index(c.column))] = c.ascii
+            continue
+        shown = _squeeze(label(c))
+        for col in columns:
+            for classes in (False, True):
+                if shown == _squeeze(_ascii_condition(col, classes).text):
+                    kind = "plain" if classes else "ascii"
+                    pos = str(list(columns).index(col))
+                    out[pos] = "plain" if out.get(pos) == "plain" else kind
+    return out
+
+
 def _suggested(
     bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
 ) -> dict[str, list[Condition]]:
@@ -1547,14 +1575,7 @@ def _verify_once(
         "references": foreign_keys,
         "max_rows": caps,
         "rows_per": per_key,
-        "ascii": {
-            t: {
-                str(list(names(t)).index(c.column)): c.ascii
-                for c in cs
-                if isinstance(c, Inferred) and c.ascii and c.column and c.column in names(t)
-            }
-            for t, cs in requires.items()
-        },
+        "ascii": {t: _declared_ascii(names(t), cs) for t, cs in requires.items()},
     }
 
     if observed is not None:

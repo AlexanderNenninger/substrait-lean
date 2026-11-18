@@ -7,7 +7,11 @@
   "area": "strings",
   "options": [
     "regex_dialect",
-    "case_sensitivity"
+    "case_sensitivity",
+    "non_ascii_text"
+  ],
+  "rows": [
+    {"group": "str.ascii", "option": "non_ascii_text", "types": ["string"]}
   ],
   "constructs": [
     "str.contains",
