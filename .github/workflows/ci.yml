@@ -72,7 +72,65 @@ permissions:
 # When the pull request is retargeted to main, `retarget.yml` starts this
 # workflow on it (`workflow_dispatch`), which runs everything on its merge
 # with main.
+#
+# The light jobs (`static`, `golden`, `notebooks`, `ledger`, `dbt`, `template`:
+# no Lean build, under 1 GB, 15-80 s each) run on the self-hosted AWS runners
+# (ephemeral spot instances, 2 vCPU, 8 GB, at most 3 at once), which leaves
+# GitHub's 20 job slots to the heavy ones. `route` picks the runner: the AWS
+# runners only for events of this repository (never a fork's pull request),
+# and only when `aws-probe` starts within 3 minutes; otherwise ubuntu-latest.
+# `changes`, `checker`, `qa`, the tests, `bench` (its budgets assume GitHub's
+# CPUs), `oracle-a`, `lean`, `float-bounds` and `refresh-model` stay on
+# GitHub's runners.
 jobs:
+  # Where the light jobs run (see the header): GitHub's runners, or the
+  # self-hosted AWS runners when one picks `aws-probe` up in time. `light` is
+  # a JSON `runs-on`; every light job takes it from here. This job never
+  # fails: any doubt answers GitHub's runners.
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # to read `aws-probe`'s status
+    outputs:
+      light: ${{ steps.pick.outputs.light }}
+    steps:
+      - id: default
+        run: echo 'light="ubuntu-latest"' >> "$GITHUB_OUTPUT"
+      - id: pick
+        continue-on-error: true
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `aws-probe` runs only for events of this repository (a fork's pull
+          # request skips it: never on the AWS runners). Spot launch and boot
+          # take about a minute; past 3 minutes the probe is still queued
+          # (no capacity, runners busy with other runs) and GitHub's runners
+          # take the light jobs.
+          url="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs"
+          for _ in $(seq 36); do
+            st=$(gh api "$url" --jq '.jobs[]|select(.name=="aws-probe")|.status+" "+(.conclusion//"")') || st=
+            case "$st" in
+              "in_progress "*|"completed success") echo "AWS runner picked up the probe."
+                echo 'light=["self-hosted","linux","x64","aws"]' >> "$GITHUB_OUTPUT"; exit 0;;
+              "completed "*) echo "Probe skipped or failed ($st): GitHub's runners."; exit 0;;
+            esac
+            sleep 5
+          done
+          echo "::warning::No AWS runner picked up the probe in 3 minutes: the light jobs run on GitHub's runners."
+
+  # Starts an AWS runner (ephemeral: one job each) so `route` can tell whether
+  # one is available; it queues until one starts, and a run with no runner
+  # leaves it queued (GitHub has no queue timeout) until the next push to the
+  # branch cancels the run. No other job needs it.
+  aws-probe:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, aws]
+    timeout-minutes: 2
+    steps:
+      - run: echo "AWS runner $(hostname) is up"
+
   changes:
     runs-on: ubuntu-latest
     permissions:
@@ -435,9 +493,10 @@ jobs:
 
   # The golden tests on the shared checker, when no Lean input changed.
   golden:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -449,7 +508,10 @@ jobs:
   # Lint and typecheck need no Lean: they skip installing sverify itself (poe's
   # default executor would `uv run`, which installs it).
   static:
-    runs-on: ubuntu-latest
+    
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -577,9 +639,10 @@ jobs:
           SVERIFY_SLT_PROGRESS: "1"
 
   notebooks:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.notebooks == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -629,9 +692,10 @@ jobs:
   # The ledger class (see the header): the checkers of the facts and upstream
   # bugs, and the tests that read those files.
   ledger:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.ledger == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -685,9 +749,10 @@ jobs:
   # sample project, `dbt build` without the tests it proved, and `dbt test`
   # of those on the data.
   dbt:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: dbt
@@ -731,9 +796,10 @@ jobs:
   # with this checkout's sverify; a warning flags skills that differ from
   # the package's, and actionlint checks its workflows.
   template:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
