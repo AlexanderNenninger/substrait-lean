@@ -3051,7 +3051,7 @@ def divOk (tables : Tables) (inp : Rel) (p s : Nat) (num b : Expr) : Bool :=
 
 /-- Does `ok` hold of every `dkind` quotient inside an expression? A lambda's
 body reads other columns, so it may hold none. -/
-def Expr.divsOk (ok : Nat → Nat → Expr → Expr → Bool) : Expr → Bool
+def _root_.Substrait.Expr.divsOk (ok : Nat → Nat → Expr → Expr → Bool) : Expr → Bool
   | .un (.dkind p s) (.bin .ddiv n b) => ok p s n b && n.divsOk ok && b.divsOk ok
   | .un _ a => a.divsOk ok
   | .bin _ a b => a.divsOk ok && b.divsOk ok
