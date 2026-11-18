@@ -543,7 +543,7 @@ producer and checks Lean's evaluation against it.
 | 64-bit overflow of `+ - *` | an error at the declared width | error | wraps |
 | `v.max()` of doubles | NaN, the greatest double | NaN | skips NaN |
 | `ts.day_of_week.index()` | Monday = 0 | same | same |
-| `s.upper()`, `s.lower()`, `re_search` | Rust's case mapping and `regex` classes; SQL engines raise on non-ASCII text | utf8proc, RE2 | same |
+| `s.upper()`, `s.lower()`, `re_search` | the case mapping DuckDB, Polars and Spark agree on (D51) and `regex` classes; SQL engines raise on the scalars they map differently, and a class on non-ASCII text | utf8proc, RE2 | same |
 
 "Same" means the backend's Ibis result agrees with `verify`'s meaning on the
 notebook's edge rows. A refused operation is outside what `verify` can
@@ -625,7 +625,7 @@ the first column are the names the tables below use.
 | `negative_start` (`substring`) | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`, `ERROR` | the three | `WRAP_FROM_END` | `WRAP_FROM_END` native ([R13](../engines/duckdb/facts/duckdb-R13.json)) |
 | `substring_range` (sverify's: an offset outside `[-2³², 2³²)`) | raise, compute | no limit | raise | raises ([substring-range](../engines/duckdb/facts/duckdb-substring-range.json)) |
 | `case_sensitivity` (`like`, `contains`, `starts_with`, `ends_with`, `strpos`, regexes) | the three of the YAML | `CASE_SENSITIVE`, `CASE_INSENSITIVE`, `CASE_INSENSITIVE_ASCII` | `CASE_SENSITIVE` | `CASE_SENSITIVE` (no fact) |
-| `char_set` (`upper`, `lower`) | `UTF8`, `ASCII_ONLY` | the two | `UTF8`, a black box (Rust's `str::to_uppercase`) | `UTF8` with simple one-to-one mappings (`ß` → `ẞ`); the written plan raises on non-ASCII text ([case-mapping](../engines/duckdb/facts/duckdb-case-mapping.json), [ST-10](../upstream/bugs/ST-10.json)) |
+| `char_set` (`upper`, `lower`) | `UTF8`, `ASCII_ONLY` | the two | `UTF8`, the mapping the engines agree on ([D51](decisions.md)) | `UTF8` with simple one-to-one mappings (`ß` → `ẞ`); the written plan raises on the scalars the engines map differently ([case-mapping](../engines/duckdb/facts/duckdb-case-mapping.json), [ST-10](../upstream/bugs/ST-10.json)) |
 | `non_ascii_text` (`ilike`, `reverse`, `ascii`, `levenshtein`, regex classes) | raise, compute | not specified | raise: the issue `nonAscii`, on non-ASCII text (and on a vertical tab for a regex class); declare the column ASCII to rule it out ([D43](decisions.md)) | the engine's own mapping, in its facts; the written plan guards where the engines differ |
 | `case_mapping` (`upper`, `lower`) | raise, compute | not specified | raise: the issue `caseDiffers`, on a scalar the engines map differently (157 for `upper`, 57 for `lower`); every other scalar has the value DuckDB, Polars and Spark agree on; declare the column ASCII, or free of those scalars (`upper`, `lower`), to rule it out ([D51](decisions.md)) | the engine's own mapping, in its facts; the written plan guards where the engines differ |
 | `null_handling` (`concat`) | `IGNORE_NULLS`, `ACCEPT_NULLS` | the two | `ACCEPT_NULLS`; the other refused | `ACCEPT_NULLS` for `\|\|`; `concat` skips NULLs ([null-concat](../engines/duckdb/facts/duckdb-null-concat.json)) |

@@ -40,8 +40,10 @@ result is the Lean value, checked on a local Spark session by
   collation (`UTF8_LCASE`, ICU) would compare differently. `length`,
   `locate` and `substring` count characters. Regular expressions are
   Java's, which agree with Rust's on simple patterns (black boxes in Lean);
-  `RLIKE` searches. `upper`, `lower` and patterns with `\\d`, `\\w` or
-  `\\s` raise on non-ASCII text, where Java's tables differ from Rust's (#70).
+  `RLIKE` searches. `upper` and `lower` call the collated form, which does not follow the
+  JVM's default locale, and raise on the scalars the engines map differently (D51);
+  patterns with `\\d`, `\\w` or `\\s` raise on non-ASCII text, where Java's tables
+  differ from Rust's (#70).
 * **Decimals** (#27) follow the reference's types, which are Spark's own
   (`DecimalPrecision`) up to 38 digits; past them Spark cuts the scale to no
   less than 6 (`spark.sql.decimalOperations.allowPrecisionLoss`), so a sum

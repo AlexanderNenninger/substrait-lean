@@ -114,3 +114,69 @@ def test_the_run_check_finds_every_member_of_the_set_and_no_agreed_scalar(which,
         ((_, n, error),) = violation_counts(con.table(name), [cond], engine)
         assert error is None
         assert n == (len(scalars) if flagged else 0), (name, engine)
+
+
+@needs_repo
+@pytest.mark.parametrize("which", ["upper", "lower"])
+@pytest.mark.parametrize(
+    "engine", ["duckdb", "polars", pytest.param("spark", marks=pytest.mark.slow)]
+)
+def test_the_engines_give_the_agreed_mapping(which, engine):
+    """The table is the engines' value: on every scalar of the agreed mapping (and a
+    few that no engine maps) each engine, through the written plan, gives the generated
+    Lean table's value (`Text.upper`, `Text.lower`)."""
+    import pyarrow as pa
+
+    from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
+
+    if engine == "spark":
+        pytest.importorskip("pyspark")
+        from spark_session import has_java
+
+        if not has_java():
+            pytest.skip("Spark needs a JVM")
+    table = case_mapping.generate()[which]["map"]
+    scalars = [*table, *range(0x20, 0x7F), 0x4E00, 0x1F600]
+    con = connect()
+    put_table(con, "r", pa.table({"s": [chr(c) for c in scalars]}))
+    plan = written_plan(substrait_json(con, f"SELECT {which}(s) AS u FROM r", semantics="duckdb"))
+    got = run_plan(con, plan, engine).column(0).to_pylist()
+    assert got == [chr(table.get(c, c)) for c in scalars]
+
+
+@needs_repo
+@pytest.mark.parametrize("which", ["upper", "lower"])
+def test_the_written_guard_raises_on_every_member_of_the_set_on_duckdb(which):
+    """The same predicate as the inferred precondition, written into the plan: each member
+    of the raise set, one scalar at a time, raises; the report lists the issue."""
+    import pyarrow as pa
+
+    from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
+
+    con = connect()
+    put_table(con, "r", pa.table({"s": ["a"]}))
+    plan = written_plan(substrait_json(con, f"SELECT {which}(s) AS u FROM r", semantics="duckdb"))
+    for c in _case_tables.raise_set(which):
+        put_table(con, "r", pa.table({"s": ["a" + chr(c) + "b"]}))
+        with pytest.raises(Exception, match="scalar the engines map differently"):
+            run_plan(con, plan, "duckdb")
+
+
+@needs_repo
+@pytest.mark.parametrize("which", ["upper", "lower"])
+def test_lean_evaluates_the_generated_table(which):
+    """`Text.upper` and `Text.lower` (a binary search of `CaseTable`) give the table's
+    value on each scalar, and the scalar itself where none is listed."""
+    import json
+
+    from sverify.testing import inline_tables, lean_values
+    from test_text import R, connect, plan_of
+
+    table = case_mapping.generate()[which]["map"]
+    scalars = [*table, *range(0x20, 0x7F), 0x4E00, 0x1F600]
+    con = connect()
+    con.create("r", R, [])
+    plan = json.loads(plan_of(con, f"SELECT {which}(s) AS u FROM r"))
+    rows = [(chr(c), "x", 1) for c in scalars]
+    got = lean_values(json.dumps(inline_tables(plan, {"r": rows})))
+    assert [r[0] for r in got] == [chr(table.get(c, c)) for c in scalars]
