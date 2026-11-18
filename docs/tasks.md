@@ -1107,8 +1107,10 @@ tables. A table format plays four roles:
   On DuckDB, a local table is never loaded into Python: the pipeline holds
   the Parquet files of its version, with the rows that deletion vectors or
   position delete files remove, and DuckDB reads them with `read_parquet`.
-  Partitioned tables, Delta column mapping, renamed Iceberg columns,
-  equality deletes, object stores and the other engines read through Arrow;
+  Iceberg files are read by field id, so a renamed column is found, and
+  equality deletes apply to the files written before them. Partitioned
+  tables, Delta column mapping, object stores and the other engines read
+  through Arrow;
   native scans for them are tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/173).
 * A source of preconditions. `requires` conditions are proved from
   schema nullability, Delta CHECK constraints and per-file statistics:
@@ -1266,7 +1268,7 @@ Each refresh report names what it trusted: that the change feed turns the
 old snapshot into the new one, and that writers and file statistics are
 correct (Delta's millisecond timestamp maxima are widened by 999 µs; with
 deletion vectors the statistics cover deleted rows too, which still bounds
-the live ones). Iceberg tables with equality deletes can't be read. What is
+the live ones). Iceberg tables with equality deletes are read on DuckDB from local Parquet files without partition fields, and otherwise can't be read. What is
 proved is listed under [Table formats](proved-theorems.md#table-formats).
 
 ### Credentials

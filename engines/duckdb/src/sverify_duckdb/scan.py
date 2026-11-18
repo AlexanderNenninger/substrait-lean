@@ -20,7 +20,7 @@ import pyarrow as pa
 from sverify._scan import _q
 
 if TYPE_CHECKING:
-    from sverify._scan import Scan
+    from sverify._scan import EqualityDelete, Scan
 
 FILE, POS = '"__sverify_file"', '"__sverify_pos"'
 """The columns `attach_scan(..., positions=True)` adds (quoted)."""
@@ -86,8 +86,17 @@ def scan_sql(
             cols += f", CAST(NULL AS VARCHAR) AS {FILE}, CAST(NULL AS BIGINT) AS {POS}"
         return f"SELECT {cols} WHERE FALSE"
     files = "[" + ", ".join(map(lit, scan.files)) + "]"
-    options = "union_by_name = true"
-    if scan.deleted is not None or positions:
+    if scan.field_ids is None:
+        options = "union_by_name = true"
+    else:
+        # By field id: a column a file lacks is NULL, and a type a file has
+        # that DuckDB cannot read as the schema's raises.
+        fields = ", ".join(
+            f"{i}: {{name: {lit(f.name)}, type: {lit(t)}, default_value: NULL}}"
+            for i, f, t in zip(scan.field_ids, scan.schema, types, strict=True)
+        )
+        options = f"schema = map {{{fields}}}"
+    if scan.deleted is not None or scan.equality or positions:
         options += ", filename = true, file_row_number = true"
     source = f"read_parquet({files}, {options})"
     present = {r[0] for r in db.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()}
@@ -97,14 +106,35 @@ def scan_sql(
     if positions:
         cols += f", s.filename AS {FILE}, s.file_row_number AS {POS}"
     sql = f"SELECT {cols} FROM {source} s"
+    conds = []
     if scan.deleted is not None:
-        sql += (
-            f" WHERE NOT EXISTS (SELECT 1 FROM {deleted} d"
+        conds.append(
+            f"NOT EXISTS (SELECT 1 FROM {deleted} d"
             " WHERE d.file = s.filename AND d.pos = s.file_row_number)"
         )
+    for e in scan.equality:
+        conds.append(_equality(e, scan.schema, types))
+    if conds:
+        sql += " WHERE " + " AND ".join(conds)
     if scan.where is not None:
         sql = f"SELECT * FROM ({sql}) WHERE {scan.where}"
     return sql
+
+
+def _equality(e: EqualityDelete, schema: pa.Schema, types: list[str]) -> str:
+    """The condition that a row of the data files `e` applies to matches none
+    of the delete file's rows on its columns (NULLs equal)."""
+    by_name = dict(zip(schema.names, types, strict=True))
+    fields = ", ".join(
+        f"{i}: {{name: {lit(c)}, type: {lit(by_name[c])}, default_value: NULL}}"
+        for i, c in zip(e.ids, e.columns, strict=True)
+    )
+    same = " AND ".join(f"d.{_q(c)} IS NOT DISTINCT FROM s.{_q(c)}" for c in e.columns)
+    files = ", ".join(map(lit, e.applies_to))
+    return (
+        f"NOT (s.filename IN ({files}) AND EXISTS (SELECT 1 FROM read_parquet({lit(e.file)}, "
+        f"schema = map {{{fields}}}) d WHERE {same}))"
+    )
 
 
 def _column(f: pa.Field, t: str, present: set[str]) -> str:
