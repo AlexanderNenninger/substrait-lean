@@ -17,6 +17,7 @@ SCRIPT = REPO / "python" / "scripts" / "set_version.py"
 
 def _script():
     spec = importlib.util.spec_from_file_location("set_version", SCRIPT)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -27,7 +28,9 @@ def _versions(root: Path) -> set[str]:
     found = set()
     for name in _script().PINS:
         text = (root / name).read_text()
-        found.add(re.search(r'(?m)^version = "([^"]*)"', text)[1])
+        own = re.search(r'(?m)^version = "([^"]*)"', text)
+        assert own is not None
+        found.add(own[1])
         found |= set(re.findall(r'"sverify(?:-\w+)?(?:\[\w+\])?==([^"]*)"', text))
     return found
 
