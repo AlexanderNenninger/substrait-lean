@@ -40,6 +40,21 @@
   "evidence": "probe",
   "provenance": [
     {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "sverify_dev.case_tables (D51 facts, pyspark 4.3.0 on OpenJDK 21, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/case-tables.json",
+          "note": "every Unicode scalar value (without surrogates) through `upper` and `lower` alone: 1580 values for `upper` and 1488 for `lower`, the same as Polars; full mappings, and a final sigma; the context strings of `CONTEXT` are in the file's `context`"
+        },
+        {
+          "file": "characterization/case-differences.json",
+          "note": "the values the three tier-1 engines map differently: 157 for `upper`, 56 for `lower` (213 in all, none in both); Polars and Spark agree on every one-character string, so each is DuckDB's simple mapping against their full one, and the final sigma is a context rule apart from them"
+        }
+      ]
+    },
+    {
       "checked_at": "2026-11-05",
       "method": "source-reading",
       "checked_by": "Spark characterization session (#738)",
