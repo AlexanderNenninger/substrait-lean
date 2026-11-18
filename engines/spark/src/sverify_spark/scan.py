@@ -30,6 +30,21 @@ if TYPE_CHECKING:
 _FILE, _POS, _HIT = "__sverify_file", "__sverify_pos", "__sverify_hit"
 _FIELD_ID = b"PARQUET:field_id"
 
+POSITIONS_IN_PLAN = 10_000
+"""Deleted positions of one file up to this many go into the plan as a literal
+list; above it they are a DataFrame the file's rows are anti-joined with, so a
+large deletion vector does not bloat a plan (sent over gRPC on Spark Connect)."""
+
+
+def _footer(path: str) -> pa.Schema:
+    """A Parquet file's schema, read in the driver (which must reach the path)."""
+    try:
+        return pq.read_schema(path)
+    except OSError as e:
+        raise Unsupported(
+            f"{path}: the driver cannot open the file to read its schema ({e})"
+        ) from e
+
 
 def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
     """The scan's rows as a DataFrame of `spark_type` columns. A scan with a
@@ -62,7 +77,12 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
             "*", tag.alias(_FILE), F.col("_metadata.row_index").alias(_POS)
         )
         if files[0] in deleted:
-            df = df.filter(~F.col(_POS).isin(deleted[files[0]]))
+            gone = deleted[files[0]]
+            if len(gone) <= POSITIONS_IN_PLAN:
+                df = df.filter(~F.col(_POS).isin(gone))
+            else:
+                pos = spark.createDataFrame(pa.table({"p": pa.array(gone, pa.int64())}))
+                df = df.join(pos, df[_POS] == pos["p"], "left_anti")
         df = df.drop(_POS)
         for physical, logical in renaming.items():
             if physical != logical:
@@ -100,29 +120,33 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
 
 def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str], list[str]]]:
     """The files in the descriptor's order, in runs that one read covers: files
-    named alike (`{physical name: logical name}`), none with deleted positions
-    or under an equality delete, which are read alone."""
+    named alike (`{physical name: logical name}`) and typed alike (one read
+    infers one schema), none with deleted positions or under an equality
+    delete, which are read alone."""
     alone = set(deleted).union(*(e.applies_to for e in scan.equality))
     out: list[tuple[dict[str, str], list[str]]] = []
+    keys: list[tuple[dict[str, str], tuple[str, ...]]] = []
     for f in scan.files:
-        names = _renaming(f, scan)
-        if out and out[-1][0] == names and f not in alone and out[-1][1][0] not in alone:
+        names, kinds = _renaming(f, scan)
+        if out and keys[-1] == (names, kinds) and f not in alone and out[-1][1][0] not in alone:
             out[-1][1].append(f)
         else:
             out.append((names, [f]))
+            keys.append((names, kinds))
     return out
 
 
-def _renaming(file: str, scan: Scan) -> dict[str, str]:
-    """`{physical: logical}` for the columns of `file` the schema has, refusing a
-    type that does not widen."""
+def _renaming(file: str, scan: Scan) -> tuple[dict[str, str], tuple[str, ...]]:
+    """`{physical: logical}` for the columns of `file` the schema has, and their
+    file types, refusing a type that does not widen."""
     by_id = (
         None
         if scan.field_ids is None
         else dict(zip(scan.field_ids, scan.schema.names, strict=True))
     )
     out = {}
-    for f in pq.read_schema(file):
+    kinds = []
+    for f in _footer(file):
         if by_id is None:
             logical = f.name if f.name in scan.schema.names else None
         else:
@@ -136,7 +160,8 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
                 f"{file}: column {logical!r} is {f.type} in the file and {want} in the table"
             )
         out[f.name] = logical
-    return out
+        kinds.append(f"{f.name}:{f.type}")
+    return out, tuple(kinds)
 
 
 def _strings(have: pa.DataType, want: pa.DataType) -> bool:
@@ -157,7 +182,7 @@ def _equality(
 
     by_id = {
         int(f.metadata[_FIELD_ID]): f.name
-        for f in pq.read_schema(e.file)
+        for f in _footer(e.file)
         if f.metadata and _FIELD_ID in f.metadata
     }
     keys = spark.read.parquet(e.file)

@@ -167,3 +167,32 @@ def test_equality_deletes_find_a_file_whose_path_the_session_encodes(tmp_path):
     )
     got = spark_scan(session(), scan).toArrow()
     assert sorted(got.column("id").to_pylist()) == [1, 3]
+
+
+@pytest.mark.parametrize("order", [("a", "b"), ("b", "a")])
+def test_files_of_different_integer_widths_read_together(tmp_path, order):
+    pq.write_table(pa.table({"id": pa.array([1, 2], pa.int32())}), tmp_path / "a.parquet")
+    pq.write_table(pa.table({"id": pa.array([3, 4], pa.int64())}), tmp_path / "b.parquet")
+    files = tuple(str(tmp_path / f"{n}.parquet") for n in order)
+    got = spark_scan(session(), Scan(files, pa.schema([("id", pa.int64())]))).toArrow()
+    assert sorted(got.column("id").to_pylist()) == [1, 2, 3, 4]
+
+
+def test_many_deleted_positions_become_an_anti_join(tmp_path, monkeypatch):
+    import sverify_spark.scan as scan_module
+
+    f = tmp_path / "a.parquet"
+    pq.write_table(pa.table({"id": pa.array(range(100), pa.int64())}), f)
+    deleted = pa.table({"file": [str(f)] * 60, "pos": pa.array(range(0, 120, 2), pa.int64())})
+    scan = Scan((str(f),), pa.schema([("id", pa.int64())]), deleted)
+    want = sorted(set(range(100)) - set(range(0, 100, 2)))
+    for bound in (10_000, 5):  # a literal list, then a DataFrame
+        monkeypatch.setattr(scan_module, "POSITIONS_IN_PLAN", bound)
+        got = spark_scan(session(), scan).toArrow()
+        assert sorted(got.column("id").to_pylist()) == want
+
+
+def test_a_path_the_driver_cannot_open_is_refused(tmp_path):
+    scan = Scan((str(tmp_path / "missing.parquet"),), pa.schema([("id", pa.int64())]))
+    with pytest.raises(Unsupported, match="driver cannot open"):
+        spark_scan(session(), scan)
