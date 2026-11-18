@@ -24,8 +24,9 @@ dependencies = [
     # sverify's SQL lift is built on SQLGlot. From 30.18, SQLGlot reads a
     # DROP's names from `expressions`, so Ibis 12's DuckDB `create_table`
     # writes `DROP VIEW IF EXISTS` without one and fails (#442,
-    # upstream/bugs/SG-7.json).
-    "sqlglot~=30.17.0",
+    # upstream/bugs/SG-7.json). The lift's tests pass from 30.8, the one
+    # SQLMesh 0.235 and later pin (#1485, 16).
+    "sqlglot>=30.8.0,<30.18",
     "substrait>=0.37.0",
 ]
 
@@ -177,7 +178,7 @@ sverify-duckdb = { path = "../engines/duckdb", editable = true }
 
 [tool.uv]
 # fakesnow 0.12 needs `sqlglot~=30.22.0`, so development and the main CI
-# run 30.22; the wheel's tests resolve the `~=30.17.0` users get (#442).
+# run 30.22; the wheel's tests resolve the `<30.18` users get (#442).
 override-dependencies = ["sqlglot~=30.22.0"]
 
 [tool.pytest.ini_options]
