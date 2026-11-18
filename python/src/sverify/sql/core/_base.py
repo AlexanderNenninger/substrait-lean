@@ -4224,7 +4224,20 @@ class _Writer:
         picks = any(orders) or any(
             ms.fn in ("first", "last", "string_agg", "collect", "mode") for ms in measures
         )
-        if picks and any(ms.distinct for ms in measures):
+
+        def native(ms: Measure) -> bool:
+            """A `COUNT(DISTINCT x)` the engine counts itself: `x`'s values are
+            equal where the engine's grouping says so, as on the window below
+            (a double's NaNs and zeros, a list, are left to it)."""
+            return (
+                ms.distinct
+                and ms.fn == "count"
+                and expr_kind(ms.arg, ks) not in ("float",)
+                and not isinstance(expr_kind(ms.arg, ks), Lst)
+            )
+
+        firsts = [ms for ms in measures if ms.distinct and not native(ms)]
+        if picks and firsts:
             raise WriterUnsupported(
                 "an ordered aggregate next to a DISTINCT measure is not supported"
             )
@@ -4238,13 +4251,13 @@ class _Writer:
             return self.ref(b, c)
 
         keys = [col(c) for c in g_cols]
-        if any(ms.distinct for ms in measures):
+        if firsts:
             # The first row of each value of a DISTINCT measure's argument.
             items = [f"{col(c)} AS {c}" for c in g_cols + m_cols]
             if needs:
                 items.append(f"{self.ordinal(b)} AS {d.quote(ORD)}")
             for ms, c, dc in zip(measures, m_cols, d_cols, strict=True):
-                if not ms.distinct:
+                if not ms.distinct or native(ms):
                     continue
                 part = [*keys, col(c)]
                 order = [self.asc(self.ordinal(b))] if needs else part
@@ -4259,8 +4272,10 @@ class _Writer:
             for i, c in enumerate(g_cols)
         ]
         for k, ms in enumerate(measures):
-            v = col(d_cols[k] if ms.distinct else m_cols[k])
-            if ms.fn in ("first", "last", "string_agg", "collect", "mode"):
+            v = col(d_cols[k] if ms.distinct and not native(ms) else m_cols[k])
+            if native(ms):
+                sql = f"COUNT(DISTINCT {v})"
+            elif ms.fn in ("first", "last", "string_agg", "collect", "mode"):
                 # Ties go in Lean's list order: the ordinal breaks them.
                 order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
                          for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
