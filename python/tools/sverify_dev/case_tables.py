@@ -109,10 +109,12 @@ def differences(tables: dict[str, dict[str, dict[str, str]]]) -> dict:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--write", action="store_true")
-    ap.add_argument("--engines", default="duckdb,polars,spark")
+    ap.add_argument("--engines", default="", help="comma-separated; default: all")
     args = ap.parse_args(argv)
-    runners = {"duckdb": duckdb_tables, "polars": polars_tables, "spark": spark_tables}
-    tables = {e: runners[e]() for e in args.engines.split(",")}
+    runners = {
+        f.__name__.removesuffix("_tables"): f for f in (duckdb_tables, polars_tables, spark_tables)
+    }
+    tables = {e: runners[e]() for e in (args.engines.split(",") if args.engines else runners)}
     for e, t in tables.items():
         print(e, {d: len(m) for d, m in t.items()}, file=sys.stderr)
     diff = differences(tables)
