@@ -165,3 +165,19 @@ def test_the_transfer_reads_non_ascii_text_by_group(expr, options, declared):
     )
     assert [r["option"] for r in report._transfer or []] == options
     assert (report.verdict == sv.Verdict.PROVED) == (not options)
+
+
+@pytest.mark.parametrize("declared", [False, True])
+def test_the_transfer_reads_non_ascii_text_for_regexp_match(declared):
+    """`regexp_match` has a constructor (`regexMatch`), so its group's option is
+    read by a profile transfer like the other regular-expression functions'
+    (D43). Ibis writes the search as a comparison with it, so the
+    comparison's own options are read as well."""
+    report = sv.verify(
+        _S.select(x=_S.s.re_search(r"\d")),
+        requires={"t": [_ASCII_S]} if declared else None,
+        semantics="substrait",
+        on_inferred="off",
+    )
+    assert "non_ascii_text" in [r["option"] for r in report._transfer or []]
+    assert report.verdict == sv.Verdict.UNPROVED

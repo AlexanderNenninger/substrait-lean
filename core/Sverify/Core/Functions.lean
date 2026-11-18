@@ -67,6 +67,7 @@ def Ctor.key : Ctor → Ctor
   | .un f => .un <| match f with
     | .froundTo _ => .froundTo 0
     | .replace _ _ => .replace "" ""
+    | .regexMatch _ => .regexMatch ""
     | .regexExtract _ _ => .regexExtract "" 0
     | .regexReplace _ _ _ => .regexReplace "" "" false
     | .datePart _ => .datePart .year
@@ -217,7 +218,8 @@ def strings : List FnRow := [
     reads := .plain, pretty := "LOWER" },
   { name := "character_length", anchor := 22, group := "str.plain", ctor := some (.un .length),
     reads := .plain, pretty := "LENGTH" },
-  { name := "regexp_match", anchor := 23, group := "str.ascii" },
+  { name := "regexp_match", anchor := 23, group := "str.ascii",
+    ctor := some (.un (.regexMatch "")) },
   { name := "str_concat", anchor := 27, group := "str.concat", ctor := some (.bin .concat),
     reads := .plain, pretty := "||" },
   { name := "strpos", anchor := 28, group := "str.match", ctor := some (.bin .strpos),

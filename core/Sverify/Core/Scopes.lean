@@ -196,17 +196,27 @@ def scopedOptions : List String :=
 
 -- A profile transfer reads an option by group (`ctorReads`), so
 -- `non_ascii_text` sits on the groups whose functions can report `nonAscii`
--- (D43): a row's group carries it exactly when its constructor has a `nonAscii`
--- arm. The regular expressions report it by their pattern (`classesDiffer`), so
--- they are named.
+-- (D43): a call reads it exactly when its constructor has a `nonAscii` arm.
+-- A regular expression reports by its pattern (`classesDiffer`), so it is
+-- tried with a class.
 #guard letI := Boxes.Ambient.none;
-  let withOption := (Functions.groups.filter fun g => g.2.contains "non_ascii_text").map (·.1)
   Functions.strings.all fun r =>
-    let reports := if ["regexp_match", "regexp_extract", "regexp_replace"].contains r.name then true
-      else match r.ctor with
-      | some (.un f) => f.issue (.str "é") == some Issue.nonAscii
-      | some (.bin f) => f.issue (.str "é") (.str "é") == some Issue.nonAscii
-      | _ => false
-    withOption.contains r.group == reports
+    match r.ctor with
+    | none => !((Functions.groups.lookup r.group).getD []).contains "non_ascii_text"
+    | some c =>
+      let probe := match c with
+        | .un (.regexMatch _) => Ctor.un (.regexMatch "\\d")
+        | .un (.regexExtract _ _) => .un (.regexExtract "\\d" 0)
+        | .un (.regexReplace _ _ _) => .un (.regexReplace "\\d" "" false)
+        | c => c
+      let reports := match probe with
+        | .un f => f.issue (.str "é") == some Issue.nonAscii
+        | .bin f => f.issue (.str "é") (.str "é") == some Issue.nonAscii
+        | _ => false
+      let reads := match Functions.rowOf probe with
+        | some row => (((Functions.groups.lookup row.group).getD []).filter (optionApplies · probe)).contains
+            "non_ascii_text"
+        | none => false
+      reports == reads
 
 end Substrait
