@@ -9,6 +9,7 @@ plans of the SQL here.
 """
 
 import json
+import subprocess
 from decimal import Decimal as D
 
 import duckdb
@@ -393,8 +394,11 @@ def test_a_hand_written_decimal_quotient_must_fit_its_declared_type(con):
         one = ibis.literal(1, "int64").op()
         return T.select(r=DecimalDiv(T.a.op(), one, dt.Decimal(p, s)).to_expr())  # type: ignore[abstract]
 
-    with pytest.raises(Exception, match="declared type does not follow from its operands"):
+    with pytest.raises(subprocess.CalledProcessError) as refused:
         lean(con, quotient(5, 2))
+    assert "declared type does not follow from its operands" in (
+        f"{refused.value.stdout}{refused.value.stderr}"
+    )
     assert lean(con, quotient(12, 4))[0] == ("12.3500",)
 
 
