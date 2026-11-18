@@ -476,10 +476,16 @@ def split_batch(
             raise ValueError("changes delete rows that are not in the table")
         second = apply_keys(pool, keys)
         delta = consolidated(second.ok, negated(old))
-        held_before = weights_in(old, rows_of(second.bad)).to_pylist()
+        # Copies that left the base table: held before, no longer kept (a
+        # redelivered copy set aside beside the kept row took nothing out).
+        bad_rows = rows_of(second.bad)
+        held_before = weights_in(old, bad_rows).to_pylist()
+        kept_now = weights_in(second.ok, bad_rows).to_pylist()
         retracted = sum(
-            min(w, have)
-            for w, have in zip(second.bad.column(WEIGHT).to_pylist(), held_before, strict=True)
+            min(w, max(0, was - now))
+            for w, was, now in zip(
+                second.bad.column(WEIGHT).to_pylist(), held_before, kept_now, strict=True
+            )
         )
         for k, e in _entries(second, version, at, quarantined):
             q.entries[k] = e

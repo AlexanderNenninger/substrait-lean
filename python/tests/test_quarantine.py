@@ -201,6 +201,9 @@ def test_a_redelivered_duplicate_keeps_the_published_row():
     assert bag(node.to_arrow()) == Counter({(1, 30): 1, (2, 40): 1})
     assert bag(node.quarantined()) == Counter({(1, 30): 1})
     assert "deleted" not in str(r.nodes[0].quarantine[0])
+    # #1593: nothing published was taken out.
+    assert r.nodes[0].quarantine[0].retracted == 0
+    assert "already published" not in str(r.nodes[0].quarantine[0])
     # The source drops one of the two copies: the published row stays.
     orders.apply(Changes(deletes=table([(1, 30)])))
     node.refresh()
