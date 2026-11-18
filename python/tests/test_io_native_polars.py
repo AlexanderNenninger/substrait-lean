@@ -228,3 +228,26 @@ def test_a_file_without_partition_values_raises(tmp_path):
     short = replace(scan, partitions=scan.partitions.slice(1))
     with pytest.raises(ValueError, match="no partition values for"):
         lazy_scan(short)
+
+
+def test_equality_deletes_find_a_file_whose_path_has_a_space_and_percent(tmp_path):
+    """The delete applies to the files the descriptor names, by its own strings: a
+    path with a space and `%25` matches, and a file it does not name keeps its rows."""
+    from sverify._scan import EqualityDelete
+
+    d = tmp_path / "dir with space%25"
+    d.mkdir()
+    data, other, dele = d / "data file.parquet", d / "other.parquet", d / "del.parquet"
+    schema = pa.schema([pa.field("id", pa.int64(), metadata={"PARQUET:field_id": "1"})])
+    pq.write_table(pa.table({"id": [1, 2, 3]}, schema=schema), data)
+    pq.write_table(pa.table({"id": [2, 4]}, schema=schema), other)
+    pq.write_table(pa.table({"id": [2]}, schema=schema), dele)
+    scan = Scan(
+        (str(data), str(other)),
+        pa.schema([("id", pa.int64())]),
+        field_ids=(1,),
+        equality=(EqualityDelete(str(dele), (1,), ("id",), (str(data),)),),
+    )
+    got = lazy_scan(scan).collect().to_arrow()
+    assert got.column("id").to_pylist() == [1, 3, 2, 4]
+    assert bag(got) == bag(scan.to_arrow())
