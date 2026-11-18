@@ -29,6 +29,10 @@ contract's preconditions.
 | … in every row order the reference allows | `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
 | What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s on the postcondition's conditions projected over the request's transformation, which `parse` builds itself, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088, #1484) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
 | When `substrait-check --contract` reports the transformation `deterministic`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows, for any data that meets the request (`DataMeets`, #1484) | `OrderAllowed` | `check_deterministic_sound` | `ContractCheck.lean` |
+| A key `substrait-check --contract` reports proved is a key of every result the reference allows for the transformation, on data that meets the request (#1484) | `OrderAllowed` | `check_keys_sound` | `ContractCheck.lean` |
+| Every issue the transformation can run into is in the report's `issues`, on data that meets the request, its bounds per key and the size hypothesis (#1484) | `eval` | `check_issues_sound` | `ContractCheck.lean` |
+| A transformation the report calls `guard_free` computes the same rows with any faithful functions (#1484) | `eval` | `check_guard_free_sound` | `ContractCheck.lean` |
+| The plan the report writes as `optimized` is well-formed, has the transformation's arity and gives its rows, on data that meets the request and its foreign keys (#1484) | `eval` | `check_optimized_sound` | `ContractCheck.lean` |
 | The same on one hypothesis, the analysis's (`Knowledge`) | `eval`, `OrderAllowed` | `Knowledge.contract_sound`, `Knowledge.contract_sound_all`, `Knowledge.duckdb_sound` | `Knowledge.lean` |
 | The analysis is sound: what it knows of a relation holds of its rows | `eval`, `OrderAllowed` | `Rel.analyse_sound`, `Rel.analyse_sound_all` | `Knowledge.lean` |
 | The abstract evaluation bounds every column of every row | `eval`, `OrderAllowed` | `Rel.aeval_sound`, `Rel.aeval_sound_all` | `Contracts/Sound.lean` |
@@ -337,7 +341,7 @@ build as the guard.
 |---|---|
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
 | `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
-| `AnalysisCongr.lean` | The analyses read only the catalog's arities: `Rel.facts_congr`, `Rel.aeval_congr`, `Rel.keys_congr`, `Rel.keyedWindows_congr`, `Rel.detPlan_congr`, for `check_proved_sound` and `check_deterministic_sound` |
+| `AnalysisCongr.lean` | The analyses read only the catalog's arities: `Rel.facts_congr`, `Rel.aeval_congr`, `Rel.keys_congr`, `Rel.keyedWindows_congr`, `Rel.detPlan_congr`, `Rel.mayIssues_congr`, `Rel.issuesCapped_congr` and the capped plans', `Rel.optimize_congr` and the rewrites', for the checker's theorems (`check_proved_sound` …) |
 | `Semantic.lean` | Rewrites justified by contract facts and keys |
 | `Compose.lean` | Composing contracts across a pipeline |
 | `Quarantine.lean` | The rows `on_violation="quarantine"` keeps |
