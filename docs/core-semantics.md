@@ -1198,4 +1198,5 @@ to it, so links to an entry here still land.
 - <a id="d44-replace-with-an-empty-pattern-is-the-string-unchanged"></a>[D44. `replace` with an empty pattern is the string unchanged](decisions.md#d44-replace-with-an-empty-pattern-is-the-string-unchanged)
 - <a id="d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do"></a>[D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do](decisions.md#d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do), amended 2026-11-17 for windows
 - <a id="d47-raise-value-or-open-where-engines-differ"></a>[D47. Raise, value or open where engines differ](decisions.md#d47-raise-value-or-open-where-engines-differ)
+- <a id="d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand"></a>[D50. The frontends lift `AND` and `OR` so a guard protects the next operand](decisions.md#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand)
 - <a id="d49-a-value-known-from-one-engine-is-provisional"></a>[D49. A value known from one engine is provisional](decisions.md#d49-a-value-known-from-one-engine-is-provisional)

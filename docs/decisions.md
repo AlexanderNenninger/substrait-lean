@@ -266,6 +266,10 @@ plan, against the `q` the postcondition names. The finest valid `q` is the
 
 ### D19. `AND` and `OR` raise eagerly
 
+Amended by [D50](#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand):
+the core stays eager, and the frontends lift an `AND` or `OR` over a raising
+operand so a guard protects it.
+
 An error in either operand of `AND` or `OR` may raise, whatever the other
 operand's value (#604). `p AND q` is not a guard for `q`: in
 `x <> 0 AND 10 // x > 1`, the division may run on the rows where `x = 0`.
@@ -1325,3 +1329,34 @@ Why: the reference belongs to no engine, and these rows said "as DuckDB
 computes it" with no decision and no second engine's facts. The mark states
 what is known, and the rule for new functions (Lean and DuckDB first) keeps
 producing such rows.
+
+### D50. The frontends lift `AND` and `OR` so a guard protects the next operand
+
+Decided 2026-11-18, approved by the user.
+
+`WHERE qty <> 0 AND total / qty > 1` reads as a guard, and SQL users write
+it so. The SQL and Ibis frontends lift `p AND q` so that a raising operation in
+`q` runs only where `p` is not FALSE, and `OR` likewise where `p` is not TRUE.
+The core stays eager (D19), and `semantics="duckdb"` keeps DuckDB's eager
+reading, where DuckDB raises.
+
+The lift is the call `sverify_and` (`sverify_or`) over the operands, which the
+parser reads as nested `CASE` (`Expr.andLift`, `Frontend/Guard.lean`):
+`T_k = CASE WHEN p_k IS NOT FALSE THEN T_{k+1} ELSE 0`, ending in
+`CASE WHEN p_1 AND … AND p_n THEN 1 ELSE NULL`, and the conjunction is
+`T_1 = 1`. Its size is linear in the operands, with no copies of a guard.
+Operands that cannot raise (`Expr.plain`) stay outside; an `AND` of plain
+operands stays the eager `AND`, and its plan does not change.
+
+Proved: the lift evaluates to the `AND` where no operand raises, an operand
+whose predecessors are FALSE does not raise, and an error in a reached operand
+still surfaces (`Expr.andG_false`, `andG_error`, `andG_none`, and the `OR`
+duals). The analysis refines the `THEN` branch by its condition and reads
+`p IS NULL OR p` as a fact on a column (`x <> c`, `0 <= c < x`).
+
+An engine runs the lifted plan only with a probe that its `CASE` evaluates the
+taken branch alone; an engine without one refuses it.
+
+Why: the eager reading made the commonest guard in SQL unprovable, and the
+engines that short-circuit give the value the user meant.
+

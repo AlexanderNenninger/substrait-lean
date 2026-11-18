@@ -550,9 +550,13 @@ _PLAIN_FUNCTIONS = frozenset(
 
 def is_plain(e: Json) -> bool:
     """Is `e` built from columns and literals by `=`, `<`, `IS NULL`, `NOT`,
-    `AND` and `OR` (and their spellings)? Such an expression never raises."""
+    `AND` and `OR` (and their spellings), a literal's cast, `IN` over such? Such an expression never raises."""
     if "literal" in e or "selection" in e:
         return True
+    if (c := e.get("cast")) is not None:  # a constant's cast raises on every row or on none
+        return "literal" in c["input"]
+    if (ol := e.get("singularOrList")) is not None:  # `x IN (…)` parses to `=` and `OR`
+        return is_plain(ol["value"]) and all(is_plain(o) for o in ol.get("options", []))
     fn = e.get("scalarFunction")
     if fn is None:
         return False
