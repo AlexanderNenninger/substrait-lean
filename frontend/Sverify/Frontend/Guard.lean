@@ -205,7 +205,7 @@ theorem Expr.andG_false (row : Row) (pre : List Expr) (p : Expr) (post : List Ex
     (Expr.andG (pre ++ p :: post)).refOutcome row = .ok (.bool false) := by
   obtain ⟨h1, h2⟩ := Expr.andChain_stop row (Expr.conj (pre ++ p :: post)) p post hp hbv hf pre hpre
   simp [Expr.refOutcome, Expr.andG, Expr.issues, Expr.eval, Impl.lean, BinFn.apply, h1, h2,
-    firstError_append, Value.numPair]
+    Value.numPair]
 
 theorem Expr.andChain_error (row : Row) (all : Expr) (p : Expr) (post : List Expr) (k : Issue)
     (hp : firstError (p.issues row) = some k) :
@@ -242,7 +242,7 @@ theorem Expr.andG_error (row : Row) (pre : List Expr) (p : Expr) (post : List Ex
       (Expr.conj (pre ++ p :: post)).refOutcome row = .error k := by
   have hc := Expr.andChain_error row (Expr.conj (pre ++ p :: post)) p post k hp pre hpre
   constructor
-  · simp [Expr.refOutcome, Expr.andG, Expr.issues, firstError_append, hc]
+  · simp [Expr.refOutcome, Expr.andG, Expr.issues, hc]
   · simp [Expr.refOutcome, Expr.conj_error row pre p post k hpre hp]
 
 /-- The eager conjunction of operands that are TRUE or NULL is TRUE or NULL. -/
@@ -296,7 +296,7 @@ theorem Expr.andG_none (row : Row) (p : Expr) (ps : List Expr)
       | false => exact absurd hq hnf
       | true => exact .inr hq
   have hall' : firstError ((Expr.andG (p :: ps)).issues row) = none := by
-    simp [Expr.andG, Expr.issues, firstError_append, h2, hall]
+    simp [Expr.andG, Expr.issues, h2, hall]
   unfold Expr.refOutcome
   rw [hall', hall]
   simp only [Expr.andG, Expr.eval, Impl.lean, BinFn.apply, h1]
@@ -338,7 +338,7 @@ theorem Expr.orG_true (row : Row) (pre : List Expr) (p : Expr) (post : List Expr
     (Expr.orG (pre ++ p :: post)).refOutcome row = .ok (.bool true) := by
   obtain ⟨h1, h2⟩ := Expr.orChain_stop row (Expr.disj (pre ++ p :: post)) p post hp hbv ht pre hpre
   simp [Expr.refOutcome, Expr.orG, Expr.issues, Expr.eval, Impl.lean, BinFn.apply, h1, h2,
-    firstError_append, Value.numPair]
+    Value.numPair]
 
 theorem Expr.orChain_error (row : Row) (all : Expr) (p : Expr) (post : List Expr) (k : Issue)
     (hp : firstError (p.issues row) = some k) :
@@ -374,7 +374,7 @@ theorem Expr.orG_error (row : Row) (pre : List Expr) (p : Expr) (post : List Exp
       (Expr.disj (pre ++ p :: post)).refOutcome row = .error k := by
   have hc := Expr.orChain_error row (Expr.disj (pre ++ p :: post)) p post k hp pre hpre
   constructor
-  · simp [Expr.refOutcome, Expr.orG, Expr.issues, firstError_append, hc]
+  · simp [Expr.refOutcome, Expr.orG, Expr.issues, hc]
   · simp [Expr.refOutcome, Expr.disj_error row pre p post k hpre hp]
 
 /-- The eager disjunction of operands that are FALSE or NULL is FALSE or NULL. -/
