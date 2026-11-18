@@ -102,7 +102,7 @@ is what the probe gives.
 | set operations | in | covered | catalogue: union_all 3, intersect_except; dbt_utils.union_relations |  |
 | GROUPING SETS and ROLLUP | in | covered | catalogue: grouping_sets 2 (TPC-DS) |  |
 | VALUES in FROM | in | covered | dbt mapping tables; catalogue values (Ibis memtables); replay ~80 | [#803](https://github.com/AlexanderNenninger/substrait-lean/issues/803) |
-| correlated EXISTS and NOT EXISTS | in | — | replay 1,340 (all correlated subqueries); dbt anti-joins for new rows | [#345](https://github.com/AlexanderNenninger/substrait-lean/issues/345) |
+| correlated EXISTS and NOT EXISTS | in | covered | replay 1,340 (all correlated subqueries); dbt anti-joins for new rows; `tests/test_sql_lift_relations.py`, `tests/test_correlated_exists.py` | [#345](https://github.com/AlexanderNenninger/substrait-lean/issues/345) |
 | DISTINCT ON | in | — | dedup pattern ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749), [#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)); catalogue dedup_latest 3; replay 64 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
 | GROUP BY ALL and ORDER BY ALL | in | — | DuckDB style SQL; replay 124 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
 | range() and generate_series() with constant bounds | in | — | catalogue dbt-generate-date-spine; dbt_utils.date_spine; gap filling ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749)); replay 965 | [#321](https://github.com/AlexanderNenninger/substrait-lean/issues/321) |

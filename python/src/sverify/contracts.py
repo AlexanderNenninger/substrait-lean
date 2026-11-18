@@ -3095,6 +3095,7 @@ class ContractedTransform:
         external: dict[str, list[Condition]] = {}
         policies: Policies = {}
         unproved_links: list[str] = []
+        table_params: dict[str, str] = {}  # placeholder table -> the parameter
         taken = set(leaf_tables(result))
         for param, value in inputs.items():
             if not isinstance(value, ir.Table):
@@ -3119,6 +3120,7 @@ class ContractedTransform:
                 prov = _lookup(op)
                 name = _fresh(prov.transform.name if prov else param, taken)
                 placeholders[op] = (name, link.assumptions[param])
+                table_params[name] = param
                 if prov is None:
                     plain[name] = (param, value)
         abstraction = _abstract(result, placeholders, taken)
@@ -3145,9 +3147,12 @@ class ContractedTransform:
                 param, value = bound_inputs[t]
             if self.check_requires:
                 self._check_on_data(value, param, conds, found)
-        if found:
-            # The report may be cached and shared by calls: this call's copy.
-            report = self.report = replace(report, preconditions=found)
+        # The report may be cached and shared by calls: this call's copy.
+        report = self.report = replace(
+            report,
+            preconditions=found or report.preconditions,
+            _table_params={**{t: p for t, (p, _) in bound_inputs.items()}, **table_params},
+        )
         checked: list[Condition] = []
         if not report._proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in

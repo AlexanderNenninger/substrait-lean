@@ -165,7 +165,12 @@ def test_round_trip(case: str, fmt: Literal["json", "binary"]) -> None:
         (c.label, c.proved) for c in report.ensures
     ]
     assert again.requires == {t: cs for t, cs in report.requires.items() if cs}
-    assert again.deterministic == report.deterministic
+    assert again._exact == report._exact
+    # The canon shim the export writes above a double key's pick reads the
+    # picked value, which the class level's first stage admits only as a
+    # bare column (D48): the import is determined exactly as before, and at
+    # the class level only once the congruence check covers the shim.
+    assert again.deterministic == (report.deterministic and case != "double keys")
     # The same plan: reading it back and writing it again gives the bytes.
     imp = read(out)
     assert again.internal_plan is not None

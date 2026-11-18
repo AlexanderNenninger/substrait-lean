@@ -8,6 +8,7 @@ plan of its own; `Report.run` runs it on the engine first and raises if it
 flags a group, or, with `on_inferred="warn"`, warns and counts them.
 """
 
+import json
 import warnings
 
 import ibis
@@ -16,6 +17,8 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from sverify import profiles
+from sverify.engine import written_plan
 from sverify.errors import InferredWarning, PreconditionError
 
 ORDERS = ibis.table({"customer_id": "int64", "amount": "float64"}, name="orders")
@@ -190,7 +193,7 @@ def test_a_row_against_its_partitions_mean(engine):
 def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
     """The check and the plan read their inputs twice: an Arrow table, a
     resident table or a Delta/Iceberg scan at one version reads the same rows;
-    a file scan without a version warns, and the deterministic profile
+    a file scan without a version warns, and a rerun requirement
     refuses it."""
     import pyarrow.parquet as pq
 
@@ -230,3 +233,61 @@ def test_the_margin_check_sees_through_the_finish_of_duckdbs_sum_and_avg(query):
     assert r.verdict != sv.Verdict.UNPROVED
     assert len(r._margin_checks) == 1
     assert r._rows_exact is not None and all(r._rows_exact.values())
+
+
+# -- open choices below the sum (#1608) -----------------------------------------
+
+TOP = (
+    ORDERS.order_by("amount")
+    .limit(4)
+    .group_by("customer_id")
+    .aggregate(total=_.amount.sum())
+    .filter(_.total > 1000)
+)
+
+
+COUNT = TOP.aggregate(k=TOP.total.count())
+
+
+def _open_site(engine: str) -> sv.Report:
+    """A report whose margin check counts groups over a `LIMIT` below the sum,
+    as if the check had been written for `engine`."""
+    r = sv.verify(TOP, requires=REQUIRES, on_inferred="off")
+    check = sv.verify(COUNT, requires=REQUIRES, on_inferred="off")
+    assert check.internal_plan is not None
+    r._margin_checks = [
+        {"plan": json.loads(check.internal_plan), "engines": {engine: {"message": "{k} flagged"}}}
+    ]
+    r.deterministic = False
+    return r
+
+
+def test_duckdb_writes_both_statements_with_the_ordinal_and_neither_warns():
+    """DuckDB's runner writes `rows="sequence"` for the run and the check, so
+    they pick the same tied rows: no warning and no refusal."""
+    from sverify.sql import to_sql
+    from sverify_duckdb.dialect import DUCKDB
+
+    r = _open_site("duckdb")
+    plan = json.loads(written_plan(json.dumps(r._margin_checks[0]["plan"])))
+    assert "rowid" in to_sql(plan, DUCKDB)
+    con = _con([1, 1, 2, 2, 3], [10.0, 20.0, 30.0, 40.0, 50.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", InferredWarning)
+        assert r.check_margins(con, "duckdb", "duckdb") == 0
+
+
+def test_a_margin_site_over_a_limit_is_refused_where_the_runner_leaves_ties_open(monkeypatch):
+    """Spark writes `rows="multiset"`: the check and the run each pick their own
+    rows below the sum, so the run is refused before it starts, and warned
+    about under `on_inferred="warn"` (the check's own run is stubbed here)."""
+    if profiles.find("spark") is None:
+        pytest.skip("Spark is not installed")
+    r = _open_site("spark")
+    con = _con([1], [1.0])
+    with pytest.raises(PreconditionError, match=r"each evaluate a LIMIT.*reproducible="):
+        r.check_margins(con, None, "spark")
+    monkeypatch.setattr("sverify.report.run_plan", lambda *a, **k: pa.table({"k": [0]}))
+    r._on_inferred = "warn"
+    with pytest.warns(InferredWarning, match="may miss groups"):
+        assert r.check_margins(con, None, "spark") == 0

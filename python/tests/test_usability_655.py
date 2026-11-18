@@ -142,7 +142,7 @@ def test_the_plan_bound_level() -> None:
 def test_an_inferred_precondition_says_where_it_came_from(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(t.k, per=t.total // t.qty), on_inferred="ignore")
-    assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(report)
+    assert "requires t: (_.qty != 0) (inferred from total // qty)" in report.details()
     with pytest.raises(
         PreconditionError,
         match=r"1 row\(s\) of t violate \(_.qty != 0\): refused before the run\. The "
@@ -158,7 +158,7 @@ def test_an_inferred_precondition_says_where_it_came_from(con) -> None:
 def test_issues_name_columns_and_operators(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(t.k, y=t.x / 0))
-    text = str(report)
+    text = report.details()
     assert "may fail: division by zero: x / 0" in text
     assert "it divides by the constant 0" in text
     # The error and the assumption about the same operation no longer both show.
@@ -179,7 +179,9 @@ def test_the_and_or_hint_writes_out_the_guard(con) -> None:
 def test_a_double_sum_names_its_cause(con) -> None:
     t = con.table("t")
     report = sv.verify(t.group_by("k").aggregate(s=t.x.sum()))
-    assert "may fail: domain error: sum(x) (NaN where x holds both +inf and -inf" in str(report)
+    assert (
+        "may fail: domain error: sum(x) (NaN where x holds both +inf and -inf" in report.details()
+    )
 
 
 def test_null_and_key_hints(con) -> None:
@@ -189,7 +191,7 @@ def test_null_and_key_hints(con) -> None:
         tables={"t": t},
         ensures=["qty > 3", sv.unique("k")],
     )
-    text = str(report)
+    text = report.details()
     assert "declare" not in text.split("ensures qty > 3")[1].split("\n")[0]
     assert "`k` comes from t.k: declare `sv.unique('k')` in the requires of 't'" in text
     # FALSE is possible too, so NOT NULL alone would not prove it (#655).

@@ -1497,7 +1497,7 @@ def _refuse_unverified(report: Report) -> None:
         reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
         reasons += [f"may fail: {i}" for i in report.errors]
         if report._transfer:
-            reasons.append("the proof does not carry over to Substrait (see str(report))")
+            reasons.append("the proof does not carry over to Substrait (see report.details())")
         reasons += [f"needs {n}" for n in report._needs_lines()]
         if report.floats_unmet:
             reasons.append(f"no engine meets the observation's doubles: {report.floats_unmet}")

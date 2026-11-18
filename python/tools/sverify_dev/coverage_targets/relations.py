@@ -71,8 +71,9 @@ TARGETS = [
         AREA,
         "correlated EXISTS and NOT EXISTS",
         "in",
-        "replay 1,340 (all correlated subqueries); dbt anti-joins for new rows",
-        False,
+        "replay 1,340 (all correlated subqueries); dbt anti-joins for new rows; "
+        "tests/test_sql_lift_relations.py, tests/test_correlated_exists.py",
+        True,
         sql="SELECT t.id FROM t WHERE NOT EXISTS (SELECT 1 FROM u WHERE u.name = t.name)",
         issue=345,
     ),

@@ -23,7 +23,7 @@ from typing import Any
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 1:
+if getattr(_meta, "PLUGIN_API", None) != 2:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -31,7 +31,7 @@ if getattr(_meta, "PLUGIN_API", None) != 1:
     )
 
 from sverify.profiles import ProfilePlugin, Setting
-from sverify_polars.store import ArrowStore
+from sverify_polars.store import PolarsStore
 
 #: The settings Polars's profile assumes.
 SETTINGS: tuple[Setting, ...] = (
@@ -60,23 +60,31 @@ def _run(
     from sverify.engine import read_tables
 
     tables = {t: _table(con, t) for t in read_tables(json.loads(plan_json))}
+    if keep:
+        return _kept(plan_json, tables, finite=finite)
     return _run_tables(plan_json, tables, finite=finite)
+
+
+def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: bool) -> Any:
+    """The plan's result as a lazy weighted-table handle
+    (`sverify_polars.store.LazyState`): the merge that adds it to the state
+    streams it into a file, so it is never collected."""
+    from sverify_polars import engine
+    from sverify_polars.store import lazy_plan
+
+    checks = engine.ALL_GUARDS
+    if not finite:
+        checks -= {engine.InfiniteResult.issue}
+    return lazy_plan(engine.to_lazy(plan_json, tables, guards=checks))
 
 
 def _table(con: Any, name: str) -> Any:
     """Table `name` of the connection for Polars: a `Scan` of local files without a
-    `where`, partition values or physical names as a lazy scan
-    (`sverify_polars.scan`), any other table as Arrow."""
+    `where` as a lazy scan (`sverify_polars.scan`), any other table as Arrow."""
     from sverify._scan import Scan
 
     table = con.get(name)
-    if (
-        isinstance(table, Scan)
-        and table.readable()
-        and table.where is None
-        and table.partitions is None
-        and table.physical is None
-    ):
+    if isinstance(table, Scan) and table.readable() and table.where is None:
         from sverify_polars.scan import lazy_scan
 
         return lazy_scan(table)
@@ -118,7 +126,7 @@ def _restore(setting: Setting) -> str:
 
 PLUGIN = ProfilePlugin(
     "polars",
-    store=ArrowStore,
+    store=PolarsStore,
     title="Polars",
     floor_division=True,
     profile=True,

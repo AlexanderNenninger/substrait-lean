@@ -122,7 +122,7 @@ def test_verify_fails_where_substrait_is_looser(con: Connection) -> None:
     )
     assert report.verdict == sv.Verdict.UNPROVED
     assert any(f["option"] == "overflow" for f in report._transfer or ())
-    assert 'not proved under semantics="substrait": int.arith\'s overflow' in str(report)
+    assert 'not proved under semantics="substrait": int.arith\'s overflow' in report.details()
 
 
 def test_sql_is_refused(con: Connection) -> None:

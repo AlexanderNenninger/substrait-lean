@@ -164,8 +164,15 @@ def test_report_names_what_a_condition_depends_on() -> None:
     }
     assert report.observation == sv.equivalent(floats=sv.within(rel=1e-9), timestamps="s")
     assert report.verdict == sv.Verdict.UNPROVED
-    assert "depends on floats, which the observation ignores" in str(report)
-    assert "observes: equivalent(" in str(report)
+    assert "depends on floats, which the observation ignores" in report.details()
+    assert "observes: equivalent(" in report.details()
+    # `str(report)` lists a postcondition that is proved but depends on what the
+    # observation ignores under "Not proved", with the same reason.
+    lines = str(report).splitlines()
+    start = lines.index("Not proved:")
+    shown = [line for line in lines[start + 1 :] if line.startswith("  ")]
+    assert any("avg ≤ 100" in line and "depends on floats" in line for line in shown), lines
+    assert "  avg ≤ 100" not in lines[:start]
 
 
 def test_the_checker_names_what_a_condition_depends_on() -> None:
@@ -246,3 +253,19 @@ def test_proved_on_every_allowed_result() -> None:
         counterexamples=0,
     )
     assert plain.ensures[0].proved and plain.ensures[0].allowed
+
+
+@pytest.mark.parametrize(
+    ("zero", "negative_zero"),
+    [([0.0, 1.0], [-0.0, 1.0]), ([[0.0]], [[-0.0]]), ([{"a": 0.0}], [{"a": -0.0}])],
+    ids=["double", "list", "struct"],
+)
+def test_one_zero_unless_the_observation_reads_the_members(zero, negative_zero):
+    """D48: `floats="plan"` reads one zero, bound or not; exact doubles and
+    zeros read the members, also where Arrow's equality takes `-0.0` for
+    `0.0` and nested in a list or a struct."""
+    a, b = pa.table({"c": zero}), pa.table({"c": negative_zero})
+    assert sv.equivalent(floats="plan").equal(a, b)
+    assert sv.equivalent(zeros="canon").equal(a, b)
+    assert sv.equivalent().reads_members and not sv.equivalent().equal(a, b)
+    assert not sv.equivalent(floats="plan").reads_members
