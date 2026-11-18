@@ -350,16 +350,16 @@ def _(mo):
     The alerts may run on a laptop today and in a warehouse tomorrow.
     DuckDB and Polars run the checked plan with the same rows, whichever
     `engine=` the node is refreshed with ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)). Snowflake
-    and Spark tables have no row order, so sverify refuses to write a window
-    for them unless you promise that the order keys have no ties. The
-    report's `deterministic` is that promise, proved from the key, so it can
-    be passed on:
+    and Spark tables have no row order, so the SQL sverify writes for them
+    leaves ties in a window open, as the reference does. The report's
+    `deterministic` says whether a rerun can return other rows, and it is
+    proved from the key:
     """)
     return
 
 
 @app.cell
-def _(ENGINES, UnsupportedError, alerts, alerts_node, naive, readings):
+def _(ENGINES, alerts, alerts_node, naive, readings):
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -367,21 +367,17 @@ def _(ENGINES, UnsupportedError, alerts, alerts_node, naive, readings):
         _rows[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _rows.values()}) == 1
 
-    try:
-        naive.to_sql("snowflake")
-    except UnsupportedError as e:
-        refused = str(e)
+    assert naive.to_sql("snowflake").startswith("SELECT")
     assert alerts_node.to_sql("snowflake").startswith("SELECT")
-    refused
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The key proved `deterministic`, so `alerts_node.to_sql("snowflake")`
-    writes the SQL. The plain function has no such proof, and its node
-    refuses the dialect.
+    The key proved `deterministic`, so `alerts_node.to_sql("snowflake")` gives
+    the same rows on every run. The plain function has no such proof: its
+    node writes the SQL too, with ties open.
 
     ## 6. New readings, and a sensor that sends twice
 
