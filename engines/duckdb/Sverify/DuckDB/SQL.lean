@@ -151,7 +151,7 @@ def DuckFn.result : DuckFn → DuckType
 refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
   | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
-      (they truncate) cannot state; use semantics='reference'"
+      (they truncate) cannot state; use semantics='reference', or cast round(x), floor(x) or ceil(x), which lift"
   | _, _ => none
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by
@@ -429,175 +429,87 @@ theorem DuckDBSQL.canon_negNan : FloatCode.canon FloatCode.negNan = FloatCode.na
 omit [Boxes.Ambient] in
 theorem DuckDBSQL.nan_eq : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
 
+/-- The special codes' values, for `omega`: `decide` would compare their
+huge numerals. -/
+local macro "codes_omega" : tactic => `(tactic| (
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
+  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
+  omega))
+
 omit [Boxes.Ambient] in
 /-- The special codes against the other constants, for the lift's proofs:
 `decide` would compare their huge numerals. -/
-theorem DuckDBSQL.zero_ne_negZero : ¬ ((0 : Int) = FloatCode.negZero) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.zero_ne_negZero : ¬ ((0 : Int) = FloatCode.negZero) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negZero_ne_zero : ¬ (FloatCode.negZero = (0 : Int)) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negZero_ne_zero : ¬ (FloatCode.negZero = (0 : Int)) := fun h => DuckDBSQL.zero_ne_negZero h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.zero_ne_negNan : ¬ ((0 : Int) = FloatCode.negNan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.zero_ne_negNan : ¬ ((0 : Int) = FloatCode.negNan) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negNan_ne_zero : ¬ (FloatCode.negNan = (0 : Int)) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negNan_ne_zero : ¬ (FloatCode.negNan = (0 : Int)) := fun h => DuckDBSQL.zero_ne_negNan h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.posInf_ne_negZero : ¬ (FloatCode.posInf = FloatCode.negZero) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.posInf_ne_negZero : ¬ (FloatCode.posInf = FloatCode.negZero) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negZero_ne_posInf : ¬ (FloatCode.negZero = FloatCode.posInf) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negZero_ne_posInf : ¬ (FloatCode.negZero = FloatCode.posInf) := fun h => DuckDBSQL.posInf_ne_negZero h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.posInf_ne_negNan : ¬ (FloatCode.posInf = FloatCode.negNan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.posInf_ne_negNan : ¬ (FloatCode.posInf = FloatCode.negNan) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negNan_ne_posInf : ¬ (FloatCode.negNan = FloatCode.posInf) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negNan_ne_posInf : ¬ (FloatCode.negNan = FloatCode.posInf) := fun h => DuckDBSQL.posInf_ne_negNan h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negInf_ne_negZero : ¬ (FloatCode.negInf = FloatCode.negZero) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negInf_ne_negZero : ¬ (FloatCode.negInf = FloatCode.negZero) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negZero_ne_negInf : ¬ (FloatCode.negZero = FloatCode.negInf) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negZero_ne_negInf : ¬ (FloatCode.negZero = FloatCode.negInf) := fun h => DuckDBSQL.negInf_ne_negZero h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negInf_ne_negNan : ¬ (FloatCode.negInf = FloatCode.negNan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negInf_ne_negNan : ¬ (FloatCode.negInf = FloatCode.negNan) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negNan_ne_negInf : ¬ (FloatCode.negNan = FloatCode.negInf) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negNan_ne_negInf : ¬ (FloatCode.negNan = FloatCode.negInf) := fun h => DuckDBSQL.negInf_ne_negNan h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.nan_ne_negZero : ¬ (FloatCode.nan = FloatCode.negZero) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.nan_ne_negZero : ¬ (FloatCode.nan = FloatCode.negZero) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negZero_ne_nan : ¬ (FloatCode.negZero = FloatCode.nan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negZero_ne_nan : ¬ (FloatCode.negZero = FloatCode.nan) := fun h => DuckDBSQL.nan_ne_negZero h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.nan_ne_negNan : ¬ (FloatCode.nan = FloatCode.negNan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.nan_ne_negNan : ¬ (FloatCode.nan = FloatCode.negNan) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negNan_ne_nan : ¬ (FloatCode.negNan = FloatCode.nan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negNan_ne_nan : ¬ (FloatCode.negNan = FloatCode.nan) := fun h => DuckDBSQL.nan_ne_negNan h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.one_ne_negZero : ¬ (FloatCode.one = FloatCode.negZero) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.one_ne_negZero : ¬ (FloatCode.one = FloatCode.negZero) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negZero_ne_one : ¬ (FloatCode.negZero = FloatCode.one) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negZero_ne_one : ¬ (FloatCode.negZero = FloatCode.one) := fun h => DuckDBSQL.one_ne_negZero h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.one_ne_negNan : ¬ (FloatCode.one = FloatCode.negNan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.one_ne_negNan : ¬ (FloatCode.one = FloatCode.negNan) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negNan_ne_one : ¬ (FloatCode.negNan = FloatCode.one) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negNan_ne_one : ¬ (FloatCode.negNan = FloatCode.one) := fun h => DuckDBSQL.one_ne_negNan h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negOne_ne_negZero : ¬ (FloatCode.negOne = FloatCode.negZero) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negOne_ne_negZero : ¬ (FloatCode.negOne = FloatCode.negZero) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negZero_ne_negOne : ¬ (FloatCode.negZero = FloatCode.negOne) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negZero_ne_negOne : ¬ (FloatCode.negZero = FloatCode.negOne) := fun h => DuckDBSQL.negOne_ne_negZero h.symm
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negOne_ne_negNan : ¬ (FloatCode.negOne = FloatCode.negNan) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negOne_ne_negNan : ¬ (FloatCode.negOne = FloatCode.negNan) := by codes_omega
 
 omit [Boxes.Ambient] in
-theorem DuckDBSQL.negNan_ne_negOne : ¬ (FloatCode.negNan = FloatCode.negOne) := by
-  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
-  have := FloatCode.posInf_eq; have := DuckDBSQL.nan_eq; have := FloatCode.zero_lt_one
-  have := FloatCode.one_lt_posInf; have := DuckDBSQL.negOne_eq
-  omega
+theorem DuckDBSQL.negNan_ne_negOne : ¬ (FloatCode.negNan = FloatCode.negOne) := fun h => DuckDBSQL.negOne_ne_negNan h.symm
 
 omit [Boxes.Ambient] in
 /-- IEEE division by a zero (D39) is DuckDB's: `±∞` by the two signs, NaN for a

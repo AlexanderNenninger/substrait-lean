@@ -1586,7 +1586,7 @@
   {"semantics": "duckdb",
    "result": "i64",
    "refused":
-   "DuckDB rounds half to even, which the model's casts (they truncate) cannot state; use semantics='reference'",
+   "DuckDB rounds half to even, which the model's casts (they truncate) cannot state; use semantics='reference', or cast round(x), floor(x) or ceil(x), which lift",
    "construct": "CAST(DOUBLE AS BIGINT)",
    "args": ["fp64"]},
   {"template":
@@ -1600,6 +1600,60 @@
    "result": "fp64",
    "construct": "CAST(BIGINT AS DOUBLE)",
    "args": ["i64"]},
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [],
+       "functionReference": 47,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "duckdb",
+   "result": "i64",
+   "construct": "CAST(round(DOUBLE) AS BIGINT)",
+   "args": ["fp64"]},
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [],
+       "functionReference": 28,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "duckdb",
+   "result": "i64",
+   "construct": "CAST(floor(DOUBLE) AS BIGINT)",
+   "args": ["fp64"]},
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [],
+       "functionReference": 48,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "duckdb",
+   "result": "i64",
+   "construct": "CAST(ceil(DOUBLE) AS BIGINT)",
+   "args": ["fp64"]},
   {"template":
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
@@ -2107,7 +2161,61 @@
    "semantics": "reference",
    "result": "fp64",
    "construct": "CAST(BIGINT AS DOUBLE)",
-   "args": ["i64"]}],
+   "args": ["i64"]},
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [],
+       "functionReference": 47,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "reference",
+   "result": "i64",
+   "construct": "CAST(round(DOUBLE) AS BIGINT)",
+   "args": ["fp64"]},
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [],
+       "functionReference": 28,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "reference",
+   "result": "i64",
+   "construct": "CAST(floor(DOUBLE) AS BIGINT)",
+   "args": ["fp64"]},
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [],
+       "functionReference": 48,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "reference",
+   "result": "i64",
+   "construct": "CAST(ceil(DOUBLE) AS BIGINT)",
+   "args": ["fp64"]}],
  "functions":
  [{"urn": "extension:io.substrait:functions_arithmetic",
    "name": "divide:i64_i64",
@@ -2246,7 +2354,13 @@
    "anchor": 45},
   {"urn": "extension:io.substrait:functions_arithmetic",
    "name": "min:fp64",
-   "anchor": 46}],
+   "anchor": 46},
+  {"urn": "extension:io.substrait:functions_rounding",
+   "name": "round:fp64",
+   "anchor": 47},
+  {"urn": "extension:io.substrait:functions_rounding",
+   "name": "ceil:fp64",
+   "anchor": 48}],
  "aggregates":
  [{"semantics": "duckdb",
    "result": "fp64",

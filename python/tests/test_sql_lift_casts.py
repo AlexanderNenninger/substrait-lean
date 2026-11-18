@@ -224,20 +224,24 @@ def test_a_cast_of_a_rounded_double_lifts_as_duckdb_computes_it(fn, x):
 
 
 @pytest.mark.parametrize("fn", ["round", "floor", "ceil"])
-@pytest.mark.parametrize("x", ROUNDED_RAISING)
-def test_a_cast_of_a_rounded_double_raises_where_duckdb_does(fn, x):
-    """NaN, `±∞` and `2⁶³` fail in DuckDB's cast, and the lifted plan may
-    raise there: its report names the cast."""
+def test_a_cast_of_a_rounded_double_raises_where_duckdb_does(fn):
+    """NaN, `±∞` and `2⁶³` fail in DuckDB's cast. The lifted plan's cast may
+    raise too: verify names it until bounds on `x` rule the failure out."""
+    import sverify as sv
+
     query = f"SELECT CAST({fn}(x) AS BIGINT) AS b FROM t"
-    assert check(query, {"t": pa.table({"x": [x]})}).stage == "duckdb"
-    plan = lift(query, {"t": ibis.schema({"x": "float64"})}, "duckdb").plan
-    code, out, err = run_checker((), json.dumps(plan))
-    assert code == 0, err or out
-    assert "cast" in out.lower()
+    for x in ROUNDED_RAISING:
+        assert check(query, {"t": pa.table({"x": [x]})}).stage == "duckdb", x
+    tables = {"t": ibis.schema({"x": "!float64"})}
+    loose = sv.verify(query, tables=tables, semantics="duckdb", counterexamples=0)
+    assert [e.kind for e in loose.errors] == ["cast out of range"], loose
+    bounded = sv.verify(query, tables=tables, semantics="duckdb",
+                        requires=["x > -1e9 AND x < 1e9"], counterexamples=0)  # fmt: skip
+    assert bounded.verdict == "proved", bounded
 
 
 def test_a_bare_double_cast_stays_refused():
     """The bare `CAST(x AS BIGINT)` needs DuckDB's half-to-even cast, which the
-    model does not state yet (#1655)."""
-    with pytest.raises(Refused, match="TIE_TO_EVEN"):
+    model does not state yet; the refusal names the casts that lift (#1655)."""
+    with pytest.raises(Refused, match=r"round\(x\), floor\(x\) or ceil\(x\)"):
         lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, "duckdb")
