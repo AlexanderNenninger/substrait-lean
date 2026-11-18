@@ -629,4 +629,527 @@ theorem Expr.orLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List 
   · exact hg
   · exact Expr.or_outer_error row _ _ k (Expr.disj_plain_issues row ((pre ++ p :: post).filter Expr.plain) (Expr.filter_plain_plain _)) hg
 
+/-! ## The lift refines the eager form, and is boolean
+
+On a row where the eager conjunction (disjunction) returns, the lift returns the
+same (`Expr.andLift_refines`, `Expr.orLift_refines`); its value is TRUE, FALSE or
+NULL (`Expr.andLift_boolVal`, `Expr.orLift_boolVal`), so a lift can be an operand
+of another. -/
+
+theorem firstError_append_none {xs ys : List (Issue × Expr)}
+    (h : firstError (xs ++ ys) = none) : firstError xs = none ∧ firstError ys = none := by
+  rw [firstError_append] at h
+  rcases hx : firstError xs with _ | k
+  · rw [hx] at h; exact ⟨rfl, by simpa using h⟩
+  · rw [hx] at h; simp at h
+
+theorem firstError_flatMap_none_inv (row : Row) :
+    ∀ qs : List Expr, firstError (qs.flatMap (·.issues row)) = none →
+      ∀ q ∈ qs, firstError (q.issues row) = none
+  | [], _, q, hq => by simp at hq
+  | r :: qs, h, q, hq => by
+    rw [List.flatMap_cons] at h
+    obtain ⟨h1, h2⟩ := firstError_append_none h
+    rcases List.mem_cons.mp hq with rfl | hq
+    · exact h1
+    · exact firstError_flatMap_none_inv row qs h2 q hq
+
+omit [Boxes.Ambient] in
+theorem first_split {α : Type} (P : α → Prop) :
+    ∀ l : List α, (∃ x ∈ l, P x) →
+      ∃ pre x post, l = pre ++ x :: post ∧ (∀ y ∈ pre, ¬P y) ∧ P x
+  | [], ⟨x, hx, _⟩ => by simp at hx
+  | a :: l, h => by
+    by_cases ha : P a
+    · exact ⟨[], a, l, rfl, by simp, ha⟩
+    · obtain ⟨x, hx, hPx⟩ := h
+      rcases List.mem_cons.mp hx with rfl | hx
+      · exact absurd hPx ha
+      · obtain ⟨pre, y, post, hl, hpre, hy⟩ := first_split P l ⟨x, hx, hPx⟩
+        refine ⟨a :: pre, y, post, by simp [hl], ?_, hy⟩
+        intro z hz
+        rcases List.mem_cons.mp hz with rfl | hz
+        · exact ha
+        · exact hpre z hz
+
+/-! ### The conjunction -/
+
+omit [Boxes.Ambient] in
+theorem and3_bool (a b : Value) : and3 a b = .null ∨ ∃ c, and3 a b = .bool c := by
+  unfold and3; split <;> simp
+
+omit [Boxes.Ambient] in
+theorem and3_eq_neut {a b : Value} (h : and3 a b = .bool true) :
+    a = .bool true ∧ b = .bool true := by
+  unfold and3 at h; split at h <;> simp_all
+
+omit [Boxes.Ambient] in
+theorem and3_dom_left (v : Value) : and3 (.bool false) v = .bool false := by simp [and3]
+
+theorem Expr.fold_and_dom (row : Row) : ∀ (ps : List Expr) (v : Value),
+    (v = .bool false ∨ ∃ q ∈ ps, q.eval row = .bool false) →
+    ps.foldl (fun v q => and3 v (q.eval row)) v = .bool false
+  | [], v, h => by
+    rcases h with h | ⟨q, hq, _⟩
+    · exact h
+    · simp at hq
+  | q :: ps, v, h => by
+    simp only [List.foldl_cons]
+    apply Expr.fold_and_dom row ps
+    rcases h with h | ⟨r, hr, hrq⟩
+    · left; rw [h]; exact and3_dom_left _
+    · rcases List.mem_cons.mp hr with rfl | hr'
+      · left; rw [hrq]; exact and3_false_right v
+      · right; exact ⟨r, hr', hrq⟩
+
+theorem Expr.fold_and_neut (row : Row) : ∀ (ps : List Expr) (v : Value),
+    v = .bool true → (∀ q ∈ ps, q.eval row = .bool true) →
+    ps.foldl (fun v q => and3 v (q.eval row)) v = .bool true
+  | [], v, h, _ => h
+  | q :: ps, v, h, hq => by
+    simp only [List.foldl_cons]
+    apply Expr.fold_and_neut row ps
+    · rw [h, hq q (by simp)]; simp [and3]
+    · exact fun r hr => hq r (by simp [hr])
+
+theorem Expr.fold_and_neut_inv (row : Row) : ∀ (ps : List Expr) (v : Value),
+    ps.foldl (fun v q => and3 v (q.eval row)) v = .bool true →
+    v = .bool true ∧ ∀ q ∈ ps, q.eval row = .bool true
+  | [], v, h => ⟨h, by simp⟩
+  | q :: ps, v, h => by
+    simp only [List.foldl_cons] at h
+    obtain ⟨h1, h2⟩ := Expr.fold_and_neut_inv row ps _ h
+    obtain ⟨h3, h4⟩ := and3_eq_neut h1
+    refine ⟨h3, fun r hr => ?_⟩
+    rcases List.mem_cons.mp hr with rfl | hr
+    · exact h4
+    · exact h2 r hr
+
+theorem Expr.fold_and_boolval (row : Row) : ∀ (ps : List Expr) (v : Value),
+    (v = .null ∨ ∃ c, v = .bool c) →
+    (ps.foldl (fun v q => and3 v (q.eval row)) v = .null ∨
+      ∃ c, ps.foldl (fun v q => and3 v (q.eval row)) v = .bool c)
+  | [], v, h => h
+  | q :: ps, v, _ => by
+    simp only [List.foldl_cons]
+    exact Expr.fold_and_boolval row ps _ (and3_bool _ _)
+
+theorem Expr.conj_eval_dom (row : Row) (ps : List Expr)
+    (h : ∃ q ∈ ps, q.eval row = .bool false) : (Expr.conj ps).eval row = .bool false := by
+  cases ps with
+  | nil => obtain ⟨q, hq, _⟩ := h; simp at hq
+  | cons p ps =>
+    simp only [Expr.conj, Expr.eval_foldl_and]
+    apply Expr.fold_and_dom
+    obtain ⟨q, hq, hqe⟩ := h
+    rcases List.mem_cons.mp hq with rfl | hq
+    · exact .inl hqe
+    · exact .inr ⟨q, hq, hqe⟩
+
+theorem Expr.conj_eval_neut (row : Row) (ps : List Expr)
+    (h : ∀ q ∈ ps, q.eval row = .bool true) : (Expr.conj ps).eval row = .bool true := by
+  cases ps with
+  | nil => rfl
+  | cons p ps =>
+    simp only [Expr.conj, Expr.eval_foldl_and]
+    exact Expr.fold_and_neut row ps _ (h p (by simp)) (fun q hq => h q (by simp [hq]))
+
+theorem Expr.conj_eval_go (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, Expr.Go row q) :
+    (Expr.conj ps).eval row = .null ∨ (Expr.conj ps).eval row = .bool true := by
+  cases ps with
+  | nil => exact .inr rfl
+  | cons p ps =>
+    simp only [Expr.conj, Expr.eval_foldl_and]
+    obtain ⟨-, hnf, hbv⟩ := h p (by simp)
+    refine Expr.fold_and_go ps _ ?_ (fun q hq => h q (by simp [hq]))
+    rcases hbv with hq | ⟨b, hq⟩
+    · exact .inl hq
+    · cases b with
+      | false => exact absurd hq hnf
+      | true => exact .inr hq
+
+theorem Expr.conj_eval_null (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, Expr.Go row q)
+    (hne : ¬ ∀ q ∈ ps, q.eval row = .bool true) : (Expr.conj ps).eval row = .null := by
+  rcases Expr.conj_eval_go row ps h with hn | ht
+  · exact hn
+  · exfalso
+    apply hne
+    cases ps with
+    | nil => simp
+    | cons p ps =>
+      simp only [Expr.conj, Expr.eval_foldl_and] at ht
+      obtain ⟨h1, h2⟩ := Expr.fold_and_neut_inv row ps _ ht
+      intro q hq
+      rcases List.mem_cons.mp hq with rfl | hq
+      · exact h1
+      · exact h2 q hq
+
+theorem Expr.conj_firstError_none (row : Row) (ps : List Expr)
+    (h : ∀ q ∈ ps, firstError (q.issues row) = none) :
+    firstError ((Expr.conj ps).issues row) = none := by
+  cases ps with
+  | nil => rfl
+  | cons p ps =>
+    simp only [Expr.conj, Expr.issues_foldl_and, firstError_append, h p (by simp), Option.none_or]
+    exact Expr.firstError_flatMap_none row ps (fun q hq => h q (by simp [hq]))
+
+theorem Expr.conj_firstError_none_inv (row : Row) (ps : List Expr)
+    (h : firstError ((Expr.conj ps).issues row) = none) :
+    ∀ q ∈ ps, firstError (q.issues row) = none := by
+  cases ps with
+  | nil => intro q hq; simp at hq
+  | cons p ps =>
+    simp only [Expr.conj, Expr.issues_foldl_and] at h
+    obtain ⟨h1, h2⟩ := firstError_append_none h
+    intro q hq
+    rcases List.mem_cons.mp hq with rfl | hq
+    · exact h1
+    · exact firstError_flatMap_none_inv row ps h2 q hq
+
+/-- The guarded conjunction has the eager one's outcome where no operand raises. -/
+theorem Expr.andG_outcome (row : Row) (ps : List Expr)
+    (hno : ∀ q ∈ ps, firstError (q.issues row) = none) (hbv : ∀ q ∈ ps, Expr.BoolVal row q)
+    (hne : ps ≠ []) :
+    (Expr.andG ps).refOutcome row = (Expr.conj ps).refOutcome row := by
+  by_cases hex : ∃ q ∈ ps, q.eval row = .bool false
+  · obtain ⟨pre, p, post, rfl, hpre, hp⟩ := first_split _ ps hex
+    have hGo : ∀ q ∈ pre, Expr.Go row q :=
+      fun q hq => ⟨hno q (by simp [hq]), hpre q hq, hbv q (by simp [hq])⟩
+    have h1 := Expr.andG_false row pre p post hGo (hno p (by simp)) (hbv p (by simp)) hp
+    have h2 : (Expr.conj (pre ++ p :: post)).refOutcome row = .ok (.bool false) := by
+      simp [Expr.refOutcome, Expr.conj_firstError_none row _ hno,
+        Expr.conj_eval_dom row _ ⟨p, by simp, hp⟩]
+    rw [h1, h2]
+  · push_neg at hex
+    cases ps with
+    | nil => exact absurd rfl hne
+    | cons p ps => exact Expr.andG_none row p ps (fun q hq => ⟨hno q hq, hex q hq, hbv q hq⟩)
+
+/-- The plain operands' conjunction, ANDed with the guarded one, has the eager value. -/
+theorem Expr.and_plains_value (row : Row) (ps : List Expr)
+    (hno : ∀ q ∈ ps, firstError (q.issues row) = none) (hbv : ∀ q ∈ ps, Expr.BoolVal row q) :
+    and3 ((Expr.conj (ps.filter Expr.plain)).eval row) ((Expr.conj ps).eval row) =
+      (Expr.conj ps).eval row := by
+  by_cases hA : ∃ q ∈ ps, q.eval row = .bool false
+  · rw [Expr.conj_eval_dom row ps hA]; exact and3_false_right _
+  · push_neg at hA
+    have hGo : ∀ q ∈ ps, Expr.Go row q := fun q hq => ⟨hno q hq, hA q hq, hbv q hq⟩
+    have hplGo : ∀ q ∈ ps.filter Expr.plain, Expr.Go row q := fun q hq => hGo q (List.mem_filter.mp hq).1
+    by_cases hB : ∀ q ∈ ps, q.eval row = .bool true
+    · rw [Expr.conj_eval_neut row ps hB,
+        Expr.conj_eval_neut row _ (fun q hq => hB q (List.mem_filter.mp hq).1)]
+      simp [and3]
+    · rw [Expr.conj_eval_null row ps hGo hB]
+      rcases Expr.conj_eval_go row _ hplGo with hd | hd <;> simp [hd, and3]
+
+/-- **The lift refines the eager conjunction** (D50's first statement): on a row where
+the eager conjunction returns, the lift returns the same. -/
+theorem Expr.andLift_refines (row : Row) (ps : List Expr) (v : Value)
+    (hbv : ∀ q ∈ ps, Expr.BoolVal row q) (h : (Expr.conj ps).refOutcome row = .ok v) :
+    (Expr.andLift ps).refOutcome row = .ok v := by
+  have hfe : firstError ((Expr.conj ps).issues row) = none := by
+    unfold Expr.refOutcome at h
+    split at h
+    · cases h
+    · assumption
+  have hv : (Expr.conj ps).eval row = v := by
+    unfold Expr.refOutcome at h
+    rw [hfe] at h
+    simpa using h
+  have hno := Expr.conj_firstError_none_inv row ps hfe
+  unfold Expr.andLift
+  dsimp only
+  split
+  · exact h
+  · next hlen =>
+    have hne : ps ≠ [] := by rintro rfl; simp at hlen
+    have hG := Expr.andG_outcome row ps hno hbv hne
+    split
+    · rw [hG]; exact h
+    · have hi := Expr.conj_plain_issues row (ps.filter Expr.plain) (Expr.filter_plain_plain _)
+      have hGok : (Expr.andG ps).refOutcome row = .ok v := by rw [hG]; exact h
+      unfold Expr.refOutcome at hGok
+      split at hGok
+      · cases hGok
+      · next hn =>
+        have hev : (Expr.andG ps).eval row = v := by simpa using hGok
+        have hne' : firstError ((Expr.bin .and (Expr.conj (ps.filter Expr.plain)) (Expr.andG ps)).issues row) = none := by
+          simp [Expr.issues, hi, hn]
+        have hval := Expr.and_plains_value row ps hno hbv
+        rw [hv] at hval
+        unfold Expr.refOutcome
+        rw [hne']
+        simp only [Expr.eval, Impl.lean, BinFn.apply, hev, hval]
+
+theorem Expr.andChain_vals (row : Row) (all : Expr) : ∀ ps : List Expr,
+    (Expr.andChain all ps).eval row = .int 0 ∨ (Expr.andChain all ps).eval row = .int 1 ∨
+      (Expr.andChain all ps).eval row = .null
+  | [] => by
+    simp only [Expr.andChain, Expr.eval]; split <;> simp
+  | p :: ps => by
+    simp only [Expr.andChain, Expr.eval]
+    split
+    · exact Expr.andChain_vals row all ps
+    · simp
+
+theorem Expr.andG_boolVal (row : Row) (ps : List Expr) : Expr.BoolVal row (Expr.andG ps) := by
+  rcases Expr.andChain_vals row (Expr.conj ps) ps with h | h | h <;>
+    simp [Expr.BoolVal, Expr.andG, Expr.eval, Impl.lean, BinFn.apply, Value.numPair, h]
+
+/-- **The lift is boolean**: its value is TRUE, FALSE or NULL, so it can be an operand. -/
+theorem Expr.andLift_boolVal (row : Row) (ps : List Expr)
+    (hbv : ∀ q ∈ ps, Expr.BoolVal row q) : Expr.BoolVal row (Expr.andLift ps) := by
+  unfold Expr.andLift
+  dsimp only
+  split
+  · cases ps with
+    | nil => exact .inr ⟨true, rfl⟩
+    | cons p ps =>
+      simp only [Expr.BoolVal, Expr.conj, Expr.eval_foldl_and]
+      exact Expr.fold_and_boolval row ps _ (hbv p (by simp))
+  · split
+    · exact Expr.andG_boolVal row ps
+    · simp only [Expr.BoolVal, Expr.eval, Impl.lean, BinFn.apply]
+      exact and3_bool _ _
+
+/-! ### The disjunction -/
+
+omit [Boxes.Ambient] in
+theorem or3_bool (a b : Value) : or3 a b = .null ∨ ∃ c, or3 a b = .bool c := by
+  unfold or3; split <;> simp
+
+omit [Boxes.Ambient] in
+theorem or3_eq_neut {a b : Value} (h : or3 a b = .bool false) :
+    a = .bool false ∧ b = .bool false := by
+  unfold or3 at h; split at h <;> simp_all
+
+omit [Boxes.Ambient] in
+theorem or3_dom_left (v : Value) : or3 (.bool true) v = .bool true := by simp [or3]
+
+theorem Expr.fold_or_dom (row : Row) : ∀ (ps : List Expr) (v : Value),
+    (v = .bool true ∨ ∃ q ∈ ps, q.eval row = .bool true) →
+    ps.foldl (fun v q => or3 v (q.eval row)) v = .bool true
+  | [], v, h => by
+    rcases h with h | ⟨q, hq, _⟩
+    · exact h
+    · simp at hq
+  | q :: ps, v, h => by
+    simp only [List.foldl_cons]
+    apply Expr.fold_or_dom row ps
+    rcases h with h | ⟨r, hr, hrq⟩
+    · left; rw [h]; exact or3_dom_left _
+    · rcases List.mem_cons.mp hr with rfl | hr'
+      · left; rw [hrq]; exact or3_true_right v
+      · right; exact ⟨r, hr', hrq⟩
+
+theorem Expr.fold_or_neut (row : Row) : ∀ (ps : List Expr) (v : Value),
+    v = .bool false → (∀ q ∈ ps, q.eval row = .bool false) →
+    ps.foldl (fun v q => or3 v (q.eval row)) v = .bool false
+  | [], v, h, _ => h
+  | q :: ps, v, h, hq => by
+    simp only [List.foldl_cons]
+    apply Expr.fold_or_neut row ps
+    · rw [h, hq q (by simp)]; simp [or3]
+    · exact fun r hr => hq r (by simp [hr])
+
+theorem Expr.fold_or_neut_inv (row : Row) : ∀ (ps : List Expr) (v : Value),
+    ps.foldl (fun v q => or3 v (q.eval row)) v = .bool false →
+    v = .bool false ∧ ∀ q ∈ ps, q.eval row = .bool false
+  | [], v, h => ⟨h, by simp⟩
+  | q :: ps, v, h => by
+    simp only [List.foldl_cons] at h
+    obtain ⟨h1, h2⟩ := Expr.fold_or_neut_inv row ps _ h
+    obtain ⟨h3, h4⟩ := or3_eq_neut h1
+    refine ⟨h3, fun r hr => ?_⟩
+    rcases List.mem_cons.mp hr with rfl | hr
+    · exact h4
+    · exact h2 r hr
+
+theorem Expr.fold_or_boolval (row : Row) : ∀ (ps : List Expr) (v : Value),
+    (v = .null ∨ ∃ c, v = .bool c) →
+    (ps.foldl (fun v q => or3 v (q.eval row)) v = .null ∨
+      ∃ c, ps.foldl (fun v q => or3 v (q.eval row)) v = .bool c)
+  | [], v, h => h
+  | q :: ps, v, _ => by
+    simp only [List.foldl_cons]
+    exact Expr.fold_or_boolval row ps _ (or3_bool _ _)
+
+theorem Expr.disj_eval_dom (row : Row) (ps : List Expr)
+    (h : ∃ q ∈ ps, q.eval row = .bool true) : (Expr.disj ps).eval row = .bool true := by
+  cases ps with
+  | nil => obtain ⟨q, hq, _⟩ := h; simp at hq
+  | cons p ps =>
+    simp only [Expr.disj, Expr.eval_foldl_or]
+    apply Expr.fold_or_dom
+    obtain ⟨q, hq, hqe⟩ := h
+    rcases List.mem_cons.mp hq with rfl | hq
+    · exact .inl hqe
+    · exact .inr ⟨q, hq, hqe⟩
+
+theorem Expr.disj_eval_neut (row : Row) (ps : List Expr)
+    (h : ∀ q ∈ ps, q.eval row = .bool false) : (Expr.disj ps).eval row = .bool false := by
+  cases ps with
+  | nil => rfl
+  | cons p ps =>
+    simp only [Expr.disj, Expr.eval_foldl_or]
+    exact Expr.fold_or_neut row ps _ (h p (by simp)) (fun q hq => h q (by simp [hq]))
+
+theorem Expr.disj_eval_go (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, Expr.GoOr row q) :
+    (Expr.disj ps).eval row = .null ∨ (Expr.disj ps).eval row = .bool false := by
+  cases ps with
+  | nil => exact .inr rfl
+  | cons p ps =>
+    simp only [Expr.disj, Expr.eval_foldl_or]
+    obtain ⟨-, hnf, hbv⟩ := h p (by simp)
+    refine Expr.fold_or_go ps _ ?_ (fun q hq => h q (by simp [hq]))
+    rcases hbv with hq | ⟨b, hq⟩
+    · exact .inl hq
+    · cases b with
+      | true => exact absurd hq hnf
+      | false => exact .inr hq
+
+theorem Expr.disj_eval_null (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, Expr.GoOr row q)
+    (hne : ¬ ∀ q ∈ ps, q.eval row = .bool false) : (Expr.disj ps).eval row = .null := by
+  rcases Expr.disj_eval_go row ps h with hn | ht
+  · exact hn
+  · exfalso
+    apply hne
+    cases ps with
+    | nil => simp
+    | cons p ps =>
+      simp only [Expr.disj, Expr.eval_foldl_or] at ht
+      obtain ⟨h1, h2⟩ := Expr.fold_or_neut_inv row ps _ ht
+      intro q hq
+      rcases List.mem_cons.mp hq with rfl | hq
+      · exact h1
+      · exact h2 q hq
+
+theorem Expr.disj_firstError_none (row : Row) (ps : List Expr)
+    (h : ∀ q ∈ ps, firstError (q.issues row) = none) :
+    firstError ((Expr.disj ps).issues row) = none := by
+  cases ps with
+  | nil => rfl
+  | cons p ps =>
+    simp only [Expr.disj, Expr.issues_foldl_or, firstError_append, h p (by simp), Option.none_or]
+    exact Expr.firstError_flatMap_none row ps (fun q hq => h q (by simp [hq]))
+
+theorem Expr.disj_firstError_none_inv (row : Row) (ps : List Expr)
+    (h : firstError ((Expr.disj ps).issues row) = none) :
+    ∀ q ∈ ps, firstError (q.issues row) = none := by
+  cases ps with
+  | nil => intro q hq; simp at hq
+  | cons p ps =>
+    simp only [Expr.disj, Expr.issues_foldl_or] at h
+    obtain ⟨h1, h2⟩ := firstError_append_none h
+    intro q hq
+    rcases List.mem_cons.mp hq with rfl | hq
+    · exact h1
+    · exact firstError_flatMap_none_inv row ps h2 q hq
+
+/-- The guarded disjunction has the eager one's outcome where no operand raises. -/
+theorem Expr.orG_outcome (row : Row) (ps : List Expr)
+    (hno : ∀ q ∈ ps, firstError (q.issues row) = none) (hbv : ∀ q ∈ ps, Expr.BoolVal row q)
+    (hne : ps ≠ []) :
+    (Expr.orG ps).refOutcome row = (Expr.disj ps).refOutcome row := by
+  by_cases hex : ∃ q ∈ ps, q.eval row = .bool true
+  · obtain ⟨pre, p, post, rfl, hpre, hp⟩ := first_split _ ps hex
+    have hGo : ∀ q ∈ pre, Expr.GoOr row q :=
+      fun q hq => ⟨hno q (by simp [hq]), hpre q hq, hbv q (by simp [hq])⟩
+    have h1 := Expr.orG_true row pre p post hGo (hno p (by simp)) (hbv p (by simp)) hp
+    have h2 : (Expr.disj (pre ++ p :: post)).refOutcome row = .ok (.bool true) := by
+      simp [Expr.refOutcome, Expr.disj_firstError_none row _ hno,
+        Expr.disj_eval_dom row _ ⟨p, by simp, hp⟩]
+    rw [h1, h2]
+  · push_neg at hex
+    cases ps with
+    | nil => exact absurd rfl hne
+    | cons p ps => exact Expr.orG_none row p ps (fun q hq => ⟨hno q hq, hex q hq, hbv q hq⟩)
+
+/-- The plain operands' disjunction, ANDed with the guarded one, has the eager value. -/
+theorem Expr.or_plains_value (row : Row) (ps : List Expr)
+    (hno : ∀ q ∈ ps, firstError (q.issues row) = none) (hbv : ∀ q ∈ ps, Expr.BoolVal row q) :
+    or3 ((Expr.disj (ps.filter Expr.plain)).eval row) ((Expr.disj ps).eval row) =
+      (Expr.disj ps).eval row := by
+  by_cases hA : ∃ q ∈ ps, q.eval row = .bool true
+  · rw [Expr.disj_eval_dom row ps hA]; exact or3_true_right _
+  · push_neg at hA
+    have hGo : ∀ q ∈ ps, Expr.GoOr row q := fun q hq => ⟨hno q hq, hA q hq, hbv q hq⟩
+    have hplGo : ∀ q ∈ ps.filter Expr.plain, Expr.GoOr row q := fun q hq => hGo q (List.mem_filter.mp hq).1
+    by_cases hB : ∀ q ∈ ps, q.eval row = .bool false
+    · rw [Expr.disj_eval_neut row ps hB,
+        Expr.disj_eval_neut row _ (fun q hq => hB q (List.mem_filter.mp hq).1)]
+      simp [or3]
+    · rw [Expr.disj_eval_null row ps hGo hB]
+      rcases Expr.disj_eval_go row _ hplGo with hd | hd <;> simp [hd, or3]
+
+/-- **The lift refines the eager disjunction** (D50's first statement): on a row where
+the eager disjunction returns, the lift returns the same. -/
+theorem Expr.orLift_refines (row : Row) (ps : List Expr) (v : Value)
+    (hbv : ∀ q ∈ ps, Expr.BoolVal row q) (h : (Expr.disj ps).refOutcome row = .ok v) :
+    (Expr.orLift ps).refOutcome row = .ok v := by
+  have hfe : firstError ((Expr.disj ps).issues row) = none := by
+    unfold Expr.refOutcome at h
+    split at h
+    · cases h
+    · assumption
+  have hv : (Expr.disj ps).eval row = v := by
+    unfold Expr.refOutcome at h
+    rw [hfe] at h
+    simpa using h
+  have hno := Expr.disj_firstError_none_inv row ps hfe
+  unfold Expr.orLift
+  dsimp only
+  split
+  · exact h
+  · next hlen =>
+    have hne : ps ≠ [] := by rintro rfl; simp at hlen
+    have hG := Expr.orG_outcome row ps hno hbv hne
+    split
+    · rw [hG]; exact h
+    · have hi := Expr.disj_plain_issues row (ps.filter Expr.plain) (Expr.filter_plain_plain _)
+      have hGok : (Expr.orG ps).refOutcome row = .ok v := by rw [hG]; exact h
+      unfold Expr.refOutcome at hGok
+      split at hGok
+      · cases hGok
+      · next hn =>
+        have hev : (Expr.orG ps).eval row = v := by simpa using hGok
+        have hne' : firstError ((Expr.bin .or (Expr.disj (ps.filter Expr.plain)) (Expr.orG ps)).issues row) = none := by
+          simp [Expr.issues, hi, hn]
+        have hval := Expr.or_plains_value row ps hno hbv
+        rw [hv] at hval
+        unfold Expr.refOutcome
+        rw [hne']
+        simp only [Expr.eval, Impl.lean, BinFn.apply, hev, hval]
+
+theorem Expr.orChain_vals (row : Row) (all : Expr) : ∀ ps : List Expr,
+    (Expr.orChain all ps).eval row = .int 0 ∨ (Expr.orChain all ps).eval row = .int 1 ∨
+      (Expr.orChain all ps).eval row = .null
+  | [] => by
+    simp only [Expr.orChain, Expr.eval]; split <;> simp
+  | p :: ps => by
+    simp only [Expr.orChain, Expr.eval]
+    split
+    · exact Expr.orChain_vals row all ps
+    · simp
+
+theorem Expr.orG_boolVal (row : Row) (ps : List Expr) : Expr.BoolVal row (Expr.orG ps) := by
+  rcases Expr.orChain_vals row (Expr.disj ps) ps with h | h | h <;>
+    simp [Expr.BoolVal, Expr.orG, Expr.eval, Impl.lean, BinFn.apply, Value.numPair, h]
+
+/-- **The lift is boolean**: its value is TRUE, FALSE or NULL, so it can be an operand. -/
+theorem Expr.orLift_boolVal (row : Row) (ps : List Expr)
+    (hbv : ∀ q ∈ ps, Expr.BoolVal row q) : Expr.BoolVal row (Expr.orLift ps) := by
+  unfold Expr.orLift
+  dsimp only
+  split
+  · cases ps with
+    | nil => exact .inr ⟨false, rfl⟩
+    | cons p ps =>
+      simp only [Expr.BoolVal, Expr.disj, Expr.eval_foldl_or]
+      exact Expr.fold_or_boolval row ps _ (hbv p (by simp))
+  · split
+    · exact Expr.orG_boolVal row ps
+    · simp only [Expr.BoolVal, Expr.eval, Impl.lean, BinFn.apply]
+      exact or3_bool _ _
+
 end Substrait
