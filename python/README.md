@@ -119,7 +119,7 @@ sverify check pipelines/orders.py
 
 ## Go on from here
 
-[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes in ten steps from a first contract to
+[Getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html) goes in ten steps from a first contract to
 Substrait's own semantics, each feature in a few lines.
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
@@ -199,7 +199,7 @@ list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `fir
 
 ## Status
 
-Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is deprecated for one release, with a `DeprecationWarning` that says what replaces it ([the changelog](https://github.com/AlexanderNenninger/substrait-lean/blob/main/CHANGELOG.md) lists each move), and the 1.0 release candidate removes the ones left ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
+Sverify is a working prototype of a pipeline tool: it proves contracts and runs the checked plan. Production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is deprecated for one release, with a `DeprecationWarning` that says what replaces it ([the changelog](https://github.com/AlexanderNenninger/substrait-lean/blob/main/CHANGELOG.md) lists each move), and the 1.0 release candidate removes the ones left ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
 ## Nightly builds
 
@@ -368,7 +368,7 @@ Refused for now: correlated scalar subqueries, unbound parameters
 `sample`, `random()` and `now()`, among the operations
 [the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
 marks ✗. The repository has
-[a how-to page](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), [getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md),
+[a how-to page](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), [getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html),
 the Ibis coverage table in its README, and
 [what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 

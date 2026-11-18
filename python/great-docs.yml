@@ -12,7 +12,9 @@ display_name: "sverify"
 # The logo is a check mark, what the checker proves. Great Docs shows it in
 # the navbar and derives the favicon from it (it only writes a favicon when a
 # logo exists).
-logo: assets/logo.svg
+logo:
+  light: assets/logo.svg
+  show_title: true
 
 # Quarto already titles pages "<page> – sverify"; the default template would
 # append the site name again ("sverify | sverify" on the home page).

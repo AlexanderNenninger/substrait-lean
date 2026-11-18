@@ -123,14 +123,14 @@ def no_python_reads(monkeypatch):
     monkeypatch.setattr(Scan, "to_arrow", fail)
 
 
-def follow(make_source, steps, monkeypatch, view=lambda t: t.filter(t.x > 0.0)):
+def follow(make_source, steps, monkeypatch, view=lambda t: t.filter(t.x > 0.0), engine="duckdb"):
     """Run `view` over the source natively and on the Arrow path, through
     each of `steps` (functions changing the table, each followed by a
     refresh), and compare the views after each. The native pipeline never
     reads the table into Python."""
     pipes = []
     for src in (make_source(), ArrowOnly(make_source())):
-        pipe = Pipeline(sv.connect())
+        pipe = Pipeline(sv.connect(engine))
         v = pipe.view("v", view(pipe.source("t", src)))
         pipes.append((pipe, v))
     (native_pipe, native_view), (arrow_pipe, arrow_view) = pipes
@@ -250,11 +250,25 @@ def test_delta_partitions_of_other_types_fall_back_to_arrow(tmp_path):
     assert DeltaSource(str(tmp_path / "p"))._native() is None
 
 
-def test_other_engines_get_arrow(tmp_path):
+def test_polars_gets_a_scan_too(tmp_path):
     write_deltalake(tmp_path / "t", pa.table({"id": [1]}))
     pipe = Pipeline(sv.connect("polars"))
     pipe.source("t", DeltaSource(str(tmp_path / "t")))
-    assert isinstance(pipe.con.get("t"), pa.Table)
+    assert isinstance(pipe.con.get("t"), Scan)
+
+
+@pytest.mark.backend("polars")
+def test_polars_refreshes_match_the_arrow_path(tmp_path, monkeypatch):
+    path = tmp_path / "t"
+    write_deltalake(path, flat(range(0, 20)), configuration=CDF)
+
+    def append():
+        write_deltalake(path, flat(range(20, 30), x=2.5), mode="append")
+
+    def delete():
+        DeltaTable(str(path)).delete("id % 5 = 1")
+
+    follow(lambda: DeltaSource(str(path)), [append, delete], monkeypatch, engine="polars")
 
 
 def test_delta_refreshes_match_the_arrow_path(tmp_path, monkeypatch):

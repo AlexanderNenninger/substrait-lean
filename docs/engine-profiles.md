@@ -671,9 +671,11 @@ the engine:
   agree with `core/Sverify/Core/Time.lean` (ISO weeks, `dow` from Sunday,
   milliseconds within the minute), and the SQL raises where the reference's
   calendar truncation fails;
-* below a `FETCH`, a window or a sort, an ordinal column carries Lean's list
-  order, so `LIMIT` and ties in sorts and windows pick Lean's rows, and a
-  sorted result comes out in Lean's order.
+* where the observation's `rows` is `"sequence"`, an ordinal column carries
+  Lean's list order below a `FETCH`, a window or a sort, so `LIMIT` and ties
+  pick Lean's rows and a sorted result comes out in Lean's order. Under the
+  default `rows="multiset"` ties are open as `Rel.Allowed` leaves them: the
+  sort's keys order the rows, and only a plan's last sort orders its result.
 
 Engine differences go through the hooks of a `Dialect`
 (`sverify/sql/core/_base.py`). DuckDB's is `sverify_duckdb/dialect.py`.
