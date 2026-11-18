@@ -3087,32 +3087,32 @@ private def avgPlan (cnt : Measure) (px s p : Nat) : Rel :=
     [.un (.dkind p (s + 4)) (.bin .ddiv (upscale 4 (.field 0)) (.field 1))]
 
 -- A written grouped `AVG` (`decimalAvgs`): `p ≥ p_x + 4`, also through `emit`.
-#guard (avgPlan { avgSum 20 2 with fn := .count } 20 2 24).divsOk (decTable 20 2)
-#guard (avgPlan { avgSum 20 2 with fn := .count } 20 2 25).divsOk (decTable 20 2)
-#guard (Rel.emit (avgPlan { avgSum 20 2 with fn := .count } 20 2 24) [2]).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; (avgPlan { avgSum 20 2 with fn := .count } 20 2 24).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; (avgPlan { avgSum 20 2 with fn := .count } 20 2 25).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; (Rel.emit (avgPlan { avgSum 20 2 with fn := .count } 20 2 24) [2]).divsOk (decTable 20 2)
 -- The count of the argument before its cast, as a plan's text has it.
-#guard (avgPlan { fn := .count, arg := .field 0 } 20 2 24).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; (avgPlan { fn := .count, arg := .field 0 } 20 2 24).divsOk (decTable 20 2)
 -- Too narrow: `p_x = 36` over a `DECIMAL(38, s + 4)`, and `p_x + 3`.
-#guard !(avgPlan { avgSum 36 2 with fn := .count } 36 2 38).divsOk (decTable 36 2)
-#guard !(avgPlan { avgSum 20 2 with fn := .count } 20 2 23).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 36 2 with fn := .count } 36 2 38).divsOk (decTable 36 2)
+#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 20 2 with fn := .count } 20 2 23).divsOk (decTable 20 2)
 -- The count of other values, other `DISTINCT` or another `FILTER`.
-#guard !(avgPlan { fn := .count, arg := .lit (.int 1) } 20 2 24).divsOk (decTable 20 2)
-#guard !(avgPlan { avgSum 20 2 with fn := .count, distinct := true } 20 2 24).divsOk (decTable 20 2)
-#guard !(avgPlan { avgSum 20 2 with fn := .count, filter := some (.lit (.bool true)) } 20 2 24).divsOk
+#guard letI := Boxes.Ambient.none; !(avgPlan { fn := .count, arg := .lit (.int 1) } 20 2 24).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 20 2 with fn := .count, distinct := true } 20 2 24).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 20 2 with fn := .count, filter := some (.lit (.bool true)) } 20 2 24).divsOk
   (decTable 20 2)
 -- A hand-written quotient: the kinds branch. `DECIMAL(10, 0)` over `1` to
 -- `DECIMAL(5, 2)` does not fit; to `DECIMAL(12, 2)` it does.
-#guard !(Rel.project (.read "t") [.un (.dkind 5 2) (.bin .ddiv (upscale 2 (.field 0)) (.lit (.int 1)))]).divsOk
+#guard letI := Boxes.Ambient.none; !(Rel.project (.read "t") [.un (.dkind 5 2) (.bin .ddiv (upscale 2 (.field 0)) (.lit (.int 1)))]).divsOk
   (decTable 10 0)
-#guard (Rel.project (.read "t") [.un (.dkind 12 2) (.bin .ddiv (upscale 2 (.field 0)) (.lit (.int 1)))]).divsOk
+#guard letI := Boxes.Ambient.none; (Rel.project (.read "t") [.un (.dkind 12 2) (.bin .ddiv (upscale 2 (.field 0)) (.lit (.int 1)))]).divsOk
   (decTable 10 0)
 -- A windowed `AVG`: `SUM` and `COUNT` over one frame; another frame is not it.
 private def avgWindow (fr : Frame) : Rel :=
   .project (.window (.read "t") [] [] [.agg (avgSum 20 2) [] Frame.all,
       .agg { avgSum 20 2 with fn := .count } [] fr])
     [.un (.dkind 24 6) (.bin .ddiv (upscale 4 (.field 1)) (.field 2))]
-#guard (avgWindow Frame.all).divsOk (decTable 20 2)
-#guard !(avgWindow { Frame.all with range := true }).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; (avgWindow Frame.all).divsOk (decTable 20 2)
+#guard letI := Boxes.Ambient.none; !(avgWindow { Frame.all with range := true }).divsOk (decTable 20 2)
 
 def parsePlan (s : String) : J Plan := do
   let j ← Json.parse s
