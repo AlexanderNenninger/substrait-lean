@@ -205,3 +205,43 @@ def test_a_try_cast_to_a_number_proves_nothing_more():
     tried = sv.verify("SELECT TRY_CAST(s AS DOUBLE) AS x FROM t", tables=schemas,
                       ensures=["x IS NOT NULL"], counterexamples=0)  # fmt: skip
     assert not any(c.proved for c in tried.ensures), tried
+
+
+#: `CAST(round(x) AS BIGINT)` at the points where DuckDB's half-to-even cast
+#: and the model's truncation could part (#1655, Fable's ruling on #1608 item
+#: 9): halves, the zeros, and values DuckDB raises on.
+ROUNDED_FINITE = [0.5, 1.5, 2.5, -0.5, -1.5, -0.0, 0.4, -0.4, 1e15 + 0.5]
+ROUNDED_RAISING = [float("nan"), float("inf"), float("-inf"), 2.0**63]
+
+
+@pytest.mark.parametrize("fn", ["round", "floor", "ceil"])
+@pytest.mark.parametrize("x", ROUNDED_FINITE)
+def test_a_cast_of_a_rounded_double_lifts_as_duckdb_computes_it(fn, x):
+    """The argument is integral, so DuckDB's cast has no tie to break:
+    oracles A and C agree at the halves and at `-0.0`."""
+    result = check(f"SELECT CAST({fn}(x) AS BIGINT) AS b FROM t", {"t": pa.table({"x": [x]})})
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize("fn", ["round", "floor", "ceil"])
+def test_a_cast_of_a_rounded_double_raises_where_duckdb_does(fn):
+    """NaN, `±∞` and `2⁶³` fail in DuckDB's cast. The lifted plan's cast may
+    raise too: verify names it until bounds on `x` rule the failure out."""
+    import sverify as sv
+
+    query = f"SELECT CAST({fn}(x) AS BIGINT) AS b FROM t"
+    for x in ROUNDED_RAISING:
+        assert check(query, {"t": pa.table({"x": [x]})}).stage == "duckdb", x
+    tables = {"t": ibis.schema({"x": "!float64"})}
+    loose = sv.verify(query, tables=tables, semantics="duckdb", counterexamples=0)
+    assert [e.kind for e in loose.errors] == ["cast out of range"], loose
+    bounded = sv.verify(query, tables=tables, semantics="duckdb",
+                        requires=["x > -1e9 AND x < 1e9"], counterexamples=0)  # fmt: skip
+    assert bounded.verdict == "proved", bounded
+
+
+def test_a_bare_double_cast_stays_refused():
+    """The bare `CAST(x AS BIGINT)` needs DuckDB's half-to-even cast, which the
+    model does not state yet; the refusal names the casts that lift (#1655)."""
+    with pytest.raises(Refused, match=r"round\(x\), floor\(x\) or ceil\(x\)"):
+        lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, "duckdb")
