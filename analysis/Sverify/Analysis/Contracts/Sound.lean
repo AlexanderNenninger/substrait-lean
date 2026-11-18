@@ -398,8 +398,16 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   case concat sep =>
     cases m.inputs (List.mergeSort grp (sortLe m.sort)) <;> simp [AggFn.apply, AVal.Mem]
   case count =>
-    refine ⟨_, rfl, ⟨fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩, rfl⟩
-    simp only [Bound.ge, Option.some.injEq] at hl
+    refine ⟨_, rfl, ⟨fun l hl => ?_, fun u hu => ?_⟩, rfl⟩
+    case refine_2 =>
+      cases rows with
+      | none => simp at hu
+      | some n =>
+        simp only [Option.map_some, Option.some.injEq] at hu
+        subst hu
+        rw [NumKind.norm_int]
+        exact Int.ofNat_le.mpr (Nat.le_trans (Measure.inputs_length_le m grp) (hrows n rfl))
+    simp only [Option.some.injEq] at hl
     subst hl
     rw [NumKind.norm_int]
     split
@@ -634,18 +642,17 @@ theorem intSum_bounds {b : Bound} :
       have := hi.2 h hh; have := ih.2 h hh
       rw [Int.natCast_add, Int.add_mul]; omega
 
-/-- The `ratio` facts hold on a group's row. -/
-theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
-    {grp : Relation} {k : Row} (hk : k.length = g)
+/-- The `ratio` facts hold on any row whose measures that do not sort hold
+their values over `grp`. -/
+theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
+    {grp : Relation} {row : Row}
+    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn.classPick = false →
+      row.getD (g + i) .null = m.eval grp)
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
-    FactsHold (ratioFacts g env fs ms) (k ++ ms.map (·.eval grp)) := by
+    FactsHold (ratioFacts g env fs ms) row := by
   intro f hf
   simp only [ratioFacts, List.mem_flatMap, List.mem_range] at hf
   obtain ⟨i, _, j, _, hf⟩ := hf
-  have col : ∀ i (m : Measure), ms[i]? = some m →
-      (k ++ ms.map (·.eval grp)).getD (g + i) .null = m.eval grp := fun i m h => by
-    rw [← hk, getD_append_right']
-    simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]
   split at hf
   · rename_i mi mj hmi hmj
     split at hf
@@ -655,8 +662,10 @@ theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List
       · rename_i b hb
         simp only [List.mem_singleton] at hf; subst hf
         intro x n hx hn
-        rw [col i mi hmi, Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
-        rw [col j mj hmj, Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
+        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; rfl),
+          Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
+        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; rfl),
+          Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
         have hsame : mj.inputs grp = mi.inputs grp := by
           simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
         rw [hsame] at hn
@@ -681,6 +690,15 @@ theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List
       · simp at hf
     · simp at hf
   · simp at hf
+
+/-- The `ratio` facts hold on a group's row. -/
+theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
+    {grp : Relation} {k : Row} (hk : k.length = g)
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
+    FactsHold (ratioFacts g env fs ms) (k ++ ms.map (·.eval grp)) :=
+  ratioFacts_sound_of (fun i m h _ _ => by
+    rw [← hk, getD_append_right']
+    simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]) hall
 
 theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) (grouped : Bool := false)
@@ -923,55 +941,6 @@ theorem Rel.ratioPart_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | .window _ _ _ _, _, _, _, _ | .semi _ _ _ _, _, _, _, _ | .orderBy _ _, _, _, _, _
   | .distinct _, _, _, _, _ | .unnest _ _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
 end
-
-/-- `ratioFacts_sound` for any row whose measures that do not sort hold their
-values over `grp`. -/
-theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
-    {grp : Relation} {row : Row}
-    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn.classPick = false →
-      row.getD (g + i) .null = m.eval grp)
-    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
-    FactsHold (ratioFacts g env fs ms) row := by
-  intro f hf
-  simp only [ratioFacts, List.mem_flatMap, List.mem_range] at hf
-  obtain ⟨i, _, j, _, hf⟩ := hf
-  split at hf
-  · rename_i mi mj hmi hmj
-    split at hf
-    · rename_i hc
-      obtain ⟨hsum, hcount, harg, hfil, hdis, honly⟩ := hc
-      split at hf
-      · rename_i b hb
-        simp only [List.mem_singleton] at hf; subst hf
-        intro x n hx hn
-        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; rfl),
-          Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
-        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; rfl),
-          Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
-        have hsame : mj.inputs grp = mi.inputs grp := by
-          simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
-        rw [hsame] at hn
-        cases hvs : mi.inputs grp with
-        | nil => rw [hvs] at hx; simp [AggFn.apply] at hx
-        | cons v vs =>
-          rw [hvs] at hx hn
-          simp only [AggFn.apply] at hx hn
-          have hx' := sumOf_unscaled hx
-          simp only [Value.unscaled?, Option.some.injEq] at hn
-          subst hx' hn
-          have hint : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i := by
-            intro w hw
-            have hw' : w ∈ mi.inputs grp := hvs ▸ hw
-            obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hw'
-            have hm := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) mi.arg
-            obtain ⟨i, b', he, hb', hi⟩ := AVal.unscaledOnly_mem honly hm hnn
-            rw [hb] at hb'; cases hb'
-            exact ⟨i, he, hi⟩
-          obtain ⟨hlo, hhi⟩ := intSum_bounds hint
-          exact ⟨by simp, hlo, hhi⟩
-      · simp at hf
-    · simp at hf
-  · simp at hf
 
 theorem EnvMem.measures_all {env : List AVal} {fs : List Fact} {grp : Relation}
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) {ms : List Measure} {vs : List Value}
