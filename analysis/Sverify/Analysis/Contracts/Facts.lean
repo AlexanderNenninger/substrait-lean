@@ -270,6 +270,18 @@ def orNullFacts (fs : List Fact) : Expr → List Fact
   | .un .isNull (.field i) => fs.filter (·.mentions i)
   | _ => []
 
+/-- `x IS NULL`-or-`x <> c` written on the whole comparison, as the guard
+`p IS NOT FALSE` of an `AND` (`Expr.notFalse`, D50): `x` is NULL, or not `c`.
+A fact constrains only non-NULL numbers, so it is the guard's whole content. -/
+def nullNeFacts : Expr → Expr → List Fact
+  | .un .isNull (.un .not (.bin .eq (.field i) (.lit w))), .un .not (.bin .eq (.field j) (.lit w')) =>
+    if i = j ∧ w = w' then
+      (match w.numOf? with
+        | some (k, c) => [.ne i k c]
+        | none => [])
+    else []
+  | _, _ => []
+
 /-- `t < a OR b < t` with `a ≤ b` numbers of one kind: `t` is not in
 `[a, b]`, so not `0` when `0` is in it, and not `a`. -/
 def orGapFacts : Expr → Expr → List Fact
@@ -308,7 +320,7 @@ def Expr.factsCore : Expr → List Fact
       let fp := p.factsCore
       let fq := q.factsCore
       fp.filter (fq.contains ·) ++ orNullFacts fp q ++ orNullFacts fq p ++
-        orGapFacts p q ++ orGapFacts q p
+        orGapFacts p q ++ orGapFacts q p ++ nullNeFacts p q
   | _ => []
 termination_by e => sizeOf e
 
@@ -462,6 +474,29 @@ theorem orGapFacts_sound {p q : Expr} {row : Row}
     · simp at hf
   · simp at hf
 
+theorem nullNeFacts_sound {p q : Expr} {row : Row}
+    (hpq : (p.eval row).isTrue = true ∨ (q.eval row).isTrue = true) :
+    FactsHold (nullNeFacts p q) row := by
+  unfold nullNeFacts
+  split
+  · rename_i i w j w'
+    split
+    · rename_i hij
+      obtain ⟨rfl, rfl⟩ := hij
+      cases hnum : w.numOf? with
+      | none => intro f hf; simp at hf
+      | some kc =>
+        obtain ⟨k, c⟩ := kc
+        intro f hf
+        simp only [List.mem_singleton] at hf; subst hf
+        intro x hx heq
+        have hw := Value.numOf?_some hnum
+        have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
+          rw [hx, hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
+        simp [eval, hn, UnFn.apply, Value.isTrue] at hpq
+    · intro f hf; simp at hf
+  · intro f hf; simp at hf
+
 theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
     FactsHold e.factsCore row := by
   fun_induction Expr.factsCore e
@@ -521,7 +556,7 @@ theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = 
       simpa [eval, BinFn.apply, isTrue_or3] using ht
     intro f hf
     simp only [List.mem_append, List.mem_filter] at hf
-    rcases hf with (((⟨hfp, hfq⟩ | hf) | hf) | hf) | hf
+    rcases hf with ((((⟨hfp, hfq⟩ | hf) | hf) | hf) | hf) | hf
     · rcases hpq with hp | hq
       · exact ihp hp f hfp
       · exact ihq hq f (List.contains_iff_mem.mp hfq)
@@ -529,6 +564,7 @@ theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = 
     · exact orNullFacts_sound ihq hpq.symm hf
     · exact orGapFacts_sound hpq hf
     · exact orGapFacts_sound hpq.symm hf
+    · exact nullNeFacts_sound hpq hf
   case case10 => intro f hf; simp at hf
 
 /-- The conjuncts of a condition. -/
