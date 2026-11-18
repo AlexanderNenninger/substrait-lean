@@ -77,7 +77,7 @@ def _footer(path: str, connect: bool) -> pa.Schema:
         raise Unsupported(f"{path}: {where}so its columns cannot be read ({e})") from e
 
 
-def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
+def spark_scan(spark: Any, scan: Scan) -> DataFrame:
     """The scan's rows as a DataFrame of `spark_type` columns. A scan with a
     `where` is refused: a source's `where` is DuckDB SQL, not Spark's."""
     from pyspark.sql import functions as F
