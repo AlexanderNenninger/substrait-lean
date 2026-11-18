@@ -166,6 +166,13 @@ def test_report_names_what_a_condition_depends_on() -> None:
     assert report.verdict == sv.Verdict.UNPROVED
     assert "depends on floats, which the observation ignores" in report.details()
     assert "observes: equivalent(" in report.details()
+    # `str(report)` lists a postcondition that is proved but depends on what the
+    # observation ignores under "Not proved", with the same reason.
+    lines = str(report).splitlines()
+    start = lines.index("Not proved:")
+    shown = [line for line in lines[start + 1 :] if line.startswith("  ")]
+    assert any("avg ≤ 100" in line and "depends on floats" in line for line in shown), lines
+    assert "  avg ≤ 100" not in lines[:start]
 
 
 def test_the_checker_names_what_a_condition_depends_on() -> None:

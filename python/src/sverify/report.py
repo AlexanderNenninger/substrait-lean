@@ -1661,8 +1661,6 @@ class Report:
         )
 
     def __str__(self) -> str:
-        from sverify._user_text import plain
-
         lines = [self._summary]
         if self._proved and self._generated_proofs is False:
             lines[0] += UNCHECKED_CHECKER
@@ -1671,24 +1669,7 @@ class Report:
             lines += ["The output guarantees:", *[f"  {g}" for g in c["guarantees"]]]
         if c["checks"]:
             lines += ["Each run checks on the data:", *[f"  {k}" for k in c["checks"]]]
-        bad: list[str] = []
-        for cond in self.ensures:
-            if cond.proved or cond.checked:
-                continue
-            bad.append(f"{plain(cond.label)}: {cond.message.removeprefix('NOT proved: ')}")
-            if cond.counterexample is not None:
-                bad.append(f"  counterexample: {cond.counterexample}")
-            if cond.suggested:
-                bad.append(f"  {_would_hold(cond)}")
-        bad += self._needs_lines()
-        for i in self.errors:
-            bad.append(f"may fail: {i.message}")
-            if i.hint:
-                bad.append(f"  hint: {i.hint}")
-        if self._transfer:
-            bad.append(f"Substrait allows more at {len(self._transfer)} option(s)")
-        if self.floats_unmet:
-            bad.append(f"doubles: {self.floats_unmet}")
+        bad = [x for head, more in self._not_proved() for x in (head, *[f"  {m}" for m in more])]
         if bad:
             lines += ["Not proved:", *[f"  {b}" for b in bad]]
         notes = [*self._all_hints(), *self.notes]
@@ -1731,22 +1712,37 @@ class Report:
             ]
         checks += [f"output: {plain(c.label)}" for c in self.ensures if c.checked]
         checks += [f"while it runs: {i.assumption}" for i in self.assumed]
-        not_proved = [
-            f"{plain(c.label)}: not proved, {c.why}"
-            for c in self.ensures
-            if not c.portable and not c.checked
-        ]
-        for n in self.needs:
-            why = f"or {n.issue.kind} in {n.issue.what}" if n.issue is not None else "inferred"
-            not_proved.append(
-                f"{self._table_params.get(n.table, n.table)} needs {plain(n.label)} ({why})"
-            )
-        not_proved += [f"may fail: {i.message}" for i in self.errors]
-        if self._transfer:
-            not_proved.append(f"Substrait allows more at {len(self._transfer)} option(s)")
-        if self.floats_unmet:
-            not_proved.append(f"doubles: {self.floats_unmet}")
+        not_proved = [head for head, _ in self._not_proved()]
         return {"guarantees": guarantees, "checks": checks, "not_proved": not_proved}
+
+    def _not_proved(self) -> list[tuple[str, list[str]]]:
+        """What is not proved, each as one line and the lines that go with it:
+        a postcondition that is not proved, or that depends on what the
+        observation ignores (with its counterexample and suggestion), the
+        preconditions it needs, the runtime errors it may raise (with their
+        hints), Substrait's options and the observation's doubles."""
+        from sverify._user_text import plain
+
+        out: list[tuple[str, list[str]]] = []
+        for c in self.ensures:
+            if c.checked or c.portable:
+                continue
+            more = []
+            if c.counterexample is not None:
+                more.append(f"counterexample: {c.counterexample}")
+            if c.suggested:
+                more.append(_would_hold(c))
+            why = c.why if not c.proved else _observation.why(c.ignores)
+            out.append((f"{plain(c.label)}: {why}", more))
+        out += [(n, []) for n in self._needs_lines()]
+        out += [
+            (f"may fail: {i.message}", [f"hint: {i.hint}"] if i.hint else []) for i in self.errors
+        ]
+        if self._transfer:
+            out.append((f"Substrait allows more at {len(self._transfer)} option(s)", []))
+        if self.floats_unmet:
+            out.append((f"doubles: {self.floats_unmet}", []))
+        return out
 
     def details(self) -> str:
         """The full text of the report: the preconditions and `needs`, each
