@@ -93,7 +93,8 @@ def _store_scheme(uri: str) -> str:
 def readable_here(options: dict[str, str]) -> bool:
     """Whether DuckDB can read an S3 table opened with `options`: `httpfs` loads,
     and the default credential chain (no explicit key) has the `aws` extension.
-    Sverify installs nothing."""
+    Sverify installs nothing. The answer is cached for the process: an extension
+    installed later in the same process is seen at the next start."""
     return _loadable("httpfs") and ("AWS_ACCESS_KEY_ID" in options or _loadable("aws"))
 
 
