@@ -533,7 +533,9 @@ def _ascii_condition(col: str, classes: bool = False) -> Inferred:
     plain = ascii_text(dialect(), sql, classes)
     ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
     bad = r"[^\x00-\x7f]|\x0b" if classes else r"[^\x00-\x7f]"
-    return Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+    out = Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+    out.ascii = "plain" if classes else "ascii"
+    return out
 
 
 def _suggested(
@@ -560,7 +562,9 @@ def _render_needs(
             continue
         col = list(schema)[n["col"]]
         have = out.setdefault(n["table"], [])
-        if n.get("not_null"):
+        if "ascii" in n:
+            new = [_ascii_condition(col, n["ascii"] == "plain")]
+        elif n.get("not_null"):
             new = [_not_null_condition(col)] if schema[col].nullable else []
         elif "ne" in n:
             c = _ne_condition(col, schema[col], int(n["ne"]))
@@ -1543,6 +1547,14 @@ def _verify_once(
         "references": foreign_keys,
         "max_rows": caps,
         "rows_per": per_key,
+        "ascii": {
+            t: {
+                str(list(names(t)).index(c.column)): c.ascii
+                for c in cs
+                if isinstance(c, Inferred) and c.ascii and c.column and c.column in names(t)
+            }
+            for t, cs in requires.items()
+        },
     }
 
     if observed is not None:
