@@ -195,3 +195,32 @@ def test_a_partitioned_delta_table_reads_natively_on_polars(tmp_path):
     assert isinstance(scan, Scan) and scan.partitions is not None
     assert isinstance(_table(pipe.con, "p"), pl.LazyFrame)
     assert bag(lazy_scan(scan).collect().to_arrow()) == bag(scan.to_arrow())
+
+
+def test_partition_values_with_awkward_characters_reach_their_rows(tmp_path):
+    """Delta percent-encodes `k=a%20b/` directories; the values are keyed by the
+    descriptor's own file string, so no spelling of a path decides a row's value."""
+    from sverify.io.delta import DeltaSource
+
+    ks = ["a b", "50%", "x=y", "p/q", "é"]
+    t = pa.table({"id": list(range(len(ks))), "k": ks})
+    write_deltalake(tmp_path / "p", t, partition_by=["k"])
+    scan = DeltaSource(str(tmp_path / "p"))._native().scan
+    assert scan.partitions is not None
+    got = lazy_scan(scan).collect().to_arrow()
+    assert sorted(zip(got["id"].to_pylist(), got["k"].to_pylist(), strict=True)) == list(
+        enumerate(ks)
+    )
+
+
+def test_a_file_without_partition_values_raises(tmp_path):
+    from dataclasses import replace
+
+    from sverify.io.delta import DeltaSource
+
+    write_deltalake(tmp_path / "p", pa.table({"id": [1, 2], "k": ["a", "b"]}), partition_by=["k"])
+    scan = DeltaSource(str(tmp_path / "p"))._native().scan
+    assert scan.partitions is not None
+    short = replace(scan, partitions=scan.partitions.slice(1))
+    with pytest.raises(ValueError, match="no partition values for"):
+        lazy_scan(short)

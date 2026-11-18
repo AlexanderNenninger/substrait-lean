@@ -13,7 +13,7 @@ does not widen to the schema's (`sverify._scan.widens`) raises.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 import pyarrow as pa
@@ -48,28 +48,32 @@ def lazy_scan(scan: Scan) -> pl.LazyFrame:
         ):
             deleted.setdefault(f, []).append(p)
     pieces = []
-    for names, files in _runs(scan, deleted):
-        if files[0] in deleted:
-            pieces.append(_read(files, names, scan, dtypes, deleted[files[0]]))
-        else:
-            pieces.append(_read(files, names, scan, dtypes))
+    values = _partition_values(scan)
+    for names, files in _runs(scan, deleted, values):
+        here = dict(zip(_constant(scan), values.get(files[0], ()), strict=False))
+        pieces.append(_read(files, names, scan, dtypes, here, deleted.get(files[0])))
     lf = pl.concat(pieces, how="vertical")
     for e in scan.equality:
         lf = _equality(lf, e, dtypes)
     return lf.drop(_FILE)
 
 
-def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str], list[str]]]:
+def _runs(
+    scan: Scan, deleted: dict[str, list[int]], values: dict[str, tuple[Any, ...]]
+) -> list[tuple[dict[str, str], list[str]]]:
     """The files in the descriptor's order, in runs that one scan reads: files
-    named alike (`{physical name: logical name}`, by field id for Iceberg),
-    none with deleted positions, which are scanned alone."""
+    named alike (`{physical name: logical name}`, by field id for Iceberg) and
+    partitioned alike, none with deleted positions, which are scanned alone."""
     out: list[tuple[dict[str, str], list[str]]] = []
+    keys: list[tuple[Any, ...]] = []
     for f in scan.files:
         names = _renaming(f, scan)
-        if out and out[-1][0] == names and f not in deleted and out[-1][1][0] not in deleted:
+        key = (names, values.get(f))
+        if out and keys[-1] == key and f not in deleted and out[-1][1][0] not in deleted:
             out[-1][1].append(f)
         else:
             out.append((names, [f]))
+            keys.append(key)
     return out
 
 
@@ -101,9 +105,26 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
     return out
 
 
-def _constant(scan: Scan) -> set[str]:
+def _constant(scan: Scan) -> list[str]:
     """The partition columns: their values are the log's, one per file."""
-    return set() if scan.partitions is None else set(scan.partitions.column_names) - {"file"}
+    if scan.partitions is None:
+        return []
+    return [c for c in scan.partitions.column_names if c != "file"]
+
+
+def _partition_values(scan: Scan) -> dict[str, tuple[Any, ...]]:
+    """Each file's partition values, in the order of `_constant`, keyed by the
+    descriptor's own file string. A file the descriptor has no values for
+    raises: its partition columns would be NULL."""
+    if scan.partitions is None:
+        return {}
+    cols = [scan.partitions.column(c).to_pylist() for c in _constant(scan)]
+    out = dict(
+        zip(scan.partitions.column("file").to_pylist(), zip(*cols, strict=True), strict=True)
+    )
+    if missing := [f for f in scan.files if f not in out]:
+        raise ValueError(f"{scan.origin}: no partition values for {missing[0]}")
+    return out
 
 
 def _same_family(have: pa.DataType, want: pa.DataType) -> bool:
@@ -123,6 +144,7 @@ def _read(
     names: dict[str, str],
     scan: Scan,
     dtypes: pl.Schema,
+    constants: dict[str, Any],
     positions: list[int] | None = None,
 ) -> pl.LazyFrame:
     lf = pl.scan_parquet(
@@ -131,15 +153,18 @@ def _read(
     if positions is not None:
         lf = lf.filter(~pl.col(_POS).is_in(positions)).drop(_POS)
     lf = lf.select(_FILE, *names).rename(names)
-    constant = _constant(scan)
-    if constant:
-        assert scan.partitions is not None
-        parts = pl.from_arrow(scan.partitions).lazy().rename({"file": _FILE})  # type: ignore[union-attr]
-        lf = lf.join(parts, on=_FILE, how="left", maintain_order="left")
+    # The partition values are literals keyed by the descriptor's own file string:
+    # no match between it and the path Polars reports can fail silently.
     return lf.select(
         pl.col(_FILE),
         *(
-            (pl.col(c) if c in names.values() or c in constant else pl.lit(None))
+            (
+                pl.lit(constants[c])
+                if c in constants
+                else pl.col(c)
+                if c in names.values()
+                else pl.lit(None)
+            )
             .cast(dtypes[c])
             .alias(c)
             for c in scan.schema.names
