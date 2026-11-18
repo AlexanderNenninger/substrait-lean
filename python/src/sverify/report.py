@@ -14,7 +14,7 @@ import json
 import math
 import re
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -29,7 +29,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
-from sverify._run_schema import declared_columns, int_name, int_range
+from sverify._run_schema import declared_columns, int_range, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
@@ -497,6 +497,11 @@ class Report:
     checks each at run time, on the data, and raises where one fails. The
     proof holds under these assumptions (`Rel.noIssue_of_assumedHold`). With
     `on_inferred="off"` they are errors instead."""
+    _table_params: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    """For an input table the proof names (a base table, or the placeholder of a
+    contracted upstream result), the transform's parameter it is bound to: the
+    text says `requires orders`, the name in the transform's own `requires`, not
+    the upstream node that feeds it (#1485)."""
     _params: list[str] = field(default_factory=list, repr=False)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -848,10 +853,11 @@ class Report:
     def check_inputs(
         self, con: Connection, engine: str | None = None, *, assumed_checked: bool = False
     ) -> None:
-        """Check the preconditions (`requires`, the inferred bounds among
-        them) and the `SUM`s assumed to fit (`assumed`) on the tables of
-        `con`, before anything runs: a batch that breaks one is refused
-        with the precondition as the message.
+        """Check the tables of `con` against the schema the plan was verified
+        for (`_check_schema`), the preconditions (`requires`, the inferred
+        bounds among them) and the `SUM`s assumed to fit (`assumed`), before
+        anything runs: a batch that breaks one is refused before the run, with
+        the schema difference or the precondition as the message.
 
         With an `engine`, each table's conditions run there, as one plan the
         checker wrote (`condition_query`): a result that is not TRUE, or a
@@ -900,43 +906,9 @@ class Report:
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
         """Refuse a table that differs from the schema the plan was verified
-        for (`sverify._run_schema`): a missing column, a type the reader would
-        change, a NULL in a column read as non-null, an integer outside the
-        declared type's range (D46; the engine counts it)."""
-        if self.internal_plan is None:
-            return
-        for t, schemas in declared_columns(json.loads(self.internal_plan)).items():
-            if not con.has(t):
-                continue
-            z = con.get(t)
-            data = z if isinstance(z, pa.Table) else None
-            wide: set[tuple[str, str]] = set()
-            for declared in schemas:
-                found, more = schema_problems(declared, con.schema(t), data)
-                if found:
-                    raise PreconditionError(
-                        f"table {t} differs from the schema the plan was verified for: "
-                        + "; ".join(found)
-                        + ": refused before the run. Declare the column as it is, or fix the source"
-                    )
-                wide.update(more)
-            table = con.table(t)
-            for col, key in sorted(wide):
-                lo, hi = int_range(key)
-                x: Any = ibis._[col]
-                cond = x.isnull() | ((x >= lo) & (x <= hi))
-                [(_c, n, error)] = violation_counts(table, [cond], engine)
-                if n or error:
-                    raise PreconditionError(
-                        f"column {col!r} of {t} is declared {int_name(key)} ({lo} to {hi}) and "
-                        + (
-                            f"its range check raised: {error}"
-                            if error
-                            else f"{n} value(s) lie outside it, e.g. {_example(table, cond, col)}"
-                        )
-                        + ": refused before the run. Declare the wider type, or cast in the query",
-                        source=t,
-                    )
+        for (`refuse_schema`)."""
+        if self.internal_plan is not None:
+            refuse_schema(json.loads(self.internal_plan), con, engine)
 
     def _unchecked_requires(self) -> list[str]:
         """The preconditions in `requires` that `_conditions` holds no check
@@ -1133,8 +1105,8 @@ class Report:
                 )
             self.check_inputs(con, target, assumed_checked=assumed_checked)
         else:
-            # The schema is what the proof is about, not a precondition: it is
-            # checked whatever `check_requires` says.
+            # The proof is about this schema, so it is checked whatever
+            # `check_requires` says.
             self._check_schema(con, target)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
@@ -1214,6 +1186,10 @@ class Report:
                 an input the check reads is not pinned to one version.
         """
 
+        from sverify import profiles
+        from sverify.sql import parse_plan
+        from sverify.sql.core import open_choices
+
         total = 0
         for chk in self._margin_checks:
             on = (chk.get("engines") or {}).get(target)
@@ -1230,12 +1206,41 @@ class Report:
                 if deterministic:
                     raise PreconditionError(msg)
                 warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            plan = written_plan(json.dumps(chk["plan"]))
+            # Where the runner leaves ties and a LIMIT's rows open (`ProfilePlugin.rows`),
+            # the check and the run each pick their own: its count says nothing
+            # about the run's sums. The ordinal of `rows="sequence"` makes them one.
+            runner = profiles.find(target)
+            if (
+                runner is not None
+                and runner.rows == "multiset"
+                and not self.deterministic
+                and (open_ := open_choices(parse_plan(json.loads(plan)).root))
+            ):
+                what = " and ".join(sorted(set(open_)))
+                if self._on_inferred != "warn":
+                    raise PreconditionError(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open (ties, or the rows of a LIMIT): the check's count may "
+                        "miss groups the run sums differently; pin the rows with `reproducible=`, "
+                        "order by a key that makes the order total, or run with "
+                        '`on_inferred="warn"`'
+                    )
+                warnings.warn(
+                    InferredWarning(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open: the check's count may miss groups the run sums "
+                        "differently",
+                        self,
+                    ),
+                    stacklevel=3,
+                )
             # Without the overflow checks of #575: the margin is at most `A`, and
             # a `v − t` past the largest double is farther than any bound.
-            # Its windows aggregate whole partitions, so no row order matters.
-            res = run_plan(
-                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
-            )
+            # Its own windows aggregate whole partitions, so no row order matters there;
+            # the relations below the sum can hold open choices (above), and
+            # `tie_free=True` drops their tiebreak on an engine that reads it.
+            res = run_plan(con, plan, engine, finite=False, tie_free=True)
             k = int(res.column(0)[0].as_py() or 0)
             if not k:
                 continue
@@ -1480,6 +1485,7 @@ class Report:
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
+        table = self._table_params.get(table, table)
         issues = [i for lab in labs if (i := self._inferred_from.get(lab)) is not None]
         kinds = " or ".join(dict.fromkeys(i.kind for i in issues))
         where = f", inferred from `{issues[0].what}` ({kinds} otherwise)" if issues else ""
@@ -1659,11 +1665,100 @@ class Report:
         lines = [self._summary]
         if self._proved and self._generated_proofs is False:
             lines[0] += UNCHECKED_CHECKER
+        c = self._plain_contract()
+        if c["guarantees"]:
+            lines += ["The output guarantees:", *[f"  {g}" for g in c["guarantees"]]]
+        if c["checks"]:
+            lines += ["Each run checks on the data:", *[f"  {k}" for k in c["checks"]]]
+        bad = [x for head, more in self._not_proved() for x in (head, *[f"  {m}" for m in more])]
+        if bad:
+            lines += ["Not proved:", *[f"  {b}" for b in bad]]
+        notes = [*self._all_hints(), *self.notes]
+        if notes:
+            lines += ["Notes:", *[f"  {n}" for n in notes]]
+        if self.facts or self.rows is not None:
+            lines.append("Known about the output:")
+            if self.rows is not None:
+                lines.append(f"  rows: at most {self.rows:,}")
+            lines += [f"  {name}: {value}" for name, value in self.facts.items()]
+        return "\n".join(lines)
+
+    def _plain_contract(self, sources: Collection[str] | None = None) -> dict[str, list[str]]:
+        """What the contract means for the data, in words (`sverify.cli.summary`):
+
+        * `guarantees`: what every output row (or the output) meets, proved;
+        * `checks`: what each run checks on the data before it writes (the
+          preconditions on the sources, postconditions checked on the output,
+          sums assumed to fit). With `sources`, only the preconditions on
+          those tables: the others follow from what the transforms feeding
+          them guarantee;
+        * `not_proved`: what is not proved, and the runtime errors it may raise.
+        """
+        from sverify._user_text import plain
+
+        guarantees = [plain(c.label) for c in self.ensures if c.proved and not c.ignores]
+        if self.rows is not None:
+            guarantees.append(f"at most {self.rows:,} rows")
+        checks: list[str] = []
+        needed = _labels_by_table(self.needs)
+        for table, conds in self.requires.items():
+            if sources is not None and table not in sources:
+                continue
+            shown = self._table_params.get(table, table)
+            inferred = {label(c) for c in self._inferred.get(table, [])}
+            checks += [
+                f"{shown}: {plain(c)}" + (self._inferred_note(c) if c in inferred else "")
+                for c in conds
+                if c not in needed.get(table, ())
+            ]
+        checks += [f"output: {plain(c.label)}" for c in self.ensures if c.checked]
+        checks += [f"while it runs: {i.assumption}" for i in self.assumed]
+        not_proved = [head for head, _ in self._not_proved()]
+        return {"guarantees": guarantees, "checks": checks, "not_proved": not_proved}
+
+    def _not_proved(self) -> list[tuple[str, list[str]]]:
+        """What is not proved, each as one line and the lines that go with it:
+        a postcondition that is not proved, or that depends on what the
+        observation ignores (with its counterexample and suggestion), the
+        preconditions it needs, the runtime errors it may raise (with their
+        hints), Substrait's options and the observation's doubles."""
+        from sverify._user_text import plain
+
+        out: list[tuple[str, list[str]]] = []
+        for c in self.ensures:
+            if c.checked or c.portable:
+                continue
+            more = []
+            if c.counterexample is not None:
+                more.append(f"counterexample: {c.counterexample}")
+            if c.suggested:
+                more.append(_would_hold(c))
+            why = c.why if not c.proved else _observation.why(c.ignores)
+            out.append((f"{plain(c.label)}: {why}", more))
+        out += [(n, []) for n in self._needs_lines()]
+        out += [
+            (f"may fail: {i.message}", [f"hint: {i.hint}"] if i.hint else []) for i in self.errors
+        ]
+        if self._transfer:
+            out.append((f"Substrait allows more at {len(self._transfer)} option(s)", []))
+        if self.floats_unmet:
+            out.append((f"doubles: {self.floats_unmet}", []))
+        return out
+
+    def details(self) -> str:
+        """The full text of the report: the preconditions and `needs`, each
+        postcondition with its status, the semantics, the evidence for each engine
+        and the routes, as an auditor reads it. `str(report)` is the contract in
+        plain words."""
+        lines = [self._summary]
+        if self._proved and self._generated_proofs is False:
+            lines[0] += UNCHECKED_CHECKER
         needed = _labels_by_table(self.needs)
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self._inferred.get(table, [])}
             lines += [
-                f"requires {table}: {c}" + (self._inferred_note(c) if c in inferred else "")
+                f"requires {self._table_params.get(table, table)}: {c}"
+                + (self._inferred_note(c) if c in inferred else "")
                 for c in conds
                 if c not in needed.get(table, ())
             ]
@@ -1752,6 +1847,9 @@ class Report:
             ]
         )
 
+
+#: Private fields that never had a public name: no deprecated alias.
+_REPORT_PRIVATE = ["table_params"]
 
 _REPORT_INTERNAL = [
     "windows_total",
@@ -2318,3 +2416,45 @@ def _example(table: ir.Table, cond: Condition, col: str) -> object:
     """One value of column `col` where `cond` is not TRUE, for a message."""
     rows = violating_rows(table, cond, 1)
     return rows.column(col)[0].as_py() if rows is not None and rows.num_rows else "?"
+
+
+def refuse_schema(plan: object, con: Connection, engine: str | None = None) -> None:
+    """Refuse a table of `con` that differs from the schema `plan` was verified
+    for (`sverify._run_schema`): a missing column, a type the reader would
+    change, a NULL in a column read as non-null, an integer outside the
+    declared type's range (D46). An Arrow table's range is one native pass; a
+    table the engine reads where it is has its range counted on `engine`."""
+    for t, schemas in declared_columns(plan).items():
+        if not con.has(t):
+            continue
+        z = con.get(t)
+        data = z if isinstance(z, pa.Table) else None
+        wide: set[tuple[str, str]] = set()
+        for declared in schemas:
+            found, more = schema_problems(declared, con.schema(t), data)
+            if found:
+                raise PreconditionError(
+                    f"table {t} differs from the schema the plan was verified for: "
+                    + "; ".join(found)
+                    + ": refused before the run. Declare the column as it is (a wider "
+                    "integer type for a value outside the width), or fix the source"
+                )
+            wide.update(more)
+        table = con.table(t)
+        for col, key in sorted(wide):
+            lo, hi = int_range(key)
+            x: Any = ibis._[col]
+            cond = x.isnull() | ((x >= lo) & (x <= hi))
+            [(_c, n, error)] = violation_counts(table, [cond], engine)
+            if n or error:
+                raise PreconditionError(
+                    f"table {t} differs from the schema the plan was verified for: "
+                    + (
+                        f"the range check of column {col!r} raised: {error}"
+                        if error
+                        else range_message(col, key, n, _example(table, cond, col))
+                    )
+                    + ": refused before the run. Declare a wider integer type, or cast in "
+                    "the query",
+                    source=t,
+                )

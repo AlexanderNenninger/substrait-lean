@@ -207,7 +207,7 @@ def test_an_engine_beside_a_sverify_of_another_build_says_which_to_align(engine)
 
 #: PLUGIN_API and ProfilePlugin's fields; change both together.
 PINNED = (
-    1,
+    2,
     (
         "engine",
         "versions",
@@ -218,6 +218,7 @@ PINNED = (
         "installed_version",
         "restore",
         "runner",
+        "rows",
         "local",
         "session",
         "modules",

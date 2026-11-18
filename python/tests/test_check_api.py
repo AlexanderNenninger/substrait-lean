@@ -94,15 +94,15 @@ def test_messages_are_the_lines_of_the_report() -> None:
     report = unit.check(orders=SCHEMA, counterexamples=0)
     [c] = report.ensures
     assert c.message.startswith("NOT proved: it may be FALSE or NULL")
-    assert f"ensures {c.label}: {c.message}" in str(report)
+    assert f"ensures {c.label}: {c.message}" in report.details()
     t = ibis.table({"k": "string", "x": "int64"}, name="t")
     summed = sv.verify(t.group_by("k").aggregate(s=t.x.sum()), counterexamples=0)
     [assumed] = summed.assumed
     assert assumed.assumption.startswith("SUM of x fits 64 bits")
-    assert f"assumes: {assumed.assumption}" in str(summed)
+    assert f"assumes: {assumed.assumption}" in summed.details()
     raising = sv.verify(t.select(r=t.x // 0), on_inferred="ignore", counterexamples=0)
     for issue in raising.errors:
-        assert f"may fail: {issue.message}" in str(raising)
+        assert f"may fail: {issue.message}" in raising.details()
 
 
 def test_notes() -> None:
@@ -111,7 +111,7 @@ def test_notes() -> None:
     report = sv.verify(t.mutate(p=t.v.lag(1).over(w)), counterexamples=0)
     assert not report.deterministic
     assert report.notes and report.notes[0].startswith("rows may tie")
-    assert all(f"note: {n}" in str(report) for n in report.notes)
+    assert all(f"note: {n}" in report.details() for n in report.notes)
     assert doubled.check(orders=SCHEMA).notes == []
 
 

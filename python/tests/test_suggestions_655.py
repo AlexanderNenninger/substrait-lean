@@ -26,8 +26,9 @@ def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
     report = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0])
     assert report.verdict == sv.Verdict.UNPROVED
     assert _needed(report) == {"t": ["_.s.notnull()"]}
-    assert "needs: _.s.notnull() on t, inferred from `(_.n >= 0)` (a NULL result otherwise)" in str(
-        report
+    assert (
+        "needs: _.s.notnull() on t, inferred from `(_.n >= 0)` (a NULL result otherwise)"
+        in report.details()
     )
     assumed = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 0], on_inferred="ignore")
     assert assumed.verdict == sv.Verdict.PROVED and "_.s.notnull()" in assumed.requires["t"]
@@ -36,7 +37,7 @@ def test_a_postcondition_failing_only_on_null_needs_not_null() -> None:
 def test_a_postcondition_that_may_be_false_gets_no_null_advice() -> None:
     report = sv.verify(T.select("k", n=T.s.length()), ensures=[_.n >= 1])
     assert _needed(report) == {}
-    line = next(x for x in str(report).splitlines() if x.startswith("ensures"))
+    line = next(x for x in report.details().splitlines() if x.startswith("ensures"))
     assert line == "ensures (_.n >= 1): NOT proved: it may be FALSE or NULL on some rows"
 
 
@@ -76,8 +77,9 @@ def test_a_tolerance_suggests_the_row_cap_that_meets_it(mean_report, plan_report
     rel = routes._bounds(mean_report._epsilon["m"])["rel"][0]
     want = int(1000 * 1e-14 / rel)
     assert mean_report.verdict == sv.Verdict.UNPROVED
-    assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in str(
-        mean_report
+    assert (
+        f"or declare sv.max_rows({want:_}) on t, under which the bound meets it"
+        in mean_report.details()
     )
     r = routes.choose(mean_report, "polars")
     assert r.refused and r.suggested == {"t": [f"max_rows({want})"]}

@@ -69,7 +69,7 @@ open Parse
 
 /-- What a column's declared type allows: a list's elements and a struct's
 fields by their types (#925), `depth` levels down. -/
-def typeEnvD : Nat → Json → AVal
+def typeEnv : Nat → Json → AVal
   | 0, _ => AVal.top
   | depth + 1, ty =>
     -- Numbers: integers, doubles (by their codes, `core/Sverify/Core/Float.lean`), timestamps and dates.
@@ -89,8 +89,14 @@ def typeEnvD : Nat → Json → AVal
     -- reference lies in 0001-01-01 … 9999-12-31 by its type (D32,
     -- `Value.InCalendar`): what makes `date_part` of a column read safe. The
     -- source read checks it (`sverify.engine.Connection.put`).
+    -- The same for a narrow integer: its type's range (D46), which the run's
+    -- schema check holds the data to (#1540).
+    let width : Option Nat := match kind with
+      | "i8" => some 7 | "i16" => some 15 | "i32" => some 31 | _ => none
     if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
+    else if let some w := width then
+      { null := nullable, int := some ⟨some (-(2 ^ w : Int)), some (2 ^ w - 1)⟩, nk := nk }
     else if ["precisionTimestamp", "timestamp"].contains kind then
       { null := nullable, int := some ⟨some Time.tsMin, some Time.tsMax⟩, nk := nk }
     else if kind == "date" then
@@ -106,18 +112,15 @@ def typeEnvD : Nat → Json → AVal
       let sc := (body.getObjValAs? Nat "scale").toOption.getD 0
       { null := nullable, int := some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, nk := some (.dec sc) }
     else if kind == "list" then
-      { null := nullable, list := true, elems := some (typeEnvD depth (body.getObjValD "type")) }
+      { null := nullable, list := true, elems := some (typeEnv depth (body.getObjValD "type")) }
     else if kind == "struct" then
       let tys := ((body.getObjValAs? (Array Json) "types").toOption.getD #[]).toList
-      { null := nullable, struct := true, fields := some (tys.map (typeEnvD depth)) }
+      { null := nullable, struct := true, fields := some (tys.map (typeEnv depth)) }
     else AVal.top
-
-/-- What a column's declared type allows. -/
-def typeEnv (ty : Json) : AVal := typeEnvD 8 ty
 
 def schemaEnv (schema : Json) : List AVal :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
-  | some tys => tys.toList.map typeEnv
+  | some tys => tys.toList.map (typeEnv 8)
   | none => []
 
 /-- Bounds near the 64-bit limits every `BIGINT` has go without saying

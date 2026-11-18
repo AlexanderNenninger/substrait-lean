@@ -1296,12 +1296,11 @@ The run checks each narrow integer column once, before any engine reads it
 (`Report.check_inputs`). A physical integer type contained in the declared
 one passes by its type. A wider one gets one range check over the read and
 fails with a `PreconditionError` that names the column, the declared type,
-the count and one value.
-
-What holds at merge: the checker takes the range as known for `i64` only
-(`ContractCheck.typeEnvD`); `i8`, `i16` and `i32` follow with the checker
-change. The run check covers `Report.run`; pipelines and incremental views
-follow with it.
+the count and one value. It runs on `Report.run`, `run_sharded`, and an
+incremental view's first load and each batch; a transform called on bound
+tables is verified on the schemas the engine reports for them, so it declares
+no type the data could exceed, and a view planned again after a schema change
+(`_replan`) likewise.
 
 Why: the docs state the width of results and said nothing of a source value
 outside the declared width. D32 settled the same gap for dates, and D46 has
