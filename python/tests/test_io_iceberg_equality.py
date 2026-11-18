@@ -97,7 +97,9 @@ def test_null_matches_null_and_all_columns_must_match(catalog):
     delete_where_equal(t, ["id", "k"], rows([1, 2, 3], [None, "b", "x"]))  # only (1, NULL)
     delete_where_equal(t, ["k"], rows([0], ["b"]))  # every row with k = 'b'
     src = IcebergSource(catalog, "db.t")
-    assert bag(src._native().scan.to_arrow()) == [(2, "a"), (3, None)]
+    snap = src._native()
+    assert snap is not None
+    assert bag(snap.scan.to_arrow()) == [(2, "a"), (3, None)]
 
 
 def test_a_table_with_equality_deletes_and_a_rename(catalog):
@@ -108,7 +110,9 @@ def test_a_table_with_equality_deletes_and_a_rename(catalog):
     t = catalog.load_table("db.t")
     delete_where_equal(t, ["key"], pa.table({"key": pa.array(["a"], pa.string())}))
     src = IcebergSource(catalog, "db.t")
-    got = src._native().scan.to_arrow()
+    snap = src._native()
+    assert snap is not None
+    got = snap.scan.to_arrow()
     assert got.schema.names == ["id", "key"]
     assert sorted(r["id"] for r in got.to_pylist()) == [2]
 
