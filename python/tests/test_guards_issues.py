@@ -167,20 +167,10 @@ KNOWN: dict[str, dict[tuple[str, str, str], tuple[str, str]]] = {
             "the sum of at most 2**63-magnitude values per row cannot reach infinity",
         ),
     },
-    "float division": {
-        ("sverify/sql/core/_base.py", "infinite", "overflow to infinity"): (
-            "dead",
-            "an int64 column over the literal 2: finite, and the quotient is smaller",
-        ),
-    },
     "abs": {
         ("sverify/sql/core/_base.py", "divByZero", "division by zero"): (
             "dead",
             "the negating branch divides by the literal -1",
-        ),
-        ("sverify_duckdb/dialect.py", "divByZero", "division by zero"): (
-            "dead",
-            "the lowered template of the same division by the literal -1",
         ),
     },
     "join": {

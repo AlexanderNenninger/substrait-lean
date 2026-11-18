@@ -916,3 +916,41 @@ def test_open_choices_names_the_limits_and_windows_of_a_plan():
     ]:
         root = parse_plan(json.loads(to_substrait_json(expr))).root
         assert open_choices(root) == want
+
+
+FOLD_ROWS = pa.table(
+    {
+        "x": [1.5, -7.25, 0.0, 1e308, -1e308, math.inf, -math.inf, math.nan, None],
+        "n": [7, -7, 0, 2**62, -(2**62), 1, -1, 10, None],
+    }
+)
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda t: t.select(r=t.x / 2.0),
+        lambda t: t.select(r=t.x * 0.5),
+        lambda t: t.select(r=t.n // 10),
+        lambda t: t.select(r=t.n // -3),
+        lambda t: t.select(r=t.n % 7),
+    ],
+    ids=["double by 2", "double times 1/2", "int // 10", "int // -3", "int % 7"],
+)
+def test_guards_a_constant_decides_are_left_out(make):
+    """A literal divisor decides the zero, infinity and overflow checks and
+    the sign tests of a floor division, so the SQL leaves them out (#1608) and
+    gives Lean's rows on the edge values."""
+    t = ibis.table({"x": "float64", "n": "int64"}, name="t")
+    plan = json.loads(to_substrait_json(make(t)))
+    sql = to_sql(plan, DUCKDB)
+    assert "error(" not in sql
+    duck, lean = lean_and_duckdb(plan, {"t": FOLD_ROWS})
+    agree(plan, duck, lean)
+
+
+def test_a_constant_that_can_overflow_keeps_its_check():
+    """`x / 0.5` doubles the magnitude, so the overflow check stays."""
+    t = ibis.table({"x": "float64"}, name="t")
+    sql = to_sql(json.loads(to_substrait_json(t.select(r=t.x / 0.5))), DUCKDB)
+    assert "overflow to infinity" in sql and "division by zero" not in sql

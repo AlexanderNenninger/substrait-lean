@@ -11,7 +11,7 @@
   ],
   "summary": "From 30.18, `Drop` reads its names from `expressions`, and one given as `this` is not written. Ibis 12.0.0 passes `this`, so its DuckDB `create_table`, which drops a temporary view, fails. Ibis 12 allows any `sqlglot>=23.4`.",
   "repro": "`sge.Drop(kind=\"VIEW\", this=\"t\", exists=True).sql(\"duckdb\")` is `DROP VIEW IF EXISTS` (30.17: `DROP VIEW IF EXISTS t`); `ibis.duckdb.connect().create_table(\"x\", pa.table({\"a\": [1]}))` fails with DuckDB's \"syntax error at or near EXISTS\".",
-  "handling": "sverify requires `sqlglot~=30.17.0` (#442). Development stays on 30.22 for fakesnow (`[tool.uv] override-dependencies`), the wheel's tests run 30.17, and the lift reads both versions' GROUP BY. File with Ibis.",
+  "handling": "sverify requires `sqlglot>=30.8.0,<30.18` (#442, #1485). Development stays on 30.22 for fakesnow (`[tool.uv] override-dependencies`), the wheel's tests run 30.17, and the lift reads both versions' GROUP BY. File with Ibis.",
   "found_by": "homelab cycling demo (#442)",
   "issues": [
     442

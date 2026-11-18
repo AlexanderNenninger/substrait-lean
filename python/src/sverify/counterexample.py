@@ -56,6 +56,22 @@ class Counterexample:
 Domain = list[object]
 
 
+def _as_values(row: tuple, types: Sequence[dt_types.DataType]) -> tuple:
+    """An output row of `Rel.eval`, which counts a date in days and a
+    timestamp in microseconds, with its dates and timestamps as the input
+    rows hold them."""
+
+    def value(v: object, t: dt_types.DataType) -> object:
+        if isinstance(v, int) and not isinstance(v, bool):
+            if t.is_date():
+                return (EPOCH + dt.timedelta(days=v)).date()
+            if t.is_timestamp():
+                return EPOCH + dt.timedelta(microseconds=v)
+        return v
+
+    return tuple(value(v, t) for v, t in zip(row, types, strict=False))
+
+
 def _plan_literals(plans: Sequence[dict]) -> dict[str, set[object]]:
     """The constants of the plans, by kind."""
     found: dict[str, set[object]] = {"int": set(), "float": set(), "str": set(), "ts": set()}
@@ -205,6 +221,7 @@ def search(
     budget: int = 200,
     seed: int = 0,
     references: Mapping[str, Sequence[Sequence[Any]]] | None = None,
+    output_types: Sequence[dt_types.DataType] | None = None,
 ) -> Counterexample | None:
     """Small input tables meeting `requires` (condition plans per table),
     `keys` (unique column positions per table) and `references` (foreign keys
@@ -250,5 +267,8 @@ def search(
                 tables = s.shrink(tables)
                 columns = {name: list(schema.names) for name, schema in schemas.items()}
                 columns[""] = list(transform["relations"][0]["root"]["names"])
-                return Counterexample(tables, evaluate(transform, tables), columns)
+                output = evaluate(transform, tables)
+                if output_types is not None:
+                    output = [_as_values(r, output_types) for r in output]
+                return Counterexample(tables, output, columns)
     return None

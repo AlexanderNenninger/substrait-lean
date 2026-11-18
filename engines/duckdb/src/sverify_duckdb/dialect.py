@@ -111,7 +111,9 @@ class DuckDBDialect(Dialect):
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
         return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
 
-    def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
+    def lowered(
+        self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
+    ) -> str | None:
         # The generated, proved templates (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
         from sverify.sql import lowering
 
@@ -122,6 +124,7 @@ class DuckDBDialect(Dialect):
             self.float_lit,
             self.int_lit,
             self.guards,
+            consts,
         )
         # Wrap-arounds compute in HUGEINT: the result is a BIGINT again.
         return self.cast(sql, "int") if sql is not None and kind == "int" else sql
