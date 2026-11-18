@@ -519,14 +519,14 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
   · rename_i x q'
     split
     · rename_i hxq
-      subst hxq
       refine zeroFact_sound ?_
       rcases hpq with h | h
       · left
-        have : UnFn.apply .isNull (x.eval row) = .bool true := by
-          cases hv : x.eval row <;> simp_all [Expr.eval, UnFn.apply, Value.isTrue]
-        cases hv : x.eval row <;> simp_all [Expr.eval, UnFn.apply, Value.isTrue]
-      · exact .inr h
+        have h2 : (UnFn.apply .isNull (x.eval row)).isTrue = true := h
+        generalize x.eval row = v at h2 ⊢
+        cases v <;> simp [UnFn.apply, Value.isTrue] at h2 ⊢
+      · right
+        rw [hxq]; exact h
     · intro f hf; simp at hf
   · intro f hf; simp at hf
 
