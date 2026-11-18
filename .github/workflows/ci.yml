@@ -77,8 +77,11 @@ permissions:
 # no Lean build, under 1 GB, 15-80 s each) run on the self-hosted AWS runners
 # (ephemeral spot instances, 2 vCPU, 8 GB, at most 3 at once), which leaves
 # GitHub's 20 job slots to the heavy ones. `route` picks the runner: the AWS
-# runners only for events of this repository (never a fork's pull request),
-# and only when `aws-probe` starts within 3 minutes; otherwise ubuntu-latest.
+# runners only for pull requests from this repository (never a fork's; never
+# a batch branch `batch/*`, pushes, merge queue entries or dispatches, whose
+# `qa` the merge tooling waits for: a light job queued for lack of a spot
+# instance would stall it), and only when `aws-probe` starts within 3 minutes;
+# otherwise ubuntu-latest.
 # `changes`, `checker`, `qa`, the tests, `bench` (its budgets assume GitHub's
 # CPUs), `oracle-a`, `lean`, `float-bounds` and `refresh-model` stay on
 # GitHub's runners.
@@ -103,8 +106,8 @@ jobs:
         run: |
           # GitHub's runners unless the loop below finds an AWS one.
           echo 'light="ubuntu-latest"' >> "$GITHUB_OUTPUT"
-          # `aws-probe` runs only for events of this repository (a fork's pull
-          # request skips it: never on the AWS runners). Spot launch and boot
+          # `aws-probe` runs only for this repository's own pull requests (it is
+          # skipped for forks, batch branches and other events). Spot launch and boot
           # take about a minute; past 3 minutes the probe is still queued
           # (no capacity, runners busy with other runs) and GitHub's runners
           # take the light jobs.
@@ -125,7 +128,7 @@ jobs:
   # leaves it queued (GitHub has no queue timeout) until the next push to the
   # branch cancels the run. No other job needs it.
   aws-probe:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/')
     runs-on: [self-hosted, linux, x64, aws]
     timeout-minutes: 2
     steps:
