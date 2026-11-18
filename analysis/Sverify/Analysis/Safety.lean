@@ -982,7 +982,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
           by_cases hp : aa.plainOk = true
           · have := Text.classesDiffer_of_isPlain p (AVal.isPlain_of_plainOk ha hp)
             simp_all
-          · simp only [hp, Bool.or_false, Bool.not_eq_true, Bool.not_eq_false', ite_eq_right_iff]
+          · simp only [hp, Bool.or_false]
             simp only [Text.classesDiffer, Bool.and_eq_true] at hc
             simp [hc.1]
         · simp at hk
