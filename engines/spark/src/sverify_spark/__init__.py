@@ -122,8 +122,9 @@ def _table(con: Any, name: str, spark: Any) -> Any:
     (the session reads it, `sverify_spark.scan`) where this route covers it, any
     other table as Arrow. A scan it does not cover (a `where`, which is
     DuckDB SQL, partition constants, a column mapping, or files that are not
-    local) reads through Arrow on a session that shares the driver's filesystem, and is refused on a Spark
-    Connect or non-local-master session: the server-side read is N12 of #173."""
+    local) reads through Arrow on a session that shares the driver's
+    filesystem, and is refused on a Spark Connect or non-local-master session:
+    the server-side read is N12 of #173."""
     from sverify._scan import Scan
     from sverify._unsupported import Unsupported
     from sverify_spark.scan import shares_filesystem
