@@ -544,8 +544,34 @@ def _facts_within(facts: Sequence[Fact], names: Sequence[str]) -> list[Fact]:
 
 
 def plan_digest(plan: str) -> str:
-    """sha256 of a plan as Lean wrote it; sinks record it."""
-    return hashlib.sha256(plan.encode()).hexdigest()
+    """The sha256 of a plan's canonical form: its JSON with sorted keys, no
+    `extensions` (the list of every function the writer knows, which grows with
+    each release), each `functionReference` replaced by the
+    function's name. It is the same across releases that change nothing the
+    plan computes, so a sink written by one is resumed by the next; sinks record
+    it, and `Stored` compares it. A release that changes the canonical form, or
+    what a plan means, recomputes every sink once, and its changelog says so
+    (`tests/test_plan_digest.py` pins a digest)."""
+    p = json.loads(plan)
+    names = {
+        f["functionAnchor"]: f["name"]
+        for e in p.get("extensions", [])
+        if isinstance(f := e.get("extensionFunction"), dict)
+    }
+
+    def canon(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {
+                k: names.get(v, v) if k == "functionReference" else canon(v)
+                for k, v in node.items()
+                if k != "extensions"
+            }
+        if isinstance(node, list):
+            return [canon(x) for x in node]
+        return node
+
+    text = json.dumps(canon(p), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def table_digest(table: pa.Table) -> str:
