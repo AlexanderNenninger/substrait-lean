@@ -74,9 +74,13 @@ theorem check_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
   · rw [hi] at h; cases h
   · rw [href] at h; cases h
 
-/-- **A proved postcondition holds on DuckDB's model** (default settings),
-everything taken from the report: proved, closed, no issues under the
-reference, guard-free. -/
+/-- **A proved postcondition holds on DuckDB's model**, everything taken from
+the report: proved, closed (no open measure), no issues under the reference,
+guard-free. It covers the default route: the plan verified under the
+reference and lowered by `Lowering.duckdb`, DuckDB at its default settings. A
+`semantics="duckdb"` request runs natively and is outside it. `hg` gives
+`Rel.looseSub` only, which `Rel.hasIssue_of_raises` needs; it goes when
+`Rel.HasIssue` reads the loose rows a left join pads (Fable's log entry 41). -/
 theorem check_proved_on_duckdb {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
