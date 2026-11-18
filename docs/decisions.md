@@ -1268,6 +1268,35 @@ gives `windowRows` alone (`windowRowsA_eq`), and every admitted result is
 `QUANTILE_DISC` over an argument that may be a double is no longer
 certified deterministic.
 
+### D46. An integer column's values lie in its declared width
+
+Decided 2026-11-17 (theory advisor).
+
+A value of an `i8`, `i16`, `i32` or `i64` column of the reference lies in its
+type's range, -2^(w-1) to 2^(w-1)-1, by its type, as a DATE lies in 0001-9999
+(D32). A source value outside it fails the read, named. A computed value
+outside it is an overflow, as before (the Widths row of
+[the reference semantics](reference-semantics.md)). The checker takes the
+range as known (`ContractCheck.typeEnv`): a column read needs no inferred
+precondition to fit its own width, and only a computed value can leave it.
+
+The run checks each narrow integer column once, before any engine reads it
+(`Report.check_inputs`). A physical integer type contained in the declared
+one passes by its type. A wider one gets one range check over the read and
+fails with a `PreconditionError` that names the column, the declared type,
+the count and one value.
+
+What holds at merge: the checker takes the range as known for `i64` only
+(`ContractCheck.typeEnvD`); `i8`, `i16` and `i32` follow with the checker
+change. The run check covers `Report.run`; pipelines and incremental views
+follow with it.
+
+Why: the docs state the width of results and said nothing of a source value
+outside the declared width. D32 settled the same gap for dates, and D46 has
+its shape. It adds no option, no raise on a computed value and no engine
+name. The range enters the checker only after the run establishes it on the
+data, so the check on the run lands before the checker change.
+
 ### D47. Raise, value or open where engines differ
 
 Decided 2026-11-18 (theory advisor).

@@ -218,7 +218,7 @@ fires, `Rel.eval`'s value is not the answer.
 
 | Topic | Reference | Status |
 |---|---|---|
-| Widths | `i8`, `i16`, `i32` and `i64` have their declared widths. `Rel.eval`'s integers are mathematical; a result outside the declared width is an overflow error, not a wrapped value. | ✓ An overflow at the declared width is an error; a call's declared output type gives its width. |
+| Widths | `i8`, `i16`, `i32` and `i64` have their declared widths. A column's values lie in its width by its type, and the run refuses a source value outside it (D46). `Rel.eval`'s integers are mathematical; a result outside the declared width is an overflow error, not a wrapped value. | ✓ An overflow at the declared width is an error; a call's declared output type gives its width. |
 | `overflow` omitted or `ERROR` | `+ - *`, negate, `abs`, `sum`: an error when the result doesn't fit the declared width. | ✓ An integer `sum` that may overflow is an assumption checked on the data (above). |
 | `overflow: SILENT` / `SATURATE` | Wrap-around / clamp at the declared width, when the plan asks. | ✓ for integer `+ - *` and negation: `UnFn.fit` on the exact result. DuckDB runs them through the generated lowering (128-bit arithmetic); Polars, Spark and Snowflake refuse them. `sum`, `abs` and decimals accept only `ERROR`. |
 | `divide` | Truncates toward zero (`Int.tdiv`). | ✓ |
