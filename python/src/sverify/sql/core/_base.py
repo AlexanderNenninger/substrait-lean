@@ -3849,6 +3849,20 @@ def order_matters(r: Rel) -> bool:
             return order_matters(a) or order_matters(b)
 
 
+def chain_orders(r: Rel) -> bool:
+    """Does `r` have a row order `Rel.Allowed` states: the one of an `OrderBy`
+    that its result passes through only filters, projections, emits and
+    fetches (`Allowed.lean`)? Every other operator leaves its rows' order
+    open."""
+    match r:
+        case OrderBy(input=i, keys=sort):
+            return bool(sort) or chain_orders(i)
+        case Filter(input=i) | Project(input=i) | Emit(input=i) | Fetch(input=i):
+            return chain_orders(i)
+        case _:
+            return False
+
+
 def inputs(r: Rel) -> list[Rel]:
     """A node's inputs, in the order of Lean's `Rel.inputs` (`Marks.input`)."""
     match r:
@@ -3900,6 +3914,33 @@ class _Writer:
     a projection's expressions are slots 0, 1, …, and slot 0 of an aggregate
     is all of its grouping expressions and measures' arguments and filters."""
     n: int = 0
+    seq: bool = True
+    """Write Lean's row order (`rows="sequence"`): every relation carries its
+    ordinal and ties break by it. Off, only the rows an `OrderBy` orders carry
+    one, numbered by its keys, and ties are open as `Rel.Allowed` leaves them.
+    Below a window or an ordered aggregate it is on again: they read the
+    ordinal."""
+
+    @property
+    def stable(self) -> bool:
+        """Do ties break by the input's ordinal?"""
+        return self.seq and not self.tie_free
+
+    @contextmanager
+    def sequence(self) -> Iterator[None]:
+        """Write the relations below in Lean's row order."""
+        seq, self.seq = self.seq, True
+        try:
+            yield
+        finally:
+            self.seq = seq
+
+    def child(self, r: Rel, ordered: bool) -> str:
+        """`rel` of an input whose ordinal the caller reads."""
+        if not ordered:
+            return self.rel(r, False)
+        with self.sequence():
+            return self.rel(r, True)
 
     def alias(self) -> str:
         self.n += 1
@@ -3958,6 +3999,8 @@ class _Writer:
         n = arity(r)
         if n == 0:
             raise WriterUnsupported("relations without columns have no SQL form")
+        if not self.seq:
+            ordered = ordered and chain_orders(r)
         match r:
             case Read(name=name, columns=columns):
                 if len(columns) != n:
@@ -4056,9 +4099,12 @@ class _Writer:
                 return self.select(items, f"{lsub} {join} {rsub} ON {on}")
             case Fetch(input=i, offset=off, count=cnt):
                 a = self.alias()
-                rest = f"ORDER BY {self.asc(self.ordinal(a))}"
+                # The rows that stay are the first of the input's order, where it has one.
+                rest = (
+                    f"ORDER BY {self.asc(self.ordinal(a))}" if self.seq or chain_orders(i) else ""
+                )
                 if lo := d.limit_offset(off, cnt):
-                    rest += " " + lo
+                    rest = f"{rest} {lo}".strip()
                 return self.select(
                     self.passthrough(a, n, ordered), d.subquery(self.rel(i, True), a), rest
                 )
@@ -4140,7 +4186,7 @@ class _Writer:
                         items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
                     else:
                         items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
-                needs = ordered and (not self.tie_free or not keys)
+                needs = ordered and (self.stable or not keys)
                 return self.select(items, d.subquery(self.rel(i, needs), a))
             case Distinct(input=i):
                 return self.distinct(i, ordered)
@@ -4229,7 +4275,7 @@ class _Writer:
         needs = needs or picks
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
-        level = self.select(items, d.subquery(self.rel(i, needs), a))
+        level = self.select(items, d.subquery(self.child(i, needs), a))
         b = self.alias()
 
         def col(c: str) -> str:
@@ -4404,7 +4450,7 @@ class _Writer:
         for k in sort:
             for x, kind in self.sort_exprs(self.ref(a, self.c(k.col)), ks[k.col]):
                 keys.append(self.d.sort_key(x, k.desc, k.nulls_first, kind))
-        if keys and not self.tie_free:
+        if keys and self.stable:
             keys.append(self.asc(self.ordinal(a)))
         return keys
 
@@ -4522,7 +4568,7 @@ class _Writer:
         if ordered:
             # `windowEval` emits the rows in sort order.
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
-        return self.select(items, d.subquery(self.rel(i, not self.tie_free and not copies), a))
+        return self.select(items, d.subquery(self.child(i, not self.tie_free and not copies), a))
 
     def framed(
         self,
@@ -5232,6 +5278,7 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
+    rows: Literal["sequence", "multiset"] = "sequence",
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -5245,6 +5292,12 @@ def to_sql(
     `deterministic` says, and what `Report.run(deterministic=True)`
     requires). Then windows need no ordinal tiebreak, so engines without a
     stable scan order can run them; FETCH still needs one.
+
+    `rows="multiset"` leaves the order of rows open where `Rel.Allowed` does
+    (the observation's `rows` of anything but `"sequence"`): ties in a sort
+    and the rows a LIMIT keeps among them are the engine's choice, and the
+    result is ordered only where the plan's last sort orders it. The default
+    writes Lean's order, ties by the input's row order.
 
     `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
     pass it for a plan whose contract report is `guard_free`, and run the
@@ -5326,10 +5379,10 @@ def to_sql(
         )
     for k in kinds(p.root):
         dialect.result_kind(k)
-    w = _Writer(dialect, deterministic)
+    w = _Writer(dialect, deterministic, seq=rows == "sequence")
     if unchecked is not None:
         w.unchecked = unchecked_slots(p.root, unchecked)
-    ordered = order_matters(p.root)
+    ordered = order_matters(p.root) if w.seq else chain_orders(p.root)
     a = w.alias()
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""

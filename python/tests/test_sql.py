@@ -790,3 +790,23 @@ def test_lists_run_on_duckdb_as_lean_says(build, rows):
 
 def order_matters_of(plan: str) -> bool:
     return order_matters(parse_plan(json.loads(plan)).root)
+
+
+def test_open_ties_write_no_row_ordinal():
+    """Under `rows="multiset"` a sort, a LIMIT and the root carry no `rowid`
+    ordinal (#1608); a LIMIT below no sort is a plain LIMIT, and a sorted
+    result is still ordered. `rows="sequence"` keeps the ordinal."""
+    t = ibis.table({"id": "int64", "v": "int64"}, name="t")
+    for expr, order in [
+        (t.limit(3), False),
+        (t.order_by([t.v, t.id]).limit(3), True),
+        (t.filter(t.v > 1).order_by(t.v), True),
+        (t.mutate(w=t.v + 1), False),
+    ]:
+        plan = json.loads(to_substrait_json(expr))
+        open_ = to_sql(plan, DUCKDB, rows="multiset")
+        assert "rowid" not in open_
+        assert ("ORDER BY" in open_) == order
+        if not order:
+            assert "ROW_NUMBER" not in open_
+    assert "rowid" in to_sql(json.loads(to_substrait_json(t.limit(3))), DUCKDB)
