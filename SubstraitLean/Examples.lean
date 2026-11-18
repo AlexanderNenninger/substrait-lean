@@ -36,6 +36,7 @@ import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
 import SubstraitLean.Engine
 import SubstraitLean.ContractCheck
+import SubstraitLean.ProvedOn
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatMoments
 
@@ -230,6 +231,10 @@ end Substrait.Examples
 #print axioms Substrait.Knowledge.contract_sound
 #print axioms Substrait.Knowledge.contract_sound_all
 #print axioms Substrait.ContractCheck.check_proved_sound
+#print axioms Substrait.ContractCheck.check_proved_on
+#print axioms Substrait.ContractCheck.check_proved_on_duckdb
+#print axioms Substrait.ContractCheck.check_proved_on_polars
+#print axioms Substrait.ContractCheck.check_proved_on_spark
 #print axioms Substrait.ContractCheck.check_proved_rows
 #print axioms Substrait.ContractCheck.check_proved_conds
 #print axioms Substrait.ContractCheck.check_deterministic_sound
