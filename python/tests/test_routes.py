@@ -380,3 +380,4 @@ def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:
     text = routes._THRESHOLD.format(engine="duckdb")
     assert "for a constant threshold, state a precondition" in text
     assert "`x * COUNT(y) > SUM(y)`" in text
+    assert "compares the exact mean, not the rounded one" in text
