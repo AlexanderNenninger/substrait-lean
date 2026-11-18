@@ -165,7 +165,25 @@ def liftCache : List LiftHint := [
     source := "searched", note := "" },
   { semantics := "reference", construct := "CAST(BIGINT AS DOUBLE)",
     template := "{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}",
-    source := "searched", note := "" }
+    source := "searched", note := "" },
+  { semantics := "duckdb", construct := "CAST(round(DOUBLE) AS BIGINT)",
+    template := "{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"function\":\"round:fp64\",\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}",
+    source := "seeded: the search builds no cast of a call (#1655)", note := "the model's truncating cast of an integral double, DuckDB's half-to-even one (R9) agreeing on it" },
+  { semantics := "duckdb", construct := "CAST(floor(DOUBLE) AS BIGINT)",
+    template := "{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"function\":\"floor:fp64\",\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}",
+    source := "seeded: the search builds no cast of a call (#1655)", note := "the model's truncating cast of an integral double, DuckDB's half-to-even one (R9) agreeing on it" },
+  { semantics := "duckdb", construct := "CAST(ceil(DOUBLE) AS BIGINT)",
+    template := "{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"function\":\"ceil:fp64\",\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}",
+    source := "seeded: the search builds no cast of a call (#1655)", note := "the model's truncating cast of an integral double, DuckDB's half-to-even one (R9) agreeing on it" },
+  { semantics := "reference", construct := "CAST(round(DOUBLE) AS BIGINT)",
+    template := "{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"function\":\"round:fp64\",\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}",
+    source := "seeded: the search builds no cast of a call (#1655)", note := "the model's truncating cast of an integral double, DuckDB's half-to-even one (R9) agreeing on it" },
+  { semantics := "reference", construct := "CAST(floor(DOUBLE) AS BIGINT)",
+    template := "{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"function\":\"floor:fp64\",\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}",
+    source := "seeded: the search builds no cast of a call (#1655)", note := "the model's truncating cast of an integral double, DuckDB's half-to-even one (R9) agreeing on it" },
+  { semantics := "reference", construct := "CAST(ceil(DOUBLE) AS BIGINT)",
+    template := "{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"function\":\"ceil:fp64\",\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}",
+    source := "seeded: the search builds no cast of a call (#1655)", note := "the model's truncating cast of an integral double, DuckDB's half-to-even one (R9) agreeing on it" }
 ]
 
 end Substrait

@@ -408,7 +408,13 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_float,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
     ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
-    ``Bool.and_false, ``Bool.false_and, ``Bool.or_true, ``Bool.true_and] ++ extra)
+    ``Bool.and_false, ``Bool.false_and, ``Bool.or_true, ``Bool.true_and,
+    -- The cast of a rounded double (#1655): both sides come to `castOut`.
+    ``DuckDBSQL.ref_ftoi_float, ``DuckDBSQL.ref_ftoi_null, ``DuckDBSQL.ref_fround_float,
+    ``DuckDBSQL.ref_fround_null, ``DuckDBSQL.ref_fceil_float, ``DuckDBSQL.ref_fceil_null,
+    ``DuckDBSQL.ref_rounded_float, ``DuckDBSQL.ref_rounded_null, ``DuckDBSQL.duck_rounded_float,
+    ``DuckDBSQL.duck_rounded_null, ``DuckDBSQL.ref_rounded_null_duckCast, ``IntRound.code,
+    ``Outcome.agree_refl] ++ extra)
   let fin ← simpArgs (#[``Outcome.Agree, ``Issue.isError, ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero] ++ extra)
   -- A double is canonical, `-0.0` or the negative NaN: three cases.
   let intro ← if n == 1 then `(tactic| (intro x hx; cases x <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx))
@@ -454,7 +460,7 @@ def areaOf (c : Name) : String :=
   match c.componentsRev.head!.toString with
   | "divInt" | "divDouble" | "modDouble" | "power" => "Arith"
   | "elementary" => "Math"
-  | "castDoubleBigint" | "castBigintDouble" => "Casts"
+  | "castDoubleBigint" | "castBigintDouble" | "castRoundedBigint" => "Casts"
   | _ => "Compare"
 
 syntax (name := liftTemplateTac) "lift_template " num " [" ident,* "]" : tactic
