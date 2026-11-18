@@ -73,6 +73,7 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
                    ("WRAP_FROM_END", "LEFT_OF_BEGINNING", "ERROR")),
             Option("substring_range", None, ("ERROR", "COMPUTE"),
                    (("ERROR", "duckdb-substring-range"),)),
+            Option("non_ascii_text", None, ("ERROR", "COMPUTE")),
             Option("case_sensitivity", "case_sensitivity",
                    ("CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII")),
             Option("char_set", "char_set", ("UTF8", "ASCII_ONLY")),
@@ -94,10 +95,10 @@ GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "fp.log": ("rounding", "on_domain_error", "on_log_zero"),
         "str.sub": ("negative_start", "substring_range", "string_positions"),
         "str.match": ("case_sensitivity", "string_positions"),
-        "str.case": ("char_set",),
+        "str.case": ("char_set", "non_ascii_text"),
         "str.concat": ("null_handling",),
-        "str.plain": (),
-        "str.opaque": (),
+        "str.plain": ("non_ascii_text",),
+        "str.opaque": ("non_ascii_text",),
     }
 )
 
@@ -114,6 +115,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "shift_range"): Choice(("DROP_BITS",)),
                 (None, "negative_start"): _asked("WRAP_FROM_END", "LEFT_OF_BEGINNING"),  # #209
                 (None, "substring_range"): Choice(("ERROR",)),  # #336
+                (None, "non_ascii_text"): Choice(("ERROR",)),  # D43
                 (None, "case_sensitivity"): _asked("CASE_SENSITIVE"),
                 (None, "char_set"): _asked("UTF8"),
                 (None, "null_handling"): _asked("ACCEPT_NULLS"),
@@ -130,6 +132,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "shift_range"): Choice(("ERROR", "ZERO")),  # R15-shift-*
                 (None, "negative_start"): Choice(("WRAP_FROM_END",)),  # duckdb-R13
                 (None, "substring_range"): Choice(("ERROR",)),  # duckdb-substring-range
+                (None, "non_ascii_text"): Choice(("ERROR", "COMPUTE")),  # the writer's guard raises
                 (None, "case_sensitivity"): Choice(("CASE_SENSITIVE",)),
                 (None, "char_set"): Choice(("UTF8",)),
                 (None, "null_handling"): Choice(("ACCEPT_NULLS",)),

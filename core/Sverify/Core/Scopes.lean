@@ -131,6 +131,7 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   -- Strings, dates and lists.
   | "negative_start" => args.any fun | .int a => decide (a < 0) | _ => false
   | "substring_range" => iss == some .domain
+  | "non_ascii_text" => iss == some .nonAscii
   | "case_sensitivity" => true
   | "char_set" => true
   | "null_handling" => args.any (· == .null)
@@ -183,6 +184,7 @@ def scopedOptions : List String :=
   ["overflow", "on_division_by_zero", "division_type", "min_mod_neg_one", "shift_range",
    "decimal_rescale", "rounding", "on_domain_error", "on_log_zero", "nan_creation", "zero_sign",
    "round_zero_sign", "pow_one_inf", "nan_equality", "nan_order", "nan_kind", "negative_start", "substring_range",
+   "non_ascii_text",
    "case_sensitivity", "char_set", "null_handling", "date_range", "time_interval_months",
    "list_null_order", "sum_order", "stat_algo", "window_sum_algo", "stat_degenerate",
    "avg_int_result", "quantile_interp", "tie_pick", "tie_order", "null_order", "clustered",
