@@ -1129,7 +1129,8 @@ theorem Expr.orChain_vals (row : Row) (all : Expr) : ∀ ps : List Expr,
     (Expr.orChain all ps).eval row = .int 0 ∨ (Expr.orChain all ps).eval row = .int 1 ∨
       (Expr.orChain all ps).eval row = .null
   | [] => by
-    simp only [Expr.orChain, Expr.eval]; split_ifs <;> simp
+    simp only [Expr.orChain, Expr.eval]
+    by_cases hc : (UnFn.not.apply (Expr.eval row all)).isTrue = true <;> simp [hc]
   | p :: ps => by
     simp only [Expr.orChain, Expr.eval]
     split
