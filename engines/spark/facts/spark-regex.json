@@ -8,7 +8,11 @@
   "options": [
     "regex_dialect",
     "case_sensitivity",
-    "raise_set"
+    "raise_set",
+    "non_ascii_text"
+  ],
+  "rows": [
+    {"group": "str.ascii", "option": "non_ascii_text", "types": ["string"]}
   ],
   "constructs": [
     "RLIKE",

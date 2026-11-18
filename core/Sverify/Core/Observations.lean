@@ -287,6 +287,8 @@ def Profile.reference.tools : List ToolRow := [
   { option := "negative_start", tool := .choose },
   { option := "substring_range", tool := .raise,
     precondition := "every substring offset is in [-2³², 2³²) (#336)" },
+  { option := "non_ascii_text", tool := .raise,
+    precondition := "text is ASCII (without a vertical tab for a regular expression's class) (#1506)" },
   { option := "case_sensitivity", tool := .choose },
   { option := "char_set", tool := .choose },
   { option := "null_handling", tool := .choose },

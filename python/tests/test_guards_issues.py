@@ -48,6 +48,7 @@ KIND = {
     "domain": "domain error",
     "raised": "raised by a guard",
     "infinite": "overflow to infinity",
+    "nonAscii": "non-ASCII text",
 }
 
 
@@ -266,15 +267,3 @@ def test_every_guard_site_is_reported_somewhere() -> None:
 def test_a_witness_reaches_a_site(name: str) -> None:
     full, left, kinds = _scan(_witness(name))
     assert any(KIND.get(g) in kinds for _, _, g, _ in left), (name, sorted(kinds))
-
-
-@pytest.mark.xfail(strict=True, reason="#1506: the ASCII guard is not an issue Safety reports")
-def test_the_ascii_guard_is_an_issue(monkeypatch: pytest.MonkeyPatch) -> None:
-    import ibis
-
-    from sverify.engine import written_plan
-    from sverify.ibis_substrait import to_substrait_json
-
-    t = ibis.table({"s": "string"}, name="t")
-    plan = written_plan(to_substrait_json(t.select(u=t.s.upper())))
-    assert "asciiOnly" not in {g for _, _, g, _ in _sites(plan, None, monkeypatch)}

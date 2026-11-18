@@ -43,7 +43,7 @@ Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"]
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
 #: guard that raises names, and the guards that are not an issue, `UNISSUED`:
-#: the ASCII condition (#1506) and DuckDB's quantile position limit (#900).
+#: DuckDB's quantile position limit (#900).
 #: `tests/test_guards_issues.py` checks the list against the Lean source.
 GuardIssue = Literal[
     "divByZero",
@@ -56,12 +56,12 @@ GuardIssue = Literal[
     "domain",
     "raised",
     "infinite",
-    "asciiOnly",
+    "nonAscii",
     "quantilePosition",
 ]
 
 #: The guards of `GuardIssue` that no `Issue` reports yet.
-UNISSUED = frozenset({"asciiOnly", "quantilePosition"})
+UNISSUED = frozenset({"quantilePosition"})
 
 #: The issue a shim's `raise` message names (`UnFn.raise`); `"raised"` for any other.
 _RAISED: dict[str, GuardIssue] = {
@@ -5313,10 +5313,10 @@ class _Writer:
         (#70). With `classes` (a regular expression with `\\w`, `\\d`, `\\s`
         or `\\b`), the vertical tab is out too, where Rust's `\\s` and RE2's
         differ: `Text.classesDiffer`, and the same predicate as
-        `ascii_text`. Not one of `Safety.lean`'s issues, so `guards=False`
-        keeps it."""
+        `ascii_text`. The issue is `Issue.nonAscii`: the report lists it, and
+        a plan whose text is declared ASCII has it proved away."""
         d = self.d
-        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "asciiOnly")
+        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "nonAscii")
         return d.case_when(f"(NOT {ascii_text(d, x, classes)})", fail, value)
 
     def int_operand(
@@ -5485,7 +5485,8 @@ def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
     plain = d.is_ascii(x)
     if not vertical_tab_out:
         return plain
-    return f"({plain} AND NOT {d.like(x, d.str_lit(VERTICAL_TAB_PATTERN))})"
+    # No ESCAPE clause: the pattern has no backslash, and the SQL lift reads the form without one.
+    return f"({plain} AND NOT ({x} LIKE {d.str_lit(VERTICAL_TAB_PATTERN)}))"
 
 
 def like_pattern(p: str) -> str:

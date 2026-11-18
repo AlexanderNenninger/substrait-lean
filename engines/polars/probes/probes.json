@@ -2923,13 +2923,22 @@
    "option": null,
    "fixed": {},
    "rows": 11,
-   "matching": [
-    "(none)"
-   ],
+   "matching": [],
    "candidates": {
     "(none)": {
-     "differ": 0,
-     "examples": []
+     "differ": 2,
+     "examples": [
+      {
+       "row": "['h\u00e9llo']",
+       "polars": "ok oll\u00e9h",
+       "lean": "error Substrait.Issue.nonAscii"
+      },
+      {
+       "row": "['\u00df']",
+       "polars": "ok \u00df",
+       "lean": "error Substrait.Issue.nonAscii"
+      }
+     ]
     }
    }
   },

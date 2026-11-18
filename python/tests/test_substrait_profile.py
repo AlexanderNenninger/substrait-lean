@@ -131,3 +131,53 @@ def test_sql_is_refused(con: Connection) -> None:
         sv.verify(
             "SELECT k FROM t", tables={"t": ibis.schema({"k": "int64"})}, semantics="substrait"
         )
+
+
+_S = ibis.table({"s": "string"}, name="t")
+_ASCII_S = ~ibis._.s.re_search(r"[^\x00-\x7f]")
+
+
+@pytest.mark.parametrize("declared", [False, True])
+@pytest.mark.parametrize(
+    ("expr", "options"),
+    [
+        (_S.s.upper(), ["char_set", "non_ascii_text"]),
+        (_S.s.lower(), ["char_set", "non_ascii_text"]),
+        (_S.s.reverse(), ["non_ascii_text"]),
+        (_S.s.ascii_str(), ["non_ascii_text"]),
+        (_S.s.levenshtein("x"), ["non_ascii_text"]),
+        (_S.s.ilike("a%"), ["non_ascii_text"]),
+        (_S.s.re_extract("a", 0), ["non_ascii_text"]),
+        (_S.s.re_replace("a", "b"), ["non_ascii_text"]),
+        (_S.s.length(), []),
+    ],
+)
+def test_the_transfer_reads_non_ascii_text_by_group(expr, options, declared):
+    """D43: a profile transfer reads options by group, and is static: under
+    `semantics="substrait"` the functions that can report `nonAscii` are
+    unproved on `non_ascii_text` (`COMPUTE` is allowed) whether or not the
+    column is declared ASCII; `length` carries no such option."""
+    report = sv.verify(
+        _S.select(x=expr),
+        requires={"t": [_ASCII_S]} if declared else None,
+        semantics="substrait",
+        on_inferred="off",
+    )
+    assert [r["option"] for r in report._transfer or []] == options
+    assert (report.verdict == sv.Verdict.PROVED) == (not options)
+
+
+@pytest.mark.parametrize("declared", [False, True])
+def test_the_transfer_reads_non_ascii_text_for_regexp_match(declared):
+    """`regexp_match` has a constructor (`regexMatch`), so its group's option is
+    read by a profile transfer like the other regular-expression functions'
+    (D43). Ibis writes the search as a comparison with it, so the
+    comparison's own options are read as well."""
+    report = sv.verify(
+        _S.select(x=_S.s.re_search(r"\d")),
+        requires={"t": [_ASCII_S]} if declared else None,
+        semantics="substrait",
+        on_inferred="off",
+    )
+    assert "non_ascii_text" in [r["option"] for r in report._transfer or []]
+    assert report.verdict == sv.Verdict.UNPROVED

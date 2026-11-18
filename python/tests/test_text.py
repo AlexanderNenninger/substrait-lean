@@ -203,6 +203,26 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
     return canonical(lean_values(json.dumps(plan)))
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT upper(s) AS u FROM r",
+        "SELECT lower(s) AS u FROM r",
+        "SELECT s ILIKE 'a%' AS u FROM r",
+    ],
+)
+def test_the_reference_does_not_evaluate_non_ascii_case_mapping(sql):
+    """D43: the reference answers non-ASCII text with an error, and the
+    checker prints it (exit 1) instead of stopping on a Lean `panic!` (#1506)."""
+    con = connect()
+    con.create("r", R, [])
+    plan = inline_tables(json.loads(plan_of(con, sql)), {"r": [("é", "x", 1)]})
+    code, _, err = run_checker((), json.dumps(plan))
+    assert code == 1
+    assert "of non-ASCII text is not evaluated in Lean" in err
+    assert "PANIC" not in err
+
+
 @pytest.mark.parametrize("sql", [ASCII_IN_DUCKDB, LEVENSHTEIN, REPLACE, EMPTY_PATTERN])
 @settings(
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
@@ -306,6 +326,9 @@ def test_translate_is_refused():
 T = ibis.table({"name": "string", "n": "int64"}, name="t")
 
 
+ASCII_NAME = ~_.name.re_search(r"[^\x00-\x7f]")  # the condition D43's guards ask for
+
+
 def errors(expr) -> list[str]:
     return [i.kind for i in sv.verify(expr, on_inferred="off").errors]
 
@@ -326,7 +349,11 @@ def test_patterns_said_to_compile_do(pattern):
 
 
 def test_regex_checks():
-    assert errors(T.filter(T.name.re_search(r"^\d{4}-[a-z]+$"))) == []
+    # `\d` is Unicode on some engines: the class needs ASCII text (D43).
+    assert errors(T.filter(T.name.re_search(r"^\d{4}-[a-z]+$"))) == ["non-ASCII text"]
+    plain_name = ~_.name.re_search(r"[^\x00-\x7f]|\x0b")  # ASCII without a vertical tab
+    report = sv.verify(T.filter(T.name.re_search(r"^\d{4}-[a-z]+$")), requires=[plain_name])
+    assert not report.errors, str(report)
     assert errors(T.filter(T.name.re_search("(?i)abc"))) == ["invalid regular expression"]
     assert errors(T.filter(T.name.re_search("a("))) == ["invalid regular expression"]
 
@@ -336,6 +363,7 @@ def test_string_contracts():
         T.filter(T.name.notnull()).select(
             n=T.name.length(), p=T.name.find("a"), u=T.name.upper(), b=T.name.startswith("x")
         ),
+        requires=[ASCII_NAME],
         ensures=[_.n >= 0, _.p >= -1, _.u.notnull(), _.b.notnull()],
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
@@ -347,6 +375,7 @@ def test_string_contracts():
             p=T.name.lpad(4, "-"),
             i=T.name.ilike("a%"),
         ),
+        requires=[ASCII_NAME],
         ensures=[_.a >= 0, _.d >= 0, _.r.notnull(), _.p.notnull(), _.i.notnull()],
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)

@@ -139,12 +139,40 @@ reference's timestamps (D32). -/
 def tsFits (aa ar : AVal) : Bool :=
   aa.int.all (·.allLe Time.tsMax) && ar.int.all (·.allGe Time.tsMin)
 
+/-- Is every string `a` describes ASCII (`Issue.nonAscii`, D43)? -/
+def AVal.asciiOk (a : AVal) : Bool := a.ascii || a.plain || !a.str
+
+/-- Is every string `a` describes ASCII without a vertical tab? -/
+def AVal.plainOk (a : AVal) : Bool := a.plain || !a.str
+
+omit [Boxes.Ambient] in
+theorem AVal.isAscii_of_asciiOk {a : AVal} {s : String} (h : a.Mem (.str s))
+    (ho : a.asciiOk = true) : Text.isAscii s = true := by
+  simp only [AVal.Mem, AVal.MemR] at h
+  simp only [AVal.asciiOk] at ho
+  cases hx : a.ascii <;> cases hy : a.plain <;> cases hz : a.str <;>
+    simp_all [Text.isPlain]
+
+omit [Boxes.Ambient] in
+theorem AVal.isPlain_of_plainOk {a : AVal} {s : String} (h : a.Mem (.str s))
+    (ho : a.plainOk = true) : Text.isPlain s = true := by
+  simp only [AVal.Mem, AVal.MemR] at h
+  simp only [AVal.plainOk] at ho
+  cases hx : a.ascii <;> cases hy : a.plain <;> cases hz : a.str <;>
+    simp_all [Text.isPlain]
+
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.within minI64 maxI64 then [] else [.wraps]
   | .ftoi, aa, _ => if aa.within castLo castHi then [] else [.badCast]
   | .narrow n, aa, _ => if aa.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1) then [] else [.badCast]
   | .wrap n, aa, _ => if aa.within (-2 ^ (n - 1)) (2 ^ (n - 1) - 1) then [] else [.wraps]
-  | .regexMatch p, _, _ => if Text.simpleRegex p then [] else [.badRegex]
+  | .regexMatch p, aa, _ =>
+    (if Text.simpleRegex p then [] else [.badRegex]) ++
+      (if !Text.regexClasses p.toList || aa.plainOk then [] else [.nonAscii])
+  | .regexExtract p _, aa, _ | .regexReplace p _ _, aa, _ =>
+    if !Text.regexClasses p.toList || aa.plainOk then [] else [.nonAscii]
+  | .upper, aa, _ | .lower, aa, _ | .reverse, aa, _ | .ascii, aa, _ =>
+    if aa.asciiOk then [] else [.nonAscii]
   | .dateTrunc u, aa, ar =>
     if u.calendar then (if tsFits aa ar then [] else [.overflow])
     else if ar.within minI64 maxI64 then [] else [.wraps]
@@ -371,6 +399,8 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
   | .strRepeat, _, ab, _, _, sz => repeatMay sz ab
+  | .ilike, aa, ab, _, _, _ | .levenshtein, aa, ab, _, _, _ =>
+    if aa.asciiOk && ab.asciiOk then [] else [.nonAscii]
   | .substr n _, _, ab, _, _, _ => if substrSafe n ab then [] else [.domain]
   | .fatan2, aa, ab, _, _, _ => if BinFn.domainSafe .fatan2 aa.int ab.int then [] else [.domain]
   | .flogb, aa, ab, _, _, _ => if BinFn.domainSafe .flogb aa.int ab.int then [] else [.domain]
@@ -936,9 +966,51 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
   case raise =>
     simp only [UnFn.issue, Option.some.injEq] at hk; subst hk; simp [UnFn.mayIssue]
   case regexMatch p =>
-    simp only [UnFn.issue] at hk
+    cases v with
+    | str s =>
+      simp only [UnFn.issue] at hk
+      simp only [UnFn.mayIssue, List.mem_append]
+      split at hk
+      · rename_i hn
+        simp only [Option.some.injEq] at hk; subst hk
+        left; simpa using hn
+      · split at hk
+        · rename_i hs hc
+          simp only [Option.some.injEq] at hk; subst hk
+          right
+          simp only [Bool.not_eq_true] at hs
+          by_cases hp : aa.plainOk = true
+          · have := Text.classesDiffer_of_isPlain p (AVal.isPlain_of_plainOk ha hp)
+            simp_all
+          · simp only [hp, Bool.or_false]
+            simp only [Text.classesDiffer, Bool.and_eq_true] at hc
+            simp [hc.1]
+        · simp at hk
+    | _ => simp_all [UnFn.issue, UnFn.mayIssue]
+  case regexExtract p g | regexReplace p r g =>
+    all_goals
+      cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+      rename_i s
+      split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+      subst hk; rename_i hc
+      simp only [UnFn.mayIssue]
+      split
+      · rename_i hok
+        simp only [Bool.or_eq_true, Bool.not_eq_true'] at hok
+        rcases hok with hok | hok
+        · simp [Text.classesDiffer, hok] at hc
+        · have := Text.classesDiffer_of_isPlain p (AVal.isPlain_of_plainOk ha hok)
+          simp_all
+      · simp
+  case upper | lower | reverse | ascii =>
+    cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+    rename_i s
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i hn
     simp only [UnFn.mayIssue]
-    split at hk <;> simp_all
+    split
+    · rename_i hok; exact absurd (AVal.isAscii_of_asciiOk ha hok) (by simpa using hn)
+    · simp
   case decimal p s =>
     simp only [UnFn.issue] at hk
     simp only [UnFn.mayIssue]
@@ -1132,6 +1204,15 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
   case dateAdd.date.int i j =>
     have hr' := hr; simp only [BinFn.apply] at hr'
     exact rangeIssue_sound ha hr' hk
+  case ilike.str.str a b | levenshtein.str.str a b =>
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i hn
+    simp only [BinFn.mayIssue]
+    split
+    · rename_i hok
+      simp only [Bool.and_eq_true] at hok
+      exact absurd (by simp [AVal.isAscii_of_asciiOk ha hok.1, AVal.isAscii_of_asciiOk hb hok.2]) hn
+    · simp
   case fatan2.float.float i j | flogb.float.float i j | bit.int.int op i j =>
     simp only [domainIssue] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
