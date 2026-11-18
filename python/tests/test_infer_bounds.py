@@ -95,7 +95,7 @@ def test_inferred_bounds_prove_the_contract(expr, requires, bounds):
     assert inferred(report) == bounds
     # They are assumed like the rest of `requires`, and shown as inferred.
     assert all(b in report.requires["orders"] for b in bounds)
-    assert f"requires orders: {bounds[0]} (inferred" in str(report)
+    assert f"requires orders: {bounds[0]} (inferred" in report.details()
     assert "assumed (inferred)" in report._repr_markdown_()
 
 
@@ -131,7 +131,7 @@ def test_without_inference_the_hint_names_the_bound():
     assert report._inferred == {}
     [issue] = report.errors
     assert issue.hint == "state `(_.amount < 2**62)` in the requires of 'orders'"
-    assert "hint: state `(_.amount < 2**62)`" in str(report)
+    assert "hint: state `(_.amount < 2**62)`" in report.details()
 
 
 @pytest.mark.parametrize(
@@ -381,7 +381,7 @@ def test_a_widening_cast_has_its_targets_width():
 )
 def test_a_widened_sum_is_not_a_32_bit_wrap(sql):
     report = verify(sql, tables={"t": {"i": "int32"}}, on_inferred="off")
-    assert "WRAP32" not in str(report), report
+    assert "WRAP32" not in report.details(), report
 
 
 def test_arithmetic_without_the_cast_still_wraps_at_the_columns_width():

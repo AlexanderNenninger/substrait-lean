@@ -14,7 +14,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
-from sverify.cli import _contract, _explain, _findings, _formats, _text
+from sverify.cli import _contract, _explain, _findings, _formats
 from sverify.cli._common import (  # noqa: F401  (re-exported)
     BUDGET,
     ERROR,
@@ -74,7 +74,7 @@ def _item(c: Checked) -> dict[str, Any]:
         "name": c.name,
         "nodes": c.nodes,
         "status": c.status,
-        "summary": _text.summary(r, c.params) if r is not None else None,
+        "summary": r._plain_contract(c.params) if r is not None else None,
         "links": c.links,
         "report": json.loads(r.to_json()) if r is not None else None,
     }
@@ -200,7 +200,7 @@ class Check:
         for c in self.checked:
             if c.report is None:
                 continue
-            s = _text.summary(c.report, c.params)
+            s = c.report._plain_contract(c.params)
             if s["guarantees"]:
                 guarantees[_label(c.name, c.nodes)] = s["guarantees"]
             if s["checks"]:
@@ -232,7 +232,7 @@ class Check:
             verdict = r._summary if r is not None else "unfinished: the time budget ran out"
             lines.append(f"{_label(c.name, c.nodes)}: {verdict}")
             if full and r is not None:
-                lines += [f"  {line}" for line in str(r).splitlines()[1:]]
+                lines += [f"  {line}" for line in r.details().splitlines()[1:]]
                 lines += [f"  composition: {m}" for m in c.links]
         lines += [
             f"{t}: not checked, the file never applies it; declare its input schemas with "

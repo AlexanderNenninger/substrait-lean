@@ -14,7 +14,7 @@ import json
 import math
 import re
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -1661,6 +1661,98 @@ class Report:
         )
 
     def __str__(self) -> str:
+        from sverify._user_text import plain
+
+        lines = [self._summary]
+        if self._proved and self._generated_proofs is False:
+            lines[0] += UNCHECKED_CHECKER
+        c = self._plain_contract()
+        if c["guarantees"]:
+            lines += ["The output guarantees:", *[f"  {g}" for g in c["guarantees"]]]
+        if c["checks"]:
+            lines += ["Each run checks on the data:", *[f"  {k}" for k in c["checks"]]]
+        bad: list[str] = []
+        for cond in self.ensures:
+            if cond.proved or cond.checked:
+                continue
+            bad.append(f"{plain(cond.label)}: {cond.message.removeprefix('NOT proved: ')}")
+            if cond.counterexample is not None:
+                bad.append(f"  counterexample: {cond.counterexample}")
+            if cond.suggested:
+                bad.append(f"  {_would_hold(cond)}")
+        bad += self._needs_lines()
+        for i in self.errors:
+            bad.append(f"may fail: {i.message}")
+            if i.hint:
+                bad.append(f"  hint: {i.hint}")
+        if self._transfer:
+            bad.append(f"Substrait allows more at {len(self._transfer)} option(s)")
+        if self.floats_unmet:
+            bad.append(f"doubles: {self.floats_unmet}")
+        if bad:
+            lines += ["Not proved:", *[f"  {b}" for b in bad]]
+        notes = [*self._all_hints(), *self.notes]
+        if notes:
+            lines += ["Notes:", *[f"  {n}" for n in notes]]
+        if self.facts or self.rows is not None:
+            lines.append("Known about the output:")
+            if self.rows is not None:
+                lines.append(f"  rows: at most {self.rows:,}")
+            lines += [f"  {name}: {value}" for name, value in self.facts.items()]
+        return "\n".join(lines)
+
+    def _plain_contract(self, sources: Collection[str] | None = None) -> dict[str, list[str]]:
+        """What the contract means for the data, in words (`sverify.cli.summary`):
+
+        * `guarantees`: what every output row (or the output) meets, proved;
+        * `checks`: what each run checks on the data before it writes (the
+          preconditions on the sources, postconditions checked on the output,
+          sums assumed to fit). With `sources`, only the preconditions on
+          those tables: the others follow from what the transforms feeding
+          them guarantee;
+        * `not_proved`: what is not proved, and the runtime errors it may raise.
+        """
+        from sverify._user_text import plain
+
+        guarantees = [plain(c.label) for c in self.ensures if c.proved and not c.ignores]
+        if self.rows is not None:
+            guarantees.append(f"at most {self.rows:,} rows")
+        checks: list[str] = []
+        needed = _labels_by_table(self.needs)
+        for table, conds in self.requires.items():
+            if sources is not None and table not in sources:
+                continue
+            shown = self._table_params.get(table, table)
+            inferred = {label(c) for c in self._inferred.get(table, [])}
+            checks += [
+                f"{shown}: {plain(c)}" + (self._inferred_note(c) if c in inferred else "")
+                for c in conds
+                if c not in needed.get(table, ())
+            ]
+        checks += [f"output: {plain(c.label)}" for c in self.ensures if c.checked]
+        checks += [f"while it runs: {i.assumption}" for i in self.assumed]
+        not_proved = [
+            f"{plain(c.label)}: not proved, {c.why}"
+            for c in self.ensures
+            if not c.portable and not c.checked
+        ]
+        for n in self.needs:
+            why = f"or {n.issue.kind} in {n.issue.what}" if n.issue is not None else "inferred"
+            not_proved.append(
+                f"{self._table_params.get(n.table, n.table)} needs {plain(n.label)} ({why})"
+            )
+        not_proved += [f"may fail: {i.message}" for i in self.errors]
+        if self._transfer:
+            not_proved.append(f"Substrait allows more at {len(self._transfer)} option(s)")
+        if self.floats_unmet:
+            not_proved.append(f"doubles: {self.floats_unmet}")
+        return {"guarantees": guarantees, "checks": checks, "not_proved": not_proved}
+
+    def details(self) -> str:
+        """The full text of the report: the preconditions and `needs`, each
+        postcondition with its status, the semantics, the evidence for each engine
+        and the routes, as an auditor reads it. `str(report)` is the contract in
+        plain words."""
         lines = [self._summary]
         if self._proved and self._generated_proofs is False:
             lines[0] += UNCHECKED_CHECKER

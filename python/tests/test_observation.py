@@ -164,8 +164,8 @@ def test_report_names_what_a_condition_depends_on() -> None:
     }
     assert report.observation == sv.equivalent(floats=sv.within(rel=1e-9), timestamps="s")
     assert report.verdict == sv.Verdict.UNPROVED
-    assert "depends on floats, which the observation ignores" in str(report)
-    assert "observes: equivalent(" in str(report)
+    assert "depends on floats, which the observation ignores" in report.details()
+    assert "observes: equivalent(" in report.details()
 
 
 def test_the_checker_names_what_a_condition_depends_on() -> None:

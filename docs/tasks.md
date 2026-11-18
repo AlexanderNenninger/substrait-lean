@@ -150,13 +150,16 @@ def doubled(orders):
 
 expr = doubled(orders)
 print(doubled.report)
-# requires orders: (_.amount >= 0)
-# requires orders: (_.amount < 1000000000)
-# requires orders: _.id.notnull()
-# ensures (_.doubled >= 0): proved
-# ensures _.doubled.notnull(): proved
-# ensures id IS NOT NULL: proved
-# known about the output:
+# proved
+# The output guarantees:
+#   doubled ≥ 0
+#   doubled is never NULL
+#   id IS NOT NULL
+# Each run checks on the data:
+#   orders: amount ≥ 0
+#   orders: amount < 1000000000
+#   orders: id is never NULL
+# Known about the output:
 #   id: any integer
 #   doubled: an integer in [22, 1999999998]
 ```
@@ -361,8 +364,10 @@ mixed = sv.verify(
     lines.select(lines.id, ok=(lines.n != 0) & (lines.total // lines.n > 1), per=lines.total // lines.n)
 )
 print(mixed)
-# needs: (_.total >= -9 * 10**18) and (_.n != 0) on lines, inferred from `total // n` ...
-# hint: `total // n` is inside an AND or OR you wrote (`&` or `|`), and DuckDB and Polars evaluate both operands ...
+# Not proved:
+#   (_.total >= -9 * 10**18) and (_.n != 0) on lines, inferred from `total // n` ...
+# Notes:
+#   `total // n` is inside an AND or OR you wrote (`&` or `|`), and DuckDB and Polars evaluate both operands ...
 ```
 
 Declared in `requires`, `n != 0` is checked on each batch before the run,
@@ -415,9 +420,12 @@ def twice_assumed(orders):
 
 twice_assumed(orders)
 print(twice_assumed.report)
-# requires orders: (_.amount >= 0)
-# requires orders: (_.amount < 2**62) (inferred from amount * 2)
-# ensures (_.twice >= 0): proved
+# proved
+# The output guarantees:
+#   twice ≥ 0
+# Each run checks on the data:
+#   orders: amount ≥ 0
+#   orders: amount < 2**62 (inferred from amount * 2)
 # ...
 ```
 
@@ -473,7 +481,8 @@ per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")])
 )
 print(sv.verify(per_minute))
 # ...
-# hint: SUM of `cpu`: the job checks the sum as it runs. To prove it, bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a row cap in `requires` of samples proves it: ...
+# Notes:
+#   SUM of `cpu`: the job checks the sum as it runs. To prove it, bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a row cap in `requires` of samples proves it: ...
 ```
 
 ### Row caps
@@ -489,7 +498,7 @@ per_host = samples.group_by("host").aggregate(cpu=samples.cpu.sum())
 report = sv.verify(
     per_host, requires={"samples": [_.cpu >= 0, _.cpu <= 100, sv.max_rows(10**12)]}
 )
-print(report)
+print(report.details())
 # requires samples: (_.cpu >= 0)
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
@@ -563,8 +572,9 @@ report = sv.verify(
 )
 print(report)
 # ...
-# ensures (_.doubled <= 100): NOT proved: it may be FALSE on some rows
-#   would hold with `(_.qty < 51)` in the requires of 'items'
+# Not proved:
+#   doubled ≤ 100: it may be FALSE on some rows
+#     would hold with `(_.qty < 51)` in the requires of 'items'
 # ...
 ```
 
@@ -776,11 +786,14 @@ def doubled_paid(t):
 
 expr = doubled_paid(paid(orders))
 print(doubled_paid.report)
-# requires t: (_.amount >= 0)          ← what `paid` guarantees, named by `t`, the parameter
-# requires t: _.amount.notnull()
-# requires t: unique(id)
-# ensures (_.doubled >= 0): proved
-# ensures _.doubled.notnull(): proved
+# proved
+# The output guarantees:
+#   doubled ≥ 0
+#   doubled is never NULL
+# Each run checks on the data:
+#   t: amount ≥ 0          ← what `paid` guarantees, named by `t`, the parameter
+#   t: amount is never NULL
+#   t: no two rows share id
 ```
 
 If the upstream contract doesn't imply the downstream precondition, the call
@@ -933,7 +946,8 @@ def capped(orders):
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
 print(capped.report)
-# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows
+# Each run checks on the data:
+#   output: amount < 1000
 # ...
 print(n.refresh())
 # capped:
@@ -1651,7 +1665,7 @@ the evidence, and the route where it is not `translated`:
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
 or on anything else, tests and probes among them (`tested`). `route.theorems`
 names the proofs, and `route.facts` and `route.version` the engine facts and
-the engine version they were probed at. `print(report)` shows the same before
+the engine version they were probed at. `print(report.details())` shows the same before
 any run, one `evidence:` line per engine:
 `evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc on polars's model (facts …)` or
 `evidence: spark exact, tested at 4.3.0 (facts spark-int-arith, …; #…)`. A proof
