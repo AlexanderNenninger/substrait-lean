@@ -68,7 +68,12 @@ def test_a_delta_scan_over_histories(history, tmp_path_factory):
     src = build_delta(path, history)
     for v in [*range(DeltaTable(str(path)).version() + 1), None]:
         snap = src._native(v)
-        if snap is not None:
+        if snap is None:
+            continue
+        if snap.scan.partitions is not None:
+            with pytest.raises(Unsupported):
+                lazy_scan(snap.scan)
+        else:
             agree(snap.scan)
 
 
