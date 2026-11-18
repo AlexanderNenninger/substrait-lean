@@ -46,7 +46,8 @@ timestamp plus or minus a constant interval, `DATE - DATE`, `datediff`);
 strings (`length`, `substring`, `trim`, `strpos`, `contains`, `starts_with`,
 LIKE and ILIKE, `||`, `concat`, `replace`, `repeat`, `left`, `upper`,
 `lower`); inner, left, right, full, semi, anti and cross joins; subqueries
-in FROM, uncorrelated scalar, IN and EXISTS subqueries, and non-recursive
+in FROM, uncorrelated scalar, IN and EXISTS subqueries, correlated [NOT] EXISTS
+as a conjunct of WHERE (a semi or anti join, #345), and non-recursive
 CTEs; GROUP BY with `count`, `sum`, `avg`, `min` and
 `max`, DISTINCT and FILTER (WHERE …) in them, HAVING; window functions
 (ranking, `lag`/`lead`, first/last/nth value, aggregates; ROWS and RANGE
