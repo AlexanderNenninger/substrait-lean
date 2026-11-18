@@ -792,6 +792,20 @@ def order_matters_of(plan: str) -> bool:
     return order_matters(parse_plan(json.loads(plan)).root)
 
 
+def test_count_distinct_is_written_natively():
+    """`COUNT(DISTINCT x)` of a non-double is the engine's own, not a
+    `ROW_NUMBER` over (group, value) with a CASE (#1608); NULLs are not counted."""
+    t = ibis.table({"k": "int64", "s": "string"}, name="t")
+    expr = t.group_by("k").aggregate(n=t.s.nunique())
+    rows = [(1, "a"), (1, "a"), (1, "b"), (1, None), (2, None), (3, "x"), (3, "x")]
+    sql = to_sql(json.loads(to_substrait_json(expr)), DUCKDB)
+    assert "COUNT(DISTINCT" in sql and "ROW_NUMBER" not in sql
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t(k BIGINT, s VARCHAR)")
+    con.executemany("INSERT INTO t VALUES (?, ?)", rows)
+    assert sorted(con.execute(sql).fetchall()) == [(1, 2), (2, 0), (3, 1)]
+
+
 @pytest.mark.parametrize(
     "limit",
     [
