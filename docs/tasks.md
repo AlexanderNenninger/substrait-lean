@@ -1153,8 +1153,9 @@ tables. A table format plays four roles:
   dropped and created again at the same path has a new table id, which the
   contract records: its sinks are rewritten from the new table. When two
   processes refresh the same `DeltaSink`, the second to commit an epoch
-  raises `ConcurrentWriteError` and writes nothing; its next refresh
-  recovers.
+  writes nothing: if the first wrote the same state, its refresh reports
+  "already committed"; otherwise it raises `ConcurrentWriteError`, and its
+  next refresh recovers.
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg). The NOT NULL columns are those `ensures`
   states (`_.id.notnull()`) and those the proved report shows are never NULL
