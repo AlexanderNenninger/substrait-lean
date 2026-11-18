@@ -171,9 +171,13 @@ def _partition_values(scan: Scan, constant: list[str]) -> dict[str, tuple[Any, .
     if scan.partitions is None:
         return {}
     cols = [scan.partitions.column(c).to_pylist() for c in constant]
-    return dict(
+    out = dict(
         zip(scan.partitions.column("file").to_pylist(), zip(*cols, strict=True), strict=True)
     )
+    # A file without values would read its partition columns as NULL.
+    if missing := [f for f in scan.files if f not in out]:
+        raise ValueError(f"{scan.origin}: no partition values for {missing[0]}")
+    return out
 
 
 def _runs(
