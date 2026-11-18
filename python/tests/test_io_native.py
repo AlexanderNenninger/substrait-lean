@@ -13,6 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
@@ -433,6 +434,93 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
     assert pipe.view("v", t.filter(t.x > 100.0)).rows()[0][0] == 2
     # Ibis on the connection reads the same view of the files.
     assert t.filter(t.x > 100.0).count().execute() == 1
+
+
+# Object stores (#173 N2): DuckDB reads s3:// files through `httpfs` and a temporary
+# secret made from the `Storage`.
+
+
+def s3_orders(root, store, name="orders"):
+    """A partitioned, column-mapped Delta table on the moto bucket `root`."""
+    table = pa.table({"id": [1, 2, 3, 4], "k": ["a", "b", "a", None], "x": [0.5, -0.0, None, 2.5]})
+    write_deltalake(
+        f"{root}/{name}",
+        table,
+        partition_by=["k"],
+        storage_options=store.options(),
+        configuration={"delta.columnMapping.mode": "name"},
+    )
+    return DeltaSource(f"{root}/{name}", storage_options=store)
+
+
+def test_an_s3_delta_table_is_scanned_by_duckdb(lake):
+    root, store = lake
+    src = s3_orders(root, store)
+    scan = native(src)
+    assert all(f.startswith("s3://") for f in scan.files)
+    assert same_rows(scan.to_arrow(), src.snapshot().table)
+    pipe = Pipeline(sv.connect())
+    pipe.source("orders", src)
+    assert isinstance(pipe.con.get("orders"), Scan)
+    t = pipe.con.table("orders")
+    assert t.filter(t.x > 0.0).count().execute() == 2
+
+
+class Spy:
+    """A DuckDB connection that keeps the SQL it is given."""
+
+    def __init__(self):
+        self.db = duckdb.connect()
+        self.seen: list[str] = []
+
+    def execute(self, sql, params=None):
+        self.seen.append(sql)
+        return self.db.execute(sql) if params is None else self.db.execute(sql, params)
+
+    def __getattr__(self, name):
+        return getattr(self.db, name)
+
+
+def test_an_s3_scan_keeps_credentials_out_of_sql_repr_and_logs(lake, caplog):
+    from sverify.io import Storage
+    from sverify_duckdb.scan import attach_scan
+
+    root, store = lake
+    src = s3_orders(root, store)
+    sentinel = "sentinel-token-7d3f"
+    scan = native(src)
+    scan.storage = Storage({**store.options(), "AWS_SESSION_TOKEN": sentinel})
+    spy = Spy()
+    with caplog.at_level("DEBUG"):
+        attach_scan(scan, spy, "t")()  # type: ignore[arg-type]
+    seen = "\n".join(spy.seen) + repr(scan) + str(scan) + repr(scan.storage) + caplog.text
+    assert sentinel not in seen
+    # A read that fails does not echo it either.
+    scan.storage = Storage(
+        {**store.options(), "AWS_ENDPOINT_URL": "http://127.0.0.1:1", "AWS_SESSION_TOKEN": sentinel}
+    )
+    with pytest.raises(duckdb.Error) as e:
+        scan.to_arrow()
+    assert sentinel not in str(e.value)
+
+
+def test_the_default_credential_chain_needs_duckdbs_aws_extension(lake):
+    """Without explicit keys the scan needs `aws`; where DuckDB lacks it, the source
+    keeps the Arrow route (sverify installs nothing)."""
+    from sverify.io import Storage
+    from sverify_duckdb.scan import readable_here
+
+    root, store = lake
+    src = s3_orders(root, store)
+    chain = {
+        k: v
+        for k, v in store.options().items()
+        if not k.startswith("AWS_ACCESS") and k != "AWS_SECRET_ACCESS_KEY"
+    }
+    assert readable_here(store.options())
+    if readable_here(chain):
+        pytest.skip("DuckDB's aws extension is installed")
+    assert DeltaSource(src.uri, storage_options=Storage(chain))._native() is None
 
 
 # Property 5.1 of the native-scan design (#173): a scan of the descriptor is the

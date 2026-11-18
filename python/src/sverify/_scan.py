@@ -43,11 +43,12 @@ from sverify import _duckdb
 
 if TYPE_CHECKING:
     from sverify.contracts import Fact
+    from sverify.io._storage import Storage
 
 
 def local_path(uri: str) -> str | None:
     """The local path a table location or file URI names, or None for
-    object stores (which `Scan` does not read)."""
+    object stores."""
     parsed = urlparse(uri)
     if parsed.scheme == "file":
         return os.path.abspath(unquote(parsed.path))
@@ -181,6 +182,9 @@ class Scan(Native):
             `schema`, for each partition column, one row per file. Those
             columns are not read from the files. None: no partition columns.
         equality: Iceberg equality deletes, applied to their data files.
+        storage: How to open the files when they are URIs of an object store
+            (`s3://...`): its options and credentials, by name. Resolved where
+            the scan is attached, never kept in the descriptor. None: local files.
     """
 
     files: tuple[str, ...]
@@ -192,6 +196,7 @@ class Scan(Native):
     equality: tuple[EqualityDelete, ...] = ()
     physical: tuple[str, ...] | None = None
     partitions: pa.Table | None = None
+    storage: Storage | None = None
 
     def attach(
         self,
@@ -212,9 +217,9 @@ class Scan(Native):
         return schema_mismatches(expected, self.schema)
 
     def readable(self) -> bool:
-        """Whether every file is still there (a vacuum removes the files of
-        old versions)."""
-        return all(os.path.exists(f) for f in self.files)
+        """Whether every local file is still there (a vacuum removes the files
+        of old versions); a file in an object store is not looked up."""
+        return all(os.path.exists(f) for f in self.files if local_path(f) is not None)
 
     def to_arrow(self) -> pa.Table:
         """The rows as an Arrow table in the scan's schema: the reference reader,

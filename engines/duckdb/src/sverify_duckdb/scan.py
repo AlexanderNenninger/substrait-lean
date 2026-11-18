@@ -12,9 +12,11 @@ from the descriptor's `partitions`, a small table joined on the file name.
 
 from __future__ import annotations
 
+import functools
 import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import duckdb
 import pyarrow as pa
@@ -23,6 +25,15 @@ from sverify._scan import _q
 
 if TYPE_CHECKING:
     from sverify._scan import EqualityDelete, Scan
+
+#: The option names of `Storage` (delta-rs's) and the fields of DuckDB's S3 secret: the one
+#: table from a storage option to this engine.
+S3_SECRET = {
+    "AWS_ACCESS_KEY_ID": "KEY_ID",
+    "AWS_SECRET_ACCESS_KEY": "SECRET",
+    "AWS_SESSION_TOKEN": "SESSION_TOKEN",
+    "AWS_REGION": "REGION",
+}
 
 FILE, POS = '"__sverify_file"', '"__sverify_pos"'
 """The columns `attach_scan(..., positions=True)` adds (quoted)."""
@@ -54,6 +65,8 @@ def attach_scan(
     for n, t in registered:
         db.register(n, t)
     kind = "TABLE" if table else "VIEW"
+    if scan.storage is not None:
+        attach_secret(db, scan)
 
     def unregister() -> None:
         for n, _ in registered:
@@ -71,6 +84,82 @@ def attach_scan(
         unregister()
 
     return drop
+
+
+def _store_scheme(uri: str) -> str:
+    return urlparse(uri).scheme
+
+
+def readable_here(options: dict[str, str]) -> bool:
+    """Whether DuckDB can read an S3 table opened with `options`: `httpfs` loads,
+    and the default credential chain (no explicit key) has the `aws` extension.
+    Sverify installs nothing."""
+    return _loadable("httpfs") and ("AWS_ACCESS_KEY_ID" in options or _loadable("aws"))
+
+
+@functools.cache
+def _loadable(extension: str) -> bool:
+    db = duckdb.connect()
+    try:
+        db.execute(f"LOAD {extension}")
+        return True
+    except duckdb.Error:
+        return False
+    finally:
+        db.close()
+
+
+def attach_secret(db: duckdb.DuckDBPyConnection, scan: Scan) -> None:
+    """A temporary, in-memory DuckDB secret in `db` for the S3 prefix of the scan's
+    files, from the scan's `storage` as it is now. The values are bound, never
+    written into SQL text, and the secret goes with the connection."""
+    assert scan.storage is not None
+    schemes = {_store_scheme(f) for f in scan.files} - {"", "file"}
+    if not schemes:
+        return
+    if schemes != {"s3"}:
+        raise ValueError(f"DuckDB reads s3:// files here, not {sorted(schemes)}")
+    options = scan.storage.options()
+    for ext in ("httpfs", *(() if "AWS_ACCESS_KEY_ID" in options else ("aws",))):
+        try:
+            db.execute(f"LOAD {ext}")
+        except duckdb.Error as e:
+            raise RuntimeError(
+                f"DuckDB needs its `{ext}` extension to read an object store: run "
+                f"`INSTALL {ext}` (sverify installs nothing)"
+            ) from e
+    fields: dict[str, str | bool] = {S3_SECRET[k]: v for k, v in options.items() if k in S3_SECRET}
+    endpoint = options.get("AWS_ENDPOINT_URL")
+    if endpoint:
+        parsed = urlparse(endpoint)
+        fields["ENDPOINT"] = parsed.netloc or parsed.path
+        fields["USE_SSL"] = parsed.scheme != "http" and not _truthy(options, "AWS_ALLOW_HTTP")
+        fields["URL_STYLE"] = "path"
+    if "KEY_ID" not in fields:
+        db.execute(
+            "CREATE OR REPLACE TEMPORARY SECRET sverify_s3 (TYPE s3, PROVIDER credential_chain)"
+        )
+        return
+    prefix = _prefix(scan.files)
+    columns = ", ".join(f"{n} ?" for n in fields)
+    db.execute(
+        f"CREATE OR REPLACE TEMPORARY SECRET sverify_s3 (TYPE s3, SCOPE ?, {columns})",
+        [prefix, *fields.values()],
+    )
+
+
+def _truthy(options: dict[str, str], key: str) -> bool:
+    return options.get(key, "").lower() == "true"
+
+
+def _prefix(files: tuple[str, ...]) -> str:
+    """The longest directory prefix the files share."""
+    parts = [f.split("/") for f in files]
+    common = parts[0][:-1]
+    for p in parts[1:]:
+        while common and p[: len(common)] != common:
+            common.pop()
+    return "/".join(common) + "/"
 
 
 def read_scan(scan: Scan) -> pa.Table:

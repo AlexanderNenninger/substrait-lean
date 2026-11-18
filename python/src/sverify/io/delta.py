@@ -72,7 +72,7 @@ from sverify.io._common import (
     q,
 )
 from sverify.io._sink import SinkChange, _TableSink
-from sverify.io._storage import Options, resolve
+from sverify.io._storage import Options, Storage, resolve
 from sverify.observation import Observation
 
 CONSTRAINT = "Delta constraint"
@@ -246,16 +246,34 @@ def _basename(uri: str) -> str:
 _NATIVE_FEATURES = {"deletionVectors", "timestampNtz", "v2Checkpoint", "vacuumProtocolCheck"}
 
 
-def _local_files(root: str, paths: Iterable[str]) -> dict[str, str] | None:
-    """Each add action's path, to the file's local path; None if one is
-    not local."""
-    out = {}
+def _file_uris(root: str, paths: Iterable[str]) -> dict[str, str] | None:
+    """Each add action's path, to the file's local path, or to its URI in an
+    object store (`root` is the table's URI there); None if one is somewhere
+    else."""
+    out: dict[str, str] = {}
+    remote = local_path(root) is None
     for p in paths:
-        local = local_path(p) if urlparse(p).scheme else os.path.join(root, unquote(p))
-        if local is None:
+        if urlparse(p).scheme:
+            uri = p if remote else local_path(p)
+        elif remote:
+            uri = root.rstrip("/") + "/" + p
+        else:
+            uri = os.path.join(root, unquote(p))
+        if uri is None:
             return None
-        out[p] = local
+        out[p] = uri
     return out
+
+
+def _storage(options: Options) -> Storage:
+    return options if isinstance(options, Storage) else Storage(options)
+
+
+def _store_readable(options: Options) -> bool:
+    """Whether DuckDB can read an S3 table opened with `options` (its extensions)."""
+    from sverify_duckdb.scan import readable_here
+
+    return readable_here(_storage(options).options())
 
 
 def _constant_type(t: pa.DataType) -> bool:
@@ -477,12 +495,15 @@ class DeltaSource(_TableSource):
         features, partition columns of types the log's values do not give
         exactly, column mapping over nested columns, and object stores."""
         root = local_path(self.uri)
-        if root is None:
+        remote = root is None
+        if remote and (
+            urlparse(self.uri).scheme != "s3" or not _store_readable(self.storage_options)
+        ):
             return None
         dt = self._read_at(self._at(version))
         meta = dt.metadata()
         features = set(dt.protocol().reader_features or [])
-        if features - _NATIVE_FEATURES:
+        if features - _NATIVE_FEATURES or (remote and "deletionVectors" in features):
             return None
         schema = _arrow_schema(dt)
         mode = _mapping(dt)
@@ -492,7 +513,7 @@ class DeltaSource(_TableSource):
             return None
         files = file_stats(dt)
         keep = self._keep(files, schema)
-        paths = _local_files(root, keep)
+        paths = _file_uris(root or self.uri, keep)
         if paths is None:
             return None
         physical = _physical(dt)
@@ -511,6 +532,7 @@ class DeltaSource(_TableSource):
             ),
             physical=tuple(physical.values()) if mode == "name" else None,
             partitions=_partitions(dt, schema, physical, paths) if meta.partition_columns else None,
+            storage=_storage(self.storage_options) if remote else None,
         )
         kept = {p: s for p, s in files.items() if p in keep}
         return ScanSnapshot(v, scan, self._facts(dt, kept, f"file stats @v{v}"))
@@ -1193,7 +1215,7 @@ class DeltaSink(_TableSink[DeltaTable]):
                 dt.alter.add_constraint(missing)
                 dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
             if gone:
-                logged = _local_files(root, file_stats(dt)) or {}
+                logged = _file_uris(root, file_stats(dt)) or {}
                 by_local = {v: k for k, v in logged.items()}
                 for file, at in gone.items():
                     name = f"part-{uuid.uuid4()}-sverify.parquet"
