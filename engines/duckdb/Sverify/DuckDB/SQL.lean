@@ -128,7 +128,7 @@ def DuckFn.result : DuckFn → DuckType
 refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
   | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
-      (they truncate) cannot state; use semantics='reference', or round() first"
+      (they truncate) cannot state; use semantics='reference'"
   | _, _ => none
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by

@@ -1811,6 +1811,22 @@ def _int_lit(e: Expr) -> int | None:
     return None
 
 
+def _always_evaluated(e: Expr) -> bool:
+    """Is every part of `e` evaluated on every row? Double arithmetic over
+    columns and literals is: a branch or a short-circuit would leave arms
+    unevaluated, and the errors of an arm no row takes must stay unraised."""
+    match e:
+        case Field() | Lit():
+            return True
+        case Bin(
+            op="fadd" | "fsub" | "fmul" | "fdiv" | "fdivIeee" | "fmod" | "fpow", left=a, right=b
+        ):
+            return _always_evaluated(a) and _always_evaluated(b)
+        case Un(op="fneg" | "itof" | "neg", arg=a):
+            return _always_evaluated(a)
+    return False
+
+
 def _decided(c: Expr) -> Expr:
     """The condition `c` with the comparisons of integer constants worked out:
     `x AND TRUE` is `x`, `x AND FALSE` is `FALSE` (also for a NULL `x`), and
@@ -3996,6 +4012,27 @@ class _Writer:
     one, numbered by its keys, and ties are open as `Rel.Allowed` leaves them.
     Below a window or an ordered aggregate it is on again: they read the
     ordinal."""
+    binds: list[tuple[str, str]] | None = None
+    """While a projection's expressions are written: the subexpressions bound once
+    as columns of a layer below it, as (name, SQL); None elsewhere."""
+    bind_alias: str = ""
+    bind_on: bool = False
+    """Binding is sound for the expression being written: it holds no branch
+    (`If`, `coalesce`, `AND`) whose arms may stay unevaluated, so a bound
+    subexpression is evaluated on every row in the original too."""
+
+    def bind(self, sql: str) -> str:
+        """`sql` as a column of the layer below the projection being written,
+        where a guard repeats it (#1608); `sql` itself where there is no such
+        layer or binding it could change its meaning (an earlier binding
+        in it, a lambda)."""
+        if self.binds is None or not self.bind_on or len(sql) < 120 or "->" in sql:
+            return sql
+        name = next((n for n, text in self.binds if text == sql), None)
+        if name is None:
+            name = f"b{len(self.binds)}"
+            self.binds.append((name, sql))
+        return self.ref(self.bind_alias, self.d.quote(name))
 
     @property
     def stable(self) -> bool:
@@ -4127,14 +4164,38 @@ class _Writer:
                 ks = kinds(i)
                 m = len(ks)
                 items = [f"{self.ref(a, self.c(j))} AS {self.c(j)}" for j in range(m)]
-                for j, e in enumerate(es):
-                    self.check_refs(e, m)
-                    with self.slot(r, j):
-                        sql = self.expr(e, lambda x: self.ref(a, self.c(x)), ks, expr_kind(e, ks))
-                    items.append(f"{sql} AS {self.c(m + j)}")
+                self.binds, self.bind_alias = [], a
+                try:
+                    for j, e in enumerate(es):
+                        self.check_refs(e, m)
+                        self.bind_on = _always_evaluated(e)
+                        with self.slot(r, j):
+                            sql = self.expr(
+                                e, lambda x: self.ref(a, self.c(x)), ks, expr_kind(e, ks)
+                            )
+                        items.append(f"{sql} AS {self.c(m + j)}")
+                    binds = self.binds
+                finally:
+                    self.binds = None
                 if ordered:
                     items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
-                return self.select(items, d.subquery(self.rel(i, ordered), a))
+                src = d.subquery(self.rel(i, ordered), a)
+                # Each repeated subexpression is computed once, in a layer below the
+                # projection; one that reads another binding goes a layer higher.
+                level: dict[str, int] = {}
+                for name, text in binds:
+                    level[name] = 1 + max(
+                        (level[n] for n in level if d.quote(n) in text), default=0
+                    )
+                for k in range(1, max(level.values(), default=0) + 1):
+                    inner = self.passthrough(a, m, ordered)
+                    for name, text in binds:
+                        if level[name] < k:
+                            inner.append(f"{self.ref(a, d.quote(name))} AS {d.quote(name)}")
+                        elif level[name] == k:
+                            inner.append(f"{text} AS {d.quote(name)}")
+                    src = d.subquery(self.select(inner, src), a)
+                return self.select(items, src)
             case Emit(input=i, mapping=mapping):
                 a = self.alias()
                 m = arity(i)
@@ -5327,6 +5388,7 @@ class _Writer:
         if not d.finite:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
+        sql = self.bind(sql)
         return d.case_when(
             f"({fin}{unless}{d.is_inf(sql)})",
             d.raise_("overflow to infinity", sql, "float", "infinite"),
@@ -5347,7 +5409,8 @@ class _Writer:
             raise Unsupported(
                 f"double arithmetic on {k or 'a value of unknown type'}; cast it to DOUBLE first"
             )
-        return self.expr(e, ref, cols, "float")
+        # The operator's guards repeat it: it is computed once.
+        return self.bind(self.expr(e, ref, cols, "float"))
 
     def arith(
         self, op: str, a: Expr, b: Expr, ref: Callable[[int], str], cols: list[Kind | None]
