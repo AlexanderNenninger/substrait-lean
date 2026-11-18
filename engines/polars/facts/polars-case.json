@@ -27,6 +27,32 @@
   "evidence": "probe",
   "provenance": [
     {
+      "checked_at": "2026-11-18",
+      "method": "source-reading",
+      "checked_by": "D51 facts (C1 of the ruling on the raise sets)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/strings/case.rs#L45-L70",
+          "note": "`to_lowercase_helper`: the ASCII prefix byte by byte, then each `char` through `char::to_lowercase`, with `Σ` alone read in its context (`map_uppercase_sigma`); `to_uppercase` is the same without the sigma rule. Polars inlines std's `str::to_lowercase` / `to_uppercase`, so the mapping is scalar by scalar and the Σ is the one context rule"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "sverify_dev.case_tables (D51 facts, polars 2.1.0, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/case-tables.json",
+          "note": "every Unicode scalar value (without surrogates) through `upper` and `lower` alone: 1580 values for `upper` and 1488 for `lower`; full mappings, and a final sigma (`lower('ΑΣ')` is `ας`); the context strings of `CONTEXT` are in the file's `context`"
+        },
+        {
+          "file": "characterization/case-differences.json",
+          "note": "the values the three tier-1 engines map differently: 157 for `upper`, 56 for `lower` (213 in all, none in both); Polars and Spark agree on every one-character string, so each is DuckDB's simple mapping against their full one, and the final sigma is a context rule apart from them"
+        }
+      ]
+    },
+    {
       "checked_at": "2026-11-04",
       "method": "probe",
       "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",

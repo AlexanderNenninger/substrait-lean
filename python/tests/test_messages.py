@@ -413,3 +413,22 @@ def test_every_hint_removes_its_issue_when_pasted(case) -> None:
             pasted.setdefault(t, []).extend(cs)
         again = sv.verify(expr, requires=pasted, on_inferred="off", counterexamples=0)
         assert (issue.kind, str(issue)) not in {(i.kind, str(i)) for i in again.errors}, issue.hint
+
+
+def test_a_report_names_the_parameter_not_the_upstream_node():
+    # `downstream(orders)` is fed by the transform `latest`: the report says
+    # `requires orders`, the name in its own `requires`, not `requires latest` (#1485).
+    @sv.transform(requires={"rows": [_.amount >= 0]}, ensures=[_.total >= 0])
+    def latest(rows):
+        return rows.group_by("id").aggregate(total=rows.amount.sum())
+
+    @sv.transform(requires={"orders": [_.total >= 0]}, ensures=[])
+    def downstream(orders):
+        return orders.select("id", dbl=orders.total * orders.total)
+
+    raw = ibis.table({"id": "int64", "amount": "int64"}, name="raw")
+    with pytest.raises(VerificationError) as caught:
+        downstream(latest(raw))
+    text = str(caught.value.report)
+    assert "requires orders: (_.total >= 0)" in text
+    assert "requires latest" not in text

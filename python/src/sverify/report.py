@@ -29,7 +29,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
-from sverify._run_schema import declared_columns, int_name, int_range
+from sverify._run_schema import declared_columns, int_range, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
@@ -497,6 +497,11 @@ class Report:
     checks each at run time, on the data, and raises where one fails. The
     proof holds under these assumptions (`Rel.noIssue_of_assumedHold`). With
     `on_inferred="off"` they are errors instead."""
+    _table_params: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    """For an input table the proof names (a base table, or the placeholder of a
+    contracted upstream result), the transform's parameter it is bound to: the
+    text says `requires orders`, the name in the transform's own `requires`, not
+    the upstream node that feeds it (#1485)."""
     _params: list[str] = field(default_factory=list, repr=False)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -900,43 +905,9 @@ class Report:
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
         """Refuse a table that differs from the schema the plan was verified
-        for (`sverify._run_schema`): a missing column, a type the reader would
-        change, a NULL in a column read as non-null, an integer outside the
-        declared type's range (D46; the engine counts it)."""
-        if self.internal_plan is None:
-            return
-        for t, schemas in declared_columns(json.loads(self.internal_plan)).items():
-            if not con.has(t):
-                continue
-            z = con.get(t)
-            data = z if isinstance(z, pa.Table) else None
-            wide: set[tuple[str, str]] = set()
-            for declared in schemas:
-                found, more = schema_problems(declared, con.schema(t), data)
-                if found:
-                    raise PreconditionError(
-                        f"table {t} differs from the schema the plan was verified for: "
-                        + "; ".join(found)
-                        + ": refused before the run. Declare the column as it is, or fix the source"
-                    )
-                wide.update(more)
-            table = con.table(t)
-            for col, key in sorted(wide):
-                lo, hi = int_range(key)
-                x: Any = ibis._[col]
-                cond = x.isnull() | ((x >= lo) & (x <= hi))
-                [(_c, n, error)] = violation_counts(table, [cond], engine)
-                if n or error:
-                    raise PreconditionError(
-                        f"column {col!r} of {t} is declared {int_name(key)} ({lo} to {hi}) and "
-                        + (
-                            f"its range check raised: {error}"
-                            if error
-                            else f"{n} value(s) lie outside it, e.g. {_example(table, cond, col)}"
-                        )
-                        + ": refused before the run. Declare the wider type, or cast in the query",
-                        source=t,
-                    )
+        for (`refuse_schema`)."""
+        if self.internal_plan is not None:
+            refuse_schema(json.loads(self.internal_plan), con, engine)
 
     def _unchecked_requires(self) -> list[str]:
         """The preconditions in `requires` that `_conditions` holds no check
@@ -1513,6 +1484,7 @@ class Report:
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
+        table = self._table_params.get(table, table)
         issues = [i for lab in labs if (i := self._inferred_from.get(lab)) is not None]
         kinds = " or ".join(dict.fromkeys(i.kind for i in issues))
         where = f", inferred from `{issues[0].what}` ({kinds} otherwise)" if issues else ""
@@ -1696,7 +1668,8 @@ class Report:
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self._inferred.get(table, [])}
             lines += [
-                f"requires {table}: {c}" + (self._inferred_note(c) if c in inferred else "")
+                f"requires {self._table_params.get(table, table)}: {c}"
+                + (self._inferred_note(c) if c in inferred else "")
                 for c in conds
                 if c not in needed.get(table, ())
             ]
@@ -1785,6 +1758,9 @@ class Report:
             ]
         )
 
+
+#: Private fields that never had a public name: no deprecated alias.
+_REPORT_PRIVATE = ["table_params"]
 
 _REPORT_INTERNAL = [
     "windows_total",
@@ -2351,3 +2327,45 @@ def _example(table: ir.Table, cond: Condition, col: str) -> object:
     """One value of column `col` where `cond` is not TRUE, for a message."""
     rows = violating_rows(table, cond, 1)
     return rows.column(col)[0].as_py() if rows is not None and rows.num_rows else "?"
+
+
+def refuse_schema(plan: object, con: Connection, engine: str | None = None) -> None:
+    """Refuse a table of `con` that differs from the schema `plan` was verified
+    for (`sverify._run_schema`): a missing column, a type the reader would
+    change, a NULL in a column read as non-null, an integer outside the
+    declared type's range (D46). An Arrow table's range is one native pass; a
+    table the engine reads where it is has its range counted on `engine`."""
+    for t, schemas in declared_columns(plan).items():
+        if not con.has(t):
+            continue
+        z = con.get(t)
+        data = z if isinstance(z, pa.Table) else None
+        wide: set[tuple[str, str]] = set()
+        for declared in schemas:
+            found, more = schema_problems(declared, con.schema(t), data)
+            if found:
+                raise PreconditionError(
+                    f"table {t} differs from the schema the plan was verified for: "
+                    + "; ".join(found)
+                    + ": refused before the run. Declare the column as it is (a wider "
+                    "integer type for a value outside the width), or fix the source"
+                )
+            wide.update(more)
+        table = con.table(t)
+        for col, key in sorted(wide):
+            lo, hi = int_range(key)
+            x: Any = ibis._[col]
+            cond = x.isnull() | ((x >= lo) & (x <= hi))
+            [(_c, n, error)] = violation_counts(table, [cond], engine)
+            if n or error:
+                raise PreconditionError(
+                    f"table {t} differs from the schema the plan was verified for: "
+                    + (
+                        f"the range check of column {col!r} raised: {error}"
+                        if error
+                        else range_message(col, key, n, _example(table, cond, col))
+                    )
+                    + ": refused before the run. Declare a wider integer type, or cast in "
+                    "the query",
+                    source=t,
+                )

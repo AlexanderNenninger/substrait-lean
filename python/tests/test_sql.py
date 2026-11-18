@@ -954,3 +954,47 @@ def test_a_constant_that_can_overflow_keeps_its_check():
     t = ibis.table({"x": "float64"}, name="t")
     sql = to_sql(json.loads(to_substrait_json(t.select(r=t.x / 0.5))), DUCKDB)
     assert "overflow to infinity" in sql and "division by zero" not in sql
+
+
+BIND_X = [1.5, -7.25, 0.0, 1e10, 3.0]
+BIND_Y = [2.0, 4.0, 0.5, 1e-3, 0.0]
+
+
+def test_a_repeated_guarded_operation_is_computed_once():
+    """The guards of `(x * x + x) / y` repeat each operation; one layer below
+    the projection computes it once (#1608). Rows are Lean's, and a division
+    in a branch no row takes is not hoisted out of it."""
+    t = ibis.table({"x": "float64", "y": "float64"}, name="t")
+    expr = t.select(r=(t.x * t.x + t.x) / t.y)
+    plan = json.loads(to_substrait_json(expr))
+    sql = to_sql(plan, DUCKDB)
+    assert '"b0"' in sql and len(sql) < 6000
+    nonzero = pa.table({"x": BIND_X[:4], "y": BIND_Y[:4]})
+    agree(plan, *lean_and_duckdb(plan, {"t": nonzero}))
+    branch = t.select(r=ibis.cases((t.y != 0.0, t.x / t.y), else_=None))
+    plan = json.loads(to_substrait_json(branch))
+    assert '"b0"' not in to_sql(plan, DUCKDB)
+    both = pa.table({"x": BIND_X, "y": BIND_Y})
+    assert len(duckdb_rows(json.dumps(plan), {"t": both})) == 5
+
+
+def test_a_repeated_date_operation_is_computed_once():
+    """`day + INTERVAL 7 DAY` is a timestamp in DuckDB's SQL and repeats the
+    date's range guards; the date arithmetic is computed once, in a layer below
+    (#1608), and the rows are Lean's on the edges of the reference's dates."""
+    days = pa.table(
+        {
+            "d": pa.array(
+                [dt.date(2024, 2, 22), dt.date(1, 1, 1), dt.date(9999, 12, 20), None],
+                pa.date32(),
+            )
+        }
+    )
+    report = sv.verify(
+        "SELECT d + INTERVAL 7 DAY AS r FROM t", tables={"t": days.schema}, on_inferred="warn"
+    )
+    assert report.internal_plan is not None
+    plan = json.loads(report.internal_plan)
+    sql = to_sql(plan, DUCKDB)
+    assert len(sql) < 2000 and '"b0"' in sql, len(sql)
+    agree(plan, *lean_and_duckdb(plan, {"t": days}))

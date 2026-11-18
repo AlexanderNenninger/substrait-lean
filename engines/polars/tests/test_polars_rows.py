@@ -5,6 +5,7 @@ state (`sverify._state.Merger`) is one of the plans."""
 
 import math
 from collections import Counter
+from typing import Literal
 
 import pyarrow as pa
 from hypothesis import given, settings
@@ -46,7 +47,7 @@ def canon(t: pa.Table) -> Counter:
     return Counter(tuple(key(v) for v in r.values()) for r in t.to_pylist())
 
 
-def run(plan: str, tables: dict, rows: str) -> pa.Table:
+def run(plan: str, tables: dict, rows: Literal["sequence", "multiset"]) -> pa.Table:
     lf = E.to_lazy(plan, tables, rows=rows)
     return E.collect(lf).to_arrow()
 
