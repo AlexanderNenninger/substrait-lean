@@ -38,8 +38,8 @@ def rnd(q: Fraction, bits: int) -> Fraction:
 
 def avg_of(con, total: int, count: int, cast: str = "BIGINT") -> float:
     con.execute(
-        f"create or replace table t as select (({total} // {count}) + (i < {total} % {count})::BIGINT)::{cast} v"
-        f" from range({count}) r(i)"
+        f"create or replace table t as select (({total} // {count})"
+        f" + (i < {total} % {count})::BIGINT)::{cast} v from range({count}) r(i)"
     )
     return con.execute("select avg(v) from t").fetchone()[0]
 
