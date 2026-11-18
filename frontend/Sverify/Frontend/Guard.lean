@@ -636,6 +636,7 @@ same (`Expr.andLift_refines`, `Expr.orLift_refines`); its value is TRUE, FALSE o
 NULL (`Expr.andLift_boolVal`, `Expr.orLift_boolVal`), so a lift can be an operand
 of another. -/
 
+omit [Boxes.Ambient] in
 theorem firstError_append_none {xs ys : List (Issue × Expr)}
     (h : firstError (xs ++ ys) = none) : firstError xs = none ∧ firstError ys = none := by
   rw [firstError_append] at h
@@ -817,13 +818,14 @@ theorem Expr.andG_outcome (row : Row) (ps : List Expr)
       fun q hq => ⟨hno q (by simp [hq]), hpre q hq, hbv q (by simp [hq])⟩
     have h1 := Expr.andG_false row pre p post hGo (hno p (by simp)) (hbv p (by simp)) hp
     have h2 : (Expr.conj (pre ++ p :: post)).refOutcome row = .ok (.bool false) := by
-      simp [Expr.refOutcome, Expr.conj_firstError_none row _ hno,
-        Expr.conj_eval_dom row _ ⟨p, by simp, hp⟩]
+      have hfe := Expr.conj_firstError_none row (pre ++ p :: post) hno
+      have hev := Expr.conj_eval_dom row (pre ++ p :: post) ⟨p, by simp, hp⟩
+      simp [Expr.refOutcome, hfe, hev]
     rw [h1, h2]
-  · push_neg at hex
+  · have hex' : ∀ q ∈ ps, q.eval row ≠ .bool false := fun q hq h => hex ⟨q, hq, h⟩
     cases ps with
     | nil => exact absurd rfl hne
-    | cons p ps => exact Expr.andG_none row p ps (fun q hq => ⟨hno q hq, hex q hq, hbv q hq⟩)
+    | cons p ps => exact Expr.andG_none row p ps (fun q hq => ⟨hno q hq, hex' q hq, hbv q hq⟩)
 
 /-- The plain operands' conjunction, ANDed with the guarded one, has the eager value. -/
 theorem Expr.and_plains_value (row : Row) (ps : List Expr)
@@ -832,8 +834,8 @@ theorem Expr.and_plains_value (row : Row) (ps : List Expr)
       (Expr.conj ps).eval row := by
   by_cases hA : ∃ q ∈ ps, q.eval row = .bool false
   · rw [Expr.conj_eval_dom row ps hA]; exact and3_false_right _
-  · push_neg at hA
-    have hGo : ∀ q ∈ ps, Expr.Go row q := fun q hq => ⟨hno q hq, hA q hq, hbv q hq⟩
+  · have hA' : ∀ q ∈ ps, q.eval row ≠ .bool false := fun q hq h => hA ⟨q, hq, h⟩
+    have hGo : ∀ q ∈ ps, Expr.Go row q := fun q hq => ⟨hno q hq, hA' q hq, hbv q hq⟩
     have hplGo : ∀ q ∈ ps.filter Expr.plain, Expr.Go row q := fun q hq => hGo q (List.mem_filter.mp hq).1
     by_cases hB : ∀ q ∈ ps, q.eval row = .bool true
     · rw [Expr.conj_eval_neut row ps hB,
@@ -1057,13 +1059,14 @@ theorem Expr.orG_outcome (row : Row) (ps : List Expr)
       fun q hq => ⟨hno q (by simp [hq]), hpre q hq, hbv q (by simp [hq])⟩
     have h1 := Expr.orG_true row pre p post hGo (hno p (by simp)) (hbv p (by simp)) hp
     have h2 : (Expr.disj (pre ++ p :: post)).refOutcome row = .ok (.bool true) := by
-      simp [Expr.refOutcome, Expr.disj_firstError_none row _ hno,
-        Expr.disj_eval_dom row _ ⟨p, by simp, hp⟩]
+      have hfe := Expr.disj_firstError_none row (pre ++ p :: post) hno
+      have hev := Expr.disj_eval_dom row (pre ++ p :: post) ⟨p, by simp, hp⟩
+      simp [Expr.refOutcome, hfe, hev]
     rw [h1, h2]
-  · push_neg at hex
+  · have hex' : ∀ q ∈ ps, q.eval row ≠ .bool true := fun q hq h => hex ⟨q, hq, h⟩
     cases ps with
     | nil => exact absurd rfl hne
-    | cons p ps => exact Expr.orG_none row p ps (fun q hq => ⟨hno q hq, hex q hq, hbv q hq⟩)
+    | cons p ps => exact Expr.orG_none row p ps (fun q hq => ⟨hno q hq, hex' q hq, hbv q hq⟩)
 
 /-- The plain operands' disjunction, ANDed with the guarded one, has the eager value. -/
 theorem Expr.or_plains_value (row : Row) (ps : List Expr)
@@ -1072,8 +1075,8 @@ theorem Expr.or_plains_value (row : Row) (ps : List Expr)
       (Expr.disj ps).eval row := by
   by_cases hA : ∃ q ∈ ps, q.eval row = .bool true
   · rw [Expr.disj_eval_dom row ps hA]; exact or3_true_right _
-  · push_neg at hA
-    have hGo : ∀ q ∈ ps, Expr.GoOr row q := fun q hq => ⟨hno q hq, hA q hq, hbv q hq⟩
+  · have hA' : ∀ q ∈ ps, q.eval row ≠ .bool true := fun q hq h => hA ⟨q, hq, h⟩
+    have hGo : ∀ q ∈ ps, Expr.GoOr row q := fun q hq => ⟨hno q hq, hA' q hq, hbv q hq⟩
     have hplGo : ∀ q ∈ ps.filter Expr.plain, Expr.GoOr row q := fun q hq => hGo q (List.mem_filter.mp hq).1
     by_cases hB : ∀ q ∈ ps, q.eval row = .bool false
     · rw [Expr.disj_eval_neut row ps hB,
@@ -1125,7 +1128,7 @@ theorem Expr.orChain_vals (row : Row) (all : Expr) : ∀ ps : List Expr,
     (Expr.orChain all ps).eval row = .int 0 ∨ (Expr.orChain all ps).eval row = .int 1 ∨
       (Expr.orChain all ps).eval row = .null
   | [] => by
-    simp only [Expr.orChain, Expr.eval]; split <;> simp
+    simp only [Expr.orChain, Expr.eval]; split_ifs <;> simp
   | p :: ps => by
     simp only [Expr.orChain, Expr.eval]
     split
