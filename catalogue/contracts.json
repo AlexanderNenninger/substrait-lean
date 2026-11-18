@@ -509,11 +509,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "snowflake": {
         "outcome": "refused",
@@ -521,7 +521,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       }
     },
     "pattern": "expression",
@@ -607,11 +607,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "snowflake": {
         "outcome": "refused",
@@ -619,7 +619,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       }
     },
     "pattern": "having",
@@ -842,11 +842,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "snowflake": {
         "outcome": "refused",
@@ -854,7 +854,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       }
     },
     "pattern": "top_n",
@@ -1392,11 +1392,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "snowflake": {
         "outcome": "refused",
@@ -1404,7 +1404,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       }
     },
     "pattern": "top_n",
@@ -1414,11 +1414,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       },
       "snowflake": {
         "outcome": "refused",
@@ -1426,7 +1426,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one"
+        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT"
       }
     },
     "pattern": "top_n",

@@ -30,6 +30,11 @@ def test_the_mean_is_refused_and_the_message_names_the_exact_columns():
 @pytest.mark.parametrize("engine", PROFILED)
 def test_the_exact_columns_run_on_every_engine(engine):
     report = sv.verify(EXACT, tables=ORDERS, on_inferred="warn")
+    # 12e (#1608): a COUNT does not read the row cap yet, so the product `qty *
+    # COUNT(qty)` stays an `overflow` error and the run says `unverified=True`.
+    # When a COUNT reads `sv.max_rows`, this test states `between` and `max_rows`,
+    # asserts a proved verdict and drops `unverified=True`: that failing is 12e's
+    # tripwire.
     assert [i.kind for i in report.errors] == ["overflow"]
     con = sv.connect()
     con.put("orders", pa.table({"id": [1, 2, 3, 4, 5], "qty": [1, 2, 3, 10, None]}))
