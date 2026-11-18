@@ -200,7 +200,7 @@ def scopedOptions : List String :=
 -- `nonAscii` and `caseDiffers` (D43, D51): a call reads an option exactly when its
 -- constructor has an arm for that issue. A regular expression reports by its pattern
 -- (`classesDiffer`), so it is tried with a class; the texts are one the case mapping
--- treats alike on every engine and the text of each raise set (`ß`, `İ`).
+-- treats alike on every engine and the text of each raise set (`ß`, `Σ`).
 #guard letI := Boxes.Ambient.none;
   Functions.strings.all fun r =>
     [("non_ascii_text", Issue.nonAscii), ("case_mapping", Issue.caseDiffers)].all fun (o, i) =>
@@ -212,7 +212,7 @@ def scopedOptions : List String :=
           | .un (.regexExtract _ _) => .un (.regexExtract "\\d" 0)
           | .un (.regexReplace _ _ _) => .un (.regexReplace "\\d" "" false)
           | c => c
-        let reports := ["é", "ß", "İ"].any fun t => match probe with
+        let reports := ["é", "ß", "Σ"].any fun t => match probe with
           | .un f => f.issue (.str t) == some i
           | .bin f => f.issue (.str t) (.str t) == some i
           | _ => false

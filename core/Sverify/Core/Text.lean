@@ -261,6 +261,10 @@ def upper (s : String) : String := s.map (mapScalar CaseTable.upperMap)
 /-- `LOWER`, as `upper` (`CaseTable.lowerMap`, `lowerRaises`). -/
 def lower (s : String) : String := s.map (mapScalar CaseTable.lowerMap)
 
+-- The sizes of the raise sets (D51): 157 for `UPPER`, 56 for `LOWER` and U+03A3.
+#guard CaseTable.upperRaise.length == 157
+#guard CaseTable.lowerRaise.length == 57
+
 set_option maxRecDepth 4096 in
 /-- No scalar of either raise set is ASCII, so ASCII text has the engines' value. -/
 theorem upperRaises_of_isAscii {s : String} (h : isAscii s = true) : upperRaises s = false := by
