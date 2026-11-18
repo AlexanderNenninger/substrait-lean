@@ -1622,10 +1622,11 @@ class Pipeline:
         return self.con.table(name)
 
     def _native(self, source: VersionedSource, version: int | None) -> ScanSnapshot | None:
-        """The snapshot of `source` as files DuckDB reads itself, where the
-        plans run on DuckDB and the source can give one; else None."""
+        """The snapshot of `source` as files the engine reads itself, where
+        the plans run on DuckDB or Polars and the source can give one; else
+        None."""
         native = getattr(source, "_native", None)
-        if native is None or (self.engine or self.con.engine) != "duckdb":
+        if native is None or (self.engine or self.con.engine) not in ("duckdb", "polars"):
             return None
         return native(version)
 
