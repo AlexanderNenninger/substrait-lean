@@ -2,7 +2,8 @@
 batch held (#184).
 
 The rule (`sverify._quarantine`): a row is kept when every row condition is
-TRUE on it and, among those rows, its key occurs once. The tests compare
+TRUE on it and, among those rows, its key occurs on one distinct row
+(identical rows count once, and one copy of them is kept). The tests compare
 each refresh with that rule computed here in plain Python from the source
 table alone, so a batch-by-batch refresh must agree with it.
 """
@@ -55,8 +56,9 @@ def kept(rows, keys=True) -> list[tuple]:
     ok = [r for r in rows if r[1] is not None and r[1] >= 0]
     if not keys:
         return ok
-    ids = Counter(r[0] for r in ok)
-    return [r for r in ok if ids[r[0]] == 1]
+    distinct = set(ok)  # identical rows count once: one copy stays
+    ids = Counter(r[0] for r in distinct)
+    return [r for r in distinct if ids[r[0]] == 1]
 
 
 def bag(t: pa.Table, cols=("id", "amount")) -> Counter:
@@ -182,6 +184,28 @@ def test_a_new_duplicate_retracts_the_kept_row():
     orders.apply(Changes(deletes=table([(1, 31)])))
     node.refresh()
     assert bag(node.to_arrow()) == Counter({(1, 30): 1})
+
+
+def test_a_redelivered_duplicate_keeps_the_published_row():
+    # #1547: at-least-once delivery repeats a row the node already holds.
+    orders = StaticSource(table([(1, 30), (2, 40)]), name="orders")
+    node = orders.pipe(make())
+    node.refresh()
+    assert bag(node.to_arrow()) == Counter({(1, 30): 1, (2, 40): 1})
+    orders.apply(Changes(inserts=table([(1, 30)])))
+    r = node.refresh()
+    assert bag(node.to_arrow()) == Counter({(1, 30): 1, (2, 40): 1})
+    assert bag(node.quarantined()) == Counter({(1, 30): 1})
+    assert "deleted" not in str(r.nodes[0].quarantine[0])
+    # The source drops one of the two copies: the published row stays.
+    orders.apply(Changes(deletes=table([(1, 30)])))
+    node.refresh()
+    assert bag(node.to_arrow()) == Counter({(1, 30): 1, (2, 40): 1})
+    assert node.quarantined().num_rows == 0
+    # A copy with another value still takes both out.
+    orders.apply(Changes(inserts=table([(1, 31)])))
+    node.refresh()
+    assert bag(node.to_arrow()) == Counter({(2, 40): 1})
 
 
 # -- the default, and which policy holds ------------------------------------------
