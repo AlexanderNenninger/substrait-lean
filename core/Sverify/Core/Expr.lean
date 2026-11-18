@@ -182,8 +182,8 @@ inductive UnFn where
   read back in `decimalCall`): the declared `p` must be at least `P + k`, where
   `P` is the numerator's precision by kind, or the summed argument's precision
   where the numerator is a `SUM` and the divisor the `COUNT` of the same values.
-  `Parse.Rel.divsOk` checks that for every such term of a parsed plan, and
-  `checkDecimalAvgWidth` holds the `AVG` to 38 digits (#1497). A comparison's
+  `Parse.Rel.settleDivs` keeps `dkind` where that holds and reads the checked
+  `decimal` otherwise, and `checkDecimalAvgWidth` holds the `AVG` to 38 digits (#1497). A comparison's
   side (`decimalCall`): the operand upscaled to the larger scale, whose precision
   bounds nothing and which only the scale is read from (`Expr.eval` and
   `Kind.comparable`), so the model compares the exact values (#1498). -/

@@ -3049,31 +3049,46 @@ def divOk (tables : Tables) (inp : Rel) (p s : Nat) (num b : Expr) : Bool :=
     | some (px, sx) => s == sx + k && px + k ≤ p
     | none => false
 
-/-- Does `ok` hold of every `dkind` quotient inside an expression? A lambda's
-body reads other columns, so it may hold none. -/
-def _root_.Substrait.Expr.divsOk (ok : Nat → Nat → Expr → Expr → Bool) : Expr → Bool
-  | .un (.dkind p s) (.bin .ddiv n b) => ok p s n b && n.divsOk ok && b.divsOk ok
-  | .un _ a => a.divsOk ok
-  | .bin _ a b => a.divsOk ok && b.divsOk ok
-  | .ifThen c t e => c.divsOk ok && t.divsOk ok && e.divsOk ok
-  | .hof _ l body => l.divsOk ok && body.divsOk fun _ _ _ _ => false
-  | .lit _ | .field _ => true
+/-- Reads every `sverify_decimal_div` quotient of an expression as `dkind`
+where `ok` says its declared type holds the value, else as the checked `decimal`
+(which reports an overflow where the value has more digits). A lambda's body
+reads other columns, so it may hold none. -/
+def _root_.Substrait.Expr.settleDivs (ok : Nat → Nat → Expr → Expr → Bool) : Expr → Expr
+  | .un (.dkind p s) (.bin .ddiv n b) | .un (.decimal p s) (.bin .ddiv n b) =>
+    let n := n.settleDivs ok
+    let b := b.settleDivs ok
+    .un (if ok p s n b then .dkind p s else .decimal p s) (.bin .ddiv n b)
+  | .un f a => .un f (a.settleDivs ok)
+  | .bin f a b => .bin f (a.settleDivs ok) (b.settleDivs ok)
+  | .ifThen c t e => .ifThen (c.settleDivs ok) (t.settleDivs ok) (e.settleDivs ok)
+  | .hof f l body => .hof f (l.settleDivs ok) (body.settleDivs fun _ _ _ _ => false)
+  | e@(.lit _) | e@(.field _) => e
 
-/-- Does the declared type of every `dkind` quotient in the plan hold its
-value (`divOk`)? -/
-def _root_.Substrait.Rel.divsOk (tables : Tables) : Rel → Bool
-  | .read _ | .values .. => true
-  | .filter i c => i.divsOk tables && c.divsOk (divOk tables i)
-  | .project i es => i.divsOk tables && es.all (·.divsOk (divOk tables i))
-  | .emit i _ | .fetch i _ _ | .orderBy i _ | .distinct i | .unnest i _ => i.divsOk tables
-  | .cross a b | .unionAll a b => a.divsOk tables && b.divsOk tables
-  | n@(.join a b _ cnd) | n@(.semi a b _ cnd) =>
-    a.divsOk tables && b.divsOk tables && cnd.divsOk (divOk tables n)
-  | .window i _ _ fns => i.divsOk tables && fns.all fun
-    | .agg m _ _ => m.arg.divsOk (divOk tables i) && (m.filter.all (·.divsOk (divOk tables i)))
-    | _ => true
-  | .aggregate i gs ms => i.divsOk tables && gs.all (·.divsOk (divOk tables i)) &&
-    ms.all fun m => m.arg.divsOk (divOk tables i) && (m.filter.all (·.divsOk (divOk tables i)))
+def _root_.Substrait.Measure.settleDivs (ok : Nat → Nat → Expr → Expr → Bool) (m : Measure) : Measure :=
+  { m with arg := m.arg.settleDivs ok, filter := m.filter.map (·.settleDivs ok) }
+
+/-- `settleDivs` through a plan, each expression with the `ok` of the columns it
+reads (`divOk`). -/
+def _root_.Substrait.Rel.settleDivs (tables : Tables) : Rel → Rel
+  | r@(.read _) | r@(.values ..) => r
+  | .filter i c => .filter (i.settleDivs tables) (c.settleDivs (divOk tables i))
+  | .project i es => .project (i.settleDivs tables) (es.map (·.settleDivs (divOk tables i)))
+  | .emit i m => .emit (i.settleDivs tables) m
+  | .fetch i o c => .fetch (i.settleDivs tables) o c
+  | .orderBy i k => .orderBy (i.settleDivs tables) k
+  | .distinct i => .distinct (i.settleDivs tables)
+  | .unnest i c => .unnest (i.settleDivs tables) c
+  | .cross a b => .cross (a.settleDivs tables) (b.settleDivs tables)
+  | .unionAll a b => .unionAll (a.settleDivs tables) (b.settleDivs tables)
+  | n@(.join a b t cnd) =>
+    .join (a.settleDivs tables) (b.settleDivs tables) t (cnd.settleDivs (divOk tables n))
+  | n@(.semi a b anti cnd) =>
+    .semi (a.settleDivs tables) (b.settleDivs tables) anti (cnd.settleDivs (divOk tables n))
+  | .window i ps os fns => .window (i.settleDivs tables) ps os (fns.map fun
+    | .agg m x y => .agg (m.settleDivs (divOk tables i)) x y
+    | f => f)
+  | .aggregate i gs ms => .aggregate (i.settleDivs tables)
+    (gs.map (·.settleDivs (divOk tables i))) (ms.map (·.settleDivs (divOk tables i)))
 
 private def decTable (p s : Nat) : Tables :=
   [("t", 1, Json.mkObj [("struct", Json.mkObj [("types", Json.arr #[Json.mkObj
@@ -3081,38 +3096,62 @@ private def decTable (p s : Nat) : Tables :=
 
 private def avgSum (px s : Nat) : Measure := { fn := .sum, arg := .un (.decimal px s) (.field 0) }
 
-/-- The plan `decimalAvgs` makes: `SUM` and `COUNT` of `x`, divided. -/
-private def avgPlan (cnt : Measure) (px s p : Nat) : Rel :=
+/-- The plan `decimalAvgs` makes: `SUM` and `COUNT` of `x`, divided, as `k`. -/
+private def avgPlan (k : Nat → Nat → UnFn) (cnt : Measure) (px s p : Nat) : Rel :=
   .project (.aggregate (.read "t") [] [avgSum px s, cnt])
-    [.un (.dkind p (s + 4)) (.bin .ddiv (upscale 4 (.field 0)) (.field 1))]
+    [.un (k p (s + 4)) (.bin .ddiv (upscale 4 (.field 0)) (.field 1))]
 
--- A written grouped `AVG` (`decimalAvgs`): `p ≥ p_x + 4`, also through `emit`.
-#guard letI := Boxes.Ambient.none; (avgPlan { avgSum 20 2 with fn := .count } 20 2 24).divsOk (decTable 20 2)
-#guard letI := Boxes.Ambient.none; (avgPlan { avgSum 20 2 with fn := .count } 20 2 25).divsOk (decTable 20 2)
-#guard letI := Boxes.Ambient.none; (Rel.emit (avgPlan { avgSum 20 2 with fn := .count } 20 2 24) [2]).divsOk (decTable 20 2)
+-- A written grouped `AVG` (`decimalAvgs`): `p ≥ p_x + 4` stays `dkind`, also through `emit`.
+private def cnt (px s : Nat) : Measure := { avgSum px s with fn := .count }
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind (cnt 20 2) 20 2 24).settleDivs (decTable 20 2) == avgPlan .dkind (cnt 20 2) 20 2 24
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind (cnt 20 2) 20 2 25).settleDivs (decTable 20 2) == avgPlan .dkind (cnt 20 2) 20 2 25
+#guard letI := Boxes.Ambient.none;
+  (Rel.emit (avgPlan .dkind (cnt 20 2) 20 2 24) [2]).settleDivs (decTable 20 2) == .emit (avgPlan .dkind (cnt 20 2) 20 2 24) [2]
 -- The count of the argument before its cast, as a plan's text has it.
-#guard letI := Boxes.Ambient.none; (avgPlan { fn := .count, arg := .field 0 } 20 2 24).divsOk (decTable 20 2)
--- Too narrow: `p_x = 36` over a `DECIMAL(38, s + 4)`, and `p_x + 3`.
-#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 36 2 with fn := .count } 36 2 38).divsOk (decTable 36 2)
-#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 20 2 with fn := .count } 20 2 23).divsOk (decTable 20 2)
--- The count of other values, other `DISTINCT` or another `FILTER`.
-#guard letI := Boxes.Ambient.none; !(avgPlan { fn := .count, arg := .lit (.int 1) } 20 2 24).divsOk (decTable 20 2)
-#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 20 2 with fn := .count, distinct := true } 20 2 24).divsOk (decTable 20 2)
-#guard letI := Boxes.Ambient.none; !(avgPlan { avgSum 20 2 with fn := .count, filter := some (.lit (.bool true)) } 20 2 24).divsOk
-  (decTable 20 2)
--- A hand-written quotient: the kinds branch. `DECIMAL(10, 0)` over `1` to
--- `DECIMAL(5, 2)` does not fit; to `DECIMAL(12, 2)` it does.
-#guard letI := Boxes.Ambient.none; !(Rel.project (.read "t") [.un (.dkind 5 2) (.bin .ddiv (upscale 2 (.field 0)) (.lit (.int 1)))]).divsOk
-  (decTable 10 0)
-#guard letI := Boxes.Ambient.none; (Rel.project (.read "t") [.un (.dkind 12 2) (.bin .ddiv (upscale 2 (.field 0)) (.lit (.int 1)))]).divsOk
-  (decTable 10 0)
--- A windowed `AVG`: `SUM` and `COUNT` over one frame; another frame is not it.
-private def avgWindow (fr : Frame) : Rel :=
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind { fn := .count, arg := .field 0 } 20 2 24).settleDivs (decTable 20 2) ==
+    avgPlan .dkind { fn := .count, arg := .field 0 } 20 2 24
+-- Too narrow (`p_x = 36` over a `DECIMAL(38, s + 4)`, and `p_x + 3`): the checked `decimal`.
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind (cnt 36 2) 36 2 38).settleDivs (decTable 36 2) == avgPlan .decimal (cnt 36 2) 36 2 38
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind (cnt 20 2) 20 2 23).settleDivs (decTable 20 2) == avgPlan .decimal (cnt 20 2) 20 2 23
+-- The count of other values, other `DISTINCT` or another `FILTER`: checked.
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind { fn := .count, arg := .lit (.int 1) } 20 2 24).settleDivs (decTable 20 2) ==
+    avgPlan .decimal { fn := .count, arg := .lit (.int 1) } 20 2 24
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind { cnt 20 2 with distinct := true } 20 2 24).settleDivs (decTable 20 2) ==
+    avgPlan .decimal { cnt 20 2 with distinct := true } 20 2 24
+#guard letI := Boxes.Ambient.none;
+  (avgPlan .dkind { cnt 20 2 with filter := some (.lit (.bool true)) } 20 2 24).settleDivs (decTable 20 2) ==
+    avgPlan .decimal { cnt 20 2 with filter := some (.lit (.bool true)) } 20 2 24
+-- A hand-written quotient, the kinds branch: `DECIMAL(10, 0)` over `1` to `DECIMAL(5, 2)` does
+-- not fit and is checked; to `DECIMAL(12, 2)` it does.
+private def handDiv (k : UnFn) : Rel :=
+  .project (.read "t") [.un k (.bin .ddiv (upscale 2 (.field 0)) (.lit (.int 1)))]
+#guard letI := Boxes.Ambient.none; (handDiv (.dkind 5 2)).settleDivs (decTable 10 0) == handDiv (.decimal 5 2)
+#guard letI := Boxes.Ambient.none; (handDiv (.dkind 12 2)).settleDivs (decTable 10 0) == handDiv (.dkind 12 2)
+-- The incremental AVG's quotient: a column of the state table (a `SUM` kind `p + 10`) over a
+-- count column is checked, and the call is the same term when written back (`Write.lean`).
+#guard letI := Boxes.Ambient.none;
+  (Rel.project (.read "t") [.un (.dkind 24 6) (.bin .ddiv (upscale 4 (.field 0)) (.field 1))]).settleDivs
+    [("t", 2, Json.mkObj [("struct", Json.mkObj [("types", Json.arr #[
+      Json.mkObj [("decimal", Json.mkObj [("precision", Lean.toJson 30), ("scale", Lean.toJson 2)])],
+      Json.mkObj [("i64", Json.mkObj [])]])])])] ==
+    Rel.project (.read "t") [.un (.decimal 24 6) (.bin .ddiv (upscale 4 (.field 0)) (.field 1))]
+-- A windowed `AVG`: `SUM` and `COUNT` over one frame stays `dkind`; another frame is checked.
+private def avgWindow (k : UnFn) (fr : Frame) : Rel :=
   .project (.window (.read "t") [] [] [.agg (avgSum 20 2) [] Frame.all,
       .agg { avgSum 20 2 with fn := .count } [] fr])
-    [.un (.dkind 24 6) (.bin .ddiv (upscale 4 (.field 1)) (.field 2))]
-#guard letI := Boxes.Ambient.none; (avgWindow Frame.all).divsOk (decTable 20 2)
-#guard letI := Boxes.Ambient.none; !(avgWindow { Frame.all with range := true }).divsOk (decTable 20 2)
+    [.un k (.bin .ddiv (upscale 4 (.field 1)) (.field 2))]
+#guard letI := Boxes.Ambient.none;
+  (avgWindow (.dkind 24 6) Frame.all).settleDivs (decTable 20 2) == avgWindow (.dkind 24 6) Frame.all
+#guard letI := Boxes.Ambient.none;
+  (avgWindow (.dkind 24 6) { Frame.all with range := true }).settleDivs (decTable 20 2) ==
+    avgWindow (.decimal 24 6) { Frame.all with range := true }
 
 def parsePlan (s : String) : J Plan := do
   let j ← Json.parse s
@@ -3120,8 +3159,7 @@ def parsePlan (s : String) : J Plan := do
   let some root := (← arrD j "relations").findSome? (field? · "root")
     | throw "plan has no root relation"
   let (rel, tables) ← (parseRel fns (← field root "input")).run []
-  unless rel.divsOk tables do
-    throw "sverify_decimal_div's declared type does not follow from its operands"
+  let rel := rel.settleDivs tables
   let names ← (← arrD root "names").mapM (·.getStr?)
   return { root := rel, names, tables }
 
