@@ -253,7 +253,7 @@ def upperRaises (s : String) : Bool := s.toList.any fun c => CaseTable.upperRais
 /-- The scalars of `LOWER`'s raise set (`CaseTable.lowerRaise`). -/
 def lowerRaises (s : String) : Bool := s.toList.any fun c => CaseTable.lowerRaise.contains c.toNat
 
-/-- `UPPER`: each scalar's upper case where DuckDB, Polars and Spark agree on it, one
+/-- `UPPER`: each scalar's upper case where the tier-1 engines agree on it, one
 scalar each (`CaseTable.upperMap`). On a string with a scalar of the raise set
 (`upperRaises`) the reference raises, and this value is not used. -/
 def upper (s : String) : String := s.map (mapScalar CaseTable.upperMap)

@@ -1319,6 +1319,8 @@ privately, show the table.
 Why: real text is rarely ASCII, so D43's precondition bites, against D21's own
 condition. The engines agree on almost every letter.
 
+Recomputes sinks: no
+
 ### D44. `replace` with an empty pattern is the string unchanged
 
 Decided 2026-11-17 (the maintainer, on the theory advisor's recommendation,

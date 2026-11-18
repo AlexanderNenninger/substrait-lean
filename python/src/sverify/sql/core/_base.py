@@ -5335,7 +5335,9 @@ class _Writer:
         fail = d.raise_(
             f"{which.upper()} of a scalar the engines map differently", x, "str", "caseDiffers"
         )
-        return d.case_when(d.case_differs(x, which), fail, value)
+        # Every scalar of the sets is outside ASCII, so the engine's own ASCII test comes
+        # first: ASCII text, most of it, never reaches the regular expression.
+        return d.case_when(f"(NOT {d.is_ascii(x)} AND {d.case_differs(x, which)})", fail, value)
 
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str

@@ -332,22 +332,38 @@ def test_a_remainder_of_doubles_runs_on_duckdb_and_is_refused_on_polars(con, sql
 
 
 @pytest.mark.parametrize(
-    ("sql", "table", "rows"),
+    ("sql", "table", "rows", "raises"),
     [
-        ("SELECT upper(s) FROM ss", "ss", [("STRASSE",), ("A\\B",)]),
-        ("SELECT lower(s) FROM ss", "ss", [("straße",), ("a\\b",)]),
-        ("SELECT array_length(regexp_match(s, '\\d')) FROM u", "u", [(1,), (1,), (None,)]),
-        ("SELECT array_length(regexp_match(s, '\\s')) FROM u", "u", [(None,), (None,), (1,)]),
+        ("SELECT upper(s) FROM ss", "ss", [("STRASSE",), ("A\\B",)], "scalar the engines map"),
+        # `ß` is outside `LOWER`'s raise set: the engines agree on it (D51).
+        ("SELECT lower(s) FROM ss", "ss", [("straße",), ("a\\b",)], None),
+        (
+            "SELECT array_length(regexp_match(s, '\\d')) FROM u",
+            "u",
+            [(1,), (1,), (None,)],
+            "non-ASCII text differs",
+        ),
+        (
+            "SELECT array_length(regexp_match(s, '\\s')) FROM u",
+            "u",
+            [(None,), (None,), (1,)],
+            "non-ASCII text differs",
+        ),
     ],
 )
-def test_translators_agree_or_refuse_on_opaque_functions(con, sql, table, rows):
-    """Black boxes in Lean, meaning Rust's case mapping and regex classes
-    (#70): Polars computes them as Rust does; DuckDB, whose utf8proc and
-    RE2 differ on non-ASCII text, raises there; on ASCII text it agrees."""
+def test_translators_agree_or_raise_where_the_engines_differ(con, sql, table, rows, raises):
+    """Case mapping and regex classes (#70, D51): Polars computes them as Rust does;
+    DuckDB, whose utf8proc and RE2 differ from Rust's on some text, raises there and
+    agrees elsewhere (`UPPER` on the 157 scalars the engines map differently, a regex
+    class on non-ASCII text)."""
     plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
-    assert positional(polars_engine.run(plan, {table: TABLES[table]})) == rows
-    with pytest.raises(duckdb.Error, match="non-ASCII text differs between engines"):
-        duckdb_engine.run(plan, {table: TABLES[table]})
+    by_polars = positional(polars_engine.run(plan, {table: TABLES[table]}))
+    if raises:
+        assert by_polars == rows
+        with pytest.raises(duckdb.Error, match=raises):
+            duckdb_engine.run(plan, {table: TABLES[table]})
+    else:
+        assert by_polars == positional(duckdb_engine.run(plan, {table: TABLES[table]})) == rows
     ascii_only = pa.table({"s": ["Strasse", "3", "a b", None]})
     assert same(
         positional(polars_engine.run(plan, {table: ascii_only})),

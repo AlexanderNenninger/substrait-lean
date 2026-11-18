@@ -89,7 +89,7 @@ place, and what retires it.
 | Construct | Names | File | What runs, or what it stands for | Retired by |
 |---|---|---|---|---|
 | axiom | `FloatCode.exp_fin` | `analysis/Sverify/Analysis/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
-| opaque, `implemented_by` | `upper`, `lower`, `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256` | `core/Sverify/Core/Text.lean` | The string functions the checker evaluates by compiled code (`upperAscii`, `Digest.md5`, …); no proof looks inside them | A model of each in Lean, or a row of the black-box table |
+| opaque, `implemented_by` | `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256` | `core/Sverify/Core/Text.lean` | The string functions the checker evaluates by compiled code (`ilikeAscii`, `Digest.md5`, …); no proof looks inside them | A model of each in Lean, or a row of the black-box table |
 | opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `engines/duckdb/Sverify/DuckDB/Boxes.lean` | The functions of DuckDB's black-box catalogue (`evalScalar`, …), outside the model; the core holds none (#1189). A proof uses only a row's laws, which hold by the clamp and `Boxes.duckdb_wf` | A model of a row in Lean, where one exists |
 | structure | `DoubleStats.Correct` | `SubstraitLean/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
 | opaque | `intToDouble` | `core/Sverify/Core/Float.lean` | A conversion given with the property the proofs use; the proofs see only the property | |
@@ -271,7 +271,7 @@ place, and what retires it.
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
   plan Lean writes back, and the laws on random data). The evaluators behind
   black boxes and regular expressions (`implemented_by` in `BlackBox.lean`,
-  `Regex.lean` and `Digest.lean`, and `Text.lean`'s eight: `upper`, `lower`,
+  `Regex.lean` and `Digest.lean`, and `Text.lean`'s six:
   `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256`) are
   read by no proof;
   the proofs use only each black box's declared laws. The search evaluators

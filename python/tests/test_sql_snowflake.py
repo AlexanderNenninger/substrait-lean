@@ -157,7 +157,7 @@ def feature_plans() -> dict[str, dict]:
         ),
         "global_aggregate": o.aggregate(n=o.amount.count(), lo=o.customer.min()),
         "strings": c.select(
-            u=c.name.upper(),
+            u=c.name + "!",  # `UPPER` waits for Snowflake's case-mapping facts (D51)
             n=c.city.length(),
             s=c.city.substr(1, 3),
             p=c.city.find("o"),
@@ -517,8 +517,14 @@ def run_differential(
         plan = json.loads(path.read_text())
         if "namedTable" in path.read_text():
             continue  # schema-only tables: covered by the pipelines above
-        got = run(to_sql(plan, d))
-        assert canonical(got) == canonical(lean_rows(plan, {})), path.stem
+        try:
+            sql = to_sql(plan, d)
+        except Unsupported as e:
+            # `UPPER` and `LOWER` of a column wait for Snowflake's case-mapping facts (D51).
+            if "case mapping is recorded privately" not in str(e):
+                raise
+            continue
+        assert canonical(run(sql)) == canonical(lean_rows(plan, {})), path.stem
 
 
 def snowflake_differential(cur, suffix: str) -> None:

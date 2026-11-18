@@ -565,6 +565,8 @@ def _declared_text(
                 found.setdefault(str(list(columns).index(c.column)), set()).add(c.fact)
             continue
         shown = _squeeze(label(c))
+        if "re_search" not in shown:
+            continue  # every text condition is one regular-expression search
         for col in columns:
             for fact in get_args(TextFact):
                 if shown == _squeeze(_text_condition(col, fact).text):
