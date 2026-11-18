@@ -769,7 +769,11 @@ class Report:
             raise ValueError("this report has no plan: it was not made by sv.verify")
         d, finite = self._sql_route(dialect)
         return to_sql(
-            written_plan(self.internal_plan), d, deterministic=self.deterministic, finite=finite
+            written_plan(self.internal_plan),
+            d,
+            deterministic=self.deterministic,
+            finite=finite,
+            rows="sequence" if self.observation.rows == "sequence" else "multiset",
         )
 
     def _sql_route(self, dialect: Any) -> tuple[Any, bool]:

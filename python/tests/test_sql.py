@@ -792,6 +792,26 @@ def order_matters_of(plan: str) -> bool:
     return order_matters(parse_plan(json.loads(plan)).root)
 
 
+def test_open_ties_write_no_row_ordinal():
+    """Under `rows="multiset"` a sort, a LIMIT and the root carry no `rowid`
+    ordinal (#1608); a LIMIT below no sort is a plain LIMIT, and a sorted
+    result is still ordered. `rows="sequence"` keeps the ordinal."""
+    t = ibis.table({"id": "int64", "v": "int64"}, name="t")
+    for expr, order in [
+        (t.limit(3), False),
+        (t.order_by([t.v, t.id]).limit(3), True),
+        (t.filter(t.v > 1).order_by(t.v), True),
+        (t.mutate(w=t.v + 1), False),
+    ]:
+        plan = json.loads(to_substrait_json(expr))
+        open_ = to_sql(plan, DUCKDB, rows="multiset")
+        assert "rowid" not in open_
+        assert ("ORDER BY" in open_) == order
+        if not order:
+            assert "ROW_NUMBER" not in open_
+    assert "rowid" in to_sql(json.loads(to_substrait_json(t.limit(3))), DUCKDB)
+
+
 def test_count_distinct_is_written_natively():
     """`COUNT(DISTINCT x)` of a non-double is the engine's own, not a
     `ROW_NUMBER` over (group, value) with a CASE (#1608); NULLs are not counted."""
@@ -831,3 +851,46 @@ def test_order_by_limit_is_a_top_n(limit):
     assert [tuple(r) for r in con.execute(sql).fetchall()] == [
         tuple(r) for r in want.itertuples(index=False)
     ]
+
+
+TIED = [(1, "a", 2), (2, "a", 2), (3, "a", 1), (4, "b", 5), (5, "b", 5), (6, "b", 5)]
+
+
+def _tied(expr):
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t(id BIGINT, g VARCHAR, v BIGINT)")
+    con.executemany("INSERT INTO t VALUES (?, ?, ?)", TIED)
+    plan = json.loads(to_substrait_json(expr))
+    return con.execute(to_sql(plan, DUCKDB, rows="multiset")).fetchall()
+
+
+def test_tied_window_is_numbered_in_key_order():
+    """On tied data the written window keeps what `Rel.Allowed` states (#1608):
+    `ROW_NUMBER` numbers each partition in key order, `LAG` follows that one
+    arrangement, and which of the tied rows comes first is open."""
+    t = ibis.table({"id": "int64", "g": "string", "v": "int64"}, name="t")
+    w = ibis.window(group_by=t.g, order_by=t.v)
+    rows = _tied(t.mutate(rn=ibis.row_number().over(w), prev=t.v.lag().over(w)))
+    assert sorted(r[0] for r in rows) == [r[0] for r in TIED]
+    for g in "ab":
+        part = sorted((r for r in rows if r[1] == g), key=lambda r: r[3])
+        assert [r[3] for r in part] == list(range(len(part)))
+        assert [r[2] for r in part] == sorted(r[2] for r in part)
+        assert part[0][4] is None
+        assert [r[4] for r in part[1:]] == [r[2] for r in part[:-1]]
+
+
+def test_tied_limit_takes_a_prefix_of_the_keys():
+    """`ORDER BY v LIMIT n` over ties returns n rows whose keys bound the rest,
+    and a LIMIT with no sort below it returns any n rows (#1608)."""
+    t = ibis.table({"id": "int64", "g": "string", "v": "int64"}, name="t")
+    got = _tied(t.order_by(t.v).limit(4))
+    assert len(got) == 4
+    assert [r[2] for r in got] == sorted(r[2] for r in TIED)[:4]
+    assert {r[0] for r in got} <= {r[0] for r in TIED}
+    kept = {r[0] for r in got}
+    assert max(r[2] for r in got) <= min(r[2] for r in TIED if r[0] not in kept)
+    assert len(_tied(t.limit(2))) == 2
+    # a filter between the sort and the LIMIT keeps the sort's order
+    f = _tied(t.order_by(t.v).filter(t.id != 3).limit(3))
+    assert [r[2] for r in f] == sorted(r[2] for r in TIED if r[0] != 3)[:3]

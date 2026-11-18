@@ -8,6 +8,10 @@ Sverify's guarantees are theorems of the Lean project in
 guarantee rests on, what each of them assumes, and the one job of every
 module. [How it works](how-it-works.md) explains the checks in prose.
 
+The top-level statements, over named predicates a reviewer can read without
+the checker's internals, are in one file:
+[`Statements.lean`](../SubstraitLean/Statements.lean).
+
 ## The guarantees and their theorems
 
 Each theorem below is stated over one layer of the semantics, named in the
@@ -365,6 +369,7 @@ build as the guard.
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
+| `Statements.lean` | The top-level statements over named predicates (#1484, A7): `Checked`, `Verified`, the engine report conditions, `DataAssumed`, `Post.HoldsOn`, each proved by applying the theorem it names, and a `#guard` that a recorded request meets them |
 | `ProvedOn.lean` | From the checker's verdict to each engine's model (#1484, A6): `check_proved_on` and its DuckDB, Polars and Spark corollaries, the side conditions taken from the report |
 | `Engine.lean` | The engines' `Engine` values together: the check that each one's certificate is non-empty, and DuckDB's side condition from an empty `Rel.mayIssues` |
 | `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
