@@ -1730,6 +1730,9 @@ class Report:
         )
 
 
+#: Private fields that never had a public name: no deprecated alias.
+_REPORT_PRIVATE = ["table_params"]
+
 _REPORT_INTERNAL = [
     "windows_total",
     "tie_places",
@@ -1739,7 +1742,6 @@ _REPORT_INTERNAL = [
     "rewrites",
     "inferred",
     "implied",
-    "table_params",
     "params",
     "hints",
     "bounds",
