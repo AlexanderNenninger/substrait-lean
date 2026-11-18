@@ -2996,11 +2996,11 @@ a decimal `SUM` is typed ten digits wider than its argument. -/
 that made it, and its column there. The rows stay as they are through `filter`,
 `fetch`, `orderBy`, `distinct`, `emit` and the columns a `project` or a window
 passes on; a join, a union or an `unnest` ends the trace. -/
-def _root_.Substrait.Rel.origin (tables : Tables) : Rel → Nat → Option (Rel × Nat)
-  | .filter r _, c | .fetch r _ _, c | .orderBy r _, c | .distinct r, c => r.origin tables c
-  | .emit r m, c => m[c]? >>= r.origin tables
-  | .project r _, c => if c < (r.kinds tables).length then r.origin tables c else none
-  | n@(.window r _ _ _), c => if c < (r.kinds tables).length then r.origin tables c else some (n, c)
+def _root_.Substrait.Rel.sourceOf (tables : Tables) : Rel → Nat → Option (Rel × Nat)
+  | .filter r _, c | .fetch r _ _, c | .orderBy r _, c | .distinct r, c => r.sourceOf tables c
+  | .emit r m, c => m[c]? >>= r.sourceOf tables
+  | .project r _, c => if c < (r.kinds tables).length then r.sourceOf tables c else none
+  | n@(.window r _ _ _), c => if c < (r.kinds tables).length then r.sourceOf tables c else some (n, c)
   | n@(.aggregate ..), c => some (n, c)
   | _, _ => none
 
@@ -3024,8 +3024,8 @@ the argument before the decimal cast the `SUM` carries. -/
 def sumCountOf? (tables : Tables) (inp : Rel) (a b : Expr) : Option (Nat × Nat) := do
   let .field i := a | none
   let .field j := b | none
-  let (n₁, c₁) ← inp.origin tables i
-  let (n₂, c₂) ← inp.origin tables j
+  let (n₁, c₁) ← inp.sourceOf tables i
+  let (n₂, c₂) ← inp.sourceOf tables j
   guard (n₁ == n₂)
   let (sm, w₁, ks) ← measureAt tables n₁ c₁
   let (cm, w₂, _) ← measureAt tables n₂ c₂
