@@ -7,8 +7,8 @@ Arrow schema of the weighted table. Every operation makes a new generation:
 Spark computes it as a `DataFrame` (`SparkLazy` until it is written) and
 writes it with `df.write.parquet`, so on a cluster the rows stay on the
 cluster. A generation is deleted once nothing refers to its handle. Merges run
-the merge plan on Spark (`Store.merge`), whose ANSI mode raises where a weight
-sum leaves 64 bits.
+the merge plan on Spark (`Store.merge`), whose own guard raises where a weight
+sum leaves 64 bits, with ANSI mode on or off.
 
 The state location is a directory the session and the driver both read: a
 temporary directory for the local session (`SVERIFY_STATE_LOCATION` names

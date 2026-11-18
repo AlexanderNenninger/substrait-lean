@@ -79,3 +79,33 @@ def test_a_generation_is_removed_with_its_handle():
     del z
     gc.collect()
     assert not os.path.exists(path)
+
+
+def _merger(store):
+    import sverify as sv
+    from sverify._state import Merger
+
+    con = sv.connect(None)
+    return Merger(con, weighted([]).schema, store)
+
+
+def test_a_weight_sum_past_64_bits_raises_with_ansi_on_or_off():
+    """The plan's own guard raises the overflow, whatever the session's ANSI
+    mode: a session with `spark.sql.ansi.enabled` off does not wrap the sum."""
+    from sverify_spark import engine
+
+    spark = engine.session()
+    big = 2**62
+    a = weighted([(1, "a", 1.5, big)])
+    b = weighted([(1, "a", 1.5, big), (2, "a", 1.5, 1)])
+    merge = _merger(spark_store.SparkStore())
+    for ansi in ("true", "false"):
+        spark.conf.set("spark.sql.ansi.enabled", ansi)
+        try:
+            with pytest.raises(Exception, match="integer overflow in SUM"):
+                merge(a, b)
+            assert bag(merge(a, weighted([(2, "a", 1.5, 1)]))) == bag(
+                weighted([(1, "a", 1.5, big), (2, "a", 1.5, 1)])
+            )
+        finally:
+            spark.conf.set("spark.sql.ansi.enabled", "true")
