@@ -76,9 +76,9 @@ def test_a_where_above_a_join_is_analysed_on_every_row_of_its_side():
 
 def test_an_aggregate_filter_under_and_is_guarded():
     """`SUM(…) FILTER (WHERE a AND b)`: the filter's `AND` is lifted too (D50)."""
-    sql = "SELECT SUM(x) FILTER (WHERE x <> 0 AND 10 // x > 1) AS s FROM t"
+    sql = "SELECT COUNT(*) FILTER (WHERE x <> 0 AND 10 // x > 1) AS s FROM t"
     report = verify(sql, tables={"t": T}, requires=REQUIRES, on_inferred="off")
     assert report.verdict == sv.Verdict.PROVED, str(report)
     con = connect()
     put_table(con, "t", pa.table({"x": [0, 2, 5]}))
-    assert report.run(con, "duckdb").column("s").to_pylist() == [7]
+    assert report.run(con, "duckdb").column("s").to_pylist() == [2]
