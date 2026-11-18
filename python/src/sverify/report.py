@@ -467,6 +467,11 @@ class Report:
     checks each at run time, on the data, and raises where one fails. The
     proof holds under these assumptions (`Rel.noIssue_of_assumedHold`). With
     `on_inferred="off"` they are errors instead."""
+    _table_params: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    """For an input table the proof names (a base table, or the placeholder of a
+    contracted upstream result), the transform's parameter it is bound to: the
+    text says `requires orders`, the name in the transform's own `requires`, not
+    the upstream node that feeds it (#1485)."""
     _params: list[str] = field(default_factory=list, repr=False)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -1450,6 +1455,7 @@ class Report:
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
+        table = self._table_params.get(table, table)
         issues = [i for lab in labs if (i := self._inferred_from.get(lab)) is not None]
         kinds = " or ".join(dict.fromkeys(i.kind for i in issues))
         where = f", inferred from `{issues[0].what}` ({kinds} otherwise)" if issues else ""
@@ -1633,7 +1639,8 @@ class Report:
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self._inferred.get(table, [])}
             lines += [
-                f"requires {table}: {c}" + (self._inferred_note(c) if c in inferred else "")
+                f"requires {self._table_params.get(table, table)}: {c}"
+                + (self._inferred_note(c) if c in inferred else "")
                 for c in conds
                 if c not in needed.get(table, ())
             ]
@@ -1732,6 +1739,7 @@ _REPORT_INTERNAL = [
     "rewrites",
     "inferred",
     "implied",
+    "table_params",
     "params",
     "hints",
     "bounds",
