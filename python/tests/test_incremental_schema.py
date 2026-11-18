@@ -49,7 +49,7 @@ def test_a_transform_on_a_bound_input_declares_the_tables_own_types() -> None:
     """Nothing to check on a bound input (#1540, A2): the plan's schema there is
     the bound table's, so a value of its physical width is within it."""
 
-    @sv.transform
+    @sv.transform()
     def widen(t):
         return t.select(y=t.a)
 
