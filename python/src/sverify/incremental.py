@@ -68,6 +68,7 @@ from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touche
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
+from sverify._engines import LOCAL
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import Merger, State, Store, arrow_of, by_keys, store_for
 from sverify._unsupported import SverifyError
@@ -1623,10 +1624,9 @@ class Pipeline:
 
     def _native(self, source: VersionedSource, version: int | None) -> ScanSnapshot | None:
         """The snapshot of `source` as files the engine reads itself, where
-        the plans run on DuckDB or Polars and the source can give one; else
-        None."""
+        the plans run on a local engine and the source can give one; else None."""
         native = getattr(source, "_native", None)
-        if native is None or (self.engine or self.con.engine) not in ("duckdb", "polars"):
+        if native is None or (self.engine or self.con.engine) not in LOCAL:
             return None
         return native(version)
 
