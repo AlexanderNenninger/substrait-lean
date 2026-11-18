@@ -1227,9 +1227,9 @@ theorem eqAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
         simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
         simp only [BinFn.apply]
         by_cases hss : s = s'
-        · subst hss; simp [BinFn.abs, AVal.Mem, strMayEq_of ha hb]
+        · subst hss; simp [BinFn.abs, AVal.Mem, strMayEq_of ha.1.1 hb.1.1]
         · have : (s == s') = false := by simpa using hss
-          rw [this]; simp [BinFn.abs, AVal.Mem, strMayNe_of ha hb hss]
+          rw [this]; simp [BinFn.abs, AVal.Mem, strMayNe_of ha.1.1 hb.1.1 hss]
       case list.list vs ws | struct.struct vs ws =>
         simp only [BinFn.abs, BinFn.apply, AVal.Mem, AVal.MemR] at ha hb ⊢
         by_cases hvw : vs = ws <;> simp_all
@@ -1329,7 +1329,7 @@ theorem str₂_sound {f : BinFn} {g : String → String → Value} {R a b : AVal
   split
   · rename_i s t
     simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
-    exact hg ha.1 hb.1 s t
+    exact hg ha.1.1.1 hb.1.1.1 s t
   · rename_i hne
     show R.null = true
     rw [hR]
@@ -1349,7 +1349,7 @@ theorem strInt_sound {f : BinFn} {g : String → Int → Value} {R a b : AVal} {
   · rename_i s n
     simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha
     obtain ⟨x, hx, -⟩ := hb
-    exact hg ha.1 (by simp [hx]) s n
+    exact hg ha.1.1.1 (by simp [hx]) s n
   · rename_i hne
     show R.null = true
     rw [hR]

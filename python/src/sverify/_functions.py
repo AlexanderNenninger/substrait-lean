@@ -73,6 +73,7 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
                    ("WRAP_FROM_END", "LEFT_OF_BEGINNING", "ERROR")),
             Option("substring_range", None, ("ERROR", "COMPUTE"),
                    (("ERROR", "duckdb-substring-range"),)),
+            Option("non_ascii_text", None, ("ERROR", "COMPUTE")),
             Option("case_sensitivity", "case_sensitivity",
                    ("CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII")),
             Option("char_set", "char_set", ("UTF8", "ASCII_ONLY")),
@@ -94,10 +95,11 @@ GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "fp.log": ("rounding", "on_domain_error", "on_log_zero"),
         "str.sub": ("negative_start", "substring_range", "string_positions"),
         "str.match": ("case_sensitivity", "string_positions"),
-        "str.case": ("char_set",),
+        "str.case": ("char_set", "non_ascii_text"),
         "str.concat": ("null_handling",),
         "str.plain": (),
         "str.opaque": (),
+        "str.ascii": ("non_ascii_text",),
     }
 )
 
@@ -114,6 +116,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "shift_range"): Choice(("DROP_BITS",)),
                 (None, "negative_start"): _asked("WRAP_FROM_END", "LEFT_OF_BEGINNING"),  # #209
                 (None, "substring_range"): Choice(("ERROR",)),  # #336
+                (None, "non_ascii_text"): Choice(("ERROR",)),  # D43
                 (None, "case_sensitivity"): _asked("CASE_SENSITIVE"),
                 (None, "char_set"): _asked("UTF8"),
                 (None, "null_handling"): _asked("ACCEPT_NULLS"),
@@ -130,6 +133,9 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "shift_range"): Choice(("ERROR", "ZERO")),  # R15-shift-*
                 (None, "negative_start"): Choice(("WRAP_FROM_END",)),  # duckdb-R13
                 (None, "substring_range"): Choice(("ERROR",)),  # duckdb-substring-range
+                (None, "non_ascii_text"): Choice(
+                    ("ERROR", "COMPUTE")
+                ),  # uncharacterised; open until a fact pins it
                 (None, "case_sensitivity"): Choice(("CASE_SENSITIVE",)),
                 (None, "char_set"): Choice(("UTF8",)),
                 (None, "null_handling"): Choice(("ACCEPT_NULLS",)),
@@ -293,7 +299,7 @@ FUNCTIONS: tuple[Fn, ...] = (
          aliases=("char_length", "length"), ibis=("StringLength",),
          sql={"": "CHAR_LENGTH({0})", "duckdb": "length({0})", "spark": "length({0})",
               "snowflake": "LENGTH({0})"}),
-    _str("regexp_match", 23, "str.opaque", 1, "int", "regex_match", call=False),
+    _str("regexp_match", 23, "str.ascii", 1, "int", "regex_match", call=False),
     # NULL if either is.
     _str("str_concat", 27, "str.concat", 2, "str", "concat", expr=True, label="||",
          sql={"": "({0} || {1})"}, lift=("DPipe",)),
@@ -318,21 +324,21 @@ FUNCTIONS: tuple[Fn, ...] = (
     _str("ltrim", 34, "str.plain", 2, "str", "trim", call=False),
     _str("rtrim", 35, "str.plain", 2, "str", "trim", call=False),
     # Engines that reverse grapheme clusters agree on ASCII text.
-    _str("reverse", 200, "str.plain", 1, "str", expr=True, ascii="reverse",
+    _str("reverse", 200, "str.ascii", 1, "str", expr=True, ascii="reverse",
          sql={"": "REVERSE({0})"}, ibis=("Reverse",)),
     # The code point of the first character, 0 for ''.
-    _str("ascii", 201, "str.plain", 1, "int", expr=True, ascii="ascii", sql={"": "ASCII({0})"},
+    _str("ascii", 201, "str.ascii", 1, "int", expr=True, ascii="ascii", sql={"": "ASCII({0})"},
          ibis=("StringAscii",)),
     _str("replace", 202, "str.match", 1, "str", call=False),
     Fn("repeat", 203, "strings", "str.plain", ("str", "int"), "str", "repeat",
        ibis=("Repeat",)),
-    _str("ilike", 204, "str.opaque", 2, "bool", call=False),
+    _str("ilike", 204, "str.ascii", 2, "bool", call=False),
     # The edit distance in characters.
-    _str("levenshtein", 205, "str.plain", 2, "int", expr=True, ascii="levenshtein",
+    _str("levenshtein", 205, "str.ascii", 2, "int", expr=True, ascii="levenshtein",
          sql={"": "LEVENSHTEIN({0}, {1})", "snowflake": "EDITDISTANCE({0}, {1})"},
          ibis=("Levenshtein",)),
-    _str("regexp_extract", 206, "str.opaque", 1, "str", "regex_extract", call=False),
-    _str("regexp_replace", 207, "str.opaque", 1, "str", "regex_replace", call=False),
+    _str("regexp_extract", 206, "str.ascii", 1, "str", "regex_extract", call=False),
+    _str("regexp_replace", 207, "str.ascii", 1, "str", "regex_replace", call=False),
     # Lowercase hex of the UTF-8 bytes (#50).
     _str("md5", 208, "str.opaque", 1, "str", expr=True, sql={"duckdb": "md5({0})"},
          lift=("MD5",)),

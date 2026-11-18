@@ -533,7 +533,37 @@ def _ascii_condition(col: str, classes: bool = False) -> Inferred:
     plain = ascii_text(dialect(), sql, classes)
     ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
     bad = r"[^\x00-\x7f]|\x0b" if classes else r"[^\x00-\x7f]"
-    return Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+    out = Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+    out.ascii = "plain" if classes else "ascii"
+    return out
+
+
+def _squeeze(code: str) -> str:
+    """Ibis code without spaces or one pair of outer parentheses."""
+    code = "".join(code.split())
+    return code[1:-1] if code.startswith("(") and code.endswith(")") else code
+
+
+def _declared_ascii(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, str]:
+    """The text columns `conds` declare ASCII (`"ascii"`) or plain (`"plain"`),
+    by column position, for the request (#1506): the inferred condition, or
+    the user's own copy of its Ibis code (`_ascii_condition`'s `text`)."""
+    out: dict[str, str] = {}
+    for c in conds:
+        if isinstance(c, TableCondition):
+            continue
+        if isinstance(c, Inferred):
+            if c.ascii and c.column is not None and c.column in columns:
+                out[str(list(columns).index(c.column))] = c.ascii
+            continue
+        shown = _squeeze(label(c))
+        for col in columns:
+            for classes in (False, True):
+                if shown == _squeeze(_ascii_condition(col, classes).text):
+                    kind = "plain" if classes else "ascii"
+                    pos = str(list(columns).index(col))
+                    out[pos] = "plain" if out.get(pos) == "plain" else kind
+    return out
 
 
 def _suggested(
@@ -560,7 +590,9 @@ def _render_needs(
             continue
         col = list(schema)[n["col"]]
         have = out.setdefault(n["table"], [])
-        if n.get("not_null"):
+        if "ascii" in n:
+            new = [_ascii_condition(col, n["ascii"] == "plain")]
+        elif n.get("not_null"):
             new = [_not_null_condition(col)] if schema[col].nullable else []
         elif "ne" in n:
             c = _ne_condition(col, schema[col], int(n["ne"]))
@@ -1502,9 +1534,12 @@ def _verify_once(
             semantics,
         ).to_expr()
 
-    req_conds = [
-        (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
-    ]
+    def planned(c: Condition) -> bool:
+        """A precondition that is a plan. A table condition is its own entry, and an
+        ASCII condition is declared to the checker (`"ascii"` below)."""
+        return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.ascii)
+
+    req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
 
     def query(where: str, n: int, table: Transform, c: Condition) -> Transform:
         """`condition_query`, with an Ibis error named by the condition it
@@ -1524,7 +1559,7 @@ def _verify_once(
     req_plans = []
     for t, cs in requires.items():
         for n, c in enumerate(cs, start=1):
-            if not isinstance(c, TableCondition):
+            if planned(c):
                 req_plans.append(plan(query(f"requires {t}", n, table_ref(t, c), c)))
     ens_plans = []
     for n, c in enumerate(ensures, start=1):
@@ -1564,6 +1599,7 @@ def _verify_once(
         "references": foreign_keys,
         "max_rows": caps,
         "rows_per": per_key,
+        "ascii": {t: _declared_ascii(names(t), cs) for t, cs in requires.items()},
     }
 
     if observed is not None:

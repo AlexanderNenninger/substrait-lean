@@ -61,6 +61,9 @@ structure Bounds where
   why : Option String := none
   /-- Base-table columns that must not be NULL (a divisor's `COUNT` of them). -/
   notNull : List (String × Nat) := []
+  /-- Base-table text columns that must be ASCII (`plain`: without a vertical
+  tab either) for a `nonAscii` issue not to arise (D43). -/
+  ascii : List (String × Nat × Bool) := []
 
 def Found.append (a b : Found) : Found := ⟨a.cols ++ b.cols, a.split || b.split, a.nes ++ b.nes⟩
 
@@ -395,6 +398,68 @@ def pullNotNull (cat : Catalog) : Rel → Nat → Except String (List (String ×
         else throw "it counts the value of an aggregate other than MIN or MAX"
       | none => throw "it reads a column out of range"
 
+/-- The base-table columns behind text column `i` of `r`: their values are its
+values, or NULL. -/
+def pullText (cat : Catalog) : Rel → Nat → Except String (List (String × Nat))
+  | .read t, i => pure [(t, i)]
+  | .values _ _, _ => throw "it reads text written in the query (VALUES)"
+  | .filter r _, i | .fetch r _ _, i | .orderBy r _, i | .distinct r, i
+  | .semi r _ _ _, i => pullText cat r i
+  | .emit r m, i => match m[i]? with
+    | some j => pullText cat r j
+    | none => throw "it reads a column out of range"
+  | .project r es, i =>
+    if i < r.arity cat then pullText cat r i
+    else match es[i - r.arity cat]? with
+      | some (.field j) => pullText cat r j
+      | _ => throw "it reads computed text"
+  | .cross a c, i | .join a c _ _, i =>
+    if i < a.arity cat then pullText cat a i else pullText cat c (i - a.arity cat)
+  | .unionAll a c, i => do pure ((← pullText cat a i) ++ (← pullText cat c i))
+  | .window r _ _ _, i =>
+    if i < r.arity cat then pullText cat r i else throw "it reads the value of a window function"
+  | .unnest r col, i =>
+    if i ≠ col then pullText cat r i else throw "it reads an UNNEST element"
+  | .aggregate r gs ms, i =>
+    let go (e : Expr) := match e with
+      | .field j => pullText cat r j
+      | _ => throw "it reads computed text"
+    match gs[i]? with
+    | some g => go g
+    | none => match ms[i - gs.length]? with
+      | some m => if (m.fn = .min ∨ m.fn = .max) ∧ m.filter.isNone then go m.arg
+        else throw "it reads the value of an aggregate other than MIN or MAX"
+      | none => throw "it reads a column out of range"
+
+/-- Is the function a regular expression with a class (`Text.classesDiffer`)? -/
+def classRegex : Expr → Bool
+  | .un (.regexMatch _) _ | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ => true
+  | _ => false
+
+/-- The text operands of a `nonAscii` issue's expression. -/
+def textOperands : Expr → List Expr
+  | .un _ a => [a]
+  | .bin _ a b => [a, b]
+  | _ => []
+
+/-- What keeps an issue `nonAscii` away: the base-table columns behind its
+text operands must be ASCII; a literal operand needs nothing if it is ASCII. -/
+def asciiNeeds (cat : Catalog) (env : List AVal) (r : Rel) (e : Expr) : Bounds :=
+  let plain := classRegex e
+  let step := fun (acc : Except String (List (String × Nat × Bool))) (x : Expr) => do
+    let out ← acc
+    match x with
+    | .lit (.str s) =>
+      if (if plain then Text.isPlain s else Text.isAscii s) then pure out
+      else throw "it reads a literal that is not ASCII"
+    | .field j =>
+      if (if plain then (env.getD j AVal.top).plainOk else (env.getD j AVal.top).asciiOk) then pure out
+      else pure (out ++ (← pullText cat r j).map fun (t, c) => (t, c, plain))
+    | _ => throw "it reads computed text, which the inference does not look into"
+  match (textOperands e).foldl step (pure []) with
+  | .ok out => { ascii := out }
+  | .error why => { why := some why }
+
 /-- What keeps column `i` of `r` from holding `k` (`Pulled`). -/
 def pullNe (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
     Rel → Nat → Int → Except String Pulled
@@ -468,7 +533,8 @@ def onRows (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
   let env := r.aeval cat A F T true
   let fs := r.facts cat F T
   (e.mayIssues env fs).map fun ie =>
-    (ie.1, ie.2, match atIssue env fs ie with
+    (ie.1, ie.2, if ie.1 == .nonAscii then asciiNeeds cat env r ie.2 else
+      match atIssue env fs ie with
       | .ok f => pullAll cat A F T r f
       | .error why => { why := some why })
 
@@ -569,6 +635,14 @@ def merged (A : String → List AVal) (bs : List (Issue × Expr × Bounds)) :
 exact bounds. -/
 def mergedNotNull (bs : List (Issue × Expr × Bounds)) : List (String × Nat) :=
   (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.notNull).flatten.eraseDups
+
+/-- The base-table text columns that must be ASCII, for the issues that have
+exact bounds; a column an issue needs without a vertical tab keeps that
+(`plain` implies ASCII). -/
+def mergedAscii (bs : List (Issue × Expr × Bounds)) : List (String × Nat × Bool) :=
+  let all := (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.ascii).flatten
+  (all.map fun (t, c, _) => (t, c)).eraseDups.map fun (t, c) =>
+    (t, c, all.any fun (t', c', p) => t' == t && c' == c && p)
 
 /-- The values each base-table column must not hold, for the issues that
 have exact bounds. -/

@@ -94,6 +94,8 @@ def options : List OptionSpec := [
     yaml := ["WRAP_FROM_END", "LEFT_OF_BEGINNING", "ERROR"] },
   { id := "substring_range", substrait := none, core := ["ERROR", "COMPUTE"],
     extra := [("ERROR", "duckdb-substring-range")] },
+  -- Text outside ASCII where an engine's answer is its own (D43, #1506).
+  { id := "non_ascii_text", substrait := none, core := ["ERROR", "COMPUTE"] },
   { id := "case_sensitivity", substrait := some "case_sensitivity",
     core := ["CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII"],
     yaml := ["CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII"] },
@@ -504,6 +506,7 @@ def Profile.reference.table : ProfileTable where
     -- `Text.substrWrap` and `Text.substr`; `ERROR` is not modelled (#209).
     (none, "negative_start", .asked ["WRAP_FROM_END", "LEFT_OF_BEGINNING"] ["WRAP_FROM_END"]),
     (none, "substring_range", .oneOf ["ERROR"]),
+    (none, "non_ascii_text", .oneOf ["ERROR"]),
     -- The model's string matching is case-sensitive, and `UPPER` and `LOWER`
     -- map Unicode case (`core/Sverify/Core/Text.lean`).
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),

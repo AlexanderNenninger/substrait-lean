@@ -292,10 +292,11 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
 | strings | `str.match` | `like`, `strpos`, `starts_with`, `ends_with`, `replace` | `case_sensitivity` |
-| strings | `str.case` | `upper`, `lower` | `char_set` |
+| strings | `str.case` | `upper`, `lower` | `char_set`, `non_ascii_text` |
+| strings | `str.ascii` | `reverse`, `ascii`, `levenshtein`, `ilike`, `regexp_match`, `regexp_extract`, `regexp_replace` | `non_ascii_text` |
 | strings | `str.concat` | `str_concat` | `null_handling` |
-| strings | `str.plain` | `character_length`, `reverse`, `ascii`, `repeat`, `btrim`, `ltrim`, `rtrim`, `levenshtein` | none (the size hypothesis bounds their results) |
-| strings | `str.opaque` | `regexp_match`, `regexp_extract`, `regexp_replace`, `ilike`, `md5`, `sha256` | none; `case_sensitivity` fixed by the function |
+| strings | `str.plain` | `character_length`, `repeat`, `btrim`, `ltrim`, `rtrim` | none (the size hypothesis bounds their results) |
+| strings | `str.opaque` | `md5`, `sha256` | none |
 | temporal | `time.arith` | date and timestamp `±` intervals, `date_diff`, `date_bin` | `date_range`, `time_interval_months` |
 | temporal | `time.part` | `date_part`, `date_trunc`, `strftime` | none (their range is the reference's timestamps, D32) |
 | nested | `list.order` | `list_lt`, `ORDER BY`/`MIN`/`MAX` of lists | `list_null_order`, and the element's options |
@@ -690,6 +691,7 @@ is a choice that accepts every value the plan states.
 | `nan_kind` | all others | `IEEE` | `ONE_NAN` | choose |
 | `negative_start` | all others | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`, `ERROR` | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`; `WRAP_FROM_END` by default | choose |
 | `substring_range` | all others | `COMPUTE` | `ERROR` | raise |
+| `non_ascii_text` | all others | `COMPUTE` | `ERROR` | raise |
 | `case_sensitivity` | all others | `CASE_SENSITIVE`, `CASE_INSENSITIVE`, `CASE_INSENSITIVE_ASCII` | `CASE_SENSITIVE` | choose |
 | `char_set` | all others | `UTF8`, `ASCII_ONLY` | `UTF8` | choose |
 | `null_handling` | all others | `IGNORE_NULLS`, `ACCEPT_NULLS` | `ACCEPT_NULLS` | choose |
