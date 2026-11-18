@@ -1,5 +1,8 @@
 """`avg` of integers: DuckDB against the model's one division (#1608, 12d).
 
+Every query here is an ungrouped `avg`, which the optimizer rewrites to `SUM / COUNT`;
+`avg_int_shapes.py` runs the grouped and window shapes that keep the native finalize.
+
 Run on a platform with `uv run --no-project --with duckdb==2.0.0 python avg_int.py`.
 It checks pairs (sum, count) that separate the readings of `avg`'s finalize:
 

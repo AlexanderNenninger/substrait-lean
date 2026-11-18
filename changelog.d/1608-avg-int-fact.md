@@ -1,4 +1,4 @@
-### DuckDB's integer mean on x86-64 Linux: a run, not the source reading
+### DuckDB's integer mean depends on the plan's shape and the platform
 
-A probe (`engines/duckdb/probes/avg_int.py`) ran on x86-64 Linux and macOS arm64 with DuckDB 2.0.0 and found `avg` of `BIGINT` gives the one division in doubles of the sum rounded to a double on both, for all 401 pairs chosen to separate it from an 80-bit division rounded again. The fact `duckdb-avg-int` records the result and that it disagrees with the source's `long double` reading
+DuckDB rewrites an ungrouped `avg` of integers to `SUM / COUNT`, which gives the model's value. A grouped or window `avg` keeps the native finalize, which on x86-64 Linux divides in 80 bits and rounds again, so its last bit can differ from the model's. The negative-sum cast of `HUGEINT` to `DOUBLE` rounds twice on every platform. The probes `avg_int.py` and `avg_int_shapes.py` count both, and the fact `duckdb-avg-int` records them
 ([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
