@@ -440,6 +440,20 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
 # secret made from the `Storage`.
 
 
+@pytest.fixture
+def httpfs():
+    """DuckDB's `httpfs` extension, installed for the test where it is missing
+    (sverify itself installs nothing); the test skips where that fails."""
+    from sverify_duckdb.scan import _loadable
+
+    if not _loadable("httpfs"):
+        try:
+            duckdb.connect().execute("INSTALL httpfs")
+        except duckdb.Error:
+            pytest.skip("DuckDB's httpfs extension is not installed")
+        _loadable.cache_clear()
+
+
 def s3_orders(root, store, name="orders"):
     """A partitioned, column-mapped Delta table on the moto bucket `root`."""
     table = pa.table({"id": [1, 2, 3, 4], "k": ["a", "b", "a", None], "x": [0.5, -0.0, None, 2.5]})
@@ -453,7 +467,7 @@ def s3_orders(root, store, name="orders"):
     return DeltaSource(f"{root}/{name}", storage_options=store)
 
 
-def test_an_s3_delta_table_is_scanned_by_duckdb(lake):
+def test_an_s3_delta_table_is_scanned_by_duckdb(lake, httpfs):
     root, store = lake
     src = s3_orders(root, store)
     scan = native(src)
@@ -481,7 +495,7 @@ class Spy:
         return getattr(self.db, name)
 
 
-def test_an_s3_scan_keeps_credentials_out_of_sql_repr_and_logs(lake, caplog):
+def test_an_s3_scan_keeps_credentials_out_of_sql_repr_and_logs(lake, httpfs, caplog):
     from sverify.io import Storage
     from sverify_duckdb.scan import attach_scan
 
@@ -504,7 +518,7 @@ def test_an_s3_scan_keeps_credentials_out_of_sql_repr_and_logs(lake, caplog):
     assert sentinel not in str(e.value)
 
 
-def test_the_default_credential_chain_needs_duckdbs_aws_extension(lake):
+def test_the_default_credential_chain_needs_duckdbs_aws_extension(lake, httpfs):
     """Without explicit keys the scan needs `aws`; where DuckDB lacks it, the source
     keeps the Arrow route (sverify installs nothing)."""
     from sverify.io import Storage
