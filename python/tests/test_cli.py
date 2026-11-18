@@ -573,3 +573,12 @@ def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
         assert any(q["examples"] for n in shown["nodes"] for q in n["quarantine"])
     got, out = run(capsys, "refresh", f"{path}:p")
     assert got == code and "### paid" in out and "| id |" not in out
+
+
+def test_classifying_an_import_error_in_sverify_errors_does_not_raise(monkeypatch):
+    """`sverify.errors` failing to import is the error to classify, not a second
+    one raised from the classifier (#1585: a double traceback)."""
+    from sverify.cli._main import ERROR, _classify
+
+    monkeypatch.setitem(sys.modules, "sverify.errors", None)  # `import` then raises
+    assert _classify(TypeError("boom")) == (ERROR, "error")
