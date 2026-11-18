@@ -147,7 +147,7 @@ def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None
         schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
         target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
         # One chunk: `createDataFrame` of a table with an empty chunk loses the
-        # rows after it (#1608).
+        # rows after it (SP-8).
         data = table.cast(target).combine_chunks()
         spark.createDataFrame(data, schema).createOrReplaceTempView(name)
         if own:
