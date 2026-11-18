@@ -6,6 +6,14 @@ reference, the core and the profiles make, with when and why it was made.
 [reference-semantics.md](reference-semantics.md) states the resulting
 behaviour for users, without the history.
 
+Every decision after D49 ends its section with a line, `Recomputes sinks: yes`
+or `Recomputes sinks: no`. A decision that changes a value of the reference or
+narrows what it allows says yes, and its D-number goes into
+`MEANING_CHANGES` (`python/src/sverify/incremental.py`), which the plan digest
+a sink records hashes in: the sink is then recomputed once. A decision that
+only opens a choice says no, since the stored rows stay among the allowed
+results. `tests/test_plan_digest.py` checks the lines against the record.
+
 
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
 D6 as the first draft's alternative, the others as it recommended.
