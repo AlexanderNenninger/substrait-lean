@@ -74,6 +74,7 @@ release on PyPI.
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
 | [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
+| [comparison.md](comparison.md) | Sverify beside dbt tests, Great Expectations, Soda and data contracts, by bug class | Design |
 | [prior-work.md](prior-work.md) | The work sverify builds on, and related tools | Design |
 
 ## For contributors

@@ -1033,7 +1033,19 @@ def show_duration(d: timedelta) -> str:
 
 def resolve(cond: Condition, table: ir.Table) -> ir.BooleanValue:
     if isinstance(cond, Deferred):
-        return cond.resolve(table)
+        try:
+            return cond.resolve(table)
+        except AttributeError as e:
+            missing = re.search(r"no attribute '([^']+)'", str(e))
+            if not missing:
+                raise
+            from sverify._user_text import did_you_mean
+
+            raise AttributeError(
+                f"{label(cond)}: the table has no column {missing[1]!r}"
+                f"{did_you_mean(missing[1], table.columns)} Its columns are: "
+                f"{', '.join(table.columns)}"
+            ) from None
     if callable(cond):
         return cond(table)
     return cond  # type: ignore[return-value]
