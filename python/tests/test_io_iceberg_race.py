@@ -78,19 +78,18 @@ def hold(monkeypatch, a, method: str, then) -> None:
 
 
 @pytest.mark.parametrize("engine", ENGINES)
-def test_the_second_writer_of_an_epoch_fails(catalog, jobs, monkeypatch, engine):
+def test_the_second_writer_of_an_epoch_skips(catalog, jobs, monkeypatch, engine):
     a, b = jobs
     a.refresh(engine=engine)
     b.refresh(engine=engine)
     append(catalog, [3])
     # A is held after reading the sink's last snapshot.
     hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
-    with pytest.raises(ConcurrentWriteError, match=rf"{SINK}.*sverify:paid.*epoch 2"):
-        a.refresh(engine=engine)
+    # A lost the commit race to a run that wrote this very state: it reports that.
+    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     assert ids(catalog) == [1, 2, 3]
     assert epoch(catalog) == 2
     # A recovers: the sink holds this state, and later changes write on it.
-    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     append(catalog, [4])
     a.refresh(engine=engine)
     assert ids(catalog) == [1, 2, 3, 4]
@@ -115,8 +114,8 @@ def test_a_commit_pyiceberg_would_retry(catalog, jobs, monkeypatch, engine):
         b.refresh(engine=engine)
 
     monkeypatch.setattr(iceberg_io, "_commit_rows", held)
-    with pytest.raises(ConcurrentWriteError):
-        a.refresh(engine=engine)
+    # A lost the commit race to a run that wrote this very state: it reports that.
+    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     assert ids(catalog) == [1, 2, 3]
     assert a.refresh(engine=engine).writes[0].mode == "skipped"
 
@@ -147,8 +146,8 @@ def test_an_older_write_does_not_land_on_a_newer_state(catalog, jobs, monkeypatc
 def test_two_writers_creating_the_table(catalog, jobs, monkeypatch, engine):
     a, b = jobs
     hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
-    with pytest.raises(ConcurrentWriteError):
-        a.refresh(engine=engine)
+    # A lost the commit race to a run that wrote this very state: it reports that.
+    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     assert ids(catalog) == [1, 2]
     assert a.refresh(engine=engine).writes[0].mode == "skipped"
 
