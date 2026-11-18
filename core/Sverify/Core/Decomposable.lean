@@ -123,11 +123,14 @@ theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = fal
   cases f <;> simp_all [decomposable, sorts]
 
 /-- The value depends on the multiset of values only: the decomposable
-aggregates, and a `SUM` or `AVG` of doubles, which is the exact sum rounded
-once (D25, `floatSumCR_perm`). The doubles' sums do not combine in two phases:
-their partial results are rounded. -/
+aggregates, a `SUM` or `AVG` of doubles, which is the exact sum rounded
+once (D25, `floatSumCR_perm`), and an `AVG` of integers, the truncated mean
+clamped to the least and greatest value (`intSum_perm`, `clampInts_perm`).
+The doubles' sums do not combine in two phases: their partial results are
+rounded. The integer `AVG` combines as a `SUM` and a `COUNT` (`Measure.part`),
+not as itself, so it is not decomposable. -/
 def AggFn.orderFree (f : AggFn) : Bool :=
-  f.decomposable || f == .fsum || f == .avg ||
+  f.decomposable || f == .fsum || f == .avg || f == .iavg ||
     match f with
     | .var _ _ | .cov _ | .corr => true
     | _ => false
@@ -198,7 +201,8 @@ theorem AggFn.apply_perm_of_orderFree {f : AggFn} (hf : f.orderFree = true) {vs 
       | nil => exact absurd h.eq_nil (by simp)
       | cons w ws =>
         cases f <;> simp_all [orderFree, decomposable, apply, floatSumCR_perm h,
-          floatAvgCR_perm h, varOf_perm _ _ h, covOf_perm _ h, corrOf_perm h]
+          floatAvgCR_perm h, varOf_perm _ _ h, covOf_perm _ h, corrOf_perm h,
+          intSum_perm h, clampInts_perm h, h.length_eq]
 
 theorem AggFn.apply_sum_cons (v : Value) (vs : List Value) :
     AggFn.sum.apply (v :: vs) = sumOf (v :: vs) := rfl

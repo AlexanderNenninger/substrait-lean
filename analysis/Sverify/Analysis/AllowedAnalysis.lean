@@ -69,8 +69,8 @@ def Rel.windowDetAt (cat : Catalog) (A : String → List AVal) (F : String → L
 only over an `ORDER BY` whose columns contain a key and none clustered
 (`Rel.fetchTotalAt`), each window's ties broken alike (`Rel.windowsTotal`'s
 checks), and aggregates whose measures are functions of their values
-(`Measure.orderFree`: `COUNT`, `SUM`, `AVG` of doubles too (D25), `MIN`,
-`MAX`) or sort their rows in an order that fixes their inputs
+(`Measure.orderFree`: `COUNT`, `SUM`, `AVG` of integers and of doubles
+(D25), `MIN`, `MAX`) or sort their rows in an order that fixes their inputs
 (`Measure.tiesFixed`). -/
 def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
