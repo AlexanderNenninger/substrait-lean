@@ -4,7 +4,6 @@
 import ibis
 import pyarrow as pa
 import pytest
-from ibis import _
 
 import sverify as sv
 
