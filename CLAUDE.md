@@ -128,14 +128,21 @@ pull requests wait on each other.
 Several agents often work at once, and together they have crashed the
 laptop. Start an expensive task (`poe qa`, `lake build`, the full pytest
 suite, notebook runs, wheel builds) only when the machine it runs on has
-spare capacity. This applies to the laptop as much as to `homelab`. Several
-builds and test runs may go at once on either machine while load and memory
-allow, each under its memory cap (`lean -M`, the scopes of `homelab_qa.sh`).
+spare capacity. This applies to the laptop as much as to `homelab`. On the
+laptop, two slots of about 3.5 GB decide, and on homelab three (below). A
+run takes an exclusive `flock` on its slots and holds it until it ends; a
+load check alone is racy, since several sessions pass it before any of them
+has started.
 
-- **Laptop** (10 cores, 16 GB RAM): check `uptime` and `memory_pressure | tail -1`.
-  If the 1-minute load average is above 6, or free memory is below 30 %,
-  don't start the task. Wait and check again, or run only the tests your
-  change touches.
+- **Laptop** (10 cores, 16 GB RAM): two slots, taken by the `local-run` and
+  `lean-check` drivers (`~/Projects/agentic-tools/drivers`; macOS has no
+  `flock`, so they use the system `python3`). `lean-check` and `poe test` or
+  `pytest -n 2` take one slot (`local-run --slots 1`, the default), a full
+  `lake build` two (`--slots 2`). Benchmarks and long checker runs stay on
+  homelab. A run that finds the slots taken exits 75 and names the holders;
+  `--wait` queues. Once it holds its slots it still needs a 1-minute load of
+  at most 6 and 30 % of memory free (`uptime`, `memory_pressure | tail -1`),
+  checked inside the lock. `capacity local` lists holders and waiters.
 - **Long checker runs never run on the laptop.** A `substrait-check` that works
   through many plans (`snowflake_plan_fuzz compare`, replays, fuzzing) can
   grow past the laptop's memory in seconds, while the load average stays low.
@@ -150,7 +157,7 @@ the package, and its build hook runs a full `lake build`. After such an
 edit, run tools through `python/.venv/bin/` directly, or check capacity
 first as for any build.
 
-Check the load again before each further expensive task, also one of your
+Check capacity again before each further expensive task, also one of your
 own beside another. `poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
 use `pytest -n auto`, which takes every core. On the laptop, run pytest
 directly with `-n 2` instead.
@@ -177,31 +184,30 @@ The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
 under memory caps, and deletes the directory at exit. Its header documents
 its options. Several agents and the user's own services share the box, and
-two uncapped runs once hung it. The script enforces the load rule below: it
-refuses to start (exit 75, with the reason) above a 1-minute load of 8 or
-with less than 6 GB available, and `--wait` (before the branch) waits until
-the load allows. It names the runs it starts beside. Long jobs that don't go
-through the script check by hand first:
+two uncapped runs once hung it. Homelab has three slots of about 4 GB:
+light runs take one, builds two, regens three, benchmarks all. A run takes
+an exclusive `flock` on its slots (`~/.substrait-lean/slots/`) and holds it
+until it ends; the kernel frees it on exit, crash or kill. A load check was
+racy: on 2026-11-18 five sessions passed it within 16 seconds, and five Lean
+builds took the box to load 118. The script exits 75 and names the holders
+when the slots are taken, and `--wait` (before the branch) queues for them. A
+run that needs several slots goes before smaller runs that arrive after it.
+Once it holds its slots it still needs 6 GB available and a 1-minute load of
+at most 8 (the user's services share the box), checked inside the lock.
+`--slots N` and `--exclusive` choose the weight (the script's full `poe qa`
+takes 2, a light task `--slots 1`); `homelab-run` has the same options. `capacity homelab` lists the holders and waiters.
 
-```bash
-ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
-```
-
-- **Runs share the box while the load allows.** A `/tmp/substrait-lean-*`
-  directory means a run is going; several may, each under its memory cap.
-  Long jobs that aren't QA (a replay, fuzzing, TLC) get such a directory
-  too, so others can see them. The chaos run (the `chaos-run` skill) is
-  exempt from the load check.
-- **Don't start** above a 1-minute load of 8, or with less than 6 GB
-  available. Cap workers with `PYTEST_XDIST_AUTO_NUM_WORKERS=2`, the
-  script's default, and run under `nice -n 10`.
+- **Three slots.** A `/tmp/substrait-lean-*` directory means a run is going.
+  Long jobs that aren't QA (a replay, fuzzing, TLC) go through `homelab-run`
+  and take a slot too. The chaos run (the `chaos-run` skill) takes none.
+- **Cap workers** with `PYTEST_XDIST_AUTO_NUM_WORKERS=2`, the script's
+  default, and run under `nice -n 10`.
 - **Never use sudo there,** not even `sudo -n`. Nothing in QA needs root;
   if something seems to, stop and ask the coordinator.
 - **Clean up:** delete your directory when the run ends, also when it fails.
   Stop a run by PID (SIGTERM to the script's bash), never `pkill -f` over
   `ssh`: the pattern matches the `ssh` command itself. A crashed session can
-  leave a directory behind; if no process uses it, remove it (the script
-  warns about such a directory).
+  leave a directory behind; if no process uses it, remove it.
 
 ## Working beside other sessions
 

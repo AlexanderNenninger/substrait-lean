@@ -1460,8 +1460,13 @@ class _Lift:
             # `mode(x ORDER BY …)`
             order, arg = arg, arg.this
         distinct = isinstance(arg, sge.Distinct)
+        q = node.args.get("quantile") or node.expression
         if distinct:
-            if len(arg.expressions) != 1:
+            if len(arg.expressions) == 2 and q is None and name.startswith("quantile_"):
+                # SQLGlot up to 30.8 reads `quantile_cont(DISTINCT x, 0.9)` with
+                # the fraction inside the DISTINCT.
+                q = arg.expressions[1]
+            elif len(arg.expressions) != 1:
                 raise SqlUnsupported(f"{_shown(node)}: DISTINCT of several values is not supported")
             arg = arg.expressions[0]
         if arg is None:
@@ -1477,7 +1482,6 @@ class _Lift:
             name = "quantile_disc"
             args.append(decimal_literal("0.5", dt.Decimal()))
         elif name in ("quantile_cont", "quantile_disc"):
-            q = node.args.get("quantile") or node.expression
             if isinstance(q, sge.Neg):
                 # DuckDB reads a negative fraction from the largest value.
                 raise Unsupported(f"{_shown(node)}: the fraction must be between 0 and 1")

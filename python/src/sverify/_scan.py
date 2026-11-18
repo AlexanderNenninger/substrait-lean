@@ -18,11 +18,12 @@ table's schema and the source's filter. DuckDB reads it with `read_parquet`
 the same rows as an Arrow table (`to_arrow`).
 
 The files are read by column name, or by Parquet field id where the scan has
-`field_ids` (Iceberg). A column no file has is NULL, and every column is cast
-to the type DuckDB gives the schema's Arrow type, so a plan sees the types it
-sees on the Arrow table of the same rows. Sources build a scan only where
-reading gives the rows their own reader gives (no partition values kept
-outside the files).
+`field_ids` (Iceberg, Delta's `columnMapping` mode `id`), or by the table's
+physical names where it has `physical` (`columnMapping` mode `name`). A column
+no file has is NULL, and every column is cast to the type DuckDB gives the
+schema's Arrow type, so a plan sees the types it sees on the Arrow table of the
+same rows. Partition columns are not in the files: `partitions` holds each
+file's values, from the table's log.
 """
 
 from __future__ import annotations
@@ -42,11 +43,12 @@ from sverify import _duckdb
 
 if TYPE_CHECKING:
     from sverify.contracts import Fact
+    from sverify.io._storage import Storage
 
 
 def local_path(uri: str) -> str | None:
     """The local path a table location or file URI names, or None for
-    object stores (which `Scan` does not read)."""
+    object stores."""
     parsed = urlparse(uri)
     if parsed.scheme == "file":
         return os.path.abspath(unquote(parsed.path))
@@ -173,9 +175,19 @@ class Scan(Native):
             it is TRUE. None: every row.
         origin: Where the rows come from, such as `orders@v3`.
         field_ids: The Parquet field id of each column of `schema`, in order
-            (Iceberg): the files are read by id, so a column renamed since a
-            file was written is still found. None: by name.
+            (Iceberg, Delta's column mapping by id): the files are read by id,
+            so a column renamed since a file was written is still found. None:
+            by name.
+        physical: The name each column of `schema` has in the files (Delta's
+            column mapping by name), in order. None: the column's own name.
+        partitions: The partition columns' values: a table with a `file`
+            column (one of `files`) and a column, named and typed as in
+            `schema`, for each partition column, one row per file. Those
+            columns are not read from the files. None: no partition columns.
         equality: Iceberg equality deletes, applied to their data files.
+        storage: How to open the files when they are URIs of an object store
+            (`s3://...`): its options and credentials, by name. Resolved where
+            the scan is attached, never kept in the descriptor. None: local files.
     """
 
     files: tuple[str, ...]
@@ -185,6 +197,9 @@ class Scan(Native):
     origin: str = ""
     field_ids: tuple[int, ...] | None = None
     equality: tuple[EqualityDelete, ...] = ()
+    physical: tuple[str, ...] | None = None
+    partitions: pa.Table | None = None
+    storage: Storage | None = None
 
     def attach(
         self,
@@ -205,9 +220,9 @@ class Scan(Native):
         return schema_mismatches(expected, self.schema)
 
     def readable(self) -> bool:
-        """Whether every file is still there (a vacuum removes the files of
-        old versions)."""
-        return all(os.path.exists(f) for f in self.files)
+        """Whether every local file is still there (a vacuum removes the files
+        of old versions); a file in an object store is not looked up."""
+        return all(os.path.exists(f) for f in self.files if local_path(f) is not None)
 
     def to_arrow(self) -> pa.Table:
         """The rows as an Arrow table in the scan's schema: the reference reader,

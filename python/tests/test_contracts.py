@@ -403,14 +403,17 @@ def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
 def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
     expr = SAMPLES.group_by("host").aggregate(total=_.cpu.sum())
     [hint] = sv.verify(expr)._hints
-    assert hint.startswith("SUM of `cpu`: bound it in `requires` of samples")
+    assert hint.startswith("SUM of `cpu`: the job checks the sum as it runs. To prove it, bound it")
+    assert "in `requires` of samples" in hint
     assert "`_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`" in hint
     assert "up to 9,223,372,036 rows" in hint
     [hint] = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100]})._hints
     assert "it is in [0, 100]" in hint and "up to 92,233,720,368,547,758 rows" in hint
-    assert "`sv.max_rows(92_233_720_368_547_758)` in `requires` of samples proves it" in hint
-    # With that row cap, the sum is proved to fit.
-    cap = sv.max_rows(92_233_720_368_547_758)
+    # The example cap is one anyone would write, below the largest that proves it.
+    assert "a row cap in `requires` of samples proves it: `sv.max_rows(1_000_000_000)`" in hint
+    assert "92_233_720_368_547_758" not in hint
+    # With a row cap, the sum is proved to fit.
+    cap = sv.max_rows(1_000_000_000)
     proved = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100, cap]})
     assert not proved.issues and not proved.assumed
 
