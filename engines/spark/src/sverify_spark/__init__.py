@@ -36,7 +36,7 @@ if getattr(_meta, "PLUGIN_API", None) != 2:
 
 from sverify._unsupported import ISSUE_271, RANGE_GUARD
 from sverify.profiles import ProfilePlugin, Setting
-from sverify_spark.store import ArrowStore
+from sverify_spark.store import SparkStore
 
 #: The settings Spark's profile assumes.
 SETTINGS: tuple[Setting, ...] = (
@@ -125,8 +125,23 @@ def _run(
     # Spark's temporary views take plain names, not the delta plans' `t$delta`.
     names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
     _rename_tables(plan, names)
-    tables = {alias: con._arrow[t] for t, alias in names.items()}
+    tables = {alias: _table(con, t) for t, alias in names.items()}
+    if keep:
+        from sverify_spark.store import lazy_plan
+
+        spark = session if session is not None else spark_engine.session()
+        df = spark_engine.run_df(plan, tables, spark, deterministic=tie_free, finite=finite)
+        return lazy_plan(df, spark)
     return spark_engine.run(plan, tables, session, deterministic=tie_free, finite=finite)
+
+
+def _table(con: Any, name: str) -> Any:
+    """Table `name` of the connection for Spark: a state's files as they are,
+    any other table as Arrow."""
+    from sverify_spark.store import SparkState
+
+    table = con.get(name)
+    return table if isinstance(table, SparkState) else con._arrow[name]
 
 
 def _is_session(obj: Any) -> bool:
@@ -177,7 +192,7 @@ ROWS: Literal["sequence", "multiset"] = "multiset"
 
 PLUGIN = ProfilePlugin(
     "spark",
-    store=ArrowStore,
+    store=SparkStore,
     title="Spark",
     profile=True,
     translation="sverify's Spark SQL writer, with shims where Spark differs from the "

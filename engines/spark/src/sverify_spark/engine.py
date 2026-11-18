@@ -132,7 +132,7 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
 _VIEWS: weakref.WeakKeyDictionary[Any, dict[str, pa.Table]] = weakref.WeakKeyDictionary()
 
 
-def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None) -> None:
+def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> None:
     """Register each table as a temporary view of that name. The columns go
     to Spark as Arrow, cast to the types `spark_type` names, so NULL and NaN
     stay apart, and no Python worker runs (a table of 100,000 rows takes a
@@ -141,6 +141,10 @@ def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None
     spark = spark or session()
     held = _VIEWS.setdefault(spark, {})
     for name, table in tables.items():
+        if not isinstance(table, pa.Table):  # a handle on files (`SparkState`)
+            table.view(spark).createOrReplaceTempView(name)
+            held.pop(name, None)  # the view no longer holds the Arrow table sent last
+            continue
         own = name.startswith("__sverify_")
         if own and held.get(name) is table:
             continue
@@ -192,7 +196,20 @@ def run(
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
+    return run_df(plan, tables, spark, deterministic=deterministic, finite=finite).toArrow()
+
+
+def run_df(
+    plan: str | dict,
+    tables: Mapping[str, Any],
+    spark: SparkSession | None = None,
+    *,
+    deterministic: bool = False,
+    finite: bool = True,
+) -> Any:
+    """`run`, but the result stays a Spark `DataFrame`: nothing is collected.
+    A table is an Arrow table or a handle on files (`sverify_spark.store`)."""
     spark = spark or session()
     sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows=ROWS)
     put_tables(tables, spark)
-    return spark.sql(sql).toArrow()
+    return spark.sql(sql)
