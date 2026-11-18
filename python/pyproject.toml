@@ -350,8 +350,8 @@ help = "Write the site's generated pages (examples/, ledgers/) from docs/ and th
 cmd = "python scripts/docs_pages.py"
 
 [tool.poe.tasks.docs]
-help = "Build the API reference site into great-docs/_site (needs Quarto and the docs group)"
-sequence = ["docs_pages", { cmd = "great-docs build" }]
+help = "Build the API reference site into great-docs/_site, with its version badge (needs Quarto and the docs group)"
+sequence = ["docs_pages", { cmd = "great-docs build" }, { cmd = "python scripts/docs_version_label.py" }]
 
 [tool.poe.tasks.docs_preview]
 help = "Build the API reference site and serve it locally"
