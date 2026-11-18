@@ -386,7 +386,12 @@ def test_an_error_in_a_conjunct_that_is_never_true_may_raise():
     schema = ibis.Schema.from_pyarrow(tab2.schema)
     for semantics in ("duckdb", "reference"):
         report = sv.verify(query, tables={"tab2": schema}, semantics=semantics, counterexamples=0)
-        assert any("overflow" in str(i) for i in report.issues), report
+        # The overflow is an issue, or a precondition that rules it out (an
+        # INTEGER column's type bounds it, D46): `col1 < 1`, which the data breaks.
+        inferred = [str(c) for c in report._inferred.get("tab2", [])]
+        assert any("overflow" in str(i) for i in report.issues) or any(
+            "col1" in c and "< 1" in c for c in inferred
+        ), report
     con = connect()
     con._arrow["tab2"] = tab2
     with pytest.raises(Exception, match="out of range"):
