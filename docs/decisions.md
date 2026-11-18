@@ -116,6 +116,10 @@ their own observation, `q_det`, separate from the postcondition's
 ([D20](#d20-two-observations-per-output)); elsewhere the report names the
 open choice.
 
+Amended 2026-11-18 by [D48](#d48-a-result-is-determined-up-to-the-classes-its-observation-reads):
+"determined" is up to row order and the member of each class of doubles, and
+an observation that reads the members asks for the exact level.
+
 ### D11. Postconditions name the equivalence
 
 Each output can carry a postcondition that names the equivalence its
@@ -332,7 +336,9 @@ Each output has two observations, checked independently.
   needs exact bits. A plain run declares none, so determinism is only
   reported ([D10](#d10-determinism)). The check: the engine's run-to-run
   variation, carried through the plan as D18 carries `q`, must refine
-  `q_det`.
+  `q_det`. `q_det` also chooses the level of determinism: one that reads the
+  members of a class asks for the exact level
+  ([D48](#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)).
 
 The two are independent, and `q_det` is often the finer one. Polars's
 streaming float `SUM` varies in the last bits between runs, and grouped
@@ -440,6 +446,9 @@ them, and a plan whose order is total, by a tie-break key or a uniqueness
 precondition, is the one that qualifies. A plan without one is refused for
 that requirement, and the refusal names each place where ties stay open
 (`str(report)`, with the keys that would close them in `Report.ties`).
+Since [D48](#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)
+determinism has two levels: up to the member of each class of doubles
+(`Rel.detClass`, `Report.deterministic`), and exact (`Rel.detPlan`).
 
 An order-sensitive operator reads one sorted enumeration of its input, and
 its meaning is the set over all of them (`Lin` and `Sem`,
@@ -811,7 +820,8 @@ raises or leaves the result open where engines disagree."
   Polars emits a present member. `Rel.eval` keeps one admitted value, the
   raw-least member. Where the keys and arguments hold no doubles, each class
   has one member and the output is unique (`aggAllowed_eq`, `Rel.detPlan`'s
-  `noDoubles` guards). A whole condition can tell the members apart
+  `noDoubles` guards, which belong to the exact level since
+  [D48](#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)). A whole condition can tell the members apart
   (`atan2`), so a `DISTINCT` keeps the facts with one value on a class: the
   comparisons of numbers, and conditions `Expr.canonSafe` admits
   (`Fact.classSafe`).
@@ -1266,7 +1276,9 @@ gives `windowRows` alone (`windowRowsA_eq`), and every admitted result is
 `Rel.detPlan`'s window case gains the aggregate case's guard
 (`WinFn.pickFixed`), so a plan with a windowed `MIN`, `MAX` or
 `QUANTILE_DISC` over an argument that may be a double is no longer
-certified deterministic.
+certified deterministic at the exact level; it keeps the certificate at the
+class level
+([D48](#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)).
 
 ### D46. An integer column's values lie in its declared width
 
@@ -1334,6 +1346,57 @@ D43).
 Why: D21 raised where an engine differs and D40 took an option where two
 engines agree, and no text said which applies when. The raise set stays
 small and guardable, and a value two engines compute alike stays a value.
+
+### D48. A result is determined up to the classes its observation reads
+
+Approved 2026-11-18 by the maintainer, on the theory advisor's proposal
+(review C2).
+
+A plan's result is determined when every result the reference allows is the
+same up to row order and up to the member of each equivalence class of
+[D31](#d31-double-arithmetic-is-exact-rounded-once) (`-0.0` and `0.0`;
+every NaN). A place that only picks a member of a class leaves the result
+determined: a `GROUP BY` or `DISTINCT` key over doubles, `MIN`, `MAX`,
+`QUANTILE_DISC`, and their windowed forms
+([D45](#d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do)).
+`Report.deterministic` reports this level, and refreshes and idempotent sink
+epochs require it by default ([D10](#d10-determinism)): the default
+observation reads one zero and one NaN, so no rerun it compares can differ at
+a pick.
+
+An observation that reads the members (`floats` and `zeros` both exact,
+`Observation.reads_members`) asks for the exact level. There each class pick
+is an open place: the refusal names it and the two ways out, a class-blind
+observation or a plan without the pick.
+
+Both levels are proved. The exact level is `Rel.detPlan`
+(`check_deterministic_sound`): every allowed result is `Rel.eval`'s up to row
+order. The class level is `Rel.detClass` (`check_class_determined_sound`):
+every allowed result is `Rel.eval`'s up to row order and `Row.canon`. A plan
+where an expression reads a picked value and can tell the members apart
+(`atan2`, a cast to a string) is not determined at the class level, and the
+report names the expression.
+
+Tie order, tie picks and an unordered `FETCH` are open at both levels
+([D24](#d24-tie-order-is-open-and-determinism-is-proved) unchanged).
+
+`floats="plan"` reads one zero and one NaN whether or not the plan has a
+float bound (`Observation.equal`). The refinement order (`coarser_than`),
+which D18's check and the engines' rerun rows use, still compares `zeros` as
+a component of its own: under `floats="plan"` or a tolerance it asks for more
+than `Observation.equal` can see, which is sound.
+
+Amends: D10 (the default requirement is the class level); D20 (the
+consumer's observation `q_det` chooses the level); D24 (determinism is a
+proved property at two levels); D31's correction (the `noDoubles` guards
+belong to the exact level); D45's last sentence (the certificate is kept at
+the class level and dropped at the exact level).
+
+Why: a refresh of `SELECT region, MAX(price) … GROUP BY region` over a double
+`price` was refused, though no observation a refresh uses by default can
+tell the results apart. The step from an observation to a level is
+`observation.py`'s until the bridge to `Relation.Equiv` is proved
+([trusted base](trusted-base.md)).
 
 ### D49. A value known from one engine is provisional
 
