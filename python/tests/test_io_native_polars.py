@@ -55,8 +55,10 @@ def agree(scan: Scan) -> None:
     want = E.run(plan, {"t": scan.to_arrow()})
     assert got.schema.equals(want.schema)
     assert bag(got) == bag(want)
-    # The descriptor's file order, rows in the files' order, as DuckDB reads them.
-    assert ordered(lazy_scan(scan).collect().to_arrow()) == ordered(scan.to_arrow())
+    # The descriptor's file order, rows in the files' order, as DuckDB reads them
+    # (its join with the partition values may reorder, so those scans compare as bags).
+    if scan.partitions is None:
+        assert ordered(lazy_scan(scan).collect().to_arrow()) == ordered(scan.to_arrow())
 
 
 @settings(
@@ -70,10 +72,20 @@ def test_a_delta_scan_over_histories(history, tmp_path_factory):
         snap = src._native(v)
         if snap is None:
             continue
-        if snap.scan.partitions is not None:
-            with pytest.raises(Unsupported):
-                lazy_scan(snap.scan)
-        else:
+        agree(snap.scan)
+
+
+@pytest.mark.parametrize("mode", ["name", "id"])
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(history=histories(renames=True, adds=False))
+def test_a_mapped_delta_scan_over_histories(mode, history, tmp_path_factory):
+    path = tmp_path_factory.mktemp("m") / "t"
+    src = build_delta(path, history, mapping=mode)
+    for v in [*range(DeltaTable(str(path)).version() + 1), None]:
+        snap = src._native(v)
+        if snap is not None:
             agree(snap.scan)
 
 
@@ -169,9 +181,7 @@ def test_a_where_is_duckdb_sql_and_stays_on_the_arrow_route(tmp_path):
     assert isinstance(got, pa.Table) and got.column("id").to_pylist() == [2, 3]
 
 
-def test_a_partitioned_delta_table_reads_on_polars_through_arrow(tmp_path):
-    """Polars does not read partition values yet, so `_table` hands such a scan to
-    Polars as Arrow: the rows are the table's, and `lazy_scan` still refuses."""
+def test_a_partitioned_delta_table_reads_natively_on_polars(tmp_path):
     import sverify as sv
     from sverify.incremental import Pipeline
     from sverify.io.delta import DeltaSource
@@ -183,8 +193,5 @@ def test_a_partitioned_delta_table_reads_on_polars_through_arrow(tmp_path):
     pipe.source("p", DeltaSource(str(tmp_path / "p")))
     scan = pipe.con.get("p")
     assert isinstance(scan, Scan) and scan.partitions is not None
-    with pytest.raises(Unsupported):
-        lazy_scan(scan)
-    got = _table(pipe.con, "p")
-    assert isinstance(got, pa.Table)
-    assert bag(got) == bag(scan.to_arrow())
+    assert isinstance(_table(pipe.con, "p"), pl.LazyFrame)
+    assert bag(lazy_scan(scan).collect().to_arrow()) == bag(scan.to_arrow())

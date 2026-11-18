@@ -3,10 +3,11 @@ Parquet files as a lazy frame, on the streaming engine, without the table
 passing through Arrow in the driver.
 
 Route A of the design note (section 3.2), with public Polars API only:
-`scan_parquet` over the files (grouped by how their columns are named), the
-positions a file lost anti-joined from a scan of that file alone, equality
-deletes anti-joined with NULLs equal, and a cast of each column to the type the
-Arrow route gives it. A column a file lacks is NULL; a file column whose type
+`scan_parquet` over the files (grouped by how their columns are named: by field
+id, by the table's physical names or by name), the partition values joined on
+the file path, the positions a file lost anti-joined from a scan of that file
+alone, equality deletes anti-joined with NULLs equal, and a cast of each column
+to the type the Arrow route gives it. A column a file lacks is NULL; a file column whose type
 does not widen to the schema's (`sverify._scan.widens`) raises.
 """
 
@@ -32,13 +33,9 @@ def lazy_scan(scan: Scan) -> pl.LazyFrame:
     """The scan's rows as a lazy frame in the dtypes of its Arrow schema, in
     the descriptor's file order. A scan with a `where` is refused: a source's
     `where` is DuckDB SQL (`sverify.io._common.filter_rows`), which Polars's SQL
-    does not read alike. A scan with `partitions` or `physical` names is refused
-    too: Polars does not yet read partition values from the log or physical names
-    (#173)."""
+    does not read alike."""
     if scan.where is not None:
         raise Unsupported(f"{scan.origin}: a `where` is DuckDB SQL, which Polars does not read")
-    if scan.partitions is not None or scan.physical is not None:
-        raise Unsupported(f"{scan.origin}: Polars does not read partition values or physical names")
     dtypes = pl.from_arrow(scan.schema.empty_table()).schema  # type: ignore[union-attr]
     if not scan.files:
         return pl.LazyFrame(schema=dtypes)
@@ -85,14 +82,15 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
         if scan.field_ids is None
         else {i: n for i, n in zip(scan.field_ids, scan.schema.names, strict=True)}
     )
+    by_name = dict(zip(scan.physical or scan.schema.names, scan.schema.names, strict=True))
     out = {}
     for f in schema:
         if by_id is None:
-            logical = f.name if f.name in scan.schema.names else None
+            logical = by_name.get(f.name)
         else:
             raw = (f.metadata or {}).get(_FIELD_ID)
             logical = by_id.get(int(raw)) if raw is not None else None
-        if logical is None:
+        if logical is None or logical in _constant(scan):
             continue
         want = scan.schema.field(logical).type
         if not widens(f.type, want) and not _same_family(f.type, want):
@@ -101,6 +99,11 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
             )
         out[f.name] = logical
     return out
+
+
+def _constant(scan: Scan) -> set[str]:
+    """The partition columns: their values are the log's, one per file."""
+    return set() if scan.partitions is None else set(scan.partitions.column_names) - {"file"}
 
 
 def _same_family(have: pa.DataType, want: pa.DataType) -> bool:
@@ -127,11 +130,18 @@ def _read(
     )
     if positions is not None:
         lf = lf.filter(~pl.col(_POS).is_in(positions)).drop(_POS)
-    lf = lf.rename(names)
+    lf = lf.select(_FILE, *names).rename(names)
+    constant = _constant(scan)
+    if constant:
+        assert scan.partitions is not None
+        parts = pl.from_arrow(scan.partitions).lazy().rename({"file": _FILE})  # type: ignore[union-attr]
+        lf = lf.join(parts, on=_FILE, how="left", maintain_order="left")
     return lf.select(
         pl.col(_FILE),
         *(
-            (pl.col(c) if c in names.values() else pl.lit(None)).cast(dtypes[c]).alias(c)
+            (pl.col(c) if c in names.values() or c in constant else pl.lit(None))
+            .cast(dtypes[c])
+            .alias(c)
             for c in scan.schema.names
         ),
     )
