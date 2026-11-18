@@ -28,26 +28,26 @@ from __future__ import annotations
 
 import pyarrow as pa
 
-from sverify._store import State, Store, arrow_of, by_keys, store_for
+from sverify._store import MERGE_A, MERGE_B, State, Store, arrow_of, by_keys, store_for
 from sverify._weighted import WEIGHT, consolidated
 
 __all__ = ["Merger", "State", "Store", "arrow_of", "by_keys", "store_for"]
 
-_A, _B = "$merge_a", "$merge_b"
-
-
 class Merger:
     """Adds up weighted tables with `schema` (the rows' columns, then
-    `WEIGHT`) by the plan Lean checked, run on DuckDB over the tables of
-    `con`.
+    `WEIGHT`) by the plan Lean checked, run on the engine of `store` (DuckDB
+    for the interim Arrow store) over the tables of `con`.
 
     Attributes:
         refused: Why the plan could not be written or run, if it could not:
             the tables are then added up in Arrow.
     """
 
-    def __init__(self, con, schema: pa.Schema):
+    def __init__(self, con, schema: pa.Schema, store: Store | None = None):
+        from sverify._arrow_state import ArrowOps
+
         self.con, self.schema = con, schema
+        self.store = ArrowOps() if store is None else store
         self._plan: str | None = None
         self.refused: str | None = None
 
@@ -58,9 +58,9 @@ class Merger:
         if self._plan is None and self.refused is None:
             con = self.con
             try:
-                for name in (_A, _B):
+                for name in (MERGE_A, MERGE_B):
                     con.put(name, self.schema.empty_table())
-                a, b = con.table(_A), con.table(_B)
+                a, b = con.table(MERGE_A), con.table(MERGE_B)
                 u = a.union(b, distinct=False)
                 keys = [c for c in self.schema.names if c != WEIGHT]
                 total = u.group_by(keys).aggregate(**{WEIGHT: u[WEIGHT].sum()})
@@ -68,31 +68,24 @@ class Merger:
             except Exception as e:  # noqa: BLE001 - any refusal: add up in Arrow
                 self.refused = f"{type(e).__name__}: {e}"
             finally:
-                for name in (_A, _B):
+                for name in (MERGE_A, MERGE_B):
                     con.drop(name)
         return self._plan
 
     def __call__(self, a: State, b: State | None = None, *, keep: bool = False) -> State:
-        """`a` plus `b` (default: nothing), consolidated: as a `Resident`
-        table with `keep`, else as an Arrow table."""
+        """`a` plus `b` (default: nothing), consolidated: as the store's own
+        state with `keep`, else as an Arrow table. The store runs the plan on
+        its engine (`Store.merge`)."""
         from sverify.sql.core import Unsupported
-        from sverify_duckdb import engine as duckdb_engine
 
         b = self.schema.empty_table() if b is None else b
         plan = self.plan()
         if plan is not None:
-            tables = {_A: a, _B: b}
             try:
-                if keep:
-                    return duckdb_engine.run(plan, tables, keep=True)
-                out = duckdb_engine.run(plan, tables)
+                return self.store.merge(plan, self.schema, a, b, keep=keep)
             except Unsupported as e:
                 self.refused = f"{type(e).__name__}: {e}"
-            else:
-                return out.rename_columns(self.schema.names).cast(self.schema)
         merged = consolidated(arrow_of(a).cast(self.schema), arrow_of(b).cast(self.schema))
         if keep:
-            from sverify_duckdb import DuckDBStore
-
-            return DuckDBStore().keep_table(merged)
+            return self.store.kept(merged)
         return merged

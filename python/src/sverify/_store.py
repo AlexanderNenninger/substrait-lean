@@ -24,6 +24,10 @@ type State = Any
 runner."""
 
 
+MERGE_A, MERGE_B = "$merge_a", "$merge_b"
+"""The names of the two tables the merge plan reads (`sverify._state.Merger`)."""
+
+
 def arrow_of(z: pa.Table | Native) -> pa.Table:
     return z.to_arrow() if isinstance(z, Native) else z
 
@@ -44,6 +48,20 @@ class Store[S](ABC):
     `keep`: whether merges leave their result where the engine holds it."""
 
     keep = False
+
+    @abstractmethod
+    def merge(
+        self, plan: str, schema: pa.Schema, a: S, b: S, *, keep: bool
+    ) -> S | pa.Table:
+        """The weighted tables `a` and `b` added up by the merge `plan`
+        (`sverify._state.Merger`: its tables are `MERGE_A` and `MERGE_B`), run
+        on the store's engine: the result as the store's state with `keep`,
+        else an Arrow table. Raises `Unsupported` where the engine refuses
+        the plan."""
+
+    @abstractmethod
+    def kept(self, table: pa.Table) -> S:
+        """A weighted Arrow table as the store's state."""
 
     @abstractmethod
     def weighted(self, rows: S, weight: int = 1) -> S:

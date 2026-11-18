@@ -17,7 +17,7 @@ from typing import Any
 import pyarrow as pa
 
 from sverify._scan import Resident
-from sverify._store import State, Store, arrow_of, by_keys
+from sverify._store import MERGE_A, MERGE_B, State, Store, arrow_of, by_keys
 from sverify._weighted import _call, expanded, has_negative, negated, weighted
 
 
@@ -25,6 +25,24 @@ class ArrowOps(Store[Any]):
     """A `Store` whose state is an Arrow table in the Python process."""
 
     keep = False
+
+    def merge(
+        self, plan: str, schema: pa.Schema, a: State, b: State, *, keep: bool
+    ) -> State | pa.Table:
+        """The weighted tables `a` and `b` added up by the merge `plan`, run
+        on DuckDB (the interim store's engine): kept there with `keep`, else
+        an Arrow table. Raises `Unsupported` where DuckDB refuses the plan."""
+        from sverify_duckdb import engine as duckdb_engine
+
+        tables = {MERGE_A: a, MERGE_B: b}
+        if keep:
+            return duckdb_engine.run(plan, tables, keep=True)
+        out = duckdb_engine.run(plan, tables)
+        return out.rename_columns(schema.names).cast(schema)
+
+    def kept(self, table: pa.Table) -> State:
+        """`table` as this store holds state: the table itself."""
+        return table
 
     def weighted(self, rows: pa.Table | Resident, weight: int = 1) -> State:
         """`rows` with the weight `weight` on every row."""
