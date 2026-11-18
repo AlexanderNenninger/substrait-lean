@@ -148,7 +148,7 @@ def test_a_report_starts_with_its_verdict(monkeypatch: pytest.MonkeyPatch) -> No
         "NOT proved: 1 of 1 postcondition not proved, 2 possible runtime errors, "
         "1 precondition needed"
     )
-    assert report._repr_markdown_().startswith(f"**{report.verdict}**")
+    assert report._repr_markdown_().startswith(f"**{report._summary}**")
 
 
 def test_the_exception_counts_then_lists_one_line_per_finding() -> None:
@@ -328,7 +328,7 @@ def test_a_key_hint_is_declared_only_where_it_proves_the_key() -> None:
         requires={"orders": [sv.unique("order_id")]},
         ensures=[sv.unique("order_id")],
     )
-    assert again.proved
+    assert again.verdict == sv.Verdict.PROVED
 
 
 def test_a_null_output_is_allowed_not_declared_not_null() -> None:
@@ -341,7 +341,9 @@ def test_a_null_output_is_allowed_not_declared_not_null() -> None:
     assert m is not None
     code = m[1]
     assert code == "((_.sd_t >= 0) | _.sd_t.isnull())"
-    assert sv.verify(expr, requires=req, ensures=[eval(code)]).proved
+    assert (
+        sv.verify(expr, requires=req, ensures=[eval(code)]).verdict == sv.Verdict.PROVED_WITH_CHECKS
+    )
 
 
 def test_the_and_or_guard_proves_when_pasted() -> None:

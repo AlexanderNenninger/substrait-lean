@@ -57,7 +57,7 @@ def report() -> sv.Report:
             ensures=[_.n >= 0],
             semantics="spark",
         )
-    assert r.proved and r.semantics == "reference", str(r)
+    assert r.verdict == sv.Verdict.PROVED_WITH_CHECKS and r.semantics == "reference", str(r)
     return r
 
 

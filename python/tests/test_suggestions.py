@@ -21,7 +21,7 @@ def test_a_bound_on_the_input_is_suggested():
     assert "  would hold with `(_.x < 51)` in the requires of 't'" in str(report)
     # Suggested, not assumed (`x * 2` adds the inferred `x < 2**62`).
     assert report.requires == {"t": ["(_.x >= 0)", "(_.x < 2**62)"]}
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_a_suggestion_is_a_working_precondition():
@@ -31,7 +31,7 @@ def test_a_suggestion_is_a_working_precondition():
     proved = sv.verify(
         expr, requires={"t": [_.y >= 0, _.y <= 10, *c.suggested["t"]]}, ensures=[_.d >= 0]
     )
-    assert proved.proved
+    assert proved.verdict == sv.Verdict.PROVED
 
 
 def test_no_suggestion_without_a_comparison():
@@ -44,4 +44,4 @@ def test_proved_conditions_have_no_suggestion():
     report = sv.verify(
         T.select(T.id, d=T.x * 2), requires={"t": [_.x >= 0, _.x <= 10]}, ensures=[_.d <= 100]
     )
-    assert report.proved and report.suggestions == {}
+    assert report.verdict == sv.Verdict.PROVED and report.suggestions == {}

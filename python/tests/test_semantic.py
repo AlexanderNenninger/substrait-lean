@@ -150,7 +150,7 @@ def recheck(t):
 def test_composed_pipeline_drops_the_downstream_check():
     recheck(paid(orders))
     report = recheck.report
-    assert report is not None and report.proved
+    assert report is not None and report.verdict == sv.Verdict.PROVED
     assert report._rewrites == ["filter implied by the contract"]
 
 

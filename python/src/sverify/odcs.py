@@ -404,7 +404,7 @@ def export(
         {
             "node": node.name,
             "plan": plan_digest(node.internal_plan),
-            "proved": report.proved,
+            "proved": report._proved,
             "semantics": report.semantics,
             "sverify": _sverify_version(),
         }

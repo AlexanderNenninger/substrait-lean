@@ -31,7 +31,7 @@ def _table() -> pa.Table:
 @pytest.mark.parametrize("semantics", [None, "duckdb"])
 def test_ntile_is_proved_and_runs_as_duckdbs_on_duckdb_and_polars(query, semantics):
     report = sv.verify(query, tables={"t": SCHEMA}, semantics=semantics)
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
     arrow = _table()
     own = duckdb.connect()
     own.register("t", arrow)

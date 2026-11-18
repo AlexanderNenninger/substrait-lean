@@ -126,7 +126,7 @@ def test_precondition_error_on_a_batch():
 def test_key_is_unique_and_not_null():
     t = ibis.table({"id": "int64", "x": "int64"}, name="t")
     r = sv.verify(t.filter(t.x > 0), requires={"t": [sv.key("id")]}, ensures=[sv.key("id")])
-    assert r.proved
+    assert r.verdict == sv.Verdict.PROVED
     assert r.requires["t"] == ["unique(id)", '"id" IS NOT NULL']
     assert [c.label for c in r.ensures] == ["unique(id)", '"id" IS NOT NULL']
     # Without the key, neither part is proved.
@@ -188,11 +188,11 @@ def test_maybe_null_column_stays_nullable():
 def test_isin_of_integers_is_a_range():
     t = ibis.table({"x": "int64"}, name="t")
     expr = t.select(flag=(t.x > 5).ifelse(1, 0))
-    assert sv.verify(expr, ensures=[_.flag.isin([0, 1])]).proved
-    assert sv.verify(expr, ensures=[_.flag.isin([1, 0, 2])]).proved
+    assert sv.verify(expr, ensures=[_.flag.isin([0, 1])]).verdict == sv.Verdict.PROVED
+    assert sv.verify(expr, ensures=[_.flag.isin([1, 0, 2])]).verdict == sv.Verdict.PROVED
     # A gap is not a range: [0, 2] says nothing about 1.
     expr2 = t.select(flag=(t.x > 5).ifelse(2, 1))
-    assert not sv.verify(expr2, ensures=[_.flag.isin([0, 2])]).proved
+    assert sv.verify(expr2, ensures=[_.flag.isin([0, 2])]).verdict == sv.Verdict.UNPROVED
 
 
 def test_isin_of_integers_in_sql():
@@ -201,7 +201,7 @@ def test_isin_of_integers_in_sql():
         tables={"t": ibis.schema({"x": "int64"})},
         ensures=["flag IN (0, 1)"],
     )
-    assert r.proved
+    assert r.verdict == sv.Verdict.PROVED
 
 
 @pytest.mark.parametrize(
@@ -248,14 +248,14 @@ def test_needs_conditions_prove_the_transform():
     t = ibis.table({"qty": "int64", "total": "int64", "k": "!int64"}, name="orders")
     expr = t.select(u=t.total // t.qty, v=t.k * 2)
     r = sv.verify(expr)
-    assert not r.proved
+    assert r.verdict == sv.Verdict.UNPROVED
     assert {n.table for n in r.needs} == {"orders"}
     assert all(not isinstance(n.condition, str) for n in r.needs)
     # `qty` may be NULL: the bound lets NULL pass, as the inferred one does.
     assert any("isnull" in repr(n.condition) and "qty" in repr(n.condition) for n in r.needs)
     assert all(n.text and n.issue is not None for n in r.needs)
     assert set(r.suggested_requires) == {"orders"}
-    assert sv.verify(expr, requires=r.suggested_requires).proved
+    assert sv.verify(expr, requires=r.suggested_requires).verdict == sv.Verdict.PROVED
 
 
 def test_suggested_requires_keeps_the_stated_ones():
@@ -264,7 +264,7 @@ def test_suggested_requires_keeps_the_stated_ones():
     r = sv.verify(expr, requires={"orders": [_.total >= 0]})
     conds = r.suggested_requires["orders"]
     assert sv.contracts.label(conds[0]) == "(_.total >= 0)" and len(conds) == 2
-    assert sv.verify(expr, requires=r.suggested_requires).proved
+    assert sv.verify(expr, requires=r.suggested_requires).verdict == sv.Verdict.PROVED
 
 
 def test_needs_of_sql_are_sql():
@@ -273,16 +273,16 @@ def test_needs_of_sql_are_sql():
     r = sv.verify(sql, tables=tables)
     assert r._dialect == "sql"
     assert '"qty" IS NULL OR "qty" <> 0' in [n.condition for n in r.needs]
-    assert sv.verify(sql, tables=tables, requires=r.suggested_requires).proved
+    assert sv.verify(sql, tables=tables, requires=r.suggested_requires).verdict == sv.Verdict.PROVED
 
 
 def test_needs_empty_when_assumed():
     t = ibis.table({"qty": "int64", "total": "int64"}, name="orders")
     expr = t.select(u=t.total // t.qty)
     r = sv.verify(expr, on_inferred="ignore")
-    assert r.needs == [] and r.proved
+    assert r.needs == [] and r.verdict == sv.Verdict.PROVED
     # The assumed bound is still in the mapping, so the contract says it.
-    assert sv.verify(expr, requires=r.suggested_requires).proved
+    assert sv.verify(expr, requires=r.suggested_requires).verdict == sv.Verdict.PROVED
     assert sv.verify(expr, requires=r.suggested_requires)._inferred == {}
 
 

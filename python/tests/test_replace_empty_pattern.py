@@ -28,7 +28,7 @@ def _duckdbs_own(query: str) -> list:
 def test_sql_gives_duckdbs_value_on_every_route(r, semantics, engine):
     query = SQL.format(r=r)
     report = sv.verify(query, tables={"t": SCHEMA}, semantics=semantics)
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
     con = sv.connect()
     con.put("t", ROWS)
     expected = _duckdbs_own(query)
@@ -42,5 +42,5 @@ def test_ibis_gives_duckdbs_value_on_every_route(engine):
     con.put("t", ROWS)
     t = con.table("t")
     report = sv.verify(t.select(r=t.s.replace("", "x")))
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
     assert report.run(con, engine).column("r").to_pylist() == ["ab", "b", "", None]

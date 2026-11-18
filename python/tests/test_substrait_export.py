@@ -44,7 +44,7 @@ DATA = {
 
 def _verify(expr, requires=None, ensures=(), **kw) -> sv.Report:
     report = sv.verify(expr, requires=requires, ensures=list(ensures), **kw)
-    assert report.proved, str(report)
+    assert report.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS), str(report)
     return report
 
 
@@ -152,7 +152,10 @@ def test_round_trip(case: str, fmt: Literal["json", "binary"]) -> None:
     report = _verify(expr, requires, ensures)
     out = report.to_substrait(fmt)
     again = sv.Report.from_substrait(out)
-    assert again.proved
+    # The exported plan carries the `+ 0.0` shims of the double keys, whose
+    # overflow the import assumes and checks on the data.
+    expected = sv.Verdict.PROVED_WITH_CHECKS if case == "double keys" else report.verdict
+    assert again.verdict == expected
     assert [(c.label, c.proved) for c in again.ensures] == [
         (c.label, c.proved) for c in report.ensures
     ]

@@ -50,6 +50,7 @@ def test_the_top_level_is_small():
         "ContractedTransform",  # what @sv.transform returns, for isinstance (#682)
         "Node",
         "Report",
+        "Verdict",
         "approx",
         "arrives_within",
         "asof_join",
@@ -66,3 +67,14 @@ def test_the_top_level_is_small():
         "verify",
         "within",
     ]
+
+
+def test_verdict_has_no_truth_value():
+    """`assert report.verdict` must not pass on UNPROVED: it raises instead."""
+    from sverify import Verdict
+
+    for v in Verdict:
+        with pytest.raises(TypeError):
+            bool(v)
+        with pytest.raises(TypeError):
+            assert v

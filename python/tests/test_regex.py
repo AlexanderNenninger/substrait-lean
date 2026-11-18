@@ -177,7 +177,7 @@ def test_contracts_see_types_and_nulls_only():
         ),
         ensures=[_.e.notnull(), _.p.notnull(), _.m.notnull()],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_lean_refuses_rows_whose_classes_differ_between_engines():

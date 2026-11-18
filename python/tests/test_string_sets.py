@@ -117,7 +117,7 @@ def test_shop_stg_orders_accepted_values():
         },
         ensures=["status IS NULL OR status IN ('placed', 'shipped', 'returned')"],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_shop_events_unioned_accepted_values():
@@ -134,7 +134,7 @@ def test_shop_events_unioned_accepted_values():
         semantics="duckdb",
         ensures=["source IS NULL OR source IN ('events', 'orders')", "source IS NOT NULL"],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 SALES_BY_QUARTER = " UNION ALL ".join(
@@ -158,7 +158,7 @@ def test_shop_sales_by_quarter_accepted_values():
         semantics="duckdb",
         ensures=["quarter IS NULL OR quarter IN ('q1', 'q2', 'q3', 'q4')"],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.facts["quarter"] == "one of the strings 'q1', 'q2', 'q3', 'q4'"
 
 
@@ -170,7 +170,7 @@ def test_shop_sales_by_quarter_unique_region_quarter():
         requires={"sales_wide": ["region IS NOT NULL", sv.unique("region")]},
         ensures=[sv.unique("region", "quarter")],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_a_union_whose_branches_share_a_tag_has_no_key():
@@ -184,7 +184,7 @@ def test_a_union_whose_branches_share_a_tag_has_no_key():
         requires={"sales_wide": [sv.unique("region")]},
         ensures=[sv.unique("region", "quarter")],
     )
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_a_union_needs_a_key_of_each_branch():
@@ -193,7 +193,7 @@ def test_a_union_needs_a_key_of_each_branch():
         "UNION ALL SELECT region, 'q2' AS quarter FROM sales_wide"
     )
     report = sv.verify(sql, tables=SALES_WIDE, ensures=[sv.unique("region", "quarter")])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_a_rollup_written_as_a_union_keeps_its_keys():
@@ -204,5 +204,7 @@ def test_a_rollup_written_as_a_union_keeps_its_keys():
     u = a.select(level=ibis.literal(0), workflow=a.workflow, job=a.job.cast("string"), n=a.n).union(
         b.select(level=ibis.literal(1), workflow=b.workflow, job=ibis.null("string"), n=b.n)
     )
-    assert sv.verify(u, ensures=[sv.unique("level", "workflow", "job")]).proved
-    assert not sv.verify(u, ensures=[sv.unique("workflow")]).proved
+    assert (
+        sv.verify(u, ensures=[sv.unique("level", "workflow", "job")]).verdict == sv.Verdict.PROVED
+    )
+    assert sv.verify(u, ensures=[sv.unique("workflow")]).verdict == sv.Verdict.UNPROVED

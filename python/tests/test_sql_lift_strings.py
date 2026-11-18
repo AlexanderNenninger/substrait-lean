@@ -9,6 +9,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from _sql_lift import SCHEMAS, TABLES
+from sverify import Verdict
 from sverify.engine import run_checker
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql_lift import lift
@@ -181,7 +182,7 @@ def test_a_surrogate_key_is_never_null():
         ensures=["k IS NOT NULL"],
         counterexamples=0,
     )
-    assert report.proved
+    assert report.verdict == Verdict.PROVED
 
 
 @settings(max_examples=60, deadline=None)

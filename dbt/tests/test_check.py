@@ -105,7 +105,7 @@ def test_selectors_keep_other_selectors(result: sverify_dbt.CheckResult, tmp_pat
     data = yaml.safe_load(path.read_text())
     assert [s["name"] for s in data["selectors"]] == ["mine", "sverify_proved"]
     values = {d["value"] for d in data["selectors"][1]["definition"]["union"]}
-    assert values == {t.name for t in result.proved}
+    assert values == {t.name for t in result.proved_tests}
     assert "not_null_stg_orders_order_id" in values
 
 
@@ -131,7 +131,7 @@ def test_dbt_excludes_the_proved_tests(shop: Path, result: sverify_dbt.CheckResu
         ]
     )
     assert res.success
-    assert set(res.result) == {t.name for t in result.proved}
+    assert set(res.result) == {t.name for t in result.proved_tests}
     dbt(shop, "compile")  # the selectors file parses
 
 
@@ -294,7 +294,7 @@ def test_an_incremental_models_tests_are_skippable_only_if_its_key_holds(
     res = _incremental(make_project, config)
     assert statuses(res["p"]) == {"unique(id)": "proved", "not_null(id)": "proved"}
     assert [t.skippable for t in res["p"].tests] == [skippable, skippable]
-    names = {t.name for t in res.proved}
+    names = {t.name for t in res.proved_tests}
     selected = {n["value"] for n in res.selector()["definition"].get("union", [])}
     assert (selected == names) if skippable else not (selected & names)
     assert ("dbt build may skip them" in str(res)) == skippable

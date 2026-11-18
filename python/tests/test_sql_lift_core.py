@@ -205,7 +205,10 @@ def test_a_duckdb_sql_node_is_proved_and_runs_on_duckdb():
     orders = StaticSource(table(ORDERS, with_qty), version=1, name="orders")
     node = per_customer(orders)
     node.refresh(engine="duckdb")
-    assert per_customer.report is not None and per_customer.report.proved
+    assert (
+        per_customer.report is not None
+        and per_customer.report.verdict == sv.Verdict.PROVED_WITH_CHECKS
+    )
     got = sorted(rows(node), key=repr)
     assert got == sorted([("ada", 5, 2, 3.5), ("cy", 9, 1, 2.0), (None, 2, 1, 7.0)], key=repr)
 
@@ -436,7 +439,7 @@ def test_double_arithmetic_keeps_its_sign(expr):
         ensures=["y >= 0"],
         counterexamples=0,
     )
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
 
 
 def test_a_sum_of_non_negative_products_is_non_negative():
@@ -450,4 +453,4 @@ def test_a_sum_of_non_negative_products_is_non_negative():
         ensures=["revenue IS NULL OR revenue >= 0"],
         counterexamples=0,
     )
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report

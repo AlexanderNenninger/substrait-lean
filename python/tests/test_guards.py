@@ -184,7 +184,7 @@ def test_run_drops_the_discharged_checks(monkeypatch, engine):
     assert seen[-1] == ("run_guard_free" if covered else "run_plan")
     # Not guard-free (`Rel.looseSub`): every check stays.
     loose = sv.verify(T.left_join(U.filter(U.d > 0), "a").select(x=T.b + 1), requires=BOUNDED)
-    assert loose.proved and not loose._guard_free
+    assert loose.verdict == sv.Verdict.PROVED and not loose._guard_free
     loose.run(con, engine)
     assert seen[-1] == "run_plan"
 

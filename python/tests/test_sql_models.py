@@ -57,7 +57,7 @@ def test_a_sql_node_between_ibis_nodes_fuses():
     assert node.versions == {"orders": 1}
     assert rows(node) == [("bob", 7)]
     # Composed: `large` builds on what the SQL model proved.
-    assert large.report is not None and large.report.proved
+    assert large.report is not None and large.report.verdict == sv.Verdict.PROVED
     orders.apply(Changes(inserts=[(4, "ada", 3)]))
     node.refresh()
     assert rows(node) == [("ada", 8), ("bob", 7)]
