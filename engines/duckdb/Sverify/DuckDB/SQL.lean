@@ -512,57 +512,48 @@ omit [Boxes.Ambient] in
 theorem DuckDBSQL.negNan_ne_negOne : ¬ (FloatCode.negNan = FloatCode.negOne) := fun h => DuckDBSQL.negOne_ne_negNan h.symm
 
 omit [Boxes.Ambient] in
+/-- The two codes of zero. -/
+theorem DuckDBSQL.canon_eq_zero_iff (c : Int) :
+    FloatCode.canon c = 0 ↔ c = 0 ∨ c = FloatCode.negZero := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := DuckDBSQL.nan_eq
+  have e0 : fp64.negZero = FloatCode.negZero := rfl
+  have e1 : fp64.negNan = FloatCode.negNan := rfl
+  have e2 : fp64.nan = FloatCode.nan := rfl
+  simp only [FloatCode.canon, FloatFormat.canon, e0, e1, e2]
+  split <;> (try split) <;> omega
+
+omit [Boxes.Ambient] in
+/-- The two codes of NaN. -/
+theorem DuckDBSQL.canon_eq_nan_iff (c : Int) :
+    FloatCode.canon c = FloatCode.nan ↔ c = FloatCode.nan ∨ c = FloatCode.negNan := by
+  have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := DuckDBSQL.nan_eq
+  have e0 : fp64.negZero = FloatCode.negZero := rfl
+  have e1 : fp64.negNan = FloatCode.negNan := rfl
+  have e2 : fp64.nan = FloatCode.nan := rfl
+  simp only [FloatCode.canon, FloatFormat.canon, e0, e1, e2]
+  split <;> (try split) <;> omega
+
+omit [Boxes.Ambient] in
 /-- IEEE division by a zero (D39) is DuckDB's: `±∞` by the two signs, NaN for a
-zero or NaN dividend. -/
+zero or NaN dividend. By the dividend's class and sign, so every condition is
+decided before `simp`. -/
 theorem DuckDBSQL.fdiv_of_canon_zero {a b : Int} (hb : FloatCode.canon b = 0) :
     FloatCode.fdiv a b = ieeeDivZero a b := by
   have h1 := FloatCode.negZero_eq'; have h2 := FloatCode.negNan_eq'
   have h3 : FloatCode.posInf = 2 * (FloatCode.maxMag : Int) + 3 := FloatCode.posInf_eq
   have h4 : FloatCode.negInf = -(2 * (FloatCode.maxMag : Int) + 3) := FloatCode.negInf_eq
   have h5 := DuckDBSQL.nan_eq
-  have hb' : b = 0 ∨ b = FloatCode.negZero := by
-    by_cases h : b = FloatCode.negZero
-    · exact .inr h
-    · by_cases h' : b = FloatCode.negNan
-      · subst h'; rw [DuckDBSQL.canon_negNan] at hb; omega
-      · left
-        have e0 : ¬ b = fp64.negZero := h
-        have e1 : ¬ b = fp64.negNan := h'
-        simpa [FloatCode.canon, FloatFormat.canon, e0, e1] using hb
-  have hca : ∀ c, FloatCode.canon c = 0 ↔ c = 0 ∨ c = FloatCode.negZero := fun c => by
-    constructor
-    · intro hc
-      by_cases h : c = FloatCode.negZero
-      · exact .inr h
-      · by_cases h' : c = FloatCode.negNan
-        · subst h'; rw [DuckDBSQL.canon_negNan] at hc; omega
-        · left
-          have e0 : ¬ c = fp64.negZero := h
-          have e1 : ¬ c = fp64.negNan := h'
-          simpa [FloatCode.canon, FloatFormat.canon, e0, e1] using hc
-    · rintro (rfl | rfl)
-      · exact FloatCode.canon_zero
-      · exact DuckDBSQL.canon_negZero
-  have hcn : ∀ c, FloatCode.canon c = FloatCode.nan ↔ c = FloatCode.nan ∨ c = FloatCode.negNan := fun c => by
-    constructor
-    · intro hc
-      by_cases h : c = FloatCode.negZero
-      · subst h; rw [DuckDBSQL.canon_negZero] at hc; omega
-      · by_cases h' : c = FloatCode.negNan
-        · exact .inr h'
-        · left
-          have e0 : ¬ c = fp64.negZero := h
-          have e1 : ¬ c = fp64.negNan := h'
-          simpa [FloatCode.canon, FloatFormat.canon, e0, e1] using hc
-    · rintro (rfl | rfl)
-      · exact DuckDBSQL.canon_nan
-      · exact DuckDBSQL.canon_negNan
+  have hnz : FloatCode.negZero < 0 := by omega
+  have hnz' : ¬ FloatCode.negZero = 0 := by omega
   unfold FloatCode.fdiv FloatCode.divI ieeeDivZero
-  simp only [hca, hcn, FloatCode.isZeroCode, FloatCode.isInfCode, FloatCode.isNanCode,
-    FloatCode.infOf, FloatCode.zeroOf, Bool.or_eq_true, beq_iff_eq]
-  rcases hb' with rfl | rfl <;>
-    simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, bne_iff_ne, ne_eq, decide_eq_decide] <;>
-    (repeat' split) <;> first | rfl | omega | (simp_all <;> omega) | simp_all
+  simp only [DuckDBSQL.canon_eq_zero_iff, DuckDBSQL.canon_eq_nan_iff, FloatCode.isNanCode,
+    FloatCode.isInfCode, FloatCode.isZeroCode, FloatCode.infOf, FloatCode.zeroOf, Bool.or_eq_true,
+    Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq]
+  rcases (DuckDBSQL.canon_eq_zero_iff b).mp hb with rfl | rfl <;>
+  by_cases hN : a = FloatCode.nan ∨ a = FloatCode.negNan <;>
+  by_cases hZ : a = 0 ∨ a = FloatCode.negZero <;>
+  by_cases hp : 0 < a <;> by_cases hn : a < 0 <;>
+  simp [hN, hZ, hp, hn, hnz, hnz'] <;> omega
 
 omit [Boxes.Ambient] in
 theorem DuckDBSQL.ofInt_zero : FloatCode.ofInt 0 = 0 := by
@@ -866,10 +857,12 @@ def DuckAgg.result : DuckAgg → DuckType
   | .avgBigint | .sumDouble | .avgDouble => .double
 
 /-- What the aggregate gives for its argument's values on a group's rows,
-under the semantics. DuckDB's `avg` of integers sums them exactly (in 128
-bits), then divides the sum, as a double, by their count: no rounding before
-the end. The reference's is Substrait's `avg` of their conversions to doubles
-(`AggFn.avg`), which rounds as it sums. Both are `NULL` without values. -/
+under the semantics. For `avg` of integers under DuckDB's semantics, the
+lifted plan's value: the exact sum and the count as doubles, divided once.
+DuckDB's own result is one of the doubles `DuckAgg.Allowed` states
+(`DuckDB/AvgSet.lean`), which holds this one. The reference's is Substrait's
+`avg` of their conversions to doubles (`AggFn.avg`), which rounds as it sums.
+Both are `NULL` without values. -/
 def DuckAgg.eval : Semantics → DuckAgg → List Value → Value
   | .duckdb, .avgBigint, vs =>
     match vs.filter (· != .null) with
