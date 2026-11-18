@@ -59,8 +59,21 @@ def _run(
 ) -> Any:
     from sverify.engine import read_tables
 
-    tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
+    tables = {t: _table(con, t) for t in read_tables(json.loads(plan_json))}
     return _run_tables(plan_json, tables, finite=finite)
+
+
+def _table(con: Any, name: str) -> Any:
+    """Table `name` of the connection for Polars: a `Scan` of local files without a
+    `where` as a lazy scan (`sverify_polars.scan`), any other table as Arrow."""
+    from sverify._scan import Scan
+
+    table = con.get(name)
+    if isinstance(table, Scan) and table.readable() and table.where is None:
+        from sverify_polars.scan import lazy_scan
+
+        return lazy_scan(table)
+    return con._arrow[name]
 
 
 def _run_tables(

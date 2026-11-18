@@ -65,6 +65,7 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched
+from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
@@ -1622,10 +1623,10 @@ class Pipeline:
         return self.con.table(name)
 
     def _native(self, source: VersionedSource, version: int | None) -> ScanSnapshot | None:
-        """The snapshot of `source` as files DuckDB reads itself, where the
-        plans run on DuckDB and the source can give one; else None."""
+        """The snapshot of `source` as files the engine reads itself, where
+        the plans run on a local engine and the source can give one; else None."""
         native = getattr(source, "_native", None)
-        if native is None or (self.engine or self.con.engine) != "duckdb":
+        if native is None or (self.engine or self.con.engine) not in LOCAL:
             return None
         return native(version)
 
