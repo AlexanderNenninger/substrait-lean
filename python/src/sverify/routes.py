@@ -670,7 +670,8 @@ _THRESHOLD = (
     "for a constant threshold, state a precondition that keeps the values away from it; "
     "for a threshold computed from the data (a mean, a sum), compare exact columns: "
     "for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact "
-    "mean, not the rounded one, and its product must fit BIGINT"
+    "mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row "
+    "cap (`sv.max_rows`) prove it"
 )
 
 

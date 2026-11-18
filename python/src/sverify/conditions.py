@@ -462,7 +462,8 @@ def max_rows(n: int) -> MaxRows:
 
     With a cap, an integer `SUM` of values in `[-m, m]` over at most `n`
     rows, with `n · m < 2⁶³`, is proved to fit 64 bits, and needs no
-    check on the data. Error bounds of floating-point aggregates grow with
+    check on the data, and a `COUNT` is at most `n`, so `x * COUNT(y)`
+    with `x` in `[-m, m]` fits as well. Error bounds of floating-point aggregates grow with
     the number of rows, so `SUM` and `AVG` of doubles get their bounds only
     from inputs with a cap: a sum of at most `n` values in `[lo, hi]` lies
     within the proved tolerance of `[min(lo, n·lo), max(hi, n·hi)]`, and
