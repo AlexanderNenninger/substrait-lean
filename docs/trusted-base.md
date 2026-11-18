@@ -154,7 +154,13 @@ place, and what retires it.
   `--serve` loop and `runOn` that call `check` and print its report, and
   `underProfile`, which labels the reference's report with the profile a
   request names for an out-of-tree engine marked `asReference` (no built-in one: Polars's report is pending until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). On the Python side, the glue of
-  incremental views (change tables, consolidation, merge).
+  incremental views (change tables, consolidation, merge, and the finish that
+  turns the state back into the view's rows). The checker parses and writes
+  each maintenance plan (`init`, `contrib`, `merge`, `regroup`, the finish and
+  those of `_semi.py` and `_touched.py`) and does not contract-check them. A
+  view's report is its batch query's, so a refresh can raise where the report
+  lists no issue (`contrib`'s product at the edge of a type, `merge`'s partial
+  sums); the refresh then applies nothing.
 - The exact state of a maintained `SUM` or `AVG` of doubles
   (`python/src/sverify/_exact_sum.py`). Lean proves that the state, an
   integer per group, finishes to `floatSumCR` of the current rows after any
