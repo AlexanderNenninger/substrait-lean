@@ -623,3 +623,12 @@ def test_float_order_is_deprecated():
     assert got.to_pylist() == [{"s": 3.0}]
     with pytest.raises(TypeError, match="not both"):
         run_sharded(plan, shards, sharded=["f"], float_order="any", reproducible=PLAN)
+
+
+def test_run_sharded_refuses_a_table_that_differs_from_the_plans_schema() -> None:
+    t = ibis.table({"a": "int32"}, name="t")
+    plan = sv.verify(t.group_by("a").aggregate(n=t.a.count())).internal_plan
+    assert plan is not None
+    shard = {"t": pa.table({"a": pa.array([1, 2**40], pa.int64())})}
+    with pytest.raises(ValueError, match=r"column 'a' is declared int32"):
+        run_sharded(plan, [shard], sharded=["t"])

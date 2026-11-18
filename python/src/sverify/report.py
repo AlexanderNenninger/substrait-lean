@@ -29,7 +29,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
-from sverify._run_schema import declared_columns, int_name, int_range
+from sverify._run_schema import declared_columns, int_range, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
@@ -917,7 +917,8 @@ class Report:
                     raise PreconditionError(
                         f"table {t} differs from the schema the plan was verified for: "
                         + "; ".join(found)
-                        + ": refused before the run. Declare the column as it is, or fix the source"
+                        + ": refused before the run. Declare the column as it is (a wider "
+                        "integer type for a value outside the width), or fix the source"
                     )
                 wide.update(more)
             table = con.table(t)
@@ -928,13 +929,14 @@ class Report:
                 [(_c, n, error)] = violation_counts(table, [cond], engine)
                 if n or error:
                     raise PreconditionError(
-                        f"column {col!r} of {t} is declared {int_name(key)} ({lo} to {hi}) and "
+                        f"table {t} differs from the schema the plan was verified for: "
                         + (
-                            f"its range check raised: {error}"
+                            f"the range check of column {col!r} raised: {error}"
                             if error
-                            else f"{n} value(s) lie outside it, e.g. {_example(table, cond, col)}"
+                            else range_message(col, key, n, _example(table, cond, col))
                         )
-                        + ": refused before the run. Declare the wider type, or cast in the query",
+                        + ": refused before the run. Declare a wider integer type, or cast in "
+                        "the query",
                         source=t,
                     )
 
