@@ -123,7 +123,10 @@ def _table(con: Any, name: str) -> Any:
     from sverify._scan import Scan
 
     table = con.get(name)
-    if isinstance(table, Scan) and table.readable() and table.where is None:
+    # Partition constants and a column mapping (`Scan.partitions`, `Scan.physical`,
+    # where the descriptor has them) are not read here yet: Arrow.
+    plain = not getattr(table, "partitions", None) and not getattr(table, "physical", None)
+    if isinstance(table, Scan) and table.readable() and table.where is None and plain:
         return table
     return con._arrow[name]
 
