@@ -85,14 +85,21 @@ def Expr.Raises (row : Row) (e : Expr) : Prop := (firstError (e.issues row)).isS
 @[simp] theorem UnFn.issueAll_not (v : Value) : UnFn.not.issueAll v = none := by
   cases v <;> simp [UnFn.issueAll, UnFn.issue, UnFn.infIssue]
 
+theorem BinFn.infIssue_none {f : BinFn} (h : f.makesInf = false) (v w : Value) :
+    f.infIssue v w = none := by
+  unfold BinFn.infIssue; split <;> simp [h]
+
 @[simp] theorem BinFn.issueAll_and (v w : Value) : BinFn.and.issueAll v w = none := by
-  cases v <;> cases w <;> simp [BinFn.issueAll, BinFn.issue, BinFn.infIssue, BinFn.makesInf]
+  simp only [BinFn.issueAll, BinFn.infIssue_none (f := .and) rfl]
+  cases v <;> cases w <;> simp [BinFn.issue]
 
 @[simp] theorem BinFn.issueAll_or (v w : Value) : BinFn.or.issueAll v w = none := by
-  cases v <;> cases w <;> simp [BinFn.issueAll, BinFn.issue, BinFn.infIssue, BinFn.makesInf]
+  simp only [BinFn.issueAll, BinFn.infIssue_none (f := .or) rfl]
+  cases v <;> cases w <;> simp [BinFn.issue]
 
 @[simp] theorem BinFn.issueAll_eq (v w : Value) : BinFn.eq.issueAll v w = none := by
-  cases v <;> cases w <;> simp [BinFn.issueAll, BinFn.issue, BinFn.infIssue, BinFn.makesInf]
+  simp only [BinFn.issueAll, BinFn.infIssue_none (f := .eq) rfl]
+  cases v <;> cases w <;> simp [BinFn.issue]
 
 theorem Expr.issues_notFalse (row : Row) (p : Expr) :
     p.notFalse.issues row = p.issues row ++ p.issues row := by
@@ -106,11 +113,15 @@ theorem Expr.issues_notTrue (row : Row) (p : Expr) :
 
 theorem Value.isTrue_or3_isNull (v : Value) :
     (or3 (UnFn.apply .isNull v) v).isTrue = true ↔ v ≠ .bool false := by
-  cases v <;> simp [UnFn.apply, or3, Value.isTrue]
+  cases v with
+  | bool b => cases b <;> simp [UnFn.apply, or3, Value.isTrue]
+  | _ => simp [UnFn.apply, or3, Value.isTrue]
 
 theorem Value.isTrue_or3_isNull_not (v : Value) (h : v = .null ∨ ∃ b, v = .bool b) :
     (or3 (UnFn.apply .isNull v) (UnFn.apply .not v)).isTrue = true ↔ v ≠ .bool true := by
-  rcases h with rfl | ⟨b, rfl⟩ <;> cases b <;> simp [UnFn.apply, or3, Value.isTrue]
+  rcases h with rfl | ⟨b, rfl⟩
+  · simp [UnFn.apply, or3, Value.isTrue]
+  · cases b <;> simp [UnFn.apply, or3, Value.isTrue]
 
 theorem Expr.isTrue_notFalse {row : Row} {p : Expr} :
     (p.notFalse.eval row).isTrue = true ↔ p.eval row ≠ .bool false := by
@@ -171,7 +182,7 @@ theorem Expr.andChain_stop (row : Row) (all : Expr) (p : Expr) (post : List Expr
     obtain ⟨h1, h2⟩ := Expr.andChain_stop row all p post hp hf pre (fun r hr => h r (by simp [hr]))
     simp only [List.cons_append, Expr.andChain, Expr.eval, hc, if_true, Expr.issues,
       Expr.issues_notFalse, firstError_append, hq, Option.or_none, h2]
-    exact ⟨h1, rfl⟩
+    exact ⟨h1, trivial⟩
 
 /-- **G2**: where the first operand that is FALSE or raises is FALSE, the guarded
 conjunction is FALSE and raises nothing, whatever the operands after it do. -/
