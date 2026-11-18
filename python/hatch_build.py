@@ -13,6 +13,11 @@ editable install builds with the checkout's current setting.
 `SVERIFY_PREBUILT_CHECKER=<path>` makes an editable install link that binary
 and skip lake (CI builds the checker once per run and shares it).
 `SVERIFY_PREBUILT_CHECK`, its name before 1.0, is read too.
+
+PyPI carries wheels for Linux (x86_64, aarch64) and macOS on Apple silicon. On
+any other platform `pip install sverify` falls back to the sdist, and building
+that needs elan and a full `lake build`: it stops with a message instead,
+unless `SVERIFY_BUILD_FROM_SOURCE=1` asks for the build (#1485).
 """
 
 from __future__ import annotations
@@ -27,6 +32,21 @@ from pathlib import Path
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 BINARY = "substrait-check"
+
+# The (sys.platform, machine) pairs that have a wheel on PyPI.
+WHEEL_PLATFORMS = {("linux", "x86_64"), ("linux", "aarch64"), ("darwin", "arm64")}
+
+
+def no_wheel_message(plat: str, machine: str) -> str | None:
+    """Why a build on this platform is refused, or None when it has a wheel."""
+    if (plat, machine.lower()) in WHEEL_PLATFORMS:
+        return None
+    return (
+        f"sverify has no wheel for {plat} on {machine}: PyPI carries Linux (x86_64, aarch64) "
+        "and macOS on Apple silicon. Use one of those (WSL2 on Windows, or a Linux container), "
+        "or build from source with SVERIFY_BUILD_FROM_SOURCE=1, which needs elan "
+        "(https://github.com/leanprover/elan) and a full `lake build` of the Lean project."
+    )
 
 
 def platform_tag() -> str:
@@ -43,6 +63,12 @@ def platform_tag() -> str:
 
 class LakeBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
+        if (
+            version != "editable"
+            and not os.environ.get("SVERIFY_BUILD_FROM_SOURCE")
+            and (message := no_wheel_message(sys.platform, platform.machine()))
+        ):
+            raise RuntimeError(message)
         build_data["pure_python"] = False
         build_data["tag"] = f"py3-none-{platform_tag()}"
         prebuilt = os.environ.get("SVERIFY_PREBUILT_CHECKER") or os.environ.get(

@@ -282,7 +282,12 @@ class Node:
         if report is None:
             return to_sql(self.internal_plan, dialect_of(dialect))
         d = report._sql_route(dialect)[0]
-        return to_sql(self.internal_plan, d, deterministic=report.deterministic)
+        return to_sql(
+            self.internal_plan,
+            d,
+            deterministic=report.deterministic,
+            rows="sequence" if report.observation.rows == "sequence" else "multiset",
+        )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
         """Apply `step` to this node, left to right: `orders.pipe(paid)` is
