@@ -28,11 +28,16 @@ def test_a_view_over_a_contained_table_is_built() -> None:
     _view_over(pa.table({"a": pa.array([1, 2], pa.int16())}))
 
 
-def test_a_batch_outside_the_declared_width_is_refused() -> None:
+def test_a_batch_outside_the_declared_width_is_refused_and_changes_nothing() -> None:
+    """The batch of a refresh goes through the same `_prepare` and `_check_batch`
+    as `apply`: refused, with the view's rows and serial unchanged."""
     view: Any = _view_over(pa.table({"a": pa.array([1, 2], pa.int64())}))
+    before, serial = sorted(view.rows()), view.serial
     with pytest.raises(PreconditionError, match=r"column 'a' is declared int32"):
         view.apply({"t": Changes(inserts=[(2**40,)])})
+    assert (sorted(view.rows()), view.serial) == (before, serial)
     view.apply({"t": Changes(inserts=[(3,)])})
+    assert view.serial == serial + 1
 
 
 def test_a_view_range_checks_a_resident_table() -> None:
