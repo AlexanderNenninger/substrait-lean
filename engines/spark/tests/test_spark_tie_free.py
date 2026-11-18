@@ -54,3 +54,16 @@ def test_a_tie_free_window_refreshes_on_spark(spark):
     node.refresh(engine=spark)
     got = sorted(node.to_arrow().to_pylist(), key=lambda r: (r["k"], r["ts"]))
     assert [r["prev"] for r in got] == [None, 10, None]
+
+
+def test_a_table_with_an_empty_chunk_loses_no_rows(spark):
+    """`createDataFrame` of Arrow chunks of 3, 0 and 2 rows gave back 3 rows
+    (#1608): the loader makes one chunk."""
+    from sverify_spark.engine import put_tables
+
+    def chunk(xs):
+        return pa.record_batch({"x": pa.array(xs, pa.int64())})
+
+    table = pa.Table.from_batches([chunk([1, 2, 3]), chunk([]), chunk([4, 5])])
+    put_tables({"chunked": table}, spark)
+    assert spark.sql("SELECT count(*) AS n FROM chunked").collect()[0]["n"] == 5
