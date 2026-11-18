@@ -203,13 +203,50 @@ def test_delta_where_prunes_the_same_files(tmp_path):
     check_versions(src, [0, 1])
 
 
-def test_delta_partitions_fall_back_to_arrow(tmp_path):
-    write_deltalake(tmp_path / "p", pa.table({"id": [1, 2], "k": ["a", "b"]}), partition_by=["k"])
+def test_delta_partitions_are_read_from_the_log(tmp_path):
+    table = pa.table(
+        {
+            "id": [1, 2, 3, 4],
+            "k": ["a", "b", None, "a b"],
+            "n": pa.array([1, None, 3, 4], pa.int32()),
+            "day": pa.array([1, 2, 3, None], pa.date32()),
+            "ok": [True, False, None, True],
+        }
+    )
+    write_deltalake(tmp_path / "p", table, partition_by=["k", "n", "day", "ok"])
     src = DeltaSource(str(tmp_path / "p"))
-    assert src._native() is None
+    scan = native(src)
+    assert scan.partitions is not None and scan.partitions.num_rows == 4
+    check_versions(src, [0])
     pipe = Pipeline(sv.connect())
     pipe.source("p", src)
-    assert isinstance(pipe.con.get("p"), pa.Table)
+    assert isinstance(pipe.con.get("p"), Scan)
+
+
+@pytest.mark.parametrize("mode", ["name", "id"])
+def test_a_column_mapped_table_reads_its_values_and_its_renames(tmp_path, mode):
+    """delta-rs's Arrow reader reads a mapped column as NULL; the Arrow route
+    uses its DataFusion reader, and the scan reads the files by physical name or
+    field id, so a logical rename (a metadata commit) leaves them alone."""
+    from _table_histories import rename_logically
+
+    table = pa.table({"id": [1, 2, 3], "k": ["a", "b", "a"], "x": [0.5, -0.0, None]})
+    write_deltalake(
+        tmp_path / "m", table, partition_by=["k"], configuration={"delta.columnMapping.mode": mode}
+    )
+    rename_logically(tmp_path / "m", "x", "y")
+    src = DeltaSource(str(tmp_path / "m"))
+    want = pa.table({"id": [1, 2, 3], "k": ["a", "b", "a"], "y": [0.5, 0.0, None]})
+    assert same_rows(src.snapshot().table.select(want.column_names), want)
+    assert same_rows(native(src).to_arrow(), want)
+    stats = src.snapshot().facts
+    assert any("y" in str(f) for f in stats)  # the file statistics reach the renamed column
+
+
+def test_delta_partitions_of_other_types_fall_back_to_arrow(tmp_path):
+    table = pa.table({"id": [1, 2], "t": pa.array([1.5, None], pa.float64())})
+    write_deltalake(tmp_path / "p", table, partition_by=["t"])
+    assert DeltaSource(str(tmp_path / "p"))._native() is None
 
 
 def test_other_engines_get_arrow(tmp_path):
@@ -404,7 +441,9 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
 # (partitions); the property then pins that.
 
 
-def agree_or_fall_back(src, versions):
+def agree(src, versions):
+    """The native scan and the Arrow route give the same rows at each version
+    (Iceberg's partitioned tables still fall back to Arrow)."""
     for v in versions:
         snap = src._native(v)
         if snap is None:
@@ -420,9 +459,20 @@ def test_a_delta_scan_equals_the_arrow_route_over_histories(history, tmp_path_fa
     path = tmp_path_factory.mktemp("h") / "t"
     src = build_delta(path, history)
     n = DeltaTable(str(path)).version()
-    agree_or_fall_back(src, [*range(n + 1), None])
-    if history.partitioned:
-        assert src._native() is None
+    agree(src, [*range(n + 1), None])
+
+
+@pytest.mark.parametrize("mode", ["name", "id"])
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(history=histories(renames=True, adds=False))
+def test_a_mapped_delta_scan_equals_the_arrow_route_over_histories(mode, history, tmp_path_factory):
+    path = tmp_path_factory.mktemp("m") / "t"
+    src = build_delta(path, history, mapping=mode)
+    n = DeltaTable(str(path)).version()
+    agree(src, [*range(n + 1), None])
+    assert src._native() is not None  # column mapping is read natively
 
 
 @settings(
@@ -435,7 +485,7 @@ def test_an_iceberg_scan_equals_the_arrow_route_over_histories(history, tmp_path
     cat = SqlCatalog("test", uri=f"sqlite:///{root}/catalog.db", warehouse=f"file://{root}")
     cat.create_namespace("db")
     src = build_iceberg(cat, "db.t", history)
-    agree_or_fall_back(src, [None])
+    agree(src, [None])
     if history.partitioned:
         assert src._native() is None
 

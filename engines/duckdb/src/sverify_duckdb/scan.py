@@ -3,9 +3,11 @@
 
 `Scan` is plain data. This module is the DuckDB engine's one function from a
 descriptor to its scan (the Polars and Spark plugins own theirs), and holds the
-SQL that does it. The files are read by column name; a column no file has is
-NULL, and every column is cast to the type DuckDB gives the schema's Arrow
-type, so a plan sees the types it sees on the Arrow table of the same rows.
+SQL that does it. The files are read by column name, by physical name or by field
+id (`Scan.physical`, `Scan.field_ids`); a column no file has is NULL, and every
+column is cast to the type DuckDB gives the schema's Arrow type, so a plan sees
+the types it sees on the Arrow table of the same rows. The partition columns come
+from the descriptor's `partitions`, a small table joined on the file name.
 """
 
 from __future__ import annotations
@@ -43,22 +45,30 @@ def attach_scan(
     order). With `positions`, each row also has its file (`FILE`) and its
     position in the file (`POS`). Returns the function that drops it again."""
     tag = uuid.uuid4().hex
-    deleted = f"__sverify_deleted_{tag}"
+    deleted, parts = f"__sverify_deleted_{tag}", f"__sverify_partitions_{tag}"
+    registered = []
     if scan.deleted is not None:
-        db.register(deleted, scan.deleted)
+        registered.append((deleted, scan.deleted))
+    if scan.partitions is not None:
+        registered.append((parts, scan.partitions))
+    for n, t in registered:
+        db.register(n, t)
     kind = "TABLE" if table else "VIEW"
+
+    def unregister() -> None:
+        for n, _ in registered:
+            db.unregister(n)
+
     try:
-        sql = scan_sql(scan, db, deleted, positions)
+        sql = scan_sql(scan, db, deleted, parts, positions)
         db.execute(f"CREATE OR REPLACE TEMP {kind} {_q(name)} AS {sql}")
     except BaseException:
-        if scan.deleted is not None:
-            db.unregister(deleted)
+        unregister()
         raise
 
     def drop() -> None:
         db.execute(f"DROP {kind} IF EXISTS {_q(name)}")
-        if scan.deleted is not None:
-            db.unregister(deleted)
+        unregister()
 
     return drop
 
@@ -74,10 +84,14 @@ def read_scan(scan: Scan) -> pa.Table:
 
 
 def scan_sql(
-    scan: Scan, db: duckdb.DuckDBPyConnection, deleted: str, positions: bool = False
+    scan: Scan,
+    db: duckdb.DuckDBPyConnection,
+    deleted: str,
+    partitions: str,
+    positions: bool = False,
 ) -> str:
     """The SELECT over the scan's files: `deleted` names the registered table of
-    deleted positions."""
+    deleted positions, `partitions` that of the partition values."""
     types = duckdb_types(db, scan.schema)
     names = scan.schema.names
     if not scan.files:
@@ -86,6 +100,7 @@ def scan_sql(
             cols += f", CAST(NULL AS VARCHAR) AS {FILE}, CAST(NULL AS BIGINT) AS {POS}"
         return f"SELECT {cols} WHERE FALSE"
     files = "[" + ", ".join(map(lit, scan.files)) + "]"
+    constant = set() if scan.partitions is None else set(scan.partitions.column_names) - {"file"}
     if scan.field_ids is None:
         options = "union_by_name = true"
     else:
@@ -94,18 +109,28 @@ def scan_sql(
         fields = ", ".join(
             f"{i}: {{name: {lit(f.name)}, type: {lit(t)}, default_value: NULL}}"
             for i, f, t in zip(scan.field_ids, scan.schema, types, strict=True)
+            if f.name not in constant
         )
         options = f"schema = map {{{fields}}}"
-    if scan.deleted is not None or scan.equality or positions:
+    if scan.deleted is not None or scan.equality or positions or constant:
         options += ", filename = true, file_row_number = true"
     source = f"read_parquet({files}, {options})"
     present = {r[0] for r in db.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()}
-    cols = ", ".join(
-        f"{_column(f, t, present)} AS {_q(f.name)}" for f, t in zip(scan.schema, types, strict=True)
-    )
+    cols = []
+    for i, (f, t) in enumerate(zip(scan.schema, types, strict=True)):
+        if f.name in constant:
+            cols.append(f"{_column(f, t, f'c.{_q(f.name)}', True)} AS {_q(f.name)}")
+        else:
+            file_name = f.name if scan.physical is None else scan.physical[i]
+            cols.append(
+                f"{_column(f, t, f's.{_q(file_name)}', file_name in present)} AS {_q(f.name)}"
+            )
+    select = ", ".join(cols)
     if positions:
-        cols += f", s.filename AS {FILE}, s.file_row_number AS {POS}"
-    sql = f"SELECT {cols} FROM {source} s"
+        select += f", s.filename AS {FILE}, s.file_row_number AS {POS}"
+    sql = f"SELECT {select} FROM {source} s"
+    if constant:
+        sql += f" LEFT JOIN {partitions} c ON c.file = s.filename"
     conds = []
     if scan.deleted is not None:
         conds.append(
@@ -137,13 +162,13 @@ def _equality(e: EqualityDelete, schema: pa.Schema, types: list[str]) -> str:
     )
 
 
-def _column(f: pa.Field, t: str, present: set[str]) -> str:
-    """Column `f` of a file as type `t`, NULL where no file has it. Doubles
-    as `sverify.engine.canonical` makes them: `-0.0` as `0.0`, and every NaN
-    the positive one (files may hold others, which DuckDB orders apart)."""
-    if f.name not in present:
+def _column(f: pa.Field, t: str, ref: str, present: bool) -> str:
+    """Column `f` as type `t` from the SQL reference `ref`, NULL where no file has
+    it. Doubles as `sverify.engine.canonical` makes them: `-0.0` as `0.0`, and
+    every NaN the positive one (files may hold others, which DuckDB orders apart)."""
+    if not present:
         return f"CAST(NULL AS {t})"
-    col = f"CAST(s.{_q(f.name)} AS {t})"
+    col = f"CAST({ref} AS {t})"
     if pa.types.is_floating(f.type):
         col = f"CAST(CASE WHEN isnan({col}) THEN 'NaN' ELSE {col} + 0.0 END AS {t})"
     return col

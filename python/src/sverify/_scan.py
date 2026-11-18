@@ -18,11 +18,12 @@ table's schema and the source's filter. DuckDB reads it with `read_parquet`
 the same rows as an Arrow table (`to_arrow`).
 
 The files are read by column name, or by Parquet field id where the scan has
-`field_ids` (Iceberg). A column no file has is NULL, and every column is cast
-to the type DuckDB gives the schema's Arrow type, so a plan sees the types it
-sees on the Arrow table of the same rows. Sources build a scan only where
-reading gives the rows their own reader gives (no partition values kept
-outside the files).
+`field_ids` (Iceberg, Delta's `columnMapping` mode `id`), or by the table's
+physical names where it has `physical` (`columnMapping` mode `name`). A column
+no file has is NULL, and every column is cast to the type DuckDB gives the
+schema's Arrow type, so a plan sees the types it sees on the Arrow table of the
+same rows. Partition columns are not in the files: `partitions` holds each
+file's values, from the table's log.
 """
 
 from __future__ import annotations
@@ -170,8 +171,15 @@ class Scan(Native):
             it is TRUE. None: every row.
         origin: Where the rows come from, such as `orders@v3`.
         field_ids: The Parquet field id of each column of `schema`, in order
-            (Iceberg): the files are read by id, so a column renamed since a
-            file was written is still found. None: by name.
+            (Iceberg, Delta's column mapping by id): the files are read by id,
+            so a column renamed since a file was written is still found. None:
+            by name.
+        physical: The name each column of `schema` has in the files (Delta's
+            column mapping by name), in order. None: the column's own name.
+        partitions: The partition columns' values: a table with a `file`
+            column (one of `files`) and a column, named and typed as in
+            `schema`, for each partition column, one row per file. Those
+            columns are not read from the files. None: no partition columns.
         equality: Iceberg equality deletes, applied to their data files.
     """
 
@@ -182,6 +190,8 @@ class Scan(Native):
     origin: str = ""
     field_ids: tuple[int, ...] | None = None
     equality: tuple[EqualityDelete, ...] = ()
+    physical: tuple[str, ...] | None = None
+    partitions: pa.Table | None = None
 
     def attach(
         self,
