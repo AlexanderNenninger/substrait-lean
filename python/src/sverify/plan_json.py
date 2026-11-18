@@ -549,9 +549,12 @@ _PLAIN_FUNCTIONS = frozenset(
 
 
 def is_plain(e: Json) -> bool:
-    """Is `e` built from columns and literals by `=`, `<`, `IS NULL`, `NOT`,
-    `AND` and `OR` (and their spellings), a literal's cast or `IN` over such?
-    Such an expression raises on no row."""
+    """Is `e` built from columns and literals by `=`, `<`, `IS NULL`, `NOT`, `AND`
+    and `OR` (and their spellings), a literal's cast or `IN` over such? Such an
+    expression raises on no row, apart from a constant's cast, which D21 gives to
+    the whole plan in the eager and in the lifted reading alike. A chain called plain
+    is written eager (D19); this table decides only which chains pay for the lift
+    (`Expr.plain` in `Guard.lean` is the narrower, proved one)."""
     if "literal" in e or "selection" in e:
         return True
     if (c := e.get("cast")) is not None:  # a constant's cast raises on every row or on none

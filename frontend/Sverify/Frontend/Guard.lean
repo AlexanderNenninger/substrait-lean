@@ -12,8 +12,9 @@ expression the parser builds from the extension functions `sverify_and` and
 `Expr.andG ps` is `(T₁ = 1)` with `Tₖ = CASE WHEN pₖ IS NOT FALSE THEN Tₖ₊₁
 ELSE 0` and `Tₙ₊₁ = CASE WHEN p₁ AND … AND pₙ THEN 1 ELSE NULL`: the integer
 `1`, `0` or `NULL` stands for TRUE, FALSE or NULL. `ifThen` evaluates only
-the branch it takes, so `pₖ₊₁` is evaluated only where `pₖ` is not FALSE, and
-no guard is copied. `Expr.orG` is the dual.
+the branch it takes, so `pₖ₊₁` is evaluated only where `pₖ` is not FALSE. Each
+operand is written three times (twice in `IS NOT FALSE`, once in the closing
+conjunction). `Expr.orG` is the dual.
 
 Under `Profile.reference` (`Expr.evalP_reference`), with every operand TRUE,
 FALSE or NULL, and `k` the first operand whose outcome is FALSE or an error:

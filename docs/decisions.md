@@ -1443,21 +1443,39 @@ The lift is the call `sverify_and` (`sverify_or`) over the operands, which the
 parser reads as nested `CASE` (`Expr.andLift`, `Frontend/Guard.lean`):
 `T_k = CASE WHEN p_k IS NOT FALSE THEN T_{k+1} ELSE 0`, ending in
 `CASE WHEN p_1 AND … AND p_n THEN 1 ELSE NULL`, and the conjunction is
-`T_1 = 1`. Its size is linear in the operands, with no copies of a guard.
-Operands that cannot raise (`Expr.plain`) stay outside; an `AND` of plain
-operands stays the eager `AND`, and its plan does not change.
+`T_1 = 1`. Its size is linear in the operands, and each operand is written
+three times: twice in `p IS NOT FALSE` (`p IS NULL OR p`) and once in the
+closing conjunction; a plain operand a fourth time, outside the chain. A lift
+inside an operand is written three times a level. Operands that cannot raise
+(`Expr.plain`, a syntactic check with no use of the analysis) stay outside; an
+`AND` of plain operands stays the eager `AND`, and its plan does not change.
 
-Proved: the lift evaluates to the `AND` where no operand raises, an operand
-whose predecessors are FALSE does not raise, and an error in a reached operand
-still surfaces (`Expr.andG_false`, `andG_error`, `andG_none`, and the `OR`
-duals). The analysis refines the `THEN` branch by its condition and reads
+Proved (`Frontend/Guard.lean`, with the `OR` duals): on every row where the
+eager `AND` returns, the lift returns the same (`Expr.andLift_refines`); where
+an operand is FALSE and the operands before it do not raise, the lift is FALSE
+whatever follows (`Expr.andLift_false`); an error in a reached operand still
+surfaces (`Expr.andLift_error`); and the lift is TRUE, FALSE or NULL, so it can
+be an operand (`Expr.andLift_boolVal`). The `andG` lemmas are the chain's case
+lemmas. A constant subexpression that raises is outside the guard (D21,
+`Rel.constIssues`): `x <> 0 AND 1 // 0 = 1` raises for the whole plan under the
+lift as under the eager reading. The analysis refines the `THEN` branch by its condition and reads
 `p IS NULL OR p` as a fact on a column (`x <> c`, `0 <= c < x`).
 
-An engine runs the lifted plan only with a probe that its `CASE` evaluates the
-taken branch alone; an engine without one refuses it.
+An engine runs the lifted plan on a recorded fact that its `CASE` evaluates the
+taken branch alone; an engine or a shape without such a fact refuses it. The facts:
+`duckdb-exec-short-circuit` (DuckDB runs it), `spark-exec-evaluation-order`
+(Spark runs it, also with a subexpression twice in a branch) and
+`polars-exec-when-eager` (Polars runs it, collected with common-subexpression
+elimination off, `polars-exec-cse-hoist`). Snowflake follows its private facts.
+Polars's masking excludes a branch under `group_by().agg` and `over()`; an
+aggregate's `FILTER` and a window's argument are tested in
+`tests/test_and_or_engines.py`.
 
 Why: the eager reading made the commonest guard in SQL unprovable, and the
 engines that short-circuit give the value the user meant.
+
+The lift is the chain `Expr.andLift`, in place of the `Expr.guardBy` shape first
+approved (2026-11-18); the plain operands are found by `Expr.plain`.
 
 Recomputes sinks: no. The reference's values do not change: a plan that raises on no row
 computes what it did, and a lifted guard only removes a raise.

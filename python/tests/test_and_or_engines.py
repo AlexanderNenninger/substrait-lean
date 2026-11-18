@@ -88,3 +88,50 @@ def test_the_lifted_plan_agrees_with_the_eager_one_where_that_returns(rows):
     if all(q != 0 for q, _ in rows):
         eager = sv.verify(sql, tables={"t": t}, on_inferred="off", semantics="duckdb")
         assert eager.run(con, "duckdb", unverified=True).to_pylist() == want
+
+
+# A plain operand (`is_plain`, `plan_json.py`) raises on no row and needs no precondition.
+PLAIN = ibis.table(
+    {
+        "i": "int64",
+        "f": "float64",
+        "s": "string",
+        "d": "date",
+        "n": "decimal(10, 2)",
+    },
+    name="t",
+)
+
+
+def _leaf():
+    t = PLAIN
+    return st.one_of(
+        st.builds(lambda k: t.i < k, st.integers(-5, 5)),
+        st.builds(lambda k: t.i == k, st.integers(-5, 5)),
+        st.builds(lambda k: t.f < k, st.floats(-5, 5, allow_nan=False)),
+        st.builds(lambda k: t.s == k, st.sampled_from(["a", "b", ""])),
+        st.builds(lambda ks: t.s.isin(ks), st.lists(st.sampled_from(["a", "b", "c"]), min_size=1)),
+        st.builds(lambda ks: t.i.isin(ks), st.lists(st.integers(-3, 3), min_size=1, max_size=3)),
+        st.just(t.d.isnull()),
+        st.builds(lambda k: t.n > k, st.decimals(-5, 5, places=2)),
+        st.just(t.i < t.i),
+    )
+
+
+plain_exprs = st.recursive(
+    _leaf(),
+    lambda c: st.one_of(
+        st.builds(lambda a, b: a & b, c, c),
+        st.builds(lambda a, b: a | b, c, c),
+        st.builds(lambda a: ~a, c),
+    ),
+    max_leaves=6,
+)
+
+
+@settings(max_examples=60, deadline=None)
+@given(e=plain_exprs)
+def test_a_plain_operand_has_no_error_and_no_inferred_precondition(e):
+    report = sv.verify(PLAIN.select(x=e), on_inferred="off")
+    assert report.errors == [], str(report)
+    assert not report.needs
