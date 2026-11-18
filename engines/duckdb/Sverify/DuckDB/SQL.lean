@@ -23,7 +23,8 @@ function at the same types (an error where DuckDB would give `±∞` or NaN).
 
 Covered so far: `+`, `-`, `*`, `/`, `%` of doubles, the elementary functions (`sqrt`, `exp`,
 the logarithms, trigonometry) and `power`, `sign`, `greatest` and `least`,
-casts between `BIGINT` and `DOUBLE`, and the aggregate `avg` of `BIGINT`s
+casts between `BIGINT` and `DOUBLE`, `CAST(round(x) AS BIGINT)` (and `floor`, `ceil`)
+of a double (#1655), and the aggregate `avg` of `BIGINT`s
 (`DuckAgg`). A function the model cannot state
 under a semantics is refused (`DuckFn.refused`), with the reason.
 -/
