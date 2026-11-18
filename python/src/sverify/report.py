@@ -1214,6 +1214,10 @@ class Report:
                 an input the check reads is not pinned to one version.
         """
 
+        from sverify import profiles
+        from sverify.sql import parse_plan
+        from sverify.sql.core import open_choices
+
         total = 0
         for chk in self._margin_checks:
             on = (chk.get("engines") or {}).get(target)
@@ -1230,12 +1234,41 @@ class Report:
                 if deterministic:
                     raise PreconditionError(msg)
                 warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            plan = written_plan(json.dumps(chk["plan"]))
+            # Where the runner leaves ties and a LIMIT's rows open (`ProfilePlugin.rows`),
+            # the check and the run each pick their own: its count says nothing
+            # about the run's sums. The ordinal of `rows="sequence"` makes them one.
+            runner = profiles.find(target)
+            if (
+                runner is not None
+                and runner.rows == "multiset"
+                and not self.deterministic
+                and (open_ := open_choices(parse_plan(json.loads(plan)).root))
+            ):
+                what = " and ".join(sorted(set(open_)))
+                if self._on_inferred != "warn":
+                    raise PreconditionError(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open (ties, or the rows of a LIMIT): the check's count may "
+                        "miss groups the run sums differently; pin the rows with `reproducible=`, "
+                        "order by a key that makes the order total, or run with "
+                        '`on_inferred="warn"`'
+                    )
+                warnings.warn(
+                    InferredWarning(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open: the check's count may miss groups the run sums "
+                        "differently",
+                        self,
+                    ),
+                    stacklevel=3,
+                )
             # Without the overflow checks of #575: the margin is at most `A`, and
             # a `v − t` past the largest double is farther than any bound.
-            # Its windows aggregate whole partitions, so no row order matters.
-            res = run_plan(
-                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
-            )
+            # Its own windows aggregate whole partitions, so no row order matters there;
+            # the relations below the sum can hold open choices (above), and
+            # `tie_free=True` drops their tiebreak on an engine that reads it.
+            res = run_plan(con, plan, engine, finite=False, tie_free=True)
             k = int(res.column(0)[0].as_py() or 0)
             if not k:
                 continue
