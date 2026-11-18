@@ -848,10 +848,11 @@ class Report:
     def check_inputs(
         self, con: Connection, engine: str | None = None, *, assumed_checked: bool = False
     ) -> None:
-        """Check the preconditions (`requires`, the inferred bounds among
-        them) and the `SUM`s assumed to fit (`assumed`) on the tables of
-        `con`, before anything runs: a batch that breaks one is refused
-        with the precondition as the message.
+        """Check the tables of `con` against the schema the plan was verified
+        for (`_check_schema`), the preconditions (`requires`, the inferred
+        bounds among them) and the `SUM`s assumed to fit (`assumed`), before
+        anything runs: a batch that breaks one is refused before the run, with
+        the schema difference or the precondition as the message.
 
         With an `engine`, each table's conditions run there, as one plan the
         checker wrote (`condition_query`): a result that is not TRUE, or a
@@ -899,8 +900,8 @@ class Report:
                 raise self._broken_assumption(e) or e from None
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
-        """Refuse a table that differs from the schema the plan was verified
-        for (`sverify._run_schema`): a missing column, a type the reader would
+        """Refuse, before the run, a table that differs from the schema the plan
+        was verified for (`sverify._run_schema`): a missing column, a type the reader would
         change, a NULL in a column read as non-null, an integer outside the
         declared type's range (D46; the engine counts it)."""
         if self.internal_plan is None:
@@ -1133,8 +1134,8 @@ class Report:
                 )
             self.check_inputs(con, target, assumed_checked=assumed_checked)
         else:
-            # The schema is what the proof is about, not a precondition: it is
-            # checked whatever `check_requires` says.
+            # The proof is about this schema, so it is checked whatever
+            # `check_requires` says.
             self._check_schema(con, target)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
