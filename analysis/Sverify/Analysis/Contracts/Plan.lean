@@ -105,9 +105,9 @@ theorem Rel.maxRows_sound_all {cat : Catalog} :
   | .semi r _ _ _, _, h, _, ⟨i, _, hi, _, hp⟩ => by
     simp only [maxRows] at h; rw [hp.length_eq]
     exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound_all (r := r) h hi)
-  | .window r _ _ _, _, h, _, ⟨i, hi, s, hs, _, hp⟩ => by
+  | .window r _ _ _, _, h, _, ⟨i, hi, s, hs, _, o, hp, ho⟩ => by
     simp only [maxRows] at h
-    rw [hp.length_eq, windowRows_length, hs.length_eq]
+    rw [hp.length_eq, windowRowsA_length ho, hs.length_eq]
     exact maxRows_sound_all (r := r) h hi
   | .fetch r _ cnt, n, h, _, ⟨i, hi, rfl⟩ => by
     cases cnt with

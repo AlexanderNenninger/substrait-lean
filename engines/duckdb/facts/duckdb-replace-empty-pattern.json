@@ -1,0 +1,37 @@
+{
+  "id": "duckdb-replace-empty-pattern",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`replace` with an empty pattern returns the string unchanged",
+  "verdict": "the string unchanged; NULL for a NULL string or a NULL replacement",
+  "area": "strings",
+  "options": [],
+  "constructs": [
+    "replace"
+  ],
+  "settings": {},
+  "description": [
+    "`replace(s, '', r)` is `s` in DuckDB: `replace('ab', '', 'x')` is `'ab'` and `replace('', '', 'x')` is `''`. A NULL string gives NULL, and so does a NULL replacement, also for an empty pattern (`replace('ab', '', NULL)` is NULL). The type is VARCHAR.",
+    "Polars and Rust's `str::replace` insert the replacement before every character and at the end (polars-string-natives, `Text.replace`), so the two disagree on a defined value. The model's `replace` is Rust's."
+  ],
+  "reference": "D44: the reference's `replace(s, '', r)` is `s`, NULL for a NULL `r`, as DuckDB's (`Text.replace`). The SQL lift and the Ibis producer accept the empty pattern, the writers fold it to `s`, and Polars's own insertion at every character is not used (polars-string-natives).",
+  "status": "decided",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-17",
+      "method": "probe",
+      "checked_by": "#1508 (duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "replace-empty-pattern"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations --write` runs each query on a fresh connection and records the rows as they come; `tests/test_probe.py::test_observations_are_current` checks they are current."
+    }
+  ],
+  "issues": [
+    1508
+  ]
+}

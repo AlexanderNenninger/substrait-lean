@@ -516,6 +516,26 @@ def _not_null_condition(col: str) -> Inferred:
     return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
 
 
+def _ascii_condition(col: str, classes: bool = False) -> Inferred:
+    """`col` holds ASCII text (NULL passes): the precondition under which the
+    black boxes `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii` and
+    `levenshtein` agree across engines (#1506). With `classes` (a regular
+    expression with `\\w`, `\\d`, `\\s` or `\\b`), no vertical tab either:
+    `Text.classesDiffer`. Its SQL is the writers' guard (`ascii_text`) in the
+    default engine's dialect, the one the data is checked on; its Ibis form is
+    one regular expression with the same characters."""
+    from sverify import _engines, profiles
+    from sverify.sql.core import ascii_text
+
+    dialect = profiles.plugins()[_engines.default()].dialect
+    assert dialect is not None
+    sql = '"' + col.replace('"', '""') + '"'
+    plain = ascii_text(dialect(), sql, classes)
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    bad = r"[^\x00-\x7f]|\x0b" if classes else r"[^\x00-\x7f]"
+    return Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+
+
 def _suggested(
     bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
 ) -> dict[str, list[Condition]]:

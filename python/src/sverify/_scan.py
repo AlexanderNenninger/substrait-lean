@@ -17,11 +17,12 @@ table's schema and the source's filter. DuckDB reads it with `read_parquet`
 (`attach`), so the table never passes through Python; any other consumer gets
 the same rows as an Arrow table (`to_arrow`).
 
-The files are read by column name. A column no file has is NULL, and every
-column is cast to the type DuckDB gives the schema's Arrow type, so a plan
-sees the types it sees on the Arrow table of the same rows. Sources build a
-scan only where reading by name gives the rows their own reader gives (no
-partition values kept outside the files, no renamed columns).
+The files are read by column name, or by Parquet field id where the scan has
+`field_ids` (Iceberg). A column no file has is NULL, and every column is cast
+to the type DuckDB gives the schema's Arrow type, so a plan sees the types it
+sees on the Arrow table of the same rows. Sources build a scan only where
+reading gives the rows their own reader gives (no partition values kept
+outside the files).
 """
 
 from __future__ import annotations
@@ -54,16 +55,8 @@ def local_path(uri: str) -> str | None:
     return None
 
 
-FILE, POS = '"__sverify_file"', '"__sverify_pos"'
-"""The columns `Scan.attach(..., positions=True)` adds (quoted)."""
-
-
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
-
-
-def _lit(s: str) -> str:
-    return "'" + s.replace("'", "''") + "'"
 
 
 class Native:
@@ -143,6 +136,26 @@ class Resident(Native):
         return f"Resident({self.name!r}, {self.kind})"
 
 
+@dataclass(frozen=True)
+class EqualityDelete:
+    """An Iceberg equality delete file: the rows of `applies_to` (data files,
+    as local paths) that match one of its rows on `columns` are deleted, NULL
+    matching NULL (the table spec's rule; the data files the descriptor lists
+    are the ones of a lower sequence number than the delete file).
+
+    Attributes:
+        file: The delete file, a local path.
+        ids: The Iceberg field ids the file's rows are compared on.
+        columns: The table's column of each id, by name in `Scan.schema`.
+        applies_to: The data files it applies to.
+    """
+
+    file: str
+    ids: tuple[int, ...]
+    columns: tuple[str, ...]
+    applies_to: tuple[str, ...]
+
+
 @dataclass(eq=False)
 class Scan(Native):
     """The rows of a table at one version, as files to read.
@@ -156,6 +169,10 @@ class Scan(Native):
         where: A SQL condition on the columns: the rows are those on which
             it is TRUE. None: every row.
         origin: Where the rows come from, such as `orders@v3`.
+        field_ids: The Parquet field id of each column of `schema`, in order
+            (Iceberg): the files are read by id, so a column renamed since a
+            file was written is still found. None: by name.
+        equality: Iceberg equality deletes, applied to their data files.
     """
 
     files: tuple[str, ...]
@@ -163,6 +180,8 @@ class Scan(Native):
     deleted: pa.Table | None = None
     where: str | None = None
     origin: str = ""
+    field_ids: tuple[int, ...] | None = None
+    equality: tuple[EqualityDelete, ...] = ()
 
     def attach(
         self,
@@ -172,30 +191,15 @@ class Scan(Native):
         table: bool = False,
         positions: bool = False,
     ) -> Callable[[], None]:
-        """Make `name` a temporary view of the rows in `db`, or with `table`
-        a temporary table holding them (whose `rowid` numbers the rows in
-        file order). With `positions`, each row also has its file (`FILE`)
-        and its position in the file (`POS`). Returns the function that
-        drops it again."""
-        tag = uuid.uuid4().hex
-        deleted = f"__sverify_deleted_{tag}"
-        if self.deleted is not None:
-            db.register(deleted, self.deleted)
-        kind = "TABLE" if table else "VIEW"
-        try:
-            sql = self._sql(db, deleted, positions)
-            db.execute(f"CREATE OR REPLACE TEMP {kind} {_q(name)} AS {sql}")
-        except BaseException:
-            if self.deleted is not None:
-                db.unregister(deleted)
-            raise
+        """DuckDB's view or table of the rows (`sverify_duckdb.scan.attach_scan`)."""
+        from sverify_duckdb.scan import attach_scan
 
-        def drop() -> None:
-            db.execute(f"DROP {kind} IF EXISTS {_q(name)}")
-            if self.deleted is not None:
-                db.unregister(deleted)
+        return attach_scan(self, db, name, table=table, positions=positions)
 
-        return drop
+    def check_schema(self, expected: pa.Schema) -> list[Mismatch]:
+        """How the table's schema at this version differs from `expected`
+        (`schema_mismatches`): from metadata, before any file is opened."""
+        return schema_mismatches(expected, self.schema)
 
     def readable(self) -> bool:
         """Whether every file is still there (a vacuum removes the files of
@@ -203,67 +207,66 @@ class Scan(Native):
         return all(os.path.exists(f) for f in self.files)
 
     def to_arrow(self) -> pa.Table:
-        """The rows as an Arrow table in the scan's schema."""
-        db = duckdb.connect()
-        try:
-            self.attach(db, "t")
-            return db.sql("SELECT * FROM t").to_arrow_table().cast(self.schema)
-        finally:
-            db.close()
+        """The rows as an Arrow table in the scan's schema: the reference reader,
+        what an engine's scan of this descriptor must equal."""
+        from sverify_duckdb.scan import read_scan
 
-    def _sql(self, db: duckdb.DuckDBPyConnection, deleted: str, positions: bool = False) -> str:
-        types = _duckdb_types(db, self.schema)
-        names = self.schema.names
-        if not self.files:
-            cols = ", ".join(
-                f"CAST(NULL AS {t}) AS {_q(c)}" for c, t in zip(names, types, strict=True)
-            )
-            if positions:
-                cols += f", CAST(NULL AS VARCHAR) AS {FILE}, CAST(NULL AS BIGINT) AS {POS}"
-            return f"SELECT {cols} WHERE FALSE"
-        files = "[" + ", ".join(map(_lit, self.files)) + "]"
-        options = "union_by_name = true"
-        if self.deleted is not None or positions:
-            options += ", filename = true, file_row_number = true"
-        source = f"read_parquet({files}, {options})"
-        present = {r[0] for r in db.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()}
-        cols = ", ".join(
-            f"{_column(f, t, present)} AS {_q(f.name)}"
-            for f, t in zip(self.schema, types, strict=True)
-        )
-        if positions:
-            cols += f", s.filename AS {FILE}, s.file_row_number AS {POS}"
-        sql = f"SELECT {cols} FROM {source} s"
-        if self.deleted is not None:
-            sql += (
-                f" WHERE NOT EXISTS (SELECT 1 FROM {deleted} d"
-                " WHERE d.file = s.filename AND d.pos = s.file_row_number)"
-            )
-        if self.where is not None:
-            sql = f"SELECT * FROM ({sql}) WHERE {self.where}"
-        return sql
+        return read_scan(self)
 
 
-def _column(f: pa.Field, t: str, present: set[str]) -> str:
-    """Column `f` of a file as type `t`, NULL where no file has it. Doubles
-    as `sverify.engine.canonical` makes them: `-0.0` as `0.0`, and every NaN
-    the positive one (files may hold others, which DuckDB orders apart)."""
-    if f.name not in present:
-        return f"CAST(NULL AS {t})"
-    col = f"CAST(s.{_q(f.name)} AS {t})"
-    if pa.types.is_floating(f.type):
-        col = f"CAST(CASE WHEN isnan({col}) THEN 'NaN' ELSE {col} + 0.0 END AS {t})"
-    return col
+@dataclass(frozen=True)
+class Mismatch:
+    """One way a table's schema differs from the schema a plan expects."""
+
+    column: str
+    what: str  # "missing", "type" or "nullability"
+    expected: str
+    actual: str
+
+    def __str__(self) -> str:
+        if self.what == "missing":
+            return f"column {self.column!r} is missing (expected {self.expected})"
+        return f"column {self.column!r} is {self.actual}, the plan expects {self.expected}"
 
 
-def _duckdb_types(db: duckdb.DuckDBPyConnection, schema: pa.Schema) -> list[str]:
-    """The DuckDB type of each column of an Arrow table with `schema`."""
-    name = f"__sverify_schema_{uuid.uuid4().hex}"
-    db.register(name, schema.empty_table())
-    try:
-        return [r[1] for r in db.execute(f"DESCRIBE {_q(name)}").fetchall()]
-    finally:
-        db.unregister(name)
+def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
+    """Whether a column of type `actual` is read as `expected` by every engine
+    without changing a value (design note #173, section 5.2): the same type;
+    a signed integer to a wider signed one (unsigned integers do not widen);
+    `float32` to `float64`; a decimal to a greater precision at the same scale;
+    a list whose element widens."""
+    types = pa.types
+    if actual == expected:
+        return True
+    if types.is_signed_integer(actual) and types.is_signed_integer(expected):
+        return actual.bit_width < expected.bit_width
+    if types.is_float32(actual) and types.is_float64(expected):
+        return True
+    if types.is_decimal(actual) and types.is_decimal(expected):
+        return actual.scale == expected.scale and actual.precision <= expected.precision
+    if types.is_list(actual) and types.is_list(expected):
+        return widens(actual.value_type, expected.value_type)
+    return False
+
+
+def schema_mismatches(expected: pa.Schema, actual: pa.Schema) -> list[Mismatch]:
+    """How `actual`, a table's schema, fails to be the `expected` one, column
+    by column (#1540): a column missing, a type that is not `widens`, a column
+    that may hold NULL where the plan reads it as non-null. Columns the plan does
+    not read are ignored. One rule for every engine, checked on metadata before
+    any engine opens a file."""
+    out = []
+    for f in expected:
+        i = actual.get_field_index(f.name)
+        if i < 0:
+            out.append(Mismatch(f.name, "missing", str(f.type), ""))
+            continue
+        a = actual.field(i)
+        if not widens(a.type, f.type):
+            out.append(Mismatch(f.name, "type", str(f.type), str(a.type)))
+        elif a.nullable and not f.nullable:
+            out.append(Mismatch(f.name, "nullability", "non-null", "nullable"))
+    return out
 
 
 @dataclass

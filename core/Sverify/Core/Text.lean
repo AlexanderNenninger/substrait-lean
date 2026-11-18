@@ -6,9 +6,8 @@ import Sverify.Core.Digest
 
 String functions on Unicode scalar values (Lean's `Char`), checked by
 `python/tests/test_text.py`: `substring`, `strpos` and the trims against
-DuckDB, and `LIKE` with a backslash escape, `repeat`, `reverse`, `replace`,
-`ascii` and `levenshtein`, whose meaning follows Rust's strings, against
-DataFusion 51 and Polars:
+a SQL engine, and `LIKE` with a backslash escape, `repeat`, `reverse`, `replace`,
+`ascii` and `levenshtein`, whose meaning follows Rust's strings:
 
 * `substring(s FROM a FOR n)` keeps the characters at 1-based positions
   `a … a+n-1` that exist; without `FOR`, all from `a` on. (A negative `n`
@@ -20,23 +19,23 @@ DataFusion 51 and Polars:
 * `btrim`/`ltrim`/`rtrim` remove characters of a set from the ends.
 * `repeat(s, n)` is `s` `n` times (`''` for `n ≤ 0`); a result of more than
   `2³¹ - 1` bytes fails (`Text.repeatFits`), as Arrow's `Utf8` offsets are
-  32-bit (`Utf8View` input too; DataFusion writes `Utf8`).
+  32-bit (`Utf8View` input too).
 * `reverse(s)` reverses the characters (combining marks move with them).
-* `replace(s, p, r)` is Rust's `str::replace`: every non-overlapping `p`,
-  from the left, becomes `r`; an empty `p` puts `r` before every character
-  and at the end.
+* `replace(s, p, r)` replaces every non-overlapping `p`, from the left, by `r`
+  (Rust's `str::replace`); an empty `p` matches nowhere, so the result is `s`
+  (D44).
 * `ascii(s)` is the code point of the first character, `0` for `''`.
 * `levenshtein(s, t)` counts single-character insertions, deletions and
   substitutions.
 
-`translate` is not modelled: DataFusion translates grapheme clusters, not
-characters (`translate('e\u{301}e', 'e', 'x')` is `'e\u{301}x'`).
+`translate` is not modelled: engines differ on whether it works on grapheme
+clusters or on characters.
 
 `UPPER`, `LOWER`, `ILIKE`, regular expressions and the digests `md5` and
 `sha256` are black boxes: `opaque` functions, so no proof depends on what
 they compute, only on their types (and that they are functions, so equal
 inputs give equal outputs). Their meaning is Rust's (`str::to_uppercase`, the
-`regex` crate), which DataFusion and Polars use; the SQL translations refuse
+`regex` crate); the SQL translations refuse
 at run time what their engines compute differently (#70). `ILIKE` folds case
 with Unicode's simple case folding (the `regex` crate's `(?i)`, so
 `'É' ILIKE 'é'` but not `'ß' ILIKE 'SS'`). Lean's evaluator maps ASCII case
@@ -44,7 +43,7 @@ only, and evaluates regular expressions with RE2's meaning
 (`core/Sverify/Core/Regex.lean`) where it agrees with Rust's: elsewhere it
 panics, and `substrait-check` then refuses to print rows rather than print
 wrong ones. The table of black boxes, `core/Sverify/Core/BlackBox.lean` (#325),
-generalises these: a DuckDB function declared by one row.
+generalises these: a function declared by one row.
 -/
 
 namespace Substrait.Text
@@ -64,7 +63,7 @@ def substr (s : String) (a : Int) (n : Option Nat) : String :=
 choice when the plan omits it (#209): a negative start counts from the end,
 `-1` being the last character, so `substring('hello', -2, 2) = 'lo'`. A start
 that wraps to before the first character, and a start of 0, are left of the
-beginning, as DuckDB has it. -/
+beginning. -/
 def substrWrap (s : String) (a : Int) (n : Option Nat) : String :=
   substr s (if a < 0 then a + s.length + 1 else a) n
 
@@ -82,7 +81,7 @@ def findFrom (t : List Char) : List Char → Nat → Option Nat
 
 /-- **The size hypothesis for strings** (trusted, #202, #336): every string
 has fewer than `2³²` characters, a bound of the reference's that the engines'
-strings stay within (DuckDB's hold at most `2³² - 1` bytes). So a length or
+strings stay within (duckdb-exec-size-limits). So a length or
 position never reaches `sizeCap`, and capping it there changes nothing; it
 gives the range analysis an upper bound, so that `strpos(s, t) - 1` is proved
 not to overflow. (Relations keep their own bound, `rowCap`.) -/
@@ -96,8 +95,8 @@ def rowCap : Int := 2 ^ 62
 /-- `substring`'s offsets and lengths stay below `substrMax` in magnitude
 (#336): the reference's choice for the option `substring_range` is `ERROR`
 for an offset outside `[-2³², 2³²)` or a length of `2³²` or more
-(`Issue.domain`), the strings' own bound (`sizeCap`). DuckDB shares the limit
-(duckdb-substring-range); a profile that computes there (`COMPUTE`,
+(`Issue.domain`), the strings' own bound (`sizeCap`), which duckdb-substring-range
+shares; a profile that computes there (`COMPUTE`,
 `Profile.substrait`) refines it. -/
 def substrMax : Int := 2 ^ 32
 
@@ -206,8 +205,7 @@ def replaceGo (p r : List Char) : Nat → List Char → List Char
 
 def replace (s p r : String) : String :=
   let cs := s.toList
-  if p.isEmpty then String.ofList (r.toList ++ cs.flatMap fun c => c :: r.toList)
-  else String.ofList (replaceGo p.toList r.toList cs.length cs)
+  if p.isEmpty then s else String.ofList (replaceGo p.toList r.toList cs.length cs)
 
 def ascii (s : String) : Int :=
   match s.toList with
@@ -314,9 +312,9 @@ part or `p` has fewer groups. -/
 
 /-! ## Patterns that certainly compile
 
-DataFusion compiles a pattern with Rust's `regex` crate when it first
-evaluates it, and fails if it is invalid; DuckDB compiles a constant pattern
-with RE2 when it plans the query. `simpleRegex` accepts a conservative
+One engine compiles a pattern with Rust's `regex` crate when it first
+evaluates it, and fails if it is invalid; another compiles a constant
+pattern with RE2 when it plans the query. `simpleRegex` accepts a conservative
 subset of both syntaxes: literal characters, `.`, `^`, `$`, escapes, groups
 (also non-capturing, `(?:…)`), alternatives, simple classes and the
 quantifiers `*`, `+`, `?` and `{n}`, `{n,}`, `{n,m}` with `n ≤ m ≤ 1000`, in
@@ -331,7 +329,7 @@ def plainInClass (c : Char) : Bool := !"[]\\-&~^".contains c
 /-- A repetition count: up to 4 digits, at most 1000. -/
 def count (cs : List Char) : Option (Nat × List Char) :=
   let ds := cs.takeWhile Char.isDigit
-  let n := (String.ofList ds).toNat!
+  let n := (String.ofList ds).toNat?.getD 0
   if ds.isEmpty || 4 < ds.length || 1000 < n then none else some (n, cs.drop ds.length)
 
 /-- Skip a quantifier, if there is one. -/
@@ -427,8 +425,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard repeatFits "ab" (2 ^ 30 - 1) && !repeatFits "ab" (2 ^ 30) && !repeatFits "é" (2 ^ 30)
 #guard repeatFits "" (2 ^ 62) && repeatFits "ab" (-(2 ^ 62))
 #guard reverse "héllo" == "olléh" && reverse "" == ""
-#guard replace "ab" "" "x" == "xaxbx" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
-#guard replace "" "" "x" == "x" && replace "abcabc" "bc" "Z" == "aZaZ"
+#guard replace "ab" "" "x" == "ab" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
+#guard replace "" "" "x" == "" && replace "abcabc" "bc" "Z" == "aZaZ"
 #guard ascii "" == 0 && ascii "é" == 233 && ascii "ab" == 97
 #guard levenshtein "kitten" "sitting" == 3 && levenshtein "" "" == 0 && levenshtein "abc" "" == 3
 #guard levenshtein "" "ab" == 2 && levenshtein "é" "e" == 1 && levenshtein "flaw" "lawn" == 2
@@ -436,6 +434,8 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard simpleRegex "^a" && simpleRegex "(a)(b)" && simpleRegex "\\d{4}-\\d{2}" && simpleRegex "[a-z]+$"
 #guard !simpleRegex "(" && !simpleRegex "a**" && !simpleRegex "[]" && !simpleRegex "(?i)a"
 #guard !simpleRegex "a{3,2}" && !simpleRegex "*a"
+-- A quantifier with no digits (`0{`) reached `Regex.digits` and `count` through `toNat!`.
+#guard !simpleRegex "0{"
 #guard simpleRegex "(?:a)(b)" && !simpleRegex "(?i)a" && !simpleRegex "(?=a)"
 #guard regexGroups "(a)(?:b)(c(d))" == 3 && regexGroups "[(]\\(" == 0
 #guard rewriteOk 1 "[\\1\\0\\\\]".toList && !rewriteOk 1 "\\2".toList && !rewriteOk 1 "a\\".toList

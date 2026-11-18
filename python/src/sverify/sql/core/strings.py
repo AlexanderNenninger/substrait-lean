@@ -123,7 +123,7 @@ def expr(
             x = self.operand(a, "str", ref, cols, "regexp_match")
             m = d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
             return (
-                self.ascii_only(x, m, f"regular expression {pattern!r}", "int")
+                self.ascii_only(x, m, f"regular expression {pattern!r}", "int", classes=True)
                 if (unicode_classes(pattern))
                 else m
             )
@@ -144,20 +144,20 @@ def expr(
             x = self.operand(a, "str", ref, cols, "regexp_extract")
             v = d.regex_extract(x, pattern, group)
             if unicode_classes(pattern):
-                return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return self.ascii_only(x, v, f"regular expression {pattern!r}", classes=True)
             return v
         case Un(op="regex_replace", arg=a, param=pattern, replacement=r, flags=flags):
             x = self.operand(a, "str", ref, cols, "regexp_replace")
             v = d.regex_replace(x, pattern, r, flags == "g")
             if unicode_classes(pattern):
-                return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return self.ascii_only(x, v, f"regular expression {pattern!r}", classes=True)
             return v
         case Un(op="replace", arg=a, param=pattern, replacement=replacement):
-            if not pattern:
-                # Rust puts the replacement around every character; SQL engines
-                # return the string unchanged.
-                raise WriterUnsupported("replace with an empty pattern differs between engines")
             x = self.operand(a, "str", ref, cols, "replace")
+            if not pattern:
+                # An empty pattern matches nowhere (D44); no engine's `replace`
+                # is read for it (Spark's and Snowflake's are not probed).
+                return x
             return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
         case Bin(op="repeat", left=a, right=b):
             sa = self.operand(a, "str", ref, cols, "repeat")
@@ -169,7 +169,7 @@ def expr(
             cap = d.int_lit(REPEAT_MAX + 1)
             capped = f"(CASE WHEN {n} > {cap} THEN {cap} ELSE {n} END)"
             big = f"({capped} * {d.octet_length(sa)} > {d.int_lit(REPEAT_MAX)})"
-            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str")
+            fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str", "overflow")
             return d.case_when(big, fail, r)
         case Bin(op="substr", left=a, right=b, length=length, param=start):
             sa = self.operand(a, "str", ref, cols, "substring")
@@ -184,7 +184,9 @@ def expr(
                     # `Text.substrInRange` (#336): the engine raises on an
                     # offset out of range, but sees the shifted one here.
                     low = f"({sb} < {d.int_lit(-SUBSTR_MAX)})"
-                    fail = d.raise_("substring offset outside of supported range", sa, "int")
+                    fail = d.raise_(
+                        "substring offset outside of supported range", sa, "int", "domain"
+                    )
                     wrapped = d.case_when(low, fail, wrapped)
                 sb = wrapped
             return self.substring(sa, sb, length)

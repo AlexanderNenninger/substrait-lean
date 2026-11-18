@@ -25,6 +25,8 @@ from sverify import _proof_cache, _stages
 from sverify import engine as E
 from sverify.ibis_substrait import to_substrait_json
 
+pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
+
 T = ibis.table({"id": "int64", "x": "int64"}, name="t")
 
 
@@ -95,7 +97,7 @@ def test_a_changed_profile_misses(cache: Path) -> None:
     _new_process()
     report, t = _verify(_query(), semantics="polars")
     assert t.calls["checker"] >= 1
-    assert report.semantics == "polars"
+    assert report.semantics == "reference"  # polars is pending (#271)
 
 
 def test_another_version_misses(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:

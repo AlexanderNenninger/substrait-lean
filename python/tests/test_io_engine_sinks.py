@@ -18,6 +18,7 @@ from ibis import _
 from pyiceberg.catalog.sql import SqlCatalog
 
 import sverify as sv
+from _zero import zero
 from sverify.incremental import snapshot_diff
 from sverify.io import DeltaSink, DeltaSource, IcebergSink, IcebergSource
 from sverify.io.delta import file_stats
@@ -36,11 +37,6 @@ SCHEMA = pa.schema(
         pa.field("ok", pa.bool_()),
     ]
 )
-
-
-def zero_blind(row: dict) -> str:
-    """A row's text with `-0.0` as `0.0` (values are raw, D31)."""
-    return repr({k: v + 0.0 if isinstance(v, float) else v for k, v in row.items()})
 
 
 def orders(ids, x=1.5):
@@ -160,8 +156,8 @@ def test_a_node_reads_a_duckdb_written_delta_sink(tmp_path):
         assert report is not None
         [s] = report.sources
         assert s.mode == "change_feed"
-        assert sorted(map(zero_blind, down.to_arrow().to_pylist())) == sorted(
-            map(zero_blind, node.to_arrow().select(["name", "x"]).to_pylist())
+        assert sorted(repr(zero(r)) for r in down.to_arrow().to_pylist()) == sorted(
+            repr(zero(r)) for r in node.to_arrow().select(["name", "x"]).to_pylist()
         )
 
 

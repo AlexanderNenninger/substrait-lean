@@ -107,15 +107,14 @@ named apart: `(option, engine's, reference's, why)`. The reference's `ANY`
 sum order allows every order of the additions, a sequential one among them;
 `ANY_ROW` allows the first row read; `DECLARED_TYPE` for an integer `AVG`
 (declared `i64`) is the exact mean truncated; `GENERIC` allows Welford with
-Chan's merge, and `BETWEEN` a linear interpolation. -/
+Chan's merge. -/
 def behaviourRefines : List (String × Behaviour × Behaviour × String) := [
   ("sum_order", "SEQUENTIAL", "ANY", "FloatSums: a sequential sum is one order of the additions"),
   ("tie_pick", "FIRST_READ", "ANY_ROW", "the first row read is a row of the tie"),
   ("round_zero_sign", "IEEE", "ANY", "-0.0 is one of the zeros the reference leaves open (duckdb-R15-round, polars-round)"),
   ("round_zero_sign", "POSITIVE", "ANY", "+0.0 is one of the zeros the reference leaves open (spark-round)"),
   ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)"),
-  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)"),
-  ("quantile_interp", "LINEAR", "BETWEEN", "a linear interpolation lies between the neighbouring values (duckdb-quantile-cont-interpolation, polars-quantile)")]
+  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)")]
 
 /-- Each behaviour of `a` is one of `b`'s, or refines one of them. -/
 private def sub (o : String) (a b : List Behaviour) : Bool :=
@@ -359,6 +358,139 @@ theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) {
     {r : Rel} (h : (L.lowerRel r).Raises p cat) : r.Raises Profile.reference cat :=
   Rel.raises_mapExprs (lowerE_exact hL) (fun _ => rfl) (lowerE_raises hL)
     (fun _ h => Rel.evalI_reference h) h
+
+/-! ## A reference raise is an issue (FM round 9)
+
+`Rel.mayIssues_sound` covers `Rel.HasIssue`; these link it to `Rel.Raises`, so
+a report without issues discharges an engine's no-raise side condition. -/
+
+/-- An expression that raises under the reference has an issue on that row:
+the reference raises the first error `Expr.issues` reports. -/
+theorem Expr.issue_of_raises {e : Expr} {row : Row} (h : e.RaisesOn Profile.reference row) :
+    ∃ p, p ∈ e.issues row := by
+  simp only [Expr.RaisesOn, Expr.evalP_reference, Expr.refOutcome_err] at h
+  cases hi : e.issues row with
+  | nil => simp [hi, firstError] at h
+  | cons p _ => exact ⟨p, List.mem_cons_self ..⟩
+
+/-- **A reference raise is an issue.** Where the reference raises in `r`, some
+issue of `r` happens (`Rel.HasIssue`), read at either level `u`.
+
+`Rel.HasIssue` reads filter and join conditions over the loose input
+(`Rel.loose`), and `Rel.Raises` over the strict one, so the statement needs
+the strict rows among the loose rows: `Rel.looseSub` (`Rel.mem_loose`). Without
+it the statement is false. Take `a = {(1)}`, `b = {(1, -1)}` and
+
+  `filter (join a (filter b (v > 0)) .left (a.k = b.k)) (1 / coalesce(b.v, 0) > 0)`.
+
+The strict join pads `(1)` with NULLs, and the condition divides by zero on
+`(1, NULL, NULL)`. The loose join drops `b`'s filter and gives `(1, 1, -1)`
+alone, where nothing raises. The report still lists that zero divisor:
+`Rel.mayIssues` reads the left join's right columns as nullable. -/
+theorem Rel.hasIssue_of_raises {cat : Catalog} :
+    ∀ {r : Rel} (u : Bool), r.looseSub = true → r.Raises Profile.reference cat →
+      ∃ p, r.HasIssue cat u p
+  | .read _, _, _, h | .values _ _, _, _, h => h.elim
+  | .filter r c, _, hs, h => by
+    simp only [Rel.looseSub] at hs
+    by_cases hr : r.Raises Profile.reference cat
+    · obtain ⟨p, hp⟩ := hasIssue_of_raises true hs hr; exact ⟨p, .inl hp⟩
+    rcases h with h | ⟨row, hrow, hc⟩
+    · exact absurd h hr
+    rw [Rel.evalI_reference hr] at hrow
+    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
+    exact ⟨p, .inr ⟨row, Rel.mem_loose hs row hrow, hp⟩⟩
+  | .project r es, u, hs, h => by
+    simp only [Rel.looseSub] at hs
+    by_cases hr : r.Raises Profile.reference cat
+    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs hr; exact ⟨p, .inl hp⟩
+    rcases h with h | ⟨row, hrow, e, he, hc⟩
+    · exact absurd h hr
+    rw [Rel.evalI_reference hr] at hrow
+    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
+    refine ⟨p, .inr ⟨row, ?_, e, he, hp⟩⟩
+    cases u
+    · exact hrow
+    · exact Rel.mem_loose hs row hrow
+  | .emit r _, u, hs, h | .fetch r _ _, u, hs, h | .orderBy r _, u, hs, h
+  | .distinct r, u, hs, h => by
+    simp only [Rel.looseSub] at hs
+    exact hasIssue_of_raises (r := r) u hs h
+  | .window r _ _ _, u, hs, h => by
+    simp only [Rel.looseSub] at hs
+    obtain ⟨p, hp⟩ := hasIssue_of_raises (r := r) u hs h
+    exact ⟨p, .inl hp⟩
+  | .unnest _ _, _, hs, _ => by simp [Rel.looseSub] at hs
+  | .cross a b, u, hs, h | .unionAll a b, u, hs, h => by
+    simp only [Rel.looseSub, Bool.and_eq_true] at hs
+    rcases h with h | h
+    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs.1 h; exact ⟨p, .inl hp⟩
+    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs.2 h; exact ⟨p, .inr hp⟩
+  | .join a b ty on, _, hs, h | .semi a b _ on, _, hs, h => by
+    have hab : a.looseSub = true ∧ b.looseSub = true := by
+      first
+        | (cases ty <;> simp only [Rel.looseSub, Bool.and_eq_true] at hs <;>
+            exact ⟨hs.1, by first | exact hs.2 | exact Rel.looseExact_sub hs.2⟩)
+        | (simp only [Rel.looseSub, Bool.and_eq_true] at hs; exact hs)
+    by_cases ha : a.Raises Profile.reference cat
+    · obtain ⟨p, hp⟩ := hasIssue_of_raises true hab.1 ha; exact ⟨p, .inl hp⟩
+    by_cases hb : b.Raises Profile.reference cat
+    · obtain ⟨p, hp⟩ := hasIssue_of_raises true hab.2 hb; exact ⟨p, .inr (.inl hp)⟩
+    rcases h with h | h | ⟨x, hx, y, hy, hc⟩
+    · exact absurd h ha
+    · exact absurd h hb
+    rw [Rel.evalI_reference ha] at hx
+    rw [Rel.evalI_reference hb] at hy
+    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
+    exact ⟨p, .inr (.inr ⟨x, Rel.mem_loose hab.1 x hx, y, Rel.mem_loose hab.2 y hy, hp⟩)⟩
+  | .aggregate r gs ms, u, hs, h => by
+    simp only [Rel.looseSub] at hs
+    by_cases hr : r.Raises Profile.reference cat
+    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs hr; exact ⟨p, .inl hp⟩
+    rcases h with h | ⟨row, hrow, e, he, hc⟩
+    · exact absurd h hr
+    rw [Rel.evalI_reference hr] at hrow
+    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
+    refine ⟨p, .inr (.inl ⟨row, ?_, e, he, hp⟩)⟩
+    cases u
+    · exact hrow
+    · exact Rel.mem_loose hs row hrow
+
+section LooseGap
+-- No black boxes: the counterexample calls none.
+attribute [local instance] Boxes.Ambient.none
+
+/-- The counterexample's tables: `a = {(1)}`, `b = {(1, -1)}`. -/
+def Rel.looseGapCat : Catalog := fun t =>
+  if t = "a" then ⟨1, [[.int 1]]⟩ else if t = "b" then ⟨2, [[.int 1, .int (-1)]]⟩ else ⟨0, []⟩
+/-- `1 / coalesce(b.v, 0) > 0` over `a ++ b`'s columns `(k, k', v)`. -/
+def Rel.looseGapCond : Expr :=
+  .bin .lt (.lit (.int 0))
+    (.bin .idiv (.lit (.int 1)) (.ifThen (.un .not (.un .isNull (.field 2))) (.field 2) (.lit (.int 0))))
+/-- `filter (join a (filter b (v > 0)) .left (a.k = b.k)) (1 / coalesce(b.v, 0) > 0)`. -/
+def Rel.looseGapPlan : Rel :=
+  .filter (.join (.read "a") (.filter (.read "b") (.bin .lt (.lit (.int 0)) (.field 1))) .left
+    (.bin .eq (.field 0) (.field 1))) Rel.looseGapCond
+/-- The reference raises on the padded row `(1, NULL, NULL)`. -/
+example : Rel.looseGapPlan.Raises Profile.reference Rel.looseGapCat := by
+  refine .inr ⟨[.int 1, .null, .null], ?_, ?_⟩
+  · simp [Rel.looseGapCat, Rel.eval, Rel.arity, leftJoinRow, Expr.eval, Profile.reference,
+      BinFn.apply, Value.isTrue, raiseIf, BinFn.issue, Profile.impl, Outcome.val]
+  · simp [Expr.RaisesOn, Expr.evalP_reference, Expr.refOutcome_err, Rel.looseGapCond,
+      Expr.issues, firstError, Expr.eval, BinFn.issueAll, UnFn.issueAll, BinFn.issue, UnFn.issue,
+      UnFn.apply, Issue.isError]
+/-- `Rel.HasIssue` reads the condition over the loose join, `{(1, 1, -1)}`, where
+nothing happens. -/
+example : ∀ p, ¬Rel.looseGapPlan.HasIssue Rel.looseGapCat false p := by
+  intro p h
+  simp [Rel.looseGapPlan, Rel.HasIssue, Rel.loose, Rel.eval, Rel.arity, Rel.looseGapCat,
+    Rel.looseGapCond, leftJoinRow,
+    Expr.issues, Expr.eval, BinFn.issueAll, UnFn.issueAll, BinFn.issue, UnFn.issue, BinFn.apply,
+    UnFn.apply, Value.isTrue, BinFn.infIssue, UnFn.infIssue, inI64, between] at h
+  obtain ⟨_, ⟨h, -⟩, -⟩ := h
+  exact absurd (h (by simp [FloatCode.minI64])) (by simp [FloatCode.maxI64])
+
+end LooseGap
 
 /-! ## DuckDB: the translation refines the reference -/
 

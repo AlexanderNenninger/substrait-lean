@@ -1032,7 +1032,7 @@ theorem sort_ne_of_key {part : List Nat} {sort : List SortKey} {x y : Row}
 theorem winFact_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n w : Nat}
     {b a : List Row} {x row : Row} {f : WinFn} (hf : f.refsLt n = true)
     (hpre : ∀ i < n, row.getD i .null = x.getD i .null)
-    (hw : row.getD w .null = f.value part b a x)
+    (hw : f.Allowed (b.filter (samePart part x)) x (a.filter (samePart part x)) (row.getD w .null))
     (hb : ∀ y ∈ b, sortLe sort y x = true) (ha : ∀ y ∈ a, sortLe sort x y = true)
     (hdist : strict = true → ∀ y, (y ∈ b ∨ y ∈ a) → samePart part x y = true →
       keyOf (part ++ sort.map (·.col)) y ≠ keyOf (part ++ sort.map (·.col)) x) :
@@ -1041,6 +1041,8 @@ theorem winFact_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n
   | rowNumber | rank _ | denseRank _ | percentRank _ | cumeDist _ | ntile _ | agg _ _ _
   | firstValue _ _ _ | lastValue _ _ _ | nthValue _ _ _ _ => intro g hg; simp [winFact] at hg
   | lag c k d =>
+    -- `lag` and `lead` give their value (`WinFn.Allowed`).
+    replace hw : row.getD w .null = (WinFn.lag c k d).value part b a x := hw
     simp only [winFact]
     split
     · rename_i hd
@@ -1067,6 +1069,8 @@ theorem winFact_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n
         · exact ⟨y, .inr hy.2, hyc⟩
     · intro g hg; simp at hg
   | lead c k d =>
+    -- `lag` and `lead` give their value (`WinFn.Allowed`).
+    replace hw : row.getD w .null = (WinFn.lead c k d).value part b a x := hw
     simp only [winFact]
     split
     · rename_i hd
@@ -1095,19 +1099,26 @@ theorem winFact_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n
 
 theorem winFacts_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n : Nat}
     {fns : List WinFn} {b a : List Row} {x : Row} (hx : x.length = n)
-    (hf : ∀ f ∈ fns, f.refsLt n = true)
+    (hf : ∀ f ∈ fns, f.refsLt n = true) {vs : List Value}
+    (hv : Forall2 (fun f v => f.Allowed (b.filter (samePart part x)) x (a.filter (samePart part x)) v)
+      fns vs)
     (hb : ∀ y ∈ b, sortLe sort y x = true) (ha : ∀ y ∈ a, sortLe sort x y = true)
     (hdist : strict = true → ∀ y, (y ∈ b ∨ y ∈ a) → samePart part x y = true →
       keyOf (part ++ sort.map (·.col)) y ≠ keyOf (part ++ sort.map (·.col)) x) :
-    FactsHold (winFacts part sort strict n fns) (x ++ fns.map (·.value part b a x)) := by
+    FactsHold (winFacts part sort strict n fns) (x ++ vs) := by
   intro g hg
   simp only [winFacts, List.mem_flatMap] at hg
   obtain ⟨⟨f, t⟩, hft, hg⟩ := hg
   have hget := List.mem_zipIdx_iff_getElem?.mp hft
+  obtain ⟨v, hvt, hfv⟩ : ∃ v, vs[t]? = some v ∧ WinFn.Allowed (b.filter (samePart part x)) x
+      (a.filter (samePart part x)) f v := by
+    rcases Forall2.getElem? hv t with ⟨f', v, hf', hvt, hfv⟩ | ⟨hn, -⟩
+    · rw [hget] at hf'; cases hf'; exact ⟨v, hvt, hfv⟩
+    · rw [hget] at hn; cases hn
   refine winFact_sound (hf f (List.mem_of_getElem? hget))
     (fun i hi => getD_append_left' (hx ▸ hi)) ?_ hb ha hdist g hg
   rw [← hx, getD_append_right']
-  simp [List.getD_eq_getElem?_getD, List.getElem?_map, hget]
+  simpa [List.getD_eq_getElem?_getD, hvt] using hfv
 
 /-- The values of `MIN`, `MAX` and integer `AVG` measures of one group: the
 bounds `pairFacts` states. -/
@@ -1270,12 +1281,13 @@ theorem aggCol {ms : List Measure} {grp : Relation} {k : Row} {vs : List Value}
     exact (h hs).canon
   · rw [hm] at ha; cases ha
 
-/-- `aggCol` with equality, for measures other than `MIN` and `MAX`. -/
+/-- `aggCol` with equality, for measures that do not select by comparison
+(`AggFn.classPick`: `MIN`, `MAX`, `QUANTILE_DISC`). -/
 theorem aggCol_eq {ms : List Measure} {grp : Relation} {k : Row} {vs : List Value}
     (hv : Forall2 (fun m v => m.OrderAllowed grp v) ms vs) :
-    ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn ≠ .min → m.fn ≠ .max →
+    ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn.classPick = false →
       (k ++ vs).getD (k.length + i) .null = m.eval grp := by
-  intro i m hm hs hmin hmax
+  intro i m hm hs hc
   rw [getD_append_right']
   rcases hv.getElem? i with ⟨a, v, ha, hb, hr⟩ | ⟨ha, _⟩
   · rw [hm] at ha; cases ha
@@ -1284,7 +1296,7 @@ theorem aggCol_eq {ms : List Measure} {grp : Relation} {k : Row} {vs : List Valu
     rw [Measure.eval_eq hs]
     rcases h hs with h | ⟨hf, -⟩
     · exact h
-    · rcases hf with hf | hf <;> contradiction
+    · rw [hc] at hf; cases hf
   · rw [hm] at ha; cases ha
 
 /-- **The facts hold on every row of every order.** -/
@@ -1378,13 +1390,13 @@ theorem Rel.facts_sound_all {cat : Catalog} (hcat : cat.WF) {F : String → List
       rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
       · exact facts_sound_all hcat hF hT hwf.1 hx row h f hf.1
       · exact facts_sound_all hcat hF hT hwf.2.1 hy row h f hf.2
-  | .window r part sort _, hwf, _, ⟨i, hi, s, hp, hs, h⟩, row, hr => by
-      obtain ⟨b, x, a, he, rfl, hb, ha, hin⟩ := mem_windowRows_sorted hs (h.mem_iff.mp hr)
+  | .window r part sort _, hwf, _, ⟨i, hi, s, hp, hs, o, h, ho⟩, row, hr => by
+      obtain ⟨b, x, a, vs, he, rfl, hv, hb, ha, hin⟩ := mem_windowRowsA_sorted hs ho (h.mem_iff.mp hr)
       have hx := hp.mem_iff.mp (hin x (.inl rfl))
       have hlen := orderAllowed_arity hcat hwf.1 hi x hx
       simp only [Rel.facts]
       refine ((facts_sound_all hcat hF hT hwf.1 hi x hx).prefix fun i hi => getD_append_left' (hlen ▸ hi)).append
-        (winFacts_sound hlen hwf.2.2.2 hb ha fun hT' y hy _ => ?_)
+        (winFacts_sound hlen hwf.2.2.2 hv hb ha fun hT' y hy _ => ?_)
       -- With a key, rows at different positions of the sorted input differ on it.
       have hk := (hT _ _ _ hT' hwf.1 hi).perm hp.symm fun h => Ne.symm h
       unfold KeyOn at hk

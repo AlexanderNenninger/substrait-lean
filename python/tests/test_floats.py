@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from _zero import one_zero, zero
 from sverify.engines import ENGINES
 from sverify.incremental import IncrementalView
 from sverify.io import Changes
@@ -83,8 +84,8 @@ def test_incremental_view_with_floats_matches_recompute(engine, data):
     view = IncrementalView(con, windows(db.table("s1"), db.table("s2")), "w", engine)
 
     def same(a, b):
-        # NaN != NaN, so compare the rows' text.
-        return sorted(map(repr, a)) == sorted(map(repr, b))
+        # NaN != NaN, so compare the rows' text, `-0.0` as `0.0` (D31 leaves it open).
+        return sorted(repr(zero(r)) for r in a) == sorted(repr(zero(r)) for r in b)
 
     assert same(view.rows(), view.recompute())
     for _step in range(data.draw(st.integers(1, 3))):
@@ -136,12 +137,6 @@ def test_incremental_view_with_integer_constants(engine):
     view.apply({"hr": Changes(inserts=[(1, t(20), 160.0), (1, t(25), 0.0)])})
     assert [r[2] for r in view.rows()] == [72.0, 160.0]
     assert view.rows() == view.recompute()
-
-
-def one_zero(rows: list[tuple]) -> str:
-    """The rows' text with `-0.0` as `0.0`: values are raw (D31), so an engine
-    may give either zero."""
-    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in rows])
 
 
 @pytest.mark.parametrize("engine", ENGINES)

@@ -90,9 +90,15 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 241),
   (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-nonfinite-aggregates"]).tracking 241),
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
-  -- partitions, as the reference has them; MIN, MAX and quantiles return a
-  -- member of the class, which D31 allows.
-  (none, "zero_sign", (ObsRow.native ["duckdb-R14", "duckdb-float-signs", "duckdb-minmax-zero-sign"]).tracking 241),
+  -- partitions, as the reference has them. A group's MIN, MAX and QUANTILE_DISC
+  -- return a member of the class (D31, D45); quantiles print canonical too.
+  -- DuckDB's pick among equal zeros depends on row order (duckdb-minmax-zero-sign),
+  -- so the writer prints the class's canonical value for them and for keys
+  -- (`Dialect.zero_rep`): a rerun gives the same sign. A frame's value prints
+  -- canonical, and the reference pins it until D45's window amendment.
+  (none, "zero_sign", ({ ObsRow.native ["duckdb-R14", "duckdb-float-signs", "duckdb-minmax-zero-sign"] with
+    rerun := some Obs.exact,
+    rerunEvidence := .probed ["duckdb-minmax-zero-sign", "duckdb-R14", "duckdb-float-signs"] }).tracking 241),
   -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
   -- exactly through the proved template (`Lowering.zeroTemplate`).
   (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R15-round",
@@ -152,7 +158,13 @@ def Profile.duckdb.obs : ObsTable := [
     rerun := some { floats := .within "plan" },
     note := "Welford with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); DuckDB's VAR_POP and STDDEV_POP of one value are 0 even for NaN (DD-3), so the written plan returns NaN where a value is NaN (nan_through), which meets StatProps everywhere without an infinity (Stat.nanGuard_varStat); an infinity raises first (#257)." }).proved
     "Stat.nanGuard_varStat"),
-  (none, "quantile_interp", (ObsRow.native ["duckdb-quantile-cont-interpolation"]).tracking 900)]
+  -- `LINEAR` is DuckDB's own `quantile_cont`: the neighbours of its double
+  -- position, an ulp past them where the lower neighbour is first (findings A
+  -- and B, #900). The written plan guards both (`Dialect.quantile`, #1502), which
+  -- the shim names, and meets `BETWEEN`.
+  (none, "quantile_interp", ({ ObsRow.shimmed "quantile_guard" ["duckdb-quantile-cont-interpolation", "tests/test_duckdb_quantile_900.py::test_the_whole_positions_the_double_misses_give_the_model_value", "tests/test_duckdb_quantile_900.py::test_a_random_group_stays_between_the_neighbours"] with
+    precondition := "(COUNT(x) − 1)·10^scale < 2^52 for the decimal fraction's scale, checked on the data (the written plan raises past it)",
+    note := "`LINEAR` states DuckDB's own `quantile_cont`, which leaves the model's neighbours at a whole exact position its double misses and where the lower neighbour is first; the written plan takes `quantile_disc` at a whole exact position and bounds the first lower neighbour by the second smallest value (python/tests/test_duckdb_quantile_900.py)." }).tracking 900)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/

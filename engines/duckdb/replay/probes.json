@@ -7508,11 +7508,54 @@
    "observed": "false, false, false, false"
   },
   {
+   "construct": "minmax-zero-frames-1-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 1"
+   ],
+   "sql": "SELECT i, signbit(min(x) OVER w), signbit(max(x) OVER w) FROM (VALUES (1, 0.0::DOUBLE), (2, -0.0::DOUBLE), (3, 0.0::DOUBLE), (4, -0.0::DOUBLE)) t(i, x) WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY i",
+   "observed": "1, false, false; 2, true, true; 3, false, false; 4, true, true"
+  },
+  {
+   "construct": "minmax-zero-frames-4-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 4"
+   ],
+   "sql": "SELECT i, signbit(min(x) OVER w), signbit(max(x) OVER w) FROM (VALUES (1, 0.0::DOUBLE), (2, -0.0::DOUBLE), (3, 0.0::DOUBLE), (4, -0.0::DOUBLE)) t(i, x) WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY i",
+   "observed": "1, false, false; 2, true, true; 3, false, false; 4, true, true"
+  },
+  {
+   "construct": "quantile-disc-zero-1-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 1"
+   ],
+   "sql": "SELECT signbit(quantile_disc(x, 0.0)), signbit(quantile_disc(x, 0.5)), signbit(quantile_disc(x, 1.0)) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE), (0.0::DOUBLE), (-0.0::DOUBLE)) t(x)",
+   "observed": "false, true, true"
+  },
+  {
+   "construct": "quantile-disc-zero-4-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 4"
+   ],
+   "sql": "SELECT signbit(quantile_disc(x, 0.0)), signbit(quantile_disc(x, 0.5)), signbit(quantile_disc(x, 1.0)) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE), (0.0::DOUBLE), (-0.0::DOUBLE)) t(x)",
+   "observed": "false, true, true"
+  },
+  {
    "construct": "quantile-nan",
    "area": "aggregates",
    "setup": [],
    "sql": "SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR, quantile_cont(x, 0.75)::VARCHAR, quantile_disc(x, 0.75)::VARCHAR, quantile_cont(x, 1.0)::VARCHAR FROM (VALUES (1.0::DOUBLE), (2.0::DOUBLE), ('nan'::DOUBLE), (3.0::DOUBLE)) t(x) UNION ALL SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR, NULL, NULL, NULL FROM (VALUES (1.0::DOUBLE), ('nan'::DOUBLE)) t(x)",
    "observed": "'2.5', '2.5', 'nan', '3.0', 'nan'; 'nan', 'nan', NULL, NULL, NULL"
+  },
+  {
+   "construct": "replace-empty-pattern",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT replace('ab', '', 'x'), replace('', '', 'x'), replace(NULL, '', 'x'), replace('ab', '', NULL), replace('', '', NULL), typeof(replace('ab', '', 'x'))",
+   "observed": "'ab', '', NULL, NULL, NULL, 'VARCHAR'"
   },
   {
    "construct": "default-collation-nocase",

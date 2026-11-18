@@ -165,6 +165,10 @@ def _replace(lf: _Lift, node: sge.Replace, sub: Sub, scope: list[Column]) -> E:
     if not (pattern.constant and replacement.constant):
         raise Unsupported("replace needs a constant pattern and replacement")
     args = _strings(lf, [sub(node.this), pattern, replacement], "replace")
+    if pattern.value == "":
+        # An empty pattern matches nowhere (D44, duckdb-replace-empty-pattern):
+        # the string unchanged, NULL for a NULL replacement.
+        return lf.to(replacement if replacement.value is None else sub(node.this), dt.string)
     return E(_fn("replace", args, dt.string), dt.string)
 
 
@@ -294,7 +298,11 @@ def _right(lf: _Lift, node: sge.Right, sub: Sub, scope: list[Column]) -> E:
     if n is None:
         return _null(dt.string)
     if n < 0:
-        return E(_fn("substring", [s_, literal(1 - n, dt.int64)], dt.string), dt.string)
+        # `1 - n` is past any string's end. It is capped at the largest offset
+        # DuckDB's substring takes (2**32 - 1); `n = -2**63` gives 2**63 + 1,
+        # which does not fit an i64.
+        start = min(1 - n, 2**32 - 1)
+        return E(_fn("substring", [s_, literal(start, dt.int64)], dt.string), dt.string)
     size = call("character_length", [s_])
     start = call("add", [call("subtract", [size, literal(n, dt.int64)]), literal(1, dt.int64)])
     return E(substring_left([s_, start]), dt.string)

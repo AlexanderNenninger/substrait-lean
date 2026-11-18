@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(result.to_dict(), indent=2) if args.json else result)
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
-        n = len({t.name for t in result.proved_tests})
+        n = len({t.name for t in result.skippable})
         print(
             f"\nwrote the selector sverify_proved ({n} test(s)) to {path}; run "
             "`dbt build --exclude selector:sverify_proved` to skip them",

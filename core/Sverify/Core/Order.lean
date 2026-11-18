@@ -421,6 +421,18 @@ theorem sortLeWith_le : ∀ ks : List SortKey,
     simp only [List.map_cons, sortLeWith, sortLe, sortLeWith_le ks, SortKey.leWith, SortKey.le,
       nullRankOf_firstNulls, SortKey.valWith_le]
 
+/-- Without a clustered key a profile's order is the key's own: `cmp` never
+reaches a value. -/
+theorem sortLeWith_unclustered (cmp : Value → Value → Bool) : ∀ {ks : List SortKey},
+    ks.all (!·.clustered) = true →
+      sortLeWith cmp (ks.map fun k => (k, k.firstNulls)) = sortLe ks
+  | [], _ => rfl
+  | k :: ks, h => by
+    simp only [List.all_cons, Bool.and_eq_true, Bool.not_eq_true'] at h
+    have hv : k.valWith cmp = k.valLe := by funext a b; simp [SortKey.valWith, h.1]
+    simp only [List.map_cons, sortLeWith, sortLe, sortLeWith_unclustered cmp h.2, SortKey.leWith,
+      SortKey.le, nullRankOf_firstNulls, hv]
+
 /-- An order a clustered key's groups may take: total, and telling every
 two values apart up to `canonV` (D31). -/
 def ValidCmp (cmp : Value → Value → Bool) : Prop :=
@@ -511,6 +523,57 @@ theorem sortLe_antisymm : ∀ {ks : List SortKey} {x y : Row},
       simp only [List.map_cons, List.cons.injEq]
       exact ⟨SortKey.le_antisymm h₁ h₂, sortLe_antisymm h₃ h₄⟩
 
+
+/-! ## Sorted arrangements of the same rows -/
+
+/-- In a sorted list, a row that every other row follows moves to the front
+without changing `f`'s values, when rows that tie agree on `f`. -/
+private theorem map_eq_front {α : Type} {le : Row → Row → Bool} {f : Row → α} {x : Row} :
+    ∀ {l : List Row}, l.Pairwise (le · · = true) → x ∈ l → (∀ z ∈ l, z ≠ x → le x z = true) →
+      (∀ a ∈ l, ∀ b ∈ l, le a b = true → le b a = true → f a = f b) →
+      l.map f = (x :: l.erase x).map f
+  | [], _, hx, _, _ => by simp at hx
+  | y :: u, hs, hx, hmin, ht => by
+    by_cases hyx : y = x
+    · subst hyx; simp
+    have hxu : x ∈ u := by
+      rcases List.mem_cons.mp hx with h | h
+      · exact absurd h.symm hyx
+      · exact h
+    rw [List.pairwise_cons] at hs
+    have hf : f x = f y :=
+      ht x (List.mem_cons_of_mem _ hxu) y List.mem_cons_self (hmin y List.mem_cons_self hyx) (hs.1 x hxu)
+    have ih := map_eq_front hs.2 hxu (fun z hz => hmin z (List.mem_cons_of_mem _ hz))
+      (fun a ha b hb => ht a (List.mem_cons_of_mem _ ha) b (List.mem_cons_of_mem _ hb))
+    rw [List.erase_cons_tail (by simpa using hyx), List.map_cons, ih]
+    simp [hf]
+
+/-- **Two sorted arrangements of the same rows agree on `f`** when rows that
+tie agree on it: the ties' order is all they may differ in. -/
+theorem map_eq_of_perm_of_pairwise {α : Type} {le : Row → Row → Bool} {f : Row → α} :
+    ∀ {l₁ l₂ : List Row}, l₁.Perm l₂ → l₁.Pairwise (le · · = true) → l₂.Pairwise (le · · = true) →
+      (∀ a ∈ l₂, ∀ b ∈ l₂, le a b = true → le b a = true → f a = f b) → l₁.map f = l₂.map f
+  | [], _, hp, _, _, _ => by rw [List.nil_perm.mp hp]
+  | x :: t, l₂, hp, h₁, h₂, ht => by
+    rw [List.pairwise_cons] at h₁
+    have hx : x ∈ l₂ := hp.subset List.mem_cons_self
+    have hmin : ∀ z ∈ l₂, z ≠ x → le x z = true := fun z hz hne => by
+      rcases List.mem_cons.mp (hp.symm.subset hz) with h | h
+      · exact absurd h hne
+      · exact h₁.1 z h
+    rw [map_eq_front h₂ hx hmin ht]
+    have hsub := List.erase_sublist (a := x) (l := l₂)
+    have hp' : t.Perm (l₂.erase x) := by simpa using hp.erase x
+    rw [List.map_cons, List.map_cons, map_eq_of_perm_of_pairwise hp' h₁.2 (h₂.sublist hsub)
+      fun a ha b hb => ht a (hsub.subset ha) b (hsub.subset hb)]
+
+/-- Two sorted arrangements of the same rows are equal when the order has
+no ties between different rows. -/
+theorem eq_of_perm_of_pairwise {le : Row → Row → Bool} {l₁ l₂ : List Row} (hp : l₁.Perm l₂)
+    (h₁ : l₁.Pairwise (le · · = true)) (h₂ : l₂.Pairwise (le · · = true))
+    (ha : ∀ x ∈ l₁, ∀ y ∈ l₁, le x y = true → le y x = true → x = y) : l₁ = l₂ := by
+  simpa using map_eq_of_perm_of_pairwise (f := id) hp h₁ h₂ fun a h₁ b h₂ =>
+    ha a (hp.mem_iff.mpr h₁) b (hp.mem_iff.mpr h₂)
 
 /-! ## Identity up to canonical codes
 

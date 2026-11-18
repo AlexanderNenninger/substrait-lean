@@ -164,7 +164,7 @@ def test_a_sink_that_must_reproduce_refuses_open_ties() -> None:
     con = connect()
     con.create("t", T.schema(), ROWS)
     report = sv.verify(RANKED, ensures=[_.rn >= 0])
-    with pytest.raises(RouteError, match="ties stay open at the window"):
+    with pytest.raises(RouteError, match="the plan leaves open the window"):
         report.run(con, "duckdb", reproducible=sv.equivalent())
     assert report.run(con, "duckdb").num_rows == len(ROWS)
 

@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 import sverify as sv
 from _pipelines import integer_powers
 from _repo import ROOT
+from _zero import one_zero
 from sverify.engine import (
     connect,
     plan_json,
@@ -63,12 +64,6 @@ SETTINGS = settings(
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )
-
-
-def _one_zero(rows: list) -> str:
-    """The rows' text with `-0.0` as `0.0`: the DuckDB writer prints raw values
-    (D31) where Polars's writer still makes one zero."""
-    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in rows])
 
 
 def rows_of(table: pa.Table) -> list[tuple]:
@@ -475,12 +470,14 @@ def test_unwritten_plans_are_refused():
         polars_engine.to_lazy(raw, {"r": pa.table({"a": [1], "b": [1], "c": [1]})})
 
 
-def test_string_order_is_refused():
-    """`BinFn.lt` is undefined on strings in the model, unlike in SQL."""
+def test_strings_order_by_code_point():
+    """`BinFn.lt` orders strings by code point, as SQL does (#1492)."""
     con = connect()
-    con.create("o", ibis.schema({"name": "string"}), [("ada",)])
-    with pytest.raises(polars_engine.Unsupported, match="lt of String"):
-        polars_rows(con, "SELECT name FROM o WHERE name < 'b'")
+    con.create(
+        "o", ibis.schema({"name": "string"}), [("ada",), ("b",), ("\U0001f600",), ("\uffff",)]
+    )
+    rows = polars_rows(con, "SELECT name FROM o WHERE name < 'b'")
+    assert sorted(rows) == [("ada",)]
 
 
 def test_unknown_function_is_refused():
@@ -565,7 +562,7 @@ def test_rounding_matches_duckdb_bit_for_bit():
                     elif x is not None:
                         assert repr(x) == repr(y), sql
         else:
-            assert _one_zero(duck) == _one_zero(pl_rows), sql
+            assert one_zero(duck) == one_zero(pl_rows), sql
 
 
 def test_round_to_digits_matches_duckdb_bit_for_bit():
@@ -576,7 +573,7 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
     sql = "SELECT f, round(f, 1) AS x, round(f, 22) AS w FROM r"
     plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     duck = rows_of(run_plan(con, plan, "duckdb"))
-    assert _one_zero(rows_of(run_plan(con, plan, "polars"))) == _one_zero(duck)
+    assert one_zero(rows_of(run_plan(con, plan, "polars"))) == one_zero(duck)
     # Polars is exact for 0 ≤ d ≤ 22 only; other digits are refused
     # (polars-round-digits, #1270).
     for d in (-1, -5, -400, 23, 400):

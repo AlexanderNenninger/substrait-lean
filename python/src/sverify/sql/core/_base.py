@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from sverify import _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
@@ -40,6 +40,43 @@ class Lst:
 
 
 Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+
+#: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
+#: guard that raises names, and the guards that are not an issue, `UNISSUED`:
+#: the ASCII condition (#1506) and DuckDB's quantile position limit (#900).
+#: `tests/test_guards_issues.py` checks the list against the Lean source.
+GuardIssue = Literal[
+    "divByZero",
+    "overflow",
+    "badCast",
+    "negExponent",
+    "badRegex",
+    "wraps",
+    "sumWraps",
+    "domain",
+    "raised",
+    "infinite",
+    "asciiOnly",
+    "quantilePosition",
+]
+
+#: The guards of `GuardIssue` that no `Issue` reports yet.
+UNISSUED = frozenset({"asciiOnly", "quantilePosition"})
+
+#: The issue a shim's `raise` message names (`UnFn.raise`); `"raised"` for any other.
+_RAISED: dict[str, GuardIssue] = {
+    "division by zero": "divByZero",
+    "domain error": "domain",
+    "negative exponent": "negExponent",
+    "integer overflow": "wraps",
+}
+
+
+def raised_issue(message: str) -> GuardIssue:
+    """The `Issue` of a guard a lowering's template raises with `message`."""
+    return _RAISED.get(message, "raised")
+
+
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
 zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
 microseconds. `None` (unknown) is
@@ -107,6 +144,11 @@ class Dialect:
     Attributes:
         name: The engine's name, used in `Unsupported` messages.
     """
+
+    canonical_zero_reps: ClassVar[frozenset[str]] = frozenset()
+    """Where the engine's pick among equal zeros depends on row order, so the
+    writer prints the class's canonical value: `"extreme"` (`MIN`, `MAX`) and
+    `"keys"` (group keys and `DISTINCT` rows)."""
 
     name: str
     guards: bool = True
@@ -248,10 +290,12 @@ class Dialect:
     def int_neg(self, a: str) -> str:
         return f"(- {a})"
 
-    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+    def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         """An expression of type `kind` that fails at run time with `message`
         when evaluated (and is NULL when `dep` is NULL). Only evaluated in a
-        `CASE` branch that needs it."""
+        `CASE` branch that needs it. `issue` is the `Issue` of `Safety.lean` the
+        raise enforces: written SQL raises only where Safety reports one
+        (`tests/test_guards_issues.py`)."""
         raise self.not_written("an error at run time")
 
     def trunc_div(self, a: str, b: str) -> str:
@@ -267,7 +311,7 @@ class Dialect:
         `NULL / 0` is NULL, as in `Safety.lean` (only integers divide)."""
         if not self.guards:
             return self.trunc_div(a, b)
-        fail = self.raise_("division by zero", b, "int")
+        fail = self.raise_("division by zero", b, "int", "divByZero")
         return (
             f"(CASE WHEN {a} IS NULL THEN {self.null('int')} WHEN {b} = {self.int_lit(0)} "
             f"THEN {fail} ELSE {self.trunc_div(a, b)} END)"
@@ -282,7 +326,7 @@ class Dialect:
             return (
                 f"(CASE WHEN {b} = {self.int_lit(-1)} THEN {zero} ELSE {self.trunc_mod(a, b)} END)"
             )
-        fail = self.raise_("division by zero", b, "int")
+        fail = self.raise_("division by zero", b, "int", "divByZero")
         return (
             f"(CASE WHEN {a} IS NULL THEN {self.null('int')} WHEN {b} = {self.int_lit(0)} "
             f"THEN {fail} WHEN {b} = {self.int_lit(-1)} THEN {zero} "
@@ -294,12 +338,12 @@ class Dialect:
         result outside 64 bits, raises (Lean: NULL); NULL stays NULL."""
         null = self.null("int")
         if b < 0:
-            fail = self.raise_("negative exponent", a, "int")
+            fail = self.raise_("negative exponent", a, "int", "negExponent")
             return f"(CASE WHEN {a} IS NULL THEN {null} ELSE {fail} END)"
         if b > 64:
             # Only -1, 0 and 1 have powers that fit; `a * a` is |a| for them.
             small = a if b % 2 else self.int_mul(a, a)
-            fail = self.raise_("integer overflow", a, "int")
+            fail = self.raise_("integer overflow", a, "int", "wraps")
             lo, hi = self.int_lit(-1), self.int_lit(1)
             return (
                 f"(CASE WHEN {a} IS NULL THEN {null} WHEN {a} >= {lo} AND {a} <= {hi} "
@@ -328,11 +372,12 @@ class Dialect:
         )
         big = (
             f"(CASE WHEN {a} >= {lo} AND {a} <= {one} THEN {small} "
-            f"ELSE {self.raise_('integer overflow', a, 'int')} END)"
+            f"ELSE {self.raise_('integer overflow', a, 'int', 'wraps')} END)"
         )
         return (
             f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN {null} "
-            f"WHEN {b} < {self.int_lit(0)} THEN {self.raise_('negative exponent', b, 'int')} "
+            f"WHEN {b} < {self.int_lit(0)} "
+            f"THEN {self.raise_('negative exponent', b, 'int', 'negExponent')} "
             f"WHEN {b} = {self.int_lit(0)} THEN {one} WHEN {b} > {sixty_four} THEN {big} "
             f"ELSE {self.int_product(a, b)} END)"
         )
@@ -359,7 +404,7 @@ class Dialect:
         so that engines agree on them (Spark's ANSI `%` raises on zero, DuckDB
         gives NaN); only finite operands reach the engine's `%`."""
         nan, inf, ninf, zero = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf, 0.0))
-        by_zero = self.raise_("division by zero", b, "float") if self.guards else nan
+        by_zero = self.raise_("division by zero", b, "float", "divByZero") if self.guards else nan
 
         def infinite(x: str) -> str:
             return f"{x} = {inf} OR {x} = {ninf}"
@@ -374,6 +419,14 @@ class Dialect:
     def float_neg(self, a: str) -> str:
         """IEEE negation; NaN stays NaN, and `-0.0` is the reference's too (D31)."""
         return f"(- {a})"
+
+    def zero_rep(self, x: str, where: str) -> str:
+        """`x`, a double the engine picks from a class of equal zeros (a MIN,
+        MAX or group key), as the class's canonical value where the engine's
+        pick depends on row order (D31: `Picks` and `IsReps` allow it, and a
+        rerun then gives the same sign). Identity where the engine's pick is
+        already canonical or fixed (`canonical_zero_reps`)."""
+        return f"({x} + {self.float_lit(0.0)})" if where in self.canonical_zero_reps else x
 
     def int_to_float(self, a: str) -> str:
         return self.cast(a, "float")
@@ -688,9 +741,21 @@ class Dialect:
     # Decimals (#27). The reference computes them exactly; a dialect whose
     # engine does too, with the hooks below, sets `decimals`.
 
+    orders_text: bool = False
+    """Whether the dialect writes ordering comparisons of strings and booleans
+    (`<`, `BETWEEN`, `GREATEST`, `LEAST`): it has a fact that the engine
+    orders them as the reference does, by code point and `false < true`
+    (#1492). A dialect without it refuses them."""
+
     decimals: bool = False
     """Whether the engine computes decimals exactly, as the reference does
     (#27). A dialect without it refuses plans with decimal arithmetic."""
+
+    def require_ordered(self, kind: Any) -> None:
+        """Raise `Unsupported` for an ordering comparison of strings or
+        booleans unless the dialect has `orders_text`."""
+        if kind in ("str", "bool") and not self.orders_text:
+            raise self.not_written(f"ordering comparisons of {kind} values")
 
     def decimal_type(self, k: Dec) -> str:
         if not self.decimals:
@@ -3865,8 +3930,16 @@ class _Writer:
         finally:
             self.d = d
 
-    def passthrough(self, alias: str, n: int, ordered: bool) -> list[str]:
-        items = [f"{self.ref(alias, self.c(i))} AS {self.c(i)}" for i in range(n)]
+    def passthrough(
+        self, alias: str, n: int, ordered: bool, keys: Sequence[Kind | None] | None = None
+    ) -> list[str]:
+        """The input's columns; `keys`: their kinds, when they are key outputs
+        (a double is the class's representative, `Dialect.zero_rep`)."""
+        d = self.d
+        items = [
+            f"{d.zero_rep(x, 'keys') if keys and keys[i] == 'float' else x} AS {self.c(i)}"
+            for i, x in enumerate(self.ref(alias, self.c(i)) for i in range(n))
+        ]
         if ordered:
             items.append(f"{self.ordinal(alias)} AS {self.d.quote(ORD)}")
         return items
@@ -4179,7 +4252,10 @@ class _Writer:
             level = self.select(items, d.subquery(level, b))
             b = self.alias()
             keys = [col(c) for c in g_cols]
-        out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
+        out = [
+            f"{d.zero_rep(col(c), 'keys') if g_kinds[i] == 'float' else col(c)} AS {self.c(i)}"
+            for i, c in enumerate(g_cols)
+        ]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
             if ms.fn in ("first", "last", "string_agg", "collect", "mode"):
@@ -4233,7 +4309,12 @@ class _Writer:
                 num, scale = m.q
                 digits = str(num).rjust(scale + 1, "0")
                 q = f"{digits[: len(digits) - scale]}.{digits[len(digits) - scale :] or '0'}"
-                return d.quantile(m.fn == "quantile_cont", v, q)
+                cont = m.fn == "quantile_cont"
+                sql = d.quantile(cont, v, q)
+                # A double quantile of equal zeros picks one by row order and threads:
+                # the reference allows both (`contAllowed`; D45 for `quantile_disc`), so
+                # the canonical zero stands for it.
+                return d.zero_rep(sql, "extreme") if kind == "float" else sql
             case "covar_samp" | "covar_pop" | "corr":
                 x, y = f"{v}[1]", f"{v}[2]"
                 n = f"COUNT({v})"
@@ -4258,7 +4339,9 @@ class _Writer:
 
                 inf = d.float_lit(math.inf)
                 bad = f"({d.float_eq(top(x), inf)} OR {d.float_eq(top(y), inf)})"
-                return d.case_when(bad, d.raise_("domain error", f"MIN({x})", "float"), value)
+                return d.case_when(
+                    bad, d.raise_("domain error", f"MIN({x})", "float", "domain"), value
+                )
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 sample = m.fn.endswith("_samp")
                 n = f"COUNT({v})"
@@ -4280,7 +4363,9 @@ class _Writer:
                 # creates (#257); NaN sorts above `+∞`, so leave it out.
                 top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
                 bad = d.float_eq(top, d.float_lit(math.inf))
-                return d.case_when(bad, d.raise_("domain error", f"MIN({v})", "float"), value)
+                return d.case_when(
+                    bad, d.raise_("domain error", f"MIN({v})", "float", "domain"), value
+                )
             case "fsum" | "avg":
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
@@ -4300,7 +4385,9 @@ class _Writer:
                     f"({d.float_eq(top, d.float_lit(math.inf))} AND "
                     f"{d.float_eq(f'MIN({v})', d.float_lit(-math.inf))})"
                 )
-                return d.case_when(both, d.raise_("domain error", f"MIN({v})", "float"), total)
+                return d.case_when(
+                    both, d.raise_("domain error", f"MIN({v})", "float", "domain"), total
+                )
         # `Value.le`: strings by code point (no collation), FALSE < TRUE.
         f = "MIN" if m.fn == "min" else "MAX"
         if kind == "bool":
@@ -4332,7 +4419,7 @@ class _Writer:
         if not ordered:
             # Any row of a group stands for it: they are all the same value.
             return self.select(
-                self.passthrough(a, n, False),
+                self.passthrough(a, n, False, ks),
                 d.subquery(self.rel(i, False), a),
                 "GROUP BY " + ", ".join(keys),
             )
@@ -4341,7 +4428,7 @@ class _Writer:
         items = self.passthrough(a, n, True) + [f"{d.row_number(over)} AS {first}"]
         b = self.alias()
         return self.select(
-            self.passthrough(b, n, True),
+            self.passthrough(b, n, True, ks),
             d.subquery(self.select(items, d.subquery(self.rel(i, True), a)), b),
             f"WHERE {self.ref(b, first)} = {d.int_lit(1)}",
         )
@@ -4540,7 +4627,7 @@ class _Writer:
         # creates (#257); NaN sorts above `+∞`, so leave it out.
         top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
         bad = d.float_eq(top, d.float_lit(math.inf))
-        return d.case_when(bad, d.raise_("domain error", f"MIN({v}) {w}", "float"), value)
+        return d.case_when(bad, d.raise_("domain error", f"MIN({v}) {w}", "float", "domain"), value)
 
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,
@@ -4625,7 +4712,7 @@ class _Writer:
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
             case Un(op="raise", arg=a, param=msg):
-                return d.raise_(msg, go(a, kind(a)), ctx or "int")
+                return d.raise_(msg, go(a, kind(a)), ctx or "int", raised_issue(msg))
             case Un(op="is_null", arg=a):
                 return d.is_null(go(a))
             case Un(op="neg", arg=a):
@@ -4652,7 +4739,7 @@ class _Writer:
             case Un(op="narrow", arg=a, digits=bits):
                 x = self.int_operand(a, ref, cols, "CAST to INT")
                 lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)
-                fail = d.raise_(f"CAST to a {bits}-bit integer out of range", x, "int")
+                fail = d.raise_(f"CAST to a {bits}-bit integer out of range", x, "int", "badCast")
                 # `NOT BETWEEN` is NULL on a NULL `x`, which then stays NULL.
                 return f"(CASE WHEN {x} NOT BETWEEN {lo} AND {hi} THEN {fail} ELSE {x} END)"
             case Un(op="itos", arg=a):
@@ -4743,7 +4830,9 @@ class _Writer:
                     return sql
                 # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
                 zero = f"({sa} IS NOT NULL AND {sb} = {d.float_lit(0.0)})"
-                return d.case_when(zero, d.raise_("division by zero", sb, "float"), sql)
+                return d.case_when(
+                    zero, d.raise_("division by zero", sb, "float", "divByZero"), sql
+                )
             case Bin(op="add" | "sub" | "mul" as op, left=a, right=b):
                 return self.arith(op, a, b, ref, cols)
             case Bin(op="idiv" | "imod" as op, left=a, right=b):
@@ -4767,10 +4856,7 @@ class _Writer:
                 # `GREATEST`/`LEAST` (NaN above everything, the first on a tie).
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
-                if k in ("str", "bool"):
-                    raise WriterUnsupported(
-                        f"ordering comparisons of {k} values are not in the Lean model"
-                    )
+                d.require_ordered(k)
                 ca = ka if isinstance(ka, Dec) else k
                 cb = kb if isinstance(kb, Dec) else k
                 sa, sb = go(a, ca), go(b, cb)
@@ -4786,11 +4872,8 @@ class _Writer:
                 k = ka or kb
                 if ka is not None and kb is not None and ka != kb:
                     raise Unsupported(f"comparison of {ka} with {kb}; cast one side first")
-                if op == "lt" and k in ("str", "bool"):
-                    # `BinFn.apply .lt` is only defined on integers (and the codes).
-                    raise WriterUnsupported(
-                        f"ordering comparisons of {k} values are not in the Lean model"
-                    )
+                if op == "lt":
+                    d.require_ordered(k)
                 sa, sb = go(a, k), go(b, k)
                 if k == "float":
                     return d.float_eq(sa, sb) if op == "eq" else d.float_lt(sa, sb)
@@ -4881,7 +4964,7 @@ class _Writer:
         if unit not in ("week", "month", "quarter", "year") or not d.guards:
             return t
         lo, hi = d.timestamp_lit(TS_MIN), d.timestamp_lit(TS_MAX)
-        fail = d.raise_(f"date_trunc to a {unit} {OUTSIDE_TS}", ts, "time")
+        fail = d.raise_(f"date_trunc to a {unit} {OUTSIDE_TS}", ts, "time", "overflow")
         return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
 
     def ts_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
@@ -4891,7 +4974,7 @@ class _Writer:
         if not d.guards:
             return r
         lo, hi = d.int_lit(TS_MIN), d.int_lit(TS_MAX)
-        fail = d.raise_(f"{what} {OUTSIDE_TS}", ts, kind)
+        fail = d.raise_(f"{what} {OUTSIDE_TS}", ts, kind, "overflow")
         return d.case_when(f"({d.time_micros(ts)} NOT BETWEEN {lo} AND {hi})", fail, r)
 
     def strftime(self, ts: str, fmt: str) -> str:
@@ -4922,7 +5005,7 @@ class _Writer:
             return f(x)
         lo_, hi_ = d.int_lit(lo), d.int_lit(hi)
         r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {lo_} AND {hi_} THEN {x} END)")
-        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date")
+        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
         # NULL (so not raising) where `x` or the result is NULL.
         bad = (
             f"({d.date_days(x)} NOT BETWEEN {lo_} AND {hi_} "
@@ -4930,13 +5013,19 @@ class _Writer:
         )
         return d.case_when(bad, fail, r)
 
-    def ascii_only(self, x: str, value: str, what: str, kind: Kind = "str") -> str:
+    def ascii_only(
+        self, x: str, value: str, what: str, kind: Kind = "str", *, classes: bool = False
+    ) -> str:
         """`value`, a black box of the string `x` that the engine computes as
         Rust does on ASCII text only, or an error where `x` is not ASCII
-        (#70). Not one of `Safety.lean`'s issues, so `guards=False` keeps it."""
+        (#70). With `classes` (a regular expression with `\\w`, `\\d`, `\\s`
+        or `\\b`), the vertical tab is out too, where Rust's `\\s` and RE2's
+        differ: `Text.classesDiffer`, and the same predicate as
+        `ascii_text`. Not one of `Safety.lean`'s issues, so `guards=False`
+        keeps it."""
         d = self.d
-        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind)
-        return d.case_when(f"(NOT {d.is_ascii(x)})", fail, value)
+        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "asciiOnly")
+        return d.case_when(f"(NOT {ascii_text(d, x, classes)})", fail, value)
 
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
@@ -5008,7 +5097,9 @@ class _Writer:
         if not d.finite:
             return value
         cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
-        return d.case_when(cond, d.raise_("overflow to infinity", dep or value, "float"), value)
+        return d.case_when(
+            cond, d.raise_("overflow to infinity", dep or value, "float", "infinite"), value
+        )
 
     def finite(self, sql: str, args: list[str], unless: str = "") -> str:
         """`sql`, raising where its finite arguments `args` (those that are not
@@ -5021,7 +5112,9 @@ class _Writer:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
         return d.case_when(
-            f"({fin}{unless}{d.is_inf(sql)})", d.raise_("overflow to infinity", sql, "float"), sql
+            f"({fin}{unless}{d.is_inf(sql)})",
+            d.raise_("overflow to infinity", sql, "float", "infinite"),
+            sql,
         )
 
     def domain(self, dep: str, bad: str, sql: str, kind: Kind = "float") -> str:
@@ -5029,7 +5122,7 @@ class _Writer:
         domain (`Issue.domain`): Substrait's `on_domain_error` = ERROR."""
         if not self.d.guards or bad == self.d.bool_lit(False):
             return sql
-        return self.d.case_when(bad, self.d.raise_("domain error", dep, kind), sql)
+        return self.d.case_when(bad, self.d.raise_("domain error", dep, kind, "domain"), sql)
 
     def float_operand(self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None]) -> str:
         k = expr_kind(e, cols)
@@ -5084,6 +5177,21 @@ TS_MIN, TS_MAX = -62135596800000000, 253402300799999999
 #: What leaving the reference's dates or timestamps is called in an error.
 OUTSIDE_DATES = "outside the reference's dates (0001-01-01 to 9999-12-31)"
 OUTSIDE_TS = "outside the reference's timestamps (0001-01-01 to 9999-12-31)"
+
+
+#: `LIKE` pattern of a string with a vertical tab in it.
+VERTICAL_TAB_PATTERN = "%\x0b%"
+
+
+def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
+    """The SQL of `x` being ASCII (and, with `vertical_tab_out`, holding no
+    vertical tab, the condition of a regular expression with classes): the
+    one predicate of the writers' guard (`ascii_only`) and of the inferred
+    precondition `Report.check_inputs` checks (`ascii_condition`)."""
+    plain = d.is_ascii(x)
+    if not vertical_tab_out:
+        return plain
+    return f"({plain} AND NOT {d.like(x, d.str_lit(VERTICAL_TAB_PATTERN))})"
 
 
 def like_pattern(p: str) -> str:

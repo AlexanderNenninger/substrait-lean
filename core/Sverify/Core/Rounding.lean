@@ -264,7 +264,7 @@ theorem toInt?_of_range {c : Int} (hlo : castLo ≤ c) (hhi : c ≤ castHi) :
 -- would make `simp` evaluate `2²⁰⁴⁵`.
 attribute [irreducible] floor ceil round toInt?
 
-/-! ## Checks against DataFusion -/
+/-! ## Checks -/
 
 #guard floor (ofFloat 2.5) == ofFloat 2.0 && floor (ofFloat (-2.5)) == ofFloat (-3.0)
 #guard ceil (ofFloat 2.5) == ofFloat 3.0 && ceil (ofFloat (-2.5)) == ofFloat (-2.0)

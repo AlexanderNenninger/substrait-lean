@@ -841,8 +841,8 @@ few plans verify there ([Terminology](#terminology)). Translations are linear
 in the number of engines: one per engine, from the reference.
 
 For the second way, `Engine.contract_sound` (`engines/Sverify/Engines/Sound.lean`)
-is the theorem: unless the translated plan raises, the rows the engine's
-model computes for it (DuckDB's, Polars's, Spark's or the reference's) are a
+is the theorem: under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference), the rows the engine's
+model computes for the translated plan (DuckDB's, Polars's, Spark's or the reference's) are a
 result the reference allows (`Engine.Sound`), and the contract holds on them.
 The engine's actual output rests on D16's claim (`Engine.Runs`) and the
 transfer check from the engine's table to the reference's
@@ -1196,3 +1196,5 @@ to it, so links to an entry here still land.
 - <a id="d40-power1--is-cs-pow"></a>[D40. `power(±1, ±∞)` is C's `pow`](decisions.md#d40-power1--is-cs-pow)
 - <a id="d41-modulus-of-doubles-accepts-division_type-floor"></a>[D41. `modulus` of doubles accepts `division_type: FLOOR`](decisions.md#d41-modulus-of-doubles-accepts-division_type-floor)
 - <a id="d42-the-references-value-of-the-options-no-earlier-decision-states"></a>[D42. The reference's value of the options no earlier decision states](decisions.md#d42-the-references-value-of-the-options-no-earlier-decision-states)
+- <a id="d44-replace-with-an-empty-pattern-is-the-string-unchanged"></a>[D44. `replace` with an empty pattern is the string unchanged](decisions.md#d44-replace-with-an-empty-pattern-is-the-string-unchanged)
+- <a id="d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do"></a>[D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do](decisions.md#d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do), amended 2026-11-17 for windows

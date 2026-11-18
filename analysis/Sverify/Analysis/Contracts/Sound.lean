@@ -928,8 +928,8 @@ end
 values over `grp`. -/
 theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
     {grp : Relation} {row : Row}
-    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn ≠ .min →
-      m.fn ≠ .max → row.getD (g + i) .null = m.eval grp)
+    (col : ∀ i (m : Measure), ms[i]? = some m → m.fn.sorts = false → m.fn.classPick = false →
+      row.getD (g + i) .null = m.eval grp)
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
     FactsHold (ratioFacts g env fs ms) row := by
   intro f hf
@@ -944,9 +944,9 @@ theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : L
       · rename_i b hb
         simp only [List.mem_singleton] at hf; subst hf
         intro x n hx hn
-        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; decide) (by rw [hsum]; decide),
+        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; rfl),
           Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
-        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; decide) (by rw [hcount]; decide),
+        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; rfl),
           Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
         have hsame : mj.inputs grp = mi.inputs grp := by
           simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
@@ -1079,8 +1079,9 @@ theorem Rel.aeval_sound_allSz {cat : Catalog} (hcat : cat.WF) {A : String → Li
       rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
       · exact (aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).1) hx row h).zip_left
       · exact (aeval_sound_allSz hcat hA hF hT hwf.2.1 (fun h => (hsz h).2) hy row h).zip_right
-  | .window r _ _ fns, hwf, hsz, _, ⟨i, hi, s, hp, hs, h⟩, row, hr => by
-      obtain ⟨b, x, a, hsplit, rfl, _, _, hin⟩ := mem_windowRows_sorted hs (h.mem_iff.mp hr)
+  | .window r _ _ fns, hwf, hsz, _, ⟨i, hi, s, hp, hs, o, h, ho⟩, row, hr => by
+      obtain ⟨b, x, a, vs, hsplit, rfl, hvs, _, _, hin⟩ := mem_windowRowsA_sorted hs ho (h.mem_iff.mp hr)
+      refine EnvMem.of_canon ?_ (WinFn.allowed_canon_row hvs)
       have hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem (r.aeval cat A F T sz) y :=
         fun y hy => aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi y
           (hp.mem_iff.mp (hin y hy))

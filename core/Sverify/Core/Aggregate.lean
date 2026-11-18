@@ -1,3 +1,4 @@
+import Sverify.Core.Conversions
 import Sverify.Core.Order
 import Sverify.Core.Dedup
 import Sverify.Core.FloatMoments
@@ -14,17 +15,15 @@ A measure is `COUNT`, `SUM`, `MIN`, `MAX`, `AVG` or `ARRAY_AGG` (`collect`,
 whose rows may be ordered) of an expression, over the
 rows that pass its `FILTER` (if any), skipping NULLs, and over distinct
 values only for `COUNT(DISTINCT …)` and friends. On no values `COUNT` is 0
-and the others are NULL. Checked against DataFusion 51:
+and the others are NULL:
 
 * `SUM` of integers wraps around modulo 2⁶⁴; since wrapping addition is
   associative, the result is the true sum unless that leaves 64 bits.
   `SUM` here is the true sum, and `analysis/Sverify/Analysis/Safety.lean` warns.
-* `SUM` and `AVG` of doubles round, in an order DataFusion does not promise;
+* `SUM` and `AVG` of doubles round, in an order SQL does not promise;
   here they add in list order with native floats. `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.
 * `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`).
-  DataFusion's grouped `MIN` of a group of +∞ is the largest finite double,
-  and it skips NaN next to other values (`upstream/bugs/DF-15.json`).
 * Grouping compares values exactly; doubles have one zero and one NaN
   (`core/Sverify/Core/Float.lean`), so -0.0 and 0.0 are one group, and NULLs
   group together.
@@ -71,7 +70,7 @@ inductive AggFn where
   argument is `pair x y` (rows with a NULL skipped). Engines compute them
   their own way: the model claims some double, or NULL where the definition
   has no value. `CORR` is NULL, as the SQL standard says, for fewer than two
-  pairs or a side whose values are all equal (DuckDB gives NaN there). -/
+  pairs or a side whose values are all equal (some engines give NaN there). -/
   | cov (sample : Bool)
   | corr
   /-- `STRING_AGG(x, sep ORDER BY …)` (Ibis's `group_concat`, #55): the strings
@@ -92,8 +91,7 @@ inductive AggFn where
   between the two neighbours (`contAllowed`). -/
   | quantile (cont : Bool) (num scale : Nat)
   /-- `MODE(x ORDER BY …)` (#53): the most frequent value, and of the values
-  that tie, the first in the measure's `sort` order (as DuckDB breaks ties,
-  by first occurrence). NULLs skipped, NULL without values. Ties in the sort
+  that tie, the first in the measure's `sort` order (by first occurrence). NULLs skipped, NULL without values. Ties in the sort
   order make it depend on the engine, as for `pick`. -/
   | mode
   deriving Repr, DecidableEq
@@ -411,12 +409,89 @@ def contNeighbours (num scale : Nat) (s : List Value) : Option (Int × Int × In
     (intAt s (p / d + 1)).map fun h =>
       (l, h, FloatCode.fdiv (FloatCode.ofInt (p % d)) (FloatCode.ofInt d))
 
-/-- `l·(1 − w) + h·w` with native doubles, as DuckDB interpolates doubles,
-kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
+/-- The integer part of a finite nonnegative double's code (`0` for any other). -/
+def FloatCode.floorNat (c : Int) : Nat :=
+  if 0 ≤ c ∧ c < FloatCode.posInf then (FloatCode.sv c).toNat / FloatCode.unitK else 0
+
+/-- The next integer at or above a finite nonnegative double's code. -/
+def FloatCode.ceilNat (c : Int) : Nat :=
+  if (FloatCode.sv c).toNat % FloatCode.unitK = 0 then FloatCode.floorNat c
+  else FloatCode.floorNat c + 1
+
+/-- The spacing at a magnitude (in units of `2⁻¹⁰⁷⁴`): `1` below `2⁵²`, else
+`2^(⌊log₂ m⌋ − 52)`. -/
+def FloatCode.ulpMag (m : Nat) : Nat := if m < 2 ^ 52 then 1 else 2 ^ (m.log2 - 52)
+
+/-- The magnitude one spacing above `m`, and below it (`m − ulp(m − 1)`, the
+spacing below a power of two being the finer one). -/
+def FloatCode.upMag (m : Nat) : Nat := m + FloatCode.ulpMag m
+def FloatCode.downMag (m : Nat) : Nat := m - FloatCode.ulpMag (m - 1)
+
+/-- The code of magnitude `m`, negative (`0` for the magnitude `0`). -/
+def FloatCode.negCode (m : Nat) : Int := if m = 0 then 0 else -FloatCode.posCode m
+
+/-- The next double above a code, for a finite one (`0` steps to the smallest
+subnormal; past the largest, `+∞`; `±∞` and NaN stay). -/
+def FloatCode.nextUp (c : Int) : Int :=
+  if c = 0 then FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.upMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.downMag (((-c).toNat - 1) / 2))
+  else c
+
+/-- The next double below a code, for a finite one. -/
+def FloatCode.nextDown (c : Int) : Int :=
+  if c = 0 then -FloatCode.posCode 1
+  else if 0 < c ∧ c < FloatCode.posInf then FloatCode.posCode (FloatCode.downMag ((c.toNat - 1) / 2))
+  else if FloatCode.negInf < c ∧ c < 0 then FloatCode.negCode (FloatCode.upMag (((-c).toNat - 1) / 2))
+  else c
+
+-- Against `Float`'s neighbours.
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 1.0000000000000002
+#guard FloatCode.nextUp (FloatCode.ofFloat (-1.0)) = FloatCode.ofFloat (-0.9999999999999999)
+#guard FloatCode.nextUp (FloatCode.ofFloat 0.0) = FloatCode.ofFloat 5e-324
+#guard FloatCode.nextDown (FloatCode.ofFloat 1.0) = FloatCode.ofFloat 0.9999999999999999
+#guard FloatCode.nextDown (FloatCode.ofFloat 2.0) = FloatCode.ofFloat 1.9999999999999998
+#guard FloatCode.nextDown (FloatCode.ofFloat (-2.0)) = FloatCode.ofFloat (-2.0000000000000004)
+#guard FloatCode.nextUp (FloatCode.ofFloat 1.7976931348623157e308) = FloatCode.posInf
+#guard FloatCode.nextDown (FloatCode.ofFloat 5e-324) = FloatCode.ofFloat 0.0
+#guard FloatCode.nextDown (FloatCode.ofFloat (-1.7976931348623157e308)) = FloatCode.negInf
+
+/-- An engine's position `(n − 1)·q` in doubles, for `q = num / 10 ^ scale`
+read as the double nearest to it (`ofDecimal`, correctly rounded at every
+scale; `fdiv num 10^scale` would equal it only while both operands are exact,
+`num < 2⁵³` and `scale ≤ 22`): `float_idx = (n − 1.0) · q`
+(polars-quantile, spark-quantile). It misses a whole
+exact position by an ulp for some `q` (`n = 26`, `q = 0.28`).
+
+With the null count added inside the sum (polars-quantile), `float_idx = (n − 1)·q + nulls`,
+over the array that holds the nulls first. This is the position over the
+values without nulls: the rounded sum is `(n − 1)·q` rounded then shifted by
+the whole number `nulls` and rounded again, and rounding is monotone with the
+whole numbers below `2⁵³` doubles, so the engine's pair is `(m, m)`, `(m, m + 1)` or
+`(m + 1, m + 1)` for `m = ⌊(n − 1)·q⌋`, all inside `[s[m], s[m + 1]]`, which this
+pair's `contAllowedOf` covers (`n = 26`, `q = 0.28` with a null: the sum is
+`8.0`, the pair `(7, 7)`). -/
+def contPosD (num scale n : Nat) : Int :=
+  FloatCode.fmul (FloatCode.ofInt ((n - 1 : Nat) : Int)) (FloatCode.ofDecimal (num : Int) scale)
+
+/-- `contNeighbours` at the double position of `contPosD`: the codes at
+`⌊f⌋` and `⌈f⌉` (the same one where `f` is whole), and the weight
+`f − ⌊f⌋` as a double. Both codes are drawn from the group (`intAt s`), the
+fact the between-members lemma of `QuantInterp` will rest on (the #900 proof
+step: no theorem reads it yet). -/
+def contNeighboursD (num scale : Nat) (s : List Value) : Option (Int × Int × Int) :=
+  let f := contPosD num scale s.length
+  (intAt s (FloatCode.floorNat f)).bind fun l =>
+    if FloatCode.ceilNat f = FloatCode.floorNat f then some (l, l, 0) else
+    (intAt s (FloatCode.floorNat f + 1)).map fun h =>
+      (l, h, FloatCode.fsub f (FloatCode.ofInt ((FloatCode.floorNat f : Nat) : Int)))
+
+/-- `l·(1 − w) + h·w` with native doubles
+(duckdb-quantile-cont-interpolation), kept between `l` and `h` in the order of canonical codes (`ORDER BY`'s,
 D31): rounding may leave them by an ulp. `−∞` with `+∞` gives NaN, which
 the clamp makes `+∞`; the reference raises there (`AggFn.makesNan`, #561),
 so no verified plan sees that value
-(`engines/duckdb/facts/duckdb-quantile-cont-interpolation.json`). -/
+(fact `duckdb-quantile-cont-interpolation`). -/
 def interpolate (l h w : Int) : Int :=
   let r := FloatCode.fadd (FloatCode.fmul l (FloatCode.fsub (FloatCode.ofInt 1) w))
     (FloatCode.fmul h w)
@@ -429,13 +504,18 @@ def contValue (num scale : Nat) (s : List Value) : Value :=
   | some (l, h, w) => if l == h then .float l else .float (interpolate l h w)
   | none => .null
 
-/-- What `QUANTILE_CONT` of the doubles `s` in order may give: NULL without
-neighbours, else a double between them. -/
-def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
-  match contNeighbours num scale s with
+/-- What `QUANTILE_CONT` may give with the neighbours `nb`: NULL without
+them, else a double between them. -/
+def contAllowedOf (nb : Option (Int × Int × Int)) (v : Value) : Prop :=
+  match nb with
   | some (l, h, _) => ∃ c, v = .float c ∧
       (c = l ∨ c = h ∨ (FloatCode.canon l ≤ FloatCode.canon c ∧ FloatCode.canon c ≤ FloatCode.canon h))
   | none => v = .null
+
+/-- What `QUANTILE_CONT` of the doubles `s` in order may give: NULL without
+neighbours, else a double between the neighbours of the exact position. -/
+def contAllowed (num scale : Nat) (s : List Value) (v : Value) : Prop :=
+  contAllowedOf (contNeighbours num scale s) v
 
 /-- The most frequent of `vs`, the first of those that tie. -/
 def modeOf (v : Value) (vs : List Value) : Value :=
@@ -588,7 +668,7 @@ theorem interpolate_between (l h w : Int) :
 omit [Boxes.Ambient] in
 theorem contValue_allowed (num scale : Nat) (s : List Value) :
     contAllowed num scale s (contValue num scale s) := by
-  unfold contAllowed contValue
+  unfold contAllowed contAllowedOf contValue
   cases contNeighbours num scale s with
   | none => rfl
   | some t =>
@@ -792,12 +872,38 @@ theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = 
     simp only [apply] at h; subst h
     exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
 
+/-- The aggregates that select one of their values by comparison: `MIN`,
+`MAX` (D31) and `QUANTILE_DISC` (D45). -/
+def AggFn.classPick : AggFn → Bool
+  | .min | .max | .quantile false _ _ => true
+  | _ => false
+
+/-- A function that selects by comparison gives one of its values, or NULL. -/
+theorem AggFn.apply_mem_of_classPick {f : AggFn} (hf : f.classPick = true) (vs : List Value) :
+    f.apply vs ∈ vs ∨ f.apply vs = .null := by
+  cases vs with
+  | nil => cases f <;> simp_all [classPick, apply]
+  | cons w ws =>
+    cases f with
+    | min | max => exact .inl (pickFold_mem _ _ _)
+    | quantile cont num scale =>
+      cases cont
+      · simp only [apply, List.getD_eq_getElem?_getD]
+        cases h : (sortVals (w :: ws))[discIndex (w :: ws).length num scale]? with
+        | none => exact .inr rfl
+        | some v =>
+          exact .inl ((List.mergeSort_perm _ _).subset (List.mem_of_getElem? h))
+      · simp [classPick] at hf
+    | _ => simp [classPick] at hf
+
 /-- What the reference allows an aggregate to give on `vs`: its value, or for
-`MIN` and `MAX` another value of the value's class (`-0.0` for `0.0`, the
-negative NaN for the NaN, D31): a member of `vs`, or the class's canonical
-value, which engines emit. `AggFn.apply` picks the raw-least member. -/
+a function that selects by comparison (`AggFn.classPick`: `MIN`, `MAX`,
+`QUANTILE_DISC`) another value of the selected value's class (`-0.0` for
+`0.0`, the negative NaN for the NaN, D31, D45): a member of `vs`, or the
+class's canonical value, which engines emit. `AggFn.apply` keeps its own
+pick. -/
 def AggFn.Picks (f : AggFn) (vs : List Value) (v : Value) : Prop :=
-  v = f.apply vs ∨ ((f = .min ∨ f = .max) ∧ v.canonV = (f.apply vs).canonV ∧
+  v = f.apply vs ∨ (f.classPick = true ∧ v.canonV = (f.apply vs).canonV ∧
     (v ∈ vs ∨ v = (f.apply vs).canonV))
 
 theorem AggFn.picks_apply (f : AggFn) (vs : List Value) : f.Picks vs (f.apply vs) := .inl rfl
@@ -808,21 +914,16 @@ theorem AggFn.Picks.canon {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks
   · rfl
   · exact h
 
-/-- On values alone in their classes, `MIN` and `MAX` have one allowed
-value. -/
+/-- On values alone in their classes, a function that selects by comparison
+has one allowed value. -/
 theorem AggFn.Picks.eq {f : AggFn} {vs : List Value} {v : Value} (h : f.Picks vs v)
     (hlone : ∀ w ∈ vs, w.Lone) : v = f.apply vs := by
   rcases h with h | ⟨hf, hc, -⟩
   · exact h
-  · cases vs with
-    | nil =>
-      have hn : (f.apply []) = .null := by rcases hf with rfl | rfl <;> rfl
-      rw [hn] at hc ⊢
+  · rcases AggFn.apply_mem_of_classPick hf vs with hmem | hn
+    · exact hlone _ hmem v hc
+    · rw [hn] at hc ⊢
       exact Value.lone_of_ne (by simp) (by simp) (by simp) v hc
-    | cons w ws =>
-      have hmem : f.apply (w :: ws) ∈ w :: ws := by
-        rcases hf with rfl | rfl <;> exact pickFold_mem _ _ _
-      exact hlone _ hmem v hc
 
 omit [Boxes.Ambient] in
 theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y :=

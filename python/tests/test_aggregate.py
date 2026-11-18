@@ -995,10 +995,20 @@ def test_arg_min_is_determined_by_a_key_and_mode_by_its_value():
     """`arg_min` picks among rows that tie on the key, so it is the engine's
     choice unless the group and the key contain a unique key; `mode` breaks
     its ties by its own value, which rows that tie share."""
-    assert sv.verify(Q.group_by("k").aggregate(m=Q.i.mode(), q=Q.x.median())).deterministic
+    assert sv.verify(Q.group_by("k").aggregate(m=Q.i.mode())).deterministic
     expr = Q.group_by("k").aggregate(a=Q.s.argmin(Q.i))
     assert not sv.verify(expr).deterministic
     assert sv.verify(expr, requires={"t": [sv.unique("k", "i")]}).deterministic
+
+
+def test_the_median_of_doubles_is_open():
+    """The reference allows `QUANTILE_CONT` of doubles any double between the
+    two neighbours (`contAllowed`), so the result is not determined, and the
+    report says where."""
+    report = sv.verify(Q.group_by("k").aggregate(q=Q.x.median()))
+    assert not report.deterministic
+    assert [p.op for p in report._tie_places] == ["aggregate"]
+    assert "between the two neighbours" in report._tie_places[0].what
 
 
 @pytest.mark.parametrize(
