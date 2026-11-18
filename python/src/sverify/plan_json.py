@@ -550,7 +550,8 @@ _PLAIN_FUNCTIONS = frozenset(
 
 def is_plain(e: Json) -> bool:
     """Is `e` built from columns and literals by `=`, `<`, `IS NULL`, `NOT`,
-    `AND` and `OR` (and their spellings), a literal's cast, `IN` over such? Such an expression never raises."""
+    `AND` and `OR` (and their spellings), a literal's cast or `IN` over such?
+    Such an expression raises on no row."""
     if "literal" in e or "selection" in e:
         return True
     if (c := e.get("cast")) is not None:  # a constant's cast raises on every row or on none
