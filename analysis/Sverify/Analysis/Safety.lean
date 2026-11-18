@@ -1417,7 +1417,7 @@ theorem Expr.mayIssuesC_sound {env : List AVal} {fs : List Fact} {ks : Assumptio
         simp only [htt, ite_true]
         have hw := withAlts_sound (Expr.cstrAlts_sound hct) hks hors
         exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct)
-          (FactsHold.append hfs (Expr.factsOf_sound hct)) hw.1 hw.2 t p hp
+          (FactsHold.append hfs (Expr.factsOf_sound c hct)) hw.1 hw.2 t p hp
       · simp only [hct, ite_false, Bool.false_eq_true] at hp
         right
         have hf : (c.eval row).isTrue = false := by simpa using hct
