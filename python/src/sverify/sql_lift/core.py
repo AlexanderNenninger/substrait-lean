@@ -268,7 +268,8 @@ def _logical(name: str) -> Callable[..., E]:
         for a in args:
             if not (a.type.is_boolean() or a.type.is_null()):
                 raise SqlUnsupported(f"{name.upper()} of a {a.type} is not supported")
-        return E(logical(name, [lf.to(a, dt.boolean).json for a in args]), dt.boolean)
+        eager = lf.profile is DUCKDB
+        return E(logical(name, [lf.to(a, dt.boolean).json for a in args], eager), dt.boolean)
 
     return rule
 

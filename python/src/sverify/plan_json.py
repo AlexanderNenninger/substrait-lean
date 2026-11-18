@@ -562,13 +562,13 @@ def is_plain(e: Json) -> bool:
     return all(is_plain(a["value"]) for a in fn["arguments"])
 
 
-def logical(name: str, operands: list[Json]) -> Json:
+def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
     """`AND` or `OR` (`name`) of `operands`, in order (D50). Where every operand
-    is plain, or the plan is read as DuckDB reads it, the eager connective
+    is plain, or the plan is read as DuckDB reads it (`eager`), the eager connective
     (`chain`); otherwise `sverify_and` or `sverify_or`, which the checker reads as
     a guard: each operand runs only where the earlier ones do not decide the
     result (`Expr.andG`, `Guard.lean`)."""
-    if semantics() == "duckdb" or all(is_plain(o) for o in operands):
+    if eager or len(operands) == 1 or semantics() == "duckdb" or all(is_plain(o) for o in operands):
         return chain(name, operands)
     names = {a: n for n, a in _COMPILER.get().functions.items()}
     spliced: list[Json] = []

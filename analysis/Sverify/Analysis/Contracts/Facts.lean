@@ -270,16 +270,21 @@ def orNullFacts (fs : List Fact) : Expr → List Fact
   | .un .isNull (.field i) => fs.filter (·.mentions i)
   | _ => []
 
-/-- `x IS NULL`-or-`x <> c` written on the whole comparison, as the guard
-`p IS NOT FALSE` of an `AND` (`Expr.notFalse`, D50): `x` is NULL, or not `c`.
-A fact constrains only non-NULL numbers, so it is the guard's whole content. -/
+/-- What a comparison being TRUE or NULL says of a column: `x <> c` makes `x`
+not `c`, and `c < x` with `0 ≤ c` makes an integer `x` not `0`. A fact constrains
+only non-NULL numbers, so these hold when the comparison is NULL too. -/
+def zeroFact : Expr → List Fact
+  | .un .not (.bin .eq (.field i) (.lit w)) =>
+    (match w.numOf? with
+      | some (k, c) => [.ne i k c]
+      | none => [])
+  | .bin .lt (.lit (.int c)) (.field i) => if 0 ≤ c then [.ne i .int 0] else []
+  | _ => []
+
+/-- The guard `p IS NOT FALSE` of an `AND` (`Expr.notFalse`, D50) is
+`p IS NULL OR p`: what `p` says of a column holds where it is NULL too. -/
 def nullNeFacts : Expr → Expr → List Fact
-  | .un .isNull (.un .not (.bin .eq (.field i) (.lit w))), .un .not (.bin .eq (.field j) (.lit w')) =>
-    if i = j ∧ w = w' then
-      (match w.numOf? with
-        | some (k, c) => [.ne i k c]
-        | none => [])
-    else []
+  | .un .isNull x, q => if x = q then zeroFact x else []
   | _, _ => []
 
 /-- `t < a OR b < t` with `a ≤ b` numbers of one kind: `t` is not in
@@ -474,33 +479,54 @@ theorem orGapFacts_sound {p q : Expr} {row : Row}
     · simp at hf
   · simp at hf
 
+theorem zeroFact_sound {x : Expr} {row : Row}
+    (h : x.eval row = .null ∨ (x.eval row).isTrue = true) : FactsHold (zeroFact x) row := by
+  unfold zeroFact
+  split
+  · rename_i i w
+    cases hnum : w.numOf? with
+    | none => intro f hf; simp at hf
+    | some kc =>
+      obtain ⟨k, c⟩ := kc
+      intro f hf
+      simp only [List.mem_singleton] at hf; subst hf
+      intro y hy heq
+      have hw := Value.numOf?_some hnum
+      have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
+        rw [hy, hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
+      have hX : (Expr.un .not (.bin .eq (.field i) (.lit w))).eval row = .bool false := hn
+      rcases h with h | h <;> rw [hX] at h <;> simp [Value.isTrue] at h
+  · rename_i c i
+    split
+    · rename_i hc
+      intro f hf
+      simp only [List.mem_singleton] at hf; subst hf
+      intro y hy heq
+      have hy0 : y = 0 := by simpa [NumKind.norm] using heq
+      subst hy0
+      have hX : (Expr.bin .lt (.lit (.int c)) (.field i)).eval row = .bool false := by
+        show BinFn.apply .lt (.int c) (row.getD i .null) = _
+        rw [hy]; simp [NumKind.val, BinFn.apply, Value.numPair, hc]
+      rcases h with h | h <;> rw [hX] at h <;> simp [Value.isTrue] at h
+    · intro f hf; simp at hf
+  · intro f hf; simp at hf
+
 theorem nullNeFacts_sound {p q : Expr} {row : Row}
     (hpq : (p.eval row).isTrue = true ∨ (q.eval row).isTrue = true) :
     FactsHold (nullNeFacts p q) row := by
   unfold nullNeFacts
   split
-  · rename_i i w j w'
+  · rename_i x q'
     split
-    · rename_i hij
-      obtain ⟨rfl, rfl⟩ := hij
-      cases hnum : w.numOf? with
-      | none => intro f hf; simp at hf
-      | some kc =>
-        obtain ⟨k, c⟩ := kc
-        intro f hf
-        simp only [List.mem_singleton] at hf; subst hf
-        intro x hx heq
-        have hw := Value.numOf?_some hnum
-        have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
-          rw [hx, hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
-        have hX : (Expr.un .not (.bin .eq (.field i) (.lit w))).eval row = .bool false := hn
-        have hP : (Expr.un .isNull (.un .not (.bin .eq (.field i) (.lit w)))).eval row =
-            .bool false := by
-          show UnFn.apply .isNull ((Expr.un .not (.bin .eq (.field i) (.lit w))).eval row) = _
-          rw [hX]; rfl
-        rcases hpq with h | h
-        · rw [hP] at h; simp [Value.isTrue] at h
-        · rw [hX] at h; simp [Value.isTrue] at h
+    · rename_i hxq
+      subst hxq
+      refine zeroFact_sound ?_
+      rcases hpq with h | h
+      · left
+        have : UnFn.apply .isNull (x.eval row) = .bool true := by
+          cases hv : x.eval row <;> simp_all [Expr.eval, UnFn.apply, Value.isTrue]
+        cases hv : x.eval row <;> simp_all [Expr.eval, UnFn.apply, Value.isTrue]
+      · exact .inr h
     · intro f hf; simp at hf
   · intro f hf; simp at hf
 
