@@ -1100,14 +1100,15 @@ def _(mo):
     needs, the export says so and refuses: Substrait doesn't say how
     `upper` treats non-ASCII text (ST-10 on the
     [upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)),
-    and the refusal names the way out:
+    and even with the customers declared ASCII, which the proof needs, the
+    refusal names the way out:
     """)
     return
 
 
 @app.cell
 def _(ibis, sv):
-    @sv.transform()
+    @sv.transform(requires={"orders": [~ibis._.customer.re_search(r"[^\x00-\x7f]")]})
     def shouty(orders):
         return orders.select(orders.id, name=orders.customer.upper())
 
