@@ -20,9 +20,9 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify._lean_eval import LeanRaised
 from sverify.engine import connect, put_table, run_checker, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
-from sverify._lean_eval import LeanRaised
 from sverify.testing import inline_tables, lean_values
 
 TABLES = {
