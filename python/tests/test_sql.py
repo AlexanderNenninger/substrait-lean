@@ -894,3 +894,41 @@ def test_tied_limit_takes_a_prefix_of_the_keys():
     # a filter between the sort and the LIMIT keeps the sort's order
     f = _tied(t.order_by(t.v).filter(t.id != 3).limit(3))
     assert [r[2] for r in f] == sorted(r[2] for r in TIED if r[0] != 3)[:3]
+
+
+FOLD_ROWS = pa.table(
+    {
+        "x": [1.5, -7.25, 0.0, 1e308, -1e308, math.inf, -math.inf, math.nan, None],
+        "n": [7, -7, 0, 2**62, -(2**62), 1, -1, 10, None],
+    }
+)
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda t: t.select(r=t.x / 2.0),
+        lambda t: t.select(r=t.x * 0.5),
+        lambda t: t.select(r=t.n // 10),
+        lambda t: t.select(r=t.n // -3),
+        lambda t: t.select(r=t.n % 7),
+    ],
+    ids=["double by 2", "double times 1/2", "int // 10", "int // -3", "int % 7"],
+)
+def test_guards_a_constant_decides_are_left_out(make):
+    """A literal divisor decides the zero, infinity and overflow checks and
+    the sign tests of a floor division, so the SQL leaves them out (#1608) and
+    gives Lean's rows on the edge values."""
+    t = ibis.table({"x": "float64", "n": "int64"}, name="t")
+    plan = json.loads(to_substrait_json(make(t)))
+    sql = to_sql(plan, DUCKDB)
+    assert "error(" not in sql
+    duck, lean = lean_and_duckdb(plan, {"t": FOLD_ROWS})
+    agree(plan, duck, lean)
+
+
+def test_a_constant_that_can_overflow_keeps_its_check():
+    """`x / 0.5` doubles the magnitude, so the overflow check stays."""
+    t = ibis.table({"x": "float64"}, name="t")
+    sql = to_sql(json.loads(to_substrait_json(t.select(r=t.x / 0.5))), DUCKDB)
+    assert "overflow to infinity" in sql and "division by zero" not in sql

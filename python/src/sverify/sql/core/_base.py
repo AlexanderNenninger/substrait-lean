@@ -198,10 +198,14 @@ class Dialect:
         `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
         raise self.not_written(f"overflow = {mode}", "see #241")
 
-    def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
+    def lowered(
+        self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
+    ) -> str | None:
         """`fn` of `args` as the engine's generated, proved lowering writes it
         (`sverify.sql.lowering`, #241), or None where there is none and the
-        printer writes it by hand. `kind` is the result's."""
+        printer writes it by hand. `kind` is the result's. `consts`: each
+        argument's value where it is a literal, so the guards that cannot fire
+        for it are left out."""
         return None
 
     # Identifiers and types
@@ -1798,6 +1802,42 @@ def _float_lit(e: Expr) -> float | None:
     if isinstance(e, Lit) and isinstance(e.value, float) and math.isfinite(e.value):
         return e.value
     return None
+
+
+def _int_lit(e: Expr) -> int | None:
+    """The value of a non-NULL integer constant."""
+    if isinstance(e, Lit) and e.kind == "int" and isinstance(e.value, int):
+        return e.value
+    return None
+
+
+def _decided(c: Expr) -> Expr:
+    """The condition `c` with the comparisons of integer constants worked out:
+    `x AND TRUE` is `x`, `x AND FALSE` is `FALSE` (also for a NULL `x`), and
+    `OR` the other way. Not a `Lit` bool where the data decides."""
+    match c:
+        case Bin(op="lt" | "eq" as op, left=a, right=b) if None not in (
+            x := _int_lit(a),
+            y := _int_lit(b),
+        ):
+            return Lit(x < y if op == "lt" else x == y, "bool")  # pyrefly: ignore
+        case Bin(op="and" | "or" as op, left=a, right=b):
+            stop = op == "or"
+            a, b = _decided(a), _decided(b)
+            if any(isinstance(v, Lit) and v.value is stop for v in (a, b)):
+                return Lit(stop, "bool")
+            for v, w in ((a, b), (b, a)):
+                if isinstance(v, Lit) and v.value is (not stop):
+                    return w
+            return Bin(op, a, b)
+        case Un(op="not", arg=a):
+            a = _decided(a)
+            return (
+                Lit(not a.value, "bool")
+                if isinstance(a, Lit) and a.kind == "bool"
+                else Un("not", a)
+            )
+    return c
 
 
 def _nan_ruled_out(op: str, a: Expr, b: Expr) -> bool:
@@ -3695,11 +3735,24 @@ def _floor(kind: str, a: Expr, b: Expr) -> Expr:
         if "int" in t:
             return Lit(int(t["int"]), "int")
         if "if" in t:
-            return If(go(t["if"]), go(t["then"]), go(t["else"]))
+            # A condition the literal divisor decides picks its arm.
+            if isinstance(c := go(t["if"]), Lit) and c.kind == "bool":
+                return go(t["then"] if c.value else t["else"])
+            return If(c, go(t["then"]), go(t["else"]))
         args = [go(x) for x in t["args"]]
         if t["fn"] == "ffloor":
             return Un("ffloor", args[0])
-        return Bin(t["fn"], args[0], args[1])
+        x, y = args
+        if t["fn"] == "lt" and None not in (i := [_int_lit(v) for v in args]):
+            return Lit(i[0] < i[1], "bool")  # pyrefly: ignore
+        if t["fn"] in ("and", "or"):
+            stop = t["fn"] == "or"
+            if any(isinstance(v, Lit) and v.value is stop for v in args):
+                return Lit(stop, "bool")
+            rest = [v for v in args if not isinstance(v, Lit)]
+            if len(rest) == 1:
+                return rest[0]
+        return Bin(t["fn"], x, y)
 
     from sverify.sql import lowering
 
@@ -4917,12 +4970,20 @@ class _Writer:
                 # Where an operand rules out a new NaN (a finite constant),
                 # the template's guard could not fire: the operator alone.
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
-                if not plain and (low := d.lowered(op, [sa, sb], "float")) is not None:
-                    return low if op == "fmod" else self.finite(low, unknown, by_zero_ok)
+                consts = [_float_lit(a), _float_lit(b)]
+                # A finite number divided by a constant of at least 1 in size, or
+                # multiplied by one of at most 1, has no larger magnitude: no overflow.
+                shrinks = (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0) or (
+                    op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts)
+                )
+                if not plain and (low := d.lowered(op, [sa, sb], "float", consts)) is not None:
+                    if op == "fmod" or shrinks:
+                        return low
+                    return self.finite(low, unknown, by_zero_ok)
                 sql = f(sa, sb)
                 if not d.guards:
                     return sql
-                if op != "fmod":
+                if op != "fmod" and not shrinks:
                     # `fmod` is exact: it never overflows.
                     sql = self.finite(sql, unknown, by_zero_ok)
                 if not _nan_ruled_out(op, a, b):
@@ -4940,7 +5001,8 @@ class _Writer:
                 what = "division" if op == "idiv" else "remainder"
                 sa = self.int_operand(a, ref, cols, what)
                 sb = self.int_operand(b, ref, cols, what)
-                if (low := d.lowered(op, [sa, sb], "int")) is not None:
+                consts = [_int_lit(a), _int_lit(b)]
+                if (low := d.lowered(op, [sa, sb], "int", consts)) is not None:
                     return low
                 return d.int_div(sa, sb) if op == "idiv" else d.int_mod(sa, sb)
             case Bin(op="ipow", left=a, right=b):
@@ -4980,6 +5042,9 @@ class _Writer:
                     return d.float_eq(sa, sb) if op == "eq" else d.float_lt(sa, sb)
                 return d.eq(sa, sb) if op == "eq" else d.lt(sa, sb)
             case If(cond=c, then=t, orelse=o):
+                c = _decided(c)
+                if isinstance(c, Lit) and c.kind == "bool":
+                    return go(t if c.value else o, kind(e) or ctx)
                 if (ab := _null_safe_eq(e)) is not None and kind(ab[0]) == kind(ab[1]):
                     k = kind(ab[0])
                     if (sql := d.not_distinct(go(ab[0], k), go(ab[1], k))) is not None:
