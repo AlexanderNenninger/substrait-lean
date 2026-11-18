@@ -456,3 +456,27 @@ def test_run_counts_the_nulls_of_a_resident_table() -> None:
         report.run(con)
     con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, 2], pa.int64())})))
     assert len(report.run(con).to_pylist()) == 2
+
+
+def test_run_checks_a_native_table_in_one_plan(monkeypatch) -> None:
+    from sverify import report as report_module
+    from sverify_duckdb import DuckDBStore
+
+    t = ibis.table({"a": "!int32", "b": "!int32"}, name="t")
+    report = sv.verify(t.select(y=t.a, z=t.b))
+    con = sv.connect()
+    con.put(
+        "t",
+        DuckDBStore().keep_table(
+            pa.table({"a": pa.array([1], pa.int64()), "b": pa.array([2], pa.int64())})
+        ),
+    )
+    calls: list[int] = []
+    real = report_module.violation_counts
+    monkeypatch.setattr(
+        report_module,
+        "violation_counts",
+        lambda table, conds, *rest: calls.append(len(conds)) or real(table, conds, *rest),
+    )
+    report.run(con)
+    assert calls[0] == 4  # two NULL counts and two ranges, in one call

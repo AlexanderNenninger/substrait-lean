@@ -2352,14 +2352,19 @@ def refuse_schema(plan: object, con: Connection, engine: str | None = None) -> N
                 )
             checks.update(more)
         table = con.table(t)
+        todo: list[tuple[str, str | None, Any]] = []
         for col, key in sorted(checks, key=lambda c: (c[0], c[1] or "")):
             x: Any = ibis._[col]
             if key is None:
-                cond = x.notnull()
+                todo.append((col, key, x.notnull()))
             else:
                 lo, hi = int_range(key)
-                cond = x.isnull() | ((x >= lo) & (x <= hi))
-            [(_c, n, error)] = violation_counts(table, [cond], engine)
+                todo.append((col, key, x.isnull() | ((x >= lo) & (x <= hi))))
+        # One plan over the table counts every check (`violation_counts`).
+        counts = (
+            violation_counts(table, [cond for _col, _key, cond in todo], engine) if todo else []
+        )
+        for (col, key, cond), (_c, n, error) in zip(todo, counts, strict=True):
             if n or error:
                 what = (
                     f"the check of column {col!r} raised: {error}"

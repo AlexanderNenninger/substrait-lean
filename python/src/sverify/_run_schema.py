@@ -170,9 +170,9 @@ def problems(
                 n, example = found
                 out.append(range_message(d.name, d.int_key, n, example))
         if d.non_null:
-            if data is None:
+            if data is None and schema.field(i).nullable:
                 on_engine.append((d.name, None))
-            elif n := data.column(i).null_count:
+            elif data is not None and (n := data.column(i).null_count):
                 out.append(null_message(d.name, n))
     return out, on_engine
 
