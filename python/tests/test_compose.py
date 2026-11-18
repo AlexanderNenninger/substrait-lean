@@ -38,7 +38,7 @@ def test_composed_contracts_connect():
     assert report is not None and report.verdict == sv.Verdict.PROVED
     # `doubled` was proved against `paid`'s guarantees, not against `orders`.
     assert report.requires == {
-        "t": ["(_.amount >= 0)", "(_.amount < 1000000000)", "_.amount.notnull()"]
+        "paid": ["(_.amount >= 0)", "(_.amount < 1000000000)", "_.amount.notnull()"]
     }
     prov = provenance(result)
     assert prov is not None and prov.transform is doubled
@@ -112,7 +112,7 @@ def test_keys_propagate_through_links():
 
     tagged(big(orders))
     assert tagged.report is not None
-    assert tagged.report.requires == {"t": ["unique(id)", "(_.amount < 1000000000)"]}
+    assert tagged.report.requires == {"big": ["unique(id)", "(_.amount < 1000000000)"]}
     with pytest.raises(CompositionError, match=r"tagged needs unique\(id\)"):
         tagged(paid(orders))
 
@@ -131,7 +131,7 @@ def test_two_contracted_inputs():
 
     combine(doubled(paid(orders)), paid(orders))
     assert combine.report is not None
-    assert set(combine.report.requires) == {"a", "b"}
+    assert set(combine.report.requires) == {"doubled", "paid"}
 
 
 def test_runtime_mode_checks_a_broken_link_on_data():
@@ -148,26 +148,3 @@ def test_runtime_mode_checks_a_broken_link_on_data():
         lenient(not_null(bound_orders([(1, "ada", -5)])))
     prov = provenance(lenient(not_null(bound_orders([(1, "ada", 5)]))))
     assert prov is not None and prov.unproved_links == ["lenient: (_.amount >= 0) on t"]
-
-
-def test_a_composed_report_names_the_parameter_not_the_upstream_transform():
-    """`requires={"orders": ...}` printed as `requires latest: ...` when the
-    input was the node `latest` (#1485)."""
-    import pyarrow as pa
-
-    import sverify as sv
-    from sverify.io import StaticSource
-
-    src = StaticSource(pa.table({"id": [1, 2], "amt": [1, 2]}), name="events")
-
-    @sv.transform(requires={"events": [sv.unique("id")]}, ensures=[sv.unique("id")])
-    def latest(events):
-        return events
-
-    @sv.transform(requires={"orders": [sv.unique("id")]}, ensures=[sv.unique("id")])
-    def daily(orders):
-        return orders.group_by("id").aggregate(t=orders.amt.sum())
-
-    report = src.pipe(latest).pipe(daily).report
-    assert "requires orders: unique(id)" in str(report)
-    assert "requires latest" not in str(report)

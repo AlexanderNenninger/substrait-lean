@@ -328,8 +328,8 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     report = sv.verify(t, on_inferred="off")
     assert [i.kind for i in report.errors] == ["SUM overflow"]
     assert any(
-        "it is in [0, 2], so a group's sum fits 64 bits for up to "
-        "4,611,686,018,427,387,903 rows" in h
+        "it is in [0, 2]. The job checks the sum as it runs; " in h
+        and "any group of up to 4,611,686,018,427,387,903 rows fits 64 bits" in h
         for h in report._hints
     ), report._hints
 
@@ -347,7 +347,12 @@ def test_an_assumed_sum_names_its_column():
     )
     report = sv.verify(g, requires={"sales": [_.amount_cents >= 0]})
     assumed = "SUM of `amount_cents` fits 64 bits in every group"
-    assert any(h.startswith("SUM of `amount_cents`: bound it") for h in report._hints)
+    assert any(
+        h.startswith(
+            "SUM of `amount_cents`: the job checks the sum as it runs. To prove it, bound it"
+        )
+        for h in report._hints
+    )
     assert "assumes: SUM of amount_cents fits 64 bits in every group" in str(report)
     assert assumed in report._repr_markdown_()
     assert "$" not in str(report) + report._repr_markdown_()

@@ -3040,7 +3040,7 @@ class ContractedTransform:
                 _merge({name: assumed}, {name: link.assumptions[param]})
             else:
                 prov = _lookup(op)
-                name = _fresh(param, taken)
+                name = _fresh(prov.transform.name if prov else param, taken)
                 placeholders[op] = (name, link.assumptions[param])
                 if prov is None:
                     plain[name] = (param, value)
