@@ -1226,6 +1226,24 @@ class _Lift:
         if not isinstance(exists, sge.Exists):
             return None
         sub = exists.this.this if isinstance(exists.this, sge.Subquery) else exists.this
+        if isinstance(sub, sge.SetOperation):
+            # An uncorrelated UNION lifts as an expression; one that reads the
+            # outer query's columns is refused by name.
+            self.outer.append(scope)
+            try:
+                self.query(sub)
+            except Unsupported as e:
+                if "correlated" in str(e):
+                    raise SqlUnsupported(
+                        "a set operation (UNION, EXCEPT, INTERSECT) in a correlated EXISTS "
+                        "is not supported yet",
+                        hint="write the EXISTS over one SELECT",
+                        issue=345,
+                    ) from e
+                raise
+            finally:
+                self.outer.pop()
+            return None
         if not isinstance(sub, sge.Select) or sub.args.get("with_"):
             return None
         self.outer.append(scope)

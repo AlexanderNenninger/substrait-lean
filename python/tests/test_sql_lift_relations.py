@@ -172,6 +172,11 @@ def test_sorts_put_nulls_last_unless_told():
         ),
         (
             "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer"
+            " UNION SELECT 1 FROM customers)",
+            "set operation",
+        ),
+        (
+            "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer"
             " LIMIT 1)",
             "LIMIT in a correlated EXISTS",
         ),
