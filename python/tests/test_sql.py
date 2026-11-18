@@ -976,3 +976,25 @@ def test_a_repeated_guarded_operation_is_computed_once():
     assert '"b0"' not in to_sql(plan, DUCKDB)
     both = pa.table({"x": BIND_X, "y": BIND_Y})
     assert len(duckdb_rows(json.dumps(plan), {"t": both})) == 5
+
+
+def test_a_repeated_date_operation_is_computed_once():
+    """`day + INTERVAL 7 DAY` is a timestamp in DuckDB's SQL and repeats the
+    date's range guards; the date arithmetic is computed once, in a layer below
+    (#1608), and the rows are Lean's on the edges of the reference's dates."""
+    days = pa.table(
+        {
+            "d": pa.array(
+                [dt.date(2024, 2, 22), dt.date(1, 1, 1), dt.date(9999, 12, 20), None],
+                pa.date32(),
+            )
+        }
+    )
+    report = sv.verify(
+        "SELECT d + INTERVAL 7 DAY AS r FROM t", tables={"t": days.schema}, on_inferred="warn"
+    )
+    assert report.internal_plan is not None
+    plan = json.loads(report.internal_plan)
+    sql = to_sql(plan, DUCKDB)
+    assert len(sql) < 2000 and '"b0"' in sql, len(sql)
+    agree(plan, *lean_and_duckdb(plan, {"t": days}))
