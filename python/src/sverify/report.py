@@ -1136,6 +1136,9 @@ class Report:
                 an input the check reads is not pinned to one version.
         """
 
+        from sverify.sql import parse_plan
+        from sverify.sql.core import open_choices
+
         total = 0
         for chk in self._margin_checks:
             on = (chk.get("engines") or {}).get(target)
@@ -1152,12 +1155,24 @@ class Report:
                 if deterministic:
                     raise PreconditionError(msg)
                 warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            plan = written_plan(json.dumps(chk["plan"]))
+            if not self.deterministic and (
+                open_ := open_choices(parse_plan(json.loads(plan)).root)
+            ):
+                # The check re-evaluates what is below the sum, with its own ties
+                # and its own LIMIT rows (`Rel.Allowed` leaves them open).
+                what = " and ".join(sorted(set(open_)))
+                msg = (
+                    f"the margin check and the plan each evaluate {what} whose rows "
+                    "are open (ties, or the rows of a LIMIT): the two may differ"
+                )
+                if deterministic:
+                    raise PreconditionError(msg)
+                warnings.warn(InferredWarning(msg, self), stacklevel=3)
             # Without the overflow checks of #575: the margin is at most `A`, and
             # a `v − t` past the largest double is farther than any bound.
             # Its windows aggregate whole partitions, so no row order matters.
-            res = run_plan(
-                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
-            )
+            res = run_plan(con, plan, engine, finite=False, tie_free=True)
             k = int(res.column(0)[0].as_py() or 0)
             if not k:
                 continue

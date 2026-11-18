@@ -49,9 +49,10 @@ documentation they rest on:
   clamps to the end of a shorter month, as `Time.addMonths` does.
 * **Windows**: `LAG`/`LEAD` take the default when the offset leaves the
   partition, as in Lean; `ORDER BY` is required. Tables have no row order
-  (no `rowid`), so nothing can stand for Lean's list order, which FETCH and
-  ties in a window follow: `row_ordinal` is refused. Windows run with
-  `to_sql(..., deterministic=True)`, when the caller knows there are no ties.
+  (no `rowid`), so nothing can stand for Lean's list order, which
+  `to_sql(..., rows="sequence")` asks for: `row_ordinal` is refused. Under the
+  default `rows="multiset"` ties and the rows of a FETCH are open, as
+  `Rel.Allowed` leaves them, and the plan runs.
 * **Modulus of doubles**: `MOD` computes `a - b * TRUNC(a / b)` in doubles,
   which differs from C's `fmod` for large quotients, so it is refused.
 * **Aggregates**: `VAR_*` and `STDDEV_*` of doubles use a formula that
@@ -430,8 +431,8 @@ class SnowflakeDialect(Dialect):
 
     def row_ordinal(self) -> str:
         raise Unsupported(
-            "Snowflake tables have no row order, so FETCH and windows over a named table "
-            "cannot follow the Lean model's list order (windows run with deterministic=True)"
+            "Snowflake tables have no row order, so rows='sequence' cannot follow the "
+            "Lean model's list order (rows='multiset' leaves ties open)"
         )
 
     def limit_offset(self, offset: int, count: int | None) -> str:

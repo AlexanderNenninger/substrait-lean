@@ -9,8 +9,9 @@ release.
 are Lean's `Rel.eval`, see `sverify_spark.dialect`) and runs it on a Spark
 session holding the given tables as temporary views. `session()` is a local
 session with the settings of `SPARK_CONF`; on a cluster or Databricks, pass
-your own session, configured the same way. Plans that need a table's row
-order are refused (`Unsupported`) unless `deterministic=True`.
+your own session, configured the same way. Ties and the rows of a `LIMIT`
+are open, as `Rel.Allowed` leaves them (`rows="multiset"`): a plan's last
+sort orders its result.
 """
 
 from __future__ import annotations
@@ -183,12 +184,11 @@ def run(
 
     Raises:
         sverify.engines.UnsupportedError: Spark SQL cannot express the plan with
-            Lean's meaning, for example a plan that needs a table's row order
-            without `deterministic=True`.
+            Lean's meaning.
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
     spark = spark or session()
-    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
+    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows="multiset")
     put_tables(tables, spark)
     return spark.sql(sql).toArrow()

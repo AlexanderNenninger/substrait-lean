@@ -53,9 +53,10 @@ result is the Lean value, checked on a local Spark session by
   `round(x · 10ˢ)` in doubles, through `BIGINT`, since Spark reads a double
   as its shortest text. Division by an integer (an `AVG`) is refused.
 * **Rows**: tables (Parquet, Delta, views) have no row order, so nothing
-  can stand for Lean's list order, which FETCH and ties in a sort or window
-  follow: `row_ordinal` is refused. Windows and sorts run with
-  `to_sql(..., deterministic=True)`, when the caller knows there are no ties.
+  can stand for Lean's list order, which `to_sql(..., rows="sequence")`
+  asks for: `row_ordinal` is refused. Under the default `rows="multiset"`
+  ties and the rows of a FETCH are open, as `Rel.Allowed` leaves them, and
+  the plan runs.
   A `SUM` or `AVG` of doubles is Spark's own, within the plan's bound of the
   reference's correctly rounded sum (D25, `float_sum`).
 * **Identifiers** are quoted with backticks; `spark.sql.caseSensitive` keeps
@@ -412,8 +413,8 @@ class SparkDialect(Dialect):
 
     def row_ordinal(self) -> str:
         raise Unsupported(
-            "Spark tables have no row order, so FETCH and windows over a named table "
-            "cannot follow the Lean model's list order (windows run with deterministic=True)"
+            "Spark tables have no row order, so rows='sequence' cannot follow the "
+            "Lean model's list order (rows='multiset' leaves ties open)"
         )
 
 
