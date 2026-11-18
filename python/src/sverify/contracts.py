@@ -1696,6 +1696,7 @@ def _verify_once(
             shown=shown,
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
             dialect=dialect,
+            finite=lambda e: _finite_bounds(e, schemas, assumable, dialect),
         ),
         _params=bound,
         _bounds=_int_bounds(out["facts"], dtypes),
@@ -1720,6 +1721,27 @@ def _verify_once(
             report._hints += division_hints(transform)
     report._hints += contradictions(requires, schemas)
     return report, out["inferred"], schemas
+
+
+def _finite_bounds(
+    shown: str, schemas: Mapping[str, ibis.Schema], assumable: Container[str], dialect: str
+) -> dict[str, list[Condition]]:
+    """Bounds of ±1e300 on the double column a `sum(x)` or `avg(x)` adds up:
+    they keep the sum from being NaN (+inf plus -inf). A hint proposes them
+    only where a proof confirms it (`_confirm_hints`)."""
+    m = re.fullmatch(r"(?:sum|avg|mean)\((\w+)\)(?: or \w+\(\1\))*", shown)
+    out: dict[str, list[Condition]] = {}
+    for t, schema in schemas.items():
+        if m is None or t not in assumable or m[1] not in schema or not schema[m[1]].is_floating():
+            continue
+        col = m[1]
+        q = f'"{col}"' if not col.isidentifier() else col
+        out[t] = (
+            [getattr(ibis._, col) >= -1e300, getattr(ibis._, col) <= 1e300]
+            if dialect == "ibis"
+            else [f"{q} >= -1e300", f"{q} <= 1e300"]
+        )
+    return out
 
 
 def _guess_bounds(
@@ -1805,6 +1827,7 @@ def _issues(
     shown: Callable[..., str | None],
     guess: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
     dialect: str = "ibis",
+    finite: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
 ) -> list[Issue]:
     """The checker's issues, one per expression the user wrote and kind
     (#687): the sub-expressions of an expression that may overflow, and the
@@ -1851,6 +1874,10 @@ def _issues(
         guessed = (
             guess(user) if error and not constant and bound and bound.get("why") and user else {}
         )
+        if not guessed and error and not constant and kind == "domain error" and user:
+            # `sum(x)` is NaN where x holds both +inf and -inf: finite bounds
+            # rule it out (`_cause`).
+            guessed = finite(user)
         if guessed:
             code, fallback = guessed, text
             text = (

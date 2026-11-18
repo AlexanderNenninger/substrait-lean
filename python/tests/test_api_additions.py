@@ -325,3 +325,29 @@ def test_needs_follow_the_fields_they_are_built_from():
     assert r.needs and r.needs == r.needs
     r._inferred = {}
     assert r.needs == []
+
+
+# -- suggested_requires covers the bounds a hint names (#1608) --------------------------
+
+_ORDERS = ibis.schema({"id": "int64", "customer": "int64", "qty": "int64", "total": "float64"})
+_HINTED = {
+    "sum_double": "SELECT customer, SUM(total) AS s FROM orders GROUP BY customer",
+    "avg_double": "SELECT customer, AVG(total) AS a FROM orders GROUP BY customer",
+    "lag": "SELECT id, qty - LAG(qty) OVER (PARTITION BY customer ORDER BY id) AS d FROM orders",
+    "cte": "WITH p AS (SELECT customer, total FROM orders WHERE qty > 0) "
+    "SELECT customer, SUM(total) AS t FROM p GROUP BY customer",
+    "left_join": "SELECT c.customer, COALESCE(SUM(o.total), 0) AS r FROM "
+    "(SELECT DISTINCT customer FROM orders) c LEFT JOIN orders o ON o.customer = c.customer "
+    "GROUP BY c.customer",
+    "ratio": "SELECT customer, SUM(total) / SUM(qty) AS ppu FROM orders GROUP BY customer",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_HINTED))
+def test_suggested_requires_states_the_bound_a_hint_names(name):
+    sql = _HINTED[name]
+    r = sv.verify(sql, tables={"orders": _ORDERS}, on_inferred="error")
+    assert r.verdict == sv.Verdict.UNPROVED
+    assert r.suggested_requires, "the hint names a bound; it must be in suggested_requires"
+    again = sv.verify(sql, tables={"orders": _ORDERS}, requires=r.suggested_requires)
+    assert again.verdict != sv.Verdict.UNPROVED
