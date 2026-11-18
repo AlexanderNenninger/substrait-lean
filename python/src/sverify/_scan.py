@@ -237,7 +237,8 @@ def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
     without changing a value (design note #173, section 5.2): the same type;
     a signed integer to a wider signed one (unsigned integers do not widen);
     `float32` to `float64`; a decimal to a greater precision at the same scale;
-    a list whose element widens; one string type to another, and a date32 to a date64 (a date64 may hold a time of day)."""
+    a list whose element widens; one string type to another;
+    a date32 to a date64 (not the reverse: a date64 may hold a time of day)."""
     types = pa.types
     if actual == expected:
         return True
