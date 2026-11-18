@@ -16,7 +16,7 @@ It finds the bugs that tests on sample data miss:
   runs alike on some engines
   ([second notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/02_sensor_alerts.py)).
 * A dbt test on a point-in-time join to a type-2 dimension, proved as a
-  contract instead of sampled, and the promises a left join's NULL padding
+  contract, and the promises a left join's NULL padding
   breaks
   ([third notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/03_orders_mart.py),
   [what a left join keeps](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#contracts)).
@@ -99,7 +99,8 @@ and `sverify-spark` with their runtimes; either package alone
 (`pip install sverify-spark`) verifies under its engine's semantics and
 writes its SQL without the runtime. Sverify finds every installed engine
 through its plugin (`sverify.profiles.ProfilePlugin`, the entry-point group
-`sverify.profiles`). Wheels bundle the checker as a small native binary. Elsewhere (Windows, an Intel Mac) pip
+`sverify.profiles`). Wheels bundle the checker as a small native binary for Linux (x86_64,
+aarch64) and macOS (arm64), Python 3.12 and later. Elsewhere (Windows, an Intel Mac) pip
 builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
 starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
 Contributors with a built checker set `SVERIFY_PREBUILT_CHECKER=<path to substrait-check>`, and an editable install links it instead.
