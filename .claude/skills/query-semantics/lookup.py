@@ -203,7 +203,9 @@ def table(flag: str) -> Any:
     if path is None:
         return None
     try:
-        out = subprocess.run([path, flag], capture_output=True, text=True, timeout=60, check=True)
+        out = subprocess.run(
+            [path, flag], capture_output=True, text=True, timeout=60, check=True
+        )
         return json.loads(out.stdout)
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         return None
@@ -303,7 +305,9 @@ def route_line(route: Any) -> str:
     return out
 
 
-def print_profiles(reports: dict[str, Any], engines: Iterable[str] = PROFILE_ENGINES) -> None:
+def print_profiles(
+    reports: dict[str, Any], engines: Iterable[str] = PROFILE_ENGINES
+) -> None:
     from sverify import routes
 
     print("\n== profiles (sv.verify(semantics=...); routes.choose to each engine)")
@@ -311,7 +315,7 @@ def print_profiles(reports: dict[str, Any], engines: Iterable[str] = PROFILE_ENG
         if isinstance(rep, str):
             print(f"  {sem:10} not checked: {rep[:200]}")
             continue
-        verdict = "verified" if rep.proved else "NOT verified"
+        verdict = "verified" if rep.verdict != "unproved" else "NOT verified"
         print(
             f"  {sem:10} {verdict}; observation {rep.observation}; "
             f"{'deterministic' if rep.deterministic else 'not determined up to row order'}"
@@ -361,7 +365,10 @@ def prose(v: Any) -> str:
 def evidence_of(fact: dict) -> str:
     if fact.get("evidence"):
         return fact["evidence"]
-    levels = [METHOD_EVIDENCE.get(p.get("method", ""), "docs") for p in fact.get("provenance", [])]
+    levels = [
+        METHOD_EVIDENCE.get(p.get("method", ""), "docs")
+        for p in fact.get("provenance", [])
+    ]
     return max(levels, key=EVIDENCE.index) if levels else "docs"
 
 
@@ -402,16 +409,22 @@ def matching_facts(
         score += sum(w in text for w in words)
         if score >= 2:
             out.append((score, d))
-    return sorted(out, key=lambda s: (s[1]["engine"], -s[0], -EVIDENCE.index(evidence_of(s[1]))))
+    return sorted(
+        out, key=lambda s: (s[1]["engine"], -s[0], -EVIDENCE.index(evidence_of(s[1])))
+    )
 
 
 def ledger_entries(fact_ids: set[str], fns: set[str], words: set[str]) -> list[dict]:
     out = []
     for f in sorted(ROOT.glob("upstream/bugs/*.json")):
         d = json.loads(f.read_text())
-        text = " ".join(str(d.get(k, "")) for k in ("summary", "repro", "handling")).lower()
+        text = " ".join(
+            str(d.get(k, "")) for k in ("summary", "repro", "handling")
+        ).lower()
         hit = set(d.get("facts", [])) & fact_ids
-        hit |= {n for n in fns if len(n) > 3 and re.search(rf"\b{re.escape(n)}\b", text)}
+        hit |= {
+            n for n in fns if len(n) > 3 and re.search(rf"\b{re.escape(n)}\b", text)
+        }
         hit |= {w for w in words if w in text}
         if hit:
             d["_why"] = ", ".join(sorted(hit))
@@ -428,7 +441,9 @@ def calls(path: Path, fn: str) -> list[dict]:
     for node in ast.walk(ast.parse(path.read_text())):
         if isinstance(node, ast.Call) and getattr(node.func, "id", None) == fn:
             entry: dict = {
-                "args": [a.value if isinstance(a, ast.Constant) else None for a in node.args]
+                "args": [
+                    a.value if isinstance(a, ast.Constant) else None for a in node.args
+                ]
             }
             for k in node.keywords:
                 if isinstance(k.value, ast.Constant):
@@ -448,12 +463,16 @@ def doc_chunks(path: Path) -> list[str]:
     return chunks
 
 
-def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bool) -> None:
+def print_static(
+    sql: str, fns: set[str], opts: list, words: set[str], prose: bool
+) -> None:
     nodes = constructs(sql)
     groups = groups_of(fns)
     all_groups = {g for gs in groups.values() for g in gs}
 
-    print("\n== options the query meets (Lean's functions table; docs/core-semantics.md)")
+    print(
+        "\n== options the query meets (Lean's functions table; docs/core-semantics.md)"
+    )
     for f in sorted(fns):
         print(
             f"  {f}: groups "
@@ -467,8 +486,12 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
     for prof in ["reference", *PROFILE_ENGINES, "substrait"]:
         rows = choices.get(prof)
         if rows is None:
-            pending = {"duckdb": "#587", "polars": "#587", "substrait": "#600"}.get(prof, "")
-            print(f"  {prof}: no table in this checker yet {f'({pending})' if pending else ''}")
+            pending = {"duckdb": "#587", "polars": "#587", "substrait": "#600"}.get(
+                prof, ""
+            )
+            print(
+                f"  {prof}: no table in this checker yet {f'({pending})' if pending else ''}"
+            )
             continue
         by = {(r.get("group"), r["option"]): r for r in rows}
         print(f"  {prof}:")
@@ -480,13 +503,17 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
             if r is None:
                 continue
             c = r["choice"]
-            allowed = "any" if c.get("kind") == "any" else "/".join(c.get("behaviours") or [])
+            allowed = (
+                "any" if c.get("kind") == "any" else "/".join(c.get("behaviours") or [])
+            )
             extra = []
             if c.get("kind") == "asked":
                 extra.append(f"default {'/'.join(c.get('default') or [])}")
             for k in ("class", "q", "shim", "rerun"):
                 if r.get(k) not in (None, "", {}):
-                    extra.append(f"{k} {json.dumps(r[k]) if isinstance(r[k], dict) else r[k]}")
+                    extra.append(
+                        f"{k} {json.dumps(r[k]) if isinstance(r[k], dict) else r[k]}"
+                    )
             if r.get("facts"):
                 extra.append(f"facts {', '.join(r['facts'])}")
             print(f"    {where(g, o):26} {allowed:24} {'; '.join(extra)}{via}")
@@ -523,7 +550,9 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
         )
 
     parse = ROOT / "frontend/Sverify/Frontend/Parse.lean"
-    print("\n== frontend/Sverify/Frontend/Parse.lean (how the Substrait function is read)")
+    print(
+        "\n== frontend/Sverify/Frontend/Parse.lean (how the Substrait function is read)"
+    )
     for f in sorted(fns):
         lines = grep(parse, rf'"{f}"', 3)
         print(
@@ -557,14 +586,18 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
             f"  {f:20} lean={v.get('lean', '?'):8} {v.get('note', v.get('description', ''))[:90]}"
         )
 
-    print("\n== catalogue/backend_semantics.py (prose per engine; `picks` is the reference's)")
+    print(
+        "\n== catalogue/backend_semantics.py (prose per engine; `picks` is the reference's)"
+    )
     mine = nodes - BORING
     entries = calls(ROOT / "catalogue/backend_semantics.py", "E")
     scored = []
     for x in entries:
         try:
             theirs = (
-                constructs(x["args"][3]) - BORING if len(x["args"]) > 3 and x["args"][3] else set()
+                constructs(x["args"][3]) - BORING
+                if len(x["args"]) > 3 and x["args"][3]
+                else set()
             )
         except Exception:  # noqa: BLE001
             theirs = set()
@@ -592,7 +625,9 @@ def print_static(sql: str, fns: set[str], opts: list, words: set[str], prose: bo
                 print(f"    - {c[:300]}{'…' if len(c) > 300 else ''}")
 
     status = json.loads((ROOT / "catalogue/status.json").read_text())
-    print("\n== catalogue queries with these features (catalogue/status.json, a snapshot)")
+    print(
+        "\n== catalogue queries with these features (catalogue/status.json, a snapshot)"
+    )
     shown_q = 0
     for qfile in sorted((ROOT / "catalogue/queries").glob("*.toml")):
         for q in tomllib.loads(qfile.read_text()).get("query", []):
@@ -622,7 +657,9 @@ def ibis_table() -> Any:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     ap.add_argument("--sql", help="the query, in DuckDB's SQL")
     ap.add_argument("--ibis", help="Ibis code over the table t (or the --table tables)")
     ap.add_argument(
@@ -663,8 +700,13 @@ def main() -> int:
     if args.ibis:
         import ibis.expr.operations as ops
 
-        tabs = {n: ibis.table(s, name=n) for n, s in schemas.items()} or {"t": ibis_table()}
-        expr = eval(args.ibis, {"ibis": ibis, "_": ibis._, **tabs, "t": next(iter(tabs.values()))})  # noqa: S307
+        tabs = {n: ibis.table(s, name=n) for n, s in schemas.items()} or {
+            "t": ibis_table()
+        }
+        expr = eval(
+            args.ibis,
+            {"ibis": ibis, "_": ibis._, **tabs, "t": next(iter(tabs.values()))},
+        )  # noqa: S307
         sql = sql or ibis.to_sql(expr, dialect="duckdb")
         print("Ibis's DuckDB SQL:", " ".join(sql.split())[:300])
         producer = sorted((ROOT / "python/src/sverify/ibis_substrait").glob("*.py"))
@@ -681,7 +723,8 @@ def main() -> int:
         for op in sorted({type(n).__name__ for n in expr.op().find(ops.Node)} - boring):
             lines = [ln for f in producer for ln in grep(f, rf"ops\.{op}\b", 2)][:2]
             print(
-                f"  {op}: " + ("\n      ".join(lines) if lines else "no translation (Unsupported)")
+                f"  {op}: "
+                + ("\n      ".join(lines) if lines else "no translation (Unsupported)")
             )
 
     nodes = constructs(sql)
@@ -691,15 +734,24 @@ def main() -> int:
     plan_opts: list[tuple[str | None, str]] = []
     if schemas or expr is not None:
         req, ens = conditions(args.requires, args.ensures)
-        reports = verify_profiles(expr if expr is not None else sql, schemas or None, req, ens)
+        reports = verify_profiles(
+            expr if expr is not None else sql, schemas or None, req, ens
+        )
         print_profiles(reports)
         from sverify import _plan_read, routes
 
         for rep in reports.values():
             if not isinstance(rep, str) and rep.plan:
                 plan = json.loads(rep.plan)
-                fns = {_plan_read.base_name(n) for n in _plan_read.function_names(plan).values()}
-                deps = rep.depends if rep.depends is not None else routes.plan_options(plan)
+                fns = {
+                    _plan_read.base_name(n)
+                    for n in _plan_read.function_names(plan).values()
+                }
+                deps = (
+                    rep.depends
+                    if rep.depends is not None
+                    else routes.plan_options(plan)
+                )
                 plan_opts = [(d.get("group"), d["option"]) for d in deps]
                 break
     opts = (

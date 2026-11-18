@@ -11,6 +11,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Literal
 
 from sverify._hooks import Collected, collecting
+from sverify.cli._common import UsageError
 
 if TYPE_CHECKING:
     from sverify import ContractedTransform, Node, Report
@@ -53,7 +54,7 @@ class Checked:
             return "unfinished"
         if self.links:
             return "not_proved"
-        if r.proved:
+        if r._proved:
             return "proved"
         rest = [c for c in r.ensures if not c.portable and not c.checked]
         missing = rest or r.errors or r.needs or r._transfer or r.floats_unmet
@@ -132,6 +133,11 @@ def load(path: str | Path, out: Discovery | None = None) -> Discovery:
     out = out if out is not None else Discovery(path)
     if not path.is_file():
         raise FileNotFoundError(f"{path}: no such file")
+    if path.suffix != ".py":
+        raise UsageError(
+            f"{path}: sverify check reads Python files; check SQL through `sv.sql` in a "
+            "`.py` file, or a dbt project through `sverify-dbt check`"
+        )
     name = f"_sverify_cli_{abs(hash(str(path.resolve())))}"
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:

@@ -1,7 +1,7 @@
 """Benchmarks for reading and writing table formats at scale (#173).
 
     uv run python scripts/bench_io.py [rows ...] [--formats delta,iceberg]
-        [--dir path] [--timeout seconds]
+        [--dir path] [--timeout seconds] [--partitioned]
 
 Per format and size: a table of `rows` orders, written in files of at most
 5·10⁶ rows by a setup process. A fresh process per view then times, on DuckDB:
@@ -16,11 +16,14 @@ Per format and size: a table of `rows` orders, written in files of at most
 The views are `filter` (orders with an amount, projected: as large as its
 input) and `by_customer` (amounts summed per customer: 10⁴ rows). Prints
 each phase's time and the process's peak memory (`ru_maxrss`) after it.
+With `--partitioned` the Delta tables gain a `bucket` column (16 values) they are
+partitioned by, to compare its `read` peak with the unpartitioned table's (#173).
 The tables are left in `--dir` (default: a temporary directory, deleted at
 the end).
 """
 
 import multiprocessing as mp
+import os
 import resource
 import shutil
 import sys
@@ -34,17 +37,20 @@ import pyarrow as pa
 FILE_ROWS = 5_000_000
 VIEWS = ("filter", "by_customer")
 CUSTOMERS = 10_000
+#: Set by `--partitioned`; the environment carries it to the spawned processes.
+PARTITIONED = "SVERIFY_BENCH_PARTITIONED"
 
 
 def orders_table(n: int, start: int = 0, seed: int = 0) -> pa.Table:
     rng = np.random.default_rng(seed + start)
-    return pa.table(
-        {
-            "id": np.arange(start, start + n, dtype=np.int64),
-            "customer": rng.integers(0, CUSTOMERS, n),
-            "amount": pa.array(rng.integers(0, 1000, n), mask=rng.random(n) < 0.05),
-        }
-    )
+    columns = {
+        "id": np.arange(start, start + n, dtype=np.int64),
+        "customer": rng.integers(0, CUSTOMERS, n),
+        "amount": pa.array(rng.integers(0, 1000, n), mask=rng.random(n) < 0.05),
+    }
+    if PARTITIONED in os.environ:
+        columns["bucket"] = (columns["customer"] % 16).astype(np.int32)
+    return pa.table(columns)
 
 
 def chunks(n: int, start: int = 0):
@@ -70,6 +76,7 @@ def setup(fmt: str, root: Path, n: int) -> None:
                 part,
                 mode="overwrite" if i == 0 else "append",
                 configuration={"delta.enableChangeDataFeed": "true"},
+                partition_by=["bucket"] if PARTITIONED in os.environ else None,
             )
     else:
         cat = catalog(root)
@@ -162,6 +169,9 @@ def run(ctx, target, args, timeout: float):
 def main(argv: list[str]) -> None:
     formats, argv = option(argv, "--formats", "delta,iceberg")
     timeout, argv = option(argv, "--timeout", "1800")
+    if "--partitioned" in argv:
+        argv.remove("--partitioned")
+        os.environ[PARTITIONED] = "1"
     base, argv = option(argv, "--dir", "")
     sizes = [int(float(a)) for a in argv] or [10**6, 10**7]
     ctx = mp.get_context("spawn")

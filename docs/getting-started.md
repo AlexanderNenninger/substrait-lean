@@ -4,7 +4,9 @@ Sverify proves what a data transformation promises before any data runs,
 takes the proof to DuckDB, Polars and Spark, and keeps the result up to date
 from the changes. This page goes from the install to a proved plan exported
 for any Substrait consumer, in ten steps, each a step up from the one
-before. Then it lists what goes wrong without a checker, sketches how the
+before. Steps 1 to 3, a contract, SQL and the preconditions a plan needs, are
+the first hour; steps 4 to 10 go further, into engines, doubles, sinks, profiles and
+Substrait consumers, and each can wait. Then it lists what goes wrong without a checker, sketches how the
 checker works, and points to the tour and the task pages.
 
 The inputs are a few rows in memory. Every Python block runs as written, in
@@ -110,13 +112,13 @@ report = sv.verify(
     requires={"orders": ["qty > 0", "total >= 0"]},
     ensures=["unit >= 0"],
 )
-print(report.proved)
+print(report.verdict == sv.Verdict.PROVED)
 # True
 print(report.run(con).to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}]
 ```
 
-`report.run` refuses a report that did not prove (`report.proved` is False)
+`report.run` refuses a report that did not prove (`report.verdict == sv.Verdict.PROVED` is False)
 with a `RouteError`; `report.run(con, unverified=True)` runs it anyway.
 
 The SQL is DuckDB's dialect, read with sverify's reference semantics
@@ -126,8 +128,9 @@ division, and `/` would give a double.
 ## 3. The preconditions a plan needs, declared and checked before the run
 
 Leave out `requires`, and Sverify works out the preconditions under which
-the plan cannot fail: here that `qty` is never zero, and that `total` stays
-far enough from the smallest integer for the division not to overflow. It
+the plan cannot fail: here that `qty` is never zero, and that `total` is
+above a bound just short of the smallest 64-bit integer, which divided by
+`-1` would overflow. It
 reports the plan as not proved and asks you to declare them
 ([why inferred preconditions are errors](reference-semantics.md#errors)):
 
@@ -136,8 +139,8 @@ from sverify.errors import PreconditionError
 
 t = con.table("orders")
 undeclared = sv.verify(t.select(t.id, unit=t.total // t.qty))
-print(undeclared.proved)
-# False
+print(undeclared.verdict)
+# unproved
 print(undeclared)
 # needs: (_.total >= -9 * 10**18) and (_.qty != 0) on orders, inferred from `total // qty` (overflow or division by zero otherwise): declare them in requires ...
 # ...
@@ -152,8 +155,8 @@ declared = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
     requires={"orders": [_.qty != 0, _.total >= 0]},
 )
-print(declared.proved)
-# True
+print(declared.verdict)
+# proved
 con.put("orders", pa.table({"id": [4], "qty": [0], "total": [10]}))
 try:
     declared.run(con)
@@ -231,10 +234,8 @@ meets leaves the plan unproved, with the reason and a tolerance that would
 do.
 
 ```python
-tight = sv.verify(
-    mean_x, requires=bounded, ensures=[sv.equivalent(floats=sv.within(abs=1e-12))]
-)
-print(tight.proved)
+tight = sv.verify(mean_x, requires=bounded, ensures=[sv.equivalent(floats=sv.within(abs=1e-12))])
+print(tight.verdict == sv.Verdict.PROVED)
 # False
 print(tight)
 # observes: equivalent(floats=within(abs=1e-12)); the plan's bound on its doubles is 1.1e-10; NOT met: no engine meets the tolerance
@@ -366,15 +367,15 @@ at every option the plan meets; `str(report)` names the options where it
 allows more:
 
 ```python
-print(sv.verify(t.select("id", "total"), semantics="substrait").proved)
-# True
+print(sv.verify(t.select("id", "total"), semantics="substrait").verdict)
+# proved
 plus_one = sv.verify(
     t.select(t.id, more=t.total + 1),
     requires={"orders": [_.total.between(0, 10**6)]},
     semantics="substrait",
 )
-print(plus_one.proved)
-# False
+print(plus_one.verdict)
+# unproved
 print(str(plus_one).splitlines()[3])
 #   not proved under semantics="substrait": int.arith's overflow allows ERROR, SILENT, SATURATE, the reference only ERROR
 ```
@@ -411,8 +412,8 @@ parity = sv.verify(
 )
 print(parity.semantics)
 # reference
-print(parity.proved)
-# True
+print(parity.verdict)
+# proved
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
 print(parity.routes["polars"].kind)
@@ -445,8 +446,8 @@ exported = unit.to_substrait()  # protobuf JSON; "binary" for bytes
 manifest = unit.substrait_contract()["manifest"]
 print([(p["group"], p["option"], p["values"]) for p in manifest["pinned"]])
 # [('int.arith', 'overflow', ['ERROR']), ('int.div', 'overflow', ['ERROR']), ('int.div', 'on_division_by_zero', ['ERROR']), ('int.div', 'on_domain_error', ['ERROR', 'NULL'])]
-print(sv.Report.from_substrait(exported).proved)
-# True
+print(sv.Report.from_substrait(exported).verdict)
+# proved
 ```
 
 Where Substrait has no option for a choice the proof uses, a spec gap,

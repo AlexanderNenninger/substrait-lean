@@ -37,9 +37,9 @@ def test_changes_lives_in_io() -> None:
 def test_from_substrait_is_a_classmethod_of_report() -> None:
     t = ibis.table({"k": "int64"}, name="t")
     exported = _quiet(sv.verify, t.select("k")).to_substrait()
-    assert _quiet(sv.Report.from_substrait, exported).proved
+    assert _quiet(sv.Report.from_substrait, exported).verdict == sv.Verdict.PROVED
     with pytest.warns(DeprecationWarning, match="sverify.Report.from_substrait"):
-        assert sv.from_substrait(exported).proved  # type: ignore[operator]
+        assert sv.from_substrait(exported).verdict == sv.Verdict.PROVED  # type: ignore[operator]
 
 
 # -- A2: condition arguments --------------------------------------------------------
@@ -106,7 +106,7 @@ def test_a_transform_has_a_report() -> None:
 
     t = ibis.table({"k": "int64"}, name="t")
     _quiet(keep, t)
-    assert keep.report is not None and keep.report.proved
+    assert keep.report is not None and keep.report.verdict == sv.Verdict.PROVED
     with pytest.warns(DeprecationWarning, match=r"read \.report"):
         assert keep.last_report is keep.report
     assert keep.report.preconditions == []

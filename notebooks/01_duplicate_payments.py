@@ -4,7 +4,6 @@
 #     "deltalake",
 #     "ibis-framework[duckdb]==12.0.0",
 #     "marimo",
-#     "sqlglot",
 #     "sverify[polars,delta,spark]",
 # ]
 #
@@ -94,7 +93,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import ENGINES, to_sql
+    from sverify.engines import ENGINES
     from sverify.io import DeltaSink, DeltaSource
 
     lake = Path(tempfile.mkdtemp())  # a local "lake"; any Delta URI works, with storage_options
@@ -142,7 +141,6 @@ def _():
         ibis,
         lake,
         sv,
-        to_sql,
         txns,
         write_deltalake,
     )
@@ -165,8 +163,7 @@ def _(mo):
     counts on:
 
     * `requires` is what the job assumes about its input. Transaction ids
-      are unique, amounts are not negative, and timestamps are before 2100,
-      so that adding five minutes can't overflow.
+      are unique and amounts are not negative.
     * `ensures` is what the refund queue relies on. There is one row per
       pair, the first transaction comes before its duplicate, every row has
       a merchant and a non-negative amount, and the duplicate is no earlier
@@ -181,7 +178,7 @@ def _(mo):
 
 
 @app.cell
-def _(dt, ibis, sv):
+def _(ibis, sv):
     from ibis import _
 
     def find_duplicates(transactions):
@@ -208,7 +205,6 @@ def _(dt, ibis, sv):
         "transactions": [
             sv.unique("txn_id"),
             _.amount_cents >= 0,
-            _.ts < dt.datetime(2100, 1, 1),
         ]
     }
     ENSURES = [
@@ -238,11 +234,11 @@ def _(mo):
 
 
 @app.cell
-def _(DeltaSource, duplicate_payments, lake):
+def _(DeltaSource, duplicate_payments, lake, sv):
     transactions = DeltaSource(str(lake / "transactions"))
     dups = transactions.pipe(duplicate_payments)
     report = duplicate_payments.report
-    assert report.proved and not report.issues
+    assert report.verdict == sv.Verdict.PROVED and not report.issues
     first_refresh = dups.refresh()
     return dups, first_refresh, report, transactions
 
@@ -420,13 +416,8 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(dialect, dups, mo, to_sql):
-    import json
-
-    import sqlglot
-
-    _sql = to_sql(json.loads(dups.internal_plan), dialect.value)
-    mo.md(f"```sql\n{sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]}\n```")
+def _(dialect, dups, mo):
+    mo.md(f"```sql\n{dups.to_sql(dialect.value)}\n```")
     return
 
 

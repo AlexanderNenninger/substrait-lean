@@ -193,7 +193,7 @@ def test_averages_within_0_to_100_are_proved_up_to_rounding() -> None:
             _.cpu_avg <= 100.001,
         ],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_an_average_keeps_its_range_exactly() -> None:
@@ -235,7 +235,7 @@ def test_negative_values_keep_their_sign() -> None:
         requires={"t": [_.x <= 0, _.x.notnull()]},
         ensures=[_.s <= 0, _.a <= 0],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
 
 
 def test_approx_rewrites_comparisons() -> None:
@@ -269,7 +269,7 @@ def test_truncating_a_bounded_average_is_exact() -> None:
         requires={"metrics": [*CPU, sv.max_rows(10_000_000)]},
         ensures=[_.c >= 0, _.c <= 100],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_sums_and_means_of_converted_integers() -> None:
@@ -282,7 +282,7 @@ def test_sums_and_means_of_converted_integers() -> None:
         requires={"t": [_.cpu >= 0, _.cpu <= 100, _.cpu.notnull(), sv.max_rows(10_000_000)]},
         ensures=[_.s >= 0, sv.approx(_.s <= 1_000_000_000), _.m >= 0, sv.approx(_.m <= 100)],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 pairs = st.lists(st.tuples(values, values), min_size=2, max_size=40)
@@ -371,11 +371,11 @@ def test_casts_of_rounded_aggregates_keep_their_bounds() -> None:
             _.ad <= 100.01,
         ],
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     assert not report.issues
     # The sum rounds once, and `10¹⁰` is a double: its cast keeps the bound.
     exact = sv.verify(casts, requires={"hosts": HOSTS}, ensures=[_.si <= 10_000_000_000])
-    assert exact.proved
+    assert exact.verdict == sv.Verdict.PROVED
 
 
 def test_the_cast_of_a_sum_needs_a_cap() -> None:
@@ -391,7 +391,7 @@ def test_the_cast_of_a_sum_needs_a_cap() -> None:
 def test_a_decimal_too_narrow_for_the_bound_may_overflow() -> None:
     rolled = hosts.group_by("host").aggregate(ad=hosts.cpu.mean().cast("decimal(4, 2)"))
     report = sv.verify(rolled, requires={"hosts": HOSTS}, ensures=[])
-    assert report.issues and not report.proved
+    assert report.issues and report.verdict == sv.Verdict.UNPROVED
 
 
 def test_window_sums_have_the_aggregate_bound() -> None:
@@ -451,7 +451,11 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
     assert corr.routes["duckdb"].evidence == "tested"
     tol = [sv.equivalent(floats=sv.within(abs=1e-3))]
     tight = sv.verify(t.group_by("k").aggregate(c=t.x.corr(t.y)), requires=req, ensures=tol)
-    assert not tight.proved and "c has no bound" in str(tight) and "#918" in str(tight)
+    assert (
+        tight.verdict == sv.Verdict.UNPROVED
+        and "c has no bound" in str(tight)
+        and "#918" in str(tight)
+    )
 
 
 def test_a_tolerance_on_a_column_without_a_bound_is_refused() -> None:
@@ -474,5 +478,5 @@ def test_a_tolerance_on_a_column_without_a_bound_is_refused() -> None:
         plain.run(con, "duckdb")
         assert plain.routes["duckdb"].evidence == "tested"
         tight = sv.verify(expr, requires=req, ensures=tol)
-        assert not tight.proved
+        assert tight.verdict == sv.Verdict.UNPROVED
         assert f"{col} has no bound" in str(tight)

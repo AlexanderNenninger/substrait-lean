@@ -126,7 +126,7 @@ def test_the_laws_prove_contracts(query, ensures, semantics):
     report = sv.verify(
         query, tables=SCHEMAS, ensures=ensures, counterexamples=0, semantics=semantics
     )
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
     assert not report.errors
 
 
@@ -137,7 +137,7 @@ def test_what_the_laws_do_not_say_stays_unproved():
         ("SELECT entropy(amount) AS e FROM orders", ["e <= 100.0"]),
     ]:
         report = sv.verify(query, tables=SCHEMAS, ensures=ensures, counterexamples=0)
-        assert not report.proved
+        assert report.verdict == sv.Verdict.UNPROVED
 
 
 @pytest.mark.parametrize(
@@ -680,7 +680,7 @@ def test_the_326_laws_prove_contracts(query, ensures, semantics):
     report = sv.verify(
         query, tables=SCHEMAS, ensures=ensures, counterexamples=0, semantics=semantics
     )
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
 
 
 def test_moments_may_raise():

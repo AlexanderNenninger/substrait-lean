@@ -90,7 +90,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from pyiceberg.catalog.sql import SqlCatalog
-    from sverify.engines import ENGINES, UnsupportedError, to_sql
+    from sverify.engines import ENGINES, UnsupportedError
     from sverify.errors import PreconditionError
     from sverify.io import IcebergSink, IcebergSource
 
@@ -143,7 +143,6 @@ def _():
         readings_batch,
         readings_table,
         sv,
-        to_sql,
     )
 
 
@@ -318,7 +317,7 @@ def _(IcebergSource, alerts, catalog, sv, three_high):
     naive = readings.pipe(three_high)  # a plain function: no contract
     alerts_node = readings.pipe(alerts)
     report = alerts.report
-    assert report.proved and report.deterministic
+    assert report.verdict == sv.Verdict.PROVED and report.deterministic
     sv.group(naive, alerts_node).refresh()
     assert sorted(naive.to_arrow()["device_id"].to_pylist()) == [1, 3]
     assert alerts_node.to_arrow()["device_id"].to_pylist() == [1]
@@ -360,7 +359,7 @@ def _(mo):
 
 
 @app.cell
-def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
+def _(ENGINES, UnsupportedError, alerts, alerts_node, naive, readings):
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -369,11 +368,10 @@ def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
     assert len({repr(r) for r in _rows.values()}) == 1
 
     try:
-        to_sql(alerts_node.internal_plan, "snowflake")
+        naive.to_sql("snowflake")
     except UnsupportedError as e:
         refused = str(e)
-    _sql = to_sql(alerts_node.internal_plan, "snowflake", deterministic=report.deterministic)
-    assert _sql.startswith("SELECT")
+    assert alerts_node.to_sql("snowflake").startswith("SELECT")
     refused
     return
 
@@ -381,9 +379,9 @@ def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    With `deterministic=True` the SQL is written. Without the key, `deterministic`
-    would be `False`, and passing `deterministic=True` anyway would be an
-    unproved promise.
+    The key proved `deterministic`, so `alerts_node.to_sql("snowflake")`
+    writes the SQL. The plain function has no such proof, and its node
+    refuses the dialect.
 
     ## 6. New readings, and a sensor that sends twice
 

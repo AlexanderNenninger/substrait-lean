@@ -790,3 +790,145 @@ def test_lists_run_on_duckdb_as_lean_says(build, rows):
 
 def order_matters_of(plan: str) -> bool:
     return order_matters(parse_plan(json.loads(plan)).root)
+
+
+def test_open_ties_write_no_row_ordinal():
+    """Under `rows="multiset"` a sort, a LIMIT and the root carry no `rowid`
+    ordinal (#1608); a LIMIT below no sort is a plain LIMIT, and a sorted
+    result is still ordered. `rows="sequence"` keeps the ordinal."""
+    t = ibis.table({"id": "int64", "v": "int64"}, name="t")
+    for expr, order in [
+        (t.limit(3), False),
+        (t.order_by([t.v, t.id]).limit(3), True),
+        (t.filter(t.v > 1).order_by(t.v), True),
+        (t.mutate(w=t.v + 1), False),
+    ]:
+        plan = json.loads(to_substrait_json(expr))
+        open_ = to_sql(plan, DUCKDB, rows="multiset")
+        assert "rowid" not in open_
+        assert ("ORDER BY" in open_) == order
+        if not order:
+            assert "ROW_NUMBER" not in open_
+    assert "rowid" in to_sql(json.loads(to_substrait_json(t.limit(3))), DUCKDB)
+
+
+def test_count_distinct_is_written_natively():
+    """`COUNT(DISTINCT x)` of a non-double is the engine's own, not a
+    `ROW_NUMBER` over (group, value) with a CASE (#1608); NULLs are not counted."""
+    t = ibis.table({"k": "int64", "s": "string"}, name="t")
+    expr = t.group_by("k").aggregate(n=t.s.nunique())
+    rows = [(1, "a"), (1, "a"), (1, "b"), (1, None), (2, None), (3, "x"), (3, "x")]
+    sql = to_sql(json.loads(to_substrait_json(expr)), DUCKDB)
+    assert "COUNT(DISTINCT" in sql and "ROW_NUMBER" not in sql
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t(k BIGINT, s VARCHAR)")
+    con.executemany("INSERT INTO t VALUES (?, ?)", rows)
+    assert sorted(con.execute(sql).fetchall()) == [(1, 2), (2, 0), (3, 1)]
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        lambda t: t.order_by([t.v.desc(), t.id]).limit(3),
+        lambda t: t.order_by([t.v, t.id]).limit(2, offset=1),
+        lambda t: t.order_by([t.v.desc(), t.id]).limit(4).order_by(t.id.desc()).limit(2),
+    ],
+    ids=["desc then id", "offset", "sort of a limit"],
+)
+def test_order_by_limit_is_a_top_n(limit):
+    """`ORDER BY .. LIMIT n` is one sorted SELECT with a LIMIT, which DuckDB
+    runs as a top-N, and no `ROW_NUMBER` numbers the table before the limit
+    (#1608). The rows and their order are the reference's."""
+    t = ibis.table({"id": "int64", "v": "int64"}, name="t")
+    expr = limit(t)
+    rows = [(i, (i * 7) % 5) for i in range(1, 12)]
+    sql = to_sql(json.loads(to_substrait_json(expr)), DUCKDB)
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t(id BIGINT, v BIGINT)")
+    con.executemany("INSERT INTO t VALUES (?, ?)", rows)
+    assert "Top N" in con.execute("EXPLAIN " + sql).fetchall()[0][1]
+    want = ibis.duckdb.from_connection(con).execute(expr)
+    assert [tuple(r) for r in con.execute(sql).fetchall()] == [
+        tuple(r) for r in want.itertuples(index=False)
+    ]
+
+
+TIED = [(1, "a", 2), (2, "a", 2), (3, "a", 1), (4, "b", 5), (5, "b", 5), (6, "b", 5)]
+
+
+def _tied(expr):
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t(id BIGINT, g VARCHAR, v BIGINT)")
+    con.executemany("INSERT INTO t VALUES (?, ?, ?)", TIED)
+    plan = json.loads(to_substrait_json(expr))
+    return con.execute(to_sql(plan, DUCKDB, rows="multiset")).fetchall()
+
+
+def test_tied_window_is_numbered_in_key_order():
+    """On tied data the written window keeps what `Rel.Allowed` states (#1608):
+    `ROW_NUMBER` numbers each partition in key order, `LAG` follows that one
+    arrangement, and which of the tied rows comes first is open."""
+    t = ibis.table({"id": "int64", "g": "string", "v": "int64"}, name="t")
+    w = ibis.window(group_by=t.g, order_by=t.v)
+    rows = _tied(t.mutate(rn=ibis.row_number().over(w), prev=t.v.lag().over(w)))
+    assert sorted(r[0] for r in rows) == [r[0] for r in TIED]
+    for g in "ab":
+        part = sorted((r for r in rows if r[1] == g), key=lambda r: r[3])
+        assert [r[3] for r in part] == list(range(len(part)))
+        assert [r[2] for r in part] == sorted(r[2] for r in part)
+        assert part[0][4] is None
+        assert [r[4] for r in part[1:]] == [r[2] for r in part[:-1]]
+
+
+def test_tied_limit_takes_a_prefix_of_the_keys():
+    """`ORDER BY v LIMIT n` over ties returns n rows whose keys bound the rest,
+    and a LIMIT with no sort below it returns any n rows (#1608)."""
+    t = ibis.table({"id": "int64", "g": "string", "v": "int64"}, name="t")
+    got = _tied(t.order_by(t.v).limit(4))
+    assert len(got) == 4
+    assert [r[2] for r in got] == sorted(r[2] for r in TIED)[:4]
+    assert {r[0] for r in got} <= {r[0] for r in TIED}
+    kept = {r[0] for r in got}
+    assert max(r[2] for r in got) <= min(r[2] for r in TIED if r[0] not in kept)
+    assert len(_tied(t.limit(2))) == 2
+    # a filter between the sort and the LIMIT keeps the sort's order
+    f = _tied(t.order_by(t.v).filter(t.id != 3).limit(3))
+    assert [r[2] for r in f] == sorted(r[2] for r in TIED if r[0] != 3)[:3]
+
+
+FOLD_ROWS = pa.table(
+    {
+        "x": [1.5, -7.25, 0.0, 1e308, -1e308, math.inf, -math.inf, math.nan, None],
+        "n": [7, -7, 0, 2**62, -(2**62), 1, -1, 10, None],
+    }
+)
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda t: t.select(r=t.x / 2.0),
+        lambda t: t.select(r=t.x * 0.5),
+        lambda t: t.select(r=t.n // 10),
+        lambda t: t.select(r=t.n // -3),
+        lambda t: t.select(r=t.n % 7),
+    ],
+    ids=["double by 2", "double times 1/2", "int // 10", "int // -3", "int % 7"],
+)
+def test_guards_a_constant_decides_are_left_out(make):
+    """A literal divisor decides the zero, infinity and overflow checks and
+    the sign tests of a floor division, so the SQL leaves them out (#1608) and
+    gives Lean's rows on the edge values."""
+    t = ibis.table({"x": "float64", "n": "int64"}, name="t")
+    plan = json.loads(to_substrait_json(make(t)))
+    sql = to_sql(plan, DUCKDB)
+    assert "error(" not in sql
+    duck, lean = lean_and_duckdb(plan, {"t": FOLD_ROWS})
+    agree(plan, duck, lean)
+
+
+def test_a_constant_that_can_overflow_keeps_its_check():
+    """`x / 0.5` doubles the magnitude, so the overflow check stays."""
+    t = ibis.table({"x": "float64"}, name="t")
+    sql = to_sql(json.loads(to_substrait_json(t.select(r=t.x / 0.5))), DUCKDB)
+    assert "overflow to infinity" in sql and "division by zero" not in sql

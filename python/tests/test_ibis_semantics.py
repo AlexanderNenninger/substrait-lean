@@ -207,11 +207,14 @@ def test_params_are_bound_for_verify():
     p, q = ibis.param(ibis.dtype("int64")), ibis.param(ibis.dtype("string"))
     expr = t.filter((t.qty > p) & (t.name != q))
     report = sv.verify(expr, params={p: 5, q: "x"}, ensures=[ibis._.qty > 5])
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
     # The proof is for these values only, and the report says so.
     assert report._params == ["param1 (int64) = 5", "param2 (string) = 'x'"]
     assert "proved for these parameter values only" in str(report)
-    assert not sv.verify(expr, params={p: 0, q: "x"}, ensures=[ibis._.qty > 5]).proved
+    assert (
+        sv.verify(expr, params={p: 0, q: "x"}, ensures=[ibis._.qty > 5]).verdict
+        == sv.Verdict.UNPROVED
+    )
     with pytest.raises(ValueError, match="pass params"):
         sv.verify(expr, params={p: 5})
     with pytest.raises(TypeError, match="parameter's type"):

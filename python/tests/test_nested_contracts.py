@@ -23,7 +23,7 @@ def test_a_filtered_list_keeps_its_length_bound():
         requires={"t": [_.tags.notnull(), _.tags.length() <= 5]},
         ensures=[_.tags.length() <= 5, _.tags.length() >= 0],
     )
-    assert report.proved, report.unproved
+    assert report.verdict == sv.Verdict.PROVED, report.unproved
     assert report.facts["tags"] == "a list (length ≤ 5; of a string or NULL)"
 
 
@@ -31,10 +31,10 @@ def test_elements_are_not_null_after_fill_null():
     # `fill_null` on every element, then one row per element: none is NULL.
     expr = T.select(T.id, xs=T.xs.map(lambda x: x.fill_null(0))).unnest("xs")
     report = sv.verify(expr, ensures=[_.xs.notnull()])
-    assert report.proved, report.unproved
+    assert report.verdict == sv.Verdict.PROVED, report.unproved
     # Without it, an element may be NULL.
     report = sv.verify(T.select(T.id, T.xs).unnest("xs"), ensures=[_.xs.notnull()])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_unnest_keeps_an_element_bound():
@@ -42,7 +42,7 @@ def test_unnest_keeps_an_element_bound():
     clipped = T.xs.map(lambda x: x.fill_null(0).clip(lower=0, upper=9))
     expr = T.select(T.id, xs=clipped).unnest("xs")
     report = sv.verify(expr, ensures=[_.xs >= 0, _.xs <= 9])
-    assert report.proved, report.unproved
+    assert report.verdict == sv.Verdict.PROVED, report.unproved
 
 
 def test_an_element_in_range_is_not_null():
@@ -51,7 +51,7 @@ def test_an_element_in_range_is_not_null():
     report = sv.verify(
         expr, requires={"t": [_.xs.notnull(), _.xs.length() >= 1]}, ensures=[_.first.notnull()]
     )
-    assert report.proved, report.unproved
+    assert report.verdict == sv.Verdict.PROVED, report.unproved
     # Without the length, the list may be empty.
     report = sv.verify(expr, requires={"t": [_.xs.notnull()]}, ensures=[_.first.notnull()])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED

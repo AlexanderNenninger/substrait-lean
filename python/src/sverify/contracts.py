@@ -718,7 +718,7 @@ def verify(
     Ibis expression compiles with sverify's own producer, so it means what
     `docs/reference-semantics.md` ("The Ibis frontend") says, whichever Ibis
     backend it came from; where
-    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
+    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on some backends, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DuckDB and
     Polars. A SQL string, and a SQL condition, is DuckDB's SQL, lifted by
@@ -810,7 +810,7 @@ def verify(
             tables={"orders": orders},
             ensures=["amount > 0"],
         )
-        report.proved  # True
+        report.verdict  # Verdict.PROVED
         ```
 
         An Ibis expression, with preconditions:
@@ -1421,6 +1421,29 @@ def _confirm_suggestions(report: Report, requires, once) -> Report:
     return replace(report, ensures=ensures)
 
 
+def _output_types(transform: Transform, schemas: Mapping[str, ibis.Schema]) -> list[Any] | None:
+    """The types of a transformation's columns, to print a counterexample's
+    dates and timestamps as such (`Rel.eval` counts them in days and
+    microseconds); None where they cannot be had, which only plainer prints."""
+    try:
+        if not isinstance(transform, str):
+            return list(transform.schema().values())
+        import duckdb  # DuckDB's own types for the SQL, where it is installed
+
+        db = duckdb.connect()
+        for name, schema in schemas.items():
+            db.register(name, schema.to_pyarrow().empty_table())
+        kinds = [row[1].upper() for row in db.execute(f"DESCRIBE {transform}").fetchall()]
+        return [
+            ibis.dtype(
+                "date" if k == "DATE" else "timestamp" if k.startswith("TIMESTAMP") else "string"
+            )
+            for k in kinds
+        ]
+    except Exception:  # noqa: BLE001 - the types only improve the printing
+        return None
+
+
 def _verify_once(
     transform: Transform,
     requires: Mapping[str, Sequence[Condition]],
@@ -1512,6 +1535,7 @@ def _verify_once(
         ens_plans.append(p)
     transform_plan = plan(transform)
     out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
+    out_types = _output_types(transform, schemas) if counterexamples else None
 
     def names(t: str) -> Sequence[str]:
         return column_names(schemas[t])
@@ -1615,6 +1639,7 @@ def _verify_once(
                 target,
                 budget=counterexamples,
                 references=foreign_keys,
+                output_types=out_types,
             )
 
     def next_key() -> tuple[bool, Counterexample | None]:
@@ -1696,6 +1721,7 @@ def _verify_once(
             shown=shown,
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
             dialect=dialect,
+            finite=lambda e: _finite_bounds(e, schemas, assumable, dialect),
         ),
         _params=bound,
         _bounds=_int_bounds(out["facts"], dtypes),
@@ -1720,6 +1746,27 @@ def _verify_once(
             report._hints += division_hints(transform)
     report._hints += contradictions(requires, schemas)
     return report, out["inferred"], schemas
+
+
+def _finite_bounds(
+    shown: str, schemas: Mapping[str, ibis.Schema], assumable: Container[str], dialect: str
+) -> dict[str, list[Condition]]:
+    """Bounds of ±1e300 on the double column a `sum(x)` or `avg(x)` adds up:
+    they keep the sum from being NaN (+inf plus -inf). A hint proposes them
+    only where a proof confirms it (`_confirm_hints`)."""
+    m = re.fullmatch(r"(?:sum|avg|mean)\((\w+)\)(?: or \w+\(\1\))*", shown)
+    out: dict[str, list[Condition]] = {}
+    for t, schema in schemas.items():
+        if m is None or t not in assumable or m[1] not in schema or not schema[m[1]].is_floating():
+            continue
+        col = m[1]
+        q = f'"{col}"' if not col.isidentifier() else col
+        out[t] = (
+            [getattr(ibis._, col) >= -1e300, getattr(ibis._, col) <= 1e300]
+            if dialect == "ibis"
+            else [f"{q} >= -1e300", f"{q} <= 1e300"]
+        )
+    return out
 
 
 def _guess_bounds(
@@ -1805,6 +1852,7 @@ def _issues(
     shown: Callable[..., str | None],
     guess: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
     dialect: str = "ibis",
+    finite: Callable[[str], dict[str, list[Condition]]] = lambda e: {},
 ) -> list[Issue]:
     """The checker's issues, one per expression the user wrote and kind
     (#687): the sub-expressions of an expression that may overflow, and the
@@ -1851,6 +1899,10 @@ def _issues(
         guessed = (
             guess(user) if error and not constant and bound and bound.get("why") and user else {}
         )
+        if not guessed and error and not constant and kind == "domain error" and user:
+            # `sum(x)` is NaN where x holds both +inf and -inf: finite bounds
+            # rule it out (`_cause`).
+            guessed = finite(user)
         if guessed:
             code, fallback = guessed, text
             text = (
@@ -2237,11 +2289,12 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
 
     def capped(n: int) -> str:
-        """The row cap that proves the sum fits (#219)."""
+        """The row cap that proves the sum fits (#219): a cap near `n` is
+        no cap anyone writes, so a round one (at most a billion) is the example."""
+        cap = 10 ** min(len(str(n)) - 1, 9)
         return (
-            f"`sv.max_rows({n:_})` in {where} proves it, and so does "
-            f"`sv.rows_per(<grouping columns>, at_most={n:_})`; without a row bound, the job "
-            "checks the sum as it runs"
+            f"a row cap in {where} proves it: `sv.max_rows({cap:_})` or "
+            f"`sv.rows_per(<grouping columns>, at_most={cap:_})`"
         )
 
     if lo is not None and hi is not None:
@@ -2254,8 +2307,8 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
             # sum fits, and Lean proves it.
             return None
         return (
-            f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
-            f"{rows:,} rows; {capped(rows)}"
+            f"SUM of {what}: it is in [{lo}, {hi}]. The job checks the sum as it runs; "
+            f"{capped(rows)}, and any group of up to {rows:,} rows fits 64 bits"
         )
     col = origin[1] if origin else "x"
     proposed = []
@@ -2266,8 +2319,9 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     largest = max(SUM_BOUND, abs(lo or 0), abs(hi or 0))
     rows = (2**63 - 1) // largest
     return (
-        f"SUM of {what}: bound it in {where}, for example {' and '.join(proposed)}; then a "
-        f"group's sum fits 64 bits for up to {rows:,} rows, and {capped(rows)}"
+        f"SUM of {what}: the job checks the sum as it runs. To prove it, bound it in {where}, "
+        f"for example {' and '.join(proposed)}; then {capped(rows)}, and any group of up to "
+        f"{rows:,} rows fits 64 bits"
     )
 
 
@@ -2612,7 +2666,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.guarantees) if prov else [],
         prov,
         list(prov.checked) if prov else [],
-        list(prov.report.not_null) if prov and prov.report.proved else [],
+        list(prov.report.not_null) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
     )
 
@@ -2923,7 +2977,7 @@ class ContractedTransform:
         unproved contract does not raise `VerificationError`, a bound table
         stands for its schema (its data is not read, so `requires` is not
         checked on it), and `on_unproved` does not apply. An editor, a test
-        or a CI step reads the report (`Report.proved`, `Report.needed`).
+        or a CI step reads the report (`Report.verdict`, `Report.needed`).
 
         Args:
             *args: The inputs, positionally: Ibis tables, `ibis.Schema`s, or
@@ -3045,7 +3099,7 @@ class ContractedTransform:
             # The report may be cached and shared by calls: this call's copy.
             report = self.report = replace(report, preconditions=found)
         checked: list[Condition] = []
-        if not report.proved and raise_unproved:
+        if not report._proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in
             # "check" mode the engine raises them if they happen.
             if self.on_unproved == "check" and (node or is_bound(result)):
@@ -3217,7 +3271,7 @@ def transform(
             return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
         big = orders.pipe(doubled)  # a Node, proved here (as doubled(orders))
-        doubled.report.proved  # True
+        doubled.report.verdict  # Verdict.PROVED
         doubled.report.facts["doubled"]  # 'an integer ≥ 22'
         big.refresh()
         big.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]

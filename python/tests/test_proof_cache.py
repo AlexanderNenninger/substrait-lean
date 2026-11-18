@@ -60,13 +60,13 @@ def _entries(root: Path) -> list[Path]:
 
 def test_an_unchanged_transform_is_not_proved_again(cache: Path) -> None:
     first, t1 = _verify(_query())
-    assert t1.calls["checker"] >= 1 and first.proved
+    assert t1.calls["checker"] >= 1 and first.verdict == sv.Verdict.PROVED
     assert _entries(cache)
     _new_process()
     second, t2 = _verify(_query())
     assert t2.calls["checker"] == 0
     assert t2.hits["disk"] >= 1
-    assert second.proved == first.proved
+    assert second.verdict == sv.Verdict.PROVED == first.verdict == sv.Verdict.PROVED
     assert [c.value for c in second.ensures] == [c.value for c in first.ensures]
 
 
@@ -81,7 +81,7 @@ def test_a_changed_plan_misses(cache: Path) -> None:
     _new_process()
     report, t = _verify(_query(-1))
     assert t.calls["checker"] >= 1
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_a_changed_condition_misses(cache: Path) -> None:
@@ -89,7 +89,7 @@ def test_a_changed_condition_misses(cache: Path) -> None:
     _new_process()
     with _stages.timing() as t:
         report = sv.verify(_query(), requires={"t": [_.x >= 1]}, ensures=[_.y >= 1])
-    assert t.calls["checker"] >= 1 and report.proved
+    assert t.calls["checker"] >= 1 and report.verdict == sv.Verdict.PROVED
 
 
 def test_a_changed_profile_misses(cache: Path) -> None:
@@ -143,7 +143,7 @@ def test_a_damaged_entry_is_a_miss(cache: Path) -> None:
     _new_process()
     second, t = _verify(_query())
     assert t.calls["checker"] >= 1
-    assert second.proved == first.proved
+    assert second.verdict == sv.Verdict.PROVED == first.verdict == sv.Verdict.PROVED
 
 
 def test_evaluation_requests_are_not_kept() -> None:
@@ -175,7 +175,7 @@ def test_the_default_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 def test_an_unwritable_cache_is_skipped(cache: Path) -> None:
     cache.write_text("a file where the directory would be")
     report, _ = _verify(_query())
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_processes_share_the_cache(cache: Path) -> None:
@@ -187,7 +187,7 @@ def test_processes_share_the_cache(cache: Path) -> None:
         t = ibis.table({"id": "int64", "x": "int64"}, name="t")
         with _stages.timing() as s:
             r = sv.verify(t.mutate(y=_.x), requires={"t": [_.x >= 0]}, ensures=[_.y >= 0])
-        print(r.proved, s.calls["checker"], s.hits["disk"])
+        print(r.verdict == sv.Verdict.PROVED, s.calls["checker"], s.hits["disk"])
         """
     )
     env = {**os.environ, "SVERIFY_CACHE_DIR": str(cache)}

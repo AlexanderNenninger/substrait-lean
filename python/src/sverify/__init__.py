@@ -67,6 +67,7 @@ if _TYPE_CHECKING:
     from sverify.engine import connect
     from sverify.nodes import Node, group
     from sverify.observation import equivalent, within
+    from sverify.report import Verdict
     from sverify.sql_model import sql
 
 # The public names, imported on first use (PEP 562): `import sverify` stays
@@ -76,6 +77,7 @@ _LAZY = {
     "asof_join": "sverify.asof",
     "ContractedTransform": "sverify.contracts",
     "Report": "sverify.contracts",
+    "Verdict": "sverify.report",
     "approx": "sverify.contracts",
     "arrives_within": "sverify.contracts",
     "key": "sverify.conditions",
@@ -145,6 +147,7 @@ __all__ = [
     "ContractedTransform",
     "Node",
     "Report",
+    "Verdict",
     "approx",
     "arrives_within",
     "asof_join",

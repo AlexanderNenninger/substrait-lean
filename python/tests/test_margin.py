@@ -57,7 +57,7 @@ def _flagged(groups: list[list[float]], t: float) -> int:
 
 def test_the_checker_writes_the_check_and_the_rows_are_exact_given_it(having):
     r = having
-    assert r.proved
+    assert r.verdict == sv.Verdict.PROVED_WITH_CHECKS
     assert len(r._margin_checks) == 1
     assert r._margin_checks[0]["column"] == "total"
     assert r._rows_exact is not None and all(r._rows_exact.values())
@@ -190,7 +190,7 @@ def test_a_row_against_its_partitions_mean(engine):
 def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
     """The check and the plan read their inputs twice: an Arrow table, a
     resident table or a Delta/Iceberg scan at one version reads the same rows;
-    a file scan without a version warns, and the deterministic profile
+    a file scan without a version warns, and a rerun requirement
     refuses it."""
     import pyarrow.parquet as pq
 
@@ -227,6 +227,6 @@ def test_the_margin_check_sees_through_the_finish_of_duckdbs_sum_and_avg(query):
     r = sv.verify(
         sv.sql(query, t=t, semantics="duckdb"), requires={"t": [_.f.between(-1e300, 1e300)]}
     )
-    assert r.proved
+    assert r.verdict != sv.Verdict.UNPROVED
     assert len(r._margin_checks) == 1
     assert r._rows_exact is not None and all(r._rows_exact.values())

@@ -178,9 +178,13 @@ def test_a_new_duplicate_retracts_the_kept_row():
     node = orders.pipe(make())
     node.refresh()
     orders.apply(Changes(inserts=table([(1, 31)])))
-    node.refresh()
+    r = node.refresh()
     assert node.to_arrow().num_rows == 0
     assert bag(node.quarantined()) == Counter({(1, 30): 1, (1, 31): 1})
+    # #1593: the report says one of the two was published.
+    (q,) = r.nodes[0].quarantine
+    assert (q.quarantined, q.retracted) == (2, 1)
+    assert "1 already published" in str(q) and q.to_dict()["retracted"] == 1
     orders.apply(Changes(deletes=table([(1, 31)])))
     node.refresh()
     assert bag(node.to_arrow()) == Counter({(1, 30): 1})
@@ -197,6 +201,9 @@ def test_a_redelivered_duplicate_keeps_the_published_row():
     assert bag(node.to_arrow()) == Counter({(1, 30): 1, (2, 40): 1})
     assert bag(node.quarantined()) == Counter({(1, 30): 1})
     assert "deleted" not in str(r.nodes[0].quarantine[0])
+    # #1593: nothing published was taken out.
+    assert r.nodes[0].quarantine[0].retracted == 0
+    assert "already published" not in str(r.nodes[0].quarantine[0])
     # The source drops one of the two copies: the published row stays.
     orders.apply(Changes(deletes=table([(1, 30)])))
     node.refresh()
@@ -435,7 +442,7 @@ def test_old_spellings_of_on_unproved_and_on_inferred_warn():
     orders = ibis.table({"a": "int64", "b": "int64"}, name="orders")
     with pytest.warns(DeprecationWarning, match='on_inferred="ignore"'):
         report = sv.verify(orders.select(r=orders.a // orders.b), on_inferred="silent")  # type: ignore[arg-type]
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_check_requires_false_refuses_an_on_violation():

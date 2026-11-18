@@ -28,7 +28,7 @@ def test_postconditions_are_proved():
     doubled(orders)
     report = doubled.report
     assert report is not None
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.facts["doubled"] == "an integer ≥ 22"
     assert "(_.amount < 4611686018427387904)" in report.requires["orders"]  # stated (#655)
     assert report._inferred == {}
@@ -49,19 +49,22 @@ def test_unprovable_postcondition_is_refused():
 def test_null_propagates_unless_ruled_out():
     # Without a precondition, `amount + 1` can be NULL...
     report = sv.verify(orders.select(t=orders.amount + 1), ensures=[_.t.notnull()])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     # ...and a filter on `amount` rules that out (NULL > 0 is not TRUE).
     report = sv.verify(
         orders.filter(orders.amount > 0).select(t=orders.amount + 1),
         requires={"orders": [_.amount < 1_000_000]},
         ensures=[_.t.notnull()],
     )
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_equality_uses_intervals():
     zero = orders.select(t=orders.amount * 0)
-    assert sv.verify(zero, requires={"orders": [_.amount.notnull()]}, ensures=[_.t == 0]).proved
+    assert (
+        sv.verify(zero, requires={"orders": [_.amount.notnull()]}, ensures=[_.t == 0]).verdict
+        == sv.Verdict.PROVED
+    )
     big = orders.filter(orders.amount > 10).select("amount")
     report = sv.verify(big, ensures=[_.amount != 5, _.amount == 5, _.amount == 11])
     assert [c.proved for c in report.ensures] == [True, False, False]
@@ -77,9 +80,9 @@ def test_inner_join_keeps_facts_left_join_does_not():
         orders.id, customers.city
     )
     pre = {"customers": [_.city.notnull()]}
-    assert sv.verify(inner, requires=pre, ensures=[_.city.notnull()]).proved
+    assert sv.verify(inner, requires=pre, ensures=[_.city.notnull()]).verdict == sv.Verdict.PROVED
     report = sv.verify(left, requires=pre, ensures=[_.city.notnull()])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert "NULL" in report.facts["city"]
 
 
@@ -89,7 +92,7 @@ def test_sql_transform_and_conditions():
         tables={"orders": orders},
         ensures=["rest >= 0", "rest IS NOT NULL"],
     )
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_sql_transform_with_ibis_ensures():
@@ -100,14 +103,17 @@ def test_sql_transform_with_ibis_ensures():
         tables={"jobs": jobs},
         ensures=[_.n >= 1, sv.unique("workflow")],
     )
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert [c.label for c in report.ensures] == ["(_.n >= 1)", "unique(workflow)"]
-    assert not sv.verify(
-        "SELECT workflow, count(*) - 1 AS n FROM jobs GROUP BY workflow",
-        tables={"jobs": jobs},
-        ensures=[_.n >= 1],
-        counterexamples=0,
-    ).proved
+    assert (
+        sv.verify(
+            "SELECT workflow, count(*) - 1 AS n FROM jobs GROUP BY workflow",
+            tables={"jobs": jobs},
+            ensures=[_.n >= 1],
+            counterexamples=0,
+        ).verdict
+        == sv.Verdict.UNPROVED
+    )
 
 
 def test_sql_transform_with_ibis_requires():
@@ -118,15 +124,18 @@ def test_sql_transform_with_ibis_requires():
         requires={"orders": [_.amount >= 5, "amount <= 100"]},
         ensures=[_.rest >= 0, "rest <= 95"],
     )
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.requires["orders"] == ["(_.amount >= 5)", "amount <= 100"]
-    assert not sv.verify(
-        "select id, amount - 5 as rest from orders",
-        tables={"orders": orders},
-        requires={"orders": [_.amount >= 4]},
-        ensures=[_.rest >= 0],
-        counterexamples=0,
-    ).proved
+    assert (
+        sv.verify(
+            "select id, amount - 5 as rest from orders",
+            tables={"orders": orders},
+            requires={"orders": [_.amount >= 4]},
+            ensures=[_.rest >= 0],
+            counterexamples=0,
+        ).verdict
+        == sv.Verdict.UNPROVED
+    )
 
 
 def test_report_runs_the_plan_it_checked():
@@ -143,7 +152,7 @@ def test_report_runs_the_plan_it_checked():
         sv.verify(ibis_q, ensures=[sv.unique("host")]),
         sv.verify(sql_q, tables={"t": t}, ensures=[sv.unique("host")]),
     ):
-        assert report.proved
+        assert report.verdict == sv.Verdict.PROVED
         assert report.internal_plan is not None
         for engine in (None, "polars"):
             assert report.run(con, engine).sort_by("host").to_pylist() == expected
@@ -167,8 +176,11 @@ def test_report_without_plan_refuses_to_run():
 
 def test_non_nullable_schema_is_used():
     strict = ibis.table({"id": "!int64", "amount": "int64"}, name="strict")
-    assert sv.verify(strict.select("id"), ensures=[_.id.notnull()]).proved
-    assert not sv.verify(strict.select("amount"), ensures=[_.amount.notnull()]).proved
+    assert sv.verify(strict.select("id"), ensures=[_.id.notnull()]).verdict == sv.Verdict.PROVED
+    assert (
+        sv.verify(strict.select("amount"), ensures=[_.amount.notnull()]).verdict
+        == sv.Verdict.UNPROVED
+    )
 
 
 def test_preconditions_are_checked_on_data():
@@ -318,7 +330,7 @@ def test_keys_flow_through_joins_and_windows():
         requires={"sensor1": [sv.unique("ts")]},
         ensures=[sv.unique("t0")],
     )
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_unique_precondition_is_checked_on_data():
@@ -329,7 +341,7 @@ def test_unique_precondition_is_checked_on_data():
     with pytest.raises(PreconditionError, match="unique"):
         big(bound_orders([(1, "ada", 30), (1, "bob", 40)]))
     big(bound_orders([(1, "ada", 30), (2, "bob", 40)]))
-    assert big.report is not None and big.report.proved
+    assert big.report is not None and big.report.verdict == sv.Verdict.PROVED
 
 
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -376,8 +388,8 @@ def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
     # Inferred (#244), needed by default (#655); without inference, the
     # issue's hint names them. A column read lies in 0001 to 9999 by its type
     # (D32), so the truncation is of a computed value.
-    assert sv.verify(expr, on_inferred="ignore").proved
-    assert not sv.verify(expr).proved
+    assert sv.verify(expr, on_inferred="ignore").verdict == sv.Verdict.PROVED
+    assert sv.verify(expr).verdict == sv.Verdict.UNPROVED
     report = sv.verify(expr, on_inferred="off")
     [issue] = report.errors
     assert issue.kind == "overflow" and issue.hint is not None
@@ -391,14 +403,17 @@ def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
 def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
     expr = SAMPLES.group_by("host").aggregate(total=_.cpu.sum())
     [hint] = sv.verify(expr)._hints
-    assert hint.startswith("SUM of `cpu`: bound it in `requires` of samples")
+    assert hint.startswith("SUM of `cpu`: the job checks the sum as it runs. To prove it, bound it")
+    assert "in `requires` of samples" in hint
     assert "`_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`" in hint
     assert "up to 9,223,372,036 rows" in hint
     [hint] = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100]})._hints
     assert "it is in [0, 100]" in hint and "up to 92,233,720,368,547,758 rows" in hint
-    assert "`sv.max_rows(92_233_720_368_547_758)` in `requires` of samples proves it" in hint
-    # With that row cap, the sum is proved to fit.
-    cap = sv.max_rows(92_233_720_368_547_758)
+    # The example cap is one anyone would write, below the largest that proves it.
+    assert "a row cap in `requires` of samples proves it: `sv.max_rows(1_000_000_000)`" in hint
+    assert "92_233_720_368_547_758" not in hint
+    # With a row cap, the sum is proved to fit.
+    cap = sv.max_rows(1_000_000_000)
     proved = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100, cap]})
     assert not proved.issues and not proved.assumed
 

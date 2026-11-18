@@ -91,13 +91,16 @@ def _error(code: str, e: BaseException | str, kind: str | None = None) -> dict[s
 
 def _classify(e: BaseException) -> tuple[int, str]:
     """The exit code and the error's code for an exception."""
-    from sverify.errors import (
-        AuditError,
-        PostconditionError,
-        PreconditionError,
-        UnsupportedError,
-        VerificationError,
-    )
+    try:
+        from sverify.errors import (
+            AuditError,
+            PostconditionError,
+            PreconditionError,
+            UnsupportedError,
+            VerificationError,
+        )
+    except Exception:  # noqa: BLE001 - the import failure is the error being classified (#1585)
+        return ERROR, "error"
 
     if isinstance(e, BudgetExceeded):
         return BUDGET, "memory" if e.what == "memory" else "timeout"
@@ -226,7 +229,7 @@ class Check:
             lines.append("")
         for c in self.checked:
             r = c.report
-            verdict = r.verdict if r is not None else "unfinished: the time budget ran out"
+            verdict = r._summary if r is not None else "unfinished: the time budget ran out"
             lines.append(f"{_label(c.name, c.nodes)}: {verdict}")
             if full and r is not None:
                 lines += [f"  {line}" for line in str(r).splitlines()[1:]]
@@ -250,7 +253,8 @@ class Check:
             lines.append(
                 f"`sverify explain <code>` says what a [code] means ({', '.join(codes)}){more}."
             )
-        lines.append(STATUS[self.code].replace("_", " "))
+        if not self.checked:  # a node's line has said it otherwise
+            lines.append(STATUS[self.code].replace("_", " "))
         return "\n".join(lines)
 
     def render(self, fmt: str, full: bool) -> str:

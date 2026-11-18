@@ -14,7 +14,7 @@ row is read. The result is a `Report`:
 ```python
 report = sv.verify(expr, requires={"orders": [...]}, ensures=[...])
 print(report)          # the whole report, as text
-report.proved          # True when everything holds
+report.verdict == Verdict.PROVED          # True when everything holds
 ```
 
 A transform whose contract is not proved is refused when it is applied
@@ -24,12 +24,18 @@ instead.
 
 ## What a report holds
 
-- The verdict. `report.verdict` is the first line: `proved`, or
-  `NOT proved:` and what is missing, counted. `report.proved` is true when
+- The verdict. `report.verdict` is a `sverify.Verdict`: `proved` when
   every postcondition holds, under the observation where `ensures` states
   one, no runtime error is possible, no needed precondition is missing, the
   chosen tolerance is one some engine's doubles actually meet, and, under
-  `semantics="substrait"`, the reference's proof carries over.
+  `semantics="substrait"`, the reference's proof carries over, and the
+  report assumes nothing that a run checks on the data. `proved_with_checks`
+  is the same with `report.assumed` non-empty: every run that finishes
+  satisfies the postconditions, and a run stops where a check fails on the
+  data. Anything else is `unproved`. `bool(report.verdict)` raises
+  `TypeError`: compare the value you expect. `str(report)` starts with the
+  verdict in words: `proved`, `proved with checks:` and the number of
+  assumptions a run checks, or `NOT proved:` and what is missing, counted.
 - The assumptions. `report.requires` lists the preconditions per input
   table, the ones you stated and the ones sverify inferred and assumed;
   `report.assumed` the `SUM`s assumed to fit their type, which the run
@@ -88,8 +94,10 @@ the names of the proofs.
 ## Running is separate
 
 A report proves; it runs nothing. `report.run(con, engine)` runs the plan
-it checked: it checks the preconditions on the data first, refuses a batch
-that breaks one (`PreconditionError`), chooses a route to the engine and
+it checked: it checks the tables against the schema the plan was proved for
+(a missing column, a changed type, a NULL in a non-null column, an integer
+outside its declared width), then the preconditions on the data, refuses a
+batch that breaks one (`PreconditionError`), chooses a route to the engine and
 records it in `report.routes`. A report that is not proved is refused
 there too (`UnverifiedRunError`) unless `unverified=True` says otherwise.
 `report.to_json()` writes the report for another tool, and
