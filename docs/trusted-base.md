@@ -23,6 +23,9 @@ drifts.
    proved to `Knowledge.contract_sound_all` on the data. The postcondition's
    plan is built by `parse` over the request's transformation (`Post.plan`):
    a plan in `ensures` that selects from anything else is refused (#1484).
+   `ContractCheck.check_proved_on` carries it to the rows each engine's model
+   computes, with the engine's side condition taken from the report
+   (`check_proved_on_duckdb`, `check_proved_on_polars`, `check_proved_on_spark`).
 4. The checker's answer becomes a report in one place
    (`python/src/sverify/_verdict.py`, `verdict`).
 5. `Report.run` writes the plan for an engine (`python/src/sverify/sql/`,
@@ -41,6 +44,10 @@ the project's one axiom (the trusted table below).
 | `contract_sound_all` | … in every row order the reference allows | `Contracts/Sound.lean` | propext, Classical.choice, Quot.sound |
 | `contract_sound_allowed` | … on every result the reference allows, for a plan whose open measures choose no rows | `AllowedAnalysis.lean` | propext, Classical.choice, Quot.sound |
 | `ContractCheck.check_proved_sound` | What `substrait-check --contract` reports proved holds on the data's every allowed order | `ContractCheck.lean` | propext, Classical.choice, Quot.sound |
+| `ContractCheck.check_proved_on` | … on the rows an engine's model computes for the translated plan, for a plan without open measures (`closed`), under the engine's side condition | `ProvedOn.lean` | propext, Classical.choice, Quot.sound |
+| `ContractCheck.check_proved_on_duckdb` | … on DuckDB's model (default route: verified under the reference, lowered by `Lowering.duckdb`), its side condition from a guard-free report without issues under the reference | `ProvedOn.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `ContractCheck.check_proved_on_polars` | … on Polars's model, its side condition from a guard-free report | `ProvedOn.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `ContractCheck.check_proved_on_spark` | … on Spark's model, its side condition from a guard-free report | `ProvedOn.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.mayIssues_sound` | A plan with no reported issue raises no runtime error | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.mayIssues_sound_all` | … on every order of the ties the reference allows | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.guardFree_sound` | Dropping the guards of a plan whose only issues are assumed changes no result | `Guards.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
@@ -210,7 +217,10 @@ place, and what retires it.
   1. the Lean theorem, `Engine.contract_sound` with the engine's
      `Engine.Sound` (`Sound.lean`); `Engine.polars_sound` and
      `Engine.spark_sound` also take `Engine.GuardFreeData`, preconditions on
-     the catalog and the size hypothesis;
+     the catalog and the size hypothesis. From the checker's report it is
+     `ContractCheck.check_proved_on` and its corollaries
+     (`check_proved_on_duckdb`, `check_proved_on_polars`,
+     `check_proved_on_spark`), each side condition taken from report fields;
   2. the round trip: the SQL or Polars code written for the plan is
      `E.lower` of it;
   3. the runtime checks: the schema read against `E.table`, the session
