@@ -37,6 +37,13 @@ def inferred(report) -> list[str]:
 # -- the analysis, on the issue's examples ---------------------------------------
 
 
+def test_a_narrow_integer_widened_by_ibis_needs_no_precondition():
+    """Ibis's cast makes `q * 2` 64-bit arithmetic within the type's bounds,
+    which the type gives (D46, #1541)."""
+    report = verify(T.select(x=T.q * 2), requires={"orders": []}, ensures=[])
+    assert report.verdict == sv.Verdict.PROVED and inferred(report) == [], report
+
+
 @pytest.mark.parametrize(
     ("expr", "requires", "bounds"),
     [
@@ -61,8 +68,6 @@ def inferred(report) -> list[str]:
         # Negation and ABS fail on the smallest BIGINT only.
         (T.select(x=-T.amount), [], ["(_.amount >= -9 * 10**18)"]),
         (T.select(x=T.amount.abs()), [], ["(_.amount >= -9 * 10**18)"]),
-        # A narrow integer widened by Ibis's cast is 64-bit arithmetic: its type's bounds (#1541).
-        (T.select(x=T.q * 2), [], ["(_.q >= -2_147_483_648)", "(_.q <= 2_147_483_647)"]),
         # Truncation of a computed timestamp or date (#379), to whole years. A
         # column read lies in 0001 to 9999 by its type and needs none (D32).
         (
@@ -102,16 +107,16 @@ def test_inferred_bounds_prove_the_contract(expr, requires, bounds):
 @pytest.mark.parametrize(
     ("dtype", "bounds"),
     [
-        ("int8", ["(_.v >= -127)", "(_.v <= 127)"]),
-        ("int16", ["(_.v >= -32_767)", "(_.v <= 32_767)"]),
-        ("int32", ["(_.v >= -2 * 10**9)", "(_.v <= 2_147_483_647)"]),
+        ("int8", ["(_.v >= -127)"]),
+        ("int16", ["(_.v >= -32_767)"]),
+        ("int32", ["(_.v >= -2 * 10**9)"]),
         ("int64", ["(_.v >= -9 * 10**18)"]),
     ],
 )
 def test_abs_of_a_narrow_integer_is_bounded_within_its_type(dtype, bounds):
     """`ABS` fails on the smallest value of the column's type, not only of
     BIGINT's, and no bound reaches 2**63, which the lift reads as a HUGEINT
-    (#616)."""
+    (#616). The type's upper bound is no precondition (D46)."""
     report = verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": dtype}})
     assert report.verdict == sv.Verdict.PROVED, report
     assert inferred(report) == bounds
@@ -360,16 +365,13 @@ def test_null_passes_an_inferred_bound():
     ]
 
 
-INT32 = ["(_.i >= -2_147_483_648)", "(_.i <= 2_147_483_647)"]
-
-
 def test_a_widening_cast_has_its_targets_width():
     """`CAST(i AS BIGINT) * 4` of an `INTEGER` is 64-bit arithmetic: the bound
     it needs is the column's own type, not the `|i| < 2**29` of `WRAP32`
-    (#1541)."""
+    (#1541), and the type itself gives it (D46)."""
     report = verify("SELECT CAST(i AS BIGINT) * 4 AS y FROM t", tables={"t": {"i": "int32"}})
     assert report.verdict == sv.Verdict.PROVED and not report.errors, report
-    assert inferred(report) == INT32
+    assert inferred(report) == []
 
 
 @pytest.mark.parametrize(
@@ -394,6 +396,6 @@ def test_arithmetic_without_the_cast_still_wraps_at_the_columns_width():
 def test_a_tinyint_cast_to_smallint_multiplies_at_16_bits():
     tables = {"t": {"v": "int8"}}
     ok = verify("SELECT CAST(v AS SMALLINT) * 4 AS y FROM t", tables=tables)
-    assert ok.verdict == sv.Verdict.PROVED and inferred(ok) == ["(_.v >= -128)", "(_.v <= 127)"], ok
+    assert ok.verdict == sv.Verdict.PROVED and inferred(ok) == [], ok
     big = verify("SELECT CAST(v AS SMALLINT) * CAST(1000 AS SMALLINT) AS y FROM t", tables=tables)
     assert big.verdict == sv.Verdict.UNPROVED and any("WRAP16" in str(i) for i in big.errors), big

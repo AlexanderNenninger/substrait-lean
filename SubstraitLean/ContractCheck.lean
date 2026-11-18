@@ -89,8 +89,14 @@ def typeEnvD : Nat → Json → AVal
     -- reference lies in 0001-01-01 … 9999-12-31 by its type (D32,
     -- `Value.InCalendar`): what makes `date_part` of a column read safe. The
     -- source read checks it (`sverify.engine.Connection.put`).
+    -- The same for a narrow integer: its type's range (D46), which the run's
+    -- schema check holds the data to (#1540).
+    let width : Option Nat := match kind with
+      | "i8" => some 7 | "i16" => some 15 | "i32" => some 31 | _ => none
     if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
+    else if let some w := width then
+      { null := nullable, int := some ⟨some (-(2 ^ w : Int)), some (2 ^ w - 1)⟩, nk := nk }
     else if ["precisionTimestamp", "timestamp"].contains kind then
       { null := nullable, int := some ⟨some Time.tsMin, some Time.tsMax⟩, nk := nk }
     else if kind == "date" then
