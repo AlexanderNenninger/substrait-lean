@@ -1296,7 +1296,11 @@ The run checks each narrow integer column once, before any engine reads it
 (`Report.check_inputs`). A physical integer type contained in the declared
 one passes by its type. A wider one gets one range check over the read and
 fails with a `PreconditionError` that names the column, the declared type,
-the count and one value.
+the count and one value. It runs on `Report.run`, `run_sharded`, and an
+incremental view's first load and each batch; a transform called on bound
+tables is verified on the schemas the engine reports for them, so it declares
+no type the data could exceed, and a view planned again after a schema change
+(`_replan`) likewise.
 
 Why: the docs state the width of results and said nothing of a source value
 outside the declared width. D32 settled the same gap for dates, and D46 has
