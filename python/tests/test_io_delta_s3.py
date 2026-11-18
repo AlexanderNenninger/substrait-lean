@@ -1,70 +1,15 @@
-"""A `DeltaSink` on S3 (moto's server, in another process: delta-rs hangs
-against one in this process, `upstream/bugs/DL-1.json`): writes, maintenance
-and a restart past another writer's compaction."""
+"""A `DeltaSink` on S3 (moto's server, `conftest.py`): writes, maintenance and
+a restart past another writer's compaction."""
 
-import socket
-import subprocess
-import sys
-import time
-import uuid
 from datetime import timedelta
 
 import pytest
 from deltalake import DeltaTable
 
 from _pipelines import doubled, make_orders, paid, recomputed, rows
-from sverify.io import DeltaSink, DeltaSource, Storage
+from sverify.io import DeltaSink, DeltaSource
 
 pytest.importorskip("moto.server")
-boto3 = pytest.importorskip("boto3")
-
-
-@pytest.fixture(scope="module")
-def endpoint():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    server = subprocess.Popen(
-        [sys.executable, "-m", "moto.server", "-p", str(port)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    url = f"http://127.0.0.1:{port}"
-    try:
-        for _ in range(100):
-            try:
-                socket.create_connection(("127.0.0.1", port), timeout=0.1).close()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            pytest.fail("moto's server did not start")
-        yield url
-    finally:
-        server.kill()
-        server.wait()
-
-
-@pytest.fixture
-def lake(endpoint):
-    """A new bucket, and the storage options to reach it."""
-    bucket = f"lake-{uuid.uuid4().hex[:12]}"
-    boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id="test",
-        aws_secret_access_key="test",
-        region_name="us-east-1",
-    ).create_bucket(Bucket=bucket)
-    options = {
-        "AWS_ENDPOINT_URL": endpoint,
-        "AWS_ACCESS_KEY_ID": "test",
-        "AWS_SECRET_ACCESS_KEY": "test",
-        "AWS_REGION": "us-east-1",
-        "AWS_ALLOW_HTTP": "true",
-        "AWS_CONDITIONAL_PUT": "etag",
-    }
-    return f"s3://{bucket}", Storage(options)
 
 
 def job(tmp_path, uri, store, src=None, **options):
