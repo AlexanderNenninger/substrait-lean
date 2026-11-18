@@ -534,7 +534,7 @@ theorem Expr.andLift_false (row : Row) (pre : List Expr) (p : Expr) (post : List
     · next hn =>
       have hev : (Expr.andG (pre ++ p :: post)).eval row = .bool false := by
         simpa using hg
-      simp [Expr.issues, hi, hn, Expr.eval, Impl.lean, BinFn.apply, hev, and3]
+      simp [Expr.issues, Expr.eval, Impl.lean, BinFn.apply, hev, and3]
 
 theorem Expr.orLift_true (row : Row) (pre : List Expr) (p : Expr) (post : List Expr)
     (hpre : ∀ q ∈ pre, Expr.GoOr row q) (hp : firstError (p.issues row) = none)
@@ -556,7 +556,9 @@ theorem Expr.orLift_true (row : Row) (pre : List Expr) (p : Expr) (post : List E
     · next hn =>
       have hev : (Expr.orG (pre ++ p :: post)).eval row = .bool true := by
         simpa using hg
-      simp [Expr.issues, hi, hn, Expr.eval, Impl.lean, BinFn.apply, hev, or3]
+      have ho : ∀ v, or3 v (.bool true) = .bool true := fun v => by
+        cases v <;> first | rfl | (rename_i b; cases b <;> rfl)
+      simp [Expr.issues, Expr.eval, Impl.lean, BinFn.apply, hev, ho]
 
 /-- **An error in a reached operand still surfaces** through the lift. -/
 theorem Expr.andLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List Expr) (k : Issue)
