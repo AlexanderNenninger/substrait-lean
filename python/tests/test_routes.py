@@ -372,3 +372,15 @@ def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
     r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])
     assert r.refused and "may keep other rows on polars" in r.reason
+
+
+def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:
+    """The refusal's two exits (#1608): a constant threshold takes a
+    precondition, a mean or sum takes exact columns."""
+    from sverify import routes
+
+    text = routes._THRESHOLD.format(engine="duckdb")
+    assert "for a constant threshold, state a precondition" in text
+    assert "`x * COUNT(y) > SUM(y)`" in text
+    assert "compares the exact mean, not the rounded one" in text
+    assert "its product must fit BIGINT" in text
